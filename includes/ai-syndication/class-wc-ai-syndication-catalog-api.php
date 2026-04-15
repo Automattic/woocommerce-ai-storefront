@@ -499,13 +499,15 @@ class WC_AI_Syndication_Catalog_Api {
 			],
 		];
 
+		// For single items: direct add-to-cart URL.
+		// For variable products, use the variation_id as the add-to-cart value.
 		if ( 1 === count( $validated_items ) ) {
-			$item = $validated_items[0];
+			$item       = $validated_items[0];
+			$add_to_cart_id = $item['variation_id'] ?: $item['product_id'];
 			$response_data['direct_add_url'] = add_query_arg(
 				array_filter( [
-					'add-to-cart'   => $item['product_id'],
+					'add-to-cart'   => $add_to_cart_id,
 					'quantity'      => $item['quantity'],
-					'variation_id'  => $item['variation_id'] ?: null,
 					'utm_source'    => $bot_name ? sanitize_title( $bot_name ) : 'ai_agent',
 					'utm_medium'    => 'ai_agent',
 					'ai_session_id' => $session_id,
@@ -513,6 +515,23 @@ class WC_AI_Syndication_Catalog_Api {
 				home_url( '/' )
 			);
 		}
+
+		// For any number of items: shareable checkout link format.
+		// Format: ?products=ID:QTY,ID:QTY (uses variation ID when applicable).
+		$product_pairs = [];
+		foreach ( $validated_items as $item ) {
+			$item_id         = $item['variation_id'] ?: $item['product_id'];
+			$product_pairs[] = $item_id . ':' . $item['quantity'];
+		}
+		$response_data['checkout_link'] = add_query_arg(
+			array_filter( [
+				'products'      => implode( ',', $product_pairs ),
+				'utm_source'    => $bot_name ? sanitize_title( $bot_name ) : 'ai_agent',
+				'utm_medium'    => 'ai_agent',
+				'ai_session_id' => $session_id,
+			] ),
+			home_url( '/checkout-link/' )
+		);
 
 		return new WP_REST_Response( $response_data );
 	}
@@ -545,15 +564,7 @@ class WC_AI_Syndication_Catalog_Api {
 			'categories'       => $this->get_product_category_names( $product ),
 			'average_rating'   => $product->get_average_rating(),
 			'review_count'     => $product->get_review_count(),
-			'buy_url'          => add_query_arg(
-				[
-					'add-to-cart'   => $product->get_id(),
-					'utm_source'    => '{agent_id}',
-					'utm_medium'    => 'ai_agent',
-					'ai_session_id' => '{session_id}',
-				],
-				$product->get_permalink()
-			),
+			'buy_url'          => $this->get_buy_url( $product ),
 		];
 
 		if ( $product->managing_stock() ) {
@@ -590,6 +601,47 @@ class WC_AI_Syndication_Catalog_Api {
 	 * @param WC_Product $product The product.
 	 * @return string
 	 */
+	/**
+	 * Build the appropriate buy URL for a product based on its type.
+	 *
+	 * - Simple: ?add-to-cart=ID with attribution placeholders
+	 * - Variable: link to product page (agent must select a variation)
+	 * - Grouped: link to product page (agent must select sub-products)
+	 * - External: the external product URL
+	 *
+	 * @param WC_Product $product The product.
+	 * @return string
+	 */
+	private function get_buy_url( $product ) {
+		$attribution_params = [
+			'utm_source'    => '{agent_id}',
+			'utm_medium'    => 'ai_agent',
+			'ai_session_id' => '{session_id}',
+		];
+
+		$type = $product->get_type();
+
+		// External/affiliate products link to their external URL.
+		if ( 'external' === $type ) {
+			$url = $product->get_product_url();
+			return $url ?: $product->get_permalink();
+		}
+
+		// Variable and grouped products require selection on the product page.
+		if ( in_array( $type, [ 'variable', 'grouped' ], true ) ) {
+			return add_query_arg( $attribution_params, $product->get_permalink() );
+		}
+
+		// Simple products (and subscriptions) get a direct add-to-cart URL.
+		return add_query_arg(
+			array_merge(
+				[ 'add-to-cart' => $product->get_id() ],
+				$attribution_params
+			),
+			$product->get_permalink()
+		);
+	}
+
 	private function get_product_image( $product ) {
 		$image_id = $product->get_image_id();
 		if ( $image_id ) {
