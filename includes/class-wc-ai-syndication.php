@@ -145,10 +145,15 @@ class WC_AI_Syndication {
 		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
 
-		// If a flush was scheduled (e.g., after enabling syndication via REST),
-		// do it on this page load so the rules are in the DB for the next request.
-		if ( get_transient( 'wc_ai_syndication_flush_rewrite' ) ) {
+		// Flush rewrite rules when needed:
+		// 1. After a plugin update (version mismatch — activation hook doesn't fire on updates)
+		// 2. After toggling syndication enabled/disabled (transient flag from admin controller)
+		$needs_flush = get_transient( 'wc_ai_syndication_flush_rewrite' );
+		$stored_version = get_option( 'wc_ai_syndication_version', '' );
+
+		if ( $needs_flush || $stored_version !== WC_AI_SYNDICATION_VERSION ) {
 			delete_transient( 'wc_ai_syndication_flush_rewrite' );
+			update_option( 'wc_ai_syndication_version', WC_AI_SYNDICATION_VERSION );
 			add_action( 'init', 'flush_rewrite_rules', 99 );
 		}
 	}
