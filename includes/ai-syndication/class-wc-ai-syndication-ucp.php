@@ -175,24 +175,29 @@ class WC_AI_Syndication_Ucp {
 				],
 			],
 
-			// Cart synchronization via WooCommerce Store API.
+			// Cart and checkout URL patterns.
 			'cart_sync'        => [
-				'enabled'     => true,
-				'store_api'   => rest_url( 'wc/store/v1' ),
-				'add_to_cart' => $shop_url . '?add-to-cart={product_id}&quantity={quantity}&utm_source={agent_id}&utm_medium=ai_agent',
-				'description' => 'AI agents can pre-populate a cart before redirecting the customer to the store.',
+				'enabled'       => true,
+				'store_api'     => rest_url( 'wc/store/v1' ),
+				'add_to_cart'   => [
+					'simple'   => $site_url . '?add-to-cart={product_id}&quantity={quantity}',
+					'variable' => $site_url . '?add-to-cart={variation_id}&quantity={quantity}',
+					'note'     => 'For variable products, use the variation_id from the product detail API. Grouped and external products cannot be added via URL.',
+				],
+				'checkout_link' => $site_url . 'checkout-link/?products={product_id}:{quantity},{product_id}:{quantity}',
+				'description'   => 'Use add_to_cart URLs for single items or checkout_link for multi-item carts. Both support attribution parameters.',
 			],
 
 			// Attribution via standard WooCommerce Order Attribution.
 			'attribution'      => [
 				'system'     => 'woocommerce_order_attribution',
 				'parameters' => [
-					'utm_source'    => 'Agent identifier (e.g. chatgpt, gemini, perplexity)',
+					'utm_source'    => 'Your agent identifier (e.g. chatgpt, gemini, perplexity)',
 					'utm_medium'    => 'Must be set to "ai_agent"',
 					'utm_campaign'  => 'Optional campaign name',
 					'ai_session_id' => 'Conversation/session identifier for tracking',
 				],
-				'url_template' => $site_url . '{product_path}?utm_source={agent_id}&utm_medium=ai_agent&utm_campaign={campaign}&ai_session_id={session_id}',
+				'usage'        => 'Append these parameters to any add_to_cart or checkout_link URL.',
 			],
 
 			// Discovery endpoints.
