@@ -1,4 +1,4 @@
-import { useEffect } from '@wordpress/element';
+import { useEffect, useState } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
 import {
 	Card,
@@ -342,7 +342,10 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 
 	const rpm = settings.rate_limit_rpm || 60;
 	const rph = settings.rate_limit_rph || 1000;
-	const activePreset = getActivePreset( rpm, rph );
+	const [ customOverride, setCustomOverride ] = useState( false );
+	const activePreset = customOverride
+		? 'custom'
+		: getActivePreset( rpm, rph );
 
 	let productCount = __( 'All', 'woocommerce-ai-syndication' );
 	if ( settings.product_selection_mode === 'categories' ) {
@@ -507,12 +510,15 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						] }
 						onChange={ ( value ) => {
 							if ( RATE_LIMIT_PRESETS[ value ] ) {
+								setCustomOverride( false );
 								onChange( {
 									rate_limit_rpm:
 										RATE_LIMIT_PRESETS[ value ].rpm,
 									rate_limit_rph:
 										RATE_LIMIT_PRESETS[ value ].rph,
 								} );
+							} else {
+								setCustomOverride( true );
 							}
 						} }
 					/>
