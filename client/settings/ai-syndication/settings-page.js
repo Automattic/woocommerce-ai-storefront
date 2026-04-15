@@ -252,7 +252,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 				title={ __( 'Data Sovereignty', 'woocommerce-ai-syndication' ) }
 			>
 				{ __(
-					'Checkout stays on your domain. Customer data never leaves your database. No delegated payments, no iframes, no platform lock-in. Unlike aggregator protocols, you own the entire transaction.',
+					'Checkout stays on your domain. No delegated payments, no platform lock-in. You own the checkout experience and the customer relationship.',
 					'woocommerce-ai-syndication'
 				) }
 			</ValueCard>
