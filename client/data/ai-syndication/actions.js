@@ -1,8 +1,8 @@
 import ACTION_TYPES from './action-types';
 import apiFetch from '@wordpress/api-fetch';
-import { dispatch } from '@wordpress/data';
+import { dispatch as globalDispatch } from '@wordpress/data';
 import { __ } from '@wordpress/i18n';
-import { STORE_NAME, ADMIN_NAMESPACE } from './constants';
+import { ADMIN_NAMESPACE } from './constants';
 
 export function updateSettings( data ) {
 	return { type: ACTION_TYPES.SET_SETTINGS, data };
@@ -29,10 +29,10 @@ export function setNewBotKey( data ) {
 }
 
 export function saveSettings() {
-	return async ( { select } ) => {
+	return async ( { dispatch, select } ) => {
 		const settings = select.getSettings();
 
-		dispatch( STORE_NAME ).setIsSaving( true, null );
+		dispatch.setIsSaving( true, null );
 
 		try {
 			const result = await apiFetch( {
@@ -41,18 +41,18 @@ export function saveSettings() {
 				data: settings,
 			} );
 
-			dispatch( STORE_NAME ).updateSettings( result );
-			dispatch( 'core/notices' ).createSuccessNotice(
+			dispatch.updateSettings( result );
+			globalDispatch( 'core/notices' ).createSuccessNotice(
 				__( 'Settings saved.', 'woocommerce-ai-syndication' )
 			);
 		} catch ( error ) {
-			dispatch( STORE_NAME ).setIsSaving( false, error );
-			dispatch( 'core/notices' ).createErrorNotice(
+			dispatch.setIsSaving( false, error );
+			globalDispatch( 'core/notices' ).createErrorNotice(
 				__( 'Error saving settings.', 'woocommerce-ai-syndication' )
 			);
 		}
 
-		dispatch( STORE_NAME ).setIsSaving( false, null );
+		dispatch.setIsSaving( false, null );
 	};
 }
 
@@ -61,21 +61,21 @@ export function setIsSaving( isSaving, error ) {
 }
 
 export function fetchBots() {
-	return async () => {
-		dispatch( STORE_NAME ).setIsLoadingBots( true );
+	return async ( { dispatch } ) => {
+		dispatch.setIsLoadingBots( true );
 
 		try {
 			const bots = await apiFetch( {
 				path: `${ ADMIN_NAMESPACE }/bots`,
 			} );
-			dispatch( STORE_NAME ).setBots( bots );
+			dispatch.setBots( bots );
 		} catch ( error ) {
-			dispatch( 'core/notices' ).createErrorNotice(
+			globalDispatch( 'core/notices' ).createErrorNotice(
 				__( 'Error loading bots.', 'woocommerce-ai-syndication' )
 			);
 		}
 
-		dispatch( STORE_NAME ).setIsLoadingBots( false );
+		dispatch.setIsLoadingBots( false );
 	};
 }
 
@@ -84,7 +84,7 @@ export function setIsLoadingBots( isLoading ) {
 }
 
 export function createBot( name, permissions ) {
-	return async () => {
+	return async ( { dispatch } ) => {
 		try {
 			const result = await apiFetch( {
 				path: `${ ADMIN_NAMESPACE }/bots`,
@@ -93,16 +93,16 @@ export function createBot( name, permissions ) {
 			} );
 
 			// Store the new API key for display (shown only once).
-			dispatch( STORE_NAME ).setNewBotKey( result );
+			dispatch.setNewBotKey( result );
 
 			// Refresh bots list.
-			dispatch( STORE_NAME ).fetchBots();
+			dispatch.fetchBots();
 
-			dispatch( 'core/notices' ).createSuccessNotice(
+			globalDispatch( 'core/notices' ).createSuccessNotice(
 				__( 'Bot created. Copy the API key now - it won\'t be shown again.', 'woocommerce-ai-syndication' )
 			);
 		} catch ( error ) {
-			dispatch( 'core/notices' ).createErrorNotice(
+			globalDispatch( 'core/notices' ).createErrorNotice(
 				__( 'Error creating bot.', 'woocommerce-ai-syndication' )
 			);
 		}
@@ -110,20 +110,20 @@ export function createBot( name, permissions ) {
 }
 
 export function deleteBot( botId ) {
-	return async () => {
+	return async ( { dispatch } ) => {
 		try {
 			await apiFetch( {
 				path: `${ ADMIN_NAMESPACE }/bots/${ botId }`,
 				method: 'DELETE',
 			} );
 
-			dispatch( STORE_NAME ).fetchBots();
+			dispatch.fetchBots();
 
-			dispatch( 'core/notices' ).createSuccessNotice(
+			globalDispatch( 'core/notices' ).createSuccessNotice(
 				__( 'Bot deleted.', 'woocommerce-ai-syndication' )
 			);
 		} catch ( error ) {
-			dispatch( 'core/notices' ).createErrorNotice(
+			globalDispatch( 'core/notices' ).createErrorNotice(
 				__( 'Error deleting bot.', 'woocommerce-ai-syndication' )
 			);
 		}
@@ -131,7 +131,7 @@ export function deleteBot( botId ) {
 }
 
 export function updateBot( botId, data ) {
-	return async () => {
+	return async ( { dispatch } ) => {
 		try {
 			await apiFetch( {
 				path: `${ ADMIN_NAMESPACE }/bots/${ botId }`,
@@ -139,9 +139,9 @@ export function updateBot( botId, data ) {
 				data,
 			} );
 
-			dispatch( STORE_NAME ).fetchBots();
+			dispatch.fetchBots();
 		} catch ( error ) {
-			dispatch( 'core/notices' ).createErrorNotice(
+			globalDispatch( 'core/notices' ).createErrorNotice(
 				__( 'Error updating bot.', 'woocommerce-ai-syndication' )
 			);
 		}
@@ -149,21 +149,21 @@ export function updateBot( botId, data ) {
 }
 
 export function regenerateBotKey( botId ) {
-	return async () => {
+	return async ( { dispatch } ) => {
 		try {
 			const result = await apiFetch( {
 				path: `${ ADMIN_NAMESPACE }/bots/${ botId }/regenerate-key`,
 				method: 'POST',
 			} );
 
-			dispatch( STORE_NAME ).setNewBotKey( result );
-			dispatch( STORE_NAME ).fetchBots();
+			dispatch.setNewBotKey( result );
+			dispatch.fetchBots();
 
-			dispatch( 'core/notices' ).createSuccessNotice(
+			globalDispatch( 'core/notices' ).createSuccessNotice(
 				__( 'API key regenerated. Copy it now - it won\'t be shown again.', 'woocommerce-ai-syndication' )
 			);
 		} catch ( error ) {
-			dispatch( 'core/notices' ).createErrorNotice(
+			globalDispatch( 'core/notices' ).createErrorNotice(
 				__( 'Error regenerating key.', 'woocommerce-ai-syndication' )
 			);
 		}
@@ -171,12 +171,12 @@ export function regenerateBotKey( botId ) {
 }
 
 export function fetchStats( period ) {
-	return async () => {
+	return async ( { dispatch } ) => {
 		try {
 			const stats = await apiFetch( {
 				path: `${ ADMIN_NAMESPACE }/stats?period=${ period || 'month' }`,
 			} );
-			dispatch( STORE_NAME ).setStats( stats );
+			dispatch.setStats( stats );
 		} catch ( error ) {
 			// Silent failure for stats.
 		}
@@ -184,12 +184,12 @@ export function fetchStats( period ) {
 }
 
 export function fetchEndpoints() {
-	return async () => {
+	return async ( { dispatch } ) => {
 		try {
 			const endpoints = await apiFetch( {
 				path: `${ ADMIN_NAMESPACE }/endpoints`,
 			} );
-			dispatch( STORE_NAME ).setEndpoints( endpoints );
+			dispatch.setEndpoints( endpoints );
 		} catch ( error ) {
 			// Silent failure.
 		}
