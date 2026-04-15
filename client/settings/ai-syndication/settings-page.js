@@ -5,6 +5,7 @@ import {
 	CardBody,
 	Button,
 	TextControl,
+	SelectControl,
 	RadioControl,
 	TabPanel,
 	Spinner,
@@ -13,7 +14,6 @@ import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
 import BotManager from './bot-manager';
 import ProductSelection from './product-selection';
-import AttributionStats from './attribution-stats';
 import EndpointInfo from './endpoint-info';
 
 const RATE_LIMIT_PRESETS = {
@@ -75,10 +75,6 @@ const AISyndicationSettings = () => {
 			title: __( 'Bot Permissions', 'woocommerce-ai-syndication' ),
 		},
 		{
-			name: 'attribution',
-			title: __( 'Attribution', 'woocommerce-ai-syndication' ),
-		},
-		{
 			name: 'endpoints',
 			title: __( 'Endpoints', 'woocommerce-ai-syndication' ),
 		},
@@ -106,7 +102,6 @@ const AISyndicationSettings = () => {
 								isSaving={ isSaving }
 							/>
 						) }
-						{ tab.name === 'attribution' && <AttributionStats /> }
 						{ tab.name === 'endpoints' && <EndpointInfo /> }
 					</div>
 				) }
@@ -399,11 +394,12 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 	const bots = useSelect( ( select ) => select( STORE_NAME ).getBots(), [] );
 
 	const { fetchStats, fetchBots } = useDispatch( STORE_NAME );
+	const [ period, setPeriod ] = useState( 'month' );
 
 	useEffect( () => {
-		fetchStats( 'month' );
+		fetchStats( period );
 		fetchBots();
-	}, [] ); // eslint-disable-line react-hooks/exhaustive-deps -- Fetch once on mount.
+	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Refetch when period changes.
 
 	const rpm = settings.rate_limit_rpm || 60;
 	const rph = settings.rate_limit_rph || 1000;
@@ -477,12 +473,55 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				</Button>
 			</div>
 
-			{ /* Stat cards */ }
+			{ /* Period selector + stat cards */ }
+			<div
+				style={ {
+					display: 'flex',
+					justifyContent: 'flex-end',
+					marginTop: '24px',
+				} }
+			>
+				<SelectControl
+					value={ period }
+					options={ [
+						{
+							label: __(
+								'Last 24 hours',
+								'woocommerce-ai-syndication'
+							),
+							value: 'day',
+						},
+						{
+							label: __(
+								'Last 7 days',
+								'woocommerce-ai-syndication'
+							),
+							value: 'week',
+						},
+						{
+							label: __(
+								'Last 30 days',
+								'woocommerce-ai-syndication'
+							),
+							value: 'month',
+						},
+						{
+							label: __(
+								'Last year',
+								'woocommerce-ai-syndication'
+							),
+							value: 'year',
+						},
+					] }
+					onChange={ setPeriod }
+					__nextHasNoMarginBottom
+				/>
+			</div>
 			<div
 				style={ {
 					display: 'flex',
 					gap: '16px',
-					marginTop: '24px',
+					marginTop: '12px',
 					flexWrap: 'wrap',
 				} }
 			>
@@ -521,6 +560,67 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					}
 				/>
 			</div>
+
+			{ /* Per-agent breakdown */ }
+			{ stats && Object.keys( stats.by_agent || {} ).length > 0 && (
+				<Card style={ { marginTop: '16px' } }>
+					<CardBody>
+						<h3
+							style={ {
+								margin: '0 0 12px',
+								fontSize: '14px',
+							} }
+						>
+							{ __(
+								'Revenue by Agent',
+								'woocommerce-ai-syndication'
+							) }
+						</h3>
+						<table className="widefat" style={ { margin: 0 } }>
+							<thead>
+								<tr>
+									<th>
+										{ __(
+											'Agent',
+											'woocommerce-ai-syndication'
+										) }
+									</th>
+									<th>
+										{ __(
+											'Orders',
+											'woocommerce-ai-syndication'
+										) }
+									</th>
+									<th>
+										{ __(
+											'Revenue',
+											'woocommerce-ai-syndication'
+										) }
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								{ Object.entries( stats.by_agent ).map(
+									( [ agent, agentStats ] ) => (
+										<tr key={ agent }>
+											<td>
+												<strong>{ agent }</strong>
+											</td>
+											<td>{ agentStats.orders }</td>
+											<td>
+												{ stats.currency || '$' }{ ' ' }
+												{ parseFloat(
+													agentStats.revenue
+												).toFixed( 2 ) }
+											</td>
+										</tr>
+									)
+								) }
+							</tbody>
+						</table>
+					</CardBody>
+				</Card>
+			) }
 
 			{ /* Rate limits with presets + save button inside */ }
 			<Card style={ { marginTop: '32px' } }>
