@@ -170,28 +170,34 @@ class WC_AI_Syndication_Ucp {
 					[
 						'path'        => '/cart/prepare',
 						'method'      => 'POST',
-						'description' => 'Prepare a cart with items for redirect checkout',
+						'description' => 'Validate items and get checkout link + add-to-cart URLs',
+						'parameters'  => [
+							'items'      => 'Array of {product_id, quantity, variation_id}',
+							'session_id' => 'AI session/conversation ID for attribution',
+							'coupon'     => 'Optional coupon code to apply at checkout',
+						],
 					],
 				],
 			],
 
 			// Purchase URLs — two patterns for different flows.
 			'purchase'         => [
-				// Recommended: checkout links add items AND redirect to checkout in one step.
-				// The customer never sees the cart — fewest clicks to purchase.
+				// Recommended: checkout links add items AND redirect to checkout.
+				// Customer never sees the cart — fewest clicks to purchase.
 				'checkout_link' => [
-					'template'    => $site_url . 'checkout-link/?products={product_id}:{quantity}',
-					'multi_item'  => $site_url . 'checkout-link/?products={product_id}:{quantity},{product_id}:{quantity}',
-					'with_coupon' => $site_url . 'checkout-link/?products={product_id}:{quantity}&coupon={coupon_code}',
-					'note'        => 'For variable products, use the variation_id in place of product_id. Adds items to cart and redirects directly to checkout.',
+					'simple'     => $site_url . 'checkout-link/?products={product_id}:{quantity}',
+					'variable'   => $site_url . 'checkout-link/?products={variation_id}:{quantity}',
+					'multi_item' => $site_url . 'checkout-link/?products={id}:{qty},{id}:{qty}',
+					'with_coupon' => $site_url . 'checkout-link/?products={id}:{qty}&coupon={coupon_code}',
+					'note'       => 'Adds to cart and redirects directly to checkout. Use variation_id (from product detail API) for variable products. Supports any number of items comma-separated.',
 				],
 				// Alternative: add-to-cart URLs only add items to the cart.
-				// The customer must navigate to checkout separately. Use when
-				// you want the customer to continue browsing the store.
+				// Customer must navigate to checkout separately.
 				'add_to_cart'   => [
 					'simple'   => $site_url . '?add-to-cart={product_id}&quantity={quantity}',
 					'variable' => $site_url . '?add-to-cart={variation_id}&quantity={quantity}',
-					'note'     => 'Adds to cart only — does not redirect to checkout. Grouped and external products cannot be added via URL.',
+					'grouped'  => $site_url . '?add-to-cart={grouped_product_id}&quantity[{sub_product_id}]={quantity}',
+					'note'     => 'Adds to cart only — does not redirect to checkout. External/affiliate products cannot be added via URL.',
 				],
 				'store_api'     => rest_url( 'wc/store/v1' ),
 			],

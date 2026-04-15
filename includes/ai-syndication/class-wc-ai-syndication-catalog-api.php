@@ -130,6 +130,10 @@ class WC_AI_Syndication_Catalog_Api {
 						'type'              => 'string',
 						'sanitize_callback' => 'sanitize_text_field',
 					],
+					'coupon'     => [
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
+					],
 				],
 			]
 		);
@@ -481,6 +485,7 @@ class WC_AI_Syndication_Catalog_Api {
 		$bot_name = $this->bot_manager->get_bot_name( $bot_id );
 
 		$session_id      = sanitize_text_field( $request->get_param( 'session_id' ) ?? '' );
+		$coupon          = sanitize_text_field( $request->get_param( 'coupon' ) ?? '' );
 		$attribution     = array_filter( [
 			'utm_source'    => $bot_name ? sanitize_title( $bot_name ) : 'ai_agent',
 			'utm_medium'    => 'ai_agent',
@@ -494,10 +499,14 @@ class WC_AI_Syndication_Catalog_Api {
 			$item_id         = $item['variation_id'] ?: $item['product_id'];
 			$product_pairs[] = $item_id . ':' . $item['quantity'];
 		}
-		$checkout_link = add_query_arg(
-			array_merge( [ 'products' => implode( ',', $product_pairs ) ], $attribution ),
-			home_url( '/checkout-link/' )
+		$checkout_params = array_merge(
+			[ 'products' => implode( ',', $product_pairs ) ],
+			$attribution
 		);
+		if ( $coupon ) {
+			$checkout_params['coupon'] = $coupon;
+		}
+		$checkout_link = add_query_arg( $checkout_params, home_url( '/checkout-link/' ) );
 
 		$response_data = [
 			'items'         => $validated_items,
