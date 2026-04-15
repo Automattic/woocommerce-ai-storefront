@@ -89,6 +89,7 @@ class WC_AI_Syndication_Admin_Controller {
 						'permissions' => [ 'type' => 'object' ],
 					],
 				],
+				'schema' => [ $this, 'get_bot_schema' ],
 			]
 		);
 
@@ -411,5 +412,37 @@ class WC_AI_Syndication_Admin_Controller {
 			'catalog_api' => rest_url( 'wc/v3/ai-syndication' ),
 			'store_api'   => rest_url( 'wc/store/v1' ),
 		] );
+	}
+
+	/**
+	 * Get the JSON Schema for a bot response.
+	 *
+	 * @return array
+	 */
+	public function get_bot_schema() {
+		return [
+			'$schema'    => 'http://json-schema.org/draft-04/schema#',
+			'title'      => 'ai-syndication-bot',
+			'type'       => 'object',
+			'properties' => [
+				'id'            => [ 'type' => 'string', 'format' => 'uuid', 'description' => 'Bot UUID.' ],
+				'name'          => [ 'type' => 'string', 'description' => 'Bot display name.' ],
+				'key_prefix'    => [ 'type' => 'string', 'description' => 'First 10 chars of API key for identification.' ],
+				'permissions'   => [
+					'type'       => 'object',
+					'properties' => [
+						'read_products'   => [ 'type' => 'boolean' ],
+						'read_categories' => [ 'type' => 'boolean' ],
+						'prepare_cart'    => [ 'type' => 'boolean' ],
+						'check_inventory' => [ 'type' => 'boolean' ],
+					],
+					'description' => 'Bot permission flags.',
+				],
+				'status'        => [ 'type' => 'string', 'enum' => [ 'active', 'revoked' ], 'description' => 'Bot status.' ],
+				'created_at'    => [ 'type' => 'string', 'format' => 'date-time', 'description' => 'Creation timestamp.' ],
+				'last_access'   => [ 'type' => [ 'string', 'null' ], 'description' => 'Last API access timestamp.' ],
+				'request_count' => [ 'type' => 'integer', 'description' => 'Total API requests made.' ],
+			],
+		];
 	}
 }

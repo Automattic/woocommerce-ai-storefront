@@ -50,9 +50,12 @@ class WC_AI_Syndication_Catalog_Api {
 	}
 
 	/**
-	 * Register REST routes.
+	 * Register REST routes and response filters.
 	 */
 	public function register_routes() {
+		// Add Retry-After header to 429 responses per RFC 6585.
+		add_filter( 'rest_request_after_callbacks', [ $this, 'add_retry_after_header' ], 10, 3 );
+
 		register_rest_route(
 			self::NAMESPACE,
 			'/products',
@@ -61,6 +64,7 @@ class WC_AI_Syndication_Catalog_Api {
 				'callback'            => [ $this, 'get_products' ],
 				'permission_callback' => [ $this, 'check_agent_permission' ],
 				'args'                => $this->get_products_args(),
+				'schema'              => [ $this, 'get_product_schema' ],
 			]
 		);
 
@@ -98,6 +102,7 @@ class WC_AI_Syndication_Catalog_Api {
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => [ $this, 'get_store_info' ],
 				'permission_callback' => [ $this, 'check_agent_permission' ],
+				'schema'              => [ $this, 'get_store_schema' ],
 			]
 		);
 
@@ -195,6 +200,32 @@ class WC_AI_Syndication_Catalog_Api {
 	}
 
 	/**
+	 * Add Retry-After HTTP header to 429 rate-limit responses.
+	 *
+	 * WordPress REST API converts WP_Error to a response with the correct
+	 * status code, but doesn't emit custom headers from the error data.
+	 * This filter runs after permission callbacks and adds the RFC 6585
+	 * Retry-After header that well-behaved AI agents expect.
+	 *
+	 * @param WP_REST_Response|WP_HTTP_Response|WP_Error|mixed $response Result.
+	 * @param array                                            $handler  Route handler.
+	 * @param WP_REST_Request                                  $request  Request.
+	 * @return WP_REST_Response|WP_HTTP_Response|WP_Error|mixed
+	 */
+	public function add_retry_after_header( $response, $handler, $request ) {
+		if ( is_wp_error( $response ) && 'ai_syndication_rate_limited' === $response->get_error_code() ) {
+			$data = $response->get_error_data();
+			if ( ! empty( $data['retry_after'] ) ) {
+				// Convert to WP_REST_Response so we can set headers.
+				$rest_response = rest_convert_error_to_response( $response );
+				$rest_response->header( 'Retry-After', (int) $data['retry_after'] );
+				return $rest_response;
+			}
+		}
+		return $response;
+	}
+
+	/**
 	 * Get products endpoint.
 	 *
 	 * @param WP_REST_Request $request The request.
@@ -266,8 +297,11 @@ class WC_AI_Syndication_Catalog_Api {
 
 		$query_args['paginate'] = true;
 		$results = wc_get_products( $query_args );
-		$data    = [];
 
+		// Prefetch all category and tag terms in one query to avoid N+1 get_term() calls.
+		$this->prefetch_product_terms( $results->products );
+
+		$data = [];
 		foreach ( $results->products as $product ) {
 			$data[] = $this->format_product( $product );
 		}
@@ -605,6 +639,44 @@ class WC_AI_Syndication_Catalog_Api {
 	}
 
 	/**
+	 * Prefetch term data for a batch of products to avoid N+1 get_term() calls.
+	 *
+	 * Collects all category and tag IDs across the batch and loads them in a
+	 * single get_terms() query, warming the WordPress term cache so that
+	 * subsequent get_term() calls in format_product() are cache hits.
+	 *
+	 * @param WC_Product[] $products Array of product objects.
+	 */
+	private function prefetch_product_terms( $products ) {
+		$cat_ids = [];
+		$tag_ids = [];
+
+		foreach ( $products as $product ) {
+			$cat_ids = array_merge( $cat_ids, $product->get_category_ids() );
+			$tag_ids = array_merge( $tag_ids, $product->get_tag_ids() );
+		}
+
+		$cat_ids = array_unique( array_filter( $cat_ids ) );
+		$tag_ids = array_unique( array_filter( $tag_ids ) );
+
+		if ( ! empty( $cat_ids ) ) {
+			get_terms( [
+				'taxonomy'   => 'product_cat',
+				'include'    => $cat_ids,
+				'hide_empty' => false,
+			] );
+		}
+
+		if ( ! empty( $tag_ids ) ) {
+			get_terms( [
+				'taxonomy'   => 'product_tag',
+				'include'    => $tag_ids,
+				'hide_empty' => false,
+			] );
+		}
+	}
+
+	/**
 	 * Get product category names.
 	 *
 	 * @param WC_Product $product The product.
@@ -759,6 +831,77 @@ class WC_AI_Syndication_Catalog_Api {
 			],
 			'max_price' => [
 				'type' => 'number',
+			],
+		];
+	}
+
+	/**
+	 * Get the JSON Schema for a product response.
+	 *
+	 * Enables WP REST API discovery at /wp-json to describe this endpoint's
+	 * response shape, helping AI agent developers build integrations.
+	 *
+	 * @return array
+	 */
+	public function get_product_schema() {
+		return [
+			'$schema'    => 'http://json-schema.org/draft-04/schema#',
+			'title'      => 'ai-syndication-product',
+			'type'       => 'object',
+			'properties' => [
+				'id'                => [ 'type' => 'integer', 'description' => 'Product ID.' ],
+				'name'              => [ 'type' => 'string', 'description' => 'Product name.' ],
+				'slug'              => [ 'type' => 'string', 'description' => 'Product slug.' ],
+				'type'              => [ 'type' => 'string', 'description' => 'Product type (simple, variable, etc.).' ],
+				'url'               => [ 'type' => 'string', 'format' => 'uri', 'description' => 'Product permalink.' ],
+				'price'             => [ 'type' => 'string', 'description' => 'Current price.' ],
+				'regular_price'     => [ 'type' => 'string', 'description' => 'Regular price.' ],
+				'sale_price'        => [ 'type' => 'string', 'description' => 'Sale price (empty if not on sale).' ],
+				'price_html'        => [ 'type' => 'string', 'description' => 'Formatted price string.' ],
+				'currency'          => [ 'type' => 'string', 'description' => 'Store currency code.' ],
+				'on_sale'           => [ 'type' => 'boolean', 'description' => 'Whether product is on sale.' ],
+				'in_stock'          => [ 'type' => 'boolean', 'description' => 'Whether product is in stock.' ],
+				'stock_status'      => [ 'type' => 'string', 'description' => 'Stock status.' ],
+				'short_description' => [ 'type' => 'string', 'description' => 'Short description (plain text).' ],
+				'sku'               => [ 'type' => 'string', 'description' => 'SKU.' ],
+				'image'             => [ 'type' => 'string', 'format' => 'uri', 'description' => 'Main product image URL.' ],
+				'categories'        => [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'Category names.' ],
+				'average_rating'    => [ 'type' => 'string', 'description' => 'Average review rating.' ],
+				'review_count'      => [ 'type' => 'integer', 'description' => 'Number of reviews.' ],
+				'buy_url'           => [ 'type' => 'string', 'format' => 'uri', 'description' => 'Add-to-cart URL with attribution placeholders.' ],
+			],
+		];
+	}
+
+	/**
+	 * Get the JSON Schema for a store info response.
+	 *
+	 * @return array
+	 */
+	public function get_store_schema() {
+		return [
+			'$schema'    => 'http://json-schema.org/draft-04/schema#',
+			'title'      => 'ai-syndication-store',
+			'type'       => 'object',
+			'properties' => [
+				'name'        => [ 'type' => 'string', 'description' => 'Store name.' ],
+				'description' => [ 'type' => 'string', 'description' => 'Store description.' ],
+				'url'         => [ 'type' => 'string', 'format' => 'uri', 'description' => 'Store URL.' ],
+				'currency'    => [ 'type' => 'string', 'description' => 'Store currency code.' ],
+				'checkout'    => [
+					'type'       => 'object',
+					'properties' => [
+						'method' => [ 'type' => 'string', 'description' => 'Checkout method (web_redirect).' ],
+						'url'    => [ 'type' => 'string', 'format' => 'uri', 'description' => 'Checkout URL.' ],
+					],
+				],
+				'attribution' => [
+					'type'       => 'object',
+					'properties' => [
+						'system'     => [ 'type' => 'string', 'description' => 'Attribution system name.' ],
+						'parameters' => [ 'type' => 'object', 'description' => 'URL parameters for attribution.' ],
+					],
+				],
 			],
 		];
 	}
