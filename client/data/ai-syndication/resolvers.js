@@ -1,34 +1,42 @@
 import apiFetch from '@wordpress/api-fetch';
-import { updateSettings, setBots, setEndpoints } from './actions';
 import { ADMIN_NAMESPACE } from './constants';
 
-export function* getSettings() {
-	try {
-		const result = yield apiFetch( {
-			path: `${ ADMIN_NAMESPACE }/settings`,
-		} );
-		yield updateSettings( result );
-	} catch ( error ) {
-		// Settings will remain at defaults.
-	}
-}
+export const getSettings =
+	() =>
+	async ( { dispatch } ) => {
+		try {
+			const result = await apiFetch( {
+				path: `${ ADMIN_NAMESPACE }/settings`,
+			} );
+			dispatch.updateSettings( result || {} );
+		} catch ( error ) {
+			// eslint-disable-next-line no-console
+			console.error( 'AI Syndication: failed to load settings', error );
+		}
+	};
 
-export function* getBots() {
-	try {
-		const result = yield apiFetch( { path: `${ ADMIN_NAMESPACE }/bots` } );
-		yield setBots( result );
-	} catch ( error ) {
-		// Bots will remain empty.
-	}
-}
+export const getBots =
+	() =>
+	async ( { dispatch } ) => {
+		try {
+			const result = await apiFetch( {
+				path: `${ ADMIN_NAMESPACE }/bots`,
+			} );
+			dispatch.setBots( result );
+		} catch ( error ) {
+			// Bots will remain empty.
+		}
+	};
 
-export function* getEndpoints() {
-	try {
-		const result = yield apiFetch( {
-			path: `${ ADMIN_NAMESPACE }/endpoints`,
-		} );
-		yield setEndpoints( result );
-	} catch ( error ) {
-		// Endpoints will remain empty.
-	}
-}
+export const getEndpoints =
+	() =>
+	async ( { dispatch } ) => {
+		try {
+			const result = await apiFetch( {
+				path: `${ ADMIN_NAMESPACE }/endpoints`,
+			} );
+			dispatch.setEndpoints( result );
+		} catch ( error ) {
+			// Endpoints will remain empty.
+		}
+	};
