@@ -56,6 +56,12 @@ class WC_AI_Syndication {
 	 */
 	private function __construct() {
 		$this->load_dependencies();
+
+		// Cache invalidation hooks register unconditionally so the llms.txt
+		// cache stays fresh even while syndication is temporarily disabled.
+		$cache_invalidator = new WC_AI_Syndication_Cache_Invalidator();
+		$cache_invalidator->init();
+
 		$this->init_components();
 
 		add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
@@ -80,6 +86,7 @@ class WC_AI_Syndication {
 		require_once $path . 'class-wc-ai-syndication-rate-limiter.php';
 		require_once $path . 'class-wc-ai-syndication-catalog-api.php';
 		require_once $path . 'class-wc-ai-syndication-attribution.php';
+		require_once $path . 'class-wc-ai-syndication-cache-invalidator.php';
 
 		require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/admin/class-wc-ai-syndication-admin-controller.php';
 	}
