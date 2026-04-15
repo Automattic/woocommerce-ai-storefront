@@ -4,7 +4,6 @@ import {
 	Card,
 	CardBody,
 	Button,
-	ToggleControl,
 	TextControl,
 	RadioControl,
 	TabPanel,
@@ -147,8 +146,56 @@ const ValueCard = ( { title, children } ) => (
 
 const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 	<>
-		{ /* Hero */ }
-		<Card>
+		{ /* Status banner — same position as the enabled state */ }
+		<div
+			style={ {
+				background: '#fff',
+				border: '1px solid #e0e0e0',
+				borderLeft: '4px solid #c3c4c7',
+				borderRadius: '4px',
+				padding: '16px 20px',
+				display: 'flex',
+				justifyContent: 'space-between',
+				alignItems: 'center',
+			} }
+		>
+			<div>
+				<strong style={ { color: '#50575e' } }>
+					{ __(
+						'AI Syndication is not enabled',
+						'woocommerce-ai-syndication'
+					) }
+				</strong>
+				<p
+					style={ {
+						margin: '4px 0 0',
+						color: '#757575',
+						fontSize: '13px',
+					} }
+				>
+					{ __(
+						'Enable to make your products discoverable by AI assistants.',
+						'woocommerce-ai-syndication'
+					) }
+				</p>
+			</div>
+			<Button
+				variant="primary"
+				isBusy={ isSaving }
+				disabled={ isSaving }
+				onClick={ () => {
+					onChange( { enabled: 'yes' } );
+					onSave();
+				} }
+			>
+				{ isSaving
+					? __( 'Enabling…', 'woocommerce-ai-syndication' )
+					: __( 'Enable', 'woocommerce-ai-syndication' ) }
+			</Button>
+		</div>
+
+		{ /* Hero pitch */ }
+		<Card style={ { marginTop: '12px' } }>
 			<CardBody>
 				<div style={ { maxWidth: '720px' } }>
 					<h2 style={ { fontSize: '20px', margin: '0 0 12px' } }>
@@ -212,7 +259,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 			</ValueCard>
 		</div>
 
-		{ /* What happens + enable */ }
+		{ /* What happens */ }
 		<Card style={ { marginTop: '12px' } }>
 			<CardBody>
 				<h3 style={ { margin: '0 0 12px', fontSize: '14px' } }>
@@ -223,7 +270,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 				</h3>
 				<ul
 					style={ {
-						margin: '0 0 16px',
+						margin: 0,
 						paddingLeft: '20px',
 						lineHeight: '1.8',
 						color: '#50575e',
@@ -255,37 +302,6 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 						) }
 					</li>
 				</ul>
-
-				<ToggleControl
-					label={ __(
-						'Enable AI Syndication',
-						'woocommerce-ai-syndication'
-					) }
-					help={ __(
-						'This does not modify your products or affect your existing store. It adds read-only discovery endpoints. You can turn it off at any time.',
-						'woocommerce-ai-syndication'
-					) }
-					checked={ false }
-					onChange={ ( value ) =>
-						onChange( { enabled: value ? 'yes' : 'no' } )
-					}
-				/>
-
-				<div style={ { marginTop: '12px' } }>
-					<Button
-						variant="primary"
-						isBusy={ isSaving }
-						disabled={ isSaving }
-						onClick={ onSave }
-					>
-						{ isSaving
-							? __( 'Saving…', 'woocommerce-ai-syndication' )
-							: __(
-									'Save Changes',
-									'woocommerce-ai-syndication'
-							  ) }
-					</Button>
-				</div>
 			</CardBody>
 		</Card>
 	</>
