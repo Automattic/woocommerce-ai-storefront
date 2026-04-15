@@ -96,7 +96,14 @@ const AISyndicationSettings = () => {
 								isSaving={ isSaving }
 							/>
 						) }
-						{ tab.name === 'endpoints' && <EndpointInfo /> }
+						{ tab.name === 'endpoints' && (
+							<EndpointInfo
+								settings={ settings }
+								onChange={ updateSettingsValues }
+								onSave={ saveSettings }
+								isSaving={ isSaving }
+							/>
+						) }
 					</div>
 				) }
 			</TabPanel>

@@ -274,8 +274,10 @@ class WC_AI_Syndication {
 		$settings = get_option( self::SETTINGS_OPTION, [] );
 		$merged   = wp_parse_args( is_array( $settings ) ? $settings : [], $defaults );
 
-		// Allowed crawlers is a runtime default, not stored in the option.
-		$merged['allowed_crawlers'] = $settings['allowed_crawlers'] ?? WC_AI_Syndication_Robots::AI_CRAWLERS;
+		// Allowed crawlers: stored in option, defaults to all known crawlers.
+		$merged['allowed_crawlers'] = ! empty( $settings['allowed_crawlers'] )
+			? $settings['allowed_crawlers']
+			: WC_AI_Syndication_Robots::AI_CRAWLERS;
 
 		self::$settings_cache = $merged;
 		return $merged;
@@ -302,6 +304,9 @@ class WC_AI_Syndication {
 			'selected_categories'    => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
 			'selected_products'      => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
 			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
+			'allowed_crawlers'       => array_values( array_filter(
+				array_map( 'sanitize_text_field', (array) ( $merged['allowed_crawlers'] ?? WC_AI_Syndication_Robots::AI_CRAWLERS ) )
+			) ),
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.

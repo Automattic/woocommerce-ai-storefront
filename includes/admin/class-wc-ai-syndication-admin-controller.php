@@ -48,6 +48,7 @@ class WC_AI_Syndication_Admin_Controller {
 						'selected_categories'    => [ 'type' => 'array', 'items' => [ 'type' => 'integer' ] ],
 						'selected_products'      => [ 'type' => 'array', 'items' => [ 'type' => 'integer' ] ],
 						'rate_limit_rpm'         => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 1000 ],
+						'allowed_crawlers'       => [ 'type' => 'array', 'items' => [ 'type' => 'string' ] ],
 					],
 				],
 			]
@@ -135,7 +136,7 @@ class WC_AI_Syndication_Admin_Controller {
 	public function update_settings( $request ) {
 		$data = [];
 
-		$fields = [ 'enabled', 'product_selection_mode', 'selected_categories', 'selected_products', 'rate_limit_rpm' ];
+		$fields = [ 'enabled', 'product_selection_mode', 'selected_categories', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers' ];
 		foreach ( $fields as $field ) {
 			$value = $request->get_param( $field );
 			if ( null !== $value ) {
