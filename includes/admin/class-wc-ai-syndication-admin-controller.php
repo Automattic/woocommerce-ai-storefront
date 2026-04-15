@@ -223,6 +223,18 @@ class WC_AI_Syndication_Admin_Controller {
 		// use a transient flag that the main plugin class checks on init.
 		if ( isset( $data['enabled'] ) && $data['enabled'] !== ( $old_settings['enabled'] ?? 'no' ) ) {
 			set_transient( 'wc_ai_syndication_flush_rewrite', 1, HOUR_IN_SECONDS );
+
+			// Eagerly generate and cache llms.txt + UCP manifest so they're
+			// warm immediately after enabling — no waiting for the first request.
+			if ( 'yes' === $data['enabled'] ) {
+				$llms_txt = new WC_AI_Syndication_Llms_Txt();
+				$content  = $llms_txt->generate();
+				set_transient( WC_AI_Syndication_Llms_Txt::CACHE_KEY, $content, HOUR_IN_SECONDS );
+
+				$ucp      = new WC_AI_Syndication_Ucp();
+				$manifest = wp_json_encode( $ucp->generate_manifest( WC_AI_Syndication::get_settings() ), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
+				set_transient( WC_AI_Syndication_Ucp::CACHE_KEY, $manifest, HOUR_IN_SECONDS );
+			}
 		}
 
 		return new WP_REST_Response( WC_AI_Syndication::get_settings() );
