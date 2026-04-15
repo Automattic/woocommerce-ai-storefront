@@ -56,7 +56,9 @@ const BotManager = () => {
 	}, [] ); // eslint-disable-line react-hooks/exhaustive-deps -- Fetch once on mount.
 
 	// Filter out agents that are already registered.
-	const registeredNames = bots.map( ( b ) => b.name.toLowerCase() );
+	const registeredNames = ( bots || [] ).map( ( b ) =>
+		( b.name || '' ).toLowerCase()
+	);
 	const availableAgents = KNOWN_AGENTS.filter(
 		( agent ) => ! registeredNames.includes( agent.name.toLowerCase() )
 	);
