@@ -134,14 +134,23 @@ class WC_AI_Syndication {
 	 */
 	private function register_rewrite_rules() {
 		$llms_txt = new WC_AI_Syndication_Llms_Txt();
-		add_action( 'init', [ $llms_txt, 'add_rewrite_rules' ] );
-		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
-		add_filter( 'query_vars', [ $llms_txt, 'add_query_vars' ] );
+		$ucp      = new WC_AI_Syndication_Ucp();
 
-		$ucp = new WC_AI_Syndication_Ucp();
+		// Register rewrite rules on init (plugins_loaded fires before init).
+		add_action( 'init', [ $llms_txt, 'add_rewrite_rules' ] );
 		add_action( 'init', [ $ucp, 'add_rewrite_rules' ] );
-		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
+
+		add_filter( 'query_vars', [ $llms_txt, 'add_query_vars' ] );
 		add_filter( 'query_vars', [ $ucp, 'add_query_vars' ] );
+		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
+		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
+
+		// If a flush was scheduled (e.g., after enabling syndication via REST),
+		// do it on this page load so the rules are in the DB for the next request.
+		if ( get_transient( 'wc_ai_syndication_flush_rewrite' ) ) {
+			delete_transient( 'wc_ai_syndication_flush_rewrite' );
+			add_action( 'init', 'flush_rewrite_rules', 99 );
+		}
 	}
 
 	/**

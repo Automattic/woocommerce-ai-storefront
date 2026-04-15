@@ -218,9 +218,11 @@ class WC_AI_Syndication_Admin_Controller {
 		$old_settings = WC_AI_Syndication::get_settings();
 		WC_AI_Syndication::update_settings( $data );
 
-		// Flush rewrite rules only when the enabled state actually changes.
+		// Schedule a rewrite rule flush on the next page load when enabled changes.
+		// REST API requests don't reliably trigger shutdown-hooked flushes, so we
+		// use a transient flag that the main plugin class checks on init.
 		if ( isset( $data['enabled'] ) && $data['enabled'] !== ( $old_settings['enabled'] ?? 'no' ) ) {
-			add_action( 'shutdown', 'flush_rewrite_rules' );
+			set_transient( 'wc_ai_syndication_flush_rewrite', 1, HOUR_IN_SECONDS );
 		}
 
 		return new WP_REST_Response( WC_AI_Syndication::get_settings() );
