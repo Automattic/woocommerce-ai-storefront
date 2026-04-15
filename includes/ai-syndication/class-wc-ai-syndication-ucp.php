@@ -121,63 +121,17 @@ class WC_AI_Syndication_Ucp {
 				'instructions' => 'All purchases must be completed on the merchant website. Generate a redirect link to the store.',
 			],
 
-			// Capabilities the store exposes to AI agents.
+			// Capabilities.
 			'capabilities'     => [
-				'product_search'     => true,
-				'cart_synchronization' => true,
-				'price_verification' => true,
-				'inventory_check'    => true,
-				'category_browse'    => true,
+				'product_discovery'  => true,
+				'checkout_links'     => true,
 				'attribution'        => true,
 			],
 
-			// API discovery.
-			'api'              => [
-				'base_url'       => rest_url( 'wc/v3/ai-syndication' ),
-				'authentication' => [
-					'type'   => 'api_key',
-					'header' => 'X-AI-Agent-Key',
-				],
-				'endpoints'      => [
-					[
-						'path'        => '/products',
-						'method'      => 'GET',
-						'description' => 'Search and browse products',
-						'parameters'  => [
-							'search'   => 'Search query string',
-							'category' => 'Category slug or ID',
-							'per_page' => 'Results per page (max 100)',
-							'page'     => 'Page number',
-							'orderby'  => 'Sort field: popularity, price, date, rating',
-							'order'    => 'Sort direction: asc, desc',
-						],
-					],
-					[
-						'path'        => '/products/{id}',
-						'method'      => 'GET',
-						'description' => 'Get a single product with full details',
-					],
-					[
-						'path'        => '/categories',
-						'method'      => 'GET',
-						'description' => 'List product categories',
-					],
-					[
-						'path'        => '/store',
-						'method'      => 'GET',
-						'description' => 'Store information and policies',
-					],
-					[
-						'path'        => '/cart/prepare',
-						'method'      => 'POST',
-						'description' => 'Validate items and get checkout link + add-to-cart URLs',
-						'parameters'  => [
-							'items'      => 'Array of {product_id, quantity, variation_id}',
-							'session_id' => 'AI session/conversation ID for attribution',
-							'coupon'     => 'Optional coupon code to apply at checkout',
-						],
-					],
-				],
+			// WooCommerce Store API (public, unauthenticated).
+			'store_api'        => [
+				'base_url'    => rest_url( 'wc/store/v1' ),
+				'description' => 'WooCommerce Store API for product search, cart, and checkout. Public and unauthenticated.',
 			],
 
 			// Purchase URLs — two patterns for different flows.
@@ -221,10 +175,10 @@ class WC_AI_Syndication_Ucp {
 				'sitemap'  => home_url( '/wp-sitemap.xml' ),
 			],
 
-			// Rate limits.
+			// Advisory rate limits for AI bot traffic.
 			'rate_limits'      => [
-				'requests_per_minute' => absint( $settings['rate_limit_rpm'] ?? 60 ),
-				'requests_per_hour'   => absint( $settings['rate_limit_rph'] ?? 1000 ),
+				'requests_per_minute' => absint( $settings['rate_limit_rpm'] ?? 25 ),
+				'note'                => 'AI bot traffic is rate limited via the WooCommerce Store API. Regular customer traffic is unaffected.',
 			],
 		];
 

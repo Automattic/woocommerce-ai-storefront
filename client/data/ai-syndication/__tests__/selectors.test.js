@@ -2,23 +2,17 @@ import {
 	getSettings,
 	isSaving,
 	getSavingError,
-	getBots,
-	isLoadingBots,
 	getStats,
 	getEndpoints,
-	getNewBotKey,
 } from '../selectors';
 
 describe( 'AI Syndication selectors', () => {
 	const fullState = {
-		settings: { enabled: 'yes', rate_limit_rpm: 60 },
+		settings: { enabled: 'yes', rate_limit_rpm: 25 },
 		isSaving: true,
 		savingError: new Error( 'test' ),
-		bots: [ { id: 'bot-1', name: 'ChatGPT' } ],
-		isLoadingBots: true,
 		stats: { total_orders: 5 },
 		endpoints: { llms_txt: '/llms.txt' },
-		newBotKey: { bot_id: 'id', api_key: 'key' },
 	};
 
 	describe( 'with populated state', () => {
@@ -34,14 +28,6 @@ describe( 'AI Syndication selectors', () => {
 			expect( getSavingError( fullState ) ).toBe( fullState.savingError );
 		} );
 
-		it( 'getBots returns bots array', () => {
-			expect( getBots( fullState ) ).toEqual( fullState.bots );
-		} );
-
-		it( 'isLoadingBots returns loading flag', () => {
-			expect( isLoadingBots( fullState ) ).toBe( true );
-		} );
-
 		it( 'getStats returns stats', () => {
 			expect( getStats( fullState ) ).toEqual( fullState.stats );
 		} );
@@ -49,60 +35,36 @@ describe( 'AI Syndication selectors', () => {
 		it( 'getEndpoints returns endpoints', () => {
 			expect( getEndpoints( fullState ) ).toEqual( fullState.endpoints );
 		} );
-
-		it( 'getNewBotKey returns bot key data', () => {
-			expect( getNewBotKey( fullState ) ).toEqual( fullState.newBotKey );
-		} );
 	} );
 
 	describe( 'with undefined/null state', () => {
-		it( 'getSettings returns empty object for undefined state', () => {
-			const result = getSettings( undefined );
-			expect( result ).toEqual( {} );
+		it( 'getSettings returns empty object', () => {
+			expect( getSettings( undefined ) ).toEqual( {} );
 		} );
 
-		it( 'isSaving returns false for undefined state', () => {
+		it( 'isSaving returns false', () => {
 			expect( isSaving( undefined ) ).toBe( false );
 		} );
 
-		it( 'getSavingError returns null for undefined state', () => {
+		it( 'getSavingError returns null', () => {
 			expect( getSavingError( undefined ) ).toBeNull();
 		} );
 
-		it( 'getBots returns empty array for undefined state', () => {
-			const result = getBots( undefined );
-			expect( result ).toEqual( [] );
-		} );
-
-		it( 'isLoadingBots returns false for undefined state', () => {
-			expect( isLoadingBots( undefined ) ).toBe( false );
-		} );
-
-		it( 'getStats returns null for undefined state', () => {
+		it( 'getStats returns null', () => {
 			expect( getStats( undefined ) ).toBeNull();
 		} );
 
-		it( 'getEndpoints returns empty object for undefined state', () => {
-			const result = getEndpoints( undefined );
-			expect( result ).toEqual( {} );
-		} );
-
-		it( 'getNewBotKey returns null for undefined state', () => {
-			expect( getNewBotKey( undefined ) ).toBeNull();
+		it( 'getEndpoints returns empty object', () => {
+			expect( getEndpoints( undefined ) ).toEqual( {} );
 		} );
 	} );
 
 	describe( 'referential stability', () => {
-		it( 'getSettings returns same reference for repeated calls with same state', () => {
+		it( 'getSettings returns same reference for repeated calls', () => {
 			const emptyState = {};
 			expect( getSettings( emptyState ) ).toBe(
 				getSettings( emptyState )
 			);
-		} );
-
-		it( 'getBots returns same reference for repeated calls with same state', () => {
-			const emptyState = {};
-			expect( getBots( emptyState ) ).toBe( getBots( emptyState ) );
 		} );
 	} );
 } );

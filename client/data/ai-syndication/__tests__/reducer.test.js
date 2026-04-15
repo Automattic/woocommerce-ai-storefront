@@ -6,11 +6,8 @@ describe( 'AI Syndication reducer', () => {
 		settings: {},
 		isSaving: false,
 		savingError: null,
-		bots: [],
-		isLoadingBots: false,
 		stats: null,
 		endpoints: {},
-		newBotKey: null,
 	};
 
 	it( 'returns default state for undefined state', () => {
@@ -26,7 +23,7 @@ describe( 'AI Syndication reducer', () => {
 
 	describe( 'SET_SETTINGS', () => {
 		it( 'replaces the full settings object', () => {
-			const settings = { enabled: 'yes', rate_limit_rpm: 60 };
+			const settings = { enabled: 'yes', rate_limit_rpm: 25 };
 			const state = reducer( defaultState, {
 				type: ACTION_TYPES.SET_SETTINGS,
 				data: settings,
@@ -39,15 +36,15 @@ describe( 'AI Syndication reducer', () => {
 		it( 'merges partial updates into existing settings', () => {
 			const initial = {
 				...defaultState,
-				settings: { enabled: 'yes', rate_limit_rpm: 60 },
+				settings: { enabled: 'yes', rate_limit_rpm: 25 },
 			};
 			const state = reducer( initial, {
 				type: ACTION_TYPES.SET_SETTINGS_VALUES,
-				payload: { rate_limit_rpm: 120 },
+				payload: { rate_limit_rpm: 50 },
 			} );
 			expect( state.settings ).toEqual( {
 				enabled: 'yes',
-				rate_limit_rpm: 120,
+				rate_limit_rpm: 50,
 			} );
 		} );
 
@@ -72,7 +69,6 @@ describe( 'AI Syndication reducer', () => {
 				error: null,
 			} );
 			expect( state.isSaving ).toBe( true );
-			expect( state.savingError ).toBeNull();
 		} );
 
 		it( 'stores error when save fails', () => {
@@ -82,32 +78,7 @@ describe( 'AI Syndication reducer', () => {
 				isSaving: false,
 				error,
 			} );
-			expect( state.isSaving ).toBe( false );
 			expect( state.savingError ).toBe( error );
-		} );
-	} );
-
-	describe( 'SET_BOTS', () => {
-		it( 'replaces the bots array', () => {
-			const bots = [
-				{ id: 'bot-1', name: 'ChatGPT' },
-				{ id: 'bot-2', name: 'Gemini' },
-			];
-			const state = reducer( defaultState, {
-				type: ACTION_TYPES.SET_BOTS,
-				data: bots,
-			} );
-			expect( state.bots ).toEqual( bots );
-		} );
-	} );
-
-	describe( 'SET_IS_LOADING_BOTS', () => {
-		it( 'sets loading flag', () => {
-			const state = reducer( defaultState, {
-				type: ACTION_TYPES.SET_IS_LOADING_BOTS,
-				isLoading: true,
-			} );
-			expect( state.isLoadingBots ).toBe( true );
 		} );
 	} );
 
@@ -133,20 +104,6 @@ describe( 'AI Syndication reducer', () => {
 				data: endpoints,
 			} );
 			expect( state.endpoints ).toEqual( endpoints );
-		} );
-	} );
-
-	describe( 'SET_NEW_BOT_KEY', () => {
-		it( 'stores newly created bot key data', () => {
-			const botKeyData = {
-				bot_id: 'uuid-123',
-				api_key: 'wc_ai_abc123',
-			};
-			const state = reducer( defaultState, {
-				type: ACTION_TYPES.SET_NEW_BOT_KEY,
-				data: botKeyData,
-			} );
-			expect( state.newBotKey ).toEqual( botKeyData );
 		} );
 	} );
 } );

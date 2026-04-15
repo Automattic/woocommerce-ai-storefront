@@ -12,19 +12,18 @@ import {
 } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
-import BotManager from './bot-manager';
 import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
 
 const RATE_LIMIT_PRESETS = {
-	conservative: { rpm: 20, rph: 200 },
-	recommended: { rpm: 60, rph: 1000 },
-	generous: { rpm: 200, rph: 5000 },
+	conservative: { rpm: 10 },
+	recommended: { rpm: 25 },
+	generous: { rpm: 100 },
 };
 
-const getActivePreset = ( rpm, rph ) => {
+const getActivePreset = ( rpm ) => {
 	for ( const [ key, preset ] of Object.entries( RATE_LIMIT_PRESETS ) ) {
-		if ( preset.rpm === rpm && preset.rph === rph ) {
+		if ( preset.rpm === rpm ) {
 			return key;
 		}
 	}
@@ -71,10 +70,6 @@ const AISyndicationSettings = () => {
 			title: __( 'Product Selection', 'woocommerce-ai-syndication' ),
 		},
 		{
-			name: 'bots',
-			title: __( 'Bot Permissions', 'woocommerce-ai-syndication' ),
-		},
-		{
 			name: 'endpoints',
 			title: __( 'Discovery', 'woocommerce-ai-syndication' ),
 		},
@@ -93,7 +88,6 @@ const AISyndicationSettings = () => {
 								isSaving={ isSaving }
 							/>
 						) }
-						{ tab.name === 'bots' && <BotManager /> }
 						{ tab.name === 'products' && (
 							<ProductSelection
 								settings={ settings }
@@ -391,22 +385,17 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 		( select ) => select( STORE_NAME ).getStats(),
 		[]
 	);
-	const bots = useSelect( ( select ) => select( STORE_NAME ).getBots(), [] );
 
-	const { fetchStats, fetchBots } = useDispatch( STORE_NAME );
+	const { fetchStats } = useDispatch( STORE_NAME );
 	const [ period, setPeriod ] = useState( 'month' );
 
 	useEffect( () => {
 		fetchStats( period );
-		fetchBots();
 	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Refetch when period changes.
 
-	const rpm = settings.rate_limit_rpm || 60;
-	const rph = settings.rate_limit_rph || 1000;
+	const rpm = settings.rate_limit_rpm || 25;
 	const [ customOverride, setCustomOverride ] = useState( false );
-	const activePreset = customOverride
-		? 'custom'
-		: getActivePreset( rpm, rph );
+	const activePreset = customOverride ? 'custom' : getActivePreset( rpm );
 
 	let productCount = __( 'All', 'woocommerce-ai-syndication' );
 	if ( settings.product_selection_mode === 'categories' ) {
@@ -422,8 +411,6 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 			( settings.selected_products || [] ).length
 		);
 	}
-
-	const botList = Array.isArray( bots ) ? bots : Object.values( bots || {} );
 
 	return (
 		<div>
@@ -538,13 +525,6 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				/>
 				<StatCard
 					label={ __(
-						'Registered Agents',
-						'woocommerce-ai-syndication'
-					) }
-					value={ botList.length }
-				/>
-				<StatCard
-					label={ __(
 						'AI Orders (Month)',
 						'woocommerce-ai-syndication'
 					) }
@@ -650,21 +630,21 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						options={ [
 							{
 								label: __(
-									'Recommended — 60/min, 1,000/hr (works well for most stores)',
+									'Recommended — 25/min (works well for most stores)',
 									'woocommerce-ai-syndication'
 								),
 								value: 'recommended',
 							},
 							{
 								label: __(
-									'Conservative — 20/min, 200/hr (shared hosting or low-traffic stores)',
+									'Conservative — 10/min (shared hosting or low-traffic stores)',
 									'woocommerce-ai-syndication'
 								),
 								value: 'conservative',
 							},
 							{
 								label: __(
-									'Generous — 200/min, 5,000/hr (high-traffic stores on dedicated hosting)',
+									'Generous — 100/min (high-traffic stores on dedicated hosting)',
 									'woocommerce-ai-syndication'
 								),
 								value: 'generous',
@@ -683,8 +663,6 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 								onChange( {
 									rate_limit_rpm:
 										RATE_LIMIT_PRESETS[ value ].rpm,
-									rate_limit_rph:
-										RATE_LIMIT_PRESETS[ value ].rph,
 								} );
 							} else {
 								setCustomOverride( true );
@@ -715,22 +693,6 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 								}
 								min={ 1 }
 								max={ 1000 }
-							/>
-							<TextControl
-								label={ __(
-									'Requests per hour',
-									'woocommerce-ai-syndication'
-								) }
-								type="number"
-								value={ rph }
-								onChange={ ( value ) =>
-									onChange( {
-										rate_limit_rph:
-											parseInt( value ) || 1000,
-									} )
-								}
-								min={ 1 }
-								max={ 100000 }
 							/>
 						</div>
 					) }

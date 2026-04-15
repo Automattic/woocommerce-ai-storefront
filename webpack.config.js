@@ -4,8 +4,7 @@ const defaultConfig = require( '@wordpress/scripts/config/webpack.config' );
 module.exports = {
 	...defaultConfig,
 	entry: {
-		'ai-syndication-settings':
-			'./client/settings/ai-syndication/index.js',
+		'ai-syndication-settings': './client/settings/ai-syndication/index.js',
 	},
 	output: {
 		...defaultConfig.output,

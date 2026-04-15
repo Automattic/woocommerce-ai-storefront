@@ -15,19 +15,6 @@ export const getSettings =
 		}
 	};
 
-export const getBots =
-	() =>
-	async ( { dispatch } ) => {
-		try {
-			const result = await apiFetch( {
-				path: `${ ADMIN_NAMESPACE }/bots`,
-			} );
-			dispatch.setBots( result );
-		} catch ( error ) {
-			// Bots will remain empty.
-		}
-	};
-
 export const getEndpoints =
 	() =>
 	async ( { dispatch } ) => {

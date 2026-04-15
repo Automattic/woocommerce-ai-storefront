@@ -4,11 +4,8 @@ const defaultState = {
 	settings: {},
 	isSaving: false,
 	savingError: null,
-	bots: [],
-	isLoadingBots: false,
 	stats: null,
 	endpoints: {},
-	newBotKey: null,
 };
 
 const reducer = ( state = defaultState, action ) => {
@@ -30,25 +27,11 @@ const reducer = ( state = defaultState, action ) => {
 				savingError: action.error || null,
 			};
 
-		case ACTION_TYPES.SET_BOTS:
-			return {
-				...state,
-				bots: Array.isArray( action.data )
-					? action.data
-					: Object.values( action.data || {} ),
-			};
-
-		case ACTION_TYPES.SET_IS_LOADING_BOTS:
-			return { ...state, isLoadingBots: action.isLoading };
-
 		case ACTION_TYPES.SET_STATS:
 			return { ...state, stats: action.data };
 
 		case ACTION_TYPES.SET_ENDPOINTS:
 			return { ...state, endpoints: action.data };
-
-		case ACTION_TYPES.SET_NEW_BOT_KEY:
-			return { ...state, newBotKey: action.data };
 
 		default:
 			return state;

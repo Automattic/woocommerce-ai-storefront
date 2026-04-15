@@ -4,9 +4,9 @@
  *
  * Provides REST API endpoints for the admin settings UI:
  * - GET/POST settings
- * - CRUD bots
  * - Get attribution stats
  * - Get categories/products for selection UI
+ * - Get discovery endpoint URLs
  *
  * @package WooCommerce_AI_Syndication
  * @since 1.0.0
@@ -23,22 +23,6 @@ class WC_AI_Syndication_Admin_Controller {
 	 * REST namespace.
 	 */
 	const NAMESPACE = 'wc/v3/ai-syndication/admin';
-
-	/**
-	 * Bot manager instance.
-	 *
-	 * @var WC_AI_Syndication_Bot_Manager
-	 */
-	private $bot_manager;
-
-	/**
-	 * Constructor.
-	 *
-	 * @param WC_AI_Syndication_Bot_Manager $bot_manager Bot manager.
-	 */
-	public function __construct( $bot_manager ) {
-		$this->bot_manager = $bot_manager;
-	}
 
 	/**
 	 * Register REST routes.
@@ -64,64 +48,8 @@ class WC_AI_Syndication_Admin_Controller {
 						'selected_categories'    => [ 'type' => 'array', 'items' => [ 'type' => 'integer' ] ],
 						'selected_products'      => [ 'type' => 'array', 'items' => [ 'type' => 'integer' ] ],
 						'rate_limit_rpm'         => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 1000 ],
-						'rate_limit_rph'         => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 100000 ],
 					],
 				],
-			]
-		);
-
-		// Bots.
-		register_rest_route(
-			self::NAMESPACE,
-			'/bots',
-			[
-				[
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => [ $this, 'get_bots' ],
-					'permission_callback' => [ $this, 'check_admin_permission' ],
-				],
-				[
-					'methods'             => WP_REST_Server::CREATABLE,
-					'callback'            => [ $this, 'create_bot' ],
-					'permission_callback' => [ $this, 'check_admin_permission' ],
-					'args'                => [
-						'name'        => [ 'type' => 'string', 'required' => true ],
-						'permissions' => [ 'type' => 'object' ],
-					],
-				],
-				'schema' => [ $this, 'get_bot_schema' ],
-			]
-		);
-
-		register_rest_route(
-			self::NAMESPACE,
-			'/bots/(?P<id>[a-f0-9-]+)',
-			[
-				[
-					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => [ $this, 'update_bot' ],
-					'permission_callback' => [ $this, 'check_admin_permission' ],
-					'args'                => [
-						'name'        => [ 'type' => 'string' ],
-						'permissions' => [ 'type' => 'object' ],
-						'status'      => [ 'type' => 'string', 'enum' => [ 'active', 'revoked' ] ],
-					],
-				],
-				[
-					'methods'             => WP_REST_Server::DELETABLE,
-					'callback'            => [ $this, 'delete_bot' ],
-					'permission_callback' => [ $this, 'check_admin_permission' ],
-				],
-			]
-		);
-
-		register_rest_route(
-			self::NAMESPACE,
-			'/bots/(?P<id>[a-f0-9-]+)/regenerate-key',
-			[
-				'methods'             => WP_REST_Server::CREATABLE,
-				'callback'            => [ $this, 'regenerate_bot_key' ],
-				'permission_callback' => [ $this, 'check_admin_permission' ],
 			]
 		);
 
@@ -168,7 +96,7 @@ class WC_AI_Syndication_Admin_Controller {
 			]
 		);
 
-		// Endpoints discovery info.
+		// Discovery endpoint URLs.
 		register_rest_route(
 			self::NAMESPACE,
 			'/endpoints',
@@ -207,7 +135,7 @@ class WC_AI_Syndication_Admin_Controller {
 	public function update_settings( $request ) {
 		$data = [];
 
-		$fields = [ 'enabled', 'product_selection_mode', 'selected_categories', 'selected_products', 'rate_limit_rpm', 'rate_limit_rph' ];
+		$fields = [ 'enabled', 'product_selection_mode', 'selected_categories', 'selected_products', 'rate_limit_rpm' ];
 		foreach ( $fields as $field ) {
 			$value = $request->get_param( $field );
 			if ( null !== $value ) {
@@ -218,14 +146,11 @@ class WC_AI_Syndication_Admin_Controller {
 		$old_settings = WC_AI_Syndication::get_settings();
 		WC_AI_Syndication::update_settings( $data );
 
-		// Schedule a rewrite rule flush on the next page load when enabled changes.
-		// REST API requests don't reliably trigger shutdown-hooked flushes, so we
-		// use a transient flag that the main plugin class checks on init.
+		// Schedule a rewrite rule flush when enabled state changes.
 		if ( isset( $data['enabled'] ) && $data['enabled'] !== ( $old_settings['enabled'] ?? 'no' ) ) {
 			set_transient( 'wc_ai_syndication_flush_rewrite', 1, HOUR_IN_SECONDS );
 
-			// Eagerly generate and cache llms.txt + UCP manifest so they're
-			// warm immediately after enabling — no waiting for the first request.
+			// Eagerly generate and cache llms.txt + UCP manifest.
 			if ( 'yes' === $data['enabled'] ) {
 				$llms_txt = new WC_AI_Syndication_Llms_Txt();
 				$content  = $llms_txt->generate();
@@ -238,101 +163,6 @@ class WC_AI_Syndication_Admin_Controller {
 		}
 
 		return new WP_REST_Response( WC_AI_Syndication::get_settings() );
-	}
-
-	/**
-	 * Get registered bots.
-	 *
-	 * @return WP_REST_Response
-	 */
-	public function get_bots() {
-		return new WP_REST_Response( $this->bot_manager->get_bots_for_display() );
-	}
-
-	/**
-	 * Create a new bot.
-	 *
-	 * @param WP_REST_Request $request The request.
-	 * @return WP_REST_Response
-	 */
-	public function create_bot( $request ) {
-		$name        = sanitize_text_field( $request->get_param( 'name' ) );
-		$permissions = $request->get_param( 'permissions' ) ?: [];
-
-		$result = $this->bot_manager->register_bot( $name, $permissions );
-
-		return new WP_REST_Response( $result, 201 );
-	}
-
-	/**
-	 * Update a bot.
-	 *
-	 * @param WP_REST_Request $request The request.
-	 * @return WP_REST_Response|WP_Error
-	 */
-	public function update_bot( $request ) {
-		$bot_id = $request->get_param( 'id' );
-		$data   = [];
-
-		foreach ( [ 'name', 'permissions', 'status' ] as $field ) {
-			$value = $request->get_param( $field );
-			if ( null !== $value ) {
-				$data[ $field ] = $value;
-			}
-		}
-
-		$updated = $this->bot_manager->update_bot( $bot_id, $data );
-		if ( ! $updated ) {
-			return new WP_Error(
-				'bot_not_found',
-				__( 'Bot not found.', 'woocommerce-ai-syndication' ),
-				[ 'status' => 404 ]
-			);
-		}
-
-		return new WP_REST_Response( $this->bot_manager->get_bots_for_display() );
-	}
-
-	/**
-	 * Delete a bot.
-	 *
-	 * @param WP_REST_Request $request The request.
-	 * @return WP_REST_Response|WP_Error
-	 */
-	public function delete_bot( $request ) {
-		$bot_id  = $request->get_param( 'id' );
-		$deleted = $this->bot_manager->delete_bot( $bot_id );
-
-		if ( ! $deleted ) {
-			return new WP_Error(
-				'bot_not_found',
-				__( 'Bot not found.', 'woocommerce-ai-syndication' ),
-				[ 'status' => 404 ]
-			);
-		}
-
-		return new WP_REST_Response( [ 'deleted' => true ] );
-	}
-
-	/**
-	 * Regenerate a bot's API key.
-	 *
-	 * @param WP_REST_Request $request The request.
-	 * @return WP_REST_Response|WP_Error
-	 */
-	public function regenerate_bot_key( $request ) {
-		$bot_id = $request->get_param( 'id' );
-		$result = $this->bot_manager->regenerate_key( $bot_id );
-
-		if ( ! $result ) {
-			return new WP_Error(
-				'bot_not_found',
-				__( 'Bot not found.', 'woocommerce-ai-syndication' ),
-				[ 'status' => 404 ]
-			);
-		}
-
-		return new WP_REST_Response( $result );
 	}
 
 	/**
@@ -416,48 +246,15 @@ class WC_AI_Syndication_Admin_Controller {
 	}
 
 	/**
-	 * Get endpoint discovery info for admin display.
+	 * Get discovery endpoint URLs for admin display.
 	 *
 	 * @return WP_REST_Response
 	 */
 	public function get_endpoints_info() {
 		return new WP_REST_Response( [
-			'llms_txt'    => home_url( '/llms.txt' ),
-			'ucp'         => home_url( '/.well-known/ucp' ),
-			'catalog_api' => rest_url( 'wc/v3/ai-syndication' ),
-			'store_api'   => rest_url( 'wc/store/v1' ),
+			'llms_txt'  => home_url( '/llms.txt' ),
+			'ucp'       => home_url( '/.well-known/ucp' ),
+			'store_api' => rest_url( 'wc/store/v1' ),
 		] );
-	}
-
-	/**
-	 * Get the JSON Schema for a bot response.
-	 *
-	 * @return array
-	 */
-	public function get_bot_schema() {
-		return [
-			'$schema'    => 'http://json-schema.org/draft-04/schema#',
-			'title'      => 'ai-syndication-bot',
-			'type'       => 'object',
-			'properties' => [
-				'id'            => [ 'type' => 'string', 'format' => 'uuid', 'description' => 'Bot UUID.' ],
-				'name'          => [ 'type' => 'string', 'description' => 'Bot display name.' ],
-				'key_prefix'    => [ 'type' => 'string', 'description' => 'First 10 chars of API key for identification.' ],
-				'permissions'   => [
-					'type'       => 'object',
-					'properties' => [
-						'read_products'   => [ 'type' => 'boolean' ],
-						'read_categories' => [ 'type' => 'boolean' ],
-						'prepare_cart'    => [ 'type' => 'boolean' ],
-						'check_inventory' => [ 'type' => 'boolean' ],
-					],
-					'description' => 'Bot permission flags.',
-				],
-				'status'        => [ 'type' => 'string', 'enum' => [ 'active', 'revoked' ], 'description' => 'Bot status.' ],
-				'created_at'    => [ 'type' => 'string', 'format' => 'date-time', 'description' => 'Creation timestamp.' ],
-				'last_access'   => [ 'type' => [ 'string', 'null' ], 'description' => 'Last API access timestamp.' ],
-				'request_count' => [ 'type' => 'integer', 'description' => 'Total API requests made.' ],
-			],
-		];
 	}
 }

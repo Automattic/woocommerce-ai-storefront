@@ -27,8 +27,7 @@ class WC_AI_Syndication {
 				'product_selection_mode' => 'all',
 				'selected_categories'    => [],
 				'selected_products'      => [],
-				'rate_limit_rpm'         => 60,
-				'rate_limit_rph'         => 1000,
+				'rate_limit_rpm'         => 25,
 			],
 			self::$test_settings
 		);

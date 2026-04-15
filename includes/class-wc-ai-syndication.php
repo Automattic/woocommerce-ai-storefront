@@ -32,12 +32,6 @@ class WC_AI_Syndication {
 	 */
 	private static $instance = null;
 
-	/**
-	 * Bot manager instance.
-	 *
-	 * @var WC_AI_Syndication_Bot_Manager|null
-	 */
-	private $bot_manager;
 
 	/**
 	 * Returns the singleton instance.
@@ -85,9 +79,7 @@ class WC_AI_Syndication {
 		require_once $path . 'class-wc-ai-syndication-jsonld.php';
 		require_once $path . 'class-wc-ai-syndication-robots.php';
 		require_once $path . 'class-wc-ai-syndication-ucp.php';
-		require_once $path . 'class-wc-ai-syndication-bot-manager.php';
-		require_once $path . 'class-wc-ai-syndication-rate-limiter.php';
-		require_once $path . 'class-wc-ai-syndication-catalog-api.php';
+		require_once $path . 'class-wc-ai-syndication-store-api-rate-limiter.php';
 		require_once $path . 'class-wc-ai-syndication-attribution.php';
 		require_once $path . 'class-wc-ai-syndication-cache-invalidator.php';
 
@@ -120,8 +112,9 @@ class WC_AI_Syndication {
 		$attribution = new WC_AI_Syndication_Attribution();
 		$attribution->init();
 
-		// Bot manager.
-		$this->bot_manager = new WC_AI_Syndication_Bot_Manager();
+		// Store API rate limiting for AI bots.
+		$rate_limiter = new WC_AI_Syndication_Store_Api_Rate_Limiter();
+		$rate_limiter->init();
 	}
 
 	/**
@@ -167,14 +160,7 @@ class WC_AI_Syndication {
 	 * Register REST API routes.
 	 */
 	public function register_rest_routes() {
-		// Public AI catalog API.
-		$bot_manager  = $this->bot_manager ?: new WC_AI_Syndication_Bot_Manager();
-		$rate_limiter = new WC_AI_Syndication_Rate_Limiter();
-		$catalog_api  = new WC_AI_Syndication_Catalog_Api( $bot_manager, $rate_limiter );
-		$catalog_api->register_routes();
-
-		// Admin settings API.
-		$admin_controller = new WC_AI_Syndication_Admin_Controller( $bot_manager );
+		$admin_controller = new WC_AI_Syndication_Admin_Controller();
 		$admin_controller->register_routes();
 	}
 
@@ -282,8 +268,7 @@ class WC_AI_Syndication {
 			'product_selection_mode' => 'all',
 			'selected_categories'    => [],
 			'selected_products'      => [],
-			'rate_limit_rpm'         => 60,
-			'rate_limit_rph'         => 1000,
+			'rate_limit_rpm'         => 25,
 		];
 
 		$settings = get_option( self::SETTINGS_OPTION, [] );
@@ -316,8 +301,7 @@ class WC_AI_Syndication {
 				: 'all',
 			'selected_categories'    => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
 			'selected_products'      => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
-			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 60 ) ),
-			'rate_limit_rph'         => max( 1, absint( $merged['rate_limit_rph'] ?? 1000 ) ),
+			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.
@@ -359,18 +343,6 @@ class WC_AI_Syndication {
 		}
 
 		return false;
-	}
-
-	/**
-	 * Get the bot manager instance.
-	 *
-	 * @return WC_AI_Syndication_Bot_Manager
-	 */
-	public function get_bot_manager() {
-		if ( ! $this->bot_manager ) {
-			$this->bot_manager = new WC_AI_Syndication_Bot_Manager();
-		}
-		return $this->bot_manager;
 	}
 
 	/**

@@ -1,7 +1,7 @@
 import ACTION_TYPES from './action-types';
 import apiFetch from '@wordpress/api-fetch';
 import { dispatch as globalDispatch } from '@wordpress/data';
-import { __, sprintf } from '@wordpress/i18n';
+import { __ } from '@wordpress/i18n';
 import { ADMIN_NAMESPACE } from './constants';
 
 export function updateSettings( data ) {
@@ -12,20 +12,12 @@ export function updateSettingsValues( payload ) {
 	return { type: ACTION_TYPES.SET_SETTINGS_VALUES, payload };
 }
 
-export function setBots( data ) {
-	return { type: ACTION_TYPES.SET_BOTS, data };
-}
-
 export function setStats( data ) {
 	return { type: ACTION_TYPES.SET_STATS, data };
 }
 
 export function setEndpoints( data ) {
 	return { type: ACTION_TYPES.SET_ENDPOINTS, data };
-}
-
-export function setNewBotKey( data ) {
-	return { type: ACTION_TYPES.SET_NEW_BOT_KEY, data };
 }
 
 export function saveSettings() {
@@ -59,167 +51,6 @@ export function saveSettings() {
 
 export function setIsSaving( isSaving, error ) {
 	return { type: ACTION_TYPES.SET_IS_SAVING, isSaving, error };
-}
-
-export function fetchBots() {
-	return async ( { dispatch } ) => {
-		dispatch.setIsLoadingBots( true );
-
-		try {
-			const bots = await apiFetch( {
-				path: `${ ADMIN_NAMESPACE }/bots`,
-			} );
-			dispatch.setBots( bots );
-		} catch ( error ) {
-			globalDispatch( 'core/notices' ).createErrorNotice(
-				__( 'Error loading bots.', 'woocommerce-ai-syndication' )
-			);
-		}
-
-		dispatch.setIsLoadingBots( false );
-	};
-}
-
-export function setIsLoadingBots( isLoading ) {
-	return { type: ACTION_TYPES.SET_IS_LOADING_BOTS, isLoading };
-}
-
-export function createBot( name, permissions ) {
-	return async ( { dispatch } ) => {
-		try {
-			const result = await apiFetch( {
-				path: `${ ADMIN_NAMESPACE }/bots`,
-				method: 'POST',
-				data: { name, permissions },
-			} );
-
-			// Store the new API key for display (shown only once).
-			dispatch.setNewBotKey( result );
-
-			// Refresh bots list.
-			dispatch.fetchBots();
-
-			globalDispatch( 'core/notices' ).createSuccessNotice(
-				__(
-					"Bot created. Copy the API key now - it won't be shown again.",
-					'woocommerce-ai-syndication'
-				)
-			);
-		} catch ( error ) {
-			globalDispatch( 'core/notices' ).createErrorNotice(
-				__( 'Error creating bot.', 'woocommerce-ai-syndication' )
-			);
-		}
-	};
-}
-
-export function createBots( names ) {
-	return async ( { dispatch } ) => {
-		const createdKeys = [];
-
-		for ( const name of names ) {
-			try {
-				const result = await apiFetch( {
-					path: `${ ADMIN_NAMESPACE }/bots`,
-					method: 'POST',
-					data: { name },
-				} );
-				createdKeys.push( result );
-			} catch ( error ) {
-				globalDispatch( 'core/notices' ).createErrorNotice(
-					sprintf(
-						/* translators: %s: agent name */
-						__(
-							'Error creating %s.',
-							'woocommerce-ai-syndication'
-						),
-						name
-					)
-				);
-			}
-		}
-
-		if ( createdKeys.length > 0 ) {
-			// Store all created keys for display.
-			dispatch.setNewBotKey( createdKeys );
-			dispatch.fetchBots();
-
-			globalDispatch( 'core/notices' ).createSuccessNotice(
-				sprintf(
-					/* translators: %d: number of agents created */
-					__(
-						'%d agent(s) created. Copy the API keys now.',
-						'woocommerce-ai-syndication'
-					),
-					createdKeys.length
-				)
-			);
-		}
-	};
-}
-
-export function deleteBot( botId ) {
-	return async ( { dispatch } ) => {
-		try {
-			await apiFetch( {
-				path: `${ ADMIN_NAMESPACE }/bots/${ botId }`,
-				method: 'DELETE',
-			} );
-
-			dispatch.fetchBots();
-
-			globalDispatch( 'core/notices' ).createSuccessNotice(
-				__( 'Bot deleted.', 'woocommerce-ai-syndication' )
-			);
-		} catch ( error ) {
-			globalDispatch( 'core/notices' ).createErrorNotice(
-				__( 'Error deleting bot.', 'woocommerce-ai-syndication' )
-			);
-		}
-	};
-}
-
-export function updateBot( botId, data ) {
-	return async ( { dispatch } ) => {
-		try {
-			await apiFetch( {
-				path: `${ ADMIN_NAMESPACE }/bots/${ botId }`,
-				method: 'PUT',
-				data,
-			} );
-
-			dispatch.fetchBots();
-		} catch ( error ) {
-			globalDispatch( 'core/notices' ).createErrorNotice(
-				__( 'Error updating bot.', 'woocommerce-ai-syndication' )
-			);
-		}
-	};
-}
-
-export function regenerateBotKey( botId ) {
-	return async ( { dispatch } ) => {
-		try {
-			const result = await apiFetch( {
-				path: `${ ADMIN_NAMESPACE }/bots/${ botId }/regenerate-key`,
-				method: 'POST',
-			} );
-
-			dispatch.setNewBotKey( result );
-			dispatch.fetchBots();
-
-			globalDispatch( 'core/notices' ).createSuccessNotice(
-				__(
-					"API key regenerated. Copy it now - it won't be shown again.",
-					'woocommerce-ai-syndication'
-				)
-			);
-		} catch ( error ) {
-			globalDispatch( 'core/notices' ).createErrorNotice(
-				__( 'Error regenerating key.', 'woocommerce-ai-syndication' )
-			);
-		}
-	};
 }
 
 export function fetchStats( period ) {
