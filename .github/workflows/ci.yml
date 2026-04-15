@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  php-tests:
+    name: PHP Tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['8.1', '8.2', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run PHPUnit
+        run: vendor/bin/phpunit
+
+  js-tests:
+    name: JS Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Jest
+        run: npm run test:js -- --no-coverage
+
+  js-lint:
+    name: JS Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint JS
+        run: npm run lint:js
