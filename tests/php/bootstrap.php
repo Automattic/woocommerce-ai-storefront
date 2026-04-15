@@ -25,5 +25,10 @@ if ( ! defined( 'HOUR_IN_SECONDS' ) ) {
 // Load plugin files that don't have side effects on include.
 $plugin_path = dirname( __DIR__, 2 ) . '/includes/';
 
+// Load the settings stub before classes that reference WC_AI_Syndication statically.
+require_once __DIR__ . '/stubs/class-wc-ai-syndication-stub.php';
+
+require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-llms-txt.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-bot-manager.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-rate-limiter.php';
+require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-cache-invalidator.php';
