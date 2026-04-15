@@ -464,12 +464,16 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					variant="secondary"
 					isDestructive
 					size="compact"
+					isBusy={ isSaving }
+					disabled={ isSaving }
 					onClick={ () => {
 						onChange( { enabled: 'no' } );
 						onSave();
 					} }
 				>
-					{ __( 'Disable', 'woocommerce-ai-syndication' ) }
+					{ isSaving
+						? __( 'Disabling…', 'woocommerce-ai-syndication' )
+						: __( 'Disable', 'woocommerce-ai-syndication' ) }
 				</Button>
 			</div>
 
