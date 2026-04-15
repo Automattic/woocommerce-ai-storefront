@@ -3,7 +3,6 @@ import { useSelect, useDispatch } from '@wordpress/data';
 import {
 	Card,
 	CardBody,
-	CardHeader,
 	Button,
 	TextControl,
 	CheckboxControl,
@@ -103,7 +102,7 @@ const BotManager = () => {
 	};
 
 	return (
-		<>
+		<div style={ { maxWidth: '960px' } }>
 			{ newBotKey && (
 				<Notice
 					status="warning"
@@ -148,21 +147,21 @@ const BotManager = () => {
 			) }
 
 			<Card>
-				<CardHeader>
+				<CardBody>
 					<div
 						style={ {
 							display: 'flex',
 							justifyContent: 'space-between',
-							alignItems: 'center',
-							width: '100%',
+							alignItems: 'flex-start',
+							marginBottom: '8px',
 						} }
 					>
-						<h2 style={ { margin: 0 } }>
+						<h3 style={ { margin: '0', fontSize: '14px' } }>
 							{ __(
 								'Registered AI Agents',
 								'woocommerce-ai-syndication'
 							) }
-						</h2>
+						</h3>
 						<Button
 							variant="primary"
 							onClick={ () => setShowCreateModal( true ) }
@@ -171,9 +170,13 @@ const BotManager = () => {
 							{ __( 'Add Agent', 'woocommerce-ai-syndication' ) }
 						</Button>
 					</div>
-				</CardHeader>
-				<CardBody>
-					<p>
+					<p
+						style={ {
+							color: '#50575e',
+							fontSize: '13px',
+							margin: '0 0 16px',
+						} }
+					>
 						{ __(
 							'Register AI agents that can access your product catalog. Each agent gets a unique API key.',
 							'woocommerce-ai-syndication'
@@ -183,7 +186,13 @@ const BotManager = () => {
 					{ isLoading && <Spinner /> }
 
 					{ ! isLoading && bots.length === 0 && (
-						<p style={ { color: '#757575' } }>
+						<p
+							style={ {
+								color: '#757575',
+								fontSize: '13px',
+								margin: 0,
+							} }
+						>
 							{ __(
 								'No agents registered yet. Click "Add Agent" to get started.',
 								'woocommerce-ai-syndication'
@@ -459,7 +468,7 @@ const BotManager = () => {
 					</div>
 				</Modal>
 			) }
-		</>
+		</div>
 	);
 };
 

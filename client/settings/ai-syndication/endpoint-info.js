@@ -1,12 +1,6 @@
 import { useEffect } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
-import {
-	Card,
-	CardBody,
-	CardHeader,
-	ExternalLink,
-	Spinner,
-} from '@wordpress/components';
+import { Card, CardBody, ExternalLink, Spinner } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
 
@@ -29,34 +23,44 @@ const EndpointInfo = () => {
 	const isEnabled = settings.enabled === 'yes';
 
 	return (
-		<>
+		<div style={ { maxWidth: '960px' } }>
 			<Card>
-				<CardHeader>
-					<h2>
+				<CardBody>
+					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
 						{ __(
 							'Discovery Endpoints',
 							'woocommerce-ai-syndication'
 						) }
-					</h2>
-				</CardHeader>
-				<CardBody>
-					{ ! isEnabled && (
-						<p style={ { color: '#d63638' } }>
-							{ __(
-								'AI Syndication is currently disabled. Enable it in General settings to activate these endpoints.',
-								'woocommerce-ai-syndication'
-							) }
-						</p>
-					) }
-
-					<p>
+					</h3>
+					<p
+						style={ {
+							color: '#50575e',
+							fontSize: '13px',
+							margin: '0 0 16px',
+						} }
+					>
 						{ __(
 							'These endpoints are automatically available when AI Syndication is enabled. AI crawlers and agents use these to discover your store.',
 							'woocommerce-ai-syndication'
 						) }
 					</p>
 
-					<table className="widefat" style={ { marginTop: '16px' } }>
+					{ ! isEnabled && (
+						<p
+							style={ {
+								color: '#d63638',
+								fontSize: '13px',
+								margin: '0 0 16px',
+							} }
+						>
+							{ __(
+								'AI Syndication is currently disabled. Enable it in the Overview tab to activate these endpoints.',
+								'woocommerce-ai-syndication'
+							) }
+						</p>
+					) }
+
+					<table className="widefat" style={ { margin: 0 } }>
 						<thead>
 							<tr>
 								<th>
@@ -162,71 +166,7 @@ const EndpointInfo = () => {
 					</table>
 				</CardBody>
 			</Card>
-
-			<Card style={ { marginTop: '16px' } }>
-				<CardHeader>
-					<h2>
-						{ __(
-							'Integration Guide',
-							'woocommerce-ai-syndication'
-						) }
-					</h2>
-				</CardHeader>
-				<CardBody>
-					<h3>
-						{ __(
-							'For AI Agent Developers',
-							'woocommerce-ai-syndication'
-						) }
-					</h3>
-					<ol style={ { paddingLeft: '20px' } }>
-						<li>
-							{ __(
-								'Read /llms.txt to understand the store structure',
-								'woocommerce-ai-syndication'
-							) }
-						</li>
-						<li>
-							{ __(
-								'Read /.well-known/ucp for API capabilities and checkout policy',
-								'woocommerce-ai-syndication'
-							) }
-						</li>
-						<li>
-							{ __(
-								'Use the Catalog API with your X-AI-Agent-Key to search products',
-								'woocommerce-ai-syndication'
-							) }
-						</li>
-						<li>
-							{ __(
-								'Generate redirect URLs with utm_source, utm_medium=ai_agent, and ai_session_id',
-								'woocommerce-ai-syndication'
-							) }
-						</li>
-						<li>
-							{ __(
-								'Optionally use /cart/prepare to pre-populate the cart before redirect',
-								'woocommerce-ai-syndication'
-							) }
-						</li>
-					</ol>
-
-					<h3 style={ { marginTop: '16px' } }>
-						{ __(
-							'Checkout Policy',
-							'woocommerce-ai-syndication'
-						) }
-					</h3>
-					<p>
-						{ __(
-							'This store uses web-redirect checkout only. No in-chat or delegated payments. When an AI says "Buy Now," it generates a link that takes the customer to your checkout page.',
-							'woocommerce-ai-syndication'
-						) }
-					</p>
-				</CardBody>
-			</Card>
-		</>
+		</div>
 	);
 };
 
