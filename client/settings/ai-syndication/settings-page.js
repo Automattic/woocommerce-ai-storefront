@@ -35,14 +35,15 @@ const AISyndicationSettings = () => {
 		);
 	}, [] );
 
-	const { updateSettingsValues, saveSettings } =
-		useDispatch( STORE_NAME );
+	const { updateSettingsValues, saveSettings } = useDispatch( STORE_NAME );
 
 	if ( isLoading ) {
 		return (
 			<div style={ { textAlign: 'center', padding: '40px' } }>
 				<Spinner />
-				<p>{ __( 'Loading settings...', 'woocommerce-ai-syndication' ) }</p>
+				<p>
+					{ __( 'Loading settings…', 'woocommerce-ai-syndication' ) }
+				</p>
 			</div>
 		);
 	}
@@ -183,9 +184,7 @@ const GeneralSettings = ( { settings, onChange, onSave, isSaving } ) => {
 										'woocommerce-ai-syndication'
 									) }
 									type="number"
-									value={
-										settings.rate_limit_rph || 1000
-									}
+									value={ settings.rate_limit_rph || 1000 }
 									onChange={ ( value ) =>
 										onChange( {
 											rate_limit_rph:
@@ -209,11 +208,8 @@ const GeneralSettings = ( { settings, onChange, onSave, isSaving } ) => {
 					onClick={ onSave }
 				>
 					{ isSaving
-						? __( 'Saving...', 'woocommerce-ai-syndication' )
-						: __(
-								'Save Changes',
-								'woocommerce-ai-syndication'
-						  ) }
+						? __( 'Saving…', 'woocommerce-ai-syndication' )
+						: __( 'Save Changes', 'woocommerce-ai-syndication' ) }
 				</Button>
 			</div>
 		</>

@@ -24,7 +24,7 @@ const EndpointInfo = () => {
 
 	useEffect( () => {
 		fetchEndpoints();
-	}, [] );
+	}, [] ); // eslint-disable-line react-hooks/exhaustive-deps -- Fetch once on mount.
 
 	const isEnabled = settings.enabled === 'yes';
 
@@ -108,9 +108,7 @@ const EndpointInfo = () => {
 								</td>
 								<td>
 									{ endpoints.ucp ? (
-										<ExternalLink
-											href={ endpoints.ucp }
-										>
+										<ExternalLink href={ endpoints.ucp }>
 											{ endpoints.ucp }
 										</ExternalLink>
 									) : (
@@ -130,9 +128,7 @@ const EndpointInfo = () => {
 								</td>
 								<td>
 									{ endpoints.catalog_api ? (
-										<code>
-											{ endpoints.catalog_api }
-										</code>
+										<code>{ endpoints.catalog_api }</code>
 									) : (
 										<Spinner />
 									) }
@@ -150,9 +146,7 @@ const EndpointInfo = () => {
 								</td>
 								<td>
 									{ endpoints.store_api ? (
-										<code>
-											{ endpoints.store_api }
-										</code>
+										<code>{ endpoints.store_api }</code>
 									) : (
 										<Spinner />
 									) }

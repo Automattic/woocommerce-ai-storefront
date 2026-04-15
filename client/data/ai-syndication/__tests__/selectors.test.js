@@ -95,7 +95,9 @@ describe( 'AI Syndication selectors', () => {
 	describe( 'referential stability', () => {
 		it( 'getSettings returns same reference for repeated calls with same state', () => {
 			const emptyState = {};
-			expect( getSettings( emptyState ) ).toBe( getSettings( emptyState ) );
+			expect( getSettings( emptyState ) ).toBe(
+				getSettings( emptyState )
+			);
 		} );
 
 		it( 'getBots returns same reference for repeated calls with same state', () => {

@@ -21,7 +21,7 @@ const AttributionStats = () => {
 
 	useEffect( () => {
 		fetchStats( period );
-	}, [ period ] );
+	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Refetch when period changes.
 
 	return (
 		<>
@@ -147,10 +147,7 @@ const AttributionStats = () => {
 											{ Object.entries(
 												stats.by_agent
 											).map(
-												( [
-													agent,
-													agentStats,
-												] ) => (
+												( [ agent, agentStats ] ) => (
 													<tr key={ agent }>
 														<td>
 															<strong>
@@ -163,14 +160,10 @@ const AttributionStats = () => {
 															}
 														</td>
 														<td>
-															{
-																stats.currency
-															}{ ' ' }
+															{ stats.currency }{ ' ' }
 															{ parseFloat(
 																agentStats.revenue
-															).toFixed(
-																2
-															) }
+															).toFixed( 2 ) }
 														</td>
 													</tr>
 												)
@@ -235,7 +228,7 @@ const AttributionStats = () => {
 					</ul>
 					<p>
 						{ __(
-							'This data flows through WooCommerce\'s native order attribution system and appears in order details.',
+							"This data flows through WooCommerce's native order attribution system and appears in order details.",
 							'woocommerce-ai-syndication'
 						) }
 					</p>
@@ -254,9 +247,7 @@ const StatCard = ( { label, value } ) => (
 			textAlign: 'center',
 		} }
 	>
-		<div style={ { fontSize: '24px', fontWeight: 'bold' } }>
-			{ value }
-		</div>
+		<div style={ { fontSize: '24px', fontWeight: 'bold' } }>{ value }</div>
 		<div style={ { color: '#757575', fontSize: '13px', marginTop: '4px' } }>
 			{ label }
 		</div>

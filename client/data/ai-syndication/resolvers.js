@@ -4,7 +4,9 @@ import { ADMIN_NAMESPACE } from './constants';
 
 export function* getSettings() {
 	try {
-		const result = yield apiFetch( { path: `${ ADMIN_NAMESPACE }/settings` } );
+		const result = yield apiFetch( {
+			path: `${ ADMIN_NAMESPACE }/settings`,
+		} );
 		yield updateSettings( result );
 	} catch ( error ) {
 		// Settings will remain at defaults.

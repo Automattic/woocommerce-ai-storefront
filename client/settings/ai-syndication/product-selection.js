@@ -173,7 +173,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								value={ productSearch }
 								onChange={ setProductSearch }
 								placeholder={ __(
-									'Search products...',
+									'Search products…',
 									'woocommerce-ai-syndication'
 								) }
 							/>
@@ -198,9 +198,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 												product.id
 											) }
 											onChange={ () =>
-												toggleProduct(
-													product.id
-												)
+												toggleProduct( product.id )
 											}
 										/>
 									) ) }
@@ -226,11 +224,8 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 					onClick={ onSave }
 				>
 					{ isSaving
-						? __( 'Saving...', 'woocommerce-ai-syndication' )
-						: __(
-								'Save Changes',
-								'woocommerce-ai-syndication'
-						  ) }
+						? __( 'Saving…', 'woocommerce-ai-syndication' )
+						: __( 'Save Changes', 'woocommerce-ai-syndication' ) }
 				</Button>
 			</div>
 		</>

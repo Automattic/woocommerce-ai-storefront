@@ -124,7 +124,10 @@ describe( 'AI Syndication reducer', () => {
 
 	describe( 'SET_ENDPOINTS', () => {
 		it( 'replaces endpoints data', () => {
-			const endpoints = { llms_txt: '/llms.txt', ucp: '/.well-known/ucp' };
+			const endpoints = {
+				llms_txt: '/llms.txt',
+				ucp: '/.well-known/ucp',
+			};
 			const state = reducer( defaultState, {
 				type: ACTION_TYPES.SET_ENDPOINTS,
 				data: endpoints,
