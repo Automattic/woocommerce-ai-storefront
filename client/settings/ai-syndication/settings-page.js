@@ -213,7 +213,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 						} }
 					>
 						{ __(
-							'When shoppers ask ChatGPT, Gemini, Claude, Perplexity, or Copilot for product recommendations, your catalog shows up. Checkout stays on your store. You keep every dollar.',
+							'When shoppers ask ChatGPT, Gemini, Claude, Perplexity, or Copilot for product recommendations, your catalog shows up. Checkout happens on your store — no platform fees, no middleman.',
 							'woocommerce-ai-syndication'
 						) }
 					</p>
