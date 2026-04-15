@@ -184,7 +184,11 @@ const StatCard = ( { label, value } ) => (
 
 const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 	<div style={ { maxWidth: '960px' } }>
-		{ /* Status banner with "what happens" details */ }
+		{ /* --------------------------------------------------------- */ }
+		{ /* Group 1: Compact status banner                            */ }
+		{ /* Mirrors the enabled-state banner: title + subtitle + CTA  */ }
+		{ /* Same height, same rhythm. No bullet points here.          */ }
+		{ /* --------------------------------------------------------- */ }
 		<div
 			style={ {
 				background: '#fff',
@@ -194,8 +198,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 				padding: '16px 20px',
 				display: 'flex',
 				justifyContent: 'space-between',
-				alignItems: 'flex-start',
-				gap: '24px',
+				alignItems: 'center',
 			} }
 		>
 			<div>
@@ -217,9 +220,96 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 						'woocommerce-ai-syndication'
 					) }
 				</p>
+			</div>
+			<Button
+				variant="primary"
+				isBusy={ isSaving }
+				disabled={ isSaving }
+				onClick={ () => {
+					onChange( { enabled: 'yes' } );
+					onSave();
+				} }
+				style={ { flexShrink: 0 } }
+			>
+				{ isSaving
+					? __( 'Enabling…', 'woocommerce-ai-syndication' )
+					: __( 'Enable', 'woocommerce-ai-syndication' ) }
+			</Button>
+		</div>
+
+		{ /* --------------------------------------------------------- */ }
+		{ /* Group 2: Value proposition cards                           */ }
+		{ /* Mirrors the enabled-state stat cards row.                  */ }
+		{ /* Same gap, same marginTop, same flex layout.                */ }
+		{ /* Accent color #c3c4c7 (gray) instead of enabled green.     */ }
+		{ /* --------------------------------------------------------- */ }
+		<div
+			style={ {
+				display: 'flex',
+				gap: '16px',
+				marginTop: '24px',
+				flexWrap: 'wrap',
+			} }
+		>
+			<ValueCard
+				title={ __( 'Universal Reach', 'woocommerce-ai-syndication' ) }
+			>
+				{ __(
+					'Works with ChatGPT, Gemini, Claude, Perplexity, Copilot, and any future AI agent. One setup, universal reach — no per-platform integration.',
+					'woocommerce-ai-syndication'
+				) }
+			</ValueCard>
+			<ValueCard
+				title={ __( 'Data Sovereignty', 'woocommerce-ai-syndication' ) }
+			>
+				{ __(
+					'No marketplace middleman. No delegated payments. No platform lock-in. Your checkout, your customer data, your brand experience.',
+					'woocommerce-ai-syndication'
+				) }
+			</ValueCard>
+			<ValueCard
+				title={ __(
+					'Full Order Attribution',
+					'woocommerce-ai-syndication'
+				) }
+			>
+				{ __(
+					'Every AI-referred sale is tracked using standard WooCommerce Order Attribution. See which agent drove each order and how much revenue it generated.',
+					'woocommerce-ai-syndication'
+				) }
+			</ValueCard>
+		</div>
+
+		{ /* --------------------------------------------------------- */ }
+		{ /* Group 3: "What happens" card with Enable CTA              */ }
+		{ /* Mirrors the enabled-state Rate Limits card: same Card     */ }
+		{ /* wrapper, same internal structure with headline, body,     */ }
+		{ /* content, then a divider + action button at the bottom.    */ }
+		{ /* --------------------------------------------------------- */ }
+		<Card style={ { marginTop: '32px' } }>
+			<CardBody>
+				<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
+					{ __(
+						'Sell through every AI assistant — on your terms',
+						'woocommerce-ai-syndication'
+					) }
+				</h3>
+				<p
+					style={ {
+						color: '#50575e',
+						fontSize: '13px',
+						margin: '0 0 16px',
+					} }
+				>
+					{ __(
+						'When shoppers ask ChatGPT, Gemini, Claude, Perplexity, or Copilot for product recommendations, your catalog shows up. Checkout happens on your store — no platform fees, no middleman.',
+						'woocommerce-ai-syndication'
+					) }
+				</p>
+
 				<ul
 					style={ {
-						margin: '12px 0 0',
+						margin: '0',
 						paddingLeft: '18px',
 						color: '#50575e',
 						fontSize: '13px',
@@ -252,89 +342,48 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 						) }
 					</li>
 				</ul>
-			</div>
-			<Button
-				variant="primary"
-				isBusy={ isSaving }
-				disabled={ isSaving }
-				onClick={ () => {
-					onChange( { enabled: 'yes' } );
-					onSave();
-				} }
-				style={ { flexShrink: 0 } }
-			>
-				{ isSaving
-					? __( 'Enabling…', 'woocommerce-ai-syndication' )
-					: __( 'Enable', 'woocommerce-ai-syndication' ) }
-			</Button>
-		</div>
 
-		{ /* Hero headline — bare text, no card wrapper */ }
-		<div style={ { marginTop: '24px', maxWidth: '680px' } }>
-			<h2
-				style={ {
-					fontSize: '20px',
-					margin: '0 0 8px',
-					color: '#1d2327',
-				} }
-			>
-				{ __(
-					'Sell through every AI assistant — on your terms',
-					'woocommerce-ai-syndication'
-				) }
-			</h2>
-			<p
-				style={ {
-					fontSize: '14px',
-					lineHeight: '1.6',
-					color: '#50575e',
-					margin: 0,
-				} }
-			>
-				{ __(
-					'When shoppers ask ChatGPT, Gemini, Claude, Perplexity, or Copilot for product recommendations, your catalog shows up. Checkout happens on your store — no platform fees, no middleman.',
-					'woocommerce-ai-syndication'
-				) }
-			</p>
-		</div>
+				<p
+					style={ {
+						color: '#757575',
+						fontSize: '12px',
+						marginTop: '12px',
+						marginBottom: 0,
+					} }
+				>
+					{ __(
+						'Nothing is modified. This adds read-only discovery endpoints. You can turn it off at any time.',
+						'woocommerce-ai-syndication'
+					) }
+				</p>
 
-		{ /* Value prop cards */ }
-		<div
-			style={ {
-				display: 'flex',
-				gap: '12px',
-				marginTop: '16px',
-				flexWrap: 'wrap',
-			} }
-		>
-			<ValueCard
-				title={ __( 'Universal Reach', 'woocommerce-ai-syndication' ) }
-			>
-				{ __(
-					'Works with ChatGPT, Gemini, Claude, Perplexity, Copilot, and any future AI agent. One setup, universal reach — no per-platform integration.',
-					'woocommerce-ai-syndication'
-				) }
-			</ValueCard>
-			<ValueCard
-				title={ __( 'Data Sovereignty', 'woocommerce-ai-syndication' ) }
-			>
-				{ __(
-					'No marketplace middleman. No delegated payments. No platform lock-in. Your checkout, your customer data, your brand experience.',
-					'woocommerce-ai-syndication'
-				) }
-			</ValueCard>
-			<ValueCard
-				title={ __(
-					'Full Order Attribution',
-					'woocommerce-ai-syndication'
-				) }
-			>
-				{ __(
-					'Every AI-referred sale is tracked using standard WooCommerce Order Attribution. See which agent drove each order and how much revenue it generated.',
-					'woocommerce-ai-syndication'
-				) }
-			</ValueCard>
-		</div>
+				{ /* CTA inside the card, matching Rate Limits save button position */ }
+				<div
+					style={ {
+						marginTop: '16px',
+						paddingTop: '16px',
+						borderTop: '1px solid #f0f0f0',
+					} }
+				>
+					<Button
+						variant="primary"
+						isBusy={ isSaving }
+						disabled={ isSaving }
+						onClick={ () => {
+							onChange( { enabled: 'yes' } );
+							onSave();
+						} }
+					>
+						{ isSaving
+							? __( 'Enabling…', 'woocommerce-ai-syndication' )
+							: __(
+									'Enable AI Syndication',
+									'woocommerce-ai-syndication'
+							  ) }
+					</Button>
+				</div>
+			</CardBody>
+		</Card>
 	</div>
 );
 
