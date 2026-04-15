@@ -185,6 +185,8 @@ class WC_AI_Syndication_Attribution {
 	 * @return array
 	 */
 	public static function get_stats( $period = 'month' ) {
+		global $wpdb;
+
 		$date_map = [
 			'day'   => '1 day ago',
 			'week'  => '1 week ago',
@@ -192,40 +194,74 @@ class WC_AI_Syndication_Attribution {
 			'year'  => '1 year ago',
 		];
 
-		$after = $date_map[ $period ] ?? $date_map['month'];
+		$after    = $date_map[ $period ] ?? $date_map['month'];
+		$after_ts = strtotime( $after );
+		if ( false === $after_ts ) {
+			$after_ts = strtotime( '1 month ago' );
+		}
+		$after_date = gmdate( 'Y-m-d H:i:s', $after_ts );
 
-		$orders = wc_get_orders( [
-			'status'     => [ 'wc-completed', 'wc-processing' ],
-			'limit'      => -1,
-			'return'     => 'ids',
-			'date_after' => $after,
-			'meta_query' => [
-				[
-					'key'     => self::AGENT_META_KEY,
-					'compare' => 'EXISTS',
-				],
-			],
-		] );
+		// Use HPOS tables if available, fall back to post meta.
+		if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
+			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+			$orders_table = $wpdb->prefix . 'wc_orders';
+			$meta_table   = $wpdb->prefix . 'wc_orders_meta';
 
-		$total_orders  = count( $orders );
-		$total_revenue = 0;
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$results = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT agent_meta.meta_value AS agent,
+							COUNT( DISTINCT o.id ) AS order_count,
+							SUM( o.total_amount ) AS revenue
+					 FROM {$orders_table} o
+					 INNER JOIN {$meta_table} agent_meta
+						ON o.id = agent_meta.order_id AND agent_meta.meta_key = %s
+					 WHERE o.status IN ( 'wc-completed', 'wc-processing' )
+					   AND o.date_created_gmt >= %s
+					 GROUP BY agent_meta.meta_value",
+					self::AGENT_META_KEY,
+					$after_date
+				)
+			);
+		} else {
+			// Legacy post-based orders.
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$results = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT pm.meta_value AS agent,
+							COUNT( DISTINCT p.ID ) AS order_count,
+							SUM( pm_total.meta_value ) AS revenue
+					 FROM {$wpdb->posts} p
+					 INNER JOIN {$wpdb->postmeta} pm
+						ON p.ID = pm.post_id AND pm.meta_key = %s
+					 INNER JOIN {$wpdb->postmeta} pm_total
+						ON p.ID = pm_total.post_id AND pm_total.meta_key = '_order_total'
+					 WHERE p.post_type = 'shop_order'
+					   AND p.post_status IN ( 'wc-completed', 'wc-processing' )
+					   AND p.post_date_gmt >= %s
+					 GROUP BY pm.meta_value",
+					self::AGENT_META_KEY,
+					$after_date
+				)
+			);
+		}
+
+		$total_orders  = 0;
+		$total_revenue = 0.0;
 		$by_agent      = [];
 
-		foreach ( $orders as $order_id ) {
-			$order = wc_get_order( $order_id );
-			if ( ! $order ) {
-				continue;
-			}
+		if ( $results ) {
+			foreach ( $results as $row ) {
+				$count   = (int) $row->order_count;
+				$revenue = (float) $row->revenue;
 
-			$agent  = $order->get_meta( self::AGENT_META_KEY );
-			$amount = (float) $order->get_total();
-			$total_revenue += $amount;
-
-			if ( ! isset( $by_agent[ $agent ] ) ) {
-				$by_agent[ $agent ] = [ 'orders' => 0, 'revenue' => 0.0 ];
+				$total_orders  += $count;
+				$total_revenue += $revenue;
+				$by_agent[ $row->agent ] = [
+					'orders'  => $count,
+					'revenue' => $revenue,
+				];
 			}
-			$by_agent[ $agent ]['orders']++;
-			$by_agent[ $agent ]['revenue'] += $amount;
 		}
 
 		return [

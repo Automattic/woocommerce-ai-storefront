@@ -62,8 +62,24 @@ class WC_AI_Syndication_Llms_Txt {
 		header( 'Cache-Control: public, max-age=3600' );
 		header( 'X-Robots-Tag: noindex' );
 
-		echo $this->generate(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markdown content.
+		echo $this->get_cached_content(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markdown content.
 		exit;
+	}
+
+	/**
+	 * Get cached llms.txt content, regenerating if expired.
+	 *
+	 * @return string Markdown content.
+	 */
+	private function get_cached_content() {
+		$cached = get_transient( 'wc_ai_syndication_llms_txt' );
+		if ( false !== $cached ) {
+			return $cached;
+		}
+
+		$content = $this->generate();
+		set_transient( 'wc_ai_syndication_llms_txt', $content, HOUR_IN_SECONDS );
+		return $content;
 	}
 
 	/**
@@ -72,9 +88,9 @@ class WC_AI_Syndication_Llms_Txt {
 	 * @return string Markdown content.
 	 */
 	public function generate() {
-		$site_name   = get_bloginfo( 'name' );
+		$site_name   = wp_strip_all_tags( get_bloginfo( 'name' ) );
 		$site_url    = home_url( '/' );
-		$description = get_bloginfo( 'description' );
+		$description = wp_strip_all_tags( get_bloginfo( 'description' ) );
 		$currency    = get_woocommerce_currency();
 		$settings    = WC_AI_Syndication::get_settings();
 
@@ -118,7 +134,8 @@ class WC_AI_Syndication_Llms_Txt {
 			foreach ( $categories as $category ) {
 				$link = get_term_link( $category );
 				if ( ! is_wp_error( $link ) ) {
-					$lines[] = "- [{$category->name}]({$link}) ({$category->count} products)";
+					$cat_name = wp_strip_all_tags( $category->name );
+					$lines[] = "- [{$cat_name}]({$link}) ({$category->count} products)";
 				}
 			}
 			$lines[] = '';
@@ -131,7 +148,8 @@ class WC_AI_Syndication_Llms_Txt {
 			$lines[] = '';
 			foreach ( $products as $product ) {
 				$price   = wp_strip_all_tags( $product->get_price_html() );
-				$lines[] = "- [{$product->get_name()}](" . $product->get_permalink() . ") - {$price}";
+				$product_name = wp_strip_all_tags( $product->get_name() );
+				$lines[]      = "- [{$product_name}](" . $product->get_permalink() . ") - {$price}";
 			}
 			$lines[] = '';
 		}
