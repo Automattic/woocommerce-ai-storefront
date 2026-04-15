@@ -116,7 +116,7 @@ const AISyndicationSettings = () => {
 };
 
 // ---------------------------------------------------------------------------
-// Value Pitch (shown before enabling)
+// Shared components
 // ---------------------------------------------------------------------------
 
 const ValueCard = ( { title, children } ) => (
@@ -125,12 +125,15 @@ const ValueCard = ( { title, children } ) => (
 			flex: '1 1 0',
 			minWidth: '200px',
 			padding: '20px',
-			background: '#fff',
-			border: '1px solid #e0e0e0',
+			background: '#f6f7f7',
+			border: 'none',
+			borderTop: '3px solid #dcdcde',
 			borderRadius: '4px',
 		} }
 	>
-		<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>{ title }</h3>
+		<h3 style={ { margin: '0 0 8px', fontSize: '14px', color: '#1d2327' } }>
+			{ title }
+		</h3>
 		<p
 			style={ {
 				margin: 0,
@@ -144,9 +147,44 @@ const ValueCard = ( { title, children } ) => (
 	</div>
 );
 
+const StatCard = ( { label, value } ) => (
+	<div
+		style={ {
+			flex: '1 1 0',
+			minWidth: '140px',
+			padding: '16px',
+			background: '#f6f7f7',
+			border: 'none',
+			borderRadius: '4px',
+			textAlign: 'center',
+		} }
+	>
+		<div
+			style={ { fontSize: '24px', fontWeight: '600', color: '#00a32a' } }
+		>
+			{ value }
+		</div>
+		<div
+			style={ {
+				fontSize: '12px',
+				color: '#757575',
+				marginTop: '4px',
+				textTransform: 'uppercase',
+				letterSpacing: '0.5px',
+			} }
+		>
+			{ label }
+		</div>
+	</div>
+);
+
+// ---------------------------------------------------------------------------
+// Pre-enable view (value pitch)
+// ---------------------------------------------------------------------------
+
 const PreEnableView = ( { onChange, onSave, isSaving } ) => (
-	<>
-		{ /* Status banner — same position as the enabled state */ }
+	<div style={ { maxWidth: '960px' } }>
+		{ /* Status banner with "what happens" details */ }
 		<div
 			style={ {
 				background: '#fff',
@@ -156,7 +194,8 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 				padding: '16px 20px',
 				display: 'flex',
 				justifyContent: 'space-between',
-				alignItems: 'center',
+				alignItems: 'flex-start',
+				gap: '24px',
 			} }
 		>
 			<div>
@@ -178,6 +217,41 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 						'woocommerce-ai-syndication'
 					) }
 				</p>
+				<ul
+					style={ {
+						margin: '12px 0 0',
+						paddingLeft: '18px',
+						color: '#50575e',
+						fontSize: '13px',
+						lineHeight: '2',
+						listStyle: 'disc',
+					} }
+				>
+					<li>
+						{ __(
+							'Your product catalog becomes discoverable by AI agents',
+							'woocommerce-ai-syndication'
+						) }
+					</li>
+					<li>
+						{ __(
+							'A machine-readable store guide is published at /llms.txt',
+							'woocommerce-ai-syndication'
+						) }
+					</li>
+					<li>
+						{ __(
+							'AI-referred orders get automatic revenue attribution',
+							'woocommerce-ai-syndication'
+						) }
+					</li>
+					<li>
+						{ __(
+							'You control which products are exposed and who gets access',
+							'woocommerce-ai-syndication'
+						) }
+					</li>
+				</ul>
 			</div>
 			<Button
 				variant="primary"
@@ -187,6 +261,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 					onChange( { enabled: 'yes' } );
 					onSave();
 				} }
+				style={ { flexShrink: 0 } }
 			>
 				{ isSaving
 					? __( 'Enabling…', 'woocommerce-ai-syndication' )
@@ -194,39 +269,41 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 			</Button>
 		</div>
 
-		{ /* Hero pitch */ }
-		<Card style={ { marginTop: '12px' } }>
-			<CardBody>
-				<div style={ { maxWidth: '720px' } }>
-					<h2 style={ { fontSize: '20px', margin: '0 0 12px' } }>
-						{ __(
-							'Sell through every AI assistant — on your terms',
-							'woocommerce-ai-syndication'
-						) }
-					</h2>
-					<p
-						style={ {
-							fontSize: '14px',
-							lineHeight: '1.7',
-							color: '#50575e',
-							margin: 0,
-						} }
-					>
-						{ __(
-							'When shoppers ask ChatGPT, Gemini, Claude, Perplexity, or Copilot for product recommendations, your catalog shows up. Checkout happens on your store — no platform fees, no middleman.',
-							'woocommerce-ai-syndication'
-						) }
-					</p>
-				</div>
-			</CardBody>
-		</Card>
+		{ /* Hero headline — bare text, no card wrapper */ }
+		<div style={ { marginTop: '24px', maxWidth: '680px' } }>
+			<h2
+				style={ {
+					fontSize: '20px',
+					margin: '0 0 8px',
+					color: '#1d2327',
+				} }
+			>
+				{ __(
+					'Sell through every AI assistant — on your terms',
+					'woocommerce-ai-syndication'
+				) }
+			</h2>
+			<p
+				style={ {
+					fontSize: '14px',
+					lineHeight: '1.6',
+					color: '#50575e',
+					margin: 0,
+				} }
+			>
+				{ __(
+					'When shoppers ask ChatGPT, Gemini, Claude, Perplexity, or Copilot for product recommendations, your catalog shows up. Checkout happens on your store — no platform fees, no middleman.',
+					'woocommerce-ai-syndication'
+				) }
+			</p>
+		</div>
 
-		{ /* Value props */ }
+		{ /* Value prop cards */ }
 		<div
 			style={ {
 				display: 'flex',
 				gap: '12px',
-				marginTop: '12px',
+				marginTop: '16px',
 				flexWrap: 'wrap',
 			} }
 		>
@@ -258,89 +335,12 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 				) }
 			</ValueCard>
 		</div>
-
-		{ /* What happens */ }
-		<Card style={ { marginTop: '12px' } }>
-			<CardBody>
-				<h3 style={ { margin: '0 0 12px', fontSize: '14px' } }>
-					{ __(
-						'What happens when you enable',
-						'woocommerce-ai-syndication'
-					) }
-				</h3>
-				<ul
-					style={ {
-						margin: 0,
-						paddingLeft: '20px',
-						lineHeight: '1.8',
-						color: '#50575e',
-						fontSize: '13px',
-					} }
-				>
-					<li>
-						{ __(
-							'Your product catalog becomes discoverable by AI agents',
-							'woocommerce-ai-syndication'
-						) }
-					</li>
-					<li>
-						{ __(
-							'A machine-readable store guide is published at /llms.txt',
-							'woocommerce-ai-syndication'
-						) }
-					</li>
-					<li>
-						{ __(
-							'AI-referred orders get automatic revenue attribution',
-							'woocommerce-ai-syndication'
-						) }
-					</li>
-					<li>
-						{ __(
-							'You control which products are exposed and who gets access',
-							'woocommerce-ai-syndication'
-						) }
-					</li>
-				</ul>
-			</CardBody>
-		</Card>
-	</>
-);
-
-// ---------------------------------------------------------------------------
-// Dashboard (shown after enabling)
-// ---------------------------------------------------------------------------
-
-const StatCard = ( { label, value } ) => (
-	<div
-		style={ {
-			flex: '1 1 0',
-			minWidth: '140px',
-			padding: '16px',
-			background: '#fff',
-			border: '1px solid #e0e0e0',
-			borderRadius: '4px',
-			textAlign: 'center',
-		} }
-	>
-		<div
-			style={ { fontSize: '24px', fontWeight: 'bold', color: '#1d2327' } }
-		>
-			{ value }
-		</div>
-		<div
-			style={ {
-				fontSize: '12px',
-				color: '#757575',
-				marginTop: '4px',
-				textTransform: 'uppercase',
-				letterSpacing: '0.5px',
-			} }
-		>
-			{ label }
-		</div>
 	</div>
 );
+
+// ---------------------------------------------------------------------------
+// Post-enable view (dashboard)
+// ---------------------------------------------------------------------------
 
 const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 	const stats = useSelect(
@@ -381,7 +381,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 	const botList = Array.isArray( bots ) ? bots : Object.values( bots || {} );
 
 	return (
-		<>
+		<div style={ { maxWidth: '960px' } }>
 			{ /* Status banner */ }
 			<div
 				style={ {
@@ -432,8 +432,8 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 			<div
 				style={ {
 					display: 'flex',
-					gap: '12px',
-					marginTop: '12px',
+					gap: '16px',
+					marginTop: '24px',
 					flexWrap: 'wrap',
 				} }
 			>
@@ -456,7 +456,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						'AI Orders (Month)',
 						'woocommerce-ai-syndication'
 					) }
-					value={ stats?.total_orders ?? '—' }
+					value={ stats?.total_orders ?? '\u2014' }
 				/>
 				<StatCard
 					label={ __(
@@ -468,13 +468,13 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 							? `${ stats.currency || '$' } ${ parseFloat(
 									stats.total_revenue || 0
 							  ).toFixed( 2 ) }`
-							: '—'
+							: '\u2014'
 					}
 				/>
 			</div>
 
-			{ /* Rate limits with presets */ }
-			<Card style={ { marginTop: '12px' } }>
+			{ /* Rate limits with presets + save button inside */ }
+			<Card style={ { marginTop: '32px' } }>
 				<CardBody>
 					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
 						{ __( 'Rate Limits', 'woocommerce-ai-syndication' ) }
@@ -595,23 +595,32 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 							'woocommerce-ai-syndication'
 						) }
 					</p>
+
+					{ /* Save button inside the card */ }
+					<div
+						style={ {
+							marginTop: '16px',
+							paddingTop: '16px',
+							borderTop: '1px solid #f0f0f0',
+						} }
+					>
+						<Button
+							variant="primary"
+							isBusy={ isSaving }
+							disabled={ isSaving }
+							onClick={ onSave }
+						>
+							{ isSaving
+								? __( 'Saving…', 'woocommerce-ai-syndication' )
+								: __(
+										'Save Changes',
+										'woocommerce-ai-syndication'
+								  ) }
+						</Button>
+					</div>
 				</CardBody>
 			</Card>
-
-			{ /* Save */ }
-			<div style={ { marginTop: '12px' } }>
-				<Button
-					variant="primary"
-					isBusy={ isSaving }
-					disabled={ isSaving }
-					onClick={ onSave }
-				>
-					{ isSaving
-						? __( 'Saving…', 'woocommerce-ai-syndication' )
-						: __( 'Save Changes', 'woocommerce-ai-syndication' ) }
-				</Button>
-			</div>
-		</>
+		</div>
 	);
 };
 
