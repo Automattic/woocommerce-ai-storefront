@@ -782,7 +782,19 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 // ---------------------------------------------------------------------------
 
 const OverviewTab = ( { settings, onChange, onSave, isSaving } ) => {
-	if ( settings.enabled === 'yes' ) {
+	// Track which view was active when a save started, so the view
+	// doesn't flip mid-save (which swaps Enable/Disable labels).
+	const [ viewState, setViewState ] = useState( settings.enabled );
+
+	useEffect( () => {
+		if ( ! isSaving ) {
+			setViewState( settings.enabled );
+		}
+	}, [ isSaving, settings.enabled ] );
+
+	const isEnabled = viewState === 'yes';
+
+	if ( isEnabled ) {
 		return (
 			<PostEnableView
 				settings={ settings }
