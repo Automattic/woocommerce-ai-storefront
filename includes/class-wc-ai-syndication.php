@@ -237,12 +237,15 @@ class WC_AI_Syndication {
 			'selected_products'      => [],
 			'rate_limit_rpm'         => 60,
 			'rate_limit_rph'         => 1000,
-			'allowed_crawlers'       => WC_AI_Syndication_Robots::AI_CRAWLERS,
 		];
 
 		$settings = get_option( self::SETTINGS_OPTION, [] );
+		$merged   = wp_parse_args( is_array( $settings ) ? $settings : [], $defaults );
 
-		return wp_parse_args( $settings, $defaults );
+		// Allowed crawlers is a runtime default, not stored in the option.
+		$merged['allowed_crawlers'] = $settings['allowed_crawlers'] ?? WC_AI_Syndication_Robots::AI_CRAWLERS;
+
+		return $merged;
 	}
 
 	/**
@@ -252,20 +255,31 @@ class WC_AI_Syndication {
 	 * @return bool
 	 */
 	public static function update_settings( $settings ) {
-		$current  = self::get_settings();
-		$merged   = wp_parse_args( $settings, $current );
+		// Read directly from DB, bypassing any object cache.
+		wp_cache_delete( self::SETTINGS_OPTION, 'options' );
+		$current = self::get_settings();
+		$merged  = wp_parse_args( $settings, $current );
 
-		// Sanitize.
-		$merged['enabled']                = in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no';
-		$merged['product_selection_mode'] = in_array( $merged['product_selection_mode'], [ 'all', 'categories', 'selected' ], true )
-			? $merged['product_selection_mode']
-			: 'all';
-		$merged['selected_categories']    = array_map( 'absint', (array) $merged['selected_categories'] );
-		$merged['selected_products']      = array_map( 'absint', (array) $merged['selected_products'] );
-		$merged['rate_limit_rpm']         = max( 1, absint( $merged['rate_limit_rpm'] ) );
-		$merged['rate_limit_rph']         = max( 1, absint( $merged['rate_limit_rph'] ) );
+		// Sanitize — only store known keys to keep the option clean.
+		$clean = [
+			'enabled'                => in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no',
+			'product_selection_mode' => in_array( $merged['product_selection_mode'], [ 'all', 'categories', 'selected' ], true )
+				? $merged['product_selection_mode']
+				: 'all',
+			'selected_categories'    => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
+			'selected_products'      => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
+			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 60 ) ),
+			'rate_limit_rph'         => max( 1, absint( $merged['rate_limit_rph'] ?? 1000 ) ),
+		];
 
-		return update_option( self::SETTINGS_OPTION, $merged, false );
+		// Use autoload=true so the option is always in the alloptions cache.
+		$result = update_option( self::SETTINGS_OPTION, $clean, true );
+
+		// Bust the cache so the next get_settings() reads the fresh value.
+		wp_cache_delete( self::SETTINGS_OPTION, 'options' );
+		wp_cache_delete( 'alloptions', 'options' );
+
+		return $result;
 	}
 
 	/**
