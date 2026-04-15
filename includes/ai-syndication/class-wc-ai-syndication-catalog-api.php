@@ -480,58 +480,40 @@ class WC_AI_Syndication_Catalog_Api {
 		// Resolve the current bot's display name for attribution.
 		$bot_name = $this->bot_manager->get_bot_name( $bot_id );
 
-		$session_id    = sanitize_text_field( $request->get_param( 'session_id' ) ?? '' );
-		$response_data = [
-			'items'        => $validated_items,
-			'checkout_url' => add_query_arg(
-				[
-					'utm_source'    => $bot_name ? sanitize_title( $bot_name ) : 'ai_agent',
-					'utm_medium'    => 'ai_agent',
-					'ai_session_id' => $session_id,
-				],
-				wc_get_checkout_url()
-			),
-			'cart_url'     => $base_url,
-			'store_api'    => [
-				'batch_endpoint' => rest_url( 'wc/store/v1/batch' ),
-				'add_item'       => rest_url( 'wc/store/v1/cart/add-item' ),
-				'instructions'   => 'Use the WooCommerce Store API to add items to cart, then redirect the customer to checkout_url.',
-			],
-		];
+		$session_id      = sanitize_text_field( $request->get_param( 'session_id' ) ?? '' );
+		$attribution     = array_filter( [
+			'utm_source'    => $bot_name ? sanitize_title( $bot_name ) : 'ai_agent',
+			'utm_medium'    => 'ai_agent',
+			'ai_session_id' => $session_id,
+		] );
 
-		// For single items: direct add-to-cart URL.
-		// For variable products, use the variation_id as the add-to-cart value.
-		if ( 1 === count( $validated_items ) ) {
-			$item       = $validated_items[0];
-			$add_to_cart_id = $item['variation_id'] ?: $item['product_id'];
-			$response_data['direct_add_url'] = add_query_arg(
-				array_filter( [
-					'add-to-cart'   => $add_to_cart_id,
-					'quantity'      => $item['quantity'],
-					'utm_source'    => $bot_name ? sanitize_title( $bot_name ) : 'ai_agent',
-					'utm_medium'    => 'ai_agent',
-					'ai_session_id' => $session_id,
-				] ),
-				home_url( '/' )
-			);
-		}
-
-		// For any number of items: shareable checkout link format.
-		// Format: ?products=ID:QTY,ID:QTY (uses variation ID when applicable).
+		// Build the checkout link (recommended) — adds items AND redirects
+		// straight to checkout in one step. Customer never sees the cart.
 		$product_pairs = [];
 		foreach ( $validated_items as $item ) {
 			$item_id         = $item['variation_id'] ?: $item['product_id'];
 			$product_pairs[] = $item_id . ':' . $item['quantity'];
 		}
-		$response_data['checkout_link'] = add_query_arg(
-			array_filter( [
-				'products'      => implode( ',', $product_pairs ),
-				'utm_source'    => $bot_name ? sanitize_title( $bot_name ) : 'ai_agent',
-				'utm_medium'    => 'ai_agent',
-				'ai_session_id' => $session_id,
-			] ),
+		$checkout_link = add_query_arg(
+			array_merge( [ 'products' => implode( ',', $product_pairs ) ], $attribution ),
 			home_url( '/checkout-link/' )
 		);
+
+		$response_data = [
+			'items'         => $validated_items,
+			'checkout_link' => $checkout_link,
+		];
+
+		// For single items, also include a direct add-to-cart URL.
+		// This only adds to cart — does not redirect to checkout.
+		if ( 1 === count( $validated_items ) ) {
+			$item           = $validated_items[0];
+			$add_to_cart_id = $item['variation_id'] ?: $item['product_id'];
+			$response_data['add_to_cart_url'] = add_query_arg(
+				array_merge( [ 'add-to-cart' => $add_to_cart_id, 'quantity' => $item['quantity'] ], $attribution ),
+				home_url( '/' )
+			);
+		}
 
 		return new WP_REST_Response( $response_data );
 	}

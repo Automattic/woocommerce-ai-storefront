@@ -175,17 +175,25 @@ class WC_AI_Syndication_Ucp {
 				],
 			],
 
-			// Cart and checkout URL patterns.
-			'cart_sync'        => [
-				'enabled'       => true,
-				'store_api'     => rest_url( 'wc/store/v1' ),
+			// Purchase URLs — two patterns for different flows.
+			'purchase'         => [
+				// Recommended: checkout links add items AND redirect to checkout in one step.
+				// The customer never sees the cart — fewest clicks to purchase.
+				'checkout_link' => [
+					'template'    => $site_url . 'checkout-link/?products={product_id}:{quantity}',
+					'multi_item'  => $site_url . 'checkout-link/?products={product_id}:{quantity},{product_id}:{quantity}',
+					'with_coupon' => $site_url . 'checkout-link/?products={product_id}:{quantity}&coupon={coupon_code}',
+					'note'        => 'For variable products, use the variation_id in place of product_id. Adds items to cart and redirects directly to checkout.',
+				],
+				// Alternative: add-to-cart URLs only add items to the cart.
+				// The customer must navigate to checkout separately. Use when
+				// you want the customer to continue browsing the store.
 				'add_to_cart'   => [
 					'simple'   => $site_url . '?add-to-cart={product_id}&quantity={quantity}',
 					'variable' => $site_url . '?add-to-cart={variation_id}&quantity={quantity}',
-					'note'     => 'For variable products, use the variation_id from the product detail API. Grouped and external products cannot be added via URL.',
+					'note'     => 'Adds to cart only — does not redirect to checkout. Grouped and external products cannot be added via URL.',
 				],
-				'checkout_link' => $site_url . 'checkout-link/?products={product_id}:{quantity},{product_id}:{quantity}',
-				'description'   => 'Use add_to_cart URLs for single items or checkout_link for multi-item carts. Both support attribution parameters.',
+				'store_api'     => rest_url( 'wc/store/v1' ),
 			],
 
 			// Attribution via standard WooCommerce Order Attribution.
