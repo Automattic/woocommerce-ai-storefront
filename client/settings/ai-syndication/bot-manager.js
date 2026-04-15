@@ -6,20 +6,16 @@ import {
 	CardHeader,
 	Button,
 	TextControl,
-	ToggleControl,
 	Modal,
 	Notice,
 	Spinner,
-	__experimentalHStack as HStack,
+	Flex,
 } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
 
 const BotManager = () => {
-	const bots = useSelect(
-		( select ) => select( STORE_NAME ).getBots(),
-		[]
-	);
+	const bots = useSelect( ( select ) => select( STORE_NAME ).getBots(), [] );
 	const isLoading = useSelect(
 		( select ) => select( STORE_NAME ).isLoadingBots(),
 		[]
@@ -29,8 +25,14 @@ const BotManager = () => {
 		[]
 	);
 
-	const { fetchBots, createBot, deleteBot, updateBot, regenerateBotKey, setNewBotKey } =
-		useDispatch( STORE_NAME );
+	const {
+		fetchBots,
+		createBot,
+		deleteBot,
+		updateBot,
+		regenerateBotKey,
+		setNewBotKey,
+	} = useDispatch( STORE_NAME );
 
 	const [ showCreateModal, setShowCreateModal ] = useState( false );
 	const [ newBotName, setNewBotName ] = useState( '' );
@@ -38,7 +40,7 @@ const BotManager = () => {
 
 	useEffect( () => {
 		fetchBots();
-	}, [] );
+	}, [] ); // eslint-disable-line react-hooks/exhaustive-deps -- Fetch once on mount.
 
 	const handleCreate = () => {
 		if ( newBotName.trim() ) {
@@ -81,10 +83,7 @@ const BotManager = () => {
 						{ newBotKey.api_key }
 					</code>
 					<p style={ { marginTop: '8px' } }>
-						{ __(
-							'Bot:',
-							'woocommerce-ai-syndication'
-						) }{ ' ' }
+						{ __( 'Bot:', 'woocommerce-ai-syndication' ) }{ ' ' }
 						<strong>{ newBotKey.name }</strong>
 					</p>
 				</Notice>
@@ -92,7 +91,7 @@ const BotManager = () => {
 
 			<Card>
 				<CardHeader>
-					<HStack>
+					<Flex>
 						<h2>
 							{ __(
 								'Registered AI Agents',
@@ -104,12 +103,9 @@ const BotManager = () => {
 							onClick={ () => setShowCreateModal( true ) }
 							size="compact"
 						>
-							{ __(
-								'Add Agent',
-								'woocommerce-ai-syndication'
-							) }
+							{ __( 'Add Agent', 'woocommerce-ai-syndication' ) }
 						</Button>
-					</HStack>
+					</Flex>
 				</CardHeader>
 				<CardBody>
 					<p>
@@ -145,7 +141,7 @@ const BotManager = () => {
 											: '#fff',
 								} }
 							>
-								<HStack alignment="top">
+								<Flex alignment="top">
 									<div style={ { flex: 1 } }>
 										<strong>{ bot.name }</strong>
 										{ bot.status === 'revoked' && (
@@ -187,7 +183,7 @@ const BotManager = () => {
 											) }
 										</small>
 									</div>
-									<HStack spacing={ 2 }>
+									<Flex spacing={ 2 }>
 										{ bot.status === 'active' ? (
 											<Button
 												variant="secondary"
@@ -224,9 +220,7 @@ const BotManager = () => {
 											variant="secondary"
 											size="compact"
 											onClick={ () =>
-												regenerateBotKey(
-													bot.id
-												)
+												regenerateBotKey( bot.id )
 											}
 										>
 											{ __(
@@ -239,9 +233,7 @@ const BotManager = () => {
 											size="compact"
 											isDestructive
 											onClick={ () =>
-												setConfirmDelete(
-													bot.id
-												)
+												setConfirmDelete( bot.id )
 											}
 										>
 											{ __(
@@ -249,8 +241,8 @@ const BotManager = () => {
 												'woocommerce-ai-syndication'
 											) }
 										</Button>
-									</HStack>
-								</HStack>
+									</Flex>
+								</Flex>
 							</div>
 						) ) }
 				</CardBody>
@@ -277,16 +269,13 @@ const BotManager = () => {
 						onChange={ setNewBotName }
 						placeholder="ChatGPT"
 					/>
-					<HStack>
+					<Flex>
 						<Button
 							variant="primary"
 							onClick={ handleCreate }
 							disabled={ ! newBotName.trim() }
 						>
-							{ __(
-								'Create',
-								'woocommerce-ai-syndication'
-							) }
+							{ __( 'Create', 'woocommerce-ai-syndication' ) }
 						</Button>
 						<Button
 							variant="tertiary"
@@ -294,16 +283,13 @@ const BotManager = () => {
 						>
 							{ __( 'Cancel', 'woocommerce-ai-syndication' ) }
 						</Button>
-					</HStack>
+					</Flex>
 				</Modal>
 			) }
 
 			{ confirmDelete && (
 				<Modal
-					title={ __(
-						'Delete Agent',
-						'woocommerce-ai-syndication'
-					) }
+					title={ __( 'Delete Agent', 'woocommerce-ai-syndication' ) }
 					onRequestClose={ () => setConfirmDelete( null ) }
 				>
 					<p>
@@ -312,13 +298,11 @@ const BotManager = () => {
 							'woocommerce-ai-syndication'
 						) }
 					</p>
-					<HStack>
+					<Flex>
 						<Button
 							variant="primary"
 							isDestructive
-							onClick={ () =>
-								handleDelete( confirmDelete )
-							}
+							onClick={ () => handleDelete( confirmDelete ) }
 						>
 							{ __( 'Delete', 'woocommerce-ai-syndication' ) }
 						</Button>
@@ -328,7 +312,7 @@ const BotManager = () => {
 						>
 							{ __( 'Cancel', 'woocommerce-ai-syndication' ) }
 						</Button>
-					</HStack>
+					</Flex>
 				</Modal>
 			) }
 		</>

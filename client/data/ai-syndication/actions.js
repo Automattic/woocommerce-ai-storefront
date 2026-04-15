@@ -50,6 +50,7 @@ export function saveSettings() {
 			globalDispatch( 'core/notices' ).createErrorNotice(
 				__( 'Error saving settings.', 'woocommerce-ai-syndication' )
 			);
+			return;
 		}
 
 		dispatch.setIsSaving( false, null );
@@ -99,7 +100,10 @@ export function createBot( name, permissions ) {
 			dispatch.fetchBots();
 
 			globalDispatch( 'core/notices' ).createSuccessNotice(
-				__( 'Bot created. Copy the API key now - it won\'t be shown again.', 'woocommerce-ai-syndication' )
+				__(
+					"Bot created. Copy the API key now - it won't be shown again.",
+					'woocommerce-ai-syndication'
+				)
 			);
 		} catch ( error ) {
 			globalDispatch( 'core/notices' ).createErrorNotice(
@@ -160,7 +164,10 @@ export function regenerateBotKey( botId ) {
 			dispatch.fetchBots();
 
 			globalDispatch( 'core/notices' ).createSuccessNotice(
-				__( 'API key regenerated. Copy it now - it won\'t be shown again.', 'woocommerce-ai-syndication' )
+				__(
+					"API key regenerated. Copy it now - it won't be shown again.",
+					'woocommerce-ai-syndication'
+				)
 			);
 		} catch ( error ) {
 			globalDispatch( 'core/notices' ).createErrorNotice(
@@ -174,7 +181,9 @@ export function fetchStats( period ) {
 	return async ( { dispatch } ) => {
 		try {
 			const stats = await apiFetch( {
-				path: `${ ADMIN_NAMESPACE }/stats?period=${ period || 'month' }`,
+				path: `${ ADMIN_NAMESPACE }/stats?period=${
+					period || 'month'
+				}`,
 			} );
 			dispatch.setStats( stats );
 		} catch ( error ) {

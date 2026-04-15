@@ -65,18 +65,27 @@ class WC_AI_Syndication_Robots {
 		$output .= "\n# WooCommerce AI Syndication\n";
 		$output .= "# Machine-readable store data for AI-assisted product discovery\n\n";
 
+		// Derive paths from actual WooCommerce permalink settings.
+		$shop_path     = wp_parse_url( wc_get_page_permalink( 'shop' ), PHP_URL_PATH ) ?: '/shop/';
+		$cart_path     = wp_parse_url( wc_get_page_permalink( 'cart' ), PHP_URL_PATH ) ?: '/cart/';
+		$checkout_path = wp_parse_url( wc_get_page_permalink( 'checkout' ), PHP_URL_PATH ) ?: '/checkout/';
+		$account_path  = wp_parse_url( wc_get_page_permalink( 'myaccount' ), PHP_URL_PATH ) ?: '/my-account/';
+
+		$product_base  = '/' . trim( get_option( 'woocommerce_permalinks', [] )['product_base'] ?? 'product', '/' ) . '/';
+		$category_base = '/' . trim( get_option( 'woocommerce_permalinks', [] )['category_base'] ?? 'product-category', '/' ) . '/';
+
 		foreach ( $allowed_bots as $bot ) {
 			$bot     = sanitize_text_field( $bot );
 			$output .= "User-agent: {$bot}\n";
 			$output .= "Allow: /llms.txt\n";
 			$output .= "Allow: /.well-known/ucp\n";
 			$output .= "Allow: /wp-json/wc/v3/ai-syndication/\n";
-			$output .= "Allow: /shop/\n";
-			$output .= "Allow: /product/\n";
-			$output .= "Allow: /product-category/\n";
-			$output .= "Disallow: /cart/\n";
-			$output .= "Disallow: /checkout/\n";
-			$output .= "Disallow: /my-account/\n";
+			$output .= "Allow: {$shop_path}\n";
+			$output .= "Allow: {$product_base}\n";
+			$output .= "Allow: {$category_base}\n";
+			$output .= "Disallow: {$cart_path}\n";
+			$output .= "Disallow: {$checkout_path}\n";
+			$output .= "Disallow: {$account_path}\n";
 			$output .= "\n";
 		}
 

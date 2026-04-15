@@ -44,10 +44,6 @@ class WC_AI_Syndication_Bot_Manager {
 	 */
 	public function authenticate( $request ) {
 		$api_key = $request->get_header( 'X-AI-Agent-Key' );
-		if ( empty( $api_key ) ) {
-			// Also check query param fallback for simpler integrations.
-			$api_key = $request->get_param( 'ai_agent_key' );
-		}
 
 		if ( empty( $api_key ) ) {
 			return new WP_Error(
@@ -86,18 +82,16 @@ class WC_AI_Syndication_Bot_Manager {
 		$api_key = 'wc_ai_' . wp_generate_password( 32, false );
 		$bots    = $this->get_bots();
 
-		$default_permissions = [
-			'read_products'  => true,
-			'read_categories' => true,
-			'prepare_cart'   => true,
-			'check_inventory' => true,
-		];
+		$sanitized_permissions = [];
+		foreach ( self::VALID_PERMISSIONS as $key ) {
+			$sanitized_permissions[ $key ] = isset( $permissions[ $key ] ) ? (bool) $permissions[ $key ] : true;
+		}
 
 		$bots[ $bot_id ] = [
 			'name'        => sanitize_text_field( $name ),
 			'key_hash'    => wp_hash_password( $api_key ),
 			'key_prefix'  => substr( $api_key, 0, 10 ) . '...',
-			'permissions'  => wp_parse_args( $permissions, $default_permissions ),
+			'permissions'  => $sanitized_permissions,
 			'status'      => 'active',
 			'created_at'  => current_time( 'mysql', true ),
 			'last_access' => null,

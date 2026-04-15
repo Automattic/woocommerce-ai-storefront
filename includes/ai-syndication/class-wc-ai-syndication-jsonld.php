@@ -97,31 +97,32 @@ class WC_AI_Syndication_JsonLd {
 			}
 		}
 
-		// Weight and dimensions.
+		// Weight and dimensions using store-configured units.
 		if ( $product->has_weight() ) {
 			$markup['weight'] = [
 				'@type'    => 'QuantitativeValue',
 				'value'    => $product->get_weight(),
-				'unitCode' => 'LBR',
+				'unitCode' => $this->get_weight_unit_code(),
 			];
 		}
 
 		if ( $product->has_dimensions() ) {
-			$dimensions       = $product->get_dimensions( false );
+			$dimensions      = $product->get_dimensions( false );
+			$dimension_unit  = $this->get_dimension_unit_code();
 			$markup['depth']  = [
 				'@type'    => 'QuantitativeValue',
 				'value'    => $dimensions['length'],
-				'unitCode' => 'CMT',
+				'unitCode' => $dimension_unit,
 			];
 			$markup['width']  = [
 				'@type'    => 'QuantitativeValue',
 				'value'    => $dimensions['width'],
-				'unitCode' => 'CMT',
+				'unitCode' => $dimension_unit,
 			];
 			$markup['height'] = [
 				'@type'    => 'QuantitativeValue',
 				'value'    => $dimensions['height'],
-				'unitCode' => 'CMT',
+				'unitCode' => $dimension_unit,
 			];
 		}
 
@@ -264,5 +265,38 @@ class WC_AI_Syndication_JsonLd {
 		}
 
 		return $items;
+	}
+
+	/**
+	 * Map WooCommerce weight unit to UN/CEFACT unit code.
+	 *
+	 * @return string
+	 */
+	private function get_weight_unit_code() {
+		$unit_map = [
+			'kg'  => 'KGM',
+			'g'   => 'GRM',
+			'lbs' => 'LBR',
+			'oz'  => 'ONZ',
+		];
+		$wc_unit = get_option( 'woocommerce_weight_unit', 'kg' );
+		return $unit_map[ $wc_unit ] ?? 'KGM';
+	}
+
+	/**
+	 * Map WooCommerce dimension unit to UN/CEFACT unit code.
+	 *
+	 * @return string
+	 */
+	private function get_dimension_unit_code() {
+		$unit_map = [
+			'cm' => 'CMT',
+			'm'  => 'MTR',
+			'mm' => 'MMT',
+			'in' => 'INH',
+			'yd' => 'YRD',
+		];
+		$wc_unit = get_option( 'woocommerce_dimension_unit', 'cm' );
+		return $unit_map[ $wc_unit ] ?? 'CMT';
 	}
 }

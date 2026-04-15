@@ -175,7 +175,7 @@ class WC_AI_Syndication_Attribution {
 		}
 
 		$agent = $order->get_meta( self::AGENT_META_KEY );
-		echo $agent ? esc_html( ucfirst( $agent ) ) : '&mdash;';
+		echo $agent ? esc_html( $agent ) : '&mdash;';
 	}
 
 	/**
