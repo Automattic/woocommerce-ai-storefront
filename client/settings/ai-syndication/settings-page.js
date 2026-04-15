@@ -1,4 +1,3 @@
-import { useState, useEffect } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
 import {
 	Card,
@@ -6,9 +5,7 @@ import {
 	CardHeader,
 	Button,
 	ToggleControl,
-	SelectControl,
 	TextControl,
-	Notice,
 	TabPanel,
 	Spinner,
 	Flex,

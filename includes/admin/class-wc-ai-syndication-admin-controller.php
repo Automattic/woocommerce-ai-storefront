@@ -215,11 +215,12 @@ class WC_AI_Syndication_Admin_Controller {
 			}
 		}
 
+		$old_settings = WC_AI_Syndication::get_settings();
 		WC_AI_Syndication::update_settings( $data );
 
-		// Flush rewrite rules when toggling on/off.
-		if ( isset( $data['enabled'] ) ) {
-			flush_rewrite_rules();
+		// Flush rewrite rules only when the enabled state actually changes.
+		if ( isset( $data['enabled'] ) && $data['enabled'] !== ( $old_settings['enabled'] ?? 'no' ) ) {
+			add_action( 'shutdown', 'flush_rewrite_rules' );
 		}
 
 		return new WP_REST_Response( WC_AI_Syndication::get_settings() );

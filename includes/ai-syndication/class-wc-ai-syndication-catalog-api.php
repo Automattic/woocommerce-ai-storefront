@@ -186,13 +186,13 @@ class WC_AI_Syndication_Catalog_Api {
 	private function get_required_permission( $route ) {
 		$namespace = '/' . self::NAMESPACE;
 
-		if ( str_starts_with( $route, $namespace . '/products' ) ) {
+		if ( 0 === strpos( $route, $namespace . '/products' ) ) {
 			return 'read_products';
 		}
-		if ( str_starts_with( $route, $namespace . '/categories' ) ) {
+		if ( 0 === strpos( $route, $namespace . '/categories' ) ) {
 			return 'read_categories';
 		}
-		if ( str_starts_with( $route, $namespace . '/cart/prepare' ) ) {
+		if ( 0 === strpos( $route, $namespace . '/cart/prepare' ) ) {
 			return 'prepare_cart';
 		}
 
@@ -272,16 +272,23 @@ class WC_AI_Syndication_Catalog_Api {
 			$selected_cats = array_map( 'absint', $settings['selected_categories'] );
 			$existing_cats = isset( $query_args['category'] ) ? $query_args['category'] : [];
 			if ( ! empty( $existing_cats ) ) {
-				// Intersect requested categories with allowed categories.
-				$cat_terms     = get_terms( [
+				// Resolve requested category slugs to IDs, then intersect with allowed categories.
+				$cat_terms = get_terms( [
 					'taxonomy' => 'product_cat',
 					'slug'     => $existing_cats,
 					'fields'   => 'ids',
 				] );
-				$query_args['category'] = array_intersect(
-					is_wp_error( $cat_terms ) ? [] : $cat_terms,
-					$selected_cats
-				);
+				$requested_ids = is_wp_error( $cat_terms ) ? [] : $cat_terms;
+				$allowed_ids   = array_values( array_intersect( $requested_ids, $selected_cats ) );
+
+				unset( $query_args['category'] );
+				$query_args['tax_query'] = [
+					[
+						'taxonomy' => 'product_cat',
+						'field'    => 'term_id',
+						'terms'    => $allowed_ids,
+					],
+				];
 			} else {
 				$query_args['tax_query'] = [
 					[
@@ -468,21 +475,7 @@ class WC_AI_Syndication_Catalog_Api {
 			);
 		}
 
-		// Build a redirect URL that adds all items to cart.
-		// Uses WooCommerce's native add-to-cart mechanism.
 		$base_url = wc_get_cart_url();
-		$add_urls = [];
-
-		foreach ( $validated_items as $item ) {
-			$add_urls[] = add_query_arg(
-				array_filter( [
-					'add-to-cart'  => $item['product_id'],
-					'quantity'     => $item['quantity'],
-					'variation_id' => $item['variation_id'] ?: null,
-				] ),
-				home_url( '/' )
-			);
-		}
 
 		// Resolve the current bot's display name for attribution.
 		$bots        = $this->bot_manager->get_bots_for_display();

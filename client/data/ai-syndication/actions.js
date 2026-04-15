@@ -50,6 +50,7 @@ export function saveSettings() {
 			globalDispatch( 'core/notices' ).createErrorNotice(
 				__( 'Error saving settings.', 'woocommerce-ai-syndication' )
 			);
+			return;
 		}
 
 		dispatch.setIsSaving( false, null );

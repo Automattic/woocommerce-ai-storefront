@@ -113,7 +113,7 @@ AI agents are becoming a primary product discovery channel. Merchants need a way
 **Entry point:** `client/settings/ai-syndication/index.js` → renders into `#wc-ai-syndication-settings`
 
 **Data store:** `client/data/ai-syndication/` — uses `@wordpress/data` with `createReduxStore`
-- Store name: `wc-ai-syndication`
+- Store name: `wc/ai-syndication`
 - Async actions use thunks (not generators like the Stripe plugin's older pattern)
 - Resolvers use generators with `yield apiFetch()`
 

@@ -53,10 +53,6 @@ class BotManagerTest extends \PHPUnit\Framework\TestCase {
 			->once()
 			->andReturn( '$P$BhashedValue' );
 
-		Functions\expect( 'wp_parse_args' )
-			->once()
-			->andReturnUsing( fn( $args, $defaults ) => array_merge( $defaults, $args ) );
-
 		Functions\expect( 'update_option' )
 			->once()
 			->andReturn( true );
@@ -80,8 +76,6 @@ class BotManagerTest extends \PHPUnit\Framework\TestCase {
 		Functions\expect( 'wp_generate_password' )->andReturn( 'randomchars1234567890123456789012' );
 		Functions\expect( 'sanitize_text_field' )->andReturn( 'Bot' );
 		Functions\expect( 'current_time' )->andReturn( '2026-01-01 00:00:00' );
-		Functions\expect( 'wp_parse_args' )
-			->andReturnUsing( fn( $args, $defaults ) => array_merge( $defaults, $args ) );
 
 		$stored_bots = null;
 		Functions\expect( 'wp_hash_password' )
@@ -110,7 +104,6 @@ class BotManagerTest extends \PHPUnit\Framework\TestCase {
 	public function test_authenticate_returns_error_when_no_key_provided(): void {
 		$request = \Mockery::mock( 'WP_REST_Request' );
 		$request->shouldReceive( 'get_header' )->with( 'X-AI-Agent-Key' )->andReturn( null );
-		$request->shouldReceive( 'get_param' )->with( 'ai_agent_key' )->andReturn( null );
 
 		Functions\expect( '__' )->andReturnFirstArg();
 
@@ -204,29 +197,17 @@ class BotManagerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'ai_syndication_invalid_key', $result->get_error_code() );
 	}
 
-	public function test_authenticate_uses_query_param_fallback(): void {
+	public function test_authenticate_requires_header_only(): void {
 		$request = \Mockery::mock( 'WP_REST_Request' );
 		$request->shouldReceive( 'get_header' )->with( 'X-AI-Agent-Key' )->andReturn( null );
-		$request->shouldReceive( 'get_param' )->with( 'ai_agent_key' )->andReturn( 'query_key' );
 
-		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
-
-		Functions\expect( 'get_option' )
-			->andReturn( [
-				'bot-q' => [
-					'key_hash' => '$2y$10$querybot',
-					'status'   => 'active',
-				],
-			] );
-
-		Functions\expect( 'wp_check_password' )->andReturn( true );
-		Functions\expect( 'get_transient' )->andReturn( 0 );
-		Functions\expect( 'set_transient' )->andReturn( true );
-		Functions\expect( 'has_action' )->andReturn( true );
+		Functions\expect( '__' )->andReturnFirstArg();
 
 		$result = $this->bot_manager->authenticate( $request );
 
-		$this->assertEquals( 'bot-q', $result );
+		// No query param fallback — header-only authentication.
+		$this->assertInstanceOf( \WP_Error::class, $result );
+		$this->assertEquals( 'ai_syndication_missing_key', $result->get_error_code() );
 	}
 
 	// ------------------------------------------------------------------
