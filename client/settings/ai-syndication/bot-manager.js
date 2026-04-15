@@ -6,6 +6,7 @@ import {
 	CardHeader,
 	Button,
 	TextControl,
+	CheckboxControl,
 	Modal,
 	Notice,
 	Spinner,
@@ -13,6 +14,17 @@ import {
 } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
+
+const KNOWN_AGENTS = [
+	{ id: 'chatgpt', name: 'ChatGPT (OpenAI)' },
+	{ id: 'gemini', name: 'Gemini (Google)' },
+	{ id: 'claude', name: 'Claude (Anthropic)' },
+	{ id: 'perplexity', name: 'Perplexity' },
+	{ id: 'copilot', name: 'Microsoft Copilot' },
+	{ id: 'meta-ai', name: 'Meta AI' },
+	{ id: 'alexa', name: 'Amazon Alexa' },
+	{ id: 'siri', name: 'Apple Siri' },
+];
 
 const BotManager = () => {
 	const bots = useSelect( ( select ) => select( STORE_NAME ).getBots(), [] );
@@ -35,20 +47,48 @@ const BotManager = () => {
 	} = useDispatch( STORE_NAME );
 
 	const [ showCreateModal, setShowCreateModal ] = useState( false );
-	const [ newBotName, setNewBotName ] = useState( '' );
+	const [ selectedAgents, setSelectedAgents ] = useState( [] );
+	const [ customName, setCustomName ] = useState( '' );
 	const [ confirmDelete, setConfirmDelete ] = useState( null );
 
 	useEffect( () => {
 		fetchBots();
 	}, [] ); // eslint-disable-line react-hooks/exhaustive-deps -- Fetch once on mount.
 
-	const handleCreate = () => {
-		if ( newBotName.trim() ) {
-			createBot( newBotName.trim() );
-			setNewBotName( '' );
-			setShowCreateModal( false );
-		}
+	// Filter out agents that are already registered.
+	const registeredNames = bots.map( ( b ) => b.name.toLowerCase() );
+	const availableAgents = KNOWN_AGENTS.filter(
+		( agent ) => ! registeredNames.includes( agent.name.toLowerCase() )
+	);
+
+	const toggleAgent = ( agentId ) => {
+		setSelectedAgents( ( prev ) =>
+			prev.includes( agentId )
+				? prev.filter( ( id ) => id !== agentId )
+				: [ ...prev, agentId ]
+		);
 	};
+
+	const handleCreate = () => {
+		// Create a bot for each selected known agent.
+		selectedAgents.forEach( ( agentId ) => {
+			const agent = KNOWN_AGENTS.find( ( a ) => a.id === agentId );
+			if ( agent ) {
+				createBot( agent.name );
+			}
+		} );
+
+		// Create a bot for the custom name if provided.
+		if ( customName.trim() ) {
+			createBot( customName.trim() );
+		}
+
+		setSelectedAgents( [] );
+		setCustomName( '' );
+		setShowCreateModal( false );
+	};
+
+	const canCreate = selectedAgents.length > 0 || customName.trim().length > 0;
 
 	const handleDelete = ( botId ) => {
 		deleteBot( botId );
@@ -251,35 +291,90 @@ const BotManager = () => {
 			{ showCreateModal && (
 				<Modal
 					title={ __(
-						'Register AI Agent',
+						'Register AI Agents',
 						'woocommerce-ai-syndication'
 					) }
-					onRequestClose={ () => setShowCreateModal( false ) }
+					onRequestClose={ () => {
+						setShowCreateModal( false );
+						setSelectedAgents( [] );
+						setCustomName( '' );
+					} }
 				>
+					{ availableAgents.length > 0 && (
+						<>
+							<p style={ { marginTop: 0 } }>
+								{ __(
+									'Select the AI agents that should access your catalog:',
+									'woocommerce-ai-syndication'
+								) }
+							</p>
+							<div
+								style={ {
+									border: '1px solid #ddd',
+									borderRadius: '4px',
+									padding: '12px',
+									marginBottom: '16px',
+								} }
+							>
+								{ availableAgents.map( ( agent ) => (
+									<div
+										key={ agent.id }
+										style={ { marginBottom: '8px' } }
+									>
+										<CheckboxControl
+											label={ agent.name }
+											checked={ selectedAgents.includes(
+												agent.id
+											) }
+											onChange={ () =>
+												toggleAgent( agent.id )
+											}
+											__nextHasNoMarginBottom
+										/>
+									</div>
+								) ) }
+							</div>
+						</>
+					) }
+					{ availableAgents.length === 0 && (
+						<p style={ { color: '#757575', marginTop: 0 } }>
+							{ __(
+								'All known agents are already registered.',
+								'woocommerce-ai-syndication'
+							) }
+						</p>
+					) }
 					<TextControl
 						label={ __(
-							'Agent Name',
+							'Custom agent name',
 							'woocommerce-ai-syndication'
 						) }
 						help={ __(
-							'e.g., ChatGPT, Gemini, Perplexity, Custom Agent',
+							'Add a custom agent not in the list above.',
 							'woocommerce-ai-syndication'
 						) }
-						value={ newBotName }
-						onChange={ setNewBotName }
-						placeholder="ChatGPT"
+						value={ customName }
+						onChange={ setCustomName }
+						placeholder={ __(
+							'My Custom Agent',
+							'woocommerce-ai-syndication'
+						) }
 					/>
 					<Flex>
 						<Button
 							variant="primary"
 							onClick={ handleCreate }
-							disabled={ ! newBotName.trim() }
+							disabled={ ! canCreate }
 						>
-							{ __( 'Create', 'woocommerce-ai-syndication' ) }
+							{ __( 'Register', 'woocommerce-ai-syndication' ) }
 						</Button>
 						<Button
 							variant="tertiary"
-							onClick={ () => setShowCreateModal( false ) }
+							onClick={ () => {
+								setShowCreateModal( false );
+								setSelectedAgents( [] );
+								setCustomName( '' );
+							} }
 						>
 							{ __( 'Cancel', 'woocommerce-ai-syndication' ) }
 						</Button>
