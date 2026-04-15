@@ -186,13 +186,13 @@ class WC_AI_Syndication_Catalog_Api {
 	private function get_required_permission( $route ) {
 		$namespace = '/' . self::NAMESPACE;
 
-		if ( 0 === strpos( $route, $namespace . '/products' ) ) {
+		if ( str_starts_with( $route, $namespace . '/products' ) ) {
 			return 'read_products';
 		}
-		if ( 0 === strpos( $route, $namespace . '/categories' ) ) {
+		if ( str_starts_with( $route, $namespace . '/categories' ) ) {
 			return 'read_categories';
 		}
-		if ( 0 === strpos( $route, $namespace . '/cart/prepare' ) ) {
+		if ( str_starts_with( $route, $namespace . '/cart/prepare' ) ) {
 			return 'prepare_cart';
 		}
 

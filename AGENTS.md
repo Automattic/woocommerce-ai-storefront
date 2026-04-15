@@ -211,7 +211,7 @@ npm install                   # Install dependencies
 npm run build                 # Build frontend assets (needs webpack config entry point setup)
 ```
 
-This plugin requires WooCommerce 9.9+, WordPress 6.7+, PHP 7.4+.
+This plugin requires WooCommerce 9.9+, WordPress 6.7+, PHP 8.0+.
 
 ## Settings Storage
 
