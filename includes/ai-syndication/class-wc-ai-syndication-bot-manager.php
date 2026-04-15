@@ -22,6 +22,21 @@ class WC_AI_Syndication_Bot_Manager {
 	const BOTS_OPTION = 'wc_ai_syndication_bots';
 
 	/**
+	 * Transient prefix for access counters.
+	 */
+	const ACCESS_LOG_PREFIX = 'wc_ai_bot_access_';
+
+	/**
+	 * Valid bot statuses.
+	 */
+	const VALID_STATUSES = [ 'active', 'revoked' ];
+
+	/**
+	 * Known permission keys.
+	 */
+	const VALID_PERMISSIONS = [ 'read_products', 'read_categories', 'prepare_cart', 'check_inventory' ];
+
+	/**
 	 * Authenticate an incoming API request.
 	 *
 	 * @param WP_REST_Request $request The REST request.
@@ -42,12 +57,11 @@ class WC_AI_Syndication_Bot_Manager {
 			);
 		}
 
-		$api_key    = sanitize_text_field( $api_key );
-		$bots       = $this->get_bots();
-		$key_hash   = wp_hash( $api_key );
+		$api_key = sanitize_text_field( $api_key );
+		$bots    = $this->get_bots();
 
 		foreach ( $bots as $bot_id => $bot ) {
-			if ( hash_equals( $bot['key_hash'], $key_hash ) && 'active' === ( $bot['status'] ?? 'active' ) ) {
+			if ( wp_check_password( $api_key, $bot['key_hash'] ) && 'active' === ( $bot['status'] ?? 'active' ) ) {
 				$this->log_access( $bot_id );
 				return $bot_id;
 			}
@@ -81,7 +95,7 @@ class WC_AI_Syndication_Bot_Manager {
 
 		$bots[ $bot_id ] = [
 			'name'        => sanitize_text_field( $name ),
-			'key_hash'    => wp_hash( $api_key ),
+			'key_hash'    => wp_hash_password( $api_key ),
 			'key_prefix'  => substr( $api_key, 0, 10 ) . '...',
 			'permissions'  => wp_parse_args( $permissions, $default_permissions ),
 			'status'      => 'active',
@@ -147,13 +161,20 @@ class WC_AI_Syndication_Bot_Manager {
 			return false;
 		}
 
-		$allowed_fields = [ 'name', 'permissions', 'status' ];
-		foreach ( $allowed_fields as $field ) {
-			if ( isset( $data[ $field ] ) ) {
-				$bots[ $bot_id ][ $field ] = 'name' === $field
-					? sanitize_text_field( $data[ $field ] )
-					: $data[ $field ];
+		if ( isset( $data['name'] ) ) {
+			$bots[ $bot_id ]['name'] = sanitize_text_field( $data['name'] );
+		}
+
+		if ( isset( $data['status'] ) && in_array( $data['status'], self::VALID_STATUSES, true ) ) {
+			$bots[ $bot_id ]['status'] = $data['status'];
+		}
+
+		if ( isset( $data['permissions'] ) && is_array( $data['permissions'] ) ) {
+			$sanitized_permissions = [];
+			foreach ( self::VALID_PERMISSIONS as $key ) {
+				$sanitized_permissions[ $key ] = ! empty( $data['permissions'][ $key ] );
 			}
+			$bots[ $bot_id ]['permissions'] = $sanitized_permissions;
 		}
 
 		$this->save_bots( $bots );
@@ -174,7 +195,7 @@ class WC_AI_Syndication_Bot_Manager {
 
 		$api_key = 'wc_ai_' . wp_generate_password( 32, false );
 
-		$bots[ $bot_id ]['key_hash']   = wp_hash( $api_key );
+		$bots[ $bot_id ]['key_hash']   = wp_hash_password( $api_key );
 		$bots[ $bot_id ]['key_prefix'] = substr( $api_key, 0, 10 ) . '...';
 		$this->save_bots( $bots );
 
@@ -245,16 +266,49 @@ class WC_AI_Syndication_Bot_Manager {
 	}
 
 	/**
-	 * Log an access event for a bot.
+	 * Log an access event for a bot using a lightweight transient counter.
+	 *
+	 * Instead of writing to wp_options on every request (which causes DB
+	 * contention and race conditions under concurrent load), we increment
+	 * a per-bot transient and schedule a flush to persist the totals.
 	 *
 	 * @param string $bot_id Bot ID.
 	 */
 	private function log_access( $bot_id ) {
-		$bots = $this->get_bots();
-		if ( isset( $bots[ $bot_id ] ) ) {
-			$bots[ $bot_id ]['last_access']    = current_time( 'mysql', true );
-			$bots[ $bot_id ]['request_count'] = ( $bots[ $bot_id ]['request_count'] ?? 0 ) + 1;
-			$this->save_bots( $bots );
+		$transient_key = self::ACCESS_LOG_PREFIX . $bot_id;
+		$count         = (int) get_transient( $transient_key );
+		set_transient( $transient_key, $count + 1, HOUR_IN_SECONDS );
+
+		// Register a shutdown flush (runs once per request regardless of how many bots authenticated).
+		if ( ! has_action( 'shutdown', [ __CLASS__, 'flush_access_logs' ] ) ) {
+			add_action( 'shutdown', [ __CLASS__, 'flush_access_logs' ] );
+		}
+	}
+
+	/**
+	 * Flush accumulated access counters to the bots option.
+	 *
+	 * Runs once on shutdown to batch all access increments into a single DB write.
+	 */
+	public static function flush_access_logs() {
+		$bots    = get_option( self::BOTS_OPTION, [] );
+		$changed = false;
+
+		foreach ( $bots as $bot_id => &$bot ) {
+			$transient_key = self::ACCESS_LOG_PREFIX . $bot_id;
+			$pending       = (int) get_transient( $transient_key );
+
+			if ( $pending > 0 ) {
+				$bot['request_count'] = ( $bot['request_count'] ?? 0 ) + $pending;
+				$bot['last_access']   = current_time( 'mysql', true );
+				delete_transient( $transient_key );
+				$changed = true;
+			}
+		}
+		unset( $bot );
+
+		if ( $changed ) {
+			update_option( self::BOTS_OPTION, $bots, false );
 		}
 	}
 }
