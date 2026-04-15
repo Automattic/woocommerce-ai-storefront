@@ -9,7 +9,8 @@ import {
 	Spinner,
 	SearchControl,
 } from '@wordpress/components';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
+import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 
 const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
@@ -138,16 +139,26 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									} }
 								>
 									{ categories.map( ( cat ) => (
-										<CheckboxControl
+										<div
 											key={ cat.id }
-											label={ `${ cat.name } (${ cat.count })` }
-											checked={ selectedCategories.includes(
-												cat.id
-											) }
-											onChange={ () =>
-												toggleCategory( cat.id )
-											}
-										/>
+											style={ { marginBottom: '8px' } }
+										>
+											<CheckboxControl
+												label={ sprintf(
+													/* translators: %1$s: category name, %2$d: product count */
+													'%1$s (%2$d)',
+													decodeEntities( cat.name ),
+													cat.count
+												) }
+												checked={ selectedCategories.includes(
+													cat.id
+												) }
+												onChange={ () =>
+													toggleCategory( cat.id )
+												}
+												__nextHasNoMarginBottom
+											/>
+										</div>
 									) ) }
 								</div>
 							) }
@@ -191,16 +202,30 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									} }
 								>
 									{ products.map( ( product ) => (
-										<CheckboxControl
+										<div
 											key={ product.id }
-											label={ `${ product.name } - ${ product.price }` }
-											checked={ selectedProducts.includes(
-												product.id
-											) }
-											onChange={ () =>
-												toggleProduct( product.id )
-											}
-										/>
+											style={ { marginBottom: '8px' } }
+										>
+											<CheckboxControl
+												label={ sprintf(
+													/* translators: %1$s: product name, %2$s: price */
+													'%1$s - %2$s',
+													decodeEntities(
+														product.name
+													),
+													decodeEntities(
+														product.price
+													)
+												) }
+												checked={ selectedProducts.includes(
+													product.id
+												) }
+												onChange={ () =>
+													toggleProduct( product.id )
+												}
+												__nextHasNoMarginBottom
+											/>
+										</div>
 									) ) }
 								</div>
 							) }
