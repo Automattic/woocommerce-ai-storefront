@@ -27,6 +27,20 @@ define( 'WC_AI_SYNDICATION_PLUGIN_PATH', untrailingslashit( plugin_dir_path( __F
 define( 'WC_AI_SYNDICATION_PLUGIN_URL', untrailingslashit( plugin_dir_url( __FILE__ ) ) );
 
 /**
+ * Declare compatibility with WooCommerce features.
+ *
+ * HPOS (custom_order_tables): This plugin uses WC_Order methods and
+ * wc_get_orders() for all order access — no direct post meta queries
+ * on shop_order posts. The get_stats() SQL query supports both HPOS
+ * and legacy tables with a runtime check.
+ */
+add_action( 'before_woocommerce_init', function () {
+	if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
+		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+	}
+} );
+
+/**
  * Initialize the plugin after WooCommerce is loaded.
  */
 function wc_ai_syndication_init() {

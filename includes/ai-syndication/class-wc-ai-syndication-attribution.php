@@ -50,9 +50,11 @@ class WC_AI_Syndication_Attribution {
 		// Display AI attribution data in admin order view.
 		add_action( 'woocommerce_admin_order_data_after_billing_address', [ $this, 'display_attribution_in_admin' ], 20, 1 );
 
-		// Add AI agent column to orders list (optional, lightweight).
+		// Add AI agent column to orders list — support both HPOS and legacy post type.
 		add_filter( 'manage_woocommerce_page_wc-orders_columns', [ $this, 'add_order_list_column' ] );
 		add_action( 'manage_woocommerce_page_wc-orders_custom_column', [ $this, 'render_order_list_column' ], 10, 2 );
+		add_filter( 'manage_edit-shop_order_columns', [ $this, 'add_order_list_column' ] );
+		add_action( 'manage_shop_order_posts_custom_column', [ $this, 'render_order_list_column' ], 10, 2 );
 	}
 
 	/**
