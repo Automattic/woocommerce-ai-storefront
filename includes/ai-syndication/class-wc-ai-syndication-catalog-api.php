@@ -513,15 +513,19 @@ class WC_AI_Syndication_Catalog_Api {
 			'checkout_link' => $checkout_link,
 		];
 
-		// For single items, also include a direct add-to-cart URL.
-		// This only adds to cart — does not redirect to checkout.
+		// For single items, also include add-to-cart URLs:
+		// - add_to_cart_url: adds to cart only (customer continues browsing)
+		// - add_to_cart_checkout_url: adds to cart AND lands on checkout
+		//   (for grouped products that don't support checkout-link format)
 		if ( 1 === count( $validated_items ) ) {
 			$item           = $validated_items[0];
 			$add_to_cart_id = $item['variation_id'] ?: $item['product_id'];
-			$response_data['add_to_cart_url'] = add_query_arg(
-				array_merge( [ 'add-to-cart' => $add_to_cart_id, 'quantity' => $item['quantity'] ], $attribution ),
-				home_url( '/' )
+			$add_params     = array_merge(
+				[ 'add-to-cart' => $add_to_cart_id, 'quantity' => $item['quantity'] ],
+				$attribution
 			);
+			$response_data['add_to_cart_url']      = add_query_arg( $add_params, home_url( '/' ) );
+			$response_data['add_to_cart_checkout']  = add_query_arg( $add_params, wc_get_checkout_url() );
 		}
 
 		return new WP_REST_Response( $response_data );

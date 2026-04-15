@@ -185,11 +185,12 @@ class WC_AI_Syndication_Ucp {
 				// Recommended: checkout links add items AND redirect to checkout.
 				// Customer never sees the cart — fewest clicks to purchase.
 				'checkout_link' => [
-					'simple'     => $site_url . 'checkout-link/?products={product_id}:{quantity}',
-					'variable'   => $site_url . 'checkout-link/?products={variation_id}:{quantity}',
-					'multi_item' => $site_url . 'checkout-link/?products={id}:{qty},{id}:{qty}',
+					'simple'      => $site_url . 'checkout-link/?products={product_id}:{quantity}',
+					'variable'    => $site_url . 'checkout-link/?products={variation_id}:{quantity}',
+					'multi_item'  => $site_url . 'checkout-link/?products={id}:{qty},{id}:{qty}',
 					'with_coupon' => $site_url . 'checkout-link/?products={id}:{qty}&coupon={coupon_code}',
-					'note'       => 'Adds to cart and redirects directly to checkout. Use variation_id (from product detail API) for variable products. Supports any number of items comma-separated.',
+					'grouped'     => $checkout_url . '?add-to-cart={grouped_product_id}&quantity[{sub_product_id}]={quantity}',
+					'note'        => 'For simple/variable/multi-item: use checkout-link format. For grouped products: use add-to-cart with the checkout page as the base URL (adds to cart and lands on checkout). Use variation_id from the product detail API for variable products.',
 				],
 				// Alternative: add-to-cart URLs only add items to the cart.
 				// Customer must navigate to checkout separately.
@@ -197,7 +198,7 @@ class WC_AI_Syndication_Ucp {
 					'simple'   => $site_url . '?add-to-cart={product_id}&quantity={quantity}',
 					'variable' => $site_url . '?add-to-cart={variation_id}&quantity={quantity}',
 					'grouped'  => $site_url . '?add-to-cart={grouped_product_id}&quantity[{sub_product_id}]={quantity}',
-					'note'     => 'Adds to cart only — does not redirect to checkout. External/affiliate products cannot be added via URL.',
+					'note'     => 'Adds to cart only — does not redirect to checkout. To redirect, use the checkout page URL as the base instead. External/affiliate products cannot be added via URL.',
 				],
 				'store_api'     => rest_url( 'wc/store/v1' ),
 			],
