@@ -260,7 +260,18 @@ class WC_AI_Syndication {
 	 *
 	 * @return array
 	 */
+	/**
+	 * Memoized settings for the current request.
+	 *
+	 * @var array|null
+	 */
+	private static $settings_cache = null;
+
 	public static function get_settings() {
+		if ( null !== self::$settings_cache ) {
+			return self::$settings_cache;
+		}
+
 		$defaults = [
 			'enabled'                => 'no',
 			'product_selection_mode' => 'all',
@@ -276,6 +287,7 @@ class WC_AI_Syndication {
 		// Allowed crawlers is a runtime default, not stored in the option.
 		$merged['allowed_crawlers'] = $settings['allowed_crawlers'] ?? WC_AI_Syndication_Robots::AI_CRAWLERS;
 
+		self::$settings_cache = $merged;
 		return $merged;
 	}
 
@@ -304,6 +316,7 @@ class WC_AI_Syndication {
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.
+		self::$settings_cache = null;
 		$result = update_option( self::SETTINGS_OPTION, $clean, true );
 
 		// Bust the cache so the next get_settings() reads the fresh value.

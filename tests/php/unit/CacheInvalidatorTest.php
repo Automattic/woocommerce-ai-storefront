@@ -29,10 +29,9 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	// invalidate()
 	// ------------------------------------------------------------------
 
-	public function test_invalidate_deletes_transient(): void {
+	public function test_invalidate_deletes_transients(): void {
 		Functions\expect( 'delete_transient' )
-			->once()
-			->with( WC_AI_Syndication_Llms_Txt::CACHE_KEY );
+			->twice(); // llms.txt + UCP caches.
 
 		Functions\expect( 'wp_next_scheduled' )->andReturn( false );
 		Functions\expect( 'wp_schedule_single_event' )->andReturn( true );
@@ -41,7 +40,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_invalidate_schedules_warmup_when_none_pending(): void {
-		Functions\expect( 'delete_transient' )->andReturn( true );
+		Functions\expect( 'delete_transient' )->twice()->andReturn( true );
 
 		Functions\expect( 'wp_next_scheduled' )
 			->once()
@@ -60,7 +59,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_invalidate_skips_scheduling_when_event_already_pending(): void {
-		Functions\expect( 'delete_transient' )->andReturn( true );
+		Functions\expect( 'delete_transient' )->twice()->andReturn( true );
 
 		Functions\expect( 'wp_next_scheduled' )
 			->once()
@@ -108,8 +107,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_deactivate_cleans_up_transient_and_cron(): void {
 		Functions\expect( 'delete_transient' )
-			->once()
-			->with( WC_AI_Syndication_Llms_Txt::CACHE_KEY );
+			->twice(); // llms.txt + UCP caches.
 
 		Functions\expect( 'wp_clear_scheduled_hook' )
 			->once()

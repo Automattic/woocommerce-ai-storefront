@@ -37,7 +37,18 @@ class WC_AI_Syndication_Bot_Manager {
 	const VALID_PERMISSIONS = [ 'read_products', 'read_categories', 'prepare_cart', 'check_inventory' ];
 
 	/**
+	 * Memoized bots array for the current request.
+	 *
+	 * @var array|null
+	 */
+	private $bots_cache = null;
+
+	/**
 	 * Authenticate an incoming API request.
+	 *
+	 * Uses a key fingerprint (SHA-256 of the first 16 chars) to select the
+	 * candidate bot in O(1) before running the expensive bcrypt verify once.
+	 * This avoids O(n) bcrypt calls when many bots are registered.
 	 *
 	 * @param WP_REST_Request $request The REST request.
 	 * @return string|WP_Error Bot ID on success, WP_Error on failure.
@@ -53,10 +64,32 @@ class WC_AI_Syndication_Bot_Manager {
 			);
 		}
 
-		$api_key = sanitize_text_field( $api_key );
-		$bots    = $this->get_bots();
+		$api_key     = sanitize_text_field( $api_key );
+		$fingerprint = hash( 'sha256', substr( $api_key, 0, 16 ) );
+		$bots        = $this->get_bots();
 
+		// Fast path: use fingerprint to find the candidate bot in O(1).
 		foreach ( $bots as $bot_id => $bot ) {
+			if ( ! isset( $bot['key_fingerprint'] ) || $bot['key_fingerprint'] !== $fingerprint ) {
+				continue;
+			}
+
+			if ( 'active' !== ( $bot['status'] ?? 'active' ) ) {
+				continue;
+			}
+
+			// Single bcrypt verify on the matched candidate.
+			if ( wp_check_password( $api_key, $bot['key_hash'] ) ) {
+				$this->log_access( $bot_id );
+				return $bot_id;
+			}
+		}
+
+		// Fallback: linear scan for bots without fingerprints (pre-migration).
+		foreach ( $bots as $bot_id => $bot ) {
+			if ( isset( $bot['key_fingerprint'] ) ) {
+				continue; // Already checked above.
+			}
 			if ( wp_check_password( $api_key, $bot['key_hash'] ) && 'active' === ( $bot['status'] ?? 'active' ) ) {
 				$this->log_access( $bot_id );
 				return $bot_id;
@@ -88,10 +121,11 @@ class WC_AI_Syndication_Bot_Manager {
 		}
 
 		$bots[ $bot_id ] = [
-			'name'        => sanitize_text_field( $name ),
-			'key_hash'    => wp_hash_password( $api_key ),
-			'key_prefix'  => substr( $api_key, 0, 10 ) . '...',
-			'permissions'  => $sanitized_permissions,
+			'name'            => sanitize_text_field( $name ),
+			'key_hash'        => wp_hash_password( $api_key ),
+			'key_fingerprint' => hash( 'sha256', substr( $api_key, 0, 16 ) ),
+			'key_prefix'      => substr( $api_key, 0, 10 ) . '...',
+			'permissions'     => $sanitized_permissions,
 			'status'      => 'active',
 			'created_at'  => current_time( 'mysql', true ),
 			'last_access' => null,
@@ -189,8 +223,9 @@ class WC_AI_Syndication_Bot_Manager {
 
 		$api_key = 'wc_ai_' . wp_generate_password( 32, false );
 
-		$bots[ $bot_id ]['key_hash']   = wp_hash_password( $api_key );
-		$bots[ $bot_id ]['key_prefix'] = substr( $api_key, 0, 10 ) . '...';
+		$bots[ $bot_id ]['key_hash']        = wp_hash_password( $api_key );
+		$bots[ $bot_id ]['key_fingerprint'] = hash( 'sha256', substr( $api_key, 0, 16 ) );
+		$bots[ $bot_id ]['key_prefix']      = substr( $api_key, 0, 10 ) . '...';
 		$this->save_bots( $bots );
 
 		return [
@@ -242,21 +277,36 @@ class WC_AI_Syndication_Bot_Manager {
 	}
 
 	/**
-	 * Get all registered bots.
+	 * Get the display name for a specific bot.
+	 *
+	 * @param string $bot_id Bot ID.
+	 * @return string|null Bot name or null if not found.
+	 */
+	public function get_bot_name( $bot_id ) {
+		$bots = $this->get_bots();
+		return isset( $bots[ $bot_id ] ) ? $bots[ $bot_id ]['name'] : null;
+	}
+
+	/**
+	 * Get all registered bots (memoized for the current request).
 	 *
 	 * @return array
 	 */
 	private function get_bots() {
-		return get_option( self::BOTS_OPTION, [] );
+		if ( null === $this->bots_cache ) {
+			$this->bots_cache = get_option( self::BOTS_OPTION, [] );
+		}
+		return $this->bots_cache;
 	}
 
 	/**
-	 * Save bots to database.
+	 * Save bots to database and clear the memo cache.
 	 *
 	 * @param array $bots The bots data.
 	 */
 	private function save_bots( $bots ) {
 		update_option( self::BOTS_OPTION, $bots, false );
+		$this->bots_cache = null;
 	}
 
 	/**

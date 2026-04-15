@@ -29,6 +29,7 @@ $plugin_path = dirname( __DIR__, 2 ) . '/includes/';
 require_once __DIR__ . '/stubs/class-wc-ai-syndication-stub.php';
 
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-llms-txt.php';
+require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-ucp.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-bot-manager.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-rate-limiter.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-cache-invalidator.php';

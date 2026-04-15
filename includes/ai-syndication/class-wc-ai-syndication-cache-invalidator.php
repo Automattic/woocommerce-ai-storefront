@@ -68,6 +68,7 @@ class WC_AI_Syndication_Cache_Invalidator {
 	 */
 	public function invalidate() {
 		delete_transient( WC_AI_Syndication_Llms_Txt::CACHE_KEY );
+		delete_transient( WC_AI_Syndication_Ucp::CACHE_KEY );
 
 		// Schedule a one-shot warm-up, unless one is already pending.
 		if ( ! wp_next_scheduled( self::WARMUP_CRON_HOOK ) ) {
@@ -102,6 +103,7 @@ class WC_AI_Syndication_Cache_Invalidator {
 	 */
 	public static function deactivate() {
 		delete_transient( WC_AI_Syndication_Llms_Txt::CACHE_KEY );
+		delete_transient( WC_AI_Syndication_Ucp::CACHE_KEY );
 		wp_clear_scheduled_hook( self::WARMUP_CRON_HOOK );
 	}
 }

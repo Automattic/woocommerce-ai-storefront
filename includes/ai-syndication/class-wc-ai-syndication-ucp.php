@@ -23,6 +23,11 @@ class WC_AI_Syndication_Ucp {
 	const PROTOCOL_VERSION = '1.0';
 
 	/**
+	 * Transient key for cached UCP manifest.
+	 */
+	const CACHE_KEY = 'wc_ai_syndication_ucp';
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function init() {
@@ -74,7 +79,12 @@ class WC_AI_Syndication_Ucp {
 			exit;
 		}
 
-		echo wp_json_encode( $this->generate_manifest( $settings ), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
+		$cached = get_transient( self::CACHE_KEY );
+		if ( false === $cached ) {
+			$cached = wp_json_encode( $this->generate_manifest( $settings ), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
+			set_transient( self::CACHE_KEY, $cached, HOUR_IN_SECONDS );
+		}
+		echo $cached; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON content.
 		exit;
 	}
 

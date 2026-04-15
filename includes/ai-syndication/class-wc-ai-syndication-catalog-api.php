@@ -478,21 +478,14 @@ class WC_AI_Syndication_Catalog_Api {
 		$base_url = wc_get_cart_url();
 
 		// Resolve the current bot's display name for attribution.
-		$bots        = $this->bot_manager->get_bots_for_display();
-		$current_bot = null;
-		foreach ( $bots as $bot ) {
-			if ( $bot['id'] === $bot_id ) {
-				$current_bot = $bot;
-				break;
-			}
-		}
+		$bot_name = $this->bot_manager->get_bot_name( $bot_id );
 
 		$session_id    = sanitize_text_field( $request->get_param( 'session_id' ) ?? '' );
 		$response_data = [
 			'items'        => $validated_items,
 			'checkout_url' => add_query_arg(
 				[
-					'utm_source'    => $current_bot ? sanitize_title( $current_bot['name'] ) : 'ai_agent',
+					'utm_source'    => $bot_name ? sanitize_title( $bot_name ) : 'ai_agent',
 					'utm_medium'    => 'ai_agent',
 					'ai_session_id' => $session_id,
 				],
@@ -513,7 +506,7 @@ class WC_AI_Syndication_Catalog_Api {
 					'add-to-cart'   => $item['product_id'],
 					'quantity'      => $item['quantity'],
 					'variation_id'  => $item['variation_id'] ?: null,
-					'utm_source'    => $current_bot ? sanitize_title( $current_bot['name'] ) : 'ai_agent',
+					'utm_source'    => $bot_name ? sanitize_title( $bot_name ) : 'ai_agent',
 					'utm_medium'    => 'ai_agent',
 					'ai_session_id' => $session_id,
 				] ),
