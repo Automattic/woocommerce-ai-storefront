@@ -71,5 +71,10 @@ register_activation_hook( __FILE__, 'wc_ai_syndication_activate' );
  */
 function wc_ai_syndication_deactivate() {
 	flush_rewrite_rules();
+
+	// Clean up cache and scheduled events.
+	require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/ai-syndication/class-wc-ai-syndication-llms-txt.php';
+	require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/ai-syndication/class-wc-ai-syndication-cache-invalidator.php';
+	WC_AI_Syndication_Cache_Invalidator::deactivate();
 }
 register_deactivation_hook( __FILE__, 'wc_ai_syndication_deactivate' );
