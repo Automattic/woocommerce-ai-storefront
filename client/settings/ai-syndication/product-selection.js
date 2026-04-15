@@ -101,7 +101,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	};
 
 	return (
-		<div style={ { maxWidth: '960px' } }>
+		<div>
 			<Card>
 				<CardBody>
 					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>

@@ -178,7 +178,7 @@ const StatCard = ( { label, value } ) => (
 // ---------------------------------------------------------------------------
 
 const PreEnableView = ( { onChange, onSave, isSaving } ) => (
-	<div style={ { maxWidth: '960px' } }>
+	<div>
 		{ /* --------------------------------------------------------- */ }
 		{ /* Group 1: Compact status banner                            */ }
 		{ /* Mirrors the enabled-state banner: title + subtitle + CTA  */ }
@@ -426,7 +426,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 	const botList = Array.isArray( bots ) ? bots : Object.values( bots || {} );
 
 	return (
-		<div style={ { maxWidth: '960px' } }>
+		<div>
 			{ /* Status banner */ }
 			<div
 				style={ {

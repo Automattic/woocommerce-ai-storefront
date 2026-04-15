@@ -102,7 +102,7 @@ const BotManager = () => {
 	};
 
 	return (
-		<div style={ { maxWidth: '960px' } }>
+		<div>
 			{ newBotKey && (
 				<Notice
 					status="warning"
