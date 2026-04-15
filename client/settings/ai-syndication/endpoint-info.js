@@ -128,24 +128,6 @@ const EndpointInfo = () => {
 							</tr>
 							<tr>
 								<td>
-									<strong>Catalog API</strong>
-								</td>
-								<td>
-									{ endpoints.catalog_api ? (
-										<code>{ endpoints.catalog_api }</code>
-									) : (
-										<Spinner />
-									) }
-								</td>
-								<td>
-									{ __(
-										'REST API for product search (requires API key)',
-										'woocommerce-ai-syndication'
-									) }
-								</td>
-							</tr>
-							<tr>
-								<td>
 									<strong>Store API</strong>
 								</td>
 								<td>
@@ -157,7 +139,7 @@ const EndpointInfo = () => {
 								</td>
 								<td>
 									{ __(
-										'WooCommerce Store API for cart sync',
+										'WooCommerce Store API for product search and cart (public)',
 										'woocommerce-ai-syndication'
 									) }
 								</td>
