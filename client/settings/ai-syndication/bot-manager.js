@@ -10,7 +10,6 @@ import {
 	Modal,
 	Notice,
 	Spinner,
-	Flex,
 } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
@@ -133,8 +132,15 @@ const BotManager = () => {
 
 			<Card>
 				<CardHeader>
-					<Flex>
-						<h2>
+					<div
+						style={ {
+							display: 'flex',
+							justifyContent: 'space-between',
+							alignItems: 'center',
+							width: '100%',
+						} }
+					>
+						<h2 style={ { margin: 0 } }>
 							{ __(
 								'Registered AI Agents',
 								'woocommerce-ai-syndication'
@@ -147,7 +153,7 @@ const BotManager = () => {
 						>
 							{ __( 'Add Agent', 'woocommerce-ai-syndication' ) }
 						</Button>
-					</Flex>
+					</div>
 				</CardHeader>
 				<CardBody>
 					<p>
@@ -175,7 +181,7 @@ const BotManager = () => {
 								style={ {
 									border: '1px solid #ddd',
 									borderRadius: '4px',
-									padding: '12px',
+									padding: '16px',
 									marginBottom: '8px',
 									background:
 										bot.status === 'revoked'
@@ -183,9 +189,18 @@ const BotManager = () => {
 											: '#fff',
 								} }
 							>
-								<Flex alignment="top">
-									<div style={ { flex: 1 } }>
-										<strong>{ bot.name }</strong>
+								<div
+									style={ {
+										display: 'flex',
+										justifyContent: 'space-between',
+										alignItems: 'flex-start',
+										gap: '16px',
+									} }
+								>
+									<div style={ { flex: 1, minWidth: 0 } }>
+										<strong style={ { fontSize: '14px' } }>
+											{ bot.name }
+										</strong>
 										{ bot.status === 'revoked' && (
 											<span
 												style={ {
@@ -200,19 +215,28 @@ const BotManager = () => {
 												) }
 											</span>
 										) }
-										<br />
-										<small style={ { color: '#757575' } }>
+										<div
+											style={ {
+												color: '#757575',
+												fontSize: '12px',
+												marginTop: '4px',
+											} }
+										>
 											{ __(
 												'Key:',
 												'woocommerce-ai-syndication'
 											) }{ ' ' }
-											<code>{ bot.key_prefix }</code>
+											<code
+												style={ { fontSize: '11px' } }
+											>
+												{ bot.key_prefix }
+											</code>
 											{ ' | ' }
 											{ __(
 												'Requests:',
 												'woocommerce-ai-syndication'
 											) }{ ' ' }
-											{ bot.request_count }
+											{ bot.request_count || 0 }
 											{ bot.last_access && (
 												<>
 													{ ' | ' }
@@ -223,9 +247,15 @@ const BotManager = () => {
 													{ bot.last_access }
 												</>
 											) }
-										</small>
+										</div>
 									</div>
-									<Flex spacing={ 2 }>
+									<div
+										style={ {
+											display: 'flex',
+											gap: '8px',
+											flexShrink: 0,
+										} }
+									>
 										{ bot.status === 'active' ? (
 											<Button
 												variant="secondary"
@@ -283,8 +313,8 @@ const BotManager = () => {
 												'woocommerce-ai-syndication'
 											) }
 										</Button>
-									</Flex>
-								</Flex>
+									</div>
+								</div>
 							</div>
 						) ) }
 				</CardBody>
@@ -362,7 +392,7 @@ const BotManager = () => {
 							'woocommerce-ai-syndication'
 						) }
 					/>
-					<Flex>
+					<div style={ { display: 'flex', gap: '8px' } }>
 						<Button
 							variant="primary"
 							onClick={ handleCreate }
@@ -380,7 +410,7 @@ const BotManager = () => {
 						>
 							{ __( 'Cancel', 'woocommerce-ai-syndication' ) }
 						</Button>
-					</Flex>
+					</div>
 				</Modal>
 			) }
 
@@ -395,7 +425,7 @@ const BotManager = () => {
 							'woocommerce-ai-syndication'
 						) }
 					</p>
-					<Flex>
+					<div style={ { display: 'flex', gap: '8px' } }>
 						<Button
 							variant="primary"
 							isDestructive
@@ -409,7 +439,7 @@ const BotManager = () => {
 						>
 							{ __( 'Cancel', 'woocommerce-ai-syndication' ) }
 						</Button>
-					</Flex>
+					</div>
 				</Modal>
 			) }
 		</>
