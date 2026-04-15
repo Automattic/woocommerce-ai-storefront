@@ -109,7 +109,7 @@ class WC_AI_Syndication_Catalog_Api {
 				'callback'            => [ $this, 'prepare_cart' ],
 				'permission_callback' => [ $this, 'check_agent_permission' ],
 				'args'                => [
-					'items' => [
+					'items'      => [
 						'type'     => 'array',
 						'required' => true,
 						'items'    => [
@@ -120,6 +120,10 @@ class WC_AI_Syndication_Catalog_Api {
 								'variation_id' => [ 'type' => 'integer', 'default'  => 0 ],
 							],
 						],
+					],
+					'session_id' => [
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
 					],
 				],
 			]
@@ -152,9 +156,42 @@ class WC_AI_Syndication_Catalog_Api {
 			return $rate_check;
 		}
 
+		// Enforce granular bot permissions based on the route.
+		$route      = $request->get_route();
+		$permission = $this->get_required_permission( $route );
+		if ( $permission && ! $this->bot_manager->has_permission( $bot_id, $permission ) ) {
+			return new WP_Error(
+				'ai_syndication_permission_denied',
+				__( 'This agent does not have permission for this endpoint.', 'woocommerce-ai-syndication' ),
+				[ 'status' => 403 ]
+			);
+		}
+
 		// Store bot_id on the request for use in callbacks.
 		$request->set_param( '_ai_bot_id', $bot_id );
 		return true;
+	}
+
+	/**
+	 * Map a route to the required bot permission.
+	 *
+	 * @param string $route The REST route.
+	 * @return string|null The permission key, or null if no specific permission required.
+	 */
+	private function get_required_permission( $route ) {
+		$namespace = '/' . self::NAMESPACE;
+
+		if ( str_starts_with( $route, $namespace . '/products' ) ) {
+			return 'read_products';
+		}
+		if ( str_starts_with( $route, $namespace . '/categories' ) ) {
+			return 'read_categories';
+		}
+		if ( str_starts_with( $route, $namespace . '/cart/prepare' ) ) {
+			return 'prepare_cart';
+		}
+
+		return null;
 	}
 
 	/**
@@ -227,22 +264,17 @@ class WC_AI_Syndication_Catalog_Api {
 			$query_args['include'] = array_map( 'absint', $settings['selected_products'] );
 		}
 
-		$products = wc_get_products( $query_args );
-		$data     = [];
+		$query_args['paginate'] = true;
+		$results = wc_get_products( $query_args );
+		$data    = [];
 
-		foreach ( $products as $product ) {
+		foreach ( $results->products as $product ) {
 			$data[] = $this->format_product( $product );
 		}
 
-		// Get total count for pagination.
-		$count_args          = $query_args;
-		$count_args['limit'] = -1;
-		$count_args['return'] = 'ids';
-		$total                = count( wc_get_products( $count_args ) );
-
 		$response = new WP_REST_Response( $data );
-		$response->header( 'X-WC-Total', $total );
-		$response->header( 'X-WC-TotalPages', ceil( $total / $query_args['limit'] ) );
+		$response->header( 'X-WC-Total', $results->total );
+		$response->header( 'X-WC-TotalPages', $results->max_num_pages );
 
 		return $response;
 	}
@@ -369,14 +401,6 @@ class WC_AI_Syndication_Catalog_Api {
 		$items  = $request->get_param( 'items' );
 		$bot_id = $request->get_param( '_ai_bot_id' );
 
-		if ( ! $this->bot_manager->has_permission( $bot_id, 'prepare_cart' ) ) {
-			return new WP_Error(
-				'ai_syndication_permission_denied',
-				__( 'Cart preparation not permitted for this agent.', 'woocommerce-ai-syndication' ),
-				[ 'status' => 403 ]
-			);
-		}
-
 		$validated_items = [];
 		foreach ( $items as $item ) {
 			$product_id   = absint( $item['product_id'] ?? 0 );
@@ -426,10 +450,9 @@ class WC_AI_Syndication_Catalog_Api {
 			);
 		}
 
-		// For a single item, use direct add-to-cart URL.
-		// For multiple items, return the Store API batch endpoint info.
-		$bots         = ( new WC_AI_Syndication_Bot_Manager() )->get_bots_for_display();
-		$current_bot  = null;
+		// Resolve the current bot's display name for attribution.
+		$bots        = $this->bot_manager->get_bots_for_display();
+		$current_bot = null;
 		foreach ( $bots as $bot ) {
 			if ( $bot['id'] === $bot_id ) {
 				$current_bot = $bot;
@@ -437,13 +460,14 @@ class WC_AI_Syndication_Catalog_Api {
 			}
 		}
 
+		$session_id    = sanitize_text_field( $request->get_param( 'session_id' ) ?? '' );
 		$response_data = [
 			'items'        => $validated_items,
 			'checkout_url' => add_query_arg(
 				[
 					'utm_source'    => $current_bot ? sanitize_title( $current_bot['name'] ) : 'ai_agent',
 					'utm_medium'    => 'ai_agent',
-					'ai_session_id' => $request->get_param( 'session_id' ) ?? '',
+					'ai_session_id' => $session_id,
 				],
 				wc_get_checkout_url()
 			),
@@ -464,7 +488,7 @@ class WC_AI_Syndication_Catalog_Api {
 					'variation_id'  => $item['variation_id'] ?: null,
 					'utm_source'    => $current_bot ? sanitize_title( $current_bot['name'] ) : 'ai_agent',
 					'utm_medium'    => 'ai_agent',
-					'ai_session_id' => $request->get_param( 'session_id' ) ?? '',
+					'ai_session_id' => $session_id,
 				] ),
 				home_url( '/' )
 			);
