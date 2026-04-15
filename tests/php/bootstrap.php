@@ -32,4 +32,6 @@ require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-llms-txt.php
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-ucp.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-bot-manager.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-rate-limiter.php';
+require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-catalog-api.php';
+require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-attribution.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-cache-invalidator.php';
