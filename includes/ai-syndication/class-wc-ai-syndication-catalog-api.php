@@ -461,6 +461,12 @@ class WC_AI_Syndication_Catalog_Api {
 				continue;
 			}
 
+			// Grouped and external products cannot be added via URL.
+			$type = $product->get_type();
+			if ( in_array( $type, [ 'grouped', 'external' ], true ) ) {
+				continue;
+			}
+
 			$validated_items[] = [
 				'product_id'   => $product_id,
 				'variation_id' => $variation_id,
@@ -800,6 +806,16 @@ class WC_AI_Syndication_Catalog_Api {
 				'stock_quantity' => $variation->managing_stock() ? $variation->get_stock_quantity() : null,
 				'attributes'    => $variation->get_attributes(),
 				'image'         => $this->get_product_image( $variation ),
+				'buy_url'       => add_query_arg(
+					[
+						'add-to-cart'   => $variation->get_id(),
+						'utm_source'    => '{agent_id}',
+						'utm_medium'    => 'ai_agent',
+						'ai_session_id' => '{session_id}',
+					],
+					$product->get_permalink()
+				),
+				'checkout_link' => home_url( '/checkout-link/?products=' . $variation->get_id() . ':1' ),
 			];
 		}
 

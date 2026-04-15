@@ -349,4 +349,156 @@ class BotManagerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue( $result );
 		$this->assertArrayNotHasKey( 'bot-1', $stored_bots );
 	}
+
+	// ------------------------------------------------------------------
+	// Fingerprint auth path (O(1))
+	// ------------------------------------------------------------------
+
+	public function test_authenticate_uses_fingerprint_for_fast_lookup(): void {
+		$api_key     = 'wc_ai_testkey1234567890abcdef1234';
+		$fingerprint = hash( 'sha256', substr( $api_key, 0, 16 ) );
+
+		$request = \Mockery::mock( 'WP_REST_Request' );
+		$request->shouldReceive( 'get_header' )->with( 'X-AI-Agent-Key' )->andReturn( $api_key );
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+
+		Functions\expect( 'get_option' )
+			->andReturn( [
+				'bot-fp' => [
+					'key_hash'        => '$2y$10$matchinghash',
+					'key_fingerprint' => $fingerprint,
+					'status'          => 'active',
+				],
+			] );
+
+		Functions\expect( 'wp_check_password' )
+			->once() // Only ONE bcrypt call — the fingerprint matched.
+			->with( $api_key, '$2y$10$matchinghash' )
+			->andReturn( true );
+
+		Functions\expect( 'get_transient' )->andReturn( 0 );
+		Functions\expect( 'set_transient' )->andReturn( true );
+		Functions\expect( 'has_action' )->andReturn( true );
+
+		$result = $this->bot_manager->authenticate( $request );
+
+		$this->assertEquals( 'bot-fp', $result );
+	}
+
+	public function test_authenticate_skips_revoked_bot_with_matching_fingerprint(): void {
+		$api_key     = 'wc_ai_revokedkey567890abcdef1234';
+		$fingerprint = hash( 'sha256', substr( $api_key, 0, 16 ) );
+
+		$request = \Mockery::mock( 'WP_REST_Request' );
+		$request->shouldReceive( 'get_header' )->with( 'X-AI-Agent-Key' )->andReturn( $api_key );
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( '__' )->andReturnFirstArg();
+
+		Functions\expect( 'get_option' )
+			->andReturn( [
+				'bot-revoked' => [
+					'key_hash'        => '$2y$10$hash',
+					'key_fingerprint' => $fingerprint,
+					'status'          => 'revoked',
+				],
+			] );
+
+		// wp_check_password should NOT be called — skipped due to revoked status.
+		Functions\expect( 'wp_check_password' )->never();
+
+		$result = $this->bot_manager->authenticate( $request );
+
+		$this->assertInstanceOf( \WP_Error::class, $result );
+	}
+
+	public function test_authenticate_falls_back_to_linear_scan_for_legacy_bots(): void {
+		$api_key = 'wc_ai_legacykey1234567890abcdef';
+
+		$request = \Mockery::mock( 'WP_REST_Request' );
+		$request->shouldReceive( 'get_header' )->with( 'X-AI-Agent-Key' )->andReturn( $api_key );
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+
+		// Bot has no key_fingerprint (pre-migration).
+		Functions\expect( 'get_option' )
+			->andReturn( [
+				'bot-legacy' => [
+					'key_hash' => '$2y$10$legacyhash',
+					'status'   => 'active',
+				],
+			] );
+
+		Functions\expect( 'wp_check_password' )
+			->once()
+			->with( $api_key, '$2y$10$legacyhash' )
+			->andReturn( true );
+
+		Functions\expect( 'get_transient' )->andReturn( 0 );
+		Functions\expect( 'set_transient' )->andReturn( true );
+		Functions\expect( 'has_action' )->andReturn( true );
+
+		$result = $this->bot_manager->authenticate( $request );
+
+		$this->assertEquals( 'bot-legacy', $result );
+	}
+
+	// ------------------------------------------------------------------
+	// regenerate_key
+	// ------------------------------------------------------------------
+
+	public function test_regenerate_key_updates_hash_and_fingerprint(): void {
+		$stored_bots = null;
+
+		Functions\expect( 'get_option' )
+			->andReturn( [
+				'bot-regen' => [
+					'name'            => 'TestBot',
+					'key_hash'        => '$2y$10$oldhash',
+					'key_fingerprint' => 'old_fingerprint',
+					'key_prefix'      => 'wc_ai_old...',
+				],
+			] );
+
+		Functions\expect( 'wp_generate_password' )
+			->once()
+			->with( 32, false )
+			->andReturn( 'newkeychars1234567890abcdefghij' );
+
+		Functions\expect( 'wp_hash_password' )
+			->once()
+			->andReturn( '$2y$10$newhash' );
+
+		Functions\expect( 'update_option' )
+			->andReturnUsing( function ( $key, $bots ) use ( &$stored_bots ) {
+				$stored_bots = $bots;
+				return true;
+			} );
+
+		$result = $this->bot_manager->regenerate_key( 'bot-regen' );
+
+		$this->assertNotNull( $result );
+		$this->assertStringStartsWith( 'wc_ai_', $result['api_key'] );
+		// Verify fingerprint was updated.
+		$this->assertNotEquals( 'old_fingerprint', $stored_bots['bot-regen']['key_fingerprint'] );
+		$this->assertEquals( '$2y$10$newhash', $stored_bots['bot-regen']['key_hash'] );
+	}
+
+	// ------------------------------------------------------------------
+	// get_bot_name
+	// ------------------------------------------------------------------
+
+	public function test_get_bot_name_returns_name(): void {
+		Functions\expect( 'get_option' )
+			->andReturn( [ 'bot-1' => [ 'name' => 'ChatGPT' ] ] );
+
+		$this->assertEquals( 'ChatGPT', $this->bot_manager->get_bot_name( 'bot-1' ) );
+	}
+
+	public function test_get_bot_name_returns_null_for_unknown_bot(): void {
+		Functions\expect( 'get_option' )->andReturn( [] );
+
+		$this->assertNull( $this->bot_manager->get_bot_name( 'nonexistent' ) );
+	}
 }

@@ -106,6 +106,60 @@ if ( ! class_exists( 'WP_REST_Server' ) ) {
 	}
 }
 
+if ( ! class_exists( 'WC_Product' ) ) {
+	class WC_Product {
+		protected int $id = 1;
+		protected string $type = 'simple';
+		protected string $permalink = 'https://example.com/product/test/';
+		protected string $external_url = '';
+
+		public function __construct( int $id = 1, string $type = 'simple' ) {
+			$this->id   = $id;
+			$this->type = $type;
+		}
+
+		public function get_id(): int {
+			return $this->id;
+		}
+
+		public function get_type(): string {
+			return $this->type;
+		}
+
+		public function get_permalink(): string {
+			return $this->permalink;
+		}
+
+		public function set_permalink( string $url ): void {
+			$this->permalink = $url;
+		}
+
+		public function get_product_url(): string {
+			return $this->external_url;
+		}
+
+		public function set_product_url( string $url ): void {
+			$this->external_url = $url;
+		}
+
+		public function is_purchasable(): bool {
+			return true;
+		}
+
+		public function is_in_stock(): bool {
+			return true;
+		}
+
+		public function get_name(): string {
+			return 'Test Product';
+		}
+
+		public function get_price(): string {
+			return '19.99';
+		}
+	}
+}
+
 if ( ! class_exists( 'WC_Order' ) ) {
 	class WC_Order {
 		private array $meta = [];

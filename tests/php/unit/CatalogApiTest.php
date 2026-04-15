@@ -175,4 +175,75 @@ class CatalogApiTest extends \PHPUnit\Framework\TestCase {
 		$request->set_route( '/wc/v3/ai-syndication/cart/prepare' );
 		$this->api->check_agent_permission( $request );
 	}
+
+	// ------------------------------------------------------------------
+	// get_buy_url (via reflection)
+	// ------------------------------------------------------------------
+
+	private function call_get_buy_url( $product ) {
+		$method = new \ReflectionMethod( $this->api, 'get_buy_url' );
+		$method->setAccessible( true );
+		return $method->invoke( $this->api, $product );
+	}
+
+	public function test_buy_url_simple_product_has_add_to_cart(): void {
+		Functions\expect( 'add_query_arg' )->andReturnUsing(
+			function ( $args, $base ) {
+				return $base . '?' . http_build_query( $args );
+			}
+		);
+
+		$product = new WC_Product( 42, 'simple' );
+		$url     = $this->call_get_buy_url( $product );
+
+		$this->assertStringContainsString( 'add-to-cart=42', $url );
+		$this->assertStringContainsString( 'utm_medium=ai_agent', $url );
+	}
+
+	public function test_buy_url_variable_product_links_to_product_page(): void {
+		Functions\expect( 'add_query_arg' )->andReturnUsing(
+			function ( $args, $base ) {
+				return $base . '?' . http_build_query( $args );
+			}
+		);
+
+		$product = new WC_Product( 50, 'variable' );
+		$url     = $this->call_get_buy_url( $product );
+
+		$this->assertStringNotContainsString( 'add-to-cart', $url );
+		$this->assertStringContainsString( 'utm_medium=ai_agent', $url );
+		$this->assertStringContainsString( 'example.com/product/test/', $url );
+	}
+
+	public function test_buy_url_grouped_product_links_to_product_page(): void {
+		Functions\expect( 'add_query_arg' )->andReturnUsing(
+			function ( $args, $base ) {
+				return $base . '?' . http_build_query( $args );
+			}
+		);
+
+		$product = new WC_Product( 60, 'grouped' );
+		$url     = $this->call_get_buy_url( $product );
+
+		$this->assertStringNotContainsString( 'add-to-cart', $url );
+		$this->assertStringContainsString( 'utm_medium=ai_agent', $url );
+	}
+
+	public function test_buy_url_external_product_returns_external_url(): void {
+		$product = new WC_Product( 70, 'external' );
+		$product->set_product_url( 'https://amazon.com/product/123' );
+
+		$url = $this->call_get_buy_url( $product );
+
+		$this->assertEquals( 'https://amazon.com/product/123', $url );
+	}
+
+	public function test_buy_url_external_product_falls_back_to_permalink(): void {
+		$product = new WC_Product( 80, 'external' );
+		// No external URL set.
+
+		$url = $this->call_get_buy_url( $product );
+
+		$this->assertEquals( 'https://example.com/product/test/', $url );
+	}
 }
