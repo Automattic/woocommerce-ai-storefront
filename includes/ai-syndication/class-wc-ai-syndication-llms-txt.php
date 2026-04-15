@@ -18,6 +18,11 @@ defined( 'ABSPATH' ) || exit;
 class WC_AI_Syndication_Llms_Txt {
 
 	/**
+	 * Transient key for cached llms.txt content.
+	 */
+	const CACHE_KEY = 'wc_ai_syndication_llms_txt';
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function init() {
@@ -72,13 +77,13 @@ class WC_AI_Syndication_Llms_Txt {
 	 * @return string Markdown content.
 	 */
 	private function get_cached_content() {
-		$cached = get_transient( 'wc_ai_syndication_llms_txt' );
+		$cached = get_transient( self::CACHE_KEY );
 		if ( false !== $cached ) {
 			return $cached;
 		}
 
 		$content = $this->generate();
-		set_transient( 'wc_ai_syndication_llms_txt', $content, HOUR_IN_SECONDS );
+		set_transient( self::CACHE_KEY, $content, HOUR_IN_SECONDS );
 		return $content;
 	}
 
