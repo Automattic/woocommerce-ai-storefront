@@ -611,95 +611,9 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						: __( 'Save Changes', 'woocommerce-ai-syndication' ) }
 				</Button>
 			</div>
-
-			{ /* Setup checklist */ }
-			<Card style={ { marginTop: '12px' } }>
-				<CardBody>
-					<h3 style={ { margin: '0 0 12px', fontSize: '14px' } }>
-						{ __(
-							'Get the most from AI Syndication',
-							'woocommerce-ai-syndication'
-						) }
-					</h3>
-					<ul
-						style={ {
-							listStyle: 'none',
-							padding: 0,
-							margin: 0,
-							fontSize: '13px',
-							lineHeight: '2',
-						} }
-					>
-						<ChecklistItem done>
-							{ __(
-								'Enable AI Syndication',
-								'woocommerce-ai-syndication'
-							) }
-						</ChecklistItem>
-						<ChecklistItem done>
-							{ __(
-								'Review which products are exposed',
-								'woocommerce-ai-syndication'
-							) }
-							{ ' → ' }
-							<em>
-								{ __(
-									'Product Selection tab',
-									'woocommerce-ai-syndication'
-								) }
-							</em>
-						</ChecklistItem>
-						<ChecklistItem done={ botList.length > 0 }>
-							{ __(
-								'Register your first AI agent',
-								'woocommerce-ai-syndication'
-							) }
-							{ ' → ' }
-							<em>
-								{ __(
-									'Bot Permissions tab',
-									'woocommerce-ai-syndication'
-								) }
-							</em>
-						</ChecklistItem>
-						<ChecklistItem done={ stats?.total_orders > 0 }>
-							{ __(
-								'View AI-referred orders',
-								'woocommerce-ai-syndication'
-							) }
-							{ ' → ' }
-							<em>
-								{ __(
-									'Attribution tab',
-									'woocommerce-ai-syndication'
-								) }
-							</em>
-						</ChecklistItem>
-					</ul>
-				</CardBody>
-			</Card>
 		</>
 	);
 };
-
-const ChecklistItem = ( { done, children } ) => (
-	<li>
-		<span
-			style={ {
-				display: 'inline-block',
-				width: '18px',
-				textAlign: 'center',
-				marginRight: '8px',
-				color: done ? '#00a32a' : '#c3c4c7',
-			} }
-		>
-			{ done ? '\u2713' : '\u25CB' }
-		</span>
-		<span style={ { color: done ? '#50575e' : '#1d2327' } }>
-			{ children }
-		</span>
-	</li>
-);
 
 // ---------------------------------------------------------------------------
 // Overview Tab (routes to pre/post enable views)
