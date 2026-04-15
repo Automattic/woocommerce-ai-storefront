@@ -57,9 +57,11 @@ class WC_AI_Syndication {
 	private function __construct() {
 		$this->load_dependencies();
 
-		// Cache invalidation hooks register unconditionally so llms.txt cache
-		// entries are cleared while syndication is disabled and rebuilt cleanly
-		// when syndication is re-enabled.
+		// Rewrite rules, query vars, and cache invalidation register
+		// unconditionally so they exist before syndication is enabled.
+		// The serve callbacks check the enabled setting and return 404 if off.
+		$this->register_rewrite_rules();
+
 		$cache_invalidator = new WC_AI_Syndication_Cache_Invalidator();
 		$cache_invalidator->init();
 
@@ -106,18 +108,13 @@ class WC_AI_Syndication {
 		}
 
 		// Discovery Layer.
-		$llms_txt = new WC_AI_Syndication_Llms_Txt();
-		$llms_txt->init();
-
+		// Note: llms.txt and UCP rewrite rules are registered unconditionally
+		// in register_rewrite_rules(). Here we only init the remaining components.
 		$jsonld = new WC_AI_Syndication_JsonLd();
 		$jsonld->init();
 
 		$robots = new WC_AI_Syndication_Robots();
 		$robots->init();
-
-		// UCP Manifest.
-		$ucp = new WC_AI_Syndication_Ucp();
-		$ucp->init();
 
 		// Attribution.
 		$attribution = new WC_AI_Syndication_Attribution();
@@ -125,6 +122,26 @@ class WC_AI_Syndication {
 
 		// Bot manager.
 		$this->bot_manager = new WC_AI_Syndication_Bot_Manager();
+	}
+
+	/**
+	 * Register rewrite rules and serve callbacks unconditionally.
+	 *
+	 * The rewrite rules for /llms.txt and /.well-known/ucp must exist
+	 * even before syndication is enabled, otherwise WordPress returns
+	 * 404 until the next permalink flush. The serve callbacks already
+	 * check the enabled setting and return 404 when syndication is off.
+	 */
+	private function register_rewrite_rules() {
+		$llms_txt = new WC_AI_Syndication_Llms_Txt();
+		add_action( 'init', [ $llms_txt, 'add_rewrite_rules' ] );
+		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
+		add_filter( 'query_vars', [ $llms_txt, 'add_query_vars' ] );
+
+		$ucp = new WC_AI_Syndication_Ucp();
+		add_action( 'init', [ $ucp, 'add_rewrite_rules' ] );
+		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
+		add_filter( 'query_vars', [ $ucp, 'add_query_vars' ] );
 	}
 
 	/**
