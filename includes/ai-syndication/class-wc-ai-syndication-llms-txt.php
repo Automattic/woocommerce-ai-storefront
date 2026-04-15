@@ -93,9 +93,9 @@ class WC_AI_Syndication_Llms_Txt {
 	 * @return string Markdown content.
 	 */
 	public function generate() {
-		$site_name   = wp_strip_all_tags( get_bloginfo( 'name' ) );
+		$site_name   = html_entity_decode( wp_strip_all_tags( get_bloginfo( 'name' ) ), ENT_QUOTES, 'UTF-8' );
 		$site_url    = home_url( '/' );
-		$description = wp_strip_all_tags( get_bloginfo( 'description' ) );
+		$description = html_entity_decode( wp_strip_all_tags( get_bloginfo( 'description' ) ), ENT_QUOTES, 'UTF-8' );
 		$currency    = get_woocommerce_currency();
 		$settings    = WC_AI_Syndication::get_settings();
 
@@ -139,7 +139,7 @@ class WC_AI_Syndication_Llms_Txt {
 			foreach ( $categories as $category ) {
 				$link = get_term_link( $category );
 				if ( ! is_wp_error( $link ) ) {
-					$cat_name = wp_strip_all_tags( $category->name );
+					$cat_name = html_entity_decode( wp_strip_all_tags( $category->name ), ENT_QUOTES, 'UTF-8' );
 					$lines[] = "- [{$cat_name}]({$link}) ({$category->count} products)";
 				}
 			}
@@ -151,9 +151,10 @@ class WC_AI_Syndication_Llms_Txt {
 		if ( ! empty( $products ) ) {
 			$lines[] = '## Featured Products';
 			$lines[] = '';
+			$currency_symbol = html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' );
 			foreach ( $products as $product ) {
-				$price   = wp_strip_all_tags( $product->get_price_html() );
-				$product_name = wp_strip_all_tags( $product->get_name() );
+				$product_name = html_entity_decode( wp_strip_all_tags( $product->get_name() ), ENT_QUOTES, 'UTF-8' );
+				$price        = $currency_symbol . $product->get_price();
 				$lines[]      = "- [{$product_name}](" . $product->get_permalink() . ") - {$price}";
 			}
 			$lines[] = '';
