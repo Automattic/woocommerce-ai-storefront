@@ -139,20 +139,22 @@ class WC_AI_Syndication_Llms_Txt {
 			foreach ( $categories as $category ) {
 				$link = get_term_link( $category );
 				if ( ! is_wp_error( $link ) ) {
-					$cat_name = html_entity_decode( wp_strip_all_tags( $category->name ), ENT_QUOTES, 'UTF-8' );
-					$lines[] = "- [{$cat_name}]({$link}) ({$category->count} products)";
+					$cat_name  = html_entity_decode( wp_strip_all_tags( $category->name ), ENT_QUOTES, 'UTF-8' );
+					$count_label = 1 === (int) $category->count ? 'product' : 'products';
+					$lines[]   = "- [{$cat_name}]({$link}) ({$category->count} {$count_label})";
 				}
 			}
 			$lines[] = '';
 		}
 
 		// Featured/popular products.
-		$products = $this->get_featured_products( $settings );
-		if ( ! empty( $products ) ) {
-			$lines[] = '## Featured Products';
-			$lines[] = '';
+		$product_data = $this->get_featured_products( $settings );
+		if ( ! empty( $product_data['products'] ) ) {
+			$section_title = $product_data['is_featured'] ? 'Featured Products' : 'Popular Products';
+			$lines[]       = "## {$section_title}";
+			$lines[]       = '';
 			$currency_symbol = html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' );
-			foreach ( $products as $product ) {
+			foreach ( $product_data['products'] as $product ) {
 				$product_name = html_entity_decode( wp_strip_all_tags( $product->get_name() ), ENT_QUOTES, 'UTF-8' );
 				$price        = $currency_symbol . $product->get_price();
 				$lines[]      = "- [{$product_name}](" . $product->get_permalink() . ") - {$price}";
@@ -229,20 +231,30 @@ class WC_AI_Syndication_Llms_Txt {
 
 		$product_mode = $settings['product_selection_mode'] ?? 'all';
 		if ( 'categories' === $product_mode && ! empty( $settings['selected_categories'] ) ) {
-			$query_args['category'] = array_map( 'absint', $settings['selected_categories'] );
+			$query_args['tax_query'] = [
+				[
+					'taxonomy' => 'product_cat',
+					'field'    => 'term_id',
+					'terms'    => array_map( 'absint', $settings['selected_categories'] ),
+				],
+			];
 		} elseif ( 'selected' === $product_mode && ! empty( $settings['selected_products'] ) ) {
 			$query_args['include'] = array_map( 'absint', $settings['selected_products'] );
 			unset( $query_args['featured'] );
 		}
 
-		$products = wc_get_products( $query_args );
+		$products   = wc_get_products( $query_args );
+		$is_featured = ! empty( $products );
 
 		// Fallback to popular if no featured products exist.
-		if ( empty( $products ) ) {
+		if ( ! $is_featured ) {
 			unset( $query_args['featured'] );
 			$products = wc_get_products( $query_args );
 		}
 
-		return $products;
+		return [
+			'products'    => $products,
+			'is_featured' => $is_featured,
+		];
 	}
 }
