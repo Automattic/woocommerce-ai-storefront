@@ -1,0 +1,26 @@
+{
+	"name": "woocommerce-ai-syndication",
+	"version": "1.0.0",
+	"description": "Merchant-led AI product syndication for WooCommerce",
+	"author": "WooCommerce",
+	"license": "GPL-3.0-or-later",
+	"private": true,
+	"scripts": {
+		"build": "wp-scripts build",
+		"start": "wp-scripts start",
+		"lint:js": "wp-scripts lint-js client/",
+		"lint:js-fix": "wp-scripts lint-js --fix client/",
+		"lint:css": "wp-scripts lint-style 'client/**/*.{css,scss}'",
+		"test:js": "wp-scripts test-unit-js"
+	},
+	"devDependencies": {
+		"@wordpress/scripts": "^28.0.0"
+	},
+	"dependencies": {
+		"@wordpress/api-fetch": "^7.0.0",
+		"@wordpress/components": "^28.0.0",
+		"@wordpress/data": "^10.0.0",
+		"@wordpress/element": "^6.0.0",
+		"@wordpress/i18n": "^5.0.0"
+	}
+}
