@@ -38,7 +38,7 @@ const BotManager = () => {
 
 	const {
 		fetchBots,
-		createBot,
+		createBots,
 		deleteBot,
 		updateBot,
 		regenerateBotKey,
@@ -71,17 +71,23 @@ const BotManager = () => {
 	};
 
 	const handleCreate = () => {
-		// Create a bot for each selected known agent.
+		const names = [];
+
+		// Collect names from selected known agents.
 		selectedAgents.forEach( ( agentId ) => {
 			const agent = KNOWN_AGENTS.find( ( a ) => a.id === agentId );
 			if ( agent ) {
-				createBot( agent.name );
+				names.push( agent.name );
 			}
 		} );
 
-		// Create a bot for the custom name if provided.
+		// Add custom name if provided.
 		if ( customName.trim() ) {
-			createBot( customName.trim() );
+			names.push( customName.trim() );
+		}
+
+		if ( names.length > 0 ) {
+			createBots( names );
 		}
 
 		setSelectedAgents( [] );
@@ -107,26 +113,37 @@ const BotManager = () => {
 					<p>
 						<strong>
 							{ __(
-								'API Key (copy now, shown only once):',
+								'API Keys (copy now, shown only once):',
 								'woocommerce-ai-syndication'
 							) }
 						</strong>
 					</p>
-					<code
-						style={ {
-							display: 'block',
-							padding: '8px',
-							background: '#f0f0f0',
-							wordBreak: 'break-all',
-							fontSize: '13px',
-						} }
-					>
-						{ newBotKey.api_key }
-					</code>
-					<p style={ { marginTop: '8px' } }>
-						{ __( 'Bot:', 'woocommerce-ai-syndication' ) }{ ' ' }
-						<strong>{ newBotKey.name }</strong>
-					</p>
+					{ ( Array.isArray( newBotKey )
+						? newBotKey
+						: [ newBotKey ]
+					).map( ( key ) => (
+						<div
+							key={ key.bot_id }
+							style={ {
+								marginBottom: '8px',
+								padding: '8px',
+								background: '#f0f0f0',
+								borderRadius: '4px',
+							} }
+						>
+							<strong>{ key.name }</strong>
+							<code
+								style={ {
+									display: 'block',
+									wordBreak: 'break-all',
+									fontSize: '13px',
+									marginTop: '4px',
+								} }
+							>
+								{ key.api_key }
+							</code>
+						</div>
+					) ) }
 				</Notice>
 			) }
 

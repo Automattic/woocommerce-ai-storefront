@@ -1,7 +1,7 @@
 import ACTION_TYPES from './action-types';
 import apiFetch from '@wordpress/api-fetch';
 import { dispatch as globalDispatch } from '@wordpress/data';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import { ADMIN_NAMESPACE } from './constants';
 
 export function updateSettings( data ) {
@@ -108,6 +108,51 @@ export function createBot( name, permissions ) {
 		} catch ( error ) {
 			globalDispatch( 'core/notices' ).createErrorNotice(
 				__( 'Error creating bot.', 'woocommerce-ai-syndication' )
+			);
+		}
+	};
+}
+
+export function createBots( names ) {
+	return async ( { dispatch } ) => {
+		const createdKeys = [];
+
+		for ( const name of names ) {
+			try {
+				const result = await apiFetch( {
+					path: `${ ADMIN_NAMESPACE }/bots`,
+					method: 'POST',
+					data: { name },
+				} );
+				createdKeys.push( result );
+			} catch ( error ) {
+				globalDispatch( 'core/notices' ).createErrorNotice(
+					sprintf(
+						/* translators: %s: agent name */
+						__(
+							'Error creating %s.',
+							'woocommerce-ai-syndication'
+						),
+						name
+					)
+				);
+			}
+		}
+
+		if ( createdKeys.length > 0 ) {
+			// Store all created keys for display.
+			dispatch.setNewBotKey( createdKeys );
+			dispatch.fetchBots();
+
+			globalDispatch( 'core/notices' ).createSuccessNotice(
+				sprintf(
+					/* translators: %d: number of agents created */
+					__(
+						'%d agent(s) created. Copy the API keys now.',
+						'woocommerce-ai-syndication'
+					),
+					createdKeys.length
+				)
 			);
 		}
 	};
