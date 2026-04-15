@@ -57,8 +57,9 @@ class WC_AI_Syndication {
 	private function __construct() {
 		$this->load_dependencies();
 
-		// Cache invalidation hooks register unconditionally so the llms.txt
-		// cache stays fresh even while syndication is temporarily disabled.
+		// Cache invalidation hooks register unconditionally so llms.txt cache
+		// entries are cleared while syndication is disabled and rebuilt cleanly
+		// when syndication is re-enabled.
 		$cache_invalidator = new WC_AI_Syndication_Cache_Invalidator();
 		$cache_invalidator->init();
 

@@ -32,7 +32,8 @@ class WC_AI_Syndication_Cache_Invalidator {
 	 * Register invalidation hooks.
 	 *
 	 * Called unconditionally (not behind the syndication-enabled check)
-	 * so the cache stays fresh even while syndication is temporarily disabled.
+	 * so cached content is still invalidated while syndication is temporarily
+	 * disabled, avoiding stale content after it is re-enabled.
 	 */
 	public function init() {
 		// Product lifecycle.
@@ -60,8 +61,10 @@ class WC_AI_Syndication_Cache_Invalidator {
 	 * Invalidate the llms.txt transient and schedule a background warm-up.
 	 *
 	 * delete_transient() is idempotent, so calling this thousands of times
-	 * during a bulk import is harmless. The warm-up cron is naturally debounced
-	 * via wp_next_scheduled() — only one event is ever pending at a time.
+	 * during a bulk import is harmless. The warm-up scheduling uses
+	 * wp_next_scheduled() to reduce duplicate events, though under high
+	 * concurrency a few duplicate warm-ups may fire — this is tolerable
+	 * since warm_cache() is itself idempotent (skips if cache already exists).
 	 */
 	public function invalidate() {
 		delete_transient( WC_AI_Syndication_Llms_Txt::CACHE_KEY );
