@@ -31,7 +31,12 @@ const reducer = ( state = defaultState, action ) => {
 			};
 
 		case ACTION_TYPES.SET_BOTS:
-			return { ...state, bots: action.data };
+			return {
+				...state,
+				bots: Array.isArray( action.data )
+					? action.data
+					: Object.values( action.data || {} ),
+			};
 
 		case ACTION_TYPES.SET_IS_LOADING_BOTS:
 			return { ...state, isLoadingBots: action.isLoading };

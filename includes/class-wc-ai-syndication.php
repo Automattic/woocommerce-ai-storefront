@@ -192,12 +192,16 @@ class WC_AI_Syndication {
 			true
 		);
 
-		wp_register_style(
-			'wc-ai-syndication-settings',
-			WC_AI_SYNDICATION_PLUGIN_URL . '/build/ai-syndication-settings.css',
-			[ 'wp-components' ],
-			$asset['version']
-		);
+		// Only register the stylesheet if the build produced one.
+		$css_path = WC_AI_SYNDICATION_PLUGIN_PATH . '/build/ai-syndication-settings.css';
+		if ( file_exists( $css_path ) ) {
+			wp_register_style(
+				'wc-ai-syndication-settings',
+				WC_AI_SYNDICATION_PLUGIN_URL . '/build/ai-syndication-settings.css',
+				[ 'wp-components' ],
+				$asset['version']
+			);
+		}
 
 		wp_localize_script(
 			'wc-ai-syndication-settings',
@@ -214,7 +218,10 @@ class WC_AI_Syndication {
 		);
 
 		wp_enqueue_script( 'wc-ai-syndication-settings' );
-		wp_enqueue_style( 'wc-ai-syndication-settings' );
+		if ( wp_style_is( 'wc-ai-syndication-settings', 'registered' ) ) {
+			wp_enqueue_style( 'wc-ai-syndication-settings' );
+		}
+		wp_enqueue_style( 'wp-components' );
 	}
 
 	/**
