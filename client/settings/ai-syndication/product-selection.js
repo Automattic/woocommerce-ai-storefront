@@ -1,4 +1,4 @@
-import { useState, useEffect } from '@wordpress/element';
+import { useState, useEffect, useMemo } from '@wordpress/element';
 import {
 	Card,
 	CardBody,
@@ -14,15 +14,15 @@ import apiFetch from '@wordpress/api-fetch';
 
 const MODE_DESCRIPTIONS = {
 	all: __(
-		'Every published product in your store is discoverable by AI agents. Best for stores that want maximum exposure.',
+		'Every published product in your store is discoverable by AI crawlers. Best for stores that want maximum exposure.',
 		'woocommerce-ai-syndication'
 	),
 	categories: __(
-		'Only products in the categories you select below will be visible. Use this to focus AI discovery on specific product lines.',
+		'Only products in the categories you select below will be included in discovery endpoints. Use this to focus AI visibility on specific product lines.',
 		'woocommerce-ai-syndication'
 	),
 	selected: __(
-		'Only the specific products you choose below will be visible. Use this for curated AI-only collections or high-margin items.',
+		'Only the specific products you choose below will appear in discovery endpoints. Use this for curated collections or high-margin items.',
 		'woocommerce-ai-syndication'
 	),
 };
@@ -50,10 +50,79 @@ const CountPill = ( { count, label } ) => {
 	);
 };
 
+/**
+ * Token list showing selected items with remove buttons.
+ * Gives merchants a clear view of their current selection
+ * without scrolling through the full list.
+ * @param {Object}   root0          Component props.
+ * @param {Array}    root0.items    Selected items with id and label.
+ * @param {Function} root0.onRemove Callback when an item is removed.
+ */
+const SelectedTokens = ( { items, onRemove } ) => {
+	if ( items.length === 0 ) {
+		return null;
+	}
+
+	return (
+		<div
+			style={ {
+				display: 'flex',
+				flexWrap: 'wrap',
+				gap: '6px',
+				marginBottom: '12px',
+				padding: '12px',
+				background: '#fff',
+				border: '1px solid #e0e0e0',
+				borderRadius: '4px',
+			} }
+		>
+			{ items.map( ( item ) => (
+				<span
+					key={ item.id }
+					style={ {
+						display: 'inline-flex',
+						alignItems: 'center',
+						gap: '4px',
+						background: '#f0f0f0',
+						borderRadius: '3px',
+						padding: '3px 6px 3px 8px',
+						fontSize: '12px',
+						color: '#1d2327',
+						lineHeight: '1.4',
+					} }
+				>
+					{ decodeEntities( item.name ) }
+					<button
+						type="button"
+						onClick={ () => onRemove( item.id ) }
+						style={ {
+							background: 'none',
+							border: 'none',
+							padding: '0 2px',
+							cursor: 'pointer',
+							fontSize: '14px',
+							lineHeight: '1',
+							color: '#757575',
+						} }
+						aria-label={ sprintf(
+							/* translators: %s: item name */
+							__( 'Remove %s', 'woocommerce-ai-syndication' ),
+							decodeEntities( item.name )
+						) }
+					>
+						{ '\u00D7' }
+					</button>
+				</span>
+			) ) }
+		</div>
+	);
+};
+
 const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	const [ categories, setCategories ] = useState( [] );
 	const [ products, setProducts ] = useState( [] );
 	const [ productSearch, setProductSearch ] = useState( '' );
+	const [ categorySearch, setCategorySearch ] = useState( '' );
 	const [ isLoadingCategories, setIsLoadingCategories ] = useState( false );
 	const [ isLoadingProducts, setIsLoadingProducts ] = useState( false );
 
@@ -82,8 +151,14 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			.finally( () => setIsLoadingProducts( false ) );
 	}, [ productSearch, settings.product_selection_mode ] );
 
-	const selectedCategories = settings.selected_categories || [];
-	const selectedProducts = settings.selected_products || [];
+	const selectedCategories = useMemo(
+		() => settings.selected_categories || [],
+		[ settings.selected_categories ]
+	);
+	const selectedProducts = useMemo(
+		() => settings.selected_products || [],
+		[ settings.selected_products ]
+	);
 	const mode = settings.product_selection_mode || 'all';
 
 	const toggleCategory = ( catId ) => {
@@ -100,13 +175,53 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		onChange( { selected_products: updated } );
 	};
 
+	// Filter categories by search term.
+	const filteredCategories = useMemo( () => {
+		if ( ! categorySearch.trim() ) {
+			return categories;
+		}
+		const term = categorySearch.toLowerCase();
+		return categories.filter( ( cat ) =>
+			decodeEntities( cat.name ).toLowerCase().includes( term )
+		);
+	}, [ categories, categorySearch ] );
+
+	// Build token data for selected categories.
+	const selectedCategoryTokens = useMemo( () => {
+		return categories.filter( ( cat ) =>
+			selectedCategories.includes( cat.id )
+		);
+	}, [ categories, selectedCategories ] );
+
+	// Build token data for selected products.
+	// We need to track selected products that may not be in the current search results.
+	const [ selectedProductCache, setSelectedProductCache ] = useState( {} );
+	useEffect( () => {
+		const newCache = { ...selectedProductCache };
+		products.forEach( ( p ) => {
+			newCache[ p.id ] = p;
+		} );
+		setSelectedProductCache( newCache );
+	}, [ products ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Only update cache when products change.
+
+	const selectedProductTokens = useMemo( () => {
+		return selectedProducts
+			.map( ( id ) => selectedProductCache[ id ] )
+			.filter( Boolean );
+	}, [ selectedProducts, selectedProductCache ] );
+
+	const allCategoriesSelected =
+		categories.length > 0 &&
+		categories.every( ( cat ) => selectedCategories.includes( cat.id ) );
+	const noCategoriesSelected = selectedCategories.length === 0;
+
 	return (
 		<div>
 			<Card>
 				<CardBody>
 					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
 						{ __(
-							'Product Selection',
+							'AI Product Visibility',
 							'woocommerce-ai-syndication'
 						) }
 					</h3>
@@ -118,14 +233,14 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 						} }
 					>
 						{ __(
-							'Choose which products AI agents can discover and recommend to shoppers.',
+							'Choose which products appear in your discovery endpoints (llms.txt, UCP manifest, JSON-LD, and Store API responses). This controls what AI crawlers can see and recommend.',
 							'woocommerce-ai-syndication'
 						) }
 					</p>
 
 					<SelectControl
 						label={ __(
-							'Products available to AI agents',
+							'Products available to AI crawlers',
 							'woocommerce-ai-syndication'
 						) }
 						value={ mode }
@@ -202,6 +317,80 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									}
 								/>
 							</div>
+
+							{ /* Selected category tokens */ }
+							<SelectedTokens
+								items={ selectedCategoryTokens }
+								onRemove={ toggleCategory }
+							/>
+
+							{ /* Search + bulk actions for categories */ }
+							{ ! isLoadingCategories &&
+								categories.length > 8 && (
+									<SearchControl
+										value={ categorySearch }
+										onChange={ setCategorySearch }
+										placeholder={ __(
+											'Filter categories\u2026',
+											'woocommerce-ai-syndication'
+										) }
+									/>
+								) }
+							{ ! isLoadingCategories &&
+								categories.length > 0 && (
+									<div
+										style={ {
+											display: 'flex',
+											gap: '12px',
+											margin:
+												categories.length > 8
+													? '8px 0 8px'
+													: '0 0 8px',
+										} }
+									>
+										<Button
+											variant="link"
+											disabled={ allCategoriesSelected }
+											onClick={ () =>
+												onChange( {
+													selected_categories:
+														categories.map(
+															( cat ) => cat.id
+														),
+												} )
+											}
+											style={ {
+												fontSize: '12px',
+												padding: 0,
+												minHeight: 'auto',
+											} }
+										>
+											{ __(
+												'Select all',
+												'woocommerce-ai-syndication'
+											) }
+										</Button>
+										<Button
+											variant="link"
+											disabled={ noCategoriesSelected }
+											onClick={ () =>
+												onChange( {
+													selected_categories: [],
+												} )
+											}
+											style={ {
+												fontSize: '12px',
+												padding: 0,
+												minHeight: 'auto',
+											} }
+										>
+											{ __(
+												'Clear selection',
+												'woocommerce-ai-syndication'
+											) }
+										</Button>
+									</div>
+								) }
 							{ isLoadingCategories ? (
 								<div
 									style={ {
@@ -221,35 +410,57 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 										padding: '4px 16px',
 									} }
 								>
-									{ categories.map( ( cat, index ) => (
-										<div
-											key={ cat.id }
-											style={ {
-												padding: '6px 0',
-												borderBottom:
-													index <
-													categories.length - 1
-														? '1px solid #e0e0e0'
-														: 'none',
-											} }
-										>
-											<CheckboxControl
-												label={ sprintf(
-													/* translators: %1$s: category name, %2$d: product count */
-													'%1$s (%2$d)',
-													decodeEntities( cat.name ),
-													cat.count
+									{ filteredCategories.length === 0 &&
+										categorySearch && (
+											<p
+												style={ {
+													color: '#757575',
+													fontSize: '13px',
+													textAlign: 'center',
+													padding: '16px 0',
+													margin: 0,
+												} }
+											>
+												{ __(
+													'No categories match your filter.',
+													'woocommerce-ai-syndication'
 												) }
-												checked={ selectedCategories.includes(
-													cat.id
-												) }
-												onChange={ () =>
-													toggleCategory( cat.id )
-												}
-												__nextHasNoMarginBottom
-											/>
-										</div>
-									) ) }
+											</p>
+										) }
+									{ filteredCategories.map(
+										( cat, index ) => (
+											<div
+												key={ cat.id }
+												style={ {
+													padding: '6px 0',
+													borderBottom:
+														index <
+														filteredCategories.length -
+															1
+															? '1px solid #e0e0e0'
+															: 'none',
+												} }
+											>
+												<CheckboxControl
+													label={ sprintf(
+														/* translators: %1$s: category name, %2$d: product count */
+														'%1$s (%2$d)',
+														decodeEntities(
+															cat.name
+														),
+														cat.count
+													) }
+													checked={ selectedCategories.includes(
+														cat.id
+													) }
+													onChange={ () =>
+														toggleCategory( cat.id )
+													}
+													__nextHasNoMarginBottom
+												/>
+											</div>
+										)
+									) }
 								</div>
 							) }
 						</div>
@@ -288,14 +499,49 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									}
 								/>
 							</div>
+
+							{ /* Selected product tokens */ }
+							<SelectedTokens
+								items={ selectedProductTokens }
+								onRemove={ toggleProduct }
+							/>
+
 							<SearchControl
 								value={ productSearch }
 								onChange={ setProductSearch }
 								placeholder={ __(
-									'Search products…',
+									'Search products\u2026',
 									'woocommerce-ai-syndication'
 								) }
 							/>
+							{ selectedProducts.length > 0 && (
+								<div
+									style={ {
+										display: 'flex',
+										gap: '12px',
+										margin: '8px 0 0',
+									} }
+								>
+									<Button
+										variant="link"
+										onClick={ () =>
+											onChange( {
+												selected_products: [],
+											} )
+										}
+										style={ {
+											fontSize: '12px',
+											padding: 0,
+											minHeight: 'auto',
+										} }
+									>
+										{ __(
+											'Clear selection',
+											'woocommerce-ai-syndication'
+										) }
+									</Button>
+								</div>
+							) }
 							{ isLoadingProducts ? (
 								<div
 									style={ {
@@ -389,7 +635,10 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							onClick={ onSave }
 						>
 							{ isSaving
-								? __( 'Saving…', 'woocommerce-ai-syndication' )
+								? __(
+										'Saving\u2026',
+										'woocommerce-ai-syndication'
+								  )
 								: __(
 										'Save Changes',
 										'woocommerce-ai-syndication'

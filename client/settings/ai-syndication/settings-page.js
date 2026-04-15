@@ -205,7 +205,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 					} }
 				>
 					{ __(
-						'Enable to make your products discoverable by AI assistants.',
+						'Enable to make your products discoverable by AI assistants while keeping checkout and customer data on your store.',
 						'woocommerce-ai-syndication'
 					) }
 				</p>
@@ -252,7 +252,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 				title={ __( 'Data Sovereignty', 'woocommerce-ai-syndication' ) }
 			>
 				{ __(
-					'No marketplace middleman. No delegated payments. No platform lock-in. Your checkout, your customer data, your brand experience.',
+					'Checkout stays on your domain. Customer data never leaves your database. No delegated payments, no iframes, no platform lock-in. Unlike aggregator protocols, you own the entire transaction.',
 					'woocommerce-ai-syndication'
 				) }
 			</ValueCard>
@@ -279,7 +279,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 			<CardBody>
 				<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
 					{ __(
-						'Sell through every AI assistant — on your terms',
+						'Your store, your checkout, your data — visible to every AI assistant',
 						'woocommerce-ai-syndication'
 					) }
 				</h3>
@@ -291,7 +291,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 					} }
 				>
 					{ __(
-						'When shoppers ask ChatGPT, Gemini, Claude, Perplexity, or Copilot for product recommendations, your catalog shows up. Checkout happens on your store — no platform fees, no middleman.',
+						'When shoppers ask ChatGPT, Gemini, Claude, Perplexity, or Copilot for product recommendations, your catalog shows up. Every checkout happens on your store. No platform fees, no middleman, no data shared.',
 						'woocommerce-ai-syndication'
 					) }
 				</p>
@@ -388,6 +388,12 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 
 	const { fetchStats } = useDispatch( STORE_NAME );
 	const [ period, setPeriod ] = useState( 'month' );
+	const periodLabels = {
+		day: __( '24h', 'woocommerce-ai-syndication' ),
+		week: __( '7d', 'woocommerce-ai-syndication' ),
+		month: __( '30d', 'woocommerce-ai-syndication' ),
+		year: __( 'Year', 'woocommerce-ai-syndication' ),
+	};
 
 	useEffect( () => {
 		fetchStats( period );
@@ -442,7 +448,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						} }
 					>
 						{ __(
-							'Your products are discoverable by ChatGPT, Gemini, Claude, Perplexity, Copilot, and other AI assistants.',
+							'Your products are discoverable by AI assistants. Checkout and customer data stay on your store.',
 							'woocommerce-ai-syndication'
 						) }
 					</p>
@@ -524,16 +530,18 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					value={ productCount }
 				/>
 				<StatCard
-					label={ __(
-						'AI Orders (Month)',
-						'woocommerce-ai-syndication'
+					label={ sprintf(
+						/* translators: %s: time period label */
+						__( 'AI Orders (%s)', 'woocommerce-ai-syndication' ),
+						periodLabels[ period ]
 					) }
 					value={ stats?.total_orders ?? '\u2014' }
 				/>
 				<StatCard
-					label={ __(
-						'AI Revenue (Month)',
-						'woocommerce-ai-syndication'
+					label={ sprintf(
+						/* translators: %s: time period label */
+						__( 'AI Revenue (%s)', 'woocommerce-ai-syndication' ),
+						periodLabels[ period ]
 					) }
 					value={
 						stats
@@ -620,7 +628,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						} }
 					>
 						{ __(
-							'Control how frequently each AI agent can query your catalog. Higher limits allow faster product discovery but use more server resources.',
+							'Control how frequently AI crawlers can query your Store API. Higher limits allow faster product discovery but use more server resources.',
 							'woocommerce-ai-syndication'
 						) }
 					</p>
@@ -706,7 +714,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						} }
 					>
 						{ __(
-							'These limits apply per registered agent. Your regular store traffic is never affected.',
+							'Limits are applied per AI crawler (identified by user-agent string) using the WooCommerce Store API rate limiter. Your regular store traffic is not affected.',
 							'woocommerce-ai-syndication'
 						) }
 					</p>
