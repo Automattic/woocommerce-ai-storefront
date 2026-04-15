@@ -155,6 +155,11 @@ class WC_AI_Syndication {
 			delete_transient( 'wc_ai_syndication_flush_rewrite' );
 			update_option( 'wc_ai_syndication_version', WC_AI_SYNDICATION_VERSION );
 			add_action( 'init', 'flush_rewrite_rules', 99 );
+
+			// Bust content caches on code updates so fixes to generation
+			// logic (e.g., entity encoding) take effect immediately.
+			delete_transient( WC_AI_Syndication_Llms_Txt::CACHE_KEY );
+			delete_transient( WC_AI_Syndication_Ucp::CACHE_KEY );
 		}
 	}
 
