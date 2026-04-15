@@ -103,8 +103,8 @@ class WC_AI_Syndication_Ucp {
 		$manifest = [
 			'protocol_version' => self::PROTOCOL_VERSION,
 			'store'            => [
-				'name'        => get_bloginfo( 'name' ),
-				'description' => get_bloginfo( 'description' ),
+				'name'        => html_entity_decode( get_bloginfo( 'name' ), ENT_QUOTES, 'UTF-8' ),
+				'description' => html_entity_decode( get_bloginfo( 'description' ), ENT_QUOTES, 'UTF-8' ),
 				'url'         => $site_url,
 				'currency'    => get_woocommerce_currency(),
 				'locale'      => get_locale(),
