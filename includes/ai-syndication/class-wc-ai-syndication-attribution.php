@@ -55,6 +55,12 @@ class WC_AI_Syndication_Attribution {
 		add_action( 'manage_woocommerce_page_wc-orders_custom_column', [ $this, 'render_order_list_column' ], 10, 2 );
 		add_filter( 'manage_edit-shop_order_columns', [ $this, 'add_order_list_column' ] );
 		add_action( 'manage_shop_order_posts_custom_column', [ $this, 'render_order_list_column' ], 10, 2 );
+
+		// Add AI agent filter dropdown to orders list.
+		add_action( 'woocommerce_order_list_table_restrict_manage_orders', [ $this, 'render_agent_filter' ], 20 );
+		add_action( 'restrict_manage_posts', [ $this, 'render_agent_filter_legacy' ], 20 );
+		add_filter( 'woocommerce_order_list_table_prepare_items_query_args', [ $this, 'filter_orders_by_agent' ] );
+		add_action( 'pre_get_posts', [ $this, 'filter_orders_by_agent_legacy' ] );
 	}
 
 	/**
@@ -304,5 +310,134 @@ class WC_AI_Syndication_Attribution {
 			'currency'         => get_woocommerce_currency(),
 			'by_agent'         => $by_agent,
 		];
+	}
+
+	/**
+	 * Get distinct AI agent names from order meta for the filter dropdown.
+	 *
+	 * @return string[]
+	 */
+	private static function get_known_agents() {
+		global $wpdb;
+
+		if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
+			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+			$meta_table = $wpdb->prefix . 'wc_orders_meta';
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$agents = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT DISTINCT meta_value FROM {$meta_table} WHERE meta_key = %s AND meta_value != '' ORDER BY meta_value",
+					self::AGENT_META_KEY
+				)
+			);
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$agents = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT DISTINCT meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value != '' ORDER BY meta_value",
+					self::AGENT_META_KEY
+				)
+			);
+		}
+
+		return $agents ?: [];
+	}
+
+	/**
+	 * Render the AI agent filter dropdown (HPOS orders list).
+	 */
+	public function render_agent_filter() {
+		$agents  = self::get_known_agents();
+		if ( empty( $agents ) ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$current = isset( $_GET['ai_agent_filter'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_filter'] ) ) : '';
+
+		echo '<select name="ai_agent_filter">';
+		echo '<option value="">' . esc_html__( 'All AI agents', 'woocommerce-ai-syndication' ) . '</option>';
+		echo '<option value="_any"' . selected( $current, '_any', false ) . '>' . esc_html__( 'Any AI agent', 'woocommerce-ai-syndication' ) . '</option>';
+		foreach ( $agents as $agent ) {
+			echo '<option value="' . esc_attr( $agent ) . '"' . selected( $current, $agent, false ) . '>' . esc_html( $agent ) . '</option>';
+		}
+		echo '</select>';
+	}
+
+	/**
+	 * Render the AI agent filter dropdown (legacy shop_order).
+	 *
+	 * @param string $post_type Current post type.
+	 */
+	public function render_agent_filter_legacy( $post_type ) {
+		if ( 'shop_order' !== $post_type ) {
+			return;
+		}
+		$this->render_agent_filter();
+	}
+
+	/**
+	 * Filter HPOS orders by AI agent meta.
+	 *
+	 * @param array $query_args Order query arguments.
+	 * @return array
+	 */
+	public function filter_orders_by_agent( $query_args ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$agent = isset( $_GET['ai_agent_filter'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_filter'] ) ) : '';
+
+		if ( empty( $agent ) ) {
+			return $query_args;
+		}
+
+		if ( '_any' === $agent ) {
+			$query_args['meta_query'][] = [
+				'key'     => self::AGENT_META_KEY,
+				'compare' => 'EXISTS',
+			];
+		} else {
+			$query_args['meta_query'][] = [
+				'key'   => self::AGENT_META_KEY,
+				'value' => $agent,
+			];
+		}
+
+		return $query_args;
+	}
+
+	/**
+	 * Filter legacy shop_order posts by AI agent meta.
+	 *
+	 * @param WP_Query $query The query.
+	 */
+	public function filter_orders_by_agent_legacy( $query ) {
+		global $pagenow;
+
+		if ( 'edit.php' !== $pagenow || ( $query->get( 'post_type' ) ?? '' ) !== 'shop_order' ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$agent = isset( $_GET['ai_agent_filter'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_filter'] ) ) : '';
+
+		if ( empty( $agent ) ) {
+			return;
+		}
+
+		$meta_query = $query->get( 'meta_query' ) ?: [];
+
+		if ( '_any' === $agent ) {
+			$meta_query[] = [
+				'key'     => self::AGENT_META_KEY,
+				'compare' => 'EXISTS',
+			];
+		} else {
+			$meta_query[] = [
+				'key'   => self::AGENT_META_KEY,
+				'value' => $agent,
+			];
+		}
+
+		$query->set( 'meta_query', $meta_query );
 	}
 }
