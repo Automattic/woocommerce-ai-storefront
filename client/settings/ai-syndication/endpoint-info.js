@@ -42,6 +42,17 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 	const allowedCrawlers =
 		settings.allowed_crawlers || KNOWN_CRAWLERS.map( ( c ) => c.id );
 
+	// Count only crawlers that are actually rendered as checkboxes. Right
+	// after a plugin upgrade that rotated AI_CRAWLERS, the stored array
+	// can still contain deprecated IDs (stripped on the next save by
+	// WC_AI_Syndication_Robots::sanitize_allowed_crawlers), but until
+	// then `allowedCrawlers.length` would exceed the visible checkbox
+	// count — producing displays like "13 of 12".
+	const knownCrawlerIds = KNOWN_CRAWLERS.map( ( c ) => c.id );
+	const checkedCount = allowedCrawlers.filter( ( id ) =>
+		knownCrawlerIds.includes( id )
+	).length;
+
 	const toggleCrawler = ( crawlerId ) => {
 		const updated = allowedCrawlers.includes( crawlerId )
 			? allowedCrawlers.filter( ( id ) => id !== crawlerId )
@@ -233,17 +244,15 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								style={ {
 									display: 'inline-block',
 									background:
-										allowedCrawlers.length > 0
+										checkedCount > 0
 											? '#edfaef'
 											: '#f0f0f0',
 									color:
-										allowedCrawlers.length > 0
+										checkedCount > 0
 											? '#00a32a'
 											: '#757575',
 									fontWeight:
-										allowedCrawlers.length > 0
-											? '600'
-											: '400',
+										checkedCount > 0 ? '600' : '400',
 									fontSize: '12px',
 									borderRadius: '10px',
 									padding: '2px 10px',
@@ -256,7 +265,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 										'%1$d of %2$d',
 										'woocommerce-ai-syndication'
 									),
-									allowedCrawlers.length,
+									checkedCount,
 									KNOWN_CRAWLERS.length
 								) }
 							</span>

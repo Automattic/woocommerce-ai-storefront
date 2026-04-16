@@ -305,9 +305,9 @@ class WC_AI_Syndication {
 			'selected_categories'    => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
 			'selected_products'      => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
 			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
-			'allowed_crawlers'       => array_values( array_filter(
-				array_map( 'sanitize_text_field', (array) ( $merged['allowed_crawlers'] ?? WC_AI_Syndication_Robots::AI_CRAWLERS ) )
-			) ),
+			'allowed_crawlers'       => WC_AI_Syndication_Robots::sanitize_allowed_crawlers(
+				$merged['allowed_crawlers'] ?? WC_AI_Syndication_Robots::AI_CRAWLERS
+			),
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.

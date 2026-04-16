@@ -37,6 +37,31 @@ class WC_AI_Syndication_Robots {
 	];
 
 	/**
+	 * Sanitize an `allowed_crawlers` input against the canonical crawler list.
+	 *
+	 * Strips unknown IDs left over from plugin upgrades that rotated the
+	 * crawler roster (e.g. the Bytespider → OAI-SearchBot swap in v1.1.0)
+	 * and any malformed / non-matching strings. Keeping the stored list in
+	 * sync with AI_CRAWLERS prevents deprecated `User-agent: Bytespider`
+	 * blocks from leaking into `robots.txt` and keeps the admin UI's
+	 * "X of Y" count honest.
+	 *
+	 * @param mixed $input Raw input from settings save — expected array of strings.
+	 * @return string[]    Re-indexed list of valid crawler IDs.
+	 */
+	public static function sanitize_allowed_crawlers( $input ): array {
+		if ( ! is_array( $input ) ) {
+			return [];
+		}
+
+		$sanitized = array_map( 'sanitize_text_field', $input );
+
+		// `array_intersect` preserves first-argument keys, so `array_values`
+		// re-indexes — otherwise the JSON response serializes as an object.
+		return array_values( array_intersect( $sanitized, self::AI_CRAWLERS ) );
+	}
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function init() {
