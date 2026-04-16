@@ -8,6 +8,7 @@ describe( 'AI Syndication reducer', () => {
 		savingError: null,
 		stats: null,
 		endpoints: {},
+		endpointStatus: {},
 	};
 
 	it( 'returns default state for undefined state', () => {
@@ -104,6 +105,55 @@ describe( 'AI Syndication reducer', () => {
 				data: endpoints,
 			} );
 			expect( state.endpoints ).toEqual( endpoints );
+		} );
+	} );
+
+	describe( 'SET_ENDPOINT_STATUS', () => {
+		it( 'sets a single endpoint status value', () => {
+			const state = reducer( defaultState, {
+				type: ACTION_TYPES.SET_ENDPOINT_STATUS,
+				key: 'llms_txt',
+				status: 'reachable',
+			} );
+			expect( state.endpointStatus ).toEqual( {
+				llms_txt: 'reachable',
+			} );
+		} );
+
+		it( 'merges status updates without clobbering other keys', () => {
+			// Two endpoints probed sequentially — each probe resolves
+			// on its own clock. The reducer must preserve already-set
+			// statuses rather than reset the whole map per dispatch.
+			const afterLlms = reducer( defaultState, {
+				type: ACTION_TYPES.SET_ENDPOINT_STATUS,
+				key: 'llms_txt',
+				status: 'reachable',
+			} );
+			const afterUcp = reducer( afterLlms, {
+				type: ACTION_TYPES.SET_ENDPOINT_STATUS,
+				key: 'ucp',
+				status: 'unreachable',
+			} );
+			expect( afterUcp.endpointStatus ).toEqual( {
+				llms_txt: 'reachable',
+				ucp: 'unreachable',
+			} );
+		} );
+	} );
+
+	describe( 'RESET_ENDPOINT_STATUS', () => {
+		it( 'clears the endpointStatus map', () => {
+			const initial = {
+				...defaultState,
+				endpointStatus: {
+					llms_txt: 'reachable',
+					ucp: 'unreachable',
+				},
+			};
+			const state = reducer( initial, {
+				type: ACTION_TYPES.RESET_ENDPOINT_STATUS,
+			} );
+			expect( state.endpointStatus ).toEqual( {} );
 		} );
 	} );
 } );

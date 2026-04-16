@@ -27,19 +27,113 @@ const KNOWN_CRAWLERS = [
 	{ id: 'Applebot-Extended', label: 'Applebot-Extended (Siri)' },
 ];
 
+/**
+ * Small badge showing reachability state for one endpoint.
+ *
+ * Five visual states:
+ *   - checking:    spinner + "Checking…"
+ *   - reachable:   green ✓ + "Reachable"
+ *   - unreachable: red ✗ + "Not reachable" (plus recovery hint below the table)
+ *   - disabled:    gray — + "Not published" (syndication toggled off)
+ *   - (no value):  same rendering as 'checking' — probe hasn't started yet
+ *
+ * @param {Object} root0        Props.
+ * @param {string} root0.status One of checking/reachable/unreachable/disabled.
+ */
+const StatusBadge = ( { status } ) => {
+	const effective = status || 'checking';
+
+	if ( effective === 'checking' ) {
+		return (
+			<span
+				style={ {
+					display: 'inline-flex',
+					alignItems: 'center',
+					gap: '6px',
+					color: colors.textMuted,
+					fontSize: '12px',
+				} }
+			>
+				<Spinner />
+				{ __( 'Checking…', 'woocommerce-ai-syndication' ) }
+			</span>
+		);
+	}
+
+	const config = {
+		reachable: {
+			icon: '✓',
+			label: __( 'Reachable', 'woocommerce-ai-syndication' ),
+			color: colors.success,
+		},
+		unreachable: {
+			icon: '✗',
+			label: __( 'Not reachable', 'woocommerce-ai-syndication' ),
+			color: colors.error,
+		},
+		disabled: {
+			icon: '—',
+			label: __( 'Not published', 'woocommerce-ai-syndication' ),
+			color: colors.textMuted,
+		},
+	}[ effective ] || {
+		icon: '?',
+		label: effective,
+		color: colors.textMuted,
+	};
+
+	return (
+		<span
+			style={ {
+				display: 'inline-flex',
+				alignItems: 'center',
+				gap: '6px',
+				color: config.color,
+				fontSize: '13px',
+				fontWeight: '500',
+			} }
+		>
+			<span
+				aria-hidden="true"
+				style={ { fontSize: '14px', lineHeight: '1' } }
+			>
+				{ config.icon }
+			</span>
+			{ config.label }
+		</span>
+	);
+};
+
 const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 	const endpoints = useSelect(
 		( select ) => select( STORE_NAME ).getEndpoints(),
 		[]
 	);
+	const endpointStatus = useSelect(
+		( select ) => select( STORE_NAME ).getEndpointStatus(),
+		[]
+	);
 
-	const { fetchEndpoints } = useDispatch( STORE_NAME );
+	const { fetchEndpoints, checkEndpoints } = useDispatch( STORE_NAME );
 
 	useEffect( () => {
 		fetchEndpoints();
 	}, [] ); // eslint-disable-line react-hooks/exhaustive-deps -- Fetch once on mount.
 
+	// Probe endpoints as soon as we know the URLs. Runs again if the
+	// enabled state changes — toggling adds/removes rewrite targets.
+	useEffect( () => {
+		if ( endpoints && endpoints.llms_txt ) {
+			checkEndpoints();
+		}
+	}, [ endpoints.llms_txt, settings.enabled ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Stable dispatch.
+
 	const isEnabled = settings.enabled === 'yes';
+	const anyUnreachable =
+		isEnabled &&
+		( endpointStatus.llms_txt === 'unreachable' ||
+			endpointStatus.ucp === 'unreachable' ||
+			endpointStatus.store_api === 'unreachable' );
 	const allowedCrawlers =
 		settings.allowed_crawlers || KNOWN_CRAWLERS.map( ( c ) => c.id );
 
@@ -126,6 +220,12 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								</th>
 								<th>
 									{ __(
+										'Status',
+										'woocommerce-ai-syndication'
+									) }
+								</th>
+								<th>
+									{ __(
 										'Purpose',
 										'woocommerce-ai-syndication'
 									) }
@@ -149,6 +249,11 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 									) }
 								</td>
 								<td>
+									<StatusBadge
+										status={ endpointStatus.llms_txt }
+									/>
+								</td>
+								<td>
 									{ __(
 										'Machine-readable store guide for AI crawlers',
 										'woocommerce-ai-syndication'
@@ -169,6 +274,11 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 									) }
 								</td>
 								<td>
+									<StatusBadge
+										status={ endpointStatus.ucp }
+									/>
+								</td>
+								<td>
 									{ __(
 										'Universal Commerce Protocol — declares capabilities',
 										'woocommerce-ai-syndication'
@@ -187,6 +297,11 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 									) }
 								</td>
 								<td>
+									<StatusBadge
+										status={ endpointStatus.store_api }
+									/>
+								</td>
+								<td>
 									{ __(
 										'WooCommerce Store API for product search and cart (public)',
 										'woocommerce-ai-syndication'
@@ -195,6 +310,55 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							</tr>
 						</tbody>
 					</table>
+
+					{ /* Recovery hint when any endpoint is unreachable. */ }
+					{ anyUnreachable && (
+						<p
+							style={ {
+								marginTop: '12px',
+								marginBottom: 0,
+								padding: '10px 12px',
+								background: colors.surfaceSubtle,
+								borderLeft: `3px solid ${ colors.error }`,
+								borderRadius: '2px',
+								color: colors.textSecondary,
+								fontSize: '13px',
+							} }
+						>
+							{ __(
+								'One or more endpoints are not reachable. If you just upgraded the plugin, try Settings → Permalinks → Save Changes to flush rewrite rules, then click Re-check.',
+								'woocommerce-ai-syndication'
+							) }
+						</p>
+					) }
+
+					<div
+						style={ {
+							marginTop: '12px',
+							display: 'flex',
+							justifyContent: 'space-between',
+							alignItems: 'center',
+						} }
+					>
+						<span
+							style={ {
+								fontSize: '12px',
+								color: colors.textMuted,
+							} }
+						>
+							{ __(
+								'Reachability is checked from your browser.',
+								'woocommerce-ai-syndication'
+							) }
+						</span>
+						<Button
+							variant="secondary"
+							size="compact"
+							onClick={ () => checkEndpoints() }
+						>
+							{ __( 'Re-check', 'woocommerce-ai-syndication' ) }
+						</Button>
+					</div>
 				</CardBody>
 			</Card>
 

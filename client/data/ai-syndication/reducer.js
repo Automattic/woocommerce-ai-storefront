@@ -6,6 +6,13 @@ const defaultState = {
 	savingError: null,
 	stats: null,
 	endpoints: {},
+	// Per-endpoint reachability status. Shape:
+	//   { llms_txt: 'checking' | 'reachable' | 'unreachable' | 'disabled',
+	//     ucp:      'checking' | 'reachable' | 'unreachable' | 'disabled',
+	//     store_api: ...  }
+	// Empty object means "not yet probed" — the UI treats that as
+	// equivalent to 'checking' for display purposes.
+	endpointStatus: {},
 };
 
 const reducer = ( state = defaultState, action ) => {
@@ -32,6 +39,18 @@ const reducer = ( state = defaultState, action ) => {
 
 		case ACTION_TYPES.SET_ENDPOINTS:
 			return { ...state, endpoints: action.data };
+
+		case ACTION_TYPES.SET_ENDPOINT_STATUS:
+			return {
+				...state,
+				endpointStatus: {
+					...state.endpointStatus,
+					[ action.key ]: action.status,
+				},
+			};
+
+		case ACTION_TYPES.RESET_ENDPOINT_STATUS:
+			return { ...state, endpointStatus: {} };
 
 		default:
 			return state;

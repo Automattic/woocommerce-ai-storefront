@@ -4,6 +4,7 @@ import {
 	getSavingError,
 	getStats,
 	getEndpoints,
+	getEndpointStatus,
 } from '../selectors';
 
 describe( 'AI Syndication selectors', () => {
@@ -13,6 +14,7 @@ describe( 'AI Syndication selectors', () => {
 		savingError: new Error( 'test' ),
 		stats: { total_orders: 5 },
 		endpoints: { llms_txt: '/llms.txt' },
+		endpointStatus: { llms_txt: 'reachable', ucp: 'unreachable' },
 	};
 
 	describe( 'with populated state', () => {
@@ -35,6 +37,12 @@ describe( 'AI Syndication selectors', () => {
 		it( 'getEndpoints returns endpoints', () => {
 			expect( getEndpoints( fullState ) ).toEqual( fullState.endpoints );
 		} );
+
+		it( 'getEndpointStatus returns status map', () => {
+			expect( getEndpointStatus( fullState ) ).toEqual(
+				fullState.endpointStatus
+			);
+		} );
 	} );
 
 	describe( 'with undefined/null state', () => {
@@ -56,6 +64,10 @@ describe( 'AI Syndication selectors', () => {
 
 		it( 'getEndpoints returns empty object', () => {
 			expect( getEndpoints( undefined ) ).toEqual( {} );
+		} );
+
+		it( 'getEndpointStatus returns empty object', () => {
+			expect( getEndpointStatus( undefined ) ).toEqual( {} );
 		} );
 	} );
 
