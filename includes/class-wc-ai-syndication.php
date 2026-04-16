@@ -235,6 +235,7 @@ class WC_AI_Syndication {
 				'siteUrl'    => home_url( '/' ),
 				'llmsTxtUrl' => home_url( '/llms.txt' ),
 				'ucpUrl'     => home_url( '/.well-known/ucp' ),
+				'ordersUrl'  => admin_url( 'admin.php?page=wc-orders' ),
 				'version'    => WC_AI_SYNDICATION_VERSION,
 			]
 		);

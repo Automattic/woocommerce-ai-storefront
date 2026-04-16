@@ -143,36 +143,54 @@ const ValueCard = ( { title, children } ) => (
 	</div>
 );
 
-const StatCard = ( { label, value } ) => (
-	<div
-		style={ {
-			flex: '1 1 0',
-			minWidth: '140px',
-			padding: '16px',
-			background: '#f6f7f7',
-			border: 'none',
-			borderRadius: '4px',
-			textAlign: 'center',
-		} }
-	>
-		<div
-			style={ { fontSize: '24px', fontWeight: '600', color: '#00a32a' } }
-		>
-			{ value }
-		</div>
-		<div
-			style={ {
-				fontSize: '12px',
-				color: '#757575',
-				marginTop: '4px',
-				textTransform: 'uppercase',
-				letterSpacing: '0.5px',
-			} }
-		>
-			{ label }
-		</div>
-	</div>
-);
+const StatCard = ( { label, value, href } ) => {
+	const cardStyle = {
+		flex: '1 1 0',
+		minWidth: '140px',
+		padding: '16px',
+		background: '#f6f7f7',
+		border: 'none',
+		borderRadius: '4px',
+		textAlign: 'center',
+		textDecoration: 'none',
+		display: 'block',
+	};
+
+	const inner = (
+		<>
+			<div
+				style={ {
+					fontSize: '24px',
+					fontWeight: '600',
+					color: '#00a32a',
+				} }
+			>
+				{ value }
+			</div>
+			<div
+				style={ {
+					fontSize: '12px',
+					color: '#757575',
+					marginTop: '4px',
+					textTransform: 'uppercase',
+					letterSpacing: '0.5px',
+				} }
+			>
+				{ label }
+			</div>
+		</>
+	);
+
+	if ( href ) {
+		return (
+			<a href={ href } style={ cardStyle }>
+				{ inner }
+			</a>
+		);
+	}
+
+	return <div style={ cardStyle }>{ inner }</div>;
+};
 
 // ---------------------------------------------------------------------------
 // Pre-enable view (value pitch)
@@ -551,6 +569,12 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						periodLabels[ period ]
 					) }
 					value={ stats?.ai_orders ?? '\u2014' }
+					href={
+						/* global wcAiSyndicationParams */
+						typeof wcAiSyndicationParams !== 'undefined'
+							? wcAiSyndicationParams.ordersUrl
+							: undefined
+					}
 				/>
 				<StatCard
 					label={ sprintf(
