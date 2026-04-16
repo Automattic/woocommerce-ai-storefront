@@ -77,6 +77,12 @@ AI agents are becoming a primary product discovery channel. This plugin gives me
 |------|---------|
 | `class-wc-ai-syndication-cache-invalidator.php` | Event-driven cache invalidation for llms.txt and UCP manifest. Hooks into product/category CRUD, stock changes, and settings updates. Debounced WP-Cron warm-up. |
 
+### Debug Logging
+
+| File | Purpose |
+|------|---------|
+| `class-wc-ai-syndication-logger.php` | Off-by-default debug logger. Enable per-request via `add_filter( 'wc_ai_syndication_debug', '__return_true' );`. Instruments: llms.txt and UCP cache hit/miss, rate-limit fingerprint matches, attribution captures. Output goes to `error_log()` (usually `/wp-content/debug.log` when `WP_DEBUG_LOG` is on) prefixed with `[wc-ai-syndication]`. The filter is evaluated once per request and cached, so call sites pay only a static-property check when logging is off. |
+
 ### Admin
 
 | File | Purpose |
@@ -184,7 +190,8 @@ woo-ucp-syndicate-ai/
 │       ├── class-wc-ai-syndication-ucp.php
 │       ├── class-wc-ai-syndication-store-api-rate-limiter.php
 │       ├── class-wc-ai-syndication-attribution.php
-│       └── class-wc-ai-syndication-cache-invalidator.php
+│       ├── class-wc-ai-syndication-cache-invalidator.php
+│       └── class-wc-ai-syndication-logger.php
 │
 ├── client/
 │   ├── data/ai-syndication/
@@ -213,6 +220,7 @@ woo-ucp-syndicate-ai/
 │           ├── CacheInvalidatorTest.php
 │           ├── JsonLdTest.php
 │           ├── LlmsTxtTest.php
+│           ├── LoggerTest.php
 │           ├── RobotsTest.php
 │           ├── StoreApiRateLimiterTest.php
 │           └── UcpTest.php

@@ -75,6 +75,7 @@ class WC_AI_Syndication {
 	private function load_dependencies() {
 		$path = WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/ai-syndication/';
 
+		require_once $path . 'class-wc-ai-syndication-logger.php';
 		require_once $path . 'class-wc-ai-syndication-llms-txt.php';
 		require_once $path . 'class-wc-ai-syndication-jsonld.php';
 		require_once $path . 'class-wc-ai-syndication-robots.php';

@@ -63,6 +63,10 @@ class WC_AI_Syndication_Store_Api_Rate_Limiter {
 
 		foreach ( WC_AI_Syndication_Robots::AI_CRAWLERS as $bot ) {
 			if ( stripos( $ua, $bot ) !== false ) {
+				WC_AI_Syndication_Logger::debug(
+					'rate-limit fingerprint matched AI bot: %s',
+					$bot
+				);
 				return 'ai_bot_' . md5( $ua );
 			}
 		}

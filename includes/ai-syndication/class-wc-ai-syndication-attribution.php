@@ -106,6 +106,12 @@ class WC_AI_Syndication_Attribution {
 
 		$order->save();
 
+		WC_AI_Syndication_Logger::debug(
+			'attribution captured — agent=%s session=%s',
+			$utm_source ? $utm_source : '(none)',
+			$session_id ? $session_id : '(none)'
+		);
+
 		/**
 		 * Fires when an AI agent order attribution is captured.
 		 *

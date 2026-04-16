@@ -25,6 +25,7 @@ require_once __DIR__ . '/stubs/class-wc-ai-syndication-stub.php';
 // Load plugin files.
 $plugin_path = dirname( __DIR__, 2 ) . '/includes/';
 
+require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-logger.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-llms-txt.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-ucp.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-robots.php';

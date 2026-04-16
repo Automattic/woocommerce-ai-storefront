@@ -79,9 +79,11 @@ class WC_AI_Syndication_Llms_Txt {
 	private function get_cached_content() {
 		$cached = get_transient( self::CACHE_KEY );
 		if ( false !== $cached ) {
+			WC_AI_Syndication_Logger::debug( 'llms.txt cache hit' );
 			return $cached;
 		}
 
+		WC_AI_Syndication_Logger::debug( 'llms.txt cache miss — regenerating' );
 		$content = $this->generate();
 		set_transient( self::CACHE_KEY, $content, HOUR_IN_SECONDS );
 		return $content;

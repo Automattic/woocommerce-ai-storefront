@@ -81,8 +81,11 @@ class WC_AI_Syndication_Ucp {
 
 		$cached = get_transient( self::CACHE_KEY );
 		if ( false === $cached ) {
+			WC_AI_Syndication_Logger::debug( 'UCP manifest cache miss — regenerating' );
 			$cached = wp_json_encode( $this->generate_manifest( $settings ), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
 			set_transient( self::CACHE_KEY, $cached, HOUR_IN_SECONDS );
+		} else {
+			WC_AI_Syndication_Logger::debug( 'UCP manifest cache hit' );
 		}
 		echo $cached; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON content.
 		exit;
