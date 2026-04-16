@@ -143,7 +143,7 @@ const ValueCard = ( { title, children } ) => (
 	</div>
 );
 
-const StatCard = ( { label, value, href } ) => {
+const StatCard = ( { label, value, subvalue, href } ) => {
 	const cardStyle = {
 		flex: '1 1 0',
 		minWidth: '140px',
@@ -167,6 +167,18 @@ const StatCard = ( { label, value, href } ) => {
 			>
 				{ value }
 			</div>
+			{ subvalue && (
+				<div
+					style={ {
+						fontSize: '11px',
+						color: '#00a32a',
+						marginTop: '2px',
+						fontWeight: '400',
+					} }
+				>
+					{ subvalue }
+				</div>
+			) }
 			<div
 				style={ {
 					fontSize: '12px',
@@ -569,6 +581,18 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						periodLabels[ period ]
 					) }
 					value={ stats?.ai_orders ?? '\u2014' }
+					subvalue={
+						stats && stats.ai_share_percent > 0
+							? sprintf(
+									/* translators: %s: percentage */
+									__(
+										'%1$s%% of total',
+										'woocommerce-ai-syndication'
+									),
+									stats.ai_share_percent
+							  )
+							: undefined
+					}
 					href={
 						/* global wcAiSyndicationParams */
 						typeof wcAiSyndicationParams !== 'undefined'
@@ -589,14 +613,6 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 							  ).toFixed( 2 ) }`
 							: '\u2014'
 					}
-				/>
-				<StatCard
-					label={ sprintf(
-						/* translators: %s: time period label */
-						__( 'AI Share (%s)', 'woocommerce-ai-syndication' ),
-						periodLabels[ period ]
-					) }
-					value={ stats ? `${ stats.ai_share_percent }%` : '\u2014' }
 				/>
 			</div>
 
