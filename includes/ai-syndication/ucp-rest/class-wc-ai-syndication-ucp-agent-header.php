@@ -38,13 +38,37 @@ class WC_AI_Syndication_UCP_Agent_Header {
 	/**
 	 * Extract the agent's profile URL hostname from a UCP-Agent header value.
 	 *
+	 * Implementation is a v1 shortcut — it finds the first occurrence of
+	 * `profile="..."` via regex, then parses the quoted URL's hostname.
+	 * It does NOT implement full RFC 8941 Dictionary Structured Field
+	 * semantics (escape sequences, parameter lists, bare tokens). If we
+	 * ever need other fields from the header we'll upgrade to a proper
+	 * parser, but for "extract the hostname for utm_source" this is
+	 * enough.
+	 *
 	 * @param string $header_value Raw header value, e.g. `profile="https://agent.example.com/..."`.
 	 * @return string Hostname (e.g. "agent.example.com") or empty string if absent/malformed.
 	 */
 	public static function extract_profile_hostname( string $header_value ): string {
-		// TODO (task 3): implement regex extraction of the `profile` field
-		// and hostname parsing. Return empty string for missing or malformed
-		// input.
-		return '';
+		if ( '' === $header_value ) {
+			return '';
+		}
+
+		// Find the quoted URL that follows `profile=`. Rejecting
+		// unquoted values intentionally — RFC 8941 Dictionary strings
+		// must be quoted, and accepting an unquoted value would let
+		// non-compliant agents look compliant.
+		if ( ! preg_match( '/profile="([^"]+)"/', $header_value, $matches ) ) {
+			return '';
+		}
+
+		$profile_url = $matches[1];
+		$host        = wp_parse_url( $profile_url, PHP_URL_HOST );
+
+		// `wp_parse_url` returns `null` for malformed URLs. Coerce to
+		// empty string so callers get a predictable type and don't
+		// accidentally pass null into string contexts (which PHP
+		// silently converts to "" but deprecated in PHP 8.1+).
+		return is_string( $host ) ? $host : '';
 	}
 }

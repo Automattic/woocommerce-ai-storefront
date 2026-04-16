@@ -33,3 +33,12 @@ require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-store-api-ra
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-attribution.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-cache-invalidator.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-jsonld.php';
+
+// UCP REST adapter module (1.3.0+).
+$ucp_rest_path = $plugin_path . 'ai-syndication/ucp-rest/';
+require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-agent-header.php';
+require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-envelope.php';
+require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-product-translator.php';
+require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-variant-translator.php';
+require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-store-api-filter.php';
+require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-rest-controller.php';

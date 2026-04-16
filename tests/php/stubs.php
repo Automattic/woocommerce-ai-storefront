@@ -44,6 +44,21 @@ if ( ! function_exists( 'is_wp_error' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_parse_url' ) ) {
+	/**
+	 * Minimal wp_parse_url stub. WordPress's own version wraps PHP
+	 * native parse_url to normalize some cross-version quirks around
+	 * protocol-relative URLs. For test purposes the native function
+	 * is close enough — callers typically only ask for one component.
+	 *
+	 * @param string $url       URL to parse.
+	 * @param int    $component PHP_URL_* constant (default -1 = all).
+	 */
+	function wp_parse_url( string $url, int $component = -1 ) {
+		return parse_url( $url, $component );
+	}
+}
+
 if ( ! class_exists( 'WP_REST_Request' ) ) {
 	class WP_REST_Request {
 		private array $params = [];
