@@ -98,9 +98,32 @@ AI agents are becoming a primary product discovery channel. This plugin gives me
 **Shared modules:**
 - `tokens.js` — design tokens (semantic color names mapped to the WordPress admin palette). See [Styling](#styling) for the rule.
 
+**Build integration:**
+- `webpack.config.js` swaps WP's default dependency extractor for `@woocommerce/dependency-extraction-webpack-plugin`, which handles both `@wordpress/*` and `@woocommerce/*` imports as runtime externals. This keeps Woo components out of the bundle (the merchant's WooCommerce install supplies them) and auto-populates `wc-components` into the generated `.asset.php` dependency list.
+
 ## Styling
 
-The admin UI uses React components from `@wordpress/components` with inline `style={ ... }` props (no stylesheet). **Colors MUST come from `client/settings/ai-syndication/tokens.js`.** Raw hex literals in JSX are a lint-review red flag.
+### Component library precedence
+
+**`@wordpress/components` is the default. `@woocommerce/components` is adopted when *either*:**
+- **(a)** Woo has already composed the equivalent from WP primitives — rebuilding with the same primitives would duplicate Woo's work and cause visual drift vs. native wc-admin screens.
+- **(b)** Woo fills a real capability gap WP doesn't cover.
+
+In both cases, the Woo component wins. Don't rebuild something Woo already ships just to keep the dep graph pure.
+
+**Never bundle Woo or WP components.** Both are runtime externals via `@woocommerce/dependency-extraction-webpack-plugin` (configured in `webpack.config.js`) — the merchant's WooCommerce install supplies them through `window.wc.*` / `window.wp.*`. The build's generated `.asset.php` automatically lists `wc-components` as a PHP script dependency when any Woo import is present.
+
+**Adopted components (as of this writing):**
+
+| From | Component | Why |
+|---|---|---|
+| `@woocommerce/components` | `SummaryList`, `SummaryNumber` | Composed of WP primitives with wc-admin styling + built-in responsive mobile collapse. Used for Overview tab stat cards. |
+
+When adding a new Woo component, add a row here with the one-line rationale. Include a brief comment at the import site referencing AGENTS.md so future readers know the rule was applied intentionally, not accidentally.
+
+### Inline styles + design tokens
+
+The admin UI uses React components with inline `style={ ... }` props (no stylesheet). **Colors MUST come from `client/settings/ai-syndication/tokens.js`.** Raw hex literals in JSX are a lint-review red flag.
 
 ```js
 import { colors } from './tokens';
@@ -115,6 +138,10 @@ import { colors } from './tokens';
 **Adding a new color:** define a semantic token in `tokens.js` first (e.g. `warningBg`, not `yellow100`). Map it to the nearest value in the WordPress admin palette (`@wordpress/base-styles/_colors.scss`) — choosing an existing value is nearly always preferable to inventing a new one.
 
 **Why:** a future migration to CSS custom properties (e.g. `var( --wp-components-color-gray-700, #50575e )`) — or a palette shift in WP core — becomes a single-file change instead of a hunt-and-replace across every component.
+
+### Layout primitives
+
+Use `Flex` / `FlexItem` / `FlexBlock` from `@wordpress/components` instead of hand-rolling `style={{ display: 'flex', gap: ... }}`. The primitives inherit WP's spacing scale and responsive behavior for free. Hand-rolled flex is acceptable only for single-child containers where the "layout" is really just alignment or max-width.
 
 ## File Map
 

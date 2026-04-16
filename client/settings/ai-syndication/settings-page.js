@@ -9,7 +9,16 @@ import {
 	RadioControl,
 	TabPanel,
 	Spinner,
+	Flex,
+	FlexItem,
 } from '@wordpress/components';
+// Woo composes SummaryList/SummaryNumber out of WP primitives and ships
+// them as part of wc-admin — the admin always has them available at
+// runtime via the @woocommerce/dependency-extraction-webpack-plugin
+// configured in webpack.config.js. Rebuilding equivalents with WP
+// primitives would duplicate work that's already done and cause visual
+// drift vs. native wc-admin screens. See AGENTS.md "Styling" section.
+import { SummaryList, SummaryNumber } from '@woocommerce/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
 import ProductSelection from './product-selection';
@@ -116,11 +125,15 @@ const AISyndicationSettings = () => {
 // Shared components
 // ---------------------------------------------------------------------------
 
+// ValueCard is placed inside a FlexItem isBlock wrapper, which handles
+// equal-width distribution and stretching. The card itself only owns its
+// internal chrome (padding, fill, top-border accent). `height: 100%` lets
+// the card fill the stretched FlexItem so all three cards end at the same
+// baseline even when their copy wraps to different line counts.
 const ValueCard = ( { title, children } ) => (
 	<div
 		style={ {
-			flex: '1 1 0',
-			minWidth: '200px',
+			height: '100%',
 			padding: '20px',
 			background: colors.surfaceSubtle,
 			border: 'none',
@@ -149,67 +162,6 @@ const ValueCard = ( { title, children } ) => (
 		</p>
 	</div>
 );
-
-const StatCard = ( { label, value, subvalue, href } ) => {
-	const cardStyle = {
-		flex: '1 1 0',
-		minWidth: '140px',
-		padding: '16px',
-		background: colors.surfaceSubtle,
-		border: 'none',
-		borderRadius: '4px',
-		textAlign: 'center',
-		textDecoration: 'none',
-		display: 'block',
-	};
-
-	const inner = (
-		<>
-			<div
-				style={ {
-					fontSize: '24px',
-					fontWeight: '600',
-					color: colors.success,
-				} }
-			>
-				{ value }
-			</div>
-			{ subvalue && (
-				<div
-					style={ {
-						fontSize: '11px',
-						color: colors.success,
-						marginTop: '2px',
-						fontWeight: '400',
-					} }
-				>
-					{ subvalue }
-				</div>
-			) }
-			<div
-				style={ {
-					fontSize: '12px',
-					color: colors.textMuted,
-					marginTop: '4px',
-					textTransform: 'uppercase',
-					letterSpacing: '0.5px',
-				} }
-			>
-				{ label }
-			</div>
-		</>
-	);
-
-	if ( href ) {
-		return (
-			<a href={ href } style={ cardStyle }>
-				{ inner }
-			</a>
-		);
-	}
-
-	return <div style={ cardStyle }>{ inner }</div>;
-};
 
 // ---------------------------------------------------------------------------
 // Pre-enable view (value pitch)
@@ -276,42 +228,47 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 		{ /* Same gap, same marginTop, same flex layout.                */ }
 		{ /* Accent uses colors.borderStrong (gray) instead of success. */ }
 		{ /* --------------------------------------------------------- */ }
-		<div
-			style={ {
-				display: 'flex',
-				gap: '16px',
-				marginTop: '24px',
-				flexWrap: 'wrap',
-			} }
-		>
-			<ValueCard
-				title={ __( 'Universal Reach', 'woocommerce-ai-syndication' ) }
-			>
-				{ __(
-					'Works with ChatGPT, Gemini, Claude, Perplexity, Copilot, and any future AI agent. One setup, universal reach — no per-platform integration.',
-					'woocommerce-ai-syndication'
-				) }
-			</ValueCard>
-			<ValueCard
-				title={ __( 'Data Sovereignty', 'woocommerce-ai-syndication' ) }
-			>
-				{ __(
-					'Checkout stays on your domain. No delegated payments, no platform lock-in. You own the checkout experience and the customer relationship.',
-					'woocommerce-ai-syndication'
-				) }
-			</ValueCard>
-			<ValueCard
-				title={ __(
-					'Full Order Attribution',
-					'woocommerce-ai-syndication'
-				) }
-			>
-				{ __(
-					'Every AI-referred sale is tracked using standard WooCommerce Order Attribution. See which agent drove each order and how much revenue it generated.',
-					'woocommerce-ai-syndication'
-				) }
-			</ValueCard>
-		</div>
+		<Flex gap={ 4 } wrap align="stretch" style={ { marginTop: '24px' } }>
+			<FlexItem isBlock>
+				<ValueCard
+					title={ __(
+						'Universal Reach',
+						'woocommerce-ai-syndication'
+					) }
+				>
+					{ __(
+						'Works with ChatGPT, Gemini, Claude, Perplexity, Copilot, and any future AI agent. One setup, universal reach — no per-platform integration.',
+						'woocommerce-ai-syndication'
+					) }
+				</ValueCard>
+			</FlexItem>
+			<FlexItem isBlock>
+				<ValueCard
+					title={ __(
+						'Data Sovereignty',
+						'woocommerce-ai-syndication'
+					) }
+				>
+					{ __(
+						'Checkout stays on your domain. No delegated payments, no platform lock-in. You own the checkout experience and the customer relationship.',
+						'woocommerce-ai-syndication'
+					) }
+				</ValueCard>
+			</FlexItem>
+			<FlexItem isBlock>
+				<ValueCard
+					title={ __(
+						'Full Order Attribution',
+						'woocommerce-ai-syndication'
+					) }
+				>
+					{ __(
+						'Every AI-referred sale is tracked using standard WooCommerce Order Attribution. See which agent drove each order and how much revenue it generated.',
+						'woocommerce-ai-syndication'
+					) }
+				</ValueCard>
+			</FlexItem>
+		</Flex>
 
 		{ /* --------------------------------------------------------- */ }
 		{ /* Group 3: "What happens" card with Enable CTA              */ }
@@ -515,13 +472,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 			</div>
 
 			{ /* Period selector + stat cards */ }
-			<div
-				style={ {
-					display: 'flex',
-					justifyContent: 'flex-end',
-					marginTop: '24px',
-				} }
-			>
+			<Flex justify="flex-end" style={ { marginTop: '24px' } }>
 				<SelectControl
 					value={ period }
 					options={ [
@@ -557,70 +508,85 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					onChange={ setPeriod }
 					__nextHasNoMarginBottom
 				/>
-			</div>
-			<div
-				style={ {
-					display: 'flex',
-					gap: '16px',
-					marginTop: '12px',
-					flexWrap: 'wrap',
-				} }
-			>
-				<StatCard
-					label={ __(
-						'Products Exposed',
-						'woocommerce-ai-syndication'
-					) }
-					value={ productCount }
-				/>
-				<StatCard
-					label={ sprintf(
-						/* translators: %s: time period label */
-						__( 'Total Orders (%s)', 'woocommerce-ai-syndication' ),
-						periodLabels[ period ]
-					) }
-					value={ stats?.all_orders ?? '\u2014' }
-				/>
-				<StatCard
-					label={ sprintf(
-						/* translators: %s: time period label */
-						__( 'AI Orders (%s)', 'woocommerce-ai-syndication' ),
-						periodLabels[ period ]
-					) }
-					value={ stats?.ai_orders ?? '\u2014' }
-					subvalue={
-						stats && stats.ai_share_percent > 0
-							? sprintf(
-									/* translators: %s: percentage */
-									__(
-										'%1$s%% of total',
-										'woocommerce-ai-syndication'
-									),
-									stats.ai_share_percent
-							  )
-							: undefined
-					}
-					href={
-						/* global wcAiSyndicationParams */
-						typeof wcAiSyndicationParams !== 'undefined'
-							? wcAiSyndicationParams.ordersUrl
-							: undefined
-					}
-				/>
-				<StatCard
-					label={ sprintf(
-						/* translators: %s: time period label */
-						__( 'AI Revenue (%s)', 'woocommerce-ai-syndication' ),
-						periodLabels[ period ]
-					) }
-					value={
-						stats
-							? `${ stats.currency || '$' } ${ parseFloat(
-									stats.ai_revenue || 0
-							  ).toFixed( 2 ) }`
-							: '\u2014'
-					}
-				/>
+			</Flex>
+			<div style={ { marginTop: '12px' } }>
+				<SummaryList>
+					{ () => [
+						<SummaryNumber
+							key="products"
+							label={ __(
+								'Products Exposed',
+								'woocommerce-ai-syndication'
+							) }
+							value={ productCount }
+						/>,
+						<SummaryNumber
+							key="total-orders"
+							label={ sprintf(
+								/* translators: %s: time period label */
+								__(
+									'Total Orders (%s)',
+									'woocommerce-ai-syndication'
+								),
+								periodLabels[ period ]
+							) }
+							value={ stats?.all_orders ?? '\u2014' }
+						/>,
+						<SummaryNumber
+							key="ai-orders"
+							label={ sprintf(
+								/* translators: %s: time period label */
+								__(
+									'AI Orders (%s)',
+									'woocommerce-ai-syndication'
+								),
+								periodLabels[ period ]
+							) }
+							value={ stats?.ai_orders ?? '\u2014' }
+							// SummaryNumber renders `delta` as a trend pill
+							// next to the value. We use it here to surface the
+							// AI share of total orders (not a period-over-
+							// period change), which fits the visual role.
+							// `reverseTrend` is left at its default (false)
+							// because higher AI share reads as positive for
+							// the merchant.
+							delta={
+								stats && stats.ai_share_percent > 0
+									? stats.ai_share_percent
+									: undefined
+							}
+							href={
+								/* global wcAiSyndicationParams */
+								typeof wcAiSyndicationParams !== 'undefined'
+									? wcAiSyndicationParams.ordersUrl
+									: undefined
+							}
+							// SummaryNumber defaults hrefType to 'wc-admin'
+							// which wraps the link in wc-admin navigation.
+							// 'external' routes a plain anchor — correct for
+							// our direct /wp-admin/ orders URL.
+							hrefType="external"
+						/>,
+						<SummaryNumber
+							key="ai-revenue"
+							label={ sprintf(
+								/* translators: %s: time period label */
+								__(
+									'AI Revenue (%s)',
+									'woocommerce-ai-syndication'
+								),
+								periodLabels[ period ]
+							) }
+							value={
+								stats
+									? `${ stats.currency || '$' } ${ parseFloat(
+											stats.ai_revenue || 0
+									  ).toFixed( 2 ) }`
+									: '\u2014'
+							}
+						/>,
+					] }
+				</SummaryList>
 			</div>
 
 			{ /* Per-agent breakdown */ }
