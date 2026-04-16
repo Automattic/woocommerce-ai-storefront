@@ -347,19 +347,18 @@ class WC_AI_Syndication_Attribution {
 	 * Render the AI agent filter dropdown (HPOS orders list).
 	 */
 	public function render_agent_filter() {
-		$agents  = self::get_known_agents();
-		if ( empty( $agents ) ) {
-			return;
-		}
+		$agents = self::get_known_agents();
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$current = isset( $_GET['ai_agent_filter'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_filter'] ) ) : '';
 
 		echo '<select name="ai_agent_filter">';
-		echo '<option value="">' . esc_html__( 'All AI agents', 'woocommerce-ai-syndication' ) . '</option>';
-		echo '<option value="_any"' . selected( $current, '_any', false ) . '>' . esc_html__( 'Any AI agent', 'woocommerce-ai-syndication' ) . '</option>';
-		foreach ( $agents as $agent ) {
-			echo '<option value="' . esc_attr( $agent ) . '"' . selected( $current, $agent, false ) . '>' . esc_html( $agent ) . '</option>';
+		echo '<option value="">' . esc_html__( 'Filter by AI agent', 'woocommerce-ai-syndication' ) . '</option>';
+		if ( ! empty( $agents ) ) {
+			echo '<option value="_any"' . selected( $current, '_any', false ) . '>' . esc_html__( 'Any AI agent', 'woocommerce-ai-syndication' ) . '</option>';
+			foreach ( $agents as $agent ) {
+				echo '<option value="' . esc_attr( $agent ) . '"' . selected( $current, $agent, false ) . '>' . esc_html( $agent ) . '</option>';
+			}
 		}
 		echo '</select>';
 	}
