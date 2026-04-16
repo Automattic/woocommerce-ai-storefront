@@ -1,0 +1,128 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write  # Needed to create releases and upload assets.
+
+jobs:
+  build-and-release:
+    name: Build distribution zip
+    runs-on: ubuntu-latest
+    env:
+      # Git tags come from a protected surface (pushes require write
+      # access to the repo), but we still pass the value through an
+      # env var rather than expression-interpolating it into `run:`
+      # scripts. This is the recommended pattern — see
+      # https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: none
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Derive the version from the tag (e.g. `v1.1.0` -> `1.1.0`) and
+      # compare against the plugin header. Mismatches mean someone
+      # tagged without bumping the header — fail fast rather than
+      # ship an inconsistent artifact.
+      - name: Verify plugin version matches tag
+        run: |
+          TAG_VERSION="${TAG#v}"
+          HEADER_VERSION=$(grep -E '^[[:space:]]*\*[[:space:]]*Version:' woocommerce-ai-syndication.php | sed -E 's/.*Version:[[:space:]]*//' | tr -d '[:space:]')
+          CONST_VERSION=$(grep -E "define\(\s*'WC_AI_SYNDICATION_VERSION'" woocommerce-ai-syndication.php | sed -E "s/.*'WC_AI_SYNDICATION_VERSION',\s*'([^']+)'.*/\1/")
+
+          echo "Tag: $TAG_VERSION"
+          echo "Plugin header: $HEADER_VERSION"
+          echo "Version constant: $CONST_VERSION"
+
+          if [ "$TAG_VERSION" != "$HEADER_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match plugin header ($HEADER_VERSION). Bump the plugin header before tagging."
+            exit 1
+          fi
+
+          if [ "$TAG_VERSION" != "$CONST_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match WC_AI_SYNDICATION_VERSION constant ($CONST_VERSION)."
+            exit 1
+          fi
+
+      # Install *production* composer deps only — dev-only packages
+      # (PHPUnit, PHPStan, PHPCS, Brain Monkey) don't ship to merchants.
+      # The plugin currently has no production PHP deps, so this
+      # produces an empty vendor/ directory that we then drop from the
+      # zip via the exclude list. Keeping the step in place for when
+      # production deps are added.
+      - name: Install production Composer dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build frontend bundle
+        run: npm run build
+
+      # Stage the release into a versioned directory. The directory
+      # name determines the root path inside the zip (WP plugin zips
+      # extract into wp-content/plugins/<dir-name>/), so this must
+      # match the slug merchants see in their Plugins screen.
+      - name: Stage release files
+        run: |
+          mkdir -p release-staging
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='.claude/' \
+            --exclude='node_modules/' \
+            --exclude='client/' \
+            --exclude='tests/' \
+            --exclude='vendor/' \
+            --exclude='release-staging/' \
+            --exclude='*.log' \
+            --exclude='.phpunit.cache/' \
+            --exclude='.phpunit.result.cache' \
+            --exclude='composer.json' \
+            --exclude='composer.lock' \
+            --exclude='package.json' \
+            --exclude='package-lock.json' \
+            --exclude='phpcs.xml.dist' \
+            --exclude='phpstan.neon.dist' \
+            --exclude='phpstan-bootstrap.php' \
+            --exclude='phpunit.xml.dist' \
+            --exclude='webpack.config.js' \
+            --exclude='jest.config.js' \
+            --exclude='AGENTS.md' \
+            --exclude='README.md' \
+            --exclude='.gitignore' \
+            --exclude='.editorconfig' \
+            --exclude='.npmrc' \
+            ./ release-staging/woocommerce-ai-syndication/
+
+      - name: Create zip
+        run: |
+          ZIP_NAME="woocommerce-ai-syndication-${TAG}.zip"
+          cd release-staging
+          zip -r "../${ZIP_NAME}" woocommerce-ai-syndication
+          cd ..
+          ls -la "${ZIP_NAME}"
+          unzip -l "${ZIP_NAME}" | head -30
+          echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          generate_release_notes: true
+          draft: true  # Start as draft so human can review before publishing.
