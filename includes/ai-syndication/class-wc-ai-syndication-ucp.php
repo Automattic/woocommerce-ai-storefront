@@ -18,9 +18,27 @@ defined( 'ABSPATH' ) || exit;
 class WC_AI_Syndication_Ucp {
 
 	/**
-	 * UCP protocol version.
+	 * UCP protocol version target.
+	 *
+	 * Date-formatted per the UCP schema (YYYY-MM-DD). This is the
+	 * revision of the protocol our manifest conforms to, NOT our
+	 * plugin version. It should change when we upgrade to a newer
+	 * UCP protocol revision, which may or may not align with plugin
+	 * releases.
+	 *
+	 * @link https://github.com/Universal-Commerce-Protocol/ucp/blob/main/source/schemas/ucp.json
 	 */
-	const PROTOCOL_VERSION = '1.0';
+	const PROTOCOL_VERSION = '2026-01-11';
+
+	/**
+	 * Reverse-domain name for our published service.
+	 *
+	 * UCP requires services keyed by reverse-domain name. The WooCommerce
+	 * Store API is the REST endpoint agents pull product and cart data
+	 * from — we publish it under our own namespace so it's uniquely
+	 * identifiable even if a site runs multiple UCP-speaking plugins.
+	 */
+	const SERVICE_NAME = 'com.woocommerce.store_api';
 
 	/**
 	 * Transient key for cached UCP manifest.
@@ -96,96 +114,137 @@ class WC_AI_Syndication_Ucp {
 	}
 
 	/**
-	 * Generate the UCP manifest.
+	 * Generate the UCP discovery profile manifest.
 	 *
-	 * @param array $settings AI syndication settings.
+	 * Conforms to the UCP `business_profile` schema at:
+	 *
+	 *   https://github.com/Universal-Commerce-Protocol/ucp/blob/main/source/discovery/profile_schema.json
+	 *
+	 * The spec requires `ucp: { version, services, payment_handlers }`.
+	 * `capabilities` is optional but must be an object when present.
+	 *
+	 * This plugin implements a discovery-only / pull-model posture:
+	 *
+	 *   - One `service`: the public WooCommerce Store API (REST).
+	 *     This is where agents pull product and cart data.
+	 *   - Zero `capabilities`. The plugin does not implement UCP
+	 *     Checkout, Identity Linking, Order webhooks, or Payment
+	 *     Token Exchange. Checkout stays on the merchant's site
+	 *     (web-redirect model, never delegated or in-chat).
+	 *   - Zero `payment_handlers`. Required top-level key by the
+	 *     schema; empty object is the valid declaration for a
+	 *     merchant that doesn't mediate payments.
+	 *
+	 * Bespoke information useful to AI agents — purchase URL templates,
+	 * WooCommerce Order Attribution parameters — lives inside
+	 * `services[...].config`, which is the UCP entity schema's
+	 * documented place for entity-specific configuration. Strict
+	 * UCP consumers ignore unknown config keys; agents that learn
+	 * our namespace can use them.
+	 *
+	 * Not included (deliberately):
+	 *   - Store metadata (name, description, currency): redundant
+	 *     with the Store API's own responses and with llms.txt.
+	 *   - Rate limits: enforced through HTTP 429 / Retry-After
+	 *     response headers, not manifest advertisement.
+	 *   - Pointers to llms.txt / sitemap: agents find llms.txt at
+	 *     `/llms.txt` (known location) and sitemap via robots.txt.
+	 *
+	 * @param array $settings AI syndication settings (unused; retained
+	 *                        in signature for the `apply_filters` hook
+	 *                        contract).
 	 * @return array The manifest data.
 	 */
 	public function generate_manifest( $settings ) {
 		$site_url     = home_url( '/' );
-		$shop_url     = wc_get_page_permalink( 'shop' );
-		$cart_url     = wc_get_cart_url();
 		$checkout_url = wc_get_checkout_url();
+		$cart_url     = wc_get_cart_url();
+		$store_api    = rest_url( 'wc/store/v1' );
 
 		$manifest = [
-			'protocol_version' => self::PROTOCOL_VERSION,
-			'store'            => [
-				'name'        => html_entity_decode( get_bloginfo( 'name' ), ENT_QUOTES, 'UTF-8' ),
-				'description' => html_entity_decode( get_bloginfo( 'description' ), ENT_QUOTES, 'UTF-8' ),
-				'url'         => $site_url,
-				'currency'    => get_woocommerce_currency(),
-				'locale'      => get_locale(),
-				'timezone'    => wp_timezone_string(),
-			],
+			'ucp' => [
+				'version' => self::PROTOCOL_VERSION,
 
-			// Checkout policy: web redirect ONLY, no in-chat payments.
-			'checkout'         => [
-				'method'       => 'web_redirect',
-				'url'          => $checkout_url,
-				'cart_url'     => $cart_url,
-				'in_chat'      => false,
-				'delegated'    => false,
-				'instructions' => 'All purchases must be completed on the merchant website. Generate a redirect link to the store.',
-			],
+				// Services — REST transport binding for the public
+				// Store API. Under business_schema, a REST binding
+				// requires `endpoint`; `schema` is optional (WC does
+				// not publish a single aggregated OpenAPI document,
+				// so we point `spec` at the human docs instead).
+				'services' => [
+					self::SERVICE_NAME => [
+						[
+							'version'   => self::PROTOCOL_VERSION,
+							'spec'      => 'https://developer.woocommerce.com/docs/apis/store-api',
+							'transport' => 'rest',
+							'endpoint'  => $store_api,
 
-			// Capabilities.
-			'capabilities'     => [
-				'product_discovery' => true,
-				'checkout_links'    => true,
-				'attribution'       => true,
-			],
+							// Service-specific config. UCP's entity
+							// schema explicitly allows this (`config`
+							// on any entity, `additionalProperties:
+							// true`). Agents with knowledge of our
+							// service namespace read these; strict
+							// UCP consumers ignore them.
+							'config'    => [
+								'purchase_urls' => [
+									'spec'             => 'https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/',
+									'add_to_cart_spec' => 'https://woocommerce.com/document/quick-guide-to-woocommerce-add-to-cart-urls/',
 
-			// WooCommerce Store API (public, unauthenticated).
-			'store_api'        => [
-				'base_url'    => rest_url( 'wc/store/v1' ),
-				'description' => 'WooCommerce Store API for product search, cart, and checkout. Public and unauthenticated.',
-			],
+									// Checkout-link: adds items AND
+									// redirects to checkout. Customer
+									// never sees the cart — fewest
+									// clicks to purchase.
+									'checkout_link' => [
+										'description' => 'Recommended — adds items and redirects to checkout in one step. Customer never sees the cart.',
+										'simple'      => $site_url . 'checkout-link/?products={product_id}:{quantity}',
+										'variable'    => $site_url . 'checkout-link/?products={variation_id}:{quantity}',
+										'multi_item'  => $site_url . 'checkout-link/?products={id}:{qty},{id}:{qty}',
+										'with_coupon' => $site_url . 'checkout-link/?products={id}:{qty}&coupon={coupon_code}',
+										'unsupported' => [ 'grouped', 'external', 'subscription' ],
+									],
 
-			// Purchase URLs — two patterns for different flows.
-			'purchase'         => [
-				// Recommended: checkout links add items AND redirect to checkout.
-				// Customer never sees the cart — fewest clicks to purchase.
-				'checkout_link' => [
-					'simple'      => $site_url . 'checkout-link/?products={product_id}:{quantity}',
-					'variable'    => $site_url . 'checkout-link/?products={variation_id}:{quantity}',
-					'multi_item'  => $site_url . 'checkout-link/?products={id}:{qty},{id}:{qty}',
-					'with_coupon' => $site_url . 'checkout-link/?products={id}:{qty}&coupon={coupon_code}',
-					'grouped'     => $checkout_url . '?add-to-cart={grouped_product_id}&quantity[{sub_product_id}]={quantity}',
-					'note'        => 'For simple/variable/multi-item: use checkout-link format. For grouped products: use add-to-cart with the checkout page as the base URL (adds to cart and lands on checkout). Use variation_id from the product detail API for variable products.',
+									// Classic add-to-cart URL. Three
+									// behaviors depending on base URL
+									// — the official WC docs document
+									// all three.
+									'add_to_cart' => [
+										'description'      => 'Classic WooCommerce add-to-cart URL. Three behaviors depending on base URL.',
+										'add_only'         => $site_url . '?add-to-cart={product_id}&quantity={quantity}',
+										'add_and_cart'     => $cart_url . '?add-to-cart={product_id}&quantity={quantity}',
+										'add_and_checkout' => $checkout_url . '?add-to-cart={product_id}&quantity={quantity}',
+										'grouped'          => [
+											'template' => $checkout_url . '?add-to-cart={grouped_product_id}&quantity[{sub_product_id}]={quantity}',
+											'note'     => 'Use the classic add-to-cart pattern for grouped products. The checkout-link feature does not support them.',
+										],
+										'external_note'    => 'For external/affiliate products (type: external), link directly to the product\'s external_url field from the Store API. Do not use add-to-cart.',
+									],
+								],
+
+								'attribution' => [
+									'spec'       => 'https://woocommerce.com/document/order-attribution-tracking/',
+									'system'     => 'woocommerce_order_attribution',
+									'parameters' => [
+										'utm_source'    => 'Your agent identifier (e.g. chatgpt, gemini, perplexity)',
+										'utm_medium'    => 'Must be set to "ai_agent"',
+										'utm_campaign'  => 'Optional campaign name',
+										'ai_session_id' => 'Conversation/session identifier for tracking',
+									],
+									'usage_note' => 'Append these parameters to any checkout_link or add_to_cart URL.',
+								],
+							],
+						],
+					],
 				],
-				// Alternative: add-to-cart URLs only add items to the cart.
-				// Customer must navigate to checkout separately.
-				'add_to_cart'   => [
-					'simple'   => $site_url . '?add-to-cart={product_id}&quantity={quantity}',
-					'variable' => $site_url . '?add-to-cart={variation_id}&quantity={quantity}',
-					'grouped'  => $site_url . '?add-to-cart={grouped_product_id}&quantity[{sub_product_id}]={quantity}',
-					'note'     => 'Adds to cart only — does not redirect to checkout. To redirect, use the checkout page URL as the base instead. External/affiliate products cannot be added via URL.',
-				],
-				'store_api'     => rest_url( 'wc/store/v1' ),
-			],
 
-			// Attribution via standard WooCommerce Order Attribution.
-			'attribution'      => [
-				'system'     => 'woocommerce_order_attribution',
-				'parameters' => [
-					'utm_source'    => 'Your agent identifier (e.g. chatgpt, gemini, perplexity)',
-					'utm_medium'    => 'Must be set to "ai_agent"',
-					'utm_campaign'  => 'Optional campaign name',
-					'ai_session_id' => 'Conversation/session identifier for tracking',
-				],
-				'usage'      => 'Append these parameters to any add_to_cart or checkout_link URL.',
-			],
+				// No UCP capabilities implemented. Declaring zero is
+				// the honest posture for a merchant opted out of
+				// delegated checkout, identity linking, and
+				// agent-driven order flows. `(object)` cast ensures
+				// JSON serializes as `{}` not `[]`.
+				'capabilities' => (object) [],
 
-			// Discovery endpoints.
-			'discovery'        => [
-				'llms_txt' => $site_url . 'llms.txt',
-				'sitemap'  => home_url( '/wp-sitemap.xml' ),
-			],
-
-			// Advisory rate limits for AI bot traffic.
-			'rate_limits'      => [
-				'requests_per_minute' => absint( $settings['rate_limit_rpm'] ?? 25 ),
-				'note'                => 'AI bot traffic is rate limited via the WooCommerce Store API. Regular customer traffic is unaffected.',
+				// Required by business_schema. Empty object is the
+				// valid "zero handlers" declaration.
+				'payment_handlers' => (object) [],
 			],
 		];
 

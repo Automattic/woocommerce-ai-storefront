@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.1.2
+Stable tag: 1.2.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,12 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.2.0 =
+* Restructured the /.well-known/ucp manifest to conform to the official UCP business_profile schema at https://github.com/Universal-Commerce-Protocol/ucp. The previous shape used bespoke field names that did not match the spec; AI agents using official UCP libraries could not parse it. New shape declares one `service` (the public WooCommerce Store API) and zero UCP capabilities — a discovery-only posture consistent with the plugin's web-redirect checkout model (no delegated or in-chat payments).
+* Purchase URL templates (checkout-link and add-to-cart for every supported product type) and WooCommerce Order Attribution parameters are retained inside the service's `config` block. The templates now also include all three add-to-cart redirect variants (add-only, redirect-to-cart, redirect-to-checkout) per the official WooCommerce documentation.
+* Spec URL references added to `purchase_urls.spec`, `purchase_urls.add_to_cart_spec`, and `attribution.spec` so AI agents can follow pointers to the canonical WooCommerce documentation.
+* Protocol version format changed from semver ("1.0") to UCP's required YYYY-MM-DD format (now "2026-01-11"). This is the UCP protocol revision the manifest targets, separate from the plugin version.
 
 = 1.1.2 =
 * Fixed: rewrite rules for `/llms.txt` and `/.well-known/ucp` now flush synchronously on plugin upgrade, so the endpoints work on the very first request after update. Previously the flush was deferred to `init` priority 99, which left the current request 404-ing — merchants had to visit Settings → Permalinks → Save to recover. No manual step is needed for future upgrades.
