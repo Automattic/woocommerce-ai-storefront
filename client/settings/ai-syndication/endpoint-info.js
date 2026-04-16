@@ -10,6 +10,7 @@ import {
 } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
+import { colors } from './tokens';
 
 const KNOWN_CRAWLERS = [
 	{ id: 'GPTBot', label: 'GPTBot (OpenAI)' },
@@ -82,7 +83,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					</h3>
 					<p
 						style={ {
-							color: '#50575e',
+							color: colors.textSecondary,
 							fontSize: '13px',
 							margin: '0 0 16px',
 						} }
@@ -96,7 +97,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					{ ! isEnabled && (
 						<p
 							style={ {
-								color: '#d63638',
+								color: colors.error,
 								fontSize: '13px',
 								margin: '0 0 16px',
 							} }
@@ -208,7 +209,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					</h3>
 					<p
 						style={ {
-							color: '#50575e',
+							color: colors.textSecondary,
 							fontSize: '13px',
 							margin: '0 0 16px',
 						} }
@@ -231,7 +232,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							style={ {
 								fontSize: '13px',
 								fontWeight: '500',
-								color: '#1d2327',
+								color: colors.textPrimary,
 							} }
 						>
 							{ __(
@@ -245,12 +246,12 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 									display: 'inline-block',
 									background:
 										checkedCount > 0
-											? '#edfaef'
-											: '#f0f0f0',
+											? colors.successBg
+											: colors.surfaceMuted,
 									color:
 										checkedCount > 0
-											? '#00a32a'
-											: '#757575',
+											? colors.success
+											: colors.textMuted,
 									fontWeight:
 										checkedCount > 0 ? '600' : '400',
 									fontSize: '12px',
@@ -300,7 +301,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 
 					<div
 						style={ {
-							background: '#f6f7f7',
+							background: colors.surfaceSubtle,
 							borderRadius: '4px',
 							padding: '4px 16px',
 						} }
@@ -312,7 +313,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 									padding: '6px 0',
 									borderBottom:
 										index < KNOWN_CRAWLERS.length - 1
-											? '1px solid #e0e0e0'
+											? `1px solid ${ colors.borderSubtle }`
 											: 'none',
 								} }
 							>
@@ -332,7 +333,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 
 					<p
 						style={ {
-							color: '#757575',
+							color: colors.textMuted,
 							fontSize: '12px',
 							marginTop: '12px',
 							marginBottom: 0,
@@ -349,7 +350,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						style={ {
 							marginTop: '16px',
 							paddingTop: '16px',
-							borderTop: '1px solid #f0f0f0',
+							borderTop: `1px solid ${ colors.surfaceMuted }`,
 						} }
 					>
 						<Button

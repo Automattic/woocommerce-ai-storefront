@@ -11,6 +11,7 @@ import {
 import { __, sprintf } from '@wordpress/i18n';
 import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
+import { colors } from './tokens';
 
 const MODE_DESCRIPTIONS = {
 	all: __(
@@ -33,8 +34,8 @@ const CountPill = ( { count, label } ) => {
 		<span
 			style={ {
 				display: 'inline-block',
-				background: hasItems ? '#edfaef' : '#f0f0f0',
-				color: hasItems ? '#00a32a' : '#757575',
+				background: hasItems ? colors.successBg : colors.surfaceMuted,
+				color: hasItems ? colors.success : colors.textMuted,
 				fontWeight: hasItems ? '600' : '400',
 				fontSize: '12px',
 				borderRadius: '10px',
@@ -71,8 +72,8 @@ const SelectedTokens = ( { items, onRemove } ) => {
 				gap: '6px',
 				marginBottom: '12px',
 				padding: '12px',
-				background: '#fff',
-				border: '1px solid #e0e0e0',
+				background: colors.surface,
+				border: `1px solid ${ colors.borderSubtle }`,
 				borderRadius: '4px',
 			} }
 		>
@@ -83,11 +84,11 @@ const SelectedTokens = ( { items, onRemove } ) => {
 						display: 'inline-flex',
 						alignItems: 'center',
 						gap: '4px',
-						background: '#f0f0f0',
+						background: colors.surfaceMuted,
 						borderRadius: '3px',
 						padding: '3px 6px 3px 8px',
 						fontSize: '12px',
-						color: '#1d2327',
+						color: colors.textPrimary,
 						lineHeight: '1.4',
 					} }
 				>
@@ -102,7 +103,7 @@ const SelectedTokens = ( { items, onRemove } ) => {
 							cursor: 'pointer',
 							fontSize: '14px',
 							lineHeight: '1',
-							color: '#757575',
+							color: colors.textMuted,
 						} }
 						aria-label={ sprintf(
 							/* translators: %s: item name */
@@ -227,7 +228,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 					</h3>
 					<p
 						style={ {
-							color: '#50575e',
+							color: colors.textSecondary,
 							fontSize: '13px',
 							margin: '0 0 16px',
 						} }
@@ -274,7 +275,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 					{ MODE_DESCRIPTIONS[ mode ] && (
 						<p
 							style={ {
-								color: '#757575',
+								color: colors.textMuted,
 								fontSize: '12px',
 								marginTop: '4px',
 								marginBottom: 0,
@@ -298,7 +299,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									style={ {
 										fontSize: '13px',
 										fontWeight: '500',
-										color: '#1d2327',
+										color: colors.textPrimary,
 									} }
 								>
 									{ __(
@@ -405,7 +406,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									style={ {
 										maxHeight: '300px',
 										overflow: 'auto',
-										background: '#f6f7f7',
+										background: colors.surfaceSubtle,
 										borderRadius: '4px',
 										padding: '4px 16px',
 									} }
@@ -414,7 +415,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 										categorySearch && (
 											<p
 												style={ {
-													color: '#757575',
+													color: colors.textMuted,
 													fontSize: '13px',
 													textAlign: 'center',
 													padding: '16px 0',
@@ -437,7 +438,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 														index <
 														filteredCategories.length -
 															1
-															? '1px solid #e0e0e0'
+															? `1px solid ${ colors.borderSubtle }`
 															: 'none',
 												} }
 											>
@@ -480,7 +481,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									style={ {
 										fontSize: '13px',
 										fontWeight: '500',
-										color: '#1d2327',
+										color: colors.textPrimary,
 									} }
 								>
 									{ __(
@@ -556,7 +557,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									style={ {
 										maxHeight: '300px',
 										overflow: 'auto',
-										background: '#f6f7f7',
+										background: colors.surfaceSubtle,
 										borderRadius: '4px',
 										padding: '4px 16px',
 										marginTop: '8px',
@@ -565,7 +566,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									{ products.length === 0 && (
 										<p
 											style={ {
-												color: '#757575',
+												color: colors.textMuted,
 												fontSize: '13px',
 												textAlign: 'center',
 												padding: '16px 0',
@@ -590,7 +591,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 												padding: '6px 0',
 												borderBottom:
 													index < products.length - 1
-														? '1px solid #e0e0e0'
+														? `1px solid ${ colors.borderSubtle }`
 														: 'none',
 											} }
 										>
@@ -625,7 +626,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 						style={ {
 							marginTop: '16px',
 							paddingTop: '16px',
-							borderTop: '1px solid #f0f0f0',
+							borderTop: `1px solid ${ colors.surfaceMuted }`,
 						} }
 					>
 						<Button

@@ -92,8 +92,29 @@ AI agents are becoming a primary product discovery channel. This plugin gives me
 
 **3 tabs:**
 - `settings-page.js` — **Overview**: enable/disable, stat cards (products exposed, AI orders, AI revenue), per-agent breakdown, rate limit presets
-- `product-selection.js` — **Product Selection**: mode selector (all/categories/selected), category/product checkbox lists with search, tokens, bulk actions
-- `endpoint-info.js` — **Discovery**: table of discovery endpoint URLs (llms.txt, UCP manifest, Store API)
+- `product-selection.js` — **Product Visibility**: mode selector (all/categories/selected), category/product checkbox lists with search, selection tokens, bulk actions
+- `endpoint-info.js` — **Discovery**: table of discovery endpoint URLs (llms.txt, UCP manifest, Store API) and AI crawler allowlist
+
+**Shared modules:**
+- `tokens.js` — design tokens (semantic color names mapped to the WordPress admin palette). See [Styling](#styling) for the rule.
+
+## Styling
+
+The admin UI uses React components from `@wordpress/components` with inline `style={ ... }` props (no stylesheet). **Colors MUST come from `client/settings/ai-syndication/tokens.js`.** Raw hex literals in JSX are a lint-review red flag.
+
+```js
+import { colors } from './tokens';
+
+// Standalone — reference the token directly.
+<p style={ { color: colors.textSecondary } }>…</p>
+
+// Embedded in a multi-value string — use a template literal.
+<div style={ { border: `1px solid ${ colors.borderSubtle }` } } />
+```
+
+**Adding a new color:** define a semantic token in `tokens.js` first (e.g. `warningBg`, not `yellow100`). Map it to the nearest value in the WordPress admin palette (`@wordpress/base-styles/_colors.scss`) — choosing an existing value is nearly always preferable to inventing a new one.
+
+**Why:** a future migration to CSS custom properties (e.g. `var( --wp-components-color-gray-700, #50575e )`) — or a palette shift in WP core — becomes a single-file change instead of a hunt-and-replace across every component.
 
 ## File Map
 
@@ -132,7 +153,8 @@ woo-ucp-syndicate-ai/
 │       ├── index.js              # Entry point
 │       ├── settings-page.js      # Overview tab (pre/post enable views)
 │       ├── product-selection.js  # Product visibility controls
-│       └── endpoint-info.js      # Discovery endpoint URLs
+│       ├── endpoint-info.js      # Discovery endpoint URLs + crawler allowlist
+│       └── tokens.js             # Design tokens (semantic color names) — see Styling
 │
 ├── tests/
 │   └── php/
@@ -142,6 +164,7 @@ woo-ucp-syndicate-ai/
 │       └── unit/
 │           ├── AttributionTest.php
 │           ├── CacheInvalidatorTest.php
+│           ├── RobotsTest.php
 │           └── StoreApiRateLimiterTest.php
 │
 └── build/                                   # Compiled JS bundle (committed)

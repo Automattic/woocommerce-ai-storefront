@@ -14,6 +14,7 @@ import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
 import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
+import { colors } from './tokens';
 
 const RATE_LIMIT_PRESETS = {
 	conservative: { rpm: 10 },
@@ -121,19 +122,25 @@ const ValueCard = ( { title, children } ) => (
 			flex: '1 1 0',
 			minWidth: '200px',
 			padding: '20px',
-			background: '#f6f7f7',
+			background: colors.surfaceSubtle,
 			border: 'none',
-			borderTop: '3px solid #dcdcde',
+			borderTop: `3px solid ${ colors.borderMuted }`,
 			borderRadius: '4px',
 		} }
 	>
-		<h3 style={ { margin: '0 0 8px', fontSize: '14px', color: '#1d2327' } }>
+		<h3
+			style={ {
+				margin: '0 0 8px',
+				fontSize: '14px',
+				color: colors.textPrimary,
+			} }
+		>
 			{ title }
 		</h3>
 		<p
 			style={ {
 				margin: 0,
-				color: '#50575e',
+				color: colors.textSecondary,
 				fontSize: '13px',
 				lineHeight: '1.6',
 			} }
@@ -148,7 +155,7 @@ const StatCard = ( { label, value, subvalue, href } ) => {
 		flex: '1 1 0',
 		minWidth: '140px',
 		padding: '16px',
-		background: '#f6f7f7',
+		background: colors.surfaceSubtle,
 		border: 'none',
 		borderRadius: '4px',
 		textAlign: 'center',
@@ -162,7 +169,7 @@ const StatCard = ( { label, value, subvalue, href } ) => {
 				style={ {
 					fontSize: '24px',
 					fontWeight: '600',
-					color: '#00a32a',
+					color: colors.success,
 				} }
 			>
 				{ value }
@@ -171,7 +178,7 @@ const StatCard = ( { label, value, subvalue, href } ) => {
 				<div
 					style={ {
 						fontSize: '11px',
-						color: '#00a32a',
+						color: colors.success,
 						marginTop: '2px',
 						fontWeight: '400',
 					} }
@@ -182,7 +189,7 @@ const StatCard = ( { label, value, subvalue, href } ) => {
 			<div
 				style={ {
 					fontSize: '12px',
-					color: '#757575',
+					color: colors.textMuted,
 					marginTop: '4px',
 					textTransform: 'uppercase',
 					letterSpacing: '0.5px',
@@ -217,9 +224,9 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 		{ /* --------------------------------------------------------- */ }
 		<div
 			style={ {
-				background: '#fff',
-				border: '1px solid #e0e0e0',
-				borderLeft: '4px solid #c3c4c7',
+				background: colors.surface,
+				border: `1px solid ${ colors.borderSubtle }`,
+				borderLeft: `4px solid ${ colors.borderStrong }`,
 				borderRadius: '4px',
 				padding: '16px 20px',
 				display: 'flex',
@@ -228,7 +235,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 			} }
 		>
 			<div>
-				<strong style={ { color: '#50575e' } }>
+				<strong style={ { color: colors.textSecondary } }>
 					{ __(
 						'AI Syndication is not enabled',
 						'woocommerce-ai-syndication'
@@ -237,7 +244,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 				<p
 					style={ {
 						margin: '4px 0 0',
-						color: '#757575',
+						color: colors.textMuted,
 						fontSize: '13px',
 					} }
 				>
@@ -267,7 +274,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 		{ /* Group 2: Value proposition cards                           */ }
 		{ /* Mirrors the enabled-state stat cards row.                  */ }
 		{ /* Same gap, same marginTop, same flex layout.                */ }
-		{ /* Accent color #c3c4c7 (gray) instead of enabled green.     */ }
+		{ /* Accent uses colors.borderStrong (gray) instead of success. */ }
 		{ /* --------------------------------------------------------- */ }
 		<div
 			style={ {
@@ -322,7 +329,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 				</h3>
 				<p
 					style={ {
-						color: '#50575e',
+						color: colors.textSecondary,
 						fontSize: '13px',
 						margin: '0 0 16px',
 					} }
@@ -337,7 +344,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 					style={ {
 						margin: '0',
 						paddingLeft: '18px',
-						color: '#50575e',
+						color: colors.textSecondary,
 						fontSize: '13px',
 						lineHeight: '2',
 						listStyle: 'disc',
@@ -371,7 +378,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 
 				<p
 					style={ {
-						color: '#757575',
+						color: colors.textMuted,
 						fontSize: '12px',
 						marginTop: '12px',
 						marginBottom: 0,
@@ -388,7 +395,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 					style={ {
 						marginTop: '16px',
 						paddingTop: '16px',
-						borderTop: '1px solid #f0f0f0',
+						borderTop: `1px solid ${ colors.surfaceMuted }`,
 					} }
 				>
 					<Button
@@ -460,9 +467,9 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 			{ /* Status banner */ }
 			<div
 				style={ {
-					background: '#fff',
-					border: '1px solid #e0e0e0',
-					borderLeft: '4px solid #00a32a',
+					background: colors.surface,
+					border: `1px solid ${ colors.borderSubtle }`,
+					borderLeft: `4px solid ${ colors.success }`,
 					borderRadius: '4px',
 					padding: '16px 20px',
 					display: 'flex',
@@ -471,7 +478,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				} }
 			>
 				<div>
-					<strong style={ { color: '#00a32a' } }>
+					<strong style={ { color: colors.success } }>
 						{ __(
 							'AI Syndication is active',
 							'woocommerce-ai-syndication'
@@ -480,7 +487,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					<p
 						style={ {
 							margin: '4px 0 0',
-							color: '#50575e',
+							color: colors.textSecondary,
 							fontSize: '13px',
 						} }
 					>
@@ -685,7 +692,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					</h3>
 					<p
 						style={ {
-							color: '#50575e',
+							color: colors.textSecondary,
 							fontSize: '13px',
 							margin: '0 0 16px',
 						} }
@@ -770,7 +777,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 
 					<p
 						style={ {
-							color: '#757575',
+							color: colors.textMuted,
 							fontSize: '12px',
 							marginTop: '12px',
 							marginBottom: 0,
@@ -787,7 +794,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						style={ {
 							marginTop: '16px',
 							paddingTop: '16px',
-							borderTop: '1px solid #f0f0f0',
+							borderTop: `1px solid ${ colors.surfaceMuted }`,
 						} }
 					>
 						<Button
