@@ -35,12 +35,178 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	/**
 	 * Translate a single WC Store API product response into a UCP product.
 	 *
+	 * v1 scope (task 5): simple products get full UCP shape with a
+	 * single synthesized default variant. Variable products also get
+	 * one synthesized variant — not yet correct behavior for variable
+	 * products with real variations. Task 7 replaces the synthesized
+	 * path with `rest_do_request` dispatches to fetch each variation.
+	 *
 	 * @param array<string, mixed> $wc_product Decoded Store API product response.
 	 * @return array<string, mixed>            UCP product shape.
 	 */
 	public static function translate( array $wc_product ): array {
-		// TODO (task 5): implement field mapping per product.json schema.
-		// TODO (task 7): for variable products, fetch and translate each variation.
-		return [];
+		$id = (int) ( $wc_product['id'] ?? 0 );
+
+		$product = [
+			'id'          => self::PRODUCT_ID_PREFIX . $id,
+			'title'       => $wc_product['name'] ?? '',
+			'description' => self::extract_description( $wc_product ),
+			'price_range' => self::extract_price_range( $wc_product ),
+			'variants'    => self::extract_variants( $wc_product ),
+		];
+
+		// Optional fields — only emit when source has a non-empty value.
+		if ( ! empty( $wc_product['slug'] ) ) {
+			$product['handle'] = $wc_product['slug'];
+		}
+
+		if ( ! empty( $wc_product['permalink'] ) ) {
+			$product['url'] = $wc_product['permalink'];
+		}
+
+		if ( ! empty( $wc_product['categories'] ) ) {
+			$product['categories'] = self::extract_categories(
+				$wc_product['categories']
+			);
+		}
+
+		if ( ! empty( $wc_product['images'] ) ) {
+			$product['media'] = self::extract_media( $wc_product['images'] );
+		}
+
+		return $product;
+	}
+
+	/**
+	 * Extract the variants array for a product.
+	 *
+	 * UCP schema requires `variants` with `minItems: 1`. v1 satisfies
+	 * this by synthesizing a single default variant for every product.
+	 * Task 7 will replace this for variable products with real
+	 * variation expansion.
+	 *
+	 * @param array<string, mixed> $wc_product
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function extract_variants( array $wc_product ): array {
+		return [
+			WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $wc_product ),
+		];
+	}
+
+	/**
+	 * Extract a UCP price_range object from the WC response.
+	 *
+	 * Variable products: use `prices.price_range.min_amount` /
+	 * `max_amount` if present (WC supplies this when the product has
+	 * variations at different prices).
+	 *
+	 * Simple products (or variable products with all variations at the
+	 * same price): use `prices.price`, with min == max.
+	 *
+	 * All values are integer minor units (no float math needed —
+	 * WC already computed them correctly).
+	 *
+	 * @param array<string, mixed> $wc_product
+	 */
+	private static function extract_price_range( array $wc_product ): array {
+		$prices   = $wc_product['prices'] ?? [];
+		$currency = $prices['currency_code'] ?? 'USD';
+
+		$range = $prices['price_range'] ?? null;
+		if ( is_array( $range ) && ! empty( $range['min_amount'] ) ) {
+			return [
+				'min' => [
+					'amount'   => (int) $range['min_amount'],
+					'currency' => $currency,
+				],
+				'max' => [
+					'amount'   => (int) ( $range['max_amount'] ?? $range['min_amount'] ),
+					'currency' => $currency,
+				],
+			];
+		}
+
+		$amount = (int) ( $prices['price'] ?? 0 );
+		return [
+			'min' => [
+				'amount'   => $amount,
+				'currency' => $currency,
+			],
+			'max' => [
+				'amount'   => $amount,
+				'currency' => $currency,
+			],
+		];
+	}
+
+	/**
+	 * Map WC category objects to UCP category entries with merchant
+	 * taxonomy tagging.
+	 *
+	 * UCP `category` type has `value` (the category name/ID) and
+	 * `taxonomy` (which taxonomy the value belongs to). Standard
+	 * taxonomies include `google_product_category`, `shopify`, and
+	 * `merchant` for business-specific values. Our WC categories are
+	 * merchant-defined, so we tag them `merchant`.
+	 *
+	 * @param array<int, array<string, mixed>> $wc_categories
+	 * @return array<int, array{value: string, taxonomy: string}>
+	 */
+	private static function extract_categories( array $wc_categories ): array {
+		$result = [];
+		foreach ( $wc_categories as $cat ) {
+			if ( ! empty( $cat['name'] ) ) {
+				$result[] = [
+					'value'    => $cat['name'],
+					'taxonomy' => 'merchant',
+				];
+			}
+		}
+		return $result;
+	}
+
+	/**
+	 * Map WC image objects to UCP media entries.
+	 *
+	 * UCP media shape: `{type, url, alt_text}`. v1 handles image
+	 * media only; future expansion could add video/3D model types
+	 * from WC gallery attachments.
+	 *
+	 * @param array<int, array<string, mixed>> $wc_images
+	 * @return array<int, array<string, string>>
+	 */
+	private static function extract_media( array $wc_images ): array {
+		$result = [];
+		foreach ( $wc_images as $image ) {
+			if ( empty( $image['src'] ) ) {
+				continue;
+			}
+			$media = [
+				'type' => 'image',
+				'url'  => $image['src'],
+			];
+			if ( ! empty( $image['alt'] ) ) {
+				$media['alt_text'] = $image['alt'];
+			}
+			$result[] = $media;
+		}
+		return $result;
+	}
+
+	/**
+	 * Extract a UCP description object from the WC response.
+	 *
+	 * @param array<string, mixed> $wc_product
+	 * @return array{plain: string}
+	 */
+	private static function extract_description( array $wc_product ): array {
+		$raw   = $wc_product['short_description'] ?? '';
+		$plain = html_entity_decode(
+			strip_tags( (string) $raw ),
+			ENT_QUOTES,
+			'UTF-8'
+		);
+		return [ 'plain' => $plain ];
 	}
 }

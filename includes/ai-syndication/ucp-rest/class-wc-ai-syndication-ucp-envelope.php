@@ -26,23 +26,48 @@ class WC_AI_Syndication_UCP_Envelope {
 	/**
 	 * Build the `ucp` wrapper for a catalog response.
 	 *
-	 * @param string $capability_name  Fully-qualified UCP capability name.
+	 * Schema: response_catalog_schema (ucp.json). Requires `version`,
+	 * allows `capabilities`. We always include `capabilities` with
+	 * the specific capability the response implements, so agents can
+	 * verify they hit the right operation.
+	 *
+	 * @param string $capability_name  Fully-qualified UCP capability name
+	 *                                 (e.g. "dev.ucp.shopping.catalog.search").
 	 * @return array<string, mixed>    The `ucp` wrapper object.
 	 */
 	public static function catalog_envelope( string $capability_name ): array {
-		// TODO (task 4): implement per response_catalog_schema.
-		return [];
+		return [
+			'version'      => WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			'capabilities' => [
+				$capability_name => [
+					[ 'version' => WC_AI_Syndication_Ucp::PROTOCOL_VERSION ],
+				],
+			],
+		];
 	}
 
 	/**
 	 * Build the `ucp` wrapper for a checkout response.
 	 *
+	 * Schema: response_checkout_schema (ucp.json). Requires
+	 * `payment_handlers` as a top-level key (even if empty — an
+	 * empty object declares "zero payment handlers exposed").
+	 *
 	 * @return array<string, mixed>    The `ucp` wrapper object.
 	 */
 	public static function checkout_envelope(): array {
-		// TODO (task 4): implement per response_checkout_schema.
-		// Required fields: version, status, capabilities, payment_handlers.
-		// payment_handlers MUST serialize as {} (object), never [] (array).
-		return [];
+		return [
+			'version'          => WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			'capabilities'     => [
+				'dev.ucp.shopping.checkout' => [
+					[ 'version' => WC_AI_Syndication_Ucp::PROTOCOL_VERSION ],
+				],
+			],
+
+			// `(object) []` ensures JSON serialization as `{}` not `[]`.
+			// UCP schema requires object shape here; an empty array
+			// would fail validation.
+			'payment_handlers' => (object) [],
+		];
 	}
 }
