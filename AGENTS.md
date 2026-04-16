@@ -255,6 +255,23 @@ composer install                # Install PHP dev dependencies
 vendor/bin/phpunit              # Run PHP tests
 npm run test:js                 # Run JS tests
 npm run lint:js                 # Lint JS
+vendor/bin/phpcs                # Lint PHP against WordPress-Extra + plugin rules
+vendor/bin/phpcbf               # Auto-fix PHPCS violations where possible
+vendor/bin/phpstan analyse      # PHP static analysis (level 5)
 ```
+
+### PHP quality tooling
+
+PHPCS is configured from `phpcs.xml.dist` with the `WordPress-Extra`
+standard plus plugin-specific prefix declarations. PHPStan is at level 5
+with a minimal WC-function ignore list; real bugs fail the build. Both
+run in CI on every push to `main` and on pull requests.
+
+When a WC function or class trips PHPStan because it's not in the WP
+stubs, add a narrow `ignoreErrors` entry to `phpstan.neon.dist` (matched
+by name pattern — never blanket-suppress). When a `$wpdb` query uses
+`{$table}` interpolation for a hard-coded table name, wrap it in
+`phpcs:disable` / `phpcs:enable` comments scoped to the specific query,
+not the whole method.
 
 Requires WooCommerce 9.9+, WordPress 6.7+, PHP 8.0+.

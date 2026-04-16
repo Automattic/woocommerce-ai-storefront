@@ -1,0 +1,58 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    # Level 5 catches most real bugs (unknown methods, wrong arg types,
+    # missing return types, undefined properties) without the noise of
+    # higher levels (which flag every untyped array / mixed parameter).
+    # This is a reasonable starting point for a plugin that doesn't
+    # fully type-hint its arrays yet.
+    level: 5
+
+    paths:
+        - includes
+        - woocommerce-ai-syndication.php
+
+    # Provide enough type info for the analyzer without overriding the
+    # real plugin class. The stub files model WC_Product, WC_Order,
+    # WP_REST_*, and the basic WP_Error — adequate for static checks.
+    # Notably we do NOT scan `class-wc-ai-syndication-stub.php` here,
+    # because that stub lacks methods like `get_instance()` and
+    # `update_settings()` that the production class exposes. PHPStan
+    # analyses the real class directly from `includes/`.
+    scanFiles:
+        - tests/php/stubs.php
+
+    # Plugin constants defined at runtime by the bootstrap file. They
+    # exist but PHPStan can't prove it from static analysis alone.
+    bootstrapFiles:
+        - phpstan-bootstrap.php
+
+    # Paths we never want to lint.
+    excludePaths:
+        - vendor
+        - node_modules
+        - build
+        - tests
+
+    # WC functions aren't in the WP stubs. Ignoring by name pattern
+    # keeps the config honest about WHAT we're waiving vs. a blanket
+    # ignore. When an official @woocommerce/phpstan-stubs package
+    # ships, these can be removed.
+    ignoreErrors:
+        # Standard WC-prefixed functions.
+        - identifier: function.notFound
+          path: includes/*
+          message: '#Function wc_[a-z_]+ not found#'
+        # WC globals without the `wc_` prefix (the Woo codebase has a
+        # handful of these for historical reasons).
+        - identifier: function.notFound
+          path: includes/*
+          message: '#Function (is_shop|get_woocommerce_currency|get_woocommerce_currency_symbol) not found#'
+        # WP `strtotime()` can return `false`, but the WP stubs declare
+        # it as int<1,max>. The plugin's defensive check is correct
+        # runtime behavior — the stub is wrong. Ignore until fixed
+        # upstream.
+        - identifier: identical.alwaysFalse
+          path: includes/ai-syndication/class-wc-ai-syndication-attribution.php
+          message: '#Strict comparison using === between false and int#'

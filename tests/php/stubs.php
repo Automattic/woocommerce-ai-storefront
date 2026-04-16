@@ -107,6 +107,14 @@ if ( ! class_exists( 'WP_REST_Server' ) ) {
 }
 
 if ( ! class_exists( 'WC_Product' ) ) {
+	/**
+	 * Minimal WC_Product stub. This stub is also consumed by PHPStan
+	 * for static analysis — every method actually called by the
+	 * plugin code on a product instance must be declared here, or
+	 * PHPStan will report `method.notFound`. Tests override return
+	 * values via Mockery; PHPStan uses the signatures for type
+	 * checking only.
+	 */
 	class WC_Product {
 		protected int $id = 1;
 		protected string $type = 'simple';
@@ -156,6 +164,46 @@ if ( ! class_exists( 'WC_Product' ) ) {
 
 		public function get_price(): string {
 			return '19.99';
+		}
+
+		// Stock.
+		public function managing_stock(): bool {
+			return false;
+		}
+
+		public function get_stock_quantity(): ?int {
+			return null;
+		}
+
+		// Weight + dimensions (JSON-LD enhancer).
+		public function has_weight(): bool {
+			return false;
+		}
+
+		public function get_weight(): string {
+			return '';
+		}
+
+		public function has_dimensions(): bool {
+			return false;
+		}
+
+		/**
+		 * @return array{length: string, width: string, height: string}
+		 */
+		public function get_dimensions( bool $formatted = false ): array {
+			return [ 'length' => '', 'width' => '', 'height' => '' ];
+		}
+
+		/**
+		 * @return array<string, object>
+		 */
+		public function get_attributes(): array {
+			return [];
+		}
+
+		public function get_attribute( string $name ): string {
+			return '';
 		}
 	}
 }

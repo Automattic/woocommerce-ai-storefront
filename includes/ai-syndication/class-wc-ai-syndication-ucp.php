@@ -95,9 +95,9 @@ class WC_AI_Syndication_Ucp {
 	 * @return array The manifest data.
 	 */
 	public function generate_manifest( $settings ) {
-		$site_url  = home_url( '/' );
-		$shop_url  = wc_get_page_permalink( 'shop' );
-		$cart_url  = wc_get_cart_url();
+		$site_url     = home_url( '/' );
+		$shop_url     = wc_get_page_permalink( 'shop' );
+		$cart_url     = wc_get_cart_url();
 		$checkout_url = wc_get_checkout_url();
 
 		$manifest = [
@@ -123,9 +123,9 @@ class WC_AI_Syndication_Ucp {
 
 			// Capabilities.
 			'capabilities'     => [
-				'product_discovery'  => true,
-				'checkout_links'     => true,
-				'attribution'        => true,
+				'product_discovery' => true,
+				'checkout_links'    => true,
+				'attribution'       => true,
 			],
 
 			// WooCommerce Store API (public, unauthenticated).
@@ -166,7 +166,7 @@ class WC_AI_Syndication_Ucp {
 					'utm_campaign'  => 'Optional campaign name',
 					'ai_session_id' => 'Conversation/session identifier for tracking',
 				],
-				'usage'        => 'Append these parameters to any add_to_cart or checkout_link URL.',
+				'usage'      => 'Append these parameters to any add_to_cart or checkout_link URL.',
 			],
 
 			// Discovery endpoints.

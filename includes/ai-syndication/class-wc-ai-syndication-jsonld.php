@@ -107,8 +107,8 @@ class WC_AI_Syndication_JsonLd {
 		}
 
 		if ( $product->has_dimensions() ) {
-			$dimensions      = $product->get_dimensions( false );
-			$dimension_unit  = $this->get_dimension_unit_code();
+			$dimensions       = $product->get_dimensions( false );
+			$dimension_unit   = $this->get_dimension_unit_code();
 			$markup['depth']  = [
 				'@type'    => 'QuantitativeValue',
 				'value'    => $dimensions['length'],
@@ -279,7 +279,7 @@ class WC_AI_Syndication_JsonLd {
 			'lbs' => 'LBR',
 			'oz'  => 'ONZ',
 		];
-		$wc_unit = get_option( 'woocommerce_weight_unit', 'kg' );
+		$wc_unit  = get_option( 'woocommerce_weight_unit', 'kg' );
 		return $unit_map[ $wc_unit ] ?? 'KGM';
 	}
 
@@ -296,7 +296,7 @@ class WC_AI_Syndication_JsonLd {
 			'in' => 'INH',
 			'yd' => 'YRD',
 		];
-		$wc_unit = get_option( 'woocommerce_dimension_unit', 'cm' );
+		$wc_unit  = get_option( 'woocommerce_dimension_unit', 'cm' );
 		return $unit_map[ $wc_unit ] ?? 'CMT';
 	}
 }

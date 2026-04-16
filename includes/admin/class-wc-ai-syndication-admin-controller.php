@@ -43,12 +43,31 @@ class WC_AI_Syndication_Admin_Controller {
 					'callback'            => [ $this, 'update_settings' ],
 					'permission_callback' => [ $this, 'check_admin_permission' ],
 					'args'                => [
-						'enabled'                => [ 'type' => 'string', 'enum' => [ 'yes', 'no' ] ],
-						'product_selection_mode'  => [ 'type' => 'string', 'enum' => [ 'all', 'categories', 'selected' ] ],
-						'selected_categories'    => [ 'type' => 'array', 'items' => [ 'type' => 'integer' ] ],
-						'selected_products'      => [ 'type' => 'array', 'items' => [ 'type' => 'integer' ] ],
-						'rate_limit_rpm'         => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 1000 ],
-						'allowed_crawlers'       => [ 'type' => 'array', 'items' => [ 'type' => 'string' ] ],
+						'enabled'                => [
+							'type' => 'string',
+							'enum' => [ 'yes', 'no' ],
+						],
+						'product_selection_mode' => [
+							'type' => 'string',
+							'enum' => [ 'all', 'categories', 'selected' ],
+						],
+						'selected_categories'    => [
+							'type'  => 'array',
+							'items' => [ 'type' => 'integer' ],
+						],
+						'selected_products'      => [
+							'type'  => 'array',
+							'items' => [ 'type' => 'integer' ],
+						],
+						'rate_limit_rpm'         => [
+							'type'    => 'integer',
+							'minimum' => 1,
+							'maximum' => 1000,
+						],
+						'allowed_crawlers'       => [
+							'type'  => 'array',
+							'items' => [ 'type' => 'string' ],
+						],
 					],
 				],
 			]
@@ -92,7 +111,10 @@ class WC_AI_Syndication_Admin_Controller {
 				'permission_callback' => [ $this, 'check_admin_permission' ],
 				'args'                => [
 					'search'   => [ 'type' => 'string' ],
-					'per_page' => [ 'type' => 'integer', 'default' => 20 ],
+					'per_page' => [
+						'type'    => 'integer',
+						'default' => 20,
+					],
 				],
 			]
 		);
@@ -185,12 +207,14 @@ class WC_AI_Syndication_Admin_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function search_categories() {
-		$categories = get_terms( [
-			'taxonomy'   => 'product_cat',
-			'hide_empty' => false,
-			'orderby'    => 'name',
-			'order'      => 'ASC',
-		] );
+		$categories = get_terms(
+			[
+				'taxonomy'   => 'product_cat',
+				'hide_empty' => false,
+				'orderby'    => 'name',
+				'order'      => 'ASC',
+			]
+		);
 
 		if ( is_wp_error( $categories ) ) {
 			return new WP_REST_Response( [] );
@@ -218,7 +242,7 @@ class WC_AI_Syndication_Admin_Controller {
 	 */
 	public function search_products( $request ) {
 		$search   = sanitize_text_field( $request->get_param( 'search' ) ?? '' );
-		$per_page = min( absint( $request->get_param( 'per_page' ) ?: 20 ), 100 );
+		$per_page = min( absint( $request->get_param( 'per_page' ) ?? 20 ), 100 );
 
 		$args = [
 			'status' => 'publish',
@@ -234,12 +258,15 @@ class WC_AI_Syndication_Admin_Controller {
 		$data     = [];
 
 		foreach ( $products as $product ) {
-			$data[] = [
+			// `wp_get_attachment_image_url` returns false for products with
+			// no image; normalize to empty string for JSON consumers.
+			$image_url = wp_get_attachment_image_url( $product->get_image_id(), 'thumbnail' );
+			$data[]    = [
 				'id'    => $product->get_id(),
 				'name'  => $product->get_name(),
 				'sku'   => $product->get_sku(),
 				'price' => wp_strip_all_tags( $product->get_price_html() ),
-				'image' => wp_get_attachment_image_url( $product->get_image_id(), 'thumbnail' ) ?: '',
+				'image' => $image_url ? $image_url : '',
 			];
 		}
 
@@ -252,10 +279,12 @@ class WC_AI_Syndication_Admin_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function get_endpoints_info() {
-		return new WP_REST_Response( [
-			'llms_txt'  => home_url( '/llms.txt' ),
-			'ucp'       => home_url( '/.well-known/ucp' ),
-			'store_api' => rest_url( 'wc/store/v1' ),
-		] );
+		return new WP_REST_Response(
+			[
+				'llms_txt'  => home_url( '/llms.txt' ),
+				'ucp'       => home_url( '/.well-known/ucp' ),
+				'store_api' => rest_url( 'wc/store/v1' ),
+			]
+		);
 	}
 }

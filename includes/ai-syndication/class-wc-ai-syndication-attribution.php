@@ -168,8 +168,13 @@ class WC_AI_Syndication_Attribution {
 	/**
 	 * Render AI agent column in orders list.
 	 *
-	 * @param string $column_name Column name.
-	 * @param int    $order_id    Order ID (for HPOS, this is the WC_Order).
+	 * Works with both the legacy post-based orders list (where the second
+	 * parameter is an int post ID) and the HPOS orders list (where it's
+	 * already a WC_Order instance). The `instanceof` guard at the start
+	 * of the method handles the polymorphism.
+	 *
+	 * @param string       $column_name Column name.
+	 * @param int|WC_Order $order_id    Order ID (legacy) or WC_Order (HPOS).
 	 */
 	public function render_order_list_column( $column_name, $order_id ) {
 		if ( 'ai_agent' !== $column_name ) {
@@ -212,10 +217,14 @@ class WC_AI_Syndication_Attribution {
 		// Use HPOS tables if available, fall back to post meta.
 		if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
 			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+			// Table names are derived from `$wpdb->prefix` (admin-controlled,
+			// not user input) and hard-coded WC HPOS suffixes. Interpolation
+			// is the canonical WordPress pattern here — `$wpdb->prepare()`
+			// cannot parameterize table names.
 			$orders_table = $wpdb->prefix . 'wc_orders';
 			$meta_table   = $wpdb->prefix . 'wc_orders_meta';
 
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$results = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT agent_meta.meta_value AS agent,
@@ -231,6 +240,7 @@ class WC_AI_Syndication_Attribution {
 					$after_date
 				)
 			);
+			// phpcs:enable
 		} else {
 			// Legacy post-based orders.
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
@@ -263,8 +273,8 @@ class WC_AI_Syndication_Attribution {
 				$count   = (int) $row->order_count;
 				$revenue = (float) $row->revenue;
 
-				$total_orders  += $count;
-				$total_revenue += $revenue;
+				$total_orders           += $count;
+				$total_revenue          += $revenue;
 				$by_agent[ $row->agent ] = [
 					'orders'  => $count,
 					'revenue' => $revenue,
@@ -277,7 +287,7 @@ class WC_AI_Syndication_Attribution {
 		if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
 			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
 			$orders_table = $wpdb->prefix . 'wc_orders';
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$all_orders_count = (int) $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT COUNT(*) FROM {$orders_table}
@@ -286,6 +296,7 @@ class WC_AI_Syndication_Attribution {
 					$after_date
 				)
 			);
+			// phpcs:enable
 		} else {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$all_orders_count = (int) $wpdb->get_var(
@@ -323,13 +334,14 @@ class WC_AI_Syndication_Attribution {
 		if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
 			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
 			$meta_table = $wpdb->prefix . 'wc_orders_meta';
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$agents = $wpdb->get_col(
 				$wpdb->prepare(
 					"SELECT DISTINCT meta_value FROM {$meta_table} WHERE meta_key = %s AND meta_value != '' ORDER BY meta_value",
 					self::AGENT_META_KEY
 				)
 			);
+			// phpcs:enable
 		} else {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$agents = $wpdb->get_col(
@@ -340,7 +352,7 @@ class WC_AI_Syndication_Attribution {
 			);
 		}
 
-		return $agents ?: [];
+		return is_array( $agents ) ? $agents : [];
 	}
 
 	/**
@@ -423,7 +435,10 @@ class WC_AI_Syndication_Attribution {
 			return;
 		}
 
-		$meta_query = $query->get( 'meta_query' ) ?: [];
+		$meta_query = $query->get( 'meta_query' );
+		if ( ! is_array( $meta_query ) ) {
+			$meta_query = [];
+		}
 
 		if ( '_any' === $agent ) {
 			$meta_query[] = [

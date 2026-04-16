@@ -141,7 +141,7 @@ class WC_AI_Syndication {
 		// Flush rewrite rules when needed:
 		// 1. After a plugin update (version mismatch — activation hook doesn't fire on updates)
 		// 2. After toggling syndication enabled/disabled (transient flag from admin controller)
-		$needs_flush = get_transient( 'wc_ai_syndication_flush_rewrite' );
+		$needs_flush    = get_transient( 'wc_ai_syndication_flush_rewrite' );
 		$stored_version = get_option( 'wc_ai_syndication_version', '' );
 
 		if ( $needs_flush || $stored_version !== WC_AI_SYNDICATION_VERSION ) {
@@ -312,7 +312,7 @@ class WC_AI_Syndication {
 
 		// Use autoload=true so the option is always in the alloptions cache.
 		self::$settings_cache = null;
-		$result = update_option( self::SETTINGS_OPTION, $clean, true );
+		$result               = update_option( self::SETTINGS_OPTION, $clean, true );
 
 		// Bust the cache so the next get_settings() reads the fresh value.
 		wp_cache_delete( self::SETTINGS_OPTION, 'options' );

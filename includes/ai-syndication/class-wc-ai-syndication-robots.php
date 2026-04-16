@@ -71,17 +71,22 @@ class WC_AI_Syndication_Robots {
 	/**
 	 * Add AI crawler rules to robots.txt.
 	 *
-	 * @param string $output The existing robots.txt content.
-	 * @param bool   $public Whether the site is public.
+	 * Hooked onto WordPress's `robots_txt` filter. WP passes whether the
+	 * site is "public" (Reading > Search engine visibility) as the second
+	 * argument; we no-op on private sites to avoid advertising a catalog
+	 * the operator explicitly wants hidden.
+	 *
+	 * @param string $output    The existing robots.txt content.
+	 * @param bool   $is_public Whether the site is publicly visible.
 	 * @return string Modified robots.txt content.
 	 */
-	public function add_ai_crawler_rules( $output, $public ) {
+	public function add_ai_crawler_rules( $output, $is_public ) {
 		$settings = WC_AI_Syndication::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			return $output;
 		}
 
-		if ( ! $public ) {
+		if ( ! $is_public ) {
 			return $output;
 		}
 
@@ -91,10 +96,17 @@ class WC_AI_Syndication_Robots {
 		$output .= "# Machine-readable store data for AI-assisted product discovery\n\n";
 
 		// Derive paths from actual WooCommerce permalink settings.
-		$shop_path     = wp_parse_url( wc_get_page_permalink( 'shop' ), PHP_URL_PATH ) ?: '/shop/';
-		$cart_path     = wp_parse_url( wc_get_page_permalink( 'cart' ), PHP_URL_PATH ) ?: '/cart/';
-		$checkout_path = wp_parse_url( wc_get_page_permalink( 'checkout' ), PHP_URL_PATH ) ?: '/checkout/';
-		$account_path  = wp_parse_url( wc_get_page_permalink( 'myaccount' ), PHP_URL_PATH ) ?: '/my-account/';
+		// `wp_parse_url` can return an empty string, false, or null when the
+		// permalink isn't set yet (fresh WC installs). Fall back to sensible
+		// defaults that match WC's out-of-box routes.
+		$parse_path    = static function ( string $page, string $fallback ): string {
+			$path = wp_parse_url( wc_get_page_permalink( $page ), PHP_URL_PATH );
+			return ( is_string( $path ) && '' !== $path ) ? $path : $fallback;
+		};
+		$shop_path     = $parse_path( 'shop', '/shop/' );
+		$cart_path     = $parse_path( 'cart', '/cart/' );
+		$checkout_path = $parse_path( 'checkout', '/checkout/' );
+		$account_path  = $parse_path( 'myaccount', '/my-account/' );
 
 		$product_base  = '/' . trim( get_option( 'woocommerce_permalinks', [] )['product_base'] ?? 'product', '/' ) . '/';
 		$category_base = '/' . trim( get_option( 'woocommerce_permalinks', [] )['category_base'] ?? 'product-category', '/' ) . '/';
