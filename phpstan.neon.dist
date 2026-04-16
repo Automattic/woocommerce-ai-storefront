@@ -12,6 +12,7 @@ parameters:
     paths:
         - includes
         - woocommerce-ai-syndication.php
+        - uninstall.php
 
     # Provide enough type info for the analyzer without overriding the
     # real plugin class. The stub files model WC_Product, WC_Order,

@@ -5,6 +5,7 @@
     <!-- What to scan. -->
     <file>./includes</file>
     <file>./woocommerce-ai-syndication.php</file>
+    <file>./uninstall.php</file>
 
     <!-- Exclusions. -->
     <exclude-pattern>*/vendor/*</exclude-pattern>
