@@ -154,11 +154,17 @@ Use `Flex` / `FlexItem` / `FlexBlock` from `@wordpress/components` instead of ha
 ```
 woo-ucp-syndicate-ai/
 ├── woocommerce-ai-syndication.php           # Bootstrap, HPOS declaration, activation/deactivation
+├── README.md                                # GitHub-facing project overview
+├── readme.txt                               # WP.org-format plugin readme
+├── AGENTS.md                                # This file — architecture reference
 ├── package.json                             # Node dependencies
-├── composer.json                            # PHP dependencies (dev: PHPUnit, Brain Monkey)
-├── webpack.config.js                        # Build config
+├── composer.json                            # PHP deps (PHPUnit, Brain Monkey, PHPStan, PHPCS)
+├── webpack.config.js                        # Build config (Woo dependency extraction)
 ├── phpunit.xml.dist                         # PHPUnit config
-├── .github/workflows/ci.yml                 # CI: PHP tests (8.1-8.3), JS tests, JS lint
+├── phpcs.xml.dist                           # PHPCS config (WordPress-Extra standard)
+├── phpstan.neon.dist                        # PHPStan config (level 5)
+├── phpstan-bootstrap.php                    # Plugin constants for PHPStan
+├── .github/workflows/ci.yml                 # CI: PHPUnit (8.1/8.2/8.3), PHPCS, PHPStan, JS tests, JS lint
 │
 ├── includes/
 │   ├── class-wc-ai-syndication.php          # Main orchestrator
@@ -181,7 +187,8 @@ woo-ucp-syndicate-ai/
 │   │   ├── actions.js            # Thunk actions (save, fetchStats, fetchEndpoints)
 │   │   ├── reducer.js            # State: settings, stats, endpoints, saving
 │   │   ├── selectors.js          # State queries
-│   │   └── resolvers.js          # Async thunk resolvers
+│   │   ├── resolvers.js          # Async thunk resolvers
+│   │   └── __tests__/            # Jest tests (actions, reducer, selectors)
 │   └── settings/ai-syndication/
 │       ├── index.js              # Entry point
 │       ├── settings-page.js      # Overview tab (pre/post enable views)
@@ -192,13 +199,16 @@ woo-ucp-syndicate-ai/
 ├── tests/
 │   └── php/
 │       ├── bootstrap.php
-│       ├── stubs.php
+│       ├── stubs.php                        # WC_Product, WC_Order, WP_REST_* stubs
 │       ├── stubs/class-wc-ai-syndication-stub.php
 │       └── unit/
 │           ├── AttributionTest.php
 │           ├── CacheInvalidatorTest.php
+│           ├── JsonLdTest.php
+│           ├── LlmsTxtTest.php
 │           ├── RobotsTest.php
-│           └── StoreApiRateLimiterTest.php
+│           ├── StoreApiRateLimiterTest.php
+│           └── UcpTest.php
 │
 └── build/                                   # Compiled JS bundle (committed)
 ```
@@ -221,10 +231,16 @@ woo-ucp-syndicate-ai/
 
 ## Settings
 
+All runtime settings are stored in a single serialized option to keep reads cheap (`autoload=true` + static memoization in `WC_AI_Syndication::get_settings()`).
+
 | Option Key | Type | Description |
 |------------|------|-------------|
-| `wc_ai_syndication_settings` | array | enabled, product_selection_mode, selected_categories, selected_products, rate_limit_rpm |
+| `wc_ai_syndication_settings` | array | `enabled`, `product_selection_mode`, `selected_categories`, `selected_products`, `rate_limit_rpm`, `allowed_crawlers` |
 | `wc_ai_syndication_version` | string | Plugin version (triggers cache bust + rewrite flush on update) |
+
+### `allowed_crawlers`
+
+Subset of `WC_AI_Syndication_Robots::AI_CRAWLERS`. Sanitized on write by `WC_AI_Syndication_Robots::sanitize_allowed_crawlers()`, which intersects the incoming array with the canonical list — stale IDs left over from plugin upgrades that rotated the roster (e.g. the v1.1.0 Bytespider → OAI-SearchBot swap) are stripped on the next save. If absent, defaults to the full canonical list.
 
 ## Admin REST API
 
