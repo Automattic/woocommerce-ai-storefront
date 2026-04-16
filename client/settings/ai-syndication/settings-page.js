@@ -539,10 +539,18 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				<StatCard
 					label={ sprintf(
 						/* translators: %s: time period label */
+						__( 'Total Orders (%s)', 'woocommerce-ai-syndication' ),
+						periodLabels[ period ]
+					) }
+					value={ stats?.all_orders ?? '\u2014' }
+				/>
+				<StatCard
+					label={ sprintf(
+						/* translators: %s: time period label */
 						__( 'AI Orders (%s)', 'woocommerce-ai-syndication' ),
 						periodLabels[ period ]
 					) }
-					value={ stats?.total_orders ?? '\u2014' }
+					value={ stats?.ai_orders ?? '\u2014' }
 				/>
 				<StatCard
 					label={ sprintf(
@@ -553,10 +561,18 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					value={
 						stats
 							? `${ stats.currency || '$' } ${ parseFloat(
-									stats.total_revenue || 0
+									stats.ai_revenue || 0
 							  ).toFixed( 2 ) }`
 							: '\u2014'
 					}
+				/>
+				<StatCard
+					label={ sprintf(
+						/* translators: %s: time period label */
+						__( 'AI Share (%s)', 'woocommerce-ai-syndication' ),
+						periodLabels[ period ]
+					) }
+					value={ stats ? `${ stats.ai_share_percent }%` : '\u2014' }
 				/>
 			</div>
 

@@ -266,12 +266,43 @@ class WC_AI_Syndication_Attribution {
 			}
 		}
 
+		// Get total store orders for the same period (for AI share calculation).
+		$all_orders_count = 0;
+		if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
+			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+			$orders_table = $wpdb->prefix . 'wc_orders';
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$all_orders_count = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(*) FROM {$orders_table}
+					 WHERE status IN ( 'wc-completed', 'wc-processing' )
+					   AND date_created_gmt >= %s",
+					$after_date
+				)
+			);
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$all_orders_count = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(*) FROM {$wpdb->posts}
+					 WHERE post_type = 'shop_order'
+					   AND post_status IN ( 'wc-completed', 'wc-processing' )
+					   AND post_date_gmt >= %s",
+					$after_date
+				)
+			);
+		}
+
 		return [
-			'period'        => $period,
-			'total_orders'  => $total_orders,
-			'total_revenue' => $total_revenue,
-			'currency'      => get_woocommerce_currency(),
-			'by_agent'      => $by_agent,
+			'period'           => $period,
+			'ai_orders'        => $total_orders,
+			'ai_revenue'       => $total_revenue,
+			'all_orders'       => $all_orders_count,
+			'ai_share_percent' => $all_orders_count > 0
+				? round( ( $total_orders / $all_orders_count ) * 100, 1 )
+				: 0,
+			'currency'         => get_woocommerce_currency(),
+			'by_agent'         => $by_agent,
 		];
 	}
 }
