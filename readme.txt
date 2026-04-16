@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,10 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.2.1 =
+* Fixed: content caches (llms.txt and UCP manifest) now actually regenerate after an in-place plugin upgrade. A latent bug since 1.0.0 caused the activation hook to pre-write the stored plugin version, which short-circuited the boot-time cache-bust branch — merchants saw stale cached content for up to an hour after every upgrade. 1.2.0 users upgrading to 1.2.1 will see the correct new UCP manifest on the first request after update.
+* Added: `ActivationTest` enforces the structural invariant that only the boot-time cache-bust branch writes the `wc_ai_syndication_version` option, preventing this bug class from returning.
 
 = 1.2.0 =
 * Restructured the /.well-known/ucp manifest to conform to the official UCP business_profile schema at https://github.com/Universal-Commerce-Protocol/ucp. The previous shape used bespoke field names that did not match the spec; AI agents using official UCP libraries could not parse it. New shape declares one `service` (the public WooCommerce Store API) and zero UCP capabilities — a discovery-only posture consistent with the plugin's web-redirect checkout model (no delegated or in-chat payments).

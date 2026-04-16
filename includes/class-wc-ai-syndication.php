@@ -139,9 +139,18 @@ class WC_AI_Syndication {
 		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
 
-		// Flush rewrite rules when needed:
-		// 1. After a plugin update (version mismatch — activation hook doesn't fire on updates)
-		// 2. After toggling syndication enabled/disabled (transient flag from admin controller)
+		// Flush rewrite rules and bust content caches when needed:
+		//
+		// 1. After a plugin code update (stored version on disk differs
+		//    from WC_AI_SYNDICATION_VERSION). This catches two install
+		//    paths: in-place zip uploads AND remote auto-updates. It is
+		//    critical that the activation hook does NOT pre-write the
+		//    stored version — if it did, this branch would never detect
+		//    a mismatch on in-place upgrades. See the comment on
+		//    wc_ai_syndication_activate() for the full history.
+		//
+		// 2. After toggling syndication enabled/disabled (transient flag
+		//    set by the admin controller).
 		$needs_flush    = get_transient( 'wc_ai_syndication_flush_rewrite' );
 		$stored_version = get_option( 'wc_ai_syndication_version', '' );
 

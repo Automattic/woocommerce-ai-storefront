@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce AI Syndication
  * Plugin URI: https://woocommerce.com/
  * Description: Merchant-led AI product syndication for WooCommerce. Expose products to AI shopping agents (ChatGPT, Gemini, Perplexity, Claude) with full merchant control. Store-only checkout, standard WooCommerce attribution.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
  * Text Domain: woocommerce-ai-syndication
@@ -21,7 +21,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'WC_AI_SYNDICATION_VERSION', '1.2.0' );
+define( 'WC_AI_SYNDICATION_VERSION', '1.2.1' );
 define( 'WC_AI_SYNDICATION_PLUGIN_FILE', __FILE__ );
 define( 'WC_AI_SYNDICATION_PLUGIN_PATH', untrailingslashit( plugin_dir_path( __FILE__ ) ) );
 define( 'WC_AI_SYNDICATION_PLUGIN_URL', untrailingslashit( plugin_dir_url( __FILE__ ) ) );
@@ -68,6 +68,20 @@ function wc_ai_syndication_missing_wc_notice() {
 
 /**
  * Flush rewrite rules on activation.
+ *
+ * This runs on fresh activation AND on in-place upgrades (WordPress
+ * fires the activation hook when the zip is uploaded over an existing
+ * install). We intentionally do NOT update the stored version option
+ * here — that's handled by `WC_AI_Syndication::register_rewrite_rules()`
+ * which detects the version mismatch, clears content caches, and
+ * then writes the new version. Writing the version here would
+ * short-circuit that branch: the boot-time check would see a matching
+ * version and skip the cache bust, leaving stale llms.txt / UCP
+ * manifest content cached even though the code has been upgraded.
+ *
+ * This was a latent bug from 1.0.0 → 1.1.x that only surfaced on
+ * in-place zip upgrades; see the "old UCP file served after upgrade"
+ * diagnosis in the 1.2.0 work.
  */
 function wc_ai_syndication_activate() {
 	if ( ! class_exists( 'WooCommerce' ) ) {
@@ -79,7 +93,6 @@ function wc_ai_syndication_activate() {
 	$instance->init_components();
 
 	flush_rewrite_rules();
-	update_option( 'wc_ai_syndication_version', WC_AI_SYNDICATION_VERSION );
 }
 register_activation_hook( __FILE__, 'wc_ai_syndication_activate' );
 
