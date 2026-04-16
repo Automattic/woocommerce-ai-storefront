@@ -122,16 +122,18 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[] = "- **Commerce Protocol**: {$site_url}.well-known/ucp";
 		$lines[] = '';
 
-		// API endpoints.
-		$lines[]  = '## API Endpoints';
-		$lines[]  = '';
-		$api_base = rest_url( 'wc/v3/ai-syndication' );
-		$lines[]  = "- **Product Catalog**: `{$api_base}/products`";
-		$lines[]  = "- **Categories**: `{$api_base}/categories`";
-		$lines[]  = "- **Store Info**: `{$api_base}/store`";
-		$lines[]  = '';
-		$lines[]  = 'All API endpoints require an `X-AI-Agent-Key` header for authentication.';
-		$lines[]  = '';
+		// API access. This plugin does NOT expose its own authenticated
+		// API — AI agents use WooCommerce's public Store API directly.
+		// The UCP manifest describes purchase URL templates and checkout
+		// policy in machine-readable form; agents that want structured
+		// data fetch that document.
+		$lines[]    = '## API Access';
+		$lines[]    = '';
+		$store_api  = rest_url( 'wc/store/v1' );
+		$ucp_url    = $site_url . '.well-known/ucp';
+		$lines[]    = "- **Store API**: `{$store_api}` — public WooCommerce Store API for product search and cart operations (no authentication required)";
+		$lines[]    = "- **Commerce Protocol Manifest**: `{$ucp_url}` — declares capabilities, checkout policy, and purchase URL templates";
+		$lines[]    = '';
 
 		// Product categories summary.
 		$categories = $this->get_syndicated_categories( $settings );

@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.1.0
+Stable tag: 1.1.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,11 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.1.1 =
+* Fixed: llms.txt no longer advertises the removed authenticated catalog API (`/wc/v3/ai-syndication/products` endpoints and the `X-AI-Agent-Key` header). AI agents now see an accurate pointer to WooCommerce's public Store API and the UCP manifest.
+* Fixed: UCP manifest response no longer advertises `X-AI-Agent-Key` in its `Access-Control-Allow-Headers` CORS header.
+* Cached llms.txt and UCP manifest are automatically regenerated on upgrade (via the existing version-based cache bust).
 
 = 1.1.0 =
 * Updated AI crawler list to focus on commerce-relevant bots. Added OAI-SearchBot, Perplexity-User, Claude-User, Meta-ExternalAgent. Removed Bytespider, CCBot, anthropic-ai, cohere-ai.

@@ -94,7 +94,27 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString( '## Store Information', $output );
+		$this->assertStringContainsString( '## API Access', $output );
 		$this->assertStringContainsString( '## Attribution', $output );
+	}
+
+	public function test_api_access_section_points_to_store_api_and_ucp(): void {
+		// The plugin does NOT expose its own authenticated API. llms.txt
+		// must advertise WooCommerce's public Store API and the UCP
+		// manifest — NOT the removed `wc/v3/ai-syndication/*` endpoints
+		// or the `X-AI-Agent-Key` header (both existed in a pre-1.0
+		// draft of the architecture).
+		$output = $this->llms->generate();
+
+		// Correct endpoints advertised.
+		$this->assertStringContainsString( 'wc/store/v1', $output );
+		$this->assertStringContainsString( '.well-known/ucp', $output );
+
+		// Regression guard: the deleted endpoints must NEVER appear again.
+		$this->assertStringNotContainsString( 'X-AI-Agent-Key', $output );
+		$this->assertStringNotContainsString( 'wc/v3/ai-syndication', $output );
+		$this->assertStringNotContainsString( 'Product Catalog', $output );
+		$this->assertStringNotContainsString( '## API Endpoints', $output );
 	}
 
 	public function test_store_information_lists_url_currency_and_checkout_policy(): void {

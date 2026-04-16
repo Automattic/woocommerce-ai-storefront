@@ -72,7 +72,11 @@ class WC_AI_Syndication_Ucp {
 		header( 'Cache-Control: public, max-age=3600' );
 		header( 'Access-Control-Allow-Origin: *' );
 		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
-		header( 'Access-Control-Allow-Headers: X-AI-Agent-Key' );
+		// Note: no `Access-Control-Allow-Headers` entry. The UCP
+		// manifest is fetched with a bare GET — no custom headers,
+		// so CORS preflight with header allowlists isn't triggered.
+		// A prior version of this file advertised `X-AI-Agent-Key`
+		// here, left over from the authenticated-catalog-API era.
 
 		if ( 'OPTIONS' === $_SERVER['REQUEST_METHOD'] ) {
 			status_header( 204 );
