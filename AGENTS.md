@@ -113,13 +113,19 @@ In both cases, the Woo component wins. Don't rebuild something Woo already ships
 
 **Never bundle Woo or WP components.** Both are runtime externals via `@woocommerce/dependency-extraction-webpack-plugin` (configured in `webpack.config.js`) — the merchant's WooCommerce install supplies them through `window.wc.*` / `window.wp.*`. The build's generated `.asset.php` automatically lists `wc-components` as a PHP script dependency when any Woo import is present.
 
-**Adopted components (as of this writing):**
+**Current status: Woo component adoption deferred.**
 
-| From | Component | Why |
-|---|---|---|
-| `@woocommerce/components` | `SummaryList`, `SummaryNumber` | Composed of WP primitives with wc-admin styling + built-in responsive mobile collapse. Used for Overview tab stat cards. |
+We evaluated `@woocommerce/components` (`SummaryNumber`, `Table`, `Pill`) during the Overview tab redesign and reverted. The JS externalization worked correctly — Woo components rendered their DOM and behavior — but the **stylesheet was not loaded on our custom admin page**. Woo's CSS is auto-enqueued on wc-admin native screens; it is *not* auto-enqueued on WooCommerce submenu pages like ours. The result was visually unstyled (broken) cards.
 
-When adding a new Woo component, add a row here with the one-line rationale. Include a brief comment at the import site referencing AGENTS.md so future readers know the rule was applied intentionally, not accidentally.
+Before re-attempting Woo component adoption, the integration must solve:
+
+1. **Stylesheet enqueue:** manually register `wc-components` (and related `wc-admin-layout`, `wc-experimental`) style handles via `wp_enqueue_style` on the plugin's admin page hook — **with fallback** for WC version variance, since handle names have rotated between WC major versions.
+2. **Version pinning:** verify that the Woo components used are stable across the plugin's declared minimum WooCommerce version (currently 9.9+) through the latest release.
+3. **Graceful degradation:** decide what the page renders if `window.wc.components` is undefined (older WC, wc-admin disabled, etc.). Current hand-rolled components have no such dependency.
+
+The webpack wiring for Woo externalization is **kept** (`@woocommerce/dependency-extraction-webpack-plugin` remains a devDependency and `webpack.config.js` still configures it) so the door stays open. The wiring is cheap, and re-adopting Woo components later is a one-line package install + imports, not a build-system rewrite.
+
+When the three blockers above are resolved, candidate components to adopt first: `SummaryNumber` (Overview stats), `Pill` (selection count indicators), `Table` (Discovery endpoints + Revenue by Agent).
 
 ### Inline styles + design tokens
 

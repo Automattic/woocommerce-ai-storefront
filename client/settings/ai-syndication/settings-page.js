@@ -12,13 +12,6 @@ import {
 	Flex,
 	FlexItem,
 } from '@wordpress/components';
-// Woo composes SummaryList/SummaryNumber out of WP primitives and ships
-// them as part of wc-admin — the admin always has them available at
-// runtime via the @woocommerce/dependency-extraction-webpack-plugin
-// configured in webpack.config.js. Rebuilding equivalents with WP
-// primitives would duplicate work that's already done and cause visual
-// drift vs. native wc-admin screens. See AGENTS.md "Styling" section.
-import { SummaryList, SummaryNumber } from '@woocommerce/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
 import ProductSelection from './product-selection';
@@ -162,6 +155,75 @@ const ValueCard = ( { title, children } ) => (
 		</p>
 	</div>
 );
+
+// Hand-rolled stat card for the Overview stats row. We evaluated Woo's
+// `SummaryNumber` from `@woocommerce/components` and deferred adoption —
+// see AGENTS.md "Styling" section for the rationale. In short: Woo
+// components need their stylesheet enqueued manually on custom admin
+// pages (the script-dependency extraction only handles JS, not CSS),
+// and the handle names drift between WC versions. Until wc-admin
+// provides a reliable way to opt into its stylesheet from a custom
+// submenu page, hand-rolled cards are lower-maintenance.
+const StatCard = ( { label, value, subvalue, href } ) => {
+	const cardStyle = {
+		flex: '1 1 0',
+		minWidth: '140px',
+		padding: '16px',
+		background: colors.surfaceSubtle,
+		border: 'none',
+		borderRadius: '4px',
+		textAlign: 'center',
+		textDecoration: 'none',
+		display: 'block',
+	};
+
+	const inner = (
+		<>
+			<div
+				style={ {
+					fontSize: '24px',
+					fontWeight: '600',
+					color: colors.success,
+				} }
+			>
+				{ value }
+			</div>
+			{ subvalue && (
+				<div
+					style={ {
+						fontSize: '11px',
+						color: colors.success,
+						marginTop: '2px',
+						fontWeight: '400',
+					} }
+				>
+					{ subvalue }
+				</div>
+			) }
+			<div
+				style={ {
+					fontSize: '12px',
+					color: colors.textMuted,
+					marginTop: '4px',
+					textTransform: 'uppercase',
+					letterSpacing: '0.5px',
+				} }
+			>
+				{ label }
+			</div>
+		</>
+	);
+
+	if ( href ) {
+		return (
+			<a href={ href } style={ cardStyle }>
+				{ inner }
+			</a>
+		);
+	}
+
+	return <div style={ cardStyle }>{ inner }</div>;
+};
 
 // ---------------------------------------------------------------------------
 // Pre-enable view (value pitch)
@@ -509,84 +571,69 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					__nextHasNoMarginBottom
 				/>
 			</Flex>
-			<div style={ { marginTop: '12px' } }>
-				<SummaryList>
-					{ () => [
-						<SummaryNumber
-							key="products"
-							label={ __(
-								'Products Exposed',
-								'woocommerce-ai-syndication'
-							) }
-							value={ productCount }
-						/>,
-						<SummaryNumber
-							key="total-orders"
-							label={ sprintf(
-								/* translators: %s: time period label */
-								__(
-									'Total Orders (%s)',
-									'woocommerce-ai-syndication'
-								),
-								periodLabels[ period ]
-							) }
-							value={ stats?.all_orders ?? '\u2014' }
-						/>,
-						<SummaryNumber
-							key="ai-orders"
-							label={ sprintf(
-								/* translators: %s: time period label */
-								__(
-									'AI Orders (%s)',
-									'woocommerce-ai-syndication'
-								),
-								periodLabels[ period ]
-							) }
-							value={ stats?.ai_orders ?? '\u2014' }
-							// SummaryNumber renders `delta` as a trend pill
-							// next to the value. We use it here to surface the
-							// AI share of total orders (not a period-over-
-							// period change), which fits the visual role.
-							// `reverseTrend` is left at its default (false)
-							// because higher AI share reads as positive for
-							// the merchant.
-							delta={
-								stats && stats.ai_share_percent > 0
-									? stats.ai_share_percent
-									: undefined
-							}
-							href={
-								/* global wcAiSyndicationParams */
-								typeof wcAiSyndicationParams !== 'undefined'
-									? wcAiSyndicationParams.ordersUrl
-									: undefined
-							}
-							// SummaryNumber defaults hrefType to 'wc-admin'
-							// which wraps the link in wc-admin navigation.
-							// 'external' routes a plain anchor — correct for
-							// our direct /wp-admin/ orders URL.
-							hrefType="external"
-						/>,
-						<SummaryNumber
-							key="ai-revenue"
-							label={ sprintf(
-								/* translators: %s: time period label */
-								__(
-									'AI Revenue (%s)',
-									'woocommerce-ai-syndication'
-								),
-								periodLabels[ period ]
-							) }
-							value={
-								stats
-									? `${ stats.currency || '$' } ${ parseFloat(
-											stats.ai_revenue || 0
-									  ).toFixed( 2 ) }`
-									: '\u2014'
-							}
-						/>,
-					] }
-				</SummaryList>
+			<div
+				style={ {
+					display: 'flex',
+					gap: '16px',
+					marginTop: '12px',
+					flexWrap: 'wrap',
+				} }
+			>
+				<StatCard
+					label={ __(
+						'Products Exposed',
+						'woocommerce-ai-syndication'
+					) }
+					value={ productCount }
+				/>
+				<StatCard
+					label={ sprintf(
+						/* translators: %s: time period label */
+						__( 'Total Orders (%s)', 'woocommerce-ai-syndication' ),
+						periodLabels[ period ]
+					) }
+					value={ stats?.all_orders ?? '\u2014' }
+				/>
+				<StatCard
+					label={ sprintf(
+						/* translators: %s: time period label */
+						__( 'AI Orders (%s)', 'woocommerce-ai-syndication' ),
+						periodLabels[ period ]
+					) }
+					value={ stats?.ai_orders ?? '\u2014' }
+					subvalue={
+						stats && stats.ai_share_percent > 0
+							? sprintf(
+									/* translators: %s: percentage */
+									__(
+										'%1$s%% of total',
+										'woocommerce-ai-syndication'
+									),
+									stats.ai_share_percent
+							  )
+							: undefined
+					}
+					href={
+						/* global wcAiSyndicationParams */
+						typeof wcAiSyndicationParams !== 'undefined'
+							? wcAiSyndicationParams.ordersUrl
+							: undefined
+					}
+				/>
+				<StatCard
+					label={ sprintf(
+						/* translators: %s: time period label */
+						__( 'AI Revenue (%s)', 'woocommerce-ai-syndication' ),
+						periodLabels[ period ]
+					) }
+					value={
+						stats
+							? `${ stats.currency || '$' } ${ parseFloat(
+									stats.ai_revenue || 0
+							  ).toFixed( 2 ) }`
+							: '\u2014'
+					}
+				/>
 			</div>
 
 			{ /* Per-agent breakdown */ }
