@@ -31,3 +31,4 @@ require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-robots.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-store-api-rate-limiter.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-attribution.php';
 require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-cache-invalidator.php';
+require_once $plugin_path . 'ai-syndication/class-wc-ai-syndication-jsonld.php';

@@ -32,4 +32,27 @@ class WC_AI_Syndication {
 			self::$test_settings
 		);
 	}
+
+	/**
+	 * Minimal stub of the production `is_product_syndicated()` logic,
+	 * sufficient for exercising the JSON-LD enhancer. Only covers the
+	 * 'all' and 'selected' modes — 'categories' is harder to fake
+	 * without category fixtures and isn't exercised in the current
+	 * unit tests.
+	 */
+	public static function is_product_syndicated( $product, ?array $settings = null ): bool {
+		$settings = $settings ?? self::get_settings();
+
+		$mode = $settings['product_selection_mode'] ?? 'all';
+
+		if ( 'selected' === $mode ) {
+			return in_array(
+				$product->get_id(),
+				$settings['selected_products'] ?? [],
+				true
+			);
+		}
+
+		return true;
+	}
 }
