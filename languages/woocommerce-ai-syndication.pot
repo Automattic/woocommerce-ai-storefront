@@ -1,0 +1,469 @@
+# Copyright (C) 2026 WooCommerce
+# This file is distributed under the GPL-3.0-or-later.
+msgid ""
+msgstr ""
+"Project-Id-Version: WooCommerce AI Syndication 1.1.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/woocommerce-ai-syndication\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-04-16T18:16:26+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: woocommerce-ai-syndication\n"
+
+#. Plugin Name of the plugin
+#: woocommerce-ai-syndication.php
+msgid "WooCommerce AI Syndication"
+msgstr ""
+
+#. Plugin URI of the plugin
+#. Author URI of the plugin
+#: woocommerce-ai-syndication.php
+msgid "https://woocommerce.com/"
+msgstr ""
+
+#. Description of the plugin
+#: woocommerce-ai-syndication.php
+msgid "Merchant-led AI product syndication for WooCommerce. Expose products to AI shopping agents (ChatGPT, Gemini, Perplexity, Claude) with full merchant control. Store-only checkout, standard WooCommerce attribution."
+msgstr ""
+
+#. Author of the plugin
+#: woocommerce-ai-syndication.php
+msgid "WooCommerce"
+msgstr ""
+
+#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:134
+msgid "AI Agent Attribution"
+msgstr ""
+
+#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:135
+msgid "Agent:"
+msgstr ""
+
+#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:138
+msgid "Session ID:"
+msgstr ""
+
+#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:161
+msgid "AI Agent"
+msgstr ""
+
+#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:368
+msgid "Filter by AI agent"
+msgstr ""
+
+#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:370
+msgid "Any AI agent"
+msgstr ""
+
+#: includes/ai-syndication/class-wc-ai-syndication-jsonld.php:215
+#: client/settings/ai-syndication/product-selection.js:487
+msgid "Products"
+msgstr ""
+
+#: includes/class-wc-ai-syndication.php:173
+#: includes/class-wc-ai-syndication.php:174
+#: includes/class-wc-ai-syndication.php:186
+msgid "AI Syndication"
+msgstr ""
+
+#: woocommerce-ai-syndication.php:65
+msgid "WooCommerce AI Syndication requires WooCommerce to be installed and active."
+msgstr ""
+
+#: client/data/ai-syndication/actions.js:38
+msgid "Settings saved."
+msgstr ""
+
+#: client/data/ai-syndication/actions.js:43
+msgid "Error saving settings."
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:79
+msgid "Discovery Endpoints"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:91
+msgid "These endpoints are automatically available when AI Syndication is enabled."
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:105
+msgid "AI Syndication is currently disabled. Enable it in the Overview tab to activate these endpoints."
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:116
+msgid "Endpoint"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:122
+msgid "URL"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:128
+msgid "Purpose"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:152
+msgid "Machine-readable store guide for AI crawlers"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:172
+msgid "Universal Commerce Protocol — declares capabilities"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:190
+msgid "WooCommerce Store API for product search and cart (public)"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:205
+msgid "AI Crawler Access"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:217
+msgid "Control which AI crawlers are allowed to discover your store via robots.txt. Unchecked crawlers will be blocked from crawling your product pages."
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:238
+msgid "Allowed crawlers"
+msgstr ""
+
+#. translators: %1$d: allowed count, %2$d: total count
+#: client/settings/ai-syndication/endpoint-info.js:265
+#, js-format
+msgid "%1$d of %2$d"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:282
+#: client/settings/ai-syndication/product-selection.js:369
+msgid "Select all"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:297
+msgid "Clear"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:342
+msgid "These rules are added to your robots.txt. Well-behaved AI crawlers respect robots.txt directives."
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:363
+#: client/settings/ai-syndication/product-selection.js:639
+#: client/settings/ai-syndication/settings-page.js:820
+msgid "Saving…"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:364
+#: client/settings/ai-syndication/product-selection.js:643
+#: client/settings/ai-syndication/settings-page.js:821
+msgid "Save Changes"
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:17
+msgid "Every published product in your store is discoverable by AI crawlers. Best for stores that want maximum exposure."
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:21
+msgid "Only products in the categories you select below will be included in discovery endpoints. Use this to focus AI visibility on specific product lines."
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:25
+msgid "Only the specific products you choose below will appear in discovery endpoints. Use this for curated collections or high-margin items."
+msgstr ""
+
+#. translators: %s: item name
+#: client/settings/ai-syndication/product-selection.js:110
+#, js-format
+msgid "Remove %s"
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:224
+msgid "AI Product Visibility"
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:236
+msgid "Choose which products appear in your discovery endpoints (llms.txt, UCP manifest, JSON-LD, and Store API responses). This controls what AI crawlers can see and recommend."
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:243
+msgid "Products available to AI crawlers"
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:250
+msgid "All published products"
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:257
+msgid "Products in selected categories"
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:264
+msgid "Specific products only"
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:305
+msgid "Categories"
+msgstr ""
+
+#. translators: %d: number of selected items
+#: client/settings/ai-syndication/product-selection.js:314
+#: client/settings/ai-syndication/product-selection.js:496
+#, js-format
+msgid "%d selected"
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:334
+msgid "Filter categories…"
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:388
+#: client/settings/ai-syndication/product-selection.js:539
+msgid "Clear selection"
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:425
+msgid "No categories match your filter."
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:513
+msgid "Search products…"
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:577
+msgid "No products found. Try a different search."
+msgstr ""
+
+#: client/settings/ai-syndication/product-selection.js:581
+msgid "Start typing to search your products."
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:60
+msgid "Loading settings…"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:69
+msgid "Overview"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:73
+msgid "Product Visibility"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:77
+msgid "Discovery"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:253
+msgid "AI Syndication is not enabled"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:265
+msgid "Enable to make your products discoverable by AI assistants while keeping checkout and customer data on your store."
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:282
+#: client/settings/ai-syndication/settings-page.js:430
+msgid "Enabling…"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:283
+msgid "Enable"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:296
+msgid "Universal Reach"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:301
+msgid "Works with ChatGPT, Gemini, Claude, Perplexity, Copilot, and any future AI agent. One setup, universal reach — no per-platform integration."
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:309
+msgid "Data Sovereignty"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:314
+msgid "Checkout stays on your domain. No delegated payments, no platform lock-in. You own the checkout experience and the customer relationship."
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:322
+msgid "Full Order Attribution"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:327
+msgid "Every AI-referred sale is tracked using standard WooCommerce Order Attribution. See which agent drove each order and how much revenue it generated."
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:344
+msgid "Your store, your checkout, your data — visible to every AI assistant"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:356
+msgid "When shoppers ask ChatGPT, Gemini, Claude, Perplexity, or Copilot for product recommendations, your catalog shows up. Every checkout happens on your store. No platform fees, no middleman, no data shared."
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:373
+msgid "Your product catalog becomes discoverable by AI agents"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:379
+msgid "A machine-readable store guide is published at /llms.txt"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:385
+msgid "AI-referred orders get automatic revenue attribution"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:391
+msgid "You control which products are exposed and who gets access"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:406
+msgid "Nothing is modified. This adds read-only discovery endpoints. You can turn it off at any time."
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:431
+msgid "Enable AI Syndication"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:455
+msgid "24h"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:456
+msgid "7d"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:457
+msgid "30d"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:458
+msgid "Year"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:469
+msgid "All"
+msgstr ""
+
+#. translators: %d: number of categories
+#: client/settings/ai-syndication/settings-page.js:473
+#, js-format
+msgid "%d categories"
+msgstr ""
+
+#. translators: %d: number of products
+#: client/settings/ai-syndication/settings-page.js:479
+#, js-format
+msgid "%d products"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:501
+msgid "AI Syndication is active"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:513
+msgid "Your products are discoverable by AI assistants. Checkout and customer data stay on your store."
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:531
+msgid "Disabling…"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:532
+msgid "Disable"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:542
+msgid "Last 24 hours"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:549
+msgid "Last 7 days"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:556
+msgid "Last 30 days"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:563
+msgid "Last year"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:583
+msgid "Products Exposed"
+msgstr ""
+
+#. translators: %s: time period label
+#: client/settings/ai-syndication/settings-page.js:592
+#, js-format
+msgid "Total Orders (%s)"
+msgstr ""
+
+#. translators: %s: time period label
+#: client/settings/ai-syndication/settings-page.js:600
+#, js-format
+msgid "AI Orders (%s)"
+msgstr ""
+
+#. translators: %s: percentage
+#: client/settings/ai-syndication/settings-page.js:608
+#, js-format
+msgid "%1$s%% of total"
+msgstr ""
+
+#. translators: %s: time period label
+#: client/settings/ai-syndication/settings-page.js:626
+#, js-format
+msgid "AI Revenue (%s)"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:649
+msgid "Revenue by Agent"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:658
+msgid "Agent"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:664
+msgid "Orders"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:670
+msgid "Revenue"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:704
+msgid "Rate Limits"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:713
+msgid "Control how frequently AI crawlers can query your Store API. Higher limits allow faster product discovery but use more server resources."
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:723
+msgid "Recommended — 25/min (works well for most stores)"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:730
+msgid "Conservative — 10/min (shared hosting or low-traffic stores)"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:737
+msgid "Generous — 100/min (high-traffic stores on dedicated hosting)"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:744
+msgid "Custom"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:774
+msgid "Requests per minute"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:799
+msgid "Limits are applied per AI crawler (identified by user-agent string) using the WooCommerce Store API rate limiter. Your regular store traffic is not affected."
+msgstr ""

@@ -74,6 +74,12 @@ jobs:
       - name: Build frontend bundle
         run: npm run build
 
+      # Regenerate the translation template from source so translators
+      # picking up the released zip see fresh strings. Committed .pot
+      # may have drifted between the last regen and the release tag.
+      - name: Generate .pot translation template
+        run: ./bin/make-pot.sh
+
       # Stage the release into a versioned directory. The directory
       # name determines the root path inside the zip (WP plugin zips
       # extract into wp-content/plugins/<dir-name>/), so this must
@@ -85,10 +91,12 @@ jobs:
             --exclude='.git/' \
             --exclude='.github/' \
             --exclude='.claude/' \
+            --exclude='.tools/' \
             --exclude='node_modules/' \
             --exclude='client/' \
             --exclude='tests/' \
             --exclude='vendor/' \
+            --exclude='bin/' \
             --exclude='release-staging/' \
             --exclude='*.log' \
             --exclude='.phpunit.cache/' \

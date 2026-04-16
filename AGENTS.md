@@ -164,7 +164,14 @@ woo-ucp-syndicate-ai/
 ├── phpcs.xml.dist                           # PHPCS config (WordPress-Extra standard)
 ├── phpstan.neon.dist                        # PHPStan config (level 5)
 ├── phpstan-bootstrap.php                    # Plugin constants for PHPStan
-├── .github/workflows/ci.yml                 # CI: PHPUnit (8.1/8.2/8.3), PHPCS, PHPStan, JS tests, JS lint
+├── uninstall.php                            # Removes options/transients on plugin delete
+├── .github/workflows/
+│   ├── ci.yml                               # PHPUnit (8.1/8.2/8.3), PHPCS, PHPStan, JS tests, JS lint
+│   └── release.yml                          # Build distribution zip on v* tags
+├── bin/
+│   └── make-pot.sh                          # Regenerate translation template
+├── languages/
+│   └── woocommerce-ai-syndication.pot       # Gettext template (committed; auto-regen in release)
 │
 ├── includes/
 │   ├── class-wc-ai-syndication.php          # Main orchestrator
@@ -274,6 +281,7 @@ npm run lint:js                 # Lint JS
 vendor/bin/phpcs                # Lint PHP against WordPress-Extra + plugin rules
 vendor/bin/phpcbf               # Auto-fix PHPCS violations where possible
 vendor/bin/phpstan analyse      # PHP static analysis (level 5)
+./bin/make-pot.sh               # Regenerate languages/*.pot from source strings
 ```
 
 ### PHP quality tooling
