@@ -207,6 +207,14 @@ class WC_AI_Syndication {
 	public function register_rest_routes() {
 		$admin_controller = new WC_AI_Syndication_Admin_Controller();
 		$admin_controller->register_routes();
+
+		// UCP REST adapter routes at /wp-json/wc/ucp/v1/*. Registered
+		// unconditionally — route handlers check settings.enabled and
+		// return an appropriate UCP error envelope when syndication is
+		// off, rather than 404 from missing registration. Matches the
+		// pattern used for llms.txt / UCP manifest rewrite rules.
+		$ucp_rest_controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$ucp_rest_controller->register_routes();
 	}
 
 	/**
