@@ -67,7 +67,7 @@ const AISyndicationSettings = () => {
 		},
 		{
 			name: 'products',
-			title: __( 'Product Selection', 'woocommerce-ai-syndication' ),
+			title: __( 'Product Visibility', 'woocommerce-ai-syndication' ),
 		},
 		{
 			name: 'endpoints',
