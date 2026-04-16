@@ -163,14 +163,14 @@ class WC_AI_Syndication_Ucp {
 
 		$manifest = [
 			'ucp' => [
-				'version' => self::PROTOCOL_VERSION,
+				'version'          => self::PROTOCOL_VERSION,
 
 				// Services — REST transport binding for the public
 				// Store API. Under business_schema, a REST binding
 				// requires `endpoint`; `schema` is optional (WC does
 				// not publish a single aggregated OpenAPI document,
 				// so we point `spec` at the human docs instead).
-				'services' => [
+				'services'         => [
 					self::SERVICE_NAME => [
 						[
 							'version'   => self::PROTOCOL_VERSION,
@@ -193,7 +193,7 @@ class WC_AI_Syndication_Ucp {
 									// redirects to checkout. Customer
 									// never sees the cart — fewest
 									// clicks to purchase.
-									'checkout_link' => [
+									'checkout_link'    => [
 										'description' => 'Recommended — adds items and redirects to checkout in one step. Customer never sees the cart.',
 										'simple'      => $site_url . 'checkout-link/?products={product_id}:{quantity}',
 										'variable'    => $site_url . 'checkout-link/?products={variation_id}:{quantity}',
@@ -206,7 +206,7 @@ class WC_AI_Syndication_Ucp {
 									// behaviors depending on base URL
 									// — the official WC docs document
 									// all three.
-									'add_to_cart' => [
+									'add_to_cart'      => [
 										'description'      => 'Classic WooCommerce add-to-cart URL. Three behaviors depending on base URL.',
 										'add_only'         => $site_url . '?add-to-cart={product_id}&quantity={quantity}',
 										'add_and_cart'     => $cart_url . '?add-to-cart={product_id}&quantity={quantity}',
@@ -219,7 +219,7 @@ class WC_AI_Syndication_Ucp {
 									],
 								],
 
-								'attribution' => [
+								'attribution'   => [
 									'spec'       => 'https://woocommerce.com/document/order-attribution-tracking/',
 									'system'     => 'woocommerce_order_attribution',
 									'parameters' => [
@@ -240,7 +240,7 @@ class WC_AI_Syndication_Ucp {
 				// delegated checkout, identity linking, and
 				// agent-driven order flows. `(object)` cast ensures
 				// JSON serializes as `{}` not `[]`.
-				'capabilities' => (object) [],
+				'capabilities'     => (object) [],
 
 				// Required by business_schema. Empty object is the
 				// valid "zero handlers" declaration.

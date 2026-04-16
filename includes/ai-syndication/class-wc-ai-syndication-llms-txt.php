@@ -127,13 +127,13 @@ class WC_AI_Syndication_Llms_Txt {
 		// The UCP manifest describes purchase URL templates and checkout
 		// policy in machine-readable form; agents that want structured
 		// data fetch that document.
-		$lines[]    = '## API Access';
-		$lines[]    = '';
-		$store_api  = rest_url( 'wc/store/v1' );
-		$ucp_url    = $site_url . '.well-known/ucp';
-		$lines[]    = "- **Store API**: `{$store_api}` — public WooCommerce Store API for product search and cart operations (no authentication required)";
-		$lines[]    = "- **Commerce Protocol Manifest**: `{$ucp_url}` — declares capabilities, checkout policy, and purchase URL templates";
-		$lines[]    = '';
+		$lines[]   = '## API Access';
+		$lines[]   = '';
+		$store_api = rest_url( 'wc/store/v1' );
+		$ucp_url   = $site_url . '.well-known/ucp';
+		$lines[]   = "- **Store API**: `{$store_api}` — public WooCommerce Store API for product search and cart operations (no authentication required)";
+		$lines[]   = "- **Commerce Protocol Manifest**: `{$ucp_url}` — declares capabilities, checkout policy, and purchase URL templates";
+		$lines[]   = '';
 
 		// Product categories summary.
 		$categories = $this->get_syndicated_categories( $settings );

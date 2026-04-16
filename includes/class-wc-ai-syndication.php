@@ -84,6 +84,15 @@ class WC_AI_Syndication {
 		require_once $path . 'class-wc-ai-syndication-attribution.php';
 		require_once $path . 'class-wc-ai-syndication-cache-invalidator.php';
 
+		// UCP REST adapter module (1.3.0+). See PLAN-ucp-adapter.md.
+		$ucp_path = $path . 'ucp-rest/';
+		require_once $ucp_path . 'class-wc-ai-syndication-ucp-agent-header.php';
+		require_once $ucp_path . 'class-wc-ai-syndication-ucp-envelope.php';
+		require_once $ucp_path . 'class-wc-ai-syndication-ucp-product-translator.php';
+		require_once $ucp_path . 'class-wc-ai-syndication-ucp-variant-translator.php';
+		require_once $ucp_path . 'class-wc-ai-syndication-ucp-store-api-filter.php';
+		require_once $ucp_path . 'class-wc-ai-syndication-ucp-rest-controller.php';
+
 		require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/admin/class-wc-ai-syndication-admin-controller.php';
 	}
 
