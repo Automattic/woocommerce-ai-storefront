@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.1.1
+Stable tag: 1.1.2
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,9 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.1.2 =
+* Fixed: rewrite rules for `/llms.txt` and `/.well-known/ucp` now flush synchronously on plugin upgrade, so the endpoints work on the very first request after update. Previously the flush was deferred to `init` priority 99, which left the current request 404-ing — merchants had to visit Settings → Permalinks → Save to recover. No manual step is needed for future upgrades.
 
 = 1.1.1 =
 * Fixed: llms.txt no longer advertises the removed authenticated catalog API (`/wc/v3/ai-syndication/products` endpoints and the `X-AI-Agent-Key` header). AI agents now see an accurate pointer to WooCommerce's public Store API and the UCP manifest.

@@ -148,6 +148,32 @@ class WC_AI_Syndication {
 		if ( $needs_flush || $stored_version !== WC_AI_SYNDICATION_VERSION ) {
 			delete_transient( 'wc_ai_syndication_flush_rewrite' );
 			update_option( 'wc_ai_syndication_version', WC_AI_SYNDICATION_VERSION );
+
+			// Self-healing flush: register the rules IMMEDIATELY (at the
+			// current `plugins_loaded` hook, which is before WordPress
+			// calls `parse_request`), then flush them to the rewrite
+			// option so the active request can still resolve /llms.txt
+			// and /.well-known/ucp without a second round-trip.
+			//
+			// Before 1.1.2 we only scheduled the flush on `init` priority
+			// 99, which worked for the NEXT request but left the CURRENT
+			// one 404-ing — exactly when a merchant had just upgraded
+			// and hit the URL to verify the fix had taken effect. The
+			// inline flush eliminates that race.
+			//
+			// `flush_rewrite_rules( false )` skips the .htaccess rewrite
+			// (the in-DB option is sufficient for WP's parse_request
+			// machinery), avoiding a filesystem write during request
+			// handling.
+			$llms_txt->add_rewrite_rules();
+			$ucp->add_rewrite_rules();
+			flush_rewrite_rules( false );
+
+			// Also keep the deferred init-99 flush: if the current request
+			// is an admin page load (plugins.php after update), the
+			// rule-registration actions on `init` will run again, and this
+			// second flush ensures the DB option is fully consistent with
+			// the init-time registration path. Cheap belt-and-suspenders.
 			add_action( 'init', 'flush_rewrite_rules', 99 );
 
 			// Bust content caches on code updates so fixes to generation
