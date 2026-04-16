@@ -536,6 +536,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 			{ /* Period selector + stat cards */ }
 			<Flex justify="flex-end" style={ { marginTop: '24px' } }>
 				<SelectControl
+					__next40pxDefaultSize
 					value={ period }
 					options={ [
 						{
@@ -771,6 +772,8 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 							} }
 						>
 							<TextControl
+								__next40pxDefaultSize
+								__nextHasNoMarginBottom
 								label={ __(
 									'Requests per minute',
 									'woocommerce-ai-syndication'

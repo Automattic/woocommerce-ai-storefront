@@ -240,6 +240,8 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 					</p>
 
 					<SelectControl
+						__next40pxDefaultSize
+						__nextHasNoMarginBottom
 						label={ __(
 							'Products available to AI crawlers',
 							'woocommerce-ai-syndication'
