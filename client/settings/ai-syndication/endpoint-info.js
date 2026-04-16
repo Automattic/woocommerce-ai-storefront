@@ -14,16 +14,16 @@ import { STORE_NAME } from '../../data/ai-syndication/constants';
 const KNOWN_CRAWLERS = [
 	{ id: 'GPTBot', label: 'GPTBot (OpenAI)' },
 	{ id: 'ChatGPT-User', label: 'ChatGPT-User (OpenAI)' },
+	{ id: 'OAI-SearchBot', label: 'OAI-SearchBot (OpenAI Search)' },
 	{ id: 'Google-Extended', label: 'Google-Extended (Gemini)' },
 	{ id: 'Gemini', label: 'Gemini (Google)' },
-	{ id: 'PerplexityBot', label: 'PerplexityBot' },
+	{ id: 'PerplexityBot', label: 'PerplexityBot (Perplexity)' },
+	{ id: 'Perplexity-User', label: 'Perplexity-User (Perplexity)' },
 	{ id: 'ClaudeBot', label: 'ClaudeBot (Anthropic)' },
+	{ id: 'Claude-User', label: 'Claude-User (Anthropic)' },
+	{ id: 'Meta-ExternalAgent', label: 'Meta-ExternalAgent (Meta AI)' },
 	{ id: 'Amazonbot', label: 'Amazonbot (Alexa)' },
 	{ id: 'Applebot-Extended', label: 'Applebot-Extended (Siri)' },
-	{ id: 'Bytespider', label: 'Bytespider (ByteDance)' },
-	{ id: 'CCBot', label: 'CCBot (Common Crawl)' },
-	{ id: 'anthropic-ai', label: 'anthropic-ai (Anthropic)' },
-	{ id: 'cohere-ai', label: 'cohere-ai (Cohere)' },
 ];
 
 const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {

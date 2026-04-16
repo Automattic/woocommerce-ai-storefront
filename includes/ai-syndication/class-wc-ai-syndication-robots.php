@@ -24,16 +24,16 @@ class WC_AI_Syndication_Robots {
 	const AI_CRAWLERS = [
 		'GPTBot',
 		'ChatGPT-User',
+		'OAI-SearchBot',
 		'Google-Extended',
 		'Gemini',
 		'PerplexityBot',
+		'Perplexity-User',
 		'ClaudeBot',
+		'Claude-User',
+		'Meta-ExternalAgent',
 		'Amazonbot',
 		'Applebot-Extended',
-		'Bytespider',
-		'CCBot',
-		'anthropic-ai',
-		'cohere-ai',
 	];
 
 	/**
@@ -79,8 +79,10 @@ class WC_AI_Syndication_Robots {
 			$output .= "User-agent: {$bot}\n";
 			$output .= "Allow: /llms.txt\n";
 			$output .= "Allow: /.well-known/ucp\n";
-			$output .= "Allow: /wp-json/wc/v3/ai-syndication/\n";
-			$output .= "Allow: {$shop_path}\n";
+			$output .= "Allow: /wp-json/wc/store/\n";
+			if ( '/' !== $shop_path ) {
+				$output .= "Allow: {$shop_path}\n";
+			}
 			$output .= "Allow: {$product_base}\n";
 			$output .= "Allow: {$category_base}\n";
 			$output .= "Disallow: {$cart_path}\n";
