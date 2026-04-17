@@ -12,19 +12,50 @@ import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
 import { colors } from './tokens';
 
+/**
+ * Known AI crawler metadata, grouped by traffic category.
+ *
+ * The two categories map to different merchant value propositions:
+ *
+ *   - `live`     agents fetch during an active user query. They see
+ *                fresh inventory and route the user to checkout —
+ *                this is the revenue-path traffic for a commerce
+ *                site. Recommended on.
+ *
+ *   - `training` crawlers index content for later use in model
+ *                weights or cached snapshots. They do not route
+ *                revenue. Stale inventory risk is real: a crawl
+ *                captured in April may surface as "answer" in an
+ *                AI response in October, by which point prices and
+ *                availability have moved. Merchant discretion.
+ *
+ * The UCP protocol (v2026-04-08) is intentionally silent on
+ * training-crawler policy — UCP is a live-commerce spec, training is
+ * out of its scope. So the distinction is maintained here as a
+ * merchant-facing UX cue, not a wire-format requirement.
+ *
+ * Keep this list in sync with the PHP constants
+ * `WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS` and
+ * `::TRAINING_CRAWLERS`. The frontend renders from this constant;
+ * the backend sanitizes against the PHP list. Drift would produce
+ * silently-dropped checkboxes on save.
+ */
 const KNOWN_CRAWLERS = [
-	{ id: 'GPTBot', label: 'GPTBot (OpenAI)' },
-	{ id: 'ChatGPT-User', label: 'ChatGPT-User (OpenAI)' },
-	{ id: 'OAI-SearchBot', label: 'OAI-SearchBot (OpenAI Search)' },
-	{ id: 'Google-Extended', label: 'Google-Extended (Gemini)' },
-	{ id: 'Gemini', label: 'Gemini (Google)' },
-	{ id: 'PerplexityBot', label: 'PerplexityBot (Perplexity)' },
-	{ id: 'Perplexity-User', label: 'Perplexity-User (Perplexity)' },
-	{ id: 'ClaudeBot', label: 'ClaudeBot (Anthropic)' },
-	{ id: 'Claude-User', label: 'Claude-User (Anthropic)' },
-	{ id: 'Meta-ExternalAgent', label: 'Meta-ExternalAgent (Meta AI)' },
-	{ id: 'Amazonbot', label: 'Amazonbot (Alexa)' },
-	{ id: 'Applebot-Extended', label: 'Applebot-Extended (Siri)' },
+	// Live browsing — user-initiated fetches, recommended on.
+	{ id: 'ChatGPT-User', label: 'ChatGPT-User (OpenAI)', category: 'live' },
+	{ id: 'OAI-SearchBot', label: 'OAI-SearchBot (OpenAI Search)', category: 'live' },
+	{ id: 'Perplexity-User', label: 'Perplexity-User (Perplexity)', category: 'live' },
+	{ id: 'Claude-User', label: 'Claude-User (Anthropic)', category: 'live' },
+
+	// Training crawlers — brand-strategy decision.
+	{ id: 'GPTBot', label: 'GPTBot (OpenAI)', category: 'training' },
+	{ id: 'Google-Extended', label: 'Google-Extended (Gemini)', category: 'training' },
+	{ id: 'Gemini', label: 'Gemini (Google)', category: 'training' },
+	{ id: 'PerplexityBot', label: 'PerplexityBot (Perplexity)', category: 'training' },
+	{ id: 'ClaudeBot', label: 'ClaudeBot (Anthropic)', category: 'training' },
+	{ id: 'Meta-ExternalAgent', label: 'Meta-ExternalAgent (Meta AI)', category: 'training' },
+	{ id: 'Amazonbot', label: 'Amazonbot (Alexa)', category: 'training' },
+	{ id: 'Applebot-Extended', label: 'Applebot-Extended (Siri)', category: 'training' },
 ];
 
 /**
@@ -489,37 +520,110 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						</span>
 					</div>
 
-					<div
-						style={ {
-							background: colors.surfaceSubtle,
-							borderRadius: '4px',
-							padding: '4px 16px',
-						} }
-					>
-						{ KNOWN_CRAWLERS.map( ( crawler, index ) => (
+					{ /*
+						Render the two crawler categories in separate
+						visual groups. This makes the merchant's
+						decision legible: the top group (live
+						browsing) is the revenue-path AI traffic that
+						most commerce sites want; the bottom group
+						(training) is a brand-strategy decision where
+						accepting means your catalog becomes training
+						data — potentially surfacing stale answers
+						months later. See KNOWN_CRAWLERS above for
+						category-assignment rationale.
+					*/ }
+					{ [
+						{
+							key: 'live',
+							title: __(
+								'Live browsing',
+								'woocommerce-ai-syndication'
+							),
+							subtitle: __(
+								'User-initiated fetches during an active query. These agents see fresh inventory and route revenue — recommended on.',
+								'woocommerce-ai-syndication'
+							),
+						},
+						{
+							key: 'training',
+							title: __(
+								'Training crawlers',
+								'woocommerce-ai-syndication'
+							),
+							subtitle: __(
+								'Static crawls that feed AI model training. Captured snapshots may surface as stale answers months later, with wrong prices or availability. Merchant discretion.',
+								'woocommerce-ai-syndication'
+							),
+						},
+					].map( ( group, groupIndex ) => {
+						const crawlers = KNOWN_CRAWLERS.filter(
+							( c ) => c.category === group.key
+						);
+						return (
 							<div
-								key={ crawler.id }
+								key={ group.key }
 								style={ {
-									padding: '6px 0',
-									borderBottom:
-										index < KNOWN_CRAWLERS.length - 1
-											? `1px solid ${ colors.borderSubtle }`
-											: 'none',
+									marginTop: groupIndex === 0 ? 0 : '16px',
 								} }
 							>
-								<CheckboxControl
-									label={ crawler.label }
-									checked={ allowedCrawlers.includes(
-										crawler.id
-									) }
-									onChange={ () =>
-										toggleCrawler( crawler.id )
-									}
-									__nextHasNoMarginBottom
-								/>
+								<div
+									style={ {
+										fontSize: '12px',
+										fontWeight: '600',
+										color: colors.textPrimary,
+										marginBottom: '2px',
+										textTransform: 'uppercase',
+										letterSpacing: '0.04em',
+									} }
+								>
+									{ group.title }
+								</div>
+								<p
+									style={ {
+										color: colors.textMuted,
+										fontSize: '12px',
+										marginTop: 0,
+										marginBottom: '8px',
+									} }
+								>
+									{ group.subtitle }
+								</p>
+								<div
+									style={ {
+										background: colors.surfaceSubtle,
+										borderRadius: '4px',
+										padding: '4px 16px',
+									} }
+								>
+									{ crawlers.map( ( crawler, index ) => (
+										<div
+											key={ crawler.id }
+											style={ {
+												padding: '6px 0',
+												borderBottom:
+													index < crawlers.length - 1
+														? `1px solid ${ colors.borderSubtle }`
+														: 'none',
+											} }
+										>
+											<CheckboxControl
+												label={ crawler.label }
+												checked={ allowedCrawlers.includes(
+													crawler.id
+												) }
+												onChange={ () =>
+													toggleCrawler(
+														crawler.id
+													)
+												}
+												__nextHasNoMarginBottom
+											/>
+										</div>
+									) ) }
+								</div>
 							</div>
-						) ) }
-					</div>
+						);
+					} ) }
 
 					<p
 						style={ {

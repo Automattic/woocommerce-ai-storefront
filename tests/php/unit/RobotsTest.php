@@ -263,4 +263,90 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertStringNotContainsString( 'Allow: /wp-json/wc/ucp/', $output );
 	}
+
+	// ------------------------------------------------------------------
+	// 1.5.0: live-browsing vs training-crawler split
+	// ------------------------------------------------------------------
+	//
+	// The classification split is a merchant-facing UX cue — live
+	// agents route revenue, training crawlers risk stale answers.
+	// These tests lock in the invariants the split relies on:
+	// category membership, backward-compatibility of the combined
+	// AI_CRAWLERS constant, no duplicates between categories, and
+	// disjoint category membership (a crawler can be live OR
+	// training but not both).
+
+	public function test_live_browsing_agents_has_expected_members(): void {
+		// Every agent here uses the `-User` convention or is an
+		// explicit live-search variant. Any new addition should
+		// have vendor documentation confirming user-initiated
+		// fetch semantics before inclusion.
+		$this->assertSame(
+			[
+				'ChatGPT-User',
+				'OAI-SearchBot',
+				'Perplexity-User',
+				'Claude-User',
+			],
+			WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS
+		);
+	}
+
+	public function test_training_crawlers_has_expected_members(): void {
+		$this->assertSame(
+			[
+				'GPTBot',
+				'Google-Extended',
+				'Gemini',
+				'PerplexityBot',
+				'ClaudeBot',
+				'Meta-ExternalAgent',
+				'Amazonbot',
+				'Applebot-Extended',
+			],
+			WC_AI_Syndication_Robots::TRAINING_CRAWLERS
+		);
+	}
+
+	public function test_ai_crawlers_is_union_of_live_and_training(): void {
+		// Backward compat: AI_CRAWLERS is the pre-1.5.0 public
+		// constant that external callers and the sanitizer have
+		// been consuming since 1.0.0. It must exactly equal the
+		// concatenation of the two new category lists — otherwise
+		// `sanitize_allowed_crawlers()` (which intersects against
+		// AI_CRAWLERS) would reject valid category members.
+		$expected = array_merge(
+			WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS,
+			WC_AI_Syndication_Robots::TRAINING_CRAWLERS
+		);
+
+		$this->assertSame(
+			$expected,
+			WC_AI_Syndication_Robots::AI_CRAWLERS,
+			'AI_CRAWLERS must equal LIVE_BROWSING_AGENTS + TRAINING_CRAWLERS in order.'
+		);
+	}
+
+	public function test_categories_are_disjoint(): void {
+		// A crawler is either a live agent or a training crawler,
+		// never both. If a future addition ends up in both lists,
+		// the admin UI renders a duplicate checkbox (confusing) and
+		// the render `filter` logic selects the first category only
+		// (hiding the duplicate in the other group). Regression
+		// catches both side effects.
+		$intersection = array_intersect(
+			WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS,
+			WC_AI_Syndication_Robots::TRAINING_CRAWLERS
+		);
+
+		$this->assertSame( [], $intersection );
+	}
+
+	public function test_ai_crawlers_has_no_duplicates(): void {
+		$this->assertSame(
+			count( WC_AI_Syndication_Robots::AI_CRAWLERS ),
+			count( array_unique( WC_AI_Syndication_Robots::AI_CRAWLERS ) ),
+			'Duplicate crawler IDs would emit redundant User-agent rules in robots.txt.'
+		);
+	}
 }
