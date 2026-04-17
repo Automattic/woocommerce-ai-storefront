@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.4.0
+Stable tag: 1.4.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,11 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.4.1 =
+* Fixed: llms.txt was unreachable from AI browsing tools running in Chromium-based headless contexts (Gemini's browsing tool, ChatGPT browse, Claude web-search), because the endpoint sent no CORS headers. The UCP manifest at `/.well-known/ucp` already set `Access-Control-Allow-Origin: *` and worked fine; llms.txt was the asymmetric missing piece. Reports from agents: "my browsing tool is still having trouble 'seeing' the raw text files despite the robots.txt update" — the tool's fetch was silently blocked by same-origin policy. Added `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, OPTIONS`, and a 204 handler for CORS preflight OPTIONS requests so browsing tools that preflight (some do, some don't) don't interpret a non-2xx preflight as "resource unreachable."
+* Changed: `Content-Type` on llms.txt is now `text/plain; charset=utf-8` instead of `text/markdown; charset=utf-8`. Both are spec-legal per the llms.txt convention (Jeremy Howard's original memo allows either), but several AI browsing tools have MIME allow-lists that don't include `text/markdown` and drop the response. `text/plain` is the universal fallback, still renders correctly in merchant browsers on direct visits, and matches what Anthropic's, Cursor's, and most well-known llms.txt serving scripts use in production.
+* Added: `X-Content-Type-Options: nosniff` on llms.txt so content starting with `<` (rare but possible in merchant-supplied store descriptions) isn't MIME-sniffed as HTML by clients that do that.
 
 = 1.4.0 =
 * Added: in-place plugin updates from wp-admin. The plugin now registers itself with WordPress's native update UI via the Plugin Update Checker library (bundled at `includes/lib/plugin-update-checker/`) pointed at our GitHub release feed. Merchants see an "Update available" notice on the Plugins screen and click "Update Now" just like any WP.org-hosted plugin — no more manual zip uploads, no more duplicate plugin directories from source-code zips, no more stale installs coexisting with the new version. Update checks are admin-only (skipped on front-end requests to avoid loading the library on every pageview) and point at tagged release assets only, not branch HEAD, so merchants only ever see versions we have explicitly shipped.
