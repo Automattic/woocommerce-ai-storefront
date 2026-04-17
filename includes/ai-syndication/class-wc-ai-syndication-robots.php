@@ -238,11 +238,14 @@ class WC_AI_Syndication_Robots {
 	 * Sanitize an `allowed_crawlers` input against the canonical crawler list.
 	 *
 	 * Strips unknown IDs left over from plugin upgrades that rotated the
-	 * crawler roster (e.g. the Bytespider → OAI-SearchBot swap in v1.1.0)
-	 * and any malformed / non-matching strings. Keeping the stored list in
-	 * sync with AI_CRAWLERS prevents deprecated `User-agent: Bytespider`
-	 * blocks from leaking into `robots.txt` and keeps the admin UI's
-	 * "X of Y" count honest.
+	 * crawler roster — e.g. the phantom `Gemini` entry removed in 1.6.0
+	 * (never matched any real crawler; Google's Gemini-training bot is
+	 * `Google-Extended`), or the deprecated `anthropic-ai` UA that
+	 * Anthropic replaced with the `ClaudeBot` / `Claude-User` /
+	 * `Claude-SearchBot` family. Keeping the stored list in sync with
+	 * `AI_CRAWLERS` prevents deprecated `User-agent:` blocks from
+	 * leaking into `robots.txt` and keeps the admin UI's "X of Y"
+	 * count honest.
 	 *
 	 * @param mixed $input Raw input from settings save — expected array of strings.
 	 * @return string[]    Re-indexed list of valid crawler IDs.
@@ -257,6 +260,49 @@ class WC_AI_Syndication_Robots {
 		// `array_intersect` preserves first-argument keys, so `array_values`
 		// re-indexes — otherwise the JSON response serializes as an object.
 		return array_values( array_intersect( $sanitized, self::AI_CRAWLERS ) );
+	}
+
+	/**
+	 * Resolve which crawlers are allowed for a given stored settings row.
+	 *
+	 * Encapsulates the three-way branch callers would otherwise
+	 * implement ad-hoc:
+	 *
+	 *   1. Fresh install (no `allowed_crawlers` key in stored option):
+	 *      return `LIVE_BROWSING_AGENTS` — commerce-safe default,
+	 *      training crawlers off.
+	 *
+	 *   2. Merchant explicitly saved an empty list (e.g. via the
+	 *      admin UI's "Clear selection" button): preserve `[]`. This
+	 *      is the "block all AI crawlers" opt-out choice.
+	 *
+	 *   3. Merchant saved a non-empty list: preserve verbatim.
+	 *
+	 *      Using `array_key_exists()` rather than `! empty()` is
+	 *      load-bearing for case 2: `! empty([])` is true, which
+	 *      would silently revert a merchant's explicit opt-out to
+	 *      the fresh-install default on every `get_settings()`
+	 *      call — a real consent regression.
+	 *
+	 * Extracted to a pure helper so the three branches are
+	 * testable without needing to instantiate the full plugin
+	 * settings/storage layer.
+	 *
+	 * @param array<string, mixed> $stored_settings The settings array
+	 *                                              as returned from
+	 *                                              `get_option()`, which
+	 *                                              may or may not include
+	 *                                              an `allowed_crawlers`
+	 *                                              key.
+	 * @return string[]                              The resolved allow-list.
+	 */
+	public static function resolve_allowed_crawlers( array $stored_settings ): array {
+		if ( ! array_key_exists( 'allowed_crawlers', $stored_settings ) ) {
+			return self::LIVE_BROWSING_AGENTS;
+		}
+
+		$stored = $stored_settings['allowed_crawlers'];
+		return is_array( $stored ) ? $stored : [];
 	}
 
 	/**

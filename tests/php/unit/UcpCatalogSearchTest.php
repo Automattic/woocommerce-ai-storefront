@@ -816,4 +816,261 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 1, $this->captured_store_params['page'] );
 	}
+
+	// ------------------------------------------------------------------
+	// Pagination edge cases + warning emission (1.6.0 review additions)
+	// ------------------------------------------------------------------
+
+	public function test_limit_zero_clamps_to_one_and_emits_warning(): void {
+		// Lower-bound clamp: `max( 1, min( 100, $limit ) )`. A prior
+		// version that reordered the arguments could silently pass
+		// `per_page=0` to Store API (zero-result bug). Also locks in
+		// the `pagination_limit_clamped` warning emission.
+		$this->fake_product_list = [];
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'limit' => 0 ],
+			] )
+		);
+
+		$this->assertSame( 1, $this->captured_store_params['per_page'] );
+		$this->assertWarning( $response->get_data(), 'pagination_limit_clamped' );
+	}
+
+	public function test_limit_negative_clamps_to_one_and_emits_warning(): void {
+		$this->fake_product_list = [];
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'limit' => -5 ],
+			] )
+		);
+
+		$this->assertSame( 1, $this->captured_store_params['per_page'] );
+		$this->assertWarning( $response->get_data(), 'pagination_limit_clamped' );
+	}
+
+	public function test_limit_over_max_clamps_and_emits_warning(): void {
+		// Already covered behaviorally in `test_pagination_limit_is_clamped_to_max`
+		// but that one doesn't check for the warning message. Lock in
+		// the warning emission too — agents pagination-math around
+		// limits and need the signal.
+		$this->fake_product_list = [];
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'limit' => 500 ],
+			] )
+		);
+
+		$this->assertWarning( $response->get_data(), 'pagination_limit_clamped' );
+	}
+
+	public function test_limit_numeric_string_accepted(): void {
+		// JSON APIs sometimes coerce numbers to strings (URL-ish form
+		// bodies, some client libraries). The code uses is_numeric()
+		// which accepts "25". A future tightening to is_int() would
+		// silently break string-sending clients.
+		$this->fake_product_list = [];
+
+		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'limit' => '25' ],
+			] )
+		);
+
+		$this->assertSame( 25, $this->captured_store_params['per_page'] );
+	}
+
+	public function test_valid_in_range_limit_emits_no_clamped_warning(): void {
+		// Inverse of the clamp tests: if the limit is valid, no warning
+		// should fire. Prevents a regression where we always emit the
+		// warning regardless of whether clamping happened.
+		$this->fake_product_list = [];
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'limit' => 50 ],
+			] )
+		);
+
+		$body     = $response->get_data();
+		$messages = $body['messages'] ?? [];
+
+		$clamped_codes = array_column( $messages, 'code' );
+		$this->assertNotContains(
+			'pagination_limit_clamped',
+			$clamped_codes,
+			'No clamping warning should fire when limit is in range'
+		);
+	}
+
+	public function test_malformed_cursor_emits_invalid_cursor_warning(): void {
+		// Distinguishes the client-bug case (garbled cursor) from
+		// the stale-cursor case (valid page, beyond current total).
+		// The former gets a warning the agent can surface as a
+		// debugging hint; the latter doesn't (it's expected drift
+		// that silent fallback handles gracefully).
+		$this->fake_product_list = [];
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'cursor' => 'not-a-valid-cursor' ],
+			] )
+		);
+
+		$this->assertSame( 1, $this->captured_store_params['page'] );
+		$this->assertWarning( $response->get_data(), 'invalid_cursor' );
+	}
+
+	public function test_forged_cursor_zero_page_rejected_as_malformed(): void {
+		// Cursor encoding page 0 (or negative) is forged input —
+		// the server never emits these. Treat as malformed, not
+		// as a stale-but-well-formed cursor.
+		$cursor = base64_encode( 'p0' );
+		$this->fake_product_list = [];
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'cursor' => $cursor ],
+			] )
+		);
+
+		$this->assertSame( 1, $this->captured_store_params['page'] );
+		$this->assertWarning( $response->get_data(), 'invalid_cursor' );
+	}
+
+	public function test_forged_cursor_huge_page_rejected(): void {
+		// Integer-overflow guard: without the upper bound in
+		// `decode_cursor`, a forged `p99999999999999999` cursor
+		// would pass through to Store API where `(page-1) * per_page`
+		// overflows on 32-bit MySQL builds, producing negative
+		// OFFSET values and SQL errors. 100,000 is already 10M
+		// products at max limit — beyond any real catalog.
+		$cursor = base64_encode( 'p99999999999999999' );
+		$this->fake_product_list = [];
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'cursor' => $cursor ],
+			] )
+		);
+
+		$this->assertSame( 1, $this->captured_store_params['page'] );
+		$this->assertWarning( $response->get_data(), 'invalid_cursor' );
+	}
+
+	public function test_non_array_pagination_emits_warning_and_uses_defaults(): void {
+		// `pagination: "next"` or `pagination: 42` — garbled but
+		// not a total blocker. Apply defaults and warn.
+		$this->fake_product_list = [];
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => 'next',
+			] )
+		);
+
+		$this->assertSame( 10, $this->captured_store_params['per_page'] );
+		$this->assertSame( 1, $this->captured_store_params['page'] );
+		$this->assertWarning( $response->get_data(), 'invalid_pagination_shape' );
+	}
+
+	public function test_total_count_absent_when_store_api_header_missing(): void {
+		// `X-WP-Total` is not required by the UCP spec. If Store
+		// API ever strips it (cache plugins, REST middleware), the
+		// field must be omitted rather than defaulted to 0 — agents
+		// reading `body.pagination.total_count || 0` would misreport.
+		$this->fake_product_list = [];
+		$this->fake_list_headers = []; // No X-WP-* headers at all.
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [] )
+		);
+
+		$pagination = $response->get_data()['pagination'];
+		$this->assertArrayNotHasKey(
+			'total_count',
+			$pagination,
+			'total_count MUST be absent when Store API does not provide X-WP-Total'
+		);
+		$this->assertFalse( $pagination['has_next_page'], 'Missing headers → treat as single page' );
+	}
+
+	public function test_pagination_header_lookup_is_case_insensitive(): void {
+		// `WP_REST_Response::get_headers()` preserves producer's
+		// casing. Any middleware normalizing to lowercase (or
+		// uppercase) would silently break the pagination response
+		// without this case-insensitive lookup.
+		$this->fake_product_list = [];
+		$this->fake_list_headers = [
+			'x-wp-total'      => '47',   // lowercase — not the default casing
+			'x-wp-totalpages' => '5',
+		];
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [] )
+		);
+
+		$pagination = $response->get_data()['pagination'];
+		$this->assertTrue( $pagination['has_next_page'] );
+		$this->assertSame( 47, $pagination['total_count'] );
+	}
+
+	public function test_cursor_and_filters_both_forwarded_to_store_api(): void {
+		// Integration: pagination params must not collide with
+		// filter params. A refactor that moves pagination mapping
+		// before or after filter mapping (or uses the same $params
+		// array slot) could silently drop either side.
+		$this->fake_product_list = [];
+		$this->fake_list_headers = [
+			'X-WP-Total'      => '50',
+			'X-WP-TotalPages' => '5',
+		];
+		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
+
+		$first = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'query'      => 'shirt',
+				'filters'    => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ],
+				'pagination' => [ 'limit' => 20 ],
+			] )
+		);
+		$cursor = $first->get_data()['pagination']['cursor'];
+
+		$this->captured_store_params = [];
+
+		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'query'      => 'shirt',
+				'filters'    => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ],
+				'pagination' => [ 'limit' => 20, 'cursor' => $cursor ],
+			] )
+		);
+
+		// All four must round-trip independently.
+		$this->assertSame( 'shirt', $this->captured_store_params['search'] );
+		$this->assertSame( 20, $this->captured_store_params['per_page'] );
+		$this->assertSame( 2, $this->captured_store_params['page'] );
+		$this->assertArrayHasKey( 'min_price', $this->captured_store_params );
+		$this->assertArrayHasKey( 'max_price', $this->captured_store_params );
+	}
+
+	/**
+	 * Assert the response body includes a warning with the given code.
+	 *
+	 * @param array<string, mixed> $body UCP response body.
+	 * @param string               $code Expected `messages[].code`.
+	 */
+	private function assertWarning( array $body, string $code ): void {
+		$messages = $body['messages'] ?? [];
+		foreach ( $messages as $m ) {
+			if ( ( $m['code'] ?? null ) === $code ) {
+				$this->assertSame( 'warning', $m['type'] );
+				return;
+			}
+		}
+		$this->fail( "Expected warning with code '{$code}' in response messages." );
+	}
 }

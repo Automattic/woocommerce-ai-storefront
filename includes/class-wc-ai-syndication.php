@@ -348,21 +348,15 @@ class WC_AI_Syndication {
 		$settings = get_option( self::SETTINGS_OPTION, [] );
 		$merged   = wp_parse_args( is_array( $settings ) ? $settings : [], $defaults );
 
-		// Allowed crawlers: stored in option, defaults to LIVE BROWSING
-		// agents only on fresh installs. Training crawlers default off
-		// because training crawls capture snapshots that may surface in
-		// AI answers months later with stale prices and availability —
-		// a real risk for commerce. Merchants can opt in to training
-		// visibility from the admin page per their brand strategy.
-		//
-		// Existing installs with saved `allowed_crawlers` values keep
-		// their stored selections unchanged (the `! empty()` branch
-		// below returns what's in the DB). Only fresh installs or
-		// installs where the option was never written get the new
-		// default.
-		$merged['allowed_crawlers'] = ! empty( $settings['allowed_crawlers'] )
-			? $settings['allowed_crawlers']
-			: WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS;
+		// Allowed crawlers: delegates to the Robots class's helper so
+		// the three-branch resolution (fresh install vs. stored-empty
+		// vs. stored-list) is defined in one place and unit-tested
+		// independently of this settings aggregator. See
+		// `WC_AI_Syndication_Robots::resolve_allowed_crawlers()` for
+		// the decision table.
+		$merged['allowed_crawlers'] = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+			is_array( $settings ) ? $settings : []
+		);
 
 		self::$settings_cache = $merged;
 		return $merged;

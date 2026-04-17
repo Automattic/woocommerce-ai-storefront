@@ -189,10 +189,17 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * variations pre-fetched by `fetch_variations_for()` so variant
 	 * lists are real rather than synthesized defaults.
 	 *
-	 * Pagination is deferred to a future version — v1 returns whatever
-	 * Store API considers the default page (typically 10 products).
-	 * Agents needing more will page via repeated calls once v1.4 adds
-	 * explicit pagination support.
+	 * Pagination: cursor + limit, per UCP v2026-04-08
+	 * `types/pagination.json`. Agents pass `pagination.cursor`
+	 * (opaque base64 from prior response) and `pagination.limit`
+	 * (default `DEFAULT_SEARCH_LIMIT=10`, clamped at
+	 * `MAX_SEARCH_LIMIT=100`). Response emits `pagination` with
+	 * `has_next_page` (always), `cursor` (only when a next page
+	 * exists), and `total_count` (when Store API provides
+	 * X-WP-Total). Wire-format helpers: `build_pagination_response()`,
+	 * `encode_cursor()`, `decode_cursor()`. Malformed cursors emit
+	 * an `invalid_cursor` warning and silently fall back to page 1;
+	 * clamped limits emit `pagination_limit_clamped`.
 	 *
 	 * Performance note: variable products fan out to N+1 dispatches
 	 * (1 list call + 1 per variation per product). For large catalogs
@@ -374,11 +381,27 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * @return array<string, mixed>             UCP pagination shape.
 	 */
 	private static function build_pagination_response( \WP_REST_Response $store_response, int $current_page ): array {
-		$headers = $store_response->get_headers();
+		// Case-insensitive header lookup. `WP_REST_Response::get_headers()`
+		// preserves whatever casing the producer used, and while
+		// WC Store API currently emits `X-WP-Total` / `X-WP-TotalPages`
+		// verbatim, any middleware in the `rest_post_dispatch_*`
+		// filter chain that normalizes to lowercase would silently
+		// break this pagination: `has_next_page` stuck at false,
+		// `total_count` absent, agents stop iterating at page 1.
+		// Normalizing the lookup side is cheap insurance.
+		$headers = array_change_key_case( $store_response->get_headers(), CASE_LOWER );
 
 		$total_pages = 1;
-		if ( isset( $headers['X-WP-TotalPages'] ) ) {
-			$total_pages = max( 1, (int) $headers['X-WP-TotalPages'] );
+		if ( isset( $headers['x-wp-totalpages'] ) ) {
+			$total_pages = max( 1, (int) $headers['x-wp-totalpages'] );
+		} else {
+			// A Store API response without this header is a contract
+			// anomaly worth surfacing to the debug log (not to the
+			// agent — too noisy). If it starts firing in production,
+			// a WC update or plugin conflict is the suspect.
+			WC_AI_Syndication_Logger::debug(
+				'UCP catalog/search: Store API response missing X-WP-TotalPages header — defaulting to single page'
+			);
 		}
 
 		$has_next = $current_page < $total_pages;
@@ -391,8 +414,8 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			$pagination['cursor'] = self::encode_cursor( $current_page + 1 );
 		}
 
-		if ( isset( $headers['X-WP-Total'] ) ) {
-			$pagination['total_count'] = (int) $headers['X-WP-Total'];
+		if ( isset( $headers['x-wp-total'] ) ) {
+			$pagination['total_count'] = (int) $headers['x-wp-total'];
 		}
 
 		return $pagination;
@@ -443,7 +466,19 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			return null;
 		}
 		$page = (int) substr( $decoded, 1 );
-		return $page > 0 ? $page : null;
+
+		// Sanity bounds on the decoded page number. Page must be
+		// positive (zero or negative are forged inputs) AND below an
+		// upper limit that prevents `WP_Query` OFFSET overflow on
+		// 32-bit MySQL compilations. A forged `pPHP_INT_MAX` cursor
+		// would otherwise compute OFFSET = (PHP_INT_MAX-1) * per_page
+		// → integer wraparound → negative offset → SQL error on some
+		// MySQL versions. 100,000 pages at the max limit of 100 is
+		// already 10M products; no real commerce catalog needs more.
+		if ( $page < 1 || $page > 100000 ) {
+			return null;
+		}
+		return $page;
 	}
 
 	/**
@@ -1198,23 +1233,70 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// Store API uses integer page + per_page. We base64-encode
 		// the page number as the cursor. See `encode_cursor()` for
 		// format rationale.
+		//
+		// Warning emission: limit clamping, malformed cursors, and
+		// non-object `pagination` payloads are all recoverable —
+		// we apply defaults and continue rather than HTTP 400. But
+		// they're signals an agent needs to see, so each emits a
+		// `messages[]` advisory entry. Agents that pagination-math
+		// around a clamped limit (e.g. requested 500, got 100)
+		// would otherwise miscalculate page counts silently.
 		$pagination = $request->get_param( 'pagination' );
 		$limit      = self::DEFAULT_SEARCH_LIMIT;
 		$page       = 1;
+
+		if ( null !== $pagination && ! is_array( $pagination ) ) {
+			$messages[] = [
+				'type'     => 'warning',
+				'code'     => 'invalid_pagination_shape',
+				'severity' => 'advisory',
+				'path'     => '$.pagination',
+				'content'  => __( 'pagination must be an object; using defaults.', 'woocommerce-ai-syndication' ),
+			];
+		}
+
 		if ( is_array( $pagination ) ) {
 			if ( isset( $pagination['limit'] ) && is_numeric( $pagination['limit'] ) ) {
-				$limit = max( 1, min( self::MAX_SEARCH_LIMIT, (int) $pagination['limit'] ) );
+				$requested = (int) $pagination['limit'];
+				$limit     = max( 1, min( self::MAX_SEARCH_LIMIT, $requested ) );
+				if ( $limit !== $requested ) {
+					$messages[] = [
+						'type'     => 'warning',
+						'code'     => 'pagination_limit_clamped',
+						'severity' => 'advisory',
+						'path'     => '$.pagination.limit',
+						'content'  => sprintf(
+							/* translators: 1: requested limit, 2: applied limit, 3: max allowed. */
+							__( 'Requested pagination.limit %1$d was clamped to %2$d (allowed range: 1–%3$d).', 'woocommerce-ai-syndication' ),
+							$requested,
+							$limit,
+							self::MAX_SEARCH_LIMIT
+						),
+					];
+				}
 			}
 			if ( isset( $pagination['cursor'] ) && is_string( $pagination['cursor'] ) && '' !== $pagination['cursor'] ) {
 				$decoded = self::decode_cursor( $pagination['cursor'] );
 				if ( null !== $decoded ) {
 					$page = $decoded;
+				} else {
+					// Malformed cursor — emit a warning so the agent
+					// can distinguish "my cursor is garbled" from
+					// "the cursor is stale after catalog mutation"
+					// (both fall back to page 1 here, but only the
+					// former is a client bug the agent should know
+					// about). Stale-cursor scenarios where the page
+					// decodes cleanly but exceeds total_pages are
+					// handled downstream by Store API returning an
+					// empty result set — no warning needed there.
+					$messages[] = [
+						'type'     => 'warning',
+						'code'     => 'invalid_cursor',
+						'severity' => 'advisory',
+						'path'     => '$.pagination.cursor',
+						'content'  => __( 'Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug.', 'woocommerce-ai-syndication' ),
+					];
 				}
-				// Malformed cursor → fall back to page 1 silently. We
-				// don't surface this as an error because the agent
-				// might have copied a cursor from a prior page that
-				// no longer exists (catalog mutated between calls).
-				// Starting from page 1 is the safe recovery.
 			}
 		}
 		$params['per_page'] = $limit;

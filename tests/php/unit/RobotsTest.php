@@ -392,6 +392,77 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	// ------------------------------------------------------------------
+	// Fresh-install default vs. preserved opt-out (1.6.0 review fix)
+	// ------------------------------------------------------------------
+	//
+	// `resolve_allowed_crawlers()` encodes the core policy: commerce-
+	// safe default for new installs, full preservation of merchant
+	// choices on upgrades. These tests lock in the distinction
+	// between "never configured" and "explicitly configured to
+	// block all" — the pre-fix code treated them identically via
+	// `! empty()`, silently reverting a merchant's explicit opt-out
+	// on every subsequent request.
+
+	public function test_fresh_install_returns_live_browsing_only_default(): void {
+		// Empty settings array → no prior configuration → commerce-safe
+		// default. Training crawlers must NOT be present so merchants
+		// get the protection-by-default posture out of the box.
+		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers( [] );
+
+		$this->assertSame( WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS, $result );
+
+		foreach ( WC_AI_Syndication_Robots::TRAINING_CRAWLERS as $training_bot ) {
+			$this->assertNotContains(
+				$training_bot,
+				$result,
+				"Training crawler $training_bot should NOT be in the fresh-install default"
+			);
+		}
+	}
+
+	public function test_explicit_empty_allowed_crawlers_is_preserved(): void {
+		// This is the consent-regression guard. A merchant who clicks
+		// "Clear selection" in the admin UI saves `[]`. The resolver
+		// must return `[]`, not silently revert to the fresh-install
+		// default. Pre-fix code used `! empty()` which treated empty
+		// array identically to "key missing."
+		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+			[ 'allowed_crawlers' => [] ]
+		);
+
+		$this->assertSame(
+			[],
+			$result,
+			'Explicit empty array (merchant opt-out) must be preserved, not reverted to defaults'
+		);
+	}
+
+	public function test_stored_allowed_crawlers_list_is_preserved(): void {
+		// Happy path for existing installs with saved selections —
+		// the resolver must return the stored list verbatim.
+		$stored = [ 'GPTBot', 'ClaudeBot', 'Claude-User' ];
+
+		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+			[ 'allowed_crawlers' => $stored ]
+		);
+
+		$this->assertSame( $stored, $result );
+	}
+
+	public function test_non_array_stored_value_degrades_to_empty_list(): void {
+		// Defensive: if the stored option value somehow corrupts to
+		// a non-array (DB migration glitch, manual SQL edit), treat
+		// as "no crawlers" rather than crashing or filling with the
+		// fresh-install default (which would be wrong — the key IS
+		// present, it's just garbled).
+		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+			[ 'allowed_crawlers' => 'not-an-array' ]
+		);
+
+		$this->assertSame( [], $result );
+	}
+
 	public function test_phantom_gemini_entry_is_removed(): void {
 		// Regression guard: if a future refactor accidentally
 		// resurrects the `Gemini` entry, this fires. The entry
