@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.3.1
+Stable tag: 1.3.2
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,10 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.3.2 =
+* Added: robots.txt row to the Discovery Endpoints table in the WooCommerce > AI Syndication admin panel. Merchants can now see the clickable URL, reachability status, and a plain-English description of what the plugin appends to robots.txt — completing the discovery picture alongside llms.txt, UCP manifest, and Store API.
+* Added: `mode: "handoff"` hint on the `dev.ucp.shopping.checkout` capability binding in the UCP manifest. Agents reading the manifest now learn upfront that the checkout endpoint is redirect-only (no in-chat payment processing, no server-side cart lifecycle) without having to invoke it and parse the response. Additive per UCP schema — agents that don't understand the field ignore it gracefully.
 
 = 1.3.1 =
 * Fixed: UCP REST adapter handlers (`/catalog/search`, `/catalog/lookup`, `/checkout-sessions`) returned HTTP 500 "critical error" whenever they needed to translate a real product from WC Store API. Root cause: `rest_do_request()` returns Store API data with nested `stdClass` objects (prices, attributes, categories), not associative arrays — the translator's `$prices['currency_code']` style access fataled with "Cannot use object of type stdClass as array." The bug was production-only: external HTTP callers never saw it (JSON round-trip converted stdClass→array on their end), and unit tests never exercised it (the `rest_do_request` fake returned pre-shaped associative arrays). Fix: normalize Store API responses at the `rest_do_request` boundary via `json_decode(wp_json_encode(...), true)`, forcing all nested structures to pure associative arrays regardless of source type.
