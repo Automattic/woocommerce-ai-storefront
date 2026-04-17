@@ -108,10 +108,13 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * level and is currently used only for attribution (utm_source in
 	 * checkout handoff) and logging, not for access control. Merchants
 	 * who need to gate access can pause syndication via the admin UI —
-	 * each handler calls `check_syndication_enabled()` before doing any
-	 * work and returns a UCP-shaped 503 WP_Error when off. Keeping
-	 * routes registered (versus unregistering on disable) avoids
-	 * rewrite-flush churn every time a merchant toggles the setting.
+	 * each handler checks `is_syndication_disabled()` before doing any
+	 * work and, when disabled, returns a UCP-shaped `WP_REST_Response`
+	 * with HTTP 503 status (built via `ucp_catalog_error_response()`
+	 * for catalog routes and `ucp_checkout_error_response()` for
+	 * checkout-sessions). Keeping routes registered (versus
+	 * unregistering on disable) avoids rewrite-flush churn every time
+	 * a merchant toggles the setting.
 	 */
 	public function register_routes(): void {
 		register_rest_route(
@@ -446,12 +449,19 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *   - prod_N + simple product    → includable
 	 *   - var_N  + variation         → includable
 	 *   - prod_N + variable (parent) → rejected (variation_required)
-	 *   - grouped / external types   → rejected (product_type_unsupported)
+	 *   - grouped / external / subscription / subscription_variation
+	 *                                → rejected (product_type_unsupported)
 	 *   - unknown ID                 → rejected (not_found)
-	 *   - out of stock               → warning, still included; the
-	 *                                  merchant's checkout page makes
-	 *                                  the final determination (may
-	 *                                  allow backorders)
+	 *   - out of stock               → rejected (out_of_stock); WC's
+	 *                                  `is_in_stock` already factors the
+	 *                                  merchant's backorder settings, so
+	 *                                  false means WooCommerce itself
+	 *                                  has concluded the item is not
+	 *                                  purchasable right now
+	 *   - invalid shape (item not an array, id missing/non-string)
+	 *                                → rejected (invalid_line_item)
+	 *   - invalid quantity (≤0 or > MAX_QUANTITY_PER_LINE_ITEM)
+	 *                                → rejected (invalid_quantity)
 	 *
 	 * Response status:
 	 *   - any valid items → 201 with status=requires_escalation + continue_url
@@ -1172,7 +1182,35 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			];
 		}
 
-		$raw_id   = $line_item['item']['id'] ?? null;
+		// `$line_item['item']` must itself be an array before we drill in.
+		// Under PHP 8, accessing `['id']` on a string (e.g. an agent
+		// sending `{"item": "prod_123"}`) throws a fatal "cannot access
+		// offset" error BEFORE any error-response path runs — so the
+		// shape check has to happen at this layer, not inside
+		// `parse_ucp_id_to_wc_int`.
+		if ( ! isset( $line_item['item'] ) || ! is_array( $line_item['item'] ) ) {
+			$messages[] = self::checkout_error_message( 'invalid_line_item', $path . '.item' );
+			return [
+				'processed' => null,
+				'messages'  => $messages,
+			];
+		}
+
+		$raw_id = $line_item['item']['id'] ?? null;
+
+		// `item.id` must be a non-empty string. Non-string input would
+		// eventually surface via `parse_ucp_id_to_wc_int` returning 0 →
+		// `not_found`, but that conflates "shape wrong" with "ID not in
+		// the catalog." Emit `invalid_line_item` here to give agents a
+		// clearer signal about malformed request shape.
+		if ( ! is_string( $raw_id ) || '' === trim( $raw_id ) ) {
+			$messages[] = self::checkout_error_message( 'invalid_line_item', $path . '.item.id' );
+			return [
+				'processed' => null,
+				'messages'  => $messages,
+			];
+		}
+
 		$quantity = isset( $line_item['quantity'] ) ? (int) $line_item['quantity'] : 1;
 
 		// Reject non-positive quantities AND quantities above the cap.
@@ -1268,11 +1306,10 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				'wc_id'            => $wc_id,
 				// Preserve the agent's original ID for round-tripping —
 				// if they sent `var_456`, echo `var_456` back even though
-				// we resolved it to WC ID 456 internally. `prod_N` fallback
-				// is for defensive completeness.
-				'ucp_id'           => is_string( $raw_id ) && '' !== $raw_id
-					? $raw_id
-					: 'prod_' . $wc_id,
+				// we resolved it to WC ID 456 internally. The shape
+				// check above guarantees `$raw_id` is a non-empty string
+				// by this point, so no fallback is needed.
+				'ucp_id'           => $raw_id,
 				'quantity'         => $quantity,
 				'unit_price_minor' => $unit_price_minor,
 			],

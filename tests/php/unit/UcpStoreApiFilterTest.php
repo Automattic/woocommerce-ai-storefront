@@ -19,8 +19,15 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 
 	/**
 	 * Reset the settings stub between tests so state doesn't leak.
+	 *
+	 * Calls `parent::setUp()` for consistency with the other PHPUnit
+	 * test cases in this suite — if the base TestCase ever adds setup
+	 * behavior (e.g. via Brain\Monkey integration, fixture loading),
+	 * skipping the parent call would silently diverge initialization
+	 * state across tests.
 	 */
 	protected function setUp(): void {
+		parent::setUp();
 		WC_AI_Syndication::$test_settings = [];
 	}
 

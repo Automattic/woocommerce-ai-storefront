@@ -69,9 +69,11 @@ if ( ! function_exists( 'wp_strip_all_tags' ) ) {
 	 * the translators (which switched from strip_tags to wp_strip_all_tags
 	 * for safer behavior on rich-text-editor input) rely on this stub.
 	 *
-	 * Tests that Brain\Monkey-stub this function (e.g. LlmsTxtTest)
-	 * win over this global definition because Brain\Monkey's aliasing
-	 * redefines the symbol at test-setup time.
+	 * Defined at stubs.php load time (before Patchwork is active), so
+	 * this CANNOT be redefined via Brain\Monkey's `Functions\when()`.
+	 * Tests that need specialized behavior would have to fork this stub
+	 * at the bootstrap level. In practice the WP-equivalent behavior
+	 * suffices for every current call site.
 	 *
 	 * @param mixed $text          Input string.
 	 * @param bool  $remove_breaks Whether to also collapse internal whitespace.

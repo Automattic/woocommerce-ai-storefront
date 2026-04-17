@@ -10,9 +10,10 @@
  *   - Happy path: simple + variation IDs → continue_url + 201
  *   - All items invalid → 200 with status=error, no continue_url
  *   - Mixed valid + invalid
- *   - Product type gates (variable parent → variation_required,
- *     grouped/external → product_type_unsupported)
- *   - Out-of-stock = warning, still includable
+ *   - Product type gates (variable/variable-subscription parent →
+ *     variation_required; grouped/external/subscription/
+ *     subscription_variation → product_type_unsupported)
+ *   - Out-of-stock = error, excluded from continue_url/line_items
  *   - UTM source from UCP-Agent (happy + fallback)
  *   - Legal links with graceful degradation + warnings
  *   - Totals computation, currency, session-id format
@@ -567,6 +568,75 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	public function test_non_array_line_item_produces_invalid_line_item(): void {
 		$result = $this->call_handler(
 			[ 'line_items' => [ 'this-is-not-an-object' ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'invalid_line_item', $codes );
+	}
+
+	public function test_non_array_item_field_does_not_crash_in_php8(): void {
+		// Regression guard for a PHP 8 fatal error: the handler
+		// previously did `$line_item['item']['id'] ?? null` which, if
+		// `item` is a STRING (not an array), throws a fatal "cannot
+		// access offset of type string on string" before any error-
+		// response code runs. Locks in the defensive shape check that
+		// emits `invalid_line_item` for this mis-shaped input.
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => 'prod_123', 'quantity' => 1 ],  // string, not array
+				],
+			]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'invalid_line_item', $codes );
+
+		// Status should be error (no valid items), not a 500 from a
+		// fatal — confirms the handler didn't actually crash.
+		$this->assertEquals( 200, $result['status'] );
+		$this->assertEquals( 'error', $result['data']['status'] );
+	}
+
+	public function test_missing_item_id_produces_invalid_line_item(): void {
+		// `item.id` absent or non-string. Previously this reached
+		// `parse_ucp_id_to_wc_int(null)` → 0 → `not_found` message,
+		// which conflated shape errors with data errors. Now the
+		// shape check runs first and emits the more accurate
+		// `invalid_line_item` code with a JSONPath at the .id field.
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [], 'quantity' => 1 ],  // empty item object, no id
+				],
+			]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'invalid_line_item', $codes );
+
+		// Verify the message path locates the missing field, not the
+		// top-level line_item index.
+		$messages = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => 'invalid_line_item' === ( $m['code'] ?? '' )
+		);
+		$this->assertEquals(
+			'$.line_items[0].item.id',
+			array_values( $messages )[0]['path']
+		);
+	}
+
+	public function test_whitespace_only_item_id_produces_invalid_line_item(): void {
+		// Defensive: a string that's all whitespace is not a legitimate
+		// ID. `trim($raw_id) === ''` catches this before we try to
+		// parse-to-int it.
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => '   ' ], 'quantity' => 1 ],
+				],
+			]
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
