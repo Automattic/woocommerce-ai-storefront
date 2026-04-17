@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.4.3
+Stable tag: 1.4.4
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,10 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.4.4 =
+* Fixed: llms.txt served an empty body on sites whose transient cache had been poisoned with an empty string during an earlier broken state (most likely during the 1.4.2 wiring-bug window before 1.4.3 shipped). The cache-hit check was `if ( false !== $cached )`, which passed for `''` because empty-string !== false — so the poisoned value was served verbatim for the full 1-hour TTL even after every upstream fix was in place. Production `curl -I` showed 200 with all the right headers (CORS, text/plain, no 301), but `curl` (GET without -I) returned nothing. Fix hardens the cache path on both halves: treat empty/falsy cached values as a miss (forcing regeneration + a fresh cache write that heals the poison), and refuse to write empty generate() output back into the cache (prevents future poisoning from the same root cause). New unit tests lock in both halves so a partial refactor can't re-introduce the bug.
+* Changed: removed `X-Robots-Tag: noindex` from the llms.txt response. Earlier revisions set it defensively to keep the URL out of human-facing search results, but some AI browsing tools (Gemini reported this explicitly) use Google's search index as a discovery layer — they find URLs via search first, then fetch. A noindexed URL never enters the index, so those agents never try to fetch it. Since llms.txt exists specifically to be discovered by agents, nulling its search-indexability contradicts the plugin's own purpose. Agents that go direct to `/llms.txt` (the spec-canonical path) are unaffected; agents that search-first now work too. Merchants who want llms.txt kept out of search can reinstate the header via a `send_headers` filter in their own code.
 
 = 1.4.3 =
 * Fixed: 1.4.2's canonical-redirect fix didn't actually register, because the `redirect_canonical` filter was added inside the llms.txt/UCP classes' `init()` method — and those `init()` methods had been silently unused since an earlier refactor moved their hook registrations to the main plugin class. Production `curl -I` after the 1.4.2 deploy still showed `HTTP/2 301 location: .../llms.txt/` with `x-redirect-by: WordPress`, confirming the filter was never attached. Moved the filter registration to the main plugin class (`WC_AI_Syndication::register_rewrite_rules()`) alongside the other hooks for these two classes. Deleted the now-empty `init()` methods from both `WC_AI_Syndication_Llms_Txt` and `WC_AI_Syndication_Ucp` to prevent future changes to those methods from silently doing nothing.
