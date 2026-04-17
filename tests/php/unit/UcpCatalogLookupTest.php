@@ -48,6 +48,9 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->fake_store_api = [];
 
 		Functions\when( '__' )->returnArg();
+		Functions\when( '_n' )->alias(
+			static fn( string $single, string $plural, int $number ): string => $number === 1 ? $single : $plural
+		);
 
 		// Stub the catalog_envelope dependency's PROTOCOL_VERSION
 		// access — UcpEnvelope reads WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
@@ -182,40 +185,55 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		return $response->get_data();
 	}
 
+	/**
+	 * Invoke the handler expecting an error response. Asserts the
+	 * UCP-envelope error shape: a WP_REST_Response with the expected
+	 * HTTP status + a message carrying the expected error code.
+	 *
+	 * Validation errors return UCP-shaped bodies (not WP_Error) so
+	 * agents see the same envelope on success vs failure.
+	 *
+	 * @param array<string, mixed> $body
+	 * @return array<string, mixed> The response body.
+	 */
+	private function error_lookup( array $body, int $expected_status, string $expected_code ): array {
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_catalog_lookup( $this->lookup_request( $body ) );
+
+		$this->assertInstanceOf( WP_REST_Response::class, $response );
+		$this->assertEquals( $expected_status, $response->get_status() );
+
+		$data = $response->get_data();
+		$this->assertArrayHasKey( 'ucp', $data, 'Error response must carry UCP envelope' );
+		$this->assertSame( [], $data['products'], 'Error response products array is empty' );
+		$this->assertArrayHasKey( 'messages', $data );
+
+		$codes = array_column( $data['messages'], 'code' );
+		$this->assertContains(
+			$expected_code,
+			$codes,
+			'Expected error code not in messages: ' . implode( ', ', $codes )
+		);
+
+		return $data;
+	}
+
 	// ------------------------------------------------------------------
 	// Input validation
 	// ------------------------------------------------------------------
 
 	public function test_missing_ids_returns_400(): void {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_catalog_lookup( $this->lookup_request( [] ) );
-
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( 'ucp_invalid_input', $response->get_error_code() );
-		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+		$this->error_lookup( [], 400, 'invalid_input' );
 	}
 
 	public function test_non_array_ids_returns_400(): void {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_catalog_lookup(
-			$this->lookup_request( [ 'ids' => 'prod_123' ] )
-		);
-
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+		$this->error_lookup( [ 'ids' => 'prod_123' ], 400, 'invalid_input' );
 	}
 
 	public function test_empty_ids_array_returns_400(): void {
 		// Distinct from "missing ids" — the client sent the key but
-		// with no IDs. Still a malformed request; 400 rather than
-		// 200-with-empty-products keeps the contract clear.
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_catalog_lookup(
-			$this->lookup_request( [ 'ids' => [] ] )
-		);
-
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+		// with no IDs. Still malformed; 400 with UCP envelope.
+		$this->error_lookup( [ 'ids' => [] ], 400, 'invalid_input' );
 	}
 
 	// ------------------------------------------------------------------
@@ -409,6 +427,20 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// Remaining variants are the ones that fetched successfully.
 		$this->assertEquals( 'var_101', $variants[0]['id'] );
 		$this->assertEquals( 'var_103', $variants[1]['id'] );
+
+		// Agents must see a `partial_variants` warning so they can
+		// distrust the variants list — otherwise price_range (computed
+		// by WC from ALL variations) would disagree with variants[]
+		// (reduced by our failed fetch) with no signal.
+		$this->assertArrayHasKey( 'messages', $body );
+		$partial = array_filter(
+			$body['messages'],
+			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $partial );
+		$msg = array_values( $partial )[0];
+		$this->assertEquals( 'warning', $msg['type'] );
+		$this->assertEquals( 'advisory', $msg['severity'] );
 	}
 
 	public function test_variations_capped_at_max_per_product(): void {
@@ -479,14 +511,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			$ids[] = 'prod_' . ( 1000 + $i );
 		}
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_catalog_lookup(
-			$this->lookup_request( [ 'ids' => $ids ] )
-		);
-
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( 'ucp_invalid_input', $response->get_error_code() );
-		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+		$this->error_lookup( [ 'ids' => $ids ], 400, 'invalid_input' );
 	}
 
 	public function test_accepts_ids_array_at_exactly_the_limit(): void {
@@ -507,16 +532,9 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	public function test_disabled_syndication_returns_503_ucp_disabled(): void {
 		// Pausing syndication must cut off UCP catalog access. Routes
 		// stay registered (rewrite-flush discipline); the handler
-		// gates access here.
+		// gates access here and returns a UCP-envelope error response.
 		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_catalog_lookup(
-			$this->lookup_request( [ 'ids' => [ 'prod_123' ] ] )
-		);
-
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( 'ucp_disabled', $response->get_error_code() );
-		$this->assertEquals( [ 'status' => 503 ], $response->get_error_data() );
+		$this->error_lookup( [ 'ids' => [ 'prod_123' ] ], 503, 'ucp_disabled' );
 	}
 }

@@ -46,6 +46,9 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->fake_store_api = [];
 
 		Functions\when( '__' )->returnArg();
+		Functions\when( '_n' )->alias(
+			static fn( string $single, string $plural, int $number ): string => $number === 1 ? $single : $plural
+		);
 		Functions\when( 'home_url' )->alias(
 			static fn( string $path = '' ): string => 'https://example.com' . $path
 		);
@@ -169,35 +172,44 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	// Input validation
 	// ------------------------------------------------------------------
 
-	public function test_missing_line_items_returns_400(): void {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_checkout_sessions_create(
-			$this->checkout_request( [] )
-		);
+	/**
+	 * Assert a checkout response has UCP-envelope error shape: HTTP
+	 * status matches, body carries the ucp envelope + status=error +
+	 * empty line_items, and the messages array contains the expected
+	 * error code.
+	 *
+	 * @param array<string, mixed> $body
+	 */
+	private function assert_checkout_error( array $body, int $expected_status, string $expected_code ): void {
+		$result = $this->call_handler( $body );
 
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( 'ucp_invalid_input', $response->get_error_code() );
-		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+		$this->assertEquals( $expected_status, $result['status'] );
+		$this->assertArrayHasKey( 'ucp', $result['data'] );
+		$this->assertEquals( 'error', $result['data']['status'] );
+		$this->assertSame( [], $result['data']['line_items'] );
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains(
+			$expected_code,
+			$codes,
+			'Expected error code not in messages: ' . implode( ', ', $codes )
+		);
+	}
+
+	public function test_missing_line_items_returns_400(): void {
+		$this->assert_checkout_error( [], 400, 'invalid_input' );
 	}
 
 	public function test_empty_line_items_array_returns_400(): void {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_checkout_sessions_create(
-			$this->checkout_request( [ 'line_items' => [] ] )
-		);
-
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+		$this->assert_checkout_error( [ 'line_items' => [] ], 400, 'invalid_input' );
 	}
 
 	public function test_non_array_line_items_returns_400(): void {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_checkout_sessions_create(
-			$this->checkout_request( [ 'line_items' => 'not-an-array' ] )
+		$this->assert_checkout_error(
+			[ 'line_items' => 'not-an-array' ],
+			400,
+			'invalid_input'
 		);
-
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
 	}
 
 	// ------------------------------------------------------------------
@@ -333,28 +345,77 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'product_type_unsupported', $codes );
 	}
 
+	public function test_subscription_product_rejected_with_unsupported_type(): void {
+		// WC Subscriptions extension's `subscription` type is for
+		// recurring billing flows. The Shareable Checkout URL treats
+		// every item as a one-off, so a subscription mis-routed
+		// through it would produce an incorrect checkout page.
+		// The manifest already declares subscription as unsupported;
+		// this enforces the contract at the handler layer.
+		$this->fake_store_api[ 888 ] = [
+			'id'   => 888,
+			'name' => 'Monthly Box',
+			'type' => 'subscription',
+		];
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_888' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'product_type_unsupported', $codes );
+	}
+
+	public function test_variable_subscription_parent_rejected_as_variation_required(): void {
+		// `variable-subscription` is the Subscriptions-extension
+		// analogue of `variable`: a subscription with variations
+		// (e.g. monthly/quarterly plans). Agent must send a specific
+		// variation ID, not the parent.
+		$this->fake_store_api[ 999 ] = [
+			'id'   => 999,
+			'name' => 'Magazine Subscription',
+			'type' => 'variable-subscription',
+		];
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_999' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'variation_required', $codes );
+	}
+
 	// ------------------------------------------------------------------
 	// Stock handling: warning, not rejection
 	// ------------------------------------------------------------------
 
-	public function test_out_of_stock_item_included_with_warning(): void {
-		// Merchant's store may allow backorders — we don't second-guess.
-		// Emit a warning but keep the item in continue_url + line_items.
+	public function test_out_of_stock_item_rejected_outright(): void {
+		// WC's `is_in_stock` already factors backorder settings — when
+		// it returns false, WooCommerce has concluded the item isn't
+		// purchasable right now. Letting it through to continue_url
+		// would hand the user a checkout that then refuses the item,
+		// which is worse UX than rejecting upfront with a clear error.
 		$this->seed_simple_product( 111, 1000, false );
 
 		$result = $this->call_handler(
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
 		);
 
-		$this->assertEquals( 201, $result['status'] );
-		$this->assertStringContainsString( '111:1', $result['data']['continue_url'] );
+		// No valid items → status: error, no continue_url, 200 response.
+		$this->assertEquals( 200, $result['status'] );
+		$this->assertEquals( 'error', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+		$this->assertCount( 0, $result['data']['line_items'] );
 
-		$warnings = array_filter(
+		// The error message identifies the offending line item.
+		$errors = array_filter(
 			$result['data']['messages'],
-			static fn( array $m ): bool => 'warning' === $m['type']
+			static fn( array $m ): bool => 'out_of_stock' === ( $m['code'] ?? '' )
 		);
-		$warning_codes = array_column( $warnings, 'code' );
-		$this->assertContains( 'out_of_stock', $warning_codes );
+		$this->assertCount( 1, $errors );
+		$msg = array_values( $errors )[0];
+		$this->assertEquals( 'error', $msg['type'] );
+		$this->assertEquals( 'unrecoverable', $msg['severity'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -689,14 +750,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			$items[] = [ 'item' => [ 'id' => 'prod_' . $i ], 'quantity' => 1 ];
 		}
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_checkout_sessions_create(
-			$this->checkout_request( [ 'line_items' => $items ] )
-		);
-
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( 'ucp_invalid_input', $response->get_error_code() );
-		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+		$this->assert_checkout_error( [ 'line_items' => $items ], 400, 'invalid_input' );
 	}
 
 	public function test_disabled_syndication_returns_503_ucp_disabled(): void {
@@ -704,15 +758,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// syndication is paused — lock in the gate.
 		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_checkout_sessions_create(
-			$this->checkout_request(
-				[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
-			)
+		$this->assert_checkout_error(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			503,
+			'ucp_disabled'
 		);
-
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( 'ucp_disabled', $response->get_error_code() );
-		$this->assertEquals( [ 'status' => 503 ], $response->get_error_data() );
 	}
 }

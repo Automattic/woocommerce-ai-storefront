@@ -77,6 +77,9 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->fake_terms            = [];
 
 		Functions\when( '__' )->returnArg();
+		Functions\when( '_n' )->alias(
+			static fn( string $single, string $plural, int $number ): string => $number === 1 ? $single : $plural
+		);
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 
 		$terms = &$this->fake_terms;
@@ -292,12 +295,9 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( '5,7', $this->captured_store_params['category'] );
 	}
 
-	public function test_unresolvable_categories_are_silently_dropped(): void {
+	public function test_unresolvable_categories_forward_only_resolvable_ones(): void {
 		// A single unresolvable category + one resolvable = only the
-		// resolvable one flows through. If ALL are unresolvable, no
-		// category param is sent (Store API then returns the full
-		// catalog, which may surprise agents — but matches v1's
-		// lenient posture).
+		// resolvable one flows through to Store API.
 		$this->seed_term( 5, 'tops', 'Tops' );
 
 		$this->successful_search(
@@ -307,12 +307,63 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( '5', $this->captured_store_params['category'] );
 	}
 
-	public function test_all_unresolvable_categories_omits_param(): void {
-		$this->successful_search(
+	public function test_unresolvable_category_produces_category_not_found_warning(): void {
+		// Agent sending an unknown category must see a warning that
+		// their filter was ignored — otherwise they'd receive the
+		// unfiltered catalog (the OPPOSITE of what they asked for)
+		// with no signal that anything went wrong. This was flagged
+		// as a silent-failure bug in the pre-1.3 review.
+		$this->seed_term( 5, 'tops', 'Tops' );
+
+		$body = $this->successful_search(
+			[ 'filters' => [ 'categories' => [ 'tops', 'nonexistent' ] ] ]
+		);
+
+		$this->assertArrayHasKey( 'messages', $body );
+		$not_found = array_filter(
+			$body['messages'],
+			static fn( array $m ): bool => 'category_not_found' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $not_found );
+
+		$message = array_values( $not_found )[0];
+		$this->assertEquals( 'warning', $message['type'] );
+		$this->assertEquals( 'advisory', $message['severity'] );
+		// JSONPath points at the exact offending input index.
+		$this->assertEquals( '$.filters.categories[1]', $message['path'] );
+	}
+
+	public function test_all_unresolvable_categories_omits_param_and_warns(): void {
+		// When EVERY category fails to resolve, Store API gets no
+		// `category` param (would otherwise be `category=` which is
+		// invalid). Response still includes one warning per missing
+		// input so the agent knows their whole filter was dropped.
+		$body = $this->successful_search(
 			[ 'filters' => [ 'categories' => [ 'nope', 'also-nope' ] ] ]
 		);
 
 		$this->assertArrayNotHasKey( 'category', $this->captured_store_params );
+
+		$warnings = array_filter(
+			$body['messages'],
+			static fn( array $m ): bool => 'category_not_found' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 2, $warnings );
+	}
+
+	public function test_duplicate_category_slug_and_name_dedupe_to_single_id(): void {
+		// If both slug and name point at the same term (common when
+		// agents echo back categories from our search response, which
+		// emits names), the handler must send a single term ID to
+		// Store API — not `category=123,123` which is ugly and, on
+		// some WC versions, caches differently than `category=123`.
+		$this->seed_term( 42, 'tops', 'Tops' );
+
+		$this->successful_search(
+			[ 'filters' => [ 'categories' => [ 'tops', 'Tops' ] ] ]
+		);
+
+		$this->assertEquals( '42', $this->captured_store_params['category'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -458,27 +509,52 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	// Store API error handling
 	// ------------------------------------------------------------------
 
-	public function test_store_api_5xx_returns_ucp_internal_error(): void {
-		// If WC's Store API blows up, surface it as a UCP internal_error
-		// with 500 rather than proxying whatever WC returned. Agents
-		// should see a consistent UCP error shape regardless of the
-		// underlying failure mode.
-		$this->fake_list_status = 500;
-
+	/**
+	 * Invoke the handler expecting an error UCP response.
+	 *
+	 * @param array<string, mixed> $body
+	 */
+	private function assert_search_error( array $body, int $expected_status, string $expected_code ): array {
 		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_catalog_search(
-			$this->search_request( [] )
-		);
+		$response   = $controller->handle_catalog_search( $this->search_request( $body ) );
 
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( 'ucp_internal_error', $response->get_error_code() );
-		$this->assertEquals( [ 'status' => 500 ], $response->get_error_data() );
+		$this->assertInstanceOf( WP_REST_Response::class, $response );
+		$this->assertEquals( $expected_status, $response->get_status() );
+
+		$data = $response->get_data();
+		$this->assertArrayHasKey( 'ucp', $data );
+		$this->assertSame( [], $data['products'] );
+		$this->assertArrayHasKey( 'messages', $data );
+
+		$codes = array_column( $data['messages'], 'code' );
+		$this->assertContains( $expected_code, $codes );
+
+		return $data;
 	}
 
-	public function test_store_api_4xx_treated_as_empty_result(): void {
-		// A 4xx from Store API typically means an invalid filter value
-		// (e.g., category=nonexistent). UCP treats this as a business
-		// outcome: "no products match," not a protocol error.
+	public function test_store_api_5xx_returns_ucp_internal_error(): void {
+		// If WC's Store API blows up, surface it as a UCP internal_error
+		// with 500. Agents see a consistent UCP-envelope error shape
+		// regardless of the underlying failure mode.
+		$this->fake_list_status = 500;
+
+		$this->assert_search_error( [], 500, 'ucp_internal_error' );
+	}
+
+	public function test_store_api_400_returns_ucp_internal_error(): void {
+		// 400 from Store API means WE constructed a bad request (bad
+		// min_price format, malformed category IDs, etc.) — that's a
+		// bug in our translation layer, not an agent error. Surface
+		// as internal_error so the merchant notices instead of
+		// silently returning empty results.
+		$this->fake_list_status = 400;
+
+		$this->assert_search_error( [], 500, 'ucp_internal_error' );
+	}
+
+	public function test_store_api_404_treated_as_empty_result(): void {
+		// 404 is the only 4xx that legitimately means "no products
+		// match the filter" — agents see 200 with products: [].
 		$this->fake_list_status = 404;
 
 		$body = $this->successful_search( [] );
@@ -494,18 +570,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Merchant has paused syndication via the admin UI. Routes stay
 		// registered (to avoid rewrite-flush churn on every toggle), but
 		// the handler must refuse to serve catalog data — otherwise the
-		// "pause" control silently fails open. Verified by all three
-		// handler test files; this is the search path.
+		// "pause" control silently fails open.
 		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$response   = $controller->handle_catalog_search(
-			$this->search_request( [ 'query' => 'anything' ] )
+		$this->assert_search_error(
+			[ 'query' => 'anything' ],
+			503,
+			'ucp_disabled'
 		);
-
-		$this->assertInstanceOf( WP_Error::class, $response );
-		$this->assertEquals( 'ucp_disabled', $response->get_error_code() );
-		$this->assertEquals( [ 'status' => 503 ], $response->get_error_data() );
 
 		// Critical: must short-circuit BEFORE dispatching anything to
 		// the Store API. If the disabled check is ordered wrong, we'd

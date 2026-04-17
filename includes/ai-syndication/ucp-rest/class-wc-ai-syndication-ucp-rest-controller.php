@@ -168,9 +168,17 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * @return WP_Error|WP_REST_Response
 	 */
 	public function handle_catalog_search( WP_REST_Request $request ) {
-		$disabled = self::check_syndication_enabled();
-		if ( $disabled ) {
-			return $disabled;
+		$capability = 'dev.ucp.shopping.catalog.search';
+
+		if ( self::is_syndication_disabled() ) {
+			WC_AI_Syndication_Logger::debug( 'UCP catalog/search rejected: syndication disabled' );
+			return self::ucp_catalog_error_response(
+				$capability,
+				__( 'AI Syndication is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
+				'ucp_disabled',
+				null,
+				503
+			);
 		}
 
 		// Attribution: note the calling agent (unblocking; logging only).
@@ -184,7 +192,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			);
 		}
 
-		$store_params = self::map_ucp_search_to_store_api( $request );
+		[ $store_params, $mapping_messages ] = self::map_ucp_search_to_store_api( $request );
 
 		$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products' );
 		foreach ( $store_params as $k => $v ) {
@@ -193,46 +201,96 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 		$store_response = rest_do_request( $store_request );
 
-		if ( is_wp_error( $store_response ) || $store_response->get_status() >= 500 ) {
-			return new WP_Error(
-				'ucp_internal_error',
+		if ( $store_response instanceof WP_Error ) {
+			WC_AI_Syndication_Logger::debug(
+				'UCP catalog/search: Store API dispatch returned WP_Error: '
+				. $store_response->get_error_message()
+			);
+			return self::ucp_catalog_error_response(
+				$capability,
 				__( 'Unable to fetch products from the store.', 'woocommerce-ai-syndication' ),
-				[ 'status' => 500 ]
+				'ucp_internal_error',
+				null,
+				500
 			);
 		}
 
-		// 4xx from Store API (invalid filter, e.g., unknown category) is
-		// treated as "no results" rather than an error: the agent's query
-		// simply didn't match anything. UCP's business-outcome convention.
+		$store_status = $store_response->get_status();
+
+		// Branch by status class:
+		//   - 5xx + 400/403: our translation layer or WC itself is broken;
+		//     surface as internal_error so the merchant notices (not as
+		//     "agent's query didn't match anything").
+		//   - 404: genuinely no products matching the filters — empty
+		//     results, 200 response with products: [].
+		//   - Other 4xx: same as 404 (e.g., WC quirks on rare filter
+		//     combinations); log and return empty.
+		//   - 2xx: happy path.
+		if ( $store_status >= 500 || 400 === $store_status || 403 === $store_status ) {
+			WC_AI_Syndication_Logger::debug(
+				sprintf(
+					'UCP catalog/search: Store API returned %d — likely a bug in UCP→Store API param mapping',
+					$store_status
+				)
+			);
+			return self::ucp_catalog_error_response(
+				$capability,
+				__( 'Unable to fetch products from the store.', 'woocommerce-ai-syndication' ),
+				'ucp_internal_error',
+				null,
+				500
+			);
+		}
+
 		$wc_products = [];
-		if ( $store_response->get_status() < 400 ) {
+		if ( $store_status < 400 ) {
 			$data = $store_response->get_data();
 			if ( is_array( $data ) ) {
 				$wc_products = $data;
+			} else {
+				WC_AI_Syndication_Logger::debug(
+					'UCP catalog/search: Store API response body was not an array (possible plugin conflict)'
+				);
 			}
+		} else {
+			WC_AI_Syndication_Logger::debug(
+				sprintf(
+					'UCP catalog/search: Store API returned %d, treating as empty result set',
+					$store_status
+				)
+			);
 		}
 
-		$products = [];
+		$products         = [];
+		$variant_messages = [];
 		foreach ( $wc_products as $wc_product ) {
 			if ( ! is_array( $wc_product ) ) {
 				continue;
 			}
-			$wc_variations = self::fetch_variations_for( $wc_product );
-			$products[]    = WC_AI_Syndication_UCP_Product_Translator::translate(
+			$variation_fetch = self::fetch_variations_for( $wc_product );
+			if ( $variation_fetch['skipped'] > 0 ) {
+				$variant_messages[] = self::partial_variants_message(
+					(int) ( $wc_product['id'] ?? 0 ),
+					$variation_fetch['skipped']
+				);
+			}
+			$products[] = WC_AI_Syndication_UCP_Product_Translator::translate(
 				$wc_product,
-				$wc_variations
+				$variation_fetch['variations']
 			);
 		}
 
-		return new WP_REST_Response(
-			[
-				'ucp'      => WC_AI_Syndication_UCP_Envelope::catalog_envelope(
-					'dev.ucp.shopping.catalog.search'
-				),
-				'products' => $products,
-			],
-			200
-		);
+		$body = [
+			'ucp'      => WC_AI_Syndication_UCP_Envelope::catalog_envelope( $capability ),
+			'products' => $products,
+		];
+
+		$messages = array_merge( $mapping_messages, $variant_messages );
+		if ( ! empty( $messages ) ) {
+			$body['messages'] = $messages;
+		}
+
+		return new WP_REST_Response( $body, 200 );
 	}
 
 	/**
@@ -252,38 +310,49 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * @return WP_Error|WP_REST_Response
 	 */
 	public function handle_catalog_lookup( WP_REST_Request $request ) {
-		$disabled = self::check_syndication_enabled();
-		if ( $disabled ) {
-			return $disabled;
+		$capability = 'dev.ucp.shopping.catalog.lookup';
+
+		if ( self::is_syndication_disabled() ) {
+			WC_AI_Syndication_Logger::debug( 'UCP catalog/lookup rejected: syndication disabled' );
+			return self::ucp_catalog_error_response(
+				$capability,
+				__( 'AI Syndication is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
+				'ucp_disabled',
+				null,
+				503
+			);
 		}
 
 		$ids = $request->get_param( 'ids' );
 
 		if ( ! is_array( $ids ) ) {
-			return new WP_Error(
-				'ucp_invalid_input',
+			return self::ucp_catalog_error_response(
+				$capability,
 				__( 'Request body must include an "ids" array.', 'woocommerce-ai-syndication' ),
-				[ 'status' => 400 ]
+				'invalid_input',
+				'$.ids'
 			);
 		}
 
 		if ( empty( $ids ) ) {
-			return new WP_Error(
-				'ucp_invalid_input',
+			return self::ucp_catalog_error_response(
+				$capability,
 				__( 'The "ids" array must contain at least one ID.', 'woocommerce-ai-syndication' ),
-				[ 'status' => 400 ]
+				'invalid_input',
+				'$.ids'
 			);
 		}
 
 		if ( count( $ids ) > self::MAX_IDS_PER_LOOKUP ) {
-			return new WP_Error(
-				'ucp_invalid_input',
+			return self::ucp_catalog_error_response(
+				$capability,
 				sprintf(
 					/* translators: %d is the maximum number of IDs per request. */
 					__( 'The "ids" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-syndication' ),
 					self::MAX_IDS_PER_LOOKUP
 				),
-				[ 'status' => 400 ]
+				'invalid_input',
+				'$.ids'
 			);
 		}
 
@@ -305,23 +374,27 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			}
 
 			// Variable products: pre-fetch each variation's full Store API
-			// response so WC_AI_Syndication_UCP_Product_Translator can
-			// emit one real variant per variation rather than a synthesized
-			// default. Skipped variations (fetch failed) are silently
-			// omitted — a partial set is still more useful than a
-			// synthesized fallback.
-			$wc_variations = self::fetch_variations_for( $wc_product );
+			// response so the product translator can emit one real variant
+			// per variation rather than a synthesized default. When any
+			// variations fail to fetch, we still render the product (partial
+			// set beats synthesized fallback) but emit a `partial_variants`
+			// warning so agents know the variant list is incomplete.
+			$variation_fetch = self::fetch_variations_for( $wc_product );
+			if ( $variation_fetch['skipped'] > 0 ) {
+				$messages[] = self::partial_variants_message(
+					(int) ( $wc_product['id'] ?? 0 ),
+					$variation_fetch['skipped']
+				);
+			}
 
 			$products[] = WC_AI_Syndication_UCP_Product_Translator::translate(
 				$wc_product,
-				$wc_variations
+				$variation_fetch['variations']
 			);
 		}
 
 		$response_body = [
-			'ucp'      => WC_AI_Syndication_UCP_Envelope::catalog_envelope(
-				'dev.ucp.shopping.catalog.lookup'
-			),
+			'ucp'      => WC_AI_Syndication_UCP_Envelope::catalog_envelope( $capability ),
 			'products' => $products,
 		];
 
@@ -375,30 +448,35 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * @return WP_Error|WP_REST_Response
 	 */
 	public function handle_checkout_sessions_create( WP_REST_Request $request ) {
-		$disabled = self::check_syndication_enabled();
-		if ( $disabled ) {
-			return $disabled;
+		if ( self::is_syndication_disabled() ) {
+			WC_AI_Syndication_Logger::debug( 'UCP checkout-sessions rejected: syndication disabled' );
+			return self::ucp_checkout_error_response(
+				__( 'AI Syndication is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
+				'ucp_disabled',
+				null,
+				503
+			);
 		}
 
 		$line_items_raw = $request->get_param( 'line_items' );
 
 		if ( ! is_array( $line_items_raw ) || empty( $line_items_raw ) ) {
-			return new WP_Error(
-				'ucp_invalid_input',
+			return self::ucp_checkout_error_response(
 				__( 'Request must include a non-empty "line_items" array.', 'woocommerce-ai-syndication' ),
-				[ 'status' => 400 ]
+				'invalid_input',
+				'$.line_items'
 			);
 		}
 
 		if ( count( $line_items_raw ) > self::MAX_LINE_ITEMS_PER_CHECKOUT ) {
-			return new WP_Error(
-				'ucp_invalid_input',
+			return self::ucp_checkout_error_response(
 				sprintf(
 					/* translators: %d is the maximum number of line items per request. */
 					__( 'The "line_items" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-syndication' ),
 					self::MAX_LINE_ITEMS_PER_CHECKOUT
 				),
-				[ 'status' => 400 ]
+				'invalid_input',
+				'$.line_items'
 			);
 		}
 
@@ -503,32 +581,117 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	// ------------------------------------------------------------------
 
 	/**
-	 * Return a UCP error response if AI Syndication is disabled, else null.
+	 * True when the merchant has paused syndication via the admin UI.
 	 *
 	 * Routes are registered unconditionally on `rest_api_init` so the
-	 * rewrite-rule and permalink state stays stable across enable/disable
-	 * toggles. Gating access lives here instead: when the merchant has
-	 * paused syndication, each handler returns a UCP-shaped 503 error
-	 * before doing any work. Agents see a clean signal ("the service is
-	 * temporarily offline") rather than a confusing success response
-	 * with filtered or empty catalog data.
+	 * rewrite-rule state stays stable across enable/disable toggles.
+	 * Gating lives inside each handler: they check this first, and if
+	 * disabled, return a UCP-envelope-shaped error via
+	 * `ucp_catalog_error_response()` / `ucp_checkout_error_response()`.
 	 *
 	 * The routes still dispatch to the WooCommerce Store API at its
 	 * own path when disabled — merchants who pause AI Syndication do
 	 * not lose their regular Store API access, only the UCP wrapper.
-	 *
-	 * @return ?WP_Error Null when enabled; WP_Error with status 503 when off.
 	 */
-	private static function check_syndication_enabled(): ?WP_Error {
+	private static function is_syndication_disabled(): bool {
 		$settings = WC_AI_Syndication::get_settings();
-		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
-			return new WP_Error(
-				'ucp_disabled',
-				__( 'AI Syndication is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
-				[ 'status' => 503 ]
-			);
+		return 'yes' !== ( $settings['enabled'] ?? 'no' );
+	}
+
+	/**
+	 * Build a catalog response body carrying a single UCP error message.
+	 *
+	 * Use for any failure on /catalog/search or /catalog/lookup that
+	 * needs a UCP-envelope shape (validation errors, disabled-state
+	 * rejections, upstream Store API failures). Returning a
+	 * `WP_REST_Response` instead of a `WP_Error` means agents see the
+	 * same envelope shape regardless of success vs. failure — strict
+	 * UCP clients can parse both without a shape-switch.
+	 *
+	 * `products: []` is always present because the catalog response
+	 * schema requires it. `messages` carries the single error describing
+	 * what went wrong.
+	 *
+	 * @param string  $capability_key e.g. 'dev.ucp.shopping.catalog.search'
+	 * @param string  $content        Human-readable error detail.
+	 * @param string  $code           UCP error code (default: 'invalid_input').
+	 * @param ?string $path           Optional JSONPath locator into the request body.
+	 * @param int     $status         HTTP status code (default: 400).
+	 */
+	private static function ucp_catalog_error_response(
+		string $capability_key,
+		string $content,
+		string $code = 'invalid_input',
+		?string $path = null,
+		int $status = 400
+	): WP_REST_Response {
+		$message = [
+			'type'     => 'error',
+			'code'     => $code,
+			'severity' => 'unrecoverable',
+			'content'  => $content,
+		];
+		if ( null !== $path ) {
+			$message['path'] = $path;
 		}
-		return null;
+
+		return new WP_REST_Response(
+			[
+				'ucp'      => WC_AI_Syndication_UCP_Envelope::catalog_envelope( $capability_key ),
+				'products' => [],
+				'messages' => [ $message ],
+			],
+			$status
+		);
+	}
+
+	/**
+	 * Build a checkout response body carrying a single UCP error message.
+	 *
+	 * Same rationale as `ucp_catalog_error_response()`, but populating
+	 * all required fields of the checkout response schema: `id`,
+	 * `status`, `currency`, `line_items` (empty), `totals` (zeroed
+	 * subtotal), `links` (empty). A validation failure still produces
+	 * a schema-conformant response body.
+	 */
+	private static function ucp_checkout_error_response(
+		string $content,
+		string $code = 'invalid_input',
+		?string $path = null,
+		int $status = 400
+	): WP_REST_Response {
+		$message = [
+			'type'     => 'error',
+			'code'     => $code,
+			'severity' => 'unrecoverable',
+			'content'  => $content,
+		];
+		if ( null !== $path ) {
+			$message['path'] = $path;
+		}
+
+		$currency = function_exists( 'get_woocommerce_currency' )
+			? (string) get_woocommerce_currency()
+			: 'USD';
+
+		return new WP_REST_Response(
+			[
+				'ucp'        => WC_AI_Syndication_UCP_Envelope::checkout_envelope(),
+				'id'         => 'chk_' . bin2hex( random_bytes( 8 ) ),
+				'status'     => 'error',
+				'currency'   => $currency,
+				'line_items' => [],
+				'totals'     => [
+					[
+						'type'   => 'subtotal',
+						'amount' => 0,
+					],
+				],
+				'links'      => [],
+				'messages'   => [ $message ],
+			],
+			$status
+		);
 	}
 
 	/**
@@ -550,7 +713,18 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			return 0;
 		}
 
-		$stripped = preg_replace( '/^(prod_|var_)/', '', $raw_id );
+		// Prefix strings live on the translator classes as constants
+		// (PRODUCT_ID_PREFIX, VARIANT_ID_PREFIX). Building the regex
+		// from those constants prevents drift if either is ever
+		// renamed — the parse logic and the emit logic stay in sync
+		// through one shared source of truth.
+		$prefix_re = sprintf(
+			'/^(%s|%s)/',
+			preg_quote( WC_AI_Syndication_UCP_Product_Translator::PRODUCT_ID_PREFIX, '/' ),
+			preg_quote( WC_AI_Syndication_UCP_Variant_Translator::VARIANT_ID_PREFIX, '/' )
+		);
+
+		$stripped = preg_replace( $prefix_re, '', $raw_id );
 		return (int) $stripped;
 	}
 
@@ -573,57 +747,106 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$request  = new WP_REST_Request( 'GET', '/wc/store/v1/products/' . $id );
 		$response = rest_do_request( $request );
 
-		if ( is_wp_error( $response ) ) {
+		// Three distinct failure modes collapse to a single `null`
+		// return (caller treats as "not found"), but each gets its
+		// own debug log so production incidents can be diagnosed:
+		//
+		//   - WP_Error: internal REST pipeline failure (filter threw,
+		//     handler is missing, etc.). Returning null treats it as
+		//     "product missing" to the agent; the log surfaces the
+		//     real cause.
+		//   - 4xx status: usually a genuine 404 (product does not
+		//     exist or is excluded by the Store API filter). Logged
+		//     at info level so catalog misses are visible during debug.
+		//   - Non-array body: plugin-conflict smell (some other plugin
+		//     hooking rest_post_dispatch returned a string/object).
+		//     Logged so this doesn't become a mystery empty catalog.
+		if ( $response instanceof WP_Error ) {
+			WC_AI_Syndication_Logger::debug(
+				sprintf(
+					'UCP fetch_store_api_product(%d): WP_Error — %s',
+					$id,
+					$response->get_error_message()
+				)
+			);
 			return null;
 		}
 
-		if ( $response->get_status() >= 400 ) {
+		$status = $response->get_status();
+		if ( $status >= 400 ) {
+			WC_AI_Syndication_Logger::debug(
+				sprintf(
+					'UCP fetch_store_api_product(%d): Store API returned %d',
+					$id,
+					$status
+				)
+			);
 			return null;
 		}
 
 		$data = $response->get_data();
-		return is_array( $data ) ? $data : null;
+		if ( ! is_array( $data ) ) {
+			WC_AI_Syndication_Logger::debug(
+				sprintf(
+					'UCP fetch_store_api_product(%d): response body was not an array (possible plugin conflict)',
+					$id
+				)
+			);
+			return null;
+		}
+
+		return $data;
 	}
 
 	/**
 	 * For variable products, fetch each variation's full Store API
 	 * response so the product translator can emit per-variation
-	 * variants. Simple products return an empty array.
+	 * variants. Simple products return an empty `variations` list.
 	 *
-	 * Variations that fail to fetch are silently skipped rather than
-	 * aborting the whole translation — partial variant lists are
-	 * better than synthesized-default fallbacks for agents trying to
-	 * surface the real price range to users.
+	 * Variations that fail to fetch are skipped rather than aborting
+	 * the whole translation — partial variant lists are better than
+	 * synthesized-default fallbacks for agents trying to surface the
+	 * real price range to users. The `skipped` count is exposed in
+	 * the return value so callers can emit a `partial_variants`
+	 * warning to the agent (otherwise the variants list would silently
+	 * disagree with the product's price_range, giving agents bad data
+	 * with no signal to distrust it).
 	 *
 	 * Capped at MAX_VARIATIONS_PER_PRODUCT to bound the N+1 fan-out.
-	 * A product with 200 variations would otherwise trigger 200
-	 * internal dispatches just for one hit of a search response.
-	 * Agents that need every variation of a high-variant-count product
-	 * can paginate via repeated `POST /catalog/lookup` calls with
-	 * specific `var_N` IDs.
+	 * `array_slice` preserves source order so variations come back in
+	 * the same sequence WC emitted — important because the product's
+	 * `options` (attribute order) is derived from the variations list.
+	 * Slice overage counts toward the skipped total so agents see a
+	 * single consistent signal regardless of whether variations were
+	 * lost to the cap or to fetch failures.
 	 *
 	 * @param array<string, mixed> $wc_product Store API response for the parent product.
-	 * @return array<int, array<string, mixed>>
+	 * @return array{variations: array<int, array<string, mixed>>, skipped: int}
 	 */
 	private static function fetch_variations_for( array $wc_product ): array {
 		if ( 'variable' !== ( $wc_product['type'] ?? '' ) ) {
-			return [];
+			return [
+				'variations' => [],
+				'skipped'    => 0,
+			];
 		}
 
 		$variation_refs = $wc_product['variations'] ?? [];
 		if ( ! is_array( $variation_refs ) || empty( $variation_refs ) ) {
-			return [];
+			return [
+				'variations' => [],
+				'skipped'    => 0,
+			];
 		}
 
-		// Hard cap before entering the fetch loop. `array_slice` preserves
-		// source order so variations come back in the same sequence WC
-		// emitted — important because the product's `options` (attribute
-		// order) is derived from the variations list.
-		if ( count( $variation_refs ) > self::MAX_VARIATIONS_PER_PRODUCT ) {
+		$total_declared = count( $variation_refs );
+
+		if ( $total_declared > self::MAX_VARIATIONS_PER_PRODUCT ) {
 			$variation_refs = array_slice( $variation_refs, 0, self::MAX_VARIATIONS_PER_PRODUCT );
 		}
 
-		$variations = [];
+		$variations      = [];
+		$fetch_attempted = 0;
 		foreach ( $variation_refs as $ref ) {
 			// WC Store API emits `variations` as `[{id, attributes}, ...]`
 			// — just the pointer. Fetch the full variation record.
@@ -635,13 +858,33 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				continue;
 			}
 
+			++$fetch_attempted;
 			$data = self::fetch_store_api_product( $variation_id );
 			if ( null !== $data ) {
 				$variations[] = $data;
 			}
 		}
 
-		return $variations;
+		// Skipped = everything the product declared that didn't make it
+		// into $variations. Includes cap-truncated + fetch-failed +
+		// malformed-ref entries.
+		$skipped = $total_declared - count( $variations );
+
+		if ( $skipped > 0 ) {
+			WC_AI_Syndication_Logger::debug(
+				sprintf(
+					'UCP fetch_variations_for(%d): skipped %d of %d declared variations',
+					(int) ( $wc_product['id'] ?? 0 ),
+					$skipped,
+					$total_declared
+				)
+			);
+		}
+
+		return [
+			'variations' => $variations,
+			'skipped'    => $skipped,
+		];
 	}
 
 	/**
@@ -661,8 +904,39 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	}
 
 	/**
+	 * Build a `partial_variants` warning message for a product whose
+	 * variations weren't fully retrievable.
+	 *
+	 * Without this warning, agents would see a product's price_range
+	 * (computed at the DB level by WC from all variations) disagree
+	 * with the rendered variants[] list (which may be short due to
+	 * fetch failures or the per-product variation cap). The message
+	 * alerts agents that the variant data is known-incomplete.
+	 *
+	 * @return array<string, string>
+	 */
+	private static function partial_variants_message( int $product_id, int $skipped ): array {
+		return [
+			'type'     => 'warning',
+			'code'     => 'partial_variants',
+			'severity' => 'advisory',
+			'content'  => sprintf(
+				/* translators: 1: number of variations missing, 2: WC product ID. */
+				_n(
+					'%1$d variation of product %2$d could not be loaded; the variants list is incomplete.',
+					'%1$d variations of product %2$d could not be loaded; the variants list is incomplete.',
+					$skipped,
+					'woocommerce-ai-syndication'
+				),
+				$skipped,
+				$product_id
+			),
+		];
+	}
+
+	/**
 	 * Translate a UCP search request's body fields onto WC Store API
-	 * query params.
+	 * query params and surface any category-resolution warnings.
 	 *
 	 * Mapping:
 	 *   query                → search       (full-text match)
@@ -671,15 +945,20 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *   filters.price.max    → max_price
 	 *
 	 * Non-object `filters`, unknown keys, and malformed nested shapes
-	 * are silently ignored — returning an empty `$params` array is
-	 * equivalent to "list all products," which is the sensible fallback
-	 * for a garbled search query. (Pipeline-breaking input — e.g., body
-	 * not even an object — is rejected upstream by WP's REST dispatcher.)
+	 * are silently ignored — returning empty `$params` is equivalent
+	 * to "list all products," a sensible fallback for garbled input.
 	 *
-	 * @return array<string, string|int>
+	 * Unresolvable category strings in `filters.categories` ARE
+	 * surfaced: they produce a `category_not_found` warning in the
+	 * returned messages array so agents learn their filter didn't
+	 * apply (instead of silently receiving the unfiltered catalog).
+	 *
+	 * @return array{0: array<string, string|int>, 1: array<int, array<string, mixed>>}
+	 *         [params, messages]
 	 */
 	private static function map_ucp_search_to_store_api( WP_REST_Request $request ): array {
-		$params = [];
+		$params   = [];
+		$messages = [];
 
 		$query = $request->get_param( 'query' );
 		if ( is_string( $query ) && '' !== $query ) {
@@ -688,13 +967,26 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 		$filters = $request->get_param( 'filters' );
 		if ( ! is_array( $filters ) ) {
-			return $params;
+			return [ $params, $messages ];
 		}
 
 		if ( isset( $filters['categories'] ) && is_array( $filters['categories'] ) ) {
-			$term_ids = self::resolve_category_term_ids( $filters['categories'] );
-			if ( ! empty( $term_ids ) ) {
-				$params['category'] = implode( ',', $term_ids );
+			$category_result = self::resolve_category_term_ids( $filters['categories'] );
+			if ( ! empty( $category_result['ids'] ) ) {
+				$params['category'] = implode( ',', $category_result['ids'] );
+			}
+			foreach ( $category_result['unresolved'] as $index => $bad ) {
+				$messages[] = [
+					'type'     => 'warning',
+					'code'     => 'category_not_found',
+					'severity' => 'advisory',
+					'path'     => '$.filters.categories[' . $index . ']',
+					'content'  => sprintf(
+						/* translators: %s is the category slug/name the agent sent that couldn't be resolved. */
+						__( 'Category "%s" was not found; filter ignored for this value.', 'woocommerce-ai-syndication' ),
+						$bad
+					),
+				];
 			}
 		}
 
@@ -708,7 +1000,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			}
 		}
 
-		return $params;
+		return [ $params, $messages ];
 	}
 
 	/**
@@ -718,21 +1010,35 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * slugs or names — despite some documentation saying otherwise.
 	 * We try slug lookup first (canonical, URL-safe), then name as a
 	 * fallback so agents echoing back category values from our search
-	 * responses still work. Unresolvable strings are silently dropped
-	 * rather than returning an error: the agent asked for a category
-	 * that doesn't exist, which naturally yields an empty result set.
+	 * responses still work.
+	 *
+	 * Returns both the resolved IDs (deduplicated — `["shirts","Shirts"]`
+	 * both resolving to term 123 produces `ids: [123]`, not `[123,123]`)
+	 * AND the subset of input strings that couldn't be resolved. The
+	 * caller surfaces the unresolved set as `category_not_found`
+	 * warnings to the agent — the old behavior of silently dropping
+	 * them would cause the agent to see the full unfiltered catalog
+	 * (the opposite of what they asked for) with no indication that
+	 * the filter was ignored.
 	 *
 	 * A future release should revisit emitting slugs from
 	 * `WC_AI_Syndication_UCP_Product_Translator::extract_categories()`
 	 * so round-tripping doesn't rely on the name fallback here.
 	 *
 	 * @param array<int, mixed> $inputs
-	 * @return array<int, int>
+	 * @return array{ids: array<int, int>, unresolved: array<int, string>}
+	 *         `unresolved` preserves the original request index as key
+	 *         so callers can build JSONPath locators.
 	 */
 	private static function resolve_category_term_ids( array $inputs ): array {
-		$ids = [];
-		foreach ( $inputs as $input ) {
+		$ids        = [];
+		$unresolved = [];
+
+		foreach ( $inputs as $index => $input ) {
 			if ( ! is_string( $input ) || '' === $input ) {
+				// Skip non-string/empty inputs silently — they're
+				// malformed enough that `category_not_found` would be
+				// misleading (the agent didn't even spell a category).
 				continue;
 			}
 
@@ -742,9 +1048,15 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			}
 			if ( $term && ! is_wp_error( $term ) ) {
 				$ids[] = (int) $term->term_id;
+			} else {
+				$unresolved[ (int) $index ] = $input;
 			}
 		}
-		return $ids;
+
+		return [
+			'ids'        => array_values( array_unique( $ids ) ),
+			'unresolved' => $unresolved,
+		];
 	}
 
 	/**
@@ -862,9 +1174,10 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$type = $wc_product['type'] ?? 'simple';
 
 		// Variable product PARENT sent where a specific variation is
-		// required. Shareable Checkout URLs can't add a parent to cart —
-		// they need the variation ID.
-		if ( 'variable' === $type ) {
+		// required. Shareable Checkout URLs can't add a parent to cart
+		// — they need a concrete variation ID. `variable-subscription`
+		// is the subscription-extension variant of the same kind.
+		if ( 'variable' === $type || 'variable-subscription' === $type ) {
 			$messages[] = array_merge(
 				self::checkout_error_message( 'variation_required', $path . '.item.id' ),
 				[
@@ -880,11 +1193,20 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			];
 		}
 
-		// Grouped + external products don't fit the Shareable Checkout URL
-		// model (grouped = multiple sub-products; external = redirect to
-		// third-party seller). Agents should use the product's permalink
-		// directly rather than our checkout flow.
-		if ( 'grouped' === $type || 'external' === $type ) {
+		// Types incompatible with Shareable Checkout URLs:
+		//   - grouped: multiple sub-products with per-child quantities
+		//   - external: redirect to a third-party seller's site
+		//   - subscription / subscription_variation: recurring billing;
+		//     the Shareable Checkout URL treats every item as a one-off
+		//     purchase, which mis-routes subscription sign-ups
+		//
+		// The UCP manifest's purchase_urls.checkout_link.unsupported
+		// list already advertises this; the handler enforces the
+		// contract. Agents should link directly to the product
+		// permalink for these types.
+		if ( 'grouped' === $type || 'external' === $type
+			|| 'subscription' === $type || 'subscription_variation' === $type
+		) {
 			$messages[] = self::checkout_error_message( 'product_type_unsupported', $path . '.item.id' );
 			return [
 				'processed' => null,
@@ -892,16 +1214,20 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			];
 		}
 
-		// Out of stock is a warning, not a rejection: the merchant's
-		// store may allow backorders, and we shouldn't second-guess.
-		// The line item stays in the continue_url; checkout decides.
+		// Out-of-stock rejected outright. WC's `is_in_stock` already
+		// factors the merchant's backorder settings: when it's false,
+		// WooCommerce has concluded the item is not purchasable right
+		// now. Passing it through to continue_url would hand the user
+		// a checkout that then refuses the item — worse UX than
+		// surfacing the error at the source. Merchants who want to
+		// accept backorders should ensure their product's backorder
+		// setting makes `is_in_stock` return true.
 		$in_stock = (bool) ( $wc_product['is_in_stock'] ?? true );
 		if ( ! $in_stock ) {
-			$messages[] = [
-				'type'     => 'warning',
-				'code'     => 'out_of_stock',
-				'path'     => $path . '.item.id',
-				'severity' => 'advisory',
+			$messages[] = self::checkout_error_message( 'out_of_stock', $path . '.item.id' );
+			return [
+				'processed' => null,
+				'messages'  => $messages,
 			];
 		}
 

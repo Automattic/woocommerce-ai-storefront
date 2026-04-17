@@ -9,6 +9,21 @@ parameters:
     # fully type-hint its arrays yet.
     level: 5
 
+    # WordPress stubs frequently under-declare return types — the most
+    # common case: `rest_do_request()` is stubbed as returning only
+    # `WP_REST_Response`, but at runtime it can also return `WP_Error`
+    # (e.g. when the route doesn't exist or a handler threw).
+    # Without this setting, `is_wp_error($response)` and
+    # `$response instanceof WP_Error` both read as "always false" on
+    # such stubs, disabling legitimate runtime checks.
+    #
+    # Setting this false tells PHPStan: PHPDoc types are hints, not
+    # guarantees — runtime checks that would disprove them should be
+    # honored. Trade-off: we lose some false-positive detection on
+    # PHPDoc-over-declared unions, but gain back the ability to
+    # defensively check error types that WP stubs miss.
+    treatPhpDocTypesAsCertain: false
+
     paths:
         - includes
         - woocommerce-ai-syndication.php
@@ -59,10 +74,6 @@ parameters:
         - identifier: function.notFound
           path: includes/*
           message: '#Function (is_shop|get_woocommerce_currency|get_woocommerce_currency_symbol) not found#'
-        # WP `strtotime()` can return `false`, but the WP stubs declare
-        # it as int<1,max>. The plugin's defensive check is correct
-        # runtime behavior — the stub is wrong. Ignore until fixed
-        # upstream.
-        - identifier: identical.alwaysFalse
-          path: includes/ai-syndication/class-wc-ai-syndication-attribution.php
-          message: '#Strict comparison using === between false and int#'
+        # (The previous `strtotime` alwaysFalse ignore was removed when
+        # treatPhpDocTypesAsCertain:false started honoring the defensive
+        # `=== false` check — PHPStan no longer flags it as unreachable.)
