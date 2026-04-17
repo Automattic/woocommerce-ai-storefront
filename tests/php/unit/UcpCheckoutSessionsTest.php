@@ -1,0 +1,640 @@
+<?php
+/**
+ * Tests for WC_AI_Syndication_UCP_REST_Controller::handle_checkout_sessions_create.
+ *
+ * The checkout-sessions handler is the most distinctive of the three:
+ * stateless, redirect-only, with per-line-item validation and a
+ * Shareable Checkout URL composition. Covers:
+ *
+ *   - Input validation (missing/empty line_items → 400)
+ *   - Happy path: simple + variation IDs → continue_url + 201
+ *   - All items invalid → 200 with status=error, no continue_url
+ *   - Mixed valid + invalid
+ *   - Product type gates (variable parent → variation_required,
+ *     grouped/external → product_type_unsupported)
+ *   - Out-of-stock = warning, still includable
+ *   - UTM source from UCP-Agent (happy + fallback)
+ *   - Legal links with graceful degradation + warnings
+ *   - Totals computation, currency, session-id format
+ *   - Round-trip-preserving ucp_id echo in line_items
+ *
+ * @package WooCommerce_AI_Syndication
+ */
+
+use Brain\Monkey;
+use Brain\Monkey\Functions;
+use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
+
+class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
+	use MockeryPHPUnitIntegration;
+
+	/**
+	 * Per-ID canned Store API responses.
+	 *
+	 * @var array<int, array<string, mixed>|null>
+	 */
+	private array $fake_store_api = [];
+
+	protected function setUp(): void {
+		parent::setUp();
+		Monkey\setUp();
+
+		$this->fake_store_api = [];
+
+		Functions\when( '__' )->returnArg();
+		Functions\when( 'home_url' )->alias(
+			static fn( string $path = '' ): string => 'https://example.com' . $path
+		);
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy' );
+		Functions\when( 'wc_get_page_permalink' )->alias(
+			static fn( string $page ): string => 'https://example.com/terms'
+		);
+
+		$api = &$this->fake_store_api;
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $request ) use ( &$api ) {
+				$route = $request->get_route();
+				if ( ! preg_match( '#^/wc/store/v1/products/(\d+)$#', $route, $m ) ) {
+					return new WP_REST_Response( null, 500 );
+				}
+				$id = (int) $m[1];
+				if ( ! array_key_exists( $id, $api ) || null === $api[ $id ] ) {
+					return new WP_REST_Response( null, 404 );
+				}
+				return new WP_REST_Response( $api[ $id ], 200 );
+			}
+		);
+	}
+
+	protected function tearDown(): void {
+		Monkey\tearDown();
+		parent::tearDown();
+	}
+
+	// ------------------------------------------------------------------
+	// Test helpers
+	// ------------------------------------------------------------------
+
+	private function seed_simple_product( int $id, int $price_minor = 1000, bool $in_stock = true ): void {
+		$this->fake_store_api[ $id ] = [
+			'id'          => $id,
+			'name'        => 'Simple #' . $id,
+			'type'        => 'simple',
+			'is_in_stock' => $in_stock,
+			'prices'      => [
+				'price'         => (string) $price_minor,
+				'currency_code' => 'USD',
+			],
+		];
+	}
+
+	private function seed_variation( int $id, int $price_minor = 1500 ): void {
+		$this->fake_store_api[ $id ] = [
+			'id'          => $id,
+			'name'        => 'T-Shirt',
+			'type'        => 'variation',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'         => (string) $price_minor,
+				'currency_code' => 'USD',
+			],
+		];
+	}
+
+	private function seed_variable_parent( int $id ): void {
+		$this->fake_store_api[ $id ] = [
+			'id'          => $id,
+			'name'        => 'T-Shirt',
+			'type'        => 'variable',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'         => '1000',
+				'currency_code' => 'USD',
+			],
+		];
+	}
+
+	private function seed_grouped( int $id ): void {
+		$this->fake_store_api[ $id ] = [
+			'id'   => $id,
+			'name' => 'Bundle',
+			'type' => 'grouped',
+		];
+	}
+
+	private function seed_external( int $id ): void {
+		$this->fake_store_api[ $id ] = [
+			'id'   => $id,
+			'name' => 'Partner Product',
+			'type' => 'external',
+		];
+	}
+
+	/**
+	 * @param array<string, mixed> $body
+	 */
+	private function checkout_request( array $body, ?string $ucp_agent = null ): WP_REST_Request {
+		$request = new WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
+		$request->set_json_params( $body );
+		if ( null !== $ucp_agent ) {
+			$request->set_header( 'UCP-Agent', $ucp_agent );
+		}
+		return $request;
+	}
+
+	/**
+	 * @param array<string, mixed> $body
+	 * @return array{data: array<string, mixed>, status: int}
+	 */
+	private function call_handler( array $body, ?string $ucp_agent = null ): array {
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_create(
+			$this->checkout_request( $body, $ucp_agent )
+		);
+
+		$this->assertInstanceOf( WP_REST_Response::class, $response );
+
+		return [
+			'data'   => $response->get_data(),
+			'status' => $response->get_status(),
+		];
+	}
+
+	// ------------------------------------------------------------------
+	// Input validation
+	// ------------------------------------------------------------------
+
+	public function test_missing_line_items_returns_400(): void {
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_create(
+			$this->checkout_request( [] )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $response );
+		$this->assertEquals( 'ucp_invalid_input', $response->get_error_code() );
+		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+	}
+
+	public function test_empty_line_items_array_returns_400(): void {
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_create(
+			$this->checkout_request( [ 'line_items' => [] ] )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $response );
+		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+	}
+
+	public function test_non_array_line_items_returns_400(): void {
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_create(
+			$this->checkout_request( [ 'line_items' => 'not-an-array' ] )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $response );
+		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+	}
+
+	// ------------------------------------------------------------------
+	// Happy path: simple product
+	// ------------------------------------------------------------------
+
+	public function test_single_simple_product_creates_escalation_response(): void {
+		$this->seed_simple_product( 123, 2500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 2 ],
+				],
+			]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
+		$this->assertArrayHasKey( 'continue_url', $result['data'] );
+	}
+
+	public function test_continue_url_uses_shareable_checkout_format(): void {
+		$this->seed_simple_product( 123, 1000 );
+		$this->seed_simple_product( 456, 2000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 2 ],
+					[ 'item' => [ 'id' => 'prod_456' ], 'quantity' => 1 ],
+				],
+			]
+		);
+
+		// Format: /checkout-link/?products=ID:QTY,ID:QTY&utm_source=...&utm_medium=ai_agent
+		$this->assertStringContainsString(
+			'/checkout-link/?products=123:2,456:1',
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_response_id_has_chk_prefix_and_hex_suffix(): void {
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+		);
+
+		// bin2hex(random_bytes(8)) = 16 hex chars.
+		$this->assertMatchesRegularExpression( '/^chk_[a-f0-9]{16}$/', $result['data']['id'] );
+	}
+
+	public function test_session_ids_are_unique_across_requests(): void {
+		$this->seed_simple_product( 1 );
+
+		$a = $this->call_handler( [ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ] );
+		$b = $this->call_handler( [ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ] );
+
+		$this->assertNotEquals( $a['data']['id'], $b['data']['id'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Variation IDs
+	// ------------------------------------------------------------------
+
+	public function test_variation_id_resolves_and_becomes_url_product_id(): void {
+		$this->seed_variation( 456, 1500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'var_456' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertStringContainsString( 'products=456:1', $result['data']['continue_url'] );
+	}
+
+	public function test_ucp_id_echoed_round_trip_preserving_original_form(): void {
+		// If the agent sent `var_456`, we echo `var_456` back in the
+		// response — not `prod_456`. Preserves semantic round-tripping
+		// so agents can correlate request → response line items.
+		$this->seed_variation( 456 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'var_456' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 'var_456', $result['data']['line_items'][0]['item']['id'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Product type gating
+	// ------------------------------------------------------------------
+
+	public function test_variable_parent_rejected_with_variation_required(): void {
+		// Agent sent `prod_N` where N is the parent of a variable product.
+		// Shareable Checkout URLs can't add a parent to cart — need a
+		// variation ID. Reject with a specific code + explanatory content.
+		$this->seed_variable_parent( 789 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_789' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 200, $result['status'] );
+		$this->assertEquals( 'error', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+		$this->assertCount( 0, $result['data']['line_items'] );
+
+		$messages = $result['data']['messages'];
+		$codes    = array_column( $messages, 'code' );
+		$this->assertContains( 'variation_required', $codes );
+	}
+
+	public function test_grouped_product_rejected_with_unsupported_type(): void {
+		$this->seed_grouped( 555 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_555' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'product_type_unsupported', $codes );
+	}
+
+	public function test_external_product_rejected_with_unsupported_type(): void {
+		$this->seed_external( 777 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_777' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'product_type_unsupported', $codes );
+	}
+
+	// ------------------------------------------------------------------
+	// Stock handling: warning, not rejection
+	// ------------------------------------------------------------------
+
+	public function test_out_of_stock_item_included_with_warning(): void {
+		// Merchant's store may allow backorders — we don't second-guess.
+		// Emit a warning but keep the item in continue_url + line_items.
+		$this->seed_simple_product( 111, 1000, false );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertStringContainsString( '111:1', $result['data']['continue_url'] );
+
+		$warnings = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => 'warning' === $m['type']
+		);
+		$warning_codes = array_column( $warnings, 'code' );
+		$this->assertContains( 'out_of_stock', $warning_codes );
+	}
+
+	// ------------------------------------------------------------------
+	// Not found / malformed
+	// ------------------------------------------------------------------
+
+	public function test_unknown_product_id_produces_not_found_message(): void {
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_9999' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 'error', $result['data']['status'] );
+		$this->assertCount( 0, $result['data']['line_items'] );
+
+		$messages = $result['data']['messages'];
+		$this->assertEquals( 'not_found', $messages[0]['code'] );
+		$this->assertEquals( '$.line_items[0].item.id', $messages[0]['path'] );
+	}
+
+	public function test_zero_quantity_produces_invalid_quantity(): void {
+		$this->seed_simple_product( 123 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 0 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'invalid_quantity', $codes );
+	}
+
+	public function test_negative_quantity_produces_invalid_quantity(): void {
+		$this->seed_simple_product( 123 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_123' ], 'quantity' => -3 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'invalid_quantity', $codes );
+	}
+
+	public function test_non_array_line_item_produces_invalid_line_item(): void {
+		$result = $this->call_handler(
+			[ 'line_items' => [ 'this-is-not-an-object' ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'invalid_line_item', $codes );
+	}
+
+	// ------------------------------------------------------------------
+	// Mixed outcomes
+	// ------------------------------------------------------------------
+
+	public function test_mixed_valid_and_invalid_produces_partial_continue_url(): void {
+		// One valid + one invalid = continue_url contains only the
+		// valid item, response line_items has only the valid item,
+		// but messages enumerate every failure.
+		$this->seed_simple_product( 100, 1000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 2 ],
+					[ 'item' => [ 'id' => 'prod_999' ], 'quantity' => 1 ],  // missing
+				],
+			]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertStringContainsString( 'products=100:2', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '999', $result['data']['continue_url'] );
+		$this->assertCount( 1, $result['data']['line_items'] );
+
+		// Failure message localized at the second line item index.
+		$not_found = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => 'not_found' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $not_found );
+		$first = array_values( $not_found )[0];
+		$this->assertEquals( '$.line_items[1].item.id', $first['path'] );
+	}
+
+	// ------------------------------------------------------------------
+	// UTM attribution
+	// ------------------------------------------------------------------
+
+	public function test_ucp_agent_hostname_becomes_utm_source(): void {
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			'profile="https://agent.example.com/profile.json"'
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=agent.example.com',
+			$result['data']['continue_url']
+		);
+		$this->assertStringContainsString(
+			'utm_medium=ai_agent',
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_missing_ucp_agent_falls_back_to_sentinel_utm_source(): void {
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+			// No UCP-Agent header set.
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=' . WC_AI_Syndication_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_malformed_ucp_agent_falls_back_to_sentinel_utm_source(): void {
+		// Header present but malformed (no profile= value). Treat as missing.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			'trust=anonymous'
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=' . WC_AI_Syndication_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['data']['continue_url']
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// Legal links
+	// ------------------------------------------------------------------
+
+	public function test_both_legal_links_emitted_when_merchant_has_pages_set(): void {
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+		);
+
+		$types = array_column( $result['data']['links'], 'type' );
+		$this->assertContains( 'privacy_policy', $types );
+		$this->assertContains( 'terms_of_service', $types );
+	}
+
+	public function test_missing_privacy_policy_emits_advisory_warning(): void {
+		Functions\when( 'get_privacy_policy_url' )->justReturn( '' );
+
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+		);
+
+		$types = array_column( $result['data']['links'], 'type' );
+		$this->assertNotContains( 'privacy_policy', $types );
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'privacy_policy_unconfigured', $codes );
+	}
+
+	public function test_missing_terms_emits_advisory_warning(): void {
+		Functions\when( 'wc_get_page_permalink' )->alias(
+			static fn( string $page ): string => ''
+		);
+
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+		);
+
+		$types = array_column( $result['data']['links'], 'type' );
+		$this->assertNotContains( 'terms_of_service', $types );
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'terms_unconfigured', $codes );
+	}
+
+	// ------------------------------------------------------------------
+	// Totals + currency
+	// ------------------------------------------------------------------
+
+	public function test_subtotal_is_sum_of_line_totals(): void {
+		$this->seed_simple_product( 100, 1000 );  // $10 each
+		$this->seed_simple_product( 200, 2500 );  // $25 each
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 3 ],  // $30
+					[ 'item' => [ 'id' => 'prod_200' ], 'quantity' => 2 ],  // $50
+				],
+			]
+		);
+
+		// 3*1000 + 2*2500 = 8000 minor units = $80
+		$this->assertSame(
+			8000,
+			$result['data']['totals'][0]['amount']
+		);
+		$this->assertEquals( 'subtotal', $result['data']['totals'][0]['type'] );
+	}
+
+	public function test_line_totals_included_in_response_line_items(): void {
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 3 ] ] ]
+		);
+
+		$line = $result['data']['line_items'][0];
+		$this->assertSame( 1500, $line['unit_price']['amount'] );
+		$this->assertSame( 4500, $line['line_total']['amount'] );
+		$this->assertEquals( 'USD', $line['line_total']['currency'] );
+	}
+
+	public function test_currency_from_wc_setting_flows_through_everywhere(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'EUR' );
+
+		$this->seed_simple_product( 1, 1000 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 'EUR', $result['data']['currency'] );
+		$this->assertEquals( 'EUR', $result['data']['line_items'][0]['unit_price']['currency'] );
+	}
+
+	// ------------------------------------------------------------------
+	// UCP envelope
+	// ------------------------------------------------------------------
+
+	public function test_response_wraps_content_in_checkout_envelope(): void {
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertArrayHasKey( 'ucp', $result['data'] );
+		$this->assertArrayHasKey( 'capabilities', $result['data']['ucp'] );
+		$this->assertArrayHasKey(
+			'dev.ucp.shopping.checkout',
+			$result['data']['ucp']['capabilities']
+		);
+		// payment_handlers must be present even when empty.
+		$this->assertArrayHasKey( 'payment_handlers', $result['data']['ucp'] );
+	}
+
+	public function test_buyer_handoff_message_present_when_continue_url_issued(): void {
+		// Agents surface this `content` verbatim to end users before
+		// redirecting — the phrasing is part of the UX contract.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+		);
+
+		$handoff = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => 'buyer_handoff_required' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $handoff );
+		$msg = array_values( $handoff )[0];
+		$this->assertEquals( 'requires_buyer_input', $msg['severity'] );
+	}
+
+	public function test_buyer_handoff_message_omitted_when_no_continue_url(): void {
+		// If every item failed, there's no redirect to signal — skip
+		// the handoff message rather than confusing agents with a
+		// "redirect the user" hint when there's nothing to redirect to.
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_9999' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'buyer_handoff_required', $codes );
+	}
+}

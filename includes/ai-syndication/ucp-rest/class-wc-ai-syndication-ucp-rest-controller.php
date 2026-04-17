@@ -262,25 +262,151 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	}
 
 	/**
-	 * Stub handler for POST /checkout-sessions.
+	 * Handler for POST /checkout-sessions (create).
 	 *
-	 * Task 12 replaces this with an implementation that validates
-	 * line items against Store API, computes totals + continue_url
-	 * (WC Shareable Checkout URL format), attaches legal links
-	 * (privacy + terms), and returns the checkout envelope with
-	 * `status: requires_escalation`.
+	 * UCP checkout sessions in this implementation are **stateless
+	 * one-shot redirects**: every successful response returns
+	 * `status: requires_escalation` with a `continue_url` pointing at
+	 * WooCommerce's native Shareable Checkout URL. Once the agent
+	 * redirects the user, WooCommerce owns the rest of the transaction;
+	 * the session ID is a correlation token only — no storage, no
+	 * subsequent GET/PUT/DELETE on this URL.
 	 *
-	 * @param WP_REST_Request $request Will carry line_items + UCP-Agent
-	 *                                 context once task 12 replaces this
-	 *                                 stub; unused until then.
-	 * @return WP_Error                501 sentinel until task 12 lands.
+	 * Request shape:
+	 *   {
+	 *     "line_items": [
+	 *       { "item": { "id": "var_123" }, "quantity": 2 },
+	 *       ...
+	 *     ]
+	 *   }
+	 *
+	 * Per-line-item handling:
+	 *   - prod_N + simple product    → includable
+	 *   - var_N  + variation         → includable
+	 *   - prod_N + variable (parent) → rejected (variation_required)
+	 *   - grouped / external types   → rejected (product_type_unsupported)
+	 *   - unknown ID                 → rejected (not_found)
+	 *   - out of stock               → warning, still included; the
+	 *                                  merchant's checkout page makes
+	 *                                  the final determination (may
+	 *                                  allow backorders)
+	 *
+	 * Response status:
+	 *   - any valid items → 201 with status=requires_escalation + continue_url
+	 *   - all items fail  → 200 with status=error, no continue_url,
+	 *                       messages explain each failure
+	 *
+	 * Legal links: `links` is mandatory per UCP schema. We emit what's
+	 * configured via get_privacy_policy_url() + wc_get_page_permalink('terms'),
+	 * with advisory warnings for any page the merchant hasn't set up.
+	 *
+	 * @param WP_REST_Request $request UCP checkout-sessions create request.
+	 * @return WP_Error|WP_REST_Response
 	 */
-	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- Transient stub; task 12 consumes $request.
 	public function handle_checkout_sessions_create( WP_REST_Request $request ) {
-		return new WP_Error(
-			'ucp_not_implemented',
-			__( 'checkout-sessions is not yet implemented.', 'woocommerce-ai-syndication' ),
-			[ 'status' => 501 ]
+		$line_items_raw = $request->get_param( 'line_items' );
+
+		if ( ! is_array( $line_items_raw ) || empty( $line_items_raw ) ) {
+			return new WP_Error(
+				'ucp_invalid_input',
+				__( 'Request must include a non-empty "line_items" array.', 'woocommerce-ai-syndication' ),
+				[ 'status' => 400 ]
+			);
+		}
+
+		$agent_host = self::resolve_agent_host( $request );
+		$currency   = function_exists( 'get_woocommerce_currency' )
+			? (string) get_woocommerce_currency()
+			: 'USD';
+
+		$processed = [];
+		$messages  = [];
+
+		foreach ( $line_items_raw as $index => $line_item ) {
+			$outcome = self::process_line_item( $line_item, (int) $index );
+
+			foreach ( $outcome['messages'] as $message ) {
+				$messages[] = $message;
+			}
+			if ( null !== $outcome['processed'] ) {
+				$processed[] = $outcome['processed'];
+			}
+		}
+
+		// Legal links + warnings for any gaps.
+		[ $links, $legal_warnings ] = self::collect_legal_links();
+		foreach ( $legal_warnings as $warning ) {
+			$messages[] = $warning;
+		}
+
+		$has_valid_items = ! empty( $processed );
+		$continue_url    = $has_valid_items
+			? self::build_continue_url( $processed, $agent_host )
+			: '';
+
+		// Response line_items: echo successfully-processed items with
+		// enriched price/total data. Items that failed validation are
+		// NOT in line_items — they only appear via messages pointing
+		// at the original request index.
+		$response_line_items = [];
+		$subtotal_amount     = 0;
+		foreach ( $processed as $p ) {
+			$line_total            = $p['unit_price_minor'] * $p['quantity'];
+			$subtotal_amount      += $line_total;
+			$response_line_items[] = [
+				'item'       => [ 'id' => $p['ucp_id'] ],
+				'quantity'   => $p['quantity'],
+				'unit_price' => [
+					'amount'   => $p['unit_price_minor'],
+					'currency' => $currency,
+				],
+				'line_total' => [
+					'amount'   => $line_total,
+					'currency' => $currency,
+				],
+			];
+		}
+
+		if ( $has_valid_items ) {
+			// Buyer handoff message accompanies every redirect. Agents
+			// surface the `content` to the user verbatim before linking
+			// out, so the phrasing matters — keep it short and neutral.
+			$messages[] = [
+				'type'     => 'error',
+				'code'     => 'buyer_handoff_required',
+				'severity' => 'requires_buyer_input',
+				'content'  => __( 'Complete your purchase on the merchant site.', 'woocommerce-ai-syndication' ),
+			];
+		}
+
+		$response_body = [
+			'ucp'        => WC_AI_Syndication_UCP_Envelope::checkout_envelope(),
+			'id'         => 'chk_' . bin2hex( random_bytes( 8 ) ),
+			'status'     => $has_valid_items ? 'requires_escalation' : 'error',
+			'currency'   => $currency,
+			'line_items' => $response_line_items,
+			'totals'     => [
+				[
+					'type'   => 'subtotal',
+					'amount' => $subtotal_amount,
+				],
+			],
+			'links'      => $links,
+		];
+
+		if ( ! empty( $messages ) ) {
+			$response_body['messages'] = $messages;
+		}
+
+		if ( '' !== $continue_url ) {
+			$response_body['continue_url'] = $continue_url;
+		}
+
+		// 201 Created when we have something to escalate to; 200 otherwise.
+		// The session ID is a correlation token only — no persistence.
+		return new WP_REST_Response(
+			$response_body,
+			$has_valid_items ? 201 : 200
 		);
 	}
 
@@ -513,5 +639,247 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			'.',
 			''
 		);
+	}
+
+	// ------------------------------------------------------------------
+	// Checkout-sessions helpers (task 12)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Resolve the hostname from the UCP-Agent header for attribution,
+	 * falling back to the plugin's `ucp_unknown` sentinel when the
+	 * header is missing/malformed.
+	 *
+	 * Used as `utm_source` in the Shareable Checkout URL — lets
+	 * merchants see order attribution flowing through WooCommerce's
+	 * native Order Attribution system, so they can measure AI-sourced
+	 * revenue without extra integration.
+	 */
+	private static function resolve_agent_host( WP_REST_Request $request ): string {
+		$header = $request->get_header( 'ucp-agent' );
+
+		if ( is_string( $header ) && '' !== $header ) {
+			$host = WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( $header );
+			if ( '' !== $host ) {
+				return $host;
+			}
+		}
+
+		return WC_AI_Syndication_UCP_Agent_Header::FALLBACK_SOURCE;
+	}
+
+	/**
+	 * Validate + fetch one line item, returning the processable data
+	 * on success plus any UCP messages (errors and/or warnings) the
+	 * agent should see.
+	 *
+	 * The `messages` array may contain multiple entries for a single
+	 * line item (e.g., an in-stock product still includable but with
+	 * a separate advisory about stock) — don't short-circuit after
+	 * the first.
+	 *
+	 * @param mixed $line_item Raw line_item value from the request body.
+	 * @return array{processed: ?array<string, mixed>, messages: array<int, array<string, mixed>>}
+	 */
+	private static function process_line_item( $line_item, int $index ): array {
+		$messages = [];
+		$path     = '$.line_items[' . $index . ']';
+
+		if ( ! is_array( $line_item ) ) {
+			$messages[] = self::checkout_error_message( 'invalid_line_item', $path );
+			return [
+				'processed' => null,
+				'messages'  => $messages,
+			];
+		}
+
+		$raw_id   = $line_item['item']['id'] ?? null;
+		$quantity = isset( $line_item['quantity'] ) ? (int) $line_item['quantity'] : 1;
+
+		if ( $quantity <= 0 ) {
+			$messages[] = self::checkout_error_message( 'invalid_quantity', $path . '.quantity' );
+			return [
+				'processed' => null,
+				'messages'  => $messages,
+			];
+		}
+
+		$wc_id = self::parse_ucp_id_to_wc_int( $raw_id );
+		if ( $wc_id <= 0 ) {
+			$messages[] = self::checkout_error_message( 'not_found', $path . '.item.id' );
+			return [
+				'processed' => null,
+				'messages'  => $messages,
+			];
+		}
+
+		$wc_product = self::fetch_store_api_product( $wc_id );
+		if ( null === $wc_product ) {
+			$messages[] = self::checkout_error_message( 'not_found', $path . '.item.id' );
+			return [
+				'processed' => null,
+				'messages'  => $messages,
+			];
+		}
+
+		$type = $wc_product['type'] ?? 'simple';
+
+		// Variable product PARENT sent where a specific variation is
+		// required. Shareable Checkout URLs can't add a parent to cart —
+		// they need the variation ID.
+		if ( 'variable' === $type ) {
+			$messages[] = array_merge(
+				self::checkout_error_message( 'variation_required', $path . '.item.id' ),
+				[
+					'content' => __(
+						'Product is variable — specify a variation ID instead of the parent product ID.',
+						'woocommerce-ai-syndication'
+					),
+				]
+			);
+			return [
+				'processed' => null,
+				'messages'  => $messages,
+			];
+		}
+
+		// Grouped + external products don't fit the Shareable Checkout URL
+		// model (grouped = multiple sub-products; external = redirect to
+		// third-party seller). Agents should use the product's permalink
+		// directly rather than our checkout flow.
+		if ( 'grouped' === $type || 'external' === $type ) {
+			$messages[] = self::checkout_error_message( 'product_type_unsupported', $path . '.item.id' );
+			return [
+				'processed' => null,
+				'messages'  => $messages,
+			];
+		}
+
+		// Out of stock is a warning, not a rejection: the merchant's
+		// store may allow backorders, and we shouldn't second-guess.
+		// The line item stays in the continue_url; checkout decides.
+		$in_stock = (bool) ( $wc_product['is_in_stock'] ?? true );
+		if ( ! $in_stock ) {
+			$messages[] = [
+				'type'     => 'warning',
+				'code'     => 'out_of_stock',
+				'path'     => $path . '.item.id',
+				'severity' => 'advisory',
+			];
+		}
+
+		$unit_price_minor = (int) ( $wc_product['prices']['price'] ?? 0 );
+
+		return [
+			'processed' => [
+				'wc_id'            => $wc_id,
+				// Preserve the agent's original ID for round-tripping —
+				// if they sent `var_456`, echo `var_456` back even though
+				// we resolved it to WC ID 456 internally. `prod_N` fallback
+				// is for defensive completeness.
+				'ucp_id'           => is_string( $raw_id ) && '' !== $raw_id
+					? $raw_id
+					: 'prod_' . $wc_id,
+				'quantity'         => $quantity,
+				'unit_price_minor' => $unit_price_minor,
+			],
+			'messages'  => $messages,
+		];
+	}
+
+	/**
+	 * Construct the Shareable Checkout URL for the successful items.
+	 *
+	 * Format per WooCommerce's native /checkout-link/ feature:
+	 *   /checkout-link/?products=ID:QTY,ID:QTY
+	 *
+	 * UTM parameters append for attribution:
+	 *   &utm_source={agent_host}&utm_medium=ai_agent
+	 *
+	 * WC's own Order Attribution system captures these on the resulting
+	 * order, so merchants see agent-sourced traffic without needing any
+	 * extra plumbing.
+	 *
+	 * @param array<int, array<string, mixed>> $processed Successfully-processed line items.
+	 */
+	private static function build_continue_url( array $processed, string $agent_host ): string {
+		$segments = [];
+		foreach ( $processed as $p ) {
+			$segments[] = $p['wc_id'] . ':' . $p['quantity'];
+		}
+
+		$base = function_exists( 'home_url' )
+			? home_url( '/checkout-link/' )
+			: '/checkout-link/';
+
+		return $base
+			. '?products=' . implode( ',', $segments )
+			. '&utm_source=' . rawurlencode( $agent_host )
+			. '&utm_medium=ai_agent';
+	}
+
+	/**
+	 * Collect Privacy Policy + Terms of Service links for the response.
+	 *
+	 * UCP schema requires `links` on every checkout response for legal
+	 * compliance. When the merchant hasn't configured a page, we emit
+	 * what IS available and add an advisory warning rather than
+	 * fabricating URLs that might 404 or mis-route.
+	 *
+	 * @return array{0: array<int, array<string, string>>, 1: array<int, array<string, string>>}
+	 *         [links, warnings]
+	 */
+	private static function collect_legal_links(): array {
+		$links    = [];
+		$warnings = [];
+
+		$privacy_url = function_exists( 'get_privacy_policy_url' )
+			? (string) get_privacy_policy_url()
+			: '';
+		if ( '' !== $privacy_url ) {
+			$links[] = [
+				'type' => 'privacy_policy',
+				'url'  => $privacy_url,
+			];
+		} else {
+			$warnings[] = [
+				'type'     => 'warning',
+				'code'     => 'privacy_policy_unconfigured',
+				'severity' => 'advisory',
+			];
+		}
+
+		$terms_url = function_exists( 'wc_get_page_permalink' )
+			? (string) wc_get_page_permalink( 'terms' )
+			: '';
+		if ( '' !== $terms_url ) {
+			$links[] = [
+				'type' => 'terms_of_service',
+				'url'  => $terms_url,
+			];
+		} else {
+			$warnings[] = [
+				'type'     => 'warning',
+				'code'     => 'terms_unconfigured',
+				'severity' => 'advisory',
+			];
+		}
+
+		return [ $links, $warnings ];
+	}
+
+	/**
+	 * Build a standard UCP unrecoverable-error message for the
+	 * checkout-sessions flow.
+	 *
+	 * @return array<string, string>
+	 */
+	private static function checkout_error_message( string $code, string $path ): array {
+		return [
+			'type'     => 'error',
+			'code'     => $code,
+			'path'     => $path,
+			'severity' => 'unrecoverable',
+		];
 	}
 }
