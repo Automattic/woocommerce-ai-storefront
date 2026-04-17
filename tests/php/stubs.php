@@ -59,6 +59,37 @@ if ( ! function_exists( 'wp_parse_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_strip_all_tags' ) ) {
+	/**
+	 * wp_strip_all_tags stub mirroring WordPress core's implementation.
+	 *
+	 * Differs from PHP native `strip_tags()` in two ways: strips the
+	 * CONTENT of `<script>` and `<style>` tags (not just the tags
+	 * themselves), and trims surrounding whitespace. Tests that exercise
+	 * the translators (which switched from strip_tags to wp_strip_all_tags
+	 * for safer behavior on rich-text-editor input) rely on this stub.
+	 *
+	 * Tests that Brain\Monkey-stub this function (e.g. LlmsTxtTest)
+	 * win over this global definition because Brain\Monkey's aliasing
+	 * redefines the symbol at test-setup time.
+	 *
+	 * @param mixed $text          Input string.
+	 * @param bool  $remove_breaks Whether to also collapse internal whitespace.
+	 */
+	function wp_strip_all_tags( $text, bool $remove_breaks = false ): string {
+		if ( ! is_scalar( $text ) ) {
+			return '';
+		}
+		$text = (string) $text;
+		$text = preg_replace( '@<(script|style)[^>]*?>.*?</\\1>@si', '', $text );
+		$text = strip_tags( $text );
+		if ( $remove_breaks ) {
+			$text = preg_replace( '/[\r\n\t ]+/', ' ', $text );
+		}
+		return trim( $text );
+	}
+}
+
 if ( ! class_exists( 'WP_REST_Request' ) ) {
 	class WP_REST_Request {
 		private array $params = [];

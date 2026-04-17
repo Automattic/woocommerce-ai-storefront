@@ -55,9 +55,13 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'get_woocommerce_currency_symbol' )->justReturn( '$' );
-		Functions\when( 'wp_strip_all_tags' )->alias(
-			static fn( $s ) => strip_tags( (string) $s )
-		);
+		// wp_strip_all_tags() is now stubbed globally in tests/php/stubs.php
+		// (it's loaded early enough to be seen by every test). Previously
+		// we Brain\Monkey-aliased it here, but Patchwork — Brain\Monkey's
+		// runtime — refuses to redefine symbols declared before Patchwork
+		// itself is loaded, which is the case for our stubs.php. The
+		// global stub uses the real WordPress-equivalent implementation,
+		// so functional behavior for this test is unchanged.
 		Functions\when( 'get_terms' )->justReturn( [] );
 		Functions\when( 'get_term_link' )->alias(
 			static fn( $term ) => 'https://example.com/product-category/' . ( $term->slug ?? 'x' ) . '/'

@@ -233,9 +233,15 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	 * @return array{plain: string}
 	 */
 	private static function extract_description( array $wc_product ): array {
-		$raw   = $wc_product['short_description'] ?? '';
+		$raw = $wc_product['short_description'] ?? '';
+		// wp_strip_all_tags() over native strip_tags(): the WordPress
+		// helper also strips the CONTENT of <script> and <style> tags
+		// (not just the tags themselves) and trims surrounding whitespace.
+		// Both are safer defaults for content that might originate from a
+		// rich-text editor. PHPCS flags native strip_tags in plugin code
+		// for exactly this reason.
 		$plain = html_entity_decode(
-			strip_tags( (string) $raw ),
+			wp_strip_all_tags( (string) $raw ),
 			ENT_QUOTES,
 			'UTF-8'
 		);

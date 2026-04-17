@@ -30,10 +30,19 @@ parameters:
         - phpstan-bootstrap.php
 
     # Paths we never want to lint.
+    #
+    # `node_modules` gets a `(?)` optional marker because CI's PHP-only
+    # jobs don't run `npm install`, so the directory legitimately
+    # doesn't exist there. Without the marker, PHPStan refuses to
+    # proceed with a "Path is neither a directory…" error. The other
+    # paths (vendor, build, tests) always exist — vendor after composer
+    # install, tests/ is committed, build/ is generated during setup
+    # but we're also okay without it since the source under client/
+    # is where the real JS lives.
     excludePaths:
         - vendor
-        - node_modules
-        - build
+        - node_modules (?)
+        - build (?)
         - tests
 
     # WC functions aren't in the WP stubs. Ignoring by name pattern
