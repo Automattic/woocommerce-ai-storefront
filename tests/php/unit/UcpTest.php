@@ -44,6 +44,17 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 			static fn( $path ) => 'https://example.com/wp-json/' . ltrim( $path, '/' )
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
+
+		// Store-context defaults. Individual tests override via
+		// Functions\when() to exercise specific scenarios (e.g.
+		// VAT-inclusive EU store, digital-only catalog).
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		Functions\when( 'wc_prices_include_tax' )->justReturn( false );
+		Functions\when( 'wc_shipping_enabled' )->justReturn( true );
+		// WC() isn't stubbed — `build_store_context()` falls through
+		// to `country => null` when the global function isn't
+		// available. Specific country-testing scenarios stub it.
 	}
 
 	protected function tearDown(): void {
@@ -193,12 +204,19 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_spec_url_points_to_ucp_shopping_schema(): void {
 		// Points agents at the UCP shopping schema repo so they can
-		// verify our wire format matches what they expect.
+		// verify our wire format matches what they expect. Since
+		// 1.4.5 the URL pins to the tagged spec revision matching
+		// our `PROTOCOL_VERSION` (see the dedicated pinning test
+		// in the store_context section for the rationale).
 		$manifest = $this->ucp->generate_manifest( [] );
 		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
-		$this->assertEquals(
-			'https://github.com/Universal-Commerce-Protocol/ucp/tree/main/source/schemas/shopping',
+		$this->assertStringStartsWith(
+			'https://github.com/Universal-Commerce-Protocol/ucp/tree/',
+			$binding['spec']
+		);
+		$this->assertStringEndsWith(
+			'/source/schemas/shopping',
 			$binding['spec']
 		);
 	}
@@ -329,6 +347,10 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// Regression guard: the 1.1.x manifest had these fields at the
 		// top level. If a future refactor accidentally resurrects them
 		// alongside the `ucp` key, the manifest violates the schema.
+		//
+		// Note: `store_context` IS a top-level field (added in 1.4.5) —
+		// intentionally a sibling to `ucp`, not a stale leftover. Tests
+		// for that live in the store_context section below.
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertArrayNotHasKey( 'protocol_version', $manifest );
@@ -338,6 +360,109 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'discovery', $manifest );
 		$this->assertArrayNotHasKey( 'rate_limits', $manifest );
 		$this->assertArrayNotHasKey( 'store_api', $manifest );
+	}
+
+	// ------------------------------------------------------------------
+	// Layer 2.5: store_context block (1.4.5+)
+	// ------------------------------------------------------------------
+	//
+	// Added in 1.4.5 after cross-agent review feedback that the
+	// manifest lacked merchant-level commerce context (currency,
+	// locale, tax/shipping posture). These tests lock in the five
+	// contract fields and cover the ICU→BCP 47 locale conversion
+	// that's the most likely regression source — WordPress stores
+	// locales in underscore form and it's easy to forward that
+	// verbatim into the manifest by mistake.
+
+	public function test_manifest_has_store_context_top_level_key(): void {
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertArrayHasKey( 'store_context', $manifest );
+		$this->assertIsArray( $manifest['store_context'] );
+	}
+
+	public function test_store_context_declares_iso_4217_currency(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'EUR' );
+
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertSame( 'EUR', $manifest['store_context']['currency'] );
+	}
+
+	public function test_store_context_locale_uses_bcp_47_hyphen_not_icu_underscore(): void {
+		// WordPress stores `en_US`; agents consuming the manifest
+		// expect web-standard `en-US`. This conversion is the single
+		// biggest correctness risk in the block — stubbing the WP
+		// side and asserting the manifest side locks it in.
+		Functions\when( 'get_locale' )->justReturn( 'pt_BR' );
+
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertSame( 'pt-BR', $manifest['store_context']['locale'] );
+		$this->assertStringNotContainsString( '_', $manifest['store_context']['locale'] );
+	}
+
+	public function test_store_context_reports_prices_include_tax(): void {
+		// EU-style VAT-inclusive storefront.
+		Functions\when( 'wc_prices_include_tax' )->justReturn( true );
+
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertTrue( $manifest['store_context']['prices_include_tax'] );
+	}
+
+	public function test_store_context_reports_prices_exclude_tax(): void {
+		// US-style tax-exclusive storefront — default in the
+		// setUp stub.
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertFalse( $manifest['store_context']['prices_include_tax'] );
+	}
+
+	public function test_store_context_reports_shipping_disabled_for_digital_only(): void {
+		Functions\when( 'wc_shipping_enabled' )->justReturn( false );
+
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertFalse( $manifest['store_context']['shipping_enabled'] );
+	}
+
+	public function test_store_context_country_is_null_when_wc_countries_unavailable(): void {
+		// WC() not stubbed in this test environment; the code path
+		// falls through to null. Asserting this locks in the
+		// graceful-degradation branch: the manifest must not crash
+		// or emit garbage when the WC global isn't ready.
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertNull( $manifest['store_context']['country'] );
+	}
+
+	public function test_store_context_fields_are_exactly_those_documented(): void {
+		// Regression guard against field drift. If a future refactor
+		// adds a new key to store_context without also updating
+		// consumer documentation, this test fires. The fix is
+		// deliberate: either update this test (conscious addition)
+		// or remove the stray field.
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertSame(
+			[ 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled' ],
+			array_keys( $manifest['store_context'] )
+		);
+	}
+
+	public function test_spec_url_is_pinned_to_protocol_version_tag(): void {
+		// 1.4.5 change: the service binding's `spec` field used to
+		// point at `/tree/main/` (a moving target). It now points at
+		// `/tree/v{PROTOCOL_VERSION}/` so a year-old consumer
+		// checking our manifest against the spec reads the exact
+		// revision we shipped against.
+		$manifest = $this->ucp->generate_manifest( [] );
+		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
+		$expected = 'https://github.com/Universal-Commerce-Protocol/ucp/tree/v' . WC_AI_Syndication_Ucp::PROTOCOL_VERSION . '/source/schemas/shopping';
+
+		$this->assertSame( $expected, $binding['spec'] );
+		$this->assertStringNotContainsString( '/tree/main/', $binding['spec'] );
 	}
 
 	// ------------------------------------------------------------------

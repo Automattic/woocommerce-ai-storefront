@@ -165,9 +165,19 @@ class WC_AI_Syndication_Ucp {
 	 * trip. UCP schema permits `config` as additionalProperties on
 	 * any entity, so strict consumers ignore it gracefully.
 	 *
+	 * A sibling `store_context` object declares merchant-level
+	 * context (currency, locale, country, tax/shipping posture) so
+	 * agents know what currency they'll be quoting in and whether
+	 * the catalog price matches the checkout price — without having
+	 * to either fetch llms.txt first or call the Store API. Added in
+	 * 1.4.5 in response to cross-agent review feedback that surfaced
+	 * this as the dominant manifest-level gap. See
+	 * `build_store_context()` for field-by-field rationale.
+	 *
 	 * Not included (deliberately):
-	 *   - Store metadata (name, description, currency): redundant
-	 *     with Store API responses and llms.txt.
+	 *   - Store name/description: redundant with Store API responses
+	 *     and llms.txt. The store_context block is for commerce-
+	 *     semantic hints only, not human-readable metadata.
 	 *   - Rate limits: enforced through HTTP 429 / Retry-After
 	 *     response headers, not manifest advertisement.
 	 *   - Pointers to llms.txt / sitemap: agents find llms.txt at
@@ -185,7 +195,7 @@ class WC_AI_Syndication_Ucp {
 		$ucp_endpoint = rest_url( 'wc/ucp/v1' );
 
 		$manifest = [
-			'ucp' => [
+			'ucp'           => [
 				'version'          => self::PROTOCOL_VERSION,
 
 				// Services — single REST binding at our UCP namespace.
@@ -196,7 +206,20 @@ class WC_AI_Syndication_Ucp {
 					self::SERVICE_NAME => [
 						[
 							'version'   => self::PROTOCOL_VERSION,
-							'spec'      => 'https://github.com/Universal-Commerce-Protocol/ucp/tree/main/source/schemas/shopping',
+
+							// Pin the spec URL to the git tag that
+							// matches our declared PROTOCOL_VERSION.
+							// The UCP spec repo publishes date-named
+							// tags (e.g. `v2026-04-08`) that align
+							// with the protocol version string, so
+							// one constant drives both — if we bump
+							// PROTOCOL_VERSION the URL tracks
+							// automatically. Pre-1.4.5 this pointed
+							// at `/tree/main/` which is a moving
+							// target; a consumer verifying our shape
+							// a year later could have been reading
+							// a spec revision we never conformed to.
+							'spec'      => 'https://github.com/Universal-Commerce-Protocol/ucp/tree/v' . self::PROTOCOL_VERSION . '/source/schemas/shopping',
 							'transport' => 'rest',
 							'endpoint'  => $ucp_endpoint,
 
@@ -299,6 +322,15 @@ class WC_AI_Syndication_Ucp {
 				// checkout handles payment via their configured gateway.
 				'payment_handlers' => (object) [],
 			],
+
+			// Merchant-level commerce context. Sibling to `ucp`
+			// rather than nested inside, because these facts are
+			// agnostic of the UCP spec — any AI-commerce ecosystem
+			// tool (UCP-aware or not) can read them. Fields match
+			// common ecommerce-platform conventions (Stripe, Shopify)
+			// so consumer code already familiar with those names
+			// reads our manifest without a glossary step.
+			'store_context' => $this->build_store_context(),
 		];
 
 		/**
@@ -309,5 +341,71 @@ class WC_AI_Syndication_Ucp {
 		 * @param array $settings The AI syndication settings.
 		 */
 		return apply_filters( 'wc_ai_syndication_ucp_manifest', $manifest, $settings );
+	}
+
+	/**
+	 * Build the merchant-level commerce context block.
+	 *
+	 * Declares the store's currency, locale, base country, and
+	 * commerce-posture facts (tax inclusion, shipping enablement)
+	 * that agents need to know BEFORE they start consuming catalog
+	 * data — not after. Pre-1.4.5 this information lived only in
+	 * llms.txt (currency) and Store API responses (tax posture
+	 * on per-price endpoints), leaving agents who only fetched the
+	 * UCP manifest flying blind on basic commerce semantics.
+	 *
+	 * Field notes:
+	 *
+	 *   - `currency`: ISO 4217. Source of truth is WooCommerce's
+	 *     stored currency setting; drives every price string on
+	 *     the store.
+	 *
+	 *   - `locale`: BCP 47 form (`en-US`). WordPress stores locale
+	 *     in ICU underscore form (`en_US`); we convert for standards
+	 *     compatibility — HTTP `Accept-Language`, browser
+	 *     `navigator.language`, and most web APIs expect hyphens.
+	 *
+	 *   - `country`: ISO 3166-1 alpha-2. The merchant's base
+	 *     country, which controls default tax and shipping behavior.
+	 *     Not the customer's country — an AI agent talking to a
+	 *     customer in France buying from a US-based store should
+	 *     see `country: US` here.
+	 *
+	 *   - `prices_include_tax`: boolean. Tells agents whether the
+	 *     price string they see on catalog endpoints already
+	 *     includes tax, or whether tax will be added at checkout.
+	 *     This is THE critical signal for agents quoting totals
+	 *     honestly to users. VAT-inclusive storefronts (common in
+	 *     EU) return `true`; US-style tax-exclusive storefronts
+	 *     return `false`.
+	 *
+	 *   - `shipping_enabled`: boolean. Whether the store collects
+	 *     shipping addresses at checkout. `false` → digital-only
+	 *     or in-person-only store; agents can skip shipping
+	 *     prompts. Detected via `wc_shipping_enabled()`, which
+	 *     reflects the top-level WC shipping toggle.
+	 *
+	 * @return array The store context block.
+	 */
+	private function build_store_context() {
+		$country = null;
+		if ( function_exists( 'WC' ) && WC() && method_exists( WC(), 'countries' ) && WC()->countries ) {
+			$country = WC()->countries->get_base_country();
+		}
+
+		// `get_locale()` returns ICU format (e.g. `en_US`). BCP 47
+		// uses hyphens. Swap the single underscore delimiter; if
+		// future WP releases add more (e.g. script subtags), the
+		// conversion still holds because BCP 47 also uses hyphens
+		// for those.
+		$locale = str_replace( '_', '-', get_locale() );
+
+		return [
+			'currency'           => get_woocommerce_currency(),
+			'locale'             => $locale,
+			'country'            => $country ? $country : null,
+			'prices_include_tax' => (bool) wc_prices_include_tax(),
+			'shipping_enabled'   => (bool) wc_shipping_enabled(),
+		];
 	}
 }

@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.4.4
+Stable tag: 1.4.5
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,11 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.4.5 =
+* Added: `store_context` top-level block in the UCP manifest declaring merchant-level commerce context — `currency` (ISO 4217), `locale` (BCP 47), `country` (ISO 3166-1 alpha-2), `prices_include_tax` (boolean), `shipping_enabled` (boolean). Pre-1.4.5 agents fetching only the UCP manifest couldn't tell what currency they'd be quoting in, whether catalog prices already included tax, or whether the store needed shipping addresses — they'd have to fall back to llms.txt or a Store API probe. Added in response to cross-agent review feedback from Claude that called out this as the dominant manifest-level gap: "for the CLDR project you're thinking about, this is exactly the gap — an agent has no machine-readable way to know what currency it'll be quoting in." The block is a sibling to `ucp` rather than nested inside it, because the facts are agnostic of the UCP spec — any AI-commerce tool (UCP-aware or not) reads them.
+* Changed: UCP spec URL in the service binding now pins to the tagged spec revision matching `PROTOCOL_VERSION` (`tree/v2026-04-08/source/schemas/shopping`) instead of the moving `main` branch. A consumer verifying our manifest against the spec a year from now reads the exact revision we conformed to — not whatever HEAD happens to be. The UCP spec repo tags follow the same date-versioning as the protocol version, so bumping `PROTOCOL_VERSION` automatically tracks the URL; no extra coupling to maintain.
+* Added: locale conversion from WordPress ICU form (`en_US`, underscore) to BCP 47 form (`en-US`, hyphen) for the manifest's `store_context.locale` field. Web-ecosystem consumers (HTTP `Accept-Language`, browser `navigator.language`, most APIs) expect hyphens; WordPress stores with underscores. The boundary conversion happens here so agents see the standards-compliant form.
 
 = 1.4.4 =
 * Fixed: llms.txt served an empty body on sites whose transient cache had been poisoned with an empty string during an earlier broken state (most likely during the 1.4.2 wiring-bug window before 1.4.3 shipped). The cache-hit check was `if ( false !== $cached )`, which passed for `''` because empty-string !== false — so the poisoned value was served verbatim for the full 1-hour TTL even after every upstream fix was in place. Production `curl -I` showed 200 with all the right headers (CORS, text/plain, no 301), but `curl` (GET without -I) returned nothing. Fix hardens the cache path on both halves: treat empty/falsy cached values as a miss (forcing regeneration + a fresh cache write that heals the poison), and refuse to write empty generate() output back into the cache (prevents future poisoning from the same root cause). New unit tests lock in both halves so a partial refactor can't re-introduce the bug.
