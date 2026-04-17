@@ -59,28 +59,42 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// Stale IDs (the bug that triggered this helper)
 	// ------------------------------------------------------------------
 
-	public function test_strips_deprecated_crawler_ids_from_pre_v1_1_upgrades(): void {
-		// Replays the exact scenario from the "13 of 12" bug: a store
-		// that enabled syndication before v1.1.0 rotated the crawler
-		// list has four deprecated IDs stored alongside current ones.
+	public function test_strips_deprecated_crawler_ids_from_legacy_upgrades(): void {
+		// Sanitizer behavior on upgrade paths where the stored
+		// allow-list contains entries no longer in AI_CRAWLERS.
+		// Originally shipped to cover the "13 of 12" bug around
+		// v1.1.0; the fixture has been updated as the canonical
+		// list evolved across 1.1.x → 1.6.0.
+		//
+		// As of 1.6.0 the truly-stale entries merchants might
+		// have carried forward:
+		//   - `Gemini`: removed in 1.6.0 (phantom entry, never
+		//     matched any real crawler)
+		//   - `anthropic-ai`: Anthropic-deprecated; replaced by
+		//     `ClaudeBot` + `Claude-User` + `Claude-SearchBot`
+		//     and never added back
+		//
+		// Note: `Bytespider`, `CCBot`, and `cohere-ai` were in
+		// the pre-v1.1.0 list, briefly removed, and restored in
+		// 1.6.0's re-audit. They are now kept, not stripped.
 		$input = [
 			'GPTBot',          // kept
 			'ChatGPT-User',    // kept
-			'Bytespider',      // dropped (removed in v1.1.0)
-			'CCBot',           // dropped (removed in v1.1.0)
+			'Gemini',          // dropped (removed in 1.6.0)
 			'ClaudeBot',       // kept
-			'anthropic-ai',    // dropped (removed in v1.1.0)
-			'cohere-ai',       // dropped (removed in v1.1.0)
-			'Claude-User',     // kept (added in v1.1.0 by merchant)
+			'anthropic-ai',    // dropped (Anthropic-deprecated)
+			'Bytespider',      // kept (restored in 1.6.0 re-audit)
+			'CCBot',           // kept (restored in 1.6.0 re-audit)
+			'Claude-User',     // kept
 		];
 
 		$result = WC_AI_Syndication_Robots::sanitize_allowed_crawlers( $input );
 
 		$this->assertSame(
-			[ 'GPTBot', 'ChatGPT-User', 'ClaudeBot', 'Claude-User' ],
+			[ 'GPTBot', 'ChatGPT-User', 'ClaudeBot', 'Bytespider', 'CCBot', 'Claude-User' ],
 			$result
 		);
-		$this->assertCount( 4, $result );
+		$this->assertCount( 6, $result );
 	}
 
 	public function test_returns_sequentially_indexed_array(): void {
@@ -231,6 +245,43 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 1, $lines_between, 'Store and UCP allows should be adjacent' );
 	}
 
+	public function test_crawl_delay_emitted_once_per_crawler(): void {
+		// Crawl-delay is advisory; value is the CRAWL_DELAY_SECONDS
+		// constant. Must appear exactly once per User-agent block —
+		// one directive per bot, placed before the Allow/Disallow
+		// rules so crawlers see the hint before they fetch anything.
+		$output = $this->generate_robots_output();
+
+		// GPTBot + ClaudeBot in the fixture = 2 Crawl-delay lines.
+		$this->assertEquals(
+			2,
+			substr_count( $output, 'Crawl-delay: ' ),
+			'Crawl-delay should appear once per allowed crawler'
+		);
+		$this->assertStringContainsString(
+			'Crawl-delay: ' . WC_AI_Syndication_Robots::CRAWL_DELAY_SECONDS,
+			$output
+		);
+	}
+
+	public function test_crawl_delay_appears_before_allow_rules(): void {
+		// Per robots.txt convention, directives that constrain
+		// behavior (Crawl-delay, Disallow) are emitted alongside
+		// the allowances so crawlers have the full picture in the
+		// one User-agent block. Crawl-delay specifically should be
+		// the first line after User-agent so a crawler parsing
+		// top-down sees the rate hint before any fetch decision.
+		$output = $this->generate_robots_output();
+
+		$ua_pos       = strpos( $output, 'User-agent: GPTBot' );
+		$delay_pos    = strpos( $output, 'Crawl-delay: ', $ua_pos );
+		$first_allow  = strpos( $output, 'Allow:', $ua_pos );
+
+		$this->assertNotFalse( $delay_pos );
+		$this->assertNotFalse( $first_allow );
+		$this->assertLessThan( $first_allow, $delay_pos, 'Crawl-delay must precede the first Allow' );
+	}
+
 	public function test_rules_skipped_when_syndication_disabled(): void {
 		// Existing pre-1.3.0 invariant: when the merchant has paused
 		// syndication, robots.txt doesn't advertise the endpoints at
@@ -277,35 +328,148 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// training but not both).
 
 	public function test_live_browsing_agents_has_expected_members(): void {
-		// Every agent here uses the `-User` convention or is an
-		// explicit live-search variant. Any new addition should
-		// have vendor documentation confirming user-initiated
-		// fetch semantics before inclusion.
+		// Order matters (it's how they render in the admin UI).
+		// Grouped by ecosystem: foundation models (OpenAI,
+		// Anthropic, Perplexity, Apple), then agentic shopping
+		// (Amazon Rufus, Klarna), then Google Shopping, then
+		// regional search+AI (Asia first, then Europe).
+		//
+		// The regional bots (ERNIEBot, YiyanBot, WRTNBot,
+		// NaverBot, PetalBot, YandexBot) are traditional search
+		// crawlers that ALSO power AI features in their markets —
+		// "live" covers both user-initiated search and AI-agent
+		// fetching, so the classification fits even though these
+		// bots predate the modern AI-agent taxonomy.
 		$this->assertSame(
 			[
 				'ChatGPT-User',
 				'OAI-SearchBot',
-				'Perplexity-User',
 				'Claude-User',
+				'Claude-SearchBot',
+				'PerplexityBot',
+				'Perplexity-User',
+				'Applebot',
+				'AmazonBuyForMe',
+				'KlarnaBot',
+				'Storebot-Google',
+				'ERNIEBot',
+				'YiyanBot',
+				'WRTNBot',
+				'NaverBot',
+				'PetalBot',
+				'YandexBot',
 			],
 			WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS
 		);
 	}
 
 	public function test_training_crawlers_has_expected_members(): void {
+		// Note: the pre-1.6.0 list included a "Gemini" entry that
+		// did not correspond to any documented Google user-agent
+		// (Google's training bot for Gemini is `Google-Extended`;
+		// there's no bot literally named `Gemini`). 1.6.0 dropped
+		// it as dead weight — robots.txt had been emitting a
+		// `User-agent: Gemini` directive since 1.0.0 that no real
+		// crawler ever matched.
+		//
+		// 1.6.0 also added Bytespider (ByteDance/TikTok), CCBot
+		// (CommonCrawl — feeds most open-source LLM corpora), and
+		// cohere-ai (Cohere). These are widely-encountered training
+		// crawlers merchants need to consciously allow or block.
 		$this->assertSame(
 			[
 				'GPTBot',
 				'Google-Extended',
-				'Gemini',
-				'PerplexityBot',
 				'ClaudeBot',
 				'Meta-ExternalAgent',
 				'Amazonbot',
 				'Applebot-Extended',
+				'Bytespider',
+				'CCBot',
+				'cohere-ai',
 			],
 			WC_AI_Syndication_Robots::TRAINING_CRAWLERS
 		);
+	}
+
+	// ------------------------------------------------------------------
+	// Fresh-install default vs. preserved opt-out (1.6.0 review fix)
+	// ------------------------------------------------------------------
+	//
+	// `resolve_allowed_crawlers()` encodes the core policy: commerce-
+	// safe default for new installs, full preservation of merchant
+	// choices on upgrades. These tests lock in the distinction
+	// between "never configured" and "explicitly configured to
+	// block all" — the pre-fix code treated them identically via
+	// `! empty()`, silently reverting a merchant's explicit opt-out
+	// on every subsequent request.
+
+	public function test_fresh_install_returns_live_browsing_only_default(): void {
+		// Empty settings array → no prior configuration → commerce-safe
+		// default. Training crawlers must NOT be present so merchants
+		// get the protection-by-default posture out of the box.
+		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers( [] );
+
+		$this->assertSame( WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS, $result );
+
+		foreach ( WC_AI_Syndication_Robots::TRAINING_CRAWLERS as $training_bot ) {
+			$this->assertNotContains(
+				$training_bot,
+				$result,
+				"Training crawler $training_bot should NOT be in the fresh-install default"
+			);
+		}
+	}
+
+	public function test_explicit_empty_allowed_crawlers_is_preserved(): void {
+		// This is the consent-regression guard. A merchant who clicks
+		// "Clear selection" in the admin UI saves `[]`. The resolver
+		// must return `[]`, not silently revert to the fresh-install
+		// default. Pre-fix code used `! empty()` which treated empty
+		// array identically to "key missing."
+		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+			[ 'allowed_crawlers' => [] ]
+		);
+
+		$this->assertSame(
+			[],
+			$result,
+			'Explicit empty array (merchant opt-out) must be preserved, not reverted to defaults'
+		);
+	}
+
+	public function test_stored_allowed_crawlers_list_is_preserved(): void {
+		// Happy path for existing installs with saved selections —
+		// the resolver must return the stored list verbatim.
+		$stored = [ 'GPTBot', 'ClaudeBot', 'Claude-User' ];
+
+		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+			[ 'allowed_crawlers' => $stored ]
+		);
+
+		$this->assertSame( $stored, $result );
+	}
+
+	public function test_non_array_stored_value_degrades_to_empty_list(): void {
+		// Defensive: if the stored option value somehow corrupts to
+		// a non-array (DB migration glitch, manual SQL edit), treat
+		// as "no crawlers" rather than crashing or filling with the
+		// fresh-install default (which would be wrong — the key IS
+		// present, it's just garbled).
+		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+			[ 'allowed_crawlers' => 'not-an-array' ]
+		);
+
+		$this->assertSame( [], $result );
+	}
+
+	public function test_phantom_gemini_entry_is_removed(): void {
+		// Regression guard: if a future refactor accidentally
+		// resurrects the `Gemini` entry, this fires. The entry
+		// never matched a real crawler; re-adding it would just
+		// emit a useless robots.txt directive again.
+		$this->assertNotContains( 'Gemini', WC_AI_Syndication_Robots::TRAINING_CRAWLERS );
+		$this->assertNotContains( 'Gemini', WC_AI_Syndication_Robots::AI_CRAWLERS );
 	}
 
 	public function test_ai_crawlers_is_union_of_live_and_training(): void {

@@ -348,10 +348,15 @@ class WC_AI_Syndication {
 		$settings = get_option( self::SETTINGS_OPTION, [] );
 		$merged   = wp_parse_args( is_array( $settings ) ? $settings : [], $defaults );
 
-		// Allowed crawlers: stored in option, defaults to all known crawlers.
-		$merged['allowed_crawlers'] = ! empty( $settings['allowed_crawlers'] )
-			? $settings['allowed_crawlers']
-			: WC_AI_Syndication_Robots::AI_CRAWLERS;
+		// Allowed crawlers: delegates to the Robots class's helper so
+		// the three-branch resolution (fresh install vs. stored-empty
+		// vs. stored-list) is defined in one place and unit-tested
+		// independently of this settings aggregator. See
+		// `WC_AI_Syndication_Robots::resolve_allowed_crawlers()` for
+		// the decision table.
+		$merged['allowed_crawlers'] = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+			is_array( $settings ) ? $settings : []
+		);
 
 		self::$settings_cache = $merged;
 		return $merged;
@@ -379,7 +384,16 @@ class WC_AI_Syndication {
 			'selected_products'      => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
 			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
 			'allowed_crawlers'       => WC_AI_Syndication_Robots::sanitize_allowed_crawlers(
-				$merged['allowed_crawlers'] ?? WC_AI_Syndication_Robots::AI_CRAWLERS
+				// Fallback to live-browsing only (matching the
+				// fresh-install default from get_settings) if the
+				// caller invoked update_settings without specifying
+				// `allowed_crawlers`. In practice the admin form
+				// always sends this key, so this fallback rarely
+				// fires — but when it does, we err on the side of
+				// the commerce-safer default rather than re-enabling
+				// every training crawler the merchant may have
+				// explicitly unchecked.
+				$merged['allowed_crawlers'] ?? WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS
 			),
 		];
 

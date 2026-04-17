@@ -41,21 +41,99 @@ import { colors } from './tokens';
  * silently-dropped checkboxes on save.
  */
 const KNOWN_CRAWLERS = [
-	// Live browsing — user-initiated fetches, recommended on.
+	// Live browsing — user-initiated fetches + live-answer indexing.
+	// Recommended on; these route revenue.
 	{ id: 'ChatGPT-User', label: 'ChatGPT-User (OpenAI)', category: 'live' },
-	{ id: 'OAI-SearchBot', label: 'OAI-SearchBot (OpenAI Search)', category: 'live' },
-	{ id: 'Perplexity-User', label: 'Perplexity-User (Perplexity)', category: 'live' },
+	{
+		id: 'OAI-SearchBot',
+		label: 'OAI-SearchBot (OpenAI SearchGPT)',
+		category: 'live',
+	},
 	{ id: 'Claude-User', label: 'Claude-User (Anthropic)', category: 'live' },
+	{
+		id: 'Claude-SearchBot',
+		label: 'Claude-SearchBot (Anthropic)',
+		category: 'live',
+	},
+	{
+		id: 'PerplexityBot',
+		label: 'PerplexityBot (Perplexity)',
+		category: 'live',
+	},
+	{
+		id: 'Perplexity-User',
+		label: 'Perplexity-User (Perplexity)',
+		category: 'live',
+	},
+	{
+		id: 'Applebot',
+		label: 'Applebot (Apple Siri / Spotlight)',
+		category: 'live',
+	},
+
+	// Agentic shopping — AI that places orders, not just reads.
+	{
+		id: 'AmazonBuyForMe',
+		label: 'AmazonBuyForMe (Amazon Rufus)',
+		category: 'live',
+	},
+	{ id: 'KlarnaBot', label: 'KlarnaBot (Klarna AI)', category: 'live' },
+
+	// Google Shopping AI — distinct from Googlebot + Google-Extended.
+	{
+		id: 'Storebot-Google',
+		label: 'Storebot-Google (Google Shopping AI)',
+		category: 'live',
+	},
+
+	// Regional search + AI — Asia.
+	{ id: 'ERNIEBot', label: 'ERNIEBot (Baidu / China)', category: 'live' },
+	{
+		id: 'YiyanBot',
+		label: 'YiyanBot (Baidu Conversational / China)',
+		category: 'live',
+	},
+	{ id: 'WRTNBot', label: 'WRTNBot (Wrtn / Korea)', category: 'live' },
+	{ id: 'NaverBot', label: 'NaverBot (Naver / Korea)', category: 'live' },
+	{ id: 'PetalBot', label: 'PetalBot (Huawei / Global)', category: 'live' },
+
+	// Regional search + AI — Europe.
+	{
+		id: 'YandexBot',
+		label: 'YandexBot (Yandex / Russia + E. Europe)',
+		category: 'live',
+	},
 
 	// Training crawlers — brand-strategy decision.
 	{ id: 'GPTBot', label: 'GPTBot (OpenAI)', category: 'training' },
-	{ id: 'Google-Extended', label: 'Google-Extended (Gemini)', category: 'training' },
-	{ id: 'Gemini', label: 'Gemini (Google)', category: 'training' },
-	{ id: 'PerplexityBot', label: 'PerplexityBot (Perplexity)', category: 'training' },
+	{
+		id: 'Google-Extended',
+		label: 'Google-Extended (Gemini training)',
+		category: 'training',
+	},
 	{ id: 'ClaudeBot', label: 'ClaudeBot (Anthropic)', category: 'training' },
-	{ id: 'Meta-ExternalAgent', label: 'Meta-ExternalAgent (Meta AI)', category: 'training' },
-	{ id: 'Amazonbot', label: 'Amazonbot (Alexa)', category: 'training' },
-	{ id: 'Applebot-Extended', label: 'Applebot-Extended (Siri)', category: 'training' },
+	{
+		id: 'Meta-ExternalAgent',
+		label: 'Meta-ExternalAgent (Meta AI)',
+		category: 'training',
+	},
+	{
+		id: 'Amazonbot',
+		label: 'Amazonbot (Amazon / Alexa)',
+		category: 'training',
+	},
+	{
+		id: 'Applebot-Extended',
+		label: 'Applebot-Extended (Apple Intelligence)',
+		category: 'training',
+	},
+	{
+		id: 'Bytespider',
+		label: 'Bytespider (ByteDance / TikTok)',
+		category: 'training',
+	},
+	{ id: 'CCBot', label: 'CCBot (CommonCrawl)', category: 'training' },
+	{ id: 'cohere-ai', label: 'cohere-ai (Cohere)', category: 'training' },
 ];
 
 /**
@@ -612,9 +690,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 													crawler.id
 												) }
 												onChange={ () =>
-													toggleCrawler(
-														crawler.id
-													)
+													toggleCrawler( crawler.id )
 												}
 												__nextHasNoMarginBottom
 											/>

@@ -34,10 +34,74 @@ class WC_AI_Syndication_Robots {
 	 * @var string[]
 	 */
 	const LIVE_BROWSING_AGENTS = [
+		// OpenAI.
 		'ChatGPT-User',
 		'OAI-SearchBot',
-		'Perplexity-User',
+
+		// Anthropic.
 		'Claude-User',
+		'Claude-SearchBot',
+
+		// Perplexity — PerplexityBot indexes for live answer
+		// retrieval (search-index style), distinct from training
+		// corpus construction. Per Perplexity's documentation it
+		// maps to the same live-answer path as Perplexity-User.
+		'PerplexityBot',
+		'Perplexity-User',
+
+		// Apple — plain Applebot is the long-standing Siri/Spotlight
+		// search crawler (since 2015). Applebot-Extended is the
+		// newer AI-training variant and lives in TRAINING_CRAWLERS.
+		'Applebot',
+
+		// Agentic shopping — AI that doesn't just read the catalog
+		// but ALSO places the order on the user's behalf. Highest-
+		// value AI traffic for commerce: showing up here means
+		// showing up at purchase intent, not just research.
+		//
+		// AmazonBuyForMe powers Amazon Rufus's "buy from the open
+		// web" feature — Rufus compares your products to Amazon's
+		// catalog and can execute purchases. KlarnaBot drives
+		// high-intent shopping queries primarily in the EU and US
+		// fashion/lifestyle verticals.
+		'AmazonBuyForMe',
+		'KlarnaBot',
+
+		// Google Shopping — distinct from Googlebot (search indexing)
+		// and Google-Extended (training). Storebot-Google powers
+		// the Shopping Overviews surface and "AI Outfit" visual
+		// recommendations. US-centric but global for commerce.
+		'Storebot-Google',
+
+		// Regional search + AI — Asia. Baidu (China) dominates
+		// Chinese discovery with ERNIEBot (general crawling for
+		// the Ernie model) and YiyanBot (real-time conversational
+		// citations). Wrtn ("the Korean ChatGPT") is the lifestyle
+		// product-discovery leader in South Korea. Naver powers
+		// AiRSearch, vital for the Korean market in a different
+		// slice from Wrtn. Huawei's PetalBot backs Petal Search
+		// and the AI Assistant shipped on hundreds of millions of
+		// Huawei devices (primary Android alternative in China
+		// and growing presence across Asia + emerging markets).
+		//
+		// Merchants selling only in English-speaking markets can
+		// safely keep these checked without traffic impact — they
+		// only invoke when users actually search from the relevant
+		// region. Merchants selling in Asia lose significant AI
+		// discovery if these are blocked.
+		'ERNIEBot',
+		'YiyanBot',
+		'WRTNBot',
+		'NaverBot',
+		'PetalBot',
+
+		// Regional search + AI — Europe. YandexBot powers Yandex's
+		// AI Assistant plus the traditional Yandex search engine;
+		// covers Russian-speaking markets (Russia, Belarus,
+		// Kazakhstan, Ukraine, and Russian-language speakers
+		// globally). The search + AI fusion is similar to
+		// Naver/Baidu — one bot, dual duties.
+		'YandexBot',
 	];
 
 	/**
@@ -66,14 +130,40 @@ class WC_AI_Syndication_Robots {
 	 * @var string[]
 	 */
 	const TRAINING_CRAWLERS = [
+		// OpenAI.
 		'GPTBot',
+
+		// Google.
 		'Google-Extended',
-		'Gemini',
-		'PerplexityBot',
+
+		// Anthropic.
 		'ClaudeBot',
+
+		// Meta.
 		'Meta-ExternalAgent',
+
+		// Amazon.
 		'Amazonbot',
+
+		// Apple.
 		'Applebot-Extended',
+
+		// ByteDance (TikTok). Primarily training, but also powers
+		// TikTok's internal search and commerce surfaces. Merchants
+		// who rely on TikTok Shop or viral-traffic discovery should
+		// consider manually enabling this from the admin UI —
+		// defaulting to training-blocked keeps it consistent with
+		// the other training crawlers but loses TikTok visibility.
+		'Bytespider',
+
+		// CommonCrawl — feeds most open-source LLM training corpora.
+		// Merchants who want maximum visibility across the AI
+		// ecosystem enable this; those who prefer catalog privacy
+		// block it.
+		'CCBot',
+
+		// Cohere.
+		'cohere-ai',
 	];
 
 	/**
@@ -95,29 +185,67 @@ class WC_AI_Syndication_Robots {
 		// Live browsing (revenue path — recommended on).
 		'ChatGPT-User',
 		'OAI-SearchBot',
-		'Perplexity-User',
 		'Claude-User',
+		'Claude-SearchBot',
+		'PerplexityBot',
+		'Perplexity-User',
+		'Applebot',
+		'AmazonBuyForMe',
+		'KlarnaBot',
+		'Storebot-Google',
+		'ERNIEBot',
+		'YiyanBot',
+		'WRTNBot',
+		'NaverBot',
+		'PetalBot',
+		'YandexBot',
 
 		// Training crawlers (brand-strategy decision — merchant choice).
 		'GPTBot',
 		'Google-Extended',
-		'Gemini',
-		'PerplexityBot',
 		'ClaudeBot',
 		'Meta-ExternalAgent',
 		'Amazonbot',
 		'Applebot-Extended',
+		'Bytespider',
+		'CCBot',
+		'cohere-ai',
 	];
+
+	/**
+	 * Crawl-delay (in seconds) emitted alongside each AI-crawler
+	 * `User-agent:` block in robots.txt.
+	 *
+	 * Crawl-delay is an advisory directive originally introduced by
+	 * Google as a robots.txt extension. Well-behaved crawlers respect
+	 * it and wait this many seconds between requests; less-careful
+	 * ones ignore it. Combined with the plugin's Store API rate
+	 * limiter (hard enforcement at 25 req/min per bot by default),
+	 * Crawl-delay acts as the polite-signal layer before the hard
+	 * limit kicks in.
+	 *
+	 * The value (2 seconds) is deliberately conservative — matches
+	 * the merchant-protection guidance recommended for e-commerce
+	 * sites facing aggressive AI search bots (OAI-SearchBot and
+	 * similar live agents have been observed bursting dozens of
+	 * requests in seconds during product-comparison queries). Two
+	 * seconds is low enough to not materially hurt user-perceived
+	 * agent latency, high enough to dampen the worst burst behavior.
+	 */
+	const CRAWL_DELAY_SECONDS = 2;
 
 	/**
 	 * Sanitize an `allowed_crawlers` input against the canonical crawler list.
 	 *
 	 * Strips unknown IDs left over from plugin upgrades that rotated the
-	 * crawler roster (e.g. the Bytespider → OAI-SearchBot swap in v1.1.0)
-	 * and any malformed / non-matching strings. Keeping the stored list in
-	 * sync with AI_CRAWLERS prevents deprecated `User-agent: Bytespider`
-	 * blocks from leaking into `robots.txt` and keeps the admin UI's
-	 * "X of Y" count honest.
+	 * crawler roster — e.g. the phantom `Gemini` entry removed in 1.6.0
+	 * (never matched any real crawler; Google's Gemini-training bot is
+	 * `Google-Extended`), or the deprecated `anthropic-ai` UA that
+	 * Anthropic replaced with the `ClaudeBot` / `Claude-User` /
+	 * `Claude-SearchBot` family. Keeping the stored list in sync with
+	 * `AI_CRAWLERS` prevents deprecated `User-agent:` blocks from
+	 * leaking into `robots.txt` and keeps the admin UI's "X of Y"
+	 * count honest.
 	 *
 	 * @param mixed $input Raw input from settings save — expected array of strings.
 	 * @return string[]    Re-indexed list of valid crawler IDs.
@@ -132,6 +260,49 @@ class WC_AI_Syndication_Robots {
 		// `array_intersect` preserves first-argument keys, so `array_values`
 		// re-indexes — otherwise the JSON response serializes as an object.
 		return array_values( array_intersect( $sanitized, self::AI_CRAWLERS ) );
+	}
+
+	/**
+	 * Resolve which crawlers are allowed for a given stored settings row.
+	 *
+	 * Encapsulates the three-way branch callers would otherwise
+	 * implement ad-hoc:
+	 *
+	 *   1. Fresh install (no `allowed_crawlers` key in stored option):
+	 *      return `LIVE_BROWSING_AGENTS` — commerce-safe default,
+	 *      training crawlers off.
+	 *
+	 *   2. Merchant explicitly saved an empty list (e.g. via the
+	 *      admin UI's "Clear selection" button): preserve `[]`. This
+	 *      is the "block all AI crawlers" opt-out choice.
+	 *
+	 *   3. Merchant saved a non-empty list: preserve verbatim.
+	 *
+	 *      Using `array_key_exists()` rather than `! empty()` is
+	 *      load-bearing for case 2: `! empty([])` is true, which
+	 *      would silently revert a merchant's explicit opt-out to
+	 *      the fresh-install default on every `get_settings()`
+	 *      call — a real consent regression.
+	 *
+	 * Extracted to a pure helper so the three branches are
+	 * testable without needing to instantiate the full plugin
+	 * settings/storage layer.
+	 *
+	 * @param array<string, mixed> $stored_settings The settings array
+	 *                                              as returned from
+	 *                                              `get_option()`, which
+	 *                                              may or may not include
+	 *                                              an `allowed_crawlers`
+	 *                                              key.
+	 * @return string[]                              The resolved allow-list.
+	 */
+	public static function resolve_allowed_crawlers( array $stored_settings ): array {
+		if ( ! array_key_exists( 'allowed_crawlers', $stored_settings ) ) {
+			return self::LIVE_BROWSING_AGENTS;
+		}
+
+		$stored = $stored_settings['allowed_crawlers'];
+		return is_array( $stored ) ? $stored : [];
 	}
 
 	/**
@@ -187,6 +358,17 @@ class WC_AI_Syndication_Robots {
 		foreach ( $allowed_bots as $bot ) {
 			$bot     = sanitize_text_field( $bot );
 			$output .= "User-agent: {$bot}\n";
+
+			// Advisory rate-hint: well-behaved crawlers wait this many
+			// seconds between requests, which dampens burst traffic
+			// (AI search bots in particular have been observed firing
+			// 10+ requests in a second during product-comparison
+			// queries). Emitted before the Allow/Disallow rules per
+			// robots.txt convention so crawlers pick it up before
+			// they fetch anything. See the CRAWL_DELAY_SECONDS
+			// constant docblock for value rationale.
+			$output .= 'Crawl-delay: ' . self::CRAWL_DELAY_SECONDS . "\n";
+
 			$output .= "Allow: /llms.txt\n";
 			$output .= "Allow: /.well-known/ucp\n";
 			$output .= "Allow: /wp-json/wc/store/\n";

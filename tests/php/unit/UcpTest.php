@@ -226,14 +226,32 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	// payment posture (zero handlers)
 	// ------------------------------------------------------------------
 
-	public function test_capabilities_declares_shopping_catalog(): void {
-		// Plugin 1.3.0 implements the UCP shopping catalog capability
-		// (search + lookup) at /wp-json/wc/ucp/v1/catalog/*. Agents
-		// check this key to confirm our endpoints honor the catalog
-		// request/response contract.
+	public function test_capabilities_declares_shopping_catalog_sub_capabilities(): void {
+		// Since 1.6.0 we advertise the two catalog sub-capabilities
+		// explicitly (`.search` + `.lookup`) rather than the umbrella
+		// `dev.ucp.shopping.catalog`. The April UCP spec formalized
+		// these as separate schemas; splitting the advertisement
+		// lets agents discover precisely which operations are
+		// available. Both sub-capabilities resolve to the same
+		// REST endpoint (`/wp-json/wc/ucp/v1/catalog/*`).
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertArrayHasKey(
+			'dev.ucp.shopping.catalog.search',
+			$manifest['ucp']['capabilities']
+		);
+		$this->assertArrayHasKey(
+			'dev.ucp.shopping.catalog.lookup',
+			$manifest['ucp']['capabilities']
+		);
+
+		// Regression guard: the umbrella name is specifically NOT
+		// advertised. An agent iterating the capability map that
+		// matches on `dev.ucp.shopping.catalog` (without a trailing
+		// `.search` / `.lookup`) should get zero hits — so it
+		// migrates to the sub-capability keys rather than silently
+		// continuing to rely on the deprecated name.
+		$this->assertArrayNotHasKey(
 			'dev.ucp.shopping.catalog',
 			$manifest['ucp']['capabilities']
 		);
@@ -274,14 +292,18 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'handoff', $binding['mode'] );
 	}
 
-	public function test_catalog_capability_has_no_mode_hint(): void {
-		// Catalog is fully supported — search + lookup + variations.
-		// "Read-only" is implicit in the capability name; no mode
-		// flag needed. A `mode` on catalog would be noise.
+	public function test_catalog_sub_capabilities_have_no_mode_hint(): void {
+		// Catalog search and lookup are both fully supported —
+		// "read-only" is implicit in the capability names; no mode
+		// flag needed. Mode hints belong only on capabilities with
+		// more than one operational posture (currently just checkout
+		// with its handoff/non-handoff split).
 		$manifest = $this->ucp->generate_manifest( [] );
 
-		$binding = $manifest['ucp']['capabilities']['dev.ucp.shopping.catalog'][0];
-		$this->assertArrayNotHasKey( 'mode', $binding );
+		foreach ( [ 'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup' ] as $cap ) {
+			$binding = $manifest['ucp']['capabilities'][ $cap ][0];
+			$this->assertArrayNotHasKey( 'mode', $binding, "$cap should have no mode hint" );
+		}
 	}
 
 	public function test_each_capability_value_is_array_of_versioned_bindings(): void {
@@ -293,7 +315,13 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// would fail strict schema validation.
 		$manifest = $this->ucp->generate_manifest( [] );
 
-		foreach ( [ 'dev.ucp.shopping.catalog', 'dev.ucp.shopping.checkout' ] as $cap ) {
+		$capabilities = [
+			'dev.ucp.shopping.catalog.search',
+			'dev.ucp.shopping.catalog.lookup',
+			'dev.ucp.shopping.checkout',
+		];
+
+		foreach ( $capabilities as $cap ) {
 			$bindings = $manifest['ucp']['capabilities'][ $cap ];
 
 			$this->assertIsArray( $bindings, "$cap should be an array" );
@@ -307,15 +335,21 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_no_extraneous_capabilities_declared(): void {
-		// Regression guard: we implement catalog + checkout only. If
-		// a future refactor accidentally declared cart, identity
-		// linking, payment token exchange, etc., agents would try to
-		// invoke operations we haven't built — and fail. Declaring
-		// only what we've implemented is the honest posture.
+		// Regression guard: we implement catalog.search + catalog.lookup
+		// + checkout only. If a future refactor accidentally declared
+		// cart, order, identity linking, payment token exchange, etc.,
+		// agents would try to invoke operations we haven't built — and
+		// fail. Declaring only what we've implemented is the honest
+		// posture. When we DO add new capabilities (order is the likely
+		// 1.7.0 candidate) this test gets updated explicitly.
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertEqualsCanonicalizing(
-			[ 'dev.ucp.shopping.catalog', 'dev.ucp.shopping.checkout' ],
+			[
+				'dev.ucp.shopping.catalog.search',
+				'dev.ucp.shopping.catalog.lookup',
+				'dev.ucp.shopping.checkout',
+			],
 			array_keys( $manifest['ucp']['capabilities'] )
 		);
 	}
