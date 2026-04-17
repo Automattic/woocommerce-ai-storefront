@@ -50,6 +50,7 @@ describe( 'AI Syndication actions', () => {
 				llms_txt: 'https://example.com/llms.txt',
 				ucp: 'https://example.com/.well-known/ucp',
 				store_api: 'https://example.com/wp-json/wc/store/v1',
+				robots: 'https://example.com/robots.txt',
 			} ) ),
 		};
 	} );
@@ -171,8 +172,11 @@ describe( 'AI Syndication actions', () => {
 		} );
 
 		it( 'marks everything disabled when syndication is off', async () => {
-			// When the merchant has toggled off, endpoints intentionally
-			// return 404 — probing would produce misleading red X's.
+			// When the merchant has toggled off, llms.txt / UCP manifest
+			// intentionally return 404 — probing would produce misleading
+			// red X's. robots.txt stays reachable at the URL level (WP
+			// always serves it), but our AI-crawler rules aren't being
+			// appended, so we flag it disabled for consistency.
 			mockSelect.getSettings = jest.fn( () => ( { enabled: 'no' } ) );
 
 			const thunk = checkEndpoints();
@@ -190,6 +194,10 @@ describe( 'AI Syndication actions', () => {
 				'store_api',
 				'disabled'
 			);
+			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
+				'robots',
+				'disabled'
+			);
 			expect( global.fetch ).not.toHaveBeenCalled();
 		} );
 
@@ -199,9 +207,14 @@ describe( 'AI Syndication actions', () => {
 			const thunk = checkEndpoints();
 			await thunk( { dispatch: mockDispatch, select: mockSelect } );
 
-			expect( global.fetch ).toHaveBeenCalledTimes( 3 );
+			// One probe per endpoint: llms_txt, ucp, store_api, robots.
+			expect( global.fetch ).toHaveBeenCalledTimes( 4 );
 			expect( global.fetch ).toHaveBeenCalledWith(
 				'https://example.com/llms.txt',
+				expect.objectContaining( { method: 'HEAD' } )
+			);
+			expect( global.fetch ).toHaveBeenCalledWith(
+				'https://example.com/robots.txt',
 				expect.objectContaining( { method: 'HEAD' } )
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
@@ -214,6 +227,10 @@ describe( 'AI Syndication actions', () => {
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
 				'store_api',
+				'reachable'
+			);
+			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
+				'robots',
 				'reachable'
 			);
 		} );
@@ -256,6 +273,10 @@ describe( 'AI Syndication actions', () => {
 				'store_api',
 				'unreachable'
 			);
+			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
+				'robots',
+				'unreachable'
+			);
 		} );
 
 		it( 'sets checking state before probing', async () => {
@@ -273,7 +294,7 @@ describe( 'AI Syndication actions', () => {
 				select: mockSelect,
 			} );
 
-			// Before resolving any fetch, the three 'checking' dispatches
+			// Before resolving any fetch, the four 'checking' dispatches
 			// must have landed.
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
 				'llms_txt',
@@ -285,6 +306,10 @@ describe( 'AI Syndication actions', () => {
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
 				'store_api',
+				'checking'
+			);
+			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
+				'robots',
 				'checking'
 			);
 

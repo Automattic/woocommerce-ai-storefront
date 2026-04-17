@@ -120,8 +120,9 @@ export function resetEndpointStatus() {
  *   - Network / CORS error  -> 'unreachable'
  *
  * When `settings.enabled !== 'yes'`, we skip the probes entirely and mark
- * all three as 'disabled'. That's more honest than showing red X's for a
- * state the merchant intentionally chose.
+ * all four endpoints (llms.txt, UCP manifest, Store API, robots.txt) as
+ * 'disabled'. That's more honest than showing red X's for a state the
+ * merchant intentionally chose.
  */
 export function checkEndpoints() {
 	return async ( { dispatch, select } ) => {
@@ -134,19 +135,28 @@ export function checkEndpoints() {
 
 		// Syndication off -> endpoints are intentionally 404. Don't
 		// probe; display 'disabled' badges instead of misleading X's.
+		//
+		// robots.txt is the one exception where the URL stays
+		// technically reachable (WordPress always serves it) — but for
+		// consistency with the other rows, 'disabled' here means "our
+		// plugin's AI-crawler rules are not being appended right now."
+		// The link in the UI stays clickable so the merchant can still
+		// see what WordPress serves by default.
 		const settings = select.getSettings();
 		if ( settings.enabled !== 'yes' ) {
 			dispatch.setEndpointStatus( 'llms_txt', 'disabled' );
 			dispatch.setEndpointStatus( 'ucp', 'disabled' );
 			dispatch.setEndpointStatus( 'store_api', 'disabled' );
+			dispatch.setEndpointStatus( 'robots', 'disabled' );
 			return;
 		}
 
-		// Mark all three as 'checking' so the UI can render spinners
+		// Mark all as 'checking' so the UI can render spinners
 		// immediately. Each probe then resolves independently.
 		dispatch.setEndpointStatus( 'llms_txt', 'checking' );
 		dispatch.setEndpointStatus( 'ucp', 'checking' );
 		dispatch.setEndpointStatus( 'store_api', 'checking' );
+		dispatch.setEndpointStatus( 'robots', 'checking' );
 
 		const probe = async ( key, url ) => {
 			try {
@@ -174,6 +184,7 @@ export function checkEndpoints() {
 			probe( 'llms_txt', endpoints.llms_txt ),
 			probe( 'ucp', endpoints.ucp ),
 			probe( 'store_api', endpoints.store_api ),
+			probe( 'robots', endpoints.robots ),
 		] );
 	};
 }

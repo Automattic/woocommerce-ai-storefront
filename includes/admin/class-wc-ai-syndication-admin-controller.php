@@ -284,6 +284,12 @@ class WC_AI_Syndication_Admin_Controller {
 				'llms_txt'  => home_url( '/llms.txt' ),
 				'ucp'       => home_url( '/.well-known/ucp' ),
 				'store_api' => rest_url( 'wc/store/v1' ),
+				// robots.txt is always reachable (WordPress serves it
+				// unconditionally), but our plugin appends the AI-crawler
+				// allow-list + Allow directives when syndication is
+				// enabled. Surfacing it here gives merchants a direct
+				// view of what the plugin publishes to bots.
+				'robots'    => home_url( '/robots.txt' ),
 			]
 		);
 	}

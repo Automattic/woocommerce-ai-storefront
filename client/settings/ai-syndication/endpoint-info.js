@@ -133,7 +133,8 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 		isEnabled &&
 		( endpointStatus.llms_txt === 'unreachable' ||
 			endpointStatus.ucp === 'unreachable' ||
-			endpointStatus.store_api === 'unreachable' );
+			endpointStatus.store_api === 'unreachable' ||
+			endpointStatus.robots === 'unreachable' );
 	const allowedCrawlers =
 		settings.allowed_crawlers || KNOWN_CRAWLERS.map( ( c ) => c.id );
 
@@ -304,6 +305,31 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								<td>
 									{ __(
 										'WooCommerce Store API for product search and cart (public)',
+										'woocommerce-ai-syndication'
+									) }
+								</td>
+							</tr>
+							<tr>
+								<td>
+									<strong>robots.txt</strong>
+								</td>
+								<td>
+									{ endpoints.robots ? (
+										<ExternalLink href={ endpoints.robots }>
+											{ endpoints.robots }
+										</ExternalLink>
+									) : (
+										<Spinner />
+									) }
+								</td>
+								<td>
+									<StatusBadge
+										status={ endpointStatus.robots }
+									/>
+								</td>
+								<td>
+									{ __(
+										'AI-crawler allow-list (Allow/Disallow directives appended to your site\u2019s robots.txt)',
 										'woocommerce-ai-syndication'
 									) }
 								</td>
