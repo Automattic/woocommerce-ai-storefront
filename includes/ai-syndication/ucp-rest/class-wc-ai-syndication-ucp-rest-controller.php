@@ -89,27 +89,96 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	}
 
 	/**
-	 * Stub handler for POST /catalog/search.
+	 * Handler for POST /catalog/search.
 	 *
-	 * Task 11 replaces this with a full implementation that:
-	 *   1. Parses filters.categories, filters.price, and query
-	 *   2. Dispatches to GET /wc/store/v1/products via rest_do_request
-	 *      (which inherits the Store API product-collection filter from
-	 *      task 8, so selected_categories/products restrictions apply)
-	 *   3. Translates each result via UcpProductTranslator
-	 *   4. Wraps in the catalog envelope
+	 * Accepts a UCP search request body of shape:
+	 *   {
+	 *     "query": "blue shirt",
+	 *     "filters": {
+	 *       "categories": ["clothing", "tops"],
+	 *       "price":      { "min": 1000, "max": 5000 }
+	 *     }
+	 *   }
 	 *
-	 * @param WP_REST_Request $request Will carry the UCP search body
-	 *                                 once task 11 replaces this stub;
-	 *                                 unused until then.
-	 * @return WP_Error                501 sentinel until task 11 lands.
+	 * Maps UCP fields onto WC Store API query params and dispatches
+	 * `GET /wc/store/v1/products` via `rest_do_request`. Every returned
+	 * product is translated to UCP shape; variable products get their
+	 * variations pre-fetched (per task 7) so variant lists are real
+	 * rather than synthesized defaults.
+	 *
+	 * Pagination is deferred to a future version — v1 returns whatever
+	 * Store API considers the default page (typically 10 products).
+	 * Agents needing more will page via repeated calls once v1.4 adds
+	 * explicit pagination support.
+	 *
+	 * Performance note: variable products fan out to N+1 dispatches
+	 * (1 list call + 1 per variation per product). For large catalogs
+	 * this may need per-request memoization; profile on real stores
+	 * before optimizing (see PLAN-ucp-adapter.md known-unknown #2).
+	 *
+	 * @param WP_REST_Request $request UCP search request.
+	 * @return WP_Error|WP_REST_Response
 	 */
-	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- Transient stub; task 11 consumes $request.
 	public function handle_catalog_search( WP_REST_Request $request ) {
-		return new WP_Error(
-			'ucp_not_implemented',
-			__( 'catalog/search is not yet implemented.', 'woocommerce-ai-syndication' ),
-			[ 'status' => 501 ]
+		// Attribution: note the calling agent (unblocking; logging only).
+		$agent_header = $request->get_header( 'ucp-agent' );
+		if ( is_string( $agent_header ) && '' !== $agent_header ) {
+			$host = WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname(
+				$agent_header
+			);
+			WC_AI_Syndication_Logger::debug(
+				'UCP catalog/search from agent: ' . ( '' !== $host ? $host : 'unknown' )
+			);
+		}
+
+		$store_params = self::map_ucp_search_to_store_api( $request );
+
+		$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products' );
+		foreach ( $store_params as $k => $v ) {
+			$store_request->set_param( $k, $v );
+		}
+
+		$store_response = rest_do_request( $store_request );
+
+		if ( is_wp_error( $store_response ) || $store_response->get_status() >= 500 ) {
+			return new WP_Error(
+				'ucp_internal_error',
+				__( 'Unable to fetch products from the store.', 'woocommerce-ai-syndication' ),
+				[ 'status' => 500 ]
+			);
+		}
+
+		// 4xx from Store API (invalid filter, e.g., unknown category) is
+		// treated as "no results" rather than an error: the agent's query
+		// simply didn't match anything. UCP's business-outcome convention.
+		$wc_products = [];
+		if ( $store_response->get_status() < 400 ) {
+			$data = $store_response->get_data();
+			if ( is_array( $data ) ) {
+				$wc_products = $data;
+			}
+		}
+
+		$products = [];
+		foreach ( $wc_products as $wc_product ) {
+			if ( ! is_array( $wc_product ) ) {
+				continue;
+			}
+			$wc_variations = self::fetch_variations_for( $wc_product );
+			$products[]    = WC_AI_Syndication_UCP_Product_Translator::translate(
+				$wc_product,
+				$wc_variations
+			);
+		}
+
+		return new WP_REST_Response(
+			[
+				'ucp'      => WC_AI_Syndication_UCP_Envelope::catalog_envelope(
+					'dev.ucp.shopping.catalog.search'
+				),
+				'products' => $products,
+			],
+			200
 		);
 	}
 
@@ -331,5 +400,118 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			'path'     => '$.ids[' . $index . ']',
 			'severity' => 'unrecoverable',
 		];
+	}
+
+	/**
+	 * Translate a UCP search request's body fields onto WC Store API
+	 * query params.
+	 *
+	 * Mapping:
+	 *   query                → search       (full-text match)
+	 *   filters.categories   → category     (comma-joined term IDs)
+	 *   filters.price.min    → min_price    (presentment units, string)
+	 *   filters.price.max    → max_price
+	 *
+	 * Non-object `filters`, unknown keys, and malformed nested shapes
+	 * are silently ignored — returning an empty `$params` array is
+	 * equivalent to "list all products," which is the sensible fallback
+	 * for a garbled search query. (Pipeline-breaking input — e.g., body
+	 * not even an object — is rejected upstream by WP's REST dispatcher.)
+	 *
+	 * @return array<string, string|int>
+	 */
+	private static function map_ucp_search_to_store_api( WP_REST_Request $request ): array {
+		$params = [];
+
+		$query = $request->get_param( 'query' );
+		if ( is_string( $query ) && '' !== $query ) {
+			$params['search'] = $query;
+		}
+
+		$filters = $request->get_param( 'filters' );
+		if ( ! is_array( $filters ) ) {
+			return $params;
+		}
+
+		if ( isset( $filters['categories'] ) && is_array( $filters['categories'] ) ) {
+			$term_ids = self::resolve_category_term_ids( $filters['categories'] );
+			if ( ! empty( $term_ids ) ) {
+				$params['category'] = implode( ',', $term_ids );
+			}
+		}
+
+		if ( isset( $filters['price'] ) && is_array( $filters['price'] ) ) {
+			$price = $filters['price'];
+			if ( isset( $price['min'] ) && is_numeric( $price['min'] ) && $price['min'] >= 0 ) {
+				$params['min_price'] = self::minor_units_to_presentment( (int) $price['min'] );
+			}
+			if ( isset( $price['max'] ) && is_numeric( $price['max'] ) && $price['max'] >= 0 ) {
+				$params['max_price'] = self::minor_units_to_presentment( (int) $price['max'] );
+			}
+		}
+
+		return $params;
+	}
+
+	/**
+	 * Resolve UCP category strings to WC product_cat term IDs.
+	 *
+	 * WC Store API's `category` param only accepts numeric IDs, not
+	 * slugs or names — despite some documentation saying otherwise.
+	 * We try slug lookup first (canonical, URL-safe), then name as a
+	 * fallback so agents echoing back category values from our search
+	 * responses still work. Unresolvable strings are silently dropped
+	 * rather than returning an error: the agent asked for a category
+	 * that doesn't exist, which naturally yields an empty result set.
+	 *
+	 * v1.4 should revisit emitting slugs from UcpProductTranslator's
+	 * category output so round-tripping doesn't rely on the name
+	 * fallback here. See PLAN-ucp-adapter.md.
+	 *
+	 * @param array<int, mixed> $inputs
+	 * @return array<int, int>
+	 */
+	private static function resolve_category_term_ids( array $inputs ): array {
+		$ids = [];
+		foreach ( $inputs as $input ) {
+			if ( ! is_string( $input ) || '' === $input ) {
+				continue;
+			}
+
+			$term = get_term_by( 'slug', $input, 'product_cat' );
+			if ( ! $term || is_wp_error( $term ) ) {
+				$term = get_term_by( 'name', $input, 'product_cat' );
+			}
+			if ( $term && ! is_wp_error( $term ) ) {
+				$ids[] = (int) $term->term_id;
+			}
+		}
+		return $ids;
+	}
+
+	/**
+	 * Convert integer minor units (UCP's price encoding) to a decimal
+	 * string in the store's currency presentment format.
+	 *
+	 * UCP sends `1000` meaning $10.00 (for a 2-decimal currency like
+	 * USD). WC Store API's min_price/max_price expect `"10.00"`. We
+	 * divide by 10^decimals where `decimals` is the merchant's configured
+	 * price precision (2 for USD/EUR, 0 for JPY, 3 for BHD).
+	 *
+	 * `number_format()` over raw float division sidesteps floating-point
+	 * representation quirks — 0.1 + 0.2 famously isn't 0.3, and we
+	 * don't want that kind of drift in a price string.
+	 */
+	private static function minor_units_to_presentment( int $minor_units ): string {
+		$decimals = function_exists( 'wc_get_price_decimals' )
+			? (int) wc_get_price_decimals()
+			: 2;
+
+		return number_format(
+			$minor_units / ( 10 ** $decimals ),
+			$decimals,
+			'.',
+			''
+		);
 	}
 }
