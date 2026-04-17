@@ -64,12 +64,34 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		private array $params = [];
 		private array $headers = [];
 		private string $route = '';
+		private string $method = '';
+
+		/**
+		 * Parsed JSON body. Distinct from form-encoded params so
+		 * handlers calling `get_json_params()` vs `get_param()` can
+		 * be exercised independently.
+		 *
+		 * @var ?array<string, mixed>
+		 */
+		private ?array $json_params = null;
+
+		public function __construct( string $method = '', string $route = '' ) {
+			$this->method = $method;
+			$this->route  = $route;
+		}
 
 		public function set_param( string $key, $value ): void {
 			$this->params[ $key ] = $value;
 		}
 
 		public function get_param( string $key ) {
+			// Match WP behavior: get_param checks JSON body, then regular
+			// params, returning the first match. Handlers that call
+			// get_param('ids') should see the ids array whether it was
+			// delivered via JSON body or form body.
+			if ( null !== $this->json_params && array_key_exists( $key, $this->json_params ) ) {
+				return $this->json_params[ $key ];
+			}
 			return $this->params[ $key ] ?? null;
 		}
 
@@ -90,6 +112,28 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		public function get_route(): string {
 			return $this->route;
 		}
+
+		public function get_method(): string {
+			return $this->method;
+		}
+
+		public function set_method( string $method ): void {
+			$this->method = $method;
+		}
+
+		/**
+		 * @param array<string, mixed> $params
+		 */
+		public function set_json_params( array $params ): void {
+			$this->json_params = $params;
+		}
+
+		/**
+		 * @return ?array<string, mixed>
+		 */
+		public function get_json_params(): ?array {
+			return $this->json_params;
+		}
 	}
 }
 
@@ -97,9 +141,12 @@ if ( ! class_exists( 'WP_REST_Response' ) ) {
 	class WP_REST_Response {
 		public $data;
 		private array $headers = [];
+		private int $status = 200;
 
-		public function __construct( $data = null ) {
-			$this->data = $data;
+		public function __construct( $data = null, int $status = 200, array $headers = [] ) {
+			$this->data    = $data;
+			$this->status  = $status;
+			$this->headers = $headers;
 		}
 
 		public function header( string $key, string $value ): void {
@@ -108,6 +155,22 @@ if ( ! class_exists( 'WP_REST_Response' ) ) {
 
 		public function get_headers(): array {
 			return $this->headers;
+		}
+
+		public function get_status(): int {
+			return $this->status;
+		}
+
+		public function set_status( int $status ): void {
+			$this->status = $status;
+		}
+
+		public function get_data() {
+			return $this->data;
+		}
+
+		public function set_data( $data ): void {
+			$this->data = $data;
 		}
 	}
 }

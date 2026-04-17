@@ -174,14 +174,10 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( [ 'status' => 501 ], $result->get_error_data() );
 	}
 
-	public function test_catalog_lookup_stub_returns_501_not_implemented(): void {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
-		$result     = $controller->handle_catalog_lookup( new WP_REST_Request() );
-
-		$this->assertInstanceOf( WP_Error::class, $result );
-		$this->assertEquals( 'ucp_not_implemented', $result->get_error_code() );
-		$this->assertEquals( [ 'status' => 501 ], $result->get_error_data() );
-	}
+	// catalog/lookup is implemented as of task 10 — its behavior tests
+	// live in UcpCatalogLookupTest. Once tasks 11 and 12 land, the
+	// analogous stub tests below (search, checkout-sessions) should be
+	// deleted too.
 
 	public function test_checkout_sessions_stub_returns_501_not_implemented(): void {
 		$controller = new WC_AI_Syndication_UCP_REST_Controller();
