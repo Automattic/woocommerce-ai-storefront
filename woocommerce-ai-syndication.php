@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce AI Syndication
  * Plugin URI: https://woocommerce.com/
  * Description: Merchant-led AI product syndication for WooCommerce. Expose products to AI shopping agents (ChatGPT, Gemini, Perplexity, Claude) with full merchant control. Store-only checkout, standard WooCommerce attribution.
- * Version: 1.3.2
+ * Version: 1.4.0
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
  * Text Domain: woocommerce-ai-syndication
@@ -15,13 +15,14 @@
  * Requires PHP: 8.0
  * License: GPL-3.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
+ * Update URI: https://github.com/pierorocca/woocommerce-ai-syndication
  *
  * @package WooCommerce_AI_Syndication
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'WC_AI_SYNDICATION_VERSION', '1.3.2' );
+define( 'WC_AI_SYNDICATION_VERSION', '1.4.0' );
 define( 'WC_AI_SYNDICATION_PLUGIN_FILE', __FILE__ );
 define( 'WC_AI_SYNDICATION_PLUGIN_PATH', untrailingslashit( plugin_dir_path( __FILE__ ) ) );
 define( 'WC_AI_SYNDICATION_PLUGIN_URL', untrailingslashit( plugin_dir_url( __FILE__ ) ) );
@@ -56,6 +57,26 @@ function wc_ai_syndication_init() {
 	WC_AI_Syndication::get_instance();
 }
 add_action( 'plugins_loaded', 'wc_ai_syndication_init' );
+
+/**
+ * Register the self-updater against our GitHub release feed.
+ *
+ * Runs on `init` rather than `plugins_loaded` so it fires regardless
+ * of whether WooCommerce is active — merchants who deactivate Woo
+ * temporarily should still receive plugin updates.
+ *
+ * Admin-only: the update machinery only runs in wp-admin (and WP-CLI
+ * / cron), so skipping front-end requests avoids loading the PUC
+ * library on every pageview.
+ */
+function wc_ai_syndication_init_updater() {
+	if ( ! is_admin() && ! ( defined( 'WP_CLI' ) && WP_CLI ) && ! wp_doing_cron() ) {
+		return;
+	}
+	require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/class-wc-ai-syndication-updater.php';
+	WC_AI_Syndication_Updater::init();
+}
+add_action( 'init', 'wc_ai_syndication_init_updater' );
 
 /**
  * Admin notice when WooCommerce is not active.

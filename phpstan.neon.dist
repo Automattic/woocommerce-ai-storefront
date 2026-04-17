@@ -69,6 +69,9 @@ parameters:
         - node_modules (?)
         - build (?)
         - tests
+        # Vendored Plugin Update Checker library (Janis Elsts / MIT).
+        # Third-party code; we don't own the type annotations or style.
+        - includes/lib
 
     # WC functions aren't in the WP stubs. Ignoring by name pattern
     # keeps the config honest about WHAT we're waiving vs. a blanket

@@ -84,6 +84,14 @@ jobs:
       # name determines the root path inside the zip (WP plugin zips
       # extract into wp-content/plugins/<dir-name>/), so this must
       # match the slug merchants see in their Plugins screen.
+      #
+      # Note on `/vendor/` (anchored): this strips the project's
+      # composer vendor/ dir without touching the vendored Plugin
+      # Update Checker library's own vendor/ subdirectory at
+      # includes/lib/plugin-update-checker/vendor/ (which ships
+      # Parsedown for changelog rendering). An unanchored `vendor/`
+      # pattern would match every dir named "vendor" in the tree
+      # and silently break in-place updates.
       - name: Stage release files
         run: |
           mkdir -p release-staging
@@ -95,7 +103,7 @@ jobs:
             --exclude='node_modules/' \
             --exclude='client/' \
             --exclude='tests/' \
-            --exclude='vendor/' \
+            --exclude='/vendor/' \
             --exclude='bin/' \
             --exclude='release-staging/' \
             --exclude='*.log' \

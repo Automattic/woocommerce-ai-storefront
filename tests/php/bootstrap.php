@@ -42,3 +42,18 @@ require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-product-translator.ph
 require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-variant-translator.php';
 require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-store-api-filter.php';
 require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-rest-controller.php';
+
+// Self-updater wrapper around the PUC library (1.4.0+).
+require_once $plugin_path . 'class-wc-ai-syndication-updater.php';
+
+// The updater uses WC_AI_SYNDICATION_PLUGIN_PATH + _FILE to locate
+// the vendored library at runtime. Define them here so unit tests
+// can exercise the init guard clauses without requiring a full
+// plugin bootstrap. These mirror the real constants set in the
+// plugin entry file.
+if ( ! defined( 'WC_AI_SYNDICATION_PLUGIN_PATH' ) ) {
+	define( 'WC_AI_SYNDICATION_PLUGIN_PATH', dirname( __DIR__, 2 ) );
+}
+if ( ! defined( 'WC_AI_SYNDICATION_PLUGIN_FILE' ) ) {
+	define( 'WC_AI_SYNDICATION_PLUGIN_FILE', dirname( __DIR__, 2 ) . '/woocommerce-ai-syndication.php' );
+}

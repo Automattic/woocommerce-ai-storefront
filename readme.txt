@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.3.2
+Stable tag: 1.4.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,11 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.4.0 =
+* Added: in-place plugin updates from wp-admin. The plugin now registers itself with WordPress's native update UI via the Plugin Update Checker library (bundled at `includes/lib/plugin-update-checker/`) pointed at our GitHub release feed. Merchants see an "Update available" notice on the Plugins screen and click "Update Now" just like any WP.org-hosted plugin — no more manual zip uploads, no more duplicate plugin directories from source-code zips, no more stale installs coexisting with the new version. Update checks are admin-only (skipped on front-end requests to avoid loading the library on every pageview) and point at tagged release assets only, not branch HEAD, so merchants only ever see versions we have explicitly shipped.
+* Added: `Update URI:` header pointing at the GitHub repo URL. WordPress 5.8+ uses this to route update checks through our updater rather than the WP.org directory, preventing name-collision hijacks if a plugin with the same slug ever appears on WP.org.
+* Changed: canonical GitHub repo is now `woocommerce-ai-syndication` (renamed from `woo-ucp-syndicate-ai`). GitHub auto-redirects all old URLs, but the new name matches the plugin slug — so source-code zips from releases now extract to the same directory as the release-asset zip, eliminating the additive-install problem on manual uploads.
 
 = 1.3.2 =
 * Added: robots.txt row to the Discovery Endpoints table in the WooCommerce > AI Syndication admin panel. Merchants can now see the clickable URL, reachability status, and a plain-English description of what the plugin appends to robots.txt — completing the discovery picture alongside llms.txt, UCP manifest, and Store API.
