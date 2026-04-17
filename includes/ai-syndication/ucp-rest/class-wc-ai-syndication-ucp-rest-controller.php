@@ -42,6 +42,52 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	const NAMESPACE = 'wc/ucp/v1';
 
 	/**
+	 * Upper bound on IDs per `POST /catalog/lookup` request.
+	 *
+	 * Each ID triggers a `rest_do_request( GET /wc/store/v1/products/{id} )`
+	 * dispatch, plus a per-variation fan-out for variable products. Caps
+	 * exist to prevent unauthenticated callers from amplifying one request
+	 * into thousands of internal dispatches and exhausting PHP-FPM workers.
+	 * 100 is generous for legitimate agent use (typical agents lookup a
+	 * handful of products at a time).
+	 */
+	const MAX_IDS_PER_LOOKUP = 100;
+
+	/**
+	 * Upper bound on line items per `POST /checkout-sessions` request.
+	 *
+	 * Same DoS-mitigation rationale as MAX_IDS_PER_LOOKUP. Real carts
+	 * rarely exceed 20 items; 100 gives agents enough headroom without
+	 * letting a malicious caller turn a single request into a load-test.
+	 */
+	const MAX_LINE_ITEMS_PER_CHECKOUT = 100;
+
+	/**
+	 * Upper bound on variations fetched per variable product.
+	 *
+	 * Bounds the N+1 fan-out in fetch_variations_for(). A product with
+	 * 200 variations would otherwise trigger 200 internal dispatches just
+	 * for one hit of a search response. 50 covers typical
+	 * color/size/pattern combinations; products with more are rare and
+	 * can surface via `POST /catalog/lookup` with specific variation IDs
+	 * if an agent needs fidelity.
+	 */
+	const MAX_VARIATIONS_PER_PRODUCT = 50;
+
+	/**
+	 * Upper bound on `quantity` in a checkout line item.
+	 *
+	 * Prevents `unit_price_minor * quantity` from silently overflowing
+	 * PHP_INT_MAX and promoting to a float, which would JSON-serialize
+	 * as `1.84e19` and violate the UCP schema's integer constraint on
+	 * `line_total.amount` / `totals[].amount`. 10,000 is well above any
+	 * legitimate bulk order and well below the overflow threshold even
+	 * for high-value products (10k * 10M cents = 10^11, safely inside
+	 * PHP_INT_MAX on 64-bit).
+	 */
+	const MAX_QUANTITY_PER_LINE_ITEM = 10000;
+
+	/**
 	 * Register all UCP REST routes.
 	 *
 	 * All routes are POST — UCP uses request bodies for its capability
@@ -52,9 +98,11 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * UCP's agent authentication happens at the `UCP-Agent` header
 	 * level and is currently used only for attribution (utm_source in
 	 * checkout handoff) and logging, not for access control. Merchants
-	 * who need to gate access can pause syndication via the admin UI;
-	 * handlers check the enabled setting and return a UCP error
-	 * envelope rather than 404ing from unregistered routes.
+	 * who need to gate access can pause syndication via the admin UI —
+	 * each handler calls `check_syndication_enabled()` before doing any
+	 * work and returns a UCP-shaped 503 WP_Error when off. Keeping
+	 * routes registered (versus unregistering on disable) avoids
+	 * rewrite-flush churn every time a merchant toggles the setting.
 	 */
 	public function register_routes(): void {
 		register_rest_route(
@@ -120,6 +168,11 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * @return WP_Error|WP_REST_Response
 	 */
 	public function handle_catalog_search( WP_REST_Request $request ) {
+		$disabled = self::check_syndication_enabled();
+		if ( $disabled ) {
+			return $disabled;
+		}
+
 		// Attribution: note the calling agent (unblocking; logging only).
 		$agent_header = $request->get_header( 'ucp-agent' );
 		if ( is_string( $agent_header ) && '' !== $agent_header ) {
@@ -199,6 +252,11 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * @return WP_Error|WP_REST_Response
 	 */
 	public function handle_catalog_lookup( WP_REST_Request $request ) {
+		$disabled = self::check_syndication_enabled();
+		if ( $disabled ) {
+			return $disabled;
+		}
+
 		$ids = $request->get_param( 'ids' );
 
 		if ( ! is_array( $ids ) ) {
@@ -213,6 +271,18 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			return new WP_Error(
 				'ucp_invalid_input',
 				__( 'The "ids" array must contain at least one ID.', 'woocommerce-ai-syndication' ),
+				[ 'status' => 400 ]
+			);
+		}
+
+		if ( count( $ids ) > self::MAX_IDS_PER_LOOKUP ) {
+			return new WP_Error(
+				'ucp_invalid_input',
+				sprintf(
+					/* translators: %d is the maximum number of IDs per request. */
+					__( 'The "ids" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-syndication' ),
+					self::MAX_IDS_PER_LOOKUP
+				),
 				[ 'status' => 400 ]
 			);
 		}
@@ -304,12 +374,29 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * @return WP_Error|WP_REST_Response
 	 */
 	public function handle_checkout_sessions_create( WP_REST_Request $request ) {
+		$disabled = self::check_syndication_enabled();
+		if ( $disabled ) {
+			return $disabled;
+		}
+
 		$line_items_raw = $request->get_param( 'line_items' );
 
 		if ( ! is_array( $line_items_raw ) || empty( $line_items_raw ) ) {
 			return new WP_Error(
 				'ucp_invalid_input',
 				__( 'Request must include a non-empty "line_items" array.', 'woocommerce-ai-syndication' ),
+				[ 'status' => 400 ]
+			);
+		}
+
+		if ( count( $line_items_raw ) > self::MAX_LINE_ITEMS_PER_CHECKOUT ) {
+			return new WP_Error(
+				'ucp_invalid_input',
+				sprintf(
+					/* translators: %d is the maximum number of line items per request. */
+					__( 'The "line_items" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-syndication' ),
+					self::MAX_LINE_ITEMS_PER_CHECKOUT
+				),
 				[ 'status' => 400 ]
 			);
 		}
@@ -411,8 +498,37 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	}
 
 	// ------------------------------------------------------------------
-	// Shared helpers (used by lookup and, soon, search + checkout handlers)
+	// Shared helpers (used by all three handlers)
 	// ------------------------------------------------------------------
+
+	/**
+	 * Return a UCP error response if AI Syndication is disabled, else null.
+	 *
+	 * Routes are registered unconditionally on `rest_api_init` so the
+	 * rewrite-rule and permalink state stays stable across enable/disable
+	 * toggles. Gating access lives here instead: when the merchant has
+	 * paused syndication, each handler returns a UCP-shaped 503 error
+	 * before doing any work. Agents see a clean signal ("the service is
+	 * temporarily offline") rather than a confusing success response
+	 * with filtered or empty catalog data.
+	 *
+	 * The routes still dispatch to the WooCommerce Store API at its
+	 * own path when disabled — merchants who pause AI Syndication do
+	 * not lose their regular Store API access, only the UCP wrapper.
+	 *
+	 * @return ?WP_Error Null when enabled; WP_Error with status 503 when off.
+	 */
+	private static function check_syndication_enabled(): ?WP_Error {
+		$settings = WC_AI_Syndication::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			return new WP_Error(
+				'ucp_disabled',
+				__( 'AI Syndication is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
+				[ 'status' => 503 ]
+			);
+		}
+		return null;
+	}
 
 	/**
 	 * Parse a UCP ID string (`prod_N`, `var_N`, `var_N_default`) into
@@ -471,12 +587,19 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	/**
 	 * For variable products, fetch each variation's full Store API
 	 * response so the product translator can emit per-variation
-	 * variants (task 7). Simple products return an empty array.
+	 * variants. Simple products return an empty array.
 	 *
 	 * Variations that fail to fetch are silently skipped rather than
 	 * aborting the whole translation — partial variant lists are
 	 * better than synthesized-default fallbacks for agents trying to
 	 * surface the real price range to users.
+	 *
+	 * Capped at MAX_VARIATIONS_PER_PRODUCT to bound the N+1 fan-out.
+	 * A product with 200 variations would otherwise trigger 200
+	 * internal dispatches just for one hit of a search response.
+	 * Agents that need every variation of a high-variant-count product
+	 * can paginate via repeated `POST /catalog/lookup` calls with
+	 * specific `var_N` IDs.
 	 *
 	 * @param array<string, mixed> $wc_product Store API response for the parent product.
 	 * @return array<int, array<string, mixed>>
@@ -489,6 +612,14 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$variation_refs = $wc_product['variations'] ?? [];
 		if ( ! is_array( $variation_refs ) || empty( $variation_refs ) ) {
 			return [];
+		}
+
+		// Hard cap before entering the fetch loop. `array_slice` preserves
+		// source order so variations come back in the same sequence WC
+		// emitted — important because the product's `options` (attribute
+		// order) is derived from the variations list.
+		if ( count( $variation_refs ) > self::MAX_VARIATIONS_PER_PRODUCT ) {
+			$variation_refs = array_slice( $variation_refs, 0, self::MAX_VARIATIONS_PER_PRODUCT );
 		}
 
 		$variations = [];
@@ -696,7 +827,12 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$raw_id   = $line_item['item']['id'] ?? null;
 		$quantity = isset( $line_item['quantity'] ) ? (int) $line_item['quantity'] : 1;
 
-		if ( $quantity <= 0 ) {
+		// Reject non-positive quantities AND quantities above the cap.
+		// The upper bound prevents `unit_price_minor * quantity` from
+		// silently overflowing PHP_INT_MAX into a float (which would
+		// JSON-serialize as scientific notation and violate UCP's
+		// integer schema constraint on `line_total.amount`).
+		if ( $quantity <= 0 || $quantity > self::MAX_QUANTITY_PER_LINE_ITEM ) {
 			$messages[] = self::checkout_error_message( 'invalid_quantity', $path . '.quantity' );
 			return [
 				'processed' => null,

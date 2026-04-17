@@ -64,6 +64,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		parent::setUp();
 		Monkey\setUp();
 
+		// Reset settings between tests so disabled-state tests don't
+		// leak into subsequent tests that assume enabled. The stub's
+		// defaults include `enabled => yes`, so an empty array here
+		// means the handler sees enabled syndication.
+		WC_AI_Syndication::$test_settings = [];
+
 		$this->captured_store_params = [];
 		$this->fake_product_list     = [];
 		$this->fake_list_status      = 200;
@@ -478,5 +484,35 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$body = $this->successful_search( [] );
 
 		$this->assertEquals( [], $body['products'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Syndication-disabled gate
+	// ------------------------------------------------------------------
+
+	public function test_disabled_syndication_returns_503_ucp_disabled(): void {
+		// Merchant has paused syndication via the admin UI. Routes stay
+		// registered (to avoid rewrite-flush churn on every toggle), but
+		// the handler must refuse to serve catalog data — otherwise the
+		// "pause" control silently fails open. Verified by all three
+		// handler test files; this is the search path.
+		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_catalog_search(
+			$this->search_request( [ 'query' => 'anything' ] )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $response );
+		$this->assertEquals( 'ucp_disabled', $response->get_error_code() );
+		$this->assertEquals( [ 'status' => 503 ], $response->get_error_data() );
+
+		// Critical: must short-circuit BEFORE dispatching anything to
+		// the Store API. If the disabled check is ordered wrong, we'd
+		// still do internal dispatch work before rejecting.
+		$this->assertEmpty(
+			$this->captured_store_params,
+			'Handler must short-circuit before dispatching when disabled'
+		);
 	}
 }

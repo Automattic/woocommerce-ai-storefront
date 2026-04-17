@@ -39,6 +39,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		parent::setUp();
 		Monkey\setUp();
 
+		// Reset settings between tests so disabled-state tests don't
+		// leak. Stub defaults to `enabled => yes`.
+		WC_AI_Syndication::$test_settings = [];
+
 		$this->fake_store_api = [];
 
 		Functions\when( '__' )->returnArg();
@@ -636,5 +640,79 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$codes = array_column( $result['data']['messages'], 'code' );
 		$this->assertNotContains( 'buyer_handoff_required', $codes );
+	}
+
+	// ------------------------------------------------------------------
+	// DoS caps + syndication-disabled gate
+	// ------------------------------------------------------------------
+
+	public function test_excessive_quantity_rejected_as_invalid(): void {
+		// Quantity * unit_price_minor must fit in PHP_INT_MAX or the
+		// multiplication silently promotes to float, which JSON-encodes
+		// as scientific notation and violates UCP's integer constraint
+		// on line_total.amount. The cap rejects quantities high enough
+		// to risk overflow long before we approach that ceiling.
+		$this->seed_simple_product( 1, 1000 );
+
+		$cap    = WC_AI_Syndication_UCP_REST_Controller::MAX_QUANTITY_PER_LINE_ITEM;
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $cap + 1 ] ] ]
+		);
+
+		$this->assertEquals( 'error', $result['data']['status'] );
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'invalid_quantity', $codes );
+	}
+
+	public function test_quantity_at_exactly_the_cap_is_accepted(): void {
+		// Off-by-one: exactly MAX_QUANTITY_PER_LINE_ITEM should work.
+		$this->seed_simple_product( 1, 100 );
+
+		$cap    = WC_AI_Syndication_UCP_REST_Controller::MAX_QUANTITY_PER_LINE_ITEM;
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $cap ] ] ]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		// Line total should be an INTEGER, not a float (no silent overflow).
+		$line_total = $result['data']['line_items'][0]['line_total']['amount'];
+		$this->assertIsInt( $line_total );
+		$this->assertSame( $cap * 100, $line_total );
+	}
+
+	public function test_rejects_line_items_array_exceeding_limit(): void {
+		// Same DoS class as the ids cap on /catalog/lookup: each
+		// line item drives internal product-validation dispatches.
+		$cap   = WC_AI_Syndication_UCP_REST_Controller::MAX_LINE_ITEMS_PER_CHECKOUT;
+		$items = [];
+		for ( $i = 0; $i < $cap + 1; $i++ ) {
+			$items[] = [ 'item' => [ 'id' => 'prod_' . $i ], 'quantity' => 1 ];
+		}
+
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_create(
+			$this->checkout_request( [ 'line_items' => $items ] )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $response );
+		$this->assertEquals( 'ucp_invalid_input', $response->get_error_code() );
+		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+	}
+
+	public function test_disabled_syndication_returns_503_ucp_disabled(): void {
+		// Checkout is the highest-stakes handler to leave serving when
+		// syndication is paused — lock in the gate.
+		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_create(
+			$this->checkout_request(
+				[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+			)
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $response );
+		$this->assertEquals( 'ucp_disabled', $response->get_error_code() );
+		$this->assertEquals( [ 'status' => 503 ], $response->get_error_data() );
 	}
 }

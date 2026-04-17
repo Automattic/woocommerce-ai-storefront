@@ -41,6 +41,10 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		parent::setUp();
 		Monkey\setUp();
 
+		// Reset settings between tests so disabled-state tests don't
+		// leak. Stub defaults to `enabled => yes`.
+		WC_AI_Syndication::$test_settings = [];
+
 		$this->fake_store_api = [];
 
 		Functions\when( '__' )->returnArg();
@@ -405,5 +409,114 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// Remaining variants are the ones that fetched successfully.
 		$this->assertEquals( 'var_101', $variants[0]['id'] );
 		$this->assertEquals( 'var_103', $variants[1]['id'] );
+	}
+
+	public function test_variations_capped_at_max_per_product(): void {
+		// Defensive against N+1 amplification: a variable product with
+		// 200 variations would otherwise trigger 200 internal Store API
+		// dispatches. The handler caps variant expansion at
+		// MAX_VARIATIONS_PER_PRODUCT (currently 50) via array_slice on
+		// the variations pointer list. Agents needing the full set can
+		// fetch specific variations by ID via a follow-up lookup.
+		$cap = WC_AI_Syndication_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
+
+		// Seed parent with cap + 10 variations; each variation is seeded
+		// in the fake so the fetch returns the full record.
+		$variation_refs = [];
+		for ( $i = 0; $i < $cap + 10; $i++ ) {
+			$vid              = 1000 + $i;
+			$variation_refs[] = [
+				'id'         => $vid,
+				'attributes' => [ [ 'name' => 'N', 'value' => (string) $i ] ],
+			];
+			$this->fake_store_api[ $vid ] = [
+				'id'                => $vid,
+				'name'              => 'Base',
+				'short_description' => '',
+				'is_in_stock'       => true,
+				'prices'            => [
+					'price'               => '100',
+					'currency_code'       => 'USD',
+					'currency_minor_unit' => 2,
+				],
+				'attributes'        => [ [ 'name' => 'N', 'value' => (string) $i ] ],
+			];
+		}
+
+		$this->fake_store_api[ 900 ] = [
+			'id'                => 900,
+			'name'              => 'Base',
+			'type'              => 'variable',
+			'short_description' => '',
+			'prices'            => [
+				'price'         => '100',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '100', 'max_amount' => '100' ],
+			],
+			'variations'        => $variation_refs,
+		];
+
+		$body = $this->successful_lookup( [ 'ids' => [ 'prod_900' ] ] );
+
+		// Handler emits the first N variations in the order the parent
+		// product listed them — not all cap+10.
+		$this->assertCount( $cap, $body['products'][0]['variants'] );
+		$this->assertEquals( 'var_1000', $body['products'][0]['variants'][0]['id'] );
+	}
+
+	// ------------------------------------------------------------------
+	// DoS caps + syndication-disabled gate
+	// ------------------------------------------------------------------
+
+	public function test_rejects_ids_array_exceeding_limit(): void {
+		// Defensive against unauthenticated callers amplifying one
+		// request into thousands of internal dispatches. Each ID in
+		// the lookup array drives a GET /wc/store/v1/products/{id}
+		// dispatch — cap it at MAX_IDS_PER_LOOKUP.
+		$cap = WC_AI_Syndication_UCP_REST_Controller::MAX_IDS_PER_LOOKUP;
+		$ids = [];
+		for ( $i = 0; $i < $cap + 1; $i++ ) {
+			$ids[] = 'prod_' . ( 1000 + $i );
+		}
+
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_catalog_lookup(
+			$this->lookup_request( [ 'ids' => $ids ] )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $response );
+		$this->assertEquals( 'ucp_invalid_input', $response->get_error_code() );
+		$this->assertEquals( [ 'status' => 400 ], $response->get_error_data() );
+	}
+
+	public function test_accepts_ids_array_at_exactly_the_limit(): void {
+		// Off-by-one check: exactly MAX_IDS_PER_LOOKUP should succeed.
+		$cap = WC_AI_Syndication_UCP_REST_Controller::MAX_IDS_PER_LOOKUP;
+		$ids = [];
+		for ( $i = 0; $i < $cap; $i++ ) {
+			$ids[] = 'prod_' . ( 5000 + $i );
+		}
+
+		$body = $this->successful_lookup( [ 'ids' => $ids ] );
+
+		// None of the IDs are seeded, so all return not_found — but the
+		// handler didn't reject the input shape, which is the assertion.
+		$this->assertCount( $cap, $body['messages'] );
+	}
+
+	public function test_disabled_syndication_returns_503_ucp_disabled(): void {
+		// Pausing syndication must cut off UCP catalog access. Routes
+		// stay registered (rewrite-flush discipline); the handler
+		// gates access here.
+		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_catalog_lookup(
+			$this->lookup_request( [ 'ids' => [ 'prod_123' ] ] )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $response );
+		$this->assertEquals( 'ucp_disabled', $response->get_error_code() );
+		$this->assertEquals( [ 'status' => 503 ], $response->get_error_data() );
 	}
 }
