@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce AI Syndication
  * Plugin URI: https://woocommerce.com/
  * Description: Merchant-led AI product syndication for WooCommerce. Expose products to AI shopping agents (ChatGPT, Gemini, Perplexity, Claude) with full merchant control. Store-only checkout, standard WooCommerce attribution.
- * Version: 1.4.2
+ * Version: 1.4.3
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
  * Text Domain: woocommerce-ai-syndication
@@ -22,7 +22,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'WC_AI_SYNDICATION_VERSION', '1.4.2' );
+define( 'WC_AI_SYNDICATION_VERSION', '1.4.3' );
 define( 'WC_AI_SYNDICATION_PLUGIN_FILE', __FILE__ );
 define( 'WC_AI_SYNDICATION_PLUGIN_PATH', untrailingslashit( plugin_dir_path( __FILE__ ) ) );
 define( 'WC_AI_SYNDICATION_PLUGIN_URL', untrailingslashit( plugin_dir_url( __FILE__ ) ) );

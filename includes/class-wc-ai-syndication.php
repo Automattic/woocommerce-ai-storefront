@@ -155,6 +155,19 @@ class WC_AI_Syndication {
 		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
 
+		// Suppress WordPress's trailing-slash canonical redirect for
+		// the discovery endpoints. On sites with trailing-slash
+		// permalink structures (the default on WordPress.com and
+		// most self-hosted installs), core would otherwise 301 the
+		// unslashed URL to a slashed variant that no longer matches
+		// our rewrite rule — the redirected request falls through to
+		// a 404 HTML page and AI browsing tools give up. The filter
+		// returns false only when the corresponding query var is
+		// set, so canonical behavior elsewhere on the site is
+		// untouched.
+		add_filter( 'redirect_canonical', [ $llms_txt, 'suppress_canonical_redirect' ], 10, 1 );
+		add_filter( 'redirect_canonical', [ $ucp, 'suppress_canonical_redirect' ], 10, 1 );
+
 		// Flush rewrite rules and bust content caches when needed:
 		//
 		// 1. After a plugin code update (stored version on disk differs
