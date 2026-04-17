@@ -288,29 +288,6 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							</tr>
 							<tr>
 								<td>
-									<strong>Store API</strong>
-								</td>
-								<td>
-									{ endpoints.store_api ? (
-										<code>{ endpoints.store_api }</code>
-									) : (
-										<Spinner />
-									) }
-								</td>
-								<td>
-									<StatusBadge
-										status={ endpointStatus.store_api }
-									/>
-								</td>
-								<td>
-									{ __(
-										'WooCommerce Store API for product search and cart (public)',
-										'woocommerce-ai-syndication'
-									) }
-								</td>
-							</tr>
-							<tr>
-								<td>
 									<strong>robots.txt</strong>
 								</td>
 								<td>
@@ -330,6 +307,29 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								<td>
 									{ __(
 										'AI-crawler allow-list (Allow/Disallow directives appended to your site\u2019s robots.txt)',
+										'woocommerce-ai-syndication'
+									) }
+								</td>
+							</tr>
+							<tr>
+								<td>
+									<strong>Store API</strong>
+								</td>
+								<td>
+									{ endpoints.store_api ? (
+										<code>{ endpoints.store_api }</code>
+									) : (
+										<Spinner />
+									) }
+								</td>
+								<td>
+									<StatusBadge
+										status={ endpointStatus.store_api }
+									/>
+								</td>
+								<td>
+									{ __(
+										'WooCommerce Store API for product search and cart (public)',
 										'woocommerce-ai-syndication'
 									) }
 								</td>
