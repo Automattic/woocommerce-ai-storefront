@@ -311,4 +311,97 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '## Custom Extension', $output );
 		$this->assertStringContainsString( 'Injected by third party.', $output );
 	}
+
+	// ------------------------------------------------------------------
+	// Cache-hit semantics — the 1.4.4 empty-string regression
+	// ------------------------------------------------------------------
+	//
+	// These tests lock in the defense against the bug that shipped in
+	// production before 1.4.4: the cache-hit check was `false !== $cached`,
+	// which treated an empty-string transient as a valid hit rather than
+	// a miss. If anything ever poisoned the cache with `''` (and one did,
+	// during the 1.4.2 wiring-bug window), blank responses were served
+	// for the full 1-hour TTL. The fix is a pair: treat empty as miss on
+	// read, refuse to write empty on the update path. These tests cover
+	// both halves so a future refactor that only restores one of them
+	// leaves a broken build.
+	//
+	// `get_cached_content()` is private by design; reflection is the
+	// least-invasive way to exercise it without altering visibility.
+
+	public function test_empty_cached_value_is_treated_as_miss(): void {
+		Functions\when( 'get_transient' )->justReturn( '' );
+		$set_transient_called_with = null;
+		Functions\when( 'set_transient' )->alias(
+			static function ( $key, $value ) use ( &$set_transient_called_with ) {
+				$set_transient_called_with = [
+					'key'   => $key,
+					'value' => $value,
+				];
+				return true;
+			}
+		);
+
+		$result = $this->invoke_private( 'get_cached_content' );
+
+		// Non-empty content was produced by regeneration — proves the
+		// empty cached value did NOT short-circuit the lookup.
+		$this->assertNotSame( '', $result );
+		$this->assertStringContainsString( '# Example Store', $result );
+
+		// The fresh non-empty content was written back to the cache,
+		// healing the poisoned state on first request.
+		$this->assertNotNull( $set_transient_called_with );
+		$this->assertNotSame( '', $set_transient_called_with['value'] );
+	}
+
+	public function test_valid_cached_value_is_returned_verbatim(): void {
+		Functions\when( 'get_transient' )->justReturn( "# Cached Content\n\nHello from cache." );
+		Functions\when( 'set_transient' )->justReturn( true );
+
+		$result = $this->invoke_private( 'get_cached_content' );
+
+		// Verbatim return — we did NOT fall through to regeneration
+		// when a valid cached value was present.
+		$this->assertSame( "# Cached Content\n\nHello from cache.", $result );
+	}
+
+	public function test_empty_generated_content_is_not_written_to_cache(): void {
+		Functions\when( 'get_transient' )->justReturn( false ); // Fresh miss.
+		$set_transient_calls = 0;
+		Functions\when( 'set_transient' )->alias(
+			static function () use ( &$set_transient_calls ) {
+				++$set_transient_calls;
+				return true;
+			}
+		);
+		// Force generate() to return empty by having the filter nuke
+		// the lines array. This is the only realistic path to empty
+		// output given generate()'s always-produces-skeleton design;
+		// if a future refactor introduces other empty paths, this
+		// test still catches them via the set_transient observation.
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $lines ) {
+				return ( 'wc_ai_syndication_llms_txt_lines' === $hook ) ? [] : $lines;
+			}
+		);
+
+		$result = $this->invoke_private( 'get_cached_content' );
+
+		$this->assertSame( '', $result, 'generate() should have returned empty in this setup.' );
+		$this->assertSame( 0, $set_transient_calls, 'Empty content must not be cached — would poison the TTL window.' );
+	}
+
+	/**
+	 * Invoke a private method on the LlmsTxt instance via reflection.
+	 *
+	 * @param string $method Method name.
+	 * @return mixed          Return value of the method.
+	 */
+	private function invoke_private( string $method ) {
+		$reflection = new ReflectionClass( $this->llms );
+		$m          = $reflection->getMethod( $method );
+		$m->setAccessible( true );
+		return $m->invoke( $this->llms );
+	}
 }

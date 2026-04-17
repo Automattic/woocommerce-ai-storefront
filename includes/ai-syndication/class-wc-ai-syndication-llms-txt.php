@@ -86,9 +86,15 @@ class WC_AI_Syndication_Llms_Txt {
 	 *   refresh on the same cadence, so the merchant never sees a stale
 	 *   file served while the internal cache has been rebuilt.
 	 *
-	 * - `X-Robots-Tag: noindex`: keeps the file out of search results.
-	 *   llms.txt is machine-readable guidance for AI agents, not a page
-	 *   that merchants or shoppers should land on via Google.
+	 * (No `X-Robots-Tag: noindex`): earlier revisions set noindex to
+	 * keep llms.txt out of human-facing search results, but 1.4.4
+	 * dropped it. Some AI browsing tools (notably Gemini) appear to
+	 * use Google's search index as a discovery layer — when they
+	 * find a URL in the index they'll fetch it; when the URL is
+	 * noindexed they never try. Because llms.txt exists specifically
+	 * to be discovered, noindex was working against the plugin's
+	 * own purpose. Agents that go direct to `/llms.txt` continue to
+	 * work either way; agents that search-first now work too.
 	 */
 	public function serve_llms_txt() {
 		if ( ! get_query_var( 'wc_ai_syndication_llms_txt' ) ) {
@@ -103,7 +109,6 @@ class WC_AI_Syndication_Llms_Txt {
 
 		header( 'Content-Type: text/plain; charset=utf-8' );
 		header( 'Cache-Control: public, max-age=3600' );
-		header( 'X-Robots-Tag: noindex' );
 		header( 'X-Content-Type-Options: nosniff' );
 		header( 'Access-Control-Allow-Origin: *' );
 		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
@@ -123,18 +128,41 @@ class WC_AI_Syndication_Llms_Txt {
 	/**
 	 * Get cached llms.txt content, regenerating if expired.
 	 *
+	 * Cache-hit detection must exclude both `false` (the transient
+	 * miss sentinel) AND empty strings. Before 1.4.4 the check was
+	 * `false !== $cached`, which treated an empty cached string as
+	 * a valid hit — a real bug that surfaced in production:
+	 * `generate()` had captured empty content during a transient
+	 * bad state (likely a handler that never ran because of the
+	 * 1.4.2 wiring bug), and the empty value stuck in the cache for
+	 * the full 1-hour TTL, serving blank responses even after every
+	 * upstream fix.
+	 *
+	 * Defensive matching pair: we also refuse to write empty content
+	 * into the cache in the first place, so a single bad
+	 * generate() call can't poison the next hour of responses.
+	 *
 	 * @return string Markdown content.
 	 */
 	private function get_cached_content() {
 		$cached = get_transient( self::CACHE_KEY );
-		if ( false !== $cached ) {
+		if ( false !== $cached && '' !== $cached ) {
 			WC_AI_Syndication_Logger::debug( 'llms.txt cache hit' );
 			return $cached;
 		}
 
 		WC_AI_Syndication_Logger::debug( 'llms.txt cache miss — regenerating' );
 		$content = $this->generate();
-		set_transient( self::CACHE_KEY, $content, HOUR_IN_SECONDS );
+
+		// Only cache non-empty content. Caching an empty string would
+		// re-create the poisoning scenario the cache-hit check above
+		// now defends against; belt + suspenders.
+		if ( '' !== $content ) {
+			set_transient( self::CACHE_KEY, $content, HOUR_IN_SECONDS );
+		} else {
+			WC_AI_Syndication_Logger::debug( 'llms.txt generate() returned empty — not caching' );
+		}
+
 		return $content;
 	}
 
