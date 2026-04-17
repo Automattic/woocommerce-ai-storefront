@@ -17,20 +17,93 @@ defined( 'ABSPATH' ) || exit;
 class WC_AI_Syndication_Robots {
 
 	/**
-	 * Known AI crawler user agents.
+	 * Live browsing / user-initiated AI agents.
+	 *
+	 * These agents fetch content during a user's active query — an
+	 * agent acting on a user's behalf *right now*. For commerce this
+	 * is the revenue-path traffic: an agent sees fresh inventory +
+	 * prices, routes a user to checkout, conversion happens. These
+	 * should generally be allowed for merchants who want any AI
+	 * discoverability at all.
+	 *
+	 * Distinguished from training crawlers by vendor convention —
+	 * the `-User` suffix (ChatGPT-User, Claude-User, Perplexity-User)
+	 * signals "triggered by an active user session" per each
+	 * vendor's documentation.
+	 *
+	 * @var string[]
+	 */
+	const LIVE_BROWSING_AGENTS = [
+		'ChatGPT-User',
+		'OAI-SearchBot',
+		'Perplexity-User',
+		'Claude-User',
+	];
+
+	/**
+	 * AI training / indexing crawlers.
+	 *
+	 * These agents crawl to build training corpora or static indexes
+	 * that feed model weights / cached snapshots. Inclusion here is a
+	 * merchant brand-strategy decision, NOT an AI-discoverability
+	 * one — these crawlers do not route revenue to the merchant.
+	 *
+	 * The commerce-specific trade-off: a training crawl captures
+	 * your catalog at a single point in time and that snapshot may
+	 * surface in AI answers months later when your actual inventory,
+	 * pricing, and availability have moved. A user asking "is X in
+	 * stock at Piero's Fashion House?" could get a stale-but-
+	 * confidently-wrong answer attributed to your brand. Merchants
+	 * who prioritize brand awareness over quote accuracy allow them;
+	 * merchants who prioritize quote accuracy block them. Neither
+	 * choice is wrong.
+	 *
+	 * UCP's design philosophy (as of v2026-04-08) focuses exclusively
+	 * on live agentic commerce — the spec has no verbs for "indexed
+	 * for later use." Training crawler policy is therefore
+	 * out-of-scope for UCP and left to merchant discretion.
+	 *
+	 * @var string[]
+	 */
+	const TRAINING_CRAWLERS = [
+		'GPTBot',
+		'Google-Extended',
+		'Gemini',
+		'PerplexityBot',
+		'ClaudeBot',
+		'Meta-ExternalAgent',
+		'Amazonbot',
+		'Applebot-Extended',
+	];
+
+	/**
+	 * Combined allow-list — live browsing + training.
+	 *
+	 * Preserved as the pre-1.5.0 canonical list for backward
+	 * compatibility: existing installs' saved `allowed_crawlers`
+	 * values, the `sanitize_allowed_crawlers()` intersect, and any
+	 * consumer code that historically consumed this constant
+	 * continue to work unchanged.
+	 *
+	 * New code should prefer the category-specific constants when
+	 * the distinction matters (e.g. default-on/default-off logic
+	 * in the admin UI).
 	 *
 	 * @var string[]
 	 */
 	const AI_CRAWLERS = [
-		'GPTBot',
+		// Live browsing (revenue path — recommended on).
 		'ChatGPT-User',
 		'OAI-SearchBot',
+		'Perplexity-User',
+		'Claude-User',
+
+		// Training crawlers (brand-strategy decision — merchant choice).
+		'GPTBot',
 		'Google-Extended',
 		'Gemini',
 		'PerplexityBot',
-		'Perplexity-User',
 		'ClaudeBot',
-		'Claude-User',
 		'Meta-ExternalAgent',
 		'Amazonbot',
 		'Applebot-Extended',

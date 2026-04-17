@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.4.5
+Stable tag: 1.5.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,11 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.5.0 =
+* Added: split the AI crawler allow-list into two semantic categories — `LIVE_BROWSING_AGENTS` (user-initiated fetches during active queries: ChatGPT-User, OAI-SearchBot, Perplexity-User, Claude-User) and `TRAINING_CRAWLERS` (static crawls feeding model training: GPTBot, Google-Extended, Gemini, PerplexityBot, ClaudeBot, Meta-ExternalAgent, Amazonbot, Applebot-Extended). The distinction matters for commerce: live browsing sees fresh inventory and routes revenue, while training crawls capture snapshots that may surface as stale answers months later (wrong prices, wrong availability). UCP's spec (v2026-04-08) is explicitly scoped to live agentic commerce and silent on training policy — this split reflects that design philosophy. The combined `AI_CRAWLERS` constant is preserved as the pre-1.5.0 canonical list for backward compatibility; existing installs' saved `allowed_crawlers` values are unaffected.
+* Changed: the Allowed Crawlers admin UI now renders the two categories as separate visual groups with per-group descriptive text. "Live browsing" shows first with the label "User-initiated fetches during an active query. These agents see fresh inventory and route revenue — recommended on." "Training crawlers" shows second with "Static crawls that feed AI model training. Captured snapshots may surface as stale answers months later, with wrong prices or availability. Merchant discretion." Merchants can make an informed per-category decision instead of treating all twelve bots as interchangeable.
+* Added: five regression tests for the category split — LIVE_BROWSING_AGENTS membership, TRAINING_CRAWLERS membership, AI_CRAWLERS equals the union (required for sanitize_allowed_crawlers backward compat), categories are disjoint (no double-rendering in UI), no duplicates overall (no redundant User-agent rules in robots.txt).
 
 = 1.4.5 =
 * Added: `store_context` top-level block in the UCP manifest declaring merchant-level commerce context — `currency` (ISO 4217), `locale` (BCP 47), `country` (ISO 3166-1 alpha-2), `prices_include_tax` (boolean), `shipping_enabled` (boolean). Pre-1.4.5 agents fetching only the UCP manifest couldn't tell what currency they'd be quoting in, whether catalog prices already included tax, or whether the store needed shipping addresses — they'd have to fall back to llms.txt or a Store API probe. Added in response to cross-agent review feedback from Claude that called out this as the dominant manifest-level gap: "for the CLDR project you're thinking about, this is exactly the gap — an agent has no machine-readable way to know what currency it'll be quoting in." The block is a sibling to `ucp` rather than nested inside it, because the facts are agnostic of the UCP spec — any AI-commerce tool (UCP-aware or not) reads them.
