@@ -29,6 +29,40 @@ class WC_AI_Syndication_Llms_Txt {
 		add_action( 'init', [ $this, 'add_rewrite_rules' ] );
 		add_action( 'template_redirect', [ $this, 'serve_llms_txt' ] );
 		add_filter( 'query_vars', [ $this, 'add_query_vars' ] );
+
+		// Suppress WordPress's canonical-URL trailing-slash redirect
+		// for this endpoint. With permalink structures like
+		// `/%postname%/` (the default on WordPress.com and most sites),
+		// WP's `redirect_canonical()` 301s `/llms.txt` → `/llms.txt/`
+		// on `template_redirect` at priority 10 — running BEFORE our
+		// serve handler at the same priority. AI browsing tools then
+		// either don't follow the redirect, or follow it to a URL
+		// that no longer matches our `^llms\.txt$` rewrite rule and
+		// falls through to a WordPress 404 HTML page.
+		//
+		// Returning false from the filter tells WP "this URL is
+		// already canonical — don't touch it." The query var gate
+		// ensures we only intercept canonical checks for requests
+		// the rewrite rule has already matched; all other canonical
+		// behavior across the site is untouched.
+		// Declaring 1 accepted arg (not the 2 WP passes) — we gate on
+		// the query var, not on the requested-URL string.
+		add_filter( 'redirect_canonical', [ $this, 'suppress_canonical_redirect' ], 10, 1 );
+	}
+
+	/**
+	 * Short-circuit canonical-URL redirects for the llms.txt endpoint.
+	 *
+	 * @param string|false $redirect_url The candidate canonical URL
+	 *                                   WordPress wants to redirect to.
+	 * @return string|false               False disables the redirect;
+	 *                                   original value otherwise.
+	 */
+	public function suppress_canonical_redirect( $redirect_url ) {
+		if ( get_query_var( 'wc_ai_syndication_llms_txt' ) ) {
+			return false;
+		}
+		return $redirect_url;
 	}
 
 	/**
