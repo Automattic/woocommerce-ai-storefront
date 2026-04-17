@@ -64,6 +64,31 @@ class WC_AI_Syndication_Ucp {
 		add_action( 'init', [ $this, 'add_rewrite_rules' ] );
 		add_action( 'template_redirect', [ $this, 'serve_manifest' ] );
 		add_filter( 'query_vars', [ $this, 'add_query_vars' ] );
+
+		// Defense-in-depth mirror of the canonical-redirect suppression
+		// applied to llms.txt (see the sibling class for the full
+		// rationale). `/.well-known/ucp` has been observed in the wild
+		// to be safe from `redirect_canonical()` on most permalink
+		// structures because the `.well-known` prefix is an unusual
+		// shape, but there's no harm in being explicit — especially
+		// on hosts with aggressive canonical enforcement like
+		// WordPress.com Atomic.
+		// See llms.txt sibling for the arg-count rationale.
+		add_filter( 'redirect_canonical', [ $this, 'suppress_canonical_redirect' ], 10, 1 );
+	}
+
+	/**
+	 * Short-circuit canonical-URL redirects for the manifest endpoint.
+	 *
+	 * @param string|false $redirect_url WP's candidate canonical URL.
+	 * @return string|false               False disables the redirect;
+	 *                                   original value otherwise.
+	 */
+	public function suppress_canonical_redirect( $redirect_url ) {
+		if ( get_query_var( 'wc_ai_syndication_ucp' ) ) {
+			return false;
+		}
+		return $redirect_url;
 	}
 
 	/**

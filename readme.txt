@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.4.1
+Stable tag: 1.4.2
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,9 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.4.2 =
+* Fixed: llms.txt and UCP manifest were being 301-redirected by WordPress's `redirect_canonical()` function on sites with trailing-slash permalink structures (the default on WordPress.com and most self-hosted sites). `GET /llms.txt` would return `HTTP/2 301 location: /llms.txt/` with `content-type: text/html`, and then the trailing-slash URL didn't match the plugin's `^llms\.txt$` rewrite rule — the request fell through to a WordPress 404 HTML page. AI browsing tools either didn't follow the redirect or choked on the HTML response at the destination. Diagnosed via `curl -I` output from a production site on WordPress.com Atomic which showed the telltale `x-redirect-by: WordPress` header. Added a `redirect_canonical` filter on both the llms.txt and UCP manifest endpoints that returns `false` when the respective query var is present, short-circuiting WordPress's trailing-slash enforcement for exactly these two URLs while leaving canonical behavior on every other page of the site untouched.
 
 = 1.4.1 =
 * Fixed: llms.txt was unreachable from AI browsing tools running in Chromium-based headless contexts (Gemini's browsing tool, ChatGPT browse, Claude web-search), because the endpoint sent no CORS headers. The UCP manifest at `/.well-known/ucp` already set `Access-Control-Allow-Origin: *` and worked fine; llms.txt was the asymmetric missing piece. Reports from agents: "my browsing tool is still having trouble 'seeing' the raw text files despite the robots.txt update" — the tool's fetch was silently blocked by same-origin policy. Added `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, OPTIONS`, and a 204 handler for CORS preflight OPTIONS requests so browsing tools that preflight (some do, some don't) don't interpret a non-2xx preflight as "resource unreachable."
