@@ -223,16 +223,47 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_capabilities_declares_shopping_checkout(): void {
 		// checkout is stateless one-shot — see UcpCheckoutSessionsTest
-		// for the full semantic. The manifest just declares we
-		// implement the capability name; the actual redirect-only
-		// behavior is communicated via `status: requires_escalation`
-		// in response bodies.
+		// for the full semantic. The manifest declares we implement
+		// the capability name AND hints at the handoff-only flavor
+		// via a `mode` field (see next test); the actual
+		// redirect-only behavior is also communicated via
+		// `status: requires_escalation` in response bodies.
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertArrayHasKey(
 			'dev.ucp.shopping.checkout',
 			$manifest['ucp']['capabilities']
 		);
+	}
+
+	public function test_checkout_capability_declares_handoff_mode(): void {
+		// Agents reading the manifest need a programmatic signal that
+		// our checkout is redirect-only (no in-chat payment, no
+		// server-side cart lifecycle) before deciding to invoke the
+		// endpoint. Without this hint they have to call the endpoint
+		// and parse `status: requires_escalation` in the response —
+		// wasted roundtrip for agents that don't support handoff
+		// flows. The `mode: handoff` field is a schema-compatible
+		// additive hint (UCP entities allow additionalProperties).
+		//
+		// If this field is ever dropped, agents that relied on the
+		// upfront signal would regress to the roundtrip. Locks in the
+		// contract.
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$binding = $manifest['ucp']['capabilities']['dev.ucp.shopping.checkout'][0];
+		$this->assertArrayHasKey( 'mode', $binding );
+		$this->assertEquals( 'handoff', $binding['mode'] );
+	}
+
+	public function test_catalog_capability_has_no_mode_hint(): void {
+		// Catalog is fully supported — search + lookup + variations.
+		// "Read-only" is implicit in the capability name; no mode
+		// flag needed. A `mode` on catalog would be noise.
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$binding = $manifest['ucp']['capabilities']['dev.ucp.shopping.catalog'][0];
+		$this->assertArrayNotHasKey( 'mode', $binding );
 	}
 
 	public function test_each_capability_value_is_array_of_versioned_bindings(): void {

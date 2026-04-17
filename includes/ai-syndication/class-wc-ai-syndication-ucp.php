@@ -265,8 +265,27 @@ class WC_AI_Syndication_Ucp {
 					'dev.ucp.shopping.catalog'  => [
 						[ 'version' => self::PROTOCOL_VERSION ],
 					],
+					// `mode: handoff` signals that our checkout
+					// implementation is redirect-only — agents that
+					// call POST /checkout-sessions get a `continue_url`
+					// back and are expected to redirect the user to
+					// WooCommerce's own checkout. No in-chat payment
+					// processing, no server-side cart lifecycle. This
+					// is an additive hint (UCP schema's
+					// additionalProperties: true accommodates it) so
+					// agents that understand it can branch on it, and
+					// agents that don't just see an extra field.
+					//
+					// The runtime signal for the same pattern is the
+					// response's `status: requires_escalation` +
+					// `continue_url`, but the manifest-level `mode`
+					// lets agents decide whether to invoke at all
+					// without a roundtrip.
 					'dev.ucp.shopping.checkout' => [
-						[ 'version' => self::PROTOCOL_VERSION ],
+						[
+							'version' => self::PROTOCOL_VERSION,
+							'mode'    => 'handoff',
+						],
 					],
 				],
 
