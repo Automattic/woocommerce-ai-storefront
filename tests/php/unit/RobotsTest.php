@@ -59,28 +59,42 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// Stale IDs (the bug that triggered this helper)
 	// ------------------------------------------------------------------
 
-	public function test_strips_deprecated_crawler_ids_from_pre_v1_1_upgrades(): void {
-		// Replays the exact scenario from the "13 of 12" bug: a store
-		// that enabled syndication before v1.1.0 rotated the crawler
-		// list has four deprecated IDs stored alongside current ones.
+	public function test_strips_deprecated_crawler_ids_from_legacy_upgrades(): void {
+		// Sanitizer behavior on upgrade paths where the stored
+		// allow-list contains entries no longer in AI_CRAWLERS.
+		// Originally shipped to cover the "13 of 12" bug around
+		// v1.1.0; the fixture has been updated as the canonical
+		// list evolved across 1.1.x → 1.6.0.
+		//
+		// As of 1.6.0 the truly-stale entries merchants might
+		// have carried forward:
+		//   - `Gemini`: removed in 1.6.0 (phantom entry, never
+		//     matched any real crawler)
+		//   - `anthropic-ai`: Anthropic-deprecated; replaced by
+		//     `ClaudeBot` + `Claude-User` + `Claude-SearchBot`
+		//     and never added back
+		//
+		// Note: `Bytespider`, `CCBot`, and `cohere-ai` were in
+		// the pre-v1.1.0 list, briefly removed, and restored in
+		// 1.6.0's re-audit. They are now kept, not stripped.
 		$input = [
 			'GPTBot',          // kept
 			'ChatGPT-User',    // kept
-			'Bytespider',      // dropped (removed in v1.1.0)
-			'CCBot',           // dropped (removed in v1.1.0)
+			'Gemini',          // dropped (removed in 1.6.0)
 			'ClaudeBot',       // kept
-			'anthropic-ai',    // dropped (removed in v1.1.0)
-			'cohere-ai',       // dropped (removed in v1.1.0)
-			'Claude-User',     // kept (added in v1.1.0 by merchant)
+			'anthropic-ai',    // dropped (Anthropic-deprecated)
+			'Bytespider',      // kept (restored in 1.6.0 re-audit)
+			'CCBot',           // kept (restored in 1.6.0 re-audit)
+			'Claude-User',     // kept
 		];
 
 		$result = WC_AI_Syndication_Robots::sanitize_allowed_crawlers( $input );
 
 		$this->assertSame(
-			[ 'GPTBot', 'ChatGPT-User', 'ClaudeBot', 'Claude-User' ],
+			[ 'GPTBot', 'ChatGPT-User', 'ClaudeBot', 'Bytespider', 'CCBot', 'Claude-User' ],
 			$result
 		);
-		$this->assertCount( 4, $result );
+		$this->assertCount( 6, $result );
 	}
 
 	public function test_returns_sequentially_indexed_array(): void {
@@ -277,35 +291,63 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// training but not both).
 
 	public function test_live_browsing_agents_has_expected_members(): void {
-		// Every agent here uses the `-User` convention or is an
-		// explicit live-search variant. Any new addition should
-		// have vendor documentation confirming user-initiated
-		// fetch semantics before inclusion.
+		// Order matters (it's how they render in the admin UI).
+		// Group by vendor: OpenAI, Anthropic, Perplexity, Apple.
+		// Every entry must have vendor documentation confirming
+		// live-query / user-initiated semantics — the `-User` and
+		// `-SearchBot` suffixes follow vendor conventions. Plain
+		// `Applebot` is an exception (predates the `-Extended`
+		// convention) but is still live per Apple's docs.
 		$this->assertSame(
 			[
 				'ChatGPT-User',
 				'OAI-SearchBot',
-				'Perplexity-User',
 				'Claude-User',
+				'Claude-SearchBot',
+				'PerplexityBot',
+				'Perplexity-User',
+				'Applebot',
 			],
 			WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS
 		);
 	}
 
 	public function test_training_crawlers_has_expected_members(): void {
+		// Note: the pre-1.6.0 list included a "Gemini" entry that
+		// did not correspond to any documented Google user-agent
+		// (Google's training bot for Gemini is `Google-Extended`;
+		// there's no bot literally named `Gemini`). 1.6.0 dropped
+		// it as dead weight — robots.txt had been emitting a
+		// `User-agent: Gemini` directive since 1.0.0 that no real
+		// crawler ever matched.
+		//
+		// 1.6.0 also added Bytespider (ByteDance/TikTok), CCBot
+		// (CommonCrawl — feeds most open-source LLM corpora), and
+		// cohere-ai (Cohere). These are widely-encountered training
+		// crawlers merchants need to consciously allow or block.
 		$this->assertSame(
 			[
 				'GPTBot',
 				'Google-Extended',
-				'Gemini',
-				'PerplexityBot',
 				'ClaudeBot',
 				'Meta-ExternalAgent',
 				'Amazonbot',
 				'Applebot-Extended',
+				'Bytespider',
+				'CCBot',
+				'cohere-ai',
 			],
 			WC_AI_Syndication_Robots::TRAINING_CRAWLERS
 		);
+	}
+
+	public function test_phantom_gemini_entry_is_removed(): void {
+		// Regression guard: if a future refactor accidentally
+		// resurrects the `Gemini` entry, this fires. The entry
+		// never matched a real crawler; re-adding it would just
+		// emit a useless robots.txt directive again.
+		$this->assertNotContains( 'Gemini', WC_AI_Syndication_Robots::TRAINING_CRAWLERS );
+		$this->assertNotContains( 'Gemini', WC_AI_Syndication_Robots::AI_CRAWLERS );
 	}
 
 	public function test_ai_crawlers_is_union_of_live_and_training(): void {

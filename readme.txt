@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.5.0
+Stable tag: 1.6.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,13 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.6.0 =
+* Added: cursor-based pagination on `POST /catalog/search` per the UCP v2026-04-08 `types/pagination.json` spec. Requests accept `pagination.cursor` (opaque) and `pagination.limit` (default 10, max 100). Responses emit `pagination.has_next_page` (always) and `pagination.cursor` (when more pages exist) and `pagination.total_count` (when Store API provides X-WP-Total). Closes a latent correctness issue: pre-1.6.0 search always returned the Store API default page (~10 products), silently losing 95% of data for any agent trying to enumerate a 200-product catalog. Cursor format is base64 of `p<page_number>` — opaque to agents, stateless, survives restarts. Malformed cursors fall back to page 1 without error (catalog mutation between calls can invalidate cursors; surfacing that as an error would make pagination brittle).
+* Changed: UCP manifest now advertises `dev.ucp.shopping.catalog.search` and `dev.ucp.shopping.catalog.lookup` as separate sub-capabilities instead of the umbrella `dev.ucp.shopping.catalog`. The April UCP spec formalized these as distinct schemas; splitting the advertisement lets agents discover precisely which operations are available. Both sub-capabilities resolve to the same REST endpoints — only the discovery metadata shape changed.
+* Changed: re-audited the global AI bot allow-list. Per vendor docs and Google's published recommendations: added `Applebot` (Siri/Spotlight search, since 2015 — was missing), `Claude-SearchBot` (Anthropic's search-feature crawler — was missing), `Bytespider` (ByteDance/TikTok training — dual-purpose for TikTok Shop), `CCBot` (CommonCrawl, feeds most open-source LLMs), `cohere-ai` (Cohere training). Moved `PerplexityBot` from training to live-browsing — vendor docs confirm it indexes for live answer retrieval, not training corpus construction. Removed the phantom `Gemini` entry that had been emitting a useless `User-agent: Gemini` directive since 1.0.0 (no Google crawler is literally named `Gemini`; the training bot is `Google-Extended`).
+* Changed: training crawlers now default to DISABLED on fresh installs. New `allowed_crawlers` default is the `LIVE_BROWSING_AGENTS` list only (7 agents) instead of the full `AI_CRAWLERS` union (16 agents). Commerce merchants get the revenue-path live browsing surfaces turned on out of the box; training crawlers are a brand-strategy decision they can opt into from the admin page. Rationale: training crawls capture catalog snapshots that may surface in AI answers months later with stale prices and availability — real risk for commerce where quoted prices carry contractual weight. Existing installs with saved `allowed_crawlers` values are unaffected; only fresh installs see the new default.
+* Added: 8 regression tests for pagination behavior (default limit, clamping, cursor round-trip, malformed-cursor fallback, response shape invariants). 5 tests for the re-audited crawler lists. 1 test for the phantom-Gemini removal guard. Full suite now 319 tests / 869 assertions.
 
 = 1.5.0 =
 * Added: split the AI crawler allow-list into two semantic categories — `LIVE_BROWSING_AGENTS` (user-initiated fetches during active queries: ChatGPT-User, OAI-SearchBot, Perplexity-User, Claude-User) and `TRAINING_CRAWLERS` (static crawls feeding model training: GPTBot, Google-Extended, Gemini, PerplexityBot, ClaudeBot, Meta-ExternalAgent, Amazonbot, Applebot-Extended). The distinction matters for commerce: live browsing sees fresh inventory and routes revenue, while training crawls capture snapshots that may surface as stale answers months later (wrong prices, wrong availability). UCP's spec (v2026-04-08) is explicitly scoped to live agentic commerce and silent on training policy — this split reflects that design philosophy. The combined `AI_CRAWLERS` constant is preserved as the pre-1.5.0 canonical list for backward compatibility; existing installs' saved `allowed_crawlers` values are unaffected.

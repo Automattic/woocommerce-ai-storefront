@@ -34,10 +34,25 @@ class WC_AI_Syndication_Robots {
 	 * @var string[]
 	 */
 	const LIVE_BROWSING_AGENTS = [
+		// OpenAI.
 		'ChatGPT-User',
 		'OAI-SearchBot',
-		'Perplexity-User',
+
+		// Anthropic.
 		'Claude-User',
+		'Claude-SearchBot',
+
+		// Perplexity — PerplexityBot indexes for live answer
+		// retrieval (search-index style), distinct from training
+		// corpus construction. Per Perplexity's documentation it
+		// maps to the same live-answer path as Perplexity-User.
+		'PerplexityBot',
+		'Perplexity-User',
+
+		// Apple — plain Applebot is the long-standing Siri/Spotlight
+		// search crawler (since 2015). Applebot-Extended is the
+		// newer AI-training variant and lives in TRAINING_CRAWLERS.
+		'Applebot',
 	];
 
 	/**
@@ -66,14 +81,40 @@ class WC_AI_Syndication_Robots {
 	 * @var string[]
 	 */
 	const TRAINING_CRAWLERS = [
+		// OpenAI.
 		'GPTBot',
+
+		// Google.
 		'Google-Extended',
-		'Gemini',
-		'PerplexityBot',
+
+		// Anthropic.
 		'ClaudeBot',
+
+		// Meta.
 		'Meta-ExternalAgent',
+
+		// Amazon.
 		'Amazonbot',
+
+		// Apple.
 		'Applebot-Extended',
+
+		// ByteDance (TikTok). Primarily training, but also powers
+		// TikTok's internal search and commerce surfaces. Merchants
+		// who rely on TikTok Shop or viral-traffic discovery should
+		// consider manually enabling this from the admin UI —
+		// defaulting to training-blocked keeps it consistent with
+		// the other training crawlers but loses TikTok visibility.
+		'Bytespider',
+
+		// CommonCrawl — feeds most open-source LLM training corpora.
+		// Merchants who want maximum visibility across the AI
+		// ecosystem enable this; those who prefer catalog privacy
+		// block it.
+		'CCBot',
+
+		// Cohere.
+		'cohere-ai',
 	];
 
 	/**
@@ -95,18 +136,22 @@ class WC_AI_Syndication_Robots {
 		// Live browsing (revenue path — recommended on).
 		'ChatGPT-User',
 		'OAI-SearchBot',
-		'Perplexity-User',
 		'Claude-User',
+		'Claude-SearchBot',
+		'PerplexityBot',
+		'Perplexity-User',
+		'Applebot',
 
 		// Training crawlers (brand-strategy decision — merchant choice).
 		'GPTBot',
 		'Google-Extended',
-		'Gemini',
-		'PerplexityBot',
 		'ClaudeBot',
 		'Meta-ExternalAgent',
 		'Amazonbot',
 		'Applebot-Extended',
+		'Bytespider',
+		'CCBot',
+		'cohere-ai',
 	];
 
 	/**

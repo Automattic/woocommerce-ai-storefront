@@ -289,8 +289,19 @@ class WC_AI_Syndication_Ucp {
 				// the future. Consumers key off
 				// `dev.ucp.shopping.{capability}` to discover whether
 				// our implementation covers their use case.
+				//
+				// Since 1.6.0 we advertise the two catalog sub-
+				// capabilities explicitly rather than the umbrella
+				// `dev.ucp.shopping.catalog`. The April UCP spec
+				// formalized `catalog.search` and `catalog.lookup`
+				// as separate schemas; splitting the advertisement
+				// lets agents discover precisely which operations
+				// are available. Our implementation covers both.
 				'capabilities'     => [
-					'dev.ucp.shopping.catalog'  => [
+					'dev.ucp.shopping.catalog.search' => [
+						[ 'version' => self::PROTOCOL_VERSION ],
+					],
+					'dev.ucp.shopping.catalog.lookup' => [
 						[ 'version' => self::PROTOCOL_VERSION ],
 					],
 					// `mode: handoff` signals that our checkout
@@ -309,7 +320,7 @@ class WC_AI_Syndication_Ucp {
 					// `continue_url`, but the manifest-level `mode`
 					// lets agents decide whether to invoke at all
 					// without a roundtrip.
-					'dev.ucp.shopping.checkout' => [
+					'dev.ucp.shopping.checkout'       => [
 						[
 							'version' => self::PROTOCOL_VERSION,
 							'mode'    => 'handoff',

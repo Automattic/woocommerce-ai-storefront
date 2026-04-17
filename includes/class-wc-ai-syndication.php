@@ -348,10 +348,21 @@ class WC_AI_Syndication {
 		$settings = get_option( self::SETTINGS_OPTION, [] );
 		$merged   = wp_parse_args( is_array( $settings ) ? $settings : [], $defaults );
 
-		// Allowed crawlers: stored in option, defaults to all known crawlers.
+		// Allowed crawlers: stored in option, defaults to LIVE BROWSING
+		// agents only on fresh installs. Training crawlers default off
+		// because training crawls capture snapshots that may surface in
+		// AI answers months later with stale prices and availability —
+		// a real risk for commerce. Merchants can opt in to training
+		// visibility from the admin page per their brand strategy.
+		//
+		// Existing installs with saved `allowed_crawlers` values keep
+		// their stored selections unchanged (the `! empty()` branch
+		// below returns what's in the DB). Only fresh installs or
+		// installs where the option was never written get the new
+		// default.
 		$merged['allowed_crawlers'] = ! empty( $settings['allowed_crawlers'] )
 			? $settings['allowed_crawlers']
-			: WC_AI_Syndication_Robots::AI_CRAWLERS;
+			: WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS;
 
 		self::$settings_cache = $merged;
 		return $merged;
@@ -379,7 +390,16 @@ class WC_AI_Syndication {
 			'selected_products'      => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
 			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
 			'allowed_crawlers'       => WC_AI_Syndication_Robots::sanitize_allowed_crawlers(
-				$merged['allowed_crawlers'] ?? WC_AI_Syndication_Robots::AI_CRAWLERS
+				// Fallback to live-browsing only (matching the
+				// fresh-install default from get_settings) if the
+				// caller invoked update_settings without specifying
+				// `allowed_crawlers`. In practice the admin form
+				// always sends this key, so this fallback rarely
+				// fires — but when it does, we err on the side of
+				// the commerce-safer default rather than re-enabling
+				// every training crawler the merchant may have
+				// explicitly unchecked.
+				$merged['allowed_crawlers'] ?? WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS
 			),
 		];
 

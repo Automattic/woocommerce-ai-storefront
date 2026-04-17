@@ -54,6 +54,29 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	const MAX_IDS_PER_LOOKUP = 100;
 
 	/**
+	 * Default page size for `POST /catalog/search`.
+	 *
+	 * Matches the UCP pagination spec's documented default (`limit: 10`
+	 * in `types/pagination.json#/$defs/request`). Agents that don't
+	 * specify pagination in their request get this many products per
+	 * call; those wanting larger pages set `pagination.limit` up to
+	 * `MAX_SEARCH_LIMIT`.
+	 */
+	const DEFAULT_SEARCH_LIMIT = 10;
+
+	/**
+	 * Upper bound on products per catalog/search response page.
+	 *
+	 * Matches the WC Store API's own maximum. Agents requesting a
+	 * `pagination.limit` above this are silently clamped — we don't
+	 * error, because the pagination loop still terminates correctly;
+	 * the agent just gets 100 products per page instead of the
+	 * higher value they asked for. If they need the full catalog
+	 * they page through cursors normally.
+	 */
+	const MAX_SEARCH_LIMIT = 100;
+
+	/**
 	 * Upper bound on line items per `POST /checkout-sessions` request.
 	 *
 	 * Same DoS-mitigation rationale as MAX_IDS_PER_LOOKUP. Real carts
@@ -304,12 +327,123 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			'products' => $products,
 		];
 
+		// Pagination state derived from Store API's response headers.
+		// The WC Store API emits `X-WP-Total` (matching row count
+		// across all pages) and `X-WP-TotalPages` (total page count
+		// at the requested per_page size). We translate into the
+		// UCP pagination response shape (`cursor`, `has_next_page`,
+		// `total_count`) so agents can iterate the catalog without
+		// ever seeing the WC-internal page indexing. See
+		// `encode_cursor()` for the cursor format contract.
+		$body['pagination'] = self::build_pagination_response(
+			$store_response,
+			(int) ( $store_params['page'] ?? 1 )
+		);
+
 		$messages = array_merge( $mapping_messages, $variant_messages );
 		if ( ! empty( $messages ) ) {
 			$body['messages'] = $messages;
 		}
 
 		return new WP_REST_Response( $body, 200 );
+	}
+
+	/**
+	 * Build the UCP pagination response object.
+	 *
+	 * Maps Store API's page-based response headers to UCP's cursor-
+	 * based shape. Emits:
+	 *
+	 *   - `has_next_page` (always) — whether further pages exist
+	 *   - `cursor` (when has_next_page is true) — opaque token
+	 *     consumers pass back in `pagination.cursor` on the next
+	 *     request to fetch the subsequent page
+	 *   - `total_count` (when known) — Store API reports this
+	 *     via `X-WP-Total`; we surface it for agents that want to
+	 *     show "X of Y results" in the user UI
+	 *
+	 * Per spec (`types/pagination.json` $defs/response), `cursor`
+	 * MUST be present when `has_next_page` is true; we never emit
+	 * it on the last page.
+	 *
+	 * @param \WP_REST_Response $store_response Response from the
+	 *                                          internal Store API
+	 *                                          dispatch.
+	 * @param int               $current_page   Page number we
+	 *                                          requested.
+	 * @return array<string, mixed>             UCP pagination shape.
+	 */
+	private static function build_pagination_response( \WP_REST_Response $store_response, int $current_page ): array {
+		$headers = $store_response->get_headers();
+
+		$total_pages = 1;
+		if ( isset( $headers['X-WP-TotalPages'] ) ) {
+			$total_pages = max( 1, (int) $headers['X-WP-TotalPages'] );
+		}
+
+		$has_next = $current_page < $total_pages;
+
+		$pagination = [
+			'has_next_page' => $has_next,
+		];
+
+		if ( $has_next ) {
+			$pagination['cursor'] = self::encode_cursor( $current_page + 1 );
+		}
+
+		if ( isset( $headers['X-WP-Total'] ) ) {
+			$pagination['total_count'] = (int) $headers['X-WP-Total'];
+		}
+
+		return $pagination;
+	}
+
+	/**
+	 * Encode a Store API page number as an opaque UCP cursor.
+	 *
+	 * Format: base64 of `p<page_number>`. The `p` prefix reserves
+	 * the cursor namespace so future implementation changes (e.g.
+	 * switching from page-based to keyset pagination) can use
+	 * different prefixes without ambiguity. Consumers treat the
+	 * cursor as opaque and never parse it.
+	 *
+	 * Base64 is used (not raw page numbers) to discourage agents
+	 * from trying to predict/fabricate cursors — they're expected
+	 * to use cursors returned from prior responses. A naive agent
+	 * guessing `cursor: "2"` gets a decode failure and falls to
+	 * page 1 gracefully; a well-behaved agent always round-trips
+	 * what the server gave it.
+	 *
+	 * @param int $page Page number (1-indexed).
+	 * @return string   Opaque cursor string.
+	 */
+	private static function encode_cursor( int $page ): string {
+		return base64_encode( 'p' . $page ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Not obfuscation; opaque-cursor encoding.
+	}
+
+	/**
+	 * Decode a UCP cursor string back to a Store API page number.
+	 *
+	 * Returns null on any malformed input — the caller falls back
+	 * to page 1. We accept malformed cursors silently because
+	 * catalog mutation between agent calls can invalidate previously
+	 * emitted cursors (e.g. products added → page counts shift),
+	 * and surfacing this as an error would make pagination brittle.
+	 *
+	 * @param string $cursor The opaque cursor string.
+	 * @return int|null      Decoded page number (≥1), or null if
+	 *                       the cursor is malformed.
+	 */
+	private static function decode_cursor( string $cursor ): ?int {
+		$decoded = base64_decode( $cursor, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Not obfuscation; opaque-cursor decoding.
+		if ( false === $decoded ) {
+			return null;
+		}
+		if ( 0 !== strpos( $decoded, 'p' ) ) {
+			return null;
+		}
+		$page = (int) substr( $decoded, 1 );
+		return $page > 0 ? $page : null;
 	}
 
 	/**
@@ -1059,6 +1193,32 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		if ( is_string( $query ) && '' !== $query ) {
 			$params['search'] = $query;
 		}
+
+		// Pagination mapping. UCP uses opaque cursors + a limit;
+		// Store API uses integer page + per_page. We base64-encode
+		// the page number as the cursor. See `encode_cursor()` for
+		// format rationale.
+		$pagination = $request->get_param( 'pagination' );
+		$limit      = self::DEFAULT_SEARCH_LIMIT;
+		$page       = 1;
+		if ( is_array( $pagination ) ) {
+			if ( isset( $pagination['limit'] ) && is_numeric( $pagination['limit'] ) ) {
+				$limit = max( 1, min( self::MAX_SEARCH_LIMIT, (int) $pagination['limit'] ) );
+			}
+			if ( isset( $pagination['cursor'] ) && is_string( $pagination['cursor'] ) && '' !== $pagination['cursor'] ) {
+				$decoded = self::decode_cursor( $pagination['cursor'] );
+				if ( null !== $decoded ) {
+					$page = $decoded;
+				}
+				// Malformed cursor → fall back to page 1 silently. We
+				// don't surface this as an error because the agent
+				// might have copied a cursor from a prior page that
+				// no longer exists (catalog mutated between calls).
+				// Starting from page 1 is the safe recovery.
+			}
+		}
+		$params['per_page'] = $limit;
+		$params['page']     = $page;
 
 		$filters = $request->get_param( 'filters' );
 		if ( ! is_array( $filters ) ) {

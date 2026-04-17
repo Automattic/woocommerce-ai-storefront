@@ -45,6 +45,17 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	private int $fake_list_status = 200;
 
 	/**
+	 * Response headers attached to the Store API list dispatch.
+	 * Used to exercise the pagination-response-mapping logic
+	 * (X-WP-Total / X-WP-TotalPages → UCP pagination shape). Tests
+	 * set `X-WP-Total` / `X-WP-TotalPages` to simulate multi-page
+	 * catalogs; empty headers mean "one page of results."
+	 *
+	 * @var array<string, string>
+	 */
+	private array $fake_list_headers = [];
+
+	/**
 	 * Per-ID canned responses for individual product fetches (used
 	 * when the handler pre-fetches variations for a variable product).
 	 *
@@ -73,6 +84,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->captured_store_params = [];
 		$this->fake_product_list     = [];
 		$this->fake_list_status      = 200;
+		$this->fake_list_headers     = [];
 		$this->fake_store_api        = [];
 		$this->fake_terms            = [];
 
@@ -95,6 +107,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$captured_params = &$this->captured_store_params;
 		$list            = &$this->fake_product_list;
 		$list_status     = &$this->fake_list_status;
+		$list_headers    = &$this->fake_list_headers;
 		$api             = &$this->fake_store_api;
 
 		Functions\when( 'rest_do_request' )->alias(
@@ -102,6 +115,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 				&$captured_params,
 				&$list,
 				&$list_status,
+				&$list_headers,
 				&$api
 			) {
 				$route = $request->get_route();
@@ -109,14 +123,20 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 				if ( '/wc/store/v1/products' === $route ) {
 					// List dispatch — capture the params so tests can
 					// assert on the UCP→Store-API mapping, then return
-					// the canned product list.
-					foreach ( [ 'search', 'category', 'min_price', 'max_price' ] as $key ) {
+					// the canned product list. 1.6.0 added `page` +
+					// `per_page` to the captured list for pagination
+					// mapping assertions.
+					foreach ( [ 'search', 'category', 'min_price', 'max_price', 'page', 'per_page' ] as $key ) {
 						$val = $request->get_param( $key );
 						if ( null !== $val ) {
 							$captured_params[ $key ] = $val;
 						}
 					}
-					return new WP_REST_Response( $list, $list_status );
+					$response = new WP_REST_Response( $list, $list_status );
+					foreach ( $list_headers as $name => $value ) {
+						$response->header( $name, $value );
+					}
+					return $response;
 				}
 
 				if ( preg_match( '#^/wc/store/v1/products/(\d+)$#', $route, $m ) ) {
@@ -436,10 +456,16 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_non_array_filters_is_ignored(): void {
 		// filters as a string or scalar is garbled input — don't
-		// 400 the request, just treat it as "no filters."
+		// 400 the request, just treat it as "no filters." Since
+		// 1.6.0 `page` + `per_page` are always set (pagination is
+		// unconditional), so we assert on the filter-specific
+		// params being absent rather than the whole map being empty.
 		$body = $this->successful_search( [ 'filters' => 'garbage' ] );
 
-		$this->assertEmpty( $this->captured_store_params );
+		$this->assertArrayNotHasKey( 'search', $this->captured_store_params );
+		$this->assertArrayNotHasKey( 'category', $this->captured_store_params );
+		$this->assertArrayNotHasKey( 'min_price', $this->captured_store_params );
+		$this->assertArrayNotHasKey( 'max_price', $this->captured_store_params );
 		$this->assertIsArray( $body['products'] );
 	}
 
@@ -640,5 +666,154 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			$this->captured_store_params,
 			'Handler must short-circuit before dispatching when disabled'
 		);
+	}
+
+	// ------------------------------------------------------------------
+	// Pagination (1.6.0+)
+	// ------------------------------------------------------------------
+	//
+	// The handler translates UCP's cursor-based pagination to Store
+	// API's page-based pagination. These tests lock in:
+	//   - Default page size (10, matching UCP spec `types/pagination.json`)
+	//   - Limit clamping to the configured max (100)
+	//   - Cursor round-trip: server-issued cursor on response N maps
+	//     back to page N+1 on the next request
+	//   - Malformed cursors fall back to page 1 without error
+	//   - Response shape: always emits has_next_page; emits cursor
+	//     only when has_next_page is true; emits total_count when
+	//     Store API provides X-WP-Total
+
+	public function test_default_page_size_is_ten(): void {
+		$this->fake_product_list = [];
+
+		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [] )
+		);
+
+		// No pagination in request → defaults per UCP spec.
+		$this->assertSame( 10, $this->captured_store_params['per_page'] );
+		$this->assertSame( 1, $this->captured_store_params['page'] );
+	}
+
+	public function test_pagination_limit_is_passed_through(): void {
+		$this->fake_product_list = [];
+
+		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'limit' => 25 ],
+			] )
+		);
+
+		$this->assertSame( 25, $this->captured_store_params['per_page'] );
+	}
+
+	public function test_pagination_limit_is_clamped_to_max(): void {
+		// Spec permits implementations to clamp. Agents asking for
+		// 500 get 100 (MAX_SEARCH_LIMIT) silently — they'll just
+		// see slightly fewer products per page than requested and
+		// page through cursors normally.
+		$this->fake_product_list = [];
+
+		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'limit' => 500 ],
+			] )
+		);
+
+		$this->assertSame( 100, $this->captured_store_params['per_page'] );
+	}
+
+	public function test_response_pagination_indicates_no_next_page_when_single_page(): void {
+		$this->fake_product_list  = [];
+		$this->fake_list_headers  = [
+			'X-WP-Total'      => '3',
+			'X-WP-TotalPages' => '1',
+		];
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [] )
+		);
+
+		$body = $response->get_data();
+		$this->assertArrayHasKey( 'pagination', $body );
+		$this->assertFalse( $body['pagination']['has_next_page'] );
+		$this->assertArrayNotHasKey(
+			'cursor',
+			$body['pagination'],
+			'cursor MUST be absent when has_next_page is false (spec requirement)'
+		);
+		$this->assertSame( 3, $body['pagination']['total_count'] );
+	}
+
+	public function test_response_emits_cursor_when_more_pages_exist(): void {
+		$this->fake_product_list = [];
+		$this->fake_list_headers = [
+			'X-WP-Total'      => '47',
+			'X-WP-TotalPages' => '5',
+		];
+
+		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [] )
+		);
+
+		$body = $response->get_data();
+		$this->assertTrue( $body['pagination']['has_next_page'] );
+		$this->assertArrayHasKey( 'cursor', $body['pagination'] );
+		$this->assertIsString( $body['pagination']['cursor'] );
+		$this->assertSame( 47, $body['pagination']['total_count'] );
+	}
+
+	public function test_cursor_round_trip_advances_to_next_page(): void {
+		// Request page 1, capture the cursor, resubmit — the handler
+		// should decode that cursor to page 2 and pass it to Store API.
+		$this->fake_product_list = [];
+		$this->fake_list_headers = [
+			'X-WP-Total'      => '50',
+			'X-WP-TotalPages' => '5',
+		];
+
+		$first = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [] )
+		);
+		$cursor = $first->get_data()['pagination']['cursor'];
+
+		$this->captured_store_params = [];
+
+		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'cursor' => $cursor ],
+			] )
+		);
+
+		$this->assertSame( 2, $this->captured_store_params['page'] );
+	}
+
+	public function test_malformed_cursor_falls_back_to_page_one(): void {
+		// Agents may carry cursors across catalog mutations that
+		// invalidate them; surfacing an error would make pagination
+		// brittle. Silent fallback to page 1 is the intentional
+		// behavior — the agent gets a fresh valid page.
+		$this->fake_product_list = [];
+
+		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'cursor' => 'not-a-valid-cursor' ],
+			] )
+		);
+
+		$this->assertSame( 1, $this->captured_store_params['page'] );
+	}
+
+	public function test_empty_string_cursor_falls_back_to_page_one(): void {
+		// Edge case: explicit empty cursor. Treat same as missing.
+		$this->fake_product_list = [];
+
+		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( [
+				'pagination' => [ 'cursor' => '' ],
+			] )
+		);
+
+		$this->assertSame( 1, $this->captured_store_params['page'] );
 	}
 }
