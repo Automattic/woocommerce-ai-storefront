@@ -195,7 +195,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_allows_ucp_rest_endpoint_for_every_crawler(): void {
-		// Task 14: the UCP adapter endpoints at /wp-json/wc/ucp/ must be
+		// The UCP adapter endpoints at /wp-json/wc/ucp/ must be
 		// explicitly allow-listed per crawler so well-behaved bots know
 		// to index them. Without this line, strict crawlers obeying a
 		// wildcard /wp-json/ disallow upstream in the file would skip

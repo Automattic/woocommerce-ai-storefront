@@ -355,7 +355,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Variable product expansion (integration with task 7)
+	// Variable product expansion (integration with product translator + fetch_variations_for)
 	// ------------------------------------------------------------------
 
 	public function test_variable_product_variations_pre_fetched_and_expanded(): void {

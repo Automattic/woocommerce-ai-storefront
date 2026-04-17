@@ -48,9 +48,9 @@ class UcpEnvelopeTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_catalog_envelope_capability_value_is_array_with_version(): void {
-		// Schema requires capabilities.X to be an array of objects,
-		// not a bare object. Matching Allbirds' production manifest
-		// shape.
+		// Per UCP schema: capabilities.X is an array of binding objects,
+		// never a bare object. The array wrapper leaves room to declare
+		// multiple implementation versions concurrently.
 		$env = WC_AI_Syndication_UCP_Envelope::catalog_envelope(
 			'dev.ucp.shopping.catalog.search'
 		);

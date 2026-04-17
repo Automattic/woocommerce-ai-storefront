@@ -49,7 +49,7 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	 * Why pre-fetched rather than self-dispatching: keeps the translator
 	 * pure + hermetically testable without stubbing WP's REST
 	 * infrastructure. Orchestration (detect type, fetch variations)
-	 * lives in the REST controller (task 11's search/lookup handlers).
+	 * lives in the REST controller's search/lookup handlers.
 	 *
 	 * @param array<string, mixed>             $wc_product    Decoded Store API product response.
 	 * @param array<int, array<string, mixed>> $wc_variations Optional pre-fetched Store API
@@ -97,13 +97,13 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	 *
 	 *   - Caller supplied `$wc_variations` (variable product, pre-fetched
 	 *     by the REST controller): emit one real UCP variant per entry,
-	 *     translated via `UcpVariantTranslator::translate()`. Variant IDs
-	 *     are `var_{variation_id}` (no `_default` suffix — that marker is
-	 *     reserved for synthesized placeholders).
+	 *     translated via `WC_AI_Syndication_UCP_Variant_Translator::translate()`.
+	 *     Variant IDs are `var_{variation_id}` (no `_default` suffix — that
+	 *     marker is reserved for synthesized placeholders).
 	 *   - `$wc_variations` is empty (simple product, or variable product
 	 *     where caller did not pre-fetch): emit one synthesized default
-	 *     variant via `UcpVariantTranslator::synthesize_default()` so the
-	 *     minItems:1 constraint is still satisfied. This is the safety-
+	 *     variant via `WC_AI_Syndication_UCP_Variant_Translator::synthesize_default()`
+	 *     so the minItems:1 constraint is still satisfied. This is the safety-
 	 *     net path — callers emitting a variable product without variations
 	 *     get a defensive fallback rather than a schema-violating empty
 	 *     array, but the `_default` suffix signals the shape is degraded.
@@ -234,12 +234,8 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	 */
 	private static function extract_description( array $wc_product ): array {
 		$raw = $wc_product['short_description'] ?? '';
-		// wp_strip_all_tags() over native strip_tags(): the WordPress
-		// helper also strips the CONTENT of <script> and <style> tags
-		// (not just the tags themselves) and trims surrounding whitespace.
-		// Both are safer defaults for content that might originate from a
-		// rich-text editor. PHPCS flags native strip_tags in plugin code
-		// for exactly this reason.
+		// wp_strip_all_tags() rationale documented on the companion
+		// method in UCP Variant Translator (::extract_description).
 		$plain = html_entity_decode(
 			wp_strip_all_tags( (string) $raw ),
 			ENT_QUOTES,

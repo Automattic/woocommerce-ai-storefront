@@ -26,11 +26,11 @@ class WC_AI_Syndication_Ucp {
 	 * UCP protocol revision, which may or may not align with plugin
 	 * releases.
 	 *
-	 * Bumped from 2026-01-11 → 2026-04-08 in plugin 1.3.0 to match
-	 * Allbirds' production manifest and track UCP's quarterly release
-	 * cadence. `UcpEnvelope::catalog_envelope()` + `checkout_envelope()`
-	 * read this constant, so the bump flows through to every handler
-	 * response automatically.
+	 * Bumped from 2026-01-11 → 2026-04-08 in plugin 1.3.0 to track the
+	 * then-current UCP spec revision referenced below.
+	 * `WC_AI_Syndication_UCP_Envelope::catalog_envelope()` and
+	 * `checkout_envelope()` both read this constant, so the bump flows
+	 * through to every handler response envelope automatically.
 	 *
 	 * @link https://github.com/Universal-Commerce-Protocol/ucp/blob/main/source/schemas/ucp.json
 	 */
@@ -253,12 +253,14 @@ class WC_AI_Syndication_Ucp {
 					],
 				],
 
-				// UCP shopping capabilities we implement. Per schema,
-				// each capability key maps to an ARRAY of binding
-				// objects (one per implementation version) — matching
-				// Allbirds' production manifest shape. Consumers can
-				// key off `dev.ucp.shopping.{capability}` to discover
-				// whether our implementation covers their use case.
+				// UCP shopping capabilities we implement. Per the
+				// business_profile schema linked above, each capability
+				// key maps to an ARRAY of binding objects (one per
+				// implementation version) — the array wrapper leaves
+				// room to advertise multiple versions concurrently in
+				// the future. Consumers key off
+				// `dev.ucp.shopping.{capability}` to discover whether
+				// our implementation covers their use case.
 				'capabilities'     => [
 					'dev.ucp.shopping.catalog'  => [
 						[ 'version' => self::PROTOCOL_VERSION ],

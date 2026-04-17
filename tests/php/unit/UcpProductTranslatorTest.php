@@ -386,10 +386,10 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_variable_product_emits_one_variant_per_fetched_variation(): void {
-		// The caller (REST controller in task 11) is responsible for
-		// pre-fetching each variation. When it does, the translator
-		// emits one UCP variant per entry — no more synthesized
-		// single-variant fallback.
+		// The caller (REST controller's search/lookup handlers) is
+		// responsible for pre-fetching each variation. When it does,
+		// the translator emits one UCP variant per entry — no more
+		// synthesized single-variant fallback.
 		$fixture = $this->variable_product_with_variations_fixture();
 
 		$result = WC_AI_Syndication_UCP_Product_Translator::translate(

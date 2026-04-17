@@ -236,12 +236,12 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_each_capability_value_is_array_of_versioned_bindings(): void {
-		// Per UCP schema, each capability key maps to an ARRAY of
-		// binding objects (one per implementation version). Matches
-		// the same {key: [{version}]} shape the services map uses —
-		// and matches Allbirds' production manifest. A bare object
-		// (single binding without the array wrapper) would fail
-		// strict schema validation.
+		// Per UCP business_profile schema, each capability key maps to
+		// an ARRAY of binding objects (one per implementation version) —
+		// the same {key: [{version}]} shape the services map uses. The
+		// array wrapper leaves room to advertise multiple versions
+		// concurrently; a bare object (single binding without the array)
+		// would fail strict schema validation.
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		foreach ( [ 'dev.ucp.shopping.catalog', 'dev.ucp.shopping.checkout' ] as $cap ) {

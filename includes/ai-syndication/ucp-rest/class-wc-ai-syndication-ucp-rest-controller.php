@@ -151,8 +151,8 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * Maps UCP fields onto WC Store API query params and dispatches
 	 * `GET /wc/store/v1/products` via `rest_do_request`. Every returned
 	 * product is translated to UCP shape; variable products get their
-	 * variations pre-fetched (per task 7) so variant lists are real
-	 * rather than synthesized defaults.
+	 * variations pre-fetched by `fetch_variations_for()` so variant
+	 * lists are real rather than synthesized defaults.
 	 *
 	 * Pagination is deferred to a future version — v1 returns whatever
 	 * Store API considers the default page (typically 10 products).
@@ -305,10 +305,11 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			}
 
 			// Variable products: pre-fetch each variation's full Store API
-			// response so UcpProductTranslator can emit one real variant
-			// per variation rather than a synthesized default. Skipped
-			// variations (fetch failed) are silently omitted — a partial
-			// set is still more useful than a synthesized fallback.
+			// response so WC_AI_Syndication_UCP_Product_Translator can
+			// emit one real variant per variation rather than a synthesized
+			// default. Skipped variations (fetch failed) are silently
+			// omitted — a partial set is still more useful than a
+			// synthesized fallback.
 			$wc_variations = self::fetch_variations_for( $wc_product );
 
 			$products[] = WC_AI_Syndication_UCP_Product_Translator::translate(
@@ -562,7 +563,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * Using `rest_do_request` rather than a direct WC_Data_Store call
 	 * matters: it threads the request through the Store API's full
 	 * pipeline, which means our `woocommerce_store_api_product_collection_query_args`
-	 * filter (from task 8) still applies — products excluded by the
+	 * filter still applies — products excluded by the
 	 * merchant's selected_categories/products settings return 404 here,
 	 * even though the agent supplied a raw numeric ID.
 	 *
@@ -721,9 +722,9 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * rather than returning an error: the agent asked for a category
 	 * that doesn't exist, which naturally yields an empty result set.
 	 *
-	 * v1.4 should revisit emitting slugs from UcpProductTranslator's
-	 * category output so round-tripping doesn't rely on the name
-	 * fallback here. See PLAN-ucp-adapter.md.
+	 * A future release should revisit emitting slugs from
+	 * `WC_AI_Syndication_UCP_Product_Translator::extract_categories()`
+	 * so round-tripping doesn't rely on the name fallback here.
 	 *
 	 * @param array<int, mixed> $inputs
 	 * @return array<int, int>
@@ -773,7 +774,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	}
 
 	// ------------------------------------------------------------------
-	// Checkout-sessions helpers (task 12)
+	// Checkout-sessions helpers
 	// ------------------------------------------------------------------
 
 	/**

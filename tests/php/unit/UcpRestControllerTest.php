@@ -1,16 +1,17 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_UCP_REST_Controller.
+ * Tests for WC_AI_Syndication_UCP_REST_Controller route registration.
  *
- * Task 9 scope: route registration only. Stub handlers return a
- * `ucp_not_implemented` WP_Error with status 501 — these are
- * transient placeholders that tasks 10, 11, 12 replace with real
- * implementations. These tests lock in the registration contract:
- * the three routes must exist at the correct paths under the
- * `wc/ucp/v1` namespace, accept POST, and be public.
+ * Scope: the `register_routes()` contract only — namespace, paths,
+ * methods, permission callback. The three routes must exist at their
+ * canonical paths under `wc/ucp/v1`, accept POST, and be public.
  *
- * Real request/response tests land alongside each route's handler
- * implementation (tasks 10-12).
+ * Handler behavior (request/response shapes, filter mapping,
+ * line-item validation, the syndication-disabled gate) is tested in
+ * the dedicated per-handler files:
+ *   - UcpCatalogSearchTest
+ *   - UcpCatalogLookupTest
+ *   - UcpCheckoutSessionsTest
  *
  * @package WooCommerce_AI_Syndication
  */
