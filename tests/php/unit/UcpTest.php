@@ -116,10 +116,28 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_service_name_is_store_api_under_woocommerce_namespace(): void {
+	public function test_service_name_is_dev_ucp_shopping(): void {
+		// Plugin 1.3.0 advertises `dev.ucp.shopping` — the canonical UCP
+		// shopping service identifier — rather than the pre-1.3.0
+		// `com.woocommerce.store_api`. Agents use this key to discover
+		// our UCP endpoint base URL.
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertArrayHasKey(
+			'dev.ucp.shopping',
+			$manifest['ucp']['services']
+		);
+	}
+
+	public function test_old_store_api_service_no_longer_declared(): void {
+		// Regression guard: any future refactor that re-adds the
+		// pre-1.3.0 `com.woocommerce.store_api` service alongside
+		// `dev.ucp.shopping` would be misleading — the WC Store API
+		// remains accessible at its standard path without needing
+		// manifest advertisement.
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertArrayNotHasKey(
 			'com.woocommerce.store_api',
 			$manifest['ucp']['services']
 		);
@@ -130,7 +148,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// Each key maps to an ARRAY, not a single binding, so a service
 		// can declare multiple transport bindings in the future.
 		$manifest = $this->ucp->generate_manifest( [] );
-		$bindings = $manifest['ucp']['services']['com.woocommerce.store_api'];
+		$bindings = $manifest['ucp']['services']['dev.ucp.shopping'];
 
 		$this->assertIsArray( $bindings );
 		$this->assertCount( 1, $bindings );
@@ -142,7 +160,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// `spec` is required at platform level and good practice at
 		// business level (lets agents find human docs).
 		$manifest = $this->ucp->generate_manifest( [] );
-		$binding  = $manifest['ucp']['services']['com.woocommerce.store_api'][0];
+		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertArrayHasKey( 'version', $binding );
 		$this->assertArrayHasKey( 'transport', $binding );
@@ -152,56 +170,104 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_transport_enum_is_rest(): void {
 		// UCP transport enum: rest | mcp | a2a | embedded.
-		// The WC Store API is a REST endpoint, so we declare 'rest'.
+		// Our UCP endpoint is REST-transported.
 		$manifest = $this->ucp->generate_manifest( [] );
-		$binding  = $manifest['ucp']['services']['com.woocommerce.store_api'][0];
+		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertEquals( 'rest', $binding['transport'] );
 	}
 
-	public function test_endpoint_points_to_public_wc_store_api(): void {
-		// The Store API is where agents actually fetch product data.
-		// If this URL ever drifts, crawlers hit 404s and our pull
-		// model breaks.
+	public function test_endpoint_points_to_ucp_adapter_base_url(): void {
+		// The UCP base URL is where agents dispatch POST
+		// /catalog/search, /catalog/lookup, /checkout-sessions. If
+		// this URL drifts from the registered REST routes, agents
+		// following the manifest hit 404s.
 		$manifest = $this->ucp->generate_manifest( [] );
-		$binding  = $manifest['ucp']['services']['com.woocommerce.store_api'][0];
+		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertEquals(
-			'https://example.com/wp-json/wc/store/v1',
+			'https://example.com/wp-json/wc/ucp/v1',
 			$binding['endpoint']
 		);
 	}
 
-	public function test_spec_url_points_to_official_wc_store_api_docs(): void {
-		// Verified during authorship; documented in the generator's
-		// docblock. If WooCommerce ever relocates this URL, update
-		// the generator AND this test in the same commit.
+	public function test_spec_url_points_to_ucp_shopping_schema(): void {
+		// Points agents at the UCP shopping schema repo so they can
+		// verify our wire format matches what they expect.
 		$manifest = $this->ucp->generate_manifest( [] );
-		$binding  = $manifest['ucp']['services']['com.woocommerce.store_api'][0];
+		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertEquals(
-			'https://developer.woocommerce.com/docs/apis/store-api',
+			'https://github.com/Universal-Commerce-Protocol/ucp/tree/main/source/schemas/shopping',
 			$binding['spec']
 		);
 	}
 
 	// ------------------------------------------------------------------
-	// Layer 2: Pull-model posture — zero capabilities, zero handlers
+	// Layer 2: Declared capabilities (catalog + checkout) + pull-model
+	// payment posture (zero handlers)
 	// ------------------------------------------------------------------
 
-	public function test_capabilities_is_empty_object(): void {
-		// The plugin's core product decision: we don't implement UCP
-		// Checkout, Identity Linking, Order webhooks, or Payment Token
-		// Exchange capabilities. Declaring zero is the honest posture.
-		//
-		// JSON serializes PHP `[]` as an array and `new stdClass` (or
-		// `(object) []`) as an object. The UCP schema requires OBJECT
-		// shape here. Verify it survives the json_encode round-trip.
+	public function test_capabilities_declares_shopping_catalog(): void {
+		// Plugin 1.3.0 implements the UCP shopping catalog capability
+		// (search + lookup) at /wp-json/wc/ucp/v1/catalog/*. Agents
+		// check this key to confirm our endpoints honor the catalog
+		// request/response contract.
 		$manifest = $this->ucp->generate_manifest( [] );
 
-		$this->assertEquals(
-			'{}',
-			wp_json_encode_or_native( $manifest['ucp']['capabilities'] )
+		$this->assertArrayHasKey(
+			'dev.ucp.shopping.catalog',
+			$manifest['ucp']['capabilities']
+		);
+	}
+
+	public function test_capabilities_declares_shopping_checkout(): void {
+		// checkout is stateless one-shot — see UcpCheckoutSessionsTest
+		// for the full semantic. The manifest just declares we
+		// implement the capability name; the actual redirect-only
+		// behavior is communicated via `status: requires_escalation`
+		// in response bodies.
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertArrayHasKey(
+			'dev.ucp.shopping.checkout',
+			$manifest['ucp']['capabilities']
+		);
+	}
+
+	public function test_each_capability_value_is_array_of_versioned_bindings(): void {
+		// Per UCP schema, each capability key maps to an ARRAY of
+		// binding objects (one per implementation version). Matches
+		// the same {key: [{version}]} shape the services map uses —
+		// and matches Allbirds' production manifest. A bare object
+		// (single binding without the array wrapper) would fail
+		// strict schema validation.
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		foreach ( [ 'dev.ucp.shopping.catalog', 'dev.ucp.shopping.checkout' ] as $cap ) {
+			$bindings = $manifest['ucp']['capabilities'][ $cap ];
+
+			$this->assertIsArray( $bindings, "$cap should be an array" );
+			$this->assertCount( 1, $bindings, "$cap should declare exactly one binding" );
+			$this->assertEquals(
+				WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+				$bindings[0]['version'],
+				"$cap binding version should match plugin PROTOCOL_VERSION"
+			);
+		}
+	}
+
+	public function test_no_extraneous_capabilities_declared(): void {
+		// Regression guard: we implement catalog + checkout only. If
+		// a future refactor accidentally declared cart, identity
+		// linking, payment token exchange, etc., agents would try to
+		// invoke operations we haven't built — and fail. Declaring
+		// only what we've implemented is the honest posture.
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertEqualsCanonicalizing(
+			[ 'dev.ucp.shopping.catalog', 'dev.ucp.shopping.checkout' ],
+			array_keys( $manifest['ucp']['capabilities'] )
 		);
 	}
 
@@ -249,7 +315,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 
 	private function get_config(): array {
 		$manifest = $this->ucp->generate_manifest( [] );
-		return $manifest['ucp']['services']['com.woocommerce.store_api'][0]['config'];
+		return $manifest['ucp']['services']['dev.ucp.shopping'][0]['config'];
 	}
 
 	public function test_service_config_has_purchase_urls_and_attribution(): void {

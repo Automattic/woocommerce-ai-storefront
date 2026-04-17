@@ -26,19 +26,31 @@ class WC_AI_Syndication_Ucp {
 	 * UCP protocol revision, which may or may not align with plugin
 	 * releases.
 	 *
+	 * Bumped from 2026-01-11 → 2026-04-08 in plugin 1.3.0 to match
+	 * Allbirds' production manifest and track UCP's quarterly release
+	 * cadence. `UcpEnvelope::catalog_envelope()` + `checkout_envelope()`
+	 * read this constant, so the bump flows through to every handler
+	 * response automatically.
+	 *
 	 * @link https://github.com/Universal-Commerce-Protocol/ucp/blob/main/source/schemas/ucp.json
 	 */
-	const PROTOCOL_VERSION = '2026-01-11';
+	const PROTOCOL_VERSION = '2026-04-08';
 
 	/**
 	 * Reverse-domain name for our published service.
 	 *
-	 * UCP requires services keyed by reverse-domain name. The WooCommerce
-	 * Store API is the REST endpoint agents pull product and cart data
-	 * from — we publish it under our own namespace so it's uniquely
-	 * identifiable even if a site runs multiple UCP-speaking plugins.
+	 * Pre-1.3.0 this was `com.woocommerce.store_api` — we advertised
+	 * the raw WC Store API as a generic service. Now that we host
+	 * UCP-shaped endpoints at `/wp-json/wc/ucp/v1/`, we declare the
+	 * canonical `dev.ucp.shopping` identifier so UCP-aware agents
+	 * discover the right entry point directly.
+	 *
+	 * `dev.ucp.*` is not reserved against third-party use per the UCP
+	 * authority-identifier convention — it names UCP-defined services
+	 * that anyone can implement. Our implementation lives at the
+	 * endpoint this constant points to.
 	 */
-	const SERVICE_NAME = 'com.woocommerce.store_api';
+	const SERVICE_NAME = 'dev.ucp.shopping';
 
 	/**
 	 * Transient key for cached UCP manifest.
@@ -123,28 +135,34 @@ class WC_AI_Syndication_Ucp {
 	 * The spec requires `ucp: { version, services, payment_handlers }`.
 	 * `capabilities` is optional but must be an object when present.
 	 *
-	 * This plugin implements a discovery-only / pull-model posture:
+	 * Plugin 1.3.0 shifted posture from "discovery-only" to "UCP
+	 * adapter":
 	 *
-	 *   - One `service`: the public WooCommerce Store API (REST).
-	 *     This is where agents pull product and cart data.
-	 *   - Zero `capabilities`. The plugin does not implement UCP
-	 *     Checkout, Identity Linking, Order webhooks, or Payment
-	 *     Token Exchange. Checkout stays on the merchant's site
-	 *     (web-redirect model, never delegated or in-chat).
-	 *   - Zero `payment_handlers`. Required top-level key by the
-	 *     schema; empty object is the valid declaration for a
-	 *     merchant that doesn't mediate payments.
+	 *   - One `service`: `dev.ucp.shopping` (REST) pointing at our
+	 *     own `/wp-json/wc/ucp/v1/` endpoint. Agents hit this base
+	 *     URL + capability-specific paths (e.g. POST /catalog/search)
+	 *     to invoke UCP operations.
+	 *   - Two declared `capabilities`:
+	 *       - `dev.ucp.shopping.catalog`  (search + lookup)
+	 *       - `dev.ucp.shopping.checkout` (stateless create)
+	 *   - Zero `payment_handlers`. Checkout stays on the merchant's
+	 *     site — every checkout-sessions response returns
+	 *     `status: requires_escalation` with a `continue_url` into
+	 *     WooCommerce's native Shareable Checkout flow. Merchants
+	 *     keep ownership of payment, tax, fulfillment.
 	 *
-	 * Bespoke information useful to AI agents — purchase URL templates,
-	 * WooCommerce Order Attribution parameters — lives inside
-	 * `services[...].config`, which is the UCP entity schema's
-	 * documented place for entity-specific configuration. Strict
-	 * UCP consumers ignore unknown config keys; agents that learn
-	 * our namespace can use them.
+	 * Service-level `config` preserves the purchase-URL templates and
+	 * attribution guidance we emitted pre-1.3.0. Agents that consume
+	 * our UCP endpoints rarely need these — our checkout-sessions
+	 * handler assembles the final URL itself — but the config is
+	 * still useful documentation for merchants and for agents that
+	 * want to construct checkout URLs directly without the UCP round
+	 * trip. UCP schema permits `config` as additionalProperties on
+	 * any entity, so strict consumers ignore it gracefully.
 	 *
 	 * Not included (deliberately):
 	 *   - Store metadata (name, description, currency): redundant
-	 *     with the Store API's own responses and with llms.txt.
+	 *     with Store API responses and llms.txt.
 	 *   - Rate limits: enforced through HTTP 429 / Retry-After
 	 *     response headers, not manifest advertisement.
 	 *   - Pointers to llms.txt / sitemap: agents find llms.txt at
@@ -159,31 +177,31 @@ class WC_AI_Syndication_Ucp {
 		$site_url     = home_url( '/' );
 		$checkout_url = wc_get_checkout_url();
 		$cart_url     = wc_get_cart_url();
-		$store_api    = rest_url( 'wc/store/v1' );
+		$ucp_endpoint = rest_url( 'wc/ucp/v1' );
 
 		$manifest = [
 			'ucp' => [
 				'version'          => self::PROTOCOL_VERSION,
 
-				// Services — REST transport binding for the public
-				// Store API. Under business_schema, a REST binding
-				// requires `endpoint`; `schema` is optional (WC does
-				// not publish a single aggregated OpenAPI document,
-				// so we point `spec` at the human docs instead).
+				// Services — single REST binding at our UCP namespace.
+				// Under business_schema, a REST binding requires
+				// `endpoint`; `spec` points at the UCP spec for
+				// consumers that want to verify our shape.
 				'services'         => [
 					self::SERVICE_NAME => [
 						[
 							'version'   => self::PROTOCOL_VERSION,
-							'spec'      => 'https://developer.woocommerce.com/docs/apis/store-api',
+							'spec'      => 'https://github.com/Universal-Commerce-Protocol/ucp/tree/main/source/schemas/shopping',
 							'transport' => 'rest',
-							'endpoint'  => $store_api,
+							'endpoint'  => $ucp_endpoint,
 
 							// Service-specific config. UCP's entity
 							// schema explicitly allows this (`config`
 							// on any entity, `additionalProperties:
-							// true`). Agents with knowledge of our
-							// service namespace read these; strict
-							// UCP consumers ignore them.
+							// true`). Kept for documentation value
+							// and for agents that construct checkout
+							// URLs directly; strict UCP consumers
+							// ignore these keys.
 							'config'    => [
 								'purchase_urls' => [
 									'spec'             => 'https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/',
@@ -228,22 +246,31 @@ class WC_AI_Syndication_Ucp {
 										'utm_campaign'  => 'Optional campaign name',
 										'ai_session_id' => 'Conversation/session identifier for tracking',
 									],
-									'usage_note' => 'Append these parameters to any checkout_link or add_to_cart URL.',
+									'usage_note' => 'Append these parameters to any checkout_link or add_to_cart URL. The UCP /checkout-sessions endpoint adds utm_source + utm_medium automatically from the UCP-Agent header.',
 								],
 							],
 						],
 					],
 				],
 
-				// No UCP capabilities implemented. Declaring zero is
-				// the honest posture for a merchant opted out of
-				// delegated checkout, identity linking, and
-				// agent-driven order flows. `(object)` cast ensures
-				// JSON serializes as `{}` not `[]`.
-				'capabilities'     => (object) [],
+				// UCP shopping capabilities we implement. Per schema,
+				// each capability key maps to an ARRAY of binding
+				// objects (one per implementation version) — matching
+				// Allbirds' production manifest shape. Consumers can
+				// key off `dev.ucp.shopping.{capability}` to discover
+				// whether our implementation covers their use case.
+				'capabilities'     => [
+					'dev.ucp.shopping.catalog'  => [
+						[ 'version' => self::PROTOCOL_VERSION ],
+					],
+					'dev.ucp.shopping.checkout' => [
+						[ 'version' => self::PROTOCOL_VERSION ],
+					],
+				],
 
 				// Required by business_schema. Empty object is the
-				// valid "zero handlers" declaration.
+				// valid "zero handlers" declaration — merchant's WC
+				// checkout handles payment via their configured gateway.
 				'payment_handlers' => (object) [],
 			],
 		];
