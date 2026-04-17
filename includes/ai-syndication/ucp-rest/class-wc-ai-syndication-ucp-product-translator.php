@@ -35,16 +35,29 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	/**
 	 * Translate a single WC Store API product response into a UCP product.
 	 *
-	 * v1 scope (task 5): simple products get full UCP shape with a
-	 * single synthesized default variant. Variable products also get
-	 * one synthesized variant — not yet correct behavior for variable
-	 * products with real variations. Task 7 replaces the synthesized
-	 * path with `rest_do_request` dispatches to fetch each variation.
+	 * Variant expansion is caller-driven. The translator stays a pure
+	 * data-shape function and does NOT dispatch `rest_do_request` itself:
 	 *
-	 * @param array<string, mixed> $wc_product Decoded Store API product response.
-	 * @return array<string, mixed>            UCP product shape.
+	 *   - Simple products: caller passes `$wc_variations = []` (or omits
+	 *     it). The translator emits one synthesized default variant to
+	 *     satisfy the UCP schema's `variants` minItems:1 requirement.
+	 *   - Variable products: caller pre-fetches each WC variation via
+	 *     `rest_do_request( GET /wc/store/v1/products/{variation_id} )`
+	 *     and passes the decoded responses as `$wc_variations`. The
+	 *     translator emits one real UCP variant per entry.
+	 *
+	 * Why pre-fetched rather than self-dispatching: keeps the translator
+	 * pure + hermetically testable without stubbing WP's REST
+	 * infrastructure. Orchestration (detect type, fetch variations)
+	 * lives in the REST controller (task 11's search/lookup handlers).
+	 *
+	 * @param array<string, mixed>             $wc_product    Decoded Store API product response.
+	 * @param array<int, array<string, mixed>> $wc_variations Optional pre-fetched Store API
+	 *                                                        variation responses. Empty = fall
+	 *                                                        back to synthesized default.
+	 * @return array<string, mixed>                           UCP product shape.
 	 */
-	public static function translate( array $wc_product ): array {
+	public static function translate( array $wc_product, array $wc_variations = [] ): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
 		$product = [
@@ -52,7 +65,7 @@ class WC_AI_Syndication_UCP_Product_Translator {
 			'title'       => $wc_product['name'] ?? '',
 			'description' => self::extract_description( $wc_product ),
 			'price_range' => self::extract_price_range( $wc_product ),
-			'variants'    => self::extract_variants( $wc_product ),
+			'variants'    => self::extract_variants( $wc_product, $wc_variations ),
 		];
 
 		// Optional fields — only emit when source has a non-empty value.
@@ -80,15 +93,34 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	/**
 	 * Extract the variants array for a product.
 	 *
-	 * UCP schema requires `variants` with `minItems: 1`. v1 satisfies
-	 * this by synthesizing a single default variant for every product.
-	 * Task 7 will replace this for variable products with real
-	 * variation expansion.
+	 * UCP schema requires `variants` with `minItems: 1`. Two paths:
 	 *
-	 * @param array<string, mixed> $wc_product
+	 *   - Caller supplied `$wc_variations` (variable product, pre-fetched
+	 *     by the REST controller): emit one real UCP variant per entry,
+	 *     translated via `UcpVariantTranslator::translate()`. Variant IDs
+	 *     are `var_{variation_id}` (no `_default` suffix — that marker is
+	 *     reserved for synthesized placeholders).
+	 *   - `$wc_variations` is empty (simple product, or variable product
+	 *     where caller did not pre-fetch): emit one synthesized default
+	 *     variant via `UcpVariantTranslator::synthesize_default()` so the
+	 *     minItems:1 constraint is still satisfied. This is the safety-
+	 *     net path — callers emitting a variable product without variations
+	 *     get a defensive fallback rather than a schema-violating empty
+	 *     array, but the `_default` suffix signals the shape is degraded.
+	 *
+	 * @param array<string, mixed>             $wc_product
+	 * @param array<int, array<string, mixed>> $wc_variations Pre-fetched variation responses.
 	 * @return array<int, array<string, mixed>>
 	 */
-	private static function extract_variants( array $wc_product ): array {
+	private static function extract_variants( array $wc_product, array $wc_variations ): array {
+		if ( ! empty( $wc_variations ) ) {
+			$variants = [];
+			foreach ( $wc_variations as $wc_variation ) {
+				$variants[] = WC_AI_Syndication_UCP_Variant_Translator::translate( $wc_variation );
+			}
+			return $variants;
+		}
+
 		return [
 			WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $wc_product ),
 		];
