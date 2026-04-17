@@ -612,4 +612,60 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		$this->error_lookup( [ 'ids' => [ 'prod_123' ] ], 503, 'ucp_disabled' );
 	}
+
+	// ------------------------------------------------------------------
+	// Regression: WC Store API internal-dispatch returns nested stdClass
+	// ------------------------------------------------------------------
+
+	public function test_stdclass_nested_product_data_is_normalized_to_array(): void {
+		// In production, `rest_do_request` returns WC Store API data
+		// with nested structures (prices, attributes, categories) as
+		// `stdClass` objects — NOT associative arrays. The translator
+		// would fatal with "Cannot use object of type stdClass as
+		// array" on `$prices['currency_code']` style access.
+		//
+		// Tests never exercised this because the fake always returned
+		// pre-shaped assoc arrays. This test seeds a product with
+		// nested stdClass (matching real Store API internal behavior)
+		// and asserts the handler's normalize step converts it before
+		// the translator sees it.
+		//
+		// Root bug was observed on pierorocca.com with 1.3.0 — every
+		// real-product lookup 500'd until the normalize step was added
+		// in 1.3.1.
+		$prices = new stdClass();
+		$prices->price               = '42400';
+		$prices->regular_price       = '42400';
+		$prices->currency_code       = 'EUR';
+		$prices->currency_minor_unit = 2;
+		$prices->price_range         = null;
+
+		$this->fake_store_api[ 2963 ] = [
+			'id'                => 2963,
+			'name'              => 'Deposit',
+			'slug'              => 'deposit',
+			'type'              => 'simple',
+			'short_description' => '<p>A product that requires an up front deposit</p>',
+			'is_in_stock'       => true,
+			'prices'            => $prices,  // stdClass, not array — this is what triggers the bug
+			'categories'        => [],
+			'images'            => [],
+		];
+
+		$body = $this->successful_lookup( [ 'ids' => [ 'prod_2963' ] ] );
+
+		// Handler didn't fatal AND the price fields came through.
+		$this->assertCount( 1, $body['products'] );
+		$product = $body['products'][0];
+
+		$this->assertEquals( 'prod_2963', $product['id'] );
+		$this->assertEquals( 'Deposit', $product['title'] );
+		$this->assertSame( 42400, $product['price_range']['min']['amount'] );
+		$this->assertEquals( 'EUR', $product['price_range']['min']['currency'] );
+
+		// Variant price should also reflect the normalized stdClass.
+		$variant = $product['variants'][0];
+		$this->assertSame( 42400, $variant['price']['amount'] );
+		$this->assertEquals( 'EUR', $variant['price']['currency'] );
+	}
 }

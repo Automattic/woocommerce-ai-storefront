@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,10 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.3.1 =
+* Fixed: UCP REST adapter handlers (`/catalog/search`, `/catalog/lookup`, `/checkout-sessions`) returned HTTP 500 "critical error" whenever they needed to translate a real product from WC Store API. Root cause: `rest_do_request()` returns Store API data with nested `stdClass` objects (prices, attributes, categories), not associative arrays — the translator's `$prices['currency_code']` style access fataled with "Cannot use object of type stdClass as array." The bug was production-only: external HTTP callers never saw it (JSON round-trip converted stdClass→array on their end), and unit tests never exercised it (the `rest_do_request` fake returned pre-shaped associative arrays). Fix: normalize Store API responses at the `rest_do_request` boundary via `json_decode(wp_json_encode(...), true)`, forcing all nested structures to pure associative arrays regardless of source type.
+* Added: regression test seeding a product with `stdClass`-nested `prices` to lock in the normalization step, plus a direct test of the normalize helper's behavior.
 
 = 1.3.0 =
 * Added: UCP REST adapter at `/wp-json/wc/ucp/v1/*` implementing the `dev.ucp.shopping.catalog` and `dev.ucp.shopping.checkout` capabilities. AI agents can now invoke `POST /catalog/search` (full-text + category + price-range filtered product queries), `POST /catalog/lookup` (fetch specific products by ID), and `POST /checkout-sessions` (stateless one-shot checkout handoff) against a UCP-shaped API that translates WooCommerce Store API responses into the official UCP product / variant schemas. Pairs with the existing llms.txt and UCP manifest as an executable complement — agents go from discovery to operation through one plugin.

@@ -257,11 +257,18 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$wc_products = [];
 		if ( $store_status < 400 ) {
 			$data = $store_response->get_data();
-			if ( is_array( $data ) ) {
-				$wc_products = $data;
+			// Normalize the entire list payload in one pass. See the
+			// docblock on `normalize_store_api_data()` for why this is
+			// needed — WC Store API's internal responses use stdClass
+			// for nested structures, which the translator can't
+			// array-access. json round-trip forces everything to
+			// associative arrays recursively.
+			$normalized = self::normalize_store_api_data( $data );
+			if ( is_array( $normalized ) ) {
+				$wc_products = $normalized;
 			} else {
 				WC_AI_Syndication_Logger::debug(
-					'UCP catalog/search: Store API response body was not an array (possible plugin conflict)'
+					'UCP catalog/search: Store API response body could not be normalized (possible plugin conflict)'
 				);
 			}
 		} else {
@@ -822,18 +829,61 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			return null;
 		}
 
-		$data = $response->get_data();
-		if ( ! is_array( $data ) ) {
+		$data       = $response->get_data();
+		$normalized = self::normalize_store_api_data( $data );
+		if ( null === $normalized ) {
 			WC_AI_Syndication_Logger::debug(
 				sprintf(
-					'UCP fetch_store_api_product(%d): response body was not an array (possible plugin conflict)',
+					'UCP fetch_store_api_product(%d): response body could not be normalized to an array (possible plugin conflict)',
 					$id
 				)
 			);
 			return null;
 		}
 
-		return $data;
+		return $normalized;
+	}
+
+	/**
+	 * Normalize a WC Store API response payload to a pure nested-array
+	 * structure regardless of whether the source used `stdClass` or
+	 * associative arrays internally.
+	 *
+	 * This is the fix for a production-only fatal: when `rest_do_request`
+	 * returns Store API data internally (no HTTP serialization step),
+	 * nested structures — `prices`, `attributes`, `categories`, etc. —
+	 * stay as their native PHP types, often `stdClass`. The translator
+	 * expects associative arrays and fatals with
+	 * "Cannot use object of type stdClass as array" on
+	 * `$prices['currency_code']`-style access.
+	 *
+	 * Tests never surfaced the bug because their `rest_do_request` stub
+	 * returns pre-shaped assoc arrays; external HTTP callers never saw
+	 * it either because `WP_REST_Server::serve_request` JSON-serializes
+	 * the response, and the receiving end decodes back to assoc arrays.
+	 * Only the internal-dispatch-with-object-nests path hits the fatal.
+	 *
+	 * `json_decode(wp_json_encode(...), true)` is the canonical PHP
+	 * idiom for deep stdClass→array conversion. It preserves nested
+	 * structure, handles arbitrary depth, and matches the serialization
+	 * semantics agents see over the wire — so translator output is
+	 * byte-identical whether data came via internal dispatch or
+	 * external HTTP.
+	 *
+	 * @param mixed $data Source payload; may be array, stdClass, or mixed.
+	 * @return ?array Pure nested-array equivalent, or null if $data is
+	 *                neither array nor object.
+	 */
+	private static function normalize_store_api_data( $data ): ?array {
+		if ( ! is_array( $data ) && ! is_object( $data ) ) {
+			return null;
+		}
+		$json = wp_json_encode( $data );
+		if ( false === $json ) {
+			return null;
+		}
+		$decoded = json_decode( $json, true );
+		return is_array( $decoded ) ? $decoded : null;
 	}
 
 	/**
