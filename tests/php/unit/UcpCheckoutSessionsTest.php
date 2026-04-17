@@ -173,10 +173,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	/**
-	 * Assert a checkout response has UCP-envelope error shape: HTTP
-	 * status matches, body carries the ucp envelope + status=error +
-	 * empty line_items, and the messages array contains the expected
-	 * error code.
+	 * Assert a checkout response has UCP-envelope error shape.
+	 *
+	 * Beyond the HTTP status and error code, verifies every field
+	 * required by the UCP checkout response schema — `ucp`, `id`,
+	 * `status`, `currency`, `line_items`, `totals`, `links`, and
+	 * `messages`. A regression dropping any of these would break
+	 * strict UCP clients; this helper forces the failure to surface
+	 * in every error-path test without having to individually
+	 * re-verify each shape.
 	 *
 	 * @param array<string, mixed> $body
 	 */
@@ -184,11 +189,41 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->call_handler( $body );
 
 		$this->assertEquals( $expected_status, $result['status'] );
-		$this->assertArrayHasKey( 'ucp', $result['data'] );
-		$this->assertEquals( 'error', $result['data']['status'] );
-		$this->assertSame( [], $result['data']['line_items'] );
 
-		$codes = array_column( $result['data']['messages'], 'code' );
+		$data = $result['data'];
+
+		// Full UCP checkout schema field enumeration. Required per
+		// shopping/checkout.json: `ucp`, `id`, `line_items`, `status`,
+		// `currency`, `totals`, `links`. `messages` is required for
+		// error responses specifically (otherwise how does the agent
+		// learn what went wrong).
+		foreach ( [ 'ucp', 'id', 'status', 'currency', 'line_items', 'totals', 'links', 'messages' ] as $field ) {
+			$this->assertArrayHasKey(
+				$field,
+				$data,
+				sprintf( 'Checkout error response missing required schema field: %s', $field )
+			);
+		}
+
+		// `id` is a `chk_` + 16-hex correlation token, fresh per call.
+		$this->assertMatchesRegularExpression( '/^chk_[a-f0-9]{16}$/', $data['id'] );
+
+		// `status: error` is the only legitimate top-level value for
+		// this code path (success responses use `requires_escalation`).
+		$this->assertEquals( 'error', $data['status'] );
+
+		// Empty shapes for non-success fields.
+		$this->assertSame( [], $data['line_items'] );
+		$this->assertSame( [], $data['links'] );
+
+		// `totals` exists with a zeroed subtotal (not omitted, not
+		// undefined — strict UCP clients validate the array).
+		$this->assertCount( 1, $data['totals'] );
+		$this->assertSame( 'subtotal', $data['totals'][0]['type'] );
+		$this->assertSame( 0, $data['totals'][0]['amount'] );
+
+		// The expected error code is present in messages.
+		$codes = array_column( $data['messages'], 'code' );
 		$this->assertContains(
 			$expected_code,
 			$codes,
@@ -366,6 +401,27 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'product_type_unsupported', $codes );
 	}
 
+	public function test_subscription_variation_rejected_with_unsupported_type(): void {
+		// `subscription_variation` is the variation-level subscription
+		// type — distinct from `variable-subscription` (the parent).
+		// This one-line type gate is easy to drop in a refactor; the
+		// test locks it in. A leaked subscription_variation would reach
+		// the Shareable Checkout URL and be charged as a one-off,
+		// silently breaking recurring billing on the merchant's side.
+		$this->fake_store_api[ 890 ] = [
+			'id'   => 890,
+			'name' => 'Monthly Box — Annual plan',
+			'type' => 'subscription_variation',
+		];
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'var_890' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'product_type_unsupported', $codes );
+	}
+
 	public function test_variable_subscription_parent_rejected_as_variation_required(): void {
 		// `variable-subscription` is the Subscriptions-extension
 		// analogue of `variable`: a subscription with variations
@@ -416,6 +472,57 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$msg = array_values( $errors )[0];
 		$this->assertEquals( 'error', $msg['type'] );
 		$this->assertEquals( 'unrecoverable', $msg['severity'] );
+	}
+
+	public function test_mixed_cart_excludes_out_of_stock_from_totals_and_line_items(): void {
+		// The single-item rejection test above can't catch a regression
+		// where OOS items are correctly excluded from `continue_url`
+		// but accidentally retained in `response.line_items` or
+		// `totals.subtotal`. This test seeds two items (one in-stock,
+		// one OOS), asserts the in-stock one flows through cleanly and
+		// the OOS one is excluded from every output field that carries
+		// purchasable items.
+		$this->seed_simple_product( 100, 1500, true );   // $15, in-stock
+		$this->seed_simple_product( 200, 2500, false );  // $25, OOS
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 2 ],  // $30
+					[ 'item' => [ 'id' => 'prod_200' ], 'quantity' => 1 ],  // OOS — excluded
+				],
+			]
+		);
+
+		// At least one valid item → 201 Created with continue_url.
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
+
+		// continue_url contains only the in-stock item.
+		$this->assertStringContainsString( '100:2', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '200', $result['data']['continue_url'] );
+
+		// response.line_items has only the in-stock item.
+		$this->assertCount( 1, $result['data']['line_items'] );
+		$this->assertEquals( 'prod_100', $result['data']['line_items'][0]['item']['id'] );
+
+		// Subtotal reflects ONLY the in-stock item (2 × $15 = 3000 cents),
+		// not the OOS one. Integer-type assertion catches silent float
+		// drift.
+		$subtotal = $result['data']['totals'][0]['amount'];
+		$this->assertIsInt( $subtotal );
+		$this->assertSame( 3000, $subtotal );
+
+		// The OOS item surfaces via a message with the exact request
+		// index — agents know which input failed without parsing the
+		// response body positionally.
+		$oos_messages = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => 'out_of_stock' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $oos_messages );
+		$msg = array_values( $oos_messages )[0];
+		$this->assertEquals( '$.line_items[1].item.id', $msg['path'] );
 	}
 
 	// ------------------------------------------------------------------

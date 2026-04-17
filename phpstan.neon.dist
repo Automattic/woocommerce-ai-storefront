@@ -9,19 +9,29 @@ parameters:
     # fully type-hint its arrays yet.
     level: 5
 
-    # WordPress stubs frequently under-declare return types — the most
-    # common case: `rest_do_request()` is stubbed as returning only
-    # `WP_REST_Response`, but at runtime it can also return `WP_Error`
-    # (e.g. when the route doesn't exist or a handler threw).
-    # Without this setting, `is_wp_error($response)` and
-    # `$response instanceof WP_Error` both read as "always false" on
-    # such stubs, disabling legitimate runtime checks.
+    # WordPress's behavior often diverges from what phpstan-wordpress
+    # stubs declare. Without this setting, defensive runtime checks
+    # on values that stubs over-declare as non-error types read as
+    # "always false" and fail static analysis — even when the check
+    # is the correct guard against real-world edge cases.
+    #
+    # Concrete examples we hit in this codebase:
+    #   - `strtotime()` is stubbed as `int<1,max>` but returns `false`
+    #     on unparseable input at runtime. Our attribution parser's
+    #     `=== false` guard was previously flagged as unreachable.
+    #   - `wp_parse_url()` declared as `array|string|int|false|null`
+    #     with a complex conditional, but our single-component calls
+    #     return a narrower type PHPStan can over-constrain.
+    #   - Defensive `is_wp_error()` / `instanceof WP_Error` on values
+    #     returned from internal WP functions that the stubs declare
+    #     as non-error even though the implementations have
+    #     historical edge cases.
     #
     # Setting this false tells PHPStan: PHPDoc types are hints, not
     # guarantees — runtime checks that would disprove them should be
     # honored. Trade-off: we lose some false-positive detection on
     # PHPDoc-over-declared unions, but gain back the ability to
-    # defensively check error types that WP stubs miss.
+    # defensively check edge cases the stubs don't acknowledge.
     treatPhpDocTypesAsCertain: false
 
     paths:

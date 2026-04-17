@@ -236,6 +236,45 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->error_lookup( [ 'ids' => [] ], 400, 'invalid_input' );
 	}
 
+	public function test_null_ids_returns_400(): void {
+		// `{"ids": null}` is a common JSON-deserializer quirk —
+		// explicit null vs. missing key. Some clients emit this when
+		// they had no IDs to send. Handler must reject both.
+		$this->error_lookup( [ 'ids' => null ], 400, 'invalid_input' );
+	}
+
+	public function test_object_ids_returns_400(): void {
+		// `{"ids": {}}` — client mis-typed the field as an object
+		// instead of an array. Empty stdClass fails `is_array()` so
+		// the same path rejects it. The test covers both the object
+		// case and the nested-structure case (a dict with keys).
+		//
+		// Brain\Monkey's get_json_params + PHP JSON decode default
+		// (associative = true) would actually turn `{}` into `[]`,
+		// but clients using different decoders or non-JSON content
+		// types could still deliver stdClass here.
+		$this->error_lookup( [ 'ids' => new stdClass() ], 400, 'invalid_input' );
+
+		// Nested-dict: `{"ids": {"first": "prod_1"}}` — agent treating
+		// `ids` as a map instead of an array. Array keys are strings,
+		// not sequential ints, but `is_array()` IS true here. The
+		// handler's foreach would then iterate the values. This is
+		// an edge case where `is_array` passes but the semantic is
+		// wrong — we still process the values, treating them as if
+		// they were a sequential list. Document the current behavior:
+		// the values flow through `parse_ucp_id_to_wc_int`, which is
+		// defensive against malformed input anyway.
+		//
+		// Not asserted as a failure path; this test just documents
+		// that the dict-keyed case doesn't crash.
+		$this->seed_simple_product( 1, 100 );
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'first' => 'prod_1' ] ]
+		);
+		// The one valid ID still resolved.
+		$this->assertCount( 1, $body['products'] );
+	}
+
 	// ------------------------------------------------------------------
 	// Happy path: simple products
 	// ------------------------------------------------------------------
@@ -443,20 +482,14 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'advisory', $msg['severity'] );
 	}
 
-	public function test_variations_capped_at_max_per_product(): void {
-		// Defensive against N+1 amplification: a variable product with
-		// 200 variations would otherwise trigger 200 internal Store API
-		// dispatches. The handler caps variant expansion at
-		// MAX_VARIATIONS_PER_PRODUCT (currently 50) via array_slice on
-		// the variations pointer list. Agents needing the full set can
-		// fetch specific variations by ID via a follow-up lookup.
-		$cap = WC_AI_Syndication_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
-
-		// Seed parent with cap + 10 variations; each variation is seeded
-		// in the fake so the fetch returns the full record.
+	/**
+	 * Seed a variable product with N perfectly-fetchable variations.
+	 * Used by the cap tests to pack parent products with known counts.
+	 */
+	private function seed_variable_with_n_variations( int $parent_id, int $count ): void {
 		$variation_refs = [];
-		for ( $i = 0; $i < $cap + 10; $i++ ) {
-			$vid              = 1000 + $i;
+		for ( $i = 0; $i < $count; $i++ ) {
+			$vid              = $parent_id * 10 + $i;  // stable per-parent offset
 			$variation_refs[] = [
 				'id'         => $vid,
 				'attributes' => [ [ 'name' => 'N', 'value' => (string) $i ] ],
@@ -475,8 +508,8 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			];
 		}
 
-		$this->fake_store_api[ 900 ] = [
-			'id'                => 900,
+		$this->fake_store_api[ $parent_id ] = [
+			'id'                => $parent_id,
 			'name'              => 'Base',
 			'type'              => 'variable',
 			'short_description' => '',
@@ -487,13 +520,55 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			],
 			'variations'        => $variation_refs,
 		];
+	}
+
+	public function test_variations_capped_at_max_per_product(): void {
+		// Defensive against N+1 amplification: a variable product with
+		// 200 variations would otherwise trigger 200 internal Store API
+		// dispatches. The handler caps variant expansion at
+		// MAX_VARIATIONS_PER_PRODUCT (currently 50) via array_slice on
+		// the variations pointer list. Agents needing the full set can
+		// fetch specific variations by ID via a follow-up lookup.
+		$cap = WC_AI_Syndication_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
+		$this->seed_variable_with_n_variations( 900, $cap + 10 );
 
 		$body = $this->successful_lookup( [ 'ids' => [ 'prod_900' ] ] );
 
 		// Handler emits the first N variations in the order the parent
 		// product listed them — not all cap+10.
 		$this->assertCount( $cap, $body['products'][0]['variants'] );
-		$this->assertEquals( 'var_1000', $body['products'][0]['variants'][0]['id'] );
+		$this->assertEquals( 'var_9000', $body['products'][0]['variants'][0]['id'] );
+
+		// Cap overage MUST surface as a `partial_variants` warning so
+		// agents don't silently receive a short list. Without this,
+		// a product with 200 variations would look the same to the
+		// agent as a product with 50 — silent data loss.
+		$this->assertArrayHasKey( 'messages', $body );
+		$partial = array_filter(
+			$body['messages'],
+			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $partial );
+	}
+
+	public function test_variations_at_exactly_the_cap_with_zero_failures_emits_no_warning(): void {
+		// Off-by-one: exactly MAX_VARIATIONS_PER_PRODUCT with all
+		// fetches succeeding = skipped count of zero = no
+		// `partial_variants` warning emitted. This is the boundary
+		// that separates "full set" from "partial set."
+		$cap = WC_AI_Syndication_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
+		$this->seed_variable_with_n_variations( 901, $cap );
+
+		$body = $this->successful_lookup( [ 'ids' => [ 'prod_901' ] ] );
+
+		$this->assertCount( $cap, $body['products'][0]['variants'] );
+
+		// No messages at all — response is "clean" at the boundary.
+		$partial = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 0, $partial );
 	}
 
 	// ------------------------------------------------------------------

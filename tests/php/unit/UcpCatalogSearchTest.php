@@ -505,6 +505,60 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 2000, $variants[1]['price']['amount'] );
 	}
 
+	public function test_search_emits_partial_variants_warning_when_variation_fetch_fails(): void {
+		// Search's variation-expansion branch is a duplicate of lookup's
+		// at the CODE level (both call fetch_variations_for via the
+		// same helper). But the handler-level logic of emitting
+		// `partial_variants` warnings is in each handler separately —
+		// a regression in either won't be caught by the other's tests.
+		// This test is the search-side mirror of
+		// UcpCatalogLookupTest::test_variable_product_skips_variations_that_fail_to_fetch.
+		$this->fake_product_list = [
+			[
+				'id'                => 789,
+				'name'              => 'T-Shirt',
+				'type'              => 'variable',
+				'short_description' => '',
+				'prices'            => [
+					'price'         => '1000',
+					'currency_code' => 'USD',
+					'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '2000' ],
+				],
+				'variations'        => [
+					[ 'id' => 101, 'attributes' => [ [ 'name' => 'Size', 'value' => 'Small' ] ] ],
+					[ 'id' => 102, 'attributes' => [ [ 'name' => 'Size', 'value' => 'Large' ] ] ],
+				],
+			],
+		];
+
+		// Seed only the Small variation; Large fetch will 404.
+		$this->fake_store_api[101] = [
+			'id'                => 101,
+			'name'              => 'T-Shirt',
+			'short_description' => '',
+			'is_in_stock'       => true,
+			'prices'            => [ 'price' => '1000', 'currency_code' => 'USD' ],
+			'attributes'        => [ [ 'name' => 'Size', 'value' => 'Small' ] ],
+		];
+		// Leave 102 unseeded → fake returns 404.
+
+		$body = $this->successful_search( [] );
+
+		// Product still rendered with the variations that fetched OK.
+		$this->assertCount( 1, $body['products'] );
+		$variants = $body['products'][0]['variants'];
+		$this->assertCount( 1, $variants );
+		$this->assertEquals( 'var_101', $variants[0]['id'] );
+
+		// Warning surfaces the partial-variants condition.
+		$this->assertArrayHasKey( 'messages', $body );
+		$partial = array_filter(
+			$body['messages'],
+			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $partial );
+	}
+
 	// ------------------------------------------------------------------
 	// Store API error handling
 	// ------------------------------------------------------------------

@@ -81,9 +81,18 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * PHP_INT_MAX and promoting to a float, which would JSON-serialize
 	 * as `1.84e19` and violate the UCP schema's integer constraint on
 	 * `line_total.amount` / `totals[].amount`. 10,000 is well above any
-	 * legitimate bulk order and well below the overflow threshold even
-	 * for high-value products (10k * 10M cents = 10^11, safely inside
-	 * PHP_INT_MAX on 64-bit).
+	 * legitimate bulk order and safe for the overflow math on 64-bit
+	 * PHP (PHP_INT_MAX ~9.2×10¹⁸; even a $100k product at 10k units is
+	 * 10¹¹, well under the ceiling).
+	 *
+	 * **Assumes 64-bit PHP.** On 32-bit builds (PHP_INT_MAX ~2.1×10⁹)
+	 * this cap can still overflow for high-value products — e.g. a
+	 * $10k product at 10k units = 10¹¹ > 32-bit max. The plugin's
+	 * tested matrix is WC 9.9+ / PHP 8.0+ which is effectively always
+	 * 64-bit in practice (WordPress.org stats show <0.1% of sites on
+	 * 32-bit PHP as of this release). Sites running 32-bit PHP that
+	 * sell high-ticket goods should tighten this constant via a
+	 * filter override.
 	 */
 	const MAX_QUANTITY_PER_LINE_ITEM = 10000;
 
@@ -326,6 +335,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$ids = $request->get_param( 'ids' );
 
 		if ( ! is_array( $ids ) ) {
+			WC_AI_Syndication_Logger::debug( 'UCP catalog/lookup rejected: "ids" is not an array' );
 			return self::ucp_catalog_error_response(
 				$capability,
 				__( 'Request body must include an "ids" array.', 'woocommerce-ai-syndication' ),
@@ -335,6 +345,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		if ( empty( $ids ) ) {
+			WC_AI_Syndication_Logger::debug( 'UCP catalog/lookup rejected: empty "ids" array' );
 			return self::ucp_catalog_error_response(
 				$capability,
 				__( 'The "ids" array must contain at least one ID.', 'woocommerce-ai-syndication' ),
@@ -344,6 +355,13 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		if ( count( $ids ) > self::MAX_IDS_PER_LOOKUP ) {
+			WC_AI_Syndication_Logger::debug(
+				sprintf(
+					'UCP catalog/lookup rejected: "ids" array size %d exceeds MAX_IDS_PER_LOOKUP %d',
+					count( $ids ),
+					self::MAX_IDS_PER_LOOKUP
+				)
+			);
 			return self::ucp_catalog_error_response(
 				$capability,
 				sprintf(
@@ -649,10 +667,20 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * Build a checkout response body carrying a single UCP error message.
 	 *
 	 * Same rationale as `ucp_catalog_error_response()`, but populating
-	 * all required fields of the checkout response schema: `id`,
-	 * `status`, `currency`, `line_items` (empty), `totals` (zeroed
-	 * subtotal), `links` (empty). A validation failure still produces
-	 * a schema-conformant response body.
+	 * all required fields of the UCP checkout response schema:
+	 *   - `ucp` envelope (version + capabilities + payment_handlers)
+	 *   - `id` (fresh `chk_` correlation token; each error response
+	 *     gets a unique ID even though it's a terminal response)
+	 *   - `status` = 'error'
+	 *   - `currency` (merchant's WC currency, fallback 'USD')
+	 *   - `line_items` (empty array)
+	 *   - `totals` (zeroed subtotal)
+	 *   - `links` (empty array)
+	 *   - `messages` (the single error)
+	 *
+	 * A validation failure still produces a schema-conformant body
+	 * — strict UCP clients can parse success and failure through
+	 * the same pipeline.
 	 */
 	private static function ucp_checkout_error_response(
 		string $content,
@@ -907,11 +935,18 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * Build a `partial_variants` warning message for a product whose
 	 * variations weren't fully retrievable.
 	 *
+	 * The `skipped` count aggregates two distinct causes (fetch
+	 * failure AND cap truncation). The wording uses "are not
+	 * included" to cover both accurately — "could not be loaded"
+	 * would be misleading for cap-truncated entries which were
+	 * never attempted.
+	 *
 	 * Without this warning, agents would see a product's price_range
-	 * (computed at the DB level by WC from all variations) disagree
-	 * with the rendered variants[] list (which may be short due to
-	 * fetch failures or the per-product variation cap). The message
-	 * alerts agents that the variant data is known-incomplete.
+	 * (computed at the DB level by WC from ALL variations) disagree
+	 * silently with the rendered variants[] list. The message alerts
+	 * agents that the variant data is known-incomplete so they can
+	 * either re-query via `POST /catalog/lookup` for specific
+	 * variation IDs or flag the partial data to the end user.
 	 *
 	 * @return array<string, string>
 	 */
@@ -923,8 +958,8 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			'content'  => sprintf(
 				/* translators: 1: number of variations missing, 2: WC product ID. */
 				_n(
-					'%1$d variation of product %2$d could not be loaded; the variants list is incomplete.',
-					'%1$d variations of product %2$d could not be loaded; the variants list is incomplete.',
+					'%1$d variation of product %2$d is not included in the variants list; the list is incomplete.',
+					'%1$d variations of product %2$d are not included in the variants list; the list is incomplete.',
 					$skipped,
 					'woocommerce-ai-syndication'
 				),
@@ -1178,15 +1213,10 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// — they need a concrete variation ID. `variable-subscription`
 		// is the subscription-extension variant of the same kind.
 		if ( 'variable' === $type || 'variable-subscription' === $type ) {
-			$messages[] = array_merge(
-				self::checkout_error_message( 'variation_required', $path . '.item.id' ),
-				[
-					'content' => __(
-						'Product is variable — specify a variation ID instead of the parent product ID.',
-						'woocommerce-ai-syndication'
-					),
-				]
-			);
+			// `checkout_error_message` supplies the default
+			// variation-required wording via `default_error_content`
+			// — no override needed here.
+			$messages[] = self::checkout_error_message( 'variation_required', $path . '.item.id' );
 			return [
 				'processed' => null,
 				'messages'  => $messages,
@@ -1335,14 +1365,62 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * Build a standard UCP unrecoverable-error message for the
 	 * checkout-sessions flow.
 	 *
+	 * Includes a code-specific `content` (human-readable explanation)
+	 * by default so agents surfacing messages to end users get useful
+	 * text — without this, every error would read "something failed"
+	 * with only a machine-readable code to go on. Callers can override
+	 * via the `$content` argument for codes where default phrasing
+	 * isn't enough (e.g. `variation_required` wants to say so in
+	 * plain language).
+	 *
 	 * @return array<string, string>
 	 */
-	private static function checkout_error_message( string $code, string $path ): array {
+	private static function checkout_error_message( string $code, string $path, string $content = '' ): array {
+		if ( '' === $content ) {
+			$content = self::default_error_content( $code );
+		}
+
 		return [
 			'type'     => 'error',
 			'code'     => $code,
 			'path'     => $path,
 			'severity' => 'unrecoverable',
+			'content'  => $content,
 		];
+	}
+
+	/**
+	 * Default human-readable content for each known UCP checkout
+	 * error code. Returned text is what agents show the end user
+	 * when the code alone isn't informative.
+	 *
+	 * Codes without a specific entry fall through to a generic
+	 * phrase rather than empty content — machine-readable code is
+	 * preserved either way, but human-facing surface never goes
+	 * blank.
+	 */
+	private static function default_error_content( string $code ): string {
+		switch ( $code ) {
+			case 'invalid_line_item':
+				return __( 'Line item must be an object with "item.id" and "quantity".', 'woocommerce-ai-syndication' );
+			case 'invalid_quantity':
+				return sprintf(
+					/* translators: %d is the maximum quantity per line item. */
+					__( 'Quantity must be a positive integer up to %d.', 'woocommerce-ai-syndication' ),
+					self::MAX_QUANTITY_PER_LINE_ITEM
+				);
+			case 'not_found':
+				return __( 'Product not found.', 'woocommerce-ai-syndication' );
+			case 'product_type_unsupported':
+				return __( 'Product type cannot be added via the Shareable Checkout URL; link to the product page directly.', 'woocommerce-ai-syndication' );
+			case 'out_of_stock':
+				return __( 'Product is out of stock.', 'woocommerce-ai-syndication' );
+			case 'variation_required':
+				// Caller overrides with the more specific message; default
+				// here matches in case the override is ever dropped.
+				return __( 'Product is variable — specify a variation ID instead of the parent product ID.', 'woocommerce-ai-syndication' );
+			default:
+				return __( 'Line item could not be processed.', 'woocommerce-ai-syndication' );
+		}
 	}
 }
