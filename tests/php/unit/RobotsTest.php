@@ -245,6 +245,43 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 1, $lines_between, 'Store and UCP allows should be adjacent' );
 	}
 
+	public function test_crawl_delay_emitted_once_per_crawler(): void {
+		// Crawl-delay is advisory; value is the CRAWL_DELAY_SECONDS
+		// constant. Must appear exactly once per User-agent block —
+		// one directive per bot, placed before the Allow/Disallow
+		// rules so crawlers see the hint before they fetch anything.
+		$output = $this->generate_robots_output();
+
+		// GPTBot + ClaudeBot in the fixture = 2 Crawl-delay lines.
+		$this->assertEquals(
+			2,
+			substr_count( $output, 'Crawl-delay: ' ),
+			'Crawl-delay should appear once per allowed crawler'
+		);
+		$this->assertStringContainsString(
+			'Crawl-delay: ' . WC_AI_Syndication_Robots::CRAWL_DELAY_SECONDS,
+			$output
+		);
+	}
+
+	public function test_crawl_delay_appears_before_allow_rules(): void {
+		// Per robots.txt convention, directives that constrain
+		// behavior (Crawl-delay, Disallow) are emitted alongside
+		// the allowances so crawlers have the full picture in the
+		// one User-agent block. Crawl-delay specifically should be
+		// the first line after User-agent so a crawler parsing
+		// top-down sees the rate hint before any fetch decision.
+		$output = $this->generate_robots_output();
+
+		$ua_pos       = strpos( $output, 'User-agent: GPTBot' );
+		$delay_pos    = strpos( $output, 'Crawl-delay: ', $ua_pos );
+		$first_allow  = strpos( $output, 'Allow:', $ua_pos );
+
+		$this->assertNotFalse( $delay_pos );
+		$this->assertNotFalse( $first_allow );
+		$this->assertLessThan( $first_allow, $delay_pos, 'Crawl-delay must precede the first Allow' );
+	}
+
 	public function test_rules_skipped_when_syndication_disabled(): void {
 		// Existing pre-1.3.0 invariant: when the merchant has paused
 		// syndication, robots.txt doesn't advertise the endpoints at
