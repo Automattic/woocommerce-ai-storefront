@@ -51,6 +51,38 @@ class WC_AI_Syndication_Llms_Txt {
 
 	/**
 	 * Serve the llms.txt response.
+	 *
+	 * Response headers are tuned for maximum compatibility with the
+	 * AI-tooling fleet (Gemini's browsing tool, ChatGPT browse, Claude
+	 * web search, Perplexity spider, plus CLI fetchers):
+	 *
+	 * - `Content-Type: text/plain`: the llms.txt spec (RFC-style memo
+	 *   by Jeremy Howard) accepts either `text/plain` or
+	 *   `text/markdown`. We serve `text/plain` because some headless-
+	 *   browser tooling has MIME allow-lists that don't include
+	 *   `text/markdown` and will drop the response. Plain-text is the
+	 *   universal fallback and still renders correctly in the merchant's
+	 *   browser when they visit the URL directly.
+	 *
+	 * - `Access-Control-Allow-Origin: *`: required so AI browsing tools
+	 *   running in Chromium-based contexts (where CORS applies even on
+	 *   tool-initiated fetches) can read the resource. Without it the
+	 *   file is invisible to Gemini's tool — the UCP manifest (which
+	 *   sets CORS) reads fine, llms.txt (which didn't) did not. Symmetry
+	 *   fixes discovery.
+	 *
+	 * - `X-Content-Type-Options: nosniff`: prevents MIME sniffing from
+	 *   mis-classifying the response (e.g. as HTML if the merchant's
+	 *   content happens to begin with an `<` character). Small hardening.
+	 *
+	 * - `Cache-Control: public, max-age=3600`: 1-hour client/proxy cache
+	 *   matches the transient TTL inside `get_cached_content()` — both
+	 *   refresh on the same cadence, so the merchant never sees a stale
+	 *   file served while the internal cache has been rebuilt.
+	 *
+	 * - `X-Robots-Tag: noindex`: keeps the file out of search results.
+	 *   llms.txt is machine-readable guidance for AI agents, not a page
+	 *   that merchants or shoppers should land on via Google.
 	 */
 	public function serve_llms_txt() {
 		if ( ! get_query_var( 'wc_ai_syndication_llms_txt' ) ) {
@@ -63,9 +95,20 @@ class WC_AI_Syndication_Llms_Txt {
 			exit;
 		}
 
-		header( 'Content-Type: text/markdown; charset=utf-8' );
+		header( 'Content-Type: text/plain; charset=utf-8' );
 		header( 'Cache-Control: public, max-age=3600' );
 		header( 'X-Robots-Tag: noindex' );
+		header( 'X-Content-Type-Options: nosniff' );
+		header( 'Access-Control-Allow-Origin: *' );
+		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
+
+		// Respond to CORS preflights without a body. Some browsing
+		// tools fire OPTIONS first and treat a non-2xx preflight as
+		// "resource unreachable" even if the GET would have succeeded.
+		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === $_SERVER['REQUEST_METHOD'] ) {
+			status_header( 204 );
+			exit;
+		}
 
 		echo $this->get_cached_content(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markdown content.
 		exit;
