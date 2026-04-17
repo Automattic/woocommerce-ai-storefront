@@ -19,33 +19,35 @@ AI agents are becoming a primary product discovery channel. This plugin gives me
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      AI AGENTS                              │
-│  (ChatGPT, Gemini, Perplexity, Claude, Copilot, any bot)   │
-└──────────┬──────────────┬──────────────┬────────────────────┘
-           │              │              │
-     ┌─────▼─────┐ ┌─────▼──────┐ ┌────▼─────────┐
-     │  llms.txt  │ │ UCP Manifest│ │  JSON-LD on  │
-     │ (Markdown) │ │   (JSON)    │ │ product pages│
-     │ /llms.txt  │ │/.well-known │ │              │
-     │            │ │   /ucp      │ │              │
-     └────────────┘ └─────────────┘ └──────────────┘
-           │              │              │
-           └──────────────┼──────────────┘
-                          │
-              ┌───────────▼────────────┐
-              │   WooCommerce Core     │
-              │  Store API (public)    │
-              │  Order Attribution     │
-              │  robots.txt            │
-              └───────────┬────────────┘
-                          │
-              ┌───────────▼────────────┐
-              │  Customer lands on     │
-              │  merchant's store      │
-              │  Checkout on their     │
-              │  domain, their gateway │
-              └────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                          AI AGENTS                                  │
+│     (ChatGPT, Gemini, Perplexity, Claude, Copilot, any bot)         │
+└───────┬──────────────┬──────────────┬────────────────────┬──────────┘
+        │              │              │                    │
+  ┌─────▼─────┐ ┌─────▼──────┐ ┌────▼─────────┐ ┌────────▼────────┐
+  │  llms.txt  │ │ UCP Manifest│ │  JSON-LD on  │ │  UCP REST API   │
+  │ (Markdown) │ │   (JSON)    │ │ product pages│ │  (1.3.0+)       │
+  │ /llms.txt  │ │/.well-known │ │              │ │/wp-json/wc/ucp/ │
+  │            │ │   /ucp      │ │              │ │  /v1/           │
+  └────────────┘ └─────────────┘ └──────────────┘ └────────┬────────┘
+        │              │              │                    │
+        └──────────────┼──────────────┴────────────────────┘
+                       │                         │
+           ┌───────────▼────────────┐            │
+           │   WooCommerce Core     │◄───────────┘
+           │  Store API (public)    │  rest_do_request
+           │  Order Attribution     │  (in-process)
+           │  robots.txt            │
+           └───────────┬────────────┘
+                       │
+           ┌───────────▼────────────┐
+           │  Customer lands on     │
+           │  merchant's store via  │
+           │  Shareable Checkout    │
+           │  URL (continue_url);   │
+           │  checkout on their     │
+           │  domain, their gateway │
+           └────────────────────────┘
 ```
 
 ## Plugin Components
@@ -57,7 +59,31 @@ AI agents are becoming a primary product discovery channel. This plugin gives me
 | `class-wc-ai-syndication-llms-txt.php` | `/llms.txt` | Machine-readable store guide: name, categories, products, attribution instructions |
 | `class-wc-ai-syndication-jsonld.php` | Product pages | Enhanced Schema.org Product markup: BuyAction, inventory, attributes, shipping/return info |
 | `class-wc-ai-syndication-robots.php` | `/robots.txt` | Whitelists known AI crawlers, allows discovery endpoints, blocks checkout/account pages |
-| `class-wc-ai-syndication-ucp.php` | `/.well-known/ucp` | JSON manifest: checkout policy (web_redirect, no in-chat, no delegated), purchase URL templates, Store API reference, attribution params, rate limits |
+| `class-wc-ai-syndication-ucp.php` | `/.well-known/ucp` | JSON manifest: declares the two implemented UCP capabilities (catalog, checkout), points at the UCP REST adapter, declares empty `payment_handlers` (stateless redirect posture) |
+
+### UCP REST Adapter (1.3.0+)
+
+The operational counterpart to the discovery layer. Translates the WooCommerce Store API into UCP-shaped responses agents can consume without needing to learn WC's schema. Lives at `/wp-json/wc/ucp/v1/`.
+
+**Module location:** `includes/ai-syndication/ucp-rest/`
+
+| File | Responsibility |
+|------|----------------|
+| `class-wc-ai-syndication-ucp-rest-controller.php` | Registers three POST routes (`/catalog/search`, `/catalog/lookup`, `/checkout-sessions`) and hosts the handlers. Every handler dispatches through `rest_do_request()` to the WC Store API — in-process, no HTTP overhead — so the Store API filter (below) automatically applies. |
+| `class-wc-ai-syndication-ucp-product-translator.php` | WC product response → UCP product. Accepts an optional array of pre-fetched variations to support variable-product expansion (pure function, no dispatching). Simple products emit a single synthesized default variant to satisfy UCP's `minItems: 1` on `variants`. |
+| `class-wc-ai-syndication-ucp-variant-translator.php` | WC variation → UCP variant. Builds titles from attribute values (e.g. "Small / Blue"), preserves integer minor units for prices (no float math, no hardcoded `* 100`), and handles simple-product defaults via `synthesize_default()`. |
+| `class-wc-ai-syndication-ucp-envelope.php` | Builds the `ucp: { version, capabilities, payment_handlers }` wrapper that prefixes every response body. `PROTOCOL_VERSION` is read from `WC_AI_Syndication_Ucp::PROTOCOL_VERSION` so manifest and response envelopes stay in sync. |
+| `class-wc-ai-syndication-ucp-agent-header.php` | Parses the `UCP-Agent` request header (RFC 8941 Dictionary) to extract the calling agent's profile hostname. Used as `utm_source` on checkout-sessions `continue_url` and for attribution logging. Falls back to `ucp_unknown` when header is missing/malformed. |
+| `class-wc-ai-syndication-ucp-store-api-filter.php` | Hooks `woocommerce_store_api_product_collection_query_args` to enforce the plugin's `product_selection_mode` setting on every Store API product query. Before 1.3.0 this setting silently applied only to llms.txt/JSON-LD; now it governs Store API responses too (including block-theme Cart/Checkout). Intersects with incoming `post__in` rather than overriding, so the merchant's allow-list can't be bypassed. |
+
+**Stateless checkout pattern:** `/checkout-sessions` never persists anything. Every successful response returns `status: requires_escalation` with a `continue_url` pointing at WooCommerce's native Shareable Checkout URL (`/checkout-link/?products=ID:QTY`). The `chk_` session ID is a correlation token only — no follow-up GET/PUT/DELETE endpoints exist. Once the agent redirects the user, WooCommerce owns the rest of the transaction.
+
+**Endpoint-to-WC dispatch map:**
+- `POST /catalog/search` → translates `query/filters` to Store API params → `GET /wc/store/v1/products`
+- `POST /catalog/lookup` → `GET /wc/store/v1/products/{id}` per requested ID
+- `POST /checkout-sessions` → `GET /wc/store/v1/products/{id}` per line item for validation → assembles Shareable Checkout URL
+
+**Variable product expansion:** when search or lookup returns a variable product (type: `variable`), the controller pre-fetches each variation's Store API record via additional `rest_do_request` calls and passes them to the translator. Task follow-up: per-request memoization for high-variation catalogs (a page of 20 products with 5 variables × 5 variations each = 26 dispatches).
 
 ### Attribution
 
@@ -187,11 +213,18 @@ woo-ucp-syndicate-ai/
 │       ├── class-wc-ai-syndication-llms-txt.php
 │       ├── class-wc-ai-syndication-jsonld.php
 │       ├── class-wc-ai-syndication-robots.php
-│       ├── class-wc-ai-syndication-ucp.php
+│       ├── class-wc-ai-syndication-ucp.php        # UCP discovery manifest
 │       ├── class-wc-ai-syndication-store-api-rate-limiter.php
 │       ├── class-wc-ai-syndication-attribution.php
 │       ├── class-wc-ai-syndication-cache-invalidator.php
-│       └── class-wc-ai-syndication-logger.php
+│       ├── class-wc-ai-syndication-logger.php
+│       └── ucp-rest/                         # UCP REST adapter (1.3.0+)
+│           ├── class-wc-ai-syndication-ucp-rest-controller.php
+│           ├── class-wc-ai-syndication-ucp-product-translator.php
+│           ├── class-wc-ai-syndication-ucp-variant-translator.php
+│           ├── class-wc-ai-syndication-ucp-envelope.php
+│           ├── class-wc-ai-syndication-ucp-agent-header.php
+│           └── class-wc-ai-syndication-ucp-store-api-filter.php
 │
 ├── client/
 │   ├── data/ai-syndication/
@@ -216,6 +249,7 @@ woo-ucp-syndicate-ai/
 │       ├── stubs.php                        # WC_Product, WC_Order, WP_REST_* stubs
 │       ├── stubs/class-wc-ai-syndication-stub.php
 │       └── unit/
+│           ├── ActivationTest.php
 │           ├── AttributionTest.php
 │           ├── CacheInvalidatorTest.php
 │           ├── JsonLdTest.php
@@ -223,26 +257,37 @@ woo-ucp-syndicate-ai/
 │           ├── LoggerTest.php
 │           ├── RobotsTest.php
 │           ├── StoreApiRateLimiterTest.php
-│           └── UcpTest.php
+│           ├── UcpAgentHeaderTest.php       # UCP adapter tests (1.3.0+)
+│           ├── UcpCatalogLookupTest.php
+│           ├── UcpCatalogSearchTest.php
+│           ├── UcpCheckoutSessionsTest.php
+│           ├── UcpEnvelopeTest.php
+│           ├── UcpProductTranslatorTest.php
+│           ├── UcpRestControllerTest.php
+│           ├── UcpStoreApiFilterTest.php
+│           ├── UcpTest.php
+│           └── UcpVariantTranslatorTest.php
 │
 └── build/                                   # Compiled JS bundle (committed)
 ```
 
 ## Key Design Decisions
 
-1. **No authentication.** AI agents discover the store via open web standards. No API keys, no OAuth, no bot registration. The WooCommerce Store API (public, unauthenticated) handles product search and cart operations.
+1. **No authentication.** AI agents discover the store via open web standards. No API keys, no OAuth, no bot registration. The UCP REST adapter routes are public (`permission_callback => '__return_true'`); agent attribution is via the UCP-Agent header, not access control. Merchants who want to block access pause syndication via the admin UI.
 
-2. **Web redirect only.** The UCP manifest declares `"in_chat": false, "delegated": false`. Checkout happens on the merchant's domain. The AI agent is a referrer, not a storefront.
+2. **Stateless redirect-only checkout.** The UCP manifest declares zero `payment_handlers`. Every `POST /checkout-sessions` response returns `status: requires_escalation` with a `continue_url` pointing at WooCommerce's native Shareable Checkout URL. No cart persistence, no session tokens, no get/update/complete/cancel endpoints. Merchants keep full ownership of payment, tax, fulfillment.
 
 3. **Data sovereignty.** Checkout happens on the merchant's domain. No delegated payments, no platform lock-in. The merchant owns the checkout experience and the customer relationship.
 
-4. **Standard WooCommerce attribution.** Uses the built-in Order Attribution system (`utm_source`/`utm_medium`). Only `ai_session_id` is custom.
+4. **Standard WooCommerce attribution.** Uses the built-in Order Attribution system (`utm_source`/`utm_medium`). The UCP REST adapter auto-populates `utm_source` from the UCP-Agent header on every checkout-sessions response, so merchants see agent-sourced traffic without any additional plumbing. Only `ai_session_id` is custom.
 
-5. **Store API rate limiting.** Uses WooCommerce's built-in `woocommerce_store_api_rate_limit_options` and `woocommerce_store_api_rate_limit_id` filters. AI bots are fingerprinted by user-agent; regular customer traffic is unaffected.
+5. **Store API rate limiting.** Uses WooCommerce's built-in `woocommerce_store_api_rate_limit_options` and `woocommerce_store_api_rate_limit_id` filters. AI bots are fingerprinted by user-agent; regular customer traffic is unaffected. Because the UCP REST adapter dispatches via `rest_do_request()` to the Store API, UCP traffic inherits the same rate limits.
 
-6. **Product selection enforced at every layer.** llms.txt, JSON-LD, and robots.txt all respect the `product_selection_mode` setting. A product excluded from syndication won't appear in any discovery channel.
+6. **Product selection enforced at every layer.** The `product_selection_mode` setting applies to llms.txt, JSON-LD, robots.txt, AND (from 1.3.0) Store API query results via the `woocommerce_store_api_product_collection_query_args` filter. A product excluded from syndication won't appear anywhere — including through the new UCP REST adapter and block-theme Cart/Checkout.
 
-7. **Cache invalidation.** llms.txt and UCP manifest use transient caching with event-driven invalidation on product/category/settings changes. Version-based cache bust on plugin updates.
+7. **Pure translators, caller-orchestrated dispatch.** Product and variant translators are pure functions — they transform data shape, never dispatch. The REST controller orchestrates fetching (detect variable products, pre-fetch variations, assemble) before handing the data to translators. Keeps translators hermetically testable without stubbing WP's REST pipeline.
+
+8. **Cache invalidation.** llms.txt and UCP manifest use transient caching with event-driven invalidation on product/category/settings changes. Version-based cache bust on plugin updates. UCP REST responses are not cached — every dispatch computes fresh, because agent-specific attribution (UTM from UCP-Agent) and session IDs must be per-request.
 
 ## Settings
 

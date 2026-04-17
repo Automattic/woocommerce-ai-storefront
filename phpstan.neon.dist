@@ -9,6 +9,31 @@ parameters:
     # fully type-hint its arrays yet.
     level: 5
 
+    # WordPress's behavior often diverges from what phpstan-wordpress
+    # stubs declare. Without this setting, defensive runtime checks
+    # on values that stubs over-declare as non-error types read as
+    # "always false" and fail static analysis — even when the check
+    # is the correct guard against real-world edge cases.
+    #
+    # Concrete examples we hit in this codebase:
+    #   - `strtotime()` is stubbed as `int<1,max>` but returns `false`
+    #     on unparseable input at runtime. Our attribution parser's
+    #     `=== false` guard was previously flagged as unreachable.
+    #   - `wp_parse_url()` declared as `array|string|int|false|null`
+    #     with a complex conditional, but our single-component calls
+    #     return a narrower type PHPStan can over-constrain.
+    #   - Defensive `is_wp_error()` / `instanceof WP_Error` on values
+    #     returned from internal WP functions that the stubs declare
+    #     as non-error even though the implementations have
+    #     historical edge cases.
+    #
+    # Setting this false tells PHPStan: PHPDoc types are hints, not
+    # guarantees — runtime checks that would disprove them should be
+    # honored. Trade-off: we lose some false-positive detection on
+    # PHPDoc-over-declared unions, but gain back the ability to
+    # defensively check edge cases the stubs don't acknowledge.
+    treatPhpDocTypesAsCertain: false
+
     paths:
         - includes
         - woocommerce-ai-syndication.php
@@ -30,10 +55,19 @@ parameters:
         - phpstan-bootstrap.php
 
     # Paths we never want to lint.
+    #
+    # `node_modules` gets a `(?)` optional marker because CI's PHP-only
+    # jobs don't run `npm install`, so the directory legitimately
+    # doesn't exist there. Without the marker, PHPStan refuses to
+    # proceed with a "Path is neither a directory…" error. The other
+    # paths (vendor, build, tests) always exist — vendor after composer
+    # install, tests/ is committed, build/ is generated during setup
+    # but we're also okay without it since the source under client/
+    # is where the real JS lives.
     excludePaths:
         - vendor
-        - node_modules
-        - build
+        - node_modules (?)
+        - build (?)
         - tests
 
     # WC functions aren't in the WP stubs. Ignoring by name pattern
@@ -50,10 +84,6 @@ parameters:
         - identifier: function.notFound
           path: includes/*
           message: '#Function (is_shop|get_woocommerce_currency|get_woocommerce_currency_symbol) not found#'
-        # WP `strtotime()` can return `false`, but the WP stubs declare
-        # it as int<1,max>. The plugin's defensive check is correct
-        # runtime behavior — the stub is wrong. Ignore until fixed
-        # upstream.
-        - identifier: identical.alwaysFalse
-          path: includes/ai-syndication/class-wc-ai-syndication-attribution.php
-          message: '#Strict comparison using === between false and int#'
+        # (The previous `strtotime` alwaysFalse ignore was removed when
+        # treatPhpDocTypesAsCertain:false started honoring the defensive
+        # `=== false` check — PHPStan no longer flags it as unreachable.)

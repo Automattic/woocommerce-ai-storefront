@@ -136,11 +136,17 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 	 */
 	private static function extract_description( array $wc ): array {
 		$raw = $wc['short_description'] ?? '';
-		// PHP native strip_tags — lighter than wp_strip_all_tags, which
-		// adds script/style content removal we don't need for product
-		// copy. If a variant's description turns out to contain script
-		// tags in real data, upgrade this line.
-		$plain = html_entity_decode( strip_tags( (string) $raw ), ENT_QUOTES, 'UTF-8' );
+		// wp_strip_all_tags() over native strip_tags(): the WordPress
+		// helper also strips the CONTENT of <script> and <style> tags
+		// (not just the tags themselves) and trims surrounding whitespace.
+		// Both are safer defaults for content that might originate from a
+		// rich-text editor. PHPCS flags native strip_tags in plugin code
+		// for exactly this reason.
+		$plain = html_entity_decode(
+			wp_strip_all_tags( (string) $raw ),
+			ENT_QUOTES,
+			'UTF-8'
+		);
 		return [ 'plain' => $plain ];
 	}
 

@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.2.1
+Stable tag: 1.3.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,24 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.3.0 =
+* Added: UCP REST adapter at `/wp-json/wc/ucp/v1/*` implementing the `dev.ucp.shopping.catalog` and `dev.ucp.shopping.checkout` capabilities. AI agents can now invoke `POST /catalog/search` (full-text + category + price-range filtered product queries), `POST /catalog/lookup` (fetch specific products by ID), and `POST /checkout-sessions` (stateless one-shot checkout handoff) against a UCP-shaped API that translates WooCommerce Store API responses into the official UCP product / variant schemas. Pairs with the existing llms.txt and UCP manifest as an executable complement — agents go from discovery to operation through one plugin.
+* Added: variable-product variant expansion. Catalog responses now include one UCP variant per WC variation with correct per-variation prices and attribute-derived titles (e.g. "Small / Blue"). Simple products still emit a single synthesized default variant to satisfy the UCP schema's `minItems: 1` constraint.
+* Added: UCP-Agent header parsing for attribution. The profile hostname flows into `utm_source` on the checkout-sessions `continue_url` so merchants see agent-sourced revenue through WooCommerce's native Order Attribution system — no extra plumbing required.
+* Added: stateless redirect-only checkout. Every `POST /checkout-sessions` response returns `status: requires_escalation` with a `continue_url` pointing at WooCommerce's native Shareable Checkout URL (`/checkout-link/?products=ID:QTY`). No cart persistence, no session storage, no UCP get/update/complete/cancel endpoints — merchants keep full ownership of payment, tax, and fulfillment, matching the plugin's longstanding web-redirect posture.
+* Added: enforcement of the `product_selection_mode` setting on Store API product queries via the `woocommerce_store_api_product_collection_query_args` filter. Before 1.3.0 the setting silently applied only to llms.txt / JSON-LD; now "only these 10 products" genuinely restricts what AI agents (and block-theme Cart/Checkout blocks) can see. **Behavioral change worth highlighting**: merchants whose block-theme cart/checkout implicitly depended on showing all products may see unexpected filtering — review the Product Visibility setting after upgrade.
+* Changed: `/.well-known/ucp` manifest now declares the two implemented capabilities (`dev.ucp.shopping.catalog`, `dev.ucp.shopping.checkout`) with the service endpoint pointing at `/wp-json/wc/ucp/v1/`. Pre-1.3.0 shape advertised `com.woocommerce.store_api` as a generic service with zero capabilities. Agents re-fetching the manifest will see the new capability declarations and service endpoint directly.
+* Changed: UCP `PROTOCOL_VERSION` bumped from `2026-01-11` to `2026-04-08` to track the current UCP spec revision. The bump flows through to every catalog/checkout response envelope automatically.
+* Added: `Allow: /wp-json/wc/ucp/` entry in robots.txt for every allowed crawler, so well-behaved AI bots know the new endpoint is crawlable even when site-wide `/wp-json/` disallows exist elsewhere.
+* Added: defense-in-depth limits on UCP REST input. `POST /catalog/lookup` caps `ids[]` at 100 entries, `POST /checkout-sessions` caps `line_items[]` at 100 entries and `quantity` at 10,000 per item, and variable-product variation fan-out caps at 50 per product. All are documented as class constants and reject oversized input with `invalid_input` at HTTP 400.
+* Added: enforcement of the syndication-enabled setting at the UCP REST layer. When a merchant pauses AI Syndication via the admin UI, UCP endpoints now return `ucp_disabled` with HTTP 503 instead of serving catalog/checkout data. Routes remain registered (rewrite-flush stability) but handlers gate access at the entry point.
+* Added: `partial_variants` warning emitted when a variable product's variations can't be fully loaded (fetch failure or cap-truncated). Prevents agents from seeing price_range disagree silently with an incomplete variants[] list.
+* Added: `category_not_found` warning when an agent's category filter can't be resolved. Before this, an unknown category was silently dropped and the agent received the unfiltered catalog — the opposite of what they asked for.
+* Changed: validation errors (missing body fields, oversized input, disabled syndication) now return a UCP-envelope-shaped response instead of a bare `WP_Error`. Agents see the same response shape on success vs failure, making strict UCP parsers simpler.
+* Changed: out-of-stock line items in `POST /checkout-sessions` are now rejected as `unrecoverable` errors rather than warnings. WC's `is_in_stock` already accounts for the merchant's backorder settings; when it's false, the item genuinely can't be purchased.
+* Changed: subscription and `variable-subscription` product types are explicitly rejected from checkout-sessions (was: fell through the type gate as if simple). Matches the manifest's advertised `checkout_link.unsupported` list.
+* Changed: description stripping now uses `wp_strip_all_tags()` instead of native PHP `strip_tags()` — handles `<script>`/`<style>` tag contents and trims whitespace.
 
 = 1.2.1 =
 * Fixed: content caches (llms.txt and UCP manifest) now actually regenerate after an in-place plugin upgrade. A latent bug since 1.0.0 caused the activation hook to pre-write the stored plugin version, which short-circuited the boot-time cache-bust branch — merchants saw stale cached content for up to an hour after every upgrade. 1.2.0 users upgrading to 1.2.1 will see the correct new UCP manifest on the first request after update.

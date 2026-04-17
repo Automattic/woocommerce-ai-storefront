@@ -117,6 +117,12 @@ class WC_AI_Syndication_Robots {
 			$output .= "Allow: /llms.txt\n";
 			$output .= "Allow: /.well-known/ucp\n";
 			$output .= "Allow: /wp-json/wc/store/\n";
+			// UCP adapter endpoints (plugin 1.3.0+): catalog/search,
+			// catalog/lookup, checkout-sessions. Paired visually with
+			// the Store API allow above — both are JSON REST surfaces
+			// agents dispatch to. Distinct from the /.well-known/ucp
+			// discovery manifest, which announces that these exist.
+			$output .= "Allow: /wp-json/wc/ucp/\n";
 			if ( '/' !== $shop_path ) {
 				$output .= "Allow: {$shop_path}\n";
 			}

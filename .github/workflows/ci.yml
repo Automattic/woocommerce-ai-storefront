@@ -80,8 +80,12 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist
 
+      # `-q` suppresses phpcs's progress dots and timing footer (both
+      # emitted on stdout by default), so cs2pr gets pure XML and
+      # doesn't choke on "Start tag expected, '<' not found" when the
+      # report is otherwise clean.
       - name: Run PHPCS
-        run: vendor/bin/phpcs --report=checkstyle | cs2pr
+        run: vendor/bin/phpcs -q --report=checkstyle | cs2pr
 
   phpstan:
     name: PHPStan (static analysis)

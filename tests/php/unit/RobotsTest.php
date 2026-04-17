@@ -151,4 +151,116 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( [ 'GPTBot', 'GPTBot', 'ClaudeBot' ], $result );
 	}
+
+	// ------------------------------------------------------------------
+	// robots.txt rules generation (the `robots_txt` filter callback)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Stub WordPress/WooCommerce URL/option helpers the generator calls,
+	 * and seed enabled syndication with the full crawler roster. Returns
+	 * the generated robots.txt content with base WP output passed through.
+	 */
+	private function generate_robots_output( string $base = "User-agent: *\nDisallow: /wp-admin/\n" ): string {
+		WC_AI_Syndication::$test_settings = [
+			'enabled'          => 'yes',
+			'allowed_crawlers' => [ 'GPTBot', 'ClaudeBot' ],
+		];
+
+		Functions\when( 'wc_get_page_permalink' )->alias(
+			static function ( string $page ): string {
+				$map = [
+					'shop'      => 'https://example.com/shop/',
+					'cart'      => 'https://example.com/cart/',
+					'checkout'  => 'https://example.com/checkout/',
+					'myaccount' => 'https://example.com/my-account/',
+				];
+				return $map[ $page ] ?? '';
+			}
+		);
+		Functions\when( 'get_option' )->alias(
+			static function ( string $key, $default = [] ) {
+				if ( 'woocommerce_permalinks' === $key ) {
+					return [
+						'product_base'  => 'product',
+						'category_base' => 'product-category',
+					];
+				}
+				return $default;
+			}
+		);
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+
+		return ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules( $base, true );
+	}
+
+	public function test_allows_ucp_rest_endpoint_for_every_crawler(): void {
+		// The UCP adapter endpoints at /wp-json/wc/ucp/ must be
+		// explicitly allow-listed per crawler so well-behaved bots know
+		// to index them. Without this line, strict crawlers obeying a
+		// wildcard /wp-json/ disallow upstream in the file would skip
+		// our catalog/search + checkout-sessions routes entirely.
+		$output = $this->generate_robots_output();
+
+		// Appears once per allowed crawler (GPTBot + ClaudeBot = 2).
+		$this->assertEquals(
+			2,
+			substr_count( $output, 'Allow: /wp-json/wc/ucp/' ),
+			'UCP endpoint allow-list should be emitted once per crawler'
+		);
+	}
+
+	public function test_ucp_allow_appears_next_to_store_api_allow(): void {
+		// Visual grouping matters for merchants reading the generated
+		// robots.txt — both are JSON REST surfaces and should sit
+		// together to make the "these are machine-readable endpoints"
+		// pairing obvious.
+		$output = $this->generate_robots_output();
+
+		$store_pos = strpos( $output, 'Allow: /wp-json/wc/store/' );
+		$ucp_pos   = strpos( $output, 'Allow: /wp-json/wc/ucp/' );
+
+		$this->assertNotFalse( $store_pos );
+		$this->assertNotFalse( $ucp_pos );
+		$this->assertGreaterThan( $store_pos, $ucp_pos );
+
+		// And nothing in between the two lines — they're adjacent.
+		$between = substr( $output, $store_pos, $ucp_pos - $store_pos );
+		$this->assertStringContainsString( "Allow: /wp-json/wc/store/\n", $between );
+		$lines_between = substr_count( $between, "\n" );
+		$this->assertEquals( 1, $lines_between, 'Store and UCP allows should be adjacent' );
+	}
+
+	public function test_rules_skipped_when_syndication_disabled(): void {
+		// Existing pre-1.3.0 invariant: when the merchant has paused
+		// syndication, robots.txt doesn't advertise the endpoints at
+		// all. Locks in the relationship between the enabled setting
+		// and public discoverability.
+		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+
+		$output = ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules(
+			"User-agent: *\nDisallow: /wp-admin/\n",
+			true
+		);
+
+		$this->assertStringNotContainsString( 'Allow: /wp-json/wc/ucp/', $output );
+		$this->assertStringNotContainsString( 'WooCommerce AI Syndication', $output );
+	}
+
+	public function test_rules_skipped_when_site_is_private(): void {
+		// A merchant who flipped Reading → "Discourage search engines"
+		// doesn't want AI crawlers pointed at the catalog either.
+		// Tested via the $is_public parameter WP passes to the filter.
+		WC_AI_Syndication::$test_settings = [
+			'enabled'          => 'yes',
+			'allowed_crawlers' => [ 'GPTBot' ],
+		];
+
+		$output = ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules(
+			"User-agent: *\nDisallow: /wp-admin/\n",
+			false  // $is_public
+		);
+
+		$this->assertStringNotContainsString( 'Allow: /wp-json/wc/ucp/', $output );
+	}
 }

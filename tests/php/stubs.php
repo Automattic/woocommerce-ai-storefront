@@ -59,17 +59,72 @@ if ( ! function_exists( 'wp_parse_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_strip_all_tags' ) ) {
+	/**
+	 * wp_strip_all_tags stub mirroring WordPress core's implementation.
+	 *
+	 * Differs from PHP native `strip_tags()` in two ways: strips the
+	 * CONTENT of `<script>` and `<style>` tags (not just the tags
+	 * themselves), and trims surrounding whitespace. Tests that exercise
+	 * the translators (which switched from strip_tags to wp_strip_all_tags
+	 * for safer behavior on rich-text-editor input) rely on this stub.
+	 *
+	 * Defined at stubs.php load time (before Patchwork is active), so
+	 * this CANNOT be redefined via Brain\Monkey's `Functions\when()`.
+	 * Tests that need specialized behavior would have to fork this stub
+	 * at the bootstrap level. In practice the WP-equivalent behavior
+	 * suffices for every current call site.
+	 *
+	 * @param mixed $text          Input string.
+	 * @param bool  $remove_breaks Whether to also collapse internal whitespace.
+	 */
+	function wp_strip_all_tags( $text, bool $remove_breaks = false ): string {
+		if ( ! is_scalar( $text ) ) {
+			return '';
+		}
+		$text = (string) $text;
+		$text = preg_replace( '@<(script|style)[^>]*?>.*?</\\1>@si', '', $text );
+		$text = strip_tags( $text );
+		if ( $remove_breaks ) {
+			$text = preg_replace( '/[\r\n\t ]+/', ' ', $text );
+		}
+		return trim( $text );
+	}
+}
+
 if ( ! class_exists( 'WP_REST_Request' ) ) {
 	class WP_REST_Request {
 		private array $params = [];
 		private array $headers = [];
 		private string $route = '';
+		private string $method = '';
+
+		/**
+		 * Parsed JSON body. Distinct from form-encoded params so
+		 * handlers calling `get_json_params()` vs `get_param()` can
+		 * be exercised independently.
+		 *
+		 * @var ?array<string, mixed>
+		 */
+		private ?array $json_params = null;
+
+		public function __construct( string $method = '', string $route = '' ) {
+			$this->method = $method;
+			$this->route  = $route;
+		}
 
 		public function set_param( string $key, $value ): void {
 			$this->params[ $key ] = $value;
 		}
 
 		public function get_param( string $key ) {
+			// Match WP behavior: get_param checks JSON body, then regular
+			// params, returning the first match. Handlers that call
+			// get_param('ids') should see the ids array whether it was
+			// delivered via JSON body or form body.
+			if ( null !== $this->json_params && array_key_exists( $key, $this->json_params ) ) {
+				return $this->json_params[ $key ];
+			}
 			return $this->params[ $key ] ?? null;
 		}
 
@@ -90,6 +145,28 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		public function get_route(): string {
 			return $this->route;
 		}
+
+		public function get_method(): string {
+			return $this->method;
+		}
+
+		public function set_method( string $method ): void {
+			$this->method = $method;
+		}
+
+		/**
+		 * @param array<string, mixed> $params
+		 */
+		public function set_json_params( array $params ): void {
+			$this->json_params = $params;
+		}
+
+		/**
+		 * @return ?array<string, mixed>
+		 */
+		public function get_json_params(): ?array {
+			return $this->json_params;
+		}
 	}
 }
 
@@ -97,9 +174,12 @@ if ( ! class_exists( 'WP_REST_Response' ) ) {
 	class WP_REST_Response {
 		public $data;
 		private array $headers = [];
+		private int $status = 200;
 
-		public function __construct( $data = null ) {
-			$this->data = $data;
+		public function __construct( $data = null, int $status = 200, array $headers = [] ) {
+			$this->data    = $data;
+			$this->status  = $status;
+			$this->headers = $headers;
 		}
 
 		public function header( string $key, string $value ): void {
@@ -108,6 +188,22 @@ if ( ! class_exists( 'WP_REST_Response' ) ) {
 
 		public function get_headers(): array {
 			return $this->headers;
+		}
+
+		public function get_status(): int {
+			return $this->status;
+		}
+
+		public function set_status( int $status ): void {
+			$this->status = $status;
+		}
+
+		public function get_data() {
+			return $this->data;
+		}
+
+		public function set_data( $data ): void {
+			$this->data = $data;
 		}
 	}
 }

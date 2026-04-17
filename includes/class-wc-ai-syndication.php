@@ -125,6 +125,13 @@ class WC_AI_Syndication {
 		// Store API rate limiting for AI bots.
 		$rate_limiter = new WC_AI_Syndication_Store_Api_Rate_Limiter();
 		$rate_limiter->init();
+
+		// Store API product collection filter — enforces the merchant's
+		// `product_selection_mode` against every Store API product query
+		// (including UCP catalog routes, which dispatch via rest_do_request).
+		// See class docblock for scope rationale.
+		$store_api_filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$store_api_filter->init();
 	}
 
 	/**
