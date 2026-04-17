@@ -1,5 +1,10 @@
 node_modules/
-vendor/
+# Anchor `/vendor/` to the repo root so composer's top-level vendor
+# dir is ignored but vendored library subdirectories (like PUC's own
+# `includes/lib/plugin-update-checker/vendor/` that ships Parsedown
+# for changelog rendering) are preserved. An unanchored pattern
+# would silently strip those from commits.
+/vendor/
 .phpunit.cache/
 .phpunit.result.cache
 .claude/
