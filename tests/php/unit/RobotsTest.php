@@ -329,12 +329,17 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_live_browsing_agents_has_expected_members(): void {
 		// Order matters (it's how they render in the admin UI).
-		// Group by vendor: OpenAI, Anthropic, Perplexity, Apple.
-		// Every entry must have vendor documentation confirming
-		// live-query / user-initiated semantics — the `-User` and
-		// `-SearchBot` suffixes follow vendor conventions. Plain
-		// `Applebot` is an exception (predates the `-Extended`
-		// convention) but is still live per Apple's docs.
+		// Grouped by ecosystem: foundation models (OpenAI,
+		// Anthropic, Perplexity, Apple), then agentic shopping
+		// (Amazon Rufus, Klarna), then Google Shopping, then
+		// regional search+AI (Asia first, then Europe).
+		//
+		// The regional bots (ERNIEBot, YiyanBot, WRTNBot,
+		// NaverBot, PetalBot, YandexBot) are traditional search
+		// crawlers that ALSO power AI features in their markets —
+		// "live" covers both user-initiated search and AI-agent
+		// fetching, so the classification fits even though these
+		// bots predate the modern AI-agent taxonomy.
 		$this->assertSame(
 			[
 				'ChatGPT-User',
@@ -344,6 +349,15 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 				'PerplexityBot',
 				'Perplexity-User',
 				'Applebot',
+				'AmazonBuyForMe',
+				'KlarnaBot',
+				'Storebot-Google',
+				'ERNIEBot',
+				'YiyanBot',
+				'WRTNBot',
+				'NaverBot',
+				'PetalBot',
+				'YandexBot',
 			],
 			WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS
 		);

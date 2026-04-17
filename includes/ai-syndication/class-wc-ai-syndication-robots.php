@@ -53,6 +53,55 @@ class WC_AI_Syndication_Robots {
 		// search crawler (since 2015). Applebot-Extended is the
 		// newer AI-training variant and lives in TRAINING_CRAWLERS.
 		'Applebot',
+
+		// Agentic shopping — AI that doesn't just read the catalog
+		// but ALSO places the order on the user's behalf. Highest-
+		// value AI traffic for commerce: showing up here means
+		// showing up at purchase intent, not just research.
+		//
+		// AmazonBuyForMe powers Amazon Rufus's "buy from the open
+		// web" feature — Rufus compares your products to Amazon's
+		// catalog and can execute purchases. KlarnaBot drives
+		// high-intent shopping queries primarily in the EU and US
+		// fashion/lifestyle verticals.
+		'AmazonBuyForMe',
+		'KlarnaBot',
+
+		// Google Shopping — distinct from Googlebot (search indexing)
+		// and Google-Extended (training). Storebot-Google powers
+		// the Shopping Overviews surface and "AI Outfit" visual
+		// recommendations. US-centric but global for commerce.
+		'Storebot-Google',
+
+		// Regional search + AI — Asia. Baidu (China) dominates
+		// Chinese discovery with ERNIEBot (general crawling for
+		// the Ernie model) and YiyanBot (real-time conversational
+		// citations). Wrtn ("the Korean ChatGPT") is the lifestyle
+		// product-discovery leader in South Korea. Naver powers
+		// AiRSearch, vital for the Korean market in a different
+		// slice from Wrtn. Huawei's PetalBot backs Petal Search
+		// and the AI Assistant shipped on hundreds of millions of
+		// Huawei devices (primary Android alternative in China
+		// and growing presence across Asia + emerging markets).
+		//
+		// Merchants selling only in English-speaking markets can
+		// safely keep these checked without traffic impact — they
+		// only invoke when users actually search from the relevant
+		// region. Merchants selling in Asia lose significant AI
+		// discovery if these are blocked.
+		'ERNIEBot',
+		'YiyanBot',
+		'WRTNBot',
+		'NaverBot',
+		'PetalBot',
+
+		// Regional search + AI — Europe. YandexBot powers Yandex's
+		// AI Assistant plus the traditional Yandex search engine;
+		// covers Russian-speaking markets (Russia, Belarus,
+		// Kazakhstan, Ukraine, and Russian-language speakers
+		// globally). The search + AI fusion is similar to
+		// Naver/Baidu — one bot, dual duties.
+		'YandexBot',
 	];
 
 	/**
@@ -141,6 +190,15 @@ class WC_AI_Syndication_Robots {
 		'PerplexityBot',
 		'Perplexity-User',
 		'Applebot',
+		'AmazonBuyForMe',
+		'KlarnaBot',
+		'Storebot-Google',
+		'ERNIEBot',
+		'YiyanBot',
+		'WRTNBot',
+		'NaverBot',
+		'PetalBot',
+		'YandexBot',
 
 		// Training crawlers (brand-strategy decision — merchant choice).
 		'GPTBot',
