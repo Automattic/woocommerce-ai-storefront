@@ -1,4 +1,4 @@
-import { useEffect } from '@wordpress/element';
+import { useEffect, useState } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
 import {
 	Card,
@@ -6,11 +6,53 @@ import {
 	Button,
 	CheckboxControl,
 	ExternalLink,
+	RadioControl,
 	Spinner,
+	TextControl,
 } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
 import { colors } from './tokens';
+
+/**
+ * Rate-limit presets for the Store API request-throttling control.
+ *
+ * The three presets cover the bulk of real-world merchant hosting
+ * situations: shared/low-traffic, typical, and dedicated/high-traffic.
+ * The Custom option escapes the presets for merchants with unusual
+ * needs (very high-volume stores, or very constrained hosts).
+ *
+ * Values here are the RPM (requests/minute) per-crawler cap enforced
+ * by `WC_AI_Syndication_Store_Api_Rate_Limiter` via WooCommerce Store
+ * API's built-in limiter. The same setting is the backing store for
+ * both the UI and the rate-limit hook — no separate "display" vs.
+ * "applied" values.
+ */
+const RATE_LIMIT_PRESETS = {
+	conservative: { rpm: 10 },
+	recommended: { rpm: 25 },
+	generous: { rpm: 100 },
+};
+
+/**
+ * Map an RPM integer back to its preset key.
+ *
+ * Used by the radio control to pre-select the right preset when the
+ * page first renders. Returns 'custom' when the stored RPM doesn't
+ * match any preset — which correctly reveals the custom RPM input
+ * for merchants who've tuned the value manually.
+ *
+ * @param {number} rpm Requests-per-minute from the stored settings.
+ * @return {string}    Preset key ('conservative'/'recommended'/'generous') or 'custom'.
+ */
+const getActivePreset = ( rpm ) => {
+	for ( const [ key, preset ] of Object.entries( RATE_LIMIT_PRESETS ) ) {
+		if ( preset.rpm === rpm ) {
+			return key;
+		}
+	}
+	return 'custom';
+};
 
 /**
  * Known AI crawler metadata, grouped by traffic category.
@@ -246,6 +288,15 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 			endpointStatus.robots === 'unreachable' );
 	const allowedCrawlers =
 		settings.allowed_crawlers || KNOWN_CRAWLERS.map( ( c ) => c.id );
+
+	// Rate-limit state. `customOverride` is a local UI flag that lets
+	// the merchant see the custom RPM input even when their manually-
+	// typed value happens to match a preset — without it, typing `25`
+	// into the custom input would collapse back to "Recommended" on
+	// the next render and hide the input they were just using.
+	const rpm = settings.rate_limit_rpm || 25;
+	const [ customOverride, setCustomOverride ] = useState( false );
+	const activePreset = customOverride ? 'custom' : getActivePreset( rpm );
 
 	// Count only crawlers that are actually rendered as checkboxes. Right
 	// after a plugin upgrade that rotated AI_CRAWLERS, the stored array
@@ -746,6 +797,146 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					</p>
 
 					{ /* Save button inside card */ }
+					<div
+						style={ {
+							marginTop: '16px',
+							paddingTop: '16px',
+							borderTop: `1px solid ${ colors.surfaceMuted }`,
+						} }
+					>
+						<Button
+							variant="primary"
+							isBusy={ isSaving }
+							disabled={ isSaving }
+							onClick={ onSave }
+						>
+							{ isSaving
+								? __( 'Saving…', 'woocommerce-ai-syndication' )
+								: __(
+										'Save Changes',
+										'woocommerce-ai-syndication'
+								  ) }
+						</Button>
+					</div>
+				</CardBody>
+			</Card>
+
+			{ /*
+				Rate Limits card. Placed after the Crawler Access card
+				because the narrative order is "who's allowed → how
+				fast they can go" — allow-list decisions read first,
+				rate-limit decisions follow. Moved here from the
+				Overview tab during the 1.6.7→1.6.8 window on the
+				principle that rate limits configure the same external-
+				agent traffic surface the allow-list controls.
+			*/ }
+			<Card style={ { marginTop: '32px' } }>
+				<CardBody>
+					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
+						{ __( 'Rate Limits', 'woocommerce-ai-syndication' ) }
+					</h3>
+					<p
+						style={ {
+							color: colors.textSecondary,
+							fontSize: '13px',
+							margin: '0 0 16px',
+						} }
+					>
+						{ __(
+							'Control how frequently AI crawlers can query your Store API. Higher limits allow faster product discovery but use more server resources.',
+							'woocommerce-ai-syndication'
+						) }
+					</p>
+
+					<RadioControl
+						selected={ activePreset }
+						options={ [
+							{
+								label: __(
+									'Recommended — 25/min (works well for most stores)',
+									'woocommerce-ai-syndication'
+								),
+								value: 'recommended',
+							},
+							{
+								label: __(
+									'Conservative — 10/min (shared hosting or low-traffic stores)',
+									'woocommerce-ai-syndication'
+								),
+								value: 'conservative',
+							},
+							{
+								label: __(
+									'Generous — 100/min (high-traffic stores on dedicated hosting)',
+									'woocommerce-ai-syndication'
+								),
+								value: 'generous',
+							},
+							{
+								label: __(
+									'Custom',
+									'woocommerce-ai-syndication'
+								),
+								value: 'custom',
+							},
+						] }
+						onChange={ ( value ) => {
+							if ( RATE_LIMIT_PRESETS[ value ] ) {
+								setCustomOverride( false );
+								onChange( {
+									rate_limit_rpm:
+										RATE_LIMIT_PRESETS[ value ].rpm,
+								} );
+							} else {
+								setCustomOverride( true );
+							}
+						} }
+					/>
+
+					{ activePreset === 'custom' && (
+						<div
+							style={ {
+								display: 'flex',
+								gap: '16px',
+								marginTop: '12px',
+								maxWidth: '400px',
+							} }
+						>
+							<TextControl
+								__next40pxDefaultSize
+								__nextHasNoMarginBottom
+								label={ __(
+									'Requests per minute',
+									'woocommerce-ai-syndication'
+								) }
+								type="number"
+								value={ rpm }
+								onChange={ ( value ) =>
+									onChange( {
+										rate_limit_rpm: parseInt( value ) || 60,
+									} )
+								}
+								min={ 1 }
+								max={ 1000 }
+							/>
+						</div>
+					) }
+
+					<p
+						style={ {
+							color: colors.textMuted,
+							fontSize: '12px',
+							marginTop: '12px',
+							marginBottom: 0,
+						} }
+					>
+						{ __(
+							'Limits are applied per AI crawler (identified by user-agent string) using the WooCommerce Store API rate limiter. Your regular store traffic is not affected.',
+							'woocommerce-ai-syndication'
+						) }
+					</p>
+
+					{ /* Save button inside the card */ }
 					<div
 						style={ {
 							marginTop: '16px',

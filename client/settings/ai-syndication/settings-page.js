@@ -4,9 +4,7 @@ import {
 	Card,
 	CardBody,
 	Button,
-	TextControl,
 	SelectControl,
-	RadioControl,
 	TabPanel,
 	Spinner,
 	Flex,
@@ -18,20 +16,12 @@ import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
 import { colors } from './tokens';
 
-const RATE_LIMIT_PRESETS = {
-	conservative: { rpm: 10 },
-	recommended: { rpm: 25 },
-	generous: { rpm: 100 },
-};
-
-const getActivePreset = ( rpm ) => {
-	for ( const [ key, preset ] of Object.entries( RATE_LIMIT_PRESETS ) ) {
-		if ( preset.rpm === rpm ) {
-			return key;
-		}
-	}
-	return 'custom';
-};
+// Rate-limit UI (card + presets + RPM state) lives in the Discovery
+// tab now — see `endpoint-info.js`. Rationale: rate limiting is a
+// property of external-agent traffic policy, same conceptual bucket as
+// the crawler allow-list. Keeping them colocated matches the merchant's
+// mental model ("who gets in" + "how fast they can go" = one subject).
+// Moved here in the 1.6.8 window; see AGENTS.md for the IA discussion.
 
 const AISyndicationSettings = () => {
 	const settings = useSelect(
@@ -462,10 +452,6 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 		fetchStats( period );
 	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Refetch when period changes.
 
-	const rpm = settings.rate_limit_rpm || 25;
-	const [ customOverride, setCustomOverride ] = useState( false );
-	const activePreset = customOverride ? 'custom' : getActivePreset( rpm );
-
 	let productCount = __( 'All', 'woocommerce-ai-syndication' );
 	if ( settings.product_selection_mode === 'categories' ) {
 		productCount = sprintf(
@@ -697,138 +683,6 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					</CardBody>
 				</Card>
 			) }
-
-			{ /* Rate limits with presets + save button inside */ }
-			<Card style={ { marginTop: '32px' } }>
-				<CardBody>
-					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
-						{ __( 'Rate Limits', 'woocommerce-ai-syndication' ) }
-					</h3>
-					<p
-						style={ {
-							color: colors.textSecondary,
-							fontSize: '13px',
-							margin: '0 0 16px',
-						} }
-					>
-						{ __(
-							'Control how frequently AI crawlers can query your Store API. Higher limits allow faster product discovery but use more server resources.',
-							'woocommerce-ai-syndication'
-						) }
-					</p>
-
-					<RadioControl
-						selected={ activePreset }
-						options={ [
-							{
-								label: __(
-									'Recommended — 25/min (works well for most stores)',
-									'woocommerce-ai-syndication'
-								),
-								value: 'recommended',
-							},
-							{
-								label: __(
-									'Conservative — 10/min (shared hosting or low-traffic stores)',
-									'woocommerce-ai-syndication'
-								),
-								value: 'conservative',
-							},
-							{
-								label: __(
-									'Generous — 100/min (high-traffic stores on dedicated hosting)',
-									'woocommerce-ai-syndication'
-								),
-								value: 'generous',
-							},
-							{
-								label: __(
-									'Custom',
-									'woocommerce-ai-syndication'
-								),
-								value: 'custom',
-							},
-						] }
-						onChange={ ( value ) => {
-							if ( RATE_LIMIT_PRESETS[ value ] ) {
-								setCustomOverride( false );
-								onChange( {
-									rate_limit_rpm:
-										RATE_LIMIT_PRESETS[ value ].rpm,
-								} );
-							} else {
-								setCustomOverride( true );
-							}
-						} }
-					/>
-
-					{ activePreset === 'custom' && (
-						<div
-							style={ {
-								display: 'flex',
-								gap: '16px',
-								marginTop: '12px',
-								maxWidth: '400px',
-							} }
-						>
-							<TextControl
-								__next40pxDefaultSize
-								__nextHasNoMarginBottom
-								label={ __(
-									'Requests per minute',
-									'woocommerce-ai-syndication'
-								) }
-								type="number"
-								value={ rpm }
-								onChange={ ( value ) =>
-									onChange( {
-										rate_limit_rpm: parseInt( value ) || 60,
-									} )
-								}
-								min={ 1 }
-								max={ 1000 }
-							/>
-						</div>
-					) }
-
-					<p
-						style={ {
-							color: colors.textMuted,
-							fontSize: '12px',
-							marginTop: '12px',
-							marginBottom: 0,
-						} }
-					>
-						{ __(
-							'Limits are applied per AI crawler (identified by user-agent string) using the WooCommerce Store API rate limiter. Your regular store traffic is not affected.',
-							'woocommerce-ai-syndication'
-						) }
-					</p>
-
-					{ /* Save button inside the card */ }
-					<div
-						style={ {
-							marginTop: '16px',
-							paddingTop: '16px',
-							borderTop: `1px solid ${ colors.surfaceMuted }`,
-						} }
-					>
-						<Button
-							variant="primary"
-							isBusy={ isSaving }
-							disabled={ isSaving }
-							onClick={ onSave }
-						>
-							{ isSaving
-								? __( 'Saving…', 'woocommerce-ai-syndication' )
-								: __(
-										'Save Changes',
-										'woocommerce-ai-syndication'
-								  ) }
-						</Button>
-					</div>
-				</CardBody>
-			</Card>
 		</div>
 	);
 };
