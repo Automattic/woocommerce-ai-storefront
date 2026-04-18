@@ -318,6 +318,40 @@ class WC_AI_Syndication {
 			wp_enqueue_style( 'wc-ai-syndication-settings' );
 		}
 		wp_enqueue_style( 'wp-components' );
+
+		/*
+		 * Woo component stylesheets.
+		 *
+		 * WooCommerce registers these handles as part of wc-admin but
+		 * only auto-enqueues them on native wc-admin screens (the
+		 * Analytics / Orders / Products react-powered routes). On
+		 * custom plugin submenu pages like ours the handles exist but
+		 * sit idle, so any imported Woo component renders as an
+		 * unstyled DOM blob. Explicitly enqueuing here fixes that.
+		 *
+		 * `wp_style_is( ..., 'registered' )` guards every call so the
+		 * code is safe under:
+		 *   - old WooCommerce versions where a handle doesn't exist yet,
+		 *   - wc-admin disabled (some hosting providers strip it),
+		 *   - a future WC major that renames the handle (we simply don't
+		 *     enqueue the missing one — the runtime fallback in the
+		 *     React layer kicks in and uses the hand-rolled table).
+		 *
+		 * Handles covered:
+		 *   - `wc-components`     the core TableCard/Table/etc. CSS
+		 *   - `wc-admin-layout`   layout primitives TableCard depends on
+		 *   - `wc-experimental`   newer wc-admin components sometimes
+		 *                         bring in experimental styling
+		 *
+		 * Resolves blocker #1 from the 1.x AGENTS.md "Styling" note
+		 * deferring Woo component adoption. See also the runtime
+		 * availability check in the AgentRevenueTable wrapper.
+		 */
+		foreach ( [ 'wc-components', 'wc-admin-layout', 'wc-experimental' ] as $woo_style ) {
+			if ( wp_style_is( $woo_style, 'registered' ) ) {
+				wp_enqueue_style( $woo_style );
+			}
+		}
 	}
 
 	/**

@@ -14,6 +14,7 @@ import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
 import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
+import AgentRevenueTable from './agent-revenue-table';
 import { colors } from './tokens';
 
 // Rate-limit UI (card + presets + RPM state) lives in the Discovery
@@ -623,65 +624,21 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				/>
 			</div>
 
-			{ /* Per-agent breakdown */ }
-			{ stats && Object.keys( stats.by_agent || {} ).length > 0 && (
-				<Card style={ { marginTop: '16px' } }>
-					<CardBody>
-						<h3
-							style={ {
-								margin: '0 0 12px',
-								fontSize: '14px',
-							} }
-						>
-							{ __(
-								'Revenue by Agent',
-								'woocommerce-ai-syndication'
-							) }
-						</h3>
-						<table className="widefat" style={ { margin: 0 } }>
-							<thead>
-								<tr>
-									<th>
-										{ __(
-											'Agent',
-											'woocommerce-ai-syndication'
-										) }
-									</th>
-									<th>
-										{ __(
-											'Orders',
-											'woocommerce-ai-syndication'
-										) }
-									</th>
-									<th>
-										{ __(
-											'Revenue',
-											'woocommerce-ai-syndication'
-										) }
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{ Object.entries( stats.by_agent ).map(
-									( [ agent, agentStats ] ) => (
-										<tr key={ agent }>
-											<td>
-												<strong>{ agent }</strong>
-											</td>
-											<td>{ agentStats.orders }</td>
-											<td>
-												{ stats.currency || '$' }{ ' ' }
-												{ parseFloat(
-													agentStats.revenue
-												).toFixed( 2 ) }
-											</td>
-										</tr>
-									)
-								) }
-							</tbody>
-						</table>
-					</CardBody>
-				</Card>
+			{ /*
+				Per-agent breakdown. The AgentRevenueTable component
+				picks between WooCommerce's native TableCard (when
+				wc-admin is available) and a hand-rolled widefat
+				fallback. Both paths render the same data with
+				right-aligned numeric columns, Intl-formatted
+				currency, and a totals row. See agent-revenue-table.js
+				for the dual-path rationale + blocker resolutions
+				for the earlier Woo-adoption deferral.
+			*/ }
+			{ stats && (
+				<AgentRevenueTable
+					byAgent={ stats.by_agent || {} }
+					currency={ stats.currency }
+				/>
 			) }
 		</div>
 	);
