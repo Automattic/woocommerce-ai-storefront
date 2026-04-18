@@ -36,6 +36,104 @@ class WC_AI_Syndication_UCP_Agent_Header {
 	const FALLBACK_SOURCE = 'ucp_unknown';
 
 	/**
+	 * Map of UCP-Agent profile hostnames → short canonical brand names.
+	 *
+	 * The canonical name lands in the continue_url's `utm_source`
+	 * parameter, which WooCommerce Order Attribution captures into
+	 * `_wc_order_attribution_utm_source`. The Orders list then displays
+	 * it in the built-in "Origin" column as `Source: {name}` — so this
+	 * map directly controls what merchants see when an AI-sourced
+	 * order appears in wp-admin.
+	 *
+	 * Naming convention: short, brand-clean, merchant-readable.
+	 * Matches the spirit of the Discovery crawler list
+	 * (`WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS`) but drops the
+	 * UA-style suffixes (`-User`, `-SearchBot`) — those signal crawler
+	 * *variant* in robots.txt, which is noise in an Origin column where
+	 * the merchant just wants to know "which AI sent this order."
+	 *
+	 * Keys MUST be lower-case hostnames. Lookup is exact-match with a
+	 * lower-case of the incoming hostname; no wildcard/subdomain logic.
+	 * Subdomains that share a brand (e.g., `agents.openai.com`) can be
+	 * added as additional keys when encountered. Over-matching (e.g.
+	 * glob on `*.google.com`) would collapse distinct Google products
+	 * — Gemini conversational, Storebot shopping overviews, Bard
+	 * research — under a single label and lose valuable attribution
+	 * detail, so keep the map literal.
+	 *
+	 * When a hostname is NOT in this map, the raw hostname is returned
+	 * verbatim (see `canonicalize_host()`). That preserves traceability
+	 * for novel agents while the map catches the 90% of known vendors.
+	 *
+	 * @var array<string, string>
+	 */
+	const KNOWN_AGENT_HOSTS = [
+		// OpenAI.
+		'chatgpt.com'           => 'ChatGPT',
+		'openai.com'            => 'ChatGPT',
+
+		// Anthropic.
+		'claude.ai'             => 'Claude',
+		'anthropic.com'         => 'Claude',
+
+		// Google — Gemini is the conversational surface; keep
+		// distinct from `Storebot-Google` which is the Shopping
+		// Overviews crawler, a separate product.
+		'gemini.google.com'     => 'Gemini',
+		'deepmind.google'       => 'Gemini',
+
+		// Microsoft.
+		'copilot.microsoft.com' => 'Copilot',
+		'bing.com'              => 'Copilot',
+
+		// Perplexity.
+		'perplexity.ai'         => 'Perplexity',
+
+		// Apple — Siri is the conversational assistant; distinct
+		// from Applebot (search index) and Applebot-Extended (AI
+		// training) which live in the Discovery crawler list.
+		'siri.apple.com'        => 'Siri',
+
+		// Amazon — Rufus is the conversational shopping assistant,
+		// AmazonBuyForMe is its agentic-purchase crawler variant.
+		'rufus.amazon.com'      => 'Rufus',
+
+		// Klarna.
+		'klarna.com'            => 'Klarna',
+
+		// You.com.
+		'you.com'               => 'You',
+
+		// Kagi.
+		'kagi.com'              => 'Kagi',
+	];
+
+	/**
+	 * Canonicalize a hostname to a short brand name for merchant-facing
+	 * attribution display (utm_source → Origin column).
+	 *
+	 * Returns the mapped brand name when the hostname is known, else
+	 * the hostname itself. NEVER returns empty — callers can use the
+	 * result directly as a utm_source value without a null-check.
+	 *
+	 * Separate from `extract_profile_hostname()` so the raw-hostname
+	 * extraction stays pure (useful for logging/diagnostics) while
+	 * display-layer canonicalization is explicit at the call site.
+	 *
+	 * @param string $host Hostname extracted from a UCP-Agent profile URL.
+	 * @return string Short canonical brand name, or the hostname unchanged
+	 *                when no mapping exists. Empty input returns empty.
+	 */
+	public static function canonicalize_host( string $host ): string {
+		if ( '' === $host ) {
+			return '';
+		}
+
+		$lower = strtolower( $host );
+		return self::KNOWN_AGENT_HOSTS[ $lower ] ?? $host;
+	}
+
+	/**
 	 * Extract the agent's profile URL hostname from a UCP-Agent header value.
 	 *
 	 * Implementation is a v1 shortcut — it finds the first occurrence of

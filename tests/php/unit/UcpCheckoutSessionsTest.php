@@ -681,7 +681,11 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	// UTM attribution
 	// ------------------------------------------------------------------
 
-	public function test_ucp_agent_hostname_becomes_utm_source(): void {
+	public function test_unknown_agent_hostname_passes_through_to_utm_source(): void {
+		// Novel / unregistered agent hostname — not in KNOWN_AGENT_HOSTS.
+		// Canonicalization should pass it through verbatim so merchants
+		// still see something useful in the Origin column rather than
+		// losing attribution entirely for unknown vendors.
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
@@ -695,6 +699,26 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertStringContainsString(
 			'utm_medium=ai_agent',
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_known_agent_hostname_is_canonicalized_in_utm_source(): void {
+		// Integration check: a hostname in KNOWN_AGENT_HOSTS must be
+		// mapped to its brand name BEFORE landing in utm_source, so
+		// WC's Origin column reads "Source: Gemini" (not
+		// "Source: gemini.google.com") once the order is captured.
+		// The unit-level mapping is exhaustively covered in
+		// UcpAgentHeaderTest; this test pins the end-to-end wiring.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			'profile="https://gemini.google.com/profile.json"'
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=Gemini',
 			$result['data']['continue_url']
 		);
 	}

@@ -39,6 +39,14 @@ class WC_AI_Syndication_Attribution {
 
 	/**
 	 * Initialize hooks.
+	 *
+	 * Deliberately minimal: we capture agent metadata onto the order
+	 * and render it in the order-edit screen, then stop. The orders
+	 * list surfaces agent attribution through WooCommerce core's
+	 * native "Origin" column (fed by `_wc_order_attribution_utm_source`,
+	 * which we set via the continue_url's `utm_source` param) — so a
+	 * custom "AI Agent" column on the list would be pure duplication.
+	 * Removed in 1.6.7; see AGENTS.md "Attribution" for the rationale.
 	 */
 	public function init() {
 		// Capture ai_session_id from the request and store on the order.
@@ -49,18 +57,6 @@ class WC_AI_Syndication_Attribution {
 
 		// Display AI attribution data in admin order view.
 		add_action( 'woocommerce_admin_order_data_after_billing_address', [ $this, 'display_attribution_in_admin' ], 20, 1 );
-
-		// Add AI agent column to orders list — support both HPOS and legacy post type.
-		add_filter( 'manage_woocommerce_page_wc-orders_columns', [ $this, 'add_order_list_column' ] );
-		add_action( 'manage_woocommerce_page_wc-orders_custom_column', [ $this, 'render_order_list_column' ], 10, 2 );
-		add_filter( 'manage_edit-shop_order_columns', [ $this, 'add_order_list_column' ] );
-		add_action( 'manage_shop_order_posts_custom_column', [ $this, 'render_order_list_column' ], 10, 2 );
-
-		// Add AI agent filter dropdown to orders list.
-		add_action( 'woocommerce_order_list_table_restrict_manage_orders', [ $this, 'render_agent_filter' ], 20 );
-		add_action( 'restrict_manage_posts', [ $this, 'render_agent_filter_legacy' ], 20 );
-		add_filter( 'woocommerce_order_list_table_prepare_items_query_args', [ $this, 'filter_orders_by_agent' ] );
-		add_action( 'pre_get_posts', [ $this, 'filter_orders_by_agent_legacy' ] );
 	}
 
 	/**
@@ -145,56 +141,6 @@ class WC_AI_Syndication_Attribution {
 		}
 
 		echo '</div>';
-	}
-
-	/**
-	 * Add AI agent column to HPOS orders list.
-	 *
-	 * @param array $columns Order list columns.
-	 * @return array
-	 */
-	public function add_order_list_column( $columns ) {
-		$settings = WC_AI_Syndication::get_settings();
-		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
-			return $columns;
-		}
-
-		// Insert after 'order_status' column.
-		$new_columns = [];
-		foreach ( $columns as $key => $label ) {
-			$new_columns[ $key ] = $label;
-			if ( 'order_status' === $key ) {
-				$new_columns['ai_agent'] = __( 'AI Agent', 'woocommerce-ai-syndication' );
-			}
-		}
-
-		return $new_columns;
-	}
-
-	/**
-	 * Render AI agent column in orders list.
-	 *
-	 * Works with both the legacy post-based orders list (where the second
-	 * parameter is an int post ID) and the HPOS orders list (where it's
-	 * already a WC_Order instance). The `instanceof` guard at the start
-	 * of the method handles the polymorphism.
-	 *
-	 * @param string       $column_name Column name.
-	 * @param int|WC_Order $order_id    Order ID (legacy) or WC_Order (HPOS).
-	 */
-	public function render_order_list_column( $column_name, $order_id ) {
-		if ( 'ai_agent' !== $column_name ) {
-			return;
-		}
-
-		$order = $order_id instanceof WC_Order ? $order_id : wc_get_order( $order_id );
-		if ( ! $order ) {
-			echo '&mdash;';
-			return;
-		}
-
-		$agent = $order->get_meta( self::AGENT_META_KEY );
-		echo $agent ? esc_html( $agent ) : '&mdash;';
 	}
 
 	/**
@@ -327,137 +273,5 @@ class WC_AI_Syndication_Attribution {
 			'currency'         => get_woocommerce_currency(),
 			'by_agent'         => $by_agent,
 		];
-	}
-
-	/**
-	 * Get distinct AI agent names from order meta for the filter dropdown.
-	 *
-	 * @return string[]
-	 */
-	private static function get_known_agents() {
-		global $wpdb;
-
-		if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
-			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
-			$meta_table = $wpdb->prefix . 'wc_orders_meta';
-			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			$agents = $wpdb->get_col(
-				$wpdb->prepare(
-					"SELECT DISTINCT meta_value FROM {$meta_table} WHERE meta_key = %s AND meta_value != '' ORDER BY meta_value",
-					self::AGENT_META_KEY
-				)
-			);
-			// phpcs:enable
-		} else {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-			$agents = $wpdb->get_col(
-				$wpdb->prepare(
-					"SELECT DISTINCT meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value != '' ORDER BY meta_value",
-					self::AGENT_META_KEY
-				)
-			);
-		}
-
-		return is_array( $agents ) ? $agents : [];
-	}
-
-	/**
-	 * Render the AI agent filter dropdown (HPOS orders list).
-	 */
-	public function render_agent_filter() {
-		$agents = self::get_known_agents();
-
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$current = isset( $_GET['ai_agent_filter'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_filter'] ) ) : '';
-
-		echo '<select name="ai_agent_filter">';
-		echo '<option value="">' . esc_html__( 'Filter by AI agent', 'woocommerce-ai-syndication' ) . '</option>';
-		if ( ! empty( $agents ) ) {
-			echo '<option value="_any"' . selected( $current, '_any', false ) . '>' . esc_html__( 'Any AI agent', 'woocommerce-ai-syndication' ) . '</option>';
-			foreach ( $agents as $agent ) {
-				echo '<option value="' . esc_attr( $agent ) . '"' . selected( $current, $agent, false ) . '>' . esc_html( $agent ) . '</option>';
-			}
-		}
-		echo '</select>';
-	}
-
-	/**
-	 * Render the AI agent filter dropdown (legacy shop_order).
-	 *
-	 * @param string $post_type Current post type.
-	 */
-	public function render_agent_filter_legacy( $post_type ) {
-		if ( 'shop_order' !== $post_type ) {
-			return;
-		}
-		$this->render_agent_filter();
-	}
-
-	/**
-	 * Filter HPOS orders by AI agent meta.
-	 *
-	 * @param array $query_args Order query arguments.
-	 * @return array
-	 */
-	public function filter_orders_by_agent( $query_args ) {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$agent = isset( $_GET['ai_agent_filter'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_filter'] ) ) : '';
-
-		if ( empty( $agent ) ) {
-			return $query_args;
-		}
-
-		if ( '_any' === $agent ) {
-			$query_args['meta_query'][] = [
-				'key'     => self::AGENT_META_KEY,
-				'compare' => 'EXISTS',
-			];
-		} else {
-			$query_args['meta_query'][] = [
-				'key'   => self::AGENT_META_KEY,
-				'value' => $agent,
-			];
-		}
-
-		return $query_args;
-	}
-
-	/**
-	 * Filter legacy shop_order posts by AI agent meta.
-	 *
-	 * @param WP_Query $query The query.
-	 */
-	public function filter_orders_by_agent_legacy( $query ) {
-		global $pagenow;
-
-		if ( 'edit.php' !== $pagenow || ( $query->get( 'post_type' ) ?? '' ) !== 'shop_order' ) {
-			return;
-		}
-
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$agent = isset( $_GET['ai_agent_filter'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_filter'] ) ) : '';
-
-		if ( empty( $agent ) ) {
-			return;
-		}
-
-		$meta_query = $query->get( 'meta_query' );
-		if ( ! is_array( $meta_query ) ) {
-			$meta_query = [];
-		}
-
-		if ( '_any' === $agent ) {
-			$meta_query[] = [
-				'key'     => self::AGENT_META_KEY,
-				'compare' => 'EXISTS',
-			];
-		} else {
-			$meta_query[] = [
-				'key'   => self::AGENT_META_KEY,
-				'value' => $agent,
-			];
-		}
-
-		$query->set( 'meta_query', $meta_query );
 	}
 }
