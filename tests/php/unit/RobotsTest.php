@@ -205,6 +205,15 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 
+		// Fallback stub for sitemap discovery when the base input
+		// has no `Sitemap:` directive. Tests that want to exercise
+		// the fallback path leave this as-is; tests passing a base
+		// with Sitemap lines never reach this fallback.
+		Functions\when( 'get_sitemap_url' )->alias(
+			static fn( string $name = 'index' ): string =>
+				'https://example.com/wp-sitemap.xml'
+		);
+
 		return ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules( $base, true );
 	}
 
@@ -511,6 +520,219 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 			count( WC_AI_Syndication_Robots::AI_CRAWLERS ),
 			count( array_unique( WC_AI_Syndication_Robots::AI_CRAWLERS ) ),
 			'Duplicate crawler IDs would emit redundant User-agent rules in robots.txt.'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// 1.6.1: sitemap visibility, explicit opt-out, CORS headers
+	// ------------------------------------------------------------------
+	//
+	// Three defensive additions prompted by cross-agent review:
+	//   1. Sitemap `Allow:` inside each named block (defense against
+	//      crawlers that over-scope their User-agent parsing)
+	//   2. Explicit `Disallow: /` block for opted-out AI bots
+	//      (converts implicit "silent, fall through to *" into
+	//      explicit merchant intent — matters most for the training-
+	//      default-off policy where 9 training crawlers are unchecked)
+	//   3. Sitemap re-emitted at end of section (accommodates parsers
+	//      that expect sitemap declarations at the bottom)
+	//
+	// Plus CORS/nosniff headers on the robots.txt response itself
+	// (confirmed blocker for Perplexity's browsing tool, same fix
+	// family as llms.txt in 1.4.1).
+
+	public function test_sitemap_allow_emitted_inside_each_named_block(): void {
+		// Base robots.txt with multiple Sitemap directives (mirroring
+		// what a Yoast/Rank Math site looks like). Each is discovered
+		// and translated to a path-level Allow inside every named
+		// AI-bot block.
+		$base = "Sitemap: https://example.com/sitemap.xml\n"
+			. "Sitemap: https://example.com/news-sitemap.xml\n"
+			. "User-agent: *\nDisallow: /wp-admin/\n";
+
+		$output = $this->generate_robots_output( $base );
+
+		// Two allowed bots (GPTBot + ClaudeBot per the fixture) × 2
+		// sitemaps = 4 emissions. Counting by the path string avoids
+		// false positives on the top-level Sitemap directives (which
+		// use full URLs, not paths).
+		$this->assertEquals(
+			2,
+			substr_count( $output, 'Allow: /sitemap.xml' ),
+			'Sitemap path should be allowed inside each named block'
+		);
+		$this->assertEquals(
+			2,
+			substr_count( $output, 'Allow: /news-sitemap.xml' ),
+			'Secondary sitemap path should also be allowed per block'
+		);
+	}
+
+	public function test_sitemap_directive_reemitted_at_end_of_section(): void {
+		// Industry convention + defense against ordering-sensitive
+		// parsers — Sitemap declarations are duplicated at the end
+		// of our appended section, not just left at the top.
+		$base = "Sitemap: https://example.com/sitemap.xml\n"
+			. "User-agent: *\nDisallow: /wp-admin/\n";
+
+		$output = $this->generate_robots_output( $base );
+
+		// Top-of-file + end-of-our-section = 2 occurrences of the
+		// full URL form (`Sitemap: https://...`). The path-only
+		// Allow emissions don't count.
+		$this->assertEquals(
+			2,
+			substr_count( $output, 'Sitemap: https://example.com/sitemap.xml' ),
+			'Sitemap URL should appear both at top (from input) and at bottom (re-emitted)'
+		);
+	}
+
+	public function test_sitemap_allow_falls_back_to_wp_core_sitemap_when_none_in_input(): void {
+		// Sites without Yoast/Rank Math/etc. rely on WP core's
+		// `get_sitemap_url( 'index' )` which emits `/wp-sitemap.xml`.
+		// The extract helper falls back to that when no `Sitemap:`
+		// lines exist in the input robots.txt.
+		$base = "User-agent: *\nDisallow: /wp-admin/\n"; // no Sitemap directive
+
+		$output = $this->generate_robots_output( $base );
+
+		$this->assertStringContainsString(
+			'Allow: /wp-sitemap.xml',
+			$output,
+			'WP core fallback sitemap should be allowed per-block when no external sitemap is declared'
+		);
+	}
+
+	public function test_opted_out_bots_get_explicit_disallow_block(): void {
+		// The fixture has `allowed_crawlers = [GPTBot, ClaudeBot]`.
+		// Every other bot in AI_CRAWLERS should be opted out.
+		$output = $this->generate_robots_output();
+
+		// Spot-check: training crawlers not in the allowed list.
+		$this->assertStringContainsString( 'User-agent: Bytespider', $output );
+		$this->assertStringContainsString( 'User-agent: CCBot', $output );
+
+		// Live bots not in the allowed list.
+		$this->assertStringContainsString( 'User-agent: ChatGPT-User', $output );
+		$this->assertStringContainsString( 'User-agent: PerplexityBot', $output );
+
+		// One `Disallow: /` line covers the whole group (RFC 9309
+		// §2.2.1 allows multiple User-agent lines per rule group).
+		$this->assertMatchesRegularExpression(
+			'/User-agent:.*\n.*User-agent:.*\n.*Disallow: \/\n/s',
+			$output,
+			'Opt-out block should use grouped User-agent lines with one Disallow'
+		);
+	}
+
+	public function test_no_opt_out_block_when_all_bots_allowed(): void {
+		// If the merchant has every known crawler checked, there's
+		// nothing to opt out — the opt-out block must not appear.
+		WC_AI_Syndication::$test_settings = [
+			'enabled'          => 'yes',
+			'allowed_crawlers' => WC_AI_Syndication_Robots::AI_CRAWLERS,
+		];
+		Functions\when( 'wc_get_page_permalink' )->alias(
+			static fn( string $page ): string => 'https://example.com/' . $page . '/'
+		);
+		Functions\when( 'get_option' )->alias(
+			static fn( string $key, $default = [] ): mixed =>
+				'woocommerce_permalinks' === $key
+					? [ 'product_base' => 'product', 'category_base' => 'product-category' ]
+					: $default
+		);
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'get_sitemap_url' )->justReturn( '' );
+
+		$output = ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules(
+			"User-agent: *\nDisallow: /wp-admin/\n",
+			true
+		);
+
+		$this->assertStringNotContainsString(
+			'Explicit opt-out for AI bots',
+			$output,
+			'No opt-out comment/block when zero bots are opted out'
+		);
+	}
+
+	public function test_empty_allowed_crawlers_opts_out_every_ai_bot(): void {
+		// "Clear selection" merchant path: zero allowed crawlers.
+		// Every AI bot in AI_CRAWLERS should appear in the explicit
+		// opt-out block — strongest possible "no AI" signal.
+		WC_AI_Syndication::$test_settings = [
+			'enabled'          => 'yes',
+			'allowed_crawlers' => [],
+		];
+		Functions\when( 'wc_get_page_permalink' )->alias(
+			static fn( string $page ): string => 'https://example.com/' . $page . '/'
+		);
+		Functions\when( 'get_option' )->alias(
+			static fn( string $key, $default = [] ): mixed =>
+				'woocommerce_permalinks' === $key
+					? [ 'product_base' => 'product', 'category_base' => 'product-category' ]
+					: $default
+		);
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'get_sitemap_url' )->justReturn( '' );
+
+		$output = ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules(
+			"User-agent: *\nDisallow: /wp-admin/\n",
+			true
+		);
+
+		// Every AI bot appears exactly once in the opt-out group.
+		foreach ( WC_AI_Syndication_Robots::AI_CRAWLERS as $bot ) {
+			$this->assertStringContainsString(
+				"User-agent: {$bot}",
+				$output,
+				"Opted-out bot $bot should appear in the Disallow block"
+			);
+		}
+
+		// Exactly one `Disallow: /` terminates the block (not one
+		// per bot — grouped syntax).
+		$this->assertEquals(
+			1,
+			substr_count( $output, "Disallow: /\n" ),
+			'Single Disallow: / for the grouped opt-out block'
+		);
+	}
+
+	public function test_sitemap_allow_not_emitted_when_syndication_disabled(): void {
+		// Sanity: the gates for syndication-disabled / site-private
+		// cases already bail before the Allow directives. Same gate
+		// covers Sitemap Allow / opt-out blocks.
+		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+
+		$base   = "Sitemap: https://example.com/sitemap.xml\nUser-agent: *\n";
+		$output = ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules( $base, true );
+
+		$this->assertStringNotContainsString( 'Allow: /sitemap.xml', $output );
+		$this->assertStringNotContainsString( 'Explicit opt-out', $output );
+	}
+
+	// ------------------------------------------------------------------
+	// CORS + nosniff headers on robots.txt (do_robotstxt hook)
+	// ------------------------------------------------------------------
+
+	public function test_cors_headers_method_is_hooked_on_do_robotstxt(): void {
+		// Can't test the actual `header()` calls without process
+		// isolation (PHP headers-sent state leaks between tests).
+		// Lock in the method's existence + signature so a future
+		// refactor that renames or removes it fires this test.
+		$this->assertTrue(
+			method_exists( WC_AI_Syndication_Robots::class, 'send_cors_headers' ),
+			'send_cors_headers method should exist for the do_robotstxt hook'
+		);
+
+		$reflection = new ReflectionMethod( WC_AI_Syndication_Robots::class, 'send_cors_headers' );
+		$this->assertTrue( $reflection->isPublic() );
+		$this->assertSame(
+			0,
+			$reflection->getNumberOfParameters(),
+			'Method hooks `do_robotstxt` action which passes no arguments'
 		);
 	}
 }

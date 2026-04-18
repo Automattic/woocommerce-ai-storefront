@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.6.0
+Stable tag: 1.6.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,13 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.6.1 =
+* Fixed: Perplexity's browsing tool (and other Chromium-headless AI crawlers) couldn't read `/robots.txt` because the response had no CORS headers — same class of bug fixed for `/llms.txt` in 1.4.1, but robots.txt is served by WordPress core, not by our plugin, so the 1.4.1 fix didn't cover it. Added `do_robotstxt` action hook at priority 5 that injects `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, OPTIONS`, and `X-Content-Type-Options: nosniff` before WP core flushes the body. Verified via curl with `PerplexityBot/1.0` UA: response now includes CORS headers.
+* Added: sitemap `Allow:` directives inside every named AI-bot block in robots.txt. Auto-discovered from the top-level `Sitemap:` directives that WordPress core and SEO plugins (Yoast, Rank Math) emit, so any source of truth flows through without hardcoding. Per robots.txt spec the top-level `Sitemap:` is global and named crawlers see it regardless — but poorly-implemented parsers that over-scope their User-agent group were observed missing it. Cheap defensive redundancy.
+* Added: explicit `Disallow: /` block for AI bots the merchant has unchecked. Pre-1.6.1 unchecked bots silently fell through to `User-agent: *` (which allows most of the site); post-1.6.1 they receive a specific per-bot block that matches merchant intent more honestly. Especially relevant for the training-default-off policy from 1.6.0 — fresh installs now explicitly tell GPTBot / Google-Extended / ClaudeBot / etc. that they're not welcome, rather than relying on "not listed" as the signal. Uses grouped `User-agent:` syntax per RFC 9309 §2.2.1 (~150 bytes saved vs. one block per bot).
+* Added: `Sitemap:` directive re-emitted at the end of the plugin's robots.txt section. Industry convention + defense against parsers that process directives in document order and expect sitemap declarations at the bottom. Duplicates (not replaces) the top-level emission by WordPress core / SEO plugins — both locations are now covered.
+* Changed: no version bump required for consumers of WC_AI_Syndication_Robots — all additions are additive. Existing callers and the merchant settings layer are unaffected.
 
 = 1.6.0 =
 * Added: cursor-based pagination on `POST /catalog/search` per the UCP v2026-04-08 `types/pagination.json` spec. Requests accept `pagination.cursor` (opaque) and `pagination.limit` (default 10, max 100). Responses emit `pagination.has_next_page` (always) and `pagination.cursor` (when more pages exist) and `pagination.total_count` (when Store API provides X-WP-Total). Closes a latent correctness issue: pre-1.6.0 search always returned the Store API default page (~10 products), silently losing 95% of data for any agent trying to enumerate a 200-product catalog. Cursor format is base64 of `p<page_number>` — opaque to agents, stateless, survives restarts. Malformed cursors fall back to page 1 without error (catalog mutation between calls can invalidate cursors; surfacing that as an error would make pagination brittle).

@@ -310,6 +310,34 @@ class WC_AI_Syndication_Robots {
 	 */
 	public function init() {
 		add_filter( 'robots_txt', [ $this, 'add_ai_crawler_rules' ], 20, 2 );
+
+		// CORS + nosniff headers on the robots.txt response. Same
+		// rationale as the llms.txt CORS fix in 1.4.1: AI browsing
+		// tools running in Chromium-headless contexts enforce CORS
+		// on their fetches, and without `Access-Control-Allow-Origin`
+		// the file is invisible to them. Perplexity's browsing tool
+		// was confirmed affected before 1.6.1.
+		//
+		// We don't serve /robots.txt ourselves — WordPress core does
+		// via `do_robotstxt`. The `do_robotstxt` action fires inside
+		// `do_robots()` after WP sets Content-Type but BEFORE the
+		// body is flushed, which is the right moment to inject
+		// additional headers without fighting WP core.
+		add_action( 'do_robotstxt', [ $this, 'send_cors_headers' ], 5 );
+	}
+
+	/**
+	 * Inject CORS + nosniff headers on the /robots.txt response.
+	 *
+	 * Hooked on `do_robotstxt` (action that fires exactly once,
+	 * only on requests WP has identified as robots.txt). Runs at
+	 * priority 5 to set headers before any other plugin hooking
+	 * the same action can echo content (which would flush headers).
+	 */
+	public function send_cors_headers() {
+		header( 'Access-Control-Allow-Origin: *' );
+		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
+		header( 'X-Content-Type-Options: nosniff' );
 	}
 
 	/**
@@ -335,6 +363,18 @@ class WC_AI_Syndication_Robots {
 		}
 
 		$allowed_bots = $settings['allowed_crawlers'] ?? self::AI_CRAWLERS;
+
+		// Discover sitemap URLs from the existing robots.txt content
+		// (WordPress core since 5.5 emits one at the top; SEO plugins
+		// like Yoast and Rank Math emit their own). We parse what's
+		// already there rather than hardcoding a path, so any source
+		// of truth a merchant's site is using — WP core, Yoast, Rank
+		// Math, custom — flows through to the AI-bot blocks.
+		//
+		// Captured before the `$output .=` loop so we're reading the
+		// ORIGINAL input, not lines we've already appended ourselves
+		// (which would create a feedback loop if we re-emitted them).
+		$sitemap_urls = self::extract_sitemap_urls( $output );
 
 		$output .= "\n# WooCommerce AI Syndication\n";
 		$output .= "# Machine-readable store data for AI-assisted product discovery\n\n";
@@ -378,6 +418,21 @@ class WC_AI_Syndication_Robots {
 			// agents dispatch to. Distinct from the /.well-known/ucp
 			// discovery manifest, which announces that these exist.
 			$output .= "Allow: /wp-json/wc/ucp/\n";
+
+			// Sitemap Allows, emitted inside each named block as
+			// defense against crawlers that only parse directives
+			// within their own User-agent group (a spec-noncompliant
+			// but not-unheard-of behavior). The top-level Sitemap:
+			// directive is already authoritative per spec, so this
+			// is pure redundancy — but it's free and it accommodates
+			// implementations that over-scope their parsing.
+			foreach ( $sitemap_urls as $sitemap_url ) {
+				$sitemap_path = wp_parse_url( $sitemap_url, PHP_URL_PATH );
+				if ( is_string( $sitemap_path ) && '' !== $sitemap_path ) {
+					$output .= "Allow: {$sitemap_path}\n";
+				}
+			}
+
 			if ( '/' !== $shop_path ) {
 				$output .= "Allow: {$shop_path}\n";
 			}
@@ -389,6 +444,42 @@ class WC_AI_Syndication_Robots {
 			$output .= "\n";
 		}
 
+		// Emit explicit opt-out for any known AI bot the merchant
+		// has unchecked. Pre-1.6.1 these bots silently fell through
+		// to `User-agent: *` (which allows most of the site); post-
+		// 1.6.1 they receive a specific `Disallow: /` block that
+		// matches merchant intent more honestly.
+		//
+		// The most important case is the training-default-off
+		// policy from 1.6.0: on fresh installs, every training
+		// crawler is unchecked. This block converts the implicit
+		// "not listed" signal into an explicit "you are not welcome"
+		// signal, which well-behaved crawlers respect more reliably.
+		//
+		// Multiple User-agent lines before a single Disallow is a
+		// valid rule group per RFC 9309 section 2.2.1 — saves
+		// ~150 bytes vs. a separate block per bot on a fresh
+		// install.
+		$opted_out = array_values( array_diff( self::AI_CRAWLERS, $allowed_bots ) );
+		if ( ! empty( $opted_out ) ) {
+			$output .= "# Explicit opt-out for AI bots the merchant has unchecked.\n";
+			foreach ( $opted_out as $bot ) {
+				$output .= 'User-agent: ' . sanitize_text_field( $bot ) . "\n";
+			}
+			$output .= "Disallow: /\n\n";
+		}
+
+		// Re-emit sitemap references at the bottom of our section.
+		// Industry convention is to place Sitemap: declarations at
+		// the end of robots.txt so parsers that process directives
+		// in document order encounter them after they've finished
+		// their User-agent group parsing. WordPress core emits them
+		// at the top (valid per spec); duplicating at the bottom
+		// is defense against both orderings.
+		foreach ( $sitemap_urls as $sitemap_url ) {
+			$output .= "Sitemap: {$sitemap_url}\n";
+		}
+
 		/**
 		 * Filter the AI crawler robots.txt rules.
 		 *
@@ -397,5 +488,37 @@ class WC_AI_Syndication_Robots {
 		 * @param array  $settings The AI syndication settings.
 		 */
 		return apply_filters( 'wc_ai_syndication_robots_txt', $output, $settings );
+	}
+
+	/**
+	 * Extract sitemap URLs from existing robots.txt content.
+	 *
+	 * Parses all top-level `Sitemap:` directives (case-insensitive
+	 * per spec). Returns unique URLs in discovery order. Falls back
+	 * to `get_sitemap_url( 'index' )` — the WordPress core helper
+	 * since 5.5 — if no Sitemap directives are present, so the
+	 * plugin still references the correct sitemap on sites that
+	 * don't have an SEO plugin configuring one explicitly.
+	 *
+	 * @param string $robots_txt The full robots.txt body at the
+	 *                           moment our filter runs.
+	 * @return string[]          Discovered sitemap URLs.
+	 */
+	private static function extract_sitemap_urls( string $robots_txt ): array {
+		if ( preg_match_all( '/^\s*Sitemap:\s*(\S+)/mi', $robots_txt, $matches ) ) {
+			return array_values( array_unique( $matches[1] ) );
+		}
+
+		// No Sitemap directive in input → fall back to WP core's
+		// canonical sitemap URL. Returns empty string on sites where
+		// the core sitemap is disabled via filter; we filter that out.
+		if ( function_exists( 'get_sitemap_url' ) ) {
+			$core_sitemap = get_sitemap_url( 'index' );
+			if ( is_string( $core_sitemap ) && '' !== $core_sitemap ) {
+				return [ $core_sitemap ];
+			}
+		}
+
+		return [];
 	}
 }
