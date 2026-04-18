@@ -436,13 +436,18 @@ class WC_AI_Syndication_Robots {
 			// deduped — non-existent paths are no-ops for bots.
 			$discovered_paths = array_filter(
 				array_map(
-					static fn( string $url ): ?string => wp_parse_url( $url, PHP_URL_PATH ) ?: null,
+					static function ( string $url ): ?string {
+						$parsed = wp_parse_url( $url, PHP_URL_PATH );
+						return ( is_string( $parsed ) && '' !== $parsed ) ? $parsed : null;
+					},
 					$sitemap_urls
 				)
 			);
-			$emit_paths = array_values( array_unique(
-				array_merge( $discovered_paths, self::COMMON_SITEMAP_PATHS )
-			) );
+			$emit_paths       = array_values(
+				array_unique(
+					array_merge( $discovered_paths, self::COMMON_SITEMAP_PATHS )
+				)
+			);
 			foreach ( $emit_paths as $sitemap_path ) {
 				if ( is_string( $sitemap_path ) && '' !== $sitemap_path ) {
 					$output .= "Allow: {$sitemap_path}\n";
