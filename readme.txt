@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.6.1
+Stable tag: 1.6.2
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,10 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.6.2 =
+* Fixed: 1.6.1's sitemap auto-discovery missed sites whose SEO/sitemap plugin (notably Jetpack's Sitemaps module, default on WordPress.com Atomic) emits `Sitemap:` directives via the `do_robotstxt` action with direct `echo` instead of through the `robots_txt` filter. Our filter runs in isolation from the echoed output, so the discovery regex saw nothing and fell back to WP core's `/wp-sitemap.xml` — which doesn't exist on Jetpack-powered sites. Merchants with Jetpack (i.e. every WP.com Atomic install) saw `Allow: /wp-sitemap.xml` in each AI-bot block instead of the actually-correct `Allow: /sitemap.xml`.
+* Added: `COMMON_SITEMAP_PATHS` constant with hardcoded fallback paths (`/sitemap.xml`, `/sitemap_index.xml`, `/wp-sitemap.xml`, `/news-sitemap.xml`) emitted alongside any auto-discovered paths. Union + dedupe, so sites that DO emit via the filter correctly (Yoast SEO, Rank Math, AIOSEO in standard config) still see their specific URLs without duplication. Sites on Jetpack get their standard `/sitemap.xml` + `/news-sitemap.xml` paths inside every AI-bot block via the fallback. `Allow:` directives for non-existent paths are no-ops for crawlers, so this is zero-harm belt-and-suspenders.
 
 = 1.6.1 =
 * Fixed: Perplexity's browsing tool (and other Chromium-headless AI crawlers) couldn't read `/robots.txt` because the response had no CORS headers — same class of bug fixed for `/llms.txt` in 1.4.1, but robots.txt is served by WordPress core, not by our plugin, so the 1.4.1 fix didn't cover it. Added `do_robotstxt` action hook at priority 5 that injects `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, OPTIONS`, and `X-Content-Type-Options: nosniff` before WP core flushes the body. Verified via curl with `PerplexityBot/1.0` UA: response now includes CORS headers.

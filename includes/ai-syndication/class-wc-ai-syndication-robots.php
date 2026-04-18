@@ -426,8 +426,24 @@ class WC_AI_Syndication_Robots {
 			// directive is already authoritative per spec, so this
 			// is pure redundancy — but it's free and it accommodates
 			// implementations that over-scope their parsing.
-			foreach ( $sitemap_urls as $sitemap_url ) {
-				$sitemap_path = wp_parse_url( $sitemap_url, PHP_URL_PATH );
+			//
+			// Two-source strategy: paths discovered from the existing
+			// robots.txt body (via `extract_sitemap_urls`, covers
+			// SEO plugins that use the `robots_txt` filter) plus the
+			// hardcoded `COMMON_SITEMAP_PATHS` list (covers SEO
+			// plugins that emit via `do_robotstxt` action — invisible
+			// to our filter but commonly at known paths). Union,
+			// deduped — non-existent paths are no-ops for bots.
+			$discovered_paths = array_filter(
+				array_map(
+					static fn( string $url ): ?string => wp_parse_url( $url, PHP_URL_PATH ) ?: null,
+					$sitemap_urls
+				)
+			);
+			$emit_paths = array_values( array_unique(
+				array_merge( $discovered_paths, self::COMMON_SITEMAP_PATHS )
+			) );
+			foreach ( $emit_paths as $sitemap_path ) {
 				if ( is_string( $sitemap_path ) && '' !== $sitemap_path ) {
 					$output .= "Allow: {$sitemap_path}\n";
 				}
@@ -491,18 +507,59 @@ class WC_AI_Syndication_Robots {
 	}
 
 	/**
+	 * Common sitemap paths emitted by WordPress core and popular SEO
+	 * plugins. We emit `Allow:` for every entry in this list
+	 * regardless of whether the specific path is active on the
+	 * merchant's site — an `Allow:` directive for a non-existent
+	 * path is a no-op (bots still get 404 if they try to fetch it),
+	 * so this is harmless fallback coverage for sites whose SEO
+	 * plugin emits `Sitemap:` via the `do_robotstxt` action rather
+	 * than the `robots_txt` filter (a common pattern that leaves
+	 * our auto-discovery blind to their URLs).
+	 *
+	 * Paths chosen from observed real-world usage:
+	 *   - `/sitemap.xml`        — Yoast, Rank Math, AIOSEO default,
+	 *                             WooCommerce SEO, many custom configs
+	 *   - `/sitemap_index.xml`  — Yoast's index format (`sitemap.xml`
+	 *                             is often an alias to this)
+	 *   - `/wp-sitemap.xml`     — WordPress core (since 5.5)
+	 *   - `/news-sitemap.xml`   — Yoast Premium's Google News variant,
+	 *                             also some Rank Math setups
+	 *
+	 * @var string[]
+	 */
+	const COMMON_SITEMAP_PATHS = [
+		'/sitemap.xml',
+		'/sitemap_index.xml',
+		'/wp-sitemap.xml',
+		'/news-sitemap.xml',
+	];
+
+	/**
 	 * Extract sitemap URLs from existing robots.txt content.
 	 *
-	 * Parses all top-level `Sitemap:` directives (case-insensitive
-	 * per spec). Returns unique URLs in discovery order. Falls back
-	 * to `get_sitemap_url( 'index' )` — the WordPress core helper
-	 * since 5.5 — if no Sitemap directives are present, so the
-	 * plugin still references the correct sitemap on sites that
-	 * don't have an SEO plugin configuring one explicitly.
+	 * Two discovery strategies layered:
+	 *
+	 *   1. Regex the existing `$output` body for `Sitemap:`
+	 *      directives. Catches any SEO plugin that uses the
+	 *      `robots_txt` filter correctly (emission flows through
+	 *      `$output`).
+	 *
+	 *   2. Fall back to `get_sitemap_url( 'index' )` — WP core
+	 *      helper since 5.5 — for sites running the default
+	 *      core sitemap with no SEO plugin configured.
+	 *
+	 * NOT covered by either strategy: SEO plugins that emit
+	 * `Sitemap:` via the `do_robotstxt` action (direct `echo`).
+	 * Those lines appear in the final robots.txt body but aren't
+	 * visible to our filter. For those sites, the caller falls
+	 * back to the hardcoded `COMMON_SITEMAP_PATHS` list — this
+	 * function's job is to return specifically-discovered URLs,
+	 * not to guarantee coverage.
 	 *
 	 * @param string $robots_txt The full robots.txt body at the
 	 *                           moment our filter runs.
-	 * @return string[]          Discovered sitemap URLs.
+	 * @return string[]          Discovered sitemap URLs (may be empty).
 	 */
 	private static function extract_sitemap_urls( string $robots_txt ): array {
 		if ( preg_match_all( '/^\s*Sitemap:\s*(\S+)/mi', $robots_txt, $matches ) ) {
