@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.6.2
+Stable tag: 1.6.3
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,10 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.6.3 =
+* Added: `## Sitemaps` section in llms.txt surfacing exhaustive URL enumeration paths for agents doing deep catalog discovery. Parallel to the sitemap `Allow:` entries in robots.txt (1.6.1/1.6.2) but in llms.txt's human+machine-readable narrative form. Unlike robots.txt where `Allow:` for non-existent paths is a harmless no-op, listing wrong URLs in llms.txt would be factually incorrect — so each candidate sitemap is HEAD-probed at generation time and only responding URLs make it into the document. Probes are synchronous with 1-second timeout but amortized by the 1-hour transient cache — one round per cache miss, not per request. Typical cache-miss latency: <500ms. Worst case (all 4 candidates time out): 4 seconds, once per hour.
+* Changed: sitemap discovery sources in llms.txt match robots.txt's behavior — `get_sitemap_url( 'index' )` for WP core canonical + the four hardcoded paths from `WC_AI_Syndication_Robots::COMMON_SITEMAP_PATHS` (`/sitemap.xml`, `/sitemap_index.xml`, `/wp-sitemap.xml`, `/news-sitemap.xml`), covering WP core, Jetpack, Yoast, Rank Math, and AIOSEO between them.
 
 = 1.6.2 =
 * Fixed: 1.6.1's sitemap auto-discovery missed sites whose SEO/sitemap plugin (notably Jetpack's Sitemaps module, default on WordPress.com Atomic) emits `Sitemap:` directives via the `do_robotstxt` action with direct `echo` instead of through the `robots_txt` filter. Our filter runs in isolation from the echoed output, so the discovery regex saw nothing and fell back to WP core's `/wp-sitemap.xml` — which doesn't exist on Jetpack-powered sites. Merchants with Jetpack (i.e. every WP.com Atomic install) saw `Allow: /wp-sitemap.xml` in each AI-bot block instead of the actually-correct `Allow: /sitemap.xml`.

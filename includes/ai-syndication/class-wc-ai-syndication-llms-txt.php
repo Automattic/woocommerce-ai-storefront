@@ -212,6 +212,29 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[]   = "- **Commerce Protocol Manifest**: `{$ucp_url}` — declares capabilities, checkout policy, and purchase URL templates";
 		$lines[]   = '';
 
+		// Sitemaps section. Surfaces exhaustive URL enumeration
+		// paths for agents doing deep catalog discovery — parallel
+		// to robots.txt's per-bot `Allow:` sitemap entries from
+		// 1.6.1/1.6.2, but in llms.txt's human+machine-readable
+		// narrative form. Unlike robots.txt (where `Allow:` for
+		// non-existent paths is harmless), here we probe each
+		// candidate via HEAD so only URLs that actually respond
+		// make it into the document. Probes are synchronous but
+		// amortized by the 1-hour transient cache in
+		// `get_cached_content()` — one round of probing per
+		// cache miss.
+		$sitemap_urls = self::discover_sitemap_urls( $site_url );
+		if ( ! empty( $sitemap_urls ) ) {
+			$lines[] = '## Sitemaps';
+			$lines[] = '';
+			$lines[] = 'Exhaustive URL lists for catalog enumeration. Agents wanting every product/category URL in one pass fetch these instead of paginating the Store API.';
+			$lines[] = '';
+			foreach ( $sitemap_urls as $sitemap_url ) {
+				$lines[] = "- {$sitemap_url}";
+			}
+			$lines[] = '';
+		}
+
 		// Product categories summary.
 		$categories = $this->get_syndicated_categories( $settings );
 		if ( ! empty( $categories ) ) {
@@ -276,6 +299,79 @@ class WC_AI_Syndication_Llms_Txt {
 	 * @param array $settings AI syndication settings.
 	 * @return WP_Term[]
 	 */
+	/**
+	 * Discover sitemap URLs by probing known paths + WP core's helper.
+	 *
+	 * Unlike the robots.txt sitemap handling (where `Allow:` for a
+	 * non-existent path is a harmless no-op), llms.txt is a
+	 * user-facing content document — emitting URLs that 404 would
+	 * be factually incorrect. So here we HEAD-probe each candidate
+	 * and only include the ones that actually respond.
+	 *
+	 * Probe sources:
+	 *   - `get_sitemap_url( 'index' )` — WP core canonical (5.5+)
+	 *   - `WC_AI_Syndication_Robots::COMMON_SITEMAP_PATHS` — common
+	 *     plugin paths (Jetpack, Yoast, Rank Math, etc.) appended
+	 *     to site URL
+	 *
+	 * Synchronous HEAD requests with a 1-second timeout, made on
+	 * the same origin. Amortized by the 1-hour transient cache in
+	 * `get_cached_content()` — probes run once per cache miss, not
+	 * per request. Worst case (all 4 paths time out): 4 seconds of
+	 * generation latency once per hour. Typical case (paths exist
+	 * or fast 404): <500ms.
+	 *
+	 * @param string $site_url Home URL with trailing slash.
+	 * @return string[]        Sitemap URLs that returned 2xx/3xx to
+	 *                         a HEAD probe. Empty on sites with no
+	 *                         sitemap at any common path.
+	 */
+	private static function discover_sitemap_urls( string $site_url ): array {
+		$candidates = [];
+
+		// WP core canonical (returns full URL when core sitemap is
+		// enabled; returns empty string if disabled via filter).
+		if ( function_exists( 'get_sitemap_url' ) ) {
+			$core = get_sitemap_url( 'index' );
+			if ( is_string( $core ) && '' !== $core ) {
+				$candidates[] = $core;
+			}
+		}
+
+		// Common plugin paths, absolute-URL form for llms.txt output.
+		$base = rtrim( $site_url, '/' );
+		foreach ( WC_AI_Syndication_Robots::COMMON_SITEMAP_PATHS as $path ) {
+			$candidates[] = $base . $path;
+		}
+		$candidates = array_values( array_unique( $candidates ) );
+
+		// HEAD-probe each. Only URLs returning 2xx/3xx make it in.
+		$existent = [];
+		foreach ( $candidates as $candidate ) {
+			$response = wp_remote_head(
+				$candidate,
+				[
+					'timeout'     => 1,
+					'redirection' => 1,
+					'blocking'    => true,
+					// Skip SSL verify on self-origin probes — some
+					// local/dev environments have self-signed certs
+					// that would otherwise reject the probe.
+					'sslverify'   => false,
+				]
+			);
+			if ( is_wp_error( $response ) ) {
+				continue;
+			}
+			$code = wp_remote_retrieve_response_code( $response );
+			if ( $code >= 200 && $code < 400 ) {
+				$existent[] = $candidate;
+			}
+		}
+
+		return $existent;
+	}
+
 	private function get_syndicated_categories( $settings ) {
 		$args = [
 			'taxonomy'   => 'product_cat',
