@@ -89,7 +89,7 @@ The operational counterpart to the discovery layer. Translates the WooCommerce S
 
 | File | Purpose |
 |------|---------|
-| `class-wc-ai-syndication-attribution.php` | Captures AI-referred orders via standard WooCommerce Order Attribution (`utm_medium=ai_agent`). Adds AI Agent column to orders list (HPOS + legacy). SQL aggregation for per-agent revenue stats. |
+| `class-wc-ai-syndication-attribution.php` | Captures AI-referred orders via standard WooCommerce Order Attribution (`utm_medium=ai_agent`). Surfaces agent name in WC core's "Origin" column (fed by `utm_source`); no custom column since 1.6.7. SQL aggregation for per-agent revenue stats. |
 
 ### Rate Limiting
 

@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.6.6
+Stable tag: 1.6.7
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -42,7 +42,7 @@ Uses WordPress's `robots.txt` to declare which AI crawlers are allowed. Uses Woo
 3. A Markdown store guide is published at `/llms.txt` pointing AI agents at your product catalog, Store API, and UCP manifest.
 4. A JSON manifest at `/.well-known/ucp` declares that checkout is web-redirect only (never delegated, never in-chat) and documents the purchase URL templates agents can use.
 5. Product pages ship enhanced Schema.org JSON-LD with a BuyAction pointing back to your checkout with attribution placeholders.
-6. When a customer clicks through from an AI agent and buys, WooCommerce's standard Order Attribution captures the agent name in order meta. The admin shows AI orders alongside regular orders with an "AI Agent" column, and the plugin's settings page displays AI-attributed revenue by agent and time period.
+6. When a customer clicks through from an AI agent and buys, WooCommerce's standard Order Attribution captures the agent name in order meta. The agent is displayed in WooCommerce's built-in "Origin" column on the orders list (as `Source: ChatGPT`, `Source: Gemini`, etc.), and the plugin's settings page displays AI-attributed revenue by agent and time period.
 
 = Data sovereignty =
 
@@ -77,7 +77,7 @@ Well-behaved AI crawlers respect `robots.txt` directives. Compliance is not univ
 
 = How does attribution work? =
 
-When an AI agent links to a product page, it appends `utm_source={agent_id}&utm_medium=ai_agent&ai_session_id={session_id}` query parameters. WooCommerce's Order Attribution system (included in WooCommerce core since 8.5) captures these values into order meta. The plugin adds an `AI Agent` column to the orders list and surfaces per-agent revenue totals in the settings overview.
+When an AI agent links to a product page, it appends `utm_source={agent_name}&utm_medium=ai_agent&ai_session_id={session_id}` query parameters. WooCommerce's Order Attribution system (included in WooCommerce core since 8.5) captures these values into order meta and displays them in the built-in "Origin" column on the orders list — no custom column needed. The plugin surfaces per-agent revenue totals in the settings overview.
 
 = What's the difference between llms.txt, robots.txt, and the UCP manifest? =
 
@@ -109,6 +109,11 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.6.7 =
+* Changed: `utm_source` on the `continue_url` returned by `POST /checkout-sessions` is now a short, human-readable brand name (`ChatGPT`, `Gemini`, `Claude`, `Perplexity`, `Copilot`, `Siri`, `Rufus`, `Klarna`, `You`, `Kagi`) instead of the raw UCP-Agent profile hostname. WooCommerce Order Attribution feeds this into `_wc_order_attribution_utm_source`, which WC's built-in "Origin" column on the Orders list displays as `Source: {name}` — so the previous `Source: Gemini.google.com` now reads `Source: Gemini`. Unknown / novel agents pass through verbatim so attribution is never lost, just refined for known vendors. The map lives in `WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS`; adding a new vendor is a single constant entry plus a test-provider row.
+* Removed: the custom "AI Agent" column and "Filter by AI agent" dropdown on the WooCommerce Orders list. Both duplicated WooCommerce core's built-in "Origin" column (which has been fed correctly by our `utm_source` / `utm_medium` pair all along). 186 lines removed from `class-wc-ai-syndication-attribution.php` including four hooks, four methods, and the `get_known_agents()` SQL helper. The order-edit meta box is unchanged — it still shows the AI session ID, which WC's native attribution UI doesn't surface.
+* Added: regression guards in `AttributionTest.php` asserting that `init()` does not register any of the eight removed hooks and that none of the six removed methods exist on the class. Reintroducing the duplicate column without a conscious design review will fail CI. Also added an integration test in `UcpCheckoutSessionsTest.php` pinning the `gemini.google.com → Gemini` end-to-end wiring, plus unit tests for every entry in the `KNOWN_AGENT_HOSTS` map, case-insensitive matching, unknown-host passthrough, and the deliberate no-subdomain-match behavior.
 
 = 1.6.6 =
 * Added: explicit "merchant-only checkout" posture lock-in. Two complementary changes: (1) a new `## Checkout Policy` section in llms.txt declaring affirmatively that all purchases complete on the merchant site, and enumerating the five UCP surfaces we deliberately don't support (in-chat payment, embedded checkout, AP2 Mandates / agent-delegated authorization, persistent agent carts, payment handler tokens); (2) a dedicated regression test file `UcpCheckoutPostureTest.php` with 11 tests that lock every layer of the defense stack — empty `payment_handlers`, no `ap2_mandate` or `cart` capability, REST-only transport (no Embedded Protocol / MCP / A2A), exactly the 3 expected REST routes registered (no Complete Checkout endpoint), no `signing_keys` at profile root, no payment-related keys anywhere in the manifest. A future maintainer accidentally adding any of these weakens the posture; the tests fire and force a conscious posture review rather than silent capability drift.

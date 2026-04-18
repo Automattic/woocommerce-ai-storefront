@@ -684,7 +684,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			);
 		}
 
-		$agent_host = self::resolve_agent_host( $request );
+		$agent_name = self::resolve_agent_host( $request );
 		$currency   = function_exists( 'get_woocommerce_currency' )
 			? (string) get_woocommerce_currency()
 			: 'USD';
@@ -711,7 +711,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 		$has_valid_items = ! empty( $processed );
 		$continue_url    = $has_valid_items
-			? self::build_continue_url( $processed, $agent_host )
+			? self::build_continue_url( $processed, $agent_name )
 			: '';
 
 		// Response line_items: echo successfully-processed items with
@@ -1427,14 +1427,19 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	// ------------------------------------------------------------------
 
 	/**
-	 * Resolve the hostname from the UCP-Agent header for attribution,
-	 * falling back to the plugin's `ucp_unknown` sentinel when the
-	 * header is missing/malformed.
+	 * Resolve the canonical agent name for attribution, derived from the
+	 * UCP-Agent header's profile URL. Falls back to the `ucp_unknown`
+	 * sentinel when the header is missing/malformed.
 	 *
-	 * Used as `utm_source` in the Shareable Checkout URL — lets
-	 * merchants see order attribution flowing through WooCommerce's
-	 * native Order Attribution system, so they can measure AI-sourced
-	 * revenue without extra integration.
+	 * The returned value lands in `utm_source` on the continue_url, is
+	 * captured by WooCommerce Order Attribution into
+	 * `_wc_order_attribution_utm_source`, and shows up verbatim in the
+	 * Orders list's "Origin" column as `Source: {name}`. Canonicalizing
+	 * here (rather than at display time) keeps that WC-captured value
+	 * clean and queryable for stats breakdowns.
+	 *
+	 * @see WC_AI_Syndication_UCP_Agent_Header::canonicalize_host() for
+	 *      the hostname → brand-name mapping rationale.
 	 */
 	private static function resolve_agent_host( WP_REST_Request $request ): string {
 		$header = $request->get_header( 'ucp-agent' );
@@ -1442,7 +1447,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		if ( is_string( $header ) && '' !== $header ) {
 			$host = WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( $header );
 			if ( '' !== $host ) {
-				return $host;
+				return WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( $host );
 			}
 		}
 
@@ -1616,15 +1621,19 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *   /checkout-link/?products=ID:QTY,ID:QTY
 	 *
 	 * UTM parameters append for attribution:
-	 *   &utm_source={agent_host}&utm_medium=ai_agent
+	 *   &utm_source={agent_name}&utm_medium=ai_agent
 	 *
 	 * WC's own Order Attribution system captures these on the resulting
 	 * order, so merchants see agent-sourced traffic without needing any
 	 * extra plumbing.
 	 *
-	 * @param array<int, array<string, mixed>> $processed Successfully-processed line items.
+	 * @param array<int, array<string, mixed>> $processed  Successfully-processed line items.
+	 * @param string                           $agent_name Canonical brand name for `utm_source`
+	 *                                                     (e.g. "Gemini", "ChatGPT"), as produced
+	 *                                                     by `resolve_agent_host()`. Shows up in
+	 *                                                     WC's Origin column as `Source: {name}`.
 	 */
-	private static function build_continue_url( array $processed, string $agent_host ): string {
+	private static function build_continue_url( array $processed, string $agent_name ): string {
 		$segments = [];
 		foreach ( $processed as $p ) {
 			$segments[] = $p['wc_id'] . ':' . $p['quantity'];
@@ -1636,7 +1645,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 		return $base
 			. '?products=' . implode( ',', $segments )
-			. '&utm_source=' . rawurlencode( $agent_host )
+			. '&utm_source=' . rawurlencode( $agent_name )
 			. '&utm_medium=ai_agent';
 	}
 

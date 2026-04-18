@@ -139,4 +139,86 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 			WC_AI_Syndication_UCP_Agent_Header::FALLBACK_SOURCE
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// canonicalize_host() — hostname → short brand name
+	// ------------------------------------------------------------------
+
+	/**
+	 * @dataProvider known_host_provider
+	 */
+	public function test_canonicalize_host_maps_known_hostnames( string $input, string $expected ): void {
+		// Every entry in KNOWN_AGENT_HOSTS must resolve to its brand
+		// name. Adding a new brand: add it to the constant AND add a
+		// data-provider row here — the test doubles as the map's
+		// spec so the two can't silently drift.
+		$this->assertEquals(
+			$expected,
+			WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( $input )
+		);
+	}
+
+	public static function known_host_provider(): array {
+		return [
+			'OpenAI ChatGPT'      => [ 'chatgpt.com', 'ChatGPT' ],
+			'OpenAI corporate'    => [ 'openai.com', 'ChatGPT' ],
+			'Anthropic Claude'    => [ 'claude.ai', 'Claude' ],
+			'Anthropic corporate' => [ 'anthropic.com', 'Claude' ],
+			'Google Gemini'       => [ 'gemini.google.com', 'Gemini' ],
+			'Google DeepMind'     => [ 'deepmind.google', 'Gemini' ],
+			'Microsoft Copilot'   => [ 'copilot.microsoft.com', 'Copilot' ],
+			'Microsoft Bing'      => [ 'bing.com', 'Copilot' ],
+			'Perplexity'          => [ 'perplexity.ai', 'Perplexity' ],
+			'Apple Siri'          => [ 'siri.apple.com', 'Siri' ],
+			'Amazon Rufus'        => [ 'rufus.amazon.com', 'Rufus' ],
+			'Klarna'              => [ 'klarna.com', 'Klarna' ],
+			'You.com'             => [ 'you.com', 'You' ],
+			'Kagi'                => [ 'kagi.com', 'Kagi' ],
+		];
+	}
+
+	public function test_canonicalize_host_is_case_insensitive(): void {
+		// DNS hostnames are case-insensitive by RFC, and some agents
+		// send mixed-case (observed: `Gemini.google.com` from Google's
+		// Gemini profile URL). Canonicalization must collapse case
+		// before lookup or the mapping silently misses.
+		$this->assertEquals(
+			'Gemini',
+			WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( 'Gemini.Google.COM' )
+		);
+	}
+
+	public function test_canonicalize_host_returns_hostname_when_unknown(): void {
+		// Unknown agents keep their hostname so merchants still see
+		// *something* in the Origin column — "Source: foo-ai.example"
+		// is useful traceability. An empty/sentinel value here would
+		// erase attribution for every novel vendor.
+		$this->assertEquals(
+			'unknown-agent.example.com',
+			WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( 'unknown-agent.example.com' )
+		);
+	}
+
+	public function test_canonicalize_host_returns_empty_for_empty_input(): void {
+		// Guards against `wp_parse_url()` returning an empty string for
+		// a malformed profile URL. An empty input should pass through
+		// untouched so `resolve_agent_host()` can detect the failure
+		// and fall back to FALLBACK_SOURCE.
+		$this->assertEquals(
+			'',
+			WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( '' )
+		);
+	}
+
+	public function test_canonicalize_host_does_not_subdomain_match(): void {
+		// Deliberate non-feature: we do NOT glob-match subdomains.
+		// `foo.openai.com` is NOT `openai.com`; an agent at that
+		// subdomain might be a different product (training bot,
+		// internal tool, partner integration) and collapsing it to
+		// "ChatGPT" would misattribute.
+		$this->assertEquals(
+			'foo.openai.com',
+			WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( 'foo.openai.com' )
+		);
+	}
 }
