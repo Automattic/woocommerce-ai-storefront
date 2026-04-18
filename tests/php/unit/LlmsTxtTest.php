@@ -222,6 +222,90 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// Attribution name mapping — the published hostname → brand table
+	// ------------------------------------------------------------------
+
+	public function test_attribution_section_publishes_name_mapping_table(): void {
+		// The `### Attribution name mapping` subsection makes
+		// attribution a two-way contract: agents see, up-front, what
+		// brand name their orders will be attributed under. Without
+		// this, the canonicalization in KNOWN_AGENT_HOSTS is opaque
+		// until an agent completes a test checkout and inspects
+		// utm_source. Asserting the section header + the Markdown
+		// table header locks the structural shape.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '### Attribution name mapping', $output );
+		$this->assertStringContainsString( '| Attribution name | Profile hostnames |', $output );
+		$this->assertStringContainsString( '|------------------|-------------------|', $output );
+	}
+
+	public function test_attribution_table_contains_every_known_agent_host_entry(): void {
+		// Single source of truth: the published table is rendered
+		// from WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS
+		// at generation time. If a future PR adds a vendor to the
+		// map but the table somehow drops it (refactor regression),
+		// this test fires. Every hostname AND every brand name must
+		// appear in the output.
+		$output = $this->llms->generate();
+
+		foreach ( WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS as $host => $brand ) {
+			$this->assertStringContainsString( $host, $output, "Published attribution table missing hostname {$host}" );
+			$this->assertStringContainsString( $brand, $output, "Published attribution table missing brand name {$brand}" );
+		}
+	}
+
+	public function test_attribution_table_groups_aliased_hostnames_on_one_row(): void {
+		// Brands with multiple hostname aliases (ChatGPT ←
+		// chatgpt.com + openai.com; Claude ← claude.ai +
+		// anthropic.com) render as ONE row with a comma-separated
+		// hostname list, not as two separate rows. Grouping reads
+		// more naturally ("here are the brands we know") and keeps
+		// the table compact as the map grows. Assertion pattern
+		// locks both the grouping AND the delimiter format.
+		$output = $this->llms->generate();
+
+		$this->assertMatchesRegularExpression(
+			'/\| ChatGPT \| `chatgpt\.com`, `openai\.com` \|/',
+			$output,
+			'ChatGPT row should list chatgpt.com and openai.com on a single grouped row'
+		);
+		$this->assertMatchesRegularExpression(
+			'/\| Claude \| `claude\.ai`, `anthropic\.com` \|/',
+			$output,
+			'Claude row should list claude.ai and anthropic.com on a single grouped row'
+		);
+	}
+
+	public function test_attribution_section_documents_fallback_behavior(): void {
+		// The published contract isn't just the happy path — agents
+		// integrating need to know what happens when (a) their
+		// hostname isn't in the map (passthrough), and (b) no
+		// UCP-Agent header is sent (ucp_unknown sentinel). Without
+		// these explicit clauses the contract is incomplete and
+		// novel vendors would have to guess.
+		$output = $this->llms->generate();
+
+		// Unknown-hostname passthrough documented.
+		$this->assertStringContainsString( 'pass through verbatim', $output );
+
+		// Missing-header sentinel documented, referencing the exact
+		// value the runtime produces so an agent-side test harness
+		// can assertEqual against it.
+		$this->assertStringContainsString( 'ucp_unknown', $output );
+	}
+
+	public function test_attribution_section_invites_additions_via_github_issues(): void {
+		// The two-way-contract framing is only meaningful if agents
+		// have a path to request canonicalization. Pointer to the
+		// GitHub issue tracker converts "this is opaque policy" into
+		// "this is a map I can petition to be added to."
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'github.com/pierorocca/woocommerce-ai-syndication/issues', $output );
+	}
+
+	// ------------------------------------------------------------------
 	// HTML-entity decoding
 	// ------------------------------------------------------------------
 
