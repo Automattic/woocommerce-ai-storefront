@@ -68,6 +68,17 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'wc_get_products' )->justReturn( [] );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
+
+		// Sitemap-discovery stubs. Default: nothing found (no sitemap
+		// section in output). Individual tests override via
+		// `Functions\when()->alias()` to simulate found sitemaps.
+		// `is_wp_error` is globally stubbed in `tests/php/stubs.php`
+		// (too early for Patchwork to redefine it here).
+		Functions\when( 'get_sitemap_url' )->justReturn( '' );
+		Functions\when( 'wp_remote_head' )->justReturn(
+			new WP_Error( 'no_probe', 'Not stubbed in test' )
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 0 );
 	}
 
 	protected function tearDown(): void {
@@ -390,6 +401,88 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( '', $result, 'generate() should have returned empty in this setup.' );
 		$this->assertSame( 0, $set_transient_calls, 'Empty content must not be cached — would poison the TTL window.' );
+	}
+
+	// ------------------------------------------------------------------
+	// Sitemaps section (1.6.3)
+	// ------------------------------------------------------------------
+
+	public function test_sitemap_section_absent_when_no_sitemaps_respond(): void {
+		// Default stubs: wp_remote_head returns WP_Error for every
+		// probe, get_sitemap_url returns empty → zero candidates
+		// confirmed existent → section not rendered.
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( '## Sitemaps', $output );
+	}
+
+	public function test_sitemap_section_rendered_when_sitemap_exists(): void {
+		// Simulate a site where /sitemap.xml responds 200 to a HEAD
+		// probe. The section should render with that URL listed.
+		Functions\when( 'wp_remote_head' )->alias(
+			static function ( string $url ): array {
+				if ( str_ends_with( $url, '/sitemap.xml' ) ) {
+					return [ 'response' => [ 'code' => 200 ] ];
+				}
+				return [ 'response' => [ 'code' => 404 ] ];
+			}
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->alias(
+			static fn( $response ) =>
+				is_array( $response ) && isset( $response['response']['code'] )
+					? (int) $response['response']['code']
+					: 0
+		);
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Sitemaps', $output );
+		$this->assertStringContainsString( '- https://example.com/sitemap.xml', $output );
+	}
+
+	public function test_sitemap_section_excludes_paths_that_404(): void {
+		// When some candidates probe OK and others don't, only
+		// the responding URLs make it into the output. Validates
+		// the HEAD-filter logic — emitting non-existent paths in
+		// llms.txt would be factually wrong (unlike robots.txt
+		// Allow, which is a harmless no-op).
+		Functions\when( 'wp_remote_head' )->alias(
+			static function ( string $url ): array {
+				// Only /sitemap.xml responds; /sitemap_index.xml,
+				// /wp-sitemap.xml, /news-sitemap.xml all 404.
+				$code = str_ends_with( $url, '/sitemap.xml' ) ? 200 : 404;
+				return [ 'response' => [ 'code' => $code ] ];
+			}
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->alias(
+			static fn( $response ) => (int) $response['response']['code']
+		);
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '- https://example.com/sitemap.xml', $output );
+		$this->assertStringNotContainsString( '/sitemap_index.xml', $output );
+		$this->assertStringNotContainsString( '/news-sitemap.xml', $output );
+	}
+
+	public function test_wp_core_sitemap_included_when_non_empty(): void {
+		// `get_sitemap_url( 'index' )` returns WP core's canonical
+		// sitemap URL when the feature is active. That candidate
+		// should be probed alongside the hardcoded COMMON_SITEMAP_PATHS.
+		Functions\when( 'get_sitemap_url' )->justReturn( 'https://example.com/wp-sitemap.xml' );
+		Functions\when( 'wp_remote_head' )->alias(
+			static function ( string $url ): array {
+				$code = str_ends_with( $url, '/wp-sitemap.xml' ) ? 200 : 404;
+				return [ 'response' => [ 'code' => $code ] ];
+			}
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->alias(
+			static fn( $response ) => (int) $response['response']['code']
+		);
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '- https://example.com/wp-sitemap.xml', $output );
 	}
 
 	/**
