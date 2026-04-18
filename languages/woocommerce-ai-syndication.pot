@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-18T19:03:18+00:00\n"
+"POT-Creation-Date: 2026-04-18T22:29:42+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-syndication\n"
@@ -159,44 +159,37 @@ msgstr ""
 msgid "WooCommerce AI Syndication requires WooCommerce to be installed and active."
 msgstr ""
 
-#: client/data/ai-syndication/actions.js:38
+#: client/data/ai-syndication/actions.js:42
 msgid "Settings saved."
 msgstr ""
 
-#: client/data/ai-syndication/actions.js:43
+#: client/data/ai-syndication/actions.js:47
 msgid "Error saving settings."
 msgstr ""
 
-#: client/settings/ai-syndication/agent-revenue-table.js:164
-#: client/settings/ai-syndication/agent-revenue-table.js:259
+#: client/settings/ai-syndication/ai-orders-table.js:174
+msgid "Order"
+msgstr ""
+
+#: client/settings/ai-syndication/ai-orders-table.js:192
+msgid "Date"
+msgstr ""
+
+#: client/settings/ai-syndication/ai-orders-table.js:203
+#: client/settings/ai-syndication/endpoint-info.js:383
+msgid "Status"
+msgstr ""
+
+#: client/settings/ai-syndication/ai-orders-table.js:215
 msgid "Agent"
 msgstr ""
 
-#: client/settings/ai-syndication/agent-revenue-table.js:170
-#: client/settings/ai-syndication/agent-revenue-table.js:262
-msgid "Orders"
-msgstr ""
-
-#: client/settings/ai-syndication/agent-revenue-table.js:175
-#: client/settings/ai-syndication/agent-revenue-table.js:265
-msgid "Revenue"
-msgstr ""
-
-#: client/settings/ai-syndication/agent-revenue-table.js:204
-msgid "Total orders"
-msgstr ""
-
-#: client/settings/ai-syndication/agent-revenue-table.js:208
-msgid "Total revenue"
-msgstr ""
-
-#: client/settings/ai-syndication/agent-revenue-table.js:215
-#: client/settings/ai-syndication/agent-revenue-table.js:253
-msgid "Revenue by Agent"
-msgstr ""
-
-#: client/settings/ai-syndication/agent-revenue-table.js:295
+#: client/settings/ai-syndication/ai-orders-table.js:222
 msgid "Total"
+msgstr ""
+
+#: client/settings/ai-syndication/ai-orders-table.js:268
+msgid "Recent AI Orders"
 msgstr ""
 
 #: client/settings/ai-syndication/endpoint-info.js:209
@@ -233,10 +226,6 @@ msgstr ""
 
 #: client/settings/ai-syndication/endpoint-info.js:377
 msgid "URL"
-msgstr ""
-
-#: client/settings/ai-syndication/endpoint-info.js:383
-msgid "Status"
 msgstr ""
 
 #: client/settings/ai-syndication/endpoint-info.js:389

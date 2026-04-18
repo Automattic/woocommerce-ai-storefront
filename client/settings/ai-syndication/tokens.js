@@ -41,4 +41,7 @@ export const colors = {
 	success: '#00a32a', // WP alert-green — active accents, stat values
 	successBg: '#edfaef', // success tint — pill background when populated
 	error: '#d63638', // WP alert-red — warning copy
+
+	// Links
+	link: '#2271b1', // WP admin-blue — default link color (matches wp-admin anchors)
 };

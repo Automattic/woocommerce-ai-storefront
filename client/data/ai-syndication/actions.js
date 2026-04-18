@@ -20,6 +20,10 @@ export function setEndpoints( data ) {
 	return { type: ACTION_TYPES.SET_ENDPOINTS, data };
 }
 
+export function setRecentOrders( data ) {
+	return { type: ACTION_TYPES.SET_RECENT_ORDERS, data };
+}
+
 export function saveSettings() {
 	return async ( { dispatch, select } ) => {
 		const settings = select.getSettings();
@@ -84,6 +88,28 @@ export function fetchEndpoints() {
 			dispatch.setEndpoints( endpoints );
 		} catch ( error ) {
 			// Silent failure.
+		}
+	};
+}
+
+/**
+ * Fetch the recent AI-attributed orders list that feeds the Overview
+ * tab's DataViews table. Server returns agents already canonicalized
+ * through KNOWN_AGENT_HOSTS so legacy hostnames display as brand names
+ * (see /admin/recent-orders endpoint).
+ *
+ * @param {number} perPage How many orders to request (1-50, default 10).
+ */
+export function fetchRecentOrders( perPage = 10 ) {
+	return async ( { dispatch } ) => {
+		try {
+			const result = await apiFetch( {
+				path: `${ ADMIN_NAMESPACE }/recent-orders?per_page=${ perPage }`,
+			} );
+			dispatch.setRecentOrders( result );
+		} catch ( error ) {
+			// Silent failure — the table renders an empty state if
+			// recentOrders stays null.
 		}
 	};
 }
