@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.6.3
+Stable tag: 1.6.4
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,12 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.6.4 =
+* Changed: UCP manifest structure reorganized to match April spec's `entity` semantic conventions. Three coordinated changes: (1) the `config` block carrying `purchase_urls` + `attribution` moved from service-level (`services["dev.ucp.shopping"][0].config`) to checkout-capability-level (`capabilities["dev.ucp.shopping.checkout"][0].config`) — both placements are syntactically valid per the UCP entity schema, but semantically these are checkout-specific concerns and belong with the checkout capability; (2) added `spec` + `schema` URLs to every capability binding (`catalog.search`, `catalog.lookup`, `checkout`) pointing at ucp.dev's canonical per-capability documentation and JSON Schema files; (3) added `schema` to the service binding pointing at the OpenAPI 3.1 spec for the UCP Shopping REST service. Agents wanting machine-readable contract validation now have authoritative URLs for both the service-level transport (OpenAPI) and the capability-level payloads (JSON Schema).
+* Changed: all external spec/schema URLs migrated from GitHub `tree/v{VERSION}/source/...` paths to `https://ucp.dev/{VERSION}/...` paths. Single canonical host for every external reference in the manifest. Rendered docs at ucp.dev are the intended consumption path per the UCP project's publishing model; GitHub URLs were functional but aimed at source files rather than rendered specification pages.
+* Changed: service-level `spec` URL now points at `https://ucp.dev/{VERSION}/specification/overview` (the canonical UCP overview doc) instead of the GitHub schema directory listing. The previous URL resolved to a file browser rather than a "human-readable specification document" per the entity schema's intent.
+* Added: 4 regression tests locking in the structural changes — checkout capability owns the config (not service), every capability has `spec` + `schema` URLs, service has an OpenAPI `schema` URL, all external URLs are version-pinned via `ucp.dev/{PROTOCOL_VERSION}/`. Total: 354 tests / 989 assertions.
 
 = 1.6.3 =
 * Added: `## Sitemaps` section in llms.txt surfacing exhaustive URL enumeration paths for agents doing deep catalog discovery. Parallel to the sitemap `Allow:` entries in robots.txt (1.6.1/1.6.2) but in llms.txt's human+machine-readable narrative form. Unlike robots.txt where `Allow:` for non-existent paths is a harmless no-op, listing wrong URLs in llms.txt would be factually incorrect — so each candidate sitemap is HEAD-probed at generation time and only responding URLs make it into the document. Probes are synchronous with 1-second timeout but amortized by the 1-hour transient cache — one round per cache miss, not per request. Typical cache-miss latency: <500ms. Worst case (all 4 candidates time out): 4 seconds, once per hour.
