@@ -237,7 +237,7 @@ class WC_AI_Syndication_Ucp {
 				],
 			],
 
-			'attribution' => [
+			'attribution'   => [
 				'spec'       => 'https://woocommerce.com/document/order-attribution-tracking/',
 				'system'     => 'woocommerce_order_attribution',
 				'parameters' => [

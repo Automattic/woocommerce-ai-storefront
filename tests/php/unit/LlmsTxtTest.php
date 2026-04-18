@@ -162,13 +162,38 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '`ai_session_id`', $output );
 	}
 
-	public function test_attribution_includes_example_url(): void {
+	public function test_attribution_includes_checkout_link_example(): void {
+		// 1.6.4 change: the attribution example now uses the
+		// `/checkout-link/` pattern — the canonical purchase path
+		// this plugin exposes — rather than a product page URL.
+		// A product page doesn't route to checkout; agents wanting
+		// to drive purchase intent need checkout-link. The product
+		// page example is still included as a secondary example
+		// for browsing intent.
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString(
-			'https://example.com/product/example/?utm_source=',
-			$output
+			'https://example.com/checkout-link/?products={product_id}:{quantity}&utm_source=',
+			$output,
+			'Primary attribution example should use the checkout-link pattern'
 		);
+		$this->assertStringContainsString(
+			'https://example.com/product/{slug}/?utm_source=',
+			$output,
+			'Secondary browsing example should use a product-page URL pattern'
+		);
+	}
+
+	public function test_attribution_points_to_ucp_manifest_for_full_templates(): void {
+		// The full URL-template family (add-to-cart variants,
+		// coupon support, grouped/variable product handling) lives
+		// in the UCP manifest's checkout capability config. llms.txt
+		// points agents there instead of duplicating the 10+
+		// template rows — single source of truth.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '.well-known/ucp', $output );
+		$this->assertStringContainsString( 'purchase_urls', $output );
 	}
 
 	// ------------------------------------------------------------------

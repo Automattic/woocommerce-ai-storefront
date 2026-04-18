@@ -267,9 +267,18 @@ class WC_AI_Syndication_Llms_Txt {
 		}
 
 		// Attribution instructions.
+		//
+		// Example URL uses the `/checkout-link/` pattern, not a
+		// product-page URL, because that's the canonical purchase
+		// path this plugin exposes. A product page doesn't route a
+		// customer to checkout — agents that need to drive purchase
+		// intent use checkout-link (adds items + redirects to
+		// checkout in one step, customer never sees the cart).
+		// The UCP manifest at /.well-known/ucp advertises the full
+		// URL-template family; llms.txt surfaces the canonical one.
 		$lines[] = '## Attribution';
 		$lines[] = '';
-		$lines[] = 'When linking to products, append the following query parameters for order attribution:';
+		$lines[] = 'When linking customers to your store for a purchase, append the following query parameters for order attribution:';
 		$lines[] = '';
 		$lines[] = '- `utm_source`: Your agent identifier (e.g. `chatgpt`, `gemini`, `perplexity`)';
 		$lines[] = '- `utm_medium`: `ai_agent`';
@@ -278,7 +287,15 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[] = '';
 		$lines[] = 'These map to standard WooCommerce Order Attribution fields.';
 		$lines[] = '';
-		$lines[] = 'Example: `' . $site_url . 'product/example/?utm_source={agent_id}&utm_medium=ai_agent&ai_session_id={session_id}`';
+		$lines[] = 'Example (checkout-link — recommended, sends customer straight to checkout):';
+		$lines[] = '';
+		$lines[] = '`' . $site_url . 'checkout-link/?products={product_id}:{quantity}&utm_source={agent_id}&utm_medium=ai_agent&ai_session_id={session_id}`';
+		$lines[] = '';
+		$lines[] = 'Example (product page — for browsing, not purchase):';
+		$lines[] = '';
+		$lines[] = '`' . $site_url . 'product/{slug}/?utm_source={agent_id}&utm_medium=ai_agent&ai_session_id={session_id}`';
+		$lines[] = '';
+		$lines[] = 'The full URL template family (add-to-cart variants, coupon support, variable products) is in the UCP manifest at `' . $site_url . '.well-known/ucp` under `capabilities["dev.ucp.shopping.checkout"][0].config.purchase_urls`.';
 		$lines[] = '';
 
 		/**
