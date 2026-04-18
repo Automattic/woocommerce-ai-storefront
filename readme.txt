@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.6.4
+Stable tag: 1.6.5
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,13 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.6.5 =
+* Changed: UCP manifest restructured to match the spec's canonical-capabilities-plus-extension pattern (`capability.json` `base.extends`). Three structural changes: (1) removed `mode: "handoff"` from the `dev.ucp.shopping.checkout` capability — non-canonical (not defined in `capability.json`) and redundant with the runtime `status: requires_escalation` signal the endpoint already returns; (2) removed the `config` block containing `purchase_urls` + `attribution` from the checkout capability — the UCP checkout spec carries a SHOULD directive that businesses provide `continue_url` rather than platforms constructing permalinks, so advertising URL templates in the canonical capability was nudging agents toward the less-preferred path; (3) introduced the `com.woocommerce.ai_syndication` extension capability with `extends: "dev.ucp.shopping"` as the idiomatic UCP home for merchant-specific metadata — carries `store_context` (currency, locale, country, tax/shipping posture) and `attribution` (UTM convention documentation).
+* Changed: root-level `store_context` field removed — relocated inside the extension capability at `capabilities["com.woocommerce.ai_syndication"][0].config.store_context`. The root-level placement from 1.4.5 was valid under `additionalProperties: true` but not spec-idiomatic; the extension-capability home is the spec's designed pattern for vendor-specific data.
+* Changed: llms.txt is now the authoritative source for agent attribution guidance. Its `## Attribution` section leads with the canonical UCP flow (`POST /checkout-sessions` → server constructs `continue_url` with UTM pre-attached → response returns `status: "requires_escalation"` → agent redirects user), followed by fallback UTM-parameter guidance for agents that must construct URLs client-side. Pre-1.6.5 llms.txt emitted literal URL-template examples; those are now removed in favor of a pointer to WooCommerce's public `/checkout-link/` documentation for agents that need URL patterns.
+* Removed: URL-template library (`purchase_urls.checkout_link.*` and `purchase_urls.add_to_cart.*`) from the UCP manifest entirely. Agents unable to use the `POST /checkout-sessions` canonical flow should consult the public WooCommerce shareable-checkout-URL docs referenced in llms.txt. Rationale: the UCP spec's SHOULD directive; with zero documented autonomous-agent usage of the templates (the one live test was a manually-prompted Gemini session, not in-the-wild behavior), keeping them was more signal-confusion than value.
+* Added: regression tests locking in the new structure — `checkout_capability_has_no_mode_or_config`, `declared_capabilities_are_exactly_three_canonical_plus_one_extension`, `store_context_no_longer_lives_at_manifest_root`, `checkout_capability_has_no_purchase_urls_after_1_6_5`, and extension-specific attribution tests. Total: 345 tests / 980 assertions.
 
 = 1.6.4 =
 * Changed: UCP manifest structure reorganized to match April spec's `entity` semantic conventions. Three coordinated changes: (1) the `config` block carrying `purchase_urls` + `attribution` moved from service-level (`services["dev.ucp.shopping"][0].config`) to checkout-capability-level (`capabilities["dev.ucp.shopping.checkout"][0].config`) — both placements are syntactically valid per the UCP entity schema, but semantically these are checkout-specific concerns and belong with the checkout capability; (2) added `spec` + `schema` URLs to every capability binding (`catalog.search`, `catalog.lookup`, `checkout`) pointing at ucp.dev's canonical per-capability documentation and JSON Schema files; (3) added `schema` to the service binding pointing at the OpenAPI 3.1 spec for the UCP Shopping REST service. Agents wanting machine-readable contract validation now have authoritative URLs for both the service-level transport (OpenAPI) and the capability-level payloads (JSON Schema).

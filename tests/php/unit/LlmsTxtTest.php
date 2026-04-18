@@ -162,38 +162,42 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '`ai_session_id`', $output );
 	}
 
-	public function test_attribution_includes_checkout_link_example(): void {
-		// 1.6.4 change: the attribution example now uses the
-		// `/checkout-link/` pattern — the canonical purchase path
-		// this plugin exposes — rather than a product page URL.
-		// A product page doesn't route to checkout; agents wanting
-		// to drive purchase intent need checkout-link. The product
-		// page example is still included as a secondary example
-		// for browsing intent.
+	public function test_attribution_leads_with_api_first_checkout_flow(): void {
+		// 1.6.5 change: the attribution section now leads with the
+		// canonical UCP flow (POST /checkout-sessions) rather than
+		// URL-template examples. Matches the UCP checkout spec's
+		// SHOULD directive: businesses provide continue_url,
+		// platforms don't construct their own.
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString(
-			'https://example.com/checkout-link/?products={product_id}:{quantity}&utm_source=',
-			$output,
-			'Primary attribution example should use the checkout-link pattern'
-		);
-		$this->assertStringContainsString(
-			'https://example.com/product/{slug}/?utm_source=',
-			$output,
-			'Secondary browsing example should use a product-page URL pattern'
-		);
+		$this->assertStringContainsString( '/checkout-sessions', $output );
+		$this->assertStringContainsString( 'UCP-Agent', $output );
+		$this->assertStringContainsString( 'requires_escalation', $output );
+		$this->assertStringContainsString( 'continue_url', $output );
 	}
 
-	public function test_attribution_points_to_ucp_manifest_for_full_templates(): void {
-		// The full URL-template family (add-to-cart variants,
-		// coupon support, grouped/variable product handling) lives
-		// in the UCP manifest's checkout capability config. llms.txt
-		// points agents there instead of duplicating the 10+
-		// template rows — single source of truth.
+	public function test_attribution_still_documents_utm_parameters_for_legacy_flow(): void {
+		// Agents that must construct URLs client-side (non-UCP-aware
+		// or legacy flows) still need the UTM convention documented.
+		// Kept in llms.txt as authoritative human-readable guidance
+		// after 1.6.5 removed the template library from the manifest.
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString( '.well-known/ucp', $output );
-		$this->assertStringContainsString( 'purchase_urls', $output );
+		$this->assertStringContainsString( 'utm_source', $output );
+		$this->assertStringContainsString( 'utm_medium', $output );
+		$this->assertStringContainsString( 'ai_agent', $output );
+		$this->assertStringContainsString( 'ai_session_id', $output );
+	}
+
+	public function test_attribution_points_to_woocommerce_public_docs_for_url_construction(): void {
+		// When manifest templates are removed, agents that need URL
+		// patterns should be directed to WooCommerce's public
+		// documentation rather than discovering them by trial.
+		// 1.6.5 added this pointer in place of the manifest
+		// purchase_urls reference.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'woocommerce.com/document/creating-sharable-checkout-urls', $output );
 	}
 
 	// ------------------------------------------------------------------

@@ -266,37 +266,54 @@ class WC_AI_Syndication_Llms_Txt {
 			$lines[] = '';
 		}
 
-		// Attribution instructions.
+		// Attribution instructions. This section is the
+		// AUTHORITATIVE merchant-facing guidance for AI-agent
+		// attribution. The UCP manifest carries the same parameter
+		// set under the `com.woocommerce.ai_syndication` extension,
+		// but UCP itself doesn't define attribution semantics —
+		// so the canonical guidance lives here in the
+		// human+machine-readable document, not in the wire-format
+		// manifest.
 		//
-		// Example URL uses the `/checkout-link/` pattern, not a
-		// product-page URL, because that's the canonical purchase
-		// path this plugin exposes. A product page doesn't route a
-		// customer to checkout — agents that need to drive purchase
-		// intent use checkout-link (adds items + redirects to
-		// checkout in one step, customer never sees the cart).
-		// The UCP manifest at /.well-known/ucp advertises the full
-		// URL-template family; llms.txt surfaces the canonical one.
-		$lines[] = '## Attribution';
-		$lines[] = '';
-		$lines[] = 'When linking customers to your store for a purchase, append the following query parameters for order attribution:';
-		$lines[] = '';
-		$lines[] = '- `utm_source`: Your agent identifier (e.g. `chatgpt`, `gemini`, `perplexity`)';
-		$lines[] = '- `utm_medium`: `ai_agent`';
-		$lines[] = '- `utm_campaign`: Optional campaign name';
-		$lines[] = '- `ai_session_id`: The current conversation/session ID';
-		$lines[] = '';
-		$lines[] = 'These map to standard WooCommerce Order Attribution fields.';
-		$lines[] = '';
-		$lines[] = 'Example (checkout-link — recommended, sends customer straight to checkout):';
-		$lines[] = '';
-		$lines[] = '`' . $site_url . 'checkout-link/?products={product_id}:{quantity}&utm_source={agent_id}&utm_medium=ai_agent&ai_session_id={session_id}`';
-		$lines[] = '';
-		$lines[] = 'Example (product page — for browsing, not purchase):';
-		$lines[] = '';
-		$lines[] = '`' . $site_url . 'product/{slug}/?utm_source={agent_id}&utm_medium=ai_agent&ai_session_id={session_id}`';
-		$lines[] = '';
-		$lines[] = 'The full URL template family (add-to-cart variants, coupon support, variable products) is in the UCP manifest at `' . $site_url . '.well-known/ucp` under `capabilities["dev.ucp.shopping.checkout"][0].config.purchase_urls`.';
-		$lines[] = '';
+		// 1.6.5 removed URL-template examples in favor of the
+		// API-first flow (`POST /checkout-sessions`), matching the
+		// UCP checkout spec's SHOULD directive that businesses
+		// should provide continue_url rather than platforms
+		// constructing their own. Agents that prefer direct URL
+		// construction can still derive the pattern from
+		// WooCommerce's public /checkout-link/ documentation —
+		// we just don't advertise templates that nudge agents
+		// away from the canonical path.
+		$ucp_rest_base = rtrim( rest_url( 'wc/ucp/v1' ), '/' );
+		$lines[]       = '## Attribution';
+		$lines[]       = '';
+		$lines[]       = 'The recommended purchase flow is to `POST` line items to our UCP checkout endpoint; the server returns a `continue_url` with attribution pre-attached, and the agent redirects the user there. This matches the UCP checkout specification\'s `requires_escalation` / `continue_url` contract.';
+		$lines[]       = '';
+		$lines[]       = 'Endpoint:';
+		$lines[]       = '';
+		$lines[]       = '`POST ' . $ucp_rest_base . '/checkout-sessions`';
+		$lines[]       = '';
+		$lines[]       = 'Request body (UCP Checkout schema):';
+		$lines[]       = '';
+		$lines[]       = '```json';
+		$lines[]       = '{';
+		$lines[]       = '  "line_items": [{ "item": { "id": "123" }, "quantity": 1 }]';
+		$lines[]       = '}';
+		$lines[]       = '```';
+		$lines[]       = '';
+		$lines[]       = 'Set the `UCP-Agent` request header to your agent\'s discovery profile URL; the server uses the hostname from that header as `utm_source` automatically, so you do not need to construct UTM parameters yourself.';
+		$lines[]       = '';
+		$lines[]       = 'Response includes `status: "requires_escalation"` and a `continue_url` with `utm_source` + `utm_medium=ai_agent` already attached. Redirect the user to that URL to complete the purchase on our site.';
+		$lines[]       = '';
+		$lines[]       = 'If you must construct a checkout URL client-side (legacy or non-UCP-aware flow), append these parameters for order attribution:';
+		$lines[]       = '';
+		$lines[]       = '- `utm_source`: Your agent identifier (e.g. `chatgpt`, `gemini`, `perplexity`)';
+		$lines[]       = '- `utm_medium`: `ai_agent`';
+		$lines[]       = '- `utm_campaign`: Optional campaign name';
+		$lines[]       = '- `ai_session_id`: The current conversation/session ID';
+		$lines[]       = '';
+		$lines[]       = 'These map to standard WooCommerce Order Attribution fields. See the WooCommerce [Shareable Checkout URLs](https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/) documentation for URL construction patterns.';
+		$lines[]       = '';
 
 		/**
 		 * Filter the llms.txt content lines before rendering.

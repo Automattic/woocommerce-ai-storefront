@@ -288,24 +288,26 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_checkout_capability_declares_handoff_mode(): void {
-		// Agents reading the manifest need a programmatic signal that
-		// our checkout is redirect-only (no in-chat payment, no
-		// server-side cart lifecycle) before deciding to invoke the
-		// endpoint. Without this hint they have to call the endpoint
-		// and parse `status: requires_escalation` in the response —
-		// wasted roundtrip for agents that don't support handoff
-		// flows. The `mode: handoff` field is a schema-compatible
-		// additive hint (UCP entities allow additionalProperties).
+	public function test_checkout_capability_has_no_mode_or_config(): void {
+		// 1.6.5 reversal: pre-1.6.5 we emitted `mode: "handoff"` +
+		// a `config` block with URL templates on the checkout
+		// capability. Neither is defined in UCP's capability.json —
+		// both were additive under the spec's
+		// `additionalProperties: true`. The canonical UCP checkout
+		// handoff contract is runtime: the endpoint returns
+		// `status: "requires_escalation"` + a `continue_url`. The
+		// spec's SHOULD directive prefers business-provided
+		// continue_url over platform-constructed checkout permalinks,
+		// which argued against keeping the template library here.
 		//
-		// If this field is ever dropped, agents that relied on the
-		// upfront signal would regress to the roundtrip. Locks in the
-		// contract.
+		// Post-1.6.5, the checkout capability is canonical UCP only.
+		// Merchant-specific attribution + store_context lives in
+		// the `com.woocommerce.ai_syndication` extension capability.
 		$manifest = $this->ucp->generate_manifest( [] );
+		$binding  = $manifest['ucp']['capabilities']['dev.ucp.shopping.checkout'][0];
 
-		$binding = $manifest['ucp']['capabilities']['dev.ucp.shopping.checkout'][0];
-		$this->assertArrayHasKey( 'mode', $binding );
-		$this->assertEquals( 'handoff', $binding['mode'] );
+		$this->assertArrayNotHasKey( 'mode', $binding, 'mode was removed in 1.6.5 — non-canonical hint replaced by runtime status signal' );
+		$this->assertArrayNotHasKey( 'config', $binding, 'config was removed in 1.6.5 — URL templates moved to llms.txt; canonical flow is POST /checkout-sessions' );
 	}
 
 	public function test_catalog_sub_capabilities_have_no_mode_hint(): void {
@@ -331,10 +333,15 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// would fail strict schema validation.
 		$manifest = $this->ucp->generate_manifest( [] );
 
+		// Includes the 1.6.5 extension capability
+		// (com.woocommerce.ai_syndication) — extensions follow the
+		// same [{binding}] shape as canonical capabilities per the
+		// UCP capability schema.
 		$capabilities = [
 			'dev.ucp.shopping.catalog.search',
 			'dev.ucp.shopping.catalog.lookup',
 			'dev.ucp.shopping.checkout',
+			'com.woocommerce.ai_syndication',
 		];
 
 		foreach ( $capabilities as $cap ) {
@@ -350,14 +357,16 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
-	public function test_no_extraneous_capabilities_declared(): void {
-		// Regression guard: we implement catalog.search + catalog.lookup
-		// + checkout only. If a future refactor accidentally declared
-		// cart, order, identity linking, payment token exchange, etc.,
-		// agents would try to invoke operations we haven't built — and
-		// fail. Declaring only what we've implemented is the honest
-		// posture. When we DO add new capabilities (order is the likely
-		// 1.7.0 candidate) this test gets updated explicitly.
+	public function test_declared_capabilities_are_exactly_three_canonical_plus_one_extension(): void {
+		// Regression guard on the exact capability set:
+		//   - 3 canonical UCP capabilities we implement
+		//     (catalog.search, catalog.lookup, checkout)
+		//   - 1 merchant-specific extension carrying store_context +
+		//     attribution (com.woocommerce.ai_syndication)
+		//
+		// Extensions use the `extends` field to link back to the
+		// parent capability/service; canonical capabilities have
+		// no `extends`. That's the structural invariant below.
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertEqualsCanonicalizing(
@@ -365,9 +374,24 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 				'dev.ucp.shopping.catalog.search',
 				'dev.ucp.shopping.catalog.lookup',
 				'dev.ucp.shopping.checkout',
+				'com.woocommerce.ai_syndication',
 			],
 			array_keys( $manifest['ucp']['capabilities'] )
 		);
+
+		// Canonical capabilities MUST NOT have `extends` (they ARE
+		// the base capabilities other things extend).
+		foreach ( [ 'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup', 'dev.ucp.shopping.checkout' ] as $canonical ) {
+			$this->assertArrayNotHasKey(
+				'extends',
+				$manifest['ucp']['capabilities'][ $canonical ][0],
+				"$canonical is a canonical capability — it should not carry an extends field"
+			);
+		}
+
+		// The extension MUST carry `extends` pointing at the parent.
+		$ext = $manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0];
+		$this->assertSame( 'dev.ucp.shopping', $ext['extends'] );
 	}
 
 	public function test_payment_handlers_is_empty_object(): void {
@@ -413,30 +437,46 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Layer 2.5: store_context block (1.4.5+)
+	// Layer 2.5: com.woocommerce.ai_syndication extension capability
 	// ------------------------------------------------------------------
 	//
-	// Added in 1.4.5 after cross-agent review feedback that the
-	// manifest lacked merchant-level commerce context (currency,
-	// locale, tax/shipping posture). These tests lock in the five
-	// contract fields and cover the ICU→BCP 47 locale conversion
-	// that's the most likely regression source — WordPress stores
-	// locales in underscore form and it's easy to forward that
-	// verbatim into the manifest by mistake.
+	// Pre-1.6.5: store_context lived as a root-level sibling of the
+	// `ucp` wrapper. 1.6.5 moved it inside the extension capability
+	// `com.woocommerce.ai_syndication.config.store_context` per the
+	// UCP spec's extension pattern (a capability with `extends`
+	// pointing at a parent). The five store_context contract fields
+	// are unchanged; only the path in the manifest changed.
+	//
+	// The extension also now carries attribution guidance (moved
+	// from the checkout capability's config in the same release).
 
-	public function test_manifest_has_store_context_top_level_key(): void {
+	/**
+	 * Resolve the extension's config block for store_context / attribution
+	 * tests. Pre-1.6.5 this was `$manifest['store_context']`; post-1.6.5
+	 * it's `$manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0]['config']['store_context']`.
+	 */
+	private function get_store_context(): array {
+		$manifest = $this->ucp->generate_manifest( [] );
+		return $manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0]['config']['store_context'];
+	}
+
+	public function test_store_context_no_longer_lives_at_manifest_root(): void {
+		// Regression guard: the 1.4.5 → 1.6.4 placement at
+		// `$manifest['store_context']` was moved inside the extension
+		// capability in 1.6.5. A future refactor that re-emits it at
+		// root (e.g. for perceived convenience) would collide with
+		// this assertion and force a conscious re-decision.
 		$manifest = $this->ucp->generate_manifest( [] );
 
-		$this->assertArrayHasKey( 'store_context', $manifest );
-		$this->assertIsArray( $manifest['store_context'] );
+		$this->assertArrayNotHasKey( 'store_context', $manifest );
 	}
 
 	public function test_store_context_declares_iso_4217_currency(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'EUR' );
 
-		$manifest = $this->ucp->generate_manifest( [] );
+		$ctx = $this->get_store_context();
 
-		$this->assertSame( 'EUR', $manifest['store_context']['currency'] );
+		$this->assertSame( 'EUR', $ctx['currency'] );
 	}
 
 	public function test_store_context_locale_uses_bcp_47_hyphen_not_icu_underscore(): void {
@@ -446,35 +486,29 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// side and asserting the manifest side locks it in.
 		Functions\when( 'get_locale' )->justReturn( 'pt_BR' );
 
-		$manifest = $this->ucp->generate_manifest( [] );
+		$ctx = $this->get_store_context();
 
-		$this->assertSame( 'pt-BR', $manifest['store_context']['locale'] );
-		$this->assertStringNotContainsString( '_', $manifest['store_context']['locale'] );
+		$this->assertSame( 'pt-BR', $ctx['locale'] );
+		$this->assertStringNotContainsString( '_', $ctx['locale'] );
 	}
 
 	public function test_store_context_reports_prices_include_tax(): void {
 		// EU-style VAT-inclusive storefront.
 		Functions\when( 'wc_prices_include_tax' )->justReturn( true );
 
-		$manifest = $this->ucp->generate_manifest( [] );
-
-		$this->assertTrue( $manifest['store_context']['prices_include_tax'] );
+		$this->assertTrue( $this->get_store_context()['prices_include_tax'] );
 	}
 
 	public function test_store_context_reports_prices_exclude_tax(): void {
 		// US-style tax-exclusive storefront — default in the
 		// setUp stub.
-		$manifest = $this->ucp->generate_manifest( [] );
-
-		$this->assertFalse( $manifest['store_context']['prices_include_tax'] );
+		$this->assertFalse( $this->get_store_context()['prices_include_tax'] );
 	}
 
 	public function test_store_context_reports_shipping_disabled_for_digital_only(): void {
 		Functions\when( 'wc_shipping_enabled' )->justReturn( false );
 
-		$manifest = $this->ucp->generate_manifest( [] );
-
-		$this->assertFalse( $manifest['store_context']['shipping_enabled'] );
+		$this->assertFalse( $this->get_store_context()['shipping_enabled'] );
 	}
 
 	public function test_store_context_country_is_null_when_wc_countries_unavailable(): void {
@@ -482,9 +516,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// falls through to null. Asserting this locks in the
 		// graceful-degradation branch: the manifest must not crash
 		// or emit garbage when the WC global isn't ready.
-		$manifest = $this->ucp->generate_manifest( [] );
-
-		$this->assertNull( $manifest['store_context']['country'] );
+		$this->assertNull( $this->get_store_context()['country'] );
 	}
 
 	public function test_store_context_fields_are_exactly_those_documented(): void {
@@ -493,11 +525,9 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// consumer documentation, this test fires. The fix is
 		// deliberate: either update this test (conscious addition)
 		// or remove the stray field.
-		$manifest = $this->ucp->generate_manifest( [] );
-
 		$this->assertSame(
 			[ 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled' ],
-			array_keys( $manifest['store_context'] )
+			array_keys( $this->get_store_context() )
 		);
 	}
 
@@ -538,17 +568,25 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'github.com', $service['spec'] );
 	}
 
-	public function test_every_capability_has_spec_and_schema_urls(): void {
-		// 1.6.4 added per-capability `spec` + `schema` URLs.
-		// Agents that want to validate response payloads against
-		// the authoritative contract need these. Locks in both
-		// fields on every advertised capability.
-		$manifest = $this->ucp->generate_manifest( [] );
+	public function test_every_canonical_capability_has_spec_and_schema_urls(): void {
+		// 1.6.4 added per-capability `spec` + `schema` URLs for
+		// canonical UCP capabilities. Extension capabilities
+		// (`com.woocommerce.*`) are vendor-specific and don't
+		// carry canonical spec/schema URLs — they derive their
+		// contract from the `extends` relationship back to the
+		// parent. Only the canonical capabilities are required to
+		// carry both URLs.
+		$manifest       = $this->ucp->generate_manifest( [] );
+		$canonical_caps = [
+			'dev.ucp.shopping.catalog.search',
+			'dev.ucp.shopping.catalog.lookup',
+			'dev.ucp.shopping.checkout',
+		];
 
-		foreach ( $manifest['ucp']['capabilities'] as $name => $bindings ) {
-			foreach ( $bindings as $binding ) {
-				$this->assertArrayHasKey( 'spec', $binding, "Capability $name missing spec URL" );
-				$this->assertArrayHasKey( 'schema', $binding, "Capability $name missing schema URL" );
+		foreach ( $canonical_caps as $name ) {
+			foreach ( $manifest['ucp']['capabilities'][ $name ] as $binding ) {
+				$this->assertArrayHasKey( 'spec', $binding, "Canonical capability $name missing spec URL" );
+				$this->assertArrayHasKey( 'schema', $binding, "Canonical capability $name missing schema URL" );
 				$this->assertNotEmpty( $binding['spec'] );
 				$this->assertNotEmpty( $binding['schema'] );
 			}
@@ -556,223 +594,84 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Layer 3: Plugin-specific checkout capability config
-	//
-	// Note: relocated from service-level to checkout-capability-level
-	// in 1.6.4. Service-level config is for transport concerns (auth,
-	// rate limits); capability-level config is for capability-semantic
-	// concerns (purchase URL templates, UTM attribution). The fields
-	// here describe how agents construct checkout URLs and attribute
-	// orders — both semantically belong with the checkout capability.
+	// Layer 3: com.woocommerce.ai_syndication extension — attribution
 	// ------------------------------------------------------------------
+	//
+	// 1.6.5 structural change rationale:
+	//   - Pre-1.6.5 attribution config lived at
+	//     `capabilities["dev.ucp.shopping.checkout"][0].config.attribution`
+	//   - Post-1.6.5 it lives at
+	//     `capabilities["com.woocommerce.ai_syndication"][0].config.attribution`
+	//
+	// The canonical checkout capability stays pure UCP (no
+	// attribution config). Attribution conventions are merchant-
+	// specific (UCP doesn't define the attribution schema), so
+	// they belong in the extension capability. llms.txt carries
+	// the canonical human-readable guidance; the extension config
+	// is the machine-readable mirror.
+	//
+	// The purchase_urls test suite (11 tests total from 1.3.x)
+	// was removed in 1.6.5 because the URL templates themselves
+	// were removed — the canonical UCP checkout path is now the
+	// POST /checkout-sessions API, and template-based direct URL
+	// construction is documented only in llms.txt for agents that
+	// cannot use the API.
 
-	private function get_config(): array {
+	private function get_attribution(): array {
 		$manifest = $this->ucp->generate_manifest( [] );
-		return $manifest['ucp']['capabilities']['dev.ucp.shopping.checkout'][0]['config'];
+		return $manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0]['config']['attribution'];
 	}
 
-	public function test_checkout_capability_config_has_purchase_urls_and_attribution(): void {
-		$config = $this->get_config();
-
-		$this->assertArrayHasKey( 'purchase_urls', $config );
-		$this->assertArrayHasKey( 'attribution', $config );
-	}
-
-	public function test_service_binding_has_no_capability_config(): void {
-		// Regression guard: the pre-1.6.4 placement of
-		// `purchase_urls` + `attribution` under `services[0].config`
-		// was semantically wrong. If a future refactor re-adds it
-		// there (or leaves both copies), this catches the drift.
-		//
-		// Two valid post-1.6.4 states:
-		//   - Service has NO `config` key (current implementation)
-		//   - Service has `config` but without capability-semantic
-		//     fields (future transport-config additions would live
-		//     there, but purchase_urls/attribution never should)
+	public function test_checkout_capability_has_no_purchase_urls_after_1_6_5(): void {
+		// Regression guard for the 1.6.5 removal. If any future
+		// change re-adds `purchase_urls` to the checkout capability,
+		// this test fires — forcing a conscious re-decision vs the
+		// spec's SHOULD directive preferring business-provided
+		// continue_url over platform-constructed templates.
 		$manifest = $this->ucp->generate_manifest( [] );
-		$service  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
+		$binding  = $manifest['ucp']['capabilities']['dev.ucp.shopping.checkout'][0];
 
-		if ( ! isset( $service['config'] ) ) {
-			$this->assertTrue( true, 'Service has no config key — structurally impossible for capability fields to live there' );
-			return;
-		}
-
-		$this->assertArrayNotHasKey(
-			'purchase_urls',
-			$service['config'],
-			'purchase_urls belongs on the checkout capability, not the service binding'
-		);
-		$this->assertArrayNotHasKey(
-			'attribution',
-			$service['config'],
-			'attribution belongs on the checkout capability, not the service binding'
-		);
+		$this->assertArrayNotHasKey( 'config', $binding );
 	}
 
-	// ----- purchase_urls.checkout_link ----------------------------------
-
-	public function test_checkout_link_templates_cover_all_supported_types(): void {
-		// Agents generating purchase URLs need the full vocabulary of
-		// product types the /checkout-link/ feature supports. Missing
-		// one means that product type can't be handled by agents that
-		// only read the manifest.
-		$cl = $this->get_config()['purchase_urls']['checkout_link'];
-
-		$this->assertArrayHasKey( 'simple', $cl );
-		$this->assertArrayHasKey( 'variable', $cl );
-		$this->assertArrayHasKey( 'multi_item', $cl );
-		$this->assertArrayHasKey( 'with_coupon', $cl );
-		$this->assertArrayHasKey( 'unsupported', $cl );
-	}
-
-	public function test_checkout_link_simple_template_matches_wc_spec(): void {
-		// Per https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/
-		// single-product format is: /checkout-link/?products=PRODUCT_ID:QUANTITY
-		$cl = $this->get_config()['purchase_urls']['checkout_link'];
-
-		$this->assertEquals(
-			'https://example.com/checkout-link/?products={product_id}:{quantity}',
-			$cl['simple']
-		);
-	}
-
-	public function test_checkout_link_multi_item_uses_comma_separator(): void {
-		// Per WC docs: multi-product format is
-		// `?products=id:qty,id:qty`.
-		$cl = $this->get_config()['purchase_urls']['checkout_link'];
-
-		$this->assertStringContainsString( ',', $cl['multi_item'] );
-		$this->assertStringContainsString( ':', $cl['multi_item'] );
-	}
-
-	public function test_checkout_link_with_coupon_includes_coupon_param(): void {
-		$cl = $this->get_config()['purchase_urls']['checkout_link'];
-
-		$this->assertStringContainsString( 'coupon={coupon_code}', $cl['with_coupon'] );
-	}
-
-	public function test_checkout_link_declares_unsupported_types(): void {
-		// Grouped, external, and subscription products CANNOT use the
-		// /checkout-link/ feature. Agents need to know not to try.
-		$cl = $this->get_config()['purchase_urls']['checkout_link'];
-
-		$this->assertEqualsCanonicalizing(
-			[ 'grouped', 'external', 'subscription' ],
-			$cl['unsupported']
-		);
-	}
-
-	// ----- purchase_urls.add_to_cart ------------------------------------
-
-	public function test_add_to_cart_has_three_redirect_variants(): void {
-		// Per https://woocommerce.com/document/quick-guide-to-woocommerce-add-to-cart-urls/
-		// the three variants are: no redirect (home), redirect to cart,
-		// redirect to checkout. All three have different base URLs.
-		$a2c = $this->get_config()['purchase_urls']['add_to_cart'];
-
-		$this->assertArrayHasKey( 'add_only', $a2c );
-		$this->assertArrayHasKey( 'add_and_cart', $a2c );
-		$this->assertArrayHasKey( 'add_and_checkout', $a2c );
-	}
-
-	public function test_add_and_cart_uses_cart_url_as_base(): void {
-		$a2c = $this->get_config()['purchase_urls']['add_to_cart'];
-
-		$this->assertStringStartsWith(
-			'https://example.com/cart/',
-			$a2c['add_and_cart']
-		);
-	}
-
-	public function test_add_and_checkout_uses_checkout_url_as_base(): void {
-		$a2c = $this->get_config()['purchase_urls']['add_to_cart'];
-
-		$this->assertStringStartsWith(
-			'https://example.com/checkout/',
-			$a2c['add_and_checkout']
-		);
-	}
-
-	public function test_add_to_cart_grouped_has_template_and_note(): void {
-		// Grouped products have a separate entry because their URL
-		// shape differs (quantity is a per-sub-product map, not a
-		// single number). The note documents the quirk.
-		$grouped = $this->get_config()['purchase_urls']['add_to_cart']['grouped'];
-
-		$this->assertArrayHasKey( 'template', $grouped );
-		$this->assertArrayHasKey( 'note', $grouped );
-		$this->assertStringContainsString(
-			'quantity[{sub_product_id}]={quantity}',
-			$grouped['template']
-		);
-	}
-
-	public function test_add_to_cart_external_note_present(): void {
-		// External/affiliate products must not be add-to-carted —
-		// agents link directly to the product's external_url field.
-		$a2c = $this->get_config()['purchase_urls']['add_to_cart'];
-
-		$this->assertArrayHasKey( 'external_note', $a2c );
-		$this->assertStringContainsString( 'external_url', $a2c['external_note'] );
-	}
-
-	// ----- purchase_urls spec pointers ----------------------------------
-
-	public function test_purchase_urls_points_to_canonical_wc_spec(): void {
-		// Both spec URLs were verified during authorship. If they ever
-		// break, AI agents reading the manifest get pointed at broken
-		// docs. A link-check on these in CI would be ideal future work.
-		$pu = $this->get_config()['purchase_urls'];
-
-		$this->assertEquals(
-			'https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/',
-			$pu['spec']
-		);
-		$this->assertEquals(
-			'https://woocommerce.com/document/quick-guide-to-woocommerce-add-to-cart-urls/',
-			$pu['add_to_cart_spec']
-		);
-	}
-
-	// ----- attribution ---------------------------------------------------
-
-	public function test_attribution_declares_woocommerce_order_attribution(): void {
+	public function test_attribution_declares_woocommerce_order_attribution_system(): void {
 		// The plugin's attribution strategy is "use WC's built-in
 		// system" — not a custom invention. The `system` field makes
 		// that explicit for agents that want to verify.
-		$attr = $this->get_config()['attribution'];
-
-		$this->assertEquals( 'woocommerce_order_attribution', $attr['system'] );
+		$this->assertSame( 'woocommerce_order_attribution', $this->get_attribution()['system'] );
 	}
 
 	public function test_attribution_exposes_required_utm_parameters(): void {
-		$attr = $this->get_config()['attribution'];
+		$attr = $this->get_attribution();
 
-		$this->assertArrayHasKey( 'utm_source', $attr['parameters'] );
-		$this->assertArrayHasKey( 'utm_medium', $attr['parameters'] );
-		$this->assertArrayHasKey( 'utm_campaign', $attr['parameters'] );
-		$this->assertArrayHasKey( 'ai_session_id', $attr['parameters'] );
+		foreach ( [ 'utm_source', 'utm_medium', 'utm_campaign', 'ai_session_id' ] as $required ) {
+			$this->assertArrayHasKey( $required, $attr['parameters'] );
+		}
 	}
 
 	public function test_attribution_utm_medium_documents_required_value(): void {
 		// utm_medium MUST be "ai_agent" for the PHP-side detector to
 		// capture the order. Document that in the param description
 		// so agents know it's not free-form.
-		$attr = $this->get_config()['attribution'];
-
 		$this->assertStringContainsString(
 			'ai_agent',
-			$attr['parameters']['utm_medium']
+			$this->get_attribution()['parameters']['utm_medium']
 		);
 	}
 
 	public function test_attribution_spec_points_to_wc_order_attribution_docs(): void {
-		$attr = $this->get_config()['attribution'];
-
-		$this->assertEquals(
+		$this->assertSame(
 			'https://woocommerce.com/document/order-attribution-tracking/',
-			$attr['spec']
+			$this->get_attribution()['spec']
 		);
+	}
+
+	public function test_attribution_usage_note_points_to_llms_txt_for_canonical_flow(): void {
+		// 1.6.5: the canonical human-readable attribution guidance
+		// lives in llms.txt, not in the UCP manifest. The usage_note
+		// should direct readers there rather than duplicating the
+		// full narrative.
+		$this->assertStringContainsString( 'llms.txt', $this->get_attribution()['usage_note'] );
 	}
 
 	// ------------------------------------------------------------------
