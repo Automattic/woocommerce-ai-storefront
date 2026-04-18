@@ -266,6 +266,35 @@ class WC_AI_Syndication_Llms_Txt {
 			$lines[] = '';
 		}
 
+		// Checkout policy declaration. Makes explicit the merchant-
+		// only-checkout posture that the UCP manifest already
+		// declares implicitly (by what it doesn't advertise:
+		// no payment_handlers, no ap2_mandate capability, no cart
+		// capability, REST-only transport). Redundant signaling
+		// is cheap insurance for agent trust frameworks and for
+		// human merchant-review audiences that can't parse UCP.
+		$lines[] = '## Checkout Policy';
+		$lines[] = '';
+		$lines[] = 'All purchases complete on this site (' . $site_url . '). Agents MUST redirect buyers to the `continue_url` returned from `POST ' . rtrim( rest_url( 'wc/ucp/v1' ), '/' ) . '/checkout-sessions` to finalize transactions.';
+		$lines[] = '';
+		$lines[] = 'This store does NOT support:';
+		$lines[] = '';
+		$lines[] = '- In-chat or in-agent payment completion';
+		$lines[] = '- Embedded checkout (UCP Embedded Protocol / ECP)';
+		$lines[] = '- Agent-delegated authorization (AP2 Mandates / Verifiable Digital Credentials)';
+		$lines[] = '- Persistent agent-managed carts';
+		$lines[] = '- Payment handler tokens (Google Pay, Shop Pay, etc. via UCP)';
+		$lines[] = '';
+		$lines[] = 'Programmatic verification — the UCP manifest at `' . $site_url . '.well-known/ucp` reflects this posture:';
+		$lines[] = '';
+		$lines[] = '- `capabilities` contains `dev.ucp.shopping.catalog.search`, `.catalog.lookup`, `.checkout`, plus the `com.woocommerce.ai_syndication` merchant extension — and nothing else';
+		$lines[] = '- `payment_handlers` is `{}` (empty — no delegated payment)';
+		$lines[] = '- The service binding declares `transport: "rest"` exclusively (no Embedded Protocol, MCP, or A2A)';
+		$lines[] = '- Checkout responses always return `status: "requires_escalation"` with `continue_url` — never `ready_for_complete` or `complete_in_progress`';
+		$lines[] = '';
+		$lines[] = 'This posture is locked by regression tests in the plugin test suite; weakening it requires a deliberate policy decision reflected in a plugin release.';
+		$lines[] = '';
+
 		// Attribution instructions. This section is the
 		// AUTHORITATIVE merchant-facing guidance for AI-agent
 		// attribution. The UCP manifest carries the same parameter

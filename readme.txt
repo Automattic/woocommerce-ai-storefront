@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.6.5
+Stable tag: 1.6.6
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,10 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.6.6 =
+* Added: explicit "merchant-only checkout" posture lock-in. Two complementary changes: (1) a new `## Checkout Policy` section in llms.txt declaring affirmatively that all purchases complete on the merchant site, and enumerating the five UCP surfaces we deliberately don't support (in-chat payment, embedded checkout, AP2 Mandates / agent-delegated authorization, persistent agent carts, payment handler tokens); (2) a dedicated regression test file `UcpCheckoutPostureTest.php` with 11 tests that lock every layer of the defense stack — empty `payment_handlers`, no `ap2_mandate` or `cart` capability, REST-only transport (no Embedded Protocol / MCP / A2A), exactly the 3 expected REST routes registered (no Complete Checkout endpoint), no `signing_keys` at profile root, no payment-related keys anywhere in the manifest. A future maintainer accidentally adding any of these weakens the posture; the tests fire and force a conscious posture review rather than silent capability drift.
+* Added: llms.txt verification claims are programmatically checkable. The Checkout Policy section points readers at the UCP manifest with the expected values (`payment_handlers: {}`, specific capabilities list, `transport: "rest"`, `status: "requires_escalation"` in responses) so agent trust frameworks and merchant-review humans can verify the declarations without reading the plugin source. Redundant signaling vs. the manifest's own declaration-by-absence, but cheap insurance for trust frameworks that require explicit merchant commitments.
 
 = 1.6.5 =
 * Changed: UCP manifest restructured to match the spec's canonical-capabilities-plus-extension pattern (`capability.json` `base.extends`). Three structural changes: (1) removed `mode: "handoff"` from the `dev.ucp.shopping.checkout` capability — non-canonical (not defined in `capability.json`) and redundant with the runtime `status: requires_escalation` signal the endpoint already returns; (2) removed the `config` block containing `purchase_urls` + `attribution` from the checkout capability — the UCP checkout spec carries a SHOULD directive that businesses provide `continue_url` rather than platforms constructing permalinks, so advertising URL templates in the canonical capability was nudging agents toward the less-preferred path; (3) introduced the `com.woocommerce.ai_syndication` extension capability with `extends: "dev.ucp.shopping"` as the idiomatic UCP home for merchant-specific metadata — carries `store_context` (currency, locale, country, tax/shipping posture) and `attribution` (UTM convention documentation).

@@ -162,6 +162,27 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '`ai_session_id`', $output );
 	}
 
+	public function test_checkout_policy_section_explicitly_declares_merchant_only_posture(): void {
+		// 1.6.6: llms.txt now carries an explicit declaration of
+		// the merchant-only-checkout posture. Redundant with the
+		// UCP manifest (which declares by absence of capabilities),
+		// but useful for agent trust frameworks and human reviewers.
+		//
+		// Locks in the five "does NOT support" bullets + the four
+		// manifest-verification claims. If any of these is removed,
+		// the posture declaration becomes misleading.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Checkout Policy', $output );
+		$this->assertStringContainsString( 'All purchases complete on this site', $output );
+		$this->assertStringContainsString( 'In-chat or in-agent payment completion', $output );
+		$this->assertStringContainsString( 'Embedded checkout', $output );
+		$this->assertStringContainsString( 'AP2 Mandates', $output );
+		$this->assertStringContainsString( 'Persistent agent-managed carts', $output );
+		$this->assertStringContainsString( 'payment_handlers', $output );
+		$this->assertStringContainsString( 'requires_escalation', $output );
+	}
+
 	public function test_attribution_leads_with_api_first_checkout_flow(): void {
 		// 1.6.5 change: the attribution section now leads with the
 		// canonical UCP flow (POST /checkout-sessions) rather than
