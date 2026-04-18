@@ -717,6 +717,47 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// CORS + nosniff headers on robots.txt (do_robotstxt hook)
 	// ------------------------------------------------------------------
 
+	public function test_common_sitemap_paths_always_emitted_even_without_discovery(): void {
+		// Real-world case from pierorocca.com: Yoast SEO emits
+		// Sitemap directives via `do_robotstxt` action (direct
+		// echo) rather than the `robots_txt` filter, so our
+		// regex discovery sees nothing. Without the hardcoded
+		// fallback the merchant's `/sitemap.xml` URL never
+		// makes it into an `Allow:` directive.
+		//
+		// With COMMON_SITEMAP_PATHS, `/sitemap.xml` is always
+		// in each named block regardless of what we could or
+		// couldn't discover — covering this common deployment.
+		$base = "User-agent: *\nDisallow: /wp-admin/\n";
+
+		$output = $this->generate_robots_output( $base );
+
+		$this->assertStringContainsString( 'Allow: /sitemap.xml', $output );
+		$this->assertStringContainsString( 'Allow: /sitemap_index.xml', $output );
+		$this->assertStringContainsString( 'Allow: /wp-sitemap.xml', $output );
+		$this->assertStringContainsString( 'Allow: /news-sitemap.xml', $output );
+	}
+
+	public function test_discovered_sitemap_paths_not_duplicated_with_hardcoded(): void {
+		// Union + dedupe: when `/sitemap.xml` is both discovered
+		// from the input AND in COMMON_SITEMAP_PATHS, it should
+		// only appear once per named block — not twice.
+		$base = "Sitemap: https://example.com/sitemap.xml\n"
+			. "User-agent: *\nDisallow: /wp-admin/\n";
+
+		$output = $this->generate_robots_output( $base );
+
+		// Count per-block occurrences. Two allowed bots in the
+		// fixture, so we expect exactly 2 instances of
+		// `Allow: /sitemap.xml` — not 4 (which would indicate
+		// discovered + hardcoded both emitted).
+		$this->assertEquals(
+			2,
+			substr_count( $output, 'Allow: /sitemap.xml' ),
+			'Duplicate /sitemap.xml from discovered + hardcoded should be deduped'
+		);
+	}
+
 	public function test_cors_headers_method_is_hooked_on_do_robotstxt(): void {
 		// Can't test the actual `header()` calls without process
 		// isolation (PHP headers-sent state leaks between tests).
