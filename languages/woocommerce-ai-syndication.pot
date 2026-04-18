@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-3.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: WooCommerce AI Syndication 1.3.0\n"
+"Project-Id-Version: WooCommerce AI Syndication 1.6.7\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/woocommerce-ai-syndication\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-17T09:52:11+00:00\n"
+"POT-Creation-Date: 2026-04-18T17:22:05+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-syndication\n"
@@ -35,28 +35,16 @@ msgstr ""
 msgid "WooCommerce"
 msgstr ""
 
-#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:140
+#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:136
 msgid "AI Agent Attribution"
 msgstr ""
 
-#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:141
+#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:137
 msgid "Agent:"
 msgstr ""
 
-#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:144
+#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:140
 msgid "Session ID:"
-msgstr ""
-
-#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:167
-msgid "AI Agent"
-msgstr ""
-
-#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:374
-msgid "Filter by AI agent"
-msgstr ""
-
-#: includes/ai-syndication/class-wc-ai-syndication-attribution.php:376
-msgid "Any AI agent"
 msgstr ""
 
 #: includes/ai-syndication/class-wc-ai-syndication-jsonld.php:215
@@ -64,37 +52,110 @@ msgstr ""
 msgid "Products"
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:146
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:219
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:507
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:658
+msgid "AI Syndication is not currently enabled on this store."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:253
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:280
 msgid "Unable to fetch products from the store."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:207
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:520
 msgid "Request body must include an \"ids\" array."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:215
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:530
 msgid "The \"ids\" array must contain at least one ID."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:312
+#. translators: %d is the maximum number of IDs per request.
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:548
+#, php-format
+msgid "The \"ids\" array exceeds the per-request limit of %d entries."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:669
 msgid "Request must include a non-empty \"line_items\" array."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:378
+#. translators: %d is the maximum number of line items per request.
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:679
+#, php-format
+msgid "The \"line_items\" array exceeds the per-request limit of %d entries."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:748
 msgid "Complete your purchase on the merchant site."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:734
+#. translators: 1: number of variations missing, 2: WC product ID.
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1189
+#, php-format
+msgid "%1$d variation of product %2$d is not included in the variants list; the list is incomplete."
+msgid_plural "%1$d variations of product %2$d are not included in the variants list; the list is incomplete."
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1254
+msgid "pagination must be an object; using defaults."
+msgstr ""
+
+#. translators: 1: requested limit, 2: applied limit, 3: max allowed.
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1270
+#, php-format
+msgid "Requested pagination.limit %1$d was clamped to %2$d (allowed range: 1–%3$d)."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1297
+msgid "Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug."
+msgstr ""
+
+#. translators: %s is the category slug/name the agent sent that couldn't be resolved.
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1323
+#, php-format
+msgid "Category \"%s\" was not found; filter ignored for this value."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1743
+msgid "Line item must be an object with \"item.id\" and \"quantity\"."
+msgstr ""
+
+#. translators: %d is the maximum quantity per line item.
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1747
+#, php-format
+msgid "Quantity must be a positive integer up to %d."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1751
+msgid "Product not found."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1753
+msgid "Product type cannot be added via the Shareable Checkout URL; link to the product page directly."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1755
+msgid "Product is out of stock."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1759
 msgid "Product is variable — specify a variation ID instead of the parent product ID."
 msgstr ""
 
-#: includes/class-wc-ai-syndication.php:233
-#: includes/class-wc-ai-syndication.php:234
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1761
+msgid "Line item could not be processed."
+msgstr ""
+
 #: includes/class-wc-ai-syndication.php:246
+#: includes/class-wc-ai-syndication.php:247
+#: includes/class-wc-ai-syndication.php:259
 msgid "AI Syndication"
 msgstr ""
 
-#: woocommerce-ai-syndication.php:65
+#: woocommerce-ai-syndication.php:86
 msgid "WooCommerce AI Syndication requires WooCommerce to be installed and active."
 msgstr ""
 
@@ -106,112 +167,136 @@ msgstr ""
 msgid "Error saving settings."
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:58
+#: client/settings/ai-syndication/endpoint-info.js:167
 msgid "Checking…"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:66
+#: client/settings/ai-syndication/endpoint-info.js:175
 msgid "Reachable"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:71
+#: client/settings/ai-syndication/endpoint-info.js:180
 msgid "Not reachable"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:76
+#: client/settings/ai-syndication/endpoint-info.js:185
 msgid "Not published"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:173
+#: client/settings/ai-syndication/endpoint-info.js:283
 msgid "Discovery Endpoints"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:185
+#: client/settings/ai-syndication/endpoint-info.js:295
 msgid "These endpoints are automatically available when AI Syndication is enabled."
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:199
+#: client/settings/ai-syndication/endpoint-info.js:309
 msgid "AI Syndication is currently disabled. Enable it in the Overview tab to activate these endpoints."
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:210
+#: client/settings/ai-syndication/endpoint-info.js:320
 msgid "Endpoint"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:216
+#: client/settings/ai-syndication/endpoint-info.js:326
 msgid "URL"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:222
+#: client/settings/ai-syndication/endpoint-info.js:332
 msgid "Status"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:228
+#: client/settings/ai-syndication/endpoint-info.js:338
 msgid "Purpose"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:257
+#: client/settings/ai-syndication/endpoint-info.js:367
 msgid "Machine-readable store guide for AI crawlers"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:282
+#: client/settings/ai-syndication/endpoint-info.js:392
 msgid "Universal Commerce Protocol — declares capabilities"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:305
+#: client/settings/ai-syndication/endpoint-info.js:417
+msgid "AI-crawler allow-list (Allow/Disallow directives appended to your site’s robots.txt)"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:440
 msgid "WooCommerce Store API for product search and cart (public)"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:328
+#: client/settings/ai-syndication/endpoint-info.js:463
 msgid "One or more endpoints are not reachable. If you just upgraded the plugin, try Settings → Permalinks → Save Changes to flush rewrite rules, then click Re-check."
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:349
+#: client/settings/ai-syndication/endpoint-info.js:484
 msgid "Reachability is checked from your browser."
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:359
+#: client/settings/ai-syndication/endpoint-info.js:494
 msgid "Re-check"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:369
+#: client/settings/ai-syndication/endpoint-info.js:504
 msgid "AI Crawler Access"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:381
+#: client/settings/ai-syndication/endpoint-info.js:516
 msgid "Control which AI crawlers are allowed to discover your store via robots.txt. Unchecked crawlers will be blocked from crawling your product pages."
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:402
+#: client/settings/ai-syndication/endpoint-info.js:537
 msgid "Allowed crawlers"
 msgstr ""
 
 #. translators: %1$d: allowed count, %2$d: total count
-#: client/settings/ai-syndication/endpoint-info.js:429
+#: client/settings/ai-syndication/endpoint-info.js:564
 #, js-format
 msgid "%1$d of %2$d"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:446
+#: client/settings/ai-syndication/endpoint-info.js:581
 #: client/settings/ai-syndication/product-selection.js:371
 msgid "Select all"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:461
+#: client/settings/ai-syndication/endpoint-info.js:596
 msgid "Clear"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:506
+#: client/settings/ai-syndication/endpoint-info.js:616
+msgid "Live browsing"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:620
+msgid "User-initiated fetches during an active query. These agents see fresh inventory and route revenue — recommended on."
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:627
+msgid "Training crawlers"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:631
+msgid "Static crawls that feed AI model training. Captured snapshots may surface as stale answers months later, with wrong prices or availability. Merchant discretion."
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:712
 msgid "These rules are added to your robots.txt. Well-behaved AI crawlers respect robots.txt directives."
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:527
+#: client/settings/ai-syndication/endpoint-info.js:742
+msgid "AI-referred orders appear in the Orders list under WooCommerce’s built-in Origin column as each agent’s brand name (e.g. \"Source: ChatGPT\", \"Source: Gemini\") rather than the technical crawler IDs shown above."
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:763
 #: client/settings/ai-syndication/product-selection.js:641
 #: client/settings/ai-syndication/settings-page.js:823
 msgid "Saving…"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:528
+#: client/settings/ai-syndication/endpoint-info.js:764
 #: client/settings/ai-syndication/product-selection.js:645
 #: client/settings/ai-syndication/settings-page.js:824
 msgid "Save Changes"

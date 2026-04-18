@@ -706,11 +706,41 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							color: colors.textMuted,
 							fontSize: '12px',
 							marginTop: '12px',
-							marginBottom: 0,
+							marginBottom: '6px',
 						} }
 					>
 						{ __(
 							'These rules are added to your robots.txt. Well-behaved AI crawlers respect robots.txt directives.',
+							'woocommerce-ai-syndication'
+						) }
+					</p>
+					{ /*
+						Bridge the two naming conventions: the list above
+						uses crawler User-Agent IDs (ChatGPT-User, etc.)
+						because that's what robots.txt directives target,
+						while WooCommerce's built-in "Origin" column on
+						the Orders list displays short brand names
+						(ChatGPT, Gemini, Claude) sourced from the
+						continue_url's utm_source. Without this note a
+						merchant may wonder why the Orders list names
+						don't match the checkboxes. Single sentence,
+						same muted-footer style as the robots.txt note
+						above so it reads as "one more thing to know"
+						not a headline. See
+						WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS
+						for the hostname→brand-name map driving the
+						display names.
+					*/ }
+					<p
+						style={ {
+							color: colors.textMuted,
+							fontSize: '12px',
+							marginTop: 0,
+							marginBottom: 0,
+						} }
+					>
+						{ __(
+							'AI-referred orders appear in the Orders list under WooCommerce\u2019s built-in Origin column as each agent\u2019s brand name (e.g. "Source: ChatGPT", "Source: Gemini") rather than the technical crawler IDs shown above.',
 							'woocommerce-ai-syndication'
 						) }
 					</p>
