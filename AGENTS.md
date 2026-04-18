@@ -145,19 +145,57 @@ In both cases, the Woo component wins. Don't rebuild something Woo already ships
 
 **Never bundle Woo or WP components.** Both are runtime externals via `@woocommerce/dependency-extraction-webpack-plugin` (configured in `webpack.config.js`) — the merchant's WooCommerce install supplies them through `window.wc.*` / `window.wp.*`. The build's generated `.asset.php` automatically lists `wc-components` as a PHP script dependency when any Woo import is present.
 
-**Current status: Woo component adoption deferred.**
+**Adopted Woo components:**
 
-We evaluated `@woocommerce/components` (`SummaryNumber`, `Table`, `Pill`) during the Overview tab redesign and reverted. The JS externalization worked correctly — Woo components rendered their DOM and behavior — but the **stylesheet was not loaded on our custom admin page**. Woo's CSS is auto-enqueued on wc-admin native screens; it is *not* auto-enqueued on WooCommerce submenu pages like ours. The result was visually unstyled (broken) cards.
+| From | Component | Adopted in | Where |
+|------|-----------|------------|-------|
+| `@woocommerce/components` | `TableCard` | Overview tab | `client/settings/ai-syndication/agent-revenue-table.js` (Revenue by Agent) |
 
-Before re-attempting Woo component adoption, the integration must solve:
+When adding a new Woo component, add a row here with the one-line rationale. Follow the three-part adoption pattern below — skipping any part reintroduces the failure modes from the earlier deferral.
 
-1. **Stylesheet enqueue:** manually register `wc-components` (and related `wc-admin-layout`, `wc-experimental`) style handles via `wp_enqueue_style` on the plugin's admin page hook — **with fallback** for WC version variance, since handle names have rotated between WC major versions.
-2. **Version pinning:** verify that the Woo components used are stable across the plugin's declared minimum WooCommerce version (currently 9.9+) through the latest release.
-3. **Graceful degradation:** decide what the page renders if `window.wc.components` is undefined (older WC, wc-admin disabled, etc.). Current hand-rolled components have no such dependency.
+### The three-part Woo component adoption pattern
 
-The webpack wiring for Woo externalization is **kept** (`@woocommerce/dependency-extraction-webpack-plugin` remains a devDependency and `webpack.config.js` still configures it) so the door stays open. The wiring is cheap, and re-adopting Woo components later is a one-line package install + imports, not a build-system rewrite.
+The earlier SummaryNumber adoption (commit `4ee0089`) was reverted (commit `9c28c38`) because it did a direct import swap without solving the three blockers below. All three MUST be addressed together or the adoption breaks for some slice of merchants.
 
-When the three blockers above are resolved, candidate components to adopt first: `SummaryNumber` (Overview stats), `Pill` (selection count indicators), `Table` (Discovery endpoints + Revenue by Agent).
+**1. Stylesheet enqueue with registration guards.**
+Woo auto-enqueues its component CSS only on wc-admin native screens. On custom plugin submenu pages (like ours) the handles exist but sit idle. Fix in `WC_AI_Syndication::admin_scripts()`:
+
+```php
+foreach ( [ 'wc-components', 'wc-admin-layout', 'wc-experimental' ] as $woo_style ) {
+    if ( wp_style_is( $woo_style, 'registered' ) ) {
+        wp_enqueue_style( $woo_style );
+    }
+}
+```
+
+The `wp_style_is('registered')` guard is non-negotiable. Handle names have rotated between WC major versions; guarding makes a missing handle a silent no-op (combined with the runtime fallback below, this is the "graceful degradation" story) instead of a hard failure.
+
+**2. Runtime access via `window.wc.components.*`, not via `import`.**
+Do NOT write `import { TableCard } from '@woocommerce/components';`. The webpack extractor replaces that import with a synchronous destructure (`const { TableCard } = window.wc.components;`) at build time — which throws at script-load if `window.wc.components` is undefined, crashing the admin page before any React code runs. Use:
+
+```js
+const getWooTableCard = () => {
+    if ( typeof window === 'undefined' || ! window.wc || ! window.wc.components ) {
+        return null;
+    }
+    return window.wc.components.TableCard || null;
+};
+```
+
+Access is optional-chaining-safe. The helper returns `null` on any failure path, lets the render code pick a fallback branch.
+
+**3. Hand-rolled fallback rendering the same data.**
+When the Woo component is unavailable, the component must still render something correct — not an empty section, not a crash, not a visible error. Prepare the data once; render it through the Woo path when available, through a `widefat`-styled fallback when not. See `agent-revenue-table.js` for the template.
+
+The devDependency on `@woocommerce/components` is still worth installing — it gives IntelliSense on prop shapes during development and keeps the door open if Woo ships a safer externalization pattern later.
+
+### Candidate Woo components for future adoption
+
+Now that the pattern is established, these are the logical next migrations (each gets an `AgentRevenueTable`-shaped wrapper):
+
+- **`SummaryNumber`** — Overview tab stat cards (4 of them: Products Exposed, Total Orders, AI Orders, AI Revenue)
+- **`Pill`** — selection count indicators (Discovery tab "X of 12" crawler count)
+- **`Table`** (not TableCard) — Discovery tab endpoint reachability table
 
 ### Inline styles + design tokens
 
