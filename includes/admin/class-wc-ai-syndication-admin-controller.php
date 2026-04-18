@@ -91,6 +91,30 @@ class WC_AI_Syndication_Admin_Controller {
 			]
 		);
 
+		// Recent AI-attributed orders. Feeds the Overview tab's
+		// AI Orders DataViews table — one row per order with the
+		// columns that match WC's native Orders list (Order, Date,
+		// Status, Agent, Total). Scoped to orders with our
+		// `_wc_ai_syndication_agent` meta set so we don't scan the
+		// full order table; `per_page` is clamped to a sane max.
+		register_rest_route(
+			self::NAMESPACE,
+			'/recent-orders',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'get_recent_orders' ],
+				'permission_callback' => [ $this, 'check_admin_permission' ],
+				'args'                => [
+					'per_page' => [
+						'type'    => 'integer',
+						'default' => 10,
+						'minimum' => 1,
+						'maximum' => 50,
+					],
+				],
+			]
+		);
+
 		// Product/category search for selection UI.
 		register_rest_route(
 			self::NAMESPACE,
@@ -199,6 +223,83 @@ class WC_AI_Syndication_Admin_Controller {
 		$stats  = WC_AI_Syndication_Attribution::get_stats( $period );
 
 		return new WP_REST_Response( $stats );
+	}
+
+	/**
+	 * Get recent AI-attributed orders for the Overview tab table.
+	 *
+	 * Returns a normalized row shape that matches what the frontend
+	 * DataViews table renders — no display logic on the client besides
+	 * status-pill coloring + currency formatting. Specifically:
+	 *
+	 *   - `agent` is already canonicalized through KNOWN_AGENT_HOSTS,
+	 *     so legacy orders captured with the raw hostname
+	 *     (`gemini.google.com`) come back as the brand name
+	 *     (`Gemini`). Non-destructive: the database meta stays
+	 *     untouched; the canonicalization is display-only.
+	 *   - `status` is the machine status (`processing`, `completed`,
+	 *     etc.) — the frontend maps it to a colored pill. `status_label`
+	 *     is the localized display text (`Processing`, `Completed`).
+	 *   - `edit_url` is HPOS-aware: admin.php?page=wc-orders on
+	 *     HPOS stores, post.php otherwise.
+	 *   - `total` is the raw numeric string; the client formats with
+	 *     Intl.NumberFormat so locale handling matches the rest of
+	 *     the admin UI.
+	 *
+	 * Query scope: orders that have our AGENT_META_KEY set. That
+	 * bounds the scan — we never touch orders that aren't
+	 * AI-attributed. wc_get_orders() hides the HPOS/legacy split.
+	 *
+	 * @param WP_REST_Request $request The request.
+	 * @return WP_REST_Response
+	 */
+	public function get_recent_orders( $request ) {
+		$per_page = (int) $request->get_param( 'per_page' );
+
+		$orders = wc_get_orders(
+			[
+				'limit'    => $per_page,
+				'orderby'  => 'date',
+				'order'    => 'DESC',
+				'meta_key' => WC_AI_Syndication_Attribution::AGENT_META_KEY, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+				'status'   => array_keys( wc_get_order_statuses() ),
+				'return'   => 'objects',
+			]
+		);
+
+		$statuses = wc_get_order_statuses();
+		$rows     = [];
+
+		foreach ( $orders as $order ) {
+			$raw_agent = (string) $order->get_meta( WC_AI_Syndication_Attribution::AGENT_META_KEY );
+			$agent     = '' !== $raw_agent
+				? WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( $raw_agent )
+				: '';
+
+			$date_created = $order->get_date_created();
+			$status_key   = 'wc-' . $order->get_status();
+
+			$rows[] = [
+				'id'           => $order->get_id(),
+				'number'       => $order->get_order_number(),
+				'date'         => $date_created ? $date_created->format( 'c' ) : '',
+				'date_display' => $date_created ? wc_format_datetime( $date_created ) : '',
+				'status'       => $order->get_status(),
+				'status_label' => $statuses[ $status_key ] ?? ucfirst( $order->get_status() ),
+				'agent'        => $agent,
+				'total'        => (float) $order->get_total(),
+				'currency'     => $order->get_currency(),
+				'edit_url'     => $order->get_edit_order_url(),
+			];
+		}
+
+		return new WP_REST_Response(
+			[
+				'orders'   => $rows,
+				'total'    => count( $rows ),
+				'currency' => get_woocommerce_currency(),
+			]
+		);
 	}
 
 	/**

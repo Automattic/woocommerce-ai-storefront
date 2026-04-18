@@ -14,7 +14,7 @@ import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
 import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
-import AgentRevenueTable from './agent-revenue-table';
+import AIOrdersTable from './ai-orders-table';
 import { colors } from './tokens';
 
 // Rate-limit UI (card + presets + RPM state) lives in the Discovery
@@ -625,21 +625,13 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 			</div>
 
 			{ /*
-				Per-agent breakdown. The AgentRevenueTable component
-				picks between WooCommerce's native TableCard (when
-				wc-admin is available) and a hand-rolled widefat
-				fallback. Both paths render the same data with
-				right-aligned numeric columns, Intl-formatted
-				currency, and a totals row. See agent-revenue-table.js
-				for the dual-path rationale + blocker resolutions
-				for the earlier Woo-adoption deferral.
+				Recent AI-attributed orders. One row per order (not
+				per agent) — the per-agent aggregate is already
+				conveyed by the stat cards above. See
+				ai-orders-table.js for why this uses
+				@wordpress/dataviews rather than @woocommerce/components.
 			*/ }
-			{ stats && (
-				<AgentRevenueTable
-					byAgent={ stats.by_agent || {} }
-					currency={ stats.currency }
-				/>
-			) }
+			<AIOrdersTable />
 		</div>
 	);
 };

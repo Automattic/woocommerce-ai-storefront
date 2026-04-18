@@ -137,65 +137,80 @@ The operational counterpart to the discovery layer. Translates the WooCommerce S
 
 ### Component library precedence
 
-**`@wordpress/components` is the default. `@woocommerce/components` is adopted when *either*:**
-- **(a)** Woo has already composed the equivalent from WP primitives — rebuilding with the same primitives would duplicate Woo's work and cause visual drift vs. native wc-admin screens.
-- **(b)** Woo fills a real capability gap WP doesn't cover.
+**Precedence:** `@wordpress/components` is the default. For data tables, **`@wordpress/dataviews` is preferred over `@woocommerce/components`'s `TableCard`** — see the adoption note below for why.
 
-In both cases, the Woo component wins. Don't rebuild something Woo already ships just to keep the dep graph pure.
+**Key distinction — externalized vs bundled:**
 
-**Never bundle Woo or WP components.** Both are runtime externals via `@woocommerce/dependency-extraction-webpack-plugin` (configured in `webpack.config.js`) — the merchant's WooCommerce install supplies them through `window.wc.*` / `window.wp.*`. The build's generated `.asset.php` automatically lists `wc-components` as a PHP script dependency when any Woo import is present.
+| Package | Runtime model | Implication |
+|---------|---------------|-------------|
+| `@wordpress/components` | Externalized → `window.wp.components` | Merchant's WP provides it; CSS shipped under the `wp-components` handle we already enqueue. |
+| `@woocommerce/components` | Externalized → `window.wc.components` | Merchant's wc-admin provides it; **CSS auto-enqueues only on native wc-admin screens** — not on custom plugin submenu pages. This is a trap. |
+| `@wordpress/dataviews` | **Bundled** into our plugin's JS | Package is in the WP extractor's `BUNDLED_PACKAGES` list. JS ships with our build; CSS imported via `client/settings/ai-syndication/index.js` so it travels with our own stylesheet. No dependency on the merchant's wc-admin asset registration. |
 
-**Adopted Woo components:**
+**Adopted components:**
 
 | From | Component | Adopted in | Where |
 |------|-----------|------------|-------|
-| `@woocommerce/components` | `TableCard` | Overview tab | `client/settings/ai-syndication/agent-revenue-table.js` (Revenue by Agent) |
+| `@wordpress/dataviews` | `DataViews` | Overview tab | `client/settings/ai-syndication/ai-orders-table.js` (Recent AI Orders) |
 
-When adding a new Woo component, add a row here with the one-line rationale. Follow the three-part adoption pattern below — skipping any part reintroduces the failure modes from the earlier deferral.
+### Why we use DataViews for tables, not `@woocommerce/components` TableCard
 
-### The three-part Woo component adoption pattern
+We tried TableCard first (PR #24) and reverted. The failure mode is the trap above: `wc-components` CSS isn't auto-enqueued on custom plugin submenu pages, so the component DOM rendered but the summary-row layout collapsed ("1Total orders" with no spacing), column widths went wrong, and the whole thing looked broken.
 
-The earlier SummaryNumber adoption (commit `4ee0089`) was reverted (commit `9c28c38`) because it did a direct import swap without solving the three blockers below. All three MUST be addressed together or the adoption breaks for some slice of merchants.
+We attempted three workarounds — none worked cleanly:
 
-**1. Stylesheet enqueue with registration guards.**
-Woo auto-enqueues its component CSS only on wc-admin native screens. On custom plugin submenu pages (like ours) the handles exist but sit idle. Fix in `WC_AI_Syndication::admin_scripts()`:
+1. **Enqueue `wc-components` via `wp_style_is('registered')`** — guards pass through silently because the handle isn't registered on non-wc-admin pages.
+2. **Bump `admin_enqueue_scripts` to a later priority** — makes no difference; the handle registration is tied to screen detection, not hook ordering.
+3. **Direct CSS import from `@woocommerce/components/build-style/...`** — would work but breaks our tree-shaking story and introduces a version-pinning concern when WC updates.
 
-```php
-foreach ( [ 'wc-components', 'wc-admin-layout', 'wc-experimental' ] as $woo_style ) {
-    if ( wp_style_is( $woo_style, 'registered' ) ) {
-        wp_enqueue_style( $woo_style );
-    }
-}
-```
+DataViews avoids all of this because it's **bundled**, not externalized. The package ships with our build; our webpack config (already handles `@wordpress/dataviews/build-style/style.css` as a standard CSS import) extracts the styles to our own stylesheet. Same enqueue path as every other style the plugin ships. No merchant-environment dependency.
 
-The `wp_style_is('registered')` guard is non-negotiable. Handle names have rotated between WC major versions; guarding makes a missing handle a silent no-op (combined with the runtime fallback below, this is the "graceful degradation" story) instead of a hard failure.
-
-**2. Runtime access via `window.wc.components.*`, not via `import`.**
-Do NOT write `import { TableCard } from '@woocommerce/components';`. The webpack extractor replaces that import with a synchronous destructure (`const { TableCard } = window.wc.components;`) at build time — which throws at script-load if `window.wc.components` is undefined, crashing the admin page before any React code runs. Use:
+### Adoption recipe for new DataViews tables
 
 ```js
-const getWooTableCard = () => {
-    if ( typeof window === 'undefined' || ! window.wc || ! window.wc.components ) {
-        return null;
-    }
-    return window.wc.components.TableCard || null;
-};
+// 1. Import DataViews + the filter/sort/paginate helper.
+import { DataViews, filterSortAndPaginate } from '@wordpress/dataviews';
+
+// 2. Declare fields with id/label/render/getValue. `getValue` is what
+//    sort/filter operate on; `render` is what the cell displays.
+const fields = [
+    {
+        id: 'order',
+        label: __( 'Order', 'woocommerce-ai-syndication' ),
+        enableSorting: true,
+        render: ( { item } ) => <a href={ item.edit_url }>#{ item.number }</a>,
+        getValue: ( { item } ) => item.id,
+    },
+    // ...
+];
+
+// 3. Keep view state local; DataViews calls onChangeView when the
+//    user paginates, sorts, or toggles column visibility.
+const [ view, setView ] = useState( {
+    type: 'table', page: 1, perPage: 10,
+    fields: [ 'order', 'date', 'status', 'agent', 'total' ],
+} );
+
+// 4. Process data through the helper before passing to DataViews —
+//    the component expects the current-page slice, not the raw list.
+const { data: processedData, paginationInfo } = useMemo(
+    () => filterSortAndPaginate( rawData, view, fields ),
+    [ rawData, view, fields ]
+);
 ```
 
-Access is optional-chaining-safe. The helper returns `null` on any failure path, lets the render code pick a fallback branch.
+See `ai-orders-table.js` for the full template including status-pill styling (inline because wc-admin's `.order-status` CSS isn't loaded on our page — we render the pill ourselves with WC's palette values).
 
-**3. Hand-rolled fallback rendering the same data.**
-When the Woo component is unavailable, the component must still render something correct — not an empty section, not a crash, not a visible error. Prepare the data once; render it through the Woo path when available, through a `widefat`-styled fallback when not. See `agent-revenue-table.js` for the template.
+**CSS import:** the DataViews stylesheet import in `client/settings/ai-syndication/index.js` is the one place where we bring in bundled Woo/WP design-system CSS. If you adopt a new bundled WP package that ships its own CSS, add its import next to the DataViews one — not scattered across component files — so the stylesheet bundle stays easy to audit.
 
-The devDependency on `@woocommerce/components` is still worth installing — it gives IntelliSense on prop shapes during development and keeps the door open if Woo ships a safer externalization pattern later.
+**The `@woocommerce/components` devDependency is kept.** It's still useful for IntelliSense on Woo prop shapes and keeps the door open if Woo ever publishes a safer externalization pattern. Current state: zero runtime usage, still declared in `package.json`.
 
-### Candidate Woo components for future adoption
+### Candidate DataViews migrations for the future
 
-Now that the pattern is established, these are the logical next migrations (each gets an `AgentRevenueTable`-shaped wrapper):
+- **Discovery tab endpoint reachability list** — a natural fit for DataViews' `table` view with status-pill rendering
+- **Order attribution table** (if we add a dedicated page later) — larger data set, where DataViews' pagination/sort earn their weight
 
-- **`SummaryNumber`** — Overview tab stat cards (4 of them: Products Exposed, Total Orders, AI Orders, AI Revenue)
-- **`Pill`** — selection count indicators (Discovery tab "X of 12" crawler count)
-- **`Table`** (not TableCard) — Discovery tab endpoint reachability table
+Stat cards and selection-count pills are better left as hand-rolled — they don't have tabular data, and `@wordpress/components` primitives are sufficient.
 
 ### Inline styles + design tokens
 

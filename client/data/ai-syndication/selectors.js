@@ -7,3 +7,4 @@ export const getStats = ( state ) => state?.stats || null;
 export const getEndpoints = ( state ) => state?.endpoints || EMPTY_OBJ;
 export const getEndpointStatus = ( state ) =>
 	state?.endpointStatus || EMPTY_OBJ;
+export const getRecentOrders = ( state ) => state?.recentOrders || null;

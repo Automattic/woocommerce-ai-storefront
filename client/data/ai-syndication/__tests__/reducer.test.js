@@ -9,6 +9,7 @@ describe( 'AI Syndication reducer', () => {
 		stats: null,
 		endpoints: {},
 		endpointStatus: {},
+		recentOrders: null,
 	};
 
 	it( 'returns default state for undefined state', () => {

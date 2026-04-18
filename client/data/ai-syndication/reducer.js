@@ -13,6 +13,10 @@ const defaultState = {
 	// Empty object means "not yet probed" — the UI treats that as
 	// equivalent to 'checking' for display purposes.
 	endpointStatus: {},
+	// Recent AI-attributed orders for the Overview tab's AI Orders
+	// table. `null` = "not fetched yet" so the component can render
+	// a skeleton/empty state rather than flashing an empty table.
+	recentOrders: null,
 };
 
 const reducer = ( state = defaultState, action ) => {
@@ -51,6 +55,9 @@ const reducer = ( state = defaultState, action ) => {
 
 		case ACTION_TYPES.RESET_ENDPOINT_STATUS:
 			return { ...state, endpointStatus: {} };
+
+		case ACTION_TYPES.SET_RECENT_ORDERS:
+			return { ...state, recentOrders: action.data };
 
 		default:
 			return state;
