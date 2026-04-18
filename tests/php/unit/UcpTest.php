@@ -202,23 +202,39 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_spec_url_points_to_ucp_shopping_schema(): void {
-		// Points agents at the UCP shopping schema repo so they can
-		// verify our wire format matches what they expect. Since
-		// 1.4.5 the URL pins to the tagged spec revision matching
-		// our `PROTOCOL_VERSION` (see the dedicated pinning test
-		// in the store_context section for the rationale).
+	public function test_service_spec_url_points_to_ucp_overview(): void {
+		// The service-level `spec` URL points at the UCP overview
+		// documentation page on ucp.dev, pinned to our protocol
+		// version. Pre-1.6.4 this pointed at the GitHub schema
+		// directory listing — not a "specification document" per
+		// the entity schema's intent. See 1.6.4 changelog for the
+		// migration rationale.
 		$manifest = $this->ucp->generate_manifest( [] );
 		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertStringStartsWith(
-			'https://github.com/Universal-Commerce-Protocol/ucp/tree/',
+			'https://ucp.dev/' . WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
 			$binding['spec']
 		);
-		$this->assertStringEndsWith(
-			'/source/schemas/shopping',
-			$binding['spec']
+		$this->assertStringEndsWith( '/specification/overview', $binding['spec'] );
+	}
+
+	public function test_service_schema_url_points_to_openapi_doc(): void {
+		// 1.6.4 added `schema` to the service binding — pinned to
+		// the OpenAPI 3.1 spec for the UCP Shopping REST service.
+		// Agents wanting machine-readable contract validation use
+		// this URL; the OpenAPI doc's `{endpoint}` server variable
+		// is a placeholder they substitute with the merchant's
+		// actual endpoint (our service binding's `endpoint` field).
+		$manifest = $this->ucp->generate_manifest( [] );
+		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
+
+		$this->assertArrayHasKey( 'schema', $binding );
+		$this->assertStringStartsWith(
+			'https://ucp.dev/' . WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			$binding['schema']
 		);
+		$this->assertStringEndsWith( '.openapi.json', $binding['schema'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -485,34 +501,112 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_spec_url_is_pinned_to_protocol_version_tag(): void {
-		// 1.4.5 change: the service binding's `spec` field used to
-		// point at `/tree/main/` (a moving target). It now points at
-		// `/tree/v{PROTOCOL_VERSION}/` so a year-old consumer
-		// checking our manifest against the spec reads the exact
-		// revision we shipped against.
+	public function test_spec_and_schema_urls_are_pinned_to_protocol_version(): void {
+		// Iteration of spec-URL pinning through 1.4.5 → 1.6.4:
+		//   - Pre-1.4.5: `/tree/main/` (moving target, wrong)
+		//   - 1.4.5: `/tree/v{VERSION}/source/schemas/shopping` (pinned
+		//           but at a GitHub directory listing, not a spec doc)
+		//   - 1.6.4: `https://ucp.dev/{VERSION}/...` (pinned at the
+		//           canonical docs site + OpenAPI schema)
+		//
+		// This test locks in the 1.6.4 shape: all external URLs
+		// use `ucp.dev/{PROTOCOL_VERSION}/` so one constant drives
+		// every spec/schema reference in the manifest.
 		$manifest = $this->ucp->generate_manifest( [] );
-		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
-		$expected = 'https://github.com/Universal-Commerce-Protocol/ucp/tree/v' . WC_AI_Syndication_Ucp::PROTOCOL_VERSION . '/source/schemas/shopping';
+		$service  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
+		$version  = WC_AI_Syndication_Ucp::PROTOCOL_VERSION;
 
-		$this->assertSame( $expected, $binding['spec'] );
-		$this->assertStringNotContainsString( '/tree/main/', $binding['spec'] );
+		// Service-level URLs.
+		$this->assertStringContainsString( "/{$version}/", $service['spec'] );
+		$this->assertStringContainsString( "/{$version}/", $service['schema'] );
+
+		// Capability-level URLs.
+		$caps = $manifest['ucp']['capabilities'];
+		foreach ( $caps as $name => $bindings ) {
+			foreach ( $bindings as $binding ) {
+				if ( isset( $binding['spec'] ) ) {
+					$this->assertStringContainsString( "/{$version}/", $binding['spec'], "spec URL for $name must be version-pinned" );
+				}
+				if ( isset( $binding['schema'] ) ) {
+					$this->assertStringContainsString( "/{$version}/", $binding['schema'], "schema URL for $name must be version-pinned" );
+				}
+			}
+		}
+
+		// Regression guard against the pre-1.6.4 GitHub tree URL.
+		$this->assertStringNotContainsString( '/tree/main/', $service['spec'] );
+		$this->assertStringNotContainsString( 'github.com', $service['spec'] );
+	}
+
+	public function test_every_capability_has_spec_and_schema_urls(): void {
+		// 1.6.4 added per-capability `spec` + `schema` URLs.
+		// Agents that want to validate response payloads against
+		// the authoritative contract need these. Locks in both
+		// fields on every advertised capability.
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		foreach ( $manifest['ucp']['capabilities'] as $name => $bindings ) {
+			foreach ( $bindings as $binding ) {
+				$this->assertArrayHasKey( 'spec', $binding, "Capability $name missing spec URL" );
+				$this->assertArrayHasKey( 'schema', $binding, "Capability $name missing schema URL" );
+				$this->assertNotEmpty( $binding['spec'] );
+				$this->assertNotEmpty( $binding['schema'] );
+			}
+		}
 	}
 
 	// ------------------------------------------------------------------
-	// Layer 3: Plugin-specific service config
+	// Layer 3: Plugin-specific checkout capability config
+	//
+	// Note: relocated from service-level to checkout-capability-level
+	// in 1.6.4. Service-level config is for transport concerns (auth,
+	// rate limits); capability-level config is for capability-semantic
+	// concerns (purchase URL templates, UTM attribution). The fields
+	// here describe how agents construct checkout URLs and attribute
+	// orders — both semantically belong with the checkout capability.
 	// ------------------------------------------------------------------
 
 	private function get_config(): array {
 		$manifest = $this->ucp->generate_manifest( [] );
-		return $manifest['ucp']['services']['dev.ucp.shopping'][0]['config'];
+		return $manifest['ucp']['capabilities']['dev.ucp.shopping.checkout'][0]['config'];
 	}
 
-	public function test_service_config_has_purchase_urls_and_attribution(): void {
+	public function test_checkout_capability_config_has_purchase_urls_and_attribution(): void {
 		$config = $this->get_config();
 
 		$this->assertArrayHasKey( 'purchase_urls', $config );
 		$this->assertArrayHasKey( 'attribution', $config );
+	}
+
+	public function test_service_binding_has_no_capability_config(): void {
+		// Regression guard: the pre-1.6.4 placement of
+		// `purchase_urls` + `attribution` under `services[0].config`
+		// was semantically wrong. If a future refactor re-adds it
+		// there (or leaves both copies), this catches the drift.
+		//
+		// Two valid post-1.6.4 states:
+		//   - Service has NO `config` key (current implementation)
+		//   - Service has `config` but without capability-semantic
+		//     fields (future transport-config additions would live
+		//     there, but purchase_urls/attribution never should)
+		$manifest = $this->ucp->generate_manifest( [] );
+		$service  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
+
+		if ( ! isset( $service['config'] ) ) {
+			$this->assertTrue( true, 'Service has no config key — structurally impossible for capability fields to live there' );
+			return;
+		}
+
+		$this->assertArrayNotHasKey(
+			'purchase_urls',
+			$service['config'],
+			'purchase_urls belongs on the checkout capability, not the service binding'
+		);
+		$this->assertArrayNotHasKey(
+			'attribution',
+			$service['config'],
+			'attribution belongs on the checkout capability, not the service binding'
+		);
 	}
 
 	// ----- purchase_urls.checkout_link ----------------------------------

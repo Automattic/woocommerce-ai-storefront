@@ -194,89 +194,96 @@ class WC_AI_Syndication_Ucp {
 		$cart_url     = wc_get_cart_url();
 		$ucp_endpoint = rest_url( 'wc/ucp/v1' );
 
+		// Shared checkout-capability config. Relocated here from
+		// the service-level `config` in 1.6.4 — the UCP entity
+		// schema permits `config` at both levels, but semantically
+		// these fields (purchase URL templates, UTM attribution
+		// conventions) describe the checkout capability rather
+		// than the service transport. Service-level config is for
+		// transport-specific concerns (auth, rate limits, endpoint
+		// tuning); capability-level config is for
+		// capability-semantic concerns. The pre-1.6.4 placement
+		// was syntactically valid but semantically misaligned.
+		$checkout_config = [
+			'purchase_urls' => [
+				'spec'             => 'https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/',
+				'add_to_cart_spec' => 'https://woocommerce.com/document/quick-guide-to-woocommerce-add-to-cart-urls/',
+
+				// Checkout-link: adds items AND redirects to
+				// checkout. Customer never sees the cart — fewest
+				// clicks to purchase.
+				'checkout_link'    => [
+					'description' => 'Recommended — adds items and redirects to checkout in one step. Customer never sees the cart.',
+					'simple'      => $site_url . 'checkout-link/?products={product_id}:{quantity}',
+					'variable'    => $site_url . 'checkout-link/?products={variation_id}:{quantity}',
+					'multi_item'  => $site_url . 'checkout-link/?products={id}:{qty},{id}:{qty}',
+					'with_coupon' => $site_url . 'checkout-link/?products={id}:{qty}&coupon={coupon_code}',
+					'unsupported' => [ 'grouped', 'external', 'subscription' ],
+				],
+
+				// Classic add-to-cart URL. Three behaviors
+				// depending on base URL — the official WC docs
+				// document all three.
+				'add_to_cart'      => [
+					'description'      => 'Classic WooCommerce add-to-cart URL. Three behaviors depending on base URL.',
+					'add_only'         => $site_url . '?add-to-cart={product_id}&quantity={quantity}',
+					'add_and_cart'     => $cart_url . '?add-to-cart={product_id}&quantity={quantity}',
+					'add_and_checkout' => $checkout_url . '?add-to-cart={product_id}&quantity={quantity}',
+					'grouped'          => [
+						'template' => $checkout_url . '?add-to-cart={grouped_product_id}&quantity[{sub_product_id}]={quantity}',
+						'note'     => 'Use the classic add-to-cart pattern for grouped products. The checkout-link feature does not support them.',
+					],
+					'external_note'    => 'For external/affiliate products (type: external), link directly to the product\'s external_url field from the Store API. Do not use add-to-cart.',
+				],
+			],
+
+			'attribution' => [
+				'spec'       => 'https://woocommerce.com/document/order-attribution-tracking/',
+				'system'     => 'woocommerce_order_attribution',
+				'parameters' => [
+					'utm_source'    => 'Your agent identifier (e.g. chatgpt, gemini, perplexity)',
+					'utm_medium'    => 'Must be set to "ai_agent"',
+					'utm_campaign'  => 'Optional campaign name',
+					'ai_session_id' => 'Conversation/session identifier for tracking',
+				],
+				'usage_note' => 'Append these parameters to any checkout_link or add_to_cart URL. The UCP /checkout-sessions endpoint adds utm_source + utm_medium automatically from the UCP-Agent header.',
+			],
+		];
+
+		// Base docs URL for the version-pinned ucp.dev spec site.
+		// All `spec` and `schema` URLs route through the same
+		// canonical host so consumers have a single origin to
+		// trust/cache. Pattern: `https://ucp.dev/{version}/...`.
+		$spec_base = 'https://ucp.dev/' . self::PROTOCOL_VERSION;
+
 		$manifest = [
 			'ucp'           => [
 				'version'          => self::PROTOCOL_VERSION,
 
 				// Services — single REST binding at our UCP namespace.
 				// Under business_schema, a REST binding requires
-				// `endpoint`; `spec` points at the UCP spec for
-				// consumers that want to verify our shape.
+				// `endpoint`. The service-level `spec` points at the
+				// UCP specification overview (updated in 1.6.4 — the
+				// previous URL pointed at the GitHub schema directory
+				// listing, which isn't a "specification document" per
+				// the entity schema's intent).
+				//
+				// `schema` points at the canonical OpenAPI 3.1 spec
+				// for the UCP Shopping REST service. This gives
+				// agents a machine-readable contract for every
+				// operation exposed at our `endpoint`. The schema's
+				// own `{endpoint}` server variable is a placeholder;
+				// per the OpenAPI document's own note, consumers
+				// must substitute the merchant endpoint from the
+				// discovery profile (i.e. `$ucp_endpoint` below).
 				'services'         => [
 					self::SERVICE_NAME => [
 						[
 							'version'   => self::PROTOCOL_VERSION,
-
-							// Pin the spec URL to the git tag that
-							// matches our declared PROTOCOL_VERSION.
-							// The UCP spec repo publishes date-named
-							// tags (e.g. `v2026-04-08`) that align
-							// with the protocol version string, so
-							// one constant drives both — if we bump
-							// PROTOCOL_VERSION the URL tracks
-							// automatically. Pre-1.4.5 this pointed
-							// at `/tree/main/` which is a moving
-							// target; a consumer verifying our shape
-							// a year later could have been reading
-							// a spec revision we never conformed to.
-							'spec'      => 'https://github.com/Universal-Commerce-Protocol/ucp/tree/v' . self::PROTOCOL_VERSION . '/source/schemas/shopping',
+							'spec'      => $spec_base . '/specification/overview',
+							'schema'    => $spec_base . '/services/shopping/rest.openapi.json',
 							'transport' => 'rest',
 							'endpoint'  => $ucp_endpoint,
-
-							// Service-specific config. UCP's entity
-							// schema explicitly allows this (`config`
-							// on any entity, `additionalProperties:
-							// true`). Kept for documentation value
-							// and for agents that construct checkout
-							// URLs directly; strict UCP consumers
-							// ignore these keys.
-							'config'    => [
-								'purchase_urls' => [
-									'spec'             => 'https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/',
-									'add_to_cart_spec' => 'https://woocommerce.com/document/quick-guide-to-woocommerce-add-to-cart-urls/',
-
-									// Checkout-link: adds items AND
-									// redirects to checkout. Customer
-									// never sees the cart — fewest
-									// clicks to purchase.
-									'checkout_link'    => [
-										'description' => 'Recommended — adds items and redirects to checkout in one step. Customer never sees the cart.',
-										'simple'      => $site_url . 'checkout-link/?products={product_id}:{quantity}',
-										'variable'    => $site_url . 'checkout-link/?products={variation_id}:{quantity}',
-										'multi_item'  => $site_url . 'checkout-link/?products={id}:{qty},{id}:{qty}',
-										'with_coupon' => $site_url . 'checkout-link/?products={id}:{qty}&coupon={coupon_code}',
-										'unsupported' => [ 'grouped', 'external', 'subscription' ],
-									],
-
-									// Classic add-to-cart URL. Three
-									// behaviors depending on base URL
-									// — the official WC docs document
-									// all three.
-									'add_to_cart'      => [
-										'description'      => 'Classic WooCommerce add-to-cart URL. Three behaviors depending on base URL.',
-										'add_only'         => $site_url . '?add-to-cart={product_id}&quantity={quantity}',
-										'add_and_cart'     => $cart_url . '?add-to-cart={product_id}&quantity={quantity}',
-										'add_and_checkout' => $checkout_url . '?add-to-cart={product_id}&quantity={quantity}',
-										'grouped'          => [
-											'template' => $checkout_url . '?add-to-cart={grouped_product_id}&quantity[{sub_product_id}]={quantity}',
-											'note'     => 'Use the classic add-to-cart pattern for grouped products. The checkout-link feature does not support them.',
-										],
-										'external_note'    => 'For external/affiliate products (type: external), link directly to the product\'s external_url field from the Store API. Do not use add-to-cart.',
-									],
-								],
-
-								'attribution'   => [
-									'spec'       => 'https://woocommerce.com/document/order-attribution-tracking/',
-									'system'     => 'woocommerce_order_attribution',
-									'parameters' => [
-										'utm_source'    => 'Your agent identifier (e.g. chatgpt, gemini, perplexity)',
-										'utm_medium'    => 'Must be set to "ai_agent"',
-										'utm_campaign'  => 'Optional campaign name',
-										'ai_session_id' => 'Conversation/session identifier for tracking',
-									],
-									'usage_note' => 'Append these parameters to any checkout_link or add_to_cart URL. The UCP /checkout-sessions endpoint adds utm_source + utm_medium automatically from the UCP-Agent header.',
-								],
-							],
 						],
 					],
 				],
@@ -290,19 +297,28 @@ class WC_AI_Syndication_Ucp {
 				// `dev.ucp.shopping.{capability}` to discover whether
 				// our implementation covers their use case.
 				//
-				// Since 1.6.0 we advertise the two catalog sub-
-				// capabilities explicitly rather than the umbrella
-				// `dev.ucp.shopping.catalog`. The April UCP spec
-				// formalized `catalog.search` and `catalog.lookup`
-				// as separate schemas; splitting the advertisement
-				// lets agents discover precisely which operations
-				// are available. Our implementation covers both.
+				// 1.6.0 split the umbrella `dev.ucp.shopping.catalog`
+				// into the two sub-capabilities per the April spec.
+				// 1.6.4 added `spec` + `schema` URLs to each capability
+				// binding and moved the checkout `config` (purchase
+				// URLs + attribution conventions) from the service
+				// level to the checkout capability — all fields are
+				// valid on the entity schema but semantically belong
+				// with the capability they describe.
 				'capabilities'     => [
 					'dev.ucp.shopping.catalog.search' => [
-						[ 'version' => self::PROTOCOL_VERSION ],
+						[
+							'version' => self::PROTOCOL_VERSION,
+							'spec'    => $spec_base . '/specification/catalog/search',
+							'schema'  => $spec_base . '/schemas/shopping/catalog_search.json',
+						],
 					],
 					'dev.ucp.shopping.catalog.lookup' => [
-						[ 'version' => self::PROTOCOL_VERSION ],
+						[
+							'version' => self::PROTOCOL_VERSION,
+							'spec'    => $spec_base . '/specification/catalog/lookup',
+							'schema'  => $spec_base . '/schemas/shopping/catalog_lookup.json',
+						],
 					],
 					// `mode: handoff` signals that our checkout
 					// implementation is redirect-only — agents that
@@ -320,10 +336,18 @@ class WC_AI_Syndication_Ucp {
 					// `continue_url`, but the manifest-level `mode`
 					// lets agents decide whether to invoke at all
 					// without a roundtrip.
+					//
+					// `config` carries the checkout capability's
+					// purchase-URL templates and UTM attribution
+					// conventions — relocated from service-level in
+					// 1.6.4. See `$checkout_config` above.
 					'dev.ucp.shopping.checkout'       => [
 						[
 							'version' => self::PROTOCOL_VERSION,
+							'spec'    => $spec_base . '/specification/checkout',
+							'schema'  => $spec_base . '/schemas/shopping/checkout.json',
 							'mode'    => 'handoff',
+							'config'  => $checkout_config,
 						],
 					],
 				],
