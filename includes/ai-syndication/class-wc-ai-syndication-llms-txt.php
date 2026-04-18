@@ -330,19 +330,57 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[]       = '}';
 		$lines[]       = '```';
 		$lines[]       = '';
-		$lines[]       = 'Set the `UCP-Agent` request header to your agent\'s discovery profile URL; the server uses the hostname from that header as `utm_source` automatically, so you do not need to construct UTM parameters yourself.';
+		$lines[]       = 'Set the `UCP-Agent` request header to your agent\'s discovery profile URL; the server extracts the hostname, maps it to a short brand name via the table below, and uses that as `utm_source` on the returned `continue_url` — so you do not need to construct UTM parameters yourself.';
 		$lines[]       = '';
 		$lines[]       = 'Response includes `status: "requires_escalation"` and a `continue_url` with `utm_source` + `utm_medium=ai_agent` already attached. Redirect the user to that URL to complete the purchase on our site.';
 		$lines[]       = '';
-		$lines[]       = 'If you must construct a checkout URL client-side (legacy or non-UCP-aware flow), append these parameters for order attribution:';
-		$lines[]       = '';
-		$lines[]       = '- `utm_source`: Your agent identifier (e.g. `chatgpt`, `gemini`, `perplexity`)';
-		$lines[]       = '- `utm_medium`: `ai_agent`';
-		$lines[]       = '- `utm_campaign`: Optional campaign name';
-		$lines[]       = '- `ai_session_id`: The current conversation/session ID';
-		$lines[]       = '';
-		$lines[]       = 'These map to standard WooCommerce Order Attribution fields. See the WooCommerce [Shareable Checkout URLs](https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/) documentation for URL construction patterns.';
-		$lines[]       = '';
+
+		// Attribution name mapping. Publishing this table makes
+		// attribution a two-way contract instead of merchant-side
+		// opaque policy: agents building UCP integrations can see up
+		// front what brand name their orders will be attributed under
+		// in the merchant's Orders list, and unmapped vendors have a
+		// clear path to request canonicalization (the GitHub issue
+		// pointer below). We render from
+		// WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS so the
+		// published table and the runtime canonicalizer can't drift —
+		// a single source of truth with one reader (the runtime) and
+		// one publisher (this generator).
+		//
+		// Grouping by brand name (not by hostname) is deliberate: one
+		// row per brand reads more naturally as "here are the brands
+		// we know" than "here are 14 individual hostnames"; the
+		// grouping also makes it obvious when a single brand has
+		// multiple aliased hostnames (chatgpt.com + openai.com →
+		// ChatGPT).
+		$grouped = [];
+		foreach ( WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS as $host => $brand ) {
+			$grouped[ $brand ][] = $host;
+		}
+		ksort( $grouped );
+
+		$lines[] = '### Attribution name mapping';
+		$lines[] = '';
+		$lines[] = 'When your `UCP-Agent` profile URL hostname matches one of the entries below, orders are attributed under the brand name shown (merchants see `Source: {name}` in the WooCommerce Orders list). Unknown hostnames pass through verbatim — merchants see `Source: your-hostname.example` — so attribution is never lost, just refined for known vendors. Missing or malformed `UCP-Agent` headers are attributed as `ucp_unknown`.';
+		$lines[] = '';
+		$lines[] = '| Attribution name | Profile hostnames |';
+		$lines[] = '|------------------|-------------------|';
+		foreach ( $grouped as $brand => $hosts ) {
+			$lines[] = '| ' . $brand . ' | `' . implode( '`, `', $hosts ) . '` |';
+		}
+		$lines[] = '';
+		$lines[] = 'If your agent\'s hostname is missing and you\'d like a specific brand name applied, open an issue on the plugin\'s [GitHub repository](https://github.com/pierorocca/woocommerce-ai-syndication/issues) — additions are a single constant entry plus a test row.';
+		$lines[] = '';
+
+		$lines[] = 'If you must construct a checkout URL client-side (legacy or non-UCP-aware flow), append these parameters for order attribution:';
+		$lines[] = '';
+		$lines[] = '- `utm_source`: Your agent identifier (e.g. `chatgpt`, `gemini`, `perplexity`)';
+		$lines[] = '- `utm_medium`: `ai_agent`';
+		$lines[] = '- `utm_campaign`: Optional campaign name';
+		$lines[] = '- `ai_session_id`: The current conversation/session ID';
+		$lines[] = '';
+		$lines[] = 'These map to standard WooCommerce Order Attribution fields. See the WooCommerce [Shareable Checkout URLs](https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/) documentation for URL construction patterns.';
+		$lines[] = '';
 
 		/**
 		 * Filter the llms.txt content lines before rendering.
