@@ -374,12 +374,69 @@ class WC_AI_Syndication_Llms_Txt {
 
 		$lines[] = 'If you must construct a checkout URL client-side (legacy or non-UCP-aware flow), append these parameters for order attribution:';
 		$lines[] = '';
-		$lines[] = '- `utm_source`: Your agent identifier (e.g. `chatgpt`, `gemini`, `perplexity`)';
+		$lines[] = '- `utm_source`: Your agent identifier (e.g. `ChatGPT`, `Gemini`, `Claude`, `Perplexity`, `Copilot`)';
 		$lines[] = '- `utm_medium`: `ai_agent`';
 		$lines[] = '- `utm_campaign`: Optional campaign name';
 		$lines[] = '- `ai_session_id`: The current conversation/session ID';
 		$lines[] = '';
-		$lines[] = 'These map to standard WooCommerce Order Attribution fields. See the WooCommerce [Shareable Checkout URLs](https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/) documentation for URL construction patterns.';
+		$lines[] = 'These map to standard WooCommerce Order Attribution fields.';
+		$lines[] = '';
+
+		// URL-structure reference. Previously this section pointed
+		// readers at WooCommerce's public docs for URL construction
+		// patterns; that's one more fetch for every agent evaluating
+		// the store. Since the patterns are stable and short, inline
+		// them here so the llms.txt document is self-contained — one
+		// fetch, all the guidance. The templates use concrete
+		// placeholders (`{site_url}`, `{product_id}`, etc.) so
+		// string-replace-based URL construction works directly.
+		$lines[] = '### URL patterns for client-side construction';
+		$lines[] = '';
+		$lines[] = 'Two URL shapes work. The **Shareable Checkout URL** (`/checkout-link/`) is strongly preferred — it takes the buyer straight to checkout with the items pre-loaded, matching the UCP `continue_url` semantic. The legacy `?add-to-cart=` pattern adds to cart but still requires the buyer to navigate to checkout manually, and is only documented here as a compatibility fallback.';
+		$lines[] = '';
+		$lines[] = '**Shareable Checkout URL — single product:**';
+		$lines[] = '';
+		$lines[] = '```';
+		$lines[] = '{site_url}/checkout-link/?products={product_id}&utm_source={agent_name}&utm_medium=ai_agent';
+		$lines[] = '```';
+		$lines[] = '';
+		$lines[] = '**Shareable Checkout URL — product with quantity (format `{id}:{qty}`):**';
+		$lines[] = '';
+		$lines[] = '```';
+		$lines[] = '{site_url}/checkout-link/?products={product_id}:{quantity}&utm_source={agent_name}&utm_medium=ai_agent';
+		$lines[] = '```';
+		$lines[] = '';
+		$lines[] = '**Shareable Checkout URL — multiple products (comma-separated):**';
+		$lines[] = '';
+		$lines[] = '```';
+		$lines[] = '{site_url}/checkout-link/?products={id_a}:{qty_a},{id_b}:{qty_b}&utm_source={agent_name}&utm_medium=ai_agent';
+		$lines[] = '```';
+		$lines[] = '';
+		$lines[] = '**Shareable Checkout URL — with coupon code:**';
+		$lines[] = '';
+		$lines[] = '```';
+		$lines[] = '{site_url}/checkout-link/?products={product_id}:{quantity}&coupon={coupon_code}&utm_source={agent_name}&utm_medium=ai_agent';
+		$lines[] = '```';
+		$lines[] = '';
+		$lines[] = '**Legacy add-to-cart URL — simple product:**';
+		$lines[] = '';
+		$lines[] = '```';
+		$lines[] = '{site_url}/?add-to-cart={product_id}&quantity={quantity}&utm_source={agent_name}&utm_medium=ai_agent';
+		$lines[] = '```';
+		$lines[] = '';
+		$lines[] = '**Legacy add-to-cart URL — variable product (use the VARIATION id, not the parent product id):**';
+		$lines[] = '';
+		$lines[] = '```';
+		$lines[] = '{site_url}/?add-to-cart={variation_id}&quantity={quantity}&utm_source={agent_name}&utm_medium=ai_agent';
+		$lines[] = '```';
+		$lines[] = '';
+		$lines[] = 'Notes:';
+		$lines[] = '';
+		$lines[] = '- Substitute `{site_url}` with this store\'s home URL (see Store Information above).';
+		$lines[] = '- `{product_id}` / `{variation_id}` are integers from the catalog (UCP `product.id`, after stripping the `prod_` / `var_` prefix).';
+		$lines[] = '- `{quantity}` defaults to `1` when omitted on `/checkout-link/` — include it on `?add-to-cart=` for anything other than 1.';
+		$lines[] = '- URL-encode `{agent_name}` if it contains spaces or special characters. Brand names from the attribution mapping table above are already URL-safe.';
+		$lines[] = '- `{coupon_code}` is optional; omit the entire `&coupon=` parameter when not using one.';
 		$lines[] = '';
 
 		/**
