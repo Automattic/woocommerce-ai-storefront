@@ -505,6 +505,22 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Just plain text', $result['description']['plain'] );
 	}
 
+	public function test_translate_omits_description_html_when_source_has_entities_but_no_tags(): void {
+		// Regression: entity-decoding was being used as the "has markup"
+		// detector, so `"Fish &amp; Chips"` decoded to `"Fish & Chips"`
+		// and false-positive'd into emitting `html`. HTML emission
+		// should be about preserving structural markup (tags), not
+		// entity glyphs — the decoded plain form conveys those
+		// losslessly.
+		$fixture                      = $this->simple_product_fixture();
+		$fixture['short_description'] = 'Fish &amp; Chips';
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'html', $result['description'] );
+		$this->assertSame( 'Fish & Chips', $result['description']['plain'] );
+	}
+
 	public function test_translate_emits_tags_as_second_taxonomy_in_categories(): void {
 		$fixture         = $this->simple_product_fixture();
 		$fixture['tags'] = [

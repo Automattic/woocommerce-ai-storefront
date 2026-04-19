@@ -333,8 +333,9 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 	 * surfaces it (plus any legacy third-party barcode keys) under
 	 * `extensions.{namespace}.barcodes` as an array of `{type, value}`
 	 * objects. This method copies them through verbatim — the
-	 * extension is responsible for the type mapping (GTIN-13 → `ean`,
-	 * etc.), not the translator.
+	 * extension is responsible for emitting the barcode `type` values
+	 * (`gtin8`, `gtin12`, `gtin13`, `gtin14`, or `other`), not the
+	 * translator.
 	 *
 	 * Returns an empty array when no barcodes are present, so the
 	 * caller's `! empty()` check cleanly omits the `barcodes` key

@@ -252,19 +252,18 @@ class WC_AI_Syndication_UCP_Product_Translator {
 		$raw = (string) ( $wc_product['short_description'] ?? '' );
 		// wp_strip_all_tags() rationale documented on the companion
 		// method in UCP Variant Translator (::extract_description).
-		$plain = html_entity_decode(
-			wp_strip_all_tags( $raw ),
-			ENT_QUOTES,
-			'UTF-8'
-		);
+		$stripped = wp_strip_all_tags( $raw );
+		$plain    = html_entity_decode( $stripped, ENT_QUOTES, 'UTF-8' );
 
 		$description = [ 'plain' => $plain ];
 
-		// Only include HTML if it's meaningfully different from plain.
-		// wp_strip_all_tags() returns input unchanged when there are
-		// no tags; comparing against the raw source is the cleanest
-		// detector for "source had markup worth preserving."
-		if ( '' !== $raw && $raw !== $plain ) {
+		// Only include HTML if the source actually contains markup.
+		// Compare `$raw` to `$stripped` (before entity decoding) — if
+		// they match, there were no tags, even when the source contained
+		// entities like `&amp;`. Comparing against the entity-decoded
+		// `$plain` would false-positive on plain text like
+		// "Fish &amp; Chips" and emit a redundant `html` field.
+		if ( '' !== $raw && $raw !== $stripped ) {
 			$description['html'] = $raw;
 		}
 
