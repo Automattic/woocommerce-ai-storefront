@@ -107,9 +107,11 @@ class WC_AI_Syndication_UCP_Product_Translator {
 		// the canonical product level because UCP's shopping schema
 		// doesn't have a standardized ratings field yet (the UCP spec
 		// is intentionally minimal; ratings are a "nice to have" that
-		// vendors wire through extension capabilities). Consistent
-		// with how we already carry store_context and attribution in
-		// the same extension.
+		// vendors wire through extension capabilities). The same
+		// extension namespace carries store_context + attribution at
+		// the manifest level (see WC_AI_Syndication_UCP::build_*);
+		// per-product data like ratings is the product-scoped
+		// counterpart. Emitted only when reviews exist.
 		$ratings = self::extract_ratings( $wc_product );
 		if ( null !== $ratings ) {
 			$product['extensions'] = [
@@ -258,12 +260,17 @@ class WC_AI_Syndication_UCP_Product_Translator {
 		$description = [ 'plain' => $plain ];
 
 		// Only include HTML if the source actually contains markup.
-		// Compare `$raw` to `$stripped` (before entity decoding) — if
-		// they match, there were no tags, even when the source contained
-		// entities like `&amp;`. Comparing against the entity-decoded
-		// `$plain` would false-positive on plain text like
-		// "Fish &amp; Chips" and emit a redundant `html` field.
-		if ( '' !== $raw && $raw !== $stripped ) {
+		// Compare `$stripped` to `trim( $raw )` (both before entity
+		// decoding) — if they match, there were no tags.
+		//
+		// Why trim: wp_strip_all_tags() trims leading/trailing
+		// whitespace as a side-effect, so comparing against an
+		// un-trimmed `$raw` would false-positive on plain text with
+		// trailing newlines.
+		// Why pre-decode: comparing against the entity-decoded `$plain`
+		// would false-positive on plain text like "Fish &amp; Chips"
+		// (entities != markup).
+		if ( '' !== $raw && trim( $raw ) !== $stripped ) {
 			$description['html'] = $raw;
 		}
 

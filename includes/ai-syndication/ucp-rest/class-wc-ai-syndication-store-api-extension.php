@@ -72,11 +72,14 @@ class WC_AI_Syndication_Store_Api_Extension {
 	 * running later risks missing the initial request of the
 	 * lifecycle.
 	 *
-	 * Early-returns when the helper function doesn't exist — on old
-	 * WC versions (< 7.something) we just don't register anything
-	 * and barcodes silently won't appear. UCP variant translator's
-	 * `extract_barcodes` already tolerates an absent extensions
-	 * payload, so the degradation is silent.
+	 * Early-returns when the helper function doesn't exist. The
+	 * plugin's declared minimum WC (9.9) ships this helper, so the
+	 * guard is defensive belt-and-suspenders rather than a real
+	 * compatibility path — but if an install somehow loses the
+	 * helper (partial WC upgrade, WC disabled mid-request, etc.),
+	 * we no-op cleanly. UCP variant translator's `extract_barcodes`
+	 * tolerates an absent extensions payload, so the degradation
+	 * is silent.
 	 */
 	public function init(): void {
 		add_action( 'woocommerce_blocks_loaded', [ $this, 'register_endpoint_data' ] );

@@ -505,6 +505,23 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Just plain text', $result['description']['plain'] );
 	}
 
+	public function test_translate_omits_description_html_when_source_has_trailing_whitespace(): void {
+		// Regression: wp_strip_all_tags() trims surrounding whitespace
+		// as a side effect, so comparing the stripped form to the raw
+		// form would false-positive on plain text with trailing
+		// newlines/spaces — treating a whitespace difference as
+		// "source had markup" and emitting a redundant `html` field.
+		// The fix compares against `trim( $raw )` so whitespace-only
+		// differences don't trigger html emission.
+		$fixture                      = $this->simple_product_fixture();
+		$fixture['short_description'] = "Just plain text\n\n";
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'html', $result['description'] );
+		$this->assertSame( 'Just plain text', $result['description']['plain'] );
+	}
+
 	public function test_translate_omits_description_html_when_source_has_entities_but_no_tags(): void {
 		// Regression: entity-decoding was being used as the "has markup"
 		// detector, so `"Fish &amp; Chips"` decoded to `"Fish & Chips"`
