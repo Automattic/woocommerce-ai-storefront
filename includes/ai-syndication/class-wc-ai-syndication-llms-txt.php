@@ -190,22 +190,35 @@ class WC_AI_Syndication_Llms_Txt {
 		// probe-timeout worst case (4s) plus a margin.
 		set_transient( self::CACHE_KEY . '_regenerating', 1, 10 );
 
-		WC_AI_Syndication_Logger::debug( 'llms.txt cache miss — regenerating' );
-		$content = $this->generate();
+		// Wrap generation in try/finally so the sentinel ALWAYS
+		// releases on exit — even if generate() or the subsequent
+		// set_transient() throws. Without this, an uncaught
+		// exception during regeneration would leave the sentinel
+		// live until the 10-second TTL expired, during which all
+		// other callers would poll-then-give-up before eventually
+		// regenerating themselves. The try/finally makes the guard
+		// symmetric with its claim.
+		$content = '';
+		try {
+			WC_AI_Syndication_Logger::debug( 'llms.txt cache miss — regenerating' );
+			$content = $this->generate();
 
-		// Only cache non-empty content. Caching an empty string would
-		// re-create the poisoning scenario the cache-hit check above
-		// now defends against; belt + suspenders.
-		if ( '' !== $content ) {
-			set_transient( self::CACHE_KEY, $content, HOUR_IN_SECONDS );
-		} else {
-			WC_AI_Syndication_Logger::debug( 'llms.txt generate() returned empty — not caching' );
+			// Only cache non-empty content. Caching an empty string
+			// would re-create the poisoning scenario the cache-hit
+			// check above now defends against; belt + suspenders.
+			if ( '' !== $content ) {
+				set_transient( self::CACHE_KEY, $content, HOUR_IN_SECONDS );
+			} else {
+				WC_AI_Syndication_Logger::debug( 'llms.txt generate() returned empty — not caching' );
+			}
+		} finally {
+			// Release the single-flight sentinel regardless of
+			// outcome. Waiting callers can immediately re-check the
+			// main cache; if we threw or generated empty they'll
+			// either serve the cached content from a prior successful
+			// run or regenerate themselves.
+			delete_transient( self::CACHE_KEY . '_regenerating' );
 		}
-
-		// Release the single-flight sentinel as soon as generation
-		// completes, regardless of whether the content was cached.
-		// Waiting callers can immediately re-check the main cache.
-		delete_transient( self::CACHE_KEY . '_regenerating' );
 
 		return $content;
 	}

@@ -298,7 +298,22 @@ class WC_AI_Syndication {
 		// registered version tracks the file's actual contents.
 		$css_path = WC_AI_SYNDICATION_PLUGIN_PATH . '/build/ai-syndication-settings.css';
 		if ( file_exists( $css_path ) ) {
-			$css_version = substr( (string) md5_file( $css_path ), 0, 20 );
+			// `md5_file()` returns `false` on read failure (permissions,
+			// open-file-handle exhaustion, concurrent truncation).
+			// An empty version string would defeat the cache-busting
+			// purpose entirely — so fall back through two progressively
+			// coarser-but-stable sources: mtime (changes per copy),
+			// then the JS asset hash (at least changes per JS build),
+			// so we never register the stylesheet with a blank version.
+			$hash = md5_file( $css_path );
+			if ( false === $hash ) {
+				$mtime       = @filemtime( $css_path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Intentional: fall through to next fallback on failure.
+				$css_version = false !== $mtime
+					? (string) $mtime
+					: $asset['version'];
+			} else {
+				$css_version = substr( $hash, 0, 20 );
+			}
 			wp_register_style(
 				'wc-ai-syndication-settings',
 				WC_AI_SYNDICATION_PLUGIN_URL . '/build/ai-syndication-settings.css',
