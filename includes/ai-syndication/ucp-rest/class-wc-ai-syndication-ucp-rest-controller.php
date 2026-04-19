@@ -1314,43 +1314,63 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// because agents otherwise assume their sort took effect.
 		$sort = $request->get_param( 'sort' );
 		if ( is_array( $sort ) ) {
-			$field     = isset( $sort['field'] ) ? strtolower( (string) $sort['field'] ) : '';
-			$direction = isset( $sort['direction'] ) ? strtolower( (string) $sort['direction'] ) : 'asc';
+			// Defensive: non-scalar field/direction (e.g. an agent
+			// sending `{sort: {field: []}}`) would coerce to "Array"
+			// via (string) cast and trigger a misleading
+			// `invalid_sort_field` warning with value "array".
+			// Require string inputs; anything else surfaces as a
+			// dedicated `invalid_sort_shape` warning so agents can
+			// distinguish "unknown field" from "malformed input."
+			$raw_field     = $sort['field'] ?? '';
+			$raw_direction = $sort['direction'] ?? 'asc';
 
-			// UCP-friendly names → Store API orderby values. `newest`
-			// is an alias for date-desc — more human-intuitive than
-			// Store API's `date` + `order=desc` but we still
-			// translate here so agents have one sort vocabulary.
-			$orderby_map = [
-				'price'      => 'price',
-				'title'      => 'title',
-				'date'       => 'date',
-				'newest'     => 'date',
-				'popularity' => 'popularity',
-				'rating'     => 'rating',
-				'menu_order' => 'menu_order',
-			];
-			if ( isset( $orderby_map[ $field ] ) ) {
-				$params['orderby'] = $orderby_map[ $field ];
-				$params['order']   = ( 'desc' === $direction ) ? 'desc' : 'asc';
-				// `newest` implies desc regardless of caller intent
-				// — "newest ascending" is a contradiction we normalize
-				// rather than silently honor.
-				if ( 'newest' === $field ) {
-					$params['order'] = 'desc';
-				}
-			} elseif ( '' !== $field ) {
+			if ( ! is_string( $raw_field ) || ! is_string( $raw_direction ) ) {
 				$messages[] = [
 					'type'     => 'warning',
-					'code'     => 'invalid_sort_field',
+					'code'     => 'invalid_sort_shape',
 					'severity' => 'advisory',
-					'path'     => '$.sort.field',
-					'content'  => sprintf(
-						/* translators: %s is the unsupported sort field the agent sent. */
-						__( 'Sort field "%s" is not supported; using default ordering.', 'woocommerce-ai-syndication' ),
-						(string) $sort['field']
-					),
+					'path'     => '$.sort',
+					'content'  => __( 'sort.field and sort.direction must be strings; using default ordering.', 'woocommerce-ai-syndication' ),
 				];
+			} else {
+				$field     = strtolower( trim( $raw_field ) );
+				$direction = strtolower( trim( $raw_direction ) );
+
+				// UCP-friendly names → Store API orderby values. `newest`
+				// is an alias for date-desc — more human-intuitive than
+				// Store API's `date` + `order=desc` but we still
+				// translate here so agents have one sort vocabulary.
+				$orderby_map = [
+					'price'      => 'price',
+					'title'      => 'title',
+					'date'       => 'date',
+					'newest'     => 'date',
+					'popularity' => 'popularity',
+					'rating'     => 'rating',
+					'menu_order' => 'menu_order',
+				];
+				if ( isset( $orderby_map[ $field ] ) ) {
+					$params['orderby'] = $orderby_map[ $field ];
+					$params['order']   = ( 'desc' === $direction ) ? 'desc' : 'asc';
+					// `newest` implies desc regardless of caller intent
+					// — "newest ascending" is a contradiction we normalize
+					// rather than silently honor.
+					if ( 'newest' === $field ) {
+						$params['order'] = 'desc';
+					}
+				} elseif ( '' !== $field ) {
+					$messages[] = [
+						'type'     => 'warning',
+						'code'     => 'invalid_sort_field',
+						'severity' => 'advisory',
+						'path'     => '$.sort.field',
+						'content'  => sprintf(
+							/* translators: %s is the unsupported sort field the agent sent. */
+							__( 'Sort field "%s" is not supported; using default ordering.', 'woocommerce-ai-syndication' ),
+							$raw_field
+						),
+					];
+				}
 			}
 		}
 
