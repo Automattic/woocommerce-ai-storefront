@@ -854,6 +854,58 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'asc', $this->captured_store_params['order'] );
 	}
 
+	public function test_sort_non_scalar_field_emits_invalid_sort_shape_warning(): void {
+		// Regression: a non-scalar `sort.field` (e.g. an array) would
+		// coerce to "Array" via (string) cast and trigger a misleading
+		// `invalid_sort_field` warning with value "array". The shape
+		// check now catches this early and emits `invalid_sort_shape`
+		// so agents can distinguish "unknown field" from "malformed
+		// input".
+		$body = $this->successful_search(
+			[ 'sort' => [ 'field' => [ 'price' ], 'direction' => 'asc' ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
+		$warnings = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'invalid_sort_shape' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $warnings );
+	}
+
+	public function test_sort_non_scalar_direction_emits_invalid_sort_shape_warning(): void {
+		$body = $this->successful_search(
+			[ 'sort' => [ 'field' => 'price', 'direction' => [ 'asc' ] ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
+		$warnings = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'invalid_sort_shape' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $warnings );
+	}
+
+	public function test_sort_invalid_sort_field_content_uses_original_raw_value(): void {
+		// When emitting the `invalid_sort_field` warning content for an
+		// unrecognized but legitimately-scalar field, we echo back the
+		// original string (preserving case/whitespace the agent sent)
+		// rather than the trimmed/lowercased form we used for lookup.
+		// Makes the warning easier to correlate with the agent's
+		// source input.
+		$body = $this->successful_search(
+			[ 'sort' => [ 'field' => '  BoGuS  ', 'direction' => 'asc' ] ]
+		);
+
+		$warnings = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'invalid_sort_field' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $warnings );
+		$warning = array_values( $warnings )[0];
+		$this->assertStringContainsString( '  BoGuS  ', $warning['content'] );
+	}
+
 	// ------------------------------------------------------------------
 	// Price mapping (minor units → presentment units)
 	// ------------------------------------------------------------------
