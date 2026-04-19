@@ -210,15 +210,52 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'ai_session_id', $output );
 	}
 
-	public function test_attribution_points_to_woocommerce_public_docs_for_url_construction(): void {
-		// When manifest templates are removed, agents that need URL
-		// patterns should be directed to WooCommerce's public
-		// documentation rather than discovering them by trial.
-		// 1.6.5 added this pointer in place of the manifest
-		// purchase_urls reference.
+	public function test_attribution_documents_url_patterns_inline(): void {
+		// Post-1.7.0: the URL-pattern guidance lives inline inside
+		// llms.txt rather than pointing at WooCommerce's external
+		// documentation. Rationale: one fetch instead of two for
+		// every agent evaluating the store. Previously we had
+		// templates in the UCP manifest (wrong placement — UCP's
+		// SHOULD directive is continue_url via POST /checkout-sessions);
+		// 1.6.5 moved them out but left an external pointer;
+		// 1.7.0-era change inlines the patterns so llms.txt is
+		// self-contained.
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString( 'woocommerce.com/document/creating-sharable-checkout-urls', $output );
+		// Section header present.
+		$this->assertStringContainsString(
+			'### URL patterns for client-side construction',
+			$output
+		);
+
+		// Both URL shapes documented.
+		$this->assertStringContainsString( '/checkout-link/?products=', $output );
+		$this->assertStringContainsString( '/?add-to-cart=', $output );
+
+		// The five key template variables are documented so a
+		// string-replace URL construction flow knows what to
+		// substitute.
+		$this->assertStringContainsString( '{site_url}', $output );
+		$this->assertStringContainsString( '{product_id}', $output );
+		$this->assertStringContainsString( '{variation_id}', $output );
+		$this->assertStringContainsString( '{quantity}', $output );
+		$this->assertStringContainsString( '{coupon_code}', $output );
+
+		// Preference for `/checkout-link/` over the legacy add-to-cart
+		// shape is explicit — otherwise agents might ship whichever
+		// they implement first. Preferred path matches UCP's
+		// continue_url semantic.
+		$this->assertMatchesRegularExpression(
+			'/Shareable Checkout URL.*preferred/is',
+			$output
+		);
+
+		// No external-docs pointer remains — the whole point of
+		// inlining is to make llms.txt self-contained.
+		$this->assertStringNotContainsString(
+			'woocommerce.com/document/creating-sharable-checkout-urls',
+			$output
+		);
 	}
 
 	// ------------------------------------------------------------------
