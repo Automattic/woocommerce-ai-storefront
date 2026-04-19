@@ -639,14 +639,28 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *   - invalid quantity (≤0 or > MAX_QUANTITY_PER_LINE_ITEM)
 	 *                                → rejected (invalid_quantity)
 	 *
-	 * Response status:
-	 *   - any valid items → 201 with status=requires_escalation + continue_url
-	 *   - all items fail  → 200 with status=error, no continue_url,
-	 *                       messages explain each failure
+	 * Response status (UCP 2026-04-08 enum: incomplete |
+	 * requires_escalation | ready_for_complete | complete_in_progress
+	 * | completed | canceled):
+	 *   - any valid items + eligible for redirect → 201 with
+	 *     status=requires_escalation + continue_url
+	 *   - all items fail                          → 200 with
+	 *     status=incomplete, no continue_url, messages explain
+	 *     each failure
+	 *   - valid items but minimum-order filter blocks → 200 with
+	 *     status=incomplete, no continue_url, `minimum_not_met`
+	 *     message. Line items + subtotal are still echoed so agents
+	 *     can show the user the gap to the threshold.
 	 *
 	 * Legal links: `links` is mandatory per UCP schema. We emit what's
 	 * configured via get_privacy_policy_url() + wc_get_page_permalink('terms'),
 	 * with advisory warnings for any page the merchant hasn't set up.
+	 *
+	 * Totals: emits both `subtotal` AND `total` entries per UCP spec
+	 * (minContains:1, maxContains:1 each). With our web-redirect
+	 * stance `total` equals `subtotal` and a `total_is_provisional`
+	 * info-message explains that tax + shipping are calculated at
+	 * merchant checkout.
 	 *
 	 * @param WP_REST_Request $request UCP checkout-sessions create request.
 	 * @return WP_Error|WP_REST_Response
@@ -725,62 +739,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		$has_valid_items = ! empty( $processed );
-		$continue_url    = $has_valid_items
-			? self::build_continue_url( $processed, $agent_name )
-			: '';
 
-		// Minimum-order enforcement. WC core doesn't ship a
-		// minimum-order-amount setting natively (it's usually
-		// plugin territory or a theme convention), so we gate via a
-		// filter hook rather than an admin UI: merchants who want
-		// enforcement return the minor-unit minimum from
-		// `wc_ai_syndication_minimum_order_amount`. Zero (default)
-		// means no minimum, matching existing behavior.
-		//
-		// When the subtotal doesn't meet the minimum we clear the
-		// continue_url and mark the session incomplete — redirecting
-		// the user to a checkout they can't complete is worse UX
-		// than surfacing the gap upfront with an actionable message.
-		// Computed here (post-subtotal, pre-response) so the filter
-		// sees the real subtotal and the enforcement happens before
-		// we build the response body.
-		$provisional_subtotal = 0;
-		foreach ( $processed as $p ) {
-			$provisional_subtotal += $p['unit_price_minor'] * $p['quantity'];
-		}
-		$minimum_order_amount = (int) apply_filters(
-			'wc_ai_syndication_minimum_order_amount',
-			0,
-			[
-				'subtotal_minor' => $provisional_subtotal,
-				'currency'       => $currency,
-				'agent'          => $agent_name,
-				'line_items'     => $processed,
-			]
-		);
-		if ( $has_valid_items && $minimum_order_amount > 0 && $provisional_subtotal < $minimum_order_amount ) {
-			$messages[]      = [
-				'type'     => 'error',
-				'code'     => 'minimum_not_met',
-				'severity' => 'unrecoverable',
-				'path'     => '$.line_items',
-				'content'  => sprintf(
-					/* translators: 1: current subtotal (minor units), 2: minimum order (minor units). */
-					__( 'Order subtotal %1$d is below the merchant minimum of %2$d (minor units). Add more items to proceed.', 'woocommerce-ai-syndication' ),
-					$provisional_subtotal,
-					$minimum_order_amount
-				),
-			];
-			$continue_url    = '';
-			$has_valid_items = false;
-		}
-
-		// Response line_items: echo successfully-processed items with
-		// enriched price/total data. Items that failed validation are
-		// NOT in line_items — they only appear via messages pointing
-		// at the original request index.
-		$response_line_items = [];
-		$subtotal_amount     = 0;
 		// Tax-inclusive vs exclusive disclosure per line. WC's
 		// configured setting governs whether `prices.price` already
 		// includes tax (common in EU stores) or is pre-tax (typical
@@ -792,6 +751,14 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			? (bool) wc_prices_include_tax()
 			: false;
 
+		// Build response line_items AND compute the subtotal in a
+		// single pass. Single-source so the min-order check, the
+		// response `totals`, and the line-level display numbers all
+		// agree. Items that failed validation are NOT in line_items
+		// — they appear only via messages pointing at their original
+		// request index.
+		$response_line_items = [];
+		$subtotal_amount     = 0;
 		foreach ( $processed as $p ) {
 			$line_total            = $p['unit_price_minor'] * $p['quantity'];
 			$subtotal_amount      += $line_total;
@@ -810,7 +777,62 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			];
 		}
 
-		if ( $has_valid_items ) {
+		// Redirect eligibility — starts as "has valid items" but the
+		// minimum-order filter (below) can flip it off. Kept separate
+		// from `$has_valid_items` because the two concepts are distinct:
+		//   - $has_valid_items: "at least one line item survived validation"
+		//   - $should_redirect: "we can issue a continue_url AND mark
+		//     the session as requires_escalation"
+		// An agent whose cart has valid items but falls below the
+		// merchant minimum has `has_valid_items=true` (the line items
+		// + subtotal are still echoed so they can show the user the
+		// gap) but `should_redirect=false` (no continue_url, status
+		// incomplete).
+		$should_redirect = $has_valid_items;
+
+		// Minimum-order enforcement. WC core doesn't ship a
+		// minimum-order-amount setting natively (it's usually
+		// plugin territory or a theme convention), so we gate via a
+		// filter hook rather than an admin UI: merchants who want
+		// enforcement return the minor-unit minimum from
+		// `wc_ai_syndication_minimum_order_amount`. Zero (default)
+		// means no minimum, matching existing behavior.
+		//
+		// When the subtotal doesn't meet the minimum we leave the
+		// cart visible but flip `$should_redirect` off — surfacing
+		// the gap upfront with an actionable message beats
+		// redirecting the user to a checkout they can't complete.
+		$minimum_order_amount = (int) apply_filters(
+			'wc_ai_syndication_minimum_order_amount',
+			0,
+			[
+				'subtotal_minor' => $subtotal_amount,
+				'currency'       => $currency,
+				'agent'          => $agent_name,
+				'line_items'     => $processed,
+			]
+		);
+		if ( $has_valid_items && $minimum_order_amount > 0 && $subtotal_amount < $minimum_order_amount ) {
+			$messages[]      = [
+				'type'     => 'error',
+				'code'     => 'minimum_not_met',
+				'severity' => 'unrecoverable',
+				'path'     => '$.line_items',
+				'content'  => sprintf(
+					/* translators: 1: current subtotal (minor units), 2: minimum order (minor units). */
+					__( 'Order subtotal %1$d is below the merchant minimum of %2$d (minor units). Add more items to proceed.', 'woocommerce-ai-syndication' ),
+					$subtotal_amount,
+					$minimum_order_amount
+				),
+			];
+			$should_redirect = false;
+		}
+
+		$continue_url = $should_redirect
+			? self::build_continue_url( $processed, $agent_name )
+			: '';
+
+		if ( $should_redirect ) {
 			// Buyer handoff message accompanies every redirect. Agents
 			// surface the `content` to the user verbatim before linking
 			// out, so the phrasing matters — keep it short and neutral.
@@ -855,7 +877,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// real tax/shipping, so `total` equals `subtotal` on the happy
 		// path and is 0 when no items validated. The accompanying
 		// `total_is_provisional` info-message (emitted above when
-		// has_valid_items) explains the elision.
+		// should_redirect) explains the elision.
 		$response_totals = [
 			[
 				'type'   => 'subtotal',
@@ -867,15 +889,16 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			],
 		];
 
-		// Status: `requires_escalation` is the canonical spec value for
-		// our redirect flow. When all items failed validation, there's
-		// nothing to escalate to — `incomplete` is the spec enum value
-		// that most closely maps to "session awaiting valid input"
-		// (the pre-spec-check `error` wasn't in the status enum).
+		// Status: `requires_escalation` when we have something to
+		// escalate to. Otherwise `incomplete` — spec enum value that
+		// most closely maps to "session awaiting valid input" (the
+		// pre-spec-check `error` wasn't in the status enum).
+		// `$should_redirect` is false when either (a) no items
+		// validated, or (b) valid items but below the merchant minimum.
 		$response_body = [
 			'ucp'        => WC_AI_Syndication_UCP_Envelope::checkout_envelope(),
 			'id'         => 'chk_' . bin2hex( random_bytes( 8 ) ),
-			'status'     => $has_valid_items ? 'requires_escalation' : 'incomplete',
+			'status'     => $should_redirect ? 'requires_escalation' : 'incomplete',
 			'currency'   => $currency,
 			'line_items' => $response_line_items,
 			'totals'     => $response_totals,
@@ -894,7 +917,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// The session ID is a correlation token only — no persistence.
 		return new WP_REST_Response(
 			$response_body,
-			$has_valid_items ? 201 : 200
+			$should_redirect ? 201 : 200
 		);
 	}
 
@@ -975,10 +998,12 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *   - `ucp` envelope (version + capabilities + payment_handlers)
 	 *   - `id` (fresh `chk_` correlation token; each error response
 	 *     gets a unique ID even though it's a terminal response)
-	 *   - `status` = 'error'
+	 *   - `status` = 'incomplete' (UCP 2026-04-08 spec enum value
+	 *     for "validation failed, no session to escalate to")
 	 *   - `currency` (merchant's WC currency, fallback 'USD')
 	 *   - `line_items` (empty array)
-	 *   - `totals` (zeroed subtotal)
+	 *   - `totals` (zeroed `subtotal` AND zeroed `total` — spec
+	 *     requires both entries, `minContains:1, maxContains:1`)
 	 *   - `links` (empty array)
 	 *   - `messages` (the single error)
 	 *

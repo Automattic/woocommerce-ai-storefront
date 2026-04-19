@@ -63,6 +63,13 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// own when() call. The per-line-item `price_includes_tax` flag
 		// we emit reads from this stub.
 		Functions\when( 'wc_prices_include_tax' )->justReturn( false );
+		// Default `apply_filters` to pass-through (return $default)
+		// so tests that don't explicitly care about filter hooks
+		// aren't coupled to the filter registry from other test
+		// suites' bootstrap. Per-test overrides via
+		// `stub_apply_filters_for()` / `Functions\when( 'apply_filters' )->alias()`
+		// replace this default when needed.
+		Functions\when( 'apply_filters' )->returnArg( 2 );
 
 		$api = &$this->fake_store_api;
 		Functions\when( 'rest_do_request' )->alias(
