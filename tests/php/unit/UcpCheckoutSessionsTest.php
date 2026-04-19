@@ -8,7 +8,7 @@
  *
  *   - Input validation (missing/empty line_items → 400)
  *   - Happy path: simple + variation IDs → continue_url + 201
- *   - All items invalid → 200 with status=error, no continue_url
+ *   - All items invalid → 200 with status=incomplete, no continue_url
  *   - Mixed valid + invalid
  *   - Product type gates (variable/variable-subscription parent →
  *     variation_required; grouped/external/subscription/
@@ -58,6 +58,11 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_page_permalink' )->alias(
 			static fn( string $page ): string => 'https://example.com/terms'
 		);
+		// Default to tax-exclusive pricing (typical US store) — tests
+		// that exercise the inclusive-tax path override this with their
+		// own when() call. The per-line-item `price_includes_tax` flag
+		// we emit reads from this stub.
+		Functions\when( 'wc_prices_include_tax' )->justReturn( false );
 
 		$api = &$this->fake_store_api;
 		Functions\when( 'rest_do_request' )->alias(
@@ -209,19 +214,26 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// `id` is a `chk_` + 16-hex correlation token, fresh per call.
 		$this->assertMatchesRegularExpression( '/^chk_[a-f0-9]{16}$/', $data['id'] );
 
-		// `status: error` is the only legitimate top-level value for
-		// this code path (success responses use `requires_escalation`).
-		$this->assertEquals( 'error', $data['status'] );
+		// `status: incomplete` is the spec-compliant value for this
+		// code path (spec enum: incomplete | requires_escalation |
+		// ready_for_complete | complete_in_progress | completed |
+		// canceled). Success responses use `requires_escalation`.
+		$this->assertEquals( 'incomplete', $data['status'] );
 
 		// Empty shapes for non-success fields.
 		$this->assertSame( [], $data['line_items'] );
 		$this->assertSame( [], $data['links'] );
 
-		// `totals` exists with a zeroed subtotal (not omitted, not
-		// undefined — strict UCP clients validate the array).
-		$this->assertCount( 1, $data['totals'] );
-		$this->assertSame( 'subtotal', $data['totals'][0]['type'] );
-		$this->assertSame( 0, $data['totals'][0]['amount'] );
+		// `totals` must carry BOTH `subtotal` and `total` entries per
+		// UCP 2026-04-08 spec (minContains:1, maxContains:1 each).
+		// Both zeroed on the error path.
+		$this->assertCount( 2, $data['totals'] );
+		$types = array_column( $data['totals'], 'type' );
+		$this->assertContains( 'subtotal', $types );
+		$this->assertContains( 'total', $types );
+		foreach ( $data['totals'] as $entry ) {
+			$this->assertSame( 0, $entry['amount'] );
+		}
 
 		// The expected error code is present in messages.
 		$codes = array_column( $data['messages'], 'code' );
@@ -350,7 +362,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertEquals( 200, $result['status'] );
-		$this->assertEquals( 'error', $result['data']['status'] );
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
 		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
 		$this->assertCount( 0, $result['data']['line_items'] );
 
@@ -458,9 +470,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
 		);
 
-		// No valid items → status: error, no continue_url, 200 response.
+		// No valid items → status: incomplete (spec-compliant, was
+		// previously a non-enum `error`), no continue_url, 200 response.
 		$this->assertEquals( 200, $result['status'] );
-		$this->assertEquals( 'error', $result['data']['status'] );
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
 		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
 		$this->assertCount( 0, $result['data']['line_items'] );
 
@@ -535,7 +548,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_9999' ], 'quantity' => 1 ] ] ]
 		);
 
-		$this->assertEquals( 'error', $result['data']['status'] );
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
 		$this->assertCount( 0, $result['data']['line_items'] );
 
 		$messages = $result['data']['messages'];
@@ -595,7 +608,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// Status should be error (no valid items), not a 500 from a
 		// fatal — confirms the handler didn't actually crash.
 		$this->assertEquals( 200, $result['status'] );
-		$this->assertEquals( 'error', $result['data']['status'] );
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
 	}
 
 	public function test_missing_item_id_produces_invalid_line_item(): void {
@@ -921,7 +934,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $cap + 1 ] ] ]
 		);
 
-		$this->assertEquals( 'error', $result['data']['status'] );
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
 		$codes = array_column( $result['data']['messages'], 'code' );
 		$this->assertContains( 'invalid_quantity', $codes );
 	}
@@ -963,6 +976,292 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
 			503,
 			'ucp_disabled'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// 2.0.0: UCP 2026-04-08 compliance + checkout polish
+	// ------------------------------------------------------------------
+
+	public function test_totals_contains_both_subtotal_and_total_entries_per_spec(): void {
+		// UCP 2026-04-08: `totals` MUST contain exactly one `subtotal`
+		// and one `total` entry (both minContains:1, maxContains:1).
+		// Previously we emitted only subtotal — this test locks in
+		// the compliance fix.
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 2 ] ] ]
+		);
+
+		$types = array_column( $result['data']['totals'], 'type' );
+		$this->assertContains( 'subtotal', $types );
+		$this->assertContains( 'total', $types );
+		$this->assertCount( 2, $result['data']['totals'] );
+
+		// Both entries equal to the cart sum (5000) in our
+		// web-redirect stance — real tax/shipping calculated at
+		// merchant checkout, disclosed via total_is_provisional.
+		foreach ( $result['data']['totals'] as $entry ) {
+			$this->assertSame( 5000, $entry['amount'] );
+		}
+	}
+
+	public function test_total_is_provisional_info_message_emitted_on_happy_path(): void {
+		// Accompanies the required `total` entry. With web-redirect
+		// stance we can't compute tax/shipping server-side; the
+		// message discloses the elision to agents so they can
+		// inform the user before the redirect.
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'total_is_provisional', $codes );
+
+		$provisional = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => 'total_is_provisional' === ( $m['code'] ?? '' )
+		);
+		$msg = array_values( $provisional )[0];
+		$this->assertSame( 'info', $msg['type'] );
+		$this->assertSame( 'advisory', $msg['severity'] );
+	}
+
+	public function test_total_is_provisional_omitted_on_error_path(): void {
+		// No valid items → status=incomplete, no continue_url, and
+		// no provisional-total disclosure (there's no total to
+		// qualify).
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_9999' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'total_is_provisional', $codes );
+	}
+
+	public function test_price_changed_warning_when_expected_differs_from_current(): void {
+		// Agent scraped catalog at price=$25, caches, posts checkout
+		// later. We now emit current price ($30). The warning lets
+		// the agent confirm with the user before redirecting.
+		$this->seed_simple_product( 111, 3000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[
+						'item'                => [ 'id' => 'prod_111' ],
+						'quantity'            => 1,
+						'expected_unit_price' => [ 'amount' => 2500, 'currency' => 'USD' ],
+					],
+				],
+			]
+		);
+
+		$warnings = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => 'price_changed' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $warnings );
+		$warning = array_values( $warnings )[0];
+		$this->assertStringContainsString( '2500', $warning['content'] );
+		$this->assertStringContainsString( '3000', $warning['content'] );
+	}
+
+	public function test_price_changed_not_emitted_when_prices_match(): void {
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[
+						'item'                => [ 'id' => 'prod_111' ],
+						'quantity'            => 1,
+						'expected_unit_price' => [ 'amount' => 2500, 'currency' => 'USD' ],
+					],
+				],
+			]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'price_changed', $codes );
+	}
+
+	public function test_price_changed_not_emitted_when_expected_omitted(): void {
+		// Agent-opt-in: no `expected_unit_price` → no comparison →
+		// no warning. Legacy callers unaffected.
+		$this->seed_simple_product( 111, 3000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ],
+				],
+			]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'price_changed', $codes );
+	}
+
+	public function test_line_item_includes_price_includes_tax_flag(): void {
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertArrayHasKey( 'price_includes_tax', $result['data']['line_items'][0] );
+		$this->assertFalse( $result['data']['line_items'][0]['price_includes_tax'] );
+	}
+
+	public function test_line_item_reflects_wc_prices_include_tax_true(): void {
+		// Override the default (false) to simulate an EU store with
+		// tax-inclusive pricing.
+		\Brain\Monkey\Functions\when( 'wc_prices_include_tax' )->justReturn( true );
+
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertTrue( $result['data']['line_items'][0]['price_includes_tax'] );
+	}
+
+	public function test_minimum_order_not_met_blocks_redirect(): void {
+		// Filter hook returns 5000 (minor units) — merchant requires
+		// $50 minimum. Agent sends 1 item at $25 → below threshold.
+		$this->stub_apply_filters_for( 'wc_ai_syndication_minimum_order_amount', 5000 );
+
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'minimum_not_met', $codes );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+		$this->assertSame( 'incomplete', $result['data']['status'] );
+	}
+
+	public function test_minimum_order_met_allows_redirect(): void {
+		$this->stub_apply_filters_for( 'wc_ai_syndication_minimum_order_amount', 5000 );
+
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 3 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'minimum_not_met', $codes );
+		$this->assertArrayHasKey( 'continue_url', $result['data'] );
+		$this->assertSame( 'requires_escalation', $result['data']['status'] );
+	}
+
+	public function test_minimum_order_zero_default_allows_any_subtotal(): void {
+		// Default filter pass-through returns $default (0) — no minimum.
+		// Single low-price item should still produce a continue_url.
+		$this->seed_simple_product( 111, 100 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'minimum_not_met', $codes );
+		$this->assertArrayHasKey( 'continue_url', $result['data'] );
+	}
+
+	public function test_handoff_message_filter_overrides_default(): void {
+		$this->stub_apply_filters_for(
+			'wc_ai_syndication_checkout_handoff_message',
+			'Review & secure payment at Acme Store.'
+		);
+
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		$handoff = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => 'buyer_handoff_required' === ( $m['code'] ?? '' )
+		);
+		$msg = array_values( $handoff )[0];
+		$this->assertSame( 'Review & secure payment at Acme Store.', $msg['content'] );
+	}
+
+	public function test_request_locale_threaded_to_handoff_filter(): void {
+		// Agent passes context.locale; the filter receives it in the
+		// context array so merchants can emit a localized handoff
+		// message (e.g. via switch_to_locale + gettext). We capture
+		// the locale via the apply_filters stub's $args array.
+		$captured_locale = null;
+		Functions\when( 'apply_filters' )->alias(
+			function ( string $hook, $default, $context = null ) use ( &$captured_locale ) {
+				if ( 'wc_ai_syndication_checkout_handoff_message' === $hook && is_array( $context ) ) {
+					$captured_locale = $context['locale'] ?? null;
+				}
+				return $default;
+			}
+		);
+
+		$this->seed_simple_product( 111, 2500 );
+
+		$this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ],
+				'context'    => [ 'locale' => 'fr-FR' ],
+			]
+		);
+
+		$this->assertSame( 'fr-FR', $captured_locale );
+	}
+
+	public function test_malformed_locale_is_rejected(): void {
+		// Defensive: non-BCP-47-ish input (contains space, too long,
+		// etc.) collapses to empty string before reaching the filter.
+		// Prevents downstream misuse of an untrusted string as a
+		// locale identifier.
+		$captured_locale = null;
+		Functions\when( 'apply_filters' )->alias(
+			function ( string $hook, $default, $context = null ) use ( &$captured_locale ) {
+				if ( 'wc_ai_syndication_checkout_handoff_message' === $hook && is_array( $context ) ) {
+					$captured_locale = $context['locale'] ?? null;
+				}
+				return $default;
+			}
+		);
+
+		$this->seed_simple_product( 111, 2500 );
+
+		$this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ],
+				'context'    => [ 'locale' => 'not a valid locale; DROP TABLE wp_users;' ],
+			]
+		);
+
+		$this->assertSame( '', $captured_locale );
+	}
+
+	/**
+	 * Stub apply_filters to return a specific value for a named hook,
+	 * and pass-through $default for any other hook. Pattern: let the
+	 * per-test override target a single filter without breaking other
+	 * `apply_filters` callsites.
+	 */
+	private function stub_apply_filters_for( string $target_hook, $return_value ): void {
+		Functions\when( 'apply_filters' )->alias(
+			static function ( string $hook, $default ) use ( $target_hook, $return_value ) {
+				return $hook === $target_hook ? $return_value : $default;
+			}
 		);
 	}
 }
