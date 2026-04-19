@@ -43,6 +43,10 @@ require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-variant-translator.ph
 require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-store-api-filter.php';
 require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-rest-controller.php';
 
+// Admin REST controller. Covers admin-surface endpoints (settings,
+// stats, recent-orders) — exercised by AdminRecentOrdersTest.
+require_once $plugin_path . 'admin/class-wc-ai-syndication-admin-controller.php';
+
 // Self-updater wrapper around the PUC library (1.4.0+).
 require_once $plugin_path . 'class-wc-ai-syndication-updater.php';
 

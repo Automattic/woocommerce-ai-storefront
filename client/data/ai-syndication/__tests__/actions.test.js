@@ -40,6 +40,8 @@ describe( 'AI Syndication actions', () => {
 			setEndpointStatus: jest.fn(),
 			resetEndpointStatus: jest.fn(),
 			checkEndpoints: jest.fn(),
+			setRecentOrders: jest.fn(),
+			fetchRecentOrders: jest.fn(),
 		};
 		mockSelect = {
 			getSettings: jest.fn( () => ( {

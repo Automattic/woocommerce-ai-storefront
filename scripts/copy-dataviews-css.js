@@ -24,6 +24,16 @@
  * This script is the pragmatic alternative: a 10-line copy that works
  * reliably, survives wp-scripts upgrades, and keeps DataViews' CSS
  * identical to what Woo's own Site Editor ships.
+ *
+ * TODO: this approach scales to one bundled package. When a second
+ * bundled-package CSS import arrives (e.g. `@wordpress/admin-ui` or
+ * `@wordpress/fields` — both are in the extractor's BUNDLED_PACKAGES
+ * list), replace this one-off copy with a proper webpack config that
+ * uses `MiniCssExtractPlugin` directly for relative-path CSS imports
+ * OR a CopyWebpackPlugin pass over the known bundled stylesheets.
+ * Half-day of work; not justified for a single source today. See
+ * AGENTS.md §Styling "Deferred UX" subsection for the broader scaling
+ * note on the DataViews-first styling pipeline.
  */
 
 const fs = require( 'fs' );

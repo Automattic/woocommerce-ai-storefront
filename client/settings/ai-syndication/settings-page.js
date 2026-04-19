@@ -294,7 +294,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 		{ /* --------------------------------------------------------- */ }
 		<Card>
 			<CardBody>
-				<Flex align="center" gap={ 6 } wrap>
+				<Flex align="center" gap={ 4 } wrap>
 					<FlexItem isBlock>
 						<p
 							style={ {

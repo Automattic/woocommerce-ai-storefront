@@ -151,6 +151,45 @@ class WC_AI_Syndication_Llms_Txt {
 			return $cached;
 		}
 
+		// Single-flight guard against thundering-herd regeneration.
+		// `generate()` does up to 4 synchronous HEAD probes in
+		// `discover_sitemap_urls()` (1-second timeout each, so up
+		// to 4 seconds in the worst case). If two crawlers hit us
+		// simultaneously right after the transient expires, without
+		// this guard both would regenerate — paying the cost twice.
+		// The sentinel is a short-lived transient that secondary
+		// callers read; when set, they wait briefly for the primary
+		// to finish, then re-check the main cache. If the primary
+		// missed its window (crashed, timed out), the sentinel
+		// expires and the secondary will regenerate itself.
+		// The sentinel check mirrors the main cache-read pattern:
+		// treat both `false` (not held) AND empty-string (a stray /
+		// poisoned value) as "no lock held." Without the empty-string
+		// guard, a transient backend returning '' for a missing key
+		// would falsely trigger the wait loop.
+		$lock = get_transient( self::CACHE_KEY . '_regenerating' );
+		if ( false !== $lock && '' !== $lock ) {
+			// Primary is in-flight. Poll up to 5 seconds for the
+			// main cache to appear. Using usleep with short
+			// intervals rather than a single long sleep so we
+			// release early when the primary succeeds.
+			for ( $i = 0; $i < 50; $i++ ) {
+				usleep( 100000 ); // 100ms.
+				$cached = get_transient( self::CACHE_KEY );
+				if ( false !== $cached && '' !== $cached ) {
+					WC_AI_Syndication_Logger::debug( 'llms.txt cache hit after single-flight wait' );
+					return $cached;
+				}
+			}
+			// Primary didn't deliver; fall through to regenerate
+			// ourselves rather than serve stale-or-empty.
+			WC_AI_Syndication_Logger::debug( 'llms.txt single-flight timed out, regenerating' );
+		}
+
+		// Claim the sentinel for a short window covering the
+		// probe-timeout worst case (4s) plus a margin.
+		set_transient( self::CACHE_KEY . '_regenerating', 1, 10 );
+
 		WC_AI_Syndication_Logger::debug( 'llms.txt cache miss — regenerating' );
 		$content = $this->generate();
 
@@ -162,6 +201,11 @@ class WC_AI_Syndication_Llms_Txt {
 		} else {
 			WC_AI_Syndication_Logger::debug( 'llms.txt generate() returned empty — not caching' );
 		}
+
+		// Release the single-flight sentinel as soon as generation
+		// completes, regardless of whether the content was cached.
+		// Waiting callers can immediately re-check the main cache.
+		delete_transient( self::CACHE_KEY . '_regenerating' );
 
 		return $content;
 	}

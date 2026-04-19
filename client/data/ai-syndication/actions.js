@@ -57,6 +57,15 @@ export function saveSettings() {
 		// status badges reflect the new state rather than the pre-save
 		// state.
 		dispatch.checkEndpoints();
+
+		// Refresh the AI Orders table too. The most common case where
+		// a merchant returns to this page after generating a new
+		// AI-attributed order in another tab is "adjust a setting,
+		// hit save, notice the new order didn't appear in Recent
+		// AI Orders." Coupling the refetch to saveSettings mirrors
+		// the checkEndpoints pattern above — every save side-effect
+		// that invalidates visible data triggers its own refresh.
+		dispatch.fetchRecentOrders();
 	};
 }
 

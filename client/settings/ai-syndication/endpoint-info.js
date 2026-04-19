@@ -809,29 +809,6 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							'woocommerce-ai-syndication'
 						) }
 					</p>
-
-					{ /* Save button inside card */ }
-					<div
-						style={ {
-							marginTop: '16px',
-							paddingTop: '16px',
-							borderTop: `1px solid ${ colors.surfaceMuted }`,
-						} }
-					>
-						<Button
-							variant="primary"
-							isBusy={ isSaving }
-							disabled={ isSaving }
-							onClick={ onSave }
-						>
-							{ isSaving
-								? __( 'Saving…', 'woocommerce-ai-syndication' )
-								: __(
-										'Save Changes',
-										'woocommerce-ai-syndication'
-								  ) }
-						</Button>
-					</div>
 				</CardBody>
 			</Card>
 
@@ -843,6 +820,14 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 				Overview tab during the 1.6.7→1.6.8 window on the
 				principle that rate limits configure the same external-
 				agent traffic surface the allow-list controls.
+
+				Save button used to live inside each card, but both
+				saved the full settings blob — identical wiring with
+				misleading "per-card" visual framing. Consolidated
+				to a single page-level Save footer below this Card
+				per WP admin convention (Settings → General,
+				Writing, Reading, and every WC Settings tab all use
+				one footer save).
 			*/ }
 			<Card style={ { marginTop: '32px' } }>
 				<CardBody>
@@ -949,31 +934,36 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							'woocommerce-ai-syndication'
 						) }
 					</p>
-
-					{ /* Save button inside the card */ }
-					<div
-						style={ {
-							marginTop: '16px',
-							paddingTop: '16px',
-							borderTop: `1px solid ${ colors.surfaceMuted }`,
-						} }
-					>
-						<Button
-							variant="primary"
-							isBusy={ isSaving }
-							disabled={ isSaving }
-							onClick={ onSave }
-						>
-							{ isSaving
-								? __( 'Saving…', 'woocommerce-ai-syndication' )
-								: __(
-										'Save Changes',
-										'woocommerce-ai-syndication'
-								  ) }
-						</Button>
-					</div>
 				</CardBody>
 			</Card>
+
+			{ /*
+				Page-level Save footer. Consolidates what used to be
+				two per-card "Save Changes" buttons (one inside
+				Crawler Access, one inside Rate Limits) — both posted
+				the full settings blob, so per-card buttons were
+				misleading about scope. Matches the WP admin
+				convention used on every native Settings tab and
+				WC Settings tab: one save, at the bottom, labeled
+				generically.
+			*/ }
+			<div
+				style={ {
+					marginTop: '24px',
+					textAlign: 'right',
+				} }
+			>
+				<Button
+					variant="primary"
+					isBusy={ isSaving }
+					disabled={ isSaving }
+					onClick={ onSave }
+				>
+					{ isSaving
+						? __( 'Saving…', 'woocommerce-ai-syndication' )
+						: __( 'Save Changes', 'woocommerce-ai-syndication' ) }
+				</Button>
+			</div>
 		</div>
 	);
 };
