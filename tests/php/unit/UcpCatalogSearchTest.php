@@ -140,7 +140,24 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 					// the canned product list. 1.6.0 added `page` +
 					// `per_page` to the captured list for pagination
 					// mapping assertions.
-					foreach ( [ 'search', 'category', 'min_price', 'max_price', 'page', 'per_page', 'tag', 'on_sale' ] as $key ) {
+					foreach (
+						[
+							'search',
+							'category',
+							'min_price',
+							'max_price',
+							'page',
+							'per_page',
+							'tag',
+							'on_sale',
+							'stock_status',
+							'featured',
+							'rating',
+							'attributes',
+							'orderby',
+							'order',
+						] as $key
+					) {
 						$val = $request->get_param( $key );
 						if ( null !== $val ) {
 							$captured_params[ $key ] = $val;
@@ -491,6 +508,227 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertArrayNotHasKey( 'on_sale', $this->captured_store_params );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.9.0: in_stock filter
+	// ------------------------------------------------------------------
+
+	public function test_in_stock_filter_forwards_instock_stock_status(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'in_stock' => true ] ]
+		);
+
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+	}
+
+	public function test_in_stock_filter_accepts_string_true(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'in_stock' => 'true' ] ]
+		);
+
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+	}
+
+	public function test_in_stock_filter_false_does_not_forward(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'in_stock' => false ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'stock_status', $this->captured_store_params );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.9.0: featured filter
+	// ------------------------------------------------------------------
+
+	public function test_featured_filter_forwards_boolean_true(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'featured' => true ] ]
+		);
+
+		$this->assertTrue( $this->captured_store_params['featured'] );
+	}
+
+	public function test_featured_filter_false_does_not_forward(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'featured' => false ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'featured', $this->captured_store_params );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.9.0: min_rating filter
+	// ------------------------------------------------------------------
+
+	public function test_min_rating_4_expands_to_ratings_4_and_5(): void {
+		// Store API's `rating` param is an array of acceptable
+		// ratings (set inclusion), not a floor. `min_rating: 4`
+		// must expand to [4, 5] for "4 stars and above."
+		$this->successful_search(
+			[ 'filters' => [ 'min_rating' => 4 ] ]
+		);
+
+		$this->assertSame( [ 4, 5 ], $this->captured_store_params['rating'] );
+	}
+
+	public function test_min_rating_1_expands_to_full_range(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'min_rating' => 1 ] ]
+		);
+
+		$this->assertSame( [ 1, 2, 3, 4, 5 ], $this->captured_store_params['rating'] );
+	}
+
+	public function test_min_rating_out_of_range_is_clamped(): void {
+		// Values above 5 clamp to 5 (produces [5]); values below 1
+		// clamp to 1 (full range). Keeps the array non-empty and
+		// the filter semantically coherent.
+		$this->successful_search(
+			[ 'filters' => [ 'min_rating' => 99 ] ]
+		);
+
+		$this->assertSame( [ 5 ], $this->captured_store_params['rating'] );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.9.0: attribute filters
+	// ------------------------------------------------------------------
+
+	public function test_attribute_filter_prefixes_bare_labels_with_pa(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'attributes' => [ 'color' => [ 'red' ] ] ] ]
+		);
+
+		$this->assertSame(
+			[
+				[
+					'attribute' => 'pa_color',
+					'slug'      => [ 'red' ],
+					'operator'  => 'in',
+				],
+			],
+			$this->captured_store_params['attributes']
+		);
+	}
+
+	public function test_attribute_filter_preserves_pa_prefix_when_already_present(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'attributes' => [ 'pa_brand' => [ 'nike' ] ] ] ]
+		);
+
+		$this->assertSame( 'pa_brand', $this->captured_store_params['attributes'][0]['attribute'] );
+	}
+
+	public function test_attribute_filter_lowercases_slug_values(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'attributes' => [ 'size' => [ 'M', 'XL' ] ] ] ]
+		);
+
+		$this->assertSame( [ 'm', 'xl' ], $this->captured_store_params['attributes'][0]['slug'] );
+	}
+
+	public function test_attribute_filter_emits_multiple_taxonomy_entries(): void {
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'color' => [ 'red' ],
+						'size'  => [ 'M' ],
+					],
+				],
+			]
+		);
+
+		$this->assertCount( 2, $this->captured_store_params['attributes'] );
+	}
+
+	public function test_attribute_filter_skips_empty_arrays(): void {
+		// Malformed input — one axis has values, another is empty.
+		// The empty axis should be dropped rather than poison the
+		// whole filter list.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'color' => [ 'red' ],
+						'size'  => [],
+					],
+				],
+			]
+		);
+
+		$this->assertCount( 1, $this->captured_store_params['attributes'] );
+		$this->assertSame( 'pa_color', $this->captured_store_params['attributes'][0]['attribute'] );
+	}
+
+	public function test_attribute_filter_deduplicates_slugs(): void {
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'color' => [ 'red', 'RED', 'Red' ],
+					],
+				],
+			]
+		);
+
+		$this->assertSame( [ 'red' ], $this->captured_store_params['attributes'][0]['slug'] );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.9.0: sort order
+	// ------------------------------------------------------------------
+
+	public function test_sort_price_asc_forwards_orderby_and_order(): void {
+		$this->successful_search(
+			[ 'sort' => [ 'field' => 'price', 'direction' => 'asc' ] ]
+		);
+
+		$this->assertSame( 'price', $this->captured_store_params['orderby'] );
+		$this->assertSame( 'asc', $this->captured_store_params['order'] );
+	}
+
+	public function test_sort_newest_maps_to_date_desc_regardless_of_direction(): void {
+		// `newest` is an alias that implies descending. Even if the
+		// caller passes `direction: asc` we normalize to desc — the
+		// concept "newest ascending" is self-contradicting.
+		$this->successful_search(
+			[ 'sort' => [ 'field' => 'newest', 'direction' => 'asc' ] ]
+		);
+
+		$this->assertSame( 'date', $this->captured_store_params['orderby'] );
+		$this->assertSame( 'desc', $this->captured_store_params['order'] );
+	}
+
+	public function test_sort_popularity_is_supported(): void {
+		$this->successful_search(
+			[ 'sort' => [ 'field' => 'popularity', 'direction' => 'desc' ] ]
+		);
+
+		$this->assertSame( 'popularity', $this->captured_store_params['orderby'] );
+	}
+
+	public function test_sort_unknown_field_emits_warning_and_does_not_forward(): void {
+		$body = $this->successful_search(
+			[ 'sort' => [ 'field' => 'bogus', 'direction' => 'asc' ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
+		$warnings = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'invalid_sort_field' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $warnings );
+	}
+
+	public function test_sort_defaults_direction_to_asc_when_unspecified(): void {
+		$this->successful_search(
+			[ 'sort' => [ 'field' => 'title' ] ]
+		);
+
+		$this->assertSame( 'asc', $this->captured_store_params['order'] );
 	}
 
 	// ------------------------------------------------------------------
