@@ -298,7 +298,38 @@ class WC_AI_Syndication {
 		// registered version tracks the file's actual contents.
 		$css_path = WC_AI_SYNDICATION_PLUGIN_PATH . '/build/ai-syndication-settings.css';
 		if ( file_exists( $css_path ) ) {
-			$css_version = substr( (string) md5_file( $css_path ), 0, 20 );
+			// Three-tier fallback chain for the cache-bust version:
+			//   1. md5_file() content hash (normal path)
+			//   2. filemtime() if md5_file fails
+			//   3. $asset['version'] JS hash as last resort
+			// A blank version would defeat cache-busting, so we
+			// always produce a non-empty string.
+			//
+			// The `is_readable()` guard is important: md5_file()
+			// emits an E_WARNING (in addition to returning false)
+			// when it can't open the file. Without the guard, a
+			// transient permissions blip on a merchant's server
+			// would spam the error log on every admin page load
+			// and can leak absolute filesystem paths to logs
+			// exposed by some hosting dashboards. Checking
+			// readability first keeps the fallback silent.
+			$css_version = $asset['version'];
+			if ( is_readable( $css_path ) ) {
+				$hash = md5_file( $css_path );
+				if ( false !== $hash ) {
+					$css_version = substr( $hash, 0, 20 );
+				} else {
+					// md5_file raced or failed despite is_readable
+					// (rare: file disappeared between the check and
+					// the read). Try mtime as a still-silent
+					// fallback; if that also fails, the
+					// $asset['version'] default remains.
+					$mtime = @filemtime( $css_path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Intentional: fall through to $asset['version'] default on failure.
+					if ( false !== $mtime ) {
+						$css_version = (string) $mtime;
+					}
+				}
+			}
 			wp_register_style(
 				'wc-ai-syndication-settings',
 				WC_AI_SYNDICATION_PLUGIN_URL . '/build/ai-syndication-settings.css',

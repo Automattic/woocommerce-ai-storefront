@@ -135,6 +135,34 @@ describe( 'AI Syndication actions', () => {
 			expect( mockDispatch.checkEndpoints ).not.toHaveBeenCalled();
 		} );
 
+		it( 'refreshes recent orders after a successful save', async () => {
+			// Saving settings that affect AI order flow (enabled
+			// state, crawler list, rate limits) can produce new
+			// AI-attributed orders between when the tab was
+			// loaded and when the save completes — the AI Orders
+			// table must refetch so the merchant sees them.
+			// Symmetric with the checkEndpoints re-probe above.
+			apiFetch.mockResolvedValue( { enabled: 'yes' } );
+
+			const thunk = saveSettings();
+			await thunk( { dispatch: mockDispatch, select: mockSelect } );
+
+			expect( mockDispatch.fetchRecentOrders ).toHaveBeenCalledTimes( 1 );
+		} );
+
+		it( 'does NOT refresh recent orders when save fails', async () => {
+			// Save failed → settings didn't change → no reason
+			// to believe the orders list is stale. Skipping the
+			// refetch saves a REST round-trip on the failure
+			// path. Symmetric with the checkEndpoints skip above.
+			apiFetch.mockRejectedValue( new Error( 'Network error' ) );
+
+			const thunk = saveSettings();
+			await thunk( { dispatch: mockDispatch, select: mockSelect } );
+
+			expect( mockDispatch.fetchRecentOrders ).not.toHaveBeenCalled();
+		} );
+
 		it( 'dispatches error notice on failure and preserves error state', async () => {
 			const error = new Error( 'Network error' );
 			apiFetch.mockRejectedValue( error );
