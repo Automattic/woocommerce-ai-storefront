@@ -622,34 +622,32 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							) }
 						</div>
 					) }
-
-					{ /* Save button inside card */ }
-					<div
-						style={ {
-							marginTop: '16px',
-							paddingTop: '16px',
-							borderTop: `1px solid ${ colors.surfaceMuted }`,
-						} }
-					>
-						<Button
-							variant="primary"
-							isBusy={ isSaving }
-							disabled={ isSaving }
-							onClick={ onSave }
-						>
-							{ isSaving
-								? __(
-										'Saving\u2026',
-										'woocommerce-ai-syndication'
-								  )
-								: __(
-										'Save Changes',
-										'woocommerce-ai-syndication'
-								  ) }
-						</Button>
-					</div>
 				</CardBody>
 			</Card>
+
+			{ /*
+				Page-level Save footer. Matches the Discovery tab
+				convention and WP admin settings screens generally
+				(Settings → General, Writing, Reading, every WC
+				Settings tab) — one save at the bottom, not per-card.
+			*/ }
+			<div
+				style={ {
+					marginTop: '24px',
+					textAlign: 'right',
+				} }
+			>
+				<Button
+					variant="primary"
+					isBusy={ isSaving }
+					disabled={ isSaving }
+					onClick={ onSave }
+				>
+					{ isSaving
+						? __( 'Saving\u2026', 'woocommerce-ai-syndication' )
+						: __( 'Save Changes', 'woocommerce-ai-syndication' ) }
+				</Button>
+			</div>
 		</div>
 	);
 };
