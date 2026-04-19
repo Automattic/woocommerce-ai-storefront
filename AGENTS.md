@@ -203,7 +203,7 @@ See `ai-orders-table.js` for the full template including status-pill styling (in
 
 **CSS import:** the DataViews stylesheet import in `client/settings/ai-syndication/index.js` is the one place where we bring in bundled Woo/WP design-system CSS. If you adopt a new bundled WP package that ships its own CSS, add its import next to the DataViews one — not scattered across component files — so the stylesheet bundle stays easy to audit.
 
-**The `@woocommerce/components` devDependency is kept.** It's still useful for IntelliSense on Woo prop shapes and keeps the door open if Woo ever publishes a safer externalization pattern. Current state: zero runtime usage, still declared in `package.json`.
+**The `@woocommerce/components` devDependency has been removed.** Previously kept for IntelliSense on Woo prop shapes, but at zero runtime usage and ~40+ transitive nested dependencies in `package-lock.json`, the cost outweighed the benefit. The webpack-side extractor wiring (`@woocommerce/dependency-extraction-webpack-plugin`) is still configured in `webpack.config.js` so a future re-adoption only needs `npm install --save-dev @woocommerce/components` plus an import. The door stays open without the ongoing dep-graph cost.
 
 ### Candidate DataViews migrations for the future
 

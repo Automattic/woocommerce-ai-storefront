@@ -79,6 +79,18 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 			new WP_Error( 'no_probe', 'Not stubbed in test' )
 		);
 		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 0 );
+
+		// Single-flight sentinel for concurrent cache regeneration
+		// uses `delete_transient()` on completion. Stub it as a
+		// no-op for tests that don't care about the guard behavior.
+		// (`usleep` can't be stubbed via Patchwork — it's a PHP
+		// internal function not in patchwork.json's redefinable
+		// list. The single-flight wait loop is guarded out for
+		// tests because `get_transient( ... . '_regenerating' )`
+		// returns `''` or `false` in our stub setups, which the
+		// handler treats as "no lock held" — skipping the usleep
+		// branch entirely.)
+		Functions\when( 'delete_transient' )->justReturn( true );
 	}
 
 	protected function tearDown(): void {
@@ -513,13 +525,20 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_empty_cached_value_is_treated_as_miss(): void {
 		Functions\when( 'get_transient' )->justReturn( '' );
+		// Capture only the MAIN cache-key write — the single-flight
+		// sentinel write (to `CACHE_KEY . '_regenerating'`) is a
+		// separate concern and would clobber the "the cache was
+		// healed with real content" assertion below if we captured
+		// indiscriminately.
 		$set_transient_called_with = null;
 		Functions\when( 'set_transient' )->alias(
 			static function ( $key, $value ) use ( &$set_transient_called_with ) {
-				$set_transient_called_with = [
-					'key'   => $key,
-					'value' => $value,
-				];
+				if ( WC_AI_Syndication_Llms_Txt::CACHE_KEY === $key ) {
+					$set_transient_called_with = [
+						'key'   => $key,
+						'value' => $value,
+					];
+				}
 				return true;
 			}
 		);
@@ -550,10 +569,19 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_empty_generated_content_is_not_written_to_cache(): void {
 		Functions\when( 'get_transient' )->justReturn( false ); // Fresh miss.
-		$set_transient_calls = 0;
+
+		// Count set_transient calls for the CACHE_KEY only — the
+		// single-flight sentinel writes to `CACHE_KEY . '_regenerating'`
+		// as part of the lock-claim step and is NOT an empty-content
+		// poisoning concern. The invariant this test pins is "empty
+		// generated content must not land in the main cache", not
+		// "no transients are set anywhere during regeneration."
+		$main_cache_writes = 0;
 		Functions\when( 'set_transient' )->alias(
-			static function () use ( &$set_transient_calls ) {
-				++$set_transient_calls;
+			static function ( $key ) use ( &$main_cache_writes ) {
+				if ( WC_AI_Syndication_Llms_Txt::CACHE_KEY === $key ) {
+					++$main_cache_writes;
+				}
 				return true;
 			}
 		);
@@ -571,7 +599,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->invoke_private( 'get_cached_content' );
 
 		$this->assertSame( '', $result, 'generate() should have returned empty in this setup.' );
-		$this->assertSame( 0, $set_transient_calls, 'Empty content must not be cached — would poison the TTL window.' );
+		$this->assertSame( 0, $main_cache_writes, 'Empty content must not be cached — would poison the TTL window.' );
 	}
 
 	// ------------------------------------------------------------------

@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-19T08:56:13+00:00\n"
+"POT-Creation-Date: 2026-04-19T10:45:58+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-syndication\n"
@@ -167,28 +167,28 @@ msgstr ""
 msgid "Error saving settings."
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:201
+#: client/settings/ai-syndication/ai-orders-table.js:204
 msgid "Order"
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:219
+#: client/settings/ai-syndication/ai-orders-table.js:235
 msgid "Date"
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:230
+#: client/settings/ai-syndication/ai-orders-table.js:246
 #: client/settings/ai-syndication/endpoint-info.js:397
 msgid "Status"
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:301
+#: client/settings/ai-syndication/ai-orders-table.js:317
 msgid "Agent"
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:308
+#: client/settings/ai-syndication/ai-orders-table.js:324
 msgid "Total"
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:354
+#: client/settings/ai-syndication/ai-orders-table.js:370
 msgid "Recent AI Orders"
 msgstr ""
 
@@ -311,48 +311,46 @@ msgstr ""
 msgid "AI-referred orders appear in the Orders list under WooCommerce’s built-in Origin column as each agent’s brand name (e.g. \"Source: ChatGPT\", \"Source: Gemini\") rather than the technical crawler IDs shown above."
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:828
-#: client/settings/ai-syndication/endpoint-info.js:968
+#: client/settings/ai-syndication/endpoint-info.js:835
+msgid "Rate Limits"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:844
+msgid "Control how frequently AI crawlers can query your Store API. Higher limits allow faster product discovery but use more server resources."
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:854
+msgid "Recommended — 25/min (works well for most stores)"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:861
+msgid "Conservative — 10/min (shared hosting or low-traffic stores)"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:868
+msgid "Generous — 100/min (high-traffic stores on dedicated hosting)"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:875
+msgid "Custom"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:907
+msgid "Requests per minute"
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:932
+msgid "Limits are applied per AI crawler (identified by user-agent string) using the WooCommerce Store API rate limiter. Your regular store traffic is not affected."
+msgstr ""
+
+#: client/settings/ai-syndication/endpoint-info.js:963
 #: client/settings/ai-syndication/product-selection.js:641
 msgid "Saving…"
 msgstr ""
 
-#: client/settings/ai-syndication/endpoint-info.js:829
-#: client/settings/ai-syndication/endpoint-info.js:969
+#: client/settings/ai-syndication/endpoint-info.js:964
 #: client/settings/ai-syndication/product-selection.js:645
 msgid "Save Changes"
-msgstr ""
-
-#: client/settings/ai-syndication/endpoint-info.js:850
-msgid "Rate Limits"
-msgstr ""
-
-#: client/settings/ai-syndication/endpoint-info.js:859
-msgid "Control how frequently AI crawlers can query your Store API. Higher limits allow faster product discovery but use more server resources."
-msgstr ""
-
-#: client/settings/ai-syndication/endpoint-info.js:869
-msgid "Recommended — 25/min (works well for most stores)"
-msgstr ""
-
-#: client/settings/ai-syndication/endpoint-info.js:876
-msgid "Conservative — 10/min (shared hosting or low-traffic stores)"
-msgstr ""
-
-#: client/settings/ai-syndication/endpoint-info.js:883
-msgid "Generous — 100/min (high-traffic stores on dedicated hosting)"
-msgstr ""
-
-#: client/settings/ai-syndication/endpoint-info.js:890
-msgid "Custom"
-msgstr ""
-
-#: client/settings/ai-syndication/endpoint-info.js:922
-msgid "Requests per minute"
-msgstr ""
-
-#: client/settings/ai-syndication/endpoint-info.js:947
-msgid "Limits are applied per AI crawler (identified by user-agent string) using the WooCommerce Store API rate limiter. Your regular store traffic is not affected."
 msgstr ""
 
 #: client/settings/ai-syndication/product-selection.js:17

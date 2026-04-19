@@ -324,6 +324,19 @@ if ( ! class_exists( 'WC_Order' ) ) {
 		private array $meta = [];
 		private bool $saved = false;
 
+		// Test-controllable properties used by tests that exercise
+		// admin surfaces rendering order summaries (e.g. the
+		// `/admin/recent-orders` endpoint contract test). Defaults
+		// chosen so a freshly-constructed WC_Order yields a sensible
+		// row shape without the test having to set each field.
+		private int $id = 1;
+		private string $number = '1';
+		private string $status = 'processing';
+		private string $total = '0.00';
+		private string $currency = 'USD';
+		private string $edit_url = 'https://example.com/wp-admin/admin.php?page=wc-orders&action=edit&id=1';
+		private ?\WC_DateTime_Stub $date_created = null;
+
 		public function get_meta( string $key ) {
 			return $this->meta[ $key ] ?? '';
 		}
@@ -342,6 +355,87 @@ if ( ! class_exists( 'WC_Order' ) ) {
 
 		public function set_test_meta( string $key, $value ): void {
 			$this->meta[ $key ] = $value;
+		}
+
+		public function get_id(): int {
+			return $this->id;
+		}
+
+		public function get_order_number(): string {
+			return $this->number;
+		}
+
+		public function get_status(): string {
+			return $this->status;
+		}
+
+		public function get_total(): string {
+			return $this->total;
+		}
+
+		public function get_currency(): string {
+			return $this->currency;
+		}
+
+		public function get_edit_order_url(): string {
+			return $this->edit_url;
+		}
+
+		public function get_date_created() {
+			return $this->date_created;
+		}
+
+		public function set_test_id( int $id ): void {
+			$this->id = $id;
+		}
+
+		public function set_test_number( string $number ): void {
+			$this->number = $number;
+		}
+
+		public function set_test_status( string $status ): void {
+			$this->status = $status;
+		}
+
+		public function set_test_total( string $total ): void {
+			$this->total = $total;
+		}
+
+		public function set_test_currency( string $currency ): void {
+			$this->currency = $currency;
+		}
+
+		public function set_test_edit_url( string $url ): void {
+			$this->edit_url = $url;
+		}
+
+		public function set_test_date_created( \WC_DateTime_Stub $date ): void {
+			$this->date_created = $date;
+		}
+	}
+}
+
+if ( ! class_exists( 'WC_DateTime_Stub' ) ) {
+	/**
+	 * Minimal stub for WC_DateTime — just the two methods the admin
+	 * recent-orders handler calls on `$order->get_date_created()`
+	 * (`format('c')` for ISO-8601 and passed into `wc_format_datetime`
+	 * for the display string).
+	 */
+	class WC_DateTime_Stub {
+		private string $iso;
+
+		public function __construct( string $iso = '2026-04-19T10:15:30+00:00' ) {
+			$this->iso = $iso;
+		}
+
+		public function format( string $fmt ): string {
+			// The handler only asks for `c` (ISO-8601). Anything
+			// else returns the ISO string too — tests don't care.
+			if ( 'c' === $fmt ) {
+				return $this->iso;
+			}
+			return $this->iso;
 		}
 	}
 }

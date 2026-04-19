@@ -288,13 +288,22 @@ class WC_AI_Syndication {
 		);
 
 		// Only register the stylesheet if the build produced one.
+		//
+		// Cache-busting note: the CSS file is produced out-of-band by
+		// `scripts/copy-dataviews-css.js` (a postbuild step), NOT by
+		// webpack — so it doesn't participate in `$asset['version']`'s
+		// JS content hash. A DataViews CSS-only bump without a JS
+		// change would otherwise not invalidate merchants' browser
+		// caches. Hash the file separately via `md5_file()` so the
+		// registered version tracks the file's actual contents.
 		$css_path = WC_AI_SYNDICATION_PLUGIN_PATH . '/build/ai-syndication-settings.css';
 		if ( file_exists( $css_path ) ) {
+			$css_version = substr( (string) md5_file( $css_path ), 0, 20 );
 			wp_register_style(
 				'wc-ai-syndication-settings',
 				WC_AI_SYNDICATION_PLUGIN_URL . '/build/ai-syndication-settings.css',
 				[ 'wp-components' ],
-				$asset['version']
+				$css_version
 			);
 		}
 

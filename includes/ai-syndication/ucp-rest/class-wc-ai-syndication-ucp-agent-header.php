@@ -82,7 +82,17 @@ class WC_AI_Syndication_UCP_Agent_Header {
 		'gemini.google.com'     => 'Gemini',
 		'deepmind.google'       => 'Gemini',
 
-		// Microsoft.
+		// Microsoft. Note: `bing.com` → "Copilot" is a deliberate
+		// but over-broad mapping. Bing.com hosts both the classic
+		// Bing search surface and Copilot's web-chat experience;
+		// UCP-Agent profile URLs from either product would land
+		// on bing.com. Collapsing both to "Copilot" loses a
+		// Search-vs-Chat distinction in the Origin column.
+		// Acceptable today because Copilot is the AI-commerce
+		// surface we care about attributing, and classic Bing
+		// doesn't send UCP-Agent headers. If a separate
+		// `search.bing.com` or similar subdomain emerges, split
+		// the mapping then.
 		'copilot.microsoft.com' => 'Copilot',
 		'bing.com'              => 'Copilot',
 

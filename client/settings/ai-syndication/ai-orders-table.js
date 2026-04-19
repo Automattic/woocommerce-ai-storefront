@@ -47,7 +47,7 @@ import { Card, CardBody } from '@wordpress/components';
 import { DataViews, filterSortAndPaginate } from '@wordpress/dataviews';
 import { __ } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
-import { colors } from './tokens';
+import { colors, statusColors } from './tokens';
 
 /**
  * Format a currency amount via Intl.NumberFormat with a safe fallback.
@@ -77,33 +77,36 @@ const formatCurrency = ( amount, currency ) => {
 };
 
 /**
- * Background + foreground colors per WooCommerce order status.
+ * Guard against non-HTTP(S) URL schemes in an href value.
  *
- * Values are verbatim copies of what wc-admin's own `.order-status`
- * CSS uses on the native Orders list — `processing` is green,
- * `completed` is the familiar blue-gray, `on-hold` is orange,
- * `failed` is red, and the rest fall back to neutral gray. Merchants
- * scanning our table should see the exact same palette they see on
- * WC's Orders screen, so the mental mapping between the two surfaces
- * is instantaneous.
+ * JSX escapes attribute *values* but does not filter URL schemes,
+ * so rendering an arbitrary string into `<a href={...}>` could
+ * evaluate as `javascript:…` under today's browsers. The current
+ * server-side source for these URLs is `admin_url()`, which never
+ * returns such a scheme — but if the REST shape ever surfaces a
+ * merchant-provided URL (e.g. an external order tracker), this
+ * guard removes the entire JS-URL regression class ahead of time.
  *
- * We hardcode the palette (rather than sharing a CSS variable with
- * wc-admin) because wc-admin's stylesheet isn't loaded on our
- * submenu page. This is the same reason StatusPill renders its own
- * chrome rather than using `.order-status` classes directly.
+ * Returns a safe-to-render href, or `null` when the input fails
+ * validation. Callers are expected to drop the anchor element on
+ * null rather than render a broken link.
  *
- * Custom statuses from other plugins fall through to the neutral
- * gray block in the caller's `||` default — labels still render
- * correctly, pill just reads as a generic "other status" tag.
+ * @param {unknown} url Raw URL from the REST response.
+ * @return {string|null} URL string safe to bind to `href`, or null.
  */
-const STATUS_COLORS = {
-	processing: { bg: '#c6e1c6', fg: '#5b841b' },
-	completed: { bg: '#c8d7e1', fg: '#2e4453' },
-	'on-hold': { bg: '#f8dda7', fg: '#94660c' },
-	pending: { bg: '#e5e5e5', fg: '#777' },
-	cancelled: { bg: '#e5e5e5', fg: '#777' },
-	refunded: { bg: '#e5e5e5', fg: '#777' },
-	failed: { bg: '#eba3a3', fg: '#761919' },
+const safeHref = ( url ) => {
+	if ( typeof url !== 'string' || url === '' ) {
+		return null;
+	}
+	try {
+		const parsed = new URL( url, window.location.origin );
+		if ( parsed.protocol !== 'https:' && parsed.protocol !== 'http:' ) {
+			return null;
+		}
+		return parsed.href;
+	} catch ( _error ) {
+		return null;
+	}
 };
 
 /**
@@ -133,7 +136,7 @@ const STATUS_COLORS = {
  * @return {JSX.Element} The rendered pill.
  */
 const StatusPill = ( { status, label } ) => {
-	const { bg, fg } = STATUS_COLORS[ status ] || {
+	const { bg, fg } = statusColors[ status ] || {
 		bg: colors.surfaceMuted,
 		fg: colors.textMuted,
 	};
@@ -200,18 +203,31 @@ const AIOrdersTable = () => {
 				id: 'order',
 				label: __( 'Order', 'woocommerce-ai-syndication' ),
 				enableSorting: true,
-				render: ( { item } ) => (
-					<a
-						href={ item.edit_url }
-						style={ {
-							color: colors.link,
-							textDecoration: 'none',
-							fontWeight: '500',
-						} }
-					>
-						{ `#${ item.number }` }
-					</a>
-				),
+				render: ( { item } ) => {
+					const href = safeHref( item.edit_url );
+					// If the URL failed scheme validation fall back
+					// to plain text — a broken anchor is worse UX
+					// than a non-clickable order number.
+					if ( ! href ) {
+						return (
+							<span
+								style={ { fontWeight: '500' } }
+							>{ `#${ item.number }` }</span>
+						);
+					}
+					return (
+						<a
+							href={ href }
+							style={ {
+								color: colors.link,
+								textDecoration: 'none',
+								fontWeight: '500',
+							} }
+						>
+							{ `#${ item.number }` }
+						</a>
+					);
+				},
 				getValue: ( { item } ) => item.id,
 			},
 			{

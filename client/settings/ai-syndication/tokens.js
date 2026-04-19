@@ -45,3 +45,36 @@ export const colors = {
 	// Links
 	link: '#2271b1', // WP admin-blue — default link color (matches wp-admin anchors)
 };
+
+/**
+ * WooCommerce order-status pill palette — bg + fg per status key.
+ *
+ * Lifted here out of `ai-orders-table.js` to satisfy the "colors
+ * live in tokens.js" rule. These aren't tokens in the usual
+ * semantic sense (textPrimary / surface / etc.) — they're verbatim
+ * copies of what wc-admin's own `.order-status` CSS uses on the
+ * native Orders list. The purpose of this block is to give the
+ * AI Orders table's StatusPill component the exact visual
+ * appearance a merchant sees on WC's native screens so the mental
+ * mapping between our table and that one is instantaneous.
+ *
+ * We hardcode the palette (rather than sharing a CSS variable
+ * with wc-admin) because wc-admin's stylesheet isn't loaded on
+ * our custom submenu page — same CSS-enqueue gap that killed
+ * PR #24's Woo TableCard adoption.
+ *
+ * If WooCommerce changes its native status-pill palette, update
+ * these values to match; the visual invariant is "looks identical
+ * to wc-admin's Orders list," not any particular hex.
+ *
+ * @see client/settings/ai-syndication/ai-orders-table.js StatusPill
+ */
+export const statusColors = {
+	processing: { bg: '#c6e1c6', fg: '#5b841b' },
+	completed: { bg: '#c8d7e1', fg: '#2e4453' },
+	'on-hold': { bg: '#f8dda7', fg: '#94660c' },
+	pending: { bg: '#e5e5e5', fg: '#777' },
+	cancelled: { bg: '#e5e5e5', fg: '#777' },
+	refunded: { bg: '#e5e5e5', fg: '#777' },
+	failed: { bg: '#eba3a3', fg: '#761919' },
+};

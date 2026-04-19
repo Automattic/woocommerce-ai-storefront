@@ -157,4 +157,81 @@ describe( 'AI Syndication reducer', () => {
 			expect( state.endpointStatus ).toEqual( {} );
 		} );
 	} );
+
+	describe( 'SET_RECENT_ORDERS', () => {
+		it( 'stores the recent orders payload', () => {
+			const payload = {
+				orders: [
+					{
+						id: 1,
+						number: '1',
+						date: '2026-04-19T10:15:30+00:00',
+						date_display: 'April 19, 2026',
+						status: 'processing',
+						status_label: 'Processing',
+						agent: 'Gemini',
+						total: 55.36,
+						currency: 'USD',
+						edit_url:
+							'https://example.com/wp-admin/admin.php?page=wc-orders&action=edit&id=1',
+					},
+				],
+				total: 1,
+				currency: 'USD',
+			};
+			const state = reducer( defaultState, {
+				type: ACTION_TYPES.SET_RECENT_ORDERS,
+				data: payload,
+			} );
+			expect( state.recentOrders ).toEqual( payload );
+		} );
+
+		it( 'replaces previous recent orders on subsequent dispatches', () => {
+			// The stored payload is wholesale-replaced on refetch;
+			// no merging. Matches how SET_STATS / SET_SETTINGS
+			// behave. Important for the refresh-on-save flow: a
+			// save that triggers fetchRecentOrders() must fully
+			// refresh the table, not append to it.
+			const initial = {
+				...defaultState,
+				recentOrders: {
+					orders: [ { id: 1, number: '1' } ],
+					total: 1,
+					currency: 'USD',
+				},
+			};
+			const nextPayload = {
+				orders: [
+					{ id: 2, number: '2' },
+					{ id: 3, number: '3' },
+				],
+				total: 2,
+				currency: 'USD',
+			};
+			const state = reducer( initial, {
+				type: ACTION_TYPES.SET_RECENT_ORDERS,
+				data: nextPayload,
+			} );
+			expect( state.recentOrders ).toEqual( nextPayload );
+			expect( state.recentOrders.orders ).toHaveLength( 2 );
+		} );
+
+		it( 'accepts empty orders array without crashing', () => {
+			// The AI Orders table distinguishes "not fetched yet"
+			// (null) from "fetched, zero results" (empty array).
+			// An empty-array payload must land in state as-is so
+			// the component can render its empty state instead of
+			// flashing a skeleton.
+			const state = reducer( defaultState, {
+				type: ACTION_TYPES.SET_RECENT_ORDERS,
+				data: {
+					orders: [],
+					total: 0,
+					currency: 'USD',
+				},
+			} );
+			expect( state.recentOrders.orders ).toEqual( [] );
+			expect( state.recentOrders.total ).toBe( 0 );
+		} );
+	} );
 } );
