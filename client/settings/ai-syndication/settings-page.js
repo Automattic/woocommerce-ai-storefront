@@ -434,7 +434,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 					) }
 				>
 					{ __(
-						'No platform fees. No delegated payments. You keep the customer, the checkout, and the data.',
+						'No AI-platform checkout fees. No delegated payments. You keep the customer, the checkout, and the data.',
 						'woocommerce-ai-syndication'
 					) }
 				</ValueCard>
