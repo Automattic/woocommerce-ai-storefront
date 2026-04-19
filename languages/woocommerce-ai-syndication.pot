@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-19T12:16:07+00:00\n"
+"POT-Creation-Date: 2026-04-19T13:57:04+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-syndication\n"
@@ -50,6 +50,18 @@ msgstr ""
 #: includes/ai-syndication/class-wc-ai-syndication-jsonld.php:215
 #: client/settings/ai-syndication/product-selection.js:489
 msgid "Products"
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:156
+msgid "Product identifiers (GTIN, UPC, EAN, MPN, ISBN). Each entry is a typed barcode."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:168
+msgid "Barcode type (gtin8, gtin12, gtin13, gtin14, other)."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:175
+msgid "The barcode value as stored by the merchant."
 msgstr ""
 
 #: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:219
@@ -119,39 +131,45 @@ msgstr ""
 msgid "Category \"%s\" was not found; filter ignored for this value."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1743
+#. translators: %s is the tag slug/name the agent sent that couldn't be resolved.
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1368
+#, php-format
+msgid "Tag \"%s\" was not found; filter ignored for this value."
+msgstr ""
+
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1810
 msgid "Line item must be an object with \"item.id\" and \"quantity\"."
 msgstr ""
 
 #. translators: %d is the maximum quantity per line item.
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1747
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1814
 #, php-format
 msgid "Quantity must be a positive integer up to %d."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1751
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1818
 msgid "Product not found."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1753
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1820
 msgid "Product type cannot be added via the Shareable Checkout URL; link to the product page directly."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1755
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1822
 msgid "Product is out of stock."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1759
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1826
 msgid "Product is variable — specify a variation ID instead of the parent product ID."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1761
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-ucp-rest-controller.php:1828
 msgid "Line item could not be processed."
 msgstr ""
 
-#: includes/class-wc-ai-syndication.php:246
-#: includes/class-wc-ai-syndication.php:247
-#: includes/class-wc-ai-syndication.php:259
+#: includes/class-wc-ai-syndication.php:257
+#: includes/class-wc-ai-syndication.php:258
+#: includes/class-wc-ai-syndication.php:270
 msgid "AI Syndication"
 msgstr ""
 
@@ -344,12 +362,12 @@ msgid "Limits are applied per AI crawler (identified by user-agent string) using
 msgstr ""
 
 #: client/settings/ai-syndication/endpoint-info.js:963
-#: client/settings/ai-syndication/product-selection.js:648
+#: client/settings/ai-syndication/product-selection.js:647
 msgid "Saving…"
 msgstr ""
 
 #: client/settings/ai-syndication/endpoint-info.js:964
-#: client/settings/ai-syndication/product-selection.js:649
+#: client/settings/ai-syndication/product-selection.js:648
 msgid "Save Changes"
 msgstr ""
 

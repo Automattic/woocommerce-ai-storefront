@@ -1217,7 +1217,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * returned messages array so agents learn their filter didn't
 	 * apply (instead of silently receiving the unfiltered catalog).
 	 *
-	 * @return array{0: array<string, string|int>, 1: array<int, array<string, mixed>>}
+	 * @return array{0: array<string, string|int|bool>, 1: array<int, array<string, mixed>>}
 	 *         [params, messages]
 	 */
 	private static function map_ucp_search_to_store_api( WP_REST_Request $request ): array {
@@ -1337,6 +1337,41 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			}
 		}
 
+		// On-sale filter — agents searching for deals pass
+		// `filters.on_sale: true`. Store API's `on_sale` param is a
+		// boolean flag that restricts results to products with an
+		// active sale price. We accept both strict true and stringy
+		// "true" since JSON-to-PHP boolean handling varies between
+		// REST clients.
+		if ( isset( $filters['on_sale'] ) && ( true === $filters['on_sale'] || 'true' === $filters['on_sale'] ) ) {
+			$params['on_sale'] = true;
+		}
+
+		// Tag filter — parallel to categories but across WC's tag
+		// taxonomy. Same name-to-term-ID resolution logic, same
+		// unresolved-warning emission for agent feedback. Tags
+		// surface cross-cutting discovery signals (e.g. "eco-friendly",
+		// "summer") that are orthogonal to hierarchical categories.
+		if ( isset( $filters['tags'] ) && is_array( $filters['tags'] ) ) {
+			$tag_result = self::resolve_tag_term_ids( $filters['tags'] );
+			if ( ! empty( $tag_result['ids'] ) ) {
+				$params['tag'] = implode( ',', $tag_result['ids'] );
+			}
+			foreach ( $tag_result['unresolved'] as $index => $bad ) {
+				$messages[] = [
+					'type'     => 'warning',
+					'code'     => 'tag_not_found',
+					'severity' => 'advisory',
+					'path'     => '$.filters.tags[' . $index . ']',
+					'content'  => sprintf(
+						/* translators: %s is the tag slug/name the agent sent that couldn't be resolved. */
+						__( 'Tag "%s" was not found; filter ignored for this value.', 'woocommerce-ai-syndication' ),
+						$bad
+					),
+				];
+			}
+		}
+
 		return [ $params, $messages ];
 	}
 
@@ -1359,7 +1394,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * the filter was ignored.
 	 *
 	 * A future release should revisit emitting slugs from
-	 * `WC_AI_Syndication_UCP_Product_Translator::extract_categories()`
+	 * `WC_AI_Syndication_UCP_Product_Translator::extract_taxonomies()`
 	 * so round-tripping doesn't rely on the name fallback here.
 	 *
 	 * @param array<int, mixed> $inputs
@@ -1368,20 +1403,52 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *         so callers can build JSONPath locators.
 	 */
 	private static function resolve_category_term_ids( array $inputs ): array {
+		return self::resolve_taxonomy_term_ids( $inputs, 'product_cat' );
+	}
+
+	/**
+	 * Resolve UCP tag strings to WC product_tag term IDs.
+	 *
+	 * Parallel to `resolve_category_term_ids` — same slug-first,
+	 * name-fallback lookup strategy, same shape return. Extracted
+	 * via the generic helper below so the category/tag resolution
+	 * stays DRY; if a future filter adds product_brand or another
+	 * taxonomy, it's a one-liner.
+	 *
+	 * @param array<int, mixed> $inputs
+	 * @return array{ids: array<int, int>, unresolved: array<int, string>}
+	 */
+	private static function resolve_tag_term_ids( array $inputs ): array {
+		return self::resolve_taxonomy_term_ids( $inputs, 'product_tag' );
+	}
+
+	/**
+	 * Generic term-resolution helper — slug first, name fallback.
+	 *
+	 * Abstracted from the original `resolve_category_term_ids` so
+	 * new taxonomies (tags, brands if merchants use them) can reuse
+	 * the same round-tripping strategy without copy-pasting the
+	 * skip/lookup/unresolved pattern.
+	 *
+	 * @param array<int, mixed> $inputs
+	 * @param string            $taxonomy The WC taxonomy slug ('product_cat', 'product_tag').
+	 * @return array{ids: array<int, int>, unresolved: array<int, string>}
+	 */
+	private static function resolve_taxonomy_term_ids( array $inputs, string $taxonomy ): array {
 		$ids        = [];
 		$unresolved = [];
 
 		foreach ( $inputs as $index => $input ) {
 			if ( ! is_string( $input ) || '' === $input ) {
 				// Skip non-string/empty inputs silently — they're
-				// malformed enough that `category_not_found` would be
-				// misleading (the agent didn't even spell a category).
+				// malformed enough that a not-found warning would be
+				// misleading (the agent didn't even spell a term).
 				continue;
 			}
 
-			$term = get_term_by( 'slug', $input, 'product_cat' );
+			$term = get_term_by( 'slug', $input, $taxonomy );
 			if ( ! $term || is_wp_error( $term ) ) {
-				$term = get_term_by( 'name', $input, 'product_cat' );
+				$term = get_term_by( 'name', $input, $taxonomy );
 			}
 			if ( $term && ! is_wp_error( $term ) ) {
 				$ids[] = (int) $term->term_id;

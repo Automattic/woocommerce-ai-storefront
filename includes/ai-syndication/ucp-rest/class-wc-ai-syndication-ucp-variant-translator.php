@@ -57,14 +57,48 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 			'price'       => self::extract_price( $wc_variation ),
 		];
 
+		// Structured options — the {attribute, value} pairs that
+		// distinguish this variant from siblings (e.g. "Color: Blue,
+		// Size: M"). Already implied by `title` for human display, but
+		// agents that want to filter or match by attribute need them
+		// structured. UCP v2026-04-08 variant schema carries
+		// `options` exactly for this.
+		$options = self::extract_options( $wc_variation );
+		if ( ! empty( $options ) ) {
+			$variant['options'] = $options;
+		}
+
+		// Sale pricing — agents showing "was $X, now $Y" need
+		// compare_at_price alongside the canonical `price`. WC marks
+		// this via the `on_sale` flag plus `prices.regular_price`
+		// (higher) vs `prices.price` (the active/sale value). Only
+		// emit when actually on sale so non-sale variants stay
+		// clean.
+		if ( ! empty( $wc_variation['on_sale'] ) ) {
+			$compare_at = self::extract_compare_at_price( $wc_variation );
+			if ( null !== $compare_at ) {
+				$variant['compare_at_price'] = $compare_at;
+			}
+		}
+
 		// Optional fields. Only emit when present in WC source.
 		if ( ! empty( $wc_variation['sku'] ) ) {
 			$variant['sku'] = $wc_variation['sku'];
 		}
 
-		$variant['availability'] = [
-			'available' => (bool) ( $wc_variation['is_in_stock'] ?? true ),
-		];
+		// Barcodes (GTIN/UPC/EAN/MPN). Sourced from the Store API
+		// extension we register in `WC_AI_Syndication_Store_Api_Extension`
+		// (WC core doesn't expose `global_unique_id` on the Store API
+		// product schema yet — see the WC enhancement request). The
+		// extension surfaces it under `extensions.{namespace}.barcodes`
+		// as an array of `{type, value}` pairs matching the UCP
+		// variant.barcodes shape.
+		$barcodes = self::extract_barcodes( $wc_variation );
+		if ( ! empty( $barcodes ) ) {
+			$variant['barcodes'] = $barcodes;
+		}
+
+		$variant['availability'] = self::extract_availability( $wc_variation );
 
 		return $variant;
 	}
@@ -85,18 +119,35 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
 		$variant = [
-			'id'           => self::VARIANT_ID_PREFIX . $id . self::DEFAULT_VARIANT_SUFFIX,
-			'title'        => $wc_product['name'] ?? '',
-			'description'  => [ 'plain' => '' ],
-			'price'        => self::extract_price( $wc_product ),
-			'availability' => [
-				'available' => (bool) ( $wc_product['is_in_stock'] ?? true ),
-			],
+			'id'          => self::VARIANT_ID_PREFIX . $id . self::DEFAULT_VARIANT_SUFFIX,
+			'title'       => $wc_product['name'] ?? '',
+			'description' => [ 'plain' => '' ],
+			'price'       => self::extract_price( $wc_product ),
 		];
+
+		// Sale pricing carries through the simple-product path too
+		// (a discounted simple product has on_sale + regular_price
+		// just like a variation).
+		if ( ! empty( $wc_product['on_sale'] ) ) {
+			$compare_at = self::extract_compare_at_price( $wc_product );
+			if ( null !== $compare_at ) {
+				$variant['compare_at_price'] = $compare_at;
+			}
+		}
 
 		if ( ! empty( $wc_product['sku'] ) ) {
 			$variant['sku'] = $wc_product['sku'];
 		}
+
+		// Simple products carry the same Store API extensions.{namespace}
+		// payload the variations do, so `barcodes` routes through the
+		// same helper.
+		$barcodes = self::extract_barcodes( $wc_product );
+		if ( ! empty( $barcodes ) ) {
+			$variant['barcodes'] = $barcodes;
+		}
+
+		$variant['availability'] = self::extract_availability( $wc_product );
 
 		return $variant;
 	}
@@ -168,5 +219,162 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 			'amount'   => (int) ( $prices['price'] ?? 0 ),
 			'currency' => $prices['currency_code'] ?? 'USD',
 		];
+	}
+
+	/**
+	 * Extract the compare-at price (the pre-sale price), or null when
+	 * the variation isn't on sale or the regular_price isn't higher.
+	 *
+	 * WC sale convention: `prices.price` is the currently-charged
+	 * amount (sale price when on_sale is true, regular price otherwise).
+	 * `prices.regular_price` is the "was" value. When on_sale is true
+	 * AND regular > price, we emit `compare_at_price` so agents can
+	 * render "was $X, now $Y" or compute a savings percent.
+	 *
+	 * Defensive against data oddities: if regular_price somehow equals
+	 * or is less than price while on_sale is flagged (inconsistent
+	 * state from third-party plugins), we return null rather than
+	 * emit a nonsensical "was $10, now $10" comparison.
+	 *
+	 * @param array<string, mixed> $wc
+	 * @return array{amount: int, currency: string}|null
+	 */
+	private static function extract_compare_at_price( array $wc ): ?array {
+		$prices  = $wc['prices'] ?? [];
+		$regular = isset( $prices['regular_price'] ) ? (int) $prices['regular_price'] : 0;
+		$current = (int) ( $prices['price'] ?? 0 );
+
+		if ( $regular <= 0 || $regular <= $current ) {
+			return null;
+		}
+
+		return [
+			'amount'   => $regular,
+			'currency' => $prices['currency_code'] ?? 'USD',
+		];
+	}
+
+	/**
+	 * Extract the structured options list from WC variation attributes.
+	 *
+	 * WC Store API returns each variation's attributes as an array of
+	 * objects shaped `{ name, value, taxonomy }`. UCP's `options`
+	 * field expects `[{ attribute, value }]` — one entry per defining
+	 * attribute with the human-readable label and the selected value.
+	 *
+	 * We use `name` (the attribute label) rather than `taxonomy` (the
+	 * slug like `pa_color`) because agents display this to buyers —
+	 * "Color: Blue" is merchant-readable, "pa_color: Blue" is not.
+	 * Empty-value entries are skipped to match the title-extraction
+	 * behavior.
+	 *
+	 * @param array<string, mixed> $wc_variation
+	 * @return array<int, array{attribute: string, value: string}>
+	 */
+	private static function extract_options( array $wc_variation ): array {
+		$attributes = $wc_variation['attributes'] ?? [];
+		$options    = [];
+
+		if ( ! is_array( $attributes ) ) {
+			return $options;
+		}
+
+		foreach ( $attributes as $attribute ) {
+			if ( ! is_array( $attribute ) ) {
+				continue;
+			}
+			$value = $attribute['value'] ?? '';
+			if ( '' === $value ) {
+				continue;
+			}
+			$options[] = [
+				'attribute' => (string) ( $attribute['name'] ?? '' ),
+				'value'     => (string) $value,
+			];
+		}
+
+		return $options;
+	}
+
+	/**
+	 * Extract the UCP availability object from the WC response.
+	 *
+	 * UCP variant.availability has a required `available: bool` plus
+	 * optional `quantity: int`. We emit `quantity` when the Store API
+	 * response carries `low_stock_remaining` — which WC populates only
+	 * when the merchant configured a low-stock threshold AND the
+	 * variation is below it. Otherwise no quantity is emitted, which
+	 * correctly signals "available but exact count unknown" rather
+	 * than misleadingly emitting 0.
+	 *
+	 * @param array<string, mixed> $wc
+	 * @return array{available: bool, quantity?: int}
+	 */
+	private static function extract_availability( array $wc ): array {
+		$availability = [
+			'available' => (bool) ( $wc['is_in_stock'] ?? true ),
+		];
+
+		if ( isset( $wc['low_stock_remaining'] ) && is_numeric( $wc['low_stock_remaining'] ) ) {
+			$quantity = (int) $wc['low_stock_remaining'];
+			if ( $quantity > 0 ) {
+				$availability['quantity'] = $quantity;
+			}
+		}
+
+		return $availability;
+	}
+
+	/**
+	 * Extract barcode entries from the Store API extension payload.
+	 *
+	 * WC core doesn't expose `global_unique_id` on the Store API
+	 * product schema yet. Our plugin registers an extension that
+	 * surfaces it (plus any legacy third-party barcode keys) under
+	 * `extensions.{namespace}.barcodes` as an array of `{type, value}`
+	 * objects. This method copies them through verbatim — the
+	 * extension is responsible for the type mapping (GTIN-13 → `ean`,
+	 * etc.), not the translator.
+	 *
+	 * Returns an empty array when no barcodes are present, so the
+	 * caller's `! empty()` check cleanly omits the `barcodes` key
+	 * from the UCP payload for products without identifiers.
+	 *
+	 * @param array<string, mixed> $wc
+	 * @return array<int, array{type: string, value: string}>
+	 */
+	private static function extract_barcodes( array $wc ): array {
+		$extensions = $wc['extensions'] ?? [];
+		if ( ! is_array( $extensions ) ) {
+			return [];
+		}
+
+		$namespace = WC_AI_Syndication_Store_Api_Extension::NAMESPACE;
+		$entry     = $extensions[ $namespace ] ?? [];
+		if ( ! is_array( $entry ) ) {
+			return [];
+		}
+
+		$barcodes = $entry['barcodes'] ?? [];
+		if ( ! is_array( $barcodes ) ) {
+			return [];
+		}
+
+		$result = [];
+		foreach ( $barcodes as $barcode ) {
+			if ( ! is_array( $barcode ) ) {
+				continue;
+			}
+			$type  = (string) ( $barcode['type'] ?? '' );
+			$value = (string) ( $barcode['value'] ?? '' );
+			if ( '' === $type || '' === $value ) {
+				continue;
+			}
+			$result[] = [
+				'type'  => $type,
+				'value' => $value,
+			];
+		}
+		return $result;
 	}
 }

@@ -91,6 +91,7 @@ class WC_AI_Syndication {
 		require_once $ucp_path . 'class-wc-ai-syndication-ucp-product-translator.php';
 		require_once $ucp_path . 'class-wc-ai-syndication-ucp-variant-translator.php';
 		require_once $ucp_path . 'class-wc-ai-syndication-ucp-store-api-filter.php';
+		require_once $ucp_path . 'class-wc-ai-syndication-store-api-extension.php';
 		require_once $ucp_path . 'class-wc-ai-syndication-ucp-rest-controller.php';
 
 		require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/admin/class-wc-ai-syndication-admin-controller.php';
@@ -132,6 +133,16 @@ class WC_AI_Syndication {
 		// See class docblock for scope rationale.
 		$store_api_filter = new WC_AI_Syndication_UCP_Store_API_Filter();
 		$store_api_filter->init();
+
+		// Store API extension — surfaces WC core's `global_unique_id`
+		// (GTIN/UPC/EAN/MPN) in the product response under
+		// `extensions.{namespace}.barcodes`, which the UCP variant
+		// translator reads from. WC core's Store API schema doesn't
+		// expose `global_unique_id` yet; see the filed enhancement
+		// request in woocommerce/woocommerce for the proposal to
+		// remove this extension once core picks it up.
+		$store_api_extension = new WC_AI_Syndication_Store_Api_Extension();
+		$store_api_extension->init();
 	}
 
 	/**

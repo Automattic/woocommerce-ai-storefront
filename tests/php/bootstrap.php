@@ -41,6 +41,7 @@ require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-envelope.php';
 require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-product-translator.php';
 require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-variant-translator.php';
 require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-store-api-filter.php';
+require_once $ucp_rest_path . 'class-wc-ai-syndication-store-api-extension.php';
 require_once $ucp_rest_path . 'class-wc-ai-syndication-ucp-rest-controller.php';
 
 // Admin REST controller. Covers admin-surface endpoints (settings,
