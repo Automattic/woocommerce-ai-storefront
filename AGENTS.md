@@ -212,6 +212,20 @@ See `ai-orders-table.js` for the full template including status-pill styling (in
 
 Stat cards and selection-count pills are better left as hand-rolled — they don't have tabular data, and `@wordpress/components` primitives are sufficient.
 
+### Deferred UX: order preview modal
+
+WC's Orders list has an eye-icon that opens a Backbone modal with a compact order summary (line items, addresses, status, customer info) without leaving the page. Reusing it in the AI Orders DataViews table was evaluated and intentionally deferred — documenting the options here so a future pass doesn't re-solve the research.
+
+The WC preview modal is **not cleanly reusable**. It's jQuery + Backbone code baked into wc-admin's `wc-orders.js` bundle, tightly coupled to the Orders list DOM structure. Its CSS auto-enqueues only on the Orders list screen (same class of problem that killed PR #24's Woo TableCard adoption). The AJAX endpoint (`admin-ajax.php?action=woocommerce_get_order_details`) returns pre-rendered HTML, not structured data.
+
+Three options if merchant demand surfaces:
+
+1. **Reuse WC's Backbone modal as-is.** Enqueue `wc-orders` JS + CSS, render rows with `class="order-preview" data-order-id="..."`, let WC's JS take over. ~4–6 hours of dependency-debugging; HIGH coupling risk — wc-admin internals change across WC minors.
+2. **Call the AJAX endpoint, render its HTML response inside our own `@wordpress/components/Modal`.** ~2–3 hours. Mixes React and jQuery idioms; couples to WC's HTML response shape; requires sanitization of the server response before injection (treat as untrusted).
+3. **Build a custom preview from scratch.** New REST endpoint returning structured order data, React modal rendered from tokens. ~1 full day. Zero coupling, full control, but disproportionate effort for the observed value.
+
+Current state: order numbers in the AI Orders table link directly to the WC order edit screen (opens in the same tab). If testing surfaces "I want a peek without losing my dashboard context," the smallest quick-fix is `target="_blank"` on the order-number link — new tab preserves the dashboard behind it, zero new code.
+
 ### Inline styles + design tokens
 
 The admin UI uses React components with inline `style={ ... }` props (no stylesheet). **Colors MUST come from `client/settings/ai-syndication/tokens.js`.** Raw hex literals in JSX are a lint-review red flag.

@@ -73,6 +73,18 @@ class WC_AI_Syndication_Robots {
 		// recommendations. US-centric but global for commerce.
 		'Storebot-Google',
 
+		// Microsoft Shopping / Bing Ads — Microsoft's counterpart
+		// to Storebot-Google. AdIdxBot validates and indexes
+		// product landing pages for Microsoft Advertising (Bing
+		// Ads) and Microsoft Shopping listings. The index it
+		// builds also feeds Copilot's shopping answers, so
+		// allowing AdIdxBot is the commerce prerequisite for
+		// Copilot discoverability — parallels the Storebot-Google
+		// → Gemini relationship. Distinct from `bingbot` (general
+		// search) and `Microsoft-BingBot-Extended` (training
+		// opt-out, see TRAINING_CRAWLERS).
+		'AdIdxBot',
+
 		// Regional search + AI — Asia. Baidu (China) dominates
 		// Chinese discovery with ERNIEBot (general crawling for
 		// the Ernie model) and YiyanBot (real-time conversational
@@ -148,6 +160,17 @@ class WC_AI_Syndication_Robots {
 		// Apple.
 		'Applebot-Extended',
 
+		// Microsoft — Bing's AI-training opt-out token. Parallels
+		// Google-Extended / Applebot-Extended: honoring it keeps
+		// your content out of Microsoft's generative-AI training
+		// corpora without affecting Bing's regular search ranking
+		// or shopping index (those are governed by `bingbot` and
+		// `AdIdxBot` respectively, not this token). Default-off
+		// under the training-crawlers policy; merchants who want
+		// to contribute content to Copilot's training explicitly
+		// opt in.
+		'Microsoft-BingBot-Extended',
+
 		// ByteDance (TikTok). Primarily training, but also powers
 		// TikTok's internal search and commerce surfaces. Merchants
 		// who rely on TikTok Shop or viral-traffic discovery should
@@ -193,6 +216,7 @@ class WC_AI_Syndication_Robots {
 		'AmazonBuyForMe',
 		'KlarnaBot',
 		'Storebot-Google',
+		'AdIdxBot',
 		'ERNIEBot',
 		'YiyanBot',
 		'WRTNBot',
@@ -207,6 +231,7 @@ class WC_AI_Syndication_Robots {
 		'Meta-ExternalAgent',
 		'Amazonbot',
 		'Applebot-Extended',
+		'Microsoft-BingBot-Extended',
 		'Bytespider',
 		'CCBot',
 		'cohere-ai',

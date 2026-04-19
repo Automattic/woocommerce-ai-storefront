@@ -128,6 +128,15 @@ const KNOWN_CRAWLERS = [
 		category: 'live',
 	},
 
+	// Microsoft Shopping / Bing Ads — parallel to Storebot-Google.
+	// Feeds Copilot's shopping answers, so keeping this on is the
+	// commerce prerequisite for Copilot discoverability.
+	{
+		id: 'AdIdxBot',
+		label: 'AdIdxBot (Microsoft Shopping / Copilot)',
+		category: 'live',
+	},
+
 	// Regional search + AI — Asia.
 	{ id: 'ERNIEBot', label: 'ERNIEBot (Baidu / China)', category: 'live' },
 	{
@@ -167,6 +176,11 @@ const KNOWN_CRAWLERS = [
 	{
 		id: 'Applebot-Extended',
 		label: 'Applebot-Extended (Apple Intelligence)',
+		category: 'training',
+	},
+	{
+		id: 'Microsoft-BingBot-Extended',
+		label: 'Microsoft-BingBot-Extended (Copilot training)',
 		category: 'training',
 	},
 	{
