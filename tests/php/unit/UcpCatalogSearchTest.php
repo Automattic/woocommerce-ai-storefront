@@ -97,10 +97,24 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$terms = &$this->fake_terms;
 		Functions\when( 'get_term_by' )->alias(
 			static function ( string $field, string $value, string $taxonomy ) use ( &$terms ) {
-				if ( 'product_cat' !== $taxonomy ) {
+				// Both product_cat and product_tag go through the
+				// same stubbed lookup — `seed_term` keys by
+				// `taxonomy:field:value` so the tag filter tests
+				// can seed independently from the category ones.
+				if ( ! in_array( $taxonomy, [ 'product_cat', 'product_tag' ], true ) ) {
 					return false;
 				}
-				return $terms[ "{$field}:{$value}" ] ?? false;
+				$key = "{$taxonomy}:{$field}:{$value}";
+				if ( isset( $terms[ $key ] ) ) {
+					return $terms[ $key ];
+				}
+				// Back-compat with earlier tests that seeded under
+				// the un-namespaced `field:value` key — those are
+				// implicitly product_cat.
+				if ( 'product_cat' === $taxonomy ) {
+					return $terms[ "{$field}:{$value}" ] ?? false;
+				}
+				return false;
 			}
 		);
 
@@ -126,7 +140,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 					// the canned product list. 1.6.0 added `page` +
 					// `per_page` to the captured list for pagination
 					// mapping assertions.
-					foreach ( [ 'search', 'category', 'min_price', 'max_price', 'page', 'per_page' ] as $key ) {
+					foreach ( [ 'search', 'category', 'min_price', 'max_price', 'page', 'per_page', 'tag', 'on_sale' ] as $key ) {
 						$val = $request->get_param( $key );
 						if ( null !== $val ) {
 							$captured_params[ $key ] = $val;
@@ -191,7 +205,9 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Register a fake term that `get_term_by` lookups will resolve.
+	 * Register a fake product_cat term that `get_term_by` lookups
+	 * will resolve. Historical un-namespaced keys preserved for
+	 * back-compat with the original pre-1.8 tests.
 	 */
 	private function seed_term( int $term_id, string $slug, string $name ): void {
 		$term                              = (object) [
@@ -201,6 +217,22 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		];
 		$this->fake_terms[ "slug:{$slug}" ] = $term;
 		$this->fake_terms[ "name:{$name}" ] = $term;
+	}
+
+	/**
+	 * Register a fake product_tag term that `get_term_by` lookups
+	 * against the `product_tag` taxonomy will resolve. Namespaced
+	 * by taxonomy so cat and tag lookups don't collide when the
+	 * same slug is used in both taxonomies (merchants do this).
+	 */
+	private function seed_tag_term( int $term_id, string $slug, string $name ): void {
+		$term                                                 = (object) [
+			'term_id' => $term_id,
+			'slug'    => $slug,
+			'name'    => $name,
+		];
+		$this->fake_terms[ "product_tag:slug:{$slug}" ]      = $term;
+		$this->fake_terms[ "product_tag:name:{$name}" ]      = $term;
 	}
 
 	/**
@@ -384,6 +416,81 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertEquals( '42', $this->captured_store_params['category'] );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.8.0: Tag filter mapping
+	// ------------------------------------------------------------------
+
+	public function test_tag_slug_resolves_and_forwards_to_store_api(): void {
+		$this->seed_tag_term( 55, 'summer', 'Summer' );
+
+		$this->successful_search(
+			[ 'filters' => [ 'tags' => [ 'summer' ] ] ]
+		);
+
+		$this->assertEquals( '55', $this->captured_store_params['tag'] );
+	}
+
+	public function test_multiple_tags_comma_separate(): void {
+		$this->seed_tag_term( 11, 'summer', 'Summer' );
+		$this->seed_tag_term( 12, 'eco', 'Eco' );
+
+		$this->successful_search(
+			[ 'filters' => [ 'tags' => [ 'summer', 'eco' ] ] ]
+		);
+
+		$this->assertEquals( '11,12', $this->captured_store_params['tag'] );
+	}
+
+	public function test_unresolvable_tag_produces_tag_not_found_warning(): void {
+		// Symmetric with the category_not_found warning behavior —
+		// agents must see a signal that their filter was ignored.
+		$this->seed_tag_term( 11, 'summer', 'Summer' );
+
+		$body = $this->successful_search(
+			[ 'filters' => [ 'tags' => [ 'summer', 'winter' ] ] ]
+		);
+
+		$not_found = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'tag_not_found' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $not_found );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.8.0: on_sale filter
+	// ------------------------------------------------------------------
+
+	public function test_on_sale_filter_forwards_boolean_true(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'on_sale' => true ] ]
+		);
+
+		$this->assertTrue( $this->captured_store_params['on_sale'] );
+	}
+
+	public function test_on_sale_filter_accepts_string_true_from_json(): void {
+		// Some REST clients (historically, the WP REST API itself)
+		// pass booleans as strings; accepting "true" keeps the API
+		// forgiving without losing the opt-in intent.
+		$this->successful_search(
+			[ 'filters' => [ 'on_sale' => 'true' ] ]
+		);
+
+		$this->assertTrue( $this->captured_store_params['on_sale'] );
+	}
+
+	public function test_on_sale_filter_false_does_not_forward(): void {
+		// `on_sale: false` is the equivalent of "don't filter" — WC
+		// Store API treats an absent param as "return everything,"
+		// so we don't forward an explicit false.
+		$this->successful_search(
+			[ 'filters' => [ 'on_sale' => false ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'on_sale', $this->captured_store_params );
 	}
 
 	// ------------------------------------------------------------------

@@ -479,4 +479,148 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $result['variants'] );
 		$this->assertEquals( 'var_123_default', $result['variants'][0]['id'] );
 	}
+
+	// ------------------------------------------------------------------
+	// 1.8.0: description.html, tags, product attributes, ratings
+	// ------------------------------------------------------------------
+
+	public function test_translate_emits_description_html_when_source_has_markup(): void {
+		$fixture                      = $this->simple_product_fixture();
+		$fixture['short_description'] = '<ul><li>Waterproof</li><li>Light</li></ul>';
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayHasKey( 'html', $result['description'] );
+		$this->assertSame( '<ul><li>Waterproof</li><li>Light</li></ul>', $result['description']['html'] );
+		$this->assertSame( 'WaterproofLight', $result['description']['plain'] );
+	}
+
+	public function test_translate_omits_description_html_when_plain(): void {
+		$fixture                      = $this->simple_product_fixture();
+		$fixture['short_description'] = 'Just plain text';
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'html', $result['description'] );
+		$this->assertSame( 'Just plain text', $result['description']['plain'] );
+	}
+
+	public function test_translate_omits_description_html_when_source_has_trailing_whitespace(): void {
+		// Regression: wp_strip_all_tags() trims surrounding whitespace
+		// as a side effect, so comparing the stripped form to the raw
+		// form would false-positive on plain text with trailing
+		// newlines/spaces — treating a whitespace difference as
+		// "source had markup" and emitting a redundant `html` field.
+		// The fix compares against `trim( $raw )` so whitespace-only
+		// differences don't trigger html emission.
+		$fixture                      = $this->simple_product_fixture();
+		$fixture['short_description'] = "Just plain text\n\n";
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'html', $result['description'] );
+		$this->assertSame( 'Just plain text', $result['description']['plain'] );
+	}
+
+	public function test_translate_omits_description_html_when_source_has_entities_but_no_tags(): void {
+		// Regression: entity-decoding was being used as the "has markup"
+		// detector, so `"Fish &amp; Chips"` decoded to `"Fish & Chips"`
+		// and false-positive'd into emitting `html`. HTML emission
+		// should be about preserving structural markup (tags), not
+		// entity glyphs — the decoded plain form conveys those
+		// losslessly.
+		$fixture                      = $this->simple_product_fixture();
+		$fixture['short_description'] = 'Fish &amp; Chips';
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'html', $result['description'] );
+		$this->assertSame( 'Fish & Chips', $result['description']['plain'] );
+	}
+
+	public function test_translate_emits_tags_as_second_taxonomy_in_categories(): void {
+		$fixture         = $this->simple_product_fixture();
+		$fixture['tags'] = [
+			[ 'id' => 5, 'name' => 'summer', 'slug' => 'summer' ],
+			[ 'id' => 6, 'name' => 'eco-friendly', 'slug' => 'eco-friendly' ],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertContains(
+			[ 'value' => 'summer', 'taxonomy' => 'tag' ],
+			$result['categories']
+		);
+		$this->assertContains(
+			[ 'value' => 'eco-friendly', 'taxonomy' => 'tag' ],
+			$result['categories']
+		);
+	}
+
+	public function test_translate_emits_product_attributes_excluding_variation_defining(): void {
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Material',
+				'taxonomy'       => 'pa_material',
+				'has_variations' => false,
+				'terms'          => [
+					[ 'id' => 10, 'name' => 'Cotton', 'slug' => 'cotton' ],
+					[ 'id' => 11, 'name' => 'Organic', 'slug' => 'organic' ],
+				],
+			],
+			[
+				// Variation-defining attribute — belongs on variant options, NOT here.
+				'name'           => 'Size',
+				'taxonomy'       => 'pa_size',
+				'has_variations' => true,
+				'terms'          => [
+					[ 'id' => 20, 'name' => 'M', 'slug' => 'm' ],
+				],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayHasKey( 'attributes', $result );
+		$this->assertCount( 1, $result['attributes'] );
+		$this->assertSame( 'Material', $result['attributes'][0]['name'] );
+		$this->assertSame( [ 'Cotton', 'Organic' ], $result['attributes'][0]['values'] );
+	}
+
+	public function test_translate_omits_attributes_when_source_has_none(): void {
+		$fixture = $this->simple_product_fixture();
+		unset( $fixture['attributes'] );
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'attributes', $result );
+	}
+
+	public function test_translate_emits_ratings_under_extension_when_reviews_exist(): void {
+		$fixture                   = $this->simple_product_fixture();
+		$fixture['average_rating'] = '4.67';
+		$fixture['review_count']   = 42;
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayHasKey( 'extensions', $result );
+		$this->assertArrayHasKey(
+			'com.woocommerce.ai_syndication',
+			$result['extensions']
+		);
+		$ratings = $result['extensions']['com.woocommerce.ai_syndication']['ratings'];
+		$this->assertSame( 4.67, $ratings['average'] );
+		$this->assertSame( 42, $ratings['count'] );
+	}
+
+	public function test_translate_omits_ratings_extension_when_no_reviews(): void {
+		$fixture                   = $this->simple_product_fixture();
+		$fixture['average_rating'] = '0';
+		$fixture['review_count']   = 0;
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'extensions', $result );
+	}
 }

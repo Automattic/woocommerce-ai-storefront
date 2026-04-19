@@ -206,6 +206,226 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 	// Zero-decimal and non-2-decimal currency handling
 	// ------------------------------------------------------------------
 
+	// ------------------------------------------------------------------
+	// 1.8.0: structured options, sale pricing, stock quantity, barcodes
+	// ------------------------------------------------------------------
+
+	public function test_translate_emits_structured_options_from_attributes(): void {
+		$fixture = [
+			'id'         => 501,
+			'name'       => 'Polo shirt',
+			'prices'     => [ 'price' => '2500', 'currency_code' => 'USD' ],
+			'attributes' => [
+				[ 'name' => 'Color', 'value' => 'Blue', 'taxonomy' => 'pa_color' ],
+				[ 'name' => 'Size', 'value' => 'Medium', 'taxonomy' => 'pa_size' ],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertArrayHasKey( 'options', $result );
+		$this->assertSame(
+			[
+				[ 'attribute' => 'Color', 'value' => 'Blue' ],
+				[ 'attribute' => 'Size', 'value' => 'Medium' ],
+			],
+			$result['options']
+		);
+	}
+
+	public function test_translate_omits_options_when_attributes_empty(): void {
+		$fixture = [
+			'id'     => 501,
+			'name'   => 'Variant with no attrs',
+			'prices' => [ 'price' => '2500', 'currency_code' => 'USD' ],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertArrayNotHasKey( 'options', $result );
+	}
+
+	public function test_translate_skips_option_entries_without_attribute_label(): void {
+		// Regression: an attribute entry with a present value but
+		// missing `name` would emit `{attribute: "", value: "Blue"}`
+		// — an unlabeled axis the agent can't filter or present.
+		// Drop those, parallel to the empty-value skip.
+		$fixture = [
+			'id'         => 501,
+			'name'       => 'Mixed attribute shapes',
+			'prices'     => [ 'price' => '2500', 'currency_code' => 'USD' ],
+			'attributes' => [
+				[ 'name' => 'Color', 'value' => 'Blue' ],
+				[ 'value' => 'no-label-here' ],
+				[ 'name' => '', 'value' => 'also-no-label' ],
+				[ 'name' => 'Size', 'value' => 'M' ],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertCount( 2, $result['options'] );
+		$this->assertSame( 'Color', $result['options'][0]['attribute'] );
+		$this->assertSame( 'Size', $result['options'][1]['attribute'] );
+	}
+
+	public function test_translate_emits_compare_at_price_when_on_sale(): void {
+		$fixture = [
+			'id'      => 601,
+			'name'    => 'Sale item',
+			'on_sale' => true,
+			'prices'  => [
+				'price'         => '1500',
+				'regular_price' => '2000',
+				'currency_code' => 'USD',
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertArrayHasKey( 'compare_at_price', $result );
+		$this->assertSame( 2000, $result['compare_at_price']['amount'] );
+		$this->assertSame( 'USD', $result['compare_at_price']['currency'] );
+		$this->assertSame( 1500, $result['price']['amount'] );
+	}
+
+	public function test_translate_omits_compare_at_price_when_not_on_sale(): void {
+		$fixture = [
+			'id'      => 602,
+			'name'    => 'Regular item',
+			'on_sale' => false,
+			'prices'  => [
+				'price'         => '2000',
+				'regular_price' => '2000',
+				'currency_code' => 'USD',
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertArrayNotHasKey( 'compare_at_price', $result );
+	}
+
+	public function test_translate_omits_compare_at_price_on_inconsistent_state(): void {
+		// on_sale: true but regular_price <= price — rather than
+		// emit nonsensical "was $10, now $10" we skip it. Third-
+		// party plugins occasionally produce this state.
+		$fixture = [
+			'id'      => 603,
+			'name'    => 'Flag on but no discount',
+			'on_sale' => true,
+			'prices'  => [
+				'price'         => '2000',
+				'regular_price' => '2000',
+				'currency_code' => 'USD',
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertArrayNotHasKey( 'compare_at_price', $result );
+	}
+
+	public function test_translate_emits_availability_quantity_from_low_stock(): void {
+		$fixture = [
+			'id'                  => 701,
+			'name'                => 'Almost gone',
+			'prices'              => [ 'price' => '1000', 'currency_code' => 'USD' ],
+			'is_in_stock'         => true,
+			'low_stock_remaining' => 3,
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertTrue( $result['availability']['available'] );
+		$this->assertSame( 3, $result['availability']['quantity'] );
+	}
+
+	public function test_translate_omits_availability_quantity_when_not_provided(): void {
+		$fixture = [
+			'id'          => 702,
+			'name'        => 'Plenty',
+			'prices'      => [ 'price' => '1000', 'currency_code' => 'USD' ],
+			'is_in_stock' => true,
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertTrue( $result['availability']['available'] );
+		$this->assertArrayNotHasKey( 'quantity', $result['availability'] );
+	}
+
+	public function test_translate_emits_barcodes_from_store_api_extension(): void {
+		$fixture = [
+			'id'         => 801,
+			'name'       => 'Barcoded product',
+			'prices'     => [ 'price' => '2000', 'currency_code' => 'USD' ],
+			'extensions' => [
+				WC_AI_Syndication_Store_Api_Extension::NAMESPACE => [
+					'barcodes' => [
+						[ 'type' => 'gtin13', 'value' => '1234567890123' ],
+					],
+				],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertArrayHasKey( 'barcodes', $result );
+		$this->assertSame( 'gtin13', $result['barcodes'][0]['type'] );
+		$this->assertSame( '1234567890123', $result['barcodes'][0]['value'] );
+	}
+
+	public function test_translate_skips_malformed_barcode_entries(): void {
+		$fixture = [
+			'id'         => 802,
+			'name'       => 'Malformed',
+			'prices'     => [ 'price' => '2000', 'currency_code' => 'USD' ],
+			'extensions' => [
+				WC_AI_Syndication_Store_Api_Extension::NAMESPACE => [
+					'barcodes' => [
+						[ 'type' => '', 'value' => '123' ],
+						[ 'type' => 'gtin13', 'value' => '' ],
+						[ 'type' => 'gtin13', 'value' => 'ok' ],
+					],
+				],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertCount( 1, $result['barcodes'] );
+		$this->assertSame( 'ok', $result['barcodes'][0]['value'] );
+	}
+
+	public function test_synthesize_default_also_carries_new_fields(): void {
+		$fixture = [
+			'id'                  => 901,
+			'name'                => 'Simple on sale',
+			'on_sale'             => true,
+			'is_in_stock'         => true,
+			'low_stock_remaining' => 5,
+			'prices'              => [
+				'price'         => '1500',
+				'regular_price' => '2000',
+				'currency_code' => 'USD',
+			],
+			'extensions'          => [
+				WC_AI_Syndication_Store_Api_Extension::NAMESPACE => [
+					'barcodes' => [
+						[ 'type' => 'gtin13', 'value' => '9876543210987' ],
+					],
+				],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $fixture );
+
+		$this->assertSame( 2000, $result['compare_at_price']['amount'] );
+		$this->assertSame( 5, $result['availability']['quantity'] );
+		$this->assertSame( '9876543210987', $result['barcodes'][0]['value'] );
+	}
+
 	public function test_jpy_integer_amount_preserved_without_math(): void {
 		// JPY has currency_minor_unit = 0 (no cents). WC returns
 		// `prices.price = "5000"` meaning 5000 JPY. A hardcoded *100
