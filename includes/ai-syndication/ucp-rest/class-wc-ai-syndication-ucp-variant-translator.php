@@ -100,6 +100,18 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 
 		$variant['availability'] = self::extract_availability( $wc_variation );
 
+		// Per-variant media — WC lets merchants set a different image
+		// per variation (the red shirt gets the red photo, the blue
+		// shirt the blue one). Store API returns those under the
+		// variation's own `images[]` array. Emitting them at variant
+		// level lets agents present the right visual for each option;
+		// when a variation doesn't have its own image we simply omit
+		// the field and the product-level media carries the default.
+		$media = self::extract_media( $wc_variation );
+		if ( ! empty( $media ) ) {
+			$variant['media'] = $media;
+		}
+
 		return $variant;
 	}
 
@@ -177,6 +189,42 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 		}
 
 		return $wc_variation['name'] ?? '';
+	}
+
+	/**
+	 * Map WC variation image objects to UCP media entries.
+	 *
+	 * UCP media shape: `{type, url, alt_text}`. Mirrors the product
+	 * translator's `extract_media` (image-only for v1; video/3D model
+	 * types stay reserved for future expansion). Kept local to the
+	 * variant translator rather than shared with the product
+	 * translator so the two classes have independent call sites and
+	 * can evolve their shape rules independently — variant-specific
+	 * images often have different cropping/alt-text conventions.
+	 *
+	 * @param array<string, mixed> $wc_variation
+	 * @return array<int, array<string, string>>
+	 */
+	private static function extract_media( array $wc_variation ): array {
+		$images = $wc_variation['images'] ?? [];
+		if ( ! is_array( $images ) ) {
+			return [];
+		}
+		$result = [];
+		foreach ( $images as $image ) {
+			if ( ! is_array( $image ) || empty( $image['src'] ) ) {
+				continue;
+			}
+			$media = [
+				'type' => 'image',
+				'url'  => (string) $image['src'],
+			];
+			if ( ! empty( $image['alt'] ) ) {
+				$media['alt_text'] = (string) $image['alt'];
+			}
+			$result[] = $media;
+		}
+		return $result;
 	}
 
 	/**

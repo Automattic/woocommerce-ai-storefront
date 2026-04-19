@@ -398,6 +398,96 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'ok', $result['barcodes'][0]['value'] );
 	}
 
+	// ------------------------------------------------------------------
+	// 1.9.0: Per-variant media
+	// ------------------------------------------------------------------
+
+	public function test_translate_emits_media_from_variation_images(): void {
+		// WC variations can have their own image (red shirt → red
+		// photo). Store API returns it under the variation's `images`
+		// array; we emit it at variant level so agents can present the
+		// right visual for each option.
+		$fixture = [
+			'id'          => 555,
+			'name'        => 'Red / M',
+			'prices'      => [
+				'price'         => '2500',
+				'currency_code' => 'USD',
+			],
+			'is_in_stock' => true,
+			'images'      => [
+				[ 'src' => 'https://store.example/red.jpg', 'alt' => 'Red shirt' ],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertCount( 1, $result['media'] );
+		$this->assertSame( 'image', $result['media'][0]['type'] );
+		$this->assertSame( 'https://store.example/red.jpg', $result['media'][0]['url'] );
+		$this->assertSame( 'Red shirt', $result['media'][0]['alt_text'] );
+	}
+
+	public function test_translate_omits_media_when_variation_has_no_images(): void {
+		// When a merchant hasn't set a variation-specific image, we
+		// don't emit `media` at variant level — the product-level
+		// media still carries the default, and omitting the key keeps
+		// the variant payload lean.
+		$fixture = [
+			'id'          => 555,
+			'name'        => 'Default / One',
+			'prices'      => [
+				'price'         => '2500',
+				'currency_code' => 'USD',
+			],
+			'is_in_stock' => true,
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertArrayNotHasKey( 'media', $result );
+	}
+
+	public function test_translate_omits_media_alt_text_when_empty(): void {
+		$fixture = [
+			'id'          => 555,
+			'name'        => 'Red / M',
+			'prices'      => [
+				'price'         => '2500',
+				'currency_code' => 'USD',
+			],
+			'is_in_stock' => true,
+			'images'      => [
+				[ 'src' => 'https://store.example/red.jpg', 'alt' => '' ],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertArrayNotHasKey( 'alt_text', $result['media'][0] );
+	}
+
+	public function test_translate_skips_image_entries_without_src(): void {
+		$fixture = [
+			'id'          => 555,
+			'name'        => 'Red / M',
+			'prices'      => [
+				'price'         => '2500',
+				'currency_code' => 'USD',
+			],
+			'is_in_stock' => true,
+			'images'      => [
+				[ 'src' => '', 'alt' => 'broken' ],
+				[ 'src' => 'https://store.example/red.jpg' ],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertCount( 1, $result['media'] );
+		$this->assertSame( 'https://store.example/red.jpg', $result['media'][0]['url'] );
+	}
+
 	public function test_synthesize_default_also_carries_new_fields(): void {
 		$fixture = [
 			'id'                  => 901,
