@@ -349,8 +349,6 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[] = '- The service binding declares `transport: "rest"` exclusively (no Embedded Protocol, MCP, or A2A)';
 		$lines[] = '- Checkout responses always return `status: "requires_escalation"` with `continue_url` — never `ready_for_complete` or `complete_in_progress`';
 		$lines[] = '';
-		$lines[] = 'This posture is locked by regression tests in the plugin test suite; weakening it requires a deliberate policy decision reflected in a plugin release.';
-		$lines[] = '';
 
 		// Attribution instructions. This section is the
 		// AUTHORITATIVE merchant-facing guidance for AI-agent
