@@ -741,6 +741,30 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'pa_size', $this->captured_store_params['attributes'][0]['attribute'] );
 	}
 
+	public function test_attribute_filter_skips_numeric_keys_from_list_shaped_input(): void {
+		// Regression: a malformed list-shaped input like
+		// `filters.attributes: [["red"], ["M"]]` has integer keys
+		// (0, 1, ...) which would cast to strings and forward as
+		// taxonomies `pa_0`, `pa_1`. Those match nothing and would
+		// silently restrict the catalog to zero results. Drop
+		// numeric keys entirely since attribute axes are always
+		// named strings.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						0       => [ 'red' ],
+						1       => [ 'M' ],
+						'color' => [ 'blue' ],
+					],
+				],
+			]
+		);
+
+		$this->assertCount( 1, $this->captured_store_params['attributes'] );
+		$this->assertSame( 'pa_color', $this->captured_store_params['attributes'][0]['attribute'] );
+	}
+
 	public function test_attribute_filter_skips_bare_pa_prefix_key(): void {
 		// A key of exactly "pa_" is either a typo or a crafted
 		// poison input — either way it's not a real taxonomy and

@@ -1519,6 +1519,16 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	private static function build_attribute_filter_params( array $attribute_map ): array {
 		$result = [];
 		foreach ( $attribute_map as $key => $values ) {
+			// Skip numeric keys — a malformed list-shaped input like
+			// `filters.attributes: [["red"]]` produces integer keys
+			// (0, 1, ...) which would cast to strings and forward as
+			// `pa_0`, `pa_1` taxonomies. Those match no real attribute
+			// and silently restrict the catalog to zero results with
+			// no signal. Attribute axes are named; numeric keys are
+			// always a shape bug.
+			if ( ! is_string( $key ) ) {
+				continue;
+			}
 			if ( ! is_array( $values ) || empty( $values ) ) {
 				continue;
 			}
@@ -1529,7 +1539,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			// with no signal their input was malformed. `sanitize_title`
 			// canonicalizes "Light Blue" → "light-blue" rather than the
 			// naive strtolower → "light blue" (which is an invalid slug).
-			$raw_key = trim( (string) $key );
+			$raw_key = trim( $key );
 			if ( '' === $raw_key ) {
 				continue;
 			}
