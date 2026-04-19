@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-19T07:24:38+00:00\n"
+"POT-Creation-Date: 2026-04-19T07:43:55+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-syndication\n"
@@ -167,28 +167,28 @@ msgstr ""
 msgid "Error saving settings."
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:174
+#: client/settings/ai-syndication/ai-orders-table.js:201
 msgid "Order"
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:192
+#: client/settings/ai-syndication/ai-orders-table.js:219
 msgid "Date"
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:203
+#: client/settings/ai-syndication/ai-orders-table.js:230
 #: client/settings/ai-syndication/endpoint-info.js:383
 msgid "Status"
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:274
+#: client/settings/ai-syndication/ai-orders-table.js:301
 msgid "Agent"
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:281
+#: client/settings/ai-syndication/ai-orders-table.js:308
 msgid "Total"
 msgstr ""
 
-#: client/settings/ai-syndication/ai-orders-table.js:327
+#: client/settings/ai-syndication/ai-orders-table.js:354
 msgid "Recent AI Orders"
 msgstr ""
 
@@ -433,183 +433,170 @@ msgstr ""
 msgid "Start typing to search your products."
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:51
+#: client/settings/ai-syndication/settings-page.js:52
 msgid "Loading settings…"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:60
+#: client/settings/ai-syndication/settings-page.js:61
 msgid "Overview"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:64
+#: client/settings/ai-syndication/settings-page.js:65
 msgid "Product Visibility"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:68
+#: client/settings/ai-syndication/settings-page.js:69
 msgid "Discovery"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:244
-msgid "AI Syndication is not enabled"
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:256
-msgid "Enable to make your products discoverable by AI assistants while keeping checkout and customer data on your store."
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:273
-#: client/settings/ai-syndication/settings-page.js:421
-msgid "Enabling…"
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:274
-msgid "Enable"
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:287
-msgid "Universal Reach"
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:292
-msgid "Works with ChatGPT, Gemini, Claude, Perplexity, Copilot, and any future AI agent. One setup, universal reach — no per-platform integration."
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:300
-msgid "Data Sovereignty"
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:305
-msgid "Checkout stays on your domain. No delegated payments, no platform lock-in. You own the checkout experience and the customer relationship."
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:313
-msgid "Full Order Attribution"
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:318
-msgid "Every AI-referred sale is tracked using standard WooCommerce Order Attribution. See which agent drove each order and how much revenue it generated."
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:335
-msgid "Your store, your checkout, your data — visible to every AI assistant"
+#: client/settings/ai-syndication/settings-page.js:333
+msgid "Status: Not enabled"
 msgstr ""
 
 #: client/settings/ai-syndication/settings-page.js:347
-msgid "When shoppers ask ChatGPT, Gemini, Claude, Perplexity, or Copilot for product recommendations, your catalog shows up. Every checkout happens on your store. No platform fees, no middleman, no data shared."
+msgid "Make your products discoverable by AI shopping assistants"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:364
-msgid "Your product catalog becomes discoverable by AI agents"
+#: client/settings/ai-syndication/settings-page.js:360
+msgid "Turn on discovery in one click. Checkout stays on your store — no fees, no middleman, fully reversible."
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:370
-msgid "A machine-readable store guide is published at /llms.txt"
+#: client/settings/ai-syndication/settings-page.js:375
+msgid "Enabling…"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:376
-msgid "AI-referred orders get automatic revenue attribution"
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:382
-msgid "You control which products are exposed and who gets access"
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:397
-msgid "Nothing is modified. This adds read-only discovery endpoints. You can turn it off at any time."
-msgstr ""
-
-#: client/settings/ai-syndication/settings-page.js:422
+#: client/settings/ai-syndication/settings-page.js:379
 msgid "Enable AI Syndication"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:446
-msgid "24h"
+#: client/settings/ai-syndication/settings-page.js:420
+msgid "One setup, every AI assistant"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:447
-msgid "7d"
+#: client/settings/ai-syndication/settings-page.js:425
+msgid "Your catalog becomes visible to ChatGPT, Gemini, Claude, Perplexity, and Copilot — with no per-platform work when new agents launch."
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:434
+msgid "Checkout stays on your store"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:439
+msgid "No platform fees. No delegated payments. You keep the customer, the checkout, and the data."
 msgstr ""
 
 #: client/settings/ai-syndication/settings-page.js:448
+msgid "See which AI drove each sale"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:453
+msgid "Every AI-referred order is tagged with its source agent and revenue — using standard WooCommerce Order Attribution."
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:478
+msgid "Read-only — no store data changed"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:484
+msgid "Reversible anytime"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:490
+msgid "No frontend changes"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:496
+msgid "Works with existing products"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:519
+msgid "24h"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:520
+msgid "7d"
+msgstr ""
+
+#: client/settings/ai-syndication/settings-page.js:521
 msgid "30d"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:449
+#: client/settings/ai-syndication/settings-page.js:522
 msgid "Year"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:456
+#: client/settings/ai-syndication/settings-page.js:529
 msgid "All"
 msgstr ""
 
 #. translators: %d: number of categories
-#: client/settings/ai-syndication/settings-page.js:460
+#: client/settings/ai-syndication/settings-page.js:533
 #, js-format
 msgid "%d categories"
 msgstr ""
 
 #. translators: %d: number of products
-#: client/settings/ai-syndication/settings-page.js:466
+#: client/settings/ai-syndication/settings-page.js:539
 #, js-format
 msgid "%d products"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:488
+#: client/settings/ai-syndication/settings-page.js:561
 msgid "AI Syndication is active"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:500
+#: client/settings/ai-syndication/settings-page.js:573
 msgid "Your products are discoverable by AI assistants. Checkout and customer data stay on your store."
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:518
+#: client/settings/ai-syndication/settings-page.js:591
 msgid "Disabling…"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:519
+#: client/settings/ai-syndication/settings-page.js:592
 msgid "Disable"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:530
+#: client/settings/ai-syndication/settings-page.js:603
 msgid "Last 24 hours"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:537
+#: client/settings/ai-syndication/settings-page.js:610
 msgid "Last 7 days"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:544
+#: client/settings/ai-syndication/settings-page.js:617
 msgid "Last 30 days"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:551
+#: client/settings/ai-syndication/settings-page.js:624
 msgid "Last year"
 msgstr ""
 
-#: client/settings/ai-syndication/settings-page.js:571
+#: client/settings/ai-syndication/settings-page.js:644
 msgid "Products Exposed"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-syndication/settings-page.js:580
+#: client/settings/ai-syndication/settings-page.js:653
 #, js-format
 msgid "Total Orders (%s)"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-syndication/settings-page.js:588
+#: client/settings/ai-syndication/settings-page.js:661
 #, js-format
 msgid "AI Orders (%s)"
 msgstr ""
 
 #. translators: %s: percentage
-#: client/settings/ai-syndication/settings-page.js:596
+#: client/settings/ai-syndication/settings-page.js:669
 #, js-format
 msgid "%1$s%% of total"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-syndication/settings-page.js:614
+#: client/settings/ai-syndication/settings-page.js:687
 #, js-format
 msgid "AI Revenue (%s)"
 msgstr ""
