@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 1.6.7
+Stable tag: 1.7.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -109,6 +109,15 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_syndication_session_id` (conversation identifier)
 
 == Changelog ==
+
+= 1.7.0 =
+* Admin Overview tab now shows a **Recent AI Orders** table rendered with WordPress core's `@wordpress/dataviews` component — sortable columns, pagination, WooCommerce-native status pills, and links through to the order edit screen. Column order matches WC's native Orders list (Order, Date, Status, Agent, Total) so merchants can scan AI-attributed orders without leaving the dashboard. Built on a new `/wc/v3/ai-syndication/admin/recent-orders` REST endpoint that canonicalizes legacy agent hostnames in order meta at display time — so orders captured before 1.6.7 still show up as `Gemini` / `ChatGPT` / etc. rather than raw hostnames.
+* **Pre-enable landing redesigned.** Three blocks: hero with single primary CTA and AI-assistant name chips (ChatGPT, Gemini, Claude, Perplexity, Copilot); three icon-led value cards using `@wordpress/icons` glyphs with benefit-first titles ("One setup, every AI assistant", "Checkout stays on your store", "See which AI drove each sale"); inline reassurance line under the CTA ("Read-only · Reversible anytime · No frontend changes"). Replaces the prior banner + 3 cards + 4-bullet bottom card layout that was text-heavy and had a duplicate CTA. The "No platform fees" line reads as "No AI-platform checkout fees" for clarity.
+* **Discovery tab reorganization.** The Rate Limits card moved from the Overview tab to Discovery (same conceptual bucket as the crawler allow-list: "who gets in" + "how fast they can go"). A single page-level Save button replaces the two per-card "Save Changes" buttons, matching WP admin convention. Added a help tooltip bridging the crawler-ID naming (e.g. `ChatGPT-User`) with the brand-name display on the Orders list's Origin column (e.g. `Source: ChatGPT`).
+* **Two new Microsoft crawlers** in the robots.txt allow-list: `AdIdxBot` (live — Microsoft Shopping / Bing Ads validation, feeds Copilot's shopping answers; parallel to Storebot-Google) and `Microsoft-BingBot-Extended` (training — AI opt-out parallel to Google-Extended / Applebot-Extended).
+* **llms.txt is now self-contained for attribution.** Added an `### Attribution name mapping` subsection that publishes the full hostname → brand-name map (the single source of truth used at runtime), plus inline URL construction patterns for `/checkout-link/?products=...` and legacy `?add-to-cart=` URLs — one fetch per evaluating agent instead of two.
+* **Infrastructure hardening:** cache-busting now tracks the CSS file's actual content hash (via `md5_file()` with `is_readable()` guard and `filemtime()`/asset-hash fallback chain); single-flight sentinel prevents concurrent llms.txt regenerations from both paying the 4-second HEAD-probe cost; order edit URLs are scheme-validated before rendering (defense against future REST response changes exposing non-http URLs); dropped the unused `@woocommerce/components` devDependency (~40+ transitive packages removed from node_modules).
+* **Test coverage grew to 386 PHPUnit tests / 1110 assertions + 47 Jest tests** — including a structural contract suite for `/admin/recent-orders`, reducer coverage for `SET_RECENT_ORDERS`, Jest assertions for the refresh-on-save wiring, and `LlmsTxtTest` coverage for every entry in `KNOWN_AGENT_HOSTS` via data provider.
 
 = 1.6.7 =
 * Changed: `utm_source` on the `continue_url` returned by `POST /checkout-sessions` is now a short, human-readable brand name (`ChatGPT`, `Gemini`, `Claude`, `Perplexity`, `Copilot`, `Siri`, `Rufus`, `Klarna`, `You`, `Kagi`) instead of the raw UCP-Agent profile hostname. WooCommerce Order Attribution feeds this into `_wc_order_attribution_utm_source`, which WC's built-in "Origin" column on the Orders list displays as `Source: {name}` — so the previous `Source: Gemini.google.com` now reads `Source: Gemini`. Unknown / novel agents pass through verbatim so attribution is never lost, just refined for known vendors. The map lives in `WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS`; adding a new vendor is a single constant entry plus a test-provider row.
