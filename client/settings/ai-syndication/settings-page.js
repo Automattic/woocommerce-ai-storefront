@@ -10,7 +10,7 @@ import {
 	Flex,
 	FlexItem,
 } from '@wordpress/components';
-import { Icon, globe, shield, chartBar, check } from '@wordpress/icons';
+import { Icon, globe, shield, chartBar } from '@wordpress/icons';
 import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-syndication/constants';
 import ProductSelection from './product-selection';
@@ -187,29 +187,6 @@ const AssistantChip = ( { children } ) => (
 	</span>
 );
 
-// TrustItem renders one of the four reassurance items in the pre-enable
-// trust strip. Small green check + short text, pairs kept compact so
-// four items fit in one row on the constrained wp-admin width.
-const TrustItem = ( { children } ) => (
-	<span
-		style={ {
-			display: 'inline-flex',
-			alignItems: 'center',
-			gap: '6px',
-			color: colors.textSecondary,
-			fontSize: '13px',
-		} }
-	>
-		<span
-			style={ { color: colors.success, display: 'inline-flex' } }
-			aria-hidden="true"
-		>
-			<Icon icon={ check } size={ 20 } />
-		</span>
-		{ children }
-	</span>
-);
-
 // Hand-rolled stat card for the Overview stats row. We evaluated Woo's
 // `SummaryNumber` from `@woocommerce/components` and deferred adoption —
 // see AGENTS.md "Styling" section for the rationale. In short: Woo
@@ -308,15 +285,14 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 		{ /* right. Replaces the prior "status banner" + redundant     */ }
 		{ /* bottom card. Single source of conversion intent; the user */ }
 		{ /* shouldn't have to scroll to find "what does this do and   */ }
-		{ /* how do I turn it on." The 4px success-green top border is */ }
-		{ /* the only place green appears above the fold — scarcity    */ }
-		{ /* makes it a focal point rather than noise.                 */ }
+		{ /* how do I turn it on."                                     */ }
+		{ /*                                                           */ }
+		{ /* NO green accent here — green is reserved for the enabled  */ }
+		{ /* state's status banner, so the two states read as visually */ }
+		{ /* distinct at a glance. Using green on both would signal    */ }
+		{ /* "already active" in both modes and confuse the merchant.  */ }
 		{ /* --------------------------------------------------------- */ }
-		<Card
-			style={ {
-				borderTop: `4px solid ${ colors.success }`,
-			} }
-		>
+		<Card>
 			<CardBody>
 				<Flex align="center" gap={ 6 } wrap>
 					<FlexItem isBlock>
@@ -381,6 +357,27 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 										'woocommerce-ai-syndication'
 								  ) }
 						</Button>
+						{ /* Inline reassurance — the de-risking text
+						    belongs next to the CTA that carries the
+						    risk, not in a separate strip elsewhere
+						    on the page. Three concise points,
+						    dot-separated, gray body weight.
+						    Merchants glance at it for a second and
+						    either click through or keep reading the
+						    value cards below. */ }
+						<p
+							style={ {
+								margin: '10px 0 0',
+								fontSize: '12px',
+								color: colors.textMuted,
+								lineHeight: '1.5',
+							} }
+						>
+							{ __(
+								'Read-only · Reversible anytime · No frontend changes',
+								'woocommerce-ai-syndication'
+							) }
+						</p>
 					</FlexItem>
 					<FlexItem isBlock>
 						{ /* Right column: assistant-name chips in a
@@ -458,45 +455,13 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 			</FlexItem>
 		</Flex>
 
-		{ /* --------------------------------------------------------- */ }
-		{ /* Block 3: Compact trust strip. Replaces the entire prior   */ }
-		{ /* bottom card (headline + paragraph + bullet list + CTA).   */ }
-		{ /* Four reassurance items with green check icons, one row,   */ }
-		{ /* muted background — gives the page a clean footer without  */ }
-		{ /* restating value props that already appear above.          */ }
-		{ /* --------------------------------------------------------- */ }
-		<div
-			style={ {
-				marginTop: '32px',
-				padding: '16px 20px',
-				background: colors.surfaceSubtle,
-				borderRadius: '4px',
-			} }
-		>
-			<Flex gap={ 5 } wrap>
-				<TrustItem>
-					{ __(
-						'Read-only — no store data changed',
-						'woocommerce-ai-syndication'
-					) }
-				</TrustItem>
-				<TrustItem>
-					{ __( 'Reversible anytime', 'woocommerce-ai-syndication' ) }
-				</TrustItem>
-				<TrustItem>
-					{ __(
-						'No frontend changes',
-						'woocommerce-ai-syndication'
-					) }
-				</TrustItem>
-				<TrustItem>
-					{ __(
-						'Works with existing products',
-						'woocommerce-ai-syndication'
-					) }
-				</TrustItem>
-			</Flex>
-		</div>
+		{ /*
+		    The compact trust strip that sat here in the first-pass
+		    redesign was removed — the check-list items read as
+		    out-of-place when divorced from the CTA they de-risk.
+		    The concise three-point reassurance line under the hero's
+		    Enable button does that job where it's actionable.
+		*/ }
 	</div>
 );
 
