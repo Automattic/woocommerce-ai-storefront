@@ -1218,10 +1218,11 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * apply (instead of silently receiving the unfiltered catalog).
 	 *
 	 * @return array{0: array<string, mixed>, 1: array<int, array<string, mixed>>}
-	 *         [params, messages]. `params` values are heterogeneous:
-	 *         scalars for simple filters (search, category, on_sale,
-	 *         orderby), integer arrays for rating, string arrays for
-	 *         stock_status, and an array-of-objects for attributes.
+	 *         [params, messages]. `params` contains Store API query
+	 *         arguments with heterogeneous value shapes depending on the
+	 *         mapped filter: scalar values for simple query params, arrays
+	 *         of scalars for multi-value filters, and nested arrays of
+	 *         objects for structured filters such as attributes.
 	 */
 	private static function map_ucp_search_to_store_api( WP_REST_Request $request ): array {
 		$params   = [];
