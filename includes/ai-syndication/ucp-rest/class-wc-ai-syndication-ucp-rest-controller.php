@@ -708,7 +708,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$messages  = [];
 
 		foreach ( $line_items_raw as $index => $line_item ) {
-			$outcome = self::process_line_item( $line_item, (int) $index );
+			$outcome = self::process_line_item( $line_item, (int) $index, $currency );
 
 			foreach ( $outcome['messages'] as $message ) {
 				$messages[] = $message;
@@ -1891,10 +1891,21 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * a separate advisory about stock) — don't short-circuit after
 	 * the first.
 	 *
-	 * @param mixed $line_item Raw line_item value from the request body.
+	 * @param mixed  $line_item      Raw line_item value from the request body.
+	 * @param int    $index          Position in the line_items array (for
+	 *                               JSON-path in error messages).
+	 * @param string $store_currency ISO 4217 currency code the store
+	 *                               operates in — used to validate that
+	 *                               `expected_unit_price.currency`
+	 *                               matches before running the
+	 *                               `price_changed` comparison. Passed in
+	 *                               (rather than read from WC here) to
+	 *                               keep the method pure + testable and
+	 *                               avoid a second `get_woocommerce_currency`
+	 *                               call per line item.
 	 * @return array{processed: ?array<string, mixed>, messages: array<int, array<string, mixed>>}
 	 */
-	private static function process_line_item( $line_item, int $index ): array {
+	private static function process_line_item( $line_item, int $index, string $store_currency ): array {
 		$messages = [];
 		$path     = '$.line_items[' . $index . ']';
 
@@ -2034,23 +2045,41 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// user before redirecting. Agent-opt-in: agents that don't
 		// send `expected_unit_price` get no warning (our legacy
 		// behavior unchanged).
+		//
+		// Currency guard: minor-unit amounts aren't comparable across
+		// currencies (50 JPY ≠ 50 USD), so we only run the comparison
+		// when the agent's declared currency matches the store's.
+		// Empty/omitted currency is treated as "matches store" (the
+		// lenient path — agents pre-negotiated the currency via the
+		// manifest's store_context). A non-matching currency causes
+		// us to silently skip the check rather than emit a confusing
+		// warning; agents can verify the store currency from the
+		// manifest before calling.
 		if ( isset( $line_item['expected_unit_price']['amount'] )
 			&& is_numeric( $line_item['expected_unit_price']['amount'] )
 		) {
-			$expected = (int) $line_item['expected_unit_price']['amount'];
-			if ( $expected !== $unit_price_minor ) {
-				$messages[] = [
-					'type'     => 'warning',
-					'code'     => 'price_changed',
-					'severity' => 'advisory',
-					'path'     => $path,
-					'content'  => sprintf(
-						/* translators: 1: expected amount (minor units), 2: current amount (minor units). */
-						__( 'Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched.', 'woocommerce-ai-syndication' ),
-						$expected,
-						$unit_price_minor
-					),
-				];
+			$expected_currency = isset( $line_item['expected_unit_price']['currency'] )
+				? (string) $line_item['expected_unit_price']['currency']
+				: '';
+			$currency_matches  = '' === $expected_currency
+				|| 0 === strcasecmp( $expected_currency, $store_currency );
+
+			if ( $currency_matches ) {
+				$expected = (int) $line_item['expected_unit_price']['amount'];
+				if ( $expected !== $unit_price_minor ) {
+					$messages[] = [
+						'type'     => 'warning',
+						'code'     => 'price_changed',
+						'severity' => 'advisory',
+						'path'     => $path,
+						'content'  => sprintf(
+							/* translators: 1: expected amount (minor units), 2: current amount (minor units). */
+							__( 'Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched.', 'woocommerce-ai-syndication' ),
+							$expected,
+							$unit_price_minor
+						),
+					];
+				}
 			}
 		}
 

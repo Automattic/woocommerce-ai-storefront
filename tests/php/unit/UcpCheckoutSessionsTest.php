@@ -1106,6 +1106,73 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotContains( 'price_changed', $codes );
 	}
 
+	public function test_price_changed_skipped_when_expected_currency_mismatches_store(): void {
+		// Agent sends a cached price in GBP, store operates in USD.
+		// Minor-unit amounts aren't comparable across currencies, so
+		// we silently skip rather than emit a misleading "price
+		// changed from 2000 to 3000" warning that mixes units.
+		$this->seed_simple_product( 111, 3000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[
+						'item'                => [ 'id' => 'prod_111' ],
+						'quantity'            => 1,
+						'expected_unit_price' => [ 'amount' => 2000, 'currency' => 'GBP' ],
+					],
+				],
+			]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'price_changed', $codes );
+	}
+
+	public function test_price_changed_case_insensitive_currency_match(): void {
+		// Agents may send "usd" lowercase; store currency constant is
+		// "USD". strcasecmp handles the case comparison so this isn't
+		// treated as a currency mismatch.
+		$this->seed_simple_product( 111, 3000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[
+						'item'                => [ 'id' => 'prod_111' ],
+						'quantity'            => 1,
+						'expected_unit_price' => [ 'amount' => 2500, 'currency' => 'usd' ],
+					],
+				],
+			]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'price_changed', $codes );
+	}
+
+	public function test_price_changed_runs_when_expected_currency_is_omitted(): void {
+		// Missing currency on expected_unit_price → lenient path,
+		// assumes store currency. Preserves the original PR #41
+		// behavior for agents that only send `amount`.
+		$this->seed_simple_product( 111, 3000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[
+						'item'                => [ 'id' => 'prod_111' ],
+						'quantity'            => 1,
+						'expected_unit_price' => [ 'amount' => 2500 ],
+					],
+				],
+			]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'price_changed', $codes );
+	}
+
 	public function test_line_item_includes_price_includes_tax_flag(): void {
 		$this->seed_simple_product( 111, 2500 );
 
@@ -1259,7 +1326,11 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	 */
 	private function stub_apply_filters_for( string $target_hook, $return_value ): void {
 		Functions\when( 'apply_filters' )->alias(
-			static function ( string $hook, $default ) use ( $target_hook, $return_value ) {
+			// Variadic `...$args` absorbs whatever extra positional
+			// args the caller passes (context arrays, numeric caps,
+			// etc.) so strict PHP "too many arguments" notices don't
+			// fire for filters that accept more than hook + default.
+			static function ( string $hook, $default, ...$args ) use ( $target_hook, $return_value ) {
 				return $hook === $target_hook ? $return_value : $default;
 			}
 		);
