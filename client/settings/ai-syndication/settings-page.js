@@ -168,29 +168,45 @@ const StatCard = ( { label, value, subvalue, href } ) => {
 		display: 'block',
 	};
 
+	// Value + optional subvalue render on ONE baseline-aligned row.
+	// Stacking the subvalue below the value (pre-fix) made the AI
+	// Orders card visually taller than the three subvalue-less
+	// cards next to it — the big number's vertical center shifted
+	// up, breaking the four-across row alignment the merchant reads
+	// at a glance. Inlining with `align-items: baseline` keeps the
+	// "1" and "10% of total" sharing the same type baseline, so
+	// every card's big number sits at the same y-coordinate.
 	const inner = (
 		<>
 			<div
 				style={ {
-					fontSize: '24px',
-					fontWeight: '600',
-					color: colors.success,
+					display: 'flex',
+					justifyContent: 'center',
+					alignItems: 'baseline',
+					gap: '6px',
 				} }
 			>
-				{ value }
-			</div>
-			{ subvalue && (
 				<div
 					style={ {
-						fontSize: '11px',
+						fontSize: '24px',
+						fontWeight: '600',
 						color: colors.success,
-						marginTop: '2px',
-						fontWeight: '400',
 					} }
 				>
-					{ subvalue }
+					{ value }
 				</div>
-			) }
+				{ subvalue && (
+					<div
+						style={ {
+							fontSize: '11px',
+							color: colors.success,
+							fontWeight: '400',
+						} }
+					>
+						{ subvalue }
+					</div>
+				) }
+			</div>
 			<div
 				style={ {
 					fontSize: '12px',

@@ -77,21 +77,27 @@ const formatCurrency = ( amount, currency ) => {
 };
 
 /**
- * Background color for each WooCommerce order status pill.
+ * Background + foreground colors per WooCommerce order status.
  *
- * Hardcoded here rather than pulled from WC's CSS because the status
- * pill classes (`.order-status`) live in wc-admin's own stylesheet
- * which isn't loaded on our submenu page — same enqueue gap that
- * killed the TableCard adoption. Inlining the colors keeps the pill
- * legible regardless of whether wc-admin's styles are present.
+ * Values are verbatim copies of what wc-admin's own `.order-status`
+ * CSS uses on the native Orders list — `processing` is green,
+ * `completed` is the familiar blue-gray, `on-hold` is orange,
+ * `failed` is red, and the rest fall back to neutral gray. Merchants
+ * scanning our table should see the exact same palette they see on
+ * WC's Orders screen, so the mental mapping between the two surfaces
+ * is instantaneous.
  *
- * Colors are sampled from wc-admin's own status-pill palette so the
- * pill reads as native-to-WooCommerce at a glance. If the merchant
- * has custom statuses (e.g. from a plugin), the lookup falls back
- * to a neutral gray + the localized label — never crashes.
+ * We hardcode the palette (rather than sharing a CSS variable with
+ * wc-admin) because wc-admin's stylesheet isn't loaded on our
+ * submenu page. This is the same reason StatusPill renders its own
+ * chrome rather than using `.order-status` classes directly.
+ *
+ * Custom statuses from other plugins fall through to the neutral
+ * gray block in the caller's `||` default — labels still render
+ * correctly, pill just reads as a generic "other status" tag.
  */
 const STATUS_COLORS = {
-	processing: { bg: '#c8d7e1', fg: '#2e4453' },
+	processing: { bg: '#c6e1c6', fg: '#5b841b' },
 	completed: { bg: '#c8d7e1', fg: '#2e4453' },
 	'on-hold': { bg: '#f8dda7', fg: '#94660c' },
 	pending: { bg: '#e5e5e5', fg: '#777' },
@@ -103,8 +109,23 @@ const STATUS_COLORS = {
 /**
  * Render the colored status pill.
  *
- * Memo-friendly via the `key` prop on the caller's row — DataViews
- * re-renders cells as pagination/sort changes, and pills are cheap.
+ * Shape + sizing mirror wc-admin's native `.order-status`:
+ *   - `border-radius: 4px` — rounded rectangle, not a pill-rounded
+ *     oval. Native WC look; matches what merchants see on the
+ *     main Orders list.
+ *   - `line-height: 2.5em` + zero block padding — gives the pill
+ *     its vertical air without pushing the row tall.
+ *   - `padding: 0 1em` — horizontal breathing room that scales
+ *     with font size.
+ *   - subtle `border-bottom` in rgba(0,0,0,0.05) — the WC depth
+ *     cue that distinguishes the pill from flat bg color.
+ *   - negative vertical margin so the pill doesn't expand the row
+ *     height relative to plain-text cells.
+ *
+ * `title` attribute gives the browser-native hover tooltip, matching
+ * the accessibility affordance on WC's own Orders list — screen
+ * readers announce the status, sighted users who hover see the
+ * label again even when the pill is truncated by a narrow column.
  *
  * @param {Object} root0        Props.
  * @param {string} root0.status WC order status key (e.g. 'processing').
@@ -117,20 +138,26 @@ const StatusPill = ( { status, label } ) => {
 		fg: colors.textMuted,
 	};
 	return (
-		<span
+		<mark
+			className={ `order-status status-${ status }` }
+			title={ label }
 			style={ {
-				display: 'inline-block',
-				padding: '2px 8px',
-				borderRadius: '12px',
+				display: 'inline-flex',
+				alignItems: 'center',
+				lineHeight: '2.5em',
+				padding: '0 1em',
+				borderRadius: '4px',
 				background: bg,
 				color: fg,
-				fontSize: '12px',
-				fontWeight: '500',
+				fontSize: '13px',
+				fontWeight: '400',
 				whiteSpace: 'nowrap',
+				borderBottom: '1px solid rgba(0, 0, 0, 0.05)',
+				margin: '-0.25em 0',
 			} }
 		>
 			{ label }
-		</span>
+		</mark>
 	);
 };
 
