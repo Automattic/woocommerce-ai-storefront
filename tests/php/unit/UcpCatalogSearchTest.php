@@ -94,6 +94,18 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 
+		// Simplified sanitize_title stub — good enough for the
+		// attribute-slug normalization the mapper relies on. The real
+		// WP function does more (entity stripping, accent folding, etc.)
+		// but those code paths aren't exercised by current tests.
+		Functions\when( 'sanitize_title' )->alias(
+			static function ( $title ): string {
+				$title = strtolower( trim( (string) $title ) );
+				$title = preg_replace( '/[^a-z0-9_]+/', '-', $title );
+				return trim( (string) $title, '-' );
+			}
+		);
+
 		$terms = &$this->fake_terms;
 		Functions\when( 'get_term_by' )->alias(
 			static function ( string $field, string $value, string $taxonomy ) use ( &$terms ) {
@@ -558,6 +570,17 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'featured', $this->captured_store_params );
 	}
 
+	public function test_featured_filter_accepts_string_true(): void {
+		// Symmetric with on_sale / in_stock — stringy "true" from
+		// JSON-to-PHP round trips should be honored so the contract
+		// is consistent across boolean-flag filters.
+		$this->successful_search(
+			[ 'filters' => [ 'featured' => 'true' ] ]
+		);
+
+		$this->assertTrue( $this->captured_store_params['featured'] );
+	}
+
 	// ------------------------------------------------------------------
 	// 1.9.0: min_rating filter
 	// ------------------------------------------------------------------
@@ -675,6 +698,106 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( [ 'red' ], $this->captured_store_params['attributes'][0]['slug'] );
+	}
+
+	public function test_attribute_filter_skips_non_scalar_slug_values(): void {
+		// Defensive: a client sending a nested array as a slug value
+		// would coerce to "Array" via (string) cast and silently
+		// forward as a bogus slug. Skip non-scalar entries entirely.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'color' => [ 'red', [ 'nested' ], null, 'blue' ],
+					],
+				],
+			]
+		);
+
+		$this->assertSame(
+			[ 'red', 'blue' ],
+			$this->captured_store_params['attributes'][0]['slug']
+		);
+	}
+
+	public function test_attribute_filter_skips_empty_taxonomy_key(): void {
+		// Empty/whitespace-only keys would collapse to taxonomy `pa_`
+		// which Store API silently accepts as unknown and returns no
+		// results — leaving the agent with no signal that their input
+		// was malformed. Drop the axis entirely.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						''    => [ 'red' ],
+						' '   => [ 'blue' ],
+						'size' => [ 'M' ],
+					],
+				],
+			]
+		);
+
+		$this->assertCount( 1, $this->captured_store_params['attributes'] );
+		$this->assertSame( 'pa_size', $this->captured_store_params['attributes'][0]['attribute'] );
+	}
+
+	public function test_attribute_filter_skips_bare_pa_prefix_key(): void {
+		// A key of exactly "pa_" is either a typo or a crafted
+		// poison input — either way it's not a real taxonomy and
+		// shouldn't be forwarded.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'pa_' => [ 'red' ],
+					],
+				],
+			]
+		);
+
+		$this->assertArrayNotHasKey( 'attributes', $this->captured_store_params );
+	}
+
+	public function test_attribute_filter_sanitize_title_normalizes_multiword_slugs(): void {
+		// Multi-word attribute values like "Light Blue" should
+		// collapse to the WP-canonical slug "light-blue" (the form
+		// WC stores in the DB), not the naive strtolower "light blue"
+		// which is an invalid slug.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'color' => [ 'Light Blue', 'Navy Blue' ],
+					],
+				],
+			]
+		);
+
+		$this->assertSame(
+			[ 'light-blue', 'navy-blue' ],
+			$this->captured_store_params['attributes'][0]['slug']
+		);
+	}
+
+	public function test_attribute_filter_sanitize_title_normalizes_multiword_taxonomy_keys(): void {
+		// Same as slug normalization but for the taxonomy key — a
+		// merchant label like "Fabric Type" should produce
+		// `pa_fabric-type`, not `pa_fabric type` (invalid) or
+		// `pa_Fabric Type` (case-sensitive mismatch).
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'Fabric Type' => [ 'cotton' ],
+					],
+				],
+			]
+		);
+
+		$this->assertSame(
+			'pa_fabric-type',
+			$this->captured_store_params['attributes'][0]['attribute']
+		);
 	}
 
 	// ------------------------------------------------------------------
