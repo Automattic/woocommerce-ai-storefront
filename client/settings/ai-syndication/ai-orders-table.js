@@ -202,13 +202,72 @@ const AIOrdersTable = () => {
 				id: 'status',
 				label: __( 'Status', 'woocommerce-ai-syndication' ),
 				enableSorting: true,
+				// `elements` declares the closed enum of valid values
+				// for the field. DataViews treats element-typed fields
+				// specially — future filter UI would auto-populate a
+				// dropdown from this list, and internal sort / display
+				// code can do value → label lookups without us
+				// repeating the map at every render. Shipping the
+				// declaration now is cheap hygiene; activating the
+				// filter UI later becomes a 1-line prop change on
+				// this field.
+				//
+				// Labels use the 'woocommerce' text domain so they
+				// inherit WC core's translations — a merchant running
+				// a French or Japanese store sees the same "En cours"
+				// / "処理中" that appears on the native Orders list,
+				// not a separately-translated copy we'd have to
+				// maintain. This is the standard pattern for plugins
+				// integrating with WC's own data model.
+				elements: [
+					{
+						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+						value: 'processing',
+						label: __( 'Processing', 'woocommerce' ),
+					},
+					{
+						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+						value: 'completed',
+						label: __( 'Completed', 'woocommerce' ),
+					},
+					{
+						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+						value: 'on-hold',
+						label: __( 'On hold', 'woocommerce' ),
+					},
+					{
+						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+						value: 'pending',
+						label: __( 'Pending payment', 'woocommerce' ),
+					},
+					{
+						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+						value: 'cancelled',
+						label: __( 'Cancelled', 'woocommerce' ),
+					},
+					{
+						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+						value: 'refunded',
+						label: __( 'Refunded', 'woocommerce' ),
+					},
+					{
+						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+						value: 'failed',
+						label: __( 'Failed', 'woocommerce' ),
+					},
+				],
 				render: ( { item } ) => (
 					<StatusPill
 						status={ item.status }
 						label={ item.status_label }
 					/>
 				),
-				getValue: ( { item } ) => item.status_label,
+				// Sort on the status key (not the label) so the order
+				// is stable across locales — an English merchant and
+				// a French merchant get the same sort sequence when
+				// clicking the Status header. Labels remain the
+				// display text.
+				getValue: ( { item } ) => item.status,
 			},
 			{
 				id: 'agent',
