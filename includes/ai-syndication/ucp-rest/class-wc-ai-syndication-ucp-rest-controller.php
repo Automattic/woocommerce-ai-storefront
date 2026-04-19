@@ -1502,13 +1502,39 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			if ( ! is_array( $values ) || empty( $values ) ) {
 				continue;
 			}
-			$taxonomy = (string) $key;
-			if ( 0 !== strpos( $taxonomy, 'pa_' ) ) {
-				$taxonomy = 'pa_' . strtolower( $taxonomy );
+
+			// Normalize the taxonomy key. Reject empty/whitespace-only
+			// keys up front — forwarding taxonomy `pa_` (or empty) to
+			// Store API silently returns no results, leaving the agent
+			// with no signal their input was malformed. `sanitize_title`
+			// canonicalizes "Light Blue" → "light-blue" rather than the
+			// naive strtolower → "light blue" (which is an invalid slug).
+			$raw_key = trim( (string) $key );
+			if ( '' === $raw_key ) {
+				continue;
 			}
+			$taxonomy = 0 === strpos( $raw_key, 'pa_' )
+				? $raw_key
+				: 'pa_' . sanitize_title( $raw_key );
+			// After sanitize_title a whitespace-only-after-trim input
+			// (or a stringy-object cast) can still collapse to just
+			// `pa_`. That's not a valid taxonomy — drop it rather than
+			// forward a semantically-empty filter.
+			if ( 'pa_' === $taxonomy ) {
+				continue;
+			}
+
+			// Normalize slug values. Reject non-string/non-numeric
+			// entries — a nested array coerces to "Array" via (string)
+			// cast, which would silently forward as a bogus slug.
+			// sanitize_title keeps the WP-canonical slug form and
+			// matches how WC stores attribute term slugs in the DB.
 			$slugs = [];
 			foreach ( $values as $v ) {
-				$slug = strtolower( (string) $v );
+				if ( ! is_string( $v ) && ! is_numeric( $v ) ) {
+					continue;
+				}
+				$slug = sanitize_title( (string) $v );
 				if ( '' !== $slug ) {
 					$slugs[] = $slug;
 				}
@@ -1516,6 +1542,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			if ( empty( $slugs ) ) {
 				continue;
 			}
+
 			$result[] = [
 				'attribute' => $taxonomy,
 				'slug'      => array_values( array_unique( $slugs ) ),
