@@ -133,8 +133,15 @@ class WC_AI_Syndication_Store_Api_Extension {
 		// Native WC 9.4+ field. Older WC versions don't implement
 		// the method — guard with method_exists so the extension
 		// quietly returns empty rather than fatal-erroring.
+		//
+		// Trim whitespace: merchants occasionally paste GTINs with
+		// trailing spaces. A whitespace-only value would pass a naive
+		// `'' !== $gtin` check but emit a meaningless `value` with a
+		// misleading `type` from detect_gtin_type. Checking emptiness
+		// on the trimmed form (and using it for both storage and type
+		// detection) keeps the output honest.
 		if ( method_exists( $product, 'get_global_unique_id' ) ) {
-			$gtin = (string) $product->get_global_unique_id();
+			$gtin = trim( (string) $product->get_global_unique_id() );
 			if ( '' !== $gtin ) {
 				$barcodes[] = [
 					'type'  => self::detect_gtin_type( $gtin ),

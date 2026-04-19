@@ -245,6 +245,30 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'options', $result );
 	}
 
+	public function test_translate_skips_option_entries_without_attribute_label(): void {
+		// Regression: an attribute entry with a present value but
+		// missing `name` would emit `{attribute: "", value: "Blue"}`
+		// — an unlabeled axis the agent can't filter or present.
+		// Drop those, parallel to the empty-value skip.
+		$fixture = [
+			'id'         => 501,
+			'name'       => 'Mixed attribute shapes',
+			'prices'     => [ 'price' => '2500', 'currency_code' => 'USD' ],
+			'attributes' => [
+				[ 'name' => 'Color', 'value' => 'Blue' ],
+				[ 'value' => 'no-label-here' ],
+				[ 'name' => '', 'value' => 'also-no-label' ],
+				[ 'name' => 'Size', 'value' => 'M' ],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertCount( 2, $result['options'] );
+		$this->assertSame( 'Color', $result['options'][0]['attribute'] );
+		$this->assertSame( 'Size', $result['options'][1]['attribute'] );
+	}
+
 	public function test_translate_emits_compare_at_price_when_on_sale(): void {
 		$fixture = [
 			'id'      => 601,

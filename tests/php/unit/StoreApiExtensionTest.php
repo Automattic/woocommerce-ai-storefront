@@ -147,6 +147,31 @@ class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( [], $result['barcodes'] );
 	}
 
+	public function test_emits_empty_barcodes_when_value_is_whitespace_only(): void {
+		// Regression: merchants occasionally paste GTINs with trailing
+		// whitespace. A "   " value would pass a naive `!== ''` check
+		// and emit {type: "other", value: "   "} — meaningless and
+		// misleading. Trim should collapse whitespace-only values to
+		// empty before the emptiness check.
+		$product = $this->make_product_with_gtin( "   \n\t" );
+
+		$result = $this->extension->get_product_data( $product );
+
+		$this->assertSame( [], $result['barcodes'] );
+	}
+
+	public function test_trims_whitespace_around_gtin_before_type_detection(): void {
+		// A 13-digit GTIN with surrounding whitespace should still
+		// detect as gtin13 (trim applied before length-based type
+		// detection) and emit the trimmed value.
+		$product = $this->make_product_with_gtin( '  1234567890123  ' );
+
+		$result = $this->extension->get_product_data( $product );
+
+		$this->assertSame( 'gtin13', $result['barcodes'][0]['type'] );
+		$this->assertSame( '1234567890123', $result['barcodes'][0]['value'] );
+	}
+
 	// ------------------------------------------------------------------
 	// Schema callback
 	// ------------------------------------------------------------------

@@ -287,8 +287,18 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 			if ( '' === $value ) {
 				continue;
 			}
+			// Skip entries missing a human-readable label. Emitting
+			// `{attribute: "", value: "Blue"}` conveys no option axis
+			// to the agent — worse than dropping the entry because it
+			// pollutes the options list with an unlabeled row that
+			// can't be filtered or displayed meaningfully. Parallel to
+			// the empty-value skip above.
+			$label = (string) ( $attribute['name'] ?? '' );
+			if ( '' === $label ) {
+				continue;
+			}
 			$options[] = [
-				'attribute' => (string) ( $attribute['name'] ?? '' ),
+				'attribute' => $label,
 				'value'     => (string) $value,
 			];
 		}
