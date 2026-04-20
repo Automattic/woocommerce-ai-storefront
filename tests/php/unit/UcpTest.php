@@ -538,10 +538,16 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		//           but at a GitHub directory listing, not a spec doc)
 		//   - 1.6.4: `https://ucp.dev/{VERSION}/...` (pinned at the
 		//           canonical docs site + OpenAPI schema)
+		//   - 1.9.0: merchant-extension capability URLs are
+		//           SELF-HOSTED (on the merchant site, not ucp.dev) —
+		//           they don't fit the version-pin rule because they
+		//           always describe the CURRENT plugin version rather
+		//           than a fixed UCP protocol revision.
 		//
-		// This test locks in the 1.6.4 shape: all external URLs
-		// use `ucp.dev/{PROTOCOL_VERSION}/` so one constant drives
-		// every spec/schema reference in the manifest.
+		// This test locks in the canonical-capability shape: all UCP
+		// `dev.ucp.*` URLs use `ucp.dev/{PROTOCOL_VERSION}/`. Extension
+		// capabilities (anything not under `dev.ucp.*`) are exempted
+		// below and validated by a separate test.
 		$manifest = $this->ucp->generate_manifest( [] );
 		$service  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 		$version  = WC_AI_Syndication_Ucp::PROTOCOL_VERSION;
@@ -550,9 +556,15 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( "/{$version}/", $service['spec'] );
 		$this->assertStringContainsString( "/{$version}/", $service['schema'] );
 
-		// Capability-level URLs.
+		// Capability-level URLs — canonical (`dev.ucp.*`) capabilities
+		// point at ucp.dev and MUST be version-pinned. Extension
+		// capabilities (our `com.woocommerce.ai_syndication`) are
+		// self-hosted on the merchant site and exempted.
 		$caps = $manifest['ucp']['capabilities'];
 		foreach ( $caps as $name => $bindings ) {
+			if ( 0 !== strpos( $name, 'dev.ucp.' ) ) {
+				continue; // extension capability — skip
+			}
 			foreach ( $bindings as $binding ) {
 				if ( isset( $binding['spec'] ) ) {
 					$this->assertStringContainsString( "/{$version}/", $binding['spec'], "spec URL for $name must be version-pinned" );
@@ -566,6 +578,32 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// Regression guard against the pre-1.6.4 GitHub tree URL.
 		$this->assertStringNotContainsString( '/tree/main/', $service['spec'] );
 		$this->assertStringNotContainsString( 'github.com', $service['spec'] );
+	}
+
+	public function test_extension_capability_urls_are_self_hosted(): void {
+		// The `com.woocommerce.ai_syndication` extension capability's
+		// `spec` + `schema` URLs are served by the merchant site, not
+		// by a third-party registry. This keeps docs always in sync
+		// with the running plugin version, respects the site's own
+		// access-control policy, and eliminates external dependencies.
+		//
+		// `spec` points at the llms.txt anchor; `schema` points at the
+		// dedicated JSON Schema REST route. Both are on the merchant
+		// host, never `ucp.dev` or `github.com`.
+		$manifest = $this->ucp->generate_manifest( [] );
+		$ext      = $manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0];
+
+		$this->assertArrayHasKey( 'spec', $ext );
+		$this->assertArrayHasKey( 'schema', $ext );
+
+		$this->assertStringContainsString( '/llms.txt#ucp-extension', $ext['spec'] );
+		$this->assertStringContainsString( '/wc/ucp/v1/extension/schema', $ext['schema'] );
+
+		// Never third-party hosted.
+		$this->assertStringNotContainsString( 'ucp.dev', $ext['spec'] );
+		$this->assertStringNotContainsString( 'ucp.dev', $ext['schema'] );
+		$this->assertStringNotContainsString( 'github.com', $ext['spec'] );
+		$this->assertStringNotContainsString( 'github.com', $ext['schema'] );
 	}
 
 	public function test_every_canonical_capability_has_spec_and_schema_urls(): void {

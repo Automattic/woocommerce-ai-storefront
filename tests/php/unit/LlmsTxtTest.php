@@ -664,6 +664,40 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( '/news-sitemap.xml', $output );
 	}
 
+	// ------------------------------------------------------------------
+	// UCP extension docs (1.9.0)
+	// ------------------------------------------------------------------
+
+	public function test_llms_txt_includes_ucp_extension_section(): void {
+		// The UCP manifest advertises the merchant-extension capability
+		// with a `spec` URL pointing at `/llms.txt#ucp-extension`. This
+		// test locks in that the anchor is present + the section is
+		// actually rendered so the manifest's URL resolves.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '<a id="ucp-extension"></a>', $output );
+		$this->assertStringContainsString( '## UCP Extension: com.woocommerce.ai_syndication', $output );
+	}
+
+	public function test_llms_txt_extension_section_points_at_schema_endpoint(): void {
+		// The human-readable section should reference the machine-
+		// readable schema endpoint so agents that want to validate
+		// the payload can find it from the text docs.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/extension/schema', $output );
+	}
+
+	public function test_llms_txt_extension_section_documents_config_fields(): void {
+		// The five store_context fields must each be documented so
+		// agents reading llms.txt understand what the manifest carries.
+		$output = $this->llms->generate();
+
+		foreach ( [ 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled' ] as $field ) {
+			$this->assertStringContainsString( '**' . $field . '**', $output );
+		}
+	}
+
 	public function test_wp_core_sitemap_included_when_non_empty(): void {
 		// `get_sitemap_url( 'index' )` returns WP core's canonical
 		// sitemap URL when the feature is active. That candidate

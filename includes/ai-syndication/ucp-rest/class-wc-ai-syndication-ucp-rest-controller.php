@@ -169,6 +169,22 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				'permission_callback' => '__return_true',
 			]
 		);
+
+		// JSON Schema for our merchant extension capability
+		// (com.woocommerce.ai_syndication). Served per-site so the
+		// schema matches the running plugin version exactly and
+		// respects the merchant's own access-control configuration
+		// (same perms as the rest of the UCP routes). Referenced by
+		// the manifest's extension capability `schema` URL.
+		register_rest_route(
+			self::NAMESPACE,
+			'/extension/schema',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'handle_extension_schema' ],
+				'permission_callback' => '__return_true',
+			]
+		);
 	}
 
 	/**
@@ -943,6 +959,122 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			$response_body,
 			$should_redirect ? 201 : 200
 		);
+	}
+
+	/**
+	 * Handler for GET /extension/schema.
+	 *
+	 * Serves the JSON Schema describing the shape of our merchant
+	 * extension capability (`com.woocommerce.ai_syndication`). The
+	 * manifest's extension capability advertises this endpoint under
+	 * its `schema` field; agents that want to validate our
+	 * extension-specific payload fetch it here rather than hardcoding
+	 * the shape.
+	 *
+	 * Self-hosted by design: the schema served matches the version of
+	 * the plugin the merchant is running (no risk of schema/runtime
+	 * drift from a third-party registry), and honors whatever access
+	 * controls the site has on the REST API (same permissions as the
+	 * catalog/checkout endpoints). `$id` is computed from the current
+	 * URL so a static mirror of the schema keeps the right self-reference.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function handle_extension_schema(): WP_REST_Response {
+		$self_id = rest_url( self::NAMESPACE . '/extension/schema' );
+
+		$schema = [
+			'$schema'     => 'https://json-schema.org/draft/2020-12/schema',
+			'$id'         => $self_id,
+			'title'       => 'WooCommerce AI Syndication UCP Extension',
+			'description' => 'Schema for the `com.woocommerce.ai_syndication` merchant-extension capability advertised at `capabilities[com.woocommerce.ai_syndication][0].config` in the UCP manifest. Carries commerce context agents need upfront (currency, locale, tax/shipping posture) and attribution conventions for crediting agent-driven orders back to the originating agent.',
+			'type'        => 'object',
+			'properties'  => [
+				'config' => [
+					'type'        => 'object',
+					'description' => 'Extension-scoped configuration.',
+					'properties'  => [
+						'store_context' => [
+							'type'        => 'object',
+							'description' => 'Commerce conventions this store operates under — agents pre-filter based on these before calling catalog/checkout.',
+							'properties'  => [
+								'currency'           => [
+									'type'        => 'string',
+									'description' => 'ISO 4217 currency code. Catalog prices quote in this currency; agents unable to transact here should decline rather than misrepresent the amount.',
+									'examples'    => [ 'USD', 'EUR', 'JPY' ],
+								],
+								'locale'             => [
+									'type'        => 'string',
+									'description' => 'BCP 47 locale tag for default customer-facing content language.',
+									'examples'    => [ 'en-US', 'fr-FR', 'zh-Hant-HK' ],
+								],
+								'country'            => [
+									'type'        => [ 'string', 'null' ],
+									'description' => 'ISO 3166-1 alpha-2 for the merchant base country. Nullable when the merchant has not configured a base country in WC settings.',
+								],
+								'prices_include_tax' => [
+									'type'        => 'boolean',
+									'description' => 'When true (EU-typical), catalog prices are tax-inclusive. When false (US-typical), tax is added at checkout. Agents rendering cart previews use this to decide whether to show a tax line.',
+								],
+								'shipping_enabled'   => [
+									'type'        => 'boolean',
+									'description' => 'When true, the store collects shipping addresses. When false, it is digital-only — agents should skip address-collection prompts.',
+								],
+							],
+						],
+						'attribution'   => [
+							'type'        => 'object',
+							'description' => 'How the merchant wants agent-driven orders attributed. Agents should pass these UTM parameters through the `continue_url` on checkout handoff.',
+							'properties'  => [
+								'spec'       => [
+									'type'        => 'string',
+									'format'      => 'uri',
+									'description' => 'URL to the upstream attribution system documentation.',
+								],
+								'system'     => [
+									'type'        => 'string',
+									'description' => 'Identifier of the attribution system recording agent-originated orders.',
+									'examples'    => [ 'woocommerce_order_attribution' ],
+								],
+								'parameters' => [
+									'type'        => 'object',
+									'description' => 'Named description of each expected UTM-style parameter.',
+									'additionalProperties' => [ 'type' => 'string' ],
+								],
+								'usage_note' => [
+									'type'        => 'string',
+									'description' => 'Human-readable guidance on the preferred attribution path (typically: use the UCP `/checkout-sessions` endpoint, which handles UTM injection server-side).',
+								],
+							],
+						],
+					],
+				],
+				'ratings' => [
+					'type'        => 'object',
+					'description' => 'Per-product ratings payload emitted on product responses under `extensions[com.woocommerce.ai_syndication].ratings` when review_count > 0. Shape: `{average: number, count: integer}`.',
+					'properties'  => [
+						'average' => [
+							'type'        => 'number',
+							'minimum'     => 0,
+							'maximum'     => 5,
+							'description' => 'Average rating on a 0-5 scale.',
+						],
+						'count'   => [
+							'type'        => 'integer',
+							'minimum'     => 0,
+							'description' => 'Total number of reviews contributing to the average.',
+						],
+					],
+				],
+			],
+		];
+
+		$response = new WP_REST_Response( $schema, 200 );
+		$response->header( 'Content-Type', 'application/schema+json; charset=utf-8' );
+		// Schema is immutable per plugin version; safe to cache.
+		$response->header( 'Cache-Control', 'public, max-age=3600' );
+
+		return $response;
 	}
 
 	// ------------------------------------------------------------------

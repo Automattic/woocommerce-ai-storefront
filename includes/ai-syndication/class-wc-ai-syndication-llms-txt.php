@@ -494,6 +494,56 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[] = '- `{coupon_code}` is optional; omit the entire `&coupon=` parameter when not using one.';
 		$lines[] = '';
 
+		// UCP merchant-extension docs — referenced from the manifest's
+		// `com.woocommerce.ai_syndication` capability as the `spec`
+		// URL. Self-hosted (here, not on GitHub) so that the docs
+		// always match the running plugin version and respect the
+		// site's own access-control policy. The anchor
+		// `#ucp-extension` lets the manifest point at this section
+		// specifically. Paired with the machine-readable JSON Schema
+		// at `/wp-json/wc/ucp/v1/extension/schema`.
+		$ucp_schema_url = function_exists( 'rest_url' )
+			? rtrim( rest_url( 'wc/ucp/v1/extension/schema' ), '/' )
+			: '/wp-json/wc/ucp/v1/extension/schema';
+
+		$lines[] = '<a id="ucp-extension"></a>';
+		$lines[] = '## UCP Extension: com.woocommerce.ai_syndication';
+		$lines[] = '';
+		$lines[] = 'The UCP manifest at `/.well-known/ucp` advertises a merchant-extension capability `com.woocommerce.ai_syndication` alongside the canonical `dev.ucp.shopping.*` capabilities. It carries commerce context (currency, locale, tax/shipping posture) agents need before calling the catalog or checkout endpoints, plus attribution conventions for crediting agent-driven orders.';
+		$lines[] = '';
+		$lines[] = 'Machine-readable JSON Schema:';
+		$lines[] = '';
+		$lines[] = '`' . $ucp_schema_url . '`';
+		$lines[] = '';
+		$lines[] = '### config.store_context';
+		$lines[] = '';
+		$lines[] = '- **currency** — ISO 4217 currency code. All catalog prices quote in this currency. Agents unable to transact here should decline rather than misrepresent the amount.';
+		$lines[] = '- **locale** — BCP 47 locale tag for default customer-facing content language (e.g. `en-US`, `fr-FR`, `zh-Hant-HK`).';
+		$lines[] = '- **country** — ISO 3166-1 alpha-2 for the merchant base country. `null` when not configured.';
+		$lines[] = '- **prices_include_tax** — `true` (EU-typical) means catalog prices are tax-inclusive; `false` (US-typical) means tax is added at checkout. Agents rendering cart previews use this to decide whether to show a tax line.';
+		$lines[] = '- **shipping_enabled** — `true` when the store collects shipping addresses. `false` means digital-only — skip address-collection prompts.';
+		$lines[] = '';
+		$lines[] = '### config.attribution';
+		$lines[] = '';
+		$lines[] = '- **system** — identifier of the attribution system recording agent-originated orders (currently `woocommerce_order_attribution`).';
+		$lines[] = '- **parameters** — documented UTM-style parameters (`utm_source`, `utm_medium`, etc.) the store recognizes.';
+		$lines[] = '- **usage_note** — preferred attribution path. For this plugin: use `POST /wp-json/wc/ucp/v1/checkout-sessions`; the server injects UTM values server-side based on your `UCP-Agent` header. Manual UTM construction on the agent side is a fallback, not the preferred path.';
+		$lines[] = '';
+		$lines[] = '### Product-level extension payload';
+		$lines[] = '';
+		$lines[] = 'Product responses emit a `ratings` field under this namespace when review data exists:';
+		$lines[] = '';
+		$lines[] = '```json';
+		$lines[] = '"extensions": {';
+		$lines[] = '  "com.woocommerce.ai_syndication": {';
+		$lines[] = '    "ratings": { "average": 4.5, "count": 17 }';
+		$lines[] = '  }';
+		$lines[] = '}';
+		$lines[] = '```';
+		$lines[] = '';
+		$lines[] = 'Note: GTIN/UPC/EAN/MPN barcodes are NOT emitted under this extension. They appear in the canonical `variants[].barcodes` field on the UCP variant shape. Our plugin sources them via a separate Store API extension (internal plumbing, not part of the UCP-facing contract).';
+		$lines[] = '';
+
 		/**
 		 * Filter the llms.txt content lines before rendering.
 		 *
