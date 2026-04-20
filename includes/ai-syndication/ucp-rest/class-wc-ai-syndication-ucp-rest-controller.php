@@ -1079,10 +1079,10 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			'$schema'     => 'https://json-schema.org/draft/2020-12/schema',
 			'$id'         => $self_id,
 			'title'       => 'WooCommerce AI Syndication UCP Extension Contract',
-			'description' => 'Schema for the full `com.woocommerce.ai_syndication` extension contract. The top-level `config` property describes the merchant-extension configuration advertised in the UCP manifest at `capabilities[com.woocommerce.ai_syndication][0].config`. The top-level `ratings` property describes the per-product payload emitted under `extensions[com.woocommerce.ai_syndication].ratings` on UCP product responses. Consumers validate each against the property path matching the location they encountered the data at.',
+			'description' => 'Schema for the `com.woocommerce.ai_syndication` extension contract. The top-level `config` property describes the merchant-extension configuration advertised in the UCP manifest at `capabilities[com.woocommerce.ai_syndication][0].config`. Starting 2.0.0, no response-level payloads are emitted under this extension — rating data moved to core `product.rating` per the UCP 2026-04-08 product shape.',
 			'type'        => 'object',
 			'properties'  => [
-				'config'  => [
+				'config' => [
 					'type'        => 'object',
 					'description' => 'Merchant-extension configuration advertised at `capabilities[com.woocommerce.ai_syndication][0].config` in the UCP manifest.',
 					'properties'  => [
@@ -1116,25 +1116,16 @@ class WC_AI_Syndication_UCP_REST_Controller {
 						],
 					],
 				],
-				'ratings' => [
-					'type'        => 'object',
-					'description' => 'Per-product ratings payload emitted on product responses under `extensions[com.woocommerce.ai_syndication].ratings` when review_count > 0. Shape: `{average: number, count: integer}`.',
-					'properties'  => [
-						'average' => [
-							'type'        => 'number',
-							'minimum'     => 0,
-							'maximum'     => 5,
-							'description' => 'Average rating on a 0-5 scale.',
-						],
-						'count'   => [
-							'type'        => 'integer',
-							'minimum'     => 0,
-							'description' => 'Total number of reviews contributing to the average.',
-						],
-					],
-				],
 			],
 		];
+
+		// Note: the `ratings` property previously documented here was
+		// removed in 2.0.0. Rating + review count now emit under core
+		// `product.rating` directly — agents should read the UCP core
+		// product schema for that shape rather than this extension
+		// schema. Keeping the extension capability around for forward-
+		// compat on `store_context` + any future merchant-specific
+		// config, but it currently documents no response-level payloads.
 
 		$response = new WP_REST_Response( $schema, 200 );
 		$response->header( 'Content-Type', 'application/schema+json; charset=utf-8' );

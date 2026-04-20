@@ -253,14 +253,13 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( [ 'store_context' ], array_keys( $config_props ) );
 	}
 
-	public function test_extension_schema_documents_ratings_payload(): void {
-		// Products emit `ratings` under the extension namespace
-		// (`extensions.com.woocommerce.ai_syndication.ratings`) — the
-		// schema must document its shape so agents can validate.
-		// Barcodes are NOT documented here: they're emitted in the
-		// CORE `variant.barcodes` field per the UCP spec, sourced
-		// from a Store API extension that's purely internal plumbing
-		// and doesn't belong in the UCP-layer extension schema.
+	public function test_extension_schema_has_no_response_level_payloads(): void {
+		// 2.0.0+: no response-level payloads are emitted under this
+		// extension. Rating moved to core `product.rating`. The
+		// schema documents only the manifest-level `config` block.
+		// Barcodes were never here (they live on `variants[].barcodes`
+		// per UCP core) and must still be absent — regression guard
+		// for both relocations.
 		\Brain\Monkey\Functions\when( 'rest_url' )->alias(
 			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
 		);
@@ -269,8 +268,10 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$response   = $controller->handle_extension_schema();
 		$data       = $response->get_data();
 
-		$this->assertArrayHasKey( 'ratings', $data['properties'] );
-		// Barcodes live on the core UCP variant shape — not here.
+		// Only `config` at the top level — ratings and barcodes both
+		// absent, documented elsewhere (core).
+		$this->assertSame( [ 'config' ], array_keys( $data['properties'] ) );
+		$this->assertArrayNotHasKey( 'ratings', $data['properties'] );
 		$this->assertArrayNotHasKey( 'barcodes', $data['properties'] );
 	}
 

@@ -1336,7 +1336,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'var_101', $variants[0]['id'] );
 		$this->assertEquals( 'Small', $variants[0]['title'] );
 		$this->assertEquals( 'var_102', $variants[1]['id'] );
-		$this->assertSame( 2000, $variants[1]['price']['amount'] );
+		$this->assertSame( 2000, $variants[1]['list_price']['amount'] );
 	}
 
 	public function test_search_emits_partial_variants_warning_when_variation_fetch_fails(): void {

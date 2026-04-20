@@ -525,19 +525,9 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[] = '';
 		$lines[] = '### Product-level extension payload';
 		$lines[] = '';
-		$lines[] = 'Product responses emit a `ratings` field under this namespace when review data exists:';
+		$lines[] = 'As of 2.0.0, no product-level response fields are emitted under this extension. Rating data moved to core `product.rating` per UCP 2026-04-08. The extension namespace is retained for manifest-level `config.store_context` only, and reserved for forward-compat with future merchant-specific per-product data.';
 		$lines[] = '';
-		$lines[] = '```json';
-		$lines[] = '{';
-		$lines[] = '  "extensions": {';
-		$lines[] = '    "com.woocommerce.ai_syndication": {';
-		$lines[] = '      "ratings": { "average": 4.5, "count": 17 }';
-		$lines[] = '    }';
-		$lines[] = '  }';
-		$lines[] = '}';
-		$lines[] = '```';
-		$lines[] = '';
-		$lines[] = 'Note: GTIN/UPC/EAN/MPN barcodes are NOT emitted under this extension. They appear in the canonical `variants[].barcodes` field on the UCP variant shape. Our plugin sources them via a separate Store API extension (internal plumbing, not part of the UCP-facing contract).';
+		$lines[] = 'Note: GTIN/UPC/EAN/MPN barcodes are emitted on the canonical `variants[].barcodes` field per the UCP variant shape — sourced internally via a Store API extension that is not part of the UCP-facing contract.';
 		$lines[] = '';
 
 		/**

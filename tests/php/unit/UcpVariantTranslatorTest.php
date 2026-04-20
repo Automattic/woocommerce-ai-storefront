@@ -100,8 +100,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$this->variation_fixture()
 		);
 
-		$this->assertSame( 12000, $result['price']['amount'] );
-		$this->assertEquals( 'USD', $result['price']['currency'] );
+		$this->assertSame( 12000, $result['list_price']['amount'] );
+		$this->assertEquals( 'USD', $result['list_price']['currency'] );
 	}
 
 	public function test_translate_includes_sku_when_present(): void {
@@ -181,8 +181,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$this->simple_product_fixture()
 		);
 
-		$this->assertSame( 500, $result['price']['amount'] );
-		$this->assertEquals( 'USD', $result['price']['currency'] );
+		$this->assertSame( 500, $result['list_price']['amount'] );
+		$this->assertEquals( 'USD', $result['list_price']['currency'] );
 	}
 
 	public function test_synthesize_default_includes_sku_when_present(): void {
@@ -286,7 +286,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'compare_at_price', $result );
 		$this->assertSame( 2000, $result['compare_at_price']['amount'] );
 		$this->assertSame( 'USD', $result['compare_at_price']['currency'] );
-		$this->assertSame( 1500, $result['price']['amount'] );
+		$this->assertSame( 1500, $result['list_price']['amount'] );
 	}
 
 	public function test_translate_omits_compare_at_price_when_not_on_sale(): void {
@@ -545,10 +545,10 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
 
-		$this->assertSame( '0.5', $result['shipping_attributes']['weight'] );
-		$this->assertSame( '10', $result['shipping_attributes']['dimensions']['length'] );
-		$this->assertSame( '5', $result['shipping_attributes']['dimensions']['width'] );
-		$this->assertSame( '2', $result['shipping_attributes']['dimensions']['height'] );
+		$this->assertSame( '0.5', $result['metadata']['shipping']['weight'] );
+		$this->assertSame( '10', $result['metadata']['shipping']['dimensions']['length'] );
+		$this->assertSame( '5', $result['metadata']['shipping']['dimensions']['width'] );
+		$this->assertSame( '2', $result['metadata']['shipping']['dimensions']['height'] );
 	}
 
 	public function test_translate_omits_shipping_attributes_when_all_empty(): void {
@@ -591,8 +591,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
 
-		$this->assertSame( '1.2', $result['shipping_attributes']['weight'] );
-		$this->assertArrayNotHasKey( 'dimensions', $result['shipping_attributes'] );
+		$this->assertSame( '1.2', $result['metadata']['shipping']['weight'] );
+		$this->assertArrayNotHasKey( 'dimensions', $result['metadata']['shipping'] );
 	}
 
 	public function test_synthesize_default_emits_shipping_attributes_for_simple_products(): void {
@@ -613,8 +613,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $fixture );
 
-		$this->assertSame( '2.0', $result['shipping_attributes']['weight'] );
-		$this->assertSame( '20', $result['shipping_attributes']['dimensions']['length'] );
+		$this->assertSame( '2.0', $result['metadata']['shipping']['weight'] );
+		$this->assertSame( '20', $result['metadata']['shipping']['dimensions']['length'] );
 	}
 
 	public function test_synthesize_default_also_carries_new_fields(): void {
@@ -662,7 +662,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $fixture );
 
-		$this->assertSame( 5000, $result['price']['amount'] );
-		$this->assertEquals( 'JPY', $result['price']['currency'] );
+		$this->assertSame( 5000, $result['list_price']['amount'] );
+		$this->assertEquals( 'JPY', $result['list_price']['currency'] );
 	}
 }

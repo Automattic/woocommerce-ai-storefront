@@ -448,8 +448,8 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 3, $variants );
 		$this->assertEquals( 'var_101', $variants[0]['id'] );
 		$this->assertEquals( 'Small', $variants[0]['title'] );
-		$this->assertSame( 1000, $variants[0]['price']['amount'] );
-		$this->assertSame( 2000, $variants[2]['price']['amount'] );
+		$this->assertSame( 1000, $variants[0]['list_price']['amount'] );
+		$this->assertSame( 2000, $variants[2]['list_price']['amount'] );
 	}
 
 	public function test_variable_product_skips_variations_that_fail_to_fetch(): void {
@@ -673,7 +673,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		// Variant price should also reflect the normalized stdClass.
 		$variant = $product['variants'][0];
-		$this->assertSame( 42400, $variant['price']['amount'] );
-		$this->assertEquals( 'EUR', $variant['price']['currency'] );
+		$this->assertSame( 42400, $variant['list_price']['amount'] );
+		$this->assertEquals( 'EUR', $variant['list_price']['currency'] );
 	}
 }
