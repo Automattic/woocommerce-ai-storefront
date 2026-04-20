@@ -1214,6 +1214,56 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotContains( 'price_changed', $codes );
 	}
 
+	public function test_price_changed_skipped_for_decimal_string_amount(): void {
+		// Regression: `is_numeric("25.00")` is true, and `(int)"25.00"`
+		// silently truncates to 25. If the current integer-minor-units
+		// price is 3000, a client sending `"25.00"` (wrong encoding —
+		// they meant 2500 minor units or 25 in major units) would
+		// compare 25 !== 3000 and fire a bogus `price_changed`.
+		// UCP amounts are integer minor units by spec; we now require
+		// `is_int()` OR a digit-only string. Anything else skips the
+		// comparison silently.
+		$this->seed_simple_product( 111, 3000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[
+						'item'                => [ 'id' => 'prod_111' ],
+						'quantity'            => 1,
+						'expected_unit_price' => [ 'amount' => '25.00', 'currency' => 'USD' ],
+					],
+				],
+			]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'price_changed', $codes );
+	}
+
+	public function test_price_changed_accepts_digit_only_string_amount(): void {
+		// Digit-only strings ARE valid — they're how JSON-via-PHP
+		// sometimes serializes large integers that would otherwise
+		// hit float precision limits. `"2500"` should still trigger
+		// the comparison on amount mismatch.
+		$this->seed_simple_product( 111, 3000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[
+						'item'                => [ 'id' => 'prod_111' ],
+						'quantity'            => 1,
+						'expected_unit_price' => [ 'amount' => '2500', 'currency' => 'USD' ],
+					],
+				],
+			]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'price_changed', $codes );
+	}
+
 	public function test_line_item_includes_price_includes_tax_flag(): void {
 		$this->seed_simple_product( 111, 2500 );
 
@@ -1450,13 +1500,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '', $captured_locale );
 	}
 
-	public function test_handoff_filter_returning_non_string_is_coerced_safely(): void {
-		// A filter callback returning null/array/int shouldn't fatal
-		// or produce nonsensical output. The handler casts via
-		// `(string)` before emitting, so: null → "", 42 → "42",
-		// array → "Array" (non-fatal). This documents the safety
-		// net so a future refactor can't accidentally introduce a
-		// "Array to string" warning or, worse, an uncaught TypeError.
+	public function test_handoff_filter_returning_non_string_falls_back_to_default(): void {
+		// A misbehaving filter callback returning null/array/object
+		// shouldn't produce PHP "Array to string conversion" notices
+		// or nonsensical output. The handler rejects non-string
+		// returns and falls back to the default English message —
+		// the filter's string contract is documented; this is a
+		// defense against misbehaving callbacks, not a supported
+		// alternative return type. Test sends null; asserts the
+		// default English message survives to the response.
 		$this->stub_apply_filters_for( 'wc_ai_syndication_checkout_handoff_message', null );
 
 		$this->seed_simple_product( 111, 2500 );
@@ -1468,8 +1520,6 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// Handler didn't fatal (status 201 = happy path preserved).
 		$this->assertSame( 201, $result['status'] );
 
-		// Handoff message present + is a string (empty from null
-		// cast), not missing + not non-string.
 		$handoff = array_filter(
 			$result['data']['messages'],
 			static fn( array $m ): bool => 'buyer_handoff_required' === ( $m['code'] ?? '' )
@@ -1477,6 +1527,36 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $handoff );
 		$msg = array_values( $handoff )[0];
 		$this->assertIsString( $msg['content'] );
+		// Non-empty — the fallback default survives rather than the
+		// non-string filter output collapsing to an empty string.
+		$this->assertNotSame( '', $msg['content'] );
+	}
+
+	public function test_handoff_filter_returning_array_falls_back_to_default(): void {
+		// Arrays specifically — the case that would emit
+		// "Array to string conversion" notice under the old
+		// `(string)` cast pattern. Our safe-coercion path returns
+		// the default for this instead of pollute the log.
+		$this->stub_apply_filters_for(
+			'wc_ai_syndication_checkout_handoff_message',
+			[ 'oops', 'array', 'return' ]
+		);
+
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertSame( 201, $result['status'] );
+		$handoff = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => 'buyer_handoff_required' === ( $m['code'] ?? '' )
+		);
+		$msg = array_values( $handoff )[0];
+		$this->assertIsString( $msg['content'] );
+		$this->assertNotSame( '', $msg['content'] );
+		$this->assertStringNotContainsString( 'Array', $msg['content'] );
 	}
 
 	public function test_locale_boundary_lengths(): void {

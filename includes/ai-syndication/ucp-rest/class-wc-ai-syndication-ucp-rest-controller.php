@@ -863,11 +863,21 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					'locale'     => $request_locale,
 				]
 			);
-			$messages[]      = [
+			// Notice-free coercion. A third-party filter returning an
+			// array/object would trigger an "Array to string conversion"
+			// PHP notice on `(string) $handoff_content`. Only accept
+			// string returns; fall back to the default for anything
+			// else. The filter docblock documents the string contract,
+			// so this is a defense against misbehaving callbacks, not
+			// a supported alternative return type.
+			if ( ! is_string( $handoff_content ) ) {
+				$handoff_content = $default_handoff;
+			}
+			$messages[] = [
 				'type'     => 'error',
 				'code'     => 'buyer_handoff_required',
 				'severity' => 'requires_buyer_input',
-				'content'  => (string) $handoff_content,
+				'content'  => $handoff_content,
 			];
 
 			// `total_is_provisional` — UCP spec requires a `total`
@@ -2101,11 +2111,22 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// warnings; pulling the value into a local and checking
 		// `is_array` is the clean defensive pattern (mirrors the
 		// guard on `$line_item['item']` earlier in the function).
+		//
+		// Amount type-strictness: UCP amounts are integer minor units.
+		// `is_numeric()` accepts decimal strings and floats, which
+		// `(int)` would silently truncate — `"25.00"` → 25,
+		// potentially firing a bogus `price_changed` for a client
+		// using the wrong encoding. Require `is_int()` OR a
+		// digit-only string (`ctype_digit`). Decimals, floats,
+		// negatives, and scientific notation all skip the comparison
+		// without emitting a warning.
 		$expected_unit_price = $line_item['expected_unit_price'] ?? null;
-		if ( is_array( $expected_unit_price )
-			&& isset( $expected_unit_price['amount'] )
-			&& is_numeric( $expected_unit_price['amount'] )
-		) {
+		$expected_amount_raw = is_array( $expected_unit_price )
+			? ( $expected_unit_price['amount'] ?? null )
+			: null;
+		$amount_is_integer_like = is_int( $expected_amount_raw )
+			|| ( is_string( $expected_amount_raw ) && ctype_digit( $expected_amount_raw ) );
+		if ( is_array( $expected_unit_price ) && $amount_is_integer_like ) {
 			$expected_currency = isset( $expected_unit_price['currency'] )
 				? (string) $expected_unit_price['currency']
 				: '';
@@ -2113,7 +2134,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				|| 0 === strcasecmp( $expected_currency, $store_currency );
 
 			if ( $currency_matches ) {
-				$expected = (int) $expected_unit_price['amount'];
+				$expected = (int) $expected_amount_raw;
 				if ( $expected !== $unit_price_minor ) {
 					$messages[] = [
 						'type'     => 'warning',
