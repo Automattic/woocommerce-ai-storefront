@@ -232,22 +232,24 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	}
 
 	/**
-	 * Extract `published_at` / `updated_at` ISO 8601 timestamps from a
-	 * WC Store API product response.
+	 * Extract `published_at` / `updated_at` timestamps from a WC Store
+	 * API product response.
 	 *
-	 * Shape drift across WC versions:
-	 *   - WC 9.5+ emits `date_created` / `date_modified` as ISO 8601
-	 *     strings directly (e.g. `"2026-04-20T10:00:00"`).
-	 *   - Older WC versions (≤ 9.4 on some configurations) emit an
-	 *     object `{raw: "...", format_to_edit: "..."}` where `raw`
-	 *     carries the MySQL datetime. Not ISO 8601, but close enough
-	 *     that agents parsing it with a lenient date parser won't break.
+	 * Source location: our own Store API extension (registered in
+	 * `WC_AI_Syndication_Store_Api_Extension`). WC 9.5+ strips
+	 * `date_created` / `date_modified` from Store API product
+	 * responses by default — verified against a live catalog where
+	 * not a single product had those keys at the top level. Our
+	 * extension re-exposes them under
+	 * `extensions[com-woocommerce-ai-syndication].{date_created,date_modified}`,
+	 * already formatted as RFC 3339 UTC strings (`Y-m-d\TH:i:s\Z`),
+	 * which matches the UCP core product shape directly.
 	 *
-	 * We accept both shapes and return the best representation available.
-	 * Agents get whichever form the source emits — if the `raw` variant
-	 * is MySQL datetime (space-separated), it's still monotonically
-	 * comparable for "is this newer than my last sync?", which is the
-	 * primary use case.
+	 * Defensive fallback: if the extension payload is absent (e.g.
+	 * Blocks inactive, our plugin not yet registered, direct fixture
+	 * in a test), we also check the top-level keys for
+	 * forward-compat in case WC ever starts emitting them natively.
+	 * Omits the key rather than synthesizing when no source is available.
 	 *
 	 * Returns an array with keys `published_at` / `updated_at` only
 	 * when the corresponding source field is present and non-empty.
@@ -256,6 +258,15 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	 * @return array{published_at?: string, updated_at?: string}
 	 */
 	private static function extract_timestamps( array $wc_product ): array {
+		// Store API registers extension data under a hyphenated
+		// namespace (`com-woocommerce-ai-syndication`), distinct from
+		// the dotted UCP-level namespace (`com.woocommerce.ai_syndication`).
+		// Hardcoded here rather than pulled from the extension class
+		// so the translator stays decoupled — the translator is a
+		// pure data-shape function and doesn't autoload Store API
+		// machinery at test time.
+		$ext = $wc_product['extensions']['com-woocommerce-ai-syndication'] ?? [];
+
 		$map = [
 			'date_created'  => 'published_at',
 			'date_modified' => 'updated_at',
@@ -263,13 +274,12 @@ class WC_AI_Syndication_UCP_Product_Translator {
 
 		$out = [];
 		foreach ( $map as $wc_key => $ucp_key ) {
-			$raw = $wc_product[ $wc_key ] ?? null;
-
-			// Object form — prefer `raw` (MySQL datetime), fall back
-			// to `format_to_edit` which is the same value formatted.
-			if ( is_array( $raw ) ) {
-				$raw = $raw['raw'] ?? ( $raw['format_to_edit'] ?? null );
-			}
+			// Prefer the extension-sourced value (our Store API
+			// extension formats these as RFC 3339 / ISO 8601 UTC
+			// already). Fall back to the top-level key for
+			// forward-compat with any future WC version that
+			// re-adds native date emission to Store API.
+			$raw = $ext[ $wc_key ] ?? ( $wc_product[ $wc_key ] ?? null );
 
 			if ( is_string( $raw ) && '' !== $raw ) {
 				$out[ $ucp_key ] = $raw;
@@ -652,7 +662,17 @@ class WC_AI_Syndication_UCP_Product_Translator {
 				'values' => $values,
 			];
 
-			if ( ! empty( $attribute['has_variations'] ) ) {
+			// Strict `=== true` rather than `! empty()` because
+			// `empty()` treats string `"false"` (a real PHP footgun:
+			// non-empty string → truthy, but that's exactly the value
+			// an upstream field might carry) as truthy — which would
+			// misclassify a non-variation attribute as a variation
+			// axis. On older WC where the field is genuinely missing,
+			// the attribute gets routed to `metadata_attributes`
+			// (informational) rather than `options[]` — conservative
+			// default that prevents broken variant pickers on legacy
+			// installations.
+			if ( true === ( $attribute['has_variations'] ?? false ) ) {
 				$options[] = $entry;
 			} else {
 				$metadata[] = $entry;
