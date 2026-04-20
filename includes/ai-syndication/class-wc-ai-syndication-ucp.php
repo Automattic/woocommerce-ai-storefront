@@ -156,19 +156,12 @@ class WC_AI_Syndication_Ucp {
 	 *     WooCommerce's native Shareable Checkout flow. Merchants
 	 *     keep ownership of payment, tax, fulfillment.
 	 *
-	 * Service-level `config` preserves the purchase-URL templates and
-	 * attribution guidance we emitted pre-1.3.0. Agents that consume
-	 * our UCP endpoints rarely need these — our checkout-sessions
-	 * handler assembles the final URL itself — but the config is
-	 * still useful documentation for merchants and for agents that
-	 * want to construct checkout URLs directly without the UCP round
-	 * trip. UCP schema permits `config` as additionalProperties on
-	 * any entity, so strict consumers ignore it gracefully.
-	 *
-	 * A sibling `store_context` object declares merchant-level
+	 * The merchant extension capability `com.woocommerce.ai_syndication`
+	 * sits alongside the canonical `dev.ucp.shopping.*` capabilities and
+	 * declares a single `config.store_context` block — merchant-level
 	 * context (currency, locale, country, tax/shipping posture) so
 	 * agents know what currency they'll be quoting in and whether
-	 * the catalog price matches the checkout price — without having
+	 * the catalog price matches the checkout price, without having
 	 * to either fetch llms.txt first or call the Store API. Added in
 	 * 1.4.5 in response to cross-agent review feedback that surfaced
 	 * this as the dominant manifest-level gap. See
@@ -191,36 +184,20 @@ class WC_AI_Syndication_Ucp {
 	public function generate_manifest( $settings ) {
 		$ucp_endpoint = rest_url( 'wc/ucp/v1' );
 
-		// Attribution conventions for the WooCommerce Order
-		// Attribution system. Used to document the UTM parameter
-		// contract so merchant analytics segment AI-sourced orders
-		// consistently. Canonical guidance lives in llms.txt (the
-		// human-readable document) per spec-discipline: UCP doesn't
-		// define attribution semantics, so machine-readable hint
-		// here must not pretend to be canonical — it's merchant
-		// metadata, hence the `com.woocommerce.*` extension home.
-		//
-		// Purchase URL templates (checkout_link, add_to_cart) that
-		// lived here before 1.6.5 were removed. The canonical UCP
-		// checkout path is the `POST /checkout-sessions` API: agents
-		// send line items, the server constructs the continue_url
-		// (with these UTM parameters pre-attached from the
-		// UCP-Agent header), and returns `status: requires_escalation`.
-		// Client-side URL construction from templates was the "less
-		// preferred" path per the UCP spec's SHOULD directive on
-		// business-provided continue_url. Spec-strict agents use
-		// the API; legacy path is documented in llms.txt only.
-		$attribution_config = [
-			'spec'       => 'https://woocommerce.com/document/order-attribution-tracking/',
-			'system'     => 'woocommerce_order_attribution',
-			'parameters' => [
-				'utm_source'    => 'Your agent identifier (e.g. chatgpt, gemini, perplexity)',
-				'utm_medium'    => 'Must be set to "ai_agent"',
-				'utm_campaign'  => 'Optional campaign name',
-				'ai_session_id' => 'Conversation/session identifier for tracking',
-			],
-			'usage_note' => 'The UCP /checkout-sessions endpoint adds utm_source + utm_medium automatically from the UCP-Agent header. See llms.txt for the canonical agent-attribution flow.',
-		];
+		// Attribution used to be advertised here as an extension
+		// config block (`config.attribution`) so agents could read
+		// UTM parameter conventions off the manifest. Removed: the
+		// attribution contract is entirely server-side — the
+		// `POST /checkout-sessions` endpoint constructs a
+		// `continue_url` with `utm_source` + `utm_medium=ai_agent`
+		// pre-attached from the `UCP-Agent` header, so agents don't
+		// need to read or replicate the UTM schema to be correctly
+		// attributed. The human-readable attribution flow (including
+		// the hostname→brand mapping table and the fallback URL
+		// templates for non-UCP flows) still lives in llms.txt.
+		// Duplicating it under a machine-readable key encouraged
+		// agents to construct URLs client-side — the exact path the
+		// UCP spec's `continue_url` directive steers away from.
 
 		// Base docs URL for the version-pinned ucp.dev spec site.
 		// All `spec` and `schema` URLs route through the same
@@ -314,9 +291,10 @@ class WC_AI_Syndication_Ucp {
 
 					// Merchant-specific extension capability. Carries
 					// commerce context (currency, locale, tax/shipping
-					// posture) and attribution conventions that UCP
-					// doesn't define but agents benefit from knowing
-					// upfront. Uses the spec-defined extension pattern
+					// posture) that UCP doesn't define but agents benefit
+					// from knowing upfront — currency for price quoting,
+					// tax/shipping posture so quoted totals don't
+					// mislead. Uses the spec-defined extension pattern
 					// (`extends` pointing at a parent service/capability)
 					// rather than a root-level custom field — this
 					// is the idiomatic UCP home for vendor-specific
@@ -357,7 +335,6 @@ class WC_AI_Syndication_Ucp {
 								: '/wp-json/wc/ucp/v1/extension/schema',
 							'config'  => [
 								'store_context' => $this->build_store_context(),
-								'attribution'   => $attribution_config,
 							],
 						],
 					],

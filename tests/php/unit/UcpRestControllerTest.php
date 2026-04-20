@@ -230,6 +230,29 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'shipping_enabled', $store_context );
 	}
 
+	public function test_extension_schema_does_not_document_attribution(): void {
+		// Attribution is handled server-side by the /checkout-sessions
+		// endpoint (utm_source + utm_medium are injected into the
+		// continue_url from the UCP-Agent header). Duplicating that
+		// contract under a machine-readable `config.attribution` key
+		// encouraged agents to construct checkout URLs client-side —
+		// the exact path the UCP spec steers away from. If a future
+		// change re-adds attribution here, this test fires and forces
+		// a re-review: does the new data genuinely need a schema home,
+		// or is it already covered by the runtime contract?
+		\Brain\Monkey\Functions\when( 'rest_url' )->alias(
+			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
+		);
+
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_extension_schema();
+		$data       = $response->get_data();
+
+		$config_props = $data['properties']['config']['properties'];
+		$this->assertArrayNotHasKey( 'attribution', $config_props );
+		$this->assertSame( [ 'store_context' ], array_keys( $config_props ) );
+	}
+
 	public function test_extension_schema_documents_ratings_payload(): void {
 		// Products emit `ratings` under the extension namespace
 		// (`extensions.com.woocommerce.ai_syndication.ratings`) — the

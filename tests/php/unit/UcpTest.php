@@ -14,9 +14,10 @@
  *   2. Pull-model posture — zero capabilities, zero payment_handlers.
  *      This is the plugin's core product decision (no delegated checkout,
  *      no identity linking, no agent-driven order flows).
- *   3. Plugin-specific config — the purchase_urls and attribution nested
- *      inside service.config. Permissive by design (UCP allows it), but
- *      agents that learn our namespace depend on the shape.
+ *   3. Plugin-specific config — the `store_context` nested inside
+ *      the `com.woocommerce.ai_syndication` extension capability.
+ *      Permissive by design (UCP allows it), but agents that learn
+ *      our namespace depend on the shape.
  *
  * @package WooCommerce_AI_Syndication
  */
@@ -301,8 +302,12 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// which argued against keeping the template library here.
 		//
 		// Post-1.6.5, the checkout capability is canonical UCP only.
-		// Merchant-specific attribution + store_context lives in
-		// the `com.woocommerce.ai_syndication` extension capability.
+		// Merchant-specific `store_context` lives in the
+		// `com.woocommerce.ai_syndication` extension capability;
+		// attribution was subsequently dropped from the extension
+		// too (the server-side `continue_url` injects UTM values
+		// from the UCP-Agent header, making a machine-readable
+		// attribution block redundant with the live contract).
 		$manifest = $this->ucp->generate_manifest( [] );
 		$binding  = $manifest['ucp']['capabilities']['dev.ucp.shopping.checkout'][0];
 
@@ -361,8 +366,8 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// Regression guard on the exact capability set:
 		//   - 3 canonical UCP capabilities we implement
 		//     (catalog.search, catalog.lookup, checkout)
-		//   - 1 merchant-specific extension carrying store_context +
-		//     attribution (com.woocommerce.ai_syndication)
+		//   - 1 merchant-specific extension carrying store_context
+		//     only (com.woocommerce.ai_syndication)
 		//
 		// Extensions use the `extends` field to link back to the
 		// parent capability/service; canonical capabilities have
@@ -447,13 +452,17 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	// pointing at a parent). The five store_context contract fields
 	// are unchanged; only the path in the manifest changed.
 	//
-	// The extension also now carries attribution guidance (moved
-	// from the checkout capability's config in the same release).
+	// 1.6.5 also parked an `attribution` config block under the same
+	// extension capability; it was later removed once the server-side
+	// `continue_url` attribution contract was deemed sufficient
+	// (utm_source + utm_medium are injected by the `/checkout-sessions`
+	// endpoint, so agents don't need to read UTM conventions off the
+	// manifest). `store_context` is the sole remaining config key.
 
 	/**
-	 * Resolve the extension's config block for store_context / attribution
-	 * tests. Pre-1.6.5 this was `$manifest['store_context']`; post-1.6.5
-	 * it's `$manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0]['config']['store_context']`.
+	 * Resolve the extension's config.store_context block. Pre-1.6.5
+	 * this was `$manifest['store_context']`; post-1.6.5 it's
+	 * `$manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0]['config']['store_context']`.
 	 */
 	private function get_store_context(): array {
 		$manifest = $this->ucp->generate_manifest( [] );
@@ -633,33 +642,30 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Layer 3: com.woocommerce.ai_syndication extension — attribution
+	// Layer 3: checkout capability + extension-config posture
 	// ------------------------------------------------------------------
 	//
-	// 1.6.5 structural change rationale:
-	//   - Pre-1.6.5 attribution config lived at
-	//     `capabilities["dev.ucp.shopping.checkout"][0].config.attribution`
-	//   - Post-1.6.5 it lives at
-	//     `capabilities["com.woocommerce.ai_syndication"][0].config.attribution`
+	// Historical sweep:
+	//   - Pre-1.6.5 the checkout capability carried a `config` block
+	//     with purchase-URL templates + attribution guidance. Both
+	//     were moved out in 1.6.5: URL templates went to llms.txt
+	//     only (canonical flow is POST /checkout-sessions), and
+	//     attribution moved into the com.woocommerce.ai_syndication
+	//     extension as `config.attribution`.
+	//   - A later sweep removed extension `config.attribution`
+	//     entirely. The attribution contract is server-side: our
+	//     `/checkout-sessions` endpoint injects utm_source +
+	//     utm_medium into the `continue_url` based on the UCP-Agent
+	//     header, so agents don't need to read UTM conventions
+	//     off the manifest. llms.txt still carries the human-
+	//     readable attribution narrative (hostname→brand table,
+	//     fallback URL templates for non-UCP flows).
 	//
-	// The canonical checkout capability stays pure UCP (no
-	// attribution config). Attribution conventions are merchant-
-	// specific (UCP doesn't define the attribution schema), so
-	// they belong in the extension capability. llms.txt carries
-	// the canonical human-readable guidance; the extension config
-	// is the machine-readable mirror.
-	//
-	// The purchase_urls test suite (11 tests total from 1.3.x)
-	// was removed in 1.6.5 because the URL templates themselves
-	// were removed — the canonical UCP checkout path is now the
-	// POST /checkout-sessions API, and template-based direct URL
-	// construction is documented only in llms.txt for agents that
-	// cannot use the API.
-
-	private function get_attribution(): array {
-		$manifest = $this->ucp->generate_manifest( [] );
-		return $manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0]['config']['attribution'];
-	}
+	// The tests below guard the two resulting invariants:
+	//   - `dev.ucp.shopping.checkout` has no `config` block at all.
+	//   - `com.woocommerce.ai_syndication.config` only carries
+	//      `store_context` — no `attribution`, no UTM schema,
+	//      no purchase URL templates.
 
 	public function test_checkout_capability_has_no_purchase_urls_after_1_6_5(): void {
 		// Regression guard for the 1.6.5 removal. If any future
@@ -673,44 +679,21 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'config', $binding );
 	}
 
-	public function test_attribution_declares_woocommerce_order_attribution_system(): void {
-		// The plugin's attribution strategy is "use WC's built-in
-		// system" — not a custom invention. The `system` field makes
-		// that explicit for agents that want to verify.
-		$this->assertSame( 'woocommerce_order_attribution', $this->get_attribution()['system'] );
-	}
+	public function test_extension_config_contains_only_store_context(): void {
+		// After dropping `config.attribution`, the only remaining
+		// config key under the extension capability should be
+		// `store_context`. If a future refactor adds another
+		// machine-readable config block here, this test fires and
+		// forces a re-review: does it truly belong under a merchant-
+		// specific extension, or should it go in llms.txt narrative
+		// (the usual home for things UCP doesn't define)? Catches
+		// accidental reintroduction of attribution or sibling blocks
+		// that duplicate server-side contracts.
+		$manifest = $this->ucp->generate_manifest( [] );
+		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0]['config'];
 
-	public function test_attribution_exposes_required_utm_parameters(): void {
-		$attr = $this->get_attribution();
-
-		foreach ( [ 'utm_source', 'utm_medium', 'utm_campaign', 'ai_session_id' ] as $required ) {
-			$this->assertArrayHasKey( $required, $attr['parameters'] );
-		}
-	}
-
-	public function test_attribution_utm_medium_documents_required_value(): void {
-		// utm_medium MUST be "ai_agent" for the PHP-side detector to
-		// capture the order. Document that in the param description
-		// so agents know it's not free-form.
-		$this->assertStringContainsString(
-			'ai_agent',
-			$this->get_attribution()['parameters']['utm_medium']
-		);
-	}
-
-	public function test_attribution_spec_points_to_wc_order_attribution_docs(): void {
-		$this->assertSame(
-			'https://woocommerce.com/document/order-attribution-tracking/',
-			$this->get_attribution()['spec']
-		);
-	}
-
-	public function test_attribution_usage_note_points_to_llms_txt_for_canonical_flow(): void {
-		// 1.6.5: the canonical human-readable attribution guidance
-		// lives in llms.txt, not in the UCP manifest. The usage_note
-		// should direct readers there rather than duplicating the
-		// full narrative.
-		$this->assertStringContainsString( 'llms.txt', $this->get_attribution()['usage_note'] );
+		$this->assertSame( [ 'store_context' ], array_keys( $config ) );
+		$this->assertArrayNotHasKey( 'attribution', $config );
 	}
 
 	// ------------------------------------------------------------------
