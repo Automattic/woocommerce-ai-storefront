@@ -1182,6 +1182,38 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'price_changed', $codes );
 	}
 
+	public function test_malformed_expected_unit_price_does_not_fatal(): void {
+		// Regression: an agent sending `expected_unit_price` as a
+		// string/int/bool (instead of an array) would fatal PHP 8
+		// with "Trying to access array offset on value of type X"
+		// before we could return a structured response. The shape
+		// guard (`is_array()` check) drops the field silently —
+		// treating it as absent rather than crashing. No warning is
+		// emitted because this is a malformed-client bug, not a
+		// price-drift signal.
+		$this->seed_simple_product( 111, 3000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[
+						'item'                => [ 'id' => 'prod_111' ],
+						'quantity'            => 1,
+						// String where an object was expected.
+						'expected_unit_price' => '25.00',
+					],
+				],
+			]
+		);
+
+		// Handler didn't crash (HTTP 201, not 500), line item is
+		// still echoed, and no price_changed warning fires.
+		$this->assertSame( 201, $result['status'] );
+		$this->assertCount( 1, $result['data']['line_items'] );
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'price_changed', $codes );
+	}
+
 	public function test_line_item_includes_price_includes_tax_flag(): void {
 		$this->seed_simple_product( 111, 2500 );
 

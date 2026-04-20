@@ -2094,17 +2094,26 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// us to silently skip the check rather than emit a confusing
 		// warning; agents can verify the store currency from the
 		// manifest before calling.
-		if ( isset( $line_item['expected_unit_price']['amount'] )
-			&& is_numeric( $line_item['expected_unit_price']['amount'] )
+		// Extract + shape-guard `expected_unit_price` before nested
+		// array access. PHP 8 `isset($str['x']['y'])` on a string-
+		// typed `$line_item['expected_unit_price']` can emit
+		// "Trying to access array offset on value of type string"
+		// warnings; pulling the value into a local and checking
+		// `is_array` is the clean defensive pattern (mirrors the
+		// guard on `$line_item['item']` earlier in the function).
+		$expected_unit_price = $line_item['expected_unit_price'] ?? null;
+		if ( is_array( $expected_unit_price )
+			&& isset( $expected_unit_price['amount'] )
+			&& is_numeric( $expected_unit_price['amount'] )
 		) {
-			$expected_currency = isset( $line_item['expected_unit_price']['currency'] )
-				? (string) $line_item['expected_unit_price']['currency']
+			$expected_currency = isset( $expected_unit_price['currency'] )
+				? (string) $expected_unit_price['currency']
 				: '';
 			$currency_matches  = '' === $expected_currency
 				|| 0 === strcasecmp( $expected_currency, $store_currency );
 
 			if ( $currency_matches ) {
-				$expected = (int) $line_item['expected_unit_price']['amount'];
+				$expected = (int) $expected_unit_price['amount'];
 				if ( $expected !== $unit_price_minor ) {
 					$messages[] = [
 						'type'     => 'warning',
