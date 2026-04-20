@@ -1200,25 +1200,31 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 	/**
 	 * Translate a UCP search request's body fields onto WC Store API
-	 * query params and surface any category-resolution warnings.
+	 * query params and surface any resolution warnings.
 	 *
-	 * Mapping:
-	 *   query                → search       (full-text match)
-	 *   filters.categories   → category     (comma-joined term IDs)
-	 *   filters.price.min    → min_price    (presentment units, string)
-	 *   filters.price.max    → max_price
+	 * The mapping covers `query`, `pagination`, `sort`, and every
+	 * well-known entry under `filters` (categories, tags, price range,
+	 * stock status, featured flag, rating floor, attribute filters,
+	 * on-sale). The authoritative list is the inline code below — this
+	 * docblock deliberately avoids enumerating every filter key to keep
+	 * from drifting as new filters are added.
 	 *
 	 * Non-object `filters`, unknown keys, and malformed nested shapes
 	 * are silently ignored — returning empty `$params` is equivalent
 	 * to "list all products," a sensible fallback for garbled input.
 	 *
-	 * Unresolvable category strings in `filters.categories` ARE
-	 * surfaced: they produce a `category_not_found` warning in the
-	 * returned messages array so agents learn their filter didn't
+	 * Unresolvable category/tag strings and malformed sort inputs ARE
+	 * surfaced: they produce `category_not_found`, `tag_not_found`,
+	 * `invalid_sort_field`, or `invalid_sort_shape` warnings in the
+	 * returned messages array so agents learn their filter/sort didn't
 	 * apply (instead of silently receiving the unfiltered catalog).
 	 *
-	 * @return array{0: array<string, string|int|bool>, 1: array<int, array<string, mixed>>}
-	 *         [params, messages]
+	 * @return array{0: array<string, mixed>, 1: array<int, array<string, mixed>>}
+	 *         [params, messages]. `params` contains Store API query
+	 *         arguments with heterogeneous value shapes depending on the
+	 *         mapped filter: scalar values for simple query params, arrays
+	 *         of scalars for multi-value filters, and nested arrays of
+	 *         objects for structured filters such as attributes.
 	 */
 	private static function map_ucp_search_to_store_api( WP_REST_Request $request ): array {
 		$params   = [];
@@ -1302,6 +1308,75 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$params['per_page'] = $limit;
 		$params['page']     = $page;
 
+		// Sort order — top-level `sort: {field, direction}`, not under
+		// filters because it's an ordering concern rather than a
+		// result-set restriction. Maps to Store API's `orderby` + `order`.
+		// Unknown fields emit an `invalid_sort_field` warning rather
+		// than fall through silently: a mistyped sort that returns
+		// default ordering is worse than returning default-with-a-hint,
+		// because agents otherwise assume their sort took effect.
+		$sort = $request->get_param( 'sort' );
+		if ( is_array( $sort ) ) {
+			// Defensive: non-scalar field/direction (e.g. an agent
+			// sending `{sort: {field: []}}`) would coerce to "Array"
+			// via (string) cast and trigger a misleading
+			// `invalid_sort_field` warning with value "array".
+			// Require string inputs; anything else surfaces as a
+			// dedicated `invalid_sort_shape` warning so agents can
+			// distinguish "unknown field" from "malformed input."
+			$raw_field     = $sort['field'] ?? '';
+			$raw_direction = $sort['direction'] ?? 'asc';
+
+			if ( ! is_string( $raw_field ) || ! is_string( $raw_direction ) ) {
+				$messages[] = [
+					'type'     => 'warning',
+					'code'     => 'invalid_sort_shape',
+					'severity' => 'advisory',
+					'path'     => '$.sort',
+					'content'  => __( 'sort.field and sort.direction must be strings; using default ordering.', 'woocommerce-ai-syndication' ),
+				];
+			} else {
+				$field     = strtolower( trim( $raw_field ) );
+				$direction = strtolower( trim( $raw_direction ) );
+
+				// UCP-friendly names → Store API orderby values. `newest`
+				// is an alias for date-desc — more human-intuitive than
+				// Store API's `date` + `order=desc` but we still
+				// translate here so agents have one sort vocabulary.
+				$orderby_map = [
+					'price'      => 'price',
+					'title'      => 'title',
+					'date'       => 'date',
+					'newest'     => 'date',
+					'popularity' => 'popularity',
+					'rating'     => 'rating',
+					'menu_order' => 'menu_order',
+				];
+				if ( isset( $orderby_map[ $field ] ) ) {
+					$params['orderby'] = $orderby_map[ $field ];
+					$params['order']   = ( 'desc' === $direction ) ? 'desc' : 'asc';
+					// `newest` implies desc regardless of caller intent
+					// — "newest ascending" is a contradiction we normalize
+					// rather than silently honor.
+					if ( 'newest' === $field ) {
+						$params['order'] = 'desc';
+					}
+				} elseif ( '' !== $field ) {
+					$messages[] = [
+						'type'     => 'warning',
+						'code'     => 'invalid_sort_field',
+						'severity' => 'advisory',
+						'path'     => '$.sort.field',
+						'content'  => sprintf(
+							/* translators: %s is the unsupported sort field the agent sent. */
+							__( 'Sort field "%s" is not supported; using default ordering.', 'woocommerce-ai-syndication' ),
+							$raw_field
+						),
+					];
+				}
+			}
+		}
+
 		$filters = $request->get_param( 'filters' );
 		if ( ! is_array( $filters ) ) {
 			return [ $params, $messages ];
@@ -1372,7 +1447,161 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			}
 		}
 
+		// In-stock filter — agents transacting in real time shouldn't
+		// pitch products they can't actually deliver. Store API's
+		// stock_status param takes an array enum (instock/outofstock/
+		// onbackorder); when an agent opts in with `in_stock: true` we
+		// restrict to `["instock"]`. Not forwarding when the caller
+		// passes false or omits the filter, so the default remains
+		// "whatever the merchant configured for frontend visibility".
+		if ( isset( $filters['in_stock'] ) && ( true === $filters['in_stock'] || 'true' === $filters['in_stock'] ) ) {
+			$params['stock_status'] = [ 'instock' ];
+		}
+
+		// Featured filter — merchandising signal. Merchants flag hero
+		// products via WC's native "featured" toggle; agents surfacing
+		// a "staff picks" or "popular now" carousel can request only
+		// those with `featured: true`.
+		if ( isset( $filters['featured'] ) && ( true === $filters['featured'] || 'true' === $filters['featured'] ) ) {
+			$params['featured'] = true;
+		}
+
+		// Min rating filter — agents seeking quality ("4+ stars only")
+		// map to Store API's `rating` param, which takes an array of
+		// acceptable integer ratings (1–5). We expand `min_rating: N`
+		// to `[N, N+1, ..., 5]` — Store API's shape is a set-inclusion
+		// filter, not a floor. Clamping to [1,5] keeps the array
+		// non-empty and the semantics coherent.
+		if ( isset( $filters['min_rating'] ) && is_numeric( $filters['min_rating'] ) ) {
+			$min     = max( 1, min( 5, (int) $filters['min_rating'] ) );
+			$ratings = [];
+			for ( $r = $min; $r <= 5; $r++ ) {
+				$ratings[] = $r;
+			}
+			$params['rating'] = $ratings;
+		}
+
+		// Attribute filters — `filters.attributes: {color: ["red"], size: ["M"]}`.
+		// WC uses `pa_*` taxonomies for custom product attributes;
+		// agents typically don't know the `pa_` convention, so we
+		// prepend it when the caller's key doesn't already have it.
+		// The Store API `attributes` param is an array of objects with
+		// `attribute` (taxonomy), `slug[]` (term slugs), and `operator`.
+		// Unlike categories/tags we don't resolve to term IDs first —
+		// Store API accepts slugs directly for attributes, and
+		// invalid slugs produce empty results rather than errors.
+		if ( isset( $filters['attributes'] ) && is_array( $filters['attributes'] ) ) {
+			$attribute_params = self::build_attribute_filter_params( $filters['attributes'] );
+			if ( ! empty( $attribute_params ) ) {
+				$params['attributes'] = $attribute_params;
+			}
+		}
+
 		return [ $params, $messages ];
+	}
+
+	/**
+	 * Build the Store API `attributes` filter array from a UCP-shaped
+	 * attributes map.
+	 *
+	 * Input : `{color: ["red", "blue"], size: ["M"], pa_brand: ["nike"]}`
+	 * Output: `[
+	 *   {attribute: "pa_color", slug: ["red","blue"], operator: "in"},
+	 *   {attribute: "pa_size",  slug: ["m"],          operator: "in"},
+	 *   {attribute: "pa_brand", slug: ["nike"],       operator: "in"},
+	 * ]`
+	 *
+	 * Each attribute key is normalized into a WooCommerce `pa_`
+	 * taxonomy name by stripping any leading `pa_` (case-insensitive),
+	 * sanitizing the remainder with `sanitize_title()`, and re-applying
+	 * the `pa_` prefix. Each value is likewise converted to a sanitized
+	 * slug via `sanitize_title()`, which does more than just lowercase
+	 * (spaces → dashes, accents → ASCII, entity stripping, etc.).
+	 * Empty arrays, non-array values, numeric keys, and entries that
+	 * collapse to `pa_` after normalization are skipped so a malformed
+	 * entry doesn't poison the whole filter list.
+	 *
+	 * @param array<mixed, mixed> $attribute_map
+	 * @return array<int, array{attribute: string, slug: array<int, string>, operator: string}>
+	 */
+	private static function build_attribute_filter_params( array $attribute_map ): array {
+		$result = [];
+		foreach ( $attribute_map as $key => $values ) {
+			// Skip numeric keys — a malformed list-shaped input like
+			// `filters.attributes: [["red"]]` produces integer keys
+			// (0, 1, ...) which would cast to strings and forward as
+			// `pa_0`, `pa_1` taxonomies. Those match no real attribute
+			// and silently restrict the catalog to zero results with
+			// no signal. Attribute axes are named; numeric keys are
+			// always a shape bug.
+			if ( ! is_string( $key ) ) {
+				continue;
+			}
+			if ( ! is_array( $values ) || empty( $values ) ) {
+				continue;
+			}
+
+			// Normalize the taxonomy key. Reject empty/whitespace-only
+			// keys up front — forwarding taxonomy `pa_` (or empty) to
+			// Store API silently returns no results, leaving the agent
+			// with no signal their input was malformed. `sanitize_title`
+			// canonicalizes "Light Blue" → "light-blue" rather than the
+			// naive strtolower → "light blue" (which is an invalid slug).
+			$raw_key = trim( $key );
+			if ( '' === $raw_key ) {
+				continue;
+			}
+			// Strip a leading `pa_` prefix (case-insensitive) BEFORE
+			// sanitize_title, then re-add it. WP core's default
+			// sanitize_title preserves underscores, but the behavior
+			// is hookable via the `sanitize_title` filter: a plugin
+			// or theme converting underscores to dashes would turn
+			// `pa_brand` into `pa-brand`, fail a naive `pa_` prefix
+			// check, and re-prefix to the nonsense `pa_pa-brand`.
+			// Stripping and re-adding the prefix ourselves removes
+			// that dependency on the `sanitize_title` contract.
+			//
+			// Also handles mixed-case variants: `"PA_Color"` /
+			// `"Pa_brand"` both canonicalize to `pa_color` / `pa_brand`.
+			$attribute_key  = preg_match( '/^pa_/i', $raw_key )
+				? preg_replace( '/^pa_/i', '', $raw_key )
+				: $raw_key;
+			$normalized_key = sanitize_title( $attribute_key );
+			// After normalization a whitespace-only-after-trim input
+			// (or a bare `pa_` / `PA_`) can collapse to an empty
+			// string. That's not a valid taxonomy suffix — drop it
+			// rather than forward a semantically-empty filter.
+			if ( '' === $normalized_key ) {
+				continue;
+			}
+			$taxonomy = 'pa_' . $normalized_key;
+
+			// Normalize slug values. Reject non-string/non-numeric
+			// entries — a nested array coerces to "Array" via (string)
+			// cast, which would silently forward as a bogus slug.
+			// sanitize_title keeps the WP-canonical slug form and
+			// matches how WC stores attribute term slugs in the DB.
+			$slugs = [];
+			foreach ( $values as $v ) {
+				if ( ! is_string( $v ) && ! is_numeric( $v ) ) {
+					continue;
+				}
+				$slug = sanitize_title( (string) $v );
+				if ( '' !== $slug ) {
+					$slugs[] = $slug;
+				}
+			}
+			if ( empty( $slugs ) ) {
+				continue;
+			}
+
+			$result[] = [
+				'attribute' => $taxonomy,
+				'slug'      => array_values( array_unique( $slugs ) ),
+				'operator'  => 'in',
+			];
+		}
+		return $result;
 	}
 
 	/**

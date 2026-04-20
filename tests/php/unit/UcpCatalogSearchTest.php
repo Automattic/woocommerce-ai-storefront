@@ -94,6 +94,25 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 
+		// Simplified sanitize_title stub with a slightly-stricter
+		// character class than default WP: we collapse underscores
+		// AND whitespace AND other non-alphanumerics to dashes. WP
+		// core actually preserves underscores, but the behavior is
+		// hookable via the `sanitize_title` filter — plugins/themes
+		// can make it aggressive. Our production code handles the
+		// `pa_` prefix explicitly (strips + re-adds) so it's
+		// underscore-agnostic; running tests against the stricter
+		// stub gives us a safety margin that catches regressions if
+		// someone refactors the prefix handling to rely on WP's
+		// default behavior.
+		Functions\when( 'sanitize_title' )->alias(
+			static function ( $title ): string {
+				$title = strtolower( trim( (string) $title ) );
+				$title = preg_replace( '/[^a-z0-9]+/', '-', $title );
+				return trim( (string) $title, '-' );
+			}
+		);
+
 		$terms = &$this->fake_terms;
 		Functions\when( 'get_term_by' )->alias(
 			static function ( string $field, string $value, string $taxonomy ) use ( &$terms ) {
@@ -140,7 +159,24 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 					// the canned product list. 1.6.0 added `page` +
 					// `per_page` to the captured list for pagination
 					// mapping assertions.
-					foreach ( [ 'search', 'category', 'min_price', 'max_price', 'page', 'per_page', 'tag', 'on_sale' ] as $key ) {
+					foreach (
+						[
+							'search',
+							'category',
+							'min_price',
+							'max_price',
+							'page',
+							'per_page',
+							'tag',
+							'on_sale',
+							'stock_status',
+							'featured',
+							'rating',
+							'attributes',
+							'orderby',
+							'order',
+						] as $key
+					) {
 						$val = $request->get_param( $key );
 						if ( null !== $val ) {
 							$captured_params[ $key ] = $val;
@@ -491,6 +527,491 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertArrayNotHasKey( 'on_sale', $this->captured_store_params );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.9.0: in_stock filter
+	// ------------------------------------------------------------------
+
+	public function test_in_stock_filter_forwards_instock_stock_status(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'in_stock' => true ] ]
+		);
+
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+	}
+
+	public function test_in_stock_filter_accepts_string_true(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'in_stock' => 'true' ] ]
+		);
+
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+	}
+
+	public function test_in_stock_filter_false_does_not_forward(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'in_stock' => false ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'stock_status', $this->captured_store_params );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.9.0: featured filter
+	// ------------------------------------------------------------------
+
+	public function test_featured_filter_forwards_boolean_true(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'featured' => true ] ]
+		);
+
+		$this->assertTrue( $this->captured_store_params['featured'] );
+	}
+
+	public function test_featured_filter_false_does_not_forward(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'featured' => false ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'featured', $this->captured_store_params );
+	}
+
+	public function test_featured_filter_accepts_string_true(): void {
+		// Symmetric with on_sale / in_stock — stringy "true" from
+		// JSON-to-PHP round trips should be honored so the contract
+		// is consistent across boolean-flag filters.
+		$this->successful_search(
+			[ 'filters' => [ 'featured' => 'true' ] ]
+		);
+
+		$this->assertTrue( $this->captured_store_params['featured'] );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.9.0: min_rating filter
+	// ------------------------------------------------------------------
+
+	public function test_min_rating_4_expands_to_ratings_4_and_5(): void {
+		// Store API's `rating` param is an array of acceptable
+		// ratings (set inclusion), not a floor. `min_rating: 4`
+		// must expand to [4, 5] for "4 stars and above."
+		$this->successful_search(
+			[ 'filters' => [ 'min_rating' => 4 ] ]
+		);
+
+		$this->assertSame( [ 4, 5 ], $this->captured_store_params['rating'] );
+	}
+
+	public function test_min_rating_1_expands_to_full_range(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'min_rating' => 1 ] ]
+		);
+
+		$this->assertSame( [ 1, 2, 3, 4, 5 ], $this->captured_store_params['rating'] );
+	}
+
+	public function test_min_rating_out_of_range_is_clamped(): void {
+		// Values above 5 clamp to 5 (produces [5]); values below 1
+		// clamp to 1 (full range). Keeps the array non-empty and
+		// the filter semantically coherent.
+		$this->successful_search(
+			[ 'filters' => [ 'min_rating' => 99 ] ]
+		);
+
+		$this->assertSame( [ 5 ], $this->captured_store_params['rating'] );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.9.0: attribute filters
+	// ------------------------------------------------------------------
+
+	public function test_attribute_filter_prefixes_bare_labels_with_pa(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'attributes' => [ 'color' => [ 'red' ] ] ] ]
+		);
+
+		$this->assertSame(
+			[
+				[
+					'attribute' => 'pa_color',
+					'slug'      => [ 'red' ],
+					'operator'  => 'in',
+				],
+			],
+			$this->captured_store_params['attributes']
+		);
+	}
+
+	public function test_attribute_filter_preserves_pa_prefix_when_already_present(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'attributes' => [ 'pa_brand' => [ 'nike' ] ] ] ]
+		);
+
+		$this->assertSame( 'pa_brand', $this->captured_store_params['attributes'][0]['attribute'] );
+	}
+
+	public function test_attribute_filter_lowercases_slug_values(): void {
+		$this->successful_search(
+			[ 'filters' => [ 'attributes' => [ 'size' => [ 'M', 'XL' ] ] ] ]
+		);
+
+		$this->assertSame( [ 'm', 'xl' ], $this->captured_store_params['attributes'][0]['slug'] );
+	}
+
+	public function test_attribute_filter_emits_multiple_taxonomy_entries(): void {
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'color' => [ 'red' ],
+						'size'  => [ 'M' ],
+					],
+				],
+			]
+		);
+
+		// Assert full shape of both entries (not just count) so a
+		// regression that swapped slugs between axes or defaulted
+		// the second entry's operator to something other than 'in'
+		// would be caught.
+		$this->assertCount( 2, $this->captured_store_params['attributes'] );
+
+		$by_attribute = [];
+		foreach ( $this->captured_store_params['attributes'] as $entry ) {
+			$by_attribute[ $entry['attribute'] ] = $entry;
+		}
+		$this->assertArrayHasKey( 'pa_color', $by_attribute );
+		$this->assertArrayHasKey( 'pa_size', $by_attribute );
+		$this->assertSame( [ 'red' ], $by_attribute['pa_color']['slug'] );
+		$this->assertSame( [ 'm' ], $by_attribute['pa_size']['slug'] );
+		$this->assertSame( 'in', $by_attribute['pa_color']['operator'] );
+		$this->assertSame( 'in', $by_attribute['pa_size']['operator'] );
+	}
+
+	public function test_attribute_filter_normalizes_mixed_case_pa_prefix(): void {
+		// Regression: a case-sensitive `strpos($raw_key, 'pa_')` check
+		// on mixed-case input like `"PA_Color"` would fall into the
+		// else branch and produce taxonomy `pa_pa_color` (double-
+		// prefixed) — silent zero-results misrouting. Fix: run
+		// sanitize_title() before the prefix check so we compare
+		// against the lowercased form.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'PA_Color' => [ 'red' ],
+					],
+				],
+			]
+		);
+
+		$this->assertSame( 'pa_color', $this->captured_store_params['attributes'][0]['attribute'] );
+	}
+
+	public function test_attribute_filter_skips_empty_arrays(): void {
+		// Malformed input — one axis has values, another is empty.
+		// The empty axis should be dropped rather than poison the
+		// whole filter list.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'color' => [ 'red' ],
+						'size'  => [],
+					],
+				],
+			]
+		);
+
+		$this->assertCount( 1, $this->captured_store_params['attributes'] );
+		$this->assertSame( 'pa_color', $this->captured_store_params['attributes'][0]['attribute'] );
+	}
+
+	public function test_attribute_filter_deduplicates_slugs(): void {
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'color' => [ 'red', 'RED', 'Red' ],
+					],
+				],
+			]
+		);
+
+		$this->assertSame( [ 'red' ], $this->captured_store_params['attributes'][0]['slug'] );
+	}
+
+	public function test_attribute_filter_skips_non_scalar_slug_values(): void {
+		// Defensive: a client sending a nested array as a slug value
+		// would coerce to "Array" via (string) cast and silently
+		// forward as a bogus slug. Skip non-scalar entries entirely.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'color' => [ 'red', [ 'nested' ], null, 'blue' ],
+					],
+				],
+			]
+		);
+
+		$this->assertSame(
+			[ 'red', 'blue' ],
+			$this->captured_store_params['attributes'][0]['slug']
+		);
+	}
+
+	public function test_attribute_filter_skips_empty_taxonomy_key(): void {
+		// Empty/whitespace-only keys would collapse to taxonomy `pa_`
+		// which Store API silently accepts as unknown and returns no
+		// results — leaving the agent with no signal that their input
+		// was malformed. Drop the axis entirely.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						''    => [ 'red' ],
+						' '   => [ 'blue' ],
+						'size' => [ 'M' ],
+					],
+				],
+			]
+		);
+
+		$this->assertCount( 1, $this->captured_store_params['attributes'] );
+		$this->assertSame( 'pa_size', $this->captured_store_params['attributes'][0]['attribute'] );
+	}
+
+	public function test_attribute_filter_skips_numeric_keys_from_list_shaped_input(): void {
+		// Regression: a malformed list-shaped input like
+		// `filters.attributes: [["red"], ["M"]]` has integer keys
+		// (0, 1, ...) which would cast to strings and forward as
+		// taxonomies `pa_0`, `pa_1`. Those match nothing and would
+		// silently restrict the catalog to zero results. Drop
+		// numeric keys entirely since attribute axes are always
+		// named strings.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						0       => [ 'red' ],
+						1       => [ 'M' ],
+						'color' => [ 'blue' ],
+					],
+				],
+			]
+		);
+
+		$this->assertCount( 1, $this->captured_store_params['attributes'] );
+		$this->assertSame( 'pa_color', $this->captured_store_params['attributes'][0]['attribute'] );
+	}
+
+	public function test_attribute_filter_skips_bare_pa_prefix_key(): void {
+		// A key of exactly "pa_" is either a typo or a crafted
+		// poison input — either way it's not a real taxonomy and
+		// shouldn't be forwarded.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'pa_' => [ 'red' ],
+					],
+				],
+			]
+		);
+
+		$this->assertArrayNotHasKey( 'attributes', $this->captured_store_params );
+	}
+
+	public function test_attribute_filter_sanitize_title_normalizes_multiword_slugs(): void {
+		// Multi-word attribute values like "Light Blue" should
+		// collapse to the WP-canonical slug "light-blue" (the form
+		// WC stores in the DB), not the naive strtolower "light blue"
+		// which is an invalid slug.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'color' => [ 'Light Blue', 'Navy Blue' ],
+					],
+				],
+			]
+		);
+
+		$this->assertSame(
+			[ 'light-blue', 'navy-blue' ],
+			$this->captured_store_params['attributes'][0]['slug']
+		);
+	}
+
+	public function test_attribute_filter_sanitize_title_normalizes_multiword_taxonomy_keys(): void {
+		// Same as slug normalization but for the taxonomy key — a
+		// merchant label like "Fabric Type" should produce
+		// `pa_fabric-type`, not `pa_fabric type` (invalid) or
+		// `pa_Fabric Type` (case-sensitive mismatch).
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'Fabric Type' => [ 'cotton' ],
+					],
+				],
+			]
+		);
+
+		$this->assertSame(
+			'pa_fabric-type',
+			$this->captured_store_params['attributes'][0]['attribute']
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// 1.9.0: sort order
+	// ------------------------------------------------------------------
+
+	public function test_sort_price_asc_forwards_orderby_and_order(): void {
+		$this->successful_search(
+			[ 'sort' => [ 'field' => 'price', 'direction' => 'asc' ] ]
+		);
+
+		$this->assertSame( 'price', $this->captured_store_params['orderby'] );
+		$this->assertSame( 'asc', $this->captured_store_params['order'] );
+	}
+
+	public function test_sort_newest_maps_to_date_desc_regardless_of_direction(): void {
+		// `newest` is an alias that implies descending. Even if the
+		// caller passes `direction: asc` we normalize to desc — the
+		// concept "newest ascending" is self-contradicting.
+		$this->successful_search(
+			[ 'sort' => [ 'field' => 'newest', 'direction' => 'asc' ] ]
+		);
+
+		$this->assertSame( 'date', $this->captured_store_params['orderby'] );
+		$this->assertSame( 'desc', $this->captured_store_params['order'] );
+	}
+
+	public function test_sort_popularity_is_supported(): void {
+		$this->successful_search(
+			[ 'sort' => [ 'field' => 'popularity', 'direction' => 'desc' ] ]
+		);
+
+		$this->assertSame( 'popularity', $this->captured_store_params['orderby'] );
+	}
+
+	public function test_sort_unknown_field_emits_warning_and_does_not_forward(): void {
+		$body = $this->successful_search(
+			[ 'sort' => [ 'field' => 'bogus', 'direction' => 'asc' ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
+		$warnings = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'invalid_sort_field' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $warnings );
+	}
+
+	public function test_sort_defaults_direction_to_asc_when_unspecified(): void {
+		$this->successful_search(
+			[ 'sort' => [ 'field' => 'title' ] ]
+		);
+
+		$this->assertSame( 'asc', $this->captured_store_params['order'] );
+	}
+
+	public function test_sort_empty_field_silently_ignored(): void {
+		// Empty-string field is a legitimate-but-meaningless input
+		// (e.g. `sort: {direction: "asc"}` with field omitted serializes
+		// that way from some JSON clients). The handler's contract is
+		// silent-ignore, not warning — forwarding a bogus
+		// `invalid_sort_field: ""` warning on every such request would
+		// spam agents. A future refactor that drops the `'' !== $field`
+		// guard would break this contract; this test locks it in.
+		$body = $this->successful_search(
+			[ 'sort' => [ 'field' => '', 'direction' => 'asc' ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
+		$codes = array_column( $body['messages'] ?? [], 'code' );
+		$this->assertNotContains( 'invalid_sort_field', $codes );
+		$this->assertNotContains( 'invalid_sort_shape', $codes );
+	}
+
+	public function test_combined_filters_and_sort_all_forward(): void {
+		// Most realistic agent shape: multiple filters + a sort in a
+		// single request. Each feature has isolated tests; this one
+		// catches cross-feature regressions (accidental key overwrite,
+		// early return, loop-ordering bug in `map_ucp_search_to_store_api`)
+		// that isolated tests would miss.
+		$this->successful_search(
+			[
+				'filters' => [
+					'in_stock'   => true,
+					'featured'   => true,
+					'attributes' => [ 'color' => [ 'red' ] ],
+				],
+				'sort'    => [ 'field' => 'price', 'direction' => 'asc' ],
+			]
+		);
+
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+		$this->assertTrue( $this->captured_store_params['featured'] );
+		$this->assertSame( 'pa_color', $this->captured_store_params['attributes'][0]['attribute'] );
+		$this->assertSame( 'price', $this->captured_store_params['orderby'] );
+		$this->assertSame( 'asc', $this->captured_store_params['order'] );
+	}
+
+	public function test_sort_non_scalar_field_emits_invalid_sort_shape_warning(): void {
+		// Regression: a non-scalar `sort.field` (e.g. an array) would
+		// coerce to "Array" via (string) cast and trigger a misleading
+		// `invalid_sort_field` warning with value "array". The shape
+		// check now catches this early and emits `invalid_sort_shape`
+		// so agents can distinguish "unknown field" from "malformed
+		// input".
+		$body = $this->successful_search(
+			[ 'sort' => [ 'field' => [ 'price' ], 'direction' => 'asc' ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
+		$warnings = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'invalid_sort_shape' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $warnings );
+	}
+
+	public function test_sort_non_scalar_direction_emits_invalid_sort_shape_warning(): void {
+		$body = $this->successful_search(
+			[ 'sort' => [ 'field' => 'price', 'direction' => [ 'asc' ] ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
+		$warnings = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'invalid_sort_shape' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $warnings );
+	}
+
+	public function test_sort_invalid_sort_field_content_uses_original_raw_value(): void {
+		// When emitting the `invalid_sort_field` warning content for an
+		// unrecognized but legitimately-scalar field, we echo back the
+		// original string (preserving case/whitespace the agent sent)
+		// rather than the trimmed/lowercased form we used for lookup.
+		// Makes the warning easier to correlate with the agent's
+		// source input.
+		$body = $this->successful_search(
+			[ 'sort' => [ 'field' => '  BoGuS  ', 'direction' => 'asc' ] ]
+		);
+
+		$warnings = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'invalid_sort_field' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $warnings );
+		$warning = array_values( $warnings )[0];
+		$this->assertStringContainsString( '  BoGuS  ', $warning['content'] );
 	}
 
 	// ------------------------------------------------------------------
