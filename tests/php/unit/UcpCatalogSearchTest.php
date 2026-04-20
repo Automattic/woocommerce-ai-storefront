@@ -113,6 +113,19 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
+		// taxonomy_exists stub — default behavior is permissive
+		// (all pa_* taxonomies exist) so attribute filter tests that
+		// don't specifically test the not-found path pass. Tests that
+		// want to exercise `attribute_not_found` override this with
+		// their own Functions\when() call to return false for specific
+		// taxonomy names.
+		Functions\when( 'taxonomy_exists' )->alias(
+			static fn( string $taxonomy ): bool => 0 === strpos( $taxonomy, 'pa_' )
+				|| 'product_cat' === $taxonomy
+				|| 'product_tag' === $taxonomy
+				|| 'product_brand' === $taxonomy
+		);
+
 		$terms = &$this->fake_terms;
 		Functions\when( 'get_term_by' )->alias(
 			static function ( string $field, string $value, string $taxonomy ) use ( &$terms ) {
@@ -120,7 +133,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 				// same stubbed lookup — `seed_term` keys by
 				// `taxonomy:field:value` so the tag filter tests
 				// can seed independently from the category ones.
-				if ( ! in_array( $taxonomy, [ 'product_cat', 'product_tag' ], true ) ) {
+				if ( ! in_array( $taxonomy, [ 'product_cat', 'product_tag', 'product_brand' ], true ) ) {
 					return false;
 				}
 				$key = "{$taxonomy}:{$field}:{$value}";
@@ -175,6 +188,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 							'attributes',
 							'orderby',
 							'order',
+							'brand',
 						] as $key
 					) {
 						$val = $request->get_param( $key );
@@ -864,6 +878,85 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			'pa_fabric-type',
 			$this->captured_store_params['attributes'][0]['attribute']
 		);
+	}
+
+	public function test_attribute_filter_unknown_taxonomy_emits_attribute_not_found_warning(): void {
+		// Agent sends a filter on `nonexistent` — no `pa_nonexistent`
+		// taxonomy registered on the store. Symmetric with
+		// `category_not_found` / `tag_not_found`: emit a warning
+		// pointing at the offending axis + drop the filter rather
+		// than forward a nonsense taxonomy that would silently
+		// return zero results.
+		Functions\when( 'taxonomy_exists' )->alias(
+			static fn( string $taxonomy ): bool => 'pa_color' === $taxonomy
+		);
+
+		$body = $this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'color'       => [ 'red' ],
+						'nonexistent' => [ 'anything' ],
+					],
+				],
+			]
+		);
+
+		// Known taxonomy forwarded.
+		$this->assertCount( 1, $this->captured_store_params['attributes'] );
+		$this->assertSame( 'pa_color', $this->captured_store_params['attributes'][0]['attribute'] );
+
+		// Unknown taxonomy surfaces as a warning.
+		$warnings = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'attribute_not_found' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $warnings );
+		$warning = array_values( $warnings )[0];
+		$this->assertStringContainsString( 'pa_nonexistent', $warning['content'] );
+		$this->assertSame( '$.filters.attributes.nonexistent', $warning['path'] );
+	}
+
+	// ------------------------------------------------------------------
+	// 1.9.0: Brand filter
+	// ------------------------------------------------------------------
+
+	public function test_brand_filter_forwards_resolved_term_ids(): void {
+		// Parallel to tags: slug → term ID resolution, comma-joined
+		// when multiple, forwarded as `brand` on the Store API.
+		$term                                      = (object) [
+			'term_id' => 88,
+			'slug'    => 'acme',
+			'name'    => 'ACME',
+		];
+		$this->fake_terms['product_brand:slug:acme'] = $term;
+
+		$this->successful_search(
+			[ 'filters' => [ 'brand' => [ 'acme' ] ] ]
+		);
+
+		$this->assertSame( '88', $this->captured_store_params['brand'] );
+	}
+
+	public function test_brand_filter_unresolvable_produces_brand_not_found_warning(): void {
+		// Symmetric with `category_not_found` / `tag_not_found` —
+		// agents must see a signal that their filter was ignored.
+		$term                                      = (object) [
+			'term_id' => 88,
+			'slug'    => 'acme',
+			'name'    => 'ACME',
+		];
+		$this->fake_terms['product_brand:slug:acme'] = $term;
+
+		$body = $this->successful_search(
+			[ 'filters' => [ 'brand' => [ 'acme', 'unknown-brand' ] ] ]
+		);
+
+		$not_found = array_filter(
+			$body['messages'] ?? [],
+			static fn( array $m ): bool => 'brand_not_found' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $not_found );
 	}
 
 	// ------------------------------------------------------------------

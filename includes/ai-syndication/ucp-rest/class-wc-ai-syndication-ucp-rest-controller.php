@@ -1627,6 +1627,31 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			}
 		}
 
+		// Brand filter — parallel to tags but across the `product_brand`
+		// taxonomy (native in WC 9.5+, previously a plugin). Same
+		// resolution path + unresolved-warning emission. Store API
+		// accepts comma-joined term IDs or slugs on the `brand` param;
+		// we resolve to IDs for consistency with category/tag.
+		if ( isset( $filters['brand'] ) && is_array( $filters['brand'] ) ) {
+			$brand_result = self::resolve_brand_term_ids( $filters['brand'] );
+			if ( ! empty( $brand_result['ids'] ) ) {
+				$params['brand'] = implode( ',', $brand_result['ids'] );
+			}
+			foreach ( $brand_result['unresolved'] as $index => $bad ) {
+				$messages[] = [
+					'type'     => 'warning',
+					'code'     => 'brand_not_found',
+					'severity' => 'advisory',
+					'path'     => '$.filters.brand[' . $index . ']',
+					'content'  => sprintf(
+						/* translators: %s is the brand slug/name the agent sent that couldn't be resolved. */
+						__( 'Brand "%s" was not found; filter ignored for this value.', 'woocommerce-ai-syndication' ),
+						$bad
+					),
+				];
+			}
+		}
+
 		// In-stock filter — agents transacting in real time shouldn't
 		// pitch products they can't actually deliver. Store API's
 		// stock_status param takes an array enum (instock/outofstock/
@@ -1671,9 +1696,22 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// Store API accepts slugs directly for attributes, and
 		// invalid slugs produce empty results rather than errors.
 		if ( isset( $filters['attributes'] ) && is_array( $filters['attributes'] ) ) {
-			$attribute_params = self::build_attribute_filter_params( $filters['attributes'] );
-			if ( ! empty( $attribute_params ) ) {
-				$params['attributes'] = $attribute_params;
+			$attribute_result = self::build_attribute_filter_params( $filters['attributes'] );
+			if ( ! empty( $attribute_result['filters'] ) ) {
+				$params['attributes'] = $attribute_result['filters'];
+			}
+			foreach ( $attribute_result['unresolved'] as $bad ) {
+				$messages[] = [
+					'type'     => 'warning',
+					'code'     => 'attribute_not_found',
+					'severity' => 'advisory',
+					'path'     => '$.filters.attributes.' . $bad['key'],
+					'content'  => sprintf(
+						/* translators: %s is the attribute taxonomy name the agent sent that doesn't exist on the store. */
+						__( 'Attribute taxonomy "%s" was not found on the store; filter ignored for this axis.', 'woocommerce-ai-syndication' ),
+						$bad['taxonomy']
+					),
+				];
 			}
 		}
 
@@ -1701,11 +1739,21 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * collapse to `pa_` after normalization are skipped so a malformed
 	 * entry doesn't poison the whole filter list.
 	 *
+	 * Taxonomies are validated via `taxonomy_exists()` before
+	 * forwarding. Normalized-but-unknown attribute names produce an
+	 * `attribute_not_found` entry in the returned `unresolved` list so
+	 * the caller can emit the warning, symmetric with how categories
+	 * and tags already surface unresolved filters.
+	 *
 	 * @param array<mixed, mixed> $attribute_map
-	 * @return array<int, array{attribute: string, slug: array<int, string>, operator: string}>
+	 * @return array{
+	 *     filters: array<int, array{attribute: string, slug: array<int, string>, operator: string}>,
+	 *     unresolved: array<int, array{key: string, taxonomy: string}>
+	 * }
 	 */
 	private static function build_attribute_filter_params( array $attribute_map ): array {
-		$result = [];
+		$filters    = [];
+		$unresolved = [];
 		foreach ( $attribute_map as $key => $values ) {
 			// Skip numeric keys — a malformed list-shaped input like
 			// `filters.attributes: [["red"]]` produces integer keys
@@ -1756,6 +1804,22 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			}
 			$taxonomy = 'pa_' . $normalized_key;
 
+			// Validate the taxonomy exists on the store. `taxonomy_exists`
+			// is cheap (in-memory map lookup) and catches typos the
+			// agent can't otherwise distinguish from a valid query
+			// that returned nothing. Unknown taxonomy → record the
+			// original input key + normalized taxonomy name so the
+			// caller can emit an `attribute_not_found` warning with
+			// JSON-path precision, symmetric with `category_not_found`
+			// / `tag_not_found` for the parallel filters.
+			if ( function_exists( 'taxonomy_exists' ) && ! taxonomy_exists( $taxonomy ) ) {
+				$unresolved[] = [
+					'key'      => $raw_key,
+					'taxonomy' => $taxonomy,
+				];
+				continue;
+			}
+
 			// Normalize slug values. Reject non-string/non-numeric
 			// entries — a nested array coerces to "Array" via (string)
 			// cast, which would silently forward as a bogus slug.
@@ -1775,13 +1839,16 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				continue;
 			}
 
-			$result[] = [
+			$filters[] = [
 				'attribute' => $taxonomy,
 				'slug'      => array_values( array_unique( $slugs ) ),
 				'operator'  => 'in',
 			];
 		}
-		return $result;
+		return [
+			'filters'    => $filters,
+			'unresolved' => $unresolved,
+		];
 	}
 
 	/**
@@ -1832,6 +1899,21 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	}
 
 	/**
+	 * Resolve UCP brand strings to WC product_brand term IDs.
+	 *
+	 * Parallel to `resolve_tag_term_ids` but across the
+	 * `product_brand` taxonomy — native in WC 9.5+ and shipped by the
+	 * standalone "WooCommerce Brands" plugin before that. Same
+	 * slug-first / name-fallback resolution path.
+	 *
+	 * @param array<int, mixed> $inputs
+	 * @return array{ids: array<int, int>, unresolved: array<int, string>}
+	 */
+	private static function resolve_brand_term_ids( array $inputs ): array {
+		return self::resolve_taxonomy_term_ids( $inputs, 'product_brand' );
+	}
+
+	/**
 	 * Generic term-resolution helper — slug first, name fallback.
 	 *
 	 * Abstracted from the original `resolve_category_term_ids` so
@@ -1840,7 +1922,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * skip/lookup/unresolved pattern.
 	 *
 	 * @param array<int, mixed> $inputs
-	 * @param string            $taxonomy The WC taxonomy slug ('product_cat', 'product_tag').
+	 * @param string            $taxonomy The WC taxonomy slug ('product_cat', 'product_tag', 'product_brand').
 	 * @return array{ids: array<int, int>, unresolved: array<int, string>}
 	 */
 	private static function resolve_taxonomy_term_ids( array $inputs, string $taxonomy ): array {

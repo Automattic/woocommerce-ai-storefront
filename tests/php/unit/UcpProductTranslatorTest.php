@@ -557,6 +557,38 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_translate_emits_brands_as_third_taxonomy_in_categories(): void {
+		// WC 9.5+ `product_brand` taxonomy (and the earlier "WooCommerce
+		// Brands" plugin) surfaces via Store API under `brands[]`. Shape
+		// mirrors categories/tags — emit with `taxonomy: "brand"`.
+		$fixture           = $this->simple_product_fixture();
+		$fixture['brands'] = [
+			[ 'id' => 88, 'name' => 'ACME', 'slug' => 'acme' ],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertContains(
+			[ 'value' => 'ACME', 'taxonomy' => 'brand' ],
+			$result['categories']
+		);
+	}
+
+	public function test_translate_omits_brands_when_source_has_none(): void {
+		// Merchants without Brands registered pay zero payload — no
+		// empty `brand` taxonomy entries should appear.
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[]
+		);
+
+		$brand_entries = array_filter(
+			$result['categories'] ?? [],
+			static fn( array $entry ): bool => 'brand' === ( $entry['taxonomy'] ?? '' )
+		);
+		$this->assertEmpty( $brand_entries );
+	}
+
 	public function test_translate_emits_product_attributes_excluding_variation_defining(): void {
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [

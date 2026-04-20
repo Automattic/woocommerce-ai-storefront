@@ -518,6 +518,105 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'https://store.example/red-detail.jpg', $result['media'][2]['url'] );
 	}
 
+	// ------------------------------------------------------------------
+	// 1.9.0: Shipping attributes (weight + dimensions)
+	// ------------------------------------------------------------------
+
+	public function test_translate_emits_weight_and_dimensions_from_variation(): void {
+		// Shipping-aware agents need weight + L/W/H to estimate
+		// shipping. WC Store API emits these as string scalars in
+		// the merchant-configured unit; we pass them through verbatim
+		// (unit lives separately in store context).
+		$fixture = [
+			'id'          => 600,
+			'name'        => 'Widget / L',
+			'prices'      => [
+				'price'         => '2500',
+				'currency_code' => 'USD',
+			],
+			'is_in_stock' => true,
+			'weight'      => '0.5',
+			'dimensions'  => [
+				'length' => '10',
+				'width'  => '5',
+				'height' => '2',
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertSame( '0.5', $result['shipping_attributes']['weight'] );
+		$this->assertSame( '10', $result['shipping_attributes']['dimensions']['length'] );
+		$this->assertSame( '5', $result['shipping_attributes']['dimensions']['width'] );
+		$this->assertSame( '2', $result['shipping_attributes']['dimensions']['height'] );
+	}
+
+	public function test_translate_omits_shipping_attributes_when_all_empty(): void {
+		// Merchants who haven't filled in physical attributes get
+		// no `shipping_attributes` key — better than a half-empty
+		// object agents have to filter through.
+		$fixture = [
+			'id'          => 600,
+			'name'        => 'Widget / L',
+			'prices'      => [
+				'price'         => '2500',
+				'currency_code' => 'USD',
+			],
+			'is_in_stock' => true,
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertArrayNotHasKey( 'shipping_attributes', $result );
+	}
+
+	public function test_translate_emits_partial_shipping_attributes(): void {
+		// Weight but no dimensions → emit only weight. Half-full is
+		// still useful (agents doing weight-based rate estimates).
+		$fixture = [
+			'id'          => 600,
+			'name'        => 'Widget / L',
+			'prices'      => [
+				'price'         => '2500',
+				'currency_code' => 'USD',
+			],
+			'is_in_stock' => true,
+			'weight'      => '1.2',
+			'dimensions'  => [
+				'length' => '',
+				'width'  => '',
+				'height' => '',
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertSame( '1.2', $result['shipping_attributes']['weight'] );
+		$this->assertArrayNotHasKey( 'dimensions', $result['shipping_attributes'] );
+	}
+
+	public function test_synthesize_default_emits_shipping_attributes_for_simple_products(): void {
+		// Simple products (synthesize_default path) carry shipping
+		// fields in the same Store API shape — route through the same
+		// extraction helper.
+		$fixture = [
+			'id'          => 700,
+			'name'        => 'Simple Widget',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'         => '1000',
+				'currency_code' => 'USD',
+			],
+			'weight'      => '2.0',
+			'dimensions'  => [ 'length' => '20', 'width' => '10', 'height' => '5' ],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $fixture );
+
+		$this->assertSame( '2.0', $result['shipping_attributes']['weight'] );
+		$this->assertSame( '20', $result['shipping_attributes']['dimensions']['length'] );
+	}
+
 	public function test_synthesize_default_also_carries_new_fields(): void {
 		$fixture = [
 			'id'                  => 901,
