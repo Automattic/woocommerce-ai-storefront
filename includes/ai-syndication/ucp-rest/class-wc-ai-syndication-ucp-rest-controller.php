@@ -1701,11 +1701,25 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				$params['attributes'] = $attribute_result['filters'];
 			}
 			foreach ( $attribute_result['unresolved'] as $bad ) {
-				$messages[] = [
+				// Use JSONPath bracket notation for the key — dot
+				// notation is only valid for identifier-style keys
+				// (letters, digits, underscores). Agent keys like
+				// `"Fabric Type"` (spaces), `"pa-size"` (hyphens), or
+				// `"foo's"` (quotes) need quoted bracket notation to
+				// remain machine-addressable. Escape backslashes
+				// first (else the \' below would end up as the literal
+				// character \\' which terminates the JSONPath string
+				// early) and then single quotes.
+				$escaped_key = str_replace(
+					[ '\\', "'" ],
+					[ '\\\\', "\\'" ],
+					$bad['key']
+				);
+				$messages[]  = [
 					'type'     => 'warning',
 					'code'     => 'attribute_not_found',
 					'severity' => 'advisory',
-					'path'     => '$.filters.attributes.' . $bad['key'],
+					'path'     => sprintf( "\$.filters.attributes['%s']", $escaped_key ),
 					'content'  => sprintf(
 						/* translators: %s is the attribute taxonomy name the agent sent that doesn't exist on the store. */
 						__( 'Attribute taxonomy "%s" was not found on the store; filter ignored for this axis.', 'woocommerce-ai-syndication' ),

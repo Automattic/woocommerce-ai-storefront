@@ -914,7 +914,65 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $warnings );
 		$warning = array_values( $warnings )[0];
 		$this->assertStringContainsString( 'pa_nonexistent', $warning['content'] );
-		$this->assertSame( '$.filters.attributes.nonexistent', $warning['path'] );
+		// JSONPath bracket notation — identifier-style keys still work
+		// with quoted brackets, just more verbose than dot notation.
+		$this->assertSame( "\$.filters.attributes['nonexistent']", $warning['path'] );
+	}
+
+	public function test_attribute_not_found_path_uses_bracket_notation_for_non_identifier_keys(): void {
+		// Regression: dot notation `$.filters.attributes.Fabric Type`
+		// is invalid JSONPath — agents that parse the path
+		// machine-side need bracket notation for keys with spaces,
+		// hyphens, quotes, or other non-identifier characters.
+		Functions\when( 'taxonomy_exists' )->justReturn( false );
+
+		$body = $this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'Fabric Type' => [ 'cotton' ],
+					],
+				],
+			]
+		);
+
+		$warnings = array_values(
+			array_filter(
+				$body['messages'] ?? [],
+				static fn( array $m ): bool => 'attribute_not_found' === ( $m['code'] ?? '' )
+			)
+		);
+		$this->assertCount( 1, $warnings );
+		$this->assertSame( "\$.filters.attributes['Fabric Type']", $warnings[0]['path'] );
+	}
+
+	public function test_attribute_not_found_path_escapes_single_quotes_in_keys(): void {
+		// Defensive: a key containing a single quote (`"foo's"`) would
+		// break the bracket-notation string without escaping. Escape
+		// backslashes first, then single quotes — standard JSONPath
+		// quoted-string conventions.
+		Functions\when( 'taxonomy_exists' )->justReturn( false );
+
+		$body = $this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						"foo's bar" => [ 'value' ],
+					],
+				],
+			]
+		);
+
+		$warnings = array_values(
+			array_filter(
+				$body['messages'] ?? [],
+				static fn( array $m ): bool => 'attribute_not_found' === ( $m['code'] ?? '' )
+			)
+		);
+		$this->assertCount( 1, $warnings );
+		// The \' is a literal backslash-quote in the JSONPath string,
+		// which resolves back to the original `'` when parsed.
+		$this->assertSame( "\$.filters.attributes['foo\\'s bar']", $warnings[0]['path'] );
 	}
 
 	// ------------------------------------------------------------------
