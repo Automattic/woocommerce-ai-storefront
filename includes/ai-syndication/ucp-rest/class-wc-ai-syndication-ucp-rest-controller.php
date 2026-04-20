@@ -1034,31 +1034,6 @@ class WC_AI_Syndication_UCP_REST_Controller {
 								],
 							],
 						],
-						'attribution'   => [
-							'type'        => 'object',
-							'description' => 'How the merchant wants agent-driven orders attributed. Agents should pass these UTM parameters through the `continue_url` on checkout handoff.',
-							'properties'  => [
-								'spec'       => [
-									'type'        => 'string',
-									'format'      => 'uri',
-									'description' => 'URL to the upstream attribution system documentation.',
-								],
-								'system'     => [
-									'type'        => 'string',
-									'description' => 'Identifier of the attribution system recording agent-originated orders.',
-									'examples'    => [ 'woocommerce_order_attribution' ],
-								],
-								'parameters' => [
-									'type'                 => 'object',
-									'description'          => 'Named description of each expected UTM-style parameter.',
-									'additionalProperties' => [ 'type' => 'string' ],
-								],
-								'usage_note' => [
-									'type'        => 'string',
-									'description' => 'Human-readable guidance on the preferred attribution path (typically: use the UCP `/checkout-sessions` endpoint, which handles UTM injection server-side).',
-								],
-							],
-						],
 					],
 				],
 				'ratings' => [

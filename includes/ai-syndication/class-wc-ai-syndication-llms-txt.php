@@ -509,7 +509,7 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[] = '<a id="ucp-extension"></a>';
 		$lines[] = '## UCP Extension: com.woocommerce.ai_syndication';
 		$lines[] = '';
-		$lines[] = 'The UCP manifest at `/.well-known/ucp` advertises a merchant-extension capability `com.woocommerce.ai_syndication` alongside the canonical `dev.ucp.shopping.*` capabilities. It carries commerce context (currency, locale, tax/shipping posture) agents need before calling the catalog or checkout endpoints, plus attribution conventions for crediting agent-driven orders.';
+		$lines[] = 'The UCP manifest at `/.well-known/ucp` advertises a merchant-extension capability `com.woocommerce.ai_syndication` alongside the canonical `dev.ucp.shopping.*` capabilities. It carries commerce context (currency, locale, tax/shipping posture) agents need before calling the catalog or checkout endpoints. Attribution is handled entirely server-side by our `POST /checkout-sessions` endpoint — see the "Attribution" section earlier in this document for details, no extension field is needed.';
 		$lines[] = '';
 		$lines[] = 'Machine-readable JSON Schema:';
 		$lines[] = '';
@@ -522,12 +522,6 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[] = '- **country** — ISO 3166-1 alpha-2 for the merchant base country. `null` when not configured.';
 		$lines[] = '- **prices_include_tax** — `true` (EU-typical) means catalog prices are tax-inclusive; `false` (US-typical) means tax is added at checkout. Agents rendering cart previews use this to decide whether to show a tax line.';
 		$lines[] = '- **shipping_enabled** — `true` when the store collects shipping addresses. `false` means digital-only — skip address-collection prompts.';
-		$lines[] = '';
-		$lines[] = '### config.attribution';
-		$lines[] = '';
-		$lines[] = '- **system** — identifier of the attribution system recording agent-originated orders (currently `woocommerce_order_attribution`).';
-		$lines[] = '- **parameters** — documented UTM-style parameters (`utm_source`, `utm_medium`, etc.) the store recognizes.';
-		$lines[] = '- **usage_note** — preferred attribution path. For this plugin: use `POST /wp-json/wc/ucp/v1/checkout-sessions`; the server injects UTM values server-side based on your `UCP-Agent` header. Manual UTM construction on the agent side is a fallback, not the preferred path.';
 		$lines[] = '';
 		$lines[] = '### Product-level extension payload';
 		$lines[] = '';

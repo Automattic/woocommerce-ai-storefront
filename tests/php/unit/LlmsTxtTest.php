@@ -698,6 +698,22 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
+	public function test_llms_txt_extension_section_does_not_document_attribution_subkey(): void {
+		// Attribution is covered by the main "Attribution for AI
+		// agents" section earlier in the document (hostname→brand
+		// table + fallback URL templates). The extension section
+		// itself should NOT carry a `### config.attribution`
+		// sub-heading — the machine-readable `config.attribution`
+		// block was removed from the manifest because server-side
+		// `continue_url` already injects utm_source + utm_medium,
+		// and duplicating UTM conventions here implied the manifest
+		// was the canonical source when it wasn't. If a future
+		// refactor re-adds this heading, this test fires.
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( '### config.attribution', $output );
+	}
+
 	public function test_wp_core_sitemap_included_when_non_empty(): void {
 		// `get_sitemap_url( 'index' )` returns WP core's canonical
 		// sitemap URL when the feature is active. That candidate
