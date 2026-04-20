@@ -494,8 +494,15 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			),
 		];
 
-		if ( function_exists( 'WC' ) && WC() && method_exists( WC(), 'countries' ) && WC()->countries ) {
-			$country = WC()->countries->get_base_country();
+		// `countries` is a PROPERTY on the WooCommerce singleton (an
+		// instance of WC_Countries), not a method — `method_exists`
+		// would always return false here. Guard via `isset()` on the
+		// property so we correctly pick up the country when WC is
+		// fully loaded, and fall through gracefully when it isn't
+		// (tests, early-boot paths, WC plugin-deactivated state).
+		$woocommerce = function_exists( 'WC' ) ? WC() : null;
+		if ( $woocommerce && isset( $woocommerce->countries ) && is_object( $woocommerce->countries ) ) {
+			$country = $woocommerce->countries->get_base_country();
 			if ( $country ) {
 				$seller['country'] = $country;
 			}
