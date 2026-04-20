@@ -2120,8 +2120,8 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// digit-only string (`ctype_digit`). Decimals, floats,
 		// negatives, and scientific notation all skip the comparison
 		// without emitting a warning.
-		$expected_unit_price = $line_item['expected_unit_price'] ?? null;
-		$expected_amount_raw = is_array( $expected_unit_price )
+		$expected_unit_price    = $line_item['expected_unit_price'] ?? null;
+		$expected_amount_raw    = is_array( $expected_unit_price )
 			? ( $expected_unit_price['amount'] ?? null )
 			: null;
 		$amount_is_integer_like = is_int( $expected_amount_raw )
