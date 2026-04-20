@@ -1544,25 +1544,30 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			if ( '' === $raw_key ) {
 				continue;
 			}
-			// Normalize the key via sanitize_title first (handles case +
-			// slug form), then handle the `pa_` prefix. Running the
-			// prefix check case-sensitively on the raw key would
-			// mishandle mixed-case input like `"PA_Color"`: the old
-			// code would fail the `strpos($raw_key, 'pa_') === 0`
-			// check, fall into the else branch, and emit taxonomy
-			// `pa_pa_color` — silent zero-results misrouting with no
-			// signal to the agent.
-			$normalized_key = sanitize_title( $raw_key );
-			$taxonomy       = 0 === strpos( $normalized_key, 'pa_' )
-				? $normalized_key
-				: 'pa_' . $normalized_key;
+			// Strip a leading `pa_` prefix (case-insensitive) BEFORE
+			// sanitize_title, then re-add it. WP core's default
+			// sanitize_title preserves underscores, but the behavior
+			// is hookable via the `sanitize_title` filter: a plugin
+			// or theme converting underscores to dashes would turn
+			// `pa_brand` into `pa-brand`, fail a naive `pa_` prefix
+			// check, and re-prefix to the nonsense `pa_pa-brand`.
+			// Stripping and re-adding the prefix ourselves removes
+			// that dependency on the `sanitize_title` contract.
+			//
+			// Also handles mixed-case variants: `"PA_Color"` /
+			// `"Pa_brand"` both canonicalize to `pa_color` / `pa_brand`.
+			$attribute_key  = preg_match( '/^pa_/i', $raw_key )
+				? preg_replace( '/^pa_/i', '', $raw_key )
+				: $raw_key;
+			$normalized_key = sanitize_title( $attribute_key );
 			// After normalization a whitespace-only-after-trim input
-			// (or a stringy-object cast) can still collapse to just
-			// `pa_`. That's not a valid taxonomy — drop it rather than
-			// forward a semantically-empty filter.
-			if ( 'pa_' === $taxonomy ) {
+			// (or a bare `pa_` / `PA_`) can collapse to an empty
+			// string. That's not a valid taxonomy suffix — drop it
+			// rather than forward a semantically-empty filter.
+			if ( '' === $normalized_key ) {
 				continue;
 			}
+			$taxonomy = 'pa_' . $normalized_key;
 
 			// Normalize slug values. Reject non-string/non-numeric
 			// entries — a nested array coerces to "Array" via (string)

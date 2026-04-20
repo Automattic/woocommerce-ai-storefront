@@ -94,14 +94,21 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 
-		// Simplified sanitize_title stub — good enough for the
-		// attribute-slug normalization the mapper relies on. The real
-		// WP function does more (entity stripping, accent folding, etc.)
-		// but those code paths aren't exercised by current tests.
+		// Simplified sanitize_title stub with a slightly-stricter
+		// character class than default WP: we collapse underscores
+		// AND whitespace AND other non-alphanumerics to dashes. WP
+		// core actually preserves underscores, but the behavior is
+		// hookable via the `sanitize_title` filter — plugins/themes
+		// can make it aggressive. Our production code handles the
+		// `pa_` prefix explicitly (strips + re-adds) so it's
+		// underscore-agnostic; running tests against the stricter
+		// stub gives us a safety margin that catches regressions if
+		// someone refactors the prefix handling to rely on WP's
+		// default behavior.
 		Functions\when( 'sanitize_title' )->alias(
 			static function ( $title ): string {
 				$title = strtolower( trim( (string) $title ) );
-				$title = preg_replace( '/[^a-z0-9_]+/', '-', $title );
+				$title = preg_replace( '/[^a-z0-9]+/', '-', $title );
 				return trim( (string) $title, '-' );
 			}
 		);

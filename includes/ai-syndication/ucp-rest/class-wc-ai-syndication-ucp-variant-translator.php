@@ -194,16 +194,19 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 	/**
 	 * Map WC variation image objects to UCP media entries.
 	 *
-	 * UCP media shape: `{type, url, alt_text}`. Mirrors the product
-	 * translator's `extract_media` (image-only for v1; video/3D model
-	 * types stay reserved for future expansion). Kept local to the
-	 * variant translator rather than shared with the product
-	 * translator so the two classes have independent call sites and
-	 * can evolve their shape rules independently — variant-specific
-	 * images often have different cropping/alt-text conventions.
+	 * UCP media shape: `{type, url, alt_text?}` — `alt_text` is
+	 * optional and omitted when the source image has no alt attribute
+	 * (avoids emitting an empty-string key that agents would have to
+	 * filter on their side). Mirrors the product translator's
+	 * `extract_media` (image-only for v1; video/3D model types stay
+	 * reserved for future expansion). Kept local to the variant
+	 * translator rather than shared with the product translator so
+	 * the two classes have independent call sites and can evolve
+	 * their shape rules independently — variant-specific images
+	 * often have different cropping/alt-text conventions.
 	 *
 	 * @param array<string, mixed> $wc_variation
-	 * @return array<int, array<string, string>>
+	 * @return array<int, array{type: string, url: string, alt_text?: string}>
 	 */
 	private static function extract_media( array $wc_variation ): array {
 		$images = $wc_variation['images'] ?? [];
