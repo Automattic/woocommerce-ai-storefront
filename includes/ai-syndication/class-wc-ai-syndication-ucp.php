@@ -333,6 +333,28 @@ class WC_AI_Syndication_Ucp {
 						[
 							'version' => self::PROTOCOL_VERSION,
 							'extends' => self::SERVICE_NAME,
+							// Self-hosted docs URLs. The spec + schema
+							// are served from this site (not GitHub) for
+							// three reasons:
+							//   1. Permission parity — if the store
+							//      restricts REST access, the docs
+							//      restrict alongside. No third-party
+							//      leak vector.
+							//   2. Version truth — the schema served
+							//      describes the version of the plugin
+							//      the merchant is running. No drift
+							//      from "latest".
+							//   3. Zero external dependency — a GitHub
+							//      outage or repo visibility change
+							//      can't break agent integrations.
+							// Same self-hosting pattern as the manifest
+							// itself (at /.well-known/ucp) and llms.txt.
+							'spec'    => function_exists( 'home_url' )
+								? home_url( '/llms.txt#ucp-extension' )
+								: '/llms.txt#ucp-extension',
+							'schema'  => function_exists( 'rest_url' )
+								? rest_url( 'wc/ucp/v1/extension/schema' )
+								: '/wp-json/wc/ucp/v1/extension/schema',
 							'config'  => [
 								'store_context' => $this->build_store_context(),
 								'attribution'   => $attribution_config,

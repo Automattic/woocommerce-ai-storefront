@@ -82,11 +82,16 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 	// Registration contract
 	// ------------------------------------------------------------------
 
-	public function test_registers_three_routes_under_wc_ucp_v1_namespace(): void {
+	public function test_registers_expected_routes_under_wc_ucp_v1_namespace(): void {
 		$controller = new WC_AI_Syndication_UCP_REST_Controller();
 		$controller->register_routes();
 
-		$this->assertCount( 3, $this->registered_routes );
+		// Three commerce endpoints (catalog/search, catalog/lookup,
+		// checkout-sessions) + one docs endpoint (extension/schema).
+		// The commerce endpoints are the UCP 2026-04-08 surface; the
+		// docs endpoint is our self-hosted JSON Schema for the
+		// `com.woocommerce.ai_syndication` extension.
+		$this->assertCount( 4, $this->registered_routes );
 		foreach ( $this->registered_routes as $call ) {
 			$this->assertEquals( 'wc/ucp/v1', $call['namespace'] );
 		}
@@ -133,6 +138,19 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'POST', $route['args']['methods'] );
 	}
 
+	public function test_extension_schema_route_registered(): void {
+		// Self-hosted JSON Schema endpoint for the
+		// com.woocommerce.ai_syndication merchant extension. GET,
+		// not POST — it's read-only static documentation content.
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller->register_routes();
+
+		$route = $this->route_for( '/extension/schema' );
+
+		$this->assertNotNull( $route, 'extension/schema route should be registered' );
+		$this->assertEquals( 'GET', $route['args']['methods'] );
+	}
+
 	public function test_all_routes_are_public(): void {
 		// UCP routes are public by design — agent auth is via the
 		// UCP-Agent header (used for attribution, not access control).
@@ -162,8 +180,97 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
-	// All three handlers are now implemented (tasks 10, 11, 12). Their
-	// behavior tests live in UcpCatalogSearchTest, UcpCatalogLookupTest,
-	// and UcpCheckoutSessionsTest respectively. This file retains only
-	// the route-registration contract tests.
+	// ------------------------------------------------------------------
+	// Extension schema handler
+	// ------------------------------------------------------------------
+
+	public function test_extension_schema_handler_returns_valid_json_schema(): void {
+		// The handler emits a JSON Schema document describing our
+		// merchant-extension capability config. Required top-level
+		// fields: `$schema` (draft identifier), `$id` (self URL for
+		// re-serialization), `type`, `properties`.
+		\Brain\Monkey\Functions\when( 'rest_url' )->alias(
+			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
+		);
+
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_extension_schema();
+
+		$this->assertInstanceOf( WP_REST_Response::class, $response );
+		$this->assertSame( 200, $response->get_status() );
+
+		$data = $response->get_data();
+		$this->assertIsArray( $data );
+
+		// JSON Schema meta.
+		$this->assertStringContainsString( 'json-schema.org', $data['$schema'] );
+		$this->assertStringContainsString( '/wc/ucp/v1/extension/schema', $data['$id'] );
+		$this->assertSame( 'object', $data['type'] );
+	}
+
+	public function test_extension_schema_documents_store_context_fields(): void {
+		// The schema must document the known config.store_context
+		// fields (currency, locale, country, prices_include_tax,
+		// shipping_enabled) so agents can validate without reading
+		// the plugin source. A regression dropping one silently
+		// would leave agents unable to interpret that field.
+		\Brain\Monkey\Functions\when( 'rest_url' )->alias(
+			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
+		);
+
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_extension_schema();
+		$data       = $response->get_data();
+
+		$store_context = $data['properties']['config']['properties']['store_context']['properties'];
+		$this->assertArrayHasKey( 'currency', $store_context );
+		$this->assertArrayHasKey( 'locale', $store_context );
+		$this->assertArrayHasKey( 'country', $store_context );
+		$this->assertArrayHasKey( 'prices_include_tax', $store_context );
+		$this->assertArrayHasKey( 'shipping_enabled', $store_context );
+	}
+
+	public function test_extension_schema_documents_ratings_payload(): void {
+		// Products emit `ratings` under the extension namespace
+		// (`extensions.com.woocommerce.ai_syndication.ratings`) — the
+		// schema must document its shape so agents can validate.
+		// Barcodes are NOT documented here: they're emitted in the
+		// CORE `variant.barcodes` field per the UCP spec, sourced
+		// from a Store API extension that's purely internal plumbing
+		// and doesn't belong in the UCP-layer extension schema.
+		\Brain\Monkey\Functions\when( 'rest_url' )->alias(
+			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
+		);
+
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_extension_schema();
+		$data       = $response->get_data();
+
+		$this->assertArrayHasKey( 'ratings', $data['properties'] );
+		// Barcodes live on the core UCP variant shape — not here.
+		$this->assertArrayNotHasKey( 'barcodes', $data['properties'] );
+	}
+
+	public function test_extension_schema_response_has_json_schema_content_type(): void {
+		// RFC 7159-ish convention: JSON Schema documents use
+		// `application/schema+json`. Agents and validators sniff the
+		// content type to confirm what they fetched.
+		\Brain\Monkey\Functions\when( 'rest_url' )->alias(
+			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
+		);
+
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_extension_schema();
+
+		$this->assertStringContainsString(
+			'application/schema+json',
+			$response->get_headers()['Content-Type'] ?? ''
+		);
+	}
+
+	// All three commerce handlers are implemented (tasks 10, 11, 12).
+	// Their behavior tests live in UcpCatalogSearchTest,
+	// UcpCatalogLookupTest, and UcpCheckoutSessionsTest respectively.
+	// This file retains only the route-registration contract tests +
+	// the extension-schema handler tests.
 }

@@ -200,16 +200,24 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 	// Runtime-behavior posture invariants
 	// ------------------------------------------------------------------
 
-	public function test_registered_rest_routes_are_exactly_three(): void {
-		// The plugin registers exactly 3 POST routes: catalog/search,
-		// catalog/lookup, checkout-sessions. No Complete Checkout,
-		// no Update Checkout, no GET /checkout-sessions/{id} — those
-		// would either enable programmatic completion or imply
-		// persistent checkout state that the handoff model rejects.
+	public function test_registered_rest_routes_are_the_exact_posture_set(): void {
+		// The plugin registers three commerce POST routes
+		// (catalog/search, catalog/lookup, checkout-sessions) and
+		// one docs GET route (extension/schema). No Complete
+		// Checkout, no Update Checkout, no GET /checkout-sessions/{id},
+		// no cart routes — those would either enable programmatic
+		// completion or imply persistent checkout state that the
+		// handoff model rejects.
 		//
-		// If a future change adds a 4th route, this test fires —
-		// forcing the maintainer to either legitimize the new route
-		// in the posture docs or revert.
+		// `extension/schema` is a read-only JSON Schema endpoint for
+		// the `com.woocommerce.ai_syndication` merchant extension —
+		// serves static documentation content, NOT commerce state. It
+		// is explicitly posture-compatible: no order/cart/payment
+		// semantics.
+		//
+		// If a future change adds any route not in this whitelist,
+		// this test fires — forcing the maintainer to either legitimize
+		// the new route in the posture docs or revert.
 		$registered = [];
 		Functions\when( 'register_rest_route' )->alias(
 			static function ( $namespace, $route ) use ( &$registered ) {
@@ -227,6 +235,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 				'wc/ucp/v1/catalog/lookup',
 				'wc/ucp/v1/catalog/search',
 				'wc/ucp/v1/checkout-sessions',
+				'wc/ucp/v1/extension/schema',
 			],
 			$registered
 		);
