@@ -1544,10 +1544,19 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			if ( '' === $raw_key ) {
 				continue;
 			}
-			$taxonomy = 0 === strpos( $raw_key, 'pa_' )
-				? $raw_key
-				: 'pa_' . sanitize_title( $raw_key );
-			// After sanitize_title a whitespace-only-after-trim input
+			// Normalize the key via sanitize_title first (handles case +
+			// slug form), then handle the `pa_` prefix. Running the
+			// prefix check case-sensitively on the raw key would
+			// mishandle mixed-case input like `"PA_Color"`: the old
+			// code would fail the `strpos($raw_key, 'pa_') === 0`
+			// check, fall into the else branch, and emit taxonomy
+			// `pa_pa_color` — silent zero-results misrouting with no
+			// signal to the agent.
+			$normalized_key = sanitize_title( $raw_key );
+			$taxonomy       = 0 === strpos( $normalized_key, 'pa_' )
+				? $normalized_key
+				: 'pa_' . $normalized_key;
+			// After normalization a whitespace-only-after-trim input
 			// (or a stringy-object cast) can still collapse to just
 			// `pa_`. That's not a valid taxonomy — drop it rather than
 			// forward a semantically-empty filter.

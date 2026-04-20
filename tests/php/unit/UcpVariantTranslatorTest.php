@@ -488,6 +488,36 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'https://store.example/red.jpg', $result['media'][0]['url'] );
 	}
 
+	public function test_translate_emits_multiple_images_in_source_order(): void {
+		// WC variations can have multiple images (e.g., a variation
+		// gallery showing front/back/detail shots). Order matters
+		// because agents render the first as primary and additional
+		// entries as the carousel. A regression that reversed or
+		// deduplicated the order would silently ship wrong hero
+		// images.
+		$fixture = [
+			'id'          => 555,
+			'name'        => 'Red / M',
+			'prices'      => [
+				'price'         => '2500',
+				'currency_code' => 'USD',
+			],
+			'is_in_stock' => true,
+			'images'      => [
+				[ 'src' => 'https://store.example/red-front.jpg', 'alt' => 'Front' ],
+				[ 'src' => 'https://store.example/red-back.jpg',  'alt' => 'Back' ],
+				[ 'src' => 'https://store.example/red-detail.jpg', 'alt' => 'Detail' ],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertCount( 3, $result['media'] );
+		$this->assertSame( 'https://store.example/red-front.jpg', $result['media'][0]['url'] );
+		$this->assertSame( 'https://store.example/red-back.jpg', $result['media'][1]['url'] );
+		$this->assertSame( 'https://store.example/red-detail.jpg', $result['media'][2]['url'] );
+	}
+
 	public function test_synthesize_default_also_carries_new_fields(): void {
 		$fixture = [
 			'id'                  => 901,

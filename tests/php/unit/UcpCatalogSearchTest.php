@@ -664,7 +664,42 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			]
 		);
 
+		// Assert full shape of both entries (not just count) so a
+		// regression that swapped slugs between axes or defaulted
+		// the second entry's operator to something other than 'in'
+		// would be caught.
 		$this->assertCount( 2, $this->captured_store_params['attributes'] );
+
+		$by_attribute = [];
+		foreach ( $this->captured_store_params['attributes'] as $entry ) {
+			$by_attribute[ $entry['attribute'] ] = $entry;
+		}
+		$this->assertArrayHasKey( 'pa_color', $by_attribute );
+		$this->assertArrayHasKey( 'pa_size', $by_attribute );
+		$this->assertSame( [ 'red' ], $by_attribute['pa_color']['slug'] );
+		$this->assertSame( [ 'm' ], $by_attribute['pa_size']['slug'] );
+		$this->assertSame( 'in', $by_attribute['pa_color']['operator'] );
+		$this->assertSame( 'in', $by_attribute['pa_size']['operator'] );
+	}
+
+	public function test_attribute_filter_normalizes_mixed_case_pa_prefix(): void {
+		// Regression: a case-sensitive `strpos($raw_key, 'pa_')` check
+		// on mixed-case input like `"PA_Color"` would fall into the
+		// else branch and produce taxonomy `pa_pa_color` (double-
+		// prefixed) — silent zero-results misrouting. Fix: run
+		// sanitize_title() before the prefix check so we compare
+		// against the lowercased form.
+		$this->successful_search(
+			[
+				'filters' => [
+					'attributes' => [
+						'PA_Color' => [ 'red' ],
+					],
+				],
+			]
+		);
+
+		$this->assertSame( 'pa_color', $this->captured_store_params['attributes'][0]['attribute'] );
 	}
 
 	public function test_attribute_filter_skips_empty_arrays(): void {
@@ -875,6 +910,48 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			[ 'sort' => [ 'field' => 'title' ] ]
 		);
 
+		$this->assertSame( 'asc', $this->captured_store_params['order'] );
+	}
+
+	public function test_sort_empty_field_silently_ignored(): void {
+		// Empty-string field is a legitimate-but-meaningless input
+		// (e.g. `sort: {direction: "asc"}` with field omitted serializes
+		// that way from some JSON clients). The handler's contract is
+		// silent-ignore, not warning — forwarding a bogus
+		// `invalid_sort_field: ""` warning on every such request would
+		// spam agents. A future refactor that drops the `'' !== $field`
+		// guard would break this contract; this test locks it in.
+		$body = $this->successful_search(
+			[ 'sort' => [ 'field' => '', 'direction' => 'asc' ] ]
+		);
+
+		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
+		$codes = array_column( $body['messages'] ?? [], 'code' );
+		$this->assertNotContains( 'invalid_sort_field', $codes );
+		$this->assertNotContains( 'invalid_sort_shape', $codes );
+	}
+
+	public function test_combined_filters_and_sort_all_forward(): void {
+		// Most realistic agent shape: multiple filters + a sort in a
+		// single request. Each feature has isolated tests; this one
+		// catches cross-feature regressions (accidental key overwrite,
+		// early return, loop-ordering bug in `map_ucp_search_to_store_api`)
+		// that isolated tests would miss.
+		$this->successful_search(
+			[
+				'filters' => [
+					'in_stock'   => true,
+					'featured'   => true,
+					'attributes' => [ 'color' => [ 'red' ] ],
+				],
+				'sort'    => [ 'field' => 'price', 'direction' => 'asc' ],
+			]
+		);
+
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+		$this->assertTrue( $this->captured_store_params['featured'] );
+		$this->assertSame( 'pa_color', $this->captured_store_params['attributes'][0]['attribute'] );
+		$this->assertSame( 'price', $this->captured_store_params['orderby'] );
 		$this->assertSame( 'asc', $this->captured_store_params['order'] );
 	}
 
