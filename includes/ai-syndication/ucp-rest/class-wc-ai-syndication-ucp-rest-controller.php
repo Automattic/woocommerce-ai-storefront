@@ -2127,8 +2127,15 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$amount_is_integer_like = is_int( $expected_amount_raw )
 			|| ( is_string( $expected_amount_raw ) && ctype_digit( $expected_amount_raw ) );
 		if ( is_array( $expected_unit_price ) && $amount_is_integer_like ) {
-			$expected_currency = isset( $expected_unit_price['currency'] )
-				? (string) $expected_unit_price['currency']
+			// Currency must be a string. A non-string value (array,
+			// object, etc.) cast via `(string)` would emit "Array to
+			// string conversion" notices; treat non-string as
+			// missing (empty-string lenient path) so the comparison
+			// runs against the store currency without polluting
+			// logs. Same defensive pattern as the handoff filter's
+			// non-string fallback.
+			$expected_currency = isset( $expected_unit_price['currency'] ) && is_string( $expected_unit_price['currency'] )
+				? $expected_unit_price['currency']
 				: '';
 			$currency_matches  = '' === $expected_currency
 				|| 0 === strcasecmp( $expected_currency, $store_currency );

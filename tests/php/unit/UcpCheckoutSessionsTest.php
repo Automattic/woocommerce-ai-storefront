@@ -1241,6 +1241,39 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotContains( 'price_changed', $codes );
 	}
 
+	public function test_non_string_currency_treated_as_missing_no_notices(): void {
+		// Regression: `expected_unit_price.currency` sent as a
+		// non-string value (array, object) previously ran through a
+		// `(string)` cast that would emit "Array to string conversion"
+		// PHP notices. The `is_string()` guard now treats non-string
+		// currency as missing — runs the comparison via the lenient
+		// empty-currency path against store currency — notice-free.
+		$this->seed_simple_product( 111, 3000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[
+						'item'                => [ 'id' => 'prod_111' ],
+						'quantity'            => 1,
+						'expected_unit_price' => [
+							'amount'   => 2500,
+							// Non-string currency — would coerce to
+							// "Array" via (string) cast without the
+							// is_string() guard.
+							'currency' => [ 'USD' ],
+						],
+					],
+				],
+			]
+		);
+
+		// Comparison ran (empty-currency lenient path) and fired the
+		// price_changed warning, and no PHP notice was surfaced.
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'price_changed', $codes );
+	}
+
 	public function test_price_changed_accepts_digit_only_string_amount(): void {
 		// Digit-only strings ARE valid — they're how JSON-via-PHP
 		// sometimes serializes large integers that would otherwise
