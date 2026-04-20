@@ -112,6 +112,19 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 			$variant['media'] = $media;
 		}
 
+		// Weight + dimensions — shipping-aware agents need these to
+		// estimate delivery costs or filter by physical attributes
+		// (fits-in-standard-flatrate, oversize surcharge, etc.).
+		// WC Store API emits them natively under `weight` (string
+		// scalar in merchant-configured unit) and `dimensions`
+		// (object with length/width/height). Only emit when the
+		// merchant has filled them in — empty/omitted values would
+		// produce misleading zeros or fabricated defaults.
+		$shipping = self::extract_shipping_attributes( $wc_variation );
+		if ( ! empty( $shipping ) ) {
+			$variant['shipping_attributes'] = $shipping;
+		}
+
 		return $variant;
 	}
 
@@ -160,6 +173,16 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 		}
 
 		$variant['availability'] = self::extract_availability( $wc_product );
+
+		// Simple products carry the same weight/dimensions shape the
+		// Store API uses for variations, so `shipping_attributes`
+		// routes through the same helper on the synthesized-default
+		// path. Keeps shipping-aware agents unaware of the
+		// simple-vs-variable distinction.
+		$shipping = self::extract_shipping_attributes( $wc_product );
+		if ( ! empty( $shipping ) ) {
+			$variant['shipping_attributes'] = $shipping;
+		}
 
 		return $variant;
 	}
@@ -227,6 +250,53 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 			}
 			$result[] = $media;
 		}
+		return $result;
+	}
+
+	/**
+	 * Extract shipping-relevant physical attributes (weight + dimensions).
+	 *
+	 * WC Store API emits `weight` as a string scalar in the merchant's
+	 * configured weight unit (e.g. `"0.5"` kg) and `dimensions` as an
+	 * object with string `length` / `width` / `height` in the
+	 * merchant's configured dimension unit (e.g. `"10"` cm). We pass
+	 * the values through as strings because the unit lives separately
+	 * — converting to a canonical unit would require store-configuration
+	 * awareness we don't want to duplicate here, and the store context
+	 * already advertises the unit conventions on the manifest.
+	 *
+	 * Emit shape:
+	 *   { weight: "0.5", dimensions: { length: "10", width: "5", height: "2" } }
+	 *
+	 * When none of the fields are set, return an empty array so the
+	 * caller can omit `shipping_attributes` entirely — better than
+	 * emitting a half-empty object agents have to filter through.
+	 *
+	 * @param array<string, mixed> $wc_variation
+	 * @return array<string, mixed>
+	 */
+	private static function extract_shipping_attributes( array $wc_variation ): array {
+		$result = [];
+
+		$weight = $wc_variation['weight'] ?? '';
+		if ( is_string( $weight ) && '' !== trim( $weight ) ) {
+			$result['weight'] = $weight;
+		}
+
+		$dimensions = $wc_variation['dimensions'] ?? [];
+		$dim_result = [];
+		if ( is_array( $dimensions ) ) {
+			foreach ( [ 'length', 'width', 'height' ] as $key ) {
+				$value = $dimensions[ $key ] ?? '';
+				if ( is_string( $value ) && '' !== trim( $value ) ) {
+					$dim_result[ $key ] = $value;
+				}
+			}
+		}
+		if ( ! empty( $dim_result ) ) {
+			$result['dimensions'] = $dim_result;
+		}
+
 		return $result;
 	}
 

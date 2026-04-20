@@ -278,18 +278,26 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	}
 
 	/**
-	 * Extract the combined taxonomies list (categories + tags).
+	 * Extract the combined taxonomies list (categories + tags + brands).
 	 *
-	 * Both come back as UCP category entries (`{value, taxonomy}`)
-	 * with distinct `taxonomy` slugs: "merchant" for WC categories
-	 * (our pre-existing convention), "tag" for WC tags. Tags are an
-	 * optional cross-cutting discovery signal ("summer",
-	 * "eco-friendly") that's orthogonal to categorical hierarchy;
-	 * merging them into one `categories` list keeps the UCP product
-	 * schema flat while letting agents filter/match on either axis.
+	 * All three come back as UCP category entries (`{value, taxonomy}`)
+	 * with distinct `taxonomy` slugs:
+	 *   - `"merchant"` for WC categories (our pre-existing convention)
+	 *   - `"tag"` for WC tags (cross-cutting discovery signal — "summer",
+	 *     "eco-friendly")
+	 *   - `"brand"` for the WC `product_brand` taxonomy (native in WC 9.5+;
+	 *     previously shipped via the standalone "WooCommerce Brands"
+	 *     plugin)
 	 *
-	 * Tags emit only when present; merchants who don't use tags
+	 * Merging into one `categories` list keeps the UCP product schema
+	 * flat while letting agents filter/match on any axis. Each type
+	 * emits only when present — merchants who don't use tags or brands
 	 * pay zero extra payload.
+	 *
+	 * Brands surface via `brands` on the Store API product response when
+	 * the merchant has the taxonomy registered (either via core or the
+	 * Brands plugin). Shape matches `categories` / `tags` — `[{id, name,
+	 * slug}, ...]` — so extraction is mechanical.
 	 *
 	 * @param array<string, mixed> $wc_product
 	 * @return array<int, array{value: string, taxonomy: string}>
@@ -314,6 +322,17 @@ class WC_AI_Syndication_UCP_Product_Translator {
 					$result[] = [
 						'value'    => (string) $tag['name'],
 						'taxonomy' => 'tag',
+					];
+				}
+			}
+		}
+
+		if ( ! empty( $wc_product['brands'] ) && is_array( $wc_product['brands'] ) ) {
+			foreach ( $wc_product['brands'] as $brand ) {
+				if ( is_array( $brand ) && ! empty( $brand['name'] ) ) {
+					$result[] = [
+						'value'    => (string) $brand['name'],
+						'taxonomy' => 'brand',
 					];
 				}
 			}
