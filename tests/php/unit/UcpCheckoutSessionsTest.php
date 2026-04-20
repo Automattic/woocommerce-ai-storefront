@@ -1239,6 +1239,21 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue( $result['data']['line_items'][0]['price_includes_tax'] );
 	}
 
+	public function test_variation_line_item_includes_price_includes_tax_flag(): void {
+		// A future refactor could place the flag assignment behind
+		// a simple-only branch. This test catches that by using a
+		// variation (type=variation) and asserting the flag is
+		// still present on the response line item.
+		$this->seed_variation( 222, 3500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'var_222' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertArrayHasKey( 'price_includes_tax', $result['data']['line_items'][0] );
+		$this->assertFalse( $result['data']['line_items'][0]['price_includes_tax'] );
+	}
+
 	public function test_minimum_order_not_met_blocks_redirect(): void {
 		// Filter hook returns 5000 (minor units) — merchant requires
 		// $50 minimum. Agent sends 1 item at $25 → below threshold.
@@ -1254,6 +1269,53 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'minimum_not_met', $codes );
 		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
 		$this->assertSame( 'incomplete', $result['data']['status'] );
+	}
+
+	public function test_minimum_not_met_still_echoes_cart_shape(): void {
+		// State-machine test: `has_valid_items` ≠ `should_redirect`.
+		// When min-not-met flips redirect off, the cart contents
+		// (line_items + real subtotal in totals) must still be
+		// visible so the agent can show the user "you have $25,
+		// need $50 — add more items." A regression that zeroed
+		// line_items or totals on this path would break that UX.
+		$this->stub_apply_filters_for( 'wc_ai_syndication_minimum_order_amount', 5000 );
+
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertCount( 1, $result['data']['line_items'] );
+
+		// Both totals entries (subtotal + required `total`) present
+		// and reflect the real subtotal, not zero. Spec-compliant
+		// across all three paths (happy, no-items, min-blocked).
+		$types = array_column( $result['data']['totals'], 'type' );
+		$this->assertContains( 'subtotal', $types );
+		$this->assertContains( 'total', $types );
+		foreach ( $result['data']['totals'] as $entry ) {
+			$this->assertSame( 2500, $entry['amount'] );
+		}
+	}
+
+	public function test_minimum_order_negative_filter_return_disables_enforcement(): void {
+		// A negative return from the filter is semantically
+		// "no minimum" — the guard `$minimum_order_amount > 0`
+		// gates enforcement on positive values only. Documents
+		// the cast + guard behavior so a future change that drops
+		// the `> 0` check would be caught.
+		$this->stub_apply_filters_for( 'wc_ai_syndication_minimum_order_amount', -500 );
+
+		$this->seed_simple_product( 111, 100 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'minimum_not_met', $codes );
+		$this->assertArrayHasKey( 'continue_url', $result['data'] );
 	}
 
 	public function test_minimum_order_met_allows_redirect(): void {
@@ -1386,6 +1448,87 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( '', $captured_locale );
+	}
+
+	public function test_handoff_filter_returning_non_string_is_coerced_safely(): void {
+		// A filter callback returning null/array/int shouldn't fatal
+		// or produce nonsensical output. The handler casts via
+		// `(string)` before emitting, so: null → "", 42 → "42",
+		// array → "Array" (non-fatal). This documents the safety
+		// net so a future refactor can't accidentally introduce a
+		// "Array to string" warning or, worse, an uncaught TypeError.
+		$this->stub_apply_filters_for( 'wc_ai_syndication_checkout_handoff_message', null );
+
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		// Handler didn't fatal (status 201 = happy path preserved).
+		$this->assertSame( 201, $result['status'] );
+
+		// Handoff message present + is a string (empty from null
+		// cast), not missing + not non-string.
+		$handoff = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => 'buyer_handoff_required' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $handoff );
+		$msg = array_values( $handoff )[0];
+		$this->assertIsString( $msg['content'] );
+	}
+
+	public function test_locale_boundary_lengths(): void {
+		// Regex: `^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{1,8})*$` + 35-char cap.
+		// Boundaries worth pinning so a future refactor doesn't
+		// silently loosen/tighten the accepted range:
+		//   - "a"          (1 char, below min) → rejected
+		//   - "aa"         (2 chars, at min)   → accepted
+		//   - "abcdefgh"   (8 chars, max lang) → accepted
+		//   - "abcdefghi"  (9 chars, over max) → rejected
+		//   - 35-char legal → accepted
+		//   - 36-char legal → rejected (length cap)
+		$tests = [
+			'a'                                     => '',           // below min
+			'aa'                                    => 'aa',          // at min
+			'abcdefgh'                              => 'abcdefgh',    // 8-char lang subtag
+			'abcdefghi'                             => '',            // 9-char lang subtag, over max
+			'en-US-x-aaaaaaaa-bbbbbbbb'             => 'en-US-x-aaaaaaaa-bbbbbbbb',  // 25 chars, within cap
+			str_repeat( 'a', 8 ) . '-' . str_repeat( 'b', 26 ) => '',  // 35 chars — rejected (extension subtag > 8 chars, not cap)
+		];
+		// The 35-char cap is exercised by the SQL-injection rejection
+		// test; the per-subtag 8-char limit is the stricter gate for
+		// malformed-but-long inputs. The last case above documents
+		// that interaction.
+
+		foreach ( $tests as $input => $expected_captured ) {
+			$captured_locale = null;
+			Functions\when( 'apply_filters' )->alias(
+				function ( string $hook, $default, $context = null ) use ( &$captured_locale ) {
+					if ( 'wc_ai_syndication_checkout_handoff_message' === $hook && is_array( $context ) ) {
+						$captured_locale = $context['locale'] ?? null;
+					}
+					return $default;
+				}
+			);
+
+			$this->fake_store_api = [];
+			$this->seed_simple_product( 111, 2500 );
+
+			$this->call_handler(
+				[
+					'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ],
+					'context'    => [ 'locale' => $input ],
+				]
+			);
+
+			$this->assertSame(
+				$expected_captured,
+				$captured_locale,
+				sprintf( "Locale boundary failure: input=%s (expected %s)", $input, $expected_captured )
+			);
+		}
 	}
 
 	/**
