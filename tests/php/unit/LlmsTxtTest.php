@@ -665,7 +665,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// UCP extension docs (1.9.0)
+	// UCP extension docs
 	// ------------------------------------------------------------------
 
 	public function test_llms_txt_includes_ucp_extension_section(): void {

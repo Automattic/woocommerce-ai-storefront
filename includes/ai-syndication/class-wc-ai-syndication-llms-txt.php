@@ -534,9 +534,11 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[] = 'Product responses emit a `ratings` field under this namespace when review data exists:';
 		$lines[] = '';
 		$lines[] = '```json';
-		$lines[] = '"extensions": {';
-		$lines[] = '  "com.woocommerce.ai_syndication": {';
-		$lines[] = '    "ratings": { "average": 4.5, "count": 17 }';
+		$lines[] = '{';
+		$lines[] = '  "extensions": {';
+		$lines[] = '    "com.woocommerce.ai_syndication": {';
+		$lines[] = '      "ratings": { "average": 4.5, "count": 17 }';
+		$lines[] = '    }';
 		$lines[] = '  }';
 		$lines[] = '}';
 		$lines[] = '```';

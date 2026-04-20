@@ -181,7 +181,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Extension schema handler (1.9.0)
+	// Extension schema handler
 	// ------------------------------------------------------------------
 
 	public function test_extension_schema_handler_returns_valid_json_schema(): void {
@@ -268,9 +268,9 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	// All three handlers are now implemented (tasks 10, 11, 12). Their
-	// behavior tests live in UcpCatalogSearchTest, UcpCatalogLookupTest,
-	// and UcpCheckoutSessionsTest respectively. This file retains only
-	// the route-registration contract tests + the 1.9.0 extension
-	// schema handler tests.
+	// All three commerce handlers are implemented (tasks 10, 11, 12).
+	// Their behavior tests live in UcpCatalogSearchTest,
+	// UcpCatalogLookupTest, and UcpCheckoutSessionsTest respectively.
+	// This file retains only the route-registration contract tests +
+	// the extension-schema handler tests.
 }

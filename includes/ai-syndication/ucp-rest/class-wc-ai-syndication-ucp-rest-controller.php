@@ -122,22 +122,34 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	/**
 	 * Register all UCP REST routes.
 	 *
-	 * All routes are POST — UCP uses request bodies for its capability
-	 * payloads (catalog query, line items) so POST is required even for
-	 * read-shaped operations like catalog/search.
+	 * Two shapes of routes:
+	 *
+	 *   1. Three COMMERCE routes (POST): catalog/search, catalog/lookup,
+	 *      checkout-sessions. UCP uses request bodies for its capability
+	 *      payloads (catalog query, line items) so POST is required even
+	 *      for read-shaped operations like catalog/search. Each handler
+	 *      checks `is_syndication_disabled()` before doing any work and,
+	 *      when disabled, returns a UCP-shaped `WP_REST_Response` with
+	 *      HTTP 503 (via `ucp_catalog_error_response()` /
+	 *      `ucp_checkout_error_response()`).
+	 *
+	 *   2. One DOCS route (GET): extension/schema. Serves a static JSON
+	 *      Schema document describing our merchant-extension capability.
+	 *      NOT gated on `is_syndication_disabled()` — same availability
+	 *      as the UCP manifest itself at `/.well-known/ucp` (both are
+	 *      discovery surfaces; the manifest continues to be served even
+	 *      when syndication is paused, and the schema it points at must
+	 *      resolve to stay consistent).
 	 *
 	 * All routes are public (`permission_callback => '__return_true'`):
 	 * UCP's agent authentication happens at the `UCP-Agent` header
 	 * level and is currently used only for attribution (utm_source in
 	 * checkout handoff) and logging, not for access control. Merchants
-	 * who need to gate access can pause syndication via the admin UI —
-	 * each handler checks `is_syndication_disabled()` before doing any
-	 * work and, when disabled, returns a UCP-shaped `WP_REST_Response`
-	 * with HTTP 503 status (built via `ucp_catalog_error_response()`
-	 * for catalog routes and `ucp_checkout_error_response()` for
-	 * checkout-sessions). Keeping routes registered (versus
-	 * unregistering on disable) avoids rewrite-flush churn every time
-	 * a merchant toggles the setting.
+	 * who need to gate access can pause syndication (commerce routes
+	 * refuse) or use WP's standard REST permission filters.
+	 *
+	 * Keeping routes registered (versus unregistering on disable) avoids
+	 * rewrite-flush churn every time a merchant toggles the setting.
 	 */
 	public function register_routes(): void {
 		register_rest_route(
@@ -986,13 +998,13 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$schema = [
 			'$schema'     => 'https://json-schema.org/draft/2020-12/schema',
 			'$id'         => $self_id,
-			'title'       => 'WooCommerce AI Syndication UCP Extension',
-			'description' => 'Schema for the `com.woocommerce.ai_syndication` merchant-extension capability advertised at `capabilities[com.woocommerce.ai_syndication][0].config` in the UCP manifest. Carries commerce context agents need upfront (currency, locale, tax/shipping posture) and attribution conventions for crediting agent-driven orders back to the originating agent.',
+			'title'       => 'WooCommerce AI Syndication UCP Extension Contract',
+			'description' => 'Schema for the full `com.woocommerce.ai_syndication` extension contract. The top-level `config` property describes the merchant-extension configuration advertised in the UCP manifest at `capabilities[com.woocommerce.ai_syndication][0].config`. The top-level `ratings` property describes the per-product payload emitted under `extensions[com.woocommerce.ai_syndication].ratings` on UCP product responses. Consumers validate each against the property path matching the location they encountered the data at.',
 			'type'        => 'object',
 			'properties'  => [
 				'config'  => [
 					'type'        => 'object',
-					'description' => 'Extension-scoped configuration.',
+					'description' => 'Merchant-extension configuration advertised at `capabilities[com.woocommerce.ai_syndication][0].config` in the UCP manifest.',
 					'properties'  => [
 						'store_context' => [
 							'type'        => 'object',

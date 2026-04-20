@@ -538,11 +538,12 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		//           but at a GitHub directory listing, not a spec doc)
 		//   - 1.6.4: `https://ucp.dev/{VERSION}/...` (pinned at the
 		//           canonical docs site + OpenAPI schema)
-		//   - 1.9.0: merchant-extension capability URLs are
-		//           SELF-HOSTED (on the merchant site, not ucp.dev) —
-		//           they don't fit the version-pin rule because they
-		//           always describe the CURRENT plugin version rather
-		//           than a fixed UCP protocol revision.
+		//   - Self-hosted extension (this PR): merchant-extension
+		//           capability URLs are served from the merchant site
+		//           (not ucp.dev) — they don't fit the version-pin
+		//           rule because they always describe the CURRENT
+		//           plugin version rather than a fixed UCP protocol
+		//           revision.
 		//
 		// This test locks in the canonical-capability shape: all UCP
 		// `dev.ucp.*` URLs use `ucp.dev/{PROTOCOL_VERSION}/`. Extension
