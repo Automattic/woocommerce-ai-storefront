@@ -639,14 +639,28 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *   - invalid quantity (≤0 or > MAX_QUANTITY_PER_LINE_ITEM)
 	 *                                → rejected (invalid_quantity)
 	 *
-	 * Response status:
-	 *   - any valid items → 201 with status=requires_escalation + continue_url
-	 *   - all items fail  → 200 with status=error, no continue_url,
-	 *                       messages explain each failure
+	 * Response status (UCP 2026-04-08 enum: incomplete |
+	 * requires_escalation | ready_for_complete | complete_in_progress
+	 * | completed | canceled):
+	 *   - any valid items + eligible for redirect → 201 with
+	 *     status=requires_escalation + continue_url
+	 *   - all items fail                          → 200 with
+	 *     status=incomplete, no continue_url, messages explain
+	 *     each failure
+	 *   - valid items but minimum-order filter blocks → 200 with
+	 *     status=incomplete, no continue_url, `minimum_not_met`
+	 *     message. Line items + subtotal are still echoed so agents
+	 *     can show the user the gap to the threshold.
 	 *
 	 * Legal links: `links` is mandatory per UCP schema. We emit what's
 	 * configured via get_privacy_policy_url() + wc_get_page_permalink('terms'),
 	 * with advisory warnings for any page the merchant hasn't set up.
+	 *
+	 * Totals: emits both `subtotal` AND `total` entries per UCP spec
+	 * (minContains:1, maxContains:1 each). With our web-redirect
+	 * stance `total` equals `subtotal` and a `total_is_provisional`
+	 * info-message explains that tax + shipping are calculated at
+	 * merchant checkout.
 	 *
 	 * @param WP_REST_Request $request UCP checkout-sessions create request.
 	 * @return WP_Error|WP_REST_Response
@@ -689,11 +703,34 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			? (string) get_woocommerce_currency()
 			: 'USD';
 
+		// Locale extraction — UCP `context.locale` is the agent's hint
+		// about the buyer's language. Validate as BCP-47-ish: a
+		// leading alphabetic language subtag (2–8 letters) followed
+		// by optional hyphen/underscore-separated alphanumeric subtags
+		// (1–8 chars each), with a conservative 35-char overall cap
+		// to limit DoS-via-oversized-input. Covers common tags like
+		// `en`, `en-US`, `zh-Hant-HK`, and extended ones like
+		// `en-GB-oxendict` while still rejecting free-form text or
+		// shell-injection payloads. Empty string when absent or
+		// malformed — the handoff filter still runs with store-default
+		// locale.
+		$context        = $request->get_param( 'context' );
+		$request_locale = '';
+		if ( is_array( $context ) && isset( $context['locale'] ) && is_string( $context['locale'] ) ) {
+			$candidate = trim( $context['locale'] );
+			if (
+				strlen( $candidate ) <= 35
+				&& preg_match( '/^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{1,8})*$/', $candidate )
+			) {
+				$request_locale = $candidate;
+			}
+		}
+
 		$processed = [];
 		$messages  = [];
 
 		foreach ( $line_items_raw as $index => $line_item ) {
-			$outcome = self::process_line_item( $line_item, (int) $index );
+			$outcome = self::process_line_item( $line_item, (int) $index, $currency );
 
 			foreach ( $outcome['messages'] as $message ) {
 				$messages[] = $message;
@@ -710,57 +747,185 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		$has_valid_items = ! empty( $processed );
-		$continue_url    = $has_valid_items
-			? self::build_continue_url( $processed, $agent_name )
-			: '';
 
-		// Response line_items: echo successfully-processed items with
-		// enriched price/total data. Items that failed validation are
-		// NOT in line_items — they only appear via messages pointing
-		// at the original request index.
+		// Tax-inclusive vs exclusive disclosure per line. WC's
+		// configured setting governs whether `prices.price` already
+		// includes tax (common in EU stores) or is pre-tax (typical
+		// US). The store_context in the manifest carries the same
+		// boolean for upfront disclosure, but echoing it per-line
+		// removes ambiguity when agents render the cart — no need to
+		// cross-reference the manifest to interpret the number.
+		$prices_include_tax = function_exists( 'wc_prices_include_tax' )
+			? (bool) wc_prices_include_tax()
+			: false;
+
+		// Build response line_items AND compute the subtotal in a
+		// single pass. Single-source so the min-order check, the
+		// response `totals`, and the line-level display numbers all
+		// agree. Items that failed validation are NOT in line_items
+		// — they appear only via messages pointing at their original
+		// request index.
 		$response_line_items = [];
 		$subtotal_amount     = 0;
 		foreach ( $processed as $p ) {
 			$line_total            = $p['unit_price_minor'] * $p['quantity'];
 			$subtotal_amount      += $line_total;
 			$response_line_items[] = [
-				'item'       => [ 'id' => $p['ucp_id'] ],
-				'quantity'   => $p['quantity'],
-				'unit_price' => [
+				'item'               => [ 'id' => $p['ucp_id'] ],
+				'quantity'           => $p['quantity'],
+				'unit_price'         => [
 					'amount'   => $p['unit_price_minor'],
 					'currency' => $currency,
 				],
-				'line_total' => [
+				'line_total'         => [
 					'amount'   => $line_total,
 					'currency' => $currency,
 				],
+				'price_includes_tax' => $prices_include_tax,
 			];
 		}
 
-		if ( $has_valid_items ) {
+		// Redirect eligibility — starts as "has valid items" but the
+		// minimum-order filter (below) can flip it off. Kept separate
+		// from `$has_valid_items` because the two concepts are distinct:
+		//   - $has_valid_items: "at least one line item survived validation"
+		//   - $should_redirect: "we can issue a continue_url AND mark
+		//     the session as requires_escalation"
+		// An agent whose cart has valid items but falls below the
+		// merchant minimum has `has_valid_items=true` (the line items
+		// + subtotal are still echoed so they can show the user the
+		// gap) but `should_redirect=false` (no continue_url, status
+		// incomplete).
+		$should_redirect = $has_valid_items;
+
+		// Minimum-order enforcement. WC core doesn't ship a
+		// minimum-order-amount setting natively (it's usually
+		// plugin territory or a theme convention), so we gate via a
+		// filter hook rather than an admin UI: merchants who want
+		// enforcement return the minor-unit minimum from
+		// `wc_ai_syndication_minimum_order_amount`. Zero (default)
+		// means no minimum, matching existing behavior.
+		//
+		// When the subtotal doesn't meet the minimum we leave the
+		// cart visible but flip `$should_redirect` off — surfacing
+		// the gap upfront with an actionable message beats
+		// redirecting the user to a checkout they can't complete.
+		$minimum_order_amount = (int) apply_filters(
+			'wc_ai_syndication_minimum_order_amount',
+			0,
+			[
+				'subtotal_minor' => $subtotal_amount,
+				'currency'       => $currency,
+				'agent'          => $agent_name,
+				'line_items'     => $processed,
+			]
+		);
+		if ( $has_valid_items && $minimum_order_amount > 0 && $subtotal_amount < $minimum_order_amount ) {
+			$messages[]      = [
+				'type'     => 'error',
+				'code'     => 'minimum_not_met',
+				// `requires_buyer_input`, not `unrecoverable`: the
+				// message instructs the buyer to "add more items to
+				// proceed" — it's a fixable condition, parallel to
+				// `buyer_handoff_required`. Using unrecoverable would
+				// mislead agents into treating this as a terminal
+				// failure and abandoning the cart.
+				'severity' => 'requires_buyer_input',
+				'path'     => '$.line_items',
+				'content'  => sprintf(
+					/* translators: 1: current subtotal (minor units), 2: minimum order (minor units). */
+					__( 'Order subtotal %1$d is below the merchant minimum of %2$d (minor units). Add more items to proceed.', 'woocommerce-ai-syndication' ),
+					$subtotal_amount,
+					$minimum_order_amount
+				),
+			];
+			$should_redirect = false;
+		}
+
+		$continue_url = $should_redirect
+			? self::build_continue_url( $processed, $agent_name )
+			: '';
+
+		if ( $should_redirect ) {
 			// Buyer handoff message accompanies every redirect. Agents
 			// surface the `content` to the user verbatim before linking
 			// out, so the phrasing matters — keep it short and neutral.
+			// Filter hook lets merchants override (e.g. "Review and
+			// secure payment at Acme Store") without an admin UI; the
+			// default is intentionally generic.
+			$default_handoff = __( 'Complete your purchase on the merchant site.', 'woocommerce-ai-syndication' );
+			$handoff_content = apply_filters(
+				'wc_ai_syndication_checkout_handoff_message',
+				$default_handoff,
+				[
+					'line_items' => $processed,
+					'agent'      => $agent_name,
+					'locale'     => $request_locale,
+				]
+			);
+			// Notice-free coercion. A third-party filter returning an
+			// array/object would trigger an "Array to string conversion"
+			// PHP notice on `(string) $handoff_content`. Only accept
+			// string returns; fall back to the default for anything
+			// else. The filter docblock documents the string contract,
+			// so this is a defense against misbehaving callbacks, not
+			// a supported alternative return type.
+			if ( ! is_string( $handoff_content ) ) {
+				$handoff_content = $default_handoff;
+			}
 			$messages[] = [
 				'type'     => 'error',
 				'code'     => 'buyer_handoff_required',
 				'severity' => 'requires_buyer_input',
-				'content'  => __( 'Complete your purchase on the merchant site.', 'woocommerce-ai-syndication' ),
+				'content'  => $handoff_content,
+			];
+
+			// `total_is_provisional` — UCP spec requires a `total`
+			// entry in `totals` (see below). With our web-redirect
+			// stance we can't compute real tax/shipping server-side
+			// (those require an address + shipping-method selection
+			// that only happens at the merchant checkout). Emit an
+			// info-message alongside `total: subtotal` so agents
+			// can disclose the caveat to the user before the redirect.
+			$messages[] = [
+				'type'     => 'info',
+				'code'     => 'total_is_provisional',
+				'severity' => 'advisory',
+				'content'  => __( 'Total excludes tax and shipping, which are calculated at the merchant checkout.', 'woocommerce-ai-syndication' ),
 			];
 		}
 
+		// UCP 2026-04-08 `totals` schema requires exactly one `subtotal`
+		// AND exactly one `total` entry (both minContains:1,
+		// maxContains:1). With our web-redirect stance we can't compute
+		// real tax/shipping, so `total` equals `subtotal` on the happy
+		// path and is 0 when no items validated. The accompanying
+		// `total_is_provisional` info-message (emitted above when
+		// should_redirect) explains the elision.
+		$response_totals = [
+			[
+				'type'   => 'subtotal',
+				'amount' => $subtotal_amount,
+			],
+			[
+				'type'   => 'total',
+				'amount' => $subtotal_amount,
+			],
+		];
+
+		// Status: `requires_escalation` when we have something to
+		// escalate to. Otherwise `incomplete` — spec enum value that
+		// most closely maps to "session awaiting valid input" (the
+		// pre-spec-check `error` wasn't in the status enum).
+		// `$should_redirect` is false when either (a) no items
+		// validated, or (b) valid items but below the merchant minimum.
 		$response_body = [
 			'ucp'        => WC_AI_Syndication_UCP_Envelope::checkout_envelope(),
 			'id'         => 'chk_' . bin2hex( random_bytes( 8 ) ),
-			'status'     => $has_valid_items ? 'requires_escalation' : 'error',
+			'status'     => $should_redirect ? 'requires_escalation' : 'incomplete',
 			'currency'   => $currency,
 			'line_items' => $response_line_items,
-			'totals'     => [
-				[
-					'type'   => 'subtotal',
-					'amount' => $subtotal_amount,
-				],
-			],
+			'totals'     => $response_totals,
 			'links'      => $links,
 		];
 
@@ -776,7 +941,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// The session ID is a correlation token only — no persistence.
 		return new WP_REST_Response(
 			$response_body,
-			$has_valid_items ? 201 : 200
+			$should_redirect ? 201 : 200
 		);
 	}
 
@@ -857,10 +1022,12 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *   - `ucp` envelope (version + capabilities + payment_handlers)
 	 *   - `id` (fresh `chk_` correlation token; each error response
 	 *     gets a unique ID even though it's a terminal response)
-	 *   - `status` = 'error'
+	 *   - `status` = 'incomplete' (UCP 2026-04-08 spec enum value
+	 *     for "validation failed, no session to escalate to")
 	 *   - `currency` (merchant's WC currency, fallback 'USD')
 	 *   - `line_items` (empty array)
-	 *   - `totals` (zeroed subtotal)
+	 *   - `totals` (zeroed `subtotal` AND zeroed `total` — spec
+	 *     requires both entries, `minContains:1, maxContains:1`)
 	 *   - `links` (empty array)
 	 *   - `messages` (the single error)
 	 *
@@ -888,16 +1055,29 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			? (string) get_woocommerce_currency()
 			: 'USD';
 
+		// UCP 2026-04-08 compliance:
+		//   - `totals` MUST contain exactly one `subtotal` AND one `total`
+		//     entry (both minContains:1, maxContains:1). Zero-amount on
+		//     the error path; the accompanying message carries the
+		//     semantic "nothing was processed."
+		//   - `status` enum: `incomplete | requires_escalation |
+		//     ready_for_complete | complete_in_progress | completed |
+		//     canceled`. `incomplete` is the closest match for
+		//     "validation failed, no session to escalate to."
 		return new WP_REST_Response(
 			[
 				'ucp'        => WC_AI_Syndication_UCP_Envelope::checkout_envelope(),
 				'id'         => 'chk_' . bin2hex( random_bytes( 8 ) ),
-				'status'     => 'error',
+				'status'     => 'incomplete',
 				'currency'   => $currency,
 				'line_items' => [],
 				'totals'     => [
 					[
 						'type'   => 'subtotal',
+						'amount' => 0,
+					],
+					[
+						'type'   => 'total',
 						'amount' => 0,
 					],
 				],
@@ -1760,10 +1940,21 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * a separate advisory about stock) — don't short-circuit after
 	 * the first.
 	 *
-	 * @param mixed $line_item Raw line_item value from the request body.
+	 * @param mixed  $line_item      Raw line_item value from the request body.
+	 * @param int    $index          Position in the line_items array (for
+	 *                               JSON-path in error messages).
+	 * @param string $store_currency ISO 4217 currency code the store
+	 *                               operates in — used to validate that
+	 *                               `expected_unit_price.currency`
+	 *                               matches before running the
+	 *                               `price_changed` comparison. Passed in
+	 *                               (rather than read from WC here) to
+	 *                               keep the method pure + testable and
+	 *                               avoid a second `get_woocommerce_currency`
+	 *                               call per line item.
 	 * @return array{processed: ?array<string, mixed>, messages: array<int, array<string, mixed>>}
 	 */
-	private static function process_line_item( $line_item, int $index ): array {
+	private static function process_line_item( $line_item, int $index, string $store_currency ): array {
 		$messages = [];
 		$path     = '$.line_items[' . $index . ']';
 
@@ -1893,6 +2084,80 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		$unit_price_minor = (int) ( $wc_product['prices']['price'] ?? 0 );
+
+		// Price-stability warning. Agents typically scrape the catalog
+		// at T, present to the user at T+N, then POST /checkout-sessions
+		// at T+M. Merchant prices can drift in the interval. If the
+		// agent sends `expected_unit_price` (the amount they showed
+		// the user), compare to current; mismatch → `price_changed`
+		// warning with both values so the agent can confirm with the
+		// user before redirecting. Agent-opt-in: agents that don't
+		// send `expected_unit_price` get no warning (our legacy
+		// behavior unchanged).
+		//
+		// Currency guard: minor-unit amounts aren't comparable across
+		// currencies (50 JPY ≠ 50 USD), so we only run the comparison
+		// when the agent's declared currency matches the store's.
+		// Empty/omitted currency is treated as "matches store" (the
+		// lenient path — agents pre-negotiated the currency via the
+		// manifest's store_context). A non-matching currency causes
+		// us to silently skip the check rather than emit a confusing
+		// warning; agents can verify the store currency from the
+		// manifest before calling.
+		// Extract + shape-guard `expected_unit_price` before nested
+		// array access. PHP 8 `isset($str['x']['y'])` on a string-
+		// typed `$line_item['expected_unit_price']` can emit
+		// "Trying to access array offset on value of type string"
+		// warnings; pulling the value into a local and checking
+		// `is_array` is the clean defensive pattern (mirrors the
+		// guard on `$line_item['item']` earlier in the function).
+		//
+		// Amount type-strictness: UCP amounts are integer minor units.
+		// `is_numeric()` accepts decimal strings and floats, which
+		// `(int)` would silently truncate — `"25.00"` → 25,
+		// potentially firing a bogus `price_changed` for a client
+		// using the wrong encoding. Require `is_int()` OR a
+		// digit-only string (`ctype_digit`). Decimals, floats,
+		// negatives, and scientific notation all skip the comparison
+		// without emitting a warning.
+		$expected_unit_price    = $line_item['expected_unit_price'] ?? null;
+		$expected_amount_raw    = is_array( $expected_unit_price )
+			? ( $expected_unit_price['amount'] ?? null )
+			: null;
+		$amount_is_integer_like = is_int( $expected_amount_raw )
+			|| ( is_string( $expected_amount_raw ) && ctype_digit( $expected_amount_raw ) );
+		if ( is_array( $expected_unit_price ) && $amount_is_integer_like ) {
+			// Currency must be a string. A non-string value (array,
+			// object, etc.) cast via `(string)` would emit "Array to
+			// string conversion" notices; treat non-string as
+			// missing (empty-string lenient path) so the comparison
+			// runs against the store currency without polluting
+			// logs. Same defensive pattern as the handoff filter's
+			// non-string fallback.
+			$expected_currency = isset( $expected_unit_price['currency'] ) && is_string( $expected_unit_price['currency'] )
+				? $expected_unit_price['currency']
+				: '';
+			$currency_matches  = '' === $expected_currency
+				|| 0 === strcasecmp( $expected_currency, $store_currency );
+
+			if ( $currency_matches ) {
+				$expected = (int) $expected_amount_raw;
+				if ( $expected !== $unit_price_minor ) {
+					$messages[] = [
+						'type'     => 'warning',
+						'code'     => 'price_changed',
+						'severity' => 'advisory',
+						'path'     => $path,
+						'content'  => sprintf(
+							/* translators: 1: expected amount (minor units), 2: current amount (minor units). */
+							__( 'Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched.', 'woocommerce-ai-syndication' ),
+							$expected,
+							$unit_price_minor
+						),
+					];
+				}
+			}
+		}
 
 		return [
 			'processed' => [
