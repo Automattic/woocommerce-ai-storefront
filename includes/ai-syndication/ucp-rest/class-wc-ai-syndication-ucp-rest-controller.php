@@ -1200,21 +1200,23 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 	/**
 	 * Translate a UCP search request's body fields onto WC Store API
-	 * query params and surface any category-resolution warnings.
+	 * query params and surface any resolution warnings.
 	 *
-	 * Mapping:
-	 *   query                → search       (full-text match)
-	 *   filters.categories   → category     (comma-joined term IDs)
-	 *   filters.price.min    → min_price    (presentment units, string)
-	 *   filters.price.max    → max_price
+	 * The mapping covers `query`, `pagination`, `sort`, and every
+	 * well-known entry under `filters` (categories, tags, price range,
+	 * stock status, featured flag, rating floor, attribute filters,
+	 * on-sale). The authoritative list is the inline code below — this
+	 * docblock deliberately avoids enumerating every filter key to keep
+	 * from drifting as new filters are added.
 	 *
 	 * Non-object `filters`, unknown keys, and malformed nested shapes
 	 * are silently ignored — returning empty `$params` is equivalent
 	 * to "list all products," a sensible fallback for garbled input.
 	 *
-	 * Unresolvable category strings in `filters.categories` ARE
-	 * surfaced: they produce a `category_not_found` warning in the
-	 * returned messages array so agents learn their filter didn't
+	 * Unresolvable category/tag strings and malformed sort inputs ARE
+	 * surfaced: they produce `category_not_found`, `tag_not_found`,
+	 * `invalid_sort_field`, or `invalid_sort_shape` warnings in the
+	 * returned messages array so agents learn their filter/sort didn't
 	 * apply (instead of silently receiving the unfiltered catalog).
 	 *
 	 * @return array{0: array<string, mixed>, 1: array<int, array<string, mixed>>}
@@ -1509,10 +1511,15 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *   {attribute: "pa_brand", slug: ["nike"],       operator: "in"},
 	 * ]`
 	 *
-	 * Keys already prefixed with `pa_` pass through unchanged; bare
-	 * labels get prefixed. Values are lowercased to match WC's slug
-	 * convention. Empty arrays and non-array values are skipped so
-	 * a malformed entry doesn't poison the whole filter list.
+	 * Each attribute key is normalized into a WooCommerce `pa_`
+	 * taxonomy name by stripping any leading `pa_` (case-insensitive),
+	 * sanitizing the remainder with `sanitize_title()`, and re-applying
+	 * the `pa_` prefix. Each value is likewise converted to a sanitized
+	 * slug via `sanitize_title()`, which does more than just lowercase
+	 * (spaces → dashes, accents → ASCII, entity stripping, etc.).
+	 * Empty arrays, non-array values, numeric keys, and entries that
+	 * collapse to `pa_` after normalization are skipped so a malformed
+	 * entry doesn't poison the whole filter list.
 	 *
 	 * @param array<mixed, mixed> $attribute_map
 	 * @return array<int, array{attribute: string, slug: array<int, string>, operator: string}>
