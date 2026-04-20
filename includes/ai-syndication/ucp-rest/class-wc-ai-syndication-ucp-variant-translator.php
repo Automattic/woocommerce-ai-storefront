@@ -283,8 +283,8 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 			$result['weight'] = $weight;
 		}
 
-		$dimensions    = $wc_variation['dimensions'] ?? [];
-		$dim_result    = [];
+		$dimensions = $wc_variation['dimensions'] ?? [];
+		$dim_result = [];
 		if ( is_array( $dimensions ) ) {
 			foreach ( [ 'length', 'width', 'height' ] as $key ) {
 				$value = $dimensions[ $key ] ?? '';
