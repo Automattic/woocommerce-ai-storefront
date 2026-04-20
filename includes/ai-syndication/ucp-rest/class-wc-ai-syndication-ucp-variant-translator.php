@@ -54,12 +54,15 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 			'id'          => self::VARIANT_ID_PREFIX . $id,
 			'title'       => self::extract_title( $wc_variation ),
 			'description' => self::extract_description( $wc_variation ),
-			// `list_price` is the UCP core name for what WC calls
-			// "regular price" (or just "price" on non-sale items) —
-			// the amount that lands in the cart. Previously emitted as
-			// `price`; renamed in 2.0.0 for spec parity. On-sale
-			// variants still carry `compare_at_price` as the pre-
-			// discount amount (WC's "regular price" in the sale case).
+			// `list_price` is the UCP core name for the current
+			// purchasable price — sourced from WC's `prices.price`
+			// (the active amount that lands in the cart, which on a
+			// sale variant is the discounted price, not the regular
+			// one). Previously emitted as `price`; renamed in 2.0.0
+			// for spec parity. On-sale variants additionally emit
+			// `compare_at_price` as the pre-discount amount from
+			// WC's `prices.regular_price`, letting agents render
+			// strike-through pricing ("was $X, now $Y").
 			'list_price'  => self::extract_price( $wc_variation ),
 		];
 

@@ -384,22 +384,23 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	}
 
 	/**
-	 * Extract the combined taxonomies list (categories + tags + brands).
+	 * Extract taxonomies into two separate buckets — categories (with
+	 * brands folded in under `taxonomy:"brand"`) and tags.
 	 *
-	 * All three come back as UCP category entries (`{value, taxonomy}`)
-	 * with distinct `taxonomy` slugs:
-	 *   - `categories[]` — objects with `taxonomy: "merchant"` (WC
-	 *     categories) and `taxonomy: "brand"` (WC `product_brand`
-	 *     taxonomy, native in WC 9.5+).
-	 *   - `tags[]` — plain strings per the UCP core product.tags
-	 *     shape. Cross-cutting discovery signals ("summer",
-	 *     "eco-friendly") that don't carry a hierarchy.
+	 * Return shape is a split structure, NOT a combined list:
+	 *   - `categories[]` — objects `{value, taxonomy}` covering
+	 *      WC categories (`taxonomy:"merchant"`) and brands
+	 *      (`taxonomy:"brand"`, from the `product_brand` taxonomy
+	 *      native in WC 9.5+).
+	 *   - `tags[]` — plain strings per the UCP core `product.tags`
+	 *      shape. Cross-cutting discovery signals ("summer",
+	 *      "eco-friendly") that don't carry a hierarchy.
 	 *
-	 * Pre-2.0.0 returned a single flat list with a `taxonomy`
-	 * discriminator. Split in 2.0.0 so tags reach agents via the
-	 * core `product.tags` field — symmetric with `filters.tags[]`
-	 * on the request side, and matches what strict UCP consumers
-	 * expect.
+	 * Pre-2.0.0 this returned a single flat list with a `taxonomy`
+	 * discriminator covering all three. Split in 2.0.0 so tags
+	 * reach agents via the core `product.tags` field — symmetric
+	 * with `filters.tags[]` on the request side, and matches what
+	 * strict UCP consumers expect.
 	 *
 	 * Brands surface via `brands` on the Store API product response
 	 * when the merchant has the taxonomy registered. Shape is
