@@ -1592,6 +1592,42 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'Array', $msg['content'] );
 	}
 
+	// ------------------------------------------------------------------
+	// Session metadata (PR G)
+	// ------------------------------------------------------------------
+
+	public function test_checkout_session_response_includes_expires_at_null(): void {
+		// Every checkout-sessions POST is stateless — no server-side
+		// state exists to expire. UCP's `session.expires_at` is
+		// spec-optional, but emitting `null` explicitly tells strict
+		// consumers "this implementation is stateless, not buggy".
+		// Omission would leave them guessing between the two.
+		$this->seed_simple_product( 111, 2500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertArrayHasKey( 'expires_at', $result['data'] );
+		$this->assertNull( $result['data']['expires_at'] );
+	}
+
+	public function test_checkout_session_expires_at_null_on_invalid_requests_too(): void {
+		// Even on the `incomplete` branch (no valid items, or below-
+		// minimum totals) we still emit `expires_at: null` — the
+		// statelessness property is a structural invariant of the
+		// handler, not a feature of the happy path only. A strict
+		// consumer inspecting failure responses shouldn't have to
+		// branch on status to parse the envelope.
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_9999' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertSame( 'incomplete', $result['data']['status'] );
+		$this->assertArrayHasKey( 'expires_at', $result['data'] );
+		$this->assertNull( $result['data']['expires_at'] );
+	}
+
 	public function test_locale_boundary_lengths(): void {
 		// Regex: `^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{1,8})*$` + 35-char cap.
 		// Boundaries worth pinning so a future refactor doesn't

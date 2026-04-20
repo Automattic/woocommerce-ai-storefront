@@ -338,6 +338,13 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			);
 		}
 
+		// Compute the seller block once per request — it's identical
+		// for every product in a single-merchant store, and we don't
+		// want to re-read get_bloginfo() / WC()->countries on every
+		// product. Built here (not the translator) to keep the
+		// translator WP-unaware and testable without WP globals.
+		$seller = self::build_seller();
+
 		$products         = [];
 		$variant_messages = [];
 		foreach ( $wc_products as $wc_product ) {
@@ -353,7 +360,8 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			}
 			$products[] = WC_AI_Syndication_UCP_Product_Translator::translate(
 				$wc_product,
-				$variation_fetch['variations']
+				$variation_fetch['variations'],
+				$seller
 			);
 		}
 
@@ -447,6 +455,60 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		return $pagination;
+	}
+
+	/**
+	 * Build the `seller` block stamped on every emitted product.
+	 *
+	 * UCP core's `product.seller` is spec-expected even for single-
+	 * merchant stores — strict validators will reject a product
+	 * without it. For this plugin (single-merchant by posture), the
+	 * seller is the same for every product in a request, so we
+	 * compute it once and thread it through the translator rather
+	 * than re-reading WP globals per-product.
+	 *
+	 * Shape:
+	 *   - `name`    — `get_bloginfo('name')` stripped + entity-decoded
+	 *                  (same normalization the JSON-LD @graph uses so
+	 *                  the two surfaces agree on merchant display name)
+	 *   - `country` — ISO 3166-1 alpha-2 from WC's base country, or
+	 *                  omitted when not configured. Mirrors the
+	 *                  store_context.country logic exactly.
+	 *
+	 * Why not add an `id` — the UCP core shape allows seller.id but
+	 * we have no namespace-stable seller identifier (site URL could
+	 * work but changes with migrations; plugin is single-merchant
+	 * anyway so a distinguishing ID adds cost without value). If
+	 * this plugin ever grows multi-vendor support, seller.id becomes
+	 * required and the per-request compute-once pattern here
+	 * becomes per-product.
+	 *
+	 * @return array<string, string>
+	 */
+	private static function build_seller(): array {
+		$seller = [
+			'name' => html_entity_decode(
+				wp_strip_all_tags( get_bloginfo( 'name' ) ),
+				ENT_QUOTES,
+				'UTF-8'
+			),
+		];
+
+		// `countries` is a PROPERTY on the WooCommerce singleton (an
+		// instance of WC_Countries), not a method — `method_exists`
+		// would always return false here. Guard via `isset()` on the
+		// property so we correctly pick up the country when WC is
+		// fully loaded, and fall through gracefully when it isn't
+		// (tests, early-boot paths, WC plugin-deactivated state).
+		$woocommerce = function_exists( 'WC' ) ? WC() : null;
+		if ( $woocommerce && isset( $woocommerce->countries ) && is_object( $woocommerce->countries ) ) {
+			$country = $woocommerce->countries->get_base_country();
+			if ( $country ) {
+				$seller['country'] = $country;
+			}
+		}
+
+		return $seller;
 	}
 
 	/**
@@ -584,6 +646,10 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$products = [];
 		$messages = [];
 
+		// Same single-merchant seller block as the search handler —
+		// computed once, stamped on every product (see handle_catalog_search).
+		$seller = self::build_seller();
+
 		foreach ( $ids as $index => $raw_id ) {
 			$wc_id = self::parse_ucp_id_to_wc_int( $raw_id );
 
@@ -614,7 +680,8 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 			$products[] = WC_AI_Syndication_UCP_Product_Translator::translate(
 				$wc_product,
-				$variation_fetch['variations']
+				$variation_fetch['variations'],
+				$seller
 			);
 		}
 
@@ -955,6 +1022,19 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			'line_items' => $response_line_items,
 			'totals'     => $response_totals,
 			'links'      => $links,
+
+			// Explicit `null` — not omission — because the UCP spec
+			// carries an optional `session.expires_at` field. Omitting
+			// it could be misread as either "I don't know the TTL" or
+			// "there's a bug here"; emitting `null` is the correct
+			// semantic for "this session has no TTL because it's
+			// stateless — no server-side state exists to expire".
+			// Every checkout-sessions POST is a fresh computation
+			// with no persistence, so there's no session lifetime to
+			// advertise. Strict UCP consumers key on the field's
+			// presence to distinguish stateless from stateful
+			// implementations.
+			'expires_at' => null,
 		];
 
 		if ( ! empty( $messages ) ) {

@@ -402,9 +402,17 @@ class WC_AI_Syndication_Ucp {
 	 * @return array The store context block.
 	 */
 	private function build_store_context() {
-		$country = null;
-		if ( function_exists( 'WC' ) && WC() && method_exists( WC(), 'countries' ) && WC()->countries ) {
-			$country = WC()->countries->get_base_country();
+		// `countries` is a PROPERTY on the WooCommerce singleton (an
+		// instance of WC_Countries), not a method — a `method_exists`
+		// check would always return false. Guard via `isset()` on the
+		// property to pick up the country when WC is fully loaded
+		// and fall through gracefully otherwise (tests, early boot,
+		// WC-deactivated state). Same pattern as build_seller() in
+		// the REST controller — kept in sync deliberately.
+		$country     = null;
+		$woocommerce = function_exists( 'WC' ) ? WC() : null;
+		if ( $woocommerce && isset( $woocommerce->countries ) && is_object( $woocommerce->countries ) ) {
+			$country = $woocommerce->countries->get_base_country();
 		}
 
 		// `get_locale()` returns ICU format (e.g. `en_US`). BCP 47
