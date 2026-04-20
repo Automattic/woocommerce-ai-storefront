@@ -704,16 +704,24 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			: 'USD';
 
 		// Locale extraction — UCP `context.locale` is the agent's hint
-		// about the buyer's language. Validate as BCP-47-ish (letters,
-		// digits, hyphen, underscore; 2-10 chars) to prevent a malicious
-		// or garbled value from reaching switch_to_locale() or a log
-		// line as-is. Empty string when absent or malformed — the
-		// handoff filter still runs with store-default locale.
+		// about the buyer's language. Validate as BCP-47-ish: a
+		// leading alphabetic language subtag (2–8 letters) followed
+		// by optional hyphen/underscore-separated alphanumeric subtags
+		// (1–8 chars each), with a conservative 35-char overall cap
+		// to limit DoS-via-oversized-input. Covers common tags like
+		// `en`, `en-US`, `zh-Hant-HK`, and extended ones like
+		// `en-GB-oxendict` while still rejecting free-form text or
+		// shell-injection payloads. Empty string when absent or
+		// malformed — the handoff filter still runs with store-default
+		// locale.
 		$context        = $request->get_param( 'context' );
 		$request_locale = '';
 		if ( is_array( $context ) && isset( $context['locale'] ) && is_string( $context['locale'] ) ) {
 			$candidate = trim( $context['locale'] );
-			if ( preg_match( '/^[A-Za-z0-9_-]{2,10}$/', $candidate ) ) {
+			if (
+				strlen( $candidate ) <= 35
+				&& preg_match( '/^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{1,8})*$/', $candidate )
+			) {
 				$request_locale = $candidate;
 			}
 		}
@@ -816,7 +824,13 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			$messages[]      = [
 				'type'     => 'error',
 				'code'     => 'minimum_not_met',
-				'severity' => 'unrecoverable',
+				// `requires_buyer_input`, not `unrecoverable`: the
+				// message instructs the buyer to "add more items to
+				// proceed" — it's a fixable condition, parallel to
+				// `buyer_handoff_required`. Using unrecoverable would
+				// mislead agents into treating this as a terminal
+				// failure and abandoning the cart.
+				'severity' => 'requires_buyer_input',
 				'path'     => '$.line_items',
 				'content'  => sprintf(
 					/* translators: 1: current subtotal (minor units), 2: minimum order (minor units). */

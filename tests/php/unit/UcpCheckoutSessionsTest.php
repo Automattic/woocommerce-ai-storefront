@@ -612,8 +612,8 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$codes = array_column( $result['data']['messages'], 'code' );
 		$this->assertContains( 'invalid_line_item', $codes );
 
-		// Status should be error (no valid items), not a 500 from a
-		// fatal — confirms the handler didn't actually crash.
+		// Status should be incomplete (no valid items), not a 500
+		// from a fatal — confirms the handler didn't actually crash.
 		$this->assertEquals( 200, $result['status'] );
 		$this->assertEquals( 'incomplete', $result['data']['status'] );
 	}
@@ -1038,9 +1038,11 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_total_is_provisional_omitted_on_error_path(): void {
-		// No valid items → status=incomplete, no continue_url, and
-		// no provisional-total disclosure (there's no total to
-		// qualify).
+		// No valid items → status=incomplete, no continue_url, no
+		// provisional-total disclosure because there's no redirect /
+		// meaningful provisional checkout total to qualify. (The
+		// `total` entry itself is still emitted in `totals` per spec,
+		// zeroed.)
 		$result = $this->call_handler(
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_9999' ], 'quantity' => 1 ] ] ]
 		);
@@ -1296,6 +1298,35 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( 'fr-FR', $captured_locale );
+	}
+
+	public function test_extended_bcp47_locale_accepted(): void {
+		// Regression for Copilot review: the pre-2026-04-19 regex
+		// `^[A-Za-z0-9_-]{2,10}$` was too tight — it rejected valid
+		// BCP-47 tags like `zh-Hant-HK` (10 chars, at the old limit)
+		// and `en-GB-oxendict` (14 chars, above). The subtag-aware
+		// pattern with a 35-char cap covers these while still rejecting
+		// free-form text.
+		$captured_locale = null;
+		Functions\when( 'apply_filters' )->alias(
+			function ( string $hook, $default, $context = null ) use ( &$captured_locale ) {
+				if ( 'wc_ai_syndication_checkout_handoff_message' === $hook && is_array( $context ) ) {
+					$captured_locale = $context['locale'] ?? null;
+				}
+				return $default;
+			}
+		);
+
+		$this->seed_simple_product( 111, 2500 );
+
+		$this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ],
+				'context'    => [ 'locale' => 'en-GB-oxendict' ],
+			]
+		);
+
+		$this->assertSame( 'en-GB-oxendict', $captured_locale );
 	}
 
 	public function test_malformed_locale_is_rejected(): void {
