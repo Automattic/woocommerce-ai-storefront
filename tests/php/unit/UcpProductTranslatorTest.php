@@ -254,6 +254,131 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// list_price_range — pre-discount range for strikethrough
+	// ------------------------------------------------------------------
+
+	public function test_list_price_range_omitted_when_no_sale_on_simple_product(): void {
+		// No discount → regular_price == price → list_price_range
+		// would be redundant with price_range. Omit to keep payload
+		// tight; agents can read price_range directly.
+		$fixture                             = $this->simple_product_fixture();
+		$fixture['prices']['regular_price']  = '2500';
+		$fixture['prices']['price']          = '2500';
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'list_price_range', $result );
+	}
+
+	public function test_list_price_range_emitted_for_discounted_simple_product(): void {
+		// Simple product on sale: regular_price > price. Emit
+		// list_price_range as a single-point range (min == max ==
+		// regular_price) so agents render "was $X, now $Y".
+		$fixture                             = $this->simple_product_fixture();
+		$fixture['prices']['regular_price']  = '3500';
+		$fixture['prices']['price']          = '2500';
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame( 3500, $result['list_price_range']['min']['amount'] );
+		$this->assertSame( 3500, $result['list_price_range']['max']['amount'] );
+		$this->assertSame( 'USD', $result['list_price_range']['min']['currency'] );
+	}
+
+	public function test_list_price_range_computed_from_variants_when_mixed_sale(): void {
+		// Variable product where some variants are on sale and
+		// others aren't. list_price_range spans the regular_price
+		// min/max across ALL variants (including non-sale ones
+		// whose regular_price == price). A shopper sees "was X-Y,
+		// now A-B" where A-B is tighter than or equal to X-Y.
+		$product    = [
+			'id'    => 789,
+			'name'  => 'T-Shirt',
+			'type'  => 'variable',
+			'prices' => [
+				'price'         => '1000',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '1500' ],
+			],
+		];
+		$variations = [
+			[
+				'id'     => 101,
+				'prices' => [
+					'price'         => '1000',
+					'regular_price' => '2000', // on sale
+					'currency_code' => 'USD',
+				],
+			],
+			[
+				'id'     => 102,
+				'prices' => [
+					'price'         => '1500',
+					'regular_price' => '1500', // not on sale
+					'currency_code' => 'USD',
+				],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $product, $variations );
+
+		$this->assertArrayHasKey( 'list_price_range', $result );
+		$this->assertSame( 1500, $result['list_price_range']['min']['amount'] );
+		$this->assertSame( 2000, $result['list_price_range']['max']['amount'] );
+	}
+
+	public function test_list_price_range_omitted_when_variable_product_no_sales(): void {
+		// All variants have regular_price == price → no discount
+		// anywhere → omit list_price_range as redundant with
+		// price_range. Same redundancy check as the simple-product
+		// path but exercised via the variation-walk code path.
+		$product    = [
+			'id'    => 789,
+			'name'  => 'T-Shirt',
+			'type'  => 'variable',
+			'prices' => [
+				'price'         => '1000',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '1500' ],
+			],
+		];
+		$variations = [
+			[
+				'id'     => 101,
+				'prices' => [
+					'price'         => '1000',
+					'regular_price' => '1000',
+					'currency_code' => 'USD',
+				],
+			],
+			[
+				'id'     => 102,
+				'prices' => [
+					'price'         => '1500',
+					'regular_price' => '1500',
+					'currency_code' => 'USD',
+				],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $product, $variations );
+
+		$this->assertArrayNotHasKey( 'list_price_range', $result );
+	}
+
+	public function test_list_price_range_omitted_when_source_lacks_regular_price(): void {
+		// Defensive: Store API should always emit regular_price, but
+		// if it's missing we can't derive a list_price_range.
+		// Return null rather than fabricate a range from zero.
+		$fixture = $this->simple_product_fixture();
+		unset( $fixture['prices']['regular_price'] );
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'list_price_range', $result );
+	}
+
+	// ------------------------------------------------------------------
 	// Optional fields — emit only when present
 	// ------------------------------------------------------------------
 

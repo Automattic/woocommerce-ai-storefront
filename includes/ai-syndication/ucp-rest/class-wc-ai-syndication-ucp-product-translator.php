@@ -73,6 +73,22 @@ class WC_AI_Syndication_UCP_Product_Translator {
 			'variants'    => self::extract_variants( $wc_product, $wc_variations ),
 		];
 
+		// `list_price_range` — UCP core optional field carrying the
+		// pre-discount price range for strikethrough rendering. Only
+		// emitted when it's meaningfully different from `price_range`
+		// (i.e. something on this product is on sale); otherwise
+		// redundant and omitted. Computed by walking pre-fetched
+		// variants' `prices.regular_price` since WC Store API
+		// doesn't expose a product-level `regular_price_range`.
+		$list_price_range = self::extract_list_price_range(
+			$wc_product,
+			$wc_variations,
+			$product['price_range']
+		);
+		if ( null !== $list_price_range ) {
+			$product['list_price_range'] = $list_price_range;
+		}
+
 		// Spec metadata fields — additive, non-breaking.
 		//
 		// `status` is a fixed literal "published": our catalog handlers
@@ -307,6 +323,91 @@ class WC_AI_Syndication_UCP_Product_Translator {
 			],
 			'max' => [
 				'amount'   => $amount,
+				'currency' => $currency,
+			],
+		];
+	}
+
+	/**
+	 * Extract the pre-discount `list_price_range` for strikethrough
+	 * display — UCP core's optional product-level counterpart to
+	 * `list_price` on variants.
+	 *
+	 * WC Store API only exposes an active `price_range` at the
+	 * product level; there's no pre-aggregated `regular_price_range`
+	 * we can read directly. Two derivation paths:
+	 *
+	 *   - Variable products (variations pre-fetched): walk each
+	 *     variation's `prices.regular_price` and take min/max.
+	 *   - Simple products (or variable products with no variations
+	 *     passed): fall back to the product-level
+	 *     `prices.regular_price` as a single-point range (min == max).
+	 *
+	 * Returns null when either:
+	 *   - No regular_price is available anywhere (merchant never
+	 *     configured one, unusual but handled defensively); OR
+	 *   - The derived list range matches the active `price_range`
+	 *     exactly (nothing is on sale → `list_price_range` carries
+	 *     no additional information → omit for payload minimalism).
+	 *
+	 * @param array<string, mixed>             $wc_product
+	 * @param array<int, array<string, mixed>> $wc_variations       Pre-fetched variations.
+	 * @param array<string, mixed>             $active_price_range  The already-computed `price_range` to compare against.
+	 * @return array<string, mixed>|null UCP price_range object, or null when not meaningfully different.
+	 */
+	private static function extract_list_price_range(
+		array $wc_product,
+		array $wc_variations,
+		array $active_price_range
+	): ?array {
+		$prices   = $wc_product['prices'] ?? [];
+		$currency = $prices['currency_code'] ?? 'USD';
+
+		// Collect all regular_price values we can see. Variable
+		// products: one per variation. Simple products: the product's
+		// own prices.regular_price (treated as a single-point range).
+		$regular_prices = [];
+
+		if ( ! empty( $wc_variations ) ) {
+			foreach ( $wc_variations as $variation ) {
+				if ( ! is_array( $variation ) ) {
+					continue;
+				}
+				$vp = $variation['prices'] ?? [];
+				if ( isset( $vp['regular_price'] ) && '' !== $vp['regular_price'] ) {
+					$regular_prices[] = (int) $vp['regular_price'];
+				}
+			}
+		}
+
+		if ( empty( $regular_prices ) && isset( $prices['regular_price'] ) && '' !== $prices['regular_price'] ) {
+			$regular_prices[] = (int) $prices['regular_price'];
+		}
+
+		if ( empty( $regular_prices ) ) {
+			return null;
+		}
+
+		$min = min( $regular_prices );
+		$max = max( $regular_prices );
+
+		// Redundancy check — if the regular-price range matches
+		// the active range exactly, nothing's on sale and the
+		// strikethrough value would be identical to the current
+		// value. Omit to keep payload tight.
+		$active_min = (int) ( $active_price_range['min']['amount'] ?? 0 );
+		$active_max = (int) ( $active_price_range['max']['amount'] ?? 0 );
+		if ( $min === $active_min && $max === $active_max ) {
+			return null;
+		}
+
+		return [
+			'min' => [
+				'amount'   => $min,
+				'currency' => $currency,
+			],
+			'max' => [
+				'amount'   => $max,
 				'currency' => $currency,
 			],
 		];
