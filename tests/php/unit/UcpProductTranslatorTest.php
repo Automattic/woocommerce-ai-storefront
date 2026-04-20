@@ -655,4 +655,114 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayNotHasKey( 'extensions', $result );
 	}
+
+	// ------------------------------------------------------------------
+	// Spec metadata fields (PR G)
+	// ------------------------------------------------------------------
+
+	public function test_translate_always_emits_status_published(): void {
+		// The handler upstream filters out draft/private products at
+		// the Store API layer, so anything we translate is by
+		// definition published. Emitting the `status` key explicitly
+		// communicates that posture to agents — otherwise they'd
+		// have no way to know whether missing products are drafts
+		// vs. out-of-stock vs. excluded-by-permission.
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[]
+		);
+
+		$this->assertSame( 'published', $result['status'] );
+	}
+
+	public function test_translate_emits_iso_timestamps_when_source_has_them(): void {
+		// WC 9.5+ emits ISO 8601 strings for date_created / date_modified.
+		// Pass them through verbatim — agents diff them against their
+		// last-sync cursor to skip unchanged products on re-crawl.
+		$fixture                  = $this->simple_product_fixture();
+		$fixture['date_created']  = '2026-01-15T10:30:00';
+		$fixture['date_modified'] = '2026-04-20T14:22:31';
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame( '2026-01-15T10:30:00', $result['published_at'] );
+		$this->assertSame( '2026-04-20T14:22:31', $result['updated_at'] );
+	}
+
+	public function test_translate_handles_older_wc_raw_date_object_shape(): void {
+		// Older WC versions emit `{raw, format_to_edit}` object form
+		// instead of a plain string. Accept both so the plugin works
+		// across the 9.x spread without gating on a minimum version.
+		// The `raw` key carries MySQL datetime (space-separated, not
+		// ISO 8601) — still monotonically comparable, which is all
+		// agents need for "has this changed?" checks.
+		$fixture                  = $this->simple_product_fixture();
+		$fixture['date_created']  = [ 'raw' => '2026-01-15 10:30:00', 'format_to_edit' => '2026-01-15 10:30:00' ];
+		$fixture['date_modified'] = [ 'raw' => '2026-04-20 14:22:31' ];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame( '2026-01-15 10:30:00', $result['published_at'] );
+		$this->assertSame( '2026-04-20 14:22:31', $result['updated_at'] );
+	}
+
+	public function test_translate_omits_timestamps_when_source_lacks_them(): void {
+		// Store API should always emit these, but the fixture-free
+		// translator is pure — don't synthesize fake timestamps if
+		// the input happens to lack them (e.g. a mocked response in
+		// a caller's integration test). Omission is valid per spec.
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[]
+		);
+
+		$this->assertArrayNotHasKey( 'published_at', $result );
+		$this->assertArrayNotHasKey( 'updated_at', $result );
+	}
+
+	public function test_translate_stamps_seller_when_passed(): void {
+		// Seller is computed once per request in the REST controller
+		// and threaded through. Same for every product in a single-
+		// merchant store, so passing via arg (not re-reading WP
+		// globals per product) keeps translation pure and fast.
+		$seller = [
+			'name'    => 'Example Store',
+			'country' => 'US',
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[],
+			$seller
+		);
+
+		$this->assertSame( $seller, $result['seller'] );
+	}
+
+	public function test_translate_omits_seller_when_not_passed(): void {
+		// Backward-compat — existing callers without the $seller arg
+		// keep working, just without seller emission. The REST
+		// controller now always passes it; this guards the public
+		// signature against accidental requirement-tightening.
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[]
+		);
+
+		$this->assertArrayNotHasKey( 'seller', $result );
+	}
+
+	public function test_translate_omits_seller_when_passed_empty(): void {
+		// An empty seller array behaves the same as omitting the arg.
+		// Covers the edge case where the controller's build_seller()
+		// returns [] (no site name set, no WC available) — we'd rather
+		// skip the key than emit `seller: {}`.
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[],
+			[]
+		);
+
+		$this->assertArrayNotHasKey( 'seller', $result );
+	}
 }

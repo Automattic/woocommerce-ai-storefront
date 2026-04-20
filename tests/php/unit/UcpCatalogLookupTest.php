@@ -52,6 +52,14 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			static fn( string $single, string $plural, int $number ): string => $number === 1 ? $single : $plural
 		);
 
+		// Default stub for `seller.name` in the seller block every
+		// product emits (see build_seller()). `wp_strip_all_tags` is
+		// covered by the bootstrap polyfill; `html_entity_decode` is
+		// a native PHP function that runs fine on the stubbed name.
+		Functions\when( 'get_bloginfo' )->alias(
+			static fn( string $key = '' ): string => 'name' === $key ? 'Example Store' : ''
+		);
+
 		// Stub the catalog_envelope dependency's PROTOCOL_VERSION
 		// access — UcpEnvelope reads WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
 		// which is a const defined on the class and resolves fine at test

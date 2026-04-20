@@ -55,9 +55,14 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	 * @param array<int, array<string, mixed>> $wc_variations Optional pre-fetched Store API
 	 *                                                        variation responses. Empty = fall
 	 *                                                        back to synthesized default.
+	 * @param array<string, mixed>|null        $seller        Optional seller block to copy onto
+	 *                                                        every product. Same for every product
+	 *                                                        in a request, so the controller
+	 *                                                        computes it once and passes it in —
+	 *                                                        keeps the translator WP-unaware.
 	 * @return array<string, mixed>                           UCP product shape.
 	 */
-	public static function translate( array $wc_product, array $wc_variations = [] ): array {
+	public static function translate( array $wc_product, array $wc_variations = [], ?array $seller = null ): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
 		$product = [
@@ -67,6 +72,34 @@ class WC_AI_Syndication_UCP_Product_Translator {
 			'price_range' => self::extract_price_range( $wc_product ),
 			'variants'    => self::extract_variants( $wc_product, $wc_variations ),
 		];
+
+		// Spec metadata fields — additive, non-breaking.
+		//
+		// `status` is a fixed literal "published": our catalog handlers
+		// only emit products returned by the Store API, which already
+		// filters to published (we don't syndicate drafts/private).
+		// Emitting the key anyway communicates the posture to agents
+		// so "why didn't I find product X?" is traceable back to
+		// "its status isn't in your result set".
+		$product['status'] = 'published';
+
+		// `published_at` / `updated_at` — ISO 8601 timestamps from the
+		// Store API. Older WC versions emit a `{raw, format_to_edit}`
+		// object; 9.5+ emits the ISO string directly. Coerce both.
+		$timestamps = self::extract_timestamps( $wc_product );
+		if ( isset( $timestamps['published_at'] ) ) {
+			$product['published_at'] = $timestamps['published_at'];
+		}
+		if ( isset( $timestamps['updated_at'] ) ) {
+			$product['updated_at'] = $timestamps['updated_at'];
+		}
+
+		// Seller — controller-computed once per request (same for every
+		// product in a single-merchant store). Spec-expected even for
+		// single-merchant plugins; omitting it fails strict validators.
+		if ( null !== $seller && ! empty( $seller ) ) {
+			$product['seller'] = $seller;
+		}
 
 		// Optional fields — only emit when source has a non-empty value.
 		if ( ! empty( $wc_product['slug'] ) ) {
@@ -158,6 +191,54 @@ class WC_AI_Syndication_UCP_Product_Translator {
 		return [
 			WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $wc_product ),
 		];
+	}
+
+	/**
+	 * Extract `published_at` / `updated_at` ISO 8601 timestamps from a
+	 * WC Store API product response.
+	 *
+	 * Shape drift across WC versions:
+	 *   - WC 9.5+ emits `date_created` / `date_modified` as ISO 8601
+	 *     strings directly (e.g. `"2026-04-20T10:00:00"`).
+	 *   - Older WC versions (≤ 9.4 on some configurations) emit an
+	 *     object `{raw: "...", format_to_edit: "..."}` where `raw`
+	 *     carries the MySQL datetime. Not ISO 8601, but close enough
+	 *     that agents parsing it with a lenient date parser won't break.
+	 *
+	 * We accept both shapes and return the best representation available.
+	 * Agents get whichever form the source emits — if the `raw` variant
+	 * is MySQL datetime (space-separated), it's still monotonically
+	 * comparable for "is this newer than my last sync?", which is the
+	 * primary use case.
+	 *
+	 * Returns an array with keys `published_at` / `updated_at` only
+	 * when the corresponding source field is present and non-empty.
+	 *
+	 * @param array<string, mixed> $wc_product
+	 * @return array{published_at?: string, updated_at?: string}
+	 */
+	private static function extract_timestamps( array $wc_product ): array {
+		$map = [
+			'date_created'  => 'published_at',
+			'date_modified' => 'updated_at',
+		];
+
+		$out = [];
+		foreach ( $map as $wc_key => $ucp_key ) {
+			$raw = $wc_product[ $wc_key ] ?? null;
+
+			// Object form — prefer `raw` (MySQL datetime), fall back
+			// to `format_to_edit` which is the same value formatted.
+			if ( is_array( $raw ) ) {
+				$raw = $raw['raw'] ?? ( $raw['format_to_edit'] ?? null );
+			}
+
+			if ( is_string( $raw ) && '' !== $raw ) {
+				$out[ $ucp_key ] = $raw;
+			}
+		}
+
+		return $out;
 	}
 
 	/**

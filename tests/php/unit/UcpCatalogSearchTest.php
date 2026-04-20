@@ -94,6 +94,16 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 
+		// Default stub for the `seller.name` in the seller block that
+		// every product emits (see build_seller()). `wp_strip_all_tags`
+		// and `html_entity_decode` aren't stubbed — the bootstrap
+		// polyfill covers the former, and html_entity_decode is a
+		// native PHP function that runs fine on the stubbed name.
+		// Tests that care about seller content can override in-body.
+		Functions\when( 'get_bloginfo' )->alias(
+			static fn( string $key = '' ): string => 'name' === $key ? 'Example Store' : ''
+		);
+
 		// Simplified sanitize_title stub with a slightly-stricter
 		// character class than default WP: we collapse underscores
 		// AND whitespace AND other non-alphanumerics to dashes. WP
@@ -317,6 +327,25 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			'dev.ucp.shopping.catalog.search',
 			$body['ucp']['capabilities']
 		);
+	}
+
+	public function test_search_stamps_seller_name_on_every_product(): void {
+		// Integration test for the build_seller() thread-through:
+		// the controller computes seller once and passes it into
+		// each translate() call. We assert every product carries
+		// the same seller block — catching a regression where the
+		// threading accidentally drops or diverges across the loop.
+		$this->fake_product_list = [
+			$this->make_simple_product( 1, 'Alpha' ),
+			$this->make_simple_product( 2, 'Beta' ),
+		];
+
+		$body = $this->successful_search( [] );
+
+		foreach ( $body['products'] as $product ) {
+			$this->assertArrayHasKey( 'seller', $product );
+			$this->assertSame( 'Example Store', $product['seller']['name'] );
+		}
 	}
 
 	public function test_empty_result_returns_200_with_empty_products_array(): void {
