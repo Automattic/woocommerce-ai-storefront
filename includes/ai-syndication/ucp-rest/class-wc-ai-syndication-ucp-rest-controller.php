@@ -990,7 +990,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			'description' => 'Schema for the `com.woocommerce.ai_syndication` merchant-extension capability advertised at `capabilities[com.woocommerce.ai_syndication][0].config` in the UCP manifest. Carries commerce context agents need upfront (currency, locale, tax/shipping posture) and attribution conventions for crediting agent-driven orders back to the originating agent.',
 			'type'        => 'object',
 			'properties'  => [
-				'config' => [
+				'config'  => [
 					'type'        => 'object',
 					'description' => 'Extension-scoped configuration.',
 					'properties'  => [
@@ -1037,8 +1037,8 @@ class WC_AI_Syndication_UCP_REST_Controller {
 									'examples'    => [ 'woocommerce_order_attribution' ],
 								],
 								'parameters' => [
-									'type'        => 'object',
-									'description' => 'Named description of each expected UTM-style parameter.',
+									'type'                 => 'object',
+									'description'          => 'Named description of each expected UTM-style parameter.',
 									'additionalProperties' => [ 'type' => 'string' ],
 								],
 								'usage_note' => [
