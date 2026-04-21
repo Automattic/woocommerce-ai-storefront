@@ -327,6 +327,61 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 2000, $result['list_price_range']['max']['amount'] );
 	}
 
+	public function test_list_price_range_emitted_when_only_max_differs(): void {
+		// Asymmetric-bounds case: cheapest variant not on sale,
+		// most expensive on sale. The two range bounds have different
+		// sale statuses, and list_price_range should emit with the
+		// pre-discount max to let agents render the strikethrough on
+		// the top bound correctly.
+		//
+		// Under the current per-variant emission rule (a variant with
+		// `regular > price` triggers emission), this case emits
+		// because the max-priced variant is on sale. The fixture
+		// exercises the path where the cheapest end of the range
+		// coincides with its regular price — important because any
+		// emission rule that somehow collapsed identical bounds
+		// (e.g. a future refactor that re-introduces range-equality
+		// short-circuits) would silently drop this case.
+		//
+		// Fixture: Active range: 1000-1500 (discounted max). List
+		// range: 1000-2000 (pre-discount max). Min matches between
+		// ranges, max differs → emit.
+		$product    = [
+			'id'    => 789,
+			'name'  => 'T-Shirt',
+			'type'  => 'variable',
+			'prices' => [
+				'price'         => '1000',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '1500' ],
+			],
+		];
+		$variations = [
+			[
+				'id'     => 101,
+				'prices' => [
+					'price'         => '1000',
+					'regular_price' => '1000', // not on sale
+					'currency_code' => 'USD',
+				],
+			],
+			[
+				'id'     => 102,
+				'prices' => [
+					'price'         => '1500',
+					'regular_price' => '2000', // on sale (20% off)
+					'currency_code' => 'USD',
+				],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $product, $variations );
+
+		$this->assertArrayHasKey( 'list_price_range', $result );
+		$this->assertSame( 1000, $result['list_price_range']['min']['amount'] );
+		$this->assertSame( 2000, $result['list_price_range']['max']['amount'] );
+	}
+
 	public function test_list_price_range_omitted_when_variable_product_no_sales(): void {
 		// All variants have regular_price == price → no discount
 		// anywhere → omit list_price_range as redundant with
@@ -832,6 +887,43 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_translate_handles_categories_tags_and_brands_simultaneously(): void {
+		// Compositional test for the 2.0.0 split: a single product
+		// carrying WC categories + tags + brands all at once exercises
+		// the full classification path in one shot. Single-axis tests
+		// (category-only / tag-only / brand-only) each pass today,
+		// but a refactor could silently regress the classifier for one
+		// axis while keeping the others green. This locks the
+		// three-way interaction.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['categories'] = [
+			[ 'id' => 10, 'name' => 'Apparel', 'slug' => 'apparel' ],
+		];
+		$fixture['tags']       = [
+			[ 'id' => 20, 'name' => 'summer', 'slug' => 'summer' ],
+			[ 'id' => 21, 'name' => 'eco-friendly', 'slug' => 'eco-friendly' ],
+		];
+		$fixture['brands']     = [
+			[ 'id' => 30, 'name' => 'Acme', 'slug' => 'acme' ],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		// `categories[]` carries ONLY merchant + brand entries —
+		// never a `taxonomy:"tag"` leak.
+		$this->assertCount( 2, $result['categories'] );
+		$taxonomies = array_column( $result['categories'], 'taxonomy' );
+		$this->assertContains( 'merchant', $taxonomies );
+		$this->assertContains( 'brand', $taxonomies );
+		$this->assertNotContains( 'tag', $taxonomies );
+
+		// `tags[]` carries plain strings of tag names only.
+		$this->assertSame( [ 'summer', 'eco-friendly' ], $result['tags'] );
+
+		// No 1.x `attributes`-style leak anywhere on the product shape.
+		$this->assertArrayNotHasKey( 'attributes', $result );
+	}
+
 	public function test_translate_omits_brands_when_source_has_none(): void {
 		// Merchants without Brands registered pay zero payload — no
 		// empty `brand` taxonomy entries should appear.
@@ -1002,10 +1094,32 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'published', $result['status'] );
 	}
 
-	public function test_translate_emits_iso_timestamps_when_source_has_them(): void {
-		// WC 9.5+ emits ISO 8601 strings for date_created / date_modified.
-		// Pass them through verbatim — agents diff them against their
-		// last-sync cursor to skip unchanged products on re-crawl.
+	public function test_translate_reads_timestamps_from_store_api_extension_namespace(): void {
+		// Primary source: our Store API extension exposes the dates
+		// under `extensions[com-woocommerce-ai-syndication]` as RFC
+		// 3339 / ISO 8601 UTC strings. WC 9.5+ Store API strips the
+		// top-level date fields; the extension is the only reliable
+		// path to these values.
+		$fixture                 = $this->simple_product_fixture();
+		$fixture['extensions']   = [
+			'com-woocommerce-ai-syndication' => [
+				'date_created'  => '2026-01-15T10:30:00Z',
+				'date_modified' => '2026-04-20T14:22:31Z',
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame( '2026-01-15T10:30:00Z', $result['published_at'] );
+		$this->assertSame( '2026-04-20T14:22:31Z', $result['updated_at'] );
+	}
+
+	public function test_translate_falls_back_to_top_level_date_fields_when_extension_absent(): void {
+		// Forward-compat: if a future WC release (or a fixture-based
+		// integration test) puts the dates back at the top level,
+		// we still pick them up. The extension path takes precedence
+		// when both are present; this test covers the extension-absent
+		// case.
 		$fixture                  = $this->simple_product_fixture();
 		$fixture['date_created']  = '2026-01-15T10:30:00';
 		$fixture['date_modified'] = '2026-04-20T14:22:31';
@@ -1016,21 +1130,46 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '2026-04-20T14:22:31', $result['updated_at'] );
 	}
 
-	public function test_translate_handles_older_wc_raw_date_object_shape(): void {
-		// Older WC versions emit `{raw, format_to_edit}` object form
-		// instead of a plain string. Accept both so the plugin works
-		// across the 9.x spread without gating on a minimum version.
-		// The `raw` key carries MySQL datetime (space-separated, not
-		// ISO 8601) — still monotonically comparable, which is all
-		// agents need for "has this changed?" checks.
-		$fixture                  = $this->simple_product_fixture();
-		$fixture['date_created']  = [ 'raw' => '2026-01-15 10:30:00', 'format_to_edit' => '2026-01-15 10:30:00' ];
-		$fixture['date_modified'] = [ 'raw' => '2026-04-20 14:22:31' ];
+	public function test_translate_prefers_extension_over_top_level_when_both_present(): void {
+		// When both sources exist (unusual but possible during a
+		// migration window or with a third-party filter that
+		// re-adds top-level dates), the extension value wins —
+		// it's the one produced by our own code and therefore
+		// guaranteed to be in the UCP-expected RFC 3339 shape.
+		$fixture                 = $this->simple_product_fixture();
+		$fixture['date_created'] = '2020-01-01T00:00:00'; // stale / wrong
+		$fixture['extensions']   = [
+			'com-woocommerce-ai-syndication' => [
+				'date_created' => '2026-01-15T10:30:00Z', // authoritative
+			],
+		];
 
 		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
 
-		$this->assertSame( '2026-01-15 10:30:00', $result['published_at'] );
-		$this->assertSame( '2026-04-20 14:22:31', $result['updated_at'] );
+		$this->assertSame( '2026-01-15T10:30:00Z', $result['published_at'] );
+	}
+
+	public function test_translate_tolerates_non_array_extensions_without_fatal(): void {
+		// A third-party plugin or a filtered Store API response could
+		// write a non-array value at `extensions` or the namespace
+		// entry. Without an `is_array` guard we'd fatal on array
+		// indexing. Verify the translator degrades to the top-level
+		// fallback path (and ultimately to omission) without error.
+		foreach ( [
+			'extensions-is-string' => [ 'extensions' => 'surprise string' ],
+			'extensions-is-int'    => [ 'extensions' => 42 ],
+			'namespace-is-string'  => [ 'extensions' => [ 'com-woocommerce-ai-syndication' => 'nope' ] ],
+			'namespace-is-object'  => [ 'extensions' => [ 'com-woocommerce-ai-syndication' => (object) [ 'foo' => 'bar' ] ] ],
+		] as $label => $overlay ) {
+			$fixture = array_merge( $this->simple_product_fixture(), $overlay );
+
+			// Must not throw, and must omit timestamps entirely
+			// (no top-level date_* either in this fixture).
+			$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+			$this->assertArrayNotHasKey( 'published_at', $result, "Fatal-averted path failed: {$label}" );
+			$this->assertArrayNotHasKey( 'updated_at', $result, "Fatal-averted path failed: {$label}" );
+		}
 	}
 
 	public function test_translate_omits_timestamps_when_source_lacks_them(): void {

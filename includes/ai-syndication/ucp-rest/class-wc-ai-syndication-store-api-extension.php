@@ -121,11 +121,19 @@ class WC_AI_Syndication_Store_Api_Extension {
 	 * endpoints). We return the shape declared by `get_schema()`.
 	 *
 	 * @param \WC_Product|null $product The product/variation object.
-	 * @return array<string, array<int, array{type: string, value: string}>>
+	 * @return array{
+	 *     barcodes: list<array{type: string, value: string}>,
+	 *     date_created: string|null,
+	 *     date_modified: string|null,
+	 * }
 	 */
 	public function get_product_data( $product ): array {
 		if ( ! $product instanceof \WC_Product ) {
-			return [ 'barcodes' => [] ];
+			return [
+				'barcodes'      => [],
+				'date_created'  => null,
+				'date_modified' => null,
+			];
 		}
 
 		$barcodes = [];
@@ -150,7 +158,62 @@ class WC_AI_Syndication_Store_Api_Extension {
 			}
 		}
 
-		return [ 'barcodes' => $barcodes ];
+		// ISO 8601 / RFC 3339 timestamps — UCP core product shape
+		// expects `published_at` / `updated_at` but WC Store API
+		// strips date fields from product responses entirely (verified
+		// against WC 9.5+ on live store). Rather than patching every
+		// Store API consumer, we expose the dates via this extension
+		// so our own UCP translator can read them — the only consumer
+		// that currently needs them. Keeps the fix contained to one
+		// namespace.
+		//
+		// `get_date_created()` / `get_date_modified()` return
+		// `WC_DateTime|null`. When present, `getTimestamp()` + ISO
+		// format gives us RFC 3339 in UTC (`Z` suffix) — the format
+		// UCP's core `published_at` / `updated_at` expect. `null` is
+		// defensive: brand-new products in a migration window may
+		// briefly lack these meta rows.
+		//
+		// `instanceof \DateTimeInterface` — tightened from the earlier
+		// duck-typed `method_exists(getTimestamp)` check. WC_DateTime
+		// extends PHP's DateTime which implements DateTimeInterface,
+		// so real WC values always pass. Test doubles extend
+		// DateTimeImmutable (also implements DateTimeInterface) to
+		// satisfy the check without loading WC_DateTime.
+		//
+		// `$ts > 0` guard — `getTimestamp()` can return 0 (uninitialized
+		// WC_DateTime) or negative (pre-epoch). Either would render as
+		// a valid-looking RFC 3339 string that agents would treat as
+		// authoritative, poisoning diff-sync cursors ("this product was
+		// created in 1970 → always older than my last sync → never
+		// refresh"). Guard with `> 0` so the bad value omits cleanly
+		// as null rather than misleading downstream consumers.
+		$date_created  = null;
+		$date_modified = null;
+		if ( method_exists( $product, 'get_date_created' ) ) {
+			$dt = $product->get_date_created();
+			if ( $dt instanceof \DateTimeInterface ) {
+				$ts = $dt->getTimestamp();
+				if ( $ts > 0 ) {
+					$date_created = gmdate( 'Y-m-d\TH:i:s\Z', $ts );
+				}
+			}
+		}
+		if ( method_exists( $product, 'get_date_modified' ) ) {
+			$dt = $product->get_date_modified();
+			if ( $dt instanceof \DateTimeInterface ) {
+				$ts = $dt->getTimestamp();
+				if ( $ts > 0 ) {
+					$date_modified = gmdate( 'Y-m-d\TH:i:s\Z', $ts );
+				}
+			}
+		}
+
+		return [
+			'barcodes'      => $barcodes,
+			'date_created'  => $date_created,
+			'date_modified' => $date_modified,
+		];
 	}
 
 	/**
@@ -162,7 +225,7 @@ class WC_AI_Syndication_Store_Api_Extension {
 	 */
 	public function get_schema(): array {
 		return [
-			'barcodes' => [
+			'barcodes'      => [
 				'description' => __(
 					'Product identifiers (GTIN, UPC, EAN, MPN, ISBN). Each entry is a typed barcode.',
 					'woocommerce-ai-syndication'
@@ -189,6 +252,24 @@ class WC_AI_Syndication_Store_Api_Extension {
 						],
 					],
 				],
+			],
+			'date_created'  => [
+				'description' => __(
+					'RFC 3339 / ISO 8601 timestamp (UTC, `Z`-suffixed) when the product was created. Null when not available. Exposed here because Store API strips product date fields from responses by default; our UCP translator consumes this to populate `product.published_at` per the UCP core shape.',
+					'woocommerce-ai-syndication'
+				),
+				'type'        => [ 'string', 'null' ],
+				'context'     => [ 'view' ],
+				'readonly'    => true,
+			],
+			'date_modified' => [
+				'description' => __(
+					'RFC 3339 / ISO 8601 timestamp (UTC, `Z`-suffixed) of the product\'s last modification. Null when not available. Consumed by the UCP translator for `product.updated_at`.',
+					'woocommerce-ai-syndication'
+				),
+				'type'        => [ 'string', 'null' ],
+				'context'     => [ 'view' ],
+				'readonly'    => true,
 			],
 		];
 	}
