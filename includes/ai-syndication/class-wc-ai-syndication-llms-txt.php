@@ -312,15 +312,15 @@ class WC_AI_Syndication_Llms_Txt {
 			$lines[] = '';
 		}
 
-		// Featured/popular products section was removed in 2.0.1:
-		// a 5-product marketing teaser in a machine-readable agent
-		// document was scope creep — agents wanting products use the
-		// Store API (documented in `## API Access` above). Stale
-		// prices between llms.txt regenerations and edge cases like
-		// "Request a Quote" products (no numeric price → rendered as
-		// bare "$") made the section fragile for near-zero agent
-		// value. If we ever bring it back, it should be sourced from
-		// the Store API with a note about freshness expectations.
+		// Featured/popular products section removed: an up-to-10-product
+		// marketing teaser in a machine-readable agent document was
+		// scope creep — agents wanting products use the Store API
+		// (documented in `## API Access` above). Stale prices between
+		// llms.txt regenerations and edge cases like "Request a Quote"
+		// products (no numeric price → rendered as bare "$") made the
+		// section fragile for near-zero agent value. If we ever bring
+		// it back, it should be sourced from the Store API with a note
+		// about freshness expectations.
 
 		// Checkout policy declaration. Makes explicit the merchant-
 		// only-checkout posture that the UCP manifest already
@@ -426,8 +426,9 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[] = 'If your agent\'s hostname is missing and you\'d like a specific brand name applied, open an issue on the plugin\'s [GitHub repository](https://github.com/pierorocca/woocommerce-ai-syndication/issues) — additions are a single constant entry plus a test row.';
 		$lines[] = '';
 
-		// Removed in 2.0.1 — two sections that had drifted out of
-		// scope vs. the v2.0.0 UCP-POST-first posture:
+		// Post-v2.0.0 cleanup — two sections that had drifted out of
+		// scope vs. the UCP-POST-first posture the plugin committed
+		// to at 2.0.0:
 		//
 		//   1. A `utm_source` / `utm_medium` / `utm_campaign` /
 		//      `ai_session_id` parameter list that encouraged agents
@@ -596,7 +597,7 @@ class WC_AI_Syndication_Llms_Txt {
 		return is_wp_error( $terms ) ? [] : $terms;
 	}
 
-	// `get_featured_products()` was removed in 2.0.1 alongside the
+	// `get_featured_products()` was removed alongside the
 	// "Featured Products" llms.txt section. See the deletion comment
 	// where the section used to render (around line ~315) for
 	// rationale. If the section is ever reintroduced, prefer sourcing

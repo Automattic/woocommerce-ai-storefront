@@ -167,7 +167,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_attribution_section_does_not_document_client_side_utm_params(): void {
-		// 2.0.1 scope cut. The previous UTM-parameter list
+		// Post-v2.0.0 scope cut. The previous UTM-parameter list
 		// (`utm_source` / `utm_medium` / `utm_campaign` / `ai_session_id`)
 		// encouraged client-side URL construction — which the v2.0.0
 		// UCP-POST-first posture replaced. Removed; this test is the
@@ -177,15 +177,26 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// `utm_medium` in prose ("server attaches utm_source + utm_medium
 		// to continue_url"), so we specifically guard the BULLETED-LIST
 		// client-construction variants — those are the shape that would
-		// confuse agents into building URLs themselves.
+		// confuse agents into building URLs themselves. Guards all four
+		// bullet variants because any one reintroduction is the regression
+		// signal we care about (cutting three but keeping one would be
+		// sneakier than the no-partial-revert rule implies).
 		$output = $this->llms->generate();
 
 		$this->assertStringNotContainsString(
-			'- `ai_session_id`: The current conversation/session ID',
+			'- `utm_source`: Your agent identifier',
+			$output
+		);
+		$this->assertStringNotContainsString(
+			'- `utm_medium`: `ai_agent`',
 			$output
 		);
 		$this->assertStringNotContainsString(
 			'- `utm_campaign`: Optional campaign name',
+			$output
+		);
+		$this->assertStringNotContainsString(
+			'- `ai_session_id`: The current conversation/session ID',
 			$output
 		);
 	}
@@ -226,20 +237,24 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_url_patterns_section_not_emitted(): void {
-		// 2.0.1 scope cut. The previous "URL patterns for client-side
-		// construction" block (6 URL variants: `/checkout-link/?products=`
-		// × 4 plus `?add-to-cart=` × 2) contradicted the Checkout
-		// Policy block's "MUST redirect to continue_url from POST
-		// /checkout-sessions" posture. Agents reading one or the other
-		// would end up uncertain which flow the store actually wanted.
-		// v2.0.0 committed to POST-first at the endpoint level; 2.0.1
-		// commits to it in the docs. This test is the regression guard
-		// for the removal.
+		// Post-v2.0.0 scope cut. The previous "URL patterns for
+		// client-side construction" block (6 URL variants:
+		// `/checkout-link/?products=` × 4 plus `?add-to-cart=` × 2)
+		// contradicted the Checkout Policy block's "MUST redirect to
+		// continue_url from POST /checkout-sessions" posture. Agents
+		// reading one or the other would end up uncertain which flow
+		// the store actually wanted. v2.0.0 committed to POST-first
+		// at the endpoint level; this removal commits to it in the
+		// docs. This test is the regression guard.
 		//
 		// If any of the template variables or URL shapes reappears,
 		// this test fires — forcing a conscious re-decision on whether
 		// to reintroduce the client-side-construction path (and if so,
 		// how to reconcile it with the POST-first Checkout Policy).
+		// All five placeholders from the removed section are guarded
+		// explicitly; a partial reintroduction with only the most
+		// common ones (`{product_id}` / `{quantity}`) would otherwise
+		// slip through a narrower negative-assertion set.
 		$output = $this->llms->generate();
 
 		$this->assertStringNotContainsString(
@@ -249,7 +264,9 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( '/checkout-link/?products=', $output );
 		$this->assertStringNotContainsString( '/?add-to-cart=', $output );
 		$this->assertStringNotContainsString( '{site_url}', $output );
+		$this->assertStringNotContainsString( '{product_id}', $output );
 		$this->assertStringNotContainsString( '{variation_id}', $output );
+		$this->assertStringNotContainsString( '{quantity}', $output );
 		$this->assertStringNotContainsString( '{coupon_code}', $output );
 	}
 
