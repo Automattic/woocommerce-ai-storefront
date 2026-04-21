@@ -102,6 +102,11 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 12000, $result['list_price']['amount'] );
 		$this->assertEquals( 'USD', $result['list_price']['currency'] );
+		// Hard-cut regression guard for the 2.0.0 rename — if a future
+		// change re-introduces the old `price` key alongside (or
+		// instead of) `list_price`, this assertion fires and forces a
+		// conscious re-decision.
+		$this->assertArrayNotHasKey( 'price', $result );
 	}
 
 	public function test_translate_includes_sku_when_present(): void {
@@ -549,6 +554,9 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '10', $result['metadata']['shipping']['dimensions']['length'] );
 		$this->assertSame( '5', $result['metadata']['shipping']['dimensions']['width'] );
 		$this->assertSame( '2', $result['metadata']['shipping']['dimensions']['height'] );
+		// Hard-cut regression guard for the 2.0.0 relocation — old
+		// top-level `shipping_attributes` key must not reappear.
+		$this->assertArrayNotHasKey( 'shipping_attributes', $result );
 	}
 
 	public function test_translate_omits_shipping_attributes_when_all_empty(): void {
@@ -593,6 +601,9 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( '1.2', $result['metadata']['shipping']['weight'] );
 		$this->assertArrayNotHasKey( 'dimensions', $result['metadata']['shipping'] );
+		// Hard-cut regression guard (2.0.0 relocation) — old
+		// top-level key must never coexist with the new metadata home.
+		$this->assertArrayNotHasKey( 'shipping_attributes', $result );
 	}
 
 	public function test_synthesize_default_emits_shipping_attributes_for_simple_products(): void {

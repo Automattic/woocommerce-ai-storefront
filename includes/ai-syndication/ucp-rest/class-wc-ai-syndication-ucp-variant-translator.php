@@ -8,10 +8,13 @@
  *
  *     source/schemas/shopping/types/variant.json
  *
- * Required UCP fields: id, title, description, price.
- * Variants also carry `options` (selected option values like
- * "Color: Blue, Size: Large"), `availability`, and optional
- * `sku`, `barcodes`, `media`.
+ * Required UCP fields: id, title, description, list_price.
+ * (`list_price` replaced the 1.x `price` field in 2.0.0 — it carries
+ * the current/cart amount from WC's `prices.price`; on-sale variants
+ * additionally emit `compare_at_price` from `prices.regular_price`
+ * for strikethrough rendering.) Variants also carry `options`
+ * (selected option values like "Color: Blue, Size: Large"),
+ * `availability`, and optional `sku`, `barcodes`, `media`.
  *
  * @package WooCommerce_AI_Syndication
  * @since 1.3.0
