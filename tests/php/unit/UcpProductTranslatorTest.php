@@ -328,17 +328,24 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_list_price_range_emitted_when_only_max_differs(): void {
-		// Boundary case for the redundancy check (`min === active_min
-		// && max === active_max`). When only the max bound differs
-		// but min matches, the range IS informative (one variant is
-		// on sale) and must be emitted. A regression that flipped
-		// `&&` to `||` would silently match this case and drop the
-		// field — this test locks that behavior in.
+		// Asymmetric-bounds case: cheapest variant not on sale,
+		// most expensive on sale. The two range bounds have different
+		// sale statuses, and list_price_range should emit with the
+		// pre-discount max to let agents render the strikethrough on
+		// the top bound correctly.
 		//
-		// Fixture: cheapest variant not on sale, most expensive on
-		// sale. Active range: 1000-1500 (discounted max). List
-		// range: 1000-2000 (pre-discount max). Min matches, max
-		// differs → emit.
+		// Under the current per-variant emission rule (a variant with
+		// `regular > price` triggers emission), this case emits
+		// because the max-priced variant is on sale. The fixture
+		// exercises the path where the cheapest end of the range
+		// coincides with its regular price — important because any
+		// emission rule that somehow collapsed identical bounds
+		// (e.g. a future refactor that re-introduces range-equality
+		// short-circuits) would silently drop this case.
+		//
+		// Fixture: Active range: 1000-1500 (discounted max). List
+		// range: 1000-2000 (pre-discount max). Min matches between
+		// ranges, max differs → emit.
 		$product    = [
 			'id'    => 789,
 			'name'  => 'T-Shirt',
