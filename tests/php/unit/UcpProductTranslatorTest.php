@@ -1142,6 +1142,29 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '2026-01-15T10:30:00Z', $result['published_at'] );
 	}
 
+	public function test_translate_tolerates_non_array_extensions_without_fatal(): void {
+		// A third-party plugin or a filtered Store API response could
+		// write a non-array value at `extensions` or the namespace
+		// entry. Without an `is_array` guard we'd fatal on array
+		// indexing. Verify the translator degrades to the top-level
+		// fallback path (and ultimately to omission) without error.
+		foreach ( [
+			'extensions-is-string' => [ 'extensions' => 'surprise string' ],
+			'extensions-is-int'    => [ 'extensions' => 42 ],
+			'namespace-is-string'  => [ 'extensions' => [ 'com-woocommerce-ai-syndication' => 'nope' ] ],
+			'namespace-is-object'  => [ 'extensions' => [ 'com-woocommerce-ai-syndication' => (object) [ 'foo' => 'bar' ] ] ],
+		] as $label => $overlay ) {
+			$fixture = array_merge( $this->simple_product_fixture(), $overlay );
+
+			// Must not throw, and must omit timestamps entirely
+			// (no top-level date_* either in this fixture).
+			$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+			$this->assertArrayNotHasKey( 'published_at', $result, "Fatal-averted path failed: {$label}" );
+			$this->assertArrayNotHasKey( 'updated_at', $result, "Fatal-averted path failed: {$label}" );
+		}
+	}
+
 	public function test_translate_omits_timestamps_when_source_lacks_them(): void {
 		// Store API should always emit these, but the fixture-free
 		// translator is pure — don't synthesize fake timestamps if
