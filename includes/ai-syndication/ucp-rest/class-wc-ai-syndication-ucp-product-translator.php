@@ -262,8 +262,12 @@ class WC_AI_Syndication_UCP_Product_Translator {
 		// namespace (`com-woocommerce-ai-syndication`), distinct from
 		// the dotted UCP-level namespace (`com.woocommerce.ai_syndication`).
 		// Pulled from the extension class constant so the two surfaces
-		// stay linked; the class autoload is cheap and happens once
-		// per request either way.
+		// stay linked — the extension class is `require_once`'d
+		// during `WC_AI_Syndication::load_dependencies()` at plugin
+		// bootstrap (this plugin doesn't use PSR-4 autoload), so
+		// referencing the constant here doesn't introduce any new
+		// load step; the class is already resolved by the time any
+		// translator method runs.
 		//
 		// Defensive `is_array` guards at each layer — a third-party
 		// plugin could collide on the `extensions` or namespace key
