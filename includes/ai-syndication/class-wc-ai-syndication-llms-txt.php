@@ -258,15 +258,19 @@ class WC_AI_Syndication_Llms_Txt {
 
 		// API access. This plugin does NOT expose its own authenticated
 		// API — AI agents use WooCommerce's public Store API directly.
-		// The UCP manifest describes purchase URL templates and checkout
-		// policy in machine-readable form; agents that want structured
-		// data fetch that document.
+		// The UCP manifest describes capabilities + store_context in
+		// machine-readable form; agents that want structured data
+		// fetch that document.
+		//
+		// Description text kept tight — "purchase URL templates" was
+		// dropped from the manifest in 1.6.5, so advertising them here
+		// would be stale.
 		$lines[]   = '## API Access';
 		$lines[]   = '';
 		$store_api = rest_url( 'wc/store/v1' );
 		$ucp_url   = $site_url . '.well-known/ucp';
 		$lines[]   = "- **Store API**: `{$store_api}` — public WooCommerce Store API for product search and cart operations (no authentication required)";
-		$lines[]   = "- **Commerce Protocol Manifest**: `{$ucp_url}` — declares capabilities, checkout policy, and purchase URL templates";
+		$lines[]   = "- **Commerce Protocol Manifest**: `{$ucp_url}` — declares capabilities, checkout policy, and store_context (currency, locale, country, tax/shipping posture)";
 		$lines[]   = '';
 
 		// Sitemaps section. Surfaces exhaustive URL enumeration
@@ -308,20 +312,15 @@ class WC_AI_Syndication_Llms_Txt {
 			$lines[] = '';
 		}
 
-		// Featured/popular products.
-		$product_data = $this->get_featured_products( $settings );
-		if ( ! empty( $product_data['products'] ) ) {
-			$section_title   = $product_data['is_featured'] ? 'Featured Products' : 'Popular Products';
-			$lines[]         = "## {$section_title}";
-			$lines[]         = '';
-			$currency_symbol = html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' );
-			foreach ( $product_data['products'] as $product ) {
-				$product_name = html_entity_decode( wp_strip_all_tags( $product->get_name() ), ENT_QUOTES, 'UTF-8' );
-				$price        = $currency_symbol . $product->get_price();
-				$lines[]      = "- [{$product_name}](" . $product->get_permalink() . ") - {$price}";
-			}
-			$lines[] = '';
-		}
+		// Featured/popular products section removed: an up-to-10-product
+		// marketing teaser in a machine-readable agent document was
+		// scope creep — agents wanting products use the Store API
+		// (documented in `## API Access` above). Stale prices between
+		// llms.txt regenerations and edge cases like "Request a Quote"
+		// products (no numeric price → rendered as bare "$") made the
+		// section fragile for near-zero agent value. If we ever bring
+		// it back, it should be sourced from the Store API with a note
+		// about freshness expectations.
 
 		// Checkout policy declaration. Makes explicit the merchant-
 		// only-checkout posture that the UCP manifest already
@@ -427,72 +426,30 @@ class WC_AI_Syndication_Llms_Txt {
 		$lines[] = 'If your agent\'s hostname is missing and you\'d like a specific brand name applied, open an issue on the plugin\'s [GitHub repository](https://github.com/pierorocca/woocommerce-ai-syndication/issues) — additions are a single constant entry plus a test row.';
 		$lines[] = '';
 
-		$lines[] = 'If you must construct a checkout URL client-side (legacy or non-UCP-aware flow), append these parameters for order attribution:';
-		$lines[] = '';
-		$lines[] = '- `utm_source`: Your agent identifier (e.g. `ChatGPT`, `Gemini`, `Claude`, `Perplexity`, `Copilot`)';
-		$lines[] = '- `utm_medium`: `ai_agent`';
-		$lines[] = '- `utm_campaign`: Optional campaign name';
-		$lines[] = '- `ai_session_id`: The current conversation/session ID';
-		$lines[] = '';
-		$lines[] = 'These map to standard WooCommerce Order Attribution fields.';
-		$lines[] = '';
-
-		// URL-structure reference. Previously this section pointed
-		// readers at WooCommerce's public docs for URL construction
-		// patterns; that's one more fetch for every agent evaluating
-		// the store. Since the patterns are stable and short, inline
-		// them here so the llms.txt document is self-contained — one
-		// fetch, all the guidance. The templates use concrete
-		// placeholders (`{site_url}`, `{product_id}`, etc.) so
-		// string-replace-based URL construction works directly.
-		$lines[] = '### URL patterns for client-side construction';
-		$lines[] = '';
-		$lines[] = 'Two URL shapes work. The **Shareable Checkout URL** (`/checkout-link/`) is strongly preferred — it takes the buyer straight to checkout with the items pre-loaded, matching the UCP `continue_url` semantic. The legacy `?add-to-cart=` pattern adds to cart but still requires the buyer to navigate to checkout manually, and is only documented here as a compatibility fallback.';
-		$lines[] = '';
-		$lines[] = '**Shareable Checkout URL — single product:**';
-		$lines[] = '';
-		$lines[] = '```';
-		$lines[] = '{site_url}/checkout-link/?products={product_id}&utm_source={agent_name}&utm_medium=ai_agent';
-		$lines[] = '```';
-		$lines[] = '';
-		$lines[] = '**Shareable Checkout URL — product with quantity (format `{id}:{qty}`):**';
-		$lines[] = '';
-		$lines[] = '```';
-		$lines[] = '{site_url}/checkout-link/?products={product_id}:{quantity}&utm_source={agent_name}&utm_medium=ai_agent';
-		$lines[] = '```';
-		$lines[] = '';
-		$lines[] = '**Shareable Checkout URL — multiple products (comma-separated):**';
-		$lines[] = '';
-		$lines[] = '```';
-		$lines[] = '{site_url}/checkout-link/?products={id_a}:{qty_a},{id_b}:{qty_b}&utm_source={agent_name}&utm_medium=ai_agent';
-		$lines[] = '```';
-		$lines[] = '';
-		$lines[] = '**Shareable Checkout URL — with coupon code:**';
-		$lines[] = '';
-		$lines[] = '```';
-		$lines[] = '{site_url}/checkout-link/?products={product_id}:{quantity}&coupon={coupon_code}&utm_source={agent_name}&utm_medium=ai_agent';
-		$lines[] = '```';
-		$lines[] = '';
-		$lines[] = '**Legacy add-to-cart URL — simple product:**';
-		$lines[] = '';
-		$lines[] = '```';
-		$lines[] = '{site_url}/?add-to-cart={product_id}&quantity={quantity}&utm_source={agent_name}&utm_medium=ai_agent';
-		$lines[] = '```';
-		$lines[] = '';
-		$lines[] = '**Legacy add-to-cart URL — variable product (use the VARIATION id, not the parent product id):**';
-		$lines[] = '';
-		$lines[] = '```';
-		$lines[] = '{site_url}/?add-to-cart={variation_id}&quantity={quantity}&utm_source={agent_name}&utm_medium=ai_agent';
-		$lines[] = '```';
-		$lines[] = '';
-		$lines[] = 'Notes:';
-		$lines[] = '';
-		$lines[] = '- Substitute `{site_url}` with this store\'s home URL (see Store Information above).';
-		$lines[] = '- `{product_id}` / `{variation_id}` are integers from the catalog (UCP `product.id`, after stripping the `prod_` / `var_` prefix).';
-		$lines[] = '- `{quantity}` defaults to `1` when omitted on `/checkout-link/` — include it on `?add-to-cart=` for anything other than 1.';
-		$lines[] = '- URL-encode `{agent_name}` if it contains spaces or special characters. Brand names from the attribution mapping table above are already URL-safe.';
-		$lines[] = '- `{coupon_code}` is optional; omit the entire `&coupon=` parameter when not using one.';
-		$lines[] = '';
+		// Post-v2.0.0 cleanup — two sections that had drifted out of
+		// scope vs. the UCP-POST-first posture the plugin committed
+		// to at 2.0.0:
+		//
+		//   1. A `utm_source` / `utm_medium` / `utm_campaign` /
+		//      `ai_session_id` parameter list that encouraged agents
+		//      to build URLs client-side. Redundant now: the POST
+		//      flow attaches UTM values to `continue_url` from the
+		//      `UCP-Agent` header, and spec-aware agents never see
+		//      these keys directly.
+		//
+		//   2. A "URL patterns for client-side construction" block
+		//      (6 variants: `/checkout-link/?products=` × 4 plus
+		//      legacy `?add-to-cart=` × 2). That section predated
+		//      the `/checkout-sessions` endpoint and directly
+		//      contradicted the "MUST redirect to continue_url"
+		//      posture in the Checkout Policy block above. Rather
+		//      than maintain two flows in one document, we commit to
+		//      POST-first: agents that cannot POST should read the
+		//      UCP checkout spec for the canonical fallback, not
+		//      reverse-engineer our per-store URL shapes.
+		//
+		// If non-UCP agents ever need the URL patterns again, they
+		// belong in developer docs (README, wiki), not in llms.txt.
 
 		// UCP merchant-extension docs — referenced from the manifest's
 		// `com.woocommerce.ai_syndication` capability as the `spec`
@@ -640,49 +597,10 @@ class WC_AI_Syndication_Llms_Txt {
 		return is_wp_error( $terms ) ? [] : $terms;
 	}
 
-	/**
-	 * Get featured (or fallback popular) products for the llms.txt listing.
-	 *
-	 * @param array $settings AI syndication settings.
-	 * @return array{products: WC_Product[], is_featured: bool} Products and a flag
-	 *               indicating whether the list came from the featured-products
-	 *               query (true) or the popular-products fallback (false).
-	 */
-	private function get_featured_products( $settings ) {
-		$query_args = [
-			'status'   => 'publish',
-			'limit'    => 10,
-			'orderby'  => 'popularity',
-			'order'    => 'DESC',
-			'featured' => true,
-		];
-
-		$product_mode = $settings['product_selection_mode'] ?? 'all';
-		if ( 'categories' === $product_mode && ! empty( $settings['selected_categories'] ) ) {
-			$query_args['tax_query'] = [
-				[
-					'taxonomy' => 'product_cat',
-					'field'    => 'term_id',
-					'terms'    => array_map( 'absint', $settings['selected_categories'] ),
-				],
-			];
-		} elseif ( 'selected' === $product_mode && ! empty( $settings['selected_products'] ) ) {
-			$query_args['include'] = array_map( 'absint', $settings['selected_products'] );
-			unset( $query_args['featured'] );
-		}
-
-		$products    = wc_get_products( $query_args );
-		$is_featured = ! empty( $products );
-
-		// Fallback to popular if no featured products exist.
-		if ( ! $is_featured ) {
-			unset( $query_args['featured'] );
-			$products = wc_get_products( $query_args );
-		}
-
-		return [
-			'products'    => $products,
-			'is_featured' => $is_featured,
-		];
-	}
+	// `get_featured_products()` was removed alongside the
+	// "Featured Products" llms.txt section. See the deletion comment
+	// where the section used to render (around line ~315) for
+	// rationale. If the section is ever reintroduced, prefer sourcing
+	// from the Store API with explicit freshness disclosure rather
+	// than rebuilding this internal `wc_get_products()` path.
 }
