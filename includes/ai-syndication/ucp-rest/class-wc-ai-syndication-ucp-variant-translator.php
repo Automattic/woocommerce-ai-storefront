@@ -8,10 +8,13 @@
  *
  *     source/schemas/shopping/types/variant.json
  *
- * Required UCP fields: id, title, description, price.
- * Variants also carry `options` (selected option values like
- * "Color: Blue, Size: Large"), `availability`, and optional
- * `sku`, `barcodes`, `media`.
+ * Required UCP fields: id, title, description, list_price.
+ * (`list_price` replaced the 1.x `price` field in 2.0.0 — it carries
+ * the current/cart amount from WC's `prices.price`; on-sale variants
+ * additionally emit `compare_at_price` from `prices.regular_price`
+ * for strikethrough rendering.) Variants also carry `options`
+ * (selected option values like "Color: Blue, Size: Large"),
+ * `availability`, and optional `sku`, `barcodes`, `media`.
  *
  * @package WooCommerce_AI_Syndication
  * @since 1.3.0
@@ -54,7 +57,16 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 			'id'          => self::VARIANT_ID_PREFIX . $id,
 			'title'       => self::extract_title( $wc_variation ),
 			'description' => self::extract_description( $wc_variation ),
-			'price'       => self::extract_price( $wc_variation ),
+			// `list_price` is the UCP core name for the current
+			// purchasable price — sourced from WC's `prices.price`
+			// (the active amount that lands in the cart, which on a
+			// sale variant is the discounted price, not the regular
+			// one). Previously emitted as `price`; renamed in 2.0.0
+			// for spec parity. On-sale variants additionally emit
+			// `compare_at_price` as the pre-discount amount from
+			// WC's `prices.regular_price`, letting agents render
+			// strike-through pricing ("was $X, now $Y").
+			'list_price'  => self::extract_price( $wc_variation ),
 		];
 
 		// Structured options — the {attribute, value} pairs that
@@ -69,11 +81,13 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 		}
 
 		// Sale pricing — agents showing "was $X, now $Y" need
-		// compare_at_price alongside the canonical `price`. WC marks
-		// this via the `on_sale` flag plus `prices.regular_price`
+		// compare_at_price alongside the canonical `list_price`. WC
+		// marks this via the `on_sale` flag plus `prices.regular_price`
 		// (higher) vs `prices.price` (the active/sale value). Only
 		// emit when actually on sale so non-sale variants stay
-		// clean.
+		// clean. `compare_at_price` is non-spec but widely understood
+		// (Shopify convention) — retained for agents rendering
+		// strike-through pricing; spec-strict consumers ignore it.
 		if ( ! empty( $wc_variation['on_sale'] ) ) {
 			$compare_at = self::extract_compare_at_price( $wc_variation );
 			if ( null !== $compare_at ) {
@@ -117,12 +131,25 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 		// (fits-in-standard-flatrate, oversize surcharge, etc.).
 		// WC Store API emits them natively under `weight` (string
 		// scalar in merchant-configured unit) and `dimensions`
-		// (object with length/width/height). Only emit when the
-		// merchant has filled them in — empty/omitted values would
+		// (object with length/width/height).
+		//
+		// Emitted under `metadata.shipping` (2.0.0+). The canonical
+		// UCP variant shape doesn't have a dedicated shipping block —
+		// weight/dimensions live under `metadata` as vendor-extension
+		// data, per spec. Previously (1.x) we emitted a top-level
+		// `shipping_attributes` key which was non-spec; agents parsing
+		// by shape expected it under `metadata`. Only emit when the
+		// merchant has filled in real values — empty fields would
 		// produce misleading zeros or fabricated defaults.
 		$shipping = self::extract_shipping_attributes( $wc_variation );
 		if ( ! empty( $shipping ) ) {
-			$variant['shipping_attributes'] = $shipping;
+			// Nothing else writes into variant-level metadata today, so
+			// a straight assignment is safe. If a future field also
+			// writes under `metadata`, switch to merge-style to preserve
+			// sibling keys.
+			$variant['metadata'] = [
+				'shipping' => $shipping,
+			];
 		}
 
 		return $variant;
@@ -147,7 +174,9 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 			'id'          => self::VARIANT_ID_PREFIX . $id . self::DEFAULT_VARIANT_SUFFIX,
 			'title'       => $wc_product['name'] ?? '',
 			'description' => [ 'plain' => '' ],
-			'price'       => self::extract_price( $wc_product ),
+			// `list_price` (renamed from `price` in 2.0.0) — see the
+			// translate() method above for the naming rationale.
+			'list_price'  => self::extract_price( $wc_product ),
 		];
 
 		// Sale pricing carries through the simple-product path too
@@ -175,13 +204,19 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 		$variant['availability'] = self::extract_availability( $wc_product );
 
 		// Simple products carry the same weight/dimensions shape the
-		// Store API uses for variations, so `shipping_attributes`
-		// routes through the same helper on the synthesized-default
-		// path. Keeps shipping-aware agents unaware of the
-		// simple-vs-variable distinction.
+		// Store API uses for variations, so shipping data routes
+		// through the same helper on the synthesized-default path.
+		// Emitted under `metadata.shipping` (2.0.0+ — see translate()
+		// above for the relocation rationale). Keeps shipping-aware
+		// agents unaware of the simple-vs-variable distinction.
 		$shipping = self::extract_shipping_attributes( $wc_product );
 		if ( ! empty( $shipping ) ) {
-			$variant['shipping_attributes'] = $shipping;
+			// Straight assignment — no other metadata siblings yet.
+			// Same invariant as the translate() path above; keep them
+			// in sync if future fields add to `metadata`.
+			$variant['metadata'] = [
+				'shipping' => $shipping,
+			];
 		}
 
 		return $variant;

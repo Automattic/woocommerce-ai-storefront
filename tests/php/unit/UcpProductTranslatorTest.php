@@ -254,6 +254,246 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// list_price_range — pre-discount range for strikethrough
+	// ------------------------------------------------------------------
+
+	public function test_list_price_range_omitted_when_no_sale_on_simple_product(): void {
+		// No discount → regular_price == price → list_price_range
+		// would be redundant with price_range. Omit to keep payload
+		// tight; agents can read price_range directly.
+		$fixture                             = $this->simple_product_fixture();
+		$fixture['prices']['regular_price']  = '2500';
+		$fixture['prices']['price']          = '2500';
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'list_price_range', $result );
+	}
+
+	public function test_list_price_range_emitted_for_discounted_simple_product(): void {
+		// Simple product on sale: regular_price > price. Emit
+		// list_price_range as a single-point range (min == max ==
+		// regular_price) so agents render "was $X, now $Y".
+		$fixture                             = $this->simple_product_fixture();
+		$fixture['prices']['regular_price']  = '3500';
+		$fixture['prices']['price']          = '2500';
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame( 3500, $result['list_price_range']['min']['amount'] );
+		$this->assertSame( 3500, $result['list_price_range']['max']['amount'] );
+		$this->assertSame( 'USD', $result['list_price_range']['min']['currency'] );
+	}
+
+	public function test_list_price_range_computed_from_variants_when_mixed_sale(): void {
+		// Variable product where some variants are on sale and
+		// others aren't. list_price_range spans the regular_price
+		// min/max across ALL variants (including non-sale ones
+		// whose regular_price == price). A shopper sees "was X-Y,
+		// now A-B" where A-B is tighter than or equal to X-Y.
+		$product    = [
+			'id'    => 789,
+			'name'  => 'T-Shirt',
+			'type'  => 'variable',
+			'prices' => [
+				'price'         => '1000',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '1500' ],
+			],
+		];
+		$variations = [
+			[
+				'id'     => 101,
+				'prices' => [
+					'price'         => '1000',
+					'regular_price' => '2000', // on sale
+					'currency_code' => 'USD',
+				],
+			],
+			[
+				'id'     => 102,
+				'prices' => [
+					'price'         => '1500',
+					'regular_price' => '1500', // not on sale
+					'currency_code' => 'USD',
+				],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $product, $variations );
+
+		$this->assertArrayHasKey( 'list_price_range', $result );
+		$this->assertSame( 1500, $result['list_price_range']['min']['amount'] );
+		$this->assertSame( 2000, $result['list_price_range']['max']['amount'] );
+	}
+
+	public function test_list_price_range_omitted_when_variable_product_no_sales(): void {
+		// All variants have regular_price == price → no discount
+		// anywhere → omit list_price_range as redundant with
+		// price_range. Same redundancy check as the simple-product
+		// path but exercised via the variation-walk code path.
+		$product    = [
+			'id'    => 789,
+			'name'  => 'T-Shirt',
+			'type'  => 'variable',
+			'prices' => [
+				'price'         => '1000',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '1500' ],
+			],
+		];
+		$variations = [
+			[
+				'id'     => 101,
+				'prices' => [
+					'price'         => '1000',
+					'regular_price' => '1000',
+					'currency_code' => 'USD',
+				],
+			],
+			[
+				'id'     => 102,
+				'prices' => [
+					'price'         => '1500',
+					'regular_price' => '1500',
+					'currency_code' => 'USD',
+				],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $product, $variations );
+
+		$this->assertArrayNotHasKey( 'list_price_range', $result );
+	}
+
+	public function test_list_price_range_omitted_when_source_lacks_regular_price(): void {
+		// Defensive: Store API should always emit regular_price, but
+		// if it's missing we can't derive a list_price_range.
+		// Return null rather than fabricate a range from zero.
+		$fixture = $this->simple_product_fixture();
+		unset( $fixture['prices']['regular_price'] );
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'list_price_range', $result );
+	}
+
+	public function test_list_price_range_emitted_when_only_mid_priced_variant_is_discounted(): void {
+		// Critical-case regression (flagged by Copilot review on PR #48):
+		// when a discounted variant is neither the cheapest nor the
+		// most expensive, the overall min/max regular-price range
+		// equals the active min/max exactly. A min-max-equality check
+		// would silently omit list_price_range even though a sale IS
+		// happening. The current rule (per-variant `regular > price`)
+		// detects the discount directly and emits the range.
+		//
+		// Fixture: variant B is the sale — mid-priced, $15 was $18.
+		// Cheapest (A, $10) and most expensive (C, $20) are at their
+		// regular prices. Active price_range = $10-$20 (from prices.price).
+		// List price_range = $10-$20 (same numbers, different variants).
+		// The ranges coincide numerically but a sale exists — emit.
+		$product    = [
+			'id'    => 790,
+			'name'  => 'T-Shirt',
+			'type'  => 'variable',
+			'prices' => [
+				'price'         => '1000',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '2000' ],
+			],
+		];
+		$variations = [
+			[
+				'id'     => 201,
+				'prices' => [
+					'price'         => '1000',
+					'regular_price' => '1000', // not on sale
+					'currency_code' => 'USD',
+				],
+			],
+			[
+				'id'     => 202,
+				'prices' => [
+					'price'         => '1500',
+					'regular_price' => '1800', // on sale (mid-priced!)
+					'currency_code' => 'USD',
+				],
+			],
+			[
+				'id'     => 203,
+				'prices' => [
+					'price'         => '2000',
+					'regular_price' => '2000', // not on sale
+					'currency_code' => 'USD',
+				],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $product, $variations );
+
+		$this->assertArrayHasKey( 'list_price_range', $result );
+		// Range derived from ALL regular prices: {1000, 1800, 2000} → 1000-2000.
+		// Same numeric endpoints as the active range, but emission is
+		// still correct because the mid-point discount exists.
+		$this->assertSame( 1000, $result['list_price_range']['min']['amount'] );
+		$this->assertSame( 2000, $result['list_price_range']['max']['amount'] );
+	}
+
+	public function test_list_price_range_omitted_when_variation_set_is_partial(): void {
+		// Partial-variation guard (flagged by Copilot review on PR #48):
+		// the controller may cap or skip variations
+		// (MAX_VARIATIONS_PER_PRODUCT, individual fetch failures) and
+		// emit a `partial_variants` warning. In that state our range
+		// would be derived from incomplete data — misleading. Omit
+		// entirely; the warning already tells agents variant data is
+		// partial, and dropping list_price_range alongside is the
+		// honest posture.
+		//
+		// Fixture: parent declares 3 variations; we receive 2. Even
+		// though one of the provided variants is on sale, we omit
+		// because the unseen variant might carry a different
+		// regular-price range.
+		$product    = [
+			'id'         => 791,
+			'name'       => 'T-Shirt',
+			'type'       => 'variable',
+			'prices'     => [
+				'price'         => '1000',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '2500' ],
+			],
+			'variations' => [
+				[ 'id' => 301, 'attributes' => [] ],
+				[ 'id' => 302, 'attributes' => [] ],
+				[ 'id' => 303, 'attributes' => [] ], // unfetched
+			],
+		];
+		$variations = [
+			[
+				'id'     => 301,
+				'prices' => [
+					'price'         => '1000',
+					'regular_price' => '1200', // on sale
+					'currency_code' => 'USD',
+				],
+			],
+			[
+				'id'     => 302,
+				'prices' => [
+					'price'         => '1500',
+					'regular_price' => '1500',
+					'currency_code' => 'USD',
+				],
+			],
+			// 303 unfetched
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $product, $variations );
+
+		$this->assertArrayNotHasKey( 'list_price_range', $result );
+	}
+
+	// ------------------------------------------------------------------
 	// Optional fields — emit only when present
 	// ------------------------------------------------------------------
 
@@ -430,8 +670,8 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$fixture['variations']
 		);
 
-		$this->assertSame( 1000, $result['variants'][0]['price']['amount'] );
-		$this->assertSame( 1500, $result['variants'][1]['price']['amount'] );
+		$this->assertSame( 1000, $result['variants'][0]['list_price']['amount'] );
+		$this->assertSame( 1500, $result['variants'][1]['list_price']['amount'] );
 	}
 
 	public function test_variable_product_variants_build_title_from_attributes(): void {
@@ -538,7 +778,11 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Fish & Chips', $result['description']['plain'] );
 	}
 
-	public function test_translate_emits_tags_as_second_taxonomy_in_categories(): void {
+	public function test_translate_emits_tags_as_top_level_string_array(): void {
+		// 2.0.0+: tags moved out of `categories[{taxonomy:"tag"}]` into
+		// their own top-level `tags[]` array of plain strings — matching
+		// UCP core product shape. Categories and brands stay in
+		// `categories[]` with the taxonomy discriminator.
 		$fixture         = $this->simple_product_fixture();
 		$fixture['tags'] = [
 			[ 'id' => 5, 'name' => 'summer', 'slug' => 'summer' ],
@@ -547,14 +791,28 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
 
-		$this->assertContains(
-			[ 'value' => 'summer', 'taxonomy' => 'tag' ],
-			$result['categories']
+		$this->assertSame(
+			[ 'summer', 'eco-friendly' ],
+			$result['tags']
 		);
-		$this->assertContains(
-			[ 'value' => 'eco-friendly', 'taxonomy' => 'tag' ],
-			$result['categories']
+
+		// Categories block must NOT leak a `taxonomy:tag` entry anymore —
+		// regression guard for the split.
+		foreach ( $result['categories'] ?? [] as $cat ) {
+			$this->assertNotSame( 'tag', $cat['taxonomy'] ?? null );
+		}
+	}
+
+	public function test_translate_omits_tags_key_when_source_has_none(): void {
+		// No WC tags seeded → `tags` key absent entirely (not empty array).
+		// Spec treats missing and empty-array as semantically equivalent,
+		// but omission is cleaner for downstream serializers.
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[]
 		);
+
+		$this->assertArrayNotHasKey( 'tags', $result );
 	}
 
 	public function test_translate_emits_brands_as_third_taxonomy_in_categories(): void {
@@ -589,7 +847,14 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEmpty( $brand_entries );
 	}
 
-	public function test_translate_emits_product_attributes_excluding_variation_defining(): void {
+	public function test_translate_splits_attributes_into_options_and_metadata(): void {
+		// 2.0.0+: WC attributes split into two UCP buckets based on
+		// `has_variations`.
+		//   - Variation axes (`has_variations: true`) → `product.options[]`
+		//   - Informational (`has_variations: false`) → `product.metadata.attributes`
+		// Pre-2.0 these all collapsed into `product.attributes[]` with
+		// no distinction; splitting matches UCP core shape and lets
+		// agents distinguish "selectable dimension" from "product fact".
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[
@@ -602,57 +867,119 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 				],
 			],
 			[
-				// Variation-defining attribute — belongs on variant options, NOT here.
+				// Variation-defining attribute — lands in `options[]`.
 				'name'           => 'Size',
 				'taxonomy'       => 'pa_size',
 				'has_variations' => true,
 				'terms'          => [
-					[ 'id' => 20, 'name' => 'M', 'slug' => 'm' ],
+					[ 'id' => 20, 'name' => 'S', 'slug' => 's' ],
+					[ 'id' => 21, 'name' => 'M', 'slug' => 'm' ],
+					[ 'id' => 22, 'name' => 'L', 'slug' => 'l' ],
 				],
 			],
 		];
 
 		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
 
-		$this->assertArrayHasKey( 'attributes', $result );
-		$this->assertCount( 1, $result['attributes'] );
-		$this->assertSame( 'Material', $result['attributes'][0]['name'] );
-		$this->assertSame( [ 'Cotton', 'Organic' ], $result['attributes'][0]['values'] );
+		// Variation axis landed in options[]
+		$this->assertArrayHasKey( 'options', $result );
+		$this->assertCount( 1, $result['options'] );
+		$this->assertSame( 'Size', $result['options'][0]['name'] );
+		$this->assertSame( [ 'S', 'M', 'L' ], $result['options'][0]['values'] );
+
+		// Informational attribute landed in metadata.attributes
+		$this->assertArrayHasKey( 'metadata', $result );
+		$this->assertArrayHasKey( 'attributes', $result['metadata'] );
+		$this->assertCount( 1, $result['metadata']['attributes'] );
+		$this->assertSame( 'Material', $result['metadata']['attributes'][0]['name'] );
+		$this->assertSame( [ 'Cotton', 'Organic' ], $result['metadata']['attributes'][0]['values'] );
+
+		// Regression guard for the 1.x flat shape — must not reappear.
+		$this->assertArrayNotHasKey( 'attributes', $result );
 	}
 
-	public function test_translate_omits_attributes_when_source_has_none(): void {
+	public function test_translate_omits_options_and_metadata_when_source_has_no_attributes(): void {
+		// No WC attributes at all → both `options` and `metadata` keys
+		// should be absent (no empty scaffolding emitted).
 		$fixture = $this->simple_product_fixture();
 		unset( $fixture['attributes'] );
 
 		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
 
 		$this->assertArrayNotHasKey( 'attributes', $result );
+		$this->assertArrayNotHasKey( 'options', $result );
+		$this->assertArrayNotHasKey( 'metadata', $result );
 	}
 
-	public function test_translate_emits_ratings_under_extension_when_reviews_exist(): void {
+	public function test_translate_omits_options_when_only_informational_attributes(): void {
+		// Simple product with only has_variations:false attributes —
+		// `options[]` absent, `metadata.attributes` present.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Material',
+				'has_variations' => false,
+				'terms'          => [ [ 'id' => 10, 'name' => 'Cotton' ] ],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'options', $result );
+		$this->assertArrayHasKey( 'attributes', $result['metadata'] ?? [] );
+	}
+
+	public function test_translate_omits_metadata_attributes_when_only_variation_axes(): void {
+		// Variable product with only has_variations:true attributes —
+		// `options[]` present, `metadata.attributes` absent.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Color',
+				'has_variations' => true,
+				'terms'          => [ [ 'id' => 30, 'name' => 'Red' ] ],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayHasKey( 'options', $result );
+		$this->assertArrayNotHasKey( 'attributes', $result['metadata'] ?? [] );
+	}
+
+	public function test_translate_emits_rating_under_core_when_reviews_exist(): void {
+		// 2.0.0+: rating moved out of the
+		// `extensions.com.woocommerce.ai_syndication.ratings`
+		// namespace into core `product.rating`. Shape stays
+		// `{average, count}` — `average` (not `value`) is explicit
+		// about what the number represents.
 		$fixture                   = $this->simple_product_fixture();
 		$fixture['average_rating'] = '4.67';
 		$fixture['review_count']   = 42;
 
 		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
 
-		$this->assertArrayHasKey( 'extensions', $result );
-		$this->assertArrayHasKey(
-			'com.woocommerce.ai_syndication',
-			$result['extensions']
-		);
-		$ratings = $result['extensions']['com.woocommerce.ai_syndication']['ratings'];
-		$this->assertSame( 4.67, $ratings['average'] );
-		$this->assertSame( 42, $ratings['count'] );
+		$this->assertArrayHasKey( 'rating', $result );
+		$this->assertSame( 4.67, $result['rating']['average'] );
+		$this->assertSame( 42, $result['rating']['count'] );
+
+		// Regression guard: the old extension-namespace home must
+		// stay empty — agents that were reading from there need to
+		// see the migration cleanly, not a double-emission.
+		$this->assertArrayNotHasKey( 'extensions', $result );
 	}
 
-	public function test_translate_omits_ratings_extension_when_no_reviews(): void {
+	public function test_translate_omits_rating_key_when_no_reviews(): void {
+		// Zero reviews → omit the key entirely. Emitting `rating: 0.0`
+		// for a product with no reviews would misleadingly rank it
+		// alongside products with many one-star reviews.
 		$fixture                   = $this->simple_product_fixture();
 		$fixture['average_rating'] = '0';
 		$fixture['review_count']   = 0;
 
 		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $fixture, [] );
 
+		$this->assertArrayNotHasKey( 'rating', $result );
 		$this->assertArrayNotHasKey( 'extensions', $result );
 	}
 
