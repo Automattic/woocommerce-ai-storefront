@@ -121,7 +121,11 @@ class WC_AI_Syndication_Store_Api_Extension {
 	 * endpoints). We return the shape declared by `get_schema()`.
 	 *
 	 * @param \WC_Product|null $product The product/variation object.
-	 * @return array<string, mixed>
+	 * @return array{
+	 *     barcodes: list<array{type: string, value: string}>,
+	 *     date_created: string|null,
+	 *     date_modified: string|null,
+	 * }
 	 */
 	public function get_product_data( $product ): array {
 		if ( ! $product instanceof \WC_Product ) {
