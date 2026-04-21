@@ -342,19 +342,24 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	 * the emission decision.
 	 *
 	 * Paths:
-	 *   - Variable products with variations pre-fetched: walk each
-	 *     variation's `{regular_price, price}` pair.
-	 *   - Simple products (or variable products without variations
-	 *     passed): fall back to product-level `{regular_price, price}`
-	 *     as a single-point range.
+	 *   - Variable products with variations pre-fetched (count
+	 *     matches the parent's declared `variations[]` pointer list):
+	 *     walk each variation's `{regular_price, price}` pair.
+	 *   - Simple products (no `variations[]` declared on the parent):
+	 *     fall back to product-level `{regular_price, price}` as a
+	 *     single-point range.
 	 *
-	 * Partial-variation guard: when the controller caps or skips
-	 * variations (e.g. MAX_VARIATIONS_PER_PRODUCT hit, individual
-	 * variation fetches failed) and emits a `partial_variants`
-	 * warning, the provided `$wc_variations` is a subset of the
-	 * parent's `variations[]` pointer list. In that case the derived
-	 * list range is based on incomplete data — we omit entirely
-	 * rather than ship a misleading value. Agents that see a
+	 * Partial-variation guard: runs FIRST, before either path above.
+	 * When the parent declares `variations[]` but we received fewer
+	 * full bodies (controller capped via MAX_VARIATIONS_PER_PRODUCT,
+	 * individual fetches failed, or caller passed an empty
+	 * `$wc_variations` for a variable product), the derived range
+	 * would be based on incomplete data. We omit `list_price_range`
+	 * entirely rather than ship a misleading value — and variable
+	 * products with no variations passed at all fall under this
+	 * guard too (count mismatch 0 < N → null), so the
+	 * product-level fallback below is only reached for genuine
+	 * simple products. Agents who see the controller's
 	 * `partial_variants` warning already know variant data is
 	 * incomplete; dropping list_price_range alongside is the
 	 * honest posture.
