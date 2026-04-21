@@ -261,11 +261,26 @@ class WC_AI_Syndication_UCP_Product_Translator {
 		// Store API registers extension data under a hyphenated
 		// namespace (`com-woocommerce-ai-syndication`), distinct from
 		// the dotted UCP-level namespace (`com.woocommerce.ai_syndication`).
-		// Hardcoded here rather than pulled from the extension class
-		// so the translator stays decoupled — the translator is a
-		// pure data-shape function and doesn't autoload Store API
-		// machinery at test time.
-		$ext = $wc_product['extensions']['com-woocommerce-ai-syndication'] ?? [];
+		// Pulled from the extension class constant so the two surfaces
+		// stay linked; the class autoload is cheap and happens once
+		// per request either way.
+		//
+		// Defensive `is_array` guards at each layer — a third-party
+		// plugin could collide on the `extensions` or namespace key
+		// and write a non-array. Without these guards, `$ext[$key]`
+		// would fatal ("cannot use object/string as array"). Mirrors
+		// the same pattern in `UCP_Variant_Translator::extract_barcodes`
+		// so both translators degrade identically on filter-poisoned
+		// Store API responses.
+		$extensions = $wc_product['extensions'] ?? [];
+		$ext        = [];
+		if ( is_array( $extensions ) ) {
+			$namespace = WC_AI_Syndication_Store_Api_Extension::NAMESPACE;
+			$candidate = $extensions[ $namespace ] ?? [];
+			if ( is_array( $candidate ) ) {
+				$ext = $candidate;
+			}
+		}
 
 		$map = [
 			'date_created'  => 'published_at',
