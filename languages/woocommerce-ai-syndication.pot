@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-3.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: WooCommerce AI Syndication 1.8.0\n"
+"Project-Id-Version: WooCommerce AI Syndication 2.0.0\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/woocommerce-ai-syndication\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-20T22:20:54+00:00\n"
+"POT-Creation-Date: 2026-04-21T08:51:10+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-syndication\n"
@@ -52,23 +52,23 @@ msgstr ""
 msgid "Products"
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:212
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:229
 msgid "Product identifiers (GTIN, UPC, EAN, MPN, ISBN). Each entry is a typed barcode."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:224
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:241
 msgid "Barcode type (gtin8, gtin12, gtin13, gtin14, other)."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:231
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:248
 msgid "The barcode value as stored by the merchant."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:240
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:257
 msgid "RFC 3339 / ISO 8601 timestamp (UTC, `Z`-suffixed) when the product was created. Null when not available. Exposed here because Store API strips product date fields from responses by default; our UCP translator consumes this to populate `product.published_at` per the UCP core shape."
 msgstr ""
 
-#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:249
+#: includes/ai-syndication/ucp-rest/class-wc-ai-syndication-store-api-extension.php:266
 msgid "RFC 3339 / ISO 8601 timestamp (UTC, `Z`-suffixed) of the product's last modification. Null when not available. Consumed by the UCP translator for `product.updated_at`."
 msgstr ""
 

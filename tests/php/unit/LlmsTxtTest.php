@@ -166,12 +166,28 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '.well-known/ucp', $output );
 	}
 
-	public function test_attribution_section_documents_utm_parameters(): void {
+	public function test_attribution_section_does_not_document_client_side_utm_params(): void {
+		// 2.0.1 scope cut. The previous UTM-parameter list
+		// (`utm_source` / `utm_medium` / `utm_campaign` / `ai_session_id`)
+		// encouraged client-side URL construction — which the v2.0.0
+		// UCP-POST-first posture replaced. Removed; this test is the
+		// regression guard for the removal.
+		//
+		// The Attribution narrative still mentions `utm_source` and
+		// `utm_medium` in prose ("server attaches utm_source + utm_medium
+		// to continue_url"), so we specifically guard the BULLETED-LIST
+		// client-construction variants — those are the shape that would
+		// confuse agents into building URLs themselves.
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString( '`utm_source`', $output );
-		$this->assertStringContainsString( '`utm_medium`: `ai_agent`', $output );
-		$this->assertStringContainsString( '`ai_session_id`', $output );
+		$this->assertStringNotContainsString(
+			'- `ai_session_id`: The current conversation/session ID',
+			$output
+		);
+		$this->assertStringNotContainsString(
+			'- `utm_campaign`: Optional campaign name',
+			$output
+		);
 	}
 
 	public function test_checkout_policy_section_explicitly_declares_merchant_only_posture(): void {
@@ -209,65 +225,32 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'continue_url', $output );
 	}
 
-	public function test_attribution_still_documents_utm_parameters_for_legacy_flow(): void {
-		// Agents that must construct URLs client-side (non-UCP-aware
-		// or legacy flows) still need the UTM convention documented.
-		// Kept in llms.txt as authoritative human-readable guidance
-		// after 1.6.5 removed the template library from the manifest.
+	public function test_url_patterns_section_not_emitted(): void {
+		// 2.0.1 scope cut. The previous "URL patterns for client-side
+		// construction" block (6 URL variants: `/checkout-link/?products=`
+		// × 4 plus `?add-to-cart=` × 2) contradicted the Checkout
+		// Policy block's "MUST redirect to continue_url from POST
+		// /checkout-sessions" posture. Agents reading one or the other
+		// would end up uncertain which flow the store actually wanted.
+		// v2.0.0 committed to POST-first at the endpoint level; 2.0.1
+		// commits to it in the docs. This test is the regression guard
+		// for the removal.
+		//
+		// If any of the template variables or URL shapes reappears,
+		// this test fires — forcing a conscious re-decision on whether
+		// to reintroduce the client-side-construction path (and if so,
+		// how to reconcile it with the POST-first Checkout Policy).
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString( 'utm_source', $output );
-		$this->assertStringContainsString( 'utm_medium', $output );
-		$this->assertStringContainsString( 'ai_agent', $output );
-		$this->assertStringContainsString( 'ai_session_id', $output );
-	}
-
-	public function test_attribution_documents_url_patterns_inline(): void {
-		// Post-1.7.0: the URL-pattern guidance lives inline inside
-		// llms.txt rather than pointing at WooCommerce's external
-		// documentation. Rationale: one fetch instead of two for
-		// every agent evaluating the store. Previously we had
-		// templates in the UCP manifest (wrong placement — UCP's
-		// SHOULD directive is continue_url via POST /checkout-sessions);
-		// 1.6.5 moved them out but left an external pointer;
-		// 1.7.0-era change inlines the patterns so llms.txt is
-		// self-contained.
-		$output = $this->llms->generate();
-
-		// Section header present.
-		$this->assertStringContainsString(
+		$this->assertStringNotContainsString(
 			'### URL patterns for client-side construction',
 			$output
 		);
-
-		// Both URL shapes documented.
-		$this->assertStringContainsString( '/checkout-link/?products=', $output );
-		$this->assertStringContainsString( '/?add-to-cart=', $output );
-
-		// The five key template variables are documented so a
-		// string-replace URL construction flow knows what to
-		// substitute.
-		$this->assertStringContainsString( '{site_url}', $output );
-		$this->assertStringContainsString( '{product_id}', $output );
-		$this->assertStringContainsString( '{variation_id}', $output );
-		$this->assertStringContainsString( '{quantity}', $output );
-		$this->assertStringContainsString( '{coupon_code}', $output );
-
-		// Preference for `/checkout-link/` over the legacy add-to-cart
-		// shape is explicit — otherwise agents might ship whichever
-		// they implement first. Preferred path matches UCP's
-		// continue_url semantic.
-		$this->assertMatchesRegularExpression(
-			'/Shareable Checkout URL.*preferred/is',
-			$output
-		);
-
-		// No external-docs pointer remains — the whole point of
-		// inlining is to make llms.txt self-contained.
-		$this->assertStringNotContainsString(
-			'woocommerce.com/document/creating-sharable-checkout-urls',
-			$output
-		);
+		$this->assertStringNotContainsString( '/checkout-link/?products=', $output );
+		$this->assertStringNotContainsString( '/?add-to-cart=', $output );
+		$this->assertStringNotContainsString( '{site_url}', $output );
+		$this->assertStringNotContainsString( '{variation_id}', $output );
+		$this->assertStringNotContainsString( '{coupon_code}', $output );
 	}
 
 	// ------------------------------------------------------------------
