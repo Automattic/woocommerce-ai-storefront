@@ -74,17 +74,14 @@ class WC_AI_Syndication_UCP_Product_Translator {
 		];
 
 		// `list_price_range` — UCP core optional field carrying the
-		// pre-discount price range for strikethrough rendering. Only
-		// emitted when it's meaningfully different from `price_range`
-		// (i.e. something on this product is on sale); otherwise
-		// redundant and omitted. Computed by walking pre-fetched
-		// variants' `prices.regular_price` since WC Store API
-		// doesn't expose a product-level `regular_price_range`.
-		$list_price_range = self::extract_list_price_range(
-			$wc_product,
-			$wc_variations,
-			$product['price_range']
-		);
+		// pre-discount price range for strikethrough rendering.
+		// Emitted when at least one observed variant (or the simple
+		// product itself) has `regular_price > price`. Omitted when
+		// nothing is on sale, when regular_price is unavailable, or
+		// when the variation set is partial (count mismatch between
+		// parent `variations[]` pointers and pre-fetched bodies).
+		// See `extract_list_price_range` for the full rule set.
+		$list_price_range = self::extract_list_price_range( $wc_product, $wc_variations );
 		if ( null !== $list_price_range ) {
 			$product['list_price_range'] = $list_price_range;
 		}
@@ -333,81 +330,117 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	 * display — UCP core's optional product-level counterpart to
 	 * `list_price` on variants.
 	 *
-	 * WC Store API only exposes an active `price_range` at the
-	 * product level; there's no pre-aggregated `regular_price_range`
-	 * we can read directly. Two derivation paths:
+	 * Emission rule: emit iff at least one observed variant (or, for
+	 * simple products, the product itself) has `regular_price > price`.
+	 * That's the direct signal for "something is on sale" — stronger
+	 * than comparing aggregated min/max against the active range,
+	 * which misses mid-priced discounts (a variant discounted between
+	 * the cheapest and most expensive leaves the overall range
+	 * unchanged). Previous versions used min/max equality as a
+	 * discount proxy; this refactor makes the per-variant comparison
+	 * authoritative and locks the range-computation independent of
+	 * the emission decision.
 	 *
-	 *   - Variable products (variations pre-fetched): walk each
-	 *     variation's `prices.regular_price` and take min/max.
-	 *   - Simple products (or variable products with no variations
-	 *     passed): fall back to the product-level
-	 *     `prices.regular_price` as a single-point range (min == max).
+	 * Paths:
+	 *   - Variable products with variations pre-fetched: walk each
+	 *     variation's `{regular_price, price}` pair.
+	 *   - Simple products (or variable products without variations
+	 *     passed): fall back to product-level `{regular_price, price}`
+	 *     as a single-point range.
 	 *
-	 * Returns null when either:
-	 *   - No regular_price is available anywhere (merchant never
-	 *     configured one, unusual but handled defensively); OR
-	 *   - The derived list range matches the active `price_range`
-	 *     exactly (nothing is on sale → `list_price_range` carries
-	 *     no additional information → omit for payload minimalism).
+	 * Partial-variation guard: when the controller caps or skips
+	 * variations (e.g. MAX_VARIATIONS_PER_PRODUCT hit, individual
+	 * variation fetches failed) and emits a `partial_variants`
+	 * warning, the provided `$wc_variations` is a subset of the
+	 * parent's `variations[]` pointer list. In that case the derived
+	 * list range is based on incomplete data — we omit entirely
+	 * rather than ship a misleading value. Agents that see a
+	 * `partial_variants` warning already know variant data is
+	 * incomplete; dropping list_price_range alongside is the
+	 * honest posture.
+	 *
+	 * Returns null when:
+	 *   - No regular_price is available anywhere (data anomaly); OR
+	 *   - No variant is observably on sale (`regular <= price` for
+	 *     all observed variants); OR
+	 *   - Variation set is partial (see above).
 	 *
 	 * @param array<string, mixed>             $wc_product
-	 * @param array<int, array<string, mixed>> $wc_variations       Pre-fetched variations.
-	 * @param array<string, mixed>             $active_price_range  The already-computed `price_range` to compare against.
-	 * @return array<string, mixed>|null UCP price_range object, or null when not meaningfully different.
+	 * @param array<int, array<string, mixed>> $wc_variations  Pre-fetched variations.
+	 * @return array<string, mixed>|null UCP price_range object, or null when the field carries no useful signal.
 	 */
 	private static function extract_list_price_range(
 		array $wc_product,
-		array $wc_variations,
-		array $active_price_range
+		array $wc_variations
 	): ?array {
+		// Partial-variation guard — a variable product whose parent
+		// declares N pointers but we only received M<N full bodies
+		// can't reliably compute either the discount signal or the
+		// full range. Omit cleanly; the controller's `partial_variants`
+		// message already informs agents that variant data is partial.
+		$declared_variations = $wc_product['variations'] ?? null;
+		if (
+			is_array( $declared_variations )
+			&& count( $declared_variations ) > count( $wc_variations )
+		) {
+			return null;
+		}
+
 		$prices   = $wc_product['prices'] ?? [];
 		$currency = $prices['currency_code'] ?? 'USD';
 
-		// Collect all regular_price values we can see. Variable
-		// products: one per variation. Simple products: the product's
-		// own prices.regular_price (treated as a single-point range).
+		// Walk observed variants, collecting regular prices and
+		// tracking whether any one of them is on sale
+		// (regular > price). The on-sale boolean drives emission;
+		// the regular-price array drives the range.
 		$regular_prices = [];
+		$any_on_sale    = false;
 
 		if ( ! empty( $wc_variations ) ) {
 			foreach ( $wc_variations as $variation ) {
 				if ( ! is_array( $variation ) ) {
 					continue;
 				}
-				$vp = $variation['prices'] ?? [];
-				if ( isset( $vp['regular_price'] ) && '' !== $vp['regular_price'] ) {
-					$regular_prices[] = (int) $vp['regular_price'];
+				$vp      = $variation['prices'] ?? [];
+				$regular = isset( $vp['regular_price'] ) && '' !== $vp['regular_price']
+					? (int) $vp['regular_price']
+					: null;
+				$active  = isset( $vp['price'] ) && '' !== $vp['price']
+					? (int) $vp['price']
+					: null;
+
+				if ( null !== $regular ) {
+					$regular_prices[] = $regular;
+					if ( null !== $active && $regular > $active ) {
+						$any_on_sale = true;
+					}
 				}
+			}
+		} elseif ( isset( $prices['regular_price'] ) && '' !== $prices['regular_price'] ) {
+			// Simple-product fallback: one-point range derived from
+			// the product-level prices block.
+			$regular = (int) $prices['regular_price'];
+			$active  = isset( $prices['price'] ) && '' !== $prices['price']
+				? (int) $prices['price']
+				: null;
+
+			$regular_prices[] = $regular;
+			if ( null !== $active && $regular > $active ) {
+				$any_on_sale = true;
 			}
 		}
 
-		if ( empty( $regular_prices ) && isset( $prices['regular_price'] ) && '' !== $prices['regular_price'] ) {
-			$regular_prices[] = (int) $prices['regular_price'];
-		}
-
-		if ( empty( $regular_prices ) ) {
-			return null;
-		}
-
-		$min = min( $regular_prices );
-		$max = max( $regular_prices );
-
-		// Redundancy check — if the regular-price range matches
-		// the active range exactly, nothing's on sale and the
-		// strikethrough value would be identical to the current
-		// value. Omit to keep payload tight.
-		$active_min = (int) ( $active_price_range['min']['amount'] ?? 0 );
-		$active_max = (int) ( $active_price_range['max']['amount'] ?? 0 );
-		if ( $min === $active_min && $max === $active_max ) {
+		if ( empty( $regular_prices ) || ! $any_on_sale ) {
 			return null;
 		}
 
 		return [
 			'min' => [
-				'amount'   => $min,
+				'amount'   => min( $regular_prices ),
 				'currency' => $currency,
 			],
 			'max' => [
-				'amount'   => $max,
+				'amount'   => max( $regular_prices ),
 				'currency' => $currency,
 			],
 		];

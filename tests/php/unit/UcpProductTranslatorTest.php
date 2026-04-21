@@ -378,6 +378,121 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'list_price_range', $result );
 	}
 
+	public function test_list_price_range_emitted_when_only_mid_priced_variant_is_discounted(): void {
+		// Critical-case regression (flagged by Copilot review on PR #48):
+		// when a discounted variant is neither the cheapest nor the
+		// most expensive, the overall min/max regular-price range
+		// equals the active min/max exactly. A min-max-equality check
+		// would silently omit list_price_range even though a sale IS
+		// happening. The current rule (per-variant `regular > price`)
+		// detects the discount directly and emits the range.
+		//
+		// Fixture: variant B is the sale — mid-priced, $15 was $18.
+		// Cheapest (A, $10) and most expensive (C, $20) are at their
+		// regular prices. Active price_range = $10-$20 (from prices.price).
+		// List price_range = $10-$20 (same numbers, different variants).
+		// The ranges coincide numerically but a sale exists — emit.
+		$product    = [
+			'id'    => 790,
+			'name'  => 'T-Shirt',
+			'type'  => 'variable',
+			'prices' => [
+				'price'         => '1000',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '2000' ],
+			],
+		];
+		$variations = [
+			[
+				'id'     => 201,
+				'prices' => [
+					'price'         => '1000',
+					'regular_price' => '1000', // not on sale
+					'currency_code' => 'USD',
+				],
+			],
+			[
+				'id'     => 202,
+				'prices' => [
+					'price'         => '1500',
+					'regular_price' => '1800', // on sale (mid-priced!)
+					'currency_code' => 'USD',
+				],
+			],
+			[
+				'id'     => 203,
+				'prices' => [
+					'price'         => '2000',
+					'regular_price' => '2000', // not on sale
+					'currency_code' => 'USD',
+				],
+			],
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $product, $variations );
+
+		$this->assertArrayHasKey( 'list_price_range', $result );
+		// Range derived from ALL regular prices: {1000, 1800, 2000} → 1000-2000.
+		// Same numeric endpoints as the active range, but emission is
+		// still correct because the mid-point discount exists.
+		$this->assertSame( 1000, $result['list_price_range']['min']['amount'] );
+		$this->assertSame( 2000, $result['list_price_range']['max']['amount'] );
+	}
+
+	public function test_list_price_range_omitted_when_variation_set_is_partial(): void {
+		// Partial-variation guard (flagged by Copilot review on PR #48):
+		// the controller may cap or skip variations
+		// (MAX_VARIATIONS_PER_PRODUCT, individual fetch failures) and
+		// emit a `partial_variants` warning. In that state our range
+		// would be derived from incomplete data — misleading. Omit
+		// entirely; the warning already tells agents variant data is
+		// partial, and dropping list_price_range alongside is the
+		// honest posture.
+		//
+		// Fixture: parent declares 3 variations; we receive 2. Even
+		// though one of the provided variants is on sale, we omit
+		// because the unseen variant might carry a different
+		// regular-price range.
+		$product    = [
+			'id'         => 791,
+			'name'       => 'T-Shirt',
+			'type'       => 'variable',
+			'prices'     => [
+				'price'         => '1000',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '2500' ],
+			],
+			'variations' => [
+				[ 'id' => 301, 'attributes' => [] ],
+				[ 'id' => 302, 'attributes' => [] ],
+				[ 'id' => 303, 'attributes' => [] ], // unfetched
+			],
+		];
+		$variations = [
+			[
+				'id'     => 301,
+				'prices' => [
+					'price'         => '1000',
+					'regular_price' => '1200', // on sale
+					'currency_code' => 'USD',
+				],
+			],
+			[
+				'id'     => 302,
+				'prices' => [
+					'price'         => '1500',
+					'regular_price' => '1500',
+					'currency_code' => 'USD',
+				],
+			],
+			// 303 unfetched
+		];
+
+		$result = WC_AI_Syndication_UCP_Product_Translator::translate( $product, $variations );
+
+		$this->assertArrayNotHasKey( 'list_price_range', $result );
+	}
+
 	// ------------------------------------------------------------------
 	// Optional fields — emit only when present
 	// ------------------------------------------------------------------
