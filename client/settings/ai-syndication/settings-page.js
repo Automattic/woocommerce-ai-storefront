@@ -321,7 +321,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 							} }
 						>
 							{ __(
-								'Make your products discoverable by AI shopping assistants',
+								'Make your store ready for AI shopping assistants',
 								'woocommerce-ai-syndication'
 							) }
 						</h2>
@@ -334,7 +334,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 							} }
 						>
 							{ __(
-								'Turn on discovery in one click. Checkout stays on your store — no fees, no middleman, fully reversible.',
+								'Go live in one click. Checkout stays on your store — no fees, no middleman, fully reversible.',
 								'woocommerce-ai-syndication'
 							) }
 						</p>
@@ -353,7 +353,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 										'woocommerce-ai-syndication'
 								  )
 								: __(
-										'Enable AI Syndication',
+										'Enable AI Storefront',
 										'woocommerce-ai-syndication'
 								  ) }
 						</Button>
@@ -521,7 +521,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				<div>
 					<strong style={ { color: colors.success } }>
 						{ __(
-							'AI Syndication is active',
+							'AI Storefront is active',
 							'woocommerce-ai-syndication'
 						) }
 					</strong>
@@ -533,7 +533,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						} }
 					>
 						{ __(
-							'Your products are discoverable by AI assistants. Checkout and customer data stay on your store.',
+							'Your store is ready for AI shopping assistants. Checkout and customer data stay on your store.',
 							'woocommerce-ai-syndication'
 						) }
 					</p>
