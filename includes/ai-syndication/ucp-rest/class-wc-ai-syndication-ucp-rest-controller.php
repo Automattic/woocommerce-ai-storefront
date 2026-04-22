@@ -2450,28 +2450,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// Store API accepts slugs directly for attributes, and
 		// invalid slugs produce empty results rather than errors.
 		if ( isset( $filters['attributes'] ) && is_array( $filters['attributes'] ) ) {
-			// Attribute-map size cap (DoS mitigation) — each key
-			// triggers a `taxonomy_exists` check plus warning
-			// emission; treat as equivalent to other filter-array
-			// surfaces. `array_slice(..., preserve_keys=true)`
-			// keeps the agent's original keys in the capped map.
-			$attributes_input = $filters['attributes'];
-			if ( count( $attributes_input ) > self::MAX_FILTER_VALUES ) {
-				$original_count   = count( $attributes_input );
-				$attributes_input = array_slice( $attributes_input, 0, self::MAX_FILTER_VALUES, true );
-				$messages[]       = [
-					'type'     => 'warning',
-					'code'     => 'filter_truncated',
-					'severity' => 'advisory',
-					'path'     => '$.filters.attributes',
-					'content'  => sprintf(
-						/* translators: 1: original key count, 2: applied cap. */
-						__( '$.filters.attributes received %1$d keys; truncated to the first %2$d. Further keys were ignored.', 'woocommerce-ai-syndication' ),
-						$original_count,
-						self::MAX_FILTER_VALUES
-					),
-				];
-			}
+			$attributes_input = self::cap_filter_map( $filters['attributes'], '$.filters.attributes', $messages );
 			$attribute_result = self::build_attribute_filter_params( $attributes_input );
 			if ( ! empty( $attribute_result['filters'] ) ) {
 				$params['attributes'] = $attribute_result['filters'];
@@ -2744,6 +2723,41 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			'content'  => sprintf(
 				/* translators: 1: filter path, 2: original count, 3: applied cap. */
 				__( '%1$s received %2$d values; truncated to the first %3$d. Further values were ignored.', 'woocommerce-ai-syndication' ),
+				$path,
+				$original_count,
+				self::MAX_FILTER_VALUES
+			),
+		];
+		return $capped;
+	}
+
+	/**
+	 * Cap a filter input map (associative) to `MAX_FILTER_VALUES` keys
+	 * and emit a `filter_truncated` warning when truncation occurs.
+	 *
+	 * Mirrors `cap_filter_array()` but uses `preserve_keys: true` on
+	 * `array_slice` so the caller's original string keys survive the cap.
+	 *
+	 * @param array<string, mixed>             $map      Raw agent-supplied map.
+	 * @param string                           $path     JSONPath to the map (e.g. `$.filters.attributes`).
+	 * @param array<int, array<string, mixed>> &$messages Warning accumulator.
+	 *
+	 * @return array<string, mixed> Capped map (first `MAX_FILTER_VALUES` keys).
+	 */
+	private static function cap_filter_map( array $map, string $path, array &$messages ): array {
+		if ( count( $map ) <= self::MAX_FILTER_VALUES ) {
+			return $map;
+		}
+		$original_count = count( $map );
+		$capped         = array_slice( $map, 0, self::MAX_FILTER_VALUES, true );
+		$messages[]     = [
+			'type'     => 'warning',
+			'code'     => 'filter_truncated',
+			'severity' => 'advisory',
+			'path'     => $path,
+			'content'  => sprintf(
+				/* translators: 1: filter path, 2: original count, 3: applied cap. */
+				__( '%1$s received %2$d keys; truncated to the first %3$d. Further keys were ignored.', 'woocommerce-ai-syndication' ),
 				$path,
 				$original_count,
 				self::MAX_FILTER_VALUES

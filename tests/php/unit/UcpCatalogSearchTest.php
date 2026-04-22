@@ -2166,14 +2166,21 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$body = $this->successful_search(
 			[ 'filters' => [ 'categories' => [ $huge ] ] ]
 		);
-		$messages = $body['messages'] ?? [];
+		$messages               = $body['messages'] ?? [];
+		$found_category_not_found = false;
 		foreach ( $messages as $m ) {
 			if ( 'category_not_found' === ( $m['code'] ?? null ) ) {
-				// Content is `sprintf('Category "%s" was not found...', $truncated_to_200)`
-				// so full content is around 200 + ~45 prefix chars.
-				$this->assertLessThan( 300, strlen( $m['content'] ?? '' ) );
+				$found_category_not_found = true;
+				$content                  = $m['content'] ?? '';
+				$this->assertSame(
+					1,
+					preg_match( '/"([^"]*)"/', $content, $matches ),
+					'Expected category_not_found content to include a quoted reflected value.'
+				);
+				$this->assertLessThanOrEqual( 200, strlen( $matches[1] ) );
 			}
 		}
+		$this->assertTrue( $found_category_not_found, 'Expected at least one category_not_found warning.' );
 	}
 
 	/**
