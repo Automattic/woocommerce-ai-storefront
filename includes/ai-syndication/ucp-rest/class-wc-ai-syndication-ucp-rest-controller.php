@@ -134,7 +134,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * agents refining through multi-category filters rarely exceed
 	 * a dozen) and keeps the worst-case DB hit to 100 queries per
 	 * taxonomy class, per request. Exceeding the cap truncates
-	 * silently at the handler and emits a `*_filter_truncated`
+	 * silently at the handler and emits a `filter_truncated`
 	 * advisory so agents know their tail was dropped.
 	 */
 	const MAX_FILTER_VALUES = 50;
@@ -1566,21 +1566,6 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	}
 
 	/**
-	 * Dispatch `GET /wc/store/v1/products/{id}` internally via
-	 * `rest_do_request` and return the decoded payload — or null if
-	 * the product doesn't exist, the dispatcher errored, or the
-	 * response didn't carry a usable array.
-	 *
-	 * Using `rest_do_request` rather than a direct WC_Data_Store call
-	 * matters: it threads the request through the Store API's full
-	 * pipeline, which means our `woocommerce_store_api_product_collection_query_args`
-	 * filter still applies — products excluded by the
-	 * merchant's selected_categories/products settings return 404 here,
-	 * even though the agent supplied a raw numeric ID.
-	 *
-	 * @return ?array<string, mixed>
-	 */
-	/**
 	 * Per-request memoization cache for fetch_store_api_product.
 	 *
 	 * Same WC product ID can be requested multiple times within
@@ -1623,6 +1608,21 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		self::$request_product_cache_has_key = [];
 	}
 
+	/**
+	 * Dispatch `GET /wc/store/v1/products/{id}` internally via
+	 * `rest_do_request` and return the decoded payload — or null if
+	 * the product doesn't exist, the dispatcher errored, or the
+	 * response didn't carry a usable array.
+	 *
+	 * Using `rest_do_request` rather than a direct WC_Data_Store call
+	 * matters: it threads the request through the Store API's full
+	 * pipeline, which means our `woocommerce_store_api_product_collection_query_args`
+	 * filter still applies — products excluded by the
+	 * merchant's selected_categories/products settings return 404 here,
+	 * even though the agent supplied a raw numeric ID.
+	 *
+	 * @return ?array<string, mixed>
+	 */
 	private static function fetch_store_api_product( int $id ): ?array {
 		if ( isset( self::$request_product_cache_has_key[ $id ] ) ) {
 			return self::$request_product_cache[ $id ];
@@ -2710,18 +2710,6 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	}
 
 	/**
-	 * Generic term-resolution helper — slug first, name fallback.
-	 *
-	 * Abstracted from the original `resolve_category_term_ids` so
-	 * new taxonomies (tags, brands if merchants use them) can reuse
-	 * the same round-tripping strategy without copy-pasting the
-	 * skip/lookup/unresolved pattern.
-	 *
-	 * @param array<int, mixed> $inputs
-	 * @param string            $taxonomy The WC taxonomy slug ('product_cat', 'product_tag', 'product_brand').
-	 * @return array{ids: array<int, int>, unresolved: array<int, string>}
-	 */
-	/**
 	 * Cap a filter input array to `MAX_FILTER_VALUES` and emit a
 	 * `filter_truncated` warning message when truncation occurs.
 	 *
@@ -2738,7 +2726,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *
 	 * @param array<int, mixed>           $values   Raw agent-supplied array.
 	 * @param string                      $path     JSONPath to the array (e.g. `$.filters.categories`).
-	 * @param array<int, array<string, string>> &$messages Warning accumulator.
+	 * @param array<int, array<string, mixed>> &$messages Warning accumulator.
 	 *
 	 * @return array<int, mixed> Capped array (first `MAX_FILTER_VALUES` entries).
 	 */
@@ -2797,12 +2785,24 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// Multibyte-aware truncate. Byte-based `substr` could chop
 		// a UTF-8 sequence mid-byte and emit invalid bytes into a
 		// JSON response, which some clients choke on.
-		if ( function_exists( 'mb_substr' ) && mb_strlen( $stripped ) > 200 ) {
+		if ( function_exists( 'mb_strlen' ) && function_exists( 'mb_substr' ) && mb_strlen( $stripped ) > 200 ) {
 			return mb_substr( $stripped, 0, 200 );
 		}
 		return strlen( $stripped ) > 200 ? substr( $stripped, 0, 200 ) : $stripped;
 	}
 
+	/**
+	 * Generic term-resolution helper — slug first, name fallback.
+	 *
+	 * Abstracted from the original `resolve_category_term_ids` so
+	 * new taxonomies (tags, brands if merchants use them) can reuse
+	 * the same round-tripping strategy without copy-pasting the
+	 * skip/lookup/unresolved pattern.
+	 *
+	 * @param array<int, mixed> $inputs
+	 * @param string            $taxonomy The WC taxonomy slug ('product_cat', 'product_tag', 'product_brand').
+	 * @return array{ids: array<int, int>, unresolved: array<int, string>}
+	 */
 	private static function resolve_taxonomy_term_ids( array $inputs, string $taxonomy ): array {
 		$ids        = [];
 		$unresolved = [];
