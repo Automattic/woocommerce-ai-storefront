@@ -1657,7 +1657,8 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * memoization-gate + write. Returns the same `?array`
 	 * contract.
 	 *
-	 * @param WP_REST_Response|WP_Error $response
+	 * @param int                       $id       WC product ID to fetch.
+	 * @param WP_REST_Response|WP_Error $response Store API response for that ID.
 	 * @return ?array<string, mixed>
 	 */
 	private static function fetch_store_api_product_inner( int $id, $response ): ?array {
