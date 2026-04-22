@@ -262,6 +262,37 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			);
 		}
 
+		// Signals (spec-level field, platform-observed environment data).
+		// Accept and log for observability; do not gate on any signal
+		// value. The UCP spec is explicit that signals MUST NOT be
+		// buyer-asserted claims — we'd need a trust model for the
+		// platform source before acting on `dev.ucp.buyer_ip` etc.
+		// Until then: log presence, ignore values. Compliant with the
+		// negative side of the spec (we don't misuse them) without
+		// prematurely committing to a trust decision.
+		$signals = $request->get_param( 'signals' );
+		// Short-circuit on `is_enabled()` before calling
+		// `format_signal_keys_for_log` — sanitizing the keys walks
+		// every signal even though the result is thrown away when
+		// logging is off. A large `signals` payload (bounded only
+		// by the request size limit) would pay that cost on every
+		// request in prod.
+		if ( is_array( $signals ) && ! empty( $signals ) && WC_AI_Syndication_Logger::is_enabled() ) {
+			WC_AI_Syndication_Logger::debug(
+				'UCP catalog/search: received signals (not honored): '
+				. self::format_signal_keys_for_log( $signals )
+			);
+		}
+
+		// Note: spec has a MUST clause about validating that a request
+		// "contains at least one recognized input" and a SHOULD about
+		// rejecting empty ones. We satisfy the MUST (shape validation
+		// happens throughout `map_ucp_search_to_store_api`) and decline
+		// the SHOULD — an empty body is treated as "browse all products",
+		// which the same spec section explicitly permits ("accepting
+		// filter-only requests for category browsing"). Returning 400
+		// on `{}` would be hostile to legitimate catalog enumeration.
+
 		[ $store_params, $mapping_messages ] = self::map_ucp_search_to_store_api( $request );
 
 		$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products' );
@@ -512,6 +543,86 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	}
 
 	/**
+	 * Format `signals` keys for a debug-log line safely.
+	 *
+	 * Signal keys are request-supplied and therefore untrusted. Logging
+	 * them verbatim (via `implode(',', array_keys($signals))`) risks:
+	 *   - Log injection via embedded newlines or control chars — an
+	 *     attacker could splice fake log lines into the stream.
+	 *   - Oversized log lines if keys are very long, or if the signals
+	 *     map has thousands of entries.
+	 *
+	 * This helper:
+	 *   - Drops non-string keys (map-with-numeric-index is illegal per
+	 *     UCP spec's reverse-domain naming rule, so a numeric key is a
+	 *     malformed payload signal anyway).
+	 *   - Strips control characters (ASCII 0–31 + 127) from each key.
+	 *   - Truncates each key to 100 chars, then appends a single
+	 *     `…` ellipsis marker (101 chars total) so truncation is
+	 *     visible in the log. The marker is intentionally outside
+	 *     the 100-char cap — the cap bounds the untrusted content;
+	 *     the single extra glyph is controlled by us.
+	 *   - Caps the total number of keys logged at 32; past that we
+	 *     append an overflow sigil rather than flood the log.
+	 *
+	 * @param array<mixed, mixed> $signals
+	 * @return string Comma-joined, bounded, sanitized signal-key list.
+	 */
+	private static function format_signal_keys_for_log( array $signals ): string {
+		$max_keys      = 32;
+		$max_key_chars = 100;
+
+		// Two counts matter: how many keys we actually LOG (capped at
+		// $max_keys) and how many keys were ELIGIBLE after
+		// sanitization (the universe we're truncating from). The
+		// overflow sigil must be derived from the latter — basing it
+		// on count($signals) miscounts when the payload contains
+		// non-string or empty-after-sanitization keys, producing
+		// misleading "(+N more)" figures that don't match what was
+		// actually truncated.
+		$logged   = [];
+		$eligible = 0;
+		foreach ( array_keys( $signals ) as $key ) {
+			if ( ! is_string( $key ) ) {
+				continue;
+			}
+			// Strip control chars (ASCII 0-31 + DEL) to prevent log-
+			// line injection via embedded newlines or terminal escapes.
+			$sanitized = preg_replace( '/[\x00-\x1F\x7F]/', '', $key );
+			if ( null === $sanitized || '' === $sanitized ) {
+				continue;
+			}
+			++$eligible;
+
+			// Keep iterating past the log cap so the overflow sigil
+			// reflects the true eligible count, not just what fit in
+			// the capped set — but don't keep sanitized strings we
+			// won't emit (bounded memory).
+			if ( count( $logged ) >= $max_keys ) {
+				continue;
+			}
+			if ( strlen( $sanitized ) > $max_key_chars ) {
+				$sanitized = substr( $sanitized, 0, $max_key_chars ) . '…';
+			}
+			$logged[] = $sanitized;
+		}
+
+		// Explicit placeholder when every key was filtered out (e.g.
+		// agent sent a numeric-indexed list). Prevents confusing
+		// output like "" or " (+N more)" with no leading keys — the
+		// log line reads clearly as "no valid keys" instead.
+		if ( empty( $logged ) ) {
+			return '(none)';
+		}
+
+		$out = implode( ',', $logged );
+		if ( $eligible > $max_keys ) {
+			$out .= sprintf( ' (+%d more)', $eligible - $max_keys );
+		}
+		return $out;
+	}
+
+	/**
 	 * Encode a Store API page number as an opaque UCP cursor.
 	 *
 	 * Format: base64 of `p<page_number>`. The `p` prefix reserves
@@ -598,6 +709,20 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				'ucp_disabled',
 				null,
 				503
+			);
+		}
+
+		// Signals parity with catalog.search — log for observability, no
+		// trust decisions yet. See handle_catalog_search for the
+		// rationale on deferring trust-model work until there's a
+		// verified platform source. Same `is_enabled()` guard as
+		// search — keeps the sanitization walk off the hot path
+		// when debug logging is off.
+		$signals = $request->get_param( 'signals' );
+		if ( is_array( $signals ) && ! empty( $signals ) && WC_AI_Syndication_Logger::is_enabled() ) {
+			WC_AI_Syndication_Logger::debug(
+				'UCP catalog/lookup: received signals (not honored): '
+				. self::format_signal_keys_for_log( $signals )
 			);
 		}
 
@@ -1082,7 +1207,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			'description' => 'Schema for the `com.woocommerce.ai_syndication` extension contract. The top-level `config` property describes the merchant-extension configuration advertised in the UCP manifest at `capabilities[com.woocommerce.ai_syndication][0].config`. Starting 2.0.0, no response-level payloads are emitted under this extension — rating data moved to core `product.rating` per the UCP 2026-04-08 product shape.',
 			'type'        => 'object',
 			'properties'  => [
-				'config' => [
+				'config'                  => [
 					'type'        => 'object',
 					'description' => 'Merchant-extension configuration advertised at `capabilities[com.woocommerce.ai_syndication][0].config` in the UCP manifest.',
 					'properties'  => [
@@ -1111,6 +1236,62 @@ class WC_AI_Syndication_UCP_REST_Controller {
 								'shipping_enabled'   => [
 									'type'        => 'boolean',
 									'description' => 'When true, the store collects shipping addresses. When false, it is digital-only — agents should skip address-collection prompts.',
+								],
+							],
+						],
+					],
+				],
+				'accepted_request_inputs' => [
+					'type'        => 'object',
+					'description' => 'Documents the extension-side request-input surface on `POST /catalog/search` and `POST /catalog/lookup` — not a full enumeration of every accepted field. Covers: (a) UCP-spec-standard objects this implementation explicitly accepts and acts on (`context`, `signals`), and (b) merchant-specific extensions (`custom_filters`). Spec-standard fields like `query`, `filters.price`, `filters.categories`, `pagination`, `sort`, and `ids` are documented by the UCP core spec itself and are not repeated here. The `custom_filters` sub-tree exists per the UCP spec hint that merchants "MAY support additional custom filters via additionalProperties".',
+					'properties'  => [
+						'context'        => [
+							'type'        => 'object',
+							'description' => 'Spec-standard `context` object is accepted. Currently honored field: `context.currency` — when set and matching store currency, `filters.price` is applied; when mismatched, the price filter is dropped and a `currency_conversion_unsupported` warning is emitted (we don\'t carry FX rates). Other `context` fields (`address_country`, `address_region`, `postal_code`) are accepted but not yet acted upon; agents MAY send them today for forward compatibility.',
+						],
+						'signals'        => [
+							'type'        => 'object',
+							'description' => 'Spec-standard `signals` object is accepted and logged for observability. No values are used for decisions at this time; the plugin complies with the spec\'s "MUST NOT treat buyer claims as signals" rule by not acting on any signal. Known-valuable future wiring: `dev.ucp.buyer_ip` for per-end-buyer rate limiting (currently we rate-limit by request IP, which conflates agent-platform traffic).',
+						],
+						'custom_filters' => [
+							'type'        => 'object',
+							'description' => 'Custom filters via `additionalProperties` — accepted on `filters{}` in `/catalog/search` only. (`/catalog/lookup` reads only `ids` + `signals`; filters are ignored there because lookup resolves by explicit ID.) Unresolvable values on search emit `*_not_found` advisory warnings with JSONPath.',
+							'properties'  => [
+								'brand'      => [
+									'type'        => 'array',
+									'description' => 'Array of brand names or slugs. Resolves against the native WC 9.5+ `product_brand` taxonomy. Multiple values OR together.',
+									'items'       => [ 'type' => 'string' ],
+								],
+								'tags'       => [
+									'type'        => 'array',
+									'description' => 'Array of tag names or slugs. Resolves against `product_tag`. Multiple values OR together.',
+									'items'       => [ 'type' => 'string' ],
+								],
+								'in_stock'   => [
+									'type'        => 'boolean',
+									'description' => 'When true, restrict results to products currently in stock.',
+								],
+								'featured'   => [
+									'type'        => 'boolean',
+									'description' => 'When true, restrict to merchant-flagged featured products.',
+								],
+								'min_rating' => [
+									'type'        => 'integer',
+									'description' => 'Integer 1-5; restrict to products with average rating ≥ this value.',
+									'minimum'     => 1,
+									'maximum'     => 5,
+								],
+								'on_sale'    => [
+									'type'        => 'boolean',
+									'description' => 'When true, restrict to products with an active sale price.',
+								],
+								'attributes' => [
+									'type'                 => 'object',
+									'description'          => 'Keyed map of attribute slug → array of values (e.g. `{"color": ["red", "blue"]}`). Resolves against WC `pa_*` taxonomies; `pa_` prefix is auto-added if missing. Unresolvable attribute taxonomies emit `attribute_not_found` warnings with JSONPath.',
+									'additionalProperties' => [
+										'type'  => 'array',
+										'items' => [ 'type' => 'string' ],
+									],
 								],
 							],
 						],
@@ -1632,21 +1813,54 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		if ( is_array( $pagination ) ) {
-			if ( isset( $pagination['limit'] ) && is_numeric( $pagination['limit'] ) ) {
-				$requested = (int) $pagination['limit'];
-				$limit     = max( 1, min( self::MAX_SEARCH_LIMIT, $requested ) );
-				if ( $limit !== $requested ) {
+			// Use the same strict integer validator as price bounds —
+			// `is_numeric` accepts decimals/scientific notation and
+			// lets overflow strings saturate to `PHP_INT_MAX`, which
+			// then clamps safely but reflects a misleading
+			// "requested" value in the warning message. Routing
+			// through `is_integer_like_non_negative` keeps validation
+			// discipline consistent across the handler.
+			//
+			// Invalid shapes (negative, decimal, scientific, overflow,
+			// non-numeric) fall through to the default limit, BUT we
+			// still emit a `pagination_limit_clamped` warning so the
+			// agent gets the same "your value was ignored" signal they
+			// got previously. The alternative — silent default — would
+			// be worse feedback than the pre-strictness behavior.
+			if ( isset( $pagination['limit'] ) ) {
+				if ( self::is_integer_like_non_negative( $pagination['limit'] ) ) {
+					$requested = (int) $pagination['limit'];
+					$limit     = max( 1, min( self::MAX_SEARCH_LIMIT, $requested ) );
+					if ( $limit !== $requested ) {
+						$messages[] = [
+							'type'     => 'warning',
+							'code'     => 'pagination_limit_clamped',
+							'severity' => 'advisory',
+							'path'     => '$.pagination.limit',
+							'content'  => sprintf(
+								/* translators: 1: requested limit, 2: applied limit, 3: max allowed. */
+								__( 'Requested pagination.limit %1$d was clamped to %2$d (allowed range: 1–%3$d).', 'woocommerce-ai-syndication' ),
+								$requested,
+								$limit,
+								self::MAX_SEARCH_LIMIT
+							),
+						];
+					}
+				} else {
+					// Invalid shape — clamp to the applied default +
+					// warn. Path is the same so agents with retry logic
+					// keyed on `pagination_limit_clamped` still catch
+					// it; the content tells them the value was
+					// unusable, not clamped-from-a-number.
 					$messages[] = [
 						'type'     => 'warning',
 						'code'     => 'pagination_limit_clamped',
 						'severity' => 'advisory',
 						'path'     => '$.pagination.limit',
 						'content'  => sprintf(
-							/* translators: 1: requested limit, 2: applied limit, 3: max allowed. */
-							__( 'Requested pagination.limit %1$d was clamped to %2$d (allowed range: 1–%3$d).', 'woocommerce-ai-syndication' ),
-							$requested,
-							$limit,
-							self::MAX_SEARCH_LIMIT
+							/* translators: %d is the applied default limit. */
+							__( 'pagination.limit must be a non-negative integer; using default %d.', 'woocommerce-ai-syndication' ),
+							$limit
 						),
 					];
 				}
@@ -1773,12 +1987,85 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		if ( isset( $filters['price'] ) && is_array( $filters['price'] ) ) {
-			$price = $filters['price'];
-			if ( isset( $price['min'] ) && is_numeric( $price['min'] ) && $price['min'] >= 0 ) {
-				$params['min_price'] = self::minor_units_to_presentment( (int) $price['min'] );
-			}
-			if ( isset( $price['max'] ) && is_numeric( $price['max'] ) && $price['max'] >= 0 ) {
-				$params['max_price'] = self::minor_units_to_presentment( (int) $price['max'] );
+			// UCP spec: price filter is "denominated in context.currency".
+			// Three sanctioned behaviors when context.currency is set:
+			//   1. Matches store currency → apply directly.
+			//   2. Mismatches → business SHOULD convert; if conversion
+			//      unsupported, MAY ignore + SHOULD emit a message.
+			//   3. Absent → filter denomination is ambiguous; MAY ignore.
+			//
+			// We don't have a currency-conversion source (no FX rates
+			// surfaced from WC core), so mismatch → skip + warn per the
+			// spec's MAY/SHOULD path. Absent context.currency → apply
+			// directly in the store's currency, which is the lenient
+			// (non-ambiguous) reading since our price_range responses
+			// always carry the store currency — agents that derive
+			// filter bounds from a prior response are self-consistent.
+			//
+			// Short-circuit: if neither `min` nor `max` is a usable
+			// non-negative number, the filter would be a no-op anyway.
+			// Running the currency-mismatch branch would emit a
+			// warning for a filter we weren't going to apply — noise
+			// the agent can't act on. Evaluating bounds first keeps
+			// the warning signal proportional to the actual work
+			// skipped.
+			//
+			// Integer-like validation (native int OR digit-only
+			// string) rather than `is_numeric()`: UCP minor-unit
+			// amounts are spec'd as integers, but `is_numeric` also
+			// accepts "25.00" (silently truncates cents on int cast),
+			// "1e3" (scientific notation), and whitespace-padded
+			// numbers — all of which would forward wrong values to
+			// the Store API. Same pattern used elsewhere in this
+			// class for amount validation; see `process_line_item`.
+			$price             = $filters['price'];
+			$has_min           = isset( $price['min'] ) && self::is_integer_like_non_negative( $price['min'] );
+			$has_max           = isset( $price['max'] ) && self::is_integer_like_non_negative( $price['max'] );
+			$has_usable_bounds = $has_min || $has_max;
+
+			if ( $has_usable_bounds ) {
+				$apply_price_filter = true;
+				$context            = $request->get_param( 'context' );
+				// Validate `context.currency` as ISO 4217 — exactly 3
+				// ASCII letters after trim + uppercase. Any malformed
+				// value (empty string, too long, non-alpha) is treated
+				// as "absent" per spec's MAY-ignore allowance rather
+				// than as "mismatch" — and we don't reflect the raw
+				// value back in the warning, only the sanitized form,
+				// to prevent a hostile agent from bloating responses.
+				$ctx_currency_raw = is_array( $context ) && isset( $context['currency'] ) && is_string( $context['currency'] )
+					? trim( $context['currency'] )
+					: '';
+				$ctx_currency     = preg_match( '/^[A-Z]{3}$/', strtoupper( $ctx_currency_raw ) )
+					? strtoupper( $ctx_currency_raw )
+					: null;
+				$store_currency   = function_exists( 'get_woocommerce_currency' )
+					? strtoupper( (string) get_woocommerce_currency() )
+					: 'USD';
+				if ( null !== $ctx_currency && $ctx_currency !== $store_currency ) {
+					$apply_price_filter = false;
+					$messages[]         = [
+						'type'     => 'warning',
+						'code'     => 'currency_conversion_unsupported',
+						'severity' => 'advisory',
+						'path'     => '$.filters.price',
+						'content'  => sprintf(
+							/* translators: 1: agent-supplied currency, 2: store currency. */
+							__( 'context.currency "%1$s" does not match store currency "%2$s" and conversion is not supported; price filter ignored.', 'woocommerce-ai-syndication' ),
+							$ctx_currency,
+							$store_currency
+						),
+					];
+				}
+
+				if ( $apply_price_filter ) {
+					if ( $has_min ) {
+						$params['min_price'] = self::minor_units_to_presentment( (int) $price['min'] );
+					}
+					if ( $has_max ) {
+						$params['max_price'] = self::minor_units_to_presentment( (int) $price['max'] );
+					}
+				}
 			}
 		}
 
@@ -1867,7 +2154,13 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// to `[N, N+1, ..., 5]` — Store API's shape is a set-inclusion
 		// filter, not a floor. Clamping to [1,5] keeps the array
 		// non-empty and the semantics coherent.
-		if ( isset( $filters['min_rating'] ) && is_numeric( $filters['min_rating'] ) ) {
+		// Strict integer-shape validation (same helper as price
+		// bounds and pagination.limit) — the Store API rating param
+		// wants integers, and accepting `"4.9"` via `is_numeric`
+		// would silently truncate to 4. Clamping to [1,5] contains
+		// the damage but the inconsistency invites copy-paste bugs
+		// into future unclamped fields.
+		if ( isset( $filters['min_rating'] ) && self::is_integer_like_non_negative( $filters['min_rating'] ) ) {
 			$min     = max( 1, min( 5, (int) $filters['min_rating'] ) );
 			$ratings = [];
 			for ( $r = $min; $r <= 5; $r++ ) {
@@ -2181,6 +2474,53 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			$decimals,
 			'.',
 			''
+		);
+	}
+
+	/**
+	 * Strict "non-negative integer" validator.
+	 *
+	 * Required for UCP minor-unit amounts (prices in the smallest
+	 * currency denomination) where the spec is explicit: integers
+	 * only. `is_numeric()` would accept:
+	 *
+	 *   - Decimal strings like `"25.00"` → `(int) "25.00"` = 25,
+	 *     silently dropping sub-unit precision.
+	 *   - Scientific notation like `"1e3"` → `(int) "1e3"` = 1000,
+	 *     which parses correctly but signals a probably-buggy
+	 *     agent encoding its amounts as floats.
+	 *   - Whitespace-padded strings like `"  100"` → `(int) "  100"`
+	 *     = 100, which would also work but indicates a client that's
+	 *     not serializing amounts correctly.
+	 *
+	 * Accept non-negative ints (including 0) OR digit-only strings.
+	 * `ctype_digit` is false for `"-5"` and `"5.0"` — exactly what
+	 * we want. Leading zeros are harmless for amount use (`"001"`
+	 * → `1`), so we don't reject them. Zero is a legitimate lower
+	 * bound (e.g. `min_price: 0`), so it passes.
+	 *
+	 * @param mixed $value
+	 */
+	private static function is_integer_like_non_negative( $value ): bool {
+		if ( is_int( $value ) ) {
+			return $value >= 0;
+		}
+		if ( ! is_string( $value ) || ! ctype_digit( $value ) ) {
+			return false;
+		}
+		// `ctype_digit` accepts arbitrarily long digit strings —
+		// `"9" x 30` passes but silently saturates to `PHP_INT_MAX`
+		// on `(int)` cast, turning a malformed amount into a valid-
+		// looking but wrong one. `filter_var` with
+		// `FILTER_VALIDATE_INT` rejects out-of-range values
+		// (returns `false`), so overflow is detected before the
+		// cast. Combined with the `ctype_digit` pre-check we also
+		// skip FILTER_VALIDATE_INT's leniency around leading `+`,
+		// negatives, and whitespace.
+		return false !== filter_var(
+			$value,
+			FILTER_VALIDATE_INT,
+			[ 'options' => [ 'min_range' => 0 ] ]
 		);
 	}
 

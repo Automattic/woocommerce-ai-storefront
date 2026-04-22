@@ -93,6 +93,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			static fn( string $single, string $plural, int $number ): string => $number === 1 ? $single : $plural
 		);
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		// Default stub for the `seller.name` in the seller block that
 		// every product emits (see build_seller()). `wp_strip_all_tags`
@@ -1258,6 +1259,178 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'min_price', $this->captured_store_params );
 	}
 
+	public function test_non_integer_numeric_prices_are_ignored(): void {
+		// UCP minor-unit amounts must be integers. `is_numeric()`
+		// would accept decimals ("25.00" → (int) 25, silently
+		// dropping cents) and scientific notation ("1e3"), so we
+		// use strict integer-shape validation. Regression guard:
+		// these shapes should NOT produce min_price/max_price
+		// params on the Store API call.
+		$decimal_shaped = [
+			[ 'min' => '25.00' ],       // decimal string — loses cents on (int) cast
+			[ 'min' => 25.5 ],          // native float — same problem
+			[ 'max' => '1e3' ],         // scientific notation
+			[ 'max' => '  100' ],       // whitespace-padded
+			[ 'min' => '-50' ],         // negative string — ctype_digit false
+			[ 'min' => str_repeat( '9', 30 ) ], // overflow — would saturate to PHP_INT_MAX on (int) cast
+		];
+		foreach ( $decimal_shaped as $price ) {
+			$this->captured_store_params = [];
+			$this->successful_search(
+				[ 'filters' => [ 'price' => $price ] ]
+			);
+			// Use native json_encode in assertion messages — wp_json_encode
+			// is a WP core function not reliably stubbed in this unit
+			// test environment (see `wp_json_encode_or_native` helper in
+			// UcpTest.php for the historical rationale). Assertion
+			// messages run on failure, so an unstubbed call would fatal
+			// the test runner instead of showing the actual mismatch.
+			$this->assertArrayNotHasKey(
+				'min_price',
+				$this->captured_store_params,
+				'min_price should not be forwarded for non-integer price: ' . json_encode( $price )
+			);
+			$this->assertArrayNotHasKey(
+				'max_price',
+				$this->captured_store_params,
+				'max_price should not be forwarded for non-integer price: ' . json_encode( $price )
+			);
+		}
+
+		// Positive control: native int + digit-only string both
+		// accepted — confirms the validator isn't over-strict.
+		$this->captured_store_params = [];
+		$this->successful_search(
+			[ 'filters' => [ 'price' => [ 'min' => 1000, 'max' => '5000' ] ] ]
+		);
+		$this->assertArrayHasKey( 'min_price', $this->captured_store_params );
+		$this->assertArrayHasKey( 'max_price', $this->captured_store_params );
+	}
+
+	// ------------------------------------------------------------------
+	// context.currency + price filter (PR J)
+	// ------------------------------------------------------------------
+
+	public function test_price_filter_applied_when_context_currency_matches_store(): void {
+		// Spec: "When context.currency matches the presentment
+		// currency, businesses apply the filter directly." Store is
+		// stubbed as USD; agent sends USD → filter applies.
+		$this->successful_search(
+			[
+				'context' => [ 'currency' => 'USD' ],
+				'filters' => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ],
+			]
+		);
+
+		$this->assertArrayHasKey( 'min_price', $this->captured_store_params );
+		$this->assertArrayHasKey( 'max_price', $this->captured_store_params );
+	}
+
+	public function test_price_filter_applied_when_context_currency_absent(): void {
+		// Spec: "When context.currency is absent, filter denomination
+		// is ambiguous and businesses MAY ignore it." We choose the
+		// lenient interpretation — apply in the store's currency, since
+		// our price_range responses always carry the store currency
+		// and agents derive filter bounds from them.
+		$this->successful_search(
+			[ 'filters' => [ 'price' => [ 'min' => 1000 ] ] ]
+		);
+
+		$this->assertArrayHasKey( 'min_price', $this->captured_store_params );
+	}
+
+	public function test_price_filter_dropped_with_warning_when_context_currency_mismatches(): void {
+		// Spec: "When [currency] differs, businesses SHOULD convert
+		// filter values... if conversion is not supported, businesses
+		// MAY ignore the filter and SHOULD indicate this via a message."
+		// We don't carry FX rates → drop + warn.
+		$body = $this->successful_search(
+			[
+				'context' => [ 'currency' => 'EUR' ],
+				'filters' => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ],
+			]
+		);
+
+		// Price filter NOT forwarded to Store API.
+		$this->assertArrayNotHasKey( 'min_price', $this->captured_store_params );
+		$this->assertArrayNotHasKey( 'max_price', $this->captured_store_params );
+
+		// Warning emitted with spec-conformant code + path.
+		$codes = array_column( $body['messages'] ?? [], 'code' );
+		$this->assertContains( 'currency_conversion_unsupported', $codes );
+	}
+
+	public function test_currency_comparison_is_case_insensitive(): void {
+		// Spec doesn't require case-normalization, but agents may send
+		// "usd" or "Usd" from loose clients. Store-side we use
+		// `strtoupper` before comparing so either form works.
+		$this->successful_search(
+			[
+				'context' => [ 'currency' => 'usd' ],
+				'filters' => [ 'price' => [ 'min' => 1000 ] ],
+			]
+		);
+
+		$this->assertArrayHasKey( 'min_price', $this->captured_store_params );
+	}
+
+	public function test_malformed_currency_is_treated_as_absent(): void {
+		// Empty string, too-short, too-long, or non-alpha currency
+		// values are invalid per ISO 4217. We treat them as "absent"
+		// rather than "mismatched" — so the price filter applies in
+		// the store's currency instead of being dropped. This
+		// prevents a hostile agent from bloating warning payloads
+		// with a giant "currency" value and prevents an empty string
+		// (falsy but string-typed) from silently dropping valid
+		// filters.
+		foreach ( [ '', 'US', 'USDX', '123', str_repeat( 'A', 500 ) ] as $bad ) {
+			$this->captured_store_params = [];
+			$this->successful_search(
+				[
+					'context' => [ 'currency' => $bad ],
+					'filters' => [ 'price' => [ 'min' => 1000 ] ],
+				]
+			);
+			$this->assertArrayHasKey(
+				'min_price',
+				$this->captured_store_params,
+				"Malformed currency (" . var_export( $bad, true ) . ") should be treated as absent and allow the price filter"
+			);
+		}
+	}
+
+	public function test_currency_mismatch_warning_suppressed_when_price_has_no_usable_bounds(): void {
+		// A price object with no numeric min/max (empty object or
+		// non-numeric values) is effectively a no-op filter. Emitting
+		// a `currency_conversion_unsupported` warning for it produces
+		// noise the agent can't act on — no bounds got skipped, so
+		// there's nothing to convert or drop. The mismatch check runs
+		// only when at least one bound would otherwise be applied.
+		$no_op_price_payloads = [
+			[],
+			[ 'min' => 'cheap' ],
+			[ 'max' => null ],
+			[ 'min' => -5, 'max' => 'expensive' ],
+		];
+		foreach ( $no_op_price_payloads as $price ) {
+			$body = $this->successful_search(
+				[
+					'context' => [ 'currency' => 'EUR' ],
+					'filters' => [ 'price' => $price ],
+				]
+			);
+
+			$codes = array_column( $body['messages'] ?? [], 'code' );
+			$this->assertNotContains(
+				'currency_conversion_unsupported',
+				$codes,
+				'No-op price filter ' . json_encode( $price ) . ' should not produce a currency warning'
+			);
+			$this->assertArrayNotHasKey( 'min_price', $this->captured_store_params );
+			$this->assertArrayNotHasKey( 'max_price', $this->captured_store_params );
+		}
+	}
+
 	// ------------------------------------------------------------------
 	// Malformed input is ignored, not an error
 	// ------------------------------------------------------------------
@@ -1646,7 +1819,47 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertWarning( $response->get_data(), 'pagination_limit_clamped' );
 	}
 
-	public function test_limit_negative_clamps_to_one_and_emits_warning(): void {
+	public function test_limit_non_integer_shape_falls_back_to_default_and_warns(): void {
+		// Strict integer-shape validation (same helper as price
+		// bounds) — `is_numeric` accepts decimals and scientific
+		// notation, `ctype_digit` accepts overflow strings that
+		// silently saturate to PHP_INT_MAX. All invalid shapes
+		// should fall back to the default limit with a warning
+		// pointing at `$.pagination.limit`.
+		$invalid_shapes = [
+			'50.5',                        // decimal string
+			25.5,                          // native float
+			'1e3',                         // scientific notation
+			'  50',                        // whitespace-padded
+			str_repeat( '9', 30 ),         // overflow
+			'abc',                         // non-numeric
+		];
+		foreach ( $invalid_shapes as $bad_limit ) {
+			$this->captured_store_params = [];
+			$this->fake_product_list     = [];
+
+			$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+				$this->search_request( [
+					'pagination' => [ 'limit' => $bad_limit ],
+				] )
+			);
+
+			$this->assertSame(
+				10,
+				$this->captured_store_params['per_page'],
+				'Invalid limit ' . var_export( $bad_limit, true ) . ' should fall back to default'
+			);
+			$this->assertWarning( $response->get_data(), 'pagination_limit_clamped' );
+		}
+	}
+
+	public function test_limit_negative_falls_back_to_default_and_emits_warning(): void {
+		// Post-strict-validation: negative limit is invalid shape
+		// (not `is_integer_like_non_negative`) → fall back to
+		// `DEFAULT_SEARCH_LIMIT` (10) rather than clamping to 1.
+		// The warning still fires so agents with retry logic on
+		// `pagination_limit_clamped` get the "unusable value"
+		// signal they used to get on the clamp path.
 		$this->fake_product_list = [];
 
 		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
@@ -1655,7 +1868,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			] )
 		);
 
-		$this->assertSame( 1, $this->captured_store_params['per_page'] );
+		$this->assertSame( 10, $this->captured_store_params['per_page'] );
 		$this->assertWarning( $response->get_data(), 'pagination_limit_clamped' );
 	}
 

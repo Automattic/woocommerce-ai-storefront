@@ -255,11 +255,15 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_extension_schema_has_no_response_level_payloads(): void {
 		// 2.0.0+: no response-level payloads are emitted under this
-		// extension. Rating moved to core `product.rating`. The
-		// schema documents only the manifest-level `config` block.
-		// Barcodes were never here (they live on `variants[].barcodes`
-		// per UCP core) and must still be absent — regression guard
-		// for both relocations.
+		// extension. Rating moved to core `product.rating`. Barcodes
+		// were never here (they live on `variants[].barcodes` per UCP
+		// core). Both MUST stay absent — regression guard.
+		//
+		// Non-response top-level properties (e.g. `config` for
+		// manifest-level config, `accepted_request_inputs` for
+		// request-side extension documentation) are allowed — they
+		// describe surfaces OTHER than product responses. The guard
+		// specifically targets the response-payload keys.
 		\Brain\Monkey\Functions\when( 'rest_url' )->alias(
 			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
 		);
@@ -268,11 +272,109 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$response   = $controller->handle_extension_schema();
 		$data       = $response->get_data();
 
-		// Only `config` at the top level — ratings and barcodes both
-		// absent, documented elsewhere (core).
-		$this->assertSame( [ 'config' ], array_keys( $data['properties'] ) );
 		$this->assertArrayNotHasKey( 'ratings', $data['properties'] );
 		$this->assertArrayNotHasKey( 'barcodes', $data['properties'] );
+	}
+
+	public function test_extension_schema_documents_accepted_request_inputs(): void {
+		// PR J: we accept spec-standard `context` + `signals` objects
+		// on catalog endpoints, plus a set of custom filters via
+		// `additionalProperties`. Spec hints merchants MAY document
+		// these; the extension JSON Schema is the canonical place.
+		// Agents fetching the schema can discover the full
+		// request-side extension surface without reading our source.
+		\Brain\Monkey\Functions\when( 'rest_url' )->alias(
+			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
+		);
+
+		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$response   = $controller->handle_extension_schema();
+		$data       = $response->get_data();
+
+		$this->assertArrayHasKey( 'accepted_request_inputs', $data['properties'] );
+		$inputs = $data['properties']['accepted_request_inputs']['properties'];
+
+		// Spec-standard inputs we accept
+		$this->assertArrayHasKey( 'context', $inputs );
+		$this->assertArrayHasKey( 'signals', $inputs );
+
+		// Custom filters block must exist AND carry a `properties` map
+		// before we iterate — otherwise a missing or malformed shape
+		// would silently skip the per-filter assertions and the test
+		// would pass while documenting nothing.
+		$this->assertArrayHasKey( 'custom_filters', $inputs );
+		$this->assertArrayHasKey( 'properties', $inputs['custom_filters'] );
+		$this->assertIsArray( $inputs['custom_filters']['properties'] );
+
+		$custom = $inputs['custom_filters']['properties'];
+		foreach ( [ 'brand', 'tags', 'in_stock', 'featured', 'min_rating', 'on_sale', 'attributes' ] as $filter_name ) {
+			$this->assertArrayHasKey(
+				$filter_name,
+				$custom,
+				"Custom filter \"{$filter_name}\" must be documented in the extension schema"
+			);
+		}
+	}
+
+	public function test_format_signal_keys_for_log_sanitizes_untrusted_input(): void {
+		// Signal keys are request-supplied → untrusted. Defensive
+		// helper caps size, strips control chars (log-injection guard),
+		// drops non-string keys, and truncates individual keys.
+		$reflection = new \ReflectionClass( WC_AI_Syndication_UCP_REST_Controller::class );
+		$method     = $reflection->getMethod( 'format_signal_keys_for_log' );
+		$method->setAccessible( true );
+
+		// Newlines + control chars stripped — no log injection.
+		// The sanitizer's job is to prevent malicious input from
+		// starting a NEW log line (via \n) or terminal escape (via
+		// \e / \x1b / \x07). Text content after stripped control
+		// chars survives concatenated, which is fine — it stays on
+		// the original line and can't impersonate a separate log
+		// entry. Assert on the control-char removal, not on text.
+		$out = $method->invoke( null, [ "dev.ucp.buyer_ip\nline2\r\x1b[31m" => 'x' ] );
+		$this->assertStringNotContainsString( "\n", $out );
+		$this->assertStringNotContainsString( "\r", $out );
+		$this->assertStringNotContainsString( "\x1b", $out );
+
+		// Each key is length-capped with ellipsis marker.
+		$long_key = str_repeat( 'a', 500 );
+		$out      = $method->invoke( null, [ $long_key => 'x' ] );
+		$this->assertLessThan( 150, strlen( $out ), 'Over-long key must be truncated' );
+		$this->assertStringContainsString( '…', $out );
+
+		// Total-keys cap + overflow sigil.
+		$many = [];
+		for ( $i = 0; $i < 100; $i++ ) {
+			$many[ "key_{$i}" ] = true;
+		}
+		$out = $method->invoke( null, $many );
+		$this->assertStringContainsString( '(+68 more)', $out, 'Overflow sigil should reflect truncated count' );
+
+		// Non-string keys (numeric) dropped silently — they're
+		// illegal under UCP's reverse-domain rule anyway.
+		$out = $method->invoke( null, [ 0 => 'x', 'dev.ucp.buyer_ip' => 'y' ] );
+		$this->assertSame( 'dev.ucp.buyer_ip', $out );
+
+		// All keys filtered out (e.g. agent sent signals as a list
+		// with purely numeric keys) → explicit `(none)` placeholder
+		// instead of a confusing empty/overflow-only output.
+		$out = $method->invoke( null, [ 0 => 'x', 1 => 'y', 2 => 'z' ] );
+		$this->assertSame( '(none)', $out );
+
+		// Overflow sigil derives from eligible string keys, not from
+		// the full $signals count. A payload mixing 40 valid keys
+		// with 28 numeric keys should show "(+8 more)" — based on
+		// the 40 eligible, not 68 total.
+		$mixed = [];
+		for ( $i = 0; $i < 40; $i++ ) {
+			$mixed[ "dev.ucp.key_{$i}" ] = true;
+		}
+		for ( $i = 0; $i < 28; $i++ ) {
+			$mixed[] = 'noise'; // Appends with numeric keys.
+		}
+		$out = $method->invoke( null, $mixed );
+		$this->assertStringContainsString( '(+8 more)', $out );
+		$this->assertStringNotContainsString( '(+36 more)', $out, 'Overflow must not include non-string keys' );
 	}
 
 	public function test_extension_schema_response_has_json_schema_content_type(): void {
