@@ -250,9 +250,9 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * clamped limits emit `pagination_limit_clamped`.
 	 *
 	 * Performance note: variable products fan out to N+1 dispatches
-	 * (1 list call + 1 per variation per product). For large catalogs
-	 * this may need per-request memoization; profile on real stores
-	 * before optimizing (see PLAN-ucp-adapter.md known-unknown #2).
+	 * (1 list call + 1 per variation per product). Per-request
+	 * memoization is implemented via reset_request_cache() and
+	 * fetch_store_api_product() to bound fan-out on duplicate IDs.
 	 *
 	 * @param WP_REST_Request $request UCP search request.
 	 * @return WP_Error|WP_REST_Response
@@ -580,7 +580,9 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *   - Drops non-string keys (map-with-numeric-index is illegal per
 	 *     UCP spec's reverse-domain naming rule, so a numeric key is a
 	 *     malformed payload signal anyway).
-	 *   - Strips control characters (ASCII 0–31 + 127) from each key.
+	 *   - Strips control characters (ASCII 0–31 + 127) and Unicode
+	 *     line-separator code points (U+0085, U+2028, U+2029, U+FEFF)
+	 *     from each key.
 	 *   - Truncates each key to 100 chars, then appends a single
 	 *     `…` ellipsis marker (101 chars total) so truncation is
 	 *     visible in the log. The marker is intentionally outside
