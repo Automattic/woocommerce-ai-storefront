@@ -120,6 +120,26 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	const MAX_QUANTITY_PER_LINE_ITEM = 10000;
 
 	/**
+	 * Upper bound on per-filter array length for taxonomy filters
+	 * (`filters.categories[]`, `filters.tags[]`, `filters.brand[]`)
+	 * and attribute-set keys (`filters.attributes.*`).
+	 *
+	 * DoS mitigation: without a cap, an agent can submit a filter
+	 * array with tens of thousands of entries, each driving a
+	 * `get_term_by` DB lookup (typically two per entry — slug then
+	 * name fallback). A cheap POST becomes N × 2 synchronous MySQL
+	 * round-trips and pins a DB connection per request.
+	 *
+	 * 50 is generous for legitimate agents (even catalog-browsing
+	 * agents refining through multi-category filters rarely exceed
+	 * a dozen) and keeps the worst-case DB hit to 100 queries per
+	 * taxonomy class, per request. Exceeding the cap truncates
+	 * silently at the handler and emits a `*_filter_truncated`
+	 * advisory so agents know their tail was dropped.
+	 */
+	const MAX_FILTER_VALUES = 50;
+
+	/**
 	 * Register all UCP REST routes.
 	 *
 	 * Two shapes of routes:
@@ -239,6 +259,10 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 */
 	public function handle_catalog_search( WP_REST_Request $request ) {
 		$capability = 'dev.ucp.shopping.catalog.search';
+
+		// Clear per-request memoization so a product fetched in a
+		// prior request can't leak here (static class-state safety).
+		self::reset_request_cache();
 
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Syndication_Logger::debug( 'UCP catalog/search rejected: syndication disabled' );
@@ -586,9 +610,24 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			if ( ! is_string( $key ) ) {
 				continue;
 			}
-			// Strip control chars (ASCII 0-31 + DEL) to prevent log-
-			// line injection via embedded newlines or terminal escapes.
-			$sanitized = preg_replace( '/[\x00-\x1F\x7F]/', '', $key );
+			// Strip log-breaking characters. Two classes:
+			//   1. ASCII control (0-31 + 127) — classic log injection.
+			//   2. Unicode line-break code points missed by #1:
+			//      - U+0085 (NEL, Next Line)
+			//      - U+2028 (LINE SEPARATOR)
+			//      - U+2029 (PARAGRAPH SEPARATOR)
+			//      - U+FEFF (BOM, inserted at arbitrary positions
+			//        confuses log-line parsers that heuristically
+			//        split on line-start byte sequences).
+			// systemd-journal and many SIEMs treat the Unicode
+			// separators as logical line breaks, so the ASCII-only
+			// blocklist (previous version) still let agents splice
+			// forged entries.
+			$sanitized = preg_replace(
+				'/[\x00-\x1F\x7F]|\xc2\x85|\xe2\x80[\xa8\xa9]|\xef\xbb\xbf/u',
+				'',
+				$key
+			);
 			if ( null === $sanitized || '' === $sanitized ) {
 				continue;
 			}
@@ -601,8 +640,16 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			if ( count( $logged ) >= $max_keys ) {
 				continue;
 			}
-			if ( strlen( $sanitized ) > $max_key_chars ) {
-				$sanitized = substr( $sanitized, 0, $max_key_chars ) . '…';
+			// Multibyte-aware truncate — byte-based `substr` would
+			// chop a UTF-8 sequence mid-byte and emit invalid bytes
+			// into the log stream, corrupting downstream parsers.
+			$needs_truncate = function_exists( 'mb_strlen' )
+				? mb_strlen( $sanitized ) > $max_key_chars
+				: strlen( $sanitized ) > $max_key_chars;
+			if ( $needs_truncate ) {
+				$sanitized = function_exists( 'mb_substr' )
+					? mb_substr( $sanitized, 0, $max_key_chars ) . '…'
+					: substr( $sanitized, 0, $max_key_chars ) . '…';
 			}
 			$logged[] = $sanitized;
 		}
@@ -700,6 +747,9 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 */
 	public function handle_catalog_lookup( WP_REST_Request $request ) {
 		$capability = 'dev.ucp.shopping.catalog.lookup';
+
+		// Clear per-request memoization; see handle_catalog_search.
+		self::reset_request_cache();
 
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Syndication_Logger::debug( 'UCP catalog/lookup rejected: syndication disabled' );
@@ -886,6 +936,9 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * @return WP_Error|WP_REST_Response
 	 */
 	public function handle_checkout_sessions_create( WP_REST_Request $request ) {
+		// Clear per-request memoization; see handle_catalog_search.
+		self::reset_request_cache();
+
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Syndication_Logger::debug( 'UCP checkout-sessions rejected: syndication disabled' );
 			return self::ucp_checkout_error_response(
@@ -1312,6 +1365,16 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$response->header( 'Content-Type', 'application/schema+json; charset=utf-8' );
 		// Schema is immutable per plugin version; safe to cache.
 		$response->header( 'Cache-Control', 'public, max-age=3600' );
+		// `$id` (set in $schema) derives from `rest_url()` which
+		// uses the incoming `Host` header. If a shared cache keys
+		// only on path (common misconfiguration) an attacker can
+		// prime the cache with a forged Host: attacker.example
+		// response whose `$id` points to their domain, then
+		// legitimate clients that fetch the schema get an attacker-
+		// controlled canonical URL. `Vary: Host` forces the cache
+		// to key on Host too, defanging the poisoning vector even
+		// when the CDN config is otherwise wrong.
+		$response->header( 'Vary', 'Host' );
 
 		return $response;
 	}
@@ -1508,7 +1571,54 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 *
 	 * @return ?array<string, mixed>
 	 */
+	/**
+	 * Per-request memoization cache for fetch_store_api_product.
+	 *
+	 * Same WC product ID can be requested multiple times within
+	 * one UCP request — e.g. `catalog/lookup` with duplicate IDs
+	 * pre-dedup, or a parent + its variations where the Store API
+	 * index fetches the parent separately from fetch_variations_for.
+	 * Each call dispatches an internal `rest_do_request` that runs
+	 * the Store API filter chain, so without memoization a hostile
+	 * `ids: ["prod_1" × 100]` payload becomes 100 full dispatches.
+	 *
+	 * Scope is per-request: reset by `reset_request_cache()` on
+	 * each handler entry. Keyed on int WC id. Null result for
+	 * "not found" is also cached (via the distinct
+	 * `$request_cache_has_key`) so repeated 404 lookups don't
+	 * re-dispatch.
+	 *
+	 * @var array<int, ?array<string, mixed>>
+	 */
+	private static array $request_product_cache = [];
+
+	/**
+	 * Tracks which keys have been resolved this request (including
+	 * null-resolving ones). Separates "cache hit with null" from
+	 * "cache miss" — plain `isset($cache[$id])` would false-negative
+	 * on cached 404s and bypass the memoization.
+	 *
+	 * @var array<int, bool>
+	 */
+	private static array $request_product_cache_has_key = [];
+
+	/**
+	 * Clear the per-request product cache. Invoked at the top of
+	 * each public handler so caches don't leak between requests
+	 * (WordPress REST framework may or may not spin a fresh class
+	 * instance; the static-state model requires explicit reset to
+	 * be safe under either dispatch model).
+	 */
+	private static function reset_request_cache(): void {
+		self::$request_product_cache         = [];
+		self::$request_product_cache_has_key = [];
+	}
+
 	private static function fetch_store_api_product( int $id ): ?array {
+		if ( isset( self::$request_product_cache_has_key[ $id ] ) ) {
+			return self::$request_product_cache[ $id ];
+		}
+
 		$request  = new WP_REST_Request( 'GET', '/wc/store/v1/products/' . $id );
 		$response = rest_do_request( $request );
 
@@ -1526,6 +1636,22 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		//   - Non-array body: plugin-conflict smell (some other plugin
 		//     hooking rest_post_dispatch returned a string/object).
 		//     Logged so this doesn't become a mystery empty catalog.
+		$result                                     = self::fetch_store_api_product_inner( $id, $response );
+		self::$request_product_cache[ $id ]         = $result;
+		self::$request_product_cache_has_key[ $id ] = true;
+		return $result;
+	}
+
+	/**
+	 * Inner resolution logic extracted so the outer
+	 * `fetch_store_api_product` stays focused on the
+	 * memoization-gate + write. Returns the same `?array`
+	 * contract.
+	 *
+	 * @param WP_REST_Response|WP_Error $response
+	 * @return ?array<string, mixed>
+	 */
+	private static function fetch_store_api_product_inner( int $id, $response ): ?array {
 		if ( $response instanceof WP_Error ) {
 			WC_AI_Syndication_Logger::debug(
 				sprintf(
@@ -1967,7 +2093,12 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		if ( isset( $filters['categories'] ) && is_array( $filters['categories'] ) ) {
-			$category_result = self::resolve_category_term_ids( $filters['categories'] );
+			$categories_capped = self::cap_filter_array(
+				$filters['categories'],
+				'$.filters.categories',
+				$messages
+			);
+			$category_result   = self::resolve_category_term_ids( $categories_capped );
 			if ( ! empty( $category_result['ids'] ) ) {
 				$params['category'] = implode( ',', $category_result['ids'] );
 			}
@@ -1980,7 +2111,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					'content'  => sprintf(
 						/* translators: %s is the category slug/name the agent sent that couldn't be resolved. */
 						__( 'Category "%s" was not found; filter ignored for this value.', 'woocommerce-ai-syndication' ),
-						$bad
+						self::sanitize_reflected_value( $bad )
 					),
 				];
 			}
@@ -2085,7 +2216,12 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// surface cross-cutting discovery signals (e.g. "eco-friendly",
 		// "summer") that are orthogonal to hierarchical categories.
 		if ( isset( $filters['tags'] ) && is_array( $filters['tags'] ) ) {
-			$tag_result = self::resolve_tag_term_ids( $filters['tags'] );
+			$tags_capped = self::cap_filter_array(
+				$filters['tags'],
+				'$.filters.tags',
+				$messages
+			);
+			$tag_result  = self::resolve_tag_term_ids( $tags_capped );
 			if ( ! empty( $tag_result['ids'] ) ) {
 				$params['tag'] = implode( ',', $tag_result['ids'] );
 			}
@@ -2098,7 +2234,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					'content'  => sprintf(
 						/* translators: %s is the tag slug/name the agent sent that couldn't be resolved. */
 						__( 'Tag "%s" was not found; filter ignored for this value.', 'woocommerce-ai-syndication' ),
-						$bad
+						self::sanitize_reflected_value( $bad )
 					),
 				];
 			}
@@ -2110,7 +2246,12 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// accepts comma-joined term IDs or slugs on the `brand` param;
 		// we resolve to IDs for consistency with category/tag.
 		if ( isset( $filters['brand'] ) && is_array( $filters['brand'] ) ) {
-			$brand_result = self::resolve_brand_term_ids( $filters['brand'] );
+			$brand_capped = self::cap_filter_array(
+				$filters['brand'],
+				'$.filters.brand',
+				$messages
+			);
+			$brand_result = self::resolve_brand_term_ids( $brand_capped );
 			if ( ! empty( $brand_result['ids'] ) ) {
 				$params['brand'] = implode( ',', $brand_result['ids'] );
 			}
@@ -2123,7 +2264,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					'content'  => sprintf(
 						/* translators: %s is the brand slug/name the agent sent that couldn't be resolved. */
 						__( 'Brand "%s" was not found; filter ignored for this value.', 'woocommerce-ai-syndication' ),
-						$bad
+						self::sanitize_reflected_value( $bad )
 					),
 				];
 			}
@@ -2179,7 +2320,29 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// Store API accepts slugs directly for attributes, and
 		// invalid slugs produce empty results rather than errors.
 		if ( isset( $filters['attributes'] ) && is_array( $filters['attributes'] ) ) {
-			$attribute_result = self::build_attribute_filter_params( $filters['attributes'] );
+			// Attribute-map size cap (DoS mitigation) — each key
+			// triggers a `taxonomy_exists` check plus warning
+			// emission; treat as equivalent to other filter-array
+			// surfaces. `array_slice(..., preserve_keys=true)`
+			// keeps the agent's original keys in the capped map.
+			$attributes_input = $filters['attributes'];
+			if ( count( $attributes_input ) > self::MAX_FILTER_VALUES ) {
+				$original_count   = count( $attributes_input );
+				$attributes_input = array_slice( $attributes_input, 0, self::MAX_FILTER_VALUES, true );
+				$messages[]       = [
+					'type'     => 'warning',
+					'code'     => 'filter_truncated',
+					'severity' => 'advisory',
+					'path'     => '$.filters.attributes',
+					'content'  => sprintf(
+						/* translators: 1: original key count, 2: applied cap. */
+						__( '$.filters.attributes received %1$d keys; truncated to the first %2$d. Further keys were ignored.', 'woocommerce-ai-syndication' ),
+						$original_count,
+						self::MAX_FILTER_VALUES
+					),
+				];
+			}
+			$attribute_result = self::build_attribute_filter_params( $attributes_input );
 			if ( ! empty( $attribute_result['filters'] ) ) {
 				$params['attributes'] = $attribute_result['filters'];
 			}
@@ -2193,12 +2356,18 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				// first (else the \' below would end up as the literal
 				// character \\' which terminates the JSONPath string
 				// early) and then single quotes.
-				$escaped_key = str_replace(
+				//
+				// Sanitize BOTH `key` (reflected into path) and
+				// `taxonomy` (reflected into content) — downstream
+				// renderers shouldn't be able to render stored
+				// markup from either axis.
+				$sanitized_key = self::sanitize_reflected_value( $bad['key'] );
+				$escaped_key   = str_replace(
 					[ '\\', "'" ],
 					[ '\\\\', "\\'" ],
-					$bad['key']
+					$sanitized_key
 				);
-				$messages[]  = [
+				$messages[]    = [
 					'type'     => 'warning',
 					'code'     => 'attribute_not_found',
 					'severity' => 'advisory',
@@ -2206,7 +2375,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					'content'  => sprintf(
 						/* translators: %s is the attribute taxonomy name the agent sent that doesn't exist on the store. */
 						__( 'Attribute taxonomy "%s" was not found on the store; filter ignored for this axis.', 'woocommerce-ai-syndication' ),
-						$bad['taxonomy']
+						self::sanitize_reflected_value( $bad['taxonomy'] )
 					),
 				];
 			}
@@ -2422,6 +2591,88 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * @param string            $taxonomy The WC taxonomy slug ('product_cat', 'product_tag', 'product_brand').
 	 * @return array{ids: array<int, int>, unresolved: array<int, string>}
 	 */
+	/**
+	 * Cap a filter input array to `MAX_FILTER_VALUES` and emit a
+	 * `filter_truncated` warning message when truncation occurs.
+	 *
+	 * Purpose — DoS mitigation at the handler boundary: taxonomy
+	 * filters feed into `get_term_by` DB lookups (two per entry),
+	 * so an uncapped agent-supplied array becomes N × 2 MySQL
+	 * round-trips per request. The cap keeps worst-case work
+	 * bounded per request; the warning keeps honest agents
+	 * informed that their tail got dropped.
+	 *
+	 * `&$messages` is appended to by-reference — caller's warning
+	 * accumulator receives the truncation advisory next to its
+	 * other filter-resolution warnings.
+	 *
+	 * @param array<int, mixed>           $values   Raw agent-supplied array.
+	 * @param string                      $path     JSONPath to the array (e.g. `$.filters.categories`).
+	 * @param array<int, array<string, string>> &$messages Warning accumulator.
+	 *
+	 * @return array<int, mixed> Capped array (first `MAX_FILTER_VALUES` entries).
+	 */
+	private static function cap_filter_array( array $values, string $path, array &$messages ): array {
+		if ( count( $values ) <= self::MAX_FILTER_VALUES ) {
+			return $values;
+		}
+		$original_count = count( $values );
+		$capped         = array_slice( $values, 0, self::MAX_FILTER_VALUES );
+		$messages[]     = [
+			'type'     => 'warning',
+			'code'     => 'filter_truncated',
+			'severity' => 'advisory',
+			'path'     => $path,
+			'content'  => sprintf(
+				/* translators: 1: filter path, 2: original count, 3: applied cap. */
+				__( '%1$s received %2$d values; truncated to the first %3$d. Further values were ignored.', 'woocommerce-ai-syndication' ),
+				$path,
+				$original_count,
+				self::MAX_FILTER_VALUES
+			),
+		];
+		return $capped;
+	}
+
+	/**
+	 * Sanitize an agent-supplied string for safe reflection into a
+	 * response `content` field (warning/error message body).
+	 *
+	 * Downstream consumers — merchant admin dashboards, Slack
+	 * webhooks posting response summaries, CRM syncs of agent
+	 * conversation logs — may render the `content` string as HTML
+	 * without escaping. Treating any agent-echoed value as
+	 * attacker-authored before serialization prevents stored XSS
+	 * via the response body.
+	 *
+	 * Applies three passes:
+	 *   1. Non-string → stringify defensively via `(string)` so
+	 *      `sprintf('%s', ...)` doesn't warn on object/array.
+	 *   2. `wp_strip_all_tags` — strips `<script>`, `<img>`, and
+	 *      all other HTML tags (plus their content for script/style)
+	 *      while leaving plain text intact.
+	 *   3. Hard length cap at 200 chars — bounds the response
+	 *      payload growth (a hostile agent can't inflate the
+	 *      response with a 100KB "brand" string).
+	 *
+	 * @param mixed $value
+	 */
+	private static function sanitize_reflected_value( $value ): string {
+		if ( ! is_string( $value ) ) {
+			$value = is_scalar( $value ) ? (string) $value : '';
+		}
+		$stripped = function_exists( 'wp_strip_all_tags' )
+			? wp_strip_all_tags( $value )
+			: strip_tags( $value ); // phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags
+		// Multibyte-aware truncate. Byte-based `substr` could chop
+		// a UTF-8 sequence mid-byte and emit invalid bytes into a
+		// JSON response, which some clients choke on.
+		if ( function_exists( 'mb_substr' ) && mb_strlen( $stripped ) > 200 ) {
+			return mb_substr( $stripped, 0, 200 );
+		}
+		return strlen( $stripped ) > 200 ? substr( $stripped, 0, 200 ) : $stripped;
+	}
+
 	private static function resolve_taxonomy_term_ids( array $inputs, string $taxonomy ): array {
 		$ids        = [];
 		$unresolved = [];
