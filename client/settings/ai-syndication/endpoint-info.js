@@ -358,7 +358,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						} }
 					>
 						{ __(
-							'These endpoints are automatically available when AI Syndication is enabled.',
+							'These endpoints are automatically available when AI Storefront is enabled.',
 							'woocommerce-ai-syndication'
 						) }
 					</p>
@@ -372,7 +372,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							} }
 						>
 							{ __(
-								'AI Syndication is currently disabled. Enable it in the Overview tab to activate these endpoints.',
+								'AI Storefront is currently disabled. Enable it in the Overview tab to activate these endpoints.',
 								'woocommerce-ai-syndication'
 							) }
 						</p>

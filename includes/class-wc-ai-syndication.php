@@ -254,8 +254,8 @@ class WC_AI_Syndication {
 	public function add_admin_menu() {
 		add_submenu_page(
 			'woocommerce',
-			__( 'AI Syndication', 'woocommerce-ai-syndication' ),
-			__( 'AI Syndication', 'woocommerce-ai-syndication' ),
+			__( 'AI Storefront', 'woocommerce-ai-syndication' ),
+			__( 'AI Storefront', 'woocommerce-ai-syndication' ),
 			'manage_woocommerce',
 			'wc-ai-syndication',
 			[ $this, 'render_admin_page' ]
@@ -267,7 +267,7 @@ class WC_AI_Syndication {
 	 */
 	public function render_admin_page() {
 		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'AI Syndication', 'woocommerce-ai-syndication' ) . '</h1>';
+		echo '<h1>' . esc_html__( 'AI Storefront', 'woocommerce-ai-syndication' ) . '</h1>';
 		echo '<div id="wc-ai-syndication-settings"></div>';
 		echo '</div>';
 	}

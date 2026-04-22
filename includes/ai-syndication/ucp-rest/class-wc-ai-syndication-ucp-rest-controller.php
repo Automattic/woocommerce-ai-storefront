@@ -268,7 +268,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			WC_AI_Syndication_Logger::debug( 'UCP catalog/search rejected: syndication disabled' );
 			return self::ucp_catalog_error_response(
 				$capability,
-				__( 'AI Syndication is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
+				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
 				'ucp_disabled',
 				null,
 				503
@@ -757,7 +757,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			WC_AI_Syndication_Logger::debug( 'UCP catalog/lookup rejected: syndication disabled' );
 			return self::ucp_catalog_error_response(
 				$capability,
-				__( 'AI Syndication is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
+				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
 				'ucp_disabled',
 				null,
 				503
@@ -953,7 +953,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Syndication_Logger::debug( 'UCP checkout-sessions rejected: syndication disabled' );
 			return self::ucp_checkout_error_response(
-				__( 'AI Syndication is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
+				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
 				'ucp_disabled',
 				null,
 				503
@@ -1267,7 +1267,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$schema = [
 			'$schema'     => 'https://json-schema.org/draft/2020-12/schema',
 			'$id'         => $self_id,
-			'title'       => 'WooCommerce AI Syndication UCP Extension Contract',
+			'title'       => 'WooCommerce AI Storefront UCP Extension Contract',
 			'description' => 'Schema for the `com.woocommerce.ai_syndication` extension contract. The top-level `config` property describes the merchant-extension configuration advertised in the UCP manifest at `capabilities[com.woocommerce.ai_syndication][0].config`. Starting 2.0.0, no response-level payloads are emitted under this extension — rating data moved to core `product.rating` per the UCP 2026-04-08 product shape.',
 			'type'        => 'object',
 			'properties'  => [

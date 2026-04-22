@@ -401,7 +401,7 @@ class WC_AI_Syndication_Robots {
 		// (which would create a feedback loop if we re-emitted them).
 		$sitemap_urls = self::extract_sitemap_urls( $output );
 
-		$output .= "\n# WooCommerce AI Syndication\n";
+		$output .= "\n# WooCommerce AI Storefront\n";
 		$output .= "# Machine-readable store data for AI-assisted product discovery\n\n";
 
 		// Derive paths from actual WooCommerce permalink settings.
