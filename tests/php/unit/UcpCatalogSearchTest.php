@@ -2078,6 +2078,104 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'max_price', $this->captured_store_params );
 	}
 
+	// ------------------------------------------------------------------
+	// Security hardening (PR L): DoS caps + response-body reflection
+	// ------------------------------------------------------------------
+
+	public function test_oversized_categories_filter_is_capped_with_warning(): void {
+		// Agent sends 60 categories; MAX_FILTER_VALUES = 50.
+		// Handler should truncate to the first 50 and emit a
+		// `filter_truncated` advisory with `$.filters.categories`
+		// path. Mitigates DoS via unbounded `get_term_by` fan-out.
+		$many = [];
+		for ( $i = 0; $i < 60; $i++ ) {
+			$many[] = 'cat-' . $i;
+		}
+		$body = $this->successful_search(
+			[ 'filters' => [ 'categories' => $many ] ]
+		);
+
+		$this->assertWarning( $body, 'filter_truncated' );
+
+		// The tail (entries 50-59) must not appear in `unresolved`
+		// warnings — truncation happens before resolution, so we
+		// don't even attempt to resolve past the cap.
+		$codes        = array_column( $body['messages'] ?? [], 'code' );
+		$not_found_ct = count( array_filter( $codes, static fn( $c ) => 'category_not_found' === $c ) );
+		$this->assertLessThanOrEqual(
+			50,
+			$not_found_ct,
+			'category_not_found warnings must be bounded by MAX_FILTER_VALUES'
+		);
+	}
+
+	public function test_oversized_tags_filter_is_capped_with_warning(): void {
+		$many = array_fill( 0, 60, 'tag-x' );
+		$body = $this->successful_search( [ 'filters' => [ 'tags' => $many ] ] );
+		$this->assertWarning( $body, 'filter_truncated' );
+	}
+
+	public function test_oversized_brand_filter_is_capped_with_warning(): void {
+		$many = array_fill( 0, 60, 'brand-x' );
+		$body = $this->successful_search( [ 'filters' => [ 'brand' => $many ] ] );
+		$this->assertWarning( $body, 'filter_truncated' );
+	}
+
+	public function test_oversized_attributes_map_is_capped_with_warning(): void {
+		// 60 distinct attribute keys → truncate to 50 + warn with
+		// `$.filters.attributes` path.
+		$many = [];
+		for ( $i = 0; $i < 60; $i++ ) {
+			$many[ 'attr-' . $i ] = [ 'red' ];
+		}
+		$body = $this->successful_search(
+			[ 'filters' => [ 'attributes' => $many ] ]
+		);
+		$this->assertWarning( $body, 'filter_truncated' );
+	}
+
+	public function test_reflected_category_name_is_stripped_of_html_in_response(): void {
+		// Agent-supplied category strings get reflected into the
+		// `content` field of a `category_not_found` warning. Without
+		// sanitization, a string like `<script>alert(1)</script>`
+		// would be returned verbatim to any merchant admin UI that
+		// renders message content as HTML — stored/reflected XSS.
+		// `sanitize_reflected_value` strips tags before reflection.
+		$body = $this->successful_search(
+			[ 'filters' => [ 'categories' => [ '<script>alert(1)</script>', '<img src=x onerror=alert(1)>' ] ] ]
+		);
+
+		$messages = $body['messages'] ?? [];
+		$not_founds = array_filter(
+			$messages,
+			static fn( $m ) => 'category_not_found' === ( $m['code'] ?? null )
+		);
+		$this->assertCount( 2, $not_founds );
+		foreach ( $not_founds as $m ) {
+			$this->assertStringNotContainsString( '<script>', $m['content'] ?? '' );
+			$this->assertStringNotContainsString( '<img', $m['content'] ?? '' );
+			$this->assertStringNotContainsString( 'onerror', $m['content'] ?? '' );
+		}
+	}
+
+	public function test_reflected_value_length_is_capped(): void {
+		// 10KB agent-supplied string reflected into response would
+		// balloon the payload. Cap at 200 chars (enough for context
+		// in log output, bounded for DoS / cache-key attacks).
+		$huge = str_repeat( 'x', 10000 );
+		$body = $this->successful_search(
+			[ 'filters' => [ 'categories' => [ $huge ] ] ]
+		);
+		$messages = $body['messages'] ?? [];
+		foreach ( $messages as $m ) {
+			if ( 'category_not_found' === ( $m['code'] ?? null ) ) {
+				// Content is `sprintf('Category "%s" was not found...', $truncated_to_200)`
+				// so full content is around 200 + ~45 prefix chars.
+				$this->assertLessThan( 300, strlen( $m['content'] ?? '' ) );
+			}
+		}
+	}
+
 	/**
 	 * Assert the response body includes a warning with the given code.
 	 *
