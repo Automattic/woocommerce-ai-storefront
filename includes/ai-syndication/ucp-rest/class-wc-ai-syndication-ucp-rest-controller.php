@@ -771,13 +771,21 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$products = [];
 		$messages = [];
 
+		// Deduplicate + normalize before fetching. `wc_ids` is the
+		// work list (one per unique input, aligned positionally
+		// with `inputs`); `inputs` is the echo array we return to
+		// the agent so they can reconcile what they sent against
+		// what we processed. See `normalize_and_dedupe_lookup_ids`
+		// for the dedup semantics.
+		$normalized = self::normalize_and_dedupe_lookup_ids( $ids );
+		$inputs     = $normalized['inputs'];
+		$wc_ids     = $normalized['wc_ids'];
+
 		// Same single-merchant seller block as the search handler —
 		// computed once, stamped on every product (see handle_catalog_search).
 		$seller = self::build_seller();
 
-		foreach ( $ids as $index => $raw_id ) {
-			$wc_id = self::parse_ucp_id_to_wc_int( $raw_id );
-
+		foreach ( $wc_ids as $index => $wc_id ) {
 			if ( $wc_id <= 0 ) {
 				$messages[] = self::not_found_message( (int) $index );
 				continue;
@@ -812,6 +820,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 		$response_body = [
 			'ucp'      => WC_AI_Syndication_UCP_Envelope::catalog_envelope( $capability ),
+			'inputs'   => $inputs,
 			'products' => $products,
 		];
 
@@ -1697,8 +1706,15 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 	/**
 	 * Build a UCP `not_found` error message for the ID at position
-	 * `$index` in the request's `ids` array. The JSONPath-style
+	 * `$index` in the response's `inputs` array. The JSONPath-style
 	 * `path` lets agents localize which specific ID failed.
+	 *
+	 * Note: the path references `$.inputs[...]`, not `$.ids[...]`.
+	 * After request-side deduplication (see
+	 * `normalize_and_dedupe_lookup_ids`), the original `ids[]` is
+	 * collapsed into a deduped `inputs[]` echoed in the response.
+	 * Messages address positions in that echoed array so agents can
+	 * map failures to the processed (not raw-requested) set.
 	 *
 	 * @return array<string, string>
 	 */
@@ -1706,8 +1722,122 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		return [
 			'type'     => 'error',
 			'code'     => 'not_found',
-			'path'     => '$.ids[' . $index . ']',
+			'path'     => '$.inputs[' . $index . ']',
 			'severity' => 'unrecoverable',
+		];
+	}
+
+	/**
+	 * Normalize + deduplicate the raw `ids[]` submitted to
+	 * catalog.lookup. Two agent semantics we enforce:
+	 *
+	 *   1. **Idempotence**: `["123","123"]` fetches/translates once.
+	 *      Downstream work is O(unique) not O(request). This also
+	 *      matters for `fetch_store_api_product` which dispatches an
+	 *      internal REST request per ID — duplicates doubled the
+	 *      work for no benefit.
+	 *
+	 *   2. **Prefix-form collapsing**: `"woo-p-123"` and bare `"123"`
+	 *      parse to the same WC product id. We dedupe on the parsed
+	 *      int so an agent sending both forms gets one product and
+	 *      one inputs entry. First-occurrence wins for the raw echo.
+	 *
+	 * Malformed inputs (non-string, empty-after-strip, non-numeric)
+	 * are preserved in `inputs[]` so the response faithfully echoes
+	 * what the agent sent, with a per-raw-value dedup so the same
+	 * garbage string doesn't produce N not_found messages. They
+	 * surface as `not_found` messages downstream.
+	 *
+	 * Non-string inputs (numbers, booleans, arrays, null, etc.) are
+	 * coerced to a stable string form for the echo but their
+	 * `wc_id` is set to 0 — i.e. treated as not_found. The UCP spec
+	 * requires IDs to be strings; we enforce that strictly at the
+	 * resolution step even though we echo the raw form back so the
+	 * agent can see what we received.
+	 *
+	 * @param array<int, mixed> $raw_ids
+	 *
+	 * @return array{
+	 *     inputs: array<int, string>,
+	 *     wc_ids: array<int, int>
+	 * }
+	 */
+	private static function normalize_and_dedupe_lookup_ids( array $raw_ids ): array {
+		$inputs = [];
+		$wc_ids = [];
+		$seen   = [];
+
+		foreach ( $raw_ids as $raw ) {
+			// Non-scalar inputs (arrays/objects/null) can't resolve
+			// to a WC product, but we still echo a stable,
+			// distinguishable string form so agents see what kind of
+			// invalid entry they sent AND so different invalid
+			// values dedupe separately. An earlier version echoed
+			// everything to `""`, which merged distinct entries
+			// (e.g. `[null, []]`) into a single inputs slot — that
+			// shifted message paths and hid the agent's real
+			// payload. Prefer JSON for arrays/objects so nested
+			// structure is preserved in the echo; fall back to a
+			// type tag only if wp_json_encode fails (e.g. on a
+			// resource or circular reference).
+			if ( ! is_scalar( $raw ) ) {
+				if ( null === $raw ) {
+					$echo = 'null';
+				} elseif ( is_array( $raw ) ) {
+					$encoded = wp_json_encode( $raw );
+					$echo    = ( is_string( $encoded ) && '' !== $encoded ) ? $encoded : '[array]';
+				} elseif ( is_object( $raw ) ) {
+					$encoded = wp_json_encode( $raw );
+					$echo    = ( is_string( $encoded ) && '' !== $encoded ) ? $encoded : '[object]';
+				} else {
+					// Resources, anything else non-scalar. Unlikely
+					// in JSON payloads but keep the enumeration
+					// exhaustive so nothing falls through silently.
+					$echo = '[invalid]';
+				}
+				$wc_id = 0;
+			} elseif ( is_string( $raw ) ) {
+				$echo  = $raw;
+				$wc_id = self::parse_ucp_id_to_wc_int( $raw );
+				if ( $wc_id < 0 ) {
+					$wc_id = 0;
+				}
+			} elseif ( is_bool( $raw ) ) {
+				// Booleans need an explicit branch: `(string) false`
+				// is `""`, which is NOT distinguishable from a
+				// genuinely-empty string id — the two would share a
+				// dedup key and collapse into one inputs entry,
+				// hiding what the agent actually sent. Emit
+				// "true"/"false" so each remains uniquely addressable.
+				$echo  = $raw ? 'true' : 'false';
+				$wc_id = 0;
+			} else {
+				// Remaining non-string scalars (int, float). The spec
+				// requires string IDs and `parse_ucp_id_to_wc_int`
+				// already returns 0 for non-string input — keeping
+				// resolution logic in one place prevents drift
+				// between parser and handler.
+				$echo  = (string) $raw;
+				$wc_id = 0;
+			}
+
+			// Dedup key: valid IDs collapse by parsed int (so prefix
+			// variants fold together); invalid IDs dedupe only
+			// against identical raw echoes so `["abc","abc"]` stays
+			// a single entry while `["abc","xyz"]` stays two.
+			$key = $wc_id > 0 ? 'id:' . $wc_id : 'raw:' . $echo;
+
+			if ( isset( $seen[ $key ] ) ) {
+				continue;
+			}
+			$seen[ $key ] = true;
+			$inputs[]     = $echo;
+			$wc_ids[]     = $wc_id;
+		}
+
+		return [
+			'inputs' => $inputs,
+			'wc_ids' => $wc_ids,
 		];
 	}
 
