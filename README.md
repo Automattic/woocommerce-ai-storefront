@@ -16,7 +16,7 @@ Plus integrations with WordPress and WooCommerce:
 
 - **`robots.txt`** — per-crawler allowlist for 12 commerce-relevant AI bots
 - **Store API rate limiting** — built-in WC rate limiter fingerprints AI bots by user-agent (regular customer traffic is unaffected)
-- **Order Attribution** — standard `utm_medium=ai_agent` capture, surfaced in WooCommerce core's built-in "Origin" column (no custom column since 1.6.7)
+- **Order Attribution** — standard `utm_medium=ai_agent` capture, surfaced in WooCommerce core's built-in "Origin" column
 
 ## What it doesn't do
 
