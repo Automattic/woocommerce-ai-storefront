@@ -143,3 +143,4 @@ jobs:
           files: ${{ env.ZIP_NAME }}
           generate_release_notes: true
           draft: true  # Start as draft so human can review before publishing.
+          prerelease: true  # 0.x line ships as pre-release until 1.0.
