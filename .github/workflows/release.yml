@@ -43,7 +43,7 @@ jobs:
         run: |
           TAG_VERSION="${TAG#v}"
           HEADER_VERSION=$(grep -E '^[[:space:]]*\*[[:space:]]*Version:' woocommerce-ai-storefront.php | sed -E 's/.*Version:[[:space:]]*//' | tr -d '[:space:]')
-          CONST_VERSION=$(grep -E "define\(\s*'WC_AI_SYNDICATION_VERSION'" woocommerce-ai-storefront.php | sed -E "s/.*'WC_AI_SYNDICATION_VERSION',\s*'([^']+)'.*/\1/")
+          CONST_VERSION=$(grep -E "define\(\s*'WC_AI_STOREFRONT_VERSION'" woocommerce-ai-storefront.php | sed -E "s/.*'WC_AI_STOREFRONT_VERSION',\s*'([^']+)'.*/\1/")
 
           echo "Tag: $TAG_VERSION"
           echo "Plugin header: $HEADER_VERSION"
@@ -55,7 +55,7 @@ jobs:
           fi
 
           if [ "$TAG_VERSION" != "$CONST_VERSION" ]; then
-            echo "::error::Tag version ($TAG_VERSION) does not match WC_AI_SYNDICATION_VERSION constant ($CONST_VERSION)."
+            echo "::error::Tag version ($TAG_VERSION) does not match WC_AI_STOREFRONT_VERSION constant ($CONST_VERSION)."
             exit 1
           fi
 
@@ -129,9 +129,9 @@ jobs:
 
       - name: Create zip
         run: |
-          ZIP_NAME="woocommerce-ai-syndication-${TAG}.zip"
+          ZIP_NAME="woocommerce-ai-storefront-${TAG}.zip"
           cd release-staging
-          zip -r "../${ZIP_NAME}" woocommerce-ai-syndication
+          zip -r "../${ZIP_NAME}" woocommerce-ai-storefront
           cd ..
           ls -la "${ZIP_NAME}"
           unzip -l "${ZIP_NAME}" | head -30
