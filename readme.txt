@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.0
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.1.0
+Stable tag: 0.1.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -125,6 +125,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.1.1 =
+* Products tab redesigned: the three scope modes (all / categories / specific) now render as radio cards inside a single card. The "All products" mode includes a live sample grid of six products pulled from your Store API so merchants can see what AI agents actually receive without leaving the tab. Reuses existing category/product selection UI for the other two modes.
+* Documented that MCP (Model Context Protocol) is not supported and why: neither WordPress core nor WooCommerce currently scaffold an external MCP-server surface. Added an FAQ entry + scope note alongside two adjacent FAQs (customer data sharing, plugin-disable behavior).
 
 = 0.1.0 =
 * Initial pre-release under the AI Storefront name, developed in the Automattic organization.
