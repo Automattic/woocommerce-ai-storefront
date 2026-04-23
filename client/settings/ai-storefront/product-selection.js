@@ -42,18 +42,27 @@ const MODE_DESCRIPTIONS = {
 // Spec-aligned list of fields our endpoints serialize per product.
 // Surfaced in the shared footer as "Included fields" chips so merchants
 // see at a glance what each AI agent receives. If the extension schema
-// (see class-wc-ai-syndication-ucp-rest-controller.php
+// (see class-wc-ai-storefront-ucp-rest-controller.php
 // handle_extension_schema) grows, update this list — the schema itself
 // is the source of truth for on-the-wire contents, this is the
 // human-readable summary.
-const INCLUDED_FIELDS = [
-	'name',
-	'description',
-	'price',
-	'stock',
-	'images',
-	'categories',
-	'SKU',
+// `key` is a stable React-key identifier; `label` is the translated
+// user-visible string. Built inside the component rather than at
+// module scope so `__()` picks up runtime locale changes.
+const getIncludedFields = () => [
+	{ key: 'name', label: __( 'name', 'woocommerce-ai-storefront' ) },
+	{
+		key: 'description',
+		label: __( 'description', 'woocommerce-ai-storefront' ),
+	},
+	{ key: 'price', label: __( 'price', 'woocommerce-ai-storefront' ) },
+	{ key: 'stock', label: __( 'stock', 'woocommerce-ai-storefront' ) },
+	{ key: 'images', label: __( 'images', 'woocommerce-ai-storefront' ) },
+	{
+		key: 'categories',
+		label: __( 'categories', 'woocommerce-ai-storefront' ),
+	},
+	{ key: 'sku', label: __( 'SKU', 'woocommerce-ai-storefront' ) },
 ];
 
 /**
@@ -195,9 +204,17 @@ const SamplePreview = () => {
 				if ( cancelled ) {
 					return;
 				}
+				// `X-WP-Total` may be absent (some reverse-proxy
+				// configurations strip it from cached responses) or
+				// unparseable. Treat anything that doesn't parse to
+				// a finite number as "unknown" — the UI handles a
+				// `null` total by omitting the count pill, which is
+				// far better than rendering `NaN`.
 				const totalHeader = response.headers.get( 'X-WP-Total' );
+				const parsedTotal =
+					totalHeader !== null ? parseInt( totalHeader, 10 ) : NaN;
 				setProducts( Array.isArray( body ) ? body : [] );
-				setTotal( totalHeader ? parseInt( totalHeader, 10 ) : null );
+				setTotal( Number.isFinite( parsedTotal ) ? parsedTotal : null );
 				setIsLoading( false );
 			} )
 			.catch( () => {
@@ -275,7 +292,7 @@ const SamplePreview = () => {
 						style={ { fontSize: '13px' } }
 					>
 						{ sprintf(
-							/* translators: %s: total product count (already localized) */
+							/* translators: %s: total product count, formatted via toLocaleString using the browser locale. */
 							__(
 								'View all %s in Products \u2192',
 								'woocommerce-ai-storefront'
@@ -307,11 +324,12 @@ const SamplePreview = () => {
  * a product has no image (gracefully handles merchants who haven't
  * populated product media — the grid still reads as populated).
  *
- * Price field from Store API is already localized + currency-formatted
- * in a structured object; we prefer the `price_html` rendering when
- * available because it handles sale prices, variation ranges, and
- * on-sale markup correctly. Fallback to the structured `prices.price`
- * minor-unit value joined with the currency symbol.
+ * Price field from Store API comes as `price_html` — already localized,
+ * currency-formatted, and handles sale prices, variation ranges, and
+ * on-sale markup correctly. When `price_html` is absent we render no
+ * price line at all (the tile shows just the name + thumbnail) rather
+ * than trying to reconstruct from the minor-unit `prices.price` value,
+ * which would require separate currency-symbol + locale wiring.
  *
  * @param {Object} root0         Component props.
  * @param {Object} root0.product Store API product payload.
@@ -398,16 +416,25 @@ const SamplePreviewTile = ( { product } ) => {
 };
 
 /**
- * Radio-card row. Wraps a native `<label><input type="radio">` so
- * keyboard nav (Tab, Arrow keys within the radio group) and screen-
- * reader semantics work without any JS — the RadioControl component
- * can't host rich children, so we use the primitive directly and
- * style the wrapping label as a clickable card. `:focus-within` gives
- * the card a design-system-correct focus ring.
+ * Radio-card row. Wraps a native `<input type="radio">` inside a
+ * `<label>` so keyboard nav (Tab between the rows, Arrow keys within
+ * the radio group) and screen-reader semantics work without any JS
+ * — the @wordpress/components `RadioControl` component can't host
+ * rich per-option children, so we use the primitive directly and
+ * style the wrapping label as a clickable card. The implicit label
+ * association (the native behavior when an input is nested in a
+ * label) gives us click-target expansion + screen-reader labeling
+ * without needing an explicit `htmlFor`/`id` pair.
  *
- * Selected state renders the children (detail panel) below the label
- * row; unselected state hides them entirely (not just visually) so
- * the DOM stays small and assistive tech doesn't read hidden content.
+ * The radio input itself renders the browser-default focus
+ * indicator; we don't paint a card-level focus ring because there's
+ * no external stylesheet in this plugin (all styling is inline
+ * style props, which can't hold `:focus-within` pseudo-class rules).
+ *
+ * Selected state renders the children (detail panel) below the
+ * label row; unselected state hides them entirely (not just
+ * visually) so the DOM stays small and assistive tech doesn't read
+ * hidden content.
  *
  * @param {Object}   root0             Component props.
  * @param {string}   root0.value       This option's value.
@@ -418,7 +445,7 @@ const SamplePreviewTile = ( { product } ) => {
  * @param {string}   root0.badgeLabel  Text for the right-aligned badge.
  * @param {Function} root0.onSelect    Called with this option's value.
  * @param {Node}     root0.children    Detail panel content (rendered when selected).
- * @param {boolean}  root0.isLast      Suppresses the bottom border.
+ * @param {boolean}  root0.isLast      Suppresses the label's bottom border regardless of selection state.
  */
 const ModeRow = ( {
 	value,
@@ -432,27 +459,43 @@ const ModeRow = ( {
 	isLast,
 } ) => {
 	const isSelected = selected === value;
-	const inputId = `ai-storefront-mode-${ value }`;
 
 	return (
 		<>
+			{ /*
+			   `jsx-a11y/label-has-associated-control` rule is stricter
+			   than the HTML spec — it requires either an explicit
+			   `htmlFor`/`id` pair or declares the association
+			   heuristically. Here the label implicitly associates via
+			   the nested <input type="radio"> child (valid HTML since
+			   HTML4), which AT announces correctly. Explicit
+			   `htmlFor` + nested input is an HTML conformance error
+			   per Copilot's review, so we keep the nesting-only form
+			   and disable the linter for this specific case.
+			*/ }
+			{ /* eslint-disable-next-line jsx-a11y/label-has-associated-control */ }
 			<label
-				htmlFor={ inputId }
 				style={ {
 					display: 'flex',
 					alignItems: 'center',
 					gap: '12px',
 					padding: '14px 20px',
-					borderBottom:
-						isLast && ! isSelected
-							? 'none'
-							: `1px solid ${ colors.borderSubtle }`,
+					// The label's bottom border separates collapsed rows from
+					// each other. When this row is `isLast` we always drop
+					// the border — whether selected or not — because the
+					// enclosing Card already draws the outer border, and an
+					// extra line between the last row and the card edge
+					// produces a visible double-border on collapsed last,
+					// or a floating divider above the Save button on
+					// selected last.
+					borderBottom: isLast
+						? 'none'
+						: `1px solid ${ colors.borderSubtle }`,
 					background: isSelected ? '#f6fbfd' : 'transparent',
 					cursor: 'pointer',
 				} }
 			>
 				<input
-					id={ inputId }
 					type="radio"
 					name={ name }
 					value={ value }
@@ -538,7 +581,13 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		apiFetch( {
 			path: '/wc/v3/ai-storefront/admin/search/categories',
 		} )
-			.then( ( result ) => setCategories( result ) )
+			// Guard against unexpected response shapes (HTML error
+			// page, null, WP_Error envelope). Downstream code calls
+			// `categories.filter(...)` and `categories.every(...)` —
+			// a non-array would crash the settings tab entirely.
+			.then( ( result ) =>
+				setCategories( Array.isArray( result ) ? result : [] )
+			)
 			.catch( () => {} )
 			.finally( () => setIsLoadingCategories( false ) );
 	}, [] );
@@ -555,7 +604,12 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 				productSearch
 			) }`,
 		} )
-			.then( ( result ) => setProducts( result ) )
+			// Same Array.isArray guard as categories — downstream
+			// `products.map` + `products.forEach` would crash on a
+			// non-array response.
+			.then( ( result ) =>
+				setProducts( Array.isArray( result ) ? result : [] )
+			)
 			.catch( () => {} )
 			.finally( () => setIsLoadingProducts( false ) );
 	}, [ productSearch, settings.product_selection_mode ] );
@@ -629,8 +683,14 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// configuration. The "all" badge needs the total product count;
 	// SamplePreview exposes it via X-WP-Total but is only mounted in
 	// the expanded state, so we also fetch a lightweight total here
-	// for the collapsed-row display. Single request; the result is
-	// cached in component state.
+	// for the collapsed-row display. Three states:
+	//   - null     → still loading → show "Loading…"
+	//   - 'error'  → fetch failed or response was unusable → show
+	//                the generic label without a count ("Products")
+	//   - number   → finite integer → format + render
+	// Sentinel-string is cheaper than a separate error ref and the
+	// three-state union lines up with how the badge is rendered
+	// below.
 	const [ totalPublished, setTotalPublished ] = useState( null );
 	useEffect( () => {
 		let cancelled = false;
@@ -639,30 +699,46 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			parse: false,
 		} )
 			.then( ( response ) => {
-				const totalHeader = response.headers.get( 'X-WP-Total' );
-				if ( ! cancelled && totalHeader ) {
-					setTotalPublished( parseInt( totalHeader, 10 ) );
+				if ( cancelled ) {
+					return;
 				}
+				const totalHeader = response.headers.get( 'X-WP-Total' );
+				const parsed =
+					totalHeader !== null ? parseInt( totalHeader, 10 ) : NaN;
+				setTotalPublished(
+					Number.isFinite( parsed ) ? parsed : 'error'
+				);
 			} )
-			.catch( () => {} );
+			.catch( () => {
+				if ( ! cancelled ) {
+					setTotalPublished( 'error' );
+				}
+			} );
 		return () => {
 			cancelled = true;
 		};
 	}, [] );
 
-	const allBadge =
-		totalPublished === null
-			? __( 'Loading\u2026', 'woocommerce-ai-storefront' )
-			: sprintf(
-					/* translators: %s: total published product count. */
-					_n(
-						'%s product',
-						'%s products',
-						totalPublished,
-						'woocommerce-ai-storefront'
-					),
-					totalPublished.toLocaleString()
-			  );
+	let allBadge;
+	if ( totalPublished === null ) {
+		allBadge = __( 'Loading\u2026', 'woocommerce-ai-storefront' );
+	} else if ( totalPublished === 'error' ) {
+		// Don't show a count we can't trust; a bare "Products"
+		// label is still accurate and won't mislead merchants
+		// about catalog size.
+		allBadge = __( 'Products', 'woocommerce-ai-storefront' );
+	} else {
+		allBadge = sprintf(
+			/* translators: %s: total published product count, formatted via toLocaleString using the browser locale. */
+			_n(
+				'%s product',
+				'%s products',
+				totalPublished,
+				'woocommerce-ai-storefront'
+			),
+			totalPublished.toLocaleString()
+		);
+	}
 
 	const categoriesBadge = sprintf(
 		/* translators: %d: number of selected categories. */
@@ -739,9 +815,9 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 						onSelect={ setMode }
 					>
 						<PanelHeading>
-							{ totalPublished !== null
+							{ typeof totalPublished === 'number'
 								? sprintf(
-										/* translators: %s: total product count. */
+										/* translators: %s: total product count, formatted via toLocaleString using the browser locale. */
 										__(
 											'Currently sharing all %s published products',
 											'woocommerce-ai-storefront'
@@ -906,7 +982,10 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 										<CheckboxControl
 											label={ sprintf(
 												/* translators: %1$s: category name, %2$d: product count */
-												'%1$s (%2$d)',
+												__(
+													'%1$s (%2$d)',
+													'woocommerce-ai-storefront'
+												),
 												decodeEntities( cat.name ),
 												cat.count
 											) }
@@ -1051,7 +1130,10 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 										<CheckboxControl
 											label={ sprintf(
 												/* translators: %1$s: product name, %2$s: price */
-												'%1$s \u2014 %2$s',
+												__(
+													'%1$s \u2014 %2$s',
+													'woocommerce-ai-storefront'
+												),
 												decodeEntities( product.name ),
 												decodeEntities( product.price )
 											) }
@@ -1121,9 +1203,9 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									gap: '6px',
 								} }
 							>
-								{ INCLUDED_FIELDS.map( ( field ) => (
+								{ getIncludedFields().map( ( field ) => (
 									<span
-										key={ field }
+										key={ field.key }
 										style={ {
 											fontSize: '12px',
 											background: colors.surface,
@@ -1133,7 +1215,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 											color: colors.textPrimary,
 										} }
 									>
-										{ field }
+										{ field.label }
 									</span>
 								) ) }
 							</span>
