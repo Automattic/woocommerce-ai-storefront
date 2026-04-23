@@ -348,10 +348,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 							} }
 						>
 							{ isSaving
-								? __(
-										'Enabling…',
-										'woocommerce-ai-storefront'
-								  )
+								? __( 'Enabling…', 'woocommerce-ai-storefront' )
 								: __(
 										'Enable AI Storefront',
 										'woocommerce-ai-storefront'

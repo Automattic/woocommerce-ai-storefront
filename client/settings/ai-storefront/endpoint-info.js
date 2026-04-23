@@ -388,10 +388,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 									) }
 								</th>
 								<th>
-									{ __(
-										'URL',
-										'woocommerce-ai-storefront'
-									) }
+									{ __( 'URL', 'woocommerce-ai-storefront' ) }
 								</th>
 								<th>
 									{ __(
