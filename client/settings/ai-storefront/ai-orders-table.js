@@ -349,13 +349,23 @@ const AIOrdersTable = () => {
 		[ data, view, fields ]
 	);
 
-	// Hide the card entirely when there are no AI-attributed orders
-	// yet. The stat cards above already tell the merchant "0 AI
-	// orders" — a visible empty table here would be redundant noise
-	// before the first agent-sourced sale. First sale, the card
-	// appears naturally.
+	// Render a "ready for your first order" empty state when there
+	// are no AI-attributed orders yet. Earlier revisions hid the
+	// card entirely in this state, but the empty space made the
+	// Overview tab look under-configured — merchants who just
+	// enabled the plugin couldn't see what the capability would
+	// actually produce. A medium empty state (ghost row framed by
+	// the real column headers + positive-framing copy) fixes that:
+	// the table structure is visible so the layout self-documents
+	// what's coming, and the copy sets realistic expectations
+	// without over-promising.
+	//
+	// Distinct from the `recentOrders` not-yet-loaded state — if
+	// the fetch hasn't resolved we return null so DataViews owns
+	// the loading render downstream. The empty state below is for
+	// `recentOrders` resolved with zero rows.
 	if ( recentOrders && data.length === 0 ) {
-		return null;
+		return <EmptyState />;
 	}
 
 	return (
@@ -390,5 +400,204 @@ const AIOrdersTable = () => {
 		</Card>
 	);
 };
+
+/**
+ * Empty-state card rendered when AI attribution is active but no
+ * orders have been referred yet.
+ *
+ * Visual anatomy
+ * --------------
+ * Three stacked elements inside the same Card shell AIOrdersTable
+ * uses on the loaded-with-data path, so the "before first order"
+ * and "after first order" states read as the same surface:
+ *
+ *  1. Header ("Recent AI Orders" — same as the populated card).
+ *  2. Column header strip (Order / Date / Status / Agent / Total).
+ *     Real labels, real grid, zero data. Signals the capability
+ *     by showing the table the merchant will see once orders land,
+ *     without the alternative of mocking a fake row (which would
+ *     require fake order numbers and look dishonest).
+ *  3. A single "ghost" body row rendered at low opacity with
+ *     placeholder blocks where real values would sit. One row,
+ *     not three — one is enough to communicate "this is a table"
+ *     without implying the store is deeper into activity than it
+ *     is.
+ *  4. Primary copy ("Ready for your first AI order") + supporting
+ *     sentence, centered below the ghost row.
+ *
+ * Copy decisions
+ * --------------
+ * Positive framing rather than "No orders yet" — the merchant has
+ * JUST enabled AI discovery and this state will be the default for
+ * every fresh store, so the empty state shouldn't read like a
+ * problem. It's the start of the pipeline, not an error.
+ *
+ * The sentence enumerates the concrete trigger ("refers a shopper
+ * who buys") rather than leaving the merchant to guess what
+ * "appearing here" depends on. Specificity > generality when the
+ * goal is managing expectation.
+ *
+ * We deliberately do NOT list the five assistant names (ChatGPT,
+ * Gemini, etc.) — they already appear prominently on the pre-enable
+ * hero and again in the Discovery tab. Repeating them here would
+ * sprawl the empty state into marketing territory when its job is
+ * just "tell the merchant what lands here."
+ *
+ * Not exported — only used by AIOrdersTable.
+ */
+const EmptyState = () => (
+	<Card style={ { marginTop: '16px' } }>
+		<CardBody>
+			<h3 style={ { margin: '0 0 12px', fontSize: '14px' } }>
+				{ __( 'Recent AI Orders', 'woocommerce-ai-storefront' ) }
+			</h3>
+
+			<GhostTable />
+
+			<div
+				style={ {
+					textAlign: 'center',
+					padding: '20px 16px 4px',
+				} }
+			>
+				<p
+					style={ {
+						margin: '0 0 6px',
+						fontSize: '14px',
+						fontWeight: '600',
+						color: colors.textPrimary,
+					} }
+				>
+					{ __(
+						'Ready for your first AI order',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+				<p
+					style={ {
+						margin: 0,
+						fontSize: '13px',
+						color: colors.textSecondary,
+						maxWidth: '520px',
+						marginLeft: 'auto',
+						marginRight: 'auto',
+						lineHeight: '1.5',
+					} }
+				>
+					{ __(
+						'Your store is discoverable by AI shopping assistants. When one refers a shopper who buys, the order will appear here with the referring agent.',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+			</div>
+		</CardBody>
+	</Card>
+);
+
+/**
+ * The five-column header + single ghost body row. Uses CSS grid
+ * (not a `<table>`) because DataViews itself renders with grid-based
+ * DOM on the populated path — keeping the markup family consistent
+ * means the empty state's column widths flow the same way the real
+ * table's will, so there's no visual jump when the first order
+ * arrives and the component swaps from EmptyState to <DataViews>.
+ *
+ * Column template mirrors DataViews' default equi-width distribution
+ * (each column at `minmax(0, 1fr)`). If a future wider-screen layout
+ * tweak changes DataViews' intrinsic sizing, this ghost will need
+ * the same tweak — kept in this single file so they're easy to keep
+ * in lockstep.
+ *
+ * The ghost body row is rendered at 0.5 opacity on a surfaceSubtle
+ * background rather than a `dashed` or `hatched` treatment — dashed
+ * patterns are reserved in WP admin for "placeholder / not-yet-built"
+ * signaling, and this isn't that. It's a real surface showing real
+ * future content structure; opacity says "dormant" without misusing
+ * the placeholder idiom.
+ */
+const GhostTable = () => (
+	<div
+		style={ {
+			border: `1px solid ${ colors.borderSubtle }`,
+			borderRadius: '3px',
+			overflow: 'hidden',
+		} }
+	>
+		<div
+			style={ {
+				display: 'grid',
+				gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+				gap: '12px',
+				padding: '12px 16px',
+				background: colors.surfaceSubtle,
+				borderBottom: `1px solid ${ colors.borderSubtle }`,
+				fontSize: '12px',
+				fontWeight: '600',
+				color: colors.textSecondary,
+				textTransform: 'uppercase',
+				letterSpacing: '0.4px',
+			} }
+		>
+			<span>{ __( 'Order', 'woocommerce-ai-storefront' ) }</span>
+			<span>{ __( 'Date', 'woocommerce-ai-storefront' ) }</span>
+			<span>{ __( 'Status', 'woocommerce-ai-storefront' ) }</span>
+			<span>{ __( 'Agent', 'woocommerce-ai-storefront' ) }</span>
+			<span>{ __( 'Total', 'woocommerce-ai-storefront' ) }</span>
+		</div>
+		<div
+			style={ {
+				display: 'grid',
+				gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+				gap: '12px',
+				padding: '14px 16px',
+				opacity: 0.5,
+			} }
+			aria-hidden="true"
+		>
+			<GhostCell width="45%" />
+			<GhostCell width="75%" />
+			<GhostPill />
+			<GhostCell width="55%" />
+			<GhostCell width="40%" />
+		</div>
+	</div>
+);
+
+/**
+ * A muted bar standing in for a text cell.
+ *
+ * @param {Object} root0       Props.
+ * @param {string} root0.width Inline width (e.g. "55%") so the
+ *                             ghost row's cells have natural
+ *                             variation rather than reading as
+ *                             identical bars.
+ */
+const GhostCell = ( { width } ) => (
+	<div
+		style={ {
+			height: '12px',
+			width,
+			background: colors.surfaceMuted,
+			borderRadius: '3px',
+		} }
+	/>
+);
+
+/**
+ * A muted pill standing in for the colored status pill. Matches
+ * the real StatusPill's 4px radius + 22px height so the ghost row
+ * and the first populated row have the same vertical rhythm when
+ * the table transitions from empty → first order.
+ */
+const GhostPill = () => (
+	<div
+		style={ {
+			height: '22px',
+			width: '70%',
+			background: colors.surfaceMuted,
+			borderRadius: '4px',
+		} }
+	/>
+);
 
 export default AIOrdersTable;
