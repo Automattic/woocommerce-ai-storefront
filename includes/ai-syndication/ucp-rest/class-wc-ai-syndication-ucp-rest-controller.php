@@ -268,7 +268,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			WC_AI_Syndication_Logger::debug( 'UCP catalog/search rejected: syndication disabled' );
 			return self::ucp_catalog_error_response(
 				$capability,
-				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
+				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
 				'ucp_disabled',
 				null,
 				503
@@ -333,7 +333,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			);
 			return self::ucp_catalog_error_response(
 				$capability,
-				__( 'Unable to fetch products from the store.', 'woocommerce-ai-syndication' ),
+				__( 'Unable to fetch products from the store.', 'woocommerce-ai-storefront' ),
 				'ucp_internal_error',
 				null,
 				500
@@ -360,7 +360,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			);
 			return self::ucp_catalog_error_response(
 				$capability,
-				__( 'Unable to fetch products from the store.', 'woocommerce-ai-syndication' ),
+				__( 'Unable to fetch products from the store.', 'woocommerce-ai-storefront' ),
 				'ucp_internal_error',
 				null,
 				500
@@ -757,7 +757,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			WC_AI_Syndication_Logger::debug( 'UCP catalog/lookup rejected: syndication disabled' );
 			return self::ucp_catalog_error_response(
 				$capability,
-				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
+				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
 				'ucp_disabled',
 				null,
 				503
@@ -784,7 +784,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			WC_AI_Syndication_Logger::debug( 'UCP catalog/lookup rejected: "ids" is not an array' );
 			return self::ucp_catalog_error_response(
 				$capability,
-				__( 'Request body must include an "ids" array.', 'woocommerce-ai-syndication' ),
+				__( 'Request body must include an "ids" array.', 'woocommerce-ai-storefront' ),
 				'invalid_input',
 				'$.ids'
 			);
@@ -794,7 +794,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			WC_AI_Syndication_Logger::debug( 'UCP catalog/lookup rejected: empty "ids" array' );
 			return self::ucp_catalog_error_response(
 				$capability,
-				__( 'The "ids" array must contain at least one ID.', 'woocommerce-ai-syndication' ),
+				__( 'The "ids" array must contain at least one ID.', 'woocommerce-ai-storefront' ),
 				'invalid_input',
 				'$.ids'
 			);
@@ -812,7 +812,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				$capability,
 				sprintf(
 					/* translators: %d is the maximum number of IDs per request. */
-					__( 'The "ids" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-syndication' ),
+					__( 'The "ids" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-storefront' ),
 					self::MAX_IDS_PER_LOOKUP
 				),
 				'invalid_input',
@@ -953,7 +953,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Syndication_Logger::debug( 'UCP checkout-sessions rejected: syndication disabled' );
 			return self::ucp_checkout_error_response(
-				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-syndication' ),
+				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
 				'ucp_disabled',
 				null,
 				503
@@ -964,7 +964,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 		if ( ! is_array( $line_items_raw ) || empty( $line_items_raw ) ) {
 			return self::ucp_checkout_error_response(
-				__( 'Request must include a non-empty "line_items" array.', 'woocommerce-ai-syndication' ),
+				__( 'Request must include a non-empty "line_items" array.', 'woocommerce-ai-storefront' ),
 				'invalid_input',
 				'$.line_items'
 			);
@@ -974,7 +974,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			return self::ucp_checkout_error_response(
 				sprintf(
 					/* translators: %d is the maximum number of line items per request. */
-					__( 'The "line_items" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-syndication' ),
+					__( 'The "line_items" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-storefront' ),
 					self::MAX_LINE_ITEMS_PER_CHECKOUT
 				),
 				'invalid_input',
@@ -1118,7 +1118,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				'path'     => '$.line_items',
 				'content'  => sprintf(
 					/* translators: 1: current subtotal (minor units), 2: minimum order (minor units). */
-					__( 'Order subtotal %1$d is below the merchant minimum of %2$d (minor units). Add more items to proceed.', 'woocommerce-ai-syndication' ),
+					__( 'Order subtotal %1$d is below the merchant minimum of %2$d (minor units). Add more items to proceed.', 'woocommerce-ai-storefront' ),
 					$subtotal_amount,
 					$minimum_order_amount
 				),
@@ -1137,7 +1137,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			// Filter hook lets merchants override (e.g. "Review and
 			// secure payment at Acme Store") without an admin UI; the
 			// default is intentionally generic.
-			$default_handoff = __( 'Complete your purchase on the merchant site.', 'woocommerce-ai-syndication' );
+			$default_handoff = __( 'Complete your purchase on the merchant site.', 'woocommerce-ai-storefront' );
 			$handoff_content = apply_filters(
 				'wc_ai_syndication_checkout_handoff_message',
 				$default_handoff,
@@ -1175,7 +1175,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				'type'     => 'info',
 				'code'     => 'total_is_provisional',
 				'severity' => 'advisory',
-				'content'  => __( 'Total excludes tax and shipping, which are calculated at the merchant checkout.', 'woocommerce-ai-syndication' ),
+				'content'  => __( 'Total excludes tax and shipping, which are calculated at the merchant checkout.', 'woocommerce-ai-storefront' ),
 			];
 		}
 
@@ -2000,7 +2000,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					'%1$d variation of product %2$d is not included in the variants list; the list is incomplete.',
 					'%1$d variations of product %2$d are not included in the variants list; the list is incomplete.',
 					$skipped,
-					'woocommerce-ai-syndication'
+					'woocommerce-ai-storefront'
 				),
 				$skipped,
 				$product_id
@@ -2067,7 +2067,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				'code'     => 'invalid_pagination_shape',
 				'severity' => 'advisory',
 				'path'     => '$.pagination',
-				'content'  => __( 'pagination must be an object; using defaults.', 'woocommerce-ai-syndication' ),
+				'content'  => __( 'pagination must be an object; using defaults.', 'woocommerce-ai-storefront' ),
 			];
 		}
 
@@ -2098,7 +2098,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 							'path'     => '$.pagination.limit',
 							'content'  => sprintf(
 								/* translators: 1: requested limit, 2: applied limit, 3: max allowed. */
-								__( 'Requested pagination.limit %1$d was clamped to %2$d (allowed range: 1–%3$d).', 'woocommerce-ai-syndication' ),
+								__( 'Requested pagination.limit %1$d was clamped to %2$d (allowed range: 1–%3$d).', 'woocommerce-ai-storefront' ),
 								$requested,
 								$limit,
 								self::MAX_SEARCH_LIMIT
@@ -2118,7 +2118,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 						'path'     => '$.pagination.limit',
 						'content'  => sprintf(
 							/* translators: %d is the applied default limit. */
-							__( 'pagination.limit must be a non-negative integer; using default %d.', 'woocommerce-ai-syndication' ),
+							__( 'pagination.limit must be a non-negative integer; using default %d.', 'woocommerce-ai-storefront' ),
 							$limit
 						),
 					];
@@ -2143,7 +2143,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 						'code'     => 'invalid_cursor',
 						'severity' => 'advisory',
 						'path'     => '$.pagination.cursor',
-						'content'  => __( 'Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug.', 'woocommerce-ai-syndication' ),
+						'content'  => __( 'Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug.', 'woocommerce-ai-storefront' ),
 					];
 				}
 			}
@@ -2176,7 +2176,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					'code'     => 'invalid_sort_shape',
 					'severity' => 'advisory',
 					'path'     => '$.sort',
-					'content'  => __( 'sort.field and sort.direction must be strings; using default ordering.', 'woocommerce-ai-syndication' ),
+					'content'  => __( 'sort.field and sort.direction must be strings; using default ordering.', 'woocommerce-ai-storefront' ),
 				];
 			} else {
 				$field     = strtolower( trim( $raw_field ) );
@@ -2212,7 +2212,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 						'path'     => '$.sort.field',
 						'content'  => sprintf(
 							/* translators: %s is the unsupported sort field the agent sent. */
-							__( 'Sort field "%s" is not supported; using default ordering.', 'woocommerce-ai-syndication' ),
+							__( 'Sort field "%s" is not supported; using default ordering.', 'woocommerce-ai-storefront' ),
 							$raw_field
 						),
 					];
@@ -2243,7 +2243,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					'path'     => '$.filters.categories[' . $index . ']',
 					'content'  => sprintf(
 						/* translators: %s is the category slug/name the agent sent that couldn't be resolved. */
-						__( 'Category "%s" was not found; filter ignored for this value.', 'woocommerce-ai-syndication' ),
+						__( 'Category "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
 					),
 				];
@@ -2315,7 +2315,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 						'path'     => '$.filters.price',
 						'content'  => sprintf(
 							/* translators: 1: agent-supplied currency, 2: store currency. */
-							__( 'context.currency "%1$s" does not match store currency "%2$s" and conversion is not supported; price filter ignored.', 'woocommerce-ai-syndication' ),
+							__( 'context.currency "%1$s" does not match store currency "%2$s" and conversion is not supported; price filter ignored.', 'woocommerce-ai-storefront' ),
 							$ctx_currency,
 							$store_currency
 						),
@@ -2366,7 +2366,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					'path'     => '$.filters.tags[' . $index . ']',
 					'content'  => sprintf(
 						/* translators: %s is the tag slug/name the agent sent that couldn't be resolved. */
-						__( 'Tag "%s" was not found; filter ignored for this value.', 'woocommerce-ai-syndication' ),
+						__( 'Tag "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
 					),
 				];
@@ -2396,7 +2396,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					'path'     => '$.filters.brand[' . $index . ']',
 					'content'  => sprintf(
 						/* translators: %s is the brand slug/name the agent sent that couldn't be resolved. */
-						__( 'Brand "%s" was not found; filter ignored for this value.', 'woocommerce-ai-syndication' ),
+						__( 'Brand "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
 					),
 				];
@@ -2486,7 +2486,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					'path'     => sprintf( "\$.filters.attributes['%s']", $escaped_key ),
 					'content'  => sprintf(
 						/* translators: %s is the attribute taxonomy name the agent sent that doesn't exist on the store. */
-						__( 'Attribute taxonomy "%s" was not found on the store; filter ignored for this axis.', 'woocommerce-ai-syndication' ),
+						__( 'Attribute taxonomy "%s" was not found on the store; filter ignored for this axis.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad['taxonomy'] )
 					),
 				];
@@ -2725,7 +2725,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			'path'     => $path,
 			'content'  => sprintf(
 				/* translators: 1: filter path, 2: original count, 3: applied cap. */
-				__( '%1$s received %2$d values; truncated to the first %3$d. Further values were ignored.', 'woocommerce-ai-syndication' ),
+				__( '%1$s received %2$d values; truncated to the first %3$d. Further values were ignored.', 'woocommerce-ai-storefront' ),
 				$path,
 				$original_count,
 				self::MAX_FILTER_VALUES
@@ -2760,7 +2760,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			'path'     => $path,
 			'content'  => sprintf(
 				/* translators: 1: filter path, 2: original count, 3: applied cap. */
-				__( '%1$s received %2$d keys; truncated to the first %3$d. Further keys were ignored.', 'woocommerce-ai-syndication' ),
+				__( '%1$s received %2$d keys; truncated to the first %3$d. Further keys were ignored.', 'woocommerce-ai-storefront' ),
 				$path,
 				$original_count,
 				self::MAX_FILTER_VALUES
@@ -3174,7 +3174,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 						'path'     => $path,
 						'content'  => sprintf(
 							/* translators: 1: expected amount (minor units), 2: current amount (minor units). */
-							__( 'Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched.', 'woocommerce-ai-syndication' ),
+							__( 'Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched.', 'woocommerce-ai-storefront' ),
 							$expected,
 							$unit_price_minor
 						),
@@ -3325,25 +3325,25 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	private static function default_error_content( string $code ): string {
 		switch ( $code ) {
 			case 'invalid_line_item':
-				return __( 'Line item must be an object with "item.id" and "quantity".', 'woocommerce-ai-syndication' );
+				return __( 'Line item must be an object with "item.id" and "quantity".', 'woocommerce-ai-storefront' );
 			case 'invalid_quantity':
 				return sprintf(
 					/* translators: %d is the maximum quantity per line item. */
-					__( 'Quantity must be a positive integer up to %d.', 'woocommerce-ai-syndication' ),
+					__( 'Quantity must be a positive integer up to %d.', 'woocommerce-ai-storefront' ),
 					self::MAX_QUANTITY_PER_LINE_ITEM
 				);
 			case 'not_found':
-				return __( 'Product not found.', 'woocommerce-ai-syndication' );
+				return __( 'Product not found.', 'woocommerce-ai-storefront' );
 			case 'product_type_unsupported':
-				return __( 'Product type cannot be added via the Shareable Checkout URL; link to the product page directly.', 'woocommerce-ai-syndication' );
+				return __( 'Product type cannot be added via the Shareable Checkout URL; link to the product page directly.', 'woocommerce-ai-storefront' );
 			case 'out_of_stock':
-				return __( 'Product is out of stock.', 'woocommerce-ai-syndication' );
+				return __( 'Product is out of stock.', 'woocommerce-ai-storefront' );
 			case 'variation_required':
 				// Caller overrides with the more specific message; default
 				// here matches in case the override is ever dropped.
-				return __( 'Product is variable — specify a variation ID instead of the parent product ID.', 'woocommerce-ai-syndication' );
+				return __( 'Product is variable — specify a variation ID instead of the parent product ID.', 'woocommerce-ai-storefront' );
 			default:
-				return __( 'Line item could not be processed.', 'woocommerce-ai-syndication' );
+				return __( 'Line item could not be processed.', 'woocommerce-ai-storefront' );
 		}
 	}
 }

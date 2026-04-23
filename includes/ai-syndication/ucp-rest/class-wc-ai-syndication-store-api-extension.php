@@ -228,7 +228,7 @@ class WC_AI_Syndication_Store_Api_Extension {
 			'barcodes'      => [
 				'description' => __(
 					'Product identifiers (GTIN, UPC, EAN, MPN, ISBN). Each entry is a typed barcode.',
-					'woocommerce-ai-syndication'
+					'woocommerce-ai-storefront'
 				),
 				'type'        => 'array',
 				'context'     => [ 'view' ],
@@ -240,14 +240,14 @@ class WC_AI_Syndication_Store_Api_Extension {
 							'type'        => 'string',
 							'description' => __(
 								'Barcode type (gtin8, gtin12, gtin13, gtin14, other).',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							),
 						],
 						'value' => [
 							'type'        => 'string',
 							'description' => __(
 								'The barcode value as stored by the merchant.',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							),
 						],
 					],
@@ -256,7 +256,7 @@ class WC_AI_Syndication_Store_Api_Extension {
 			'date_created'  => [
 				'description' => __(
 					'RFC 3339 / ISO 8601 timestamp (UTC, `Z`-suffixed) when the product was created. Null when not available. Exposed here because Store API strips product date fields from responses by default; our UCP translator consumes this to populate `product.published_at` per the UCP core shape.',
-					'woocommerce-ai-syndication'
+					'woocommerce-ai-storefront'
 				),
 				'type'        => [ 'string', 'null' ],
 				'context'     => [ 'view' ],
@@ -265,7 +265,7 @@ class WC_AI_Syndication_Store_Api_Extension {
 			'date_modified' => [
 				'description' => __(
 					'RFC 3339 / ISO 8601 timestamp (UTC, `Z`-suffixed) of the product\'s last modification. Null when not available. Consumed by the UCP translator for `product.updated_at`.',
-					'woocommerce-ai-syndication'
+					'woocommerce-ai-storefront'
 				),
 				'type'        => [ 'string', 'null' ],
 				'context'     => [ 'view' ],

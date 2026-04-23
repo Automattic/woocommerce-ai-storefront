@@ -86,7 +86,7 @@ class WC_AI_Syndication_Updater {
 		$checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
 			self::GITHUB_REPO_URL,
 			WC_AI_SYNDICATION_PLUGIN_FILE,
-			'woocommerce-ai-syndication'
+			'woocommerce-ai-storefront'
 		);
 
 		// Track GitHub releases (tagged, published) rather than

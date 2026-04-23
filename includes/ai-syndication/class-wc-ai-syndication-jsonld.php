@@ -212,7 +212,7 @@ class WC_AI_Syndication_JsonLd {
 			],
 			'hasOfferCatalog'    => [
 				'@type'           => 'OfferCatalog',
-				'name'            => __( 'Products', 'woocommerce-ai-syndication' ),
+				'name'            => __( 'Products', 'woocommerce-ai-storefront' ),
 				'itemListElement' => $this->get_catalog_summary(),
 			],
 		];

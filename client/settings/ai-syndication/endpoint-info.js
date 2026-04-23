@@ -220,7 +220,7 @@ const StatusBadge = ( { status } ) => {
 				} }
 			>
 				<Spinner />
-				{ __( 'Checking…', 'woocommerce-ai-syndication' ) }
+				{ __( 'Checking…', 'woocommerce-ai-storefront' ) }
 			</span>
 		);
 	}
@@ -228,17 +228,17 @@ const StatusBadge = ( { status } ) => {
 	const config = {
 		reachable: {
 			icon: '✓',
-			label: __( 'Reachable', 'woocommerce-ai-syndication' ),
+			label: __( 'Reachable', 'woocommerce-ai-storefront' ),
 			color: colors.success,
 		},
 		unreachable: {
 			icon: '✗',
-			label: __( 'Not reachable', 'woocommerce-ai-syndication' ),
+			label: __( 'Not reachable', 'woocommerce-ai-storefront' ),
 			color: colors.error,
 		},
 		disabled: {
 			icon: '—',
-			label: __( 'Not published', 'woocommerce-ai-syndication' ),
+			label: __( 'Not published', 'woocommerce-ai-storefront' ),
 			color: colors.textMuted,
 		},
 	}[ effective ] || {
@@ -347,7 +347,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
 						{ __(
 							'Discovery Endpoints',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</h3>
 					<p
@@ -359,7 +359,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					>
 						{ __(
 							'These endpoints are automatically available when AI Storefront is enabled.',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</p>
 
@@ -373,7 +373,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						>
 							{ __(
 								'AI Storefront is currently disabled. Enable it in the Overview tab to activate these endpoints.',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							) }
 						</p>
 					) }
@@ -384,25 +384,25 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								<th>
 									{ __(
 										'Endpoint',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									) }
 								</th>
 								<th>
 									{ __(
 										'URL',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									) }
 								</th>
 								<th>
 									{ __(
 										'Status',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									) }
 								</th>
 								<th>
 									{ __(
 										'Purpose',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									) }
 								</th>
 							</tr>
@@ -431,7 +431,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								<td>
 									{ __(
 										'Machine-readable store guide for AI crawlers',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									) }
 								</td>
 							</tr>
@@ -456,7 +456,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								<td>
 									{ __(
 										'Universal Commerce Protocol — declares capabilities',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									) }
 								</td>
 							</tr>
@@ -481,7 +481,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								<td>
 									{ __(
 										'AI-crawler allow-list (Allow/Disallow directives appended to your site\u2019s robots.txt)',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									) }
 								</td>
 							</tr>
@@ -504,7 +504,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								<td>
 									{ __(
 										'WooCommerce Store API for product search and cart (public)',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									) }
 								</td>
 							</tr>
@@ -527,7 +527,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						>
 							{ __(
 								'One or more endpoints are not reachable. If you just upgraded the plugin, try Settings → Permalinks → Save Changes to flush rewrite rules, then click Re-check.',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							) }
 						</p>
 					) }
@@ -548,7 +548,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						>
 							{ __(
 								'Reachability is checked from your browser.',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							) }
 						</span>
 						<Button
@@ -556,7 +556,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							size="compact"
 							onClick={ () => checkEndpoints() }
 						>
-							{ __( 'Re-check', 'woocommerce-ai-syndication' ) }
+							{ __( 'Re-check', 'woocommerce-ai-storefront' ) }
 						</Button>
 					</div>
 				</CardBody>
@@ -568,7 +568,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
 						{ __(
 							'AI Crawler Access',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</h3>
 					<p
@@ -580,7 +580,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					>
 						{ __(
 							'Control which AI crawlers are allowed to discover your store via robots.txt. Unchecked crawlers will be blocked from crawling your product pages.',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</p>
 
@@ -601,7 +601,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						>
 							{ __(
 								'Allowed crawlers',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							) }
 						</span>
 						<span>
@@ -628,7 +628,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 									/* translators: %1$d: allowed count, %2$d: total count */
 									__(
 										'%1$d of %2$d',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									),
 									checkedCount,
 									KNOWN_CRAWLERS.length
@@ -645,7 +645,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							>
 								{ __(
 									'Select all',
-									'woocommerce-ai-syndication'
+									'woocommerce-ai-storefront'
 								) }
 							</Button>
 							{ ' | ' }
@@ -658,7 +658,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								} }
 								onClick={ clearAll }
 							>
-								{ __( 'Clear', 'woocommerce-ai-syndication' ) }
+								{ __( 'Clear', 'woocommerce-ai-storefront' ) }
 							</Button>
 						</span>
 					</div>
@@ -680,22 +680,22 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							key: 'live',
 							title: __(
 								'Live browsing',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							),
 							subtitle: __(
 								'User-initiated fetches during an active query. These agents see fresh inventory and route revenue — recommended on.',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							),
 						},
 						{
 							key: 'training',
 							title: __(
 								'Training crawlers',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							),
 							subtitle: __(
 								'Static crawls that feed AI model training. Captured snapshots may surface as stale answers months later, with wrong prices or availability. Merchant discretion.',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							),
 						},
 					].map( ( group, groupIndex ) => {
@@ -776,7 +776,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					>
 						{ __(
 							'These rules are added to your robots.txt. Well-behaved AI crawlers respect robots.txt directives.',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</p>
 					{ /*
@@ -806,7 +806,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					>
 						{ __(
 							'AI-referred orders appear in the Orders list under WooCommerce\u2019s built-in Origin column as each agent\u2019s brand name (e.g. "Source: ChatGPT", "Source: Gemini") rather than the technical crawler IDs shown above.',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</p>
 				</CardBody>
@@ -832,7 +832,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 			<Card style={ { marginTop: '32px' } }>
 				<CardBody>
 					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
-						{ __( 'Rate Limits', 'woocommerce-ai-syndication' ) }
+						{ __( 'Rate Limits', 'woocommerce-ai-storefront' ) }
 					</h3>
 					<p
 						style={ {
@@ -843,7 +843,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					>
 						{ __(
 							'Control how frequently AI crawlers can query your Store API. Higher limits allow faster product discovery but use more server resources.',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</p>
 
@@ -853,28 +853,28 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							{
 								label: __(
 									'Recommended — 25/min (works well for most stores)',
-									'woocommerce-ai-syndication'
+									'woocommerce-ai-storefront'
 								),
 								value: 'recommended',
 							},
 							{
 								label: __(
 									'Conservative — 10/min (shared hosting or low-traffic stores)',
-									'woocommerce-ai-syndication'
+									'woocommerce-ai-storefront'
 								),
 								value: 'conservative',
 							},
 							{
 								label: __(
 									'Generous — 100/min (high-traffic stores on dedicated hosting)',
-									'woocommerce-ai-syndication'
+									'woocommerce-ai-storefront'
 								),
 								value: 'generous',
 							},
 							{
 								label: __(
 									'Custom',
-									'woocommerce-ai-syndication'
+									'woocommerce-ai-storefront'
 								),
 								value: 'custom',
 							},
@@ -906,7 +906,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								__nextHasNoMarginBottom
 								label={ __(
 									'Requests per minute',
-									'woocommerce-ai-syndication'
+									'woocommerce-ai-storefront'
 								) }
 								type="number"
 								value={ rpm }
@@ -931,7 +931,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					>
 						{ __(
 							'Limits are applied per AI crawler (identified by user-agent string) using the WooCommerce Store API rate limiter. Your regular store traffic is not affected.',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</p>
 				</CardBody>
@@ -960,8 +960,8 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					onClick={ onSave }
 				>
 					{ isSaving
-						? __( 'Saving…', 'woocommerce-ai-syndication' )
-						: __( 'Save Changes', 'woocommerce-ai-syndication' ) }
+						? __( 'Saving…', 'woocommerce-ai-storefront' )
+						: __( 'Save Changes', 'woocommerce-ai-storefront' ) }
 				</Button>
 			</div>
 		</div>

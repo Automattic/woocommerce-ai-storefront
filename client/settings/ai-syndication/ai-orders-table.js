@@ -201,7 +201,7 @@ const AIOrdersTable = () => {
 		() => [
 			{
 				id: 'order',
-				label: __( 'Order', 'woocommerce-ai-syndication' ),
+				label: __( 'Order', 'woocommerce-ai-storefront' ),
 				enableSorting: true,
 				render: ( { item } ) => {
 					const href = safeHref( item.edit_url );
@@ -232,7 +232,7 @@ const AIOrdersTable = () => {
 			},
 			{
 				id: 'date',
-				label: __( 'Date', 'woocommerce-ai-syndication' ),
+				label: __( 'Date', 'woocommerce-ai-storefront' ),
 				enableSorting: true,
 				render: ( { item } ) => (
 					<span title={ item.date }>{ item.date_display }</span>
@@ -243,7 +243,7 @@ const AIOrdersTable = () => {
 			},
 			{
 				id: 'status',
-				label: __( 'Status', 'woocommerce-ai-syndication' ),
+				label: __( 'Status', 'woocommerce-ai-storefront' ),
 				enableSorting: true,
 				// `elements` declares the closed enum of valid values
 				// for the field. DataViews treats element-typed fields
@@ -314,14 +314,14 @@ const AIOrdersTable = () => {
 			},
 			{
 				id: 'agent',
-				label: __( 'Agent', 'woocommerce-ai-syndication' ),
+				label: __( 'Agent', 'woocommerce-ai-storefront' ),
 				enableSorting: true,
 				render: ( { item } ) => <strong>{ item.agent || '—' }</strong>,
 				getValue: ( { item } ) => item.agent,
 			},
 			{
 				id: 'total',
-				label: __( 'Total', 'woocommerce-ai-syndication' ),
+				label: __( 'Total', 'woocommerce-ai-storefront' ),
 				enableSorting: true,
 				render: ( { item } ) =>
 					formatCurrency( item.total, item.currency ),
@@ -367,7 +367,7 @@ const AIOrdersTable = () => {
 						fontSize: '14px',
 					} }
 				>
-					{ __( 'Recent AI Orders', 'woocommerce-ai-syndication' ) }
+					{ __( 'Recent AI Orders', 'woocommerce-ai-storefront' ) }
 				</h3>
 				<DataViews
 					data={ processedData }

@@ -49,7 +49,7 @@ const AISyndicationSettings = () => {
 			<div style={ { textAlign: 'center', padding: '40px' } }>
 				<Spinner />
 				<p>
-					{ __( 'Loading settings…', 'woocommerce-ai-syndication' ) }
+					{ __( 'Loading settings…', 'woocommerce-ai-storefront' ) }
 				</p>
 			</div>
 		);
@@ -58,15 +58,15 @@ const AISyndicationSettings = () => {
 	const tabs = [
 		{
 			name: 'overview',
-			title: __( 'Overview', 'woocommerce-ai-syndication' ),
+			title: __( 'Overview', 'woocommerce-ai-storefront' ),
 		},
 		{
 			name: 'products',
-			title: __( 'Product Visibility', 'woocommerce-ai-syndication' ),
+			title: __( 'Product Visibility', 'woocommerce-ai-storefront' ),
 		},
 		{
 			name: 'endpoints',
-			title: __( 'Discovery', 'woocommerce-ai-syndication' ),
+			title: __( 'Discovery', 'woocommerce-ai-storefront' ),
 		},
 	];
 
@@ -308,7 +308,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 						>
 							{ __(
 								'Status: Not enabled',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							) }
 						</p>
 						<h2
@@ -322,7 +322,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 						>
 							{ __(
 								'Make your store ready for AI shopping assistants',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							) }
 						</h2>
 						<p
@@ -335,7 +335,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 						>
 							{ __(
 								'Go live in one click. Checkout stays on your store — no fees, no middleman, fully reversible.',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							) }
 						</p>
 						<Button
@@ -350,11 +350,11 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 							{ isSaving
 								? __(
 										'Enabling…',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 								  )
 								: __(
 										'Enable AI Storefront',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 								  ) }
 						</Button>
 						{ /* Inline reassurance — the de-risking text
@@ -375,7 +375,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 						>
 							{ __(
 								'Read-only · Reversible anytime · No frontend changes',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							) }
 						</p>
 					</FlexItem>
@@ -416,12 +416,12 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 					icon={ globe }
 					title={ __(
 						'One setup, every AI assistant',
-						'woocommerce-ai-syndication'
+						'woocommerce-ai-storefront'
 					) }
 				>
 					{ __(
 						'Your catalog becomes visible to ChatGPT, Gemini, Claude, Perplexity, and Copilot — with no per-platform work when new agents launch.',
-						'woocommerce-ai-syndication'
+						'woocommerce-ai-storefront'
 					) }
 				</ValueCard>
 			</FlexItem>
@@ -430,12 +430,12 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 					icon={ shield }
 					title={ __(
 						'Checkout stays on your store',
-						'woocommerce-ai-syndication'
+						'woocommerce-ai-storefront'
 					) }
 				>
 					{ __(
 						'No AI-platform checkout fees. No delegated payments. You keep the customer, the checkout, and the data.',
-						'woocommerce-ai-syndication'
+						'woocommerce-ai-storefront'
 					) }
 				</ValueCard>
 			</FlexItem>
@@ -444,12 +444,12 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 					icon={ chartBar }
 					title={ __(
 						'See which AI drove each sale',
-						'woocommerce-ai-syndication'
+						'woocommerce-ai-storefront'
 					) }
 				>
 					{ __(
 						'Every AI-referred order is tagged with its source agent and revenue — using standard WooCommerce Order Attribution.',
-						'woocommerce-ai-syndication'
+						'woocommerce-ai-storefront'
 					) }
 				</ValueCard>
 			</FlexItem>
@@ -478,27 +478,27 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 	const { fetchStats } = useDispatch( STORE_NAME );
 	const [ period, setPeriod ] = useState( 'month' );
 	const periodLabels = {
-		day: __( '24h', 'woocommerce-ai-syndication' ),
-		week: __( '7d', 'woocommerce-ai-syndication' ),
-		month: __( '30d', 'woocommerce-ai-syndication' ),
-		year: __( 'Year', 'woocommerce-ai-syndication' ),
+		day: __( '24h', 'woocommerce-ai-storefront' ),
+		week: __( '7d', 'woocommerce-ai-storefront' ),
+		month: __( '30d', 'woocommerce-ai-storefront' ),
+		year: __( 'Year', 'woocommerce-ai-storefront' ),
 	};
 
 	useEffect( () => {
 		fetchStats( period );
 	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Refetch when period changes.
 
-	let productCount = __( 'All', 'woocommerce-ai-syndication' );
+	let productCount = __( 'All', 'woocommerce-ai-storefront' );
 	if ( settings.product_selection_mode === 'categories' ) {
 		productCount = sprintf(
 			/* translators: %d: number of categories */
-			__( '%d categories', 'woocommerce-ai-syndication' ),
+			__( '%d categories', 'woocommerce-ai-storefront' ),
 			( settings.selected_categories || [] ).length
 		);
 	} else if ( settings.product_selection_mode === 'selected' ) {
 		productCount = sprintf(
 			/* translators: %d: number of products */
-			__( '%d products', 'woocommerce-ai-syndication' ),
+			__( '%d products', 'woocommerce-ai-storefront' ),
 			( settings.selected_products || [] ).length
 		);
 	}
@@ -522,7 +522,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					<strong style={ { color: colors.success } }>
 						{ __(
 							'AI Storefront is active',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</strong>
 					<p
@@ -534,7 +534,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					>
 						{ __(
 							'Your store is ready for AI shopping assistants. Checkout and customer data stay on your store.',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</p>
 				</div>
@@ -550,8 +550,8 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					} }
 				>
 					{ isSaving
-						? __( 'Disabling…', 'woocommerce-ai-syndication' )
-						: __( 'Disable', 'woocommerce-ai-syndication' ) }
+						? __( 'Disabling…', 'woocommerce-ai-storefront' )
+						: __( 'Disable', 'woocommerce-ai-storefront' ) }
 				</Button>
 			</div>
 
@@ -564,28 +564,28 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						{
 							label: __(
 								'Last 24 hours',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							),
 							value: 'day',
 						},
 						{
 							label: __(
 								'Last 7 days',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							),
 							value: 'week',
 						},
 						{
 							label: __(
 								'Last 30 days',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							),
 							value: 'month',
 						},
 						{
 							label: __(
 								'Last year',
-								'woocommerce-ai-syndication'
+								'woocommerce-ai-storefront'
 							),
 							value: 'year',
 						},
@@ -605,14 +605,14 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				<StatCard
 					label={ __(
 						'Products Exposed',
-						'woocommerce-ai-syndication'
+						'woocommerce-ai-storefront'
 					) }
 					value={ productCount }
 				/>
 				<StatCard
 					label={ sprintf(
 						/* translators: %s: time period label */
-						__( 'Total Orders (%s)', 'woocommerce-ai-syndication' ),
+						__( 'Total Orders (%s)', 'woocommerce-ai-storefront' ),
 						periodLabels[ period ]
 					) }
 					value={ stats?.all_orders ?? '\u2014' }
@@ -620,7 +620,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				<StatCard
 					label={ sprintf(
 						/* translators: %s: time period label */
-						__( 'AI Orders (%s)', 'woocommerce-ai-syndication' ),
+						__( 'AI Orders (%s)', 'woocommerce-ai-storefront' ),
 						periodLabels[ period ]
 					) }
 					value={ stats?.ai_orders ?? '\u2014' }
@@ -630,7 +630,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 									/* translators: %s: percentage */
 									__(
 										'%1$s%% of total',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									),
 									stats.ai_share_percent
 							  )
@@ -646,7 +646,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				<StatCard
 					label={ sprintf(
 						/* translators: %s: time period label */
-						__( 'AI Revenue (%s)', 'woocommerce-ai-syndication' ),
+						__( 'AI Revenue (%s)', 'woocommerce-ai-storefront' ),
 						periodLabels[ period ]
 					) }
 					value={

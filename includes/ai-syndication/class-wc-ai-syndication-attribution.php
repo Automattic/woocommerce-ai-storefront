@@ -133,11 +133,11 @@ class WC_AI_Syndication_Attribution {
 		}
 
 		echo '<div class="wc-ai-syndication-attribution">';
-		echo '<h3>' . esc_html__( 'AI Agent Attribution', 'woocommerce-ai-syndication' ) . '</h3>';
-		echo '<p><strong>' . esc_html__( 'Agent:', 'woocommerce-ai-syndication' ) . '</strong> ' . esc_html( $agent ) . '</p>';
+		echo '<h3>' . esc_html__( 'AI Agent Attribution', 'woocommerce-ai-storefront' ) . '</h3>';
+		echo '<p><strong>' . esc_html__( 'Agent:', 'woocommerce-ai-storefront' ) . '</strong> ' . esc_html( $agent ) . '</p>';
 
 		if ( $session_id ) {
-			echo '<p><strong>' . esc_html__( 'Session ID:', 'woocommerce-ai-syndication' ) . '</strong> <code>' . esc_html( $session_id ) . '</code></p>';
+			echo '<p><strong>' . esc_html__( 'Session ID:', 'woocommerce-ai-storefront' ) . '</strong> <code>' . esc_html( $session_id ) . '</code></p>';
 		}
 
 		echo '</div>';

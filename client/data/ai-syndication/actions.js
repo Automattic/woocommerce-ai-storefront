@@ -39,12 +39,12 @@ export function saveSettings() {
 
 			dispatch.updateSettings( result );
 			globalDispatch( 'core/notices' ).createSuccessNotice(
-				__( 'Settings saved.', 'woocommerce-ai-syndication' )
+				__( 'Settings saved.', 'woocommerce-ai-storefront' )
 			);
 		} catch ( error ) {
 			dispatch.setIsSaving( false, error );
 			globalDispatch( 'core/notices' ).createErrorNotice(
-				__( 'Error saving settings.', 'woocommerce-ai-syndication' )
+				__( 'Error saving settings.', 'woocommerce-ai-storefront' )
 			);
 			return;
 		}

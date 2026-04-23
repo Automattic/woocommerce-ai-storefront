@@ -6,7 +6,7 @@
  * Version: 2.1.0
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
- * Text Domain: woocommerce-ai-syndication
+ * Text Domain: woocommerce-ai-storefront
  * Domain Path: /languages
  * Requires at least: 6.7
  * Tested up to: 6.8
@@ -15,9 +15,9 @@
  * Requires PHP: 8.0
  * License: GPL-3.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
- * Update URI: https://github.com/pierorocca/woocommerce-ai-syndication
+ * Update URI: https://github.com/Automattic/woocommerce-ai-storefront
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -83,7 +83,7 @@ add_action( 'init', 'wc_ai_syndication_init_updater' );
  */
 function wc_ai_syndication_missing_wc_notice() {
 	echo '<div class="error"><p>';
-	echo esc_html__( 'WooCommerce AI Storefront requires WooCommerce to be installed and active.', 'woocommerce-ai-syndication' );
+	echo esc_html__( 'WooCommerce AI Storefront requires WooCommerce to be installed and active.', 'woocommerce-ai-storefront' );
 	echo '</p></div>';
 }
 

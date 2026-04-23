@@ -16,15 +16,15 @@ import { colors } from './tokens';
 const MODE_DESCRIPTIONS = {
 	all: __(
 		'Every published product in your store is discoverable by AI crawlers. Best for stores that want maximum exposure.',
-		'woocommerce-ai-syndication'
+		'woocommerce-ai-storefront'
 	),
 	categories: __(
 		'Only products in the categories you select below will be included in discovery endpoints. Use this to focus AI visibility on specific product lines.',
-		'woocommerce-ai-syndication'
+		'woocommerce-ai-storefront'
 	),
 	selected: __(
 		'Only the specific products you choose below will appear in discovery endpoints. Use this for curated collections or high-margin items.',
-		'woocommerce-ai-syndication'
+		'woocommerce-ai-storefront'
 	),
 };
 
@@ -107,7 +107,7 @@ const SelectedTokens = ( { items, onRemove } ) => {
 						} }
 						aria-label={ sprintf(
 							/* translators: %s: item name */
-							__( 'Remove %s', 'woocommerce-ai-syndication' ),
+							__( 'Remove %s', 'woocommerce-ai-storefront' ),
 							decodeEntities( item.name )
 						) }
 					>
@@ -223,7 +223,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
 						{ __(
 							'AI Product Visibility',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</h3>
 					<p
@@ -235,7 +235,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 					>
 						{ __(
 							'Choose which products appear in your discovery endpoints (llms.txt, UCP manifest, JSON-LD, and Store API responses). This controls what AI crawlers can see and recommend.',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 					</p>
 
@@ -244,28 +244,28 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 						__nextHasNoMarginBottom
 						label={ __(
 							'Products available to AI crawlers',
-							'woocommerce-ai-syndication'
+							'woocommerce-ai-storefront'
 						) }
 						value={ mode }
 						options={ [
 							{
 								label: __(
 									'All published products',
-									'woocommerce-ai-syndication'
+									'woocommerce-ai-storefront'
 								),
 								value: 'all',
 							},
 							{
 								label: __(
 									'Products in selected categories',
-									'woocommerce-ai-syndication'
+									'woocommerce-ai-storefront'
 								),
 								value: 'categories',
 							},
 							{
 								label: __(
 									'Specific products only',
-									'woocommerce-ai-syndication'
+									'woocommerce-ai-storefront'
 								),
 								value: 'selected',
 							},
@@ -306,7 +306,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								>
 									{ __(
 										'Categories',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									) }
 								</span>
 								<CountPill
@@ -315,7 +315,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 										/* translators: %d: number of selected items */
 										__(
 											'%d selected',
-											'woocommerce-ai-syndication'
+											'woocommerce-ai-storefront'
 										)
 									}
 								/>
@@ -335,7 +335,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 										onChange={ setCategorySearch }
 										placeholder={ __(
 											'Filter categories\u2026',
-											'woocommerce-ai-syndication'
+											'woocommerce-ai-storefront'
 										) }
 									/>
 								) }
@@ -370,7 +370,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 										>
 											{ __(
 												'Select all',
-												'woocommerce-ai-syndication'
+												'woocommerce-ai-storefront'
 											) }
 										</Button>
 										<Button
@@ -389,7 +389,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 										>
 											{ __(
 												'Clear selection',
-												'woocommerce-ai-syndication'
+												'woocommerce-ai-storefront'
 											) }
 										</Button>
 									</div>
@@ -426,7 +426,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 											>
 												{ __(
 													'No categories match your filter.',
-													'woocommerce-ai-syndication'
+													'woocommerce-ai-storefront'
 												) }
 											</p>
 										) }
@@ -488,7 +488,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								>
 									{ __(
 										'Products',
-										'woocommerce-ai-syndication'
+										'woocommerce-ai-storefront'
 									) }
 								</span>
 								<CountPill
@@ -497,7 +497,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 										/* translators: %d: number of selected items */
 										__(
 											'%d selected',
-											'woocommerce-ai-syndication'
+											'woocommerce-ai-storefront'
 										)
 									}
 								/>
@@ -514,7 +514,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								onChange={ setProductSearch }
 								placeholder={ __(
 									'Search products\u2026',
-									'woocommerce-ai-syndication'
+									'woocommerce-ai-storefront'
 								) }
 							/>
 							{ selectedProducts.length > 0 && (
@@ -540,7 +540,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									>
 										{ __(
 											'Clear selection',
-											'woocommerce-ai-syndication'
+											'woocommerce-ai-storefront'
 										) }
 									</Button>
 								</div>
@@ -578,11 +578,11 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 											{ productSearch
 												? __(
 														'No products found. Try a different search.',
-														'woocommerce-ai-syndication'
+														'woocommerce-ai-storefront'
 												  )
 												: __(
 														'Start typing to search your products.',
-														'woocommerce-ai-syndication'
+														'woocommerce-ai-storefront'
 												  ) }
 										</p>
 									) }
@@ -644,8 +644,8 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 					onClick={ onSave }
 				>
 					{ isSaving
-						? __( 'Saving\u2026', 'woocommerce-ai-syndication' )
-						: __( 'Save Changes', 'woocommerce-ai-syndication' ) }
+						? __( 'Saving\u2026', 'woocommerce-ai-storefront' )
+						: __( 'Save Changes', 'woocommerce-ai-storefront' ) }
 				</Button>
 			</div>
 		</div>
