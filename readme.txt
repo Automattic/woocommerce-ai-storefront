@@ -108,6 +108,22 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_storefront_agent` (denormalized for faster queries)
 * `_wc_ai_storefront_session_id` (conversation identifier)
 
+== Frequently Asked Questions ==
+
+= Does this support MCP (Model Context Protocol)? =
+
+Not currently. MCP's tool and resource exposure pattern requires running a server surface reachable by external, non-admin clients — something neither WordPress core nor WooCommerce scaffold today. There is no first-class MCP entry point for a plugin to hook into, and running one alongside the WP stack would require auth, transport, and capability-routing infrastructure outside this plugin's scope.
+
+AI Storefront targets the Universal Commerce Protocol (UCP) instead, which works with the HTTP/REST surfaces WordPress and WooCommerce already expose to public clients. UCP gives AI shopping agents a stable, spec-conforming way to discover and transact against your catalog. MCP support will be evaluated if and when WP/WC grow native MCP-server primitives.
+
+= Will my customer data be shared with AI companies? =
+
+No. Customer data stays on your store. AI agents see the public catalog (the same products a shopper browsing your storefront sees) via the discovery endpoints; checkout happens on your own site via a continue URL, using WooCommerce's native checkout flow. No PII is transmitted to AI providers by this plugin.
+
+= What happens if I disable the plugin? =
+
+Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
+
 == Changelog ==
 
 = 0.1.0 =
