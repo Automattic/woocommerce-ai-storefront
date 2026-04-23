@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
-<ruleset name="WooCommerce AI Syndication">
+<ruleset name="WooCommerce AI Storefront">
     <description>PHP_CodeSniffer ruleset for the plugin</description>
 
     <!-- What to scan. -->
     <file>./includes</file>
-    <file>./woocommerce-ai-syndication.php</file>
+    <file>./woocommerce-ai-storefront.php</file>
     <file>./uninstall.php</file>
 
     <!-- Exclusions. -->
@@ -34,8 +34,8 @@
     -->
     <rule ref="WordPress-Extra">
         <!--
-            The plugin uses a function prefix (`wc_ai_syndication_*`) and a
-            class/const prefix (`WC_AI_Syndication_*`). Declared here rather
+            The plugin uses a function prefix (`wc_ai_storefront_*`) and a
+            class/const prefix (`WC_AI_Storefront_*`). Declared here rather
             than sniff-by-sniff.
         -->
         <!--
@@ -64,13 +64,13 @@
     </rule>
 
     <!-- Function/class prefixes for the WPCS prefix sniff. -->
-    <config name="text_domain" value="woocommerce-ai-syndication"/>
+    <config name="text_domain" value="woocommerce-ai-storefront"/>
     <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
         <properties>
             <property name="prefixes" type="array">
-                <element value="wc_ai_syndication"/>
-                <element value="WC_AI_Syndication"/>
-                <element value="WC_AI_SYNDICATION"/>
+                <element value="wc_ai_storefront"/>
+                <element value="WC_AI_Storefront"/>
+                <element value="WC_AI_STOREFRONT"/>
             </property>
         </properties>
     </rule>

@@ -36,7 +36,7 @@ parameters:
 
     paths:
         - includes
-        - woocommerce-ai-syndication.php
+        - woocommerce-ai-storefront.php
         - uninstall.php
 
     # Provide enough type info for the analyzer without overriding the

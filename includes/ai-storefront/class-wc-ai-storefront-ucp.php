@@ -307,7 +307,7 @@ class WC_AI_Storefront_Ucp {
 					// want upfront store facts (currency to quote in,
 					// whether prices include tax, whether shipping
 					// applies) find them without an extra API call.
-					'com.woocommerce.ai_storefront'  => [
+					'com.woocommerce.ai_storefront'   => [
 						[
 							'version' => self::PROTOCOL_VERSION,
 							'extends' => self::SERVICE_NAME,

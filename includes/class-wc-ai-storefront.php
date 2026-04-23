@@ -282,7 +282,7 @@ class WC_AI_Storefront {
 			return;
 		}
 
-		$asset_file = WC_AI_STOREFRONT_PLUGIN_PATH . '/build/ai-syndication-settings.asset.php';
+		$asset_file = WC_AI_STOREFRONT_PLUGIN_PATH . '/build/ai-storefront-settings.asset.php';
 		$asset      = file_exists( $asset_file )
 			? require $asset_file
 			: [
@@ -292,7 +292,7 @@ class WC_AI_Storefront {
 
 		wp_register_script(
 			'wc-ai-storefront-settings',
-			WC_AI_STOREFRONT_PLUGIN_URL . '/build/ai-syndication-settings.js',
+			WC_AI_STOREFRONT_PLUGIN_URL . '/build/ai-storefront-settings.js',
 			$asset['dependencies'],
 			$asset['version'],
 			true
@@ -307,7 +307,7 @@ class WC_AI_Storefront {
 		// change would otherwise not invalidate merchants' browser
 		// caches. Hash the file separately via `md5_file()` so the
 		// registered version tracks the file's actual contents.
-		$css_path = WC_AI_STOREFRONT_PLUGIN_PATH . '/build/ai-syndication-settings.css';
+		$css_path = WC_AI_STOREFRONT_PLUGIN_PATH . '/build/ai-storefront-settings.css';
 		if ( file_exists( $css_path ) ) {
 			// Three-tier fallback chain for the cache-bust version:
 			//   1. md5_file() content hash (normal path)
@@ -343,7 +343,7 @@ class WC_AI_Storefront {
 			}
 			wp_register_style(
 				'wc-ai-storefront-settings',
-				WC_AI_STOREFRONT_PLUGIN_URL . '/build/ai-syndication-settings.css',
+				WC_AI_STOREFRONT_PLUGIN_URL . '/build/ai-storefront-settings.css',
 				[ 'wp-components' ],
 				$css_version
 			);
