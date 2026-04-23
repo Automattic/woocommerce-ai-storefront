@@ -725,37 +725,53 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	const serverMode = settings.product_selection_mode || MODES.ALL;
 	const uiRow = modeToUiRow( serverMode );
 
-	// Which taxonomy sub-mode is active inside the By-Taxonomy row.
-	// Seeded from the persisted server mode so re-entering the Products
-	// tab after a save puts the merchant back where they were. Stays in
-	// local state so switching UI rows and coming back doesn't reset
-	// the toggle.
-	const [ activeTaxonomy, setActiveTaxonomy ] = useState( () => {
-		return TAXONOMY_MODES.includes( serverMode )
+	// Normalize the persisted taxonomy to one the UI can actually
+	// render. Scenario: a merchant on WC 9.5+ saves mode=`brands`,
+	// then downgrades to WC < 9.5 (or the taxonomy gets unregistered
+	// by a custom env). `supportsBrands` flips to false, the Brands
+	// ToggleGroupControlOption disappears, but `serverMode` still
+	// reads 'brands' from the DB. Without this normalization the
+	// By-taxonomy row would show the empty-brands-selection warning
+	// with no visible way to resolve it (no Brands segment to pick
+	// into, and `setRow( BY_TAXONOMY )` would keep re-writing
+	// 'brands'). Mapping unsupported modes → CATEGORIES at the
+	// source makes the UI coherent: the merchant lands on the
+	// Categories segment by default, can configure normally, and
+	// their persisted `selected_brands` array stays intact so a
+	// future WC upgrade restores their prior selection.
+	const normalizedServerTaxonomy =
+		TAXONOMY_MODES.includes( serverMode ) &&
+		( supportsBrands || serverMode !== MODES.BRANDS )
 			? serverMode
 			: MODES.CATEGORIES;
-	} );
 
-	// Keep local activeTaxonomy in sync when the server-persisted mode
-	// changes externally — e.g. a Save completes and the canonical
-	// value comes back from the store, or a future "reset to defaults"
-	// control dispatches a write we didn't originate locally. The
-	// `serverMode !== activeTaxonomy` guard short-circuits the common
-	// case where the user just toggled a segment: both values update
-	// in the same React batch, the effect re-runs, sees them already
-	// equal, and no-ops. Including `activeTaxonomy` in the dep list
-	// (rather than suppressing exhaustive-deps) makes the closure's
-	// reads explicit so a future contributor closing over additional
-	// local state gets linted instead of silently creating a stale
+	// Which taxonomy sub-mode is active inside the By-Taxonomy row.
+	// Seeded from the normalized server mode so re-entering the
+	// Products tab after a save puts the merchant back where they
+	// were. Stays in local state so switching UI rows and coming
+	// back doesn't reset the toggle.
+	const [ activeTaxonomy, setActiveTaxonomy ] = useState(
+		() => normalizedServerTaxonomy
+	);
+
+	// Keep local activeTaxonomy in sync when the normalized server
+	// mode changes externally — e.g. a Save completes and the
+	// canonical value comes back from the store, or a future "reset
+	// to defaults" control dispatches a write we didn't originate
+	// locally. The `normalizedServerTaxonomy !== activeTaxonomy`
+	// guard short-circuits the common case where the user just
+	// toggled a segment: both values update in the same React batch,
+	// the effect re-runs, sees them already equal, and no-ops.
+	// Including `activeTaxonomy` in the dep list (rather than
+	// suppressing exhaustive-deps) makes the closure's reads
+	// explicit so a future contributor closing over additional local
+	// state gets linted instead of silently creating a stale
 	// closure.
 	useEffect( () => {
-		if (
-			TAXONOMY_MODES.includes( serverMode ) &&
-			serverMode !== activeTaxonomy
-		) {
-			setActiveTaxonomy( serverMode );
+		if ( normalizedServerTaxonomy !== activeTaxonomy ) {
+			setActiveTaxonomy( normalizedServerTaxonomy );
 		}
-	}, [ serverMode, activeTaxonomy ] );
+	}, [ normalizedServerTaxonomy, activeTaxonomy ] );
 
 	// Load categories eagerly on mount (cheap, small list) so the
 	// By-Taxonomy radio row can show an accurate count even when

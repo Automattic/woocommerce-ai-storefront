@@ -215,28 +215,30 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_brands_mode_appends_tax_query_entry_when_taxonomy_registered(): void {
 		\Brain\Monkey\setUp();
-		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
+		try {
+			\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
 
-		WC_AI_Storefront::$test_settings = [
-			'product_selection_mode' => 'brands',
-			'selected_brands'        => [ 3, 14, 42 ],
-		];
+			WC_AI_Storefront::$test_settings = [
+				'product_selection_mode' => 'brands',
+				'selected_brands'        => [ 3, 14, 42 ],
+			];
 
-		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [] );
+			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$result = $filter->restrict_to_syndicated_products( [] );
 
-		$this->assertArrayHasKey( 'tax_query', $result );
-		$this->assertCount( 1, $result['tax_query'] );
-		$this->assertEquals(
-			[
-				'taxonomy' => 'product_brand',
-				'field'    => 'term_id',
-				'terms'    => [ 3, 14, 42 ],
-			],
-			$result['tax_query'][0]
-		);
-
-		\Brain\Monkey\tearDown();
+			$this->assertArrayHasKey( 'tax_query', $result );
+			$this->assertCount( 1, $result['tax_query'] );
+			$this->assertEquals(
+				[
+					'taxonomy' => 'product_brand',
+					'field'    => 'term_id',
+					'terms'    => [ 3, 14, 42 ],
+				],
+				$result['tax_query'][0]
+			);
+		} finally {
+			\Brain\Monkey\tearDown();
+		}
 	}
 
 	public function test_brands_mode_is_noop_when_taxonomy_not_registered(): void {
@@ -253,20 +255,22 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// catalog on a downgrade scenario the merchant didn't opt
 		// into. Declining to act preserves the pre-downgrade view.
 		\Brain\Monkey\setUp();
-		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( false );
+		try {
+			\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( false );
 
-		WC_AI_Storefront::$test_settings = [
-			'product_selection_mode' => 'brands',
-			'selected_brands'        => [ 3, 14 ],
-		];
+			WC_AI_Storefront::$test_settings = [
+				'product_selection_mode' => 'brands',
+				'selected_brands'        => [ 3, 14 ],
+			];
 
-		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$input  = [ 'orderby' => 'date' ];
-		$result = $filter->restrict_to_syndicated_products( $input );
+			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$input  = [ 'orderby' => 'date' ];
+			$result = $filter->restrict_to_syndicated_products( $input );
 
-		$this->assertSame( $input, $result );
-
-		\Brain\Monkey\tearDown();
+			$this->assertSame( $input, $result );
+		} finally {
+			\Brain\Monkey\tearDown();
+		}
 	}
 
 	public function test_brands_mode_with_empty_selected_brands_forces_zero_matches(): void {
@@ -274,19 +278,21 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// `taxonomy_exists` returns true (taxonomy is registered);
 		// the merchant just hasn't picked any brands yet.
 		\Brain\Monkey\setUp();
-		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
+		try {
+			\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
 
-		WC_AI_Storefront::$test_settings = [
-			'product_selection_mode' => 'brands',
-			'selected_brands'        => [],
-		];
+			WC_AI_Storefront::$test_settings = [
+				'product_selection_mode' => 'brands',
+				'selected_brands'        => [],
+			];
 
-		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
+			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
 
-		$this->assertSame( [ 0 ], $result['post__in'] );
-
-		\Brain\Monkey\tearDown();
+			$this->assertSame( [ 0 ], $result['post__in'] );
+		} finally {
+			\Brain\Monkey\tearDown();
+		}
 	}
 
 	// ------------------------------------------------------------------

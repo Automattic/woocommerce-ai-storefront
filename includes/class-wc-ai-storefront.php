@@ -516,12 +516,28 @@ class WC_AI_Storefront {
 		if ( 'brands' === $mode && ! empty( $settings['selected_brands'] ) ) {
 			// Graceful degradation: if the `product_brand` taxonomy
 			// isn't registered (pre-WC 9.5 or a custom env), the
-			// merchant's brand selection can't be enforced — return
-			// false rather than crashing. The admin UI hides the
-			// Brands segment when the taxonomy is missing, so this
-			// branch should be unreachable in practice; defensive.
+			// merchant's brand selection can't be enforced. Degrade
+			// to "product is syndicated" (return true) so this gate
+			// stays symmetric with the Store API filter, which also
+			// declines to restrict in the same scenario. Without the
+			// symmetry, llms.txt/JSON-LD would hide the catalog while
+			// the UCP Store API surface returned the full catalog —
+			// a silent enforcement split the merchant didn't opt
+			// into and can't see.
+			//
+			// Rationale for "show all" over "hide all" in this
+			// specific degraded scenario: the merchant picked
+			// `brands` mode on a store that supported the taxonomy,
+			// then something removed that support (WC downgrade,
+			// custom taxonomy unregistration). Hiding the whole
+			// catalog is a surprising consequence of an environment
+			// change they may not have made. Showing the pre-
+			// downgrade catalog preserves their previous-actual
+			// agent-visible state until they re-configure. The
+			// persisted `selected_brands` array stays on disk so a
+			// future taxonomy re-registration restores enforcement.
 			if ( ! taxonomy_exists( 'product_brand' ) ) {
-				return false;
+				return true;
 			}
 			$product_brands = wp_get_post_terms( $product->get_id(), 'product_brand', [ 'fields' => 'ids' ] );
 			if ( is_wp_error( $product_brands ) ) {
