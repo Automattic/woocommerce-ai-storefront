@@ -1,4 +1,4 @@
-=== WooCommerce AI Syndication ===
+=== WooCommerce AI Storefront ===
 Contributors: woocommerce
 Tags: woocommerce, ai, chatgpt, seo, llms-txt
 Requires at least: 6.7
@@ -58,8 +58,8 @@ Every piece of this is designed around one principle: **the merchant owns the tr
 
 1. Upload the plugin to your `/wp-content/plugins/` directory, or install via the Plugins screen in WordPress.
 2. Activate the plugin.
-3. Go to **WooCommerce > AI Syndication** in the admin menu.
-4. Click **Enable AI Syndication**.
+3. Go to **WooCommerce > AI Storefront** in the admin menu.
+4. Click **Enable AI Storefront**.
 5. (Optional) Review the **Product Visibility** tab to scope which products are exposed.
 6. (Optional) Review the **Discovery** tab to adjust which AI crawlers are allowed and which rate limit applies.
 

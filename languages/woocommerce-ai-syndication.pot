@@ -534,7 +534,7 @@ msgid "Enabling…"
 msgstr ""
 
 #: client/settings/ai-syndication/settings-page.js:355
-msgid "Enable AI Syndication"
+msgid "Enable AI Storefront"
 msgstr ""
 
 #: client/settings/ai-syndication/settings-page.js:376
@@ -598,7 +598,7 @@ msgid "%d products"
 msgstr ""
 
 #: client/settings/ai-syndication/settings-page.js:523
-msgid "AI Syndication is active"
+msgid "AI Storefront is active"
 msgstr ""
 
 #: client/settings/ai-syndication/settings-page.js:535
