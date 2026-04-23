@@ -8,15 +8,15 @@
  * the main class's version-mismatch cache-bust branch.
  *
  * This whole file exists because of a real regression shipped in
- * 1.0.0 → 1.1.x where `wc_ai_syndication_activate()` called
- * `update_option( 'wc_ai_syndication_version', ... )`. On in-place
+ * 1.0.0 → 1.1.x where `wc_ai_storefront_activate()` called
+ * `update_option( 'wc_ai_storefront_version', ... )`. On in-place
  * zip upgrades WordPress fires the activation hook, so the option
  * was written to the new version before the mismatch-detection code
  * ever ran — meaning the content cache was never busted and
  * merchants saw stale llms.txt / UCP content until the hourly
  * transient TTL expired (or forever if invalidation never fired).
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 class ActivationTest extends \PHPUnit\Framework\TestCase {
@@ -27,10 +27,10 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		$this->main_file = file_get_contents(
-			dirname( __DIR__, 3 ) . '/woocommerce-ai-syndication.php'
+			dirname( __DIR__, 3 ) . '/woocommerce-ai-storefront.php'
 		);
 		$this->orchestrator_file = file_get_contents(
-			dirname( __DIR__, 3 ) . '/includes/class-wc-ai-syndication.php'
+			dirname( __DIR__, 3 ) . '/includes/class-wc-ai-storefront.php'
 		);
 	}
 
@@ -39,8 +39,8 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_activation_hook_does_not_write_version_option(): void {
-		// Extract the body of wc_ai_syndication_activate() and assert
-		// it contains no `update_option( 'wc_ai_syndication_version'...`
+		// Extract the body of wc_ai_storefront_activate() and assert
+		// it contains no `update_option( 'wc_ai_storefront_version'...`
 		// call.
 		//
 		// If this test fails, the activation hook has been modified to
@@ -49,18 +49,18 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 		// See the comment in the activation function for full history.
 		$activate_body = $this->extract_function_body(
 			$this->main_file,
-			'wc_ai_syndication_activate'
+			'wc_ai_storefront_activate'
 		);
 
 		$this->assertNotEmpty(
 			$activate_body,
-			'Could not locate wc_ai_syndication_activate() body.'
+			'Could not locate wc_ai_storefront_activate() body.'
 		);
 
 		// The check: no call to update_option (in any form) mentioning
 		// the version key. Matches both single and double quotes.
 		$this->assertDoesNotMatchRegularExpression(
-			'/update_option\s*\(\s*[\'"]wc_ai_syndication_version[\'"]/',
+			'/update_option\s*\(\s*[\'"]wc_ai_storefront_version[\'"]/',
 			$activate_body,
 			'The activation hook writes the version option directly. ' .
 			'This defeats the boot-time cache-bust branch on in-place ' .
@@ -74,7 +74,7 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 		// invariant that "stored_version changes EXACTLY when the
 		// cache-bust branch runs."
 		$write_count = preg_match_all(
-			'/update_option\s*\(\s*[\'"]wc_ai_syndication_version[\'"]/',
+			'/update_option\s*\(\s*[\'"]wc_ai_storefront_version[\'"]/',
 			$this->main_file . "\n" . $this->orchestrator_file
 		);
 
@@ -82,7 +82,7 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 			1,
 			$write_count,
 			sprintf(
-				'Expected exactly one write to wc_ai_syndication_version; ' .
+				'Expected exactly one write to wc_ai_storefront_version; ' .
 				'found %d. Every writer must fire within the cache-bust ' .
 				'branch or merchants will see stale cached content after ' .
 				'upgrades.',
@@ -109,7 +109,7 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 		// the version is written, then the content caches are deleted.
 		// The important invariant: update_option is NOT the last thing
 		// to fire — content-cache deletes come after.
-		$llms_delete_pos = strpos( $branch, 'WC_AI_Syndication_Llms_Txt::CACHE_KEY' );
+		$llms_delete_pos = strpos( $branch, 'WC_AI_Storefront_Llms_Txt::CACHE_KEY' );
 		$this->assertNotFalse(
 			$llms_delete_pos,
 			'Cache-bust branch missing llms.txt transient delete.'
@@ -167,7 +167,7 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 	 */
 	private function extract_version_mismatch_branch(): string {
 		if ( ! preg_match(
-			'/if\s*\(\s*\$needs_flush\s*\|\|\s*\$stored_version\s*!==\s*WC_AI_SYNDICATION_VERSION\s*\)\s*\{/',
+			'/if\s*\(\s*\$needs_flush\s*\|\|\s*\$stored_version\s*!==\s*WC_AI_STOREFRONT_VERSION\s*\)\s*\{/',
 			$this->orchestrator_file,
 			$matches,
 			PREG_OFFSET_CAPTURE

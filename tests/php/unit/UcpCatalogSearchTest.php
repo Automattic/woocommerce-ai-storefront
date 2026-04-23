@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_UCP_REST_Controller::handle_catalog_search.
+ * Tests for WC_AI_Storefront_UCP_REST_Controller::handle_catalog_search.
  *
  * Focuses on UCP → WC Store API query-param mapping and the
  * surrounding response-assembly logic. Uses Brain\Monkey to stub:
@@ -10,7 +10,7 @@
  *   - get_term_by           — resolves category slug/name → ID
  *   - wc_get_price_decimals — drives minor→presentment conversion
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -79,7 +79,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// leak into subsequent tests that assume enabled. The stub's
 		// defaults include `enabled => yes`, so an empty array here
 		// means the handler sees enabled syndication.
-		WC_AI_Syndication::$test_settings = [];
+		WC_AI_Storefront::$test_settings = [];
 
 		$this->captured_store_params = [];
 		$this->fake_product_list     = [];
@@ -301,7 +301,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	 * @return array<string, mixed>
 	 */
 	private function successful_search( array $body ): array {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_catalog_search( $this->search_request( $body ) );
 
 		$this->assertInstanceOf( WP_REST_Response::class, $response );
@@ -1576,7 +1576,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	 * @param array<string, mixed> $body
 	 */
 	private function assert_search_error( array $body, int $expected_status, string $expected_code ): array {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_catalog_search( $this->search_request( $body ) );
 
 		$this->assertInstanceOf( WP_REST_Response::class, $response );
@@ -1632,7 +1632,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// registered (to avoid rewrite-flush churn on every toggle), but
 		// the handler must refuse to serve catalog data — otherwise the
 		// "pause" control silently fails open.
-		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
 
 		$this->assert_search_error(
 			[ 'query' => 'anything' ],
@@ -1667,7 +1667,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	public function test_default_page_size_is_ten(): void {
 		$this->fake_product_list = [];
 
-		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [] )
 		);
 
@@ -1679,7 +1679,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	public function test_pagination_limit_is_passed_through(): void {
 		$this->fake_product_list = [];
 
-		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'limit' => 25 ],
 			] )
@@ -1695,7 +1695,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// page through cursors normally.
 		$this->fake_product_list = [];
 
-		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'limit' => 500 ],
 			] )
@@ -1711,7 +1711,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			'X-WP-TotalPages' => '1',
 		];
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [] )
 		);
 
@@ -1733,7 +1733,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			'X-WP-TotalPages' => '5',
 		];
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [] )
 		);
 
@@ -1753,14 +1753,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			'X-WP-TotalPages' => '5',
 		];
 
-		$first = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$first = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [] )
 		);
 		$cursor = $first->get_data()['pagination']['cursor'];
 
 		$this->captured_store_params = [];
 
-		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'cursor' => $cursor ],
 			] )
@@ -1776,7 +1776,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// behavior — the agent gets a fresh valid page.
 		$this->fake_product_list = [];
 
-		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'cursor' => 'not-a-valid-cursor' ],
 			] )
@@ -1789,7 +1789,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Edge case: explicit empty cursor. Treat same as missing.
 		$this->fake_product_list = [];
 
-		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'cursor' => '' ],
 			] )
@@ -1809,7 +1809,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// the `pagination_limit_clamped` warning emission.
 		$this->fake_product_list = [];
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'limit' => 0 ],
 			] )
@@ -1838,7 +1838,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			$this->captured_store_params = [];
 			$this->fake_product_list     = [];
 
-			$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+			$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 				$this->search_request( [
 					'pagination' => [ 'limit' => $bad_limit ],
 				] )
@@ -1862,7 +1862,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// signal they used to get on the clamp path.
 		$this->fake_product_list = [];
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'limit' => -5 ],
 			] )
@@ -1879,7 +1879,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// limits and need the signal.
 		$this->fake_product_list = [];
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'limit' => 500 ],
 			] )
@@ -1895,7 +1895,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// silently break string-sending clients.
 		$this->fake_product_list = [];
 
-		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'limit' => '25' ],
 			] )
@@ -1910,7 +1910,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// warning regardless of whether clamping happened.
 		$this->fake_product_list = [];
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'limit' => 50 ],
 			] )
@@ -1935,7 +1935,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// that silent fallback handles gracefully).
 		$this->fake_product_list = [];
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'cursor' => 'not-a-valid-cursor' ],
 			] )
@@ -1952,7 +1952,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$cursor = base64_encode( 'p0' );
 		$this->fake_product_list = [];
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'cursor' => $cursor ],
 			] )
@@ -1972,7 +1972,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$cursor = base64_encode( 'p99999999999999999' );
 		$this->fake_product_list = [];
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => [ 'cursor' => $cursor ],
 			] )
@@ -1987,7 +1987,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// not a total blocker. Apply defaults and warn.
 		$this->fake_product_list = [];
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'pagination' => 'next',
 			] )
@@ -2006,7 +2006,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->fake_product_list = [];
 		$this->fake_list_headers = []; // No X-WP-* headers at all.
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [] )
 		);
 
@@ -2030,7 +2030,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			'x-wp-totalpages' => '5',
 		];
 
-		$response = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [] )
 		);
 
@@ -2051,7 +2051,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		];
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 
-		$first = ( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		$first = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'query'      => 'shirt',
 				'filters'    => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ],
@@ -2062,7 +2062,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->captured_store_params = [];
 
-		( new WC_AI_Syndication_UCP_REST_Controller() )->handle_catalog_search(
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request( [
 				'query'      => 'shirt',
 				'filters'    => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ],

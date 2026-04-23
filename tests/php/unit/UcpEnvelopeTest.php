@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_UCP_Envelope.
+ * Tests for WC_AI_Storefront_UCP_Envelope.
  *
  * The envelope is the `ucp:` wrapper object that surrounds every
  * UCP response body. Spec schemas:
@@ -12,7 +12,7 @@
  * expect, including the easy-to-miss {} vs [] distinction on
  * `payment_handlers`.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 class UcpEnvelopeTest extends \PHPUnit\Framework\TestCase {
@@ -22,13 +22,13 @@ class UcpEnvelopeTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_catalog_envelope_includes_version(): void {
-		$env = WC_AI_Syndication_UCP_Envelope::catalog_envelope(
+		$env = WC_AI_Storefront_UCP_Envelope::catalog_envelope(
 			'dev.ucp.shopping.catalog.search'
 		);
 
 		$this->assertArrayHasKey( 'version', $env );
 		$this->assertEquals(
-			WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			$env['version']
 		);
 	}
@@ -37,7 +37,7 @@ class UcpEnvelopeTest extends \PHPUnit\Framework\TestCase {
 		// Different catalog operations (search, lookup) get their own
 		// capability key in the envelope so agents can confirm the
 		// response matches the operation they invoked.
-		$env = WC_AI_Syndication_UCP_Envelope::catalog_envelope(
+		$env = WC_AI_Storefront_UCP_Envelope::catalog_envelope(
 			'dev.ucp.shopping.catalog.lookup'
 		);
 
@@ -51,7 +51,7 @@ class UcpEnvelopeTest extends \PHPUnit\Framework\TestCase {
 		// Per UCP schema: capabilities.X is an array of binding objects,
 		// never a bare object. The array wrapper leaves room to declare
 		// multiple implementation versions concurrently.
-		$env = WC_AI_Syndication_UCP_Envelope::catalog_envelope(
+		$env = WC_AI_Storefront_UCP_Envelope::catalog_envelope(
 			'dev.ucp.shopping.catalog.search'
 		);
 		$cap = $env['capabilities']['dev.ucp.shopping.catalog.search'];
@@ -59,7 +59,7 @@ class UcpEnvelopeTest extends \PHPUnit\Framework\TestCase {
 		$this->assertIsArray( $cap );
 		$this->assertCount( 1, $cap );
 		$this->assertEquals(
-			WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			$cap[0]['version']
 		);
 	}
@@ -69,16 +69,16 @@ class UcpEnvelopeTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_checkout_envelope_includes_version(): void {
-		$env = WC_AI_Syndication_UCP_Envelope::checkout_envelope();
+		$env = WC_AI_Storefront_UCP_Envelope::checkout_envelope();
 
 		$this->assertEquals(
-			WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			$env['version']
 		);
 	}
 
 	public function test_checkout_envelope_declares_checkout_capability(): void {
-		$env = WC_AI_Syndication_UCP_Envelope::checkout_envelope();
+		$env = WC_AI_Storefront_UCP_Envelope::checkout_envelope();
 
 		$this->assertArrayHasKey(
 			'dev.ucp.shopping.checkout',
@@ -90,7 +90,7 @@ class UcpEnvelopeTest extends \PHPUnit\Framework\TestCase {
 		// Schema: response_checkout_schema has
 		// `required: ["payment_handlers"]`. The key MUST be present
 		// even when we declare no handlers.
-		$env = WC_AI_Syndication_UCP_Envelope::checkout_envelope();
+		$env = WC_AI_Storefront_UCP_Envelope::checkout_envelope();
 
 		$this->assertArrayHasKey( 'payment_handlers', $env );
 	}
@@ -100,7 +100,7 @@ class UcpEnvelopeTest extends \PHPUnit\Framework\TestCase {
 		// UCP schema requires object here. PHP `[]` serializes as
 		// JSON array; `(object) []` serializes as JSON object.
 		// The envelope must always produce object shape.
-		$env  = WC_AI_Syndication_UCP_Envelope::checkout_envelope();
+		$env  = WC_AI_Storefront_UCP_Envelope::checkout_envelope();
 		$json = json_encode( $env['payment_handlers'] );
 
 		$this->assertEquals( '{}', $json );
@@ -110,12 +110,12 @@ class UcpEnvelopeTest extends \PHPUnit\Framework\TestCase {
 		// End-to-end sanity: the whole envelope should serialize
 		// and deserialize cleanly without fabricating array/object
 		// confusion.
-		$env        = WC_AI_Syndication_UCP_Envelope::checkout_envelope();
+		$env        = WC_AI_Storefront_UCP_Envelope::checkout_envelope();
 		$serialized = json_encode( $env );
 		$decoded    = json_decode( $serialized, true );
 
 		$this->assertEquals(
-			WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			$decoded['version']
 		);
 		// Decoded payment_handlers round-trips as empty array in PHP

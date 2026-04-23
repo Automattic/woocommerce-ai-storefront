@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_Llms_Txt.
+ * Tests for WC_AI_Storefront_Llms_Txt.
  *
  * Focuses on `generate()` — the method that produces the Markdown
  * document served at `/llms.txt`. These tests pin the document's
@@ -15,7 +15,7 @@
  * featured products" branch — enough to confirm the surrounding
  * code doesn't crash on empty fixtures.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -25,16 +25,16 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
-	private WC_AI_Syndication_Llms_Txt $llms;
+	private WC_AI_Storefront_Llms_Txt $llms;
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->llms = new WC_AI_Syndication_Llms_Txt();
+		$this->llms = new WC_AI_Storefront_Llms_Txt();
 
 		// Configure the shared test settings (consumed by the stubbed
-		// `WC_AI_Syndication::get_settings()` in the bootstrap).
-		WC_AI_Syndication::$test_settings = [
+		// `WC_AI_Storefront::get_settings()` in the bootstrap).
+		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 		];
@@ -94,7 +94,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Syndication::$test_settings = [];
+		WC_AI_Storefront::$test_settings = [];
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -128,7 +128,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	public function test_api_access_section_points_to_store_api_and_ucp(): void {
 		// The plugin does NOT expose its own authenticated API. llms.txt
 		// must advertise WooCommerce's public Store API and the UCP
-		// manifest — NOT the removed `wc/v3/ai-syndication/*` endpoints
+		// manifest — NOT the removed `wc/v3/ai-storefront/*` endpoints
 		// or the `X-AI-Agent-Key` header (both existed in a pre-1.0
 		// draft of the architecture).
 		$output = $this->llms->generate();
@@ -291,14 +291,14 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_attribution_table_contains_every_known_agent_host_entry(): void {
 		// Single source of truth: the published table is rendered
-		// from WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS
+		// from WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS
 		// at generation time. If a future PR adds a vendor to the
 		// map but the table somehow drops it (refactor regression),
 		// this test fires. Every hostname AND every brand name must
 		// appear in the output.
 		$output = $this->llms->generate();
 
-		foreach ( WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS as $host => $brand ) {
+		foreach ( WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS as $host => $brand ) {
 			$this->assertStringContainsString( $host, $output, "Published attribution table missing hostname {$host}" );
 			$this->assertStringContainsString( $brand, $output, "Published attribution table missing brand name {$brand}" );
 		}
@@ -351,7 +351,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// "this is a map I can petition to be added to."
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString( 'github.com/pierorocca/woocommerce-ai-syndication/issues', $output );
+		$this->assertStringContainsString( 'github.com/Automattic/woocommerce-ai-storefront/issues', $output );
 	}
 
 	// ------------------------------------------------------------------
@@ -492,7 +492,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	public function test_output_is_filterable_via_lines_hook(): void {
 		Functions\when( 'apply_filters' )->alias(
 			static function ( $hook, $lines, $settings ) {
-				if ( 'wc_ai_syndication_llms_txt_lines' === $hook ) {
+				if ( 'wc_ai_storefront_llms_txt_lines' === $hook ) {
 					$lines[] = '## Custom Extension';
 					$lines[] = 'Injected by third party.';
 				}
@@ -533,7 +533,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$set_transient_called_with = null;
 		Functions\when( 'set_transient' )->alias(
 			static function ( $key, $value ) use ( &$set_transient_called_with ) {
-				if ( WC_AI_Syndication_Llms_Txt::CACHE_KEY === $key ) {
+				if ( WC_AI_Storefront_Llms_Txt::CACHE_KEY === $key ) {
 					$set_transient_called_with = [
 						'key'   => $key,
 						'value' => $value,
@@ -579,7 +579,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$main_cache_writes = 0;
 		Functions\when( 'set_transient' )->alias(
 			static function ( $key ) use ( &$main_cache_writes ) {
-				if ( WC_AI_Syndication_Llms_Txt::CACHE_KEY === $key ) {
+				if ( WC_AI_Storefront_Llms_Txt::CACHE_KEY === $key ) {
 					++$main_cache_writes;
 				}
 				return true;
@@ -592,7 +592,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// test still catches them via the set_transient observation.
 		Functions\when( 'apply_filters' )->alias(
 			static function ( $hook, $lines ) {
-				return ( 'wc_ai_syndication_llms_txt_lines' === $hook ) ? [] : $lines;
+				return ( 'wc_ai_storefront_llms_txt_lines' === $hook ) ? [] : $lines;
 			}
 		);
 
@@ -676,7 +676,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString( '<a id="ucp-extension"></a>', $output );
-		$this->assertStringContainsString( '## UCP Extension: com.woocommerce.ai_syndication', $output );
+		$this->assertStringContainsString( '## UCP Extension: com.woocommerce.ai_storefront', $output );
 	}
 
 	public function test_llms_txt_extension_section_points_at_schema_endpoint(): void {

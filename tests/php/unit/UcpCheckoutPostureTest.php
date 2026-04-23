@@ -34,7 +34,7 @@
  * file. That's the point — changing posture should require a
  * conscious test update, not silent capability drift.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -44,12 +44,12 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
-	private WC_AI_Syndication_Ucp $ucp;
+	private WC_AI_Storefront_Ucp $ucp;
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->ucp = new WC_AI_Syndication_Ucp();
+		$this->ucp = new WC_AI_Storefront_Ucp();
 
 		Functions\when( 'home_url' )->alias(
 			static fn( $path = '' ) => 'https://example.com' . ( $path ?: '/' )
@@ -182,12 +182,12 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_extension_capability_carries_no_payment_fields(): void {
-		// The `com.woocommerce.ai_syndication` extension is
+		// The `com.woocommerce.ai_storefront` extension is
 		// legitimately ours to extend — but the merchant-only
 		// posture requires that it carry only store_context +
 		// attribution guidance, not any payment-related fields.
 		$manifest = $this->ucp->generate_manifest( [] );
-		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0]['config'];
+		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config'];
 
 		foreach ( array_keys( $config ) as $key ) {
 			$this->assertStringNotContainsString( 'payment', strtolower( $key ), "Extension config field $key mentions payment" );
@@ -210,7 +210,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// handoff model rejects.
 		//
 		// `extension/schema` is a read-only JSON Schema endpoint for
-		// the `com.woocommerce.ai_syndication` merchant extension —
+		// the `com.woocommerce.ai_storefront` merchant extension —
 		// serves static documentation content, NOT commerce state. It
 		// is explicitly posture-compatible: no order/cart/payment
 		// semantics.
@@ -226,7 +226,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
 		sort( $registered );
@@ -253,7 +253,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 				'dev.ucp.shopping.catalog.search',
 				'dev.ucp.shopping.catalog.lookup',
 				'dev.ucp.shopping.checkout',
-				'com.woocommerce.ai_syndication',
+				'com.woocommerce.ai_storefront',
 			],
 			array_keys( $manifest['ucp']['capabilities'] ),
 			'Capability set changed — audit new capability for merchant-only-checkout impact'

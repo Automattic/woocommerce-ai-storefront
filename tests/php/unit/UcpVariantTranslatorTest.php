@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_UCP_Variant_Translator.
+ * Tests for WC_AI_Storefront_UCP_Variant_Translator.
  *
  * Two paths:
  *   - translate(): takes a WC variation Store API response, produces
@@ -9,7 +9,7 @@
  *     emits one synthesized variant representing the product itself
  *     (satisfies UCP schema's minItems: 1 requirement on variants).
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
@@ -66,7 +66,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_translate_prefixes_id_with_var(): void {
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate(
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate(
 			$this->variation_fixture()
 		);
 
@@ -76,7 +76,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 	public function test_translate_builds_title_from_attribute_values(): void {
 		// A WC variation's `name` is typically the parent product's name.
 		// The meaningful variant title comes from its attributes.
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate(
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate(
 			$this->variation_fixture()
 		);
 
@@ -87,7 +87,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture = $this->variation_fixture();
 		unset( $fixture['attributes'] );
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertEquals( 'Blue Shirt', $result['title'] );
 	}
@@ -96,7 +96,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// WC Store API returns price as a STRING in minor units.
 		// Output must be INT (JSON number, not string) in the same units.
 		// No * 100, no float math.
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate(
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate(
 			$this->variation_fixture()
 		);
 
@@ -110,7 +110,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_translate_includes_sku_when_present(): void {
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate(
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate(
 			$this->variation_fixture()
 		);
 
@@ -121,7 +121,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture = $this->variation_fixture();
 		unset( $fixture['sku'] );
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertArrayNotHasKey( 'sku', $result );
 	}
@@ -130,13 +130,13 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture                = $this->variation_fixture();
 		$fixture['is_in_stock'] = false;
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertFalse( $result['availability']['available'] );
 	}
 
 	public function test_translate_strips_html_from_description(): void {
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate(
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate(
 			$this->variation_fixture()
 		);
 
@@ -154,7 +154,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// Distinguishes synthesized variants from real ones. An agent
 		// looking up var_123_default would know this isn't a real
 		// variation — just the simple product wrapped for schema compliance.
-		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default(
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default(
 			$this->simple_product_fixture()
 		);
 
@@ -162,7 +162,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_synthesize_default_uses_product_name_as_title(): void {
-		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default(
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default(
 			$this->simple_product_fixture()
 		);
 
@@ -174,7 +174,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// we don't duplicate it onto the variant. Empty string keeps
 		// the schema-required description.plain field present but not
 		// redundant.
-		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default(
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default(
 			$this->simple_product_fixture()
 		);
 
@@ -182,7 +182,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_synthesize_default_copies_price_from_product(): void {
-		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default(
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default(
 			$this->simple_product_fixture()
 		);
 
@@ -191,7 +191,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_synthesize_default_includes_sku_when_present(): void {
-		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default(
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default(
 			$this->simple_product_fixture()
 		);
 
@@ -202,7 +202,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture                = $this->simple_product_fixture();
 		$fixture['is_in_stock'] = false;
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $fixture );
 
 		$this->assertFalse( $result['availability']['available'] );
 	}
@@ -226,7 +226,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertArrayHasKey( 'options', $result );
 		$this->assertSame(
@@ -245,7 +245,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			'prices' => [ 'price' => '2500', 'currency_code' => 'USD' ],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertArrayNotHasKey( 'options', $result );
 	}
@@ -267,7 +267,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertCount( 2, $result['options'] );
 		$this->assertSame( 'Color', $result['options'][0]['attribute'] );
@@ -286,7 +286,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertArrayHasKey( 'compare_at_price', $result );
 		$this->assertSame( 2000, $result['compare_at_price']['amount'] );
@@ -306,7 +306,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertArrayNotHasKey( 'compare_at_price', $result );
 	}
@@ -326,7 +326,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertArrayNotHasKey( 'compare_at_price', $result );
 	}
@@ -340,7 +340,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			'low_stock_remaining' => 3,
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertTrue( $result['availability']['available'] );
 		$this->assertSame( 3, $result['availability']['quantity'] );
@@ -354,7 +354,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			'is_in_stock' => true,
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertTrue( $result['availability']['available'] );
 		$this->assertArrayNotHasKey( 'quantity', $result['availability'] );
@@ -366,7 +366,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			'name'       => 'Barcoded product',
 			'prices'     => [ 'price' => '2000', 'currency_code' => 'USD' ],
 			'extensions' => [
-				WC_AI_Syndication_Store_Api_Extension::NAMESPACE => [
+				WC_AI_Storefront_Store_Api_Extension::NAMESPACE => [
 					'barcodes' => [
 						[ 'type' => 'gtin13', 'value' => '1234567890123' ],
 					],
@@ -374,7 +374,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertArrayHasKey( 'barcodes', $result );
 		$this->assertSame( 'gtin13', $result['barcodes'][0]['type'] );
@@ -387,7 +387,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			'name'       => 'Malformed',
 			'prices'     => [ 'price' => '2000', 'currency_code' => 'USD' ],
 			'extensions' => [
-				WC_AI_Syndication_Store_Api_Extension::NAMESPACE => [
+				WC_AI_Storefront_Store_Api_Extension::NAMESPACE => [
 					'barcodes' => [
 						[ 'type' => '', 'value' => '123' ],
 						[ 'type' => 'gtin13', 'value' => '' ],
@@ -397,7 +397,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertCount( 1, $result['barcodes'] );
 		$this->assertSame( 'ok', $result['barcodes'][0]['value'] );
@@ -425,7 +425,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertCount( 1, $result['media'] );
 		$this->assertSame( 'image', $result['media'][0]['type'] );
@@ -448,7 +448,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			'is_in_stock' => true,
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertArrayNotHasKey( 'media', $result );
 	}
@@ -467,7 +467,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertArrayNotHasKey( 'alt_text', $result['media'][0] );
 	}
@@ -487,7 +487,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertCount( 1, $result['media'] );
 		$this->assertSame( 'https://store.example/red.jpg', $result['media'][0]['url'] );
@@ -515,7 +515,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertCount( 3, $result['media'] );
 		$this->assertSame( 'https://store.example/red-front.jpg', $result['media'][0]['url'] );
@@ -548,7 +548,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertSame( '0.5', $result['metadata']['shipping']['weight'] );
 		$this->assertSame( '10', $result['metadata']['shipping']['dimensions']['length'] );
@@ -573,7 +573,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			'is_in_stock' => true,
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertArrayNotHasKey( 'shipping_attributes', $result );
 	}
@@ -597,7 +597,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::translate( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertSame( '1.2', $result['metadata']['shipping']['weight'] );
 		$this->assertArrayNotHasKey( 'dimensions', $result['metadata']['shipping'] );
@@ -622,7 +622,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			'dimensions'  => [ 'length' => '20', 'width' => '10', 'height' => '5' ],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $fixture );
 
 		$this->assertSame( '2.0', $result['metadata']['shipping']['weight'] );
 		$this->assertSame( '20', $result['metadata']['shipping']['dimensions']['length'] );
@@ -641,7 +641,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 				'currency_code' => 'USD',
 			],
 			'extensions'          => [
-				WC_AI_Syndication_Store_Api_Extension::NAMESPACE => [
+				WC_AI_Storefront_Store_Api_Extension::NAMESPACE => [
 					'barcodes' => [
 						[ 'type' => 'gtin13', 'value' => '9876543210987' ],
 					],
@@ -649,7 +649,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $fixture );
 
 		$this->assertSame( 2000, $result['compare_at_price']['amount'] );
 		$this->assertSame( 5, $result['availability']['quantity'] );
@@ -671,7 +671,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$result = WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $fixture );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $fixture );
 
 		$this->assertSame( 5000, $result['list_price']['amount'] );
 		$this->assertEquals( 'JPY', $result['list_price']['currency'] );

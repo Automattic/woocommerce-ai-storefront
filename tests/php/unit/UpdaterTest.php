@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_Updater.
+ * Tests for WC_AI_Storefront_Updater.
  *
  * The updater is thin glue around the vendored Plugin Update Checker
  * library. These tests lock in the pieces that WOULD hide real bugs
@@ -22,7 +22,7 @@
  * integration territory. Manual smoke test: fresh plugin install →
  * wait ~12h → "Update available" shows in wp-admin Plugins screen.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -40,7 +40,7 @@ class UpdaterTest extends \PHPUnit\Framework\TestCase {
 		// case starts fresh. We use reflection because the class
 		// guards against double-init by design — that's the whole
 		// point of one of the tests.
-		$reflection = new ReflectionClass( WC_AI_Syndication_Updater::class );
+		$reflection = new ReflectionClass( WC_AI_Storefront_Updater::class );
 		$prop       = $reflection->getProperty( 'initialized' );
 		$prop->setAccessible( true );
 		$prop->setValue( null, false );
@@ -59,22 +59,22 @@ class UpdaterTest extends \PHPUnit\Framework\TestCase {
 		// regression where someone changes the constant without
 		// also renaming the repo.
 		$this->assertSame(
-			'https://github.com/pierorocca/woocommerce-ai-syndication',
-			WC_AI_Syndication_Updater::GITHUB_REPO_URL,
-			'Repo URL must end in the plugin slug "woocommerce-ai-syndication"'
+			'https://github.com/Automattic/woocommerce-ai-storefront',
+			WC_AI_Storefront_Updater::GITHUB_REPO_URL,
+			'Repo URL must end in the plugin slug "woocommerce-ai-storefront"'
 		);
 	}
 
 	public function test_release_asset_pattern_matches_workflow_output(): void {
 		// The release workflow produces zips named
-		// `woocommerce-ai-syndication-v{VERSION}.zip`. The pattern
+		// `woocommerce-ai-storefront-v{VERSION}.zip`. The pattern
 		// PUC uses to pick the right asset must match that naming,
 		// otherwise PUC falls back to the source-code zip (wrong
 		// directory name).
-		$pattern = WC_AI_Syndication_Updater::RELEASE_ASSET_PATTERN;
+		$pattern = WC_AI_Storefront_Updater::RELEASE_ASSET_PATTERN;
 
-		$this->assertMatchesRegularExpression( $pattern, 'woocommerce-ai-syndication-v1.4.0.zip' );
-		$this->assertMatchesRegularExpression( $pattern, 'woocommerce-ai-syndication-1.4.0.zip' );
+		$this->assertMatchesRegularExpression( $pattern, 'woocommerce-ai-storefront-v1.4.0.zip' );
+		$this->assertMatchesRegularExpression( $pattern, 'woocommerce-ai-storefront-1.4.0.zip' );
 		$this->assertDoesNotMatchRegularExpression( $pattern, 'source-code.zip' );
 		$this->assertDoesNotMatchRegularExpression( $pattern, 'some-other-plugin-v1.0.0.zip' );
 	}
@@ -94,14 +94,14 @@ class UpdaterTest extends \PHPUnit\Framework\TestCase {
 		// because the require_once behavior depends on whether
 		// other tests have already loaded PUC — not something we
 		// can reliably observe at the unit level.
-		$reflection = new ReflectionClass( WC_AI_Syndication_Updater::class );
+		$reflection = new ReflectionClass( WC_AI_Storefront_Updater::class );
 		$prop       = $reflection->getProperty( 'initialized' );
 		$prop->setAccessible( true );
 		$prop->setValue( null, true );
 
 		// If the guard is broken this next line would throw
 		// "Undefined constant WP_PLUGIN_DIR" from PUC.
-		WC_AI_Syndication_Updater::init();
+		WC_AI_Storefront_Updater::init();
 
 		$this->assertTrue(
 			$prop->getValue(),
@@ -120,7 +120,7 @@ class UpdaterTest extends \PHPUnit\Framework\TestCase {
 		// can verify the code path exists: if the loader file is
 		// missing, init() returns early without raising. The real-
 		// world check is the file_exists() guard in the class.
-		$loader = WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/lib/plugin-update-checker/plugin-update-checker.php';
+		$loader = WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/lib/plugin-update-checker/plugin-update-checker.php';
 		$this->assertFileExists(
 			$loader,
 			'The vendored PUC library must be present at the expected path. '

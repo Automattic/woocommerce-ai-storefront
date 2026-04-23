@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_Ucp.
+ * Tests for WC_AI_Storefront_Ucp.
  *
  * Pins the UCP discovery profile manifest shape against the official
  * business_profile schema at:
@@ -15,11 +15,11 @@
  *      This is the plugin's core product decision (no delegated checkout,
  *      no identity linking, no agent-driven order flows).
  *   3. Plugin-specific config — the `store_context` nested inside
- *      the `com.woocommerce.ai_syndication` extension capability.
+ *      the `com.woocommerce.ai_storefront` extension capability.
  *      Permissive by design (UCP allows it), but agents that learn
  *      our namespace depend on the shape.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -29,12 +29,12 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class UcpTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
-	private WC_AI_Syndication_Ucp $ucp;
+	private WC_AI_Storefront_Ucp $ucp;
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->ucp = new WC_AI_Syndication_Ucp();
+		$this->ucp = new WC_AI_Storefront_Ucp();
 
 		Functions\when( 'home_url' )->alias(
 			static fn( $path = '' ) => 'https://example.com' . ( $path ?: '/' )
@@ -105,7 +105,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertEquals(
-			WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			$manifest['ucp']['version']
 		);
 	}
@@ -214,7 +214,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertStringStartsWith(
-			'https://ucp.dev/' . WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			'https://ucp.dev/' . WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			$binding['spec']
 		);
 		$this->assertStringEndsWith( '/specification/overview', $binding['spec'] );
@@ -232,7 +232,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayHasKey( 'schema', $binding );
 		$this->assertStringStartsWith(
-			'https://ucp.dev/' . WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			'https://ucp.dev/' . WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			$binding['schema']
 		);
 		$this->assertStringEndsWith( '.openapi.json', $binding['schema'] );
@@ -303,7 +303,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		//
 		// Post-1.6.5, the checkout capability is canonical UCP only.
 		// Merchant-specific `store_context` lives in the
-		// `com.woocommerce.ai_syndication` extension capability;
+		// `com.woocommerce.ai_storefront` extension capability;
 		// attribution was subsequently dropped from the extension
 		// too (the server-side `continue_url` injects UTM values
 		// from the UCP-Agent header, making a machine-readable
@@ -339,14 +339,14 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		// Includes the 1.6.5 extension capability
-		// (com.woocommerce.ai_syndication) — extensions follow the
+		// (com.woocommerce.ai_storefront) — extensions follow the
 		// same [{binding}] shape as canonical capabilities per the
 		// UCP capability schema.
 		$capabilities = [
 			'dev.ucp.shopping.catalog.search',
 			'dev.ucp.shopping.catalog.lookup',
 			'dev.ucp.shopping.checkout',
-			'com.woocommerce.ai_syndication',
+			'com.woocommerce.ai_storefront',
 		];
 
 		foreach ( $capabilities as $cap ) {
@@ -355,7 +355,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 			$this->assertIsArray( $bindings, "$cap should be an array" );
 			$this->assertCount( 1, $bindings, "$cap should declare exactly one binding" );
 			$this->assertEquals(
-				WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+				WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 				$bindings[0]['version'],
 				"$cap binding version should match plugin PROTOCOL_VERSION"
 			);
@@ -367,7 +367,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		//   - 3 canonical UCP capabilities we implement
 		//     (catalog.search, catalog.lookup, checkout)
 		//   - 1 merchant-specific extension carrying store_context
-		//     only (com.woocommerce.ai_syndication)
+		//     only (com.woocommerce.ai_storefront)
 		//
 		// Extensions use the `extends` field to link back to the
 		// parent capability/service; canonical capabilities have
@@ -379,7 +379,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 				'dev.ucp.shopping.catalog.search',
 				'dev.ucp.shopping.catalog.lookup',
 				'dev.ucp.shopping.checkout',
-				'com.woocommerce.ai_syndication',
+				'com.woocommerce.ai_storefront',
 			],
 			array_keys( $manifest['ucp']['capabilities'] )
 		);
@@ -395,7 +395,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		}
 
 		// The extension MUST carry `extends` pointing at the parent.
-		$ext = $manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0];
+		$ext = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0];
 		$this->assertSame( 'dev.ucp.shopping', $ext['extends'] );
 	}
 
@@ -442,12 +442,12 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Layer 2.5: com.woocommerce.ai_syndication extension capability
+	// Layer 2.5: com.woocommerce.ai_storefront extension capability
 	// ------------------------------------------------------------------
 	//
 	// Pre-1.6.5: store_context lived as a root-level sibling of the
 	// `ucp` wrapper. 1.6.5 moved it inside the extension capability
-	// `com.woocommerce.ai_syndication.config.store_context` per the
+	// `com.woocommerce.ai_storefront.config.store_context` per the
 	// UCP spec's extension pattern (a capability with `extends`
 	// pointing at a parent). The five store_context contract fields
 	// are unchanged; only the path in the manifest changed.
@@ -462,11 +462,11 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	/**
 	 * Resolve the extension's config.store_context block. Pre-1.6.5
 	 * this was `$manifest['store_context']`; post-1.6.5 it's
-	 * `$manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0]['config']['store_context']`.
+	 * `$manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config']['store_context']`.
 	 */
 	private function get_store_context(): array {
 		$manifest = $this->ucp->generate_manifest( [] );
-		return $manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0]['config']['store_context'];
+		return $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config']['store_context'];
 	}
 
 	public function test_store_context_no_longer_lives_at_manifest_root(): void {
@@ -560,7 +560,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// below and validated by a separate test.
 		$manifest = $this->ucp->generate_manifest( [] );
 		$service  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
-		$version  = WC_AI_Syndication_Ucp::PROTOCOL_VERSION;
+		$version  = WC_AI_Storefront_Ucp::PROTOCOL_VERSION;
 
 		// Service-level URLs.
 		$this->assertStringContainsString( "/{$version}/", $service['spec'] );
@@ -568,7 +568,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 
 		// Capability-level URLs — canonical (`dev.ucp.*`) capabilities
 		// point at ucp.dev and MUST be version-pinned. Extension
-		// capabilities (our `com.woocommerce.ai_syndication`) are
+		// capabilities (our `com.woocommerce.ai_storefront`) are
 		// self-hosted on the merchant site and exempted.
 		$caps = $manifest['ucp']['capabilities'];
 		foreach ( $caps as $name => $bindings ) {
@@ -591,7 +591,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_extension_capability_urls_are_self_hosted(): void {
-		// The `com.woocommerce.ai_syndication` extension capability's
+		// The `com.woocommerce.ai_storefront` extension capability's
 		// `spec` + `schema` URLs are served by the merchant site, not
 		// by a third-party registry. This keeps docs always in sync
 		// with the running plugin version, respects the site's own
@@ -601,7 +601,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// dedicated JSON Schema REST route. Both are on the merchant
 		// host, never `ucp.dev` or `github.com`.
 		$manifest = $this->ucp->generate_manifest( [] );
-		$ext      = $manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0];
+		$ext      = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0];
 
 		$this->assertArrayHasKey( 'spec', $ext );
 		$this->assertArrayHasKey( 'schema', $ext );
@@ -650,7 +650,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	//     with purchase-URL templates + attribution guidance. Both
 	//     were moved out in 1.6.5: URL templates went to llms.txt
 	//     only (canonical flow is POST /checkout-sessions), and
-	//     attribution moved into the com.woocommerce.ai_syndication
+	//     attribution moved into the com.woocommerce.ai_storefront
 	//     extension as `config.attribution`.
 	//   - A later sweep removed extension `config.attribution`
 	//     entirely. The attribution contract is server-side: our
@@ -663,7 +663,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	//
 	// The tests below guard the two resulting invariants:
 	//   - `dev.ucp.shopping.checkout` has no `config` block at all.
-	//   - `com.woocommerce.ai_syndication.config` only carries
+	//   - `com.woocommerce.ai_storefront.config` only carries
 	//      `store_context` — no `attribution`, no UTM schema,
 	//      no purchase URL templates.
 
@@ -690,7 +690,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// accidental reintroduction of attribution or sibling blocks
 		// that duplicate server-side contracts.
 		$manifest = $this->ucp->generate_manifest( [] );
-		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_syndication'][0]['config'];
+		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config'];
 
 		$this->assertSame( [ 'store_context' ], array_keys( $config ) );
 		$this->assertArrayNotHasKey( 'attribution', $config );
@@ -702,13 +702,13 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_manifest_is_filterable(): void {
 		// The filter preserves the v1 signature: `apply_filters(
-		// 'wc_ai_syndication_ucp_manifest', $manifest, $settings )`.
+		// 'wc_ai_storefront_ucp_manifest', $manifest, $settings )`.
 		// Third parties can extend the manifest (e.g., a plugin that
 		// adds Payment Token Exchange would inject a payment handler
 		// under ucp.payment_handlers).
 		Functions\when( 'apply_filters' )->alias(
 			static function ( $hook, $value ) {
-				if ( 'wc_ai_syndication_ucp_manifest' === $hook ) {
+				if ( 'wc_ai_storefront_ucp_manifest' === $hook ) {
 					$value['ucp']['custom_key'] = 'extended';
 				}
 				return $value;

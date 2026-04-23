@@ -6,7 +6,7 @@
  * the plugin classes under test. Brain Monkey handles function mocking;
  * these cover classes that Brain Monkey doesn't stub.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 if ( ! class_exists( 'WP_Error' ) ) {

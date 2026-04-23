@@ -56,10 +56,10 @@ AI agents are becoming a primary product discovery channel. This plugin gives me
 
 | File | Endpoint | Purpose |
 |------|----------|---------|
-| `class-wc-ai-syndication-llms-txt.php` | `/llms.txt` | Machine-readable store guide: name, categories, products, attribution instructions |
-| `class-wc-ai-syndication-jsonld.php` | Product pages | Enhanced Schema.org Product markup: BuyAction, inventory, attributes, shipping/return info |
-| `class-wc-ai-syndication-robots.php` | `/robots.txt` | Whitelists known AI crawlers, allows discovery endpoints, blocks checkout/account pages |
-| `class-wc-ai-syndication-ucp.php` | `/.well-known/ucp` | JSON manifest: declares the two implemented UCP capabilities (catalog, checkout), points at the UCP REST adapter, declares empty `payment_handlers` (stateless redirect posture) |
+| `class-wc-ai-storefront-llms-txt.php` | `/llms.txt` | Machine-readable store guide: name, categories, products, attribution instructions |
+| `class-wc-ai-storefront-jsonld.php` | Product pages | Enhanced Schema.org Product markup: BuyAction, inventory, attributes, shipping/return info |
+| `class-wc-ai-storefront-robots.php` | `/robots.txt` | Whitelists known AI crawlers, allows discovery endpoints, blocks checkout/account pages |
+| `class-wc-ai-storefront-ucp.php` | `/.well-known/ucp` | JSON manifest: declares the two implemented UCP capabilities (catalog, checkout), points at the UCP REST adapter, declares empty `payment_handlers` (stateless redirect posture) |
 
 ### UCP REST Adapter (1.3.0+)
 
@@ -69,12 +69,12 @@ The operational counterpart to the discovery layer. Translates the WooCommerce S
 
 | File | Responsibility |
 |------|----------------|
-| `class-wc-ai-syndication-ucp-rest-controller.php` | Registers three POST routes (`/catalog/search`, `/catalog/lookup`, `/checkout-sessions`) and hosts the handlers. Every handler dispatches through `rest_do_request()` to the WC Store API — in-process, no HTTP overhead — so the Store API filter (below) automatically applies. |
-| `class-wc-ai-syndication-ucp-product-translator.php` | WC product response → UCP product. Accepts an optional array of pre-fetched variations to support variable-product expansion (pure function, no dispatching). Simple products emit a single synthesized default variant to satisfy UCP's `minItems: 1` on `variants`. |
-| `class-wc-ai-syndication-ucp-variant-translator.php` | WC variation → UCP variant. Builds titles from attribute values (e.g. "Small / Blue"), preserves integer minor units for prices (no float math, no hardcoded `* 100`), and handles simple-product defaults via `synthesize_default()`. |
-| `class-wc-ai-syndication-ucp-envelope.php` | Builds the `ucp: { version, capabilities, payment_handlers }` wrapper that prefixes every response body. `PROTOCOL_VERSION` is read from `WC_AI_Syndication_Ucp::PROTOCOL_VERSION` so manifest and response envelopes stay in sync. |
-| `class-wc-ai-syndication-ucp-agent-header.php` | Parses the `UCP-Agent` request header (RFC 8941 Dictionary) to extract the calling agent's profile hostname. Used as `utm_source` on checkout-sessions `continue_url` and for attribution logging. Falls back to `ucp_unknown` when header is missing/malformed. |
-| `class-wc-ai-syndication-ucp-store-api-filter.php` | Hooks `woocommerce_store_api_product_collection_query_args` to enforce the plugin's `product_selection_mode` setting on every Store API product query. Before 1.3.0 this setting silently applied only to llms.txt/JSON-LD; now it governs Store API responses too (including block-theme Cart/Checkout). Intersects with incoming `post__in` rather than overriding, so the merchant's allow-list can't be bypassed. |
+| `class-wc-ai-storefront-ucp-rest-controller.php` | Registers three POST routes (`/catalog/search`, `/catalog/lookup`, `/checkout-sessions`) and hosts the handlers. Every handler dispatches through `rest_do_request()` to the WC Store API — in-process, no HTTP overhead — so the Store API filter (below) automatically applies. |
+| `class-wc-ai-storefront-ucp-product-translator.php` | WC product response → UCP product. Accepts an optional array of pre-fetched variations to support variable-product expansion (pure function, no dispatching). Simple products emit a single synthesized default variant to satisfy UCP's `minItems: 1` on `variants`. |
+| `class-wc-ai-storefront-ucp-variant-translator.php` | WC variation → UCP variant. Builds titles from attribute values (e.g. "Small / Blue"), preserves integer minor units for prices (no float math, no hardcoded `* 100`), and handles simple-product defaults via `synthesize_default()`. |
+| `class-wc-ai-storefront-ucp-envelope.php` | Builds the `ucp: { version, capabilities, payment_handlers }` wrapper that prefixes every response body. `PROTOCOL_VERSION` is read from `WC_AI_Syndication_Ucp::PROTOCOL_VERSION` so manifest and response envelopes stay in sync. |
+| `class-wc-ai-storefront-ucp-agent-header.php` | Parses the `UCP-Agent` request header (RFC 8941 Dictionary) to extract the calling agent's profile hostname. Used as `utm_source` on checkout-sessions `continue_url` and for attribution logging. Falls back to `ucp_unknown` when header is missing/malformed. |
+| `class-wc-ai-storefront-ucp-store-api-filter.php` | Hooks `woocommerce_store_api_product_collection_query_args` to enforce the plugin's `product_selection_mode` setting on every Store API product query. Before 1.3.0 this setting silently applied only to llms.txt/JSON-LD; now it governs Store API responses too (including block-theme Cart/Checkout). Intersects with incoming `post__in` rather than overriding, so the merchant's allow-list can't be bypassed. |
 
 **Stateless checkout pattern:** `/checkout-sessions` never persists anything. Every successful response returns `status: requires_escalation` with a `continue_url` pointing at WooCommerce's native Shareable Checkout URL (`/checkout-link/?products=ID:QTY`). The `chk_` session ID is a correlation token only — no follow-up GET/PUT/DELETE endpoints exist. Once the agent redirects the user, WooCommerce owns the rest of the transaction.
 
@@ -89,32 +89,32 @@ The operational counterpart to the discovery layer. Translates the WooCommerce S
 
 | File | Purpose |
 |------|---------|
-| `class-wc-ai-syndication-attribution.php` | Captures AI-referred orders via standard WooCommerce Order Attribution (`utm_medium=ai_agent`). Surfaces agent name in WC core's "Origin" column (fed by `utm_source`); no custom column since 1.6.7. SQL aggregation for per-agent revenue stats. |
+| `class-wc-ai-storefront-attribution.php` | Captures AI-referred orders via standard WooCommerce Order Attribution (`utm_medium=ai_agent`). Surfaces agent name in WC core's "Origin" column (fed by `utm_source`); no custom column since 1.6.7. SQL aggregation for per-agent revenue stats. |
 
 ### Rate Limiting
 
 | File | Purpose |
 |------|---------|
-| `class-wc-ai-syndication-store-api-rate-limiter.php` | Enables WooCommerce Store API rate limiting for AI bot traffic. Uses `woocommerce_store_api_rate_limit_options` and `woocommerce_store_api_rate_limit_id` filters. Fingerprints by user-agent, matching against the robots.txt crawler list. Regular customer traffic is unaffected. |
+| `class-wc-ai-storefront-store-api-rate-limiter.php` | Enables WooCommerce Store API rate limiting for AI bot traffic. Uses `woocommerce_store_api_rate_limit_options` and `woocommerce_store_api_rate_limit_id` filters. Fingerprints by user-agent, matching against the robots.txt crawler list. Regular customer traffic is unaffected. |
 
 ### Cache Invalidation
 
 | File | Purpose |
 |------|---------|
-| `class-wc-ai-syndication-cache-invalidator.php` | Event-driven cache invalidation for llms.txt and UCP manifest. Hooks into product/category CRUD, stock changes, and settings updates. Debounced WP-Cron warm-up. |
+| `class-wc-ai-storefront-cache-invalidator.php` | Event-driven cache invalidation for llms.txt and UCP manifest. Hooks into product/category CRUD, stock changes, and settings updates. Debounced WP-Cron warm-up. |
 
 ### Debug Logging
 
 | File | Purpose |
 |------|---------|
-| `class-wc-ai-syndication-logger.php` | Off-by-default debug logger. Enable per-request via `add_filter( 'wc_ai_syndication_debug', '__return_true' );`. Instruments: llms.txt and UCP cache hit/miss, rate-limit fingerprint matches, attribution captures. Output goes to `error_log()` (usually `/wp-content/debug.log` when `WP_DEBUG_LOG` is on) prefixed with `[wc-ai-syndication]`. The filter is evaluated once per request and cached, so call sites pay only a static-property check when logging is off. |
+| `class-wc-ai-storefront-logger.php` | Off-by-default debug logger. Enable per-request via `add_filter( 'wc_ai_storefront_debug', '__return_true' );`. Instruments: llms.txt and UCP cache hit/miss, rate-limit fingerprint matches, attribution captures. Output goes to `error_log()` (usually `/wp-content/debug.log` when `WP_DEBUG_LOG` is on) prefixed with `[wc-ai-storefront]`. The filter is evaluated once per request and cached, so call sites pay only a static-property check when logging is off. |
 
 ### Admin
 
 | File | Purpose |
 |------|---------|
-| `class-wc-ai-syndication-admin-controller.php` | REST API for admin settings UI: settings CRUD, attribution stats, category/product search, endpoint URLs |
-| `class-wc-ai-syndication.php` | Main orchestrator (singleton): dependency loading, rewrite rules, settings with memoization + cache busting, version-based flush |
+| `class-wc-ai-storefront-admin-controller.php` | REST API for admin settings UI: settings CRUD, attribution stats, category/product search, endpoint URLs |
+| `class-wc-ai-storefront.php` | Main orchestrator (singleton): dependency loading, rewrite rules, settings with memoization + cache busting, version-based flush |
 
 ## Frontend (React Admin UI)
 
@@ -252,7 +252,7 @@ Use `Flex` / `FlexItem` / `FlexBlock` from `@wordpress/components` instead of ha
 
 ```
 woo-ucp-syndicate-ai/
-├── woocommerce-ai-syndication.php           # Bootstrap, HPOS declaration, activation/deactivation
+├── woocommerce-ai-storefront.php           # Bootstrap, HPOS declaration, activation/deactivation
 ├── README.md                                # GitHub-facing project overview
 ├── readme.txt                               # WP.org-format plugin readme
 ├── AGENTS.md                                # This file — architecture reference
@@ -273,25 +273,25 @@ woo-ucp-syndicate-ai/
 │   └── woocommerce-ai-syndication.pot       # Gettext template (committed; auto-regen in release)
 │
 ├── includes/
-│   ├── class-wc-ai-syndication.php          # Main orchestrator
+│   ├── class-wc-ai-storefront.php          # Main orchestrator
 │   ├── admin/
-│   │   └── class-wc-ai-syndication-admin-controller.php
+│   │   └── class-wc-ai-storefront-admin-controller.php
 │   └── ai-syndication/
-│       ├── class-wc-ai-syndication-llms-txt.php
-│       ├── class-wc-ai-syndication-jsonld.php
-│       ├── class-wc-ai-syndication-robots.php
-│       ├── class-wc-ai-syndication-ucp.php        # UCP discovery manifest
-│       ├── class-wc-ai-syndication-store-api-rate-limiter.php
-│       ├── class-wc-ai-syndication-attribution.php
-│       ├── class-wc-ai-syndication-cache-invalidator.php
-│       ├── class-wc-ai-syndication-logger.php
+│       ├── class-wc-ai-storefront-llms-txt.php
+│       ├── class-wc-ai-storefront-jsonld.php
+│       ├── class-wc-ai-storefront-robots.php
+│       ├── class-wc-ai-storefront-ucp.php        # UCP discovery manifest
+│       ├── class-wc-ai-storefront-store-api-rate-limiter.php
+│       ├── class-wc-ai-storefront-attribution.php
+│       ├── class-wc-ai-storefront-cache-invalidator.php
+│       ├── class-wc-ai-storefront-logger.php
 │       └── ucp-rest/                         # UCP REST adapter (1.3.0+)
-│           ├── class-wc-ai-syndication-ucp-rest-controller.php
-│           ├── class-wc-ai-syndication-ucp-product-translator.php
-│           ├── class-wc-ai-syndication-ucp-variant-translator.php
-│           ├── class-wc-ai-syndication-ucp-envelope.php
-│           ├── class-wc-ai-syndication-ucp-agent-header.php
-│           └── class-wc-ai-syndication-ucp-store-api-filter.php
+│           ├── class-wc-ai-storefront-ucp-rest-controller.php
+│           ├── class-wc-ai-storefront-ucp-product-translator.php
+│           ├── class-wc-ai-storefront-ucp-variant-translator.php
+│           ├── class-wc-ai-storefront-ucp-envelope.php
+│           ├── class-wc-ai-storefront-ucp-agent-header.php
+│           └── class-wc-ai-storefront-ucp-store-api-filter.php
 │
 ├── client/
 │   ├── data/ai-syndication/
@@ -314,7 +314,7 @@ woo-ucp-syndicate-ai/
 │   └── php/
 │       ├── bootstrap.php
 │       ├── stubs.php                        # WC_Product, WC_Order, WP_REST_* stubs
-│       ├── stubs/class-wc-ai-syndication-stub.php
+│       ├── stubs/class-wc-ai-storefront-stub.php
 │       └── unit/
 │           ├── ActivationTest.php
 │           ├── AttributionTest.php
@@ -362,8 +362,8 @@ All runtime settings are stored in a single serialized option to keep reads chea
 
 | Option Key | Type | Description |
 |------------|------|-------------|
-| `wc_ai_syndication_settings` | array | `enabled`, `product_selection_mode`, `selected_categories`, `selected_products`, `rate_limit_rpm`, `allowed_crawlers` |
-| `wc_ai_syndication_version` | string | Plugin version (triggers cache bust + rewrite flush on update) |
+| `wc_ai_storefront_settings` | array | `enabled`, `product_selection_mode`, `selected_categories`, `selected_products`, `rate_limit_rpm`, `allowed_crawlers` |
+| `wc_ai_storefront_version` | string | Plugin version (triggers cache bust + rewrite flush on update) |
 
 ### `allowed_crawlers`
 
@@ -387,8 +387,8 @@ All endpoints require `manage_woocommerce` capability.
 |----------|--------|-------------|
 | `_wc_order_attribution_utm_source` | WooCommerce core | Agent identifier (chatgpt, gemini, etc.) |
 | `_wc_order_attribution_utm_medium` | WooCommerce core | `ai_agent` for AI-referred orders |
-| `_wc_ai_syndication_session_id` | This plugin | AI conversation/session ID |
-| `_wc_ai_syndication_agent` | This plugin | Denormalized agent name for fast queries |
+| `_wc_ai_storefront_session_id` | This plugin | AI conversation/session ID |
+| `_wc_ai_storefront_agent` | This plugin | Denormalized agent name for fast queries |
 
 ## Development
 

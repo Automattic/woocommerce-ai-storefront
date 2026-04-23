@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_UCP_Agent_Header.
+ * Tests for WC_AI_Storefront_UCP_Agent_Header.
  *
  * Covers the v1 parser: extract a hostname from a UCP-Agent header
  * whose format follows the well-formed spec example:
@@ -10,7 +10,7 @@
  * Real RFC 8941 parsing is deferred — if we ever need other fields
  * from the header (`version`, etc.), add tests for those then.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
@@ -24,7 +24,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals(
 			'agent.example.com',
-			WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( $header )
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header )
 		);
 	}
 
@@ -35,7 +35,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals(
 			'localhost',
-			WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( $header )
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header )
 		);
 	}
 
@@ -44,7 +44,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals(
 			'shopping-agent.sub.openai.com',
-			WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( $header )
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header )
 		);
 	}
 
@@ -55,7 +55,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 	public function test_returns_empty_for_empty_string(): void {
 		$this->assertEquals(
 			'',
-			WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( '' )
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( '' )
 		);
 	}
 
@@ -66,7 +66,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals(
 			'',
-			WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( $header )
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header )
 		);
 	}
 
@@ -83,7 +83,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals(
 			'',
-			WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( $header )
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header )
 		);
 	}
 
@@ -94,7 +94,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		// downstream to the utm_source builder.
 		$header = 'profile="not-a-url"';
 
-		$result = WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( $header );
+		$result = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header );
 
 		// The exact behavior depends on wp_parse_url; either empty or
 		// the raw "not-a-url" string. We assert it's empty because
@@ -111,7 +111,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals(
 			'agent.example.com',
-			WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( $header )
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header )
 		);
 	}
 
@@ -122,7 +122,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals(
 			'agent.example.com',
-			WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( $header )
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header )
 		);
 	}
 
@@ -136,7 +136,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		// re-attributes historical orders — lock it in place.
 		$this->assertEquals(
 			'ucp_unknown',
-			WC_AI_Syndication_UCP_Agent_Header::FALLBACK_SOURCE
+			WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE
 		);
 	}
 
@@ -154,7 +154,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		// spec so the two can't silently drift.
 		$this->assertEquals(
 			$expected,
-			WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( $input )
+			WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $input )
 		);
 	}
 
@@ -184,7 +184,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		// before lookup or the mapping silently misses.
 		$this->assertEquals(
 			'Gemini',
-			WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( 'Gemini.Google.COM' )
+			WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( 'Gemini.Google.COM' )
 		);
 	}
 
@@ -195,7 +195,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		// erase attribution for every novel vendor.
 		$this->assertEquals(
 			'unknown-agent.example.com',
-			WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( 'unknown-agent.example.com' )
+			WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( 'unknown-agent.example.com' )
 		);
 	}
 
@@ -206,7 +206,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		// and fall back to FALLBACK_SOURCE.
 		$this->assertEquals(
 			'',
-			WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( '' )
+			WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( '' )
 		);
 	}
 
@@ -218,7 +218,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		// "ChatGPT" would misattribute.
 		$this->assertEquals(
 			'foo.openai.com',
-			WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( 'foo.openai.com' )
+			WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( 'foo.openai.com' )
 		);
 	}
 }

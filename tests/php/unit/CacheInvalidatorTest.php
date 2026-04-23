@@ -1,8 +1,8 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_Cache_Invalidator.
+ * Tests for WC_AI_Storefront_Cache_Invalidator.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -12,12 +12,12 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
-	private WC_AI_Syndication_Cache_Invalidator $invalidator;
+	private WC_AI_Storefront_Cache_Invalidator $invalidator;
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->invalidator = new WC_AI_Syndication_Cache_Invalidator();
+		$this->invalidator = new WC_AI_Storefront_Cache_Invalidator();
 	}
 
 	protected function tearDown(): void {
@@ -44,14 +44,14 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 		Functions\expect( 'wp_next_scheduled' )
 			->once()
-			->with( WC_AI_Syndication_Cache_Invalidator::WARMUP_CRON_HOOK )
+			->with( WC_AI_Storefront_Cache_Invalidator::WARMUP_CRON_HOOK )
 			->andReturn( false );
 
 		Functions\expect( 'wp_schedule_single_event' )
 			->once()
 			->andReturnUsing( function ( $timestamp, $hook ) {
 				$this->assertEqualsWithDelta( time() + 30, $timestamp, 2 );
-				$this->assertEquals( WC_AI_Syndication_Cache_Invalidator::WARMUP_CRON_HOOK, $hook );
+				$this->assertEquals( WC_AI_Storefront_Cache_Invalidator::WARMUP_CRON_HOOK, $hook );
 				return true;
 			} );
 
@@ -63,7 +63,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 		Functions\expect( 'wp_next_scheduled' )
 			->once()
-			->with( WC_AI_Syndication_Cache_Invalidator::WARMUP_CRON_HOOK )
+			->with( WC_AI_Storefront_Cache_Invalidator::WARMUP_CRON_HOOK )
 			->andReturn( time() + 15 ); // Already scheduled.
 
 		// wp_schedule_single_event should NOT be called.
@@ -79,7 +79,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	public function test_warm_cache_exits_early_when_cache_exists(): void {
 		Functions\expect( 'get_transient' )
 			->once()
-			->with( WC_AI_Syndication_Llms_Txt::CACHE_KEY )
+			->with( WC_AI_Storefront_Llms_Txt::CACHE_KEY )
 			->andReturn( '# Cached content' );
 
 		// Should not attempt to generate or set transient.
@@ -90,10 +90,10 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_warm_cache_exits_early_when_syndication_disabled(): void {
 		Functions\expect( 'get_transient' )
-			->with( WC_AI_Syndication_Llms_Txt::CACHE_KEY )
+			->with( WC_AI_Storefront_Llms_Txt::CACHE_KEY )
 			->andReturn( false );
 
-		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
 
 		// Should not attempt to set transient.
 		Functions\expect( 'set_transient' )->never();
@@ -111,9 +111,9 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 		Functions\expect( 'wp_clear_scheduled_hook' )
 			->once()
-			->with( WC_AI_Syndication_Cache_Invalidator::WARMUP_CRON_HOOK );
+			->with( WC_AI_Storefront_Cache_Invalidator::WARMUP_CRON_HOOK );
 
-		WC_AI_Syndication_Cache_Invalidator::deactivate();
+		WC_AI_Storefront_Cache_Invalidator::deactivate();
 	}
 
 	// ------------------------------------------------------------------

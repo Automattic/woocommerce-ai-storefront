@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_Admin_Controller::get_recent_orders().
+ * Tests for WC_AI_Storefront_Admin_Controller::get_recent_orders().
  *
  * Structural / contract test: the frontend DataViews table depends
  * on specific keys in the response (id, number, date, date_display,
@@ -15,7 +15,7 @@
  * orders display as brand names in the AI Orders table even though
  * their stored meta still reads as the hostname.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -25,12 +25,12 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
-	private WC_AI_Syndication_Admin_Controller $controller;
+	private WC_AI_Storefront_Admin_Controller $controller;
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->controller = new WC_AI_Syndication_Admin_Controller();
+		$this->controller = new WC_AI_Storefront_Admin_Controller();
 
 		Functions\when( 'wc_get_order_statuses' )->justReturn(
 			[
@@ -77,7 +77,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		$order->set_test_currency( 'USD' );
 		$order->set_test_edit_url( "https://example.com/wp-admin/admin.php?page=wc-orders&action=edit&id={$id}" );
 		$order->set_test_date_created( new WC_DateTime_Stub() );
-		$order->set_test_meta( WC_AI_Syndication_Attribution::AGENT_META_KEY, $agent );
+		$order->set_test_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY, $agent );
 		return $order;
 	}
 
@@ -157,7 +157,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_legacy_hostname_agent_meta_canonicalizes_in_response(): void {
 		// An order stored pre-1.6.7 will have `gemini.google.com` in
-		// its `_wc_ai_syndication_agent` meta (the raw hostname from
+		// its `_wc_ai_storefront_agent` meta (the raw hostname from
 		// the UCP-Agent header, before 1.6.7's canonicalization at
 		// checkout-session time). Display-time canonicalization in
 		// `get_recent_orders` must map it to `Gemini` so legacy
