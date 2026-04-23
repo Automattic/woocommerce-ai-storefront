@@ -736,9 +736,18 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			: MODES.CATEGORIES;
 	} );
 
-	// Keep local activeTaxonomy in sync if settings.product_selection_mode
-	// changes from outside (e.g. a Save completes and the canonical value
-	// comes back from the server).
+	// Keep local activeTaxonomy in sync when the server-persisted mode
+	// changes externally — e.g. a Save completes and the canonical
+	// value comes back from the store, or a future "reset to defaults"
+	// control dispatches a write we didn't originate locally. The
+	// `serverMode !== activeTaxonomy` guard short-circuits the common
+	// case where the user just toggled a segment: both values update
+	// in the same React batch, the effect re-runs, sees them already
+	// equal, and no-ops. Including `activeTaxonomy` in the dep list
+	// (rather than suppressing exhaustive-deps) makes the closure's
+	// reads explicit so a future contributor closing over additional
+	// local state gets linted instead of silently creating a stale
+	// closure.
 	useEffect( () => {
 		if (
 			TAXONOMY_MODES.includes( serverMode ) &&
@@ -746,7 +755,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		) {
 			setActiveTaxonomy( serverMode );
 		}
-	}, [ serverMode ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Intentional: only react to server value; local changes propagate through setMode().
+	}, [ serverMode, activeTaxonomy ] );
 
 	// Load categories eagerly on mount (cheap, small list) so the
 	// By-Taxonomy radio row can show an accurate count even when
@@ -946,15 +955,20 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// `selected` mode, so it answers "how many products would be
 	// shared if I switched to All?" — i.e. the unfiltered total.
 	//
-	// We intentionally hit the WP core REST endpoint
-	// (`/wp/v2/product`) here rather than the Store API
-	// (`/wc/store/v1/products`) because this plugin globally
-	// restricts Store API product collections via the
-	// `woocommerce_store_api_product_collection_query_args` filter
-	// when mode is not 'all'. That filter would make the Store API
-	// count reflect the merchant's current selection, not the true
-	// unfiltered total — wrong answer for this badge. `/wp/v2/product`
-	// is admin-side and not affected by the Store API filter.
+	// We hit the WC admin REST endpoint (`/wc/v3/products`) rather
+	// than the Store API (`/wc/store/v1/products`) because this
+	// plugin globally restricts Store API product collections via
+	// the `woocommerce_store_api_product_collection_query_args`
+	// filter when mode is not 'all' — that filter would make the
+	// Store API count reflect the merchant's current selection, not
+	// the true unfiltered total.
+	//
+	// We also don't use the WP core endpoint (`/wp/v2/product`)
+	// because it gates on `edit_posts`, which plugin admins with
+	// only `manage_woocommerce` don't always have — such a merchant
+	// would hit a 401 here and see a bare "Products" badge label.
+	// `/wc/v3/products` is gated on `manage_woocommerce` to match
+	// this plugin's own admin permission checks.
 	//
 	// Three states:
 	//   - null     → still loading → show "Loading…"
@@ -965,7 +979,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	useEffect( () => {
 		let cancelled = false;
 		apiFetch( {
-			path: '/wp/v2/product?status=publish&per_page=1&_fields=id',
+			path: '/wc/v3/products?status=publish&per_page=1&_fields=id',
 			parse: false,
 		} )
 			.then( ( response ) => {
@@ -1067,6 +1081,39 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		selectedProducts.length
 	);
 
+	// Empty-active-taxonomy detection + per-taxonomy warning copy.
+	// Computed at render time from `activeTaxonomy` + the three
+	// selected_* arrays so the warning stays in sync with whichever
+	// segment the merchant has open. See the JSX site below for the
+	// render guard + Notice.
+	let emptyActiveSelection = false;
+	let emptyTaxonomyWarning = '';
+	if (
+		activeTaxonomy === MODES.CATEGORIES &&
+		selectedCategories.length === 0
+	) {
+		emptyActiveSelection = true;
+		emptyTaxonomyWarning = __(
+			'No categories selected. Your products are currently hidden from AI agents — pick at least one category below to resume sharing.',
+			'woocommerce-ai-storefront'
+		);
+	} else if ( activeTaxonomy === MODES.TAGS && selectedTags.length === 0 ) {
+		emptyActiveSelection = true;
+		emptyTaxonomyWarning = __(
+			'No tags selected. Your products are currently hidden from AI agents — pick at least one tag below to resume sharing.',
+			'woocommerce-ai-storefront'
+		);
+	} else if (
+		activeTaxonomy === MODES.BRANDS &&
+		selectedBrands.length === 0
+	) {
+		emptyActiveSelection = true;
+		emptyTaxonomyWarning = __(
+			'No brands selected. Your products are currently hidden from AI agents — pick at least one brand below to resume sharing.',
+			'woocommerce-ai-storefront'
+		);
+	}
+
 	// Switch UI rows → write the corresponding server mode. By-taxonomy
 	// writes the active taxonomy so the server enum always holds a
 	// concrete taxonomy value (not a virtual "by_taxonomy").
@@ -1086,10 +1133,25 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// Switch between Categories / Tags / Brands inside the toggle.
 	// Writes the new mode immediately so the badge + detail render
 	// stay synced with the active segment.
+	//
+	// Note on stale `selected_*` arrays: switching the active
+	// taxonomy doesn't clear `selected_tags` / `selected_brands` /
+	// `selected_categories`. The server enforcement only reads the
+	// array matching the persisted `product_selection_mode`, so the
+	// inactive arrays are inert data — preserving them lets a
+	// merchant flip back and forth between taxonomies without
+	// losing their work. If we ever add a server-side migration
+	// that reads multiple arrays at once, this comment is the
+	// reminder to clear the inactive ones on a taxonomy switch.
 	const setTaxonomy = ( taxonomy ) => {
-		if ( ! taxonomy ) {
-			// ToggleGroupControl can emit undefined when the same
-			// option is re-selected. Ignore.
+		// Defensive membership check rather than a plain falsy
+		// guard: `! taxonomy` would correctly swallow the
+		// `undefined` that ToggleGroupControl emits on re-selection
+		// of the current option, but it would also swallow a
+		// numeric `0` from a future consumer. Checking the enum
+		// directly matches the three values this handler is
+		// actually designed to accept.
+		if ( ! TAXONOMY_MODES.includes( taxonomy ) ) {
 			return;
 		}
 		setActiveTaxonomy( taxonomy );
@@ -1206,6 +1268,36 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								) }
 							</ToggleGroupControl>
 						</div>
+
+						{ /*
+						   Empty-selection warning. If the merchant is in
+						   By-taxonomy and the active taxonomy has zero
+						   terms selected, both enforcement gates (Store
+						   API filter + `is_product_syndicated()`)
+						   currently hide all products. That's the
+						   correct enforcement behavior for "you picked
+						   a scoping mode but left it empty," but it's
+						   not obvious from the UI — the picker below
+						   just looks like "pick some terms to get
+						   started." This Notice spells the consequence
+						   out so the merchant doesn't inadvertently
+						   save a zero-selection state that hides their
+						   catalog from every AI agent.
+						   Same yellow severity as the `selected` panel's
+						   "new products not auto-included" warning —
+						   consistent treatment for the two modes whose
+						   empty/misconfigured states have merchant-
+						   visible consequences.
+						*/ }
+						{ emptyActiveSelection && (
+							<Notice
+								status="warning"
+								isDismissible={ false }
+								className="ai-syndication-empty-taxonomy-warning"
+							>
+								{ emptyTaxonomyWarning }
+							</Notice>
+						) }
 
 						{ activeTaxonomy === MODES.CATEGORIES && (
 							<TaxonomyPicker

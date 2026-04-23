@@ -376,30 +376,7 @@ class WC_AI_Storefront_Admin_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function search_tags() {
-		$tags = get_terms(
-			[
-				'taxonomy'   => 'product_tag',
-				'hide_empty' => false,
-				'orderby'    => 'name',
-				'order'      => 'ASC',
-			]
-		);
-
-		if ( is_wp_error( $tags ) ) {
-			return new WP_REST_Response( [] );
-		}
-
-		$data = [];
-		foreach ( $tags as $tag ) {
-			$data[] = [
-				'id'    => $tag->term_id,
-				'name'  => $tag->name,
-				'slug'  => $tag->slug,
-				'count' => $tag->count,
-			];
-		}
-
-		return new WP_REST_Response( $data );
+		return self::fetch_flat_taxonomy_terms( 'product_tag' );
 	}
 
 	/**
@@ -417,27 +394,49 @@ class WC_AI_Storefront_Admin_Controller {
 		if ( ! taxonomy_exists( 'product_brand' ) ) {
 			return new WP_REST_Response( [] );
 		}
+		return self::fetch_flat_taxonomy_terms( 'product_brand' );
+	}
 
-		$brands = get_terms(
+	/**
+	 * Shared callback body for flat-taxonomy search endpoints.
+	 *
+	 * Tags + brands are flat taxonomies (no parent/child hierarchy);
+	 * their search endpoints differ only by taxonomy slug + the
+	 * `parent` field categories need for tree display. Extracting
+	 * this helper keeps the `{ id, name, slug, count }` response
+	 * contract in one place so the two endpoints can't drift.
+	 *
+	 * `search_categories()` is intentionally NOT refactored through
+	 * this helper — categories carry an additional `parent` field
+	 * the frontend uses for tree rendering, and forcing that field
+	 * through the flat helper would either bloat the tags/brands
+	 * payload with a useless always-zero key or introduce a flag
+	 * that confuses the shared code path.
+	 *
+	 * @param string $taxonomy WP taxonomy slug (e.g. 'product_tag').
+	 * @return WP_REST_Response
+	 */
+	private static function fetch_flat_taxonomy_terms( string $taxonomy ): WP_REST_Response {
+		$terms = get_terms(
 			[
-				'taxonomy'   => 'product_brand',
+				'taxonomy'   => $taxonomy,
 				'hide_empty' => false,
 				'orderby'    => 'name',
 				'order'      => 'ASC',
 			]
 		);
 
-		if ( is_wp_error( $brands ) ) {
+		if ( is_wp_error( $terms ) ) {
 			return new WP_REST_Response( [] );
 		}
 
 		$data = [];
-		foreach ( $brands as $brand ) {
+		foreach ( $terms as $term ) {
 			$data[] = [
-				'id'    => $brand->term_id,
-				'name'  => $brand->name,
-				'slug'  => $brand->slug,
-				'count' => $brand->count,
+				'id'    => $term->term_id,
+				'name'  => $term->name,
+				'slug'  => $term->slug,
+				'count' => $term->count,
 			];
 		}
 
