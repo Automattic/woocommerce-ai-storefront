@@ -18,7 +18,7 @@ class WC_AI_Storefront {
 	 */
 	public static array $test_settings = [];
 
-	const SETTINGS_OPTION = 'wc_ai_syndication_settings';
+	const SETTINGS_OPTION = 'wc_ai_storefront_settings';
 
 	public static function get_settings(): array {
 		return array_merge(

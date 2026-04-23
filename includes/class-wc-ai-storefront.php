@@ -23,7 +23,7 @@ class WC_AI_Storefront {
 	/**
 	 * Option key for syndication settings.
 	 */
-	const SETTINGS_OPTION = 'wc_ai_syndication_settings';
+	const SETTINGS_OPTION = 'wc_ai_storefront_settings';
 
 	/**
 	 * Singleton instance.
@@ -192,11 +192,11 @@ class WC_AI_Storefront {
 		// 2. After toggling syndication enabled/disabled (transient flag
 		//    set by the admin controller).
 		$needs_flush    = get_transient( 'wc_ai_storefront_flush_rewrite' );
-		$stored_version = get_option( 'wc_ai_syndication_version', '' );
+		$stored_version = get_option( 'wc_ai_storefront_version', '' );
 
 		if ( $needs_flush || $stored_version !== WC_AI_STOREFRONT_VERSION ) {
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );
-			update_option( 'wc_ai_syndication_version', WC_AI_STOREFRONT_VERSION );
+			update_option( 'wc_ai_storefront_version', WC_AI_STOREFRONT_VERSION );
 
 			// Self-healing flush: register the rules IMMEDIATELY (at the
 			// current `plugins_loaded` hook, which is before WordPress

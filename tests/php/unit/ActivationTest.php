@@ -9,7 +9,7 @@
  *
  * This whole file exists because of a real regression shipped in
  * 1.0.0 → 1.1.x where `wc_ai_storefront_activate()` called
- * `update_option( 'wc_ai_syndication_version', ... )`. On in-place
+ * `update_option( 'wc_ai_storefront_version', ... )`. On in-place
  * zip upgrades WordPress fires the activation hook, so the option
  * was written to the new version before the mismatch-detection code
  * ever ran — meaning the content cache was never busted and
@@ -40,7 +40,7 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_activation_hook_does_not_write_version_option(): void {
 		// Extract the body of wc_ai_storefront_activate() and assert
-		// it contains no `update_option( 'wc_ai_syndication_version'...`
+		// it contains no `update_option( 'wc_ai_storefront_version'...`
 		// call.
 		//
 		// If this test fails, the activation hook has been modified to

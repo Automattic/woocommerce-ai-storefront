@@ -32,10 +32,10 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
  */
 
 // Main settings (stored with autoload=true — removal also flushes alloptions cache).
-delete_option( 'wc_ai_syndication_settings' );
+delete_option( 'wc_ai_storefront_settings' );
 
 // Version marker (triggers rewrite flush + cache bust on plugin update).
-delete_option( 'wc_ai_syndication_version' );
+delete_option( 'wc_ai_storefront_version' );
 
 /*
  * --------------------------------------------------------------------------
@@ -84,8 +84,8 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 		foreach ( $ids as $id ) {
 			switch_to_blog( $id );
 
-			delete_option( 'wc_ai_syndication_settings' );
-			delete_option( 'wc_ai_syndication_version' );
+			delete_option( 'wc_ai_storefront_settings' );
+			delete_option( 'wc_ai_storefront_version' );
 			delete_transient( 'wc_ai_storefront_llms_txt' );
 			delete_transient( 'wc_ai_storefront_ucp' );
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );
