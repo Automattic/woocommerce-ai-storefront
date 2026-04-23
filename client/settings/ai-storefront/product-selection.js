@@ -1279,41 +1279,15 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							</span>
 						</div>
 						{ /*
-						   Link target routes to the Endpoints tab, which
-						   has per-endpoint URLs + a "try it" curl example
-						   per row. Keeping that deep-link here rather than
-						   inline in the footer avoids duplicating the
-						   Endpoints tab's surface and preserves single
-						   source of truth for endpoint info.
+						   No right-side deep-link in this footer. The
+						   Discovery tab is the canonical surface for
+						   endpoint URLs + per-endpoint testing info,
+						   so a second entry point here would just
+						   duplicate that tab's job. The footer now
+						   carries the one fact it uniquely conveys —
+						   the set of fields agents receive — and
+						   nothing else.
 						*/ }
-						<Button
-							variant="link"
-							/*
-							   Build the Endpoints deep-link via the URL
-							   API rather than string-splicing
-							   `window.location.search`. Hand-rolled
-							   regex + `?` vs `&` logic is fragile —
-							   when the current URL is exactly
-							   `?tab=products`, stripping `tab=` yields
-							   an empty string but the original-search
-							   `.includes('?')` check was still true,
-							   producing `/admin.php&tab=endpoints`
-							   (missing `?`). `searchParams.set()`
-							   handles the separator correctly in
-							   every case.
-							*/
-							href={ ( () => {
-								const url = new URL( window.location.href );
-								url.searchParams.set( 'tab', 'endpoints' );
-								return `${ url.pathname }${ url.search }`;
-							} )() }
-							style={ { fontSize: '13px' } }
-						>
-							{ __(
-								'Test with an AI agent \u2192',
-								'woocommerce-ai-storefront'
-							) }
-						</Button>
 					</div>
 				</CardFooter>
 			</Card>
