@@ -8,7 +8,7 @@
  * needed — the method is pure with respect to $args and the stubbed
  * `WC_AI_Storefront::get_settings()`).
  *
- * The settings stub (tests/php/stubs/class-wc-ai-syndication-stub.php)
+ * The settings stub (tests/php/stubs/class-wc-ai-storefront-stub.php)
  * exposes `$test_settings` — each test seeds what it needs and the
  * filter reads through that mechanism.
  *

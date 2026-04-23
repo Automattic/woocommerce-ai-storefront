@@ -75,26 +75,26 @@ class WC_AI_Storefront {
 	private function load_dependencies() {
 		$path = WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-syndication/';
 
-		require_once $path . 'class-wc-ai-syndication-logger.php';
-		require_once $path . 'class-wc-ai-syndication-llms-txt.php';
-		require_once $path . 'class-wc-ai-syndication-jsonld.php';
-		require_once $path . 'class-wc-ai-syndication-robots.php';
-		require_once $path . 'class-wc-ai-syndication-ucp.php';
-		require_once $path . 'class-wc-ai-syndication-store-api-rate-limiter.php';
-		require_once $path . 'class-wc-ai-syndication-attribution.php';
-		require_once $path . 'class-wc-ai-syndication-cache-invalidator.php';
+		require_once $path . 'class-wc-ai-storefront-logger.php';
+		require_once $path . 'class-wc-ai-storefront-llms-txt.php';
+		require_once $path . 'class-wc-ai-storefront-jsonld.php';
+		require_once $path . 'class-wc-ai-storefront-robots.php';
+		require_once $path . 'class-wc-ai-storefront-ucp.php';
+		require_once $path . 'class-wc-ai-storefront-store-api-rate-limiter.php';
+		require_once $path . 'class-wc-ai-storefront-attribution.php';
+		require_once $path . 'class-wc-ai-storefront-cache-invalidator.php';
 
 		// UCP REST adapter module (1.3.0+). See PLAN-ucp-adapter.md.
 		$ucp_path = $path . 'ucp-rest/';
-		require_once $ucp_path . 'class-wc-ai-syndication-ucp-agent-header.php';
-		require_once $ucp_path . 'class-wc-ai-syndication-ucp-envelope.php';
-		require_once $ucp_path . 'class-wc-ai-syndication-ucp-product-translator.php';
-		require_once $ucp_path . 'class-wc-ai-syndication-ucp-variant-translator.php';
-		require_once $ucp_path . 'class-wc-ai-syndication-ucp-store-api-filter.php';
-		require_once $ucp_path . 'class-wc-ai-syndication-store-api-extension.php';
-		require_once $ucp_path . 'class-wc-ai-syndication-ucp-rest-controller.php';
+		require_once $ucp_path . 'class-wc-ai-storefront-ucp-agent-header.php';
+		require_once $ucp_path . 'class-wc-ai-storefront-ucp-envelope.php';
+		require_once $ucp_path . 'class-wc-ai-storefront-ucp-product-translator.php';
+		require_once $ucp_path . 'class-wc-ai-storefront-ucp-variant-translator.php';
+		require_once $ucp_path . 'class-wc-ai-storefront-ucp-store-api-filter.php';
+		require_once $ucp_path . 'class-wc-ai-storefront-store-api-extension.php';
+		require_once $ucp_path . 'class-wc-ai-storefront-ucp-rest-controller.php';
 
-		require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/admin/class-wc-ai-syndication-admin-controller.php';
+		require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/admin/class-wc-ai-storefront-admin-controller.php';
 	}
 
 	/**
