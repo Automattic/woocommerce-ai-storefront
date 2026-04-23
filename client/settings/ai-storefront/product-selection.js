@@ -441,9 +441,13 @@ const SamplePreviewTile = ( { product } ) => {
 							color: colors.textMuted,
 							marginTop: '2px',
 						} }
-						/* price_html is already sanitized (wp_strip_all_tags
-						   on the server, decodeEntities here), so innerHTML
-						   isn't needed — plain text rendering is enough. */
+						/* Store API `price_html` may contain markup (currency-
+						   symbol spans, sale-price strikethroughs, etc.), so
+						   we decode entities above and strip HTML tags here
+						   via regex before rendering as plain text. innerHTML
+						   isn't needed — plain-text output is what the tile
+						   wants anyway (no styling propagates from the
+						   original markup). */
 					>
 						{ price.replace( /<[^>]+>/g, '' ) }
 					</div>
