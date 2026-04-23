@@ -238,11 +238,11 @@ const SamplePreview = () => {
 		);
 	}
 
-	if ( hasError || products.length === 0 ) {
-		// Fail-closed fallback: empty-state message rather than a
-		// broken grid. Agents still get the catalog correctly — this
-		// preview is purely diagnostic, so a temporary Store API hiccup
-		// shouldn't break the whole tab.
+	if ( hasError ) {
+		// Fetch failed outright — don't mislead the merchant about
+		// what's shared. Agents still get the catalog correctly
+		// via the real endpoints; this preview is diagnostic only,
+		// so point them at the Endpoints tab for verification.
 		return (
 			<p
 				style={ {
@@ -254,6 +254,28 @@ const SamplePreview = () => {
 			>
 				{ __(
 					'Sample preview unavailable. Your products are still being shared — visit the Endpoints tab to verify.',
+					'woocommerce-ai-storefront'
+				) }
+			</p>
+		);
+	}
+
+	if ( products.length === 0 ) {
+		// Fetch succeeded but the store has no published products
+		// yet — valid state on fresh installs. Distinct from the
+		// error case above so merchants don't think something's
+		// broken when their catalog is just empty.
+		return (
+			<p
+				style={ {
+					color: colors.textMuted,
+					fontSize: '13px',
+					padding: '16px 0',
+					margin: 0,
+				} }
+			>
+				{ __(
+					'No published products yet. Once you publish products they\u2019ll appear here as a preview of what AI agents see.',
 					'woocommerce-ai-storefront'
 				) }
 			</p>
@@ -1230,16 +1252,25 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 						*/ }
 						<Button
 							variant="link"
-							href={ `${
-								window.location.pathname
-							}${ window.location.search.replace(
-								/([?&])tab=[^&]*/,
-								''
-							) }${
-								window.location.search.includes( '?' )
-									? '&'
-									: '?'
-							}tab=endpoints` }
+							/*
+							   Build the Endpoints deep-link via the URL
+							   API rather than string-splicing
+							   `window.location.search`. Hand-rolled
+							   regex + `?` vs `&` logic is fragile —
+							   when the current URL is exactly
+							   `?tab=products`, stripping `tab=` yields
+							   an empty string but the original-search
+							   `.includes('?')` check was still true,
+							   producing `/admin.php&tab=endpoints`
+							   (missing `?`). `searchParams.set()`
+							   handles the separator correctly in
+							   every case.
+							*/
+							href={ ( () => {
+								const url = new URL( window.location.href );
+								url.searchParams.set( 'tab', 'endpoints' );
+								return `${ url.pathname }${ url.search }`;
+							} )() }
 							style={ { fontSize: '13px' } }
 						>
 							{ __(
