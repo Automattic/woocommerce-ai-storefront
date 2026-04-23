@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Generate languages/woocommerce-ai-syndication.pot from source strings.
+# Generate languages/woocommerce-ai-storefront.pot from source strings.
 #
 # This is the canonical translation template WP.org and translator
 # tools consume. Translators generate locale-specific `.po` / `.mo`
@@ -49,12 +49,12 @@ cd "${REPO_ROOT}"
 # as `client/` source, and scanning both produces duplicates).
 # `client/` IS scanned — that's where the admin UI's translatable
 # strings live (`__(...)`, `sprintf(__(...))`, etc.).
-php "${WP_CLI}" i18n make-pot . languages/woocommerce-ai-syndication.pot \
-	--slug=woocommerce-ai-syndication \
-	--domain=woocommerce-ai-syndication \
+php "${WP_CLI}" i18n make-pot . languages/woocommerce-ai-storefront.pot \
+	--slug=woocommerce-ai-storefront \
+	--domain=woocommerce-ai-storefront \
 	--exclude=build,tests,vendor,node_modules,.claude,.tools,.github,release-staging \
 	--skip-audit
 
 echo ""
-echo "✓ Wrote languages/woocommerce-ai-syndication.pot"
-wc -l languages/woocommerce-ai-syndication.pot
+echo "✓ Wrote languages/woocommerce-ai-storefront.pot"
+wc -l languages/woocommerce-ai-storefront.pot

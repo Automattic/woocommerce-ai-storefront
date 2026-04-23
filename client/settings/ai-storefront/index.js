@@ -1,6 +1,6 @@
 import { createRoot } from '@wordpress/element';
 import AISyndicationSettings from './settings-page';
-import '../../data/ai-syndication';
+import '../../data/ai-storefront';
 
 // Note on DataViews' stylesheet:
 // The CSS isn't bundled into the JS here — we tried that and ran
