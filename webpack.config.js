@@ -22,7 +22,7 @@ plugins.push( new WooCommerceDependencyExtractionWebpackPlugin() );
 module.exports = {
 	...defaultConfig,
 	entry: {
-		'ai-syndication-settings': './client/settings/ai-syndication/index.js',
+		'ai-storefront-settings': './client/settings/ai-storefront/index.js',
 	},
 	output: {
 		...defaultConfig.output,

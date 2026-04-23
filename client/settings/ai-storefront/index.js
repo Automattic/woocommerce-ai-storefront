@@ -16,7 +16,7 @@ import '../../data/ai-syndication';
 // Single source of truth: the file we copy IS the file Woo's own
 // DataViews uses, so visual drift is impossible.
 
-const container = document.getElementById( 'wc-ai-syndication-settings' );
+const container = document.getElementById( 'wc-ai-storefront-settings' );
 
 if ( container ) {
 	createRoot( container ).render( <AISyndicationSettings /> );

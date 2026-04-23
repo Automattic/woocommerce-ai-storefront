@@ -46,7 +46,7 @@ import { useSelect, useDispatch } from '@wordpress/data';
 import { Card, CardBody } from '@wordpress/components';
 import { DataViews, filterSortAndPaginate } from '@wordpress/dataviews';
 import { __ } from '@wordpress/i18n';
-import { STORE_NAME } from '../../data/ai-syndication/constants';
+import { STORE_NAME } from '../../data/ai-storefront/constants';
 import { colors, statusColors } from './tokens';
 
 /**

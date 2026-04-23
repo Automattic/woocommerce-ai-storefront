@@ -130,7 +130,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	useEffect( () => {
 		setIsLoadingCategories( true );
 		apiFetch( {
-			path: '/wc/v3/ai-syndication/admin/search/categories',
+			path: '/wc/v3/ai-storefront/admin/search/categories',
 		} )
 			.then( ( result ) => setCategories( result ) )
 			.catch( () => {} )
@@ -143,7 +143,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		}
 		setIsLoadingProducts( true );
 		apiFetch( {
-			path: `/wc/v3/ai-syndication/admin/search/products?search=${ encodeURIComponent(
+			path: `/wc/v3/ai-storefront/admin/search/products?search=${ encodeURIComponent(
 				productSearch
 			) }`,
 		} )

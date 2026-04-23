@@ -25,17 +25,17 @@ require_once __DIR__ . '/stubs/class-wc-ai-storefront-stub.php';
 // Load plugin files.
 $plugin_path = dirname( __DIR__, 2 ) . '/includes/';
 
-require_once $plugin_path . 'ai-syndication/class-wc-ai-storefront-logger.php';
-require_once $plugin_path . 'ai-syndication/class-wc-ai-storefront-llms-txt.php';
-require_once $plugin_path . 'ai-syndication/class-wc-ai-storefront-ucp.php';
-require_once $plugin_path . 'ai-syndication/class-wc-ai-storefront-robots.php';
-require_once $plugin_path . 'ai-syndication/class-wc-ai-storefront-store-api-rate-limiter.php';
-require_once $plugin_path . 'ai-syndication/class-wc-ai-storefront-attribution.php';
-require_once $plugin_path . 'ai-syndication/class-wc-ai-storefront-cache-invalidator.php';
-require_once $plugin_path . 'ai-syndication/class-wc-ai-storefront-jsonld.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-logger.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-llms-txt.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-ucp.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-robots.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-attribution.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-cache-invalidator.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-jsonld.php';
 
 // UCP REST adapter module (1.3.0+).
-$ucp_rest_path = $plugin_path . 'ai-syndication/ucp-rest/';
+$ucp_rest_path = $plugin_path . 'ai-storefront/ucp-rest/';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-agent-header.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-envelope.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-product-translator.php';

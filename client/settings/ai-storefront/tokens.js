@@ -67,7 +67,7 @@ export const colors = {
  * these values to match; the visual invariant is "looks identical
  * to wc-admin's Orders list," not any particular hex.
  *
- * @see client/settings/ai-syndication/ai-orders-table.js StatusPill
+ * @see client/settings/ai-storefront/ai-orders-table.js StatusPill
  */
 export const statusColors = {
 	processing: { bg: '#c6e1c6', fg: '#5b841b' },

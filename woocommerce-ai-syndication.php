@@ -124,8 +124,8 @@ function wc_ai_storefront_deactivate() {
 	flush_rewrite_rules();
 
 	// Clean up cache and scheduled events.
-	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-syndication/class-wc-ai-storefront-llms-txt.php';
-	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-syndication/class-wc-ai-storefront-cache-invalidator.php';
+	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-storefront/class-wc-ai-storefront-llms-txt.php';
+	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-storefront/class-wc-ai-storefront-cache-invalidator.php';
 	WC_AI_Storefront_Cache_Invalidator::deactivate();
 }
 register_deactivation_hook( __FILE__, 'wc_ai_storefront_deactivate' );

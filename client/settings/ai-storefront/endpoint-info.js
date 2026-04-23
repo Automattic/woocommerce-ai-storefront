@@ -11,7 +11,7 @@ import {
 	TextControl,
 } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
-import { STORE_NAME } from '../../data/ai-syndication/constants';
+import { STORE_NAME } from '../../data/ai-storefront/constants';
 import { colors } from './tokens';
 
 /**

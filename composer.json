@@ -1,5 +1,5 @@
 {
-    "name": "woocommerce/ai-syndication",
+    "name": "woocommerce/ai-storefront",
     "description": "Merchant-led AI product syndication for WooCommerce",
     "type": "wordpress-plugin",
     "license": "GPL-3.0-or-later",

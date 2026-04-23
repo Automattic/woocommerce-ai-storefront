@@ -12,7 +12,7 @@ import {
 } from '@wordpress/components';
 import { Icon, globe, shield, chartBar } from '@wordpress/icons';
 import { __, sprintf } from '@wordpress/i18n';
-import { STORE_NAME } from '../../data/ai-syndication/constants';
+import { STORE_NAME } from '../../data/ai-storefront/constants';
 import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
 import AIOrdersTable from './ai-orders-table';
@@ -71,7 +71,7 @@ const AISyndicationSettings = () => {
 	];
 
 	return (
-		<div className="wc-ai-syndication-settings">
+		<div className="wc-ai-storefront-settings">
 			<TabPanel tabs={ tabs }>
 				{ ( tab ) => (
 					<div style={ { marginTop: '16px' } }>

@@ -61,7 +61,7 @@ class UpdaterTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame(
 			'https://github.com/pierorocca/woocommerce-ai-syndication',
 			WC_AI_Storefront_Updater::GITHUB_REPO_URL,
-			'Repo URL must end in the plugin slug "woocommerce-ai-syndication"'
+			'Repo URL must end in the plugin slug "woocommerce-ai-storefront"'
 		);
 	}
 

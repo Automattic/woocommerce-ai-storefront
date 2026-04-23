@@ -53,7 +53,7 @@ const dest = path.resolve(
 	__dirname,
 	'..',
 	'build',
-	'ai-syndication-settings.css'
+	'ai-storefront-settings.css'
 );
 
 if ( ! fs.existsSync( source ) ) {

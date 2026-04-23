@@ -73,7 +73,7 @@ class WC_AI_Storefront {
 	 * Load class files.
 	 */
 	private function load_dependencies() {
-		$path = WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-syndication/';
+		$path = WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-storefront/';
 
 		require_once $path . 'class-wc-ai-storefront-logger.php';
 		require_once $path . 'class-wc-ai-storefront-llms-txt.php';
@@ -268,7 +268,7 @@ class WC_AI_Storefront {
 	public function render_admin_page() {
 		echo '<div class="wrap">';
 		echo '<h1>' . esc_html__( 'AI Storefront', 'woocommerce-ai-storefront' ) . '</h1>';
-		echo '<div id="wc-ai-syndication-settings"></div>';
+		echo '<div id="wc-ai-storefront-settings"></div>';
 		echo '</div>';
 	}
 
@@ -291,7 +291,7 @@ class WC_AI_Storefront {
 			];
 
 		wp_register_script(
-			'wc-ai-syndication-settings',
+			'wc-ai-storefront-settings',
 			WC_AI_STOREFRONT_PLUGIN_URL . '/build/ai-syndication-settings.js',
 			$asset['dependencies'],
 			$asset['version'],
@@ -342,7 +342,7 @@ class WC_AI_Storefront {
 				}
 			}
 			wp_register_style(
-				'wc-ai-syndication-settings',
+				'wc-ai-storefront-settings',
 				WC_AI_STOREFRONT_PLUGIN_URL . '/build/ai-syndication-settings.css',
 				[ 'wp-components' ],
 				$css_version
@@ -350,11 +350,11 @@ class WC_AI_Storefront {
 		}
 
 		wp_localize_script(
-			'wc-ai-syndication-settings',
+			'wc-ai-storefront-settings',
 			'wcAiSyndicationParams',
 			[
 				'restUrl'    => rest_url( 'wc/v3/ai-syndication' ),
-				'adminUrl'   => rest_url( 'wc/v3/ai-syndication/admin' ),
+				'adminUrl'   => rest_url( 'wc/v3/ai-storefront/admin' ),
 				'nonce'      => wp_create_nonce( 'wp_rest' ),
 				'siteUrl'    => home_url( '/' ),
 				'llmsTxtUrl' => home_url( '/llms.txt' ),
@@ -364,9 +364,9 @@ class WC_AI_Storefront {
 			]
 		);
 
-		wp_enqueue_script( 'wc-ai-syndication-settings' );
-		if ( wp_style_is( 'wc-ai-syndication-settings', 'registered' ) ) {
-			wp_enqueue_style( 'wc-ai-syndication-settings' );
+		wp_enqueue_script( 'wc-ai-storefront-settings' );
+		if ( wp_style_is( 'wc-ai-storefront-settings', 'registered' ) ) {
+			wp_enqueue_style( 'wc-ai-storefront-settings' );
 		}
 		wp_enqueue_style( 'wp-components' );
 
@@ -375,7 +375,7 @@ class WC_AI_Storefront {
 		// `@woocommerce/components`' TableCard adoption. That adoption
 		// was reverted in favor of `@wordpress/dataviews`, whose CSS
 		// ships bundled into our own stylesheet via an import in
-		// client/settings/ai-syndication/index.js. No wc-admin handles
+		// client/settings/ai-storefront/index.js. No wc-admin handles
 		// needed anymore — keeping our styles self-contained means the
 		// admin page renders identically on every WC configuration.
 		// See AGENTS.md "Styling" for the decision history.

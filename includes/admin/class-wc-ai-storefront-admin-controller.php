@@ -22,7 +22,7 @@ class WC_AI_Storefront_Admin_Controller {
 	/**
 	 * REST namespace.
 	 */
-	const NAMESPACE = 'wc/v3/ai-syndication/admin';
+	const NAMESPACE = 'wc/v3/ai-storefront/admin';
 
 	/**
 	 * Register REST routes.

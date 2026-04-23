@@ -128,7 +128,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	public function test_api_access_section_points_to_store_api_and_ucp(): void {
 		// The plugin does NOT expose its own authenticated API. llms.txt
 		// must advertise WooCommerce's public Store API and the UCP
-		// manifest — NOT the removed `wc/v3/ai-syndication/*` endpoints
+		// manifest — NOT the removed `wc/v3/ai-storefront/*` endpoints
 		// or the `X-AI-Agent-Key` header (both existed in a pre-1.0
 		// draft of the architecture).
 		$output = $this->llms->generate();
