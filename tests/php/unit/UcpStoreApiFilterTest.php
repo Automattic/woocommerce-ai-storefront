@@ -152,6 +152,127 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// Mode: tags
+	// ------------------------------------------------------------------
+
+	public function test_tags_mode_appends_tax_query_entry(): void {
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'tags',
+			'selected_tags'          => [ 7, 21 ],
+		];
+
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$result = $filter->restrict_to_syndicated_products( [] );
+
+		$this->assertArrayHasKey( 'tax_query', $result );
+		$this->assertCount( 1, $result['tax_query'] );
+		$this->assertEquals(
+			[
+				'taxonomy' => 'product_tag',
+				'field'    => 'term_id',
+				'terms'    => [ 7, 21 ],
+			],
+			$result['tax_query'][0]
+		);
+	}
+
+	public function test_tags_mode_with_empty_selected_tags_is_noop(): void {
+		// Merchant has picked "tags" mode but not chosen any yet.
+		// Applying an empty terms array would hide everything — match
+		// the categories-mode no-op behavior instead.
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'tags',
+			'selected_tags'          => [],
+		];
+
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$input  = [ 'orderby' => 'date' ];
+		$result = $filter->restrict_to_syndicated_products( $input );
+
+		$this->assertSame( $input, $result );
+	}
+
+	// ------------------------------------------------------------------
+	// Mode: brands
+	//
+	// `product_brand` is a WC 9.5+ native taxonomy. The production
+	// filter also guards with `taxonomy_exists( 'product_brand' )` to
+	// avoid emitting a tax_query against an unregistered taxonomy. In
+	// these unit tests `taxonomy_exists()` is mocked via Brain\Monkey
+	// so we can exercise both registered and unregistered states
+	// without a full WP bootstrap.
+	// ------------------------------------------------------------------
+
+	public function test_brands_mode_appends_tax_query_entry_when_taxonomy_registered(): void {
+		\Brain\Monkey\setUp();
+		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
+
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'brands',
+			'selected_brands'        => [ 3, 14, 42 ],
+		];
+
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$result = $filter->restrict_to_syndicated_products( [] );
+
+		$this->assertArrayHasKey( 'tax_query', $result );
+		$this->assertCount( 1, $result['tax_query'] );
+		$this->assertEquals(
+			[
+				'taxonomy' => 'product_brand',
+				'field'    => 'term_id',
+				'terms'    => [ 3, 14, 42 ],
+			],
+			$result['tax_query'][0]
+		);
+
+		\Brain\Monkey\tearDown();
+	}
+
+	public function test_brands_mode_is_noop_when_taxonomy_not_registered(): void {
+		// Graceful degradation: on pre-WC-9.5 stores (or any env that
+		// unregisters `product_brand`), the filter must not emit a
+		// tax_query entry — doing so would fatal in WP_Query's
+		// taxonomy resolution. Admin UI hides the Brands segment when
+		// this is the case, so this code path is a defense in depth
+		// for merchants who somehow persisted the mode before the
+		// taxonomy disappeared (plugin deactivation, custom registration).
+		\Brain\Monkey\setUp();
+		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( false );
+
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'brands',
+			'selected_brands'        => [ 3, 14 ],
+		];
+
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$input  = [ 'orderby' => 'date' ];
+		$result = $filter->restrict_to_syndicated_products( $input );
+
+		$this->assertSame( $input, $result );
+
+		\Brain\Monkey\tearDown();
+	}
+
+	public function test_brands_mode_with_empty_selected_brands_is_noop(): void {
+		\Brain\Monkey\setUp();
+		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
+
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'brands',
+			'selected_brands'        => [],
+		];
+
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$input  = [ 'orderby' => 'date' ];
+		$result = $filter->restrict_to_syndicated_products( $input );
+
+		$this->assertSame( $input, $result );
+
+		\Brain\Monkey\tearDown();
+	}
+
+	// ------------------------------------------------------------------
 	// Mode: selected (post__in)
 	// ------------------------------------------------------------------
 
