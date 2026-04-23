@@ -133,6 +133,22 @@ jobs:
     # turn every open PR red without warning.
     env:
       WP_CLI_VERSION: '2.12.0'
+      # SHA-512 of the wp-cli 2.12.0 phar, pinned here rather than
+      # fetched from the same release as the binary. An attacker who
+      # compromises the wp-cli release storage could publish a
+      # malicious phar AND an updated .sha512 file in the same
+      # release — so fetching both from the same source (as the prior
+      # revision of this workflow did) only defends against accidental
+      # corruption in transit, not against a supply-chain attack. By
+      # pinning the expected digest in this committed file, a
+      # compromised release would mismatch the value reviewers have
+      # already seen on GitHub and CI would fail. Bumping
+      # WP_CLI_VERSION now requires bumping this hash too — which is
+      # exactly the friction you want for a security-sensitive change.
+      #
+      # To regenerate when bumping: download the target phar locally,
+      # run `sha512sum <file>`, copy the hex digest here.
+      WP_CLI_SHA512: 'be928f6b8ca1e8dfb9d2f4b75a13aa4aee0896f8a9a0a1c45cd5d2c98605e6172e6d014dda2e27f88c98befc16c040cbb2bd1bfa121510ea5cdf5f6a30fe8832'
     steps:
       - uses: actions/checkout@v4
 
@@ -153,11 +169,13 @@ jobs:
         #   -S   show errors if -s is active.
         #   -L   follow GitHub's release redirect to the asset host.
         #
-        # The sha512 file from wp-cli releases contains the hash
-        # only (no filename), so we construct the canonical
-        # "<hash>  <file>" format sha512sum expects and pipe it to
-        # `sha512sum -c`. Any tampering or network corruption flips
-        # the check non-zero and the job fails before wp-cli runs.
+        # Checksum verification compares the downloaded phar against
+        # the `WP_CLI_SHA512` value pinned in the job's env block
+        # (see comment there for the supply-chain rationale). Using
+        # our own hash rather than the one in the release's .sha512
+        # file defends against the case where wp-cli release storage
+        # is compromised — the attacker would need to alter the hash
+        # committed in THIS repo, which reviewers see and sign off on.
         #
         # `wp --info` is a sanity check: if the phar somehow got
         # past the checksum but isn't actually runnable, --info
@@ -166,9 +184,7 @@ jobs:
         run: |
           curl -fsSL -o wp-cli.phar \
             "https://github.com/wp-cli/wp-cli/releases/download/v${WP_CLI_VERSION}/wp-cli-${WP_CLI_VERSION}.phar"
-          curl -fsSL -o wp-cli.phar.sha512 \
-            "https://github.com/wp-cli/wp-cli/releases/download/v${WP_CLI_VERSION}/wp-cli-${WP_CLI_VERSION}.phar.sha512"
-          echo "$(cat wp-cli.phar.sha512)  wp-cli.phar" | sha512sum -c -
+          echo "${WP_CLI_SHA512}  wp-cli.phar" | sha512sum -c -
           chmod +x wp-cli.phar
           sudo mv wp-cli.phar /usr/local/bin/wp
           wp --info
@@ -200,8 +216,23 @@ jobs:
         # contributors' machines; hard-coding the distribution slug
         # keeps the regenerated file byte-identical regardless of
         # local checkout path.
+        #
+        # Diff exit code handling:
+        #   0 = files match (pass)
+        #   1 = files differ (stale .pot — fail with actionable message)
+        #   >1 = diff itself errored (missing file, I/O, etc.) — fail
+        #        with a distinct message so a tooling error doesn't
+        #        masquerade as "strings changed"
+        #
+        # `trap` cleans up the temp files on any exit path, including
+        # a failure inside `wp make-pot` before the diff runs.
         run: |
-          cp languages/woocommerce-ai-storefront.pot /tmp/pot-before.pot
+          pot_before="$(mktemp)"
+          pot_before_sanitized="$(mktemp)"
+          pot_after_sanitized="$(mktemp)"
+          trap 'rm -f "$pot_before" "$pot_before_sanitized" "$pot_after_sanitized"' EXIT
+
+          cp languages/woocommerce-ai-storefront.pot "$pot_before"
 
           wp i18n make-pot . languages/woocommerce-ai-storefront.pot \
             --domain=woocommerce-ai-storefront \
@@ -209,26 +240,43 @@ jobs:
             --headers='{"Report-Msgid-Bugs-To":"https://wordpress.org/support/plugin/woocommerce-ai-storefront"}' \
             --skip-plugins --skip-themes
 
-          if ! diff -u \
-              <(grep -v -e '^"POT-Creation-Date:' -e '^"X-Generator:' /tmp/pot-before.pot) \
-              <(grep -v -e '^"POT-Creation-Date:' -e '^"X-Generator:' languages/woocommerce-ai-storefront.pot); then
-            echo ""
-            echo "::error::The .pot translation template is out of date."
-            echo ""
-            echo "Translatable strings were added, removed, or reworded since"
-            echo "the last regeneration, but languages/woocommerce-ai-storefront.pot"
-            echo "wasn't updated to match."
-            echo ""
-            echo "To fix, regenerate locally:"
-            echo ""
-            echo "  wp i18n make-pot . languages/woocommerce-ai-storefront.pot \\"
-            echo "    --domain=woocommerce-ai-storefront \\"
-            echo "    --exclude=build,node_modules,vendor,tests \\"
-            echo "    --headers='{\"Report-Msgid-Bugs-To\":\"https://wordpress.org/support/plugin/woocommerce-ai-storefront\"}'"
-            echo ""
-            echo "Then commit the updated .pot file alongside your other changes"
-            echo "and push again."
-            echo ""
-            echo "Install wp-cli: https://wp-cli.org/#installing"
-            exit 1
-          fi
+          grep -v -e '^"POT-Creation-Date:' -e '^"X-Generator:' "$pot_before" > "$pot_before_sanitized"
+          grep -v -e '^"POT-Creation-Date:' -e '^"X-Generator:' languages/woocommerce-ai-storefront.pot > "$pot_after_sanitized"
+
+          # Bypass `set -e` around diff so we can inspect $? — diff
+          # returns 1 on "files differ" which would otherwise kill
+          # the step before we emit our actionable error message.
+          set +e
+          diff -u "$pot_before_sanitized" "$pot_after_sanitized"
+          diff_status=$?
+          set -e
+
+          case "$diff_status" in
+            0)
+              ;;
+            1)
+              echo ""
+              echo "::error::The .pot translation template is out of date."
+              echo ""
+              echo "Translatable strings were added, removed, or reworded since"
+              echo "the last regeneration, but languages/woocommerce-ai-storefront.pot"
+              echo "wasn't updated to match."
+              echo ""
+              echo "To fix, regenerate locally:"
+              echo ""
+              echo "  wp i18n make-pot . languages/woocommerce-ai-storefront.pot \\"
+              echo "    --domain=woocommerce-ai-storefront \\"
+              echo "    --exclude=build,node_modules,vendor,tests \\"
+              echo "    --headers='{\"Report-Msgid-Bugs-To\":\"https://wordpress.org/support/plugin/woocommerce-ai-storefront\"}'"
+              echo ""
+              echo "Then commit the updated .pot file alongside your other changes"
+              echo "and push again."
+              echo ""
+              echo "Install wp-cli: https://wp-cli.org/#installing"
+              exit 1
+              ;;
+            *)
+              echo "::error::Failed to compare the regenerated .pot translation template (diff exit ${diff_status})."
+              exit "$diff_status"
+              ;;
+          esac
