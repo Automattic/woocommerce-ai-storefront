@@ -1,62 +1,111 @@
 import { useState, useEffect, useMemo } from '@wordpress/element';
 import {
 	Card,
+	CardHeader,
 	CardBody,
+	CardFooter,
 	Button,
-	SelectControl,
+	SearchControl,
 	CheckboxControl,
 	Spinner,
-	SearchControl,
+	Notice,
 } from '@wordpress/components';
-import { __, sprintf } from '@wordpress/i18n';
+import { __, _n, sprintf } from '@wordpress/i18n';
 import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 import { colors } from './tokens';
 
+const MODES = {
+	ALL: 'all',
+	CATEGORIES: 'categories',
+	SELECTED: 'selected',
+};
+
+// Short, action-oriented descriptions surfaced under each radio row's
+// label. The longer "what this means" narrative lives in the detail
+// panel heading + disclosure so the collapsed row stays scannable.
 const MODE_DESCRIPTIONS = {
-	all: __(
-		'Every published product in your store is discoverable by AI crawlers. Best for stores that want maximum exposure.',
+	[ MODES.ALL ]: __(
+		'Every published product in your store is discoverable by AI crawlers.',
 		'woocommerce-ai-storefront'
 	),
-	categories: __(
-		'Only products in the categories you select below will be included in discovery endpoints. Use this to focus AI visibility on specific product lines.',
+	[ MODES.CATEGORIES ]: __(
+		'Share only products within specific WooCommerce categories.',
 		'woocommerce-ai-storefront'
 	),
-	selected: __(
-		'Only the specific products you choose below will appear in discovery endpoints. Use this for curated collections or high-margin items.',
+	[ MODES.SELECTED ]: __(
+		'Hand-pick individual products. New products are not auto-included.',
 		'woocommerce-ai-storefront'
 	),
 };
 
-const CountPill = ( { count, label } ) => {
-	const hasItems = count > 0;
-	return (
-		<span
-			style={ {
-				display: 'inline-block',
-				background: hasItems ? colors.successBg : colors.surfaceMuted,
-				color: hasItems ? colors.success : colors.textMuted,
-				fontWeight: hasItems ? '600' : '400',
-				fontSize: '12px',
-				borderRadius: '10px',
-				padding: '2px 10px',
-			} }
-		>
-			{ sprintf(
-				/* translators: %d: number of items */
-				label,
-				count
-			) }
-		</span>
-	);
-};
+// Spec-aligned list of fields our endpoints serialize per product.
+// Surfaced in the shared footer as "Included fields" chips so merchants
+// see at a glance what each AI agent receives. Keep this list aligned
+// with the UCP core product/variant payload definition and the PHP
+// product + variant translators that emit those on-the-wire fields
+// (class-wc-ai-storefront-ucp-product-translator.php and
+// class-wc-ai-storefront-ucp-variant-translator.php).
+// `handle_extension_schema()` documents the merchant extension contract
+// (config + accepted_request_inputs) — NOT the core serialized product
+// fields, so it's not the source of truth for this list.
+// `key` is a stable React-key identifier; `label` is the translated
+// user-visible string. Built inside the component rather than at
+// module scope so `__()` picks up runtime locale changes.
+const getIncludedFields = () => [
+	{ key: 'name', label: __( 'name', 'woocommerce-ai-storefront' ) },
+	{
+		key: 'description',
+		label: __( 'description', 'woocommerce-ai-storefront' ),
+	},
+	{ key: 'price', label: __( 'price', 'woocommerce-ai-storefront' ) },
+	{ key: 'stock', label: __( 'stock', 'woocommerce-ai-storefront' ) },
+	{ key: 'images', label: __( 'images', 'woocommerce-ai-storefront' ) },
+	{
+		key: 'categories',
+		label: __( 'categories', 'woocommerce-ai-storefront' ),
+	},
+	{ key: 'sku', label: __( 'SKU', 'woocommerce-ai-storefront' ) },
+];
 
 /**
- * Token list showing selected items with remove buttons.
- * Gives merchants a clear view of their current selection
- * without scrolling through the full list.
+ * Count pill used next to radio-row labels.
+ *
+ * We built our own rather than using `@wordpress/components` `Badge`
+ * because Badge emits an "outlined" style by default that clashes with
+ * the filled selected-state treatment (blue pill on selected, gray on
+ * unselected). Kept tiny and semantic (bg + fg swap) so the selected
+ * row self-announces in the three-row card.
+ *
+ * @param {Object}  root0          Component props.
+ * @param {string}  root0.label    Text content (pre-formatted).
+ * @param {boolean} root0.selected Whether the parent row is selected.
+ */
+const ModeBadge = ( { label, selected } ) => (
+	<span
+		style={ {
+			background: selected ? colors.link : colors.surfaceMuted,
+			color: selected ? '#fff' : colors.textSecondary,
+			padding: '2px 10px',
+			borderRadius: '10px',
+			fontSize: '12px',
+			fontWeight: '600',
+			flexShrink: 0,
+			whiteSpace: 'nowrap',
+		} }
+	>
+		{ label }
+	</span>
+);
+
+/**
+ * Token list showing currently-selected items with remove buttons.
+ * Reused from the pre-rewrite implementation — same behavior, same
+ * keyboard/screen-reader contract. Gives the selected-mode detail
+ * panels a "here's what you've picked" summary at a glance.
+ *
  * @param {Object}   root0          Component props.
- * @param {Array}    root0.items    Selected items with id and label.
+ * @param {Array}    root0.items    Selected items with { id, name }.
  * @param {Function} root0.onRemove Callback when an item is removed.
  */
 const SelectedTokens = ( { items, onRemove } ) => {
@@ -71,10 +120,10 @@ const SelectedTokens = ( { items, onRemove } ) => {
 				flexWrap: 'wrap',
 				gap: '6px',
 				marginBottom: '12px',
-				padding: '12px',
+				padding: '10px 12px',
 				background: colors.surface,
 				border: `1px solid ${ colors.borderSubtle }`,
-				borderRadius: '4px',
+				borderRadius: '3px',
 			} }
 		>
 			{ items.map( ( item ) => (
@@ -86,7 +135,7 @@ const SelectedTokens = ( { items, onRemove } ) => {
 						gap: '4px',
 						background: colors.surfaceMuted,
 						borderRadius: '3px',
-						padding: '3px 6px 3px 8px',
+						padding: '3px 6px 3px 10px',
 						fontSize: '12px',
 						color: colors.textPrimary,
 						lineHeight: '1.4',
@@ -119,6 +168,445 @@ const SelectedTokens = ( { items, onRemove } ) => {
 	);
 };
 
+/**
+ * Sample grid for the 'all' mode detail panel — 6 products with
+ * thumbnails + price, fetched from the Store API (same surface AI
+ * agents hit), with the total published-product count read from the
+ * `X-WP-Total` response header.
+ *
+ * Store API is preferred over the admin product-search endpoint here
+ * because it's the exact surface agents see — visibility filters
+ * (catalog visibility, out-of-stock exclusion) match what gets
+ * syndicated, making the grid a live self-demonstration of "this is
+ * what AI crawlers are fetching right now." Admin-search returns a
+ * merchant-view list that may include hidden products.
+ *
+ * Cached in component state for the lifetime of the tab visit —
+ * re-fetches only on mount.
+ */
+const SamplePreview = () => {
+	const [ products, setProducts ] = useState( [] );
+	const [ total, setTotal ] = useState( null );
+	const [ isLoading, setIsLoading ] = useState( true );
+	const [ hasError, setHasError ] = useState( false );
+
+	useEffect( () => {
+		let cancelled = false;
+		setIsLoading( true );
+		setHasError( false );
+
+		// `parse: false` → gives us the raw Response so we can read
+		// `X-WP-Total` for the total published-product count. apiFetch's
+		// default parse mode discards headers.
+		apiFetch( {
+			path: '/wc/store/v1/products?per_page=6',
+			parse: false,
+		} )
+			.then( async ( response ) => {
+				if ( cancelled ) {
+					return;
+				}
+				// `apiFetch({ parse: false })` returns the raw Response
+				// regardless of HTTP status — a 401/403/5xx from the
+				// Store API resolves .then() rather than throwing.
+				// Without this check, a JSON error body ({code, message})
+				// would pass the Array.isArray guard as `[]` and render
+				// the "No published products yet" empty state,
+				// misleading the merchant into thinking their catalog
+				// is empty when it's actually an access/server error.
+				if ( ! response.ok ) {
+					setHasError( true );
+					setIsLoading( false );
+					return;
+				}
+				const body = await response.json();
+				// `X-WP-Total` may be absent (some reverse-proxy
+				// configurations strip it from cached responses) or
+				// unparseable. Treat anything that doesn't parse to
+				// a finite number as "unknown" — the UI handles a
+				// `null` total by omitting the count pill, which is
+				// far better than rendering `NaN`.
+				const totalHeader = response.headers.get( 'X-WP-Total' );
+				const parsedTotal =
+					totalHeader !== null ? parseInt( totalHeader, 10 ) : NaN;
+				setProducts( Array.isArray( body ) ? body : [] );
+				setTotal( Number.isFinite( parsedTotal ) ? parsedTotal : null );
+				setIsLoading( false );
+			} )
+			.catch( () => {
+				if ( cancelled ) {
+					return;
+				}
+				setHasError( true );
+				setIsLoading( false );
+			} );
+
+		return () => {
+			cancelled = true;
+		};
+	}, [] );
+
+	if ( isLoading ) {
+		return (
+			<div style={ { padding: '32px 0', textAlign: 'center' } }>
+				<Spinner />
+			</div>
+		);
+	}
+
+	if ( hasError ) {
+		// Fetch failed outright — don't mislead the merchant about
+		// what's shared. Agents still get the catalog correctly
+		// via the real endpoints; this preview is diagnostic only,
+		// so point them at the Endpoints tab for verification.
+		return (
+			<p
+				style={ {
+					color: colors.textMuted,
+					fontSize: '13px',
+					padding: '16px 0',
+					margin: 0,
+				} }
+			>
+				{ __(
+					'Sample preview unavailable. Your products are still being shared — visit the Endpoints tab to verify.',
+					'woocommerce-ai-storefront'
+				) }
+			</p>
+		);
+	}
+
+	if ( products.length === 0 ) {
+		// Fetch succeeded but the store has no published products
+		// yet — valid state on fresh installs. Distinct from the
+		// error case above so merchants don't think something's
+		// broken when their catalog is just empty.
+		return (
+			<p
+				style={ {
+					color: colors.textMuted,
+					fontSize: '13px',
+					padding: '16px 0',
+					margin: 0,
+				} }
+			>
+				{ __(
+					'No published products yet. Once you publish products they\u2019ll appear here as a preview of what AI agents see.',
+					'woocommerce-ai-storefront'
+				) }
+			</p>
+		);
+	}
+
+	return (
+		<>
+			<div
+				style={ {
+					display: 'flex',
+					justifyContent: 'space-between',
+					alignItems: 'baseline',
+					marginBottom: '10px',
+				} }
+			>
+				<h5
+					style={ {
+						margin: 0,
+						fontSize: '12px',
+						fontWeight: '600',
+						color: colors.textSecondary,
+						textTransform: 'uppercase',
+						letterSpacing: '0.4px',
+					} }
+				>
+					{ __(
+						"Sample of what's shared",
+						'woocommerce-ai-storefront'
+					) }
+				</h5>
+				{ total !== null && (
+					<Button
+						variant="link"
+						href="edit.php?post_type=product"
+						style={ { fontSize: '13px' } }
+					>
+						{ sprintf(
+							/* translators: %s: total product count, formatted via toLocaleString using the browser locale. */
+							__(
+								'View all %s in Products \u2192',
+								'woocommerce-ai-storefront'
+							),
+							total.toLocaleString()
+						) }
+					</Button>
+				) }
+			</div>
+
+			<div
+				style={ {
+					display: 'grid',
+					gridTemplateColumns: 'repeat(6, 1fr)',
+					gap: '10px',
+				} }
+			>
+				{ products.map( ( product ) => (
+					<SamplePreviewTile key={ product.id } product={ product } />
+				) ) }
+			</div>
+		</>
+	);
+};
+
+/**
+ * One tile in the sample grid. Store API gives us `images[0].thumbnail`
+ * as a fully-qualified URL; we fall back to a neutral placeholder when
+ * a product has no image (gracefully handles merchants who haven't
+ * populated product media — the grid still reads as populated).
+ *
+ * Price field from Store API comes as `price_html` — already localized,
+ * currency-formatted, and handles sale prices, variation ranges, and
+ * on-sale markup correctly. When `price_html` is absent we render no
+ * price line at all (the tile shows just the name + thumbnail) rather
+ * than trying to reconstruct from the minor-unit `prices.price` value,
+ * which would require separate currency-symbol + locale wiring.
+ *
+ * @param {Object} root0         Component props.
+ * @param {Object} root0.product Store API product payload.
+ */
+const SamplePreviewTile = ( { product } ) => {
+	const thumbnail = product.images?.[ 0 ]?.thumbnail || '';
+	const name = decodeEntities( product.name || '' );
+	const price = product.price_html
+		? decodeEntities( product.price_html )
+		: '';
+
+	return (
+		<div
+			style={ {
+				border: `1px solid ${ colors.borderSubtle }`,
+				borderRadius: '3px',
+				overflow: 'hidden',
+				background: colors.surface,
+			} }
+		>
+			<div
+				style={ {
+					aspectRatio: '1 / 1',
+					background: colors.surfaceSubtle,
+					display: 'flex',
+					alignItems: 'center',
+					justifyContent: 'center',
+					overflow: 'hidden',
+				} }
+			>
+				{ thumbnail ? (
+					<img
+						src={ thumbnail }
+						alt=""
+						style={ {
+							width: '100%',
+							height: '100%',
+							objectFit: 'cover',
+						} }
+					/>
+				) : (
+					<span
+						aria-hidden="true"
+						style={ {
+							fontSize: '28px',
+							color: colors.textMuted,
+						} }
+					>
+						{ '\u25A1' }
+					</span>
+				) }
+			</div>
+			<div style={ { padding: '6px 8px 8px' } }>
+				<div
+					style={ {
+						fontSize: '12px',
+						fontWeight: '600',
+						color: colors.textPrimary,
+						overflow: 'hidden',
+						textOverflow: 'ellipsis',
+						whiteSpace: 'nowrap',
+					} }
+					title={ name }
+				>
+					{ name }
+				</div>
+				{ price && (
+					<div
+						style={ {
+							fontSize: '11px',
+							color: colors.textMuted,
+							marginTop: '2px',
+						} }
+						/* Store API `price_html` may contain markup (currency-
+						   symbol spans, sale-price strikethroughs, etc.), so
+						   we decode entities above and strip HTML tags here
+						   via regex before rendering as plain text. innerHTML
+						   isn't needed — plain-text output is what the tile
+						   wants anyway (no styling propagates from the
+						   original markup). */
+					>
+						{ price.replace( /<[^>]+>/g, '' ) }
+					</div>
+				) }
+			</div>
+		</div>
+	);
+};
+
+/**
+ * Radio-card row. Wraps a native `<input type="radio">` inside a
+ * `<label>` so keyboard nav (Tab between the rows, Arrow keys within
+ * the radio group) and screen-reader semantics work without any JS
+ * — the @wordpress/components `RadioControl` component can't host
+ * rich per-option children, so we use the primitive directly and
+ * style the wrapping label as a clickable card. The implicit label
+ * association (the native behavior when an input is nested in a
+ * label) gives us click-target expansion + screen-reader labeling
+ * without needing an explicit `htmlFor`/`id` pair.
+ *
+ * The radio input itself renders the browser-default focus
+ * indicator; we don't paint a card-level focus ring because there's
+ * no external stylesheet in this plugin (all styling is inline
+ * style props, which can't hold `:focus-within` pseudo-class rules).
+ *
+ * Selected state renders the children (detail panel) below the
+ * label row; unselected state hides them entirely (not just
+ * visually) so the DOM stays small and assistive tech doesn't read
+ * hidden content.
+ *
+ * @param {Object}   root0             Component props.
+ * @param {string}   root0.value       This option's value.
+ * @param {string}   root0.selected    Currently-selected option value.
+ * @param {string}   root0.name        Radio group name.
+ * @param {string}   root0.label       Option label (bold).
+ * @param {string}   root0.description Option description (muted).
+ * @param {string}   root0.badgeLabel  Text for the right-aligned badge.
+ * @param {Function} root0.onSelect    Called with this option's value.
+ * @param {Node}     root0.children    Detail panel content (rendered when selected).
+ * @param {boolean}  root0.isLast      Suppresses the label's bottom border regardless of selection state.
+ */
+const ModeRow = ( {
+	value,
+	selected,
+	name,
+	label,
+	description,
+	badgeLabel,
+	onSelect,
+	children,
+	isLast,
+} ) => {
+	const isSelected = selected === value;
+
+	return (
+		<>
+			{ /*
+			   `jsx-a11y/label-has-associated-control` rule is stricter
+			   than the HTML spec — it requires either an explicit
+			   `htmlFor`/`id` pair or declares the association
+			   heuristically. Here the label implicitly associates via
+			   the nested <input type="radio"> child (valid HTML since
+			   HTML4), which AT announces correctly. Explicit
+			   `htmlFor` + nested input is an HTML conformance error
+			   per Copilot's review, so we keep the nesting-only form
+			   and disable the linter for this specific case.
+			*/ }
+			{ /* eslint-disable-next-line jsx-a11y/label-has-associated-control */ }
+			<label
+				style={ {
+					display: 'flex',
+					alignItems: 'center',
+					gap: '12px',
+					padding: '14px 20px',
+					// The label's bottom border separates collapsed rows from
+					// each other. When this row is `isLast` we always drop
+					// the border — whether selected or not — because the
+					// enclosing Card already draws the outer border, and an
+					// extra line between the last row and the card edge
+					// produces a visible double-border on collapsed last,
+					// or a floating divider above the Save button on
+					// selected last.
+					borderBottom: isLast
+						? 'none'
+						: `1px solid ${ colors.borderSubtle }`,
+					background: isSelected ? '#f6fbfd' : 'transparent',
+					cursor: 'pointer',
+				} }
+			>
+				<input
+					type="radio"
+					name={ name }
+					value={ value }
+					checked={ isSelected }
+					onChange={ () => onSelect( value ) }
+					style={ { margin: 0, accentColor: colors.link } }
+				/>
+				<span style={ { flex: 1, minWidth: 0 } }>
+					<span
+						style={ {
+							display: 'block',
+							fontSize: '14px',
+							fontWeight: '600',
+							color: colors.textPrimary,
+						} }
+					>
+						{ label }
+					</span>
+					<span
+						style={ {
+							display: 'block',
+							fontSize: '13px',
+							color: colors.textSecondary,
+							marginTop: '2px',
+						} }
+					>
+						{ description }
+					</span>
+				</span>
+				<ModeBadge label={ badgeLabel } selected={ isSelected } />
+			</label>
+			{ isSelected && (
+				<div
+					style={ {
+						padding: '0 20px 18px 50px',
+						background: '#f6fbfd',
+						borderBottom: isLast
+							? 'none'
+							: `1px solid ${ colors.borderSubtle }`,
+					} }
+				>
+					{ children }
+				</div>
+			) }
+		</>
+	);
+};
+
+/**
+ * Detail-panel summary line. Every mode's panel opens with one of
+ * these ("Currently sharing X …") so the three modes feel visually
+ * consistent despite having different selection UIs below.
+ *
+ * @param {Object} root0          Component props.
+ * @param {string} root0.children Summary text.
+ */
+const PanelHeading = ( { children } ) => (
+	<h4
+		style={ {
+			fontSize: '14px',
+			fontWeight: '600',
+			color: colors.textPrimary,
+			margin: '14px 0',
+		} }
+	>
+		{ children }
+	</h4>
+);
+
 const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	const [ categories, setCategories ] = useState( [] );
 	const [ products, setProducts ] = useState( [] );
@@ -127,18 +615,29 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	const [ isLoadingCategories, setIsLoadingCategories ] = useState( false );
 	const [ isLoadingProducts, setIsLoadingProducts ] = useState( false );
 
+	// Load categories eagerly on mount (cheap, small list) so the
+	// categories radio row can show an accurate count even when
+	// unselected.
 	useEffect( () => {
 		setIsLoadingCategories( true );
 		apiFetch( {
 			path: '/wc/v3/ai-storefront/admin/search/categories',
 		} )
-			.then( ( result ) => setCategories( result ) )
+			// Guard against unexpected response shapes (HTML error
+			// page, null, WP_Error envelope). Downstream code calls
+			// `categories.filter(...)` and `categories.every(...)` —
+			// a non-array would crash the settings tab entirely.
+			.then( ( result ) =>
+				setCategories( Array.isArray( result ) ? result : [] )
+			)
 			.catch( () => {} )
 			.finally( () => setIsLoadingCategories( false ) );
 	}, [] );
 
+	// Product search only runs when the merchant is actively in the
+	// 'selected' mode — no point loading a product list they won't see.
 	useEffect( () => {
-		if ( settings.product_selection_mode !== 'selected' ) {
+		if ( settings.product_selection_mode !== MODES.SELECTED ) {
 			return;
 		}
 		setIsLoadingProducts( true );
@@ -147,7 +646,12 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 				productSearch
 			) }`,
 		} )
-			.then( ( result ) => setProducts( result ) )
+			// Same Array.isArray guard as categories — downstream
+			// `products.map` + `products.forEach` would crash on a
+			// non-array response.
+			.then( ( result ) =>
+				setProducts( Array.isArray( result ) ? result : [] )
+			)
 			.catch( () => {} )
 			.finally( () => setIsLoadingProducts( false ) );
 	}, [ productSearch, settings.product_selection_mode ] );
@@ -160,7 +664,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		() => settings.selected_products || [],
 		[ settings.selected_products ]
 	);
-	const mode = settings.product_selection_mode || 'all';
+	const mode = settings.product_selection_mode || MODES.ALL;
 
 	const toggleCategory = ( catId ) => {
 		const updated = selectedCategories.includes( catId )
@@ -176,7 +680,6 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		onChange( { selected_products: updated } );
 	};
 
-	// Filter categories by search term.
 	const filteredCategories = useMemo( () => {
 		if ( ! categorySearch.trim() ) {
 			return categories;
@@ -187,23 +690,30 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		);
 	}, [ categories, categorySearch ] );
 
-	// Build token data for selected categories.
 	const selectedCategoryTokens = useMemo( () => {
 		return categories.filter( ( cat ) =>
 			selectedCategories.includes( cat.id )
 		);
 	}, [ categories, selectedCategories ] );
 
-	// Build token data for selected products.
-	// We need to track selected products that may not be in the current search results.
+	// Products carry a visibility problem: the merchant's selection
+	// may reference products that aren't in the current (search-
+	// filtered) result set, so the token list would go empty on every
+	// search that doesn't match the selection. Cache product objects
+	// as we see them so tokens survive searches.
 	const [ selectedProductCache, setSelectedProductCache ] = useState( {} );
 	useEffect( () => {
-		const newCache = { ...selectedProductCache };
-		products.forEach( ( p ) => {
-			newCache[ p.id ] = p;
+		if ( products.length === 0 ) {
+			return;
+		}
+		setSelectedProductCache( ( prev ) => {
+			const next = { ...prev };
+			products.forEach( ( p ) => {
+				next[ p.id ] = p;
+			} );
+			return next;
 		} );
-		setSelectedProductCache( newCache );
-	}, [ products ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Only update cache when products change.
+	}, [ products ] );
 
 	const selectedProductTokens = useMemo( () => {
 		return selectedProducts
@@ -211,361 +721,295 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			.filter( Boolean );
 	}, [ selectedProducts, selectedProductCache ] );
 
+	// Badge labels — per-mode, reflect the current configuration.
+	// The "all" badge needs the total published-product count even
+	// when the merchant is currently in `categories`/`selected`
+	// mode, so it answers "how many products would be shared if I
+	// switched to All?" — i.e. the unfiltered total.
+	//
+	// We intentionally hit the WP core REST endpoint
+	// (`/wp/v2/product`) here rather than the Store API
+	// (`/wc/store/v1/products`) because this plugin globally
+	// restricts Store API product collections via the
+	// `woocommerce_store_api_product_collection_query_args` filter
+	// when mode is not 'all'. That filter would make the Store API
+	// count reflect the merchant's current selection, not the true
+	// unfiltered total — wrong answer for this badge. `/wp/v2/product`
+	// is admin-side and not affected by the Store API filter.
+	//
+	// Three states:
+	//   - null     → still loading → show "Loading…"
+	//   - 'error'  → fetch failed or response was unusable → show
+	//                the generic label without a count ("Products")
+	//   - number   → finite integer → format + render
+	const [ totalPublished, setTotalPublished ] = useState( null );
+	useEffect( () => {
+		let cancelled = false;
+		apiFetch( {
+			path: '/wp/v2/product?status=publish&per_page=1&_fields=id',
+			parse: false,
+		} )
+			.then( ( response ) => {
+				if ( cancelled ) {
+					return;
+				}
+				// Non-2xx (401/403/5xx) resolves .then() when
+				// `parse: false` — check `response.ok` explicitly so
+				// an auth failure or server error maps to our 'error'
+				// sentinel instead of silently parsing an error body.
+				if ( ! response.ok ) {
+					setTotalPublished( 'error' );
+					return;
+				}
+				const totalHeader = response.headers.get( 'X-WP-Total' );
+				const parsed =
+					totalHeader !== null ? parseInt( totalHeader, 10 ) : NaN;
+				setTotalPublished(
+					Number.isFinite( parsed ) ? parsed : 'error'
+				);
+			} )
+			.catch( () => {
+				if ( ! cancelled ) {
+					setTotalPublished( 'error' );
+				}
+			} );
+		return () => {
+			cancelled = true;
+		};
+	}, [] );
+
+	let allBadge;
+	if ( totalPublished === null ) {
+		allBadge = __( 'Loading\u2026', 'woocommerce-ai-storefront' );
+	} else if ( totalPublished === 'error' ) {
+		// Don't show a count we can't trust; a bare "Products"
+		// label is still accurate and won't mislead merchants
+		// about catalog size.
+		allBadge = __( 'Products', 'woocommerce-ai-storefront' );
+	} else {
+		allBadge = sprintf(
+			/* translators: %s: total published product count, formatted via toLocaleString using the browser locale. */
+			_n(
+				'%s product',
+				'%s products',
+				totalPublished,
+				'woocommerce-ai-storefront'
+			),
+			totalPublished.toLocaleString()
+		);
+	}
+
+	const categoriesBadge = sprintf(
+		/* translators: %d: number of selected categories. */
+		_n(
+			'%d category',
+			'%d categories',
+			selectedCategories.length,
+			'woocommerce-ai-storefront'
+		),
+		selectedCategories.length
+	);
+
+	// No plural-form distinction for this copy ('%d selected' reads
+	// the same for singular + plural in English), so use a single
+	// translatable string via __() rather than _n(). Locales with
+	// distinct plural forms can override as needed.
+	const selectedBadge = sprintf(
+		/* translators: %d: number of selected products. */
+		__( '%d selected', 'woocommerce-ai-storefront' ),
+		selectedProducts.length
+	);
+
 	const allCategoriesSelected =
 		categories.length > 0 &&
 		categories.every( ( cat ) => selectedCategories.includes( cat.id ) );
 	const noCategoriesSelected = selectedCategories.length === 0;
 
+	const setMode = ( value ) => onChange( { product_selection_mode: value } );
+
 	return (
 		<div>
 			<Card>
-				<CardBody>
-					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
-						{ __(
-							'AI Product Visibility',
-							'woocommerce-ai-storefront'
-						) }
-					</h3>
-					<p
-						style={ {
-							color: colors.textSecondary,
-							fontSize: '13px',
-							margin: '0 0 16px',
-						} }
-					>
-						{ __(
-							'Choose which products appear in your discovery endpoints (llms.txt, UCP manifest, JSON-LD, and Store API responses). This controls what AI crawlers can see and recommend.',
-							'woocommerce-ai-storefront'
-						) }
-					</p>
-
-					<SelectControl
-						__next40pxDefaultSize
-						__nextHasNoMarginBottom
-						label={ __(
-							'Products available to AI crawlers',
-							'woocommerce-ai-storefront'
-						) }
-						value={ mode }
-						options={ [
-							{
-								label: __(
-									'All published products',
-									'woocommerce-ai-storefront'
-								),
-								value: 'all',
-							},
-							{
-								label: __(
-									'Products in selected categories',
-									'woocommerce-ai-storefront'
-								),
-								value: 'categories',
-							},
-							{
-								label: __(
-									'Specific products only',
-									'woocommerce-ai-storefront'
-								),
-								value: 'selected',
-							},
-						] }
-						onChange={ ( value ) =>
-							onChange( { product_selection_mode: value } )
-						}
-					/>
-					{ MODE_DESCRIPTIONS[ mode ] && (
-						<p
+				<CardHeader>
+					<div>
+						<h3
 							style={ {
-								color: colors.textMuted,
-								fontSize: '12px',
-								marginTop: '4px',
-								marginBottom: 0,
+								margin: 0,
+								fontSize: '16px',
+								fontWeight: '600',
+								color: colors.textPrimary,
 							} }
 						>
-							{ MODE_DESCRIPTIONS[ mode ] }
-						</p>
-					) }
-
-					{ mode === 'categories' && (
-						<div style={ { marginTop: '24px' } }>
-							<div
-								style={ {
-									display: 'flex',
-									justifyContent: 'space-between',
-									alignItems: 'center',
-									marginBottom: '12px',
-								} }
-							>
-								<span
-									style={ {
-										fontSize: '13px',
-										fontWeight: '500',
-										color: colors.textPrimary,
-									} }
-								>
-									{ __(
-										'Categories',
-										'woocommerce-ai-storefront'
-									) }
-								</span>
-								<CountPill
-									count={ selectedCategories.length }
-									label={
-										/* translators: %d: number of selected items */
-										__(
-											'%d selected',
-											'woocommerce-ai-storefront'
-										)
-									}
-								/>
-							</div>
-
-							{ /* Selected category tokens */ }
-							<SelectedTokens
-								items={ selectedCategoryTokens }
-								onRemove={ toggleCategory }
-							/>
-
-							{ /* Search + bulk actions for categories */ }
-							{ ! isLoadingCategories &&
-								categories.length > 8 && (
-									<SearchControl
-										value={ categorySearch }
-										onChange={ setCategorySearch }
-										placeholder={ __(
-											'Filter categories\u2026',
-											'woocommerce-ai-storefront'
-										) }
-									/>
-								) }
-							{ ! isLoadingCategories &&
-								categories.length > 0 && (
-									<div
-										style={ {
-											display: 'flex',
-											gap: '12px',
-											margin:
-												categories.length > 8
-													? '8px 0 8px'
-													: '0 0 8px',
-										} }
-									>
-										<Button
-											variant="link"
-											disabled={ allCategoriesSelected }
-											onClick={ () =>
-												onChange( {
-													selected_categories:
-														categories.map(
-															( cat ) => cat.id
-														),
-												} )
-											}
-											style={ {
-												fontSize: '12px',
-												padding: 0,
-												minHeight: 'auto',
-											} }
-										>
-											{ __(
-												'Select all',
-												'woocommerce-ai-storefront'
-											) }
-										</Button>
-										<Button
-											variant="link"
-											disabled={ noCategoriesSelected }
-											onClick={ () =>
-												onChange( {
-													selected_categories: [],
-												} )
-											}
-											style={ {
-												fontSize: '12px',
-												padding: 0,
-												minHeight: 'auto',
-											} }
-										>
-											{ __(
-												'Clear selection',
-												'woocommerce-ai-storefront'
-											) }
-										</Button>
-									</div>
-								) }
-							{ isLoadingCategories ? (
-								<div
-									style={ {
-										padding: '24px',
-										textAlign: 'center',
-									} }
-								>
-									<Spinner />
-								</div>
-							) : (
-								<div
-									style={ {
-										maxHeight: '300px',
-										overflow: 'auto',
-										background: colors.surfaceSubtle,
-										borderRadius: '4px',
-										padding: '4px 16px',
-									} }
-								>
-									{ filteredCategories.length === 0 &&
-										categorySearch && (
-											<p
-												style={ {
-													color: colors.textMuted,
-													fontSize: '13px',
-													textAlign: 'center',
-													padding: '16px 0',
-													margin: 0,
-												} }
-											>
-												{ __(
-													'No categories match your filter.',
-													'woocommerce-ai-storefront'
-												) }
-											</p>
-										) }
-									{ filteredCategories.map(
-										( cat, index ) => (
-											<div
-												key={ cat.id }
-												style={ {
-													padding: '6px 0',
-													borderBottom:
-														index <
-														filteredCategories.length -
-															1
-															? `1px solid ${ colors.borderSubtle }`
-															: 'none',
-												} }
-											>
-												<CheckboxControl
-													label={ sprintf(
-														/* translators: %1$s: category name, %2$d: product count */
-														'%1$s (%2$d)',
-														decodeEntities(
-															cat.name
-														),
-														cat.count
-													) }
-													checked={ selectedCategories.includes(
-														cat.id
-													) }
-													onChange={ () =>
-														toggleCategory( cat.id )
-													}
-													__nextHasNoMarginBottom
-												/>
-											</div>
-										)
-									) }
-								</div>
+							{ __(
+								'Products available to AI crawlers',
+								'woocommerce-ai-storefront'
 							) }
-						</div>
-					) }
-
-					{ mode === 'selected' && (
-						<div style={ { marginTop: '24px' } }>
-							<div
-								style={ {
-									display: 'flex',
-									justifyContent: 'space-between',
-									alignItems: 'center',
-									marginBottom: '12px',
-								} }
-							>
-								<span
-									style={ {
-										fontSize: '13px',
-										fontWeight: '500',
-										color: colors.textPrimary,
-									} }
-								>
-									{ __(
-										'Products',
-										'woocommerce-ai-storefront'
-									) }
-								</span>
-								<CountPill
-									count={ selectedProducts.length }
-									label={
-										/* translators: %d: number of selected items */
+						</h3>
+						<p
+							style={ {
+								margin: '4px 0 0',
+								fontSize: '13px',
+								color: colors.textSecondary,
+							} }
+						>
+							{ __(
+								'Choose which of your products appear in your AI Storefront endpoints.',
+								'woocommerce-ai-storefront'
+							) }
+						</p>
+					</div>
+				</CardHeader>
+				<CardBody style={ { padding: 0 } }>
+					<ModeRow
+						value={ MODES.ALL }
+						selected={ mode }
+						name="ai_syndication_mode"
+						label={ __(
+							'All published products',
+							'woocommerce-ai-storefront'
+						) }
+						description={ MODE_DESCRIPTIONS[ MODES.ALL ] }
+						badgeLabel={ allBadge }
+						onSelect={ setMode }
+					>
+						<PanelHeading>
+							{ typeof totalPublished === 'number'
+								? sprintf(
+										/* translators: %s: total product count, formatted via toLocaleString using the browser locale. */
 										__(
-											'%d selected',
+											'Currently sharing all %s published products',
 											'woocommerce-ai-storefront'
-										)
-									}
-								/>
-							</div>
+										),
+										totalPublished.toLocaleString()
+								  )
+								: __(
+										'Currently sharing all published products',
+										'woocommerce-ai-storefront'
+								  ) }
+						</PanelHeading>
+						<SamplePreview />
+						<Disclosure>
+							{ __(
+								"Auto-includes new products as they're published.",
+								'woocommerce-ai-storefront'
+							) }
+						</Disclosure>
+					</ModeRow>
 
-							{ /* Selected product tokens */ }
-							<SelectedTokens
-								items={ selectedProductTokens }
-								onRemove={ toggleProduct }
-							/>
-
+					<ModeRow
+						value={ MODES.CATEGORIES }
+						selected={ mode }
+						name="ai_syndication_mode"
+						label={ __(
+							'Products in selected categories',
+							'woocommerce-ai-storefront'
+						) }
+						description={ MODE_DESCRIPTIONS[ MODES.CATEGORIES ] }
+						badgeLabel={ categoriesBadge }
+						onSelect={ setMode }
+					>
+						<PanelHeading>
+							{ sprintf(
+								/* translators: %d: category count. */
+								_n(
+									'Currently sharing %d category',
+									'Currently sharing %d categories',
+									selectedCategories.length,
+									'woocommerce-ai-storefront'
+								),
+								selectedCategories.length
+							) }
+						</PanelHeading>
+						<SelectedTokens
+							items={ selectedCategoryTokens }
+							onRemove={ toggleCategory }
+						/>
+						{ ! isLoadingCategories && categories.length > 8 && (
 							<SearchControl
-								value={ productSearch }
-								onChange={ setProductSearch }
+								__nextHasNoMarginBottom
+								value={ categorySearch }
+								onChange={ setCategorySearch }
 								placeholder={ __(
-									'Search products\u2026',
+									'Filter categories\u2026',
 									'woocommerce-ai-storefront'
 								) }
 							/>
-							{ selectedProducts.length > 0 && (
-								<div
+						) }
+						{ ! isLoadingCategories && categories.length > 0 && (
+							<div
+								style={ {
+									display: 'flex',
+									gap: '12px',
+									margin:
+										categories.length > 8
+											? '8px 0 8px'
+											: '0 0 8px',
+								} }
+							>
+								<Button
+									variant="link"
+									disabled={ allCategoriesSelected }
+									onClick={ () =>
+										onChange( {
+											selected_categories: categories.map(
+												( cat ) => cat.id
+											),
+										} )
+									}
 									style={ {
-										display: 'flex',
-										gap: '12px',
-										margin: '8px 0 0',
+										fontSize: '12px',
+										padding: 0,
+										minHeight: 'auto',
 									} }
 								>
-									<Button
-										variant="link"
-										onClick={ () =>
-											onChange( {
-												selected_products: [],
-											} )
-										}
-										style={ {
-											fontSize: '12px',
-											padding: 0,
-											minHeight: 'auto',
-										} }
-									>
-										{ __(
-											'Clear selection',
-											'woocommerce-ai-storefront'
-										) }
-									</Button>
-								</div>
-							) }
-							{ isLoadingProducts ? (
-								<div
+									{ __(
+										'Select all',
+										'woocommerce-ai-storefront'
+									) }
+								</Button>
+								<Button
+									variant="link"
+									disabled={ noCategoriesSelected }
+									onClick={ () =>
+										onChange( {
+											selected_categories: [],
+										} )
+									}
 									style={ {
-										padding: '24px',
-										textAlign: 'center',
+										fontSize: '12px',
+										padding: 0,
+										minHeight: 'auto',
 									} }
 								>
-									<Spinner />
-								</div>
-							) : (
-								<div
-									style={ {
-										maxHeight: '300px',
-										overflow: 'auto',
-										background: colors.surfaceSubtle,
-										borderRadius: '4px',
-										padding: '4px 16px',
-										marginTop: '8px',
-									} }
-								>
-									{ products.length === 0 && (
+									{ __(
+										'Clear selection',
+										'woocommerce-ai-storefront'
+									) }
+								</Button>
+							</div>
+						) }
+						{ isLoadingCategories ? (
+							<div
+								style={ {
+									padding: '24px',
+									textAlign: 'center',
+								} }
+							>
+								<Spinner />
+							</div>
+						) : (
+							<div
+								style={ {
+									maxHeight: '260px',
+									overflow: 'auto',
+									background: colors.surface,
+									border: `1px solid ${ colors.borderSubtle }`,
+									borderRadius: '3px',
+									padding: '4px 16px',
+								} }
+							>
+								{ filteredCategories.length === 0 &&
+									categorySearch && (
 										<p
 											style={ {
 												color: colors.textMuted,
@@ -575,58 +1019,307 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 												margin: 0,
 											} }
 										>
-											{ productSearch
-												? __(
-														'No products found. Try a different search.',
-														'woocommerce-ai-storefront'
-												  )
-												: __(
-														'Start typing to search your products.',
-														'woocommerce-ai-storefront'
-												  ) }
+											{ __(
+												'No categories match your filter.',
+												'woocommerce-ai-storefront'
+											) }
 										</p>
 									) }
-									{ products.map( ( product, index ) => (
-										<div
-											key={ product.id }
-											style={ {
-												padding: '6px 0',
-												borderBottom:
-													index < products.length - 1
-														? `1px solid ${ colors.borderSubtle }`
-														: 'none',
-											} }
-										>
-											<CheckboxControl
-												label={ sprintf(
-													/* translators: %1$s: product name, %2$s: price */
-													'%1$s - %2$s',
-													decodeEntities(
-														product.name
-													),
-													decodeEntities(
-														product.price
-													)
-												) }
-												checked={ selectedProducts.includes(
-													product.id
-												) }
-												onChange={ () =>
-													toggleProduct( product.id )
-												}
-												__nextHasNoMarginBottom
-											/>
-										</div>
-									) ) }
-								</div>
+								{ filteredCategories.map( ( cat, index ) => (
+									<div
+										key={ cat.id }
+										style={ {
+											padding: '6px 0',
+											borderBottom:
+												index <
+												filteredCategories.length - 1
+													? `1px solid ${ colors.borderSubtle }`
+													: 'none',
+										} }
+									>
+										<CheckboxControl
+											label={ sprintf(
+												/* translators: %1$s: category name, %2$d: product count */
+												__(
+													'%1$s (%2$d)',
+													'woocommerce-ai-storefront'
+												),
+												decodeEntities( cat.name ),
+												cat.count
+											) }
+											checked={ selectedCategories.includes(
+												cat.id
+											) }
+											onChange={ () =>
+												toggleCategory( cat.id )
+											}
+											__nextHasNoMarginBottom
+										/>
+									</div>
+								) ) }
+							</div>
+						) }
+						<Disclosure>
+							{ __(
+								'Auto-includes future products added to these categories.',
+								'woocommerce-ai-storefront'
 							) }
-						</div>
-					) }
+						</Disclosure>
+					</ModeRow>
+
+					<ModeRow
+						value={ MODES.SELECTED }
+						selected={ mode }
+						name="ai_syndication_mode"
+						label={ __(
+							'Specific products only',
+							'woocommerce-ai-storefront'
+						) }
+						description={ MODE_DESCRIPTIONS[ MODES.SELECTED ] }
+						badgeLabel={ selectedBadge }
+						onSelect={ setMode }
+						isLast
+					>
+						<PanelHeading>
+							{ sprintf(
+								/* translators: %d: selected product count. */
+								_n(
+									'Currently sharing %d product',
+									'Currently sharing %d products',
+									selectedProducts.length,
+									'woocommerce-ai-storefront'
+								),
+								selectedProducts.length
+							) }
+						</PanelHeading>
+						<SelectedTokens
+							items={ selectedProductTokens }
+							onRemove={ toggleProduct }
+						/>
+						<SearchControl
+							__nextHasNoMarginBottom
+							value={ productSearch }
+							onChange={ setProductSearch }
+							placeholder={ __(
+								'Search products\u2026',
+								'woocommerce-ai-storefront'
+							) }
+						/>
+						{ selectedProducts.length > 0 && (
+							<div
+								style={ {
+									display: 'flex',
+									gap: '12px',
+									margin: '8px 0',
+								} }
+							>
+								<Button
+									variant="link"
+									onClick={ () =>
+										onChange( {
+											selected_products: [],
+										} )
+									}
+									style={ {
+										fontSize: '12px',
+										padding: 0,
+										minHeight: 'auto',
+									} }
+								>
+									{ __(
+										'Clear selection',
+										'woocommerce-ai-storefront'
+									) }
+								</Button>
+							</div>
+						) }
+						{ isLoadingProducts ? (
+							<div
+								style={ {
+									padding: '24px',
+									textAlign: 'center',
+								} }
+							>
+								<Spinner />
+							</div>
+						) : (
+							<div
+								style={ {
+									maxHeight: '260px',
+									overflow: 'auto',
+									background: colors.surface,
+									border: `1px solid ${ colors.borderSubtle }`,
+									borderRadius: '3px',
+									padding: '4px 16px',
+								} }
+							>
+								{ products.length === 0 && (
+									<p
+										style={ {
+											color: colors.textMuted,
+											fontSize: '13px',
+											textAlign: 'center',
+											padding: '16px 0',
+											margin: 0,
+										} }
+									>
+										{ productSearch
+											? __(
+													'No products found. Try a different search.',
+													'woocommerce-ai-storefront'
+											  )
+											: __(
+													'Start typing to search your products.',
+													'woocommerce-ai-storefront'
+											  ) }
+									</p>
+								) }
+								{ products.map( ( product, index ) => (
+									<div
+										key={ product.id }
+										style={ {
+											padding: '6px 0',
+											borderBottom:
+												index < products.length - 1
+													? `1px solid ${ colors.borderSubtle }`
+													: 'none',
+										} }
+									>
+										<CheckboxControl
+											label={ sprintf(
+												/* translators: %1$s: product name, %2$s: price */
+												__(
+													'%1$s \u2014 %2$s',
+													'woocommerce-ai-storefront'
+												),
+												decodeEntities( product.name ),
+												decodeEntities( product.price )
+											) }
+											checked={ selectedProducts.includes(
+												product.id
+											) }
+											onChange={ () =>
+												toggleProduct( product.id )
+											}
+											__nextHasNoMarginBottom
+										/>
+									</div>
+								) ) }
+							</div>
+						) }
+						{ /*
+						   Warning severity — unique to this mode. The other
+						   two modes have benign "auto-includes …" lines; this
+						   one has a real behavioral surprise ("new products
+						   are NOT auto-included") that justifies a yellow
+						   notice. Using the Notice component (not a styled
+						   div) so screen readers announce the severity.
+						*/ }
+						<Notice
+							status="warning"
+							isDismissible={ false }
+							className="ai-syndication-selected-warning"
+						>
+							{ __(
+								'New products are not auto-included. Return here to add them manually as your catalog grows.',
+								'woocommerce-ai-storefront'
+							) }
+						</Notice>
+					</ModeRow>
 				</CardBody>
+				<CardFooter>
+					<div
+						style={ {
+							display: 'flex',
+							justifyContent: 'space-between',
+							alignItems: 'center',
+							gap: '16px',
+							flexWrap: 'wrap',
+							width: '100%',
+						} }
+					>
+						<div>
+							<span
+								style={ {
+									fontSize: '12px',
+									fontWeight: '600',
+									color: colors.textSecondary,
+									textTransform: 'uppercase',
+									letterSpacing: '0.4px',
+									marginRight: '8px',
+								} }
+							>
+								{ __(
+									'Included fields',
+									'woocommerce-ai-storefront'
+								) }
+							</span>
+							<span
+								style={ {
+									display: 'inline-flex',
+									flexWrap: 'wrap',
+									gap: '6px',
+								} }
+							>
+								{ getIncludedFields().map( ( field ) => (
+									<span
+										key={ field.key }
+										style={ {
+											fontSize: '12px',
+											background: colors.surface,
+											border: `1px solid ${ colors.borderSubtle }`,
+											padding: '2px 10px',
+											borderRadius: '12px',
+											color: colors.textPrimary,
+										} }
+									>
+										{ field.label }
+									</span>
+								) ) }
+							</span>
+						</div>
+						{ /*
+						   Link target routes to the Endpoints tab, which
+						   has per-endpoint URLs + a "try it" curl example
+						   per row. Keeping that deep-link here rather than
+						   inline in the footer avoids duplicating the
+						   Endpoints tab's surface and preserves single
+						   source of truth for endpoint info.
+						*/ }
+						<Button
+							variant="link"
+							/*
+							   Build the Endpoints deep-link via the URL
+							   API rather than string-splicing
+							   `window.location.search`. Hand-rolled
+							   regex + `?` vs `&` logic is fragile —
+							   when the current URL is exactly
+							   `?tab=products`, stripping `tab=` yields
+							   an empty string but the original-search
+							   `.includes('?')` check was still true,
+							   producing `/admin.php&tab=endpoints`
+							   (missing `?`). `searchParams.set()`
+							   handles the separator correctly in
+							   every case.
+							*/
+							href={ ( () => {
+								const url = new URL( window.location.href );
+								url.searchParams.set( 'tab', 'endpoints' );
+								return `${ url.pathname }${ url.search }`;
+							} )() }
+							style={ { fontSize: '13px' } }
+						>
+							{ __(
+								'Test with an AI agent \u2192',
+								'woocommerce-ai-storefront'
+							) }
+						</Button>
+					</div>
+				</CardFooter>
 			</Card>
 
 			{ /*
-				Page-level Save footer. Matches the Discovery tab
+				Page-level Save footer. Matches the Overview tab
 				convention and WP admin settings screens generally
 				(Settings → General, Writing, Reading, every WC
 				Settings tab) — one save at the bottom, not per-card.
@@ -645,11 +1338,34 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 				>
 					{ isSaving
 						? __( 'Saving\u2026', 'woocommerce-ai-storefront' )
-						: __( 'Save Changes', 'woocommerce-ai-storefront' ) }
+						: __( 'Save changes', 'woocommerce-ai-storefront' ) }
 				</Button>
 			</div>
 		</div>
 	);
 };
+
+/**
+ * Footer-of-panel disclosure line — used by 'all' and 'categories'
+ * for their benign auto-inclusion explanations. The 'selected' mode
+ * uses a `<Notice status="warning">` instead because its disclosure
+ * is an actual behavioral surprise, not a neutral fact.
+ *
+ * @param {Object} root0          Component props.
+ * @param {Node}   root0.children Disclosure text.
+ */
+const Disclosure = ( { children } ) => (
+	<p
+		style={ {
+			margin: '14px 0 0',
+			paddingTop: '12px',
+			borderTop: `1px solid ${ colors.borderSubtle }`,
+			color: colors.textMuted,
+			fontSize: '12px',
+		} }
+	>
+		{ children }
+	</p>
+);
 
 export default ProductSelection;
