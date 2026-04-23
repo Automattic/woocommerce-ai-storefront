@@ -203,7 +203,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		);
 
 		// JSON Schema for our merchant extension capability
-		// (com.woocommerce.ai_syndication). Served per-site so the
+		// (com.woocommerce.ai_storefront). Served per-site so the
 		// schema matches the running plugin version exactly and
 		// respects the merchant's own access-control configuration
 		// (same perms as the rest of the UCP routes). Referenced by
@@ -1246,7 +1246,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * Handler for GET /extension/schema.
 	 *
 	 * Serves the JSON Schema describing the shape of our merchant
-	 * extension capability (`com.woocommerce.ai_syndication`). The
+	 * extension capability (`com.woocommerce.ai_storefront`). The
 	 * manifest's extension capability advertises this endpoint under
 	 * its `schema` field; agents that want to validate our
 	 * extension-specific payload fetch it here rather than hardcoding
@@ -1268,12 +1268,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'$schema'     => 'https://json-schema.org/draft/2020-12/schema',
 			'$id'         => $self_id,
 			'title'       => 'WooCommerce AI Storefront UCP Extension Contract',
-			'description' => 'Schema for the `com.woocommerce.ai_syndication` extension contract. The top-level `config` property describes the merchant-extension configuration advertised in the UCP manifest at `capabilities[com.woocommerce.ai_syndication][0].config`. Starting 2.0.0, no response-level payloads are emitted under this extension — rating data moved to core `product.rating` per the UCP 2026-04-08 product shape.',
+			'description' => 'Schema for the `com.woocommerce.ai_storefront` extension contract. The top-level `config` property describes the merchant-extension configuration advertised in the UCP manifest at `capabilities[com.woocommerce.ai_storefront][0].config`. Starting 2.0.0, no response-level payloads are emitted under this extension — rating data moved to core `product.rating` per the UCP 2026-04-08 product shape.',
 			'type'        => 'object',
 			'properties'  => [
 				'config'                  => [
 					'type'        => 'object',
-					'description' => 'Merchant-extension configuration advertised at `capabilities[com.woocommerce.ai_syndication][0].config` in the UCP manifest.',
+					'description' => 'Merchant-extension configuration advertised at `capabilities[com.woocommerce.ai_storefront][0].config` in the UCP manifest.',
 					'properties'  => [
 						'store_context' => [
 							'type'        => 'object',

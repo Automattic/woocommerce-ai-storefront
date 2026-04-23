@@ -152,12 +152,12 @@ v1 implementation: read `get_privacy_policy_url()` from WordPress and `wc_get_pa
 
 ```
 includes/ai-syndication/ucp-rest/
-├── class-wc-ai-syndication-ucp-rest-controller.php   # Register routes, dispatch
-├── class-wc-ai-syndication-ucp-product-translator.php # WC product → UCP product
-├── class-wc-ai-syndication-ucp-variant-translator.php # WC variation → UCP variant
-├── class-wc-ai-syndication-ucp-envelope.php           # Build response envelopes
-├── class-wc-ai-syndication-ucp-agent-header.php       # Parse UCP-Agent header
-└── class-wc-ai-syndication-ucp-store-api-filter.php   # Server-side product filter
+├── class-wc-ai-storefront-ucp-rest-controller.php   # Register routes, dispatch
+├── class-wc-ai-storefront-ucp-product-translator.php # WC product → UCP product
+├── class-wc-ai-storefront-ucp-variant-translator.php # WC variation → UCP variant
+├── class-wc-ai-storefront-ucp-envelope.php           # Build response envelopes
+├── class-wc-ai-storefront-ucp-agent-header.php       # Parse UCP-Agent header
+└── class-wc-ai-storefront-ucp-store-api-filter.php   # Server-side product filter
 
 tests/php/unit/
 ├── UcpRestControllerTest.php
@@ -175,10 +175,10 @@ WooCommerce's built-in `/checkout-link/?products=ID:QTY` feature handles the car
 Minimum WooCommerce version requirement (not yet verified): the Shareable Checkout URLs feature was added in WC ~9.x. Since the plugin already declares `WC requires at least: 9.9`, we're safely above the threshold.
 
 **Modified**:
-- `includes/class-wc-ai-syndication.php` — load new classes, register controller on `rest_api_init`
-- `includes/ai-syndication/class-wc-ai-syndication-ucp.php` — manifest: new endpoint, declare capabilities, update PROTOCOL_VERSION to `2026-04-08`
-- `includes/ai-syndication/class-wc-ai-syndication-robots.php` — add `Allow: /wp-json/wc/ucp/`
-- `woocommerce-ai-syndication.php` — version → 1.3.0
+- `includes/class-wc-ai-storefront.php` — load new classes, register controller on `rest_api_init`
+- `includes/ai-syndication/class-wc-ai-storefront-ucp.php` — manifest: new endpoint, declare capabilities, update PROTOCOL_VERSION to `2026-04-08`
+- `includes/ai-syndication/class-wc-ai-storefront-robots.php` — add `Allow: /wp-json/wc/ucp/`
+- `woocommerce-ai-storefront.php` — version → 1.3.0
 - `readme.txt` — changelog
 - `languages/woocommerce-ai-syndication.pot` — regenerate
 - `AGENTS.md` — document the UCP adapter module

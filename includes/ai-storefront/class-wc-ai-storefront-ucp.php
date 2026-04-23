@@ -156,7 +156,7 @@ class WC_AI_Storefront_Ucp {
 	 *     WooCommerce's native Shareable Checkout flow. Merchants
 	 *     keep ownership of payment, tax, fulfillment.
 	 *
-	 * The merchant extension capability `com.woocommerce.ai_syndication`
+	 * The merchant extension capability `com.woocommerce.ai_storefront`
 	 * sits alongside the canonical `dev.ucp.shopping.*` capabilities and
 	 * declares a single `config.store_context` block — merchant-level
 	 * context (currency, locale, country, tax/shipping posture) so
@@ -307,7 +307,7 @@ class WC_AI_Storefront_Ucp {
 					// want upfront store facts (currency to quote in,
 					// whether prices include tax, whether shipping
 					// applies) find them without an extra API call.
-					'com.woocommerce.ai_syndication'  => [
+					'com.woocommerce.ai_storefront'  => [
 						[
 							'version' => self::PROTOCOL_VERSION,
 							'extends' => self::SERVICE_NAME,

@@ -59,7 +59,7 @@ class UpdaterTest extends \PHPUnit\Framework\TestCase {
 		// regression where someone changes the constant without
 		// also renaming the repo.
 		$this->assertSame(
-			'https://github.com/pierorocca/woocommerce-ai-syndication',
+			'https://github.com/Automattic/woocommerce-ai-storefront',
 			WC_AI_Storefront_Updater::GITHUB_REPO_URL,
 			'Repo URL must end in the plugin slug "woocommerce-ai-storefront"'
 		);
@@ -67,14 +67,14 @@ class UpdaterTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_release_asset_pattern_matches_workflow_output(): void {
 		// The release workflow produces zips named
-		// `woocommerce-ai-syndication-v{VERSION}.zip`. The pattern
+		// `woocommerce-ai-storefront-v{VERSION}.zip`. The pattern
 		// PUC uses to pick the right asset must match that naming,
 		// otherwise PUC falls back to the source-code zip (wrong
 		// directory name).
 		$pattern = WC_AI_Storefront_Updater::RELEASE_ASSET_PATTERN;
 
-		$this->assertMatchesRegularExpression( $pattern, 'woocommerce-ai-syndication-v1.4.0.zip' );
-		$this->assertMatchesRegularExpression( $pattern, 'woocommerce-ai-syndication-1.4.0.zip' );
+		$this->assertMatchesRegularExpression( $pattern, 'woocommerce-ai-storefront-v1.4.0.zip' );
+		$this->assertMatchesRegularExpression( $pattern, 'woocommerce-ai-storefront-1.4.0.zip' );
 		$this->assertDoesNotMatchRegularExpression( $pattern, 'source-code.zip' );
 		$this->assertDoesNotMatchRegularExpression( $pattern, 'some-other-plugin-v1.0.0.zip' );
 	}

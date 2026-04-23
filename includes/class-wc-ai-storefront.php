@@ -257,7 +257,7 @@ class WC_AI_Storefront {
 			__( 'AI Storefront', 'woocommerce-ai-storefront' ),
 			__( 'AI Storefront', 'woocommerce-ai-storefront' ),
 			'manage_woocommerce',
-			'wc-ai-syndication',
+			'wc-ai-storefront',
 			[ $this, 'render_admin_page' ]
 		);
 	}
@@ -278,7 +278,7 @@ class WC_AI_Storefront {
 	 * @param string $hook_suffix The current admin page.
 	 */
 	public function admin_scripts( $hook_suffix ) {
-		if ( 'woocommerce_page_wc-ai-syndication' !== $hook_suffix ) {
+		if ( 'woocommerce_page_wc-ai-storefront' !== $hook_suffix ) {
 			return;
 		}
 

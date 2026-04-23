@@ -351,7 +351,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// "this is a map I can petition to be added to."
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString( 'github.com/pierorocca/woocommerce-ai-syndication/issues', $output );
+		$this->assertStringContainsString( 'github.com/Automattic/woocommerce-ai-storefront/issues', $output );
 	}
 
 	// ------------------------------------------------------------------
@@ -676,7 +676,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString( '<a id="ucp-extension"></a>', $output );
-		$this->assertStringContainsString( '## UCP Extension: com.woocommerce.ai_syndication', $output );
+		$this->assertStringContainsString( '## UCP Extension: com.woocommerce.ai_storefront', $output );
 	}
 
 	public function test_llms_txt_extension_section_points_at_schema_endpoint(): void {

@@ -42,8 +42,8 @@ jobs:
       - name: Verify plugin version matches tag
         run: |
           TAG_VERSION="${TAG#v}"
-          HEADER_VERSION=$(grep -E '^[[:space:]]*\*[[:space:]]*Version:' woocommerce-ai-syndication.php | sed -E 's/.*Version:[[:space:]]*//' | tr -d '[:space:]')
-          CONST_VERSION=$(grep -E "define\(\s*'WC_AI_SYNDICATION_VERSION'" woocommerce-ai-syndication.php | sed -E "s/.*'WC_AI_SYNDICATION_VERSION',\s*'([^']+)'.*/\1/")
+          HEADER_VERSION=$(grep -E '^[[:space:]]*\*[[:space:]]*Version:' woocommerce-ai-storefront.php | sed -E 's/.*Version:[[:space:]]*//' | tr -d '[:space:]')
+          CONST_VERSION=$(grep -E "define\(\s*'WC_AI_SYNDICATION_VERSION'" woocommerce-ai-storefront.php | sed -E "s/.*'WC_AI_SYNDICATION_VERSION',\s*'([^']+)'.*/\1/")
 
           echo "Tag: $TAG_VERSION"
           echo "Plugin header: $HEADER_VERSION"
@@ -125,7 +125,7 @@ jobs:
             --exclude='.gitignore' \
             --exclude='.editorconfig' \
             --exclude='.npmrc' \
-            ./ release-staging/woocommerce-ai-syndication/
+            ./ release-staging/woocommerce-ai-storefront/
 
       - name: Create zip
         run: |

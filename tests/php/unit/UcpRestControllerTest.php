@@ -90,7 +90,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		// checkout-sessions) + one docs endpoint (extension/schema).
 		// The commerce endpoints are the UCP 2026-04-08 surface; the
 		// docs endpoint is our self-hosted JSON Schema for the
-		// `com.woocommerce.ai_syndication` extension.
+		// `com.woocommerce.ai_storefront` extension.
 		$this->assertCount( 4, $this->registered_routes );
 		foreach ( $this->registered_routes as $call ) {
 			$this->assertEquals( 'wc/ucp/v1', $call['namespace'] );
@@ -140,7 +140,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_extension_schema_route_registered(): void {
 		// Self-hosted JSON Schema endpoint for the
-		// com.woocommerce.ai_syndication merchant extension. GET,
+		// com.woocommerce.ai_storefront merchant extension. GET,
 		// not POST — it's read-only static documentation content.
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();

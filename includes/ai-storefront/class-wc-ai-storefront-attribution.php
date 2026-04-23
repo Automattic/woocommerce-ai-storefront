@@ -132,7 +132,7 @@ class WC_AI_Storefront_Attribution {
 			return;
 		}
 
-		echo '<div class="wc-ai-syndication-attribution">';
+		echo '<div class="wc-ai-storefront-attribution">';
 		echo '<h3>' . esc_html__( 'AI Agent Attribution', 'woocommerce-ai-storefront' ) . '</h3>';
 		echo '<p><strong>' . esc_html__( 'Agent:', 'woocommerce-ai-storefront' ) . '</strong> ' . esc_html( $agent ) . '</p>';
 

@@ -137,7 +137,7 @@ class LoggerTest extends \PHPUnit\Framework\TestCase {
 
 			$written = file_get_contents( $log_file );
 
-			$this->assertStringContainsString( '[wc-ai-syndication]', $written );
+			$this->assertStringContainsString( '[wc-ai-storefront]', $written );
 			$this->assertStringContainsString( 'cache miss for key=llms_txt', $written );
 		} finally {
 			ini_set( 'error_log', $prev );

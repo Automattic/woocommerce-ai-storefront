@@ -2,7 +2,7 @@
 /**
  * PHPStan bootstrap — declares plugin constants for static analysis.
  *
- * At runtime these are defined in woocommerce-ai-syndication.php,
+ * At runtime these are defined in woocommerce-ai-storefront.php,
  * but PHPStan analyses files in isolation and doesn't execute the
  * main bootstrap. Declaring them here lets the analyzer see that
  * they exist (and their types) without inventing values.

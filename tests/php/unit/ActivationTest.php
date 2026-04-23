@@ -27,7 +27,7 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		$this->main_file = file_get_contents(
-			dirname( __DIR__, 3 ) . '/woocommerce-ai-syndication.php'
+			dirname( __DIR__, 3 ) . '/woocommerce-ai-storefront.php'
 		);
 		$this->orchestrator_file = file_get_contents(
 			dirname( __DIR__, 3 ) . '/includes/class-wc-ai-storefront.php'

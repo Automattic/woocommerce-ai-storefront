@@ -15,7 +15,7 @@
  *
  * Output goes to PHP's error log (usually `/wp-content/debug.log`
  * when `WP_DEBUG_LOG` is enabled). Lines are prefixed with
- * `[wc-ai-syndication]` for easy grepping.
+ * `[wc-ai-storefront]` for easy grepping.
  *
  * The filter is evaluated ONCE per request and cached, so call
  * sites do a cheap static-property check — this lets us leave
@@ -97,6 +97,6 @@ class WC_AI_Storefront_Logger {
 			: vsprintf( $message, $args );
 
 		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-		error_log( '[wc-ai-syndication] ' . $formatted );
+		error_log( '[wc-ai-storefront] ' . $formatted );
 	}
 }

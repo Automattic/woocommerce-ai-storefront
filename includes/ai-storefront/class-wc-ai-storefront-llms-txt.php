@@ -343,7 +343,7 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = '';
 		$lines[] = 'Programmatic verification — the UCP manifest at `' . $site_url . '.well-known/ucp` reflects this posture:';
 		$lines[] = '';
-		$lines[] = '- `capabilities` contains `dev.ucp.shopping.catalog.search`, `.catalog.lookup`, `.checkout`, plus the `com.woocommerce.ai_syndication` merchant extension — and nothing else';
+		$lines[] = '- `capabilities` contains `dev.ucp.shopping.catalog.search`, `.catalog.lookup`, `.checkout`, plus the `com.woocommerce.ai_storefront` merchant extension — and nothing else';
 		$lines[] = '- `payment_handlers` is `{}` (empty — no delegated payment)';
 		$lines[] = '- The service binding declares `transport: "rest"` exclusively (no Embedded Protocol, MCP, or A2A)';
 		$lines[] = '- Checkout responses always return `status: "requires_escalation"` with `continue_url` — never `ready_for_complete` or `complete_in_progress`';
@@ -352,7 +352,7 @@ class WC_AI_Storefront_Llms_Txt {
 		// Attribution instructions. This section is the
 		// AUTHORITATIVE merchant-facing guidance for AI-agent
 		// attribution. The UCP manifest carries the same parameter
-		// set under the `com.woocommerce.ai_syndication` extension,
+		// set under the `com.woocommerce.ai_storefront` extension,
 		// but UCP itself doesn't define attribution semantics —
 		// so the canonical guidance lives here in the
 		// human+machine-readable document, not in the wire-format
@@ -423,7 +423,7 @@ class WC_AI_Storefront_Llms_Txt {
 			$lines[] = '| ' . $brand . ' | `' . implode( '`, `', $hosts ) . '` |';
 		}
 		$lines[] = '';
-		$lines[] = 'If your agent\'s hostname is missing and you\'d like a specific brand name applied, open an issue on the plugin\'s [GitHub repository](https://github.com/pierorocca/woocommerce-ai-syndication/issues) — additions are a single constant entry plus a test row.';
+		$lines[] = 'If your agent\'s hostname is missing and you\'d like a specific brand name applied, open an issue on the plugin\'s [GitHub repository](https://github.com/Automattic/woocommerce-ai-storefront/issues) — additions are a single constant entry plus a test row.';
 		$lines[] = '';
 
 		// Post-v2.0.0 cleanup — two sections that had drifted out of
@@ -452,7 +452,7 @@ class WC_AI_Storefront_Llms_Txt {
 		// belong in developer docs (README, wiki), not in llms.txt.
 
 		// UCP merchant-extension docs — referenced from the manifest's
-		// `com.woocommerce.ai_syndication` capability as the `spec`
+		// `com.woocommerce.ai_storefront` capability as the `spec`
 		// URL. Self-hosted (here, not on GitHub) so that the docs
 		// always match the running plugin version and respect the
 		// site's own access-control policy. The anchor
@@ -464,9 +464,9 @@ class WC_AI_Storefront_Llms_Txt {
 			: '/wp-json/wc/ucp/v1/extension/schema';
 
 		$lines[] = '<a id="ucp-extension"></a>';
-		$lines[] = '## UCP Extension: com.woocommerce.ai_syndication';
+		$lines[] = '## UCP Extension: com.woocommerce.ai_storefront';
 		$lines[] = '';
-		$lines[] = 'The UCP manifest at `/.well-known/ucp` advertises a merchant-extension capability `com.woocommerce.ai_syndication` alongside the canonical `dev.ucp.shopping.*` capabilities. It carries commerce context (currency, locale, tax/shipping posture) agents need before calling the catalog or checkout endpoints. Attribution is handled entirely server-side by our `POST /checkout-sessions` endpoint — see the "Attribution" section earlier in this document for details, no extension field is needed.';
+		$lines[] = 'The UCP manifest at `/.well-known/ucp` advertises a merchant-extension capability `com.woocommerce.ai_storefront` alongside the canonical `dev.ucp.shopping.*` capabilities. It carries commerce context (currency, locale, tax/shipping posture) agents need before calling the catalog or checkout endpoints. Attribution is handled entirely server-side by our `POST /checkout-sessions` endpoint — see the "Attribution" section earlier in this document for details, no extension field is needed.';
 		$lines[] = '';
 		$lines[] = 'Machine-readable JSON Schema:';
 		$lines[] = '';

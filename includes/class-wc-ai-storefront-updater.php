@@ -13,11 +13,11 @@
  * Without a self-updater each upgrade is a manual zip re-upload, and
  * merchants who download the auto-generated "Source code (zip)" from
  * a GitHub release get a directory named `{repo}-{ref}/` instead of
- * `woocommerce-ai-syndication/`. WordPress treats that as a new
+ * `woocommerce-ai-storefront/`. WordPress treats that as a new
  * plugin and the old copy stays installed, compounding the problem.
  *
  * Wiring the updater lets WordPress fetch the canonical release
- * asset (`woocommerce-ai-syndication.zip`) produced by the release
+ * asset (`woocommerce-ai-storefront.zip`) produced by the release
  * workflow, which already extracts to the correct slug directory.
  *
  * @package WooCommerce_AI_Storefront
@@ -39,17 +39,17 @@ class WC_AI_Storefront_Updater {
 	 * any release whose version exceeds the installed `Version:`
 	 * header as an available update.
 	 */
-	const GITHUB_REPO_URL = 'https://github.com/pierorocca/woocommerce-ai-syndication';
+	const GITHUB_REPO_URL = 'https://github.com/Automattic/woocommerce-ai-storefront';
 
 	/**
 	 * Release asset filename pattern PUC should prefer.
 	 *
 	 * Matches the zip our release workflow attaches to every tag
-	 * (`woocommerce-ai-syndication-v1.4.0.zip`). Without this PUC
+	 * (`woocommerce-ai-storefront-v1.4.0.zip`). Without this PUC
 	 * falls back to the source-code zip — which extracts to a
 	 * repo-named directory and breaks in-place upgrades.
 	 */
-	const RELEASE_ASSET_PATTERN = '/woocommerce-ai-syndication-v?[\d\.]+\.zip/';
+	const RELEASE_ASSET_PATTERN = '/woocommerce-ai-storefront-v?[\d\.]+\.zip/';
 
 	/**
 	 * Whether the updater has been wired. Guards against

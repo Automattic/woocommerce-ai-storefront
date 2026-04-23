@@ -4,7 +4,7 @@
  *
  * The extension surfaces WC core's `global_unique_id` product field
  * (GTIN/UPC/EAN/MPN/ISBN) on the Store API `/products` response
- * under `extensions.com-woocommerce-ai-syndication.barcodes`.
+ * under `extensions.com-woocommerce-ai-storefront.barcodes`.
  *
  * WC core's Store API schema doesn't include `global_unique_id` yet
  * (enhancement request filed against woocommerce/woocommerce). Until
@@ -48,11 +48,11 @@ class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 		// product.extensions + llms.txt attribution table).
 		//
 		// This is a hyphenated variant of the UCP
-		// `com.woocommerce.ai_syndication` namespace because Store
+		// `com.woocommerce.ai_storefront` namespace because Store
 		// API namespace values are used as URL path segments in
 		// some response shapes and shouldn't contain dots.
 		$this->assertSame(
-			'com-woocommerce-ai-syndication',
+			'com-woocommerce-ai-storefront',
 			WC_AI_Storefront_Store_Api_Extension::NAMESPACE
 		);
 	}

@@ -60,5 +60,5 @@ if ( ! defined( 'WC_AI_STOREFRONT_PLUGIN_PATH' ) ) {
 	define( 'WC_AI_STOREFRONT_PLUGIN_PATH', dirname( __DIR__, 2 ) );
 }
 if ( ! defined( 'WC_AI_STOREFRONT_PLUGIN_FILE' ) ) {
-	define( 'WC_AI_STOREFRONT_PLUGIN_FILE', dirname( __DIR__, 2 ) . '/woocommerce-ai-syndication.php' );
+	define( 'WC_AI_STOREFRONT_PLUGIN_FILE', dirname( __DIR__, 2 ) . '/woocommerce-ai-storefront.php' );
 }

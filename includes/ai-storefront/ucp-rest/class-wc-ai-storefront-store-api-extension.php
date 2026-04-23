@@ -61,7 +61,7 @@ class WC_AI_Storefront_Store_Api_Extension {
 	 * extension capability identifier we publish in the manifest so
 	 * the "namespace" concept is consistent across surfaces.
 	 */
-	const NAMESPACE = 'com-woocommerce-ai-syndication';
+	const NAMESPACE = 'com-woocommerce-ai-storefront';
 
 	/**
 	 * Register the barcodes field on the Store API product endpoint.

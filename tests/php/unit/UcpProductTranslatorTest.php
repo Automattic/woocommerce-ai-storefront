@@ -1041,7 +1041,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_translate_emits_rating_under_core_when_reviews_exist(): void {
 		// 2.0.0+: rating moved out of the
-		// `extensions.com.woocommerce.ai_syndication.ratings`
+		// `extensions.com.woocommerce.ai_storefront.ratings`
 		// namespace into core `product.rating`. Shape stays
 		// `{average, count}` — `average` (not `value`) is explicit
 		// about what the number represents.
@@ -1096,13 +1096,13 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_translate_reads_timestamps_from_store_api_extension_namespace(): void {
 		// Primary source: our Store API extension exposes the dates
-		// under `extensions[com-woocommerce-ai-syndication]` as RFC
+		// under `extensions[com-woocommerce-ai-storefront]` as RFC
 		// 3339 / ISO 8601 UTC strings. WC 9.5+ Store API strips the
 		// top-level date fields; the extension is the only reliable
 		// path to these values.
 		$fixture                 = $this->simple_product_fixture();
 		$fixture['extensions']   = [
-			'com-woocommerce-ai-syndication' => [
+			'com-woocommerce-ai-storefront' => [
 				'date_created'  => '2026-01-15T10:30:00Z',
 				'date_modified' => '2026-04-20T14:22:31Z',
 			],
@@ -1139,7 +1139,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture                 = $this->simple_product_fixture();
 		$fixture['date_created'] = '2020-01-01T00:00:00'; // stale / wrong
 		$fixture['extensions']   = [
-			'com-woocommerce-ai-syndication' => [
+			'com-woocommerce-ai-storefront' => [
 				'date_created' => '2026-01-15T10:30:00Z', // authoritative
 			],
 		];
@@ -1158,8 +1158,8 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		foreach ( [
 			'extensions-is-string' => [ 'extensions' => 'surprise string' ],
 			'extensions-is-int'    => [ 'extensions' => 42 ],
-			'namespace-is-string'  => [ 'extensions' => [ 'com-woocommerce-ai-syndication' => 'nope' ] ],
-			'namespace-is-object'  => [ 'extensions' => [ 'com-woocommerce-ai-syndication' => (object) [ 'foo' => 'bar' ] ] ],
+			'namespace-is-string'  => [ 'extensions' => [ 'com-woocommerce-ai-storefront' => 'nope' ] ],
+			'namespace-is-object'  => [ 'extensions' => [ 'com-woocommerce-ai-storefront' => (object) [ 'foo' => 'bar' ] ] ],
 		] as $label => $overlay ) {
 			$fixture = array_merge( $this->simple_product_fixture(), $overlay );
 

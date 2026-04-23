@@ -181,7 +181,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 
 		// Rating + review count — emitted under core `product.rating`
 		// (2.0.0+). Previously (1.x) under the vendor extension
-		// namespace `extensions.com.woocommerce.ai_syndication.ratings`;
+		// namespace `extensions.com.woocommerce.ai_storefront.ratings`;
 		// relocated to the canonical UCP core shape for spec parity.
 		// Shape is `{average, count}` — `average` (not `value`) is
 		// explicit about what the number represents, which matters for
@@ -241,7 +241,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * responses by default — verified against a live catalog where
 	 * not a single product had those keys at the top level. Our
 	 * extension re-exposes them under
-	 * `extensions[com-woocommerce-ai-syndication].{date_created,date_modified}`,
+	 * `extensions[com-woocommerce-ai-storefront].{date_created,date_modified}`,
 	 * already formatted as RFC 3339 UTC strings (`Y-m-d\TH:i:s\Z`),
 	 * which matches the UCP core product shape directly.
 	 *
@@ -259,8 +259,8 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 */
 	private static function extract_timestamps( array $wc_product ): array {
 		// Store API registers extension data under a hyphenated
-		// namespace (`com-woocommerce-ai-syndication`), distinct from
-		// the dotted UCP-level namespace (`com.woocommerce.ai_syndication`).
+		// namespace (`com-woocommerce-ai-storefront`), distinct from
+		// the dotted UCP-level namespace (`com.woocommerce.ai_storefront`).
 		// Pulled from the extension class constant so the two surfaces
 		// stay linked — the extension class is `require_once`'d
 		// during `WC_AI_Storefront::load_dependencies()` at plugin
