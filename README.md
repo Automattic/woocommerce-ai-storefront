@@ -24,6 +24,7 @@ Plus integrations with WordPress and WooCommerce:
 - No authentication. No API keys to manage.
 - No custom rate limiter. Uses WC's built-in with user-agent fingerprinting.
 - No Stripe or other payment provider dependency.
+- **No MCP (Model Context Protocol) support.** MCP requires a server surface reachable by external, non-admin clients — neither WordPress core nor WooCommerce scaffold one today, and there's no first-class plugin hook to add one without standing up auth, transport, and capability-routing infrastructure outside this plugin's reasonable scope. AI Storefront targets the Universal Commerce Protocol (UCP) instead, which works with the public HTTP/REST surfaces WP/WC already expose. MCP will be evaluated once WP or WC grow native MCP-server primitives.
 
 ## Requirements
 

@@ -356,6 +356,8 @@ woo-ucp-syndicate-ai/
 
 8. **Cache invalidation.** llms.txt and UCP manifest use transient caching with event-driven invalidation on product/category/settings changes. Version-based cache bust on plugin updates. UCP REST responses are not cached — every dispatch computes fresh, because agent-specific attribution (UTM from UCP-Agent) and session IDs must be per-request.
 
+9. **No MCP (Model Context Protocol) support, intentionally.** MCP's model — exposing tools/resources to external LLM clients via a dedicated server — requires infrastructure that neither WordPress core nor WooCommerce provide today. There is no first-class MCP-server primitive to hook into, no external-client auth surface, no transport abstraction, no capability-routing layer. Adding one inside this plugin would mean shipping a parallel REST framework alongside WP's existing REST API, with its own auth model. That's an explicitly out-of-scope choice: the plugin targets UCP, which is spec-compliant with the public HTTP surfaces WP/WC already expose (Store API, core REST, rewrite rules). If WP or WC grow native MCP-server primitives in future, we'll evaluate support then. Until that infrastructure exists, "MCP support" would be a bespoke server alongside the main application — a different product, not this one.
+
 ## Settings
 
 All runtime settings are stored in a single serialized option to keep reads cheap (`autoload=true` + static memoization in `WC_AI_Syndication::get_settings()`).
