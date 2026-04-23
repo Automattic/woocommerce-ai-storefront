@@ -105,3 +105,80 @@ jobs:
 
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse --memory-limit=1G --error-format=github
+
+  i18n-check:
+    # Regenerates the .pot translation template and fails the build if
+    # the checked-in version is stale — i.e. someone added or changed
+    # a translatable string but didn't regenerate
+    # `languages/woocommerce-ai-storefront.pot` to match.
+    #
+    # Why fail instead of auto-commit: matches Gutenberg's approach.
+    # Auto-commits create PR-review churn (the regen lands as a
+    # separate commit that reviewers have to mentally skip over), and
+    # they confuse the mental model of "what did this PR change?" An
+    # explicit fail forces the author to run the regen locally and
+    # include it in their own commit history, keeping the PR's
+    # translation surface visible during review.
+    name: i18n (.pot freshness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Install WP-CLI
+        run: |
+          curl -sL -o wp-cli.phar \
+            https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+          chmod +x wp-cli.phar
+          sudo mv wp-cli.phar /usr/local/bin/wp
+
+      - name: Regenerate .pot in place and compare
+        # `POT-Creation-Date` changes on every run, so we strip it
+        # from both sides of the diff. Any remaining difference means
+        # a real string was added, removed, or reworded since the
+        # last regen — exactly what we want to catch.
+        #
+        # `--headers` overrides the `Report-Msgid-Bugs-To` URL that
+        # wp-cli derives from the on-disk directory name. This repo
+        # is distributed as `woocommerce-ai-storefront` on
+        # wordpress.org but lives in different directory names on
+        # contributors' machines; hard-coding the distribution slug
+        # keeps the regenerated file byte-identical regardless of
+        # local checkout path.
+        run: |
+          cp languages/woocommerce-ai-storefront.pot /tmp/pot-before.pot
+
+          wp i18n make-pot . languages/woocommerce-ai-storefront.pot \
+            --domain=woocommerce-ai-storefront \
+            --exclude=build,node_modules,vendor,tests \
+            --headers='{"Report-Msgid-Bugs-To":"https://wordpress.org/support/plugin/woocommerce-ai-storefront"}' \
+            --skip-plugins --skip-themes
+
+          if ! diff -u \
+              <(grep -v '^"POT-Creation-Date:' /tmp/pot-before.pot) \
+              <(grep -v '^"POT-Creation-Date:' languages/woocommerce-ai-storefront.pot); then
+            echo ""
+            echo "::error::The .pot translation template is out of date."
+            echo ""
+            echo "Translatable strings were added, removed, or reworded since"
+            echo "the last regeneration, but languages/woocommerce-ai-storefront.pot"
+            echo "wasn't updated to match."
+            echo ""
+            echo "To fix, regenerate locally:"
+            echo ""
+            echo "  wp i18n make-pot . languages/woocommerce-ai-storefront.pot \\"
+            echo "    --domain=woocommerce-ai-storefront \\"
+            echo "    --exclude=build,node_modules,vendor,tests \\"
+            echo "    --headers='{\"Report-Msgid-Bugs-To\":\"https://wordpress.org/support/plugin/woocommerce-ai-storefront\"}'"
+            echo ""
+            echo "Then commit the updated .pot file alongside your other changes"
+            echo "and push again."
+            echo ""
+            echo "Install wp-cli: https://wp-cli.org/#installing"
+            exit 1
+          fi
