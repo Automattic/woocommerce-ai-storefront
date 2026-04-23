@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_UCP_REST_Controller::handle_catalog_lookup.
+ * Tests for WC_AI_Storefront_UCP_REST_Controller::handle_catalog_lookup.
  *
  * The handler dispatches `rest_do_request` against the WC Store API
  * for each requested ID. Tests stub `rest_do_request` via Brain\Monkey
@@ -19,7 +19,7 @@
  * Route-registration tests remain in UcpRestControllerTest — that's
  * about `register_rest_route()` wiring, this is about the handler body.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -52,7 +52,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		// Reset settings between tests so disabled-state tests don't
 		// leak. Stub defaults to `enabled => yes`.
-		WC_AI_Syndication::$test_settings = [];
+		WC_AI_Storefront::$test_settings = [];
 
 		$this->fake_store_api            = [];
 		$this->store_api_dispatch_counts = [];
@@ -71,7 +71,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		// Stub the catalog_envelope dependency's PROTOCOL_VERSION
-		// access — UcpEnvelope reads WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+		// access — UcpEnvelope reads WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 		// which is a const defined on the class and resolves fine at test
 		// time since that class is loaded by the bootstrap.
 
@@ -197,7 +197,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	 * @return array<string, mixed> The response body.
 	 */
 	private function successful_lookup( array $body ): array {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_catalog_lookup( $this->lookup_request( $body ) );
 
 		$this->assertInstanceOf( WP_REST_Response::class, $response );
@@ -218,7 +218,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	 * @return array<string, mixed> The response body.
 	 */
 	private function error_lookup( array $body, int $expected_status, string $expected_code ): array {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_catalog_lookup( $this->lookup_request( $body ) );
 
 		$this->assertInstanceOf( WP_REST_Response::class, $response );
@@ -688,7 +688,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// MAX_VARIATIONS_PER_PRODUCT (currently 50) via array_slice on
 		// the variations pointer list. Agents needing the full set can
 		// fetch specific variations by ID via a follow-up lookup.
-		$cap = WC_AI_Syndication_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
+		$cap = WC_AI_Storefront_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
 		$this->seed_variable_with_n_variations( 900, $cap + 10 );
 
 		$body = $this->successful_lookup( [ 'ids' => [ 'prod_900' ] ] );
@@ -715,7 +715,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// fetches succeeding = skipped count of zero = no
 		// `partial_variants` warning emitted. This is the boundary
 		// that separates "full set" from "partial set."
-		$cap = WC_AI_Syndication_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
+		$cap = WC_AI_Storefront_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
 		$this->seed_variable_with_n_variations( 901, $cap );
 
 		$body = $this->successful_lookup( [ 'ids' => [ 'prod_901' ] ] );
@@ -739,7 +739,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// request into thousands of internal dispatches. Each ID in
 		// the lookup array drives a GET /wc/store/v1/products/{id}
 		// dispatch — cap it at MAX_IDS_PER_LOOKUP.
-		$cap = WC_AI_Syndication_UCP_REST_Controller::MAX_IDS_PER_LOOKUP;
+		$cap = WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP;
 		$ids = [];
 		for ( $i = 0; $i < $cap + 1; $i++ ) {
 			$ids[] = 'prod_' . ( 1000 + $i );
@@ -750,7 +750,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_accepts_ids_array_at_exactly_the_limit(): void {
 		// Off-by-one check: exactly MAX_IDS_PER_LOOKUP should succeed.
-		$cap = WC_AI_Syndication_UCP_REST_Controller::MAX_IDS_PER_LOOKUP;
+		$cap = WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP;
 		$ids = [];
 		for ( $i = 0; $i < $cap; $i++ ) {
 			$ids[] = 'prod_' . ( 5000 + $i );
@@ -767,7 +767,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// Pausing syndication must cut off UCP catalog access. Routes
 		// stay registered (rewrite-flush discipline); the handler
 		// gates access here and returns a UCP-envelope error response.
-		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
 
 		$this->error_lookup( [ 'ids' => [ 'prod_123' ] ], 503, 'ucp_disabled' );
 	}

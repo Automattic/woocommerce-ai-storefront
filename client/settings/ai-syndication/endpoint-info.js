@@ -23,7 +23,7 @@ import { colors } from './tokens';
  * needs (very high-volume stores, or very constrained hosts).
  *
  * Values here are the RPM (requests/minute) per-crawler cap enforced
- * by `WC_AI_Syndication_Store_Api_Rate_Limiter` via WooCommerce Store
+ * by `WC_AI_Storefront_Store_Api_Rate_Limiter` via WooCommerce Store
  * API's built-in limiter. The same setting is the backing store for
  * both the UI and the rate-limit hook — no separate "display" vs.
  * "applied" values.
@@ -77,7 +77,7 @@ const getActivePreset = ( rpm ) => {
  * merchant-facing UX cue, not a wire-format requirement.
  *
  * Keep this list in sync with the PHP constants
- * `WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS` and
+ * `WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS` and
  * `::TRAINING_CRAWLERS`. The frontend renders from this constant;
  * the backend sanitizes against the PHP list. Drift would produce
  * silently-dropped checkboxes on save.
@@ -315,7 +315,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 	// Count only crawlers that are actually rendered as checkboxes. Right
 	// after a plugin upgrade that rotated AI_CRAWLERS, the stored array
 	// can still contain deprecated IDs (stripped on the next save by
-	// WC_AI_Syndication_Robots::sanitize_allowed_crawlers), but until
+	// WC_AI_Storefront_Robots::sanitize_allowed_crawlers), but until
 	// then `allowedCrawlers.length` would exceed the visible checkbox
 	// count — producing displays like "13 of 12".
 	const knownCrawlerIds = KNOWN_CRAWLERS.map( ( c ) => c.id );
@@ -792,7 +792,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						same muted-footer style as the robots.txt note
 						above so it reads as "one more thing to know"
 						not a headline. See
-						WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS
+						WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS
 						for the hostname→brand-name map driving the
 						display names.
 					*/ }

@@ -22,7 +22,7 @@
  * agent redirects the user, WooCommerce owns the rest of the
  * transaction.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.3.0
  */
 
@@ -31,7 +31,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * UCP REST controller.
  */
-class WC_AI_Syndication_UCP_REST_Controller {
+class WC_AI_Storefront_UCP_REST_Controller {
 
 	/**
 	 * REST namespace — hosted under the `wc/` prefix so it fits
@@ -265,7 +265,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		self::reset_request_cache();
 
 		if ( self::is_syndication_disabled() ) {
-			WC_AI_Syndication_Logger::debug( 'UCP catalog/search rejected: syndication disabled' );
+			WC_AI_Storefront_Logger::debug( 'UCP catalog/search rejected: syndication disabled' );
 			return self::ucp_catalog_error_response(
 				$capability,
 				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
@@ -278,10 +278,10 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// Attribution: note the calling agent (unblocking; logging only).
 		$agent_header = $request->get_header( 'ucp-agent' );
 		if ( is_string( $agent_header ) && '' !== $agent_header ) {
-			$host = WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname(
+			$host = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname(
 				$agent_header
 			);
-			WC_AI_Syndication_Logger::debug(
+			WC_AI_Storefront_Logger::debug(
 				'UCP catalog/search from agent: ' . ( '' !== $host ? $host : 'unknown' )
 			);
 		}
@@ -301,8 +301,8 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// logging is off. A large `signals` payload (bounded only
 		// by the request size limit) would pay that cost on every
 		// request in prod.
-		if ( is_array( $signals ) && ! empty( $signals ) && WC_AI_Syndication_Logger::is_enabled() ) {
-			WC_AI_Syndication_Logger::debug(
+		if ( is_array( $signals ) && ! empty( $signals ) && WC_AI_Storefront_Logger::is_enabled() ) {
+			WC_AI_Storefront_Logger::debug(
 				'UCP catalog/search: received signals (not honored): '
 				. self::format_signal_keys_for_log( $signals )
 			);
@@ -327,7 +327,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$store_response = rest_do_request( $store_request );
 
 		if ( $store_response instanceof WP_Error ) {
-			WC_AI_Syndication_Logger::debug(
+			WC_AI_Storefront_Logger::debug(
 				'UCP catalog/search: Store API dispatch returned WP_Error: '
 				. $store_response->get_error_message()
 			);
@@ -352,7 +352,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		//     combinations); log and return empty.
 		//   - 2xx: happy path.
 		if ( $store_status >= 500 || 400 === $store_status || 403 === $store_status ) {
-			WC_AI_Syndication_Logger::debug(
+			WC_AI_Storefront_Logger::debug(
 				sprintf(
 					'UCP catalog/search: Store API returned %d — likely a bug in UCP→Store API param mapping',
 					$store_status
@@ -380,12 +380,12 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			if ( is_array( $normalized ) ) {
 				$wc_products = $normalized;
 			} else {
-				WC_AI_Syndication_Logger::debug(
+				WC_AI_Storefront_Logger::debug(
 					'UCP catalog/search: Store API response body could not be normalized (possible plugin conflict)'
 				);
 			}
 		} else {
-			WC_AI_Syndication_Logger::debug(
+			WC_AI_Storefront_Logger::debug(
 				sprintf(
 					'UCP catalog/search: Store API returned %d, treating as empty result set',
 					$store_status
@@ -413,7 +413,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 					$variation_fetch['skipped']
 				);
 			}
-			$products[] = WC_AI_Syndication_UCP_Product_Translator::translate(
+			$products[] = WC_AI_Storefront_UCP_Product_Translator::translate(
 				$wc_product,
 				$variation_fetch['variations'],
 				$seller
@@ -421,7 +421,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		$body = [
-			'ucp'      => WC_AI_Syndication_UCP_Envelope::catalog_envelope( $capability ),
+			'ucp'      => WC_AI_Storefront_UCP_Envelope::catalog_envelope( $capability ),
 			'products' => $products,
 		];
 
@@ -490,7 +490,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			// anomaly worth surfacing to the debug log (not to the
 			// agent — too noisy). If it starts firing in production,
 			// a WC update or plugin conflict is the suspect.
-			WC_AI_Syndication_Logger::debug(
+			WC_AI_Storefront_Logger::debug(
 				'UCP catalog/search: Store API response missing X-WP-TotalPages header — defaulting to single page'
 			);
 		}
@@ -754,7 +754,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		self::reset_request_cache();
 
 		if ( self::is_syndication_disabled() ) {
-			WC_AI_Syndication_Logger::debug( 'UCP catalog/lookup rejected: syndication disabled' );
+			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: syndication disabled' );
 			return self::ucp_catalog_error_response(
 				$capability,
 				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
@@ -771,8 +771,8 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// search — keeps the sanitization walk off the hot path
 		// when debug logging is off.
 		$signals = $request->get_param( 'signals' );
-		if ( is_array( $signals ) && ! empty( $signals ) && WC_AI_Syndication_Logger::is_enabled() ) {
-			WC_AI_Syndication_Logger::debug(
+		if ( is_array( $signals ) && ! empty( $signals ) && WC_AI_Storefront_Logger::is_enabled() ) {
+			WC_AI_Storefront_Logger::debug(
 				'UCP catalog/lookup: received signals (not honored): '
 				. self::format_signal_keys_for_log( $signals )
 			);
@@ -781,7 +781,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$ids = $request->get_param( 'ids' );
 
 		if ( ! is_array( $ids ) ) {
-			WC_AI_Syndication_Logger::debug( 'UCP catalog/lookup rejected: "ids" is not an array' );
+			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: "ids" is not an array' );
 			return self::ucp_catalog_error_response(
 				$capability,
 				__( 'Request body must include an "ids" array.', 'woocommerce-ai-storefront' ),
@@ -791,7 +791,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		if ( empty( $ids ) ) {
-			WC_AI_Syndication_Logger::debug( 'UCP catalog/lookup rejected: empty "ids" array' );
+			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: empty "ids" array' );
 			return self::ucp_catalog_error_response(
 				$capability,
 				__( 'The "ids" array must contain at least one ID.', 'woocommerce-ai-storefront' ),
@@ -801,7 +801,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		if ( count( $ids ) > self::MAX_IDS_PER_LOOKUP ) {
-			WC_AI_Syndication_Logger::debug(
+			WC_AI_Storefront_Logger::debug(
 				sprintf(
 					'UCP catalog/lookup rejected: "ids" array size %d exceeds MAX_IDS_PER_LOOKUP %d',
 					count( $ids ),
@@ -863,7 +863,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 				);
 			}
 
-			$products[] = WC_AI_Syndication_UCP_Product_Translator::translate(
+			$products[] = WC_AI_Storefront_UCP_Product_Translator::translate(
 				$wc_product,
 				$variation_fetch['variations'],
 				$seller
@@ -871,7 +871,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		}
 
 		$response_body = [
-			'ucp'      => WC_AI_Syndication_UCP_Envelope::catalog_envelope( $capability ),
+			'ucp'      => WC_AI_Storefront_UCP_Envelope::catalog_envelope( $capability ),
 			'inputs'   => $inputs,
 			'products' => $products,
 		];
@@ -951,7 +951,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		self::reset_request_cache();
 
 		if ( self::is_syndication_disabled() ) {
-			WC_AI_Syndication_Logger::debug( 'UCP checkout-sessions rejected: syndication disabled' );
+			WC_AI_Storefront_Logger::debug( 'UCP checkout-sessions rejected: syndication disabled' );
 			return self::ucp_checkout_error_response(
 				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
 				'ucp_disabled',
@@ -1087,7 +1087,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// plugin territory or a theme convention), so we gate via a
 		// filter hook rather than an admin UI: merchants who want
 		// enforcement return the minor-unit minimum from
-		// `wc_ai_syndication_minimum_order_amount`. Zero (default)
+		// `wc_ai_storefront_minimum_order_amount`. Zero (default)
 		// means no minimum, matching existing behavior.
 		//
 		// When the subtotal doesn't meet the minimum we leave the
@@ -1095,7 +1095,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// the gap upfront with an actionable message beats
 		// redirecting the user to a checkout they can't complete.
 		$minimum_order_amount = (int) apply_filters(
-			'wc_ai_syndication_minimum_order_amount',
+			'wc_ai_storefront_minimum_order_amount',
 			0,
 			[
 				'subtotal_minor' => $subtotal_amount,
@@ -1139,7 +1139,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 			// default is intentionally generic.
 			$default_handoff = __( 'Complete your purchase on the merchant site.', 'woocommerce-ai-storefront' );
 			$handoff_content = apply_filters(
-				'wc_ai_syndication_checkout_handoff_message',
+				'wc_ai_storefront_checkout_handoff_message',
 				$default_handoff,
 				[
 					'line_items' => $processed,
@@ -1204,7 +1204,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// `$should_redirect` is false when either (a) no items
 		// validated, or (b) valid items but below the merchant minimum.
 		$response_body = [
-			'ucp'        => WC_AI_Syndication_UCP_Envelope::checkout_envelope(),
+			'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope(),
 			'id'         => 'chk_' . bin2hex( random_bytes( 8 ) ),
 			'status'     => $should_redirect ? 'requires_escalation' : 'incomplete',
 			'currency'   => $currency,
@@ -1408,7 +1408,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * not lose their regular Store API access, only the UCP wrapper.
 	 */
 	private static function is_syndication_disabled(): bool {
-		$settings = WC_AI_Syndication::get_settings();
+		$settings = WC_AI_Storefront::get_settings();
 		return 'yes' !== ( $settings['enabled'] ?? 'no' );
 	}
 
@@ -1451,7 +1451,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 		return new WP_REST_Response(
 			[
-				'ucp'      => WC_AI_Syndication_UCP_Envelope::catalog_envelope( $capability_key ),
+				'ucp'      => WC_AI_Storefront_UCP_Envelope::catalog_envelope( $capability_key ),
 				'products' => [],
 				'messages' => [ $message ],
 			],
@@ -1511,7 +1511,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		//     "validation failed, no session to escalate to."
 		return new WP_REST_Response(
 			[
-				'ucp'        => WC_AI_Syndication_UCP_Envelope::checkout_envelope(),
+				'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope(),
 				'id'         => 'chk_' . bin2hex( random_bytes( 8 ) ),
 				'status'     => 'incomplete',
 				'currency'   => $currency,
@@ -1559,8 +1559,8 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		// through one shared source of truth.
 		$prefix_re = sprintf(
 			'/^(%s|%s)/',
-			preg_quote( WC_AI_Syndication_UCP_Product_Translator::PRODUCT_ID_PREFIX, '/' ),
-			preg_quote( WC_AI_Syndication_UCP_Variant_Translator::VARIANT_ID_PREFIX, '/' )
+			preg_quote( WC_AI_Storefront_UCP_Product_Translator::PRODUCT_ID_PREFIX, '/' ),
+			preg_quote( WC_AI_Storefront_UCP_Variant_Translator::VARIANT_ID_PREFIX, '/' )
 		);
 
 		$stripped = preg_replace( $prefix_re, '', $raw_id );
@@ -1665,7 +1665,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 */
 	private static function fetch_store_api_product_inner( int $id, $response ): ?array {
 		if ( $response instanceof WP_Error ) {
-			WC_AI_Syndication_Logger::debug(
+			WC_AI_Storefront_Logger::debug(
 				sprintf(
 					'UCP fetch_store_api_product(%d): WP_Error — %s',
 					$id,
@@ -1677,7 +1677,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 
 		$status = $response->get_status();
 		if ( $status >= 400 ) {
-			WC_AI_Syndication_Logger::debug(
+			WC_AI_Storefront_Logger::debug(
 				sprintf(
 					'UCP fetch_store_api_product(%d): Store API returned %d',
 					$id,
@@ -1690,7 +1690,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$data       = $response->get_data();
 		$normalized = self::normalize_store_api_data( $data );
 		if ( null === $normalized ) {
-			WC_AI_Syndication_Logger::debug(
+			WC_AI_Storefront_Logger::debug(
 				sprintf(
 					'UCP fetch_store_api_product(%d): response body could not be normalized to an array (possible plugin conflict)',
 					$id
@@ -1817,7 +1817,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 		$skipped = $total_declared - count( $variations );
 
 		if ( $skipped > 0 ) {
-			WC_AI_Syndication_Logger::debug(
+			WC_AI_Storefront_Logger::debug(
 				sprintf(
 					'UCP fetch_variations_for(%d): skipped %d of %d declared variations',
 					(int) ( $wc_product['id'] ?? 0 ),
@@ -2648,7 +2648,7 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * the filter was ignored.
 	 *
 	 * A future release should revisit emitting slugs from
-	 * `WC_AI_Syndication_UCP_Product_Translator::extract_taxonomies()`
+	 * `WC_AI_Storefront_UCP_Product_Translator::extract_taxonomies()`
 	 * so round-tripping doesn't rely on the name fallback here.
 	 *
 	 * @param array<int, mixed> $inputs
@@ -2938,20 +2938,20 @@ class WC_AI_Syndication_UCP_REST_Controller {
 	 * here (rather than at display time) keeps that WC-captured value
 	 * clean and queryable for stats breakdowns.
 	 *
-	 * @see WC_AI_Syndication_UCP_Agent_Header::canonicalize_host() for
+	 * @see WC_AI_Storefront_UCP_Agent_Header::canonicalize_host() for
 	 *      the hostname → brand-name mapping rationale.
 	 */
 	private static function resolve_agent_host( WP_REST_Request $request ): string {
 		$header = $request->get_header( 'ucp-agent' );
 
 		if ( is_string( $header ) && '' !== $header ) {
-			$host = WC_AI_Syndication_UCP_Agent_Header::extract_profile_hostname( $header );
+			$host = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header );
 			if ( '' !== $host ) {
-				return WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( $host );
+				return WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $host );
 			}
 		}
 
-		return WC_AI_Syndication_UCP_Agent_Header::FALLBACK_SOURCE;
+		return WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
 	}
 
 	/**

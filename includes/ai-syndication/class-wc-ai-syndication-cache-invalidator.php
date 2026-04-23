@@ -7,7 +7,7 @@
  * Schedules a debounced background warm-up via WP-Cron so the next
  * real /llms.txt request gets a cache hit.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.0.0
  */
 
@@ -16,12 +16,12 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Event-driven cache invalidation for AI syndication data.
  */
-class WC_AI_Syndication_Cache_Invalidator {
+class WC_AI_Storefront_Cache_Invalidator {
 
 	/**
 	 * WP-Cron hook name for background cache warm-up.
 	 */
-	const WARMUP_CRON_HOOK = 'wc_ai_syndication_warm_llms_txt_cache';
+	const WARMUP_CRON_HOOK = 'wc_ai_storefront_warm_llms_txt_cache';
 
 	/**
 	 * Seconds to delay the warm-up cron after invalidation.
@@ -51,7 +51,7 @@ class WC_AI_Syndication_Cache_Invalidator {
 		add_action( 'delete_product_cat', [ $this, 'invalidate' ] );
 
 		// Syndication settings changed (catches any code path that writes the option).
-		add_action( 'update_option_' . WC_AI_Syndication::SETTINGS_OPTION, [ $this, 'invalidate' ] );
+		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, [ $this, 'invalidate' ] );
 
 		// Cron handler for background warm-up.
 		add_action( self::WARMUP_CRON_HOOK, [ $this, 'warm_cache' ] );
@@ -67,8 +67,8 @@ class WC_AI_Syndication_Cache_Invalidator {
 	 * since warm_cache() is itself idempotent (skips if cache already exists).
 	 */
 	public function invalidate() {
-		delete_transient( WC_AI_Syndication_Llms_Txt::CACHE_KEY );
-		delete_transient( WC_AI_Syndication_Ucp::CACHE_KEY );
+		delete_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY );
+		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
 
 		// Schedule a one-shot warm-up, unless one is already pending.
 		if ( ! wp_next_scheduled( self::WARMUP_CRON_HOOK ) ) {
@@ -84,26 +84,26 @@ class WC_AI_Syndication_Cache_Invalidator {
 	 */
 	public function warm_cache() {
 		// If the cache was already rebuilt by a real request, nothing to do.
-		if ( false !== get_transient( WC_AI_Syndication_Llms_Txt::CACHE_KEY ) ) {
+		if ( false !== get_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY ) ) {
 			return;
 		}
 
-		$settings = WC_AI_Syndication::get_settings();
+		$settings = WC_AI_Storefront::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			return;
 		}
 
-		$llms_txt = new WC_AI_Syndication_Llms_Txt();
+		$llms_txt = new WC_AI_Storefront_Llms_Txt();
 		$content  = $llms_txt->generate();
-		set_transient( WC_AI_Syndication_Llms_Txt::CACHE_KEY, $content, HOUR_IN_SECONDS );
+		set_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY, $content, HOUR_IN_SECONDS );
 	}
 
 	/**
 	 * Clean up on plugin deactivation.
 	 */
 	public static function deactivate() {
-		delete_transient( WC_AI_Syndication_Llms_Txt::CACHE_KEY );
-		delete_transient( WC_AI_Syndication_Ucp::CACHE_KEY );
+		delete_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY );
+		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
 		wp_clear_scheduled_hook( self::WARMUP_CRON_HOOK );
 	}
 }

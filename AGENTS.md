@@ -107,7 +107,7 @@ The operational counterpart to the discovery layer. Translates the WooCommerce S
 
 | File | Purpose |
 |------|---------|
-| `class-wc-ai-syndication-logger.php` | Off-by-default debug logger. Enable per-request via `add_filter( 'wc_ai_syndication_debug', '__return_true' );`. Instruments: llms.txt and UCP cache hit/miss, rate-limit fingerprint matches, attribution captures. Output goes to `error_log()` (usually `/wp-content/debug.log` when `WP_DEBUG_LOG` is on) prefixed with `[wc-ai-syndication]`. The filter is evaluated once per request and cached, so call sites pay only a static-property check when logging is off. |
+| `class-wc-ai-syndication-logger.php` | Off-by-default debug logger. Enable per-request via `add_filter( 'wc_ai_storefront_debug', '__return_true' );`. Instruments: llms.txt and UCP cache hit/miss, rate-limit fingerprint matches, attribution captures. Output goes to `error_log()` (usually `/wp-content/debug.log` when `WP_DEBUG_LOG` is on) prefixed with `[wc-ai-syndication]`. The filter is evaluated once per request and cached, so call sites pay only a static-property check when logging is off. |
 
 ### Admin
 
@@ -362,8 +362,8 @@ All runtime settings are stored in a single serialized option to keep reads chea
 
 | Option Key | Type | Description |
 |------------|------|-------------|
-| `wc_ai_syndication_settings` | array | `enabled`, `product_selection_mode`, `selected_categories`, `selected_products`, `rate_limit_rpm`, `allowed_crawlers` |
-| `wc_ai_syndication_version` | string | Plugin version (triggers cache bust + rewrite flush on update) |
+| `wc_ai_storefront_settings` | array | `enabled`, `product_selection_mode`, `selected_categories`, `selected_products`, `rate_limit_rpm`, `allowed_crawlers` |
+| `wc_ai_storefront_version` | string | Plugin version (triggers cache bust + rewrite flush on update) |
 
 ### `allowed_crawlers`
 
@@ -387,8 +387,8 @@ All endpoints require `manage_woocommerce` capability.
 |----------|--------|-------------|
 | `_wc_order_attribution_utm_source` | WooCommerce core | Agent identifier (chatgpt, gemini, etc.) |
 | `_wc_order_attribution_utm_medium` | WooCommerce core | `ai_agent` for AI-referred orders |
-| `_wc_ai_syndication_session_id` | This plugin | AI conversation/session ID |
-| `_wc_ai_syndication_agent` | This plugin | Denormalized agent name for fast queries |
+| `_wc_ai_storefront_session_id` | This plugin | AI conversation/session ID |
+| `_wc_ai_storefront_agent` | This plugin | Denormalized agent name for fast queries |
 
 ## Development
 

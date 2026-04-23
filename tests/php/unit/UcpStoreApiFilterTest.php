@@ -1,18 +1,18 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_UCP_Store_API_Filter.
+ * Tests for WC_AI_Storefront_UCP_Store_API_Filter.
  *
  * The filter injects the plugin's `product_selection_mode` setting
  * into every Store API product collection query. Tests exercise
  * `restrict_to_syndicated_products()` directly (no WP hook dispatch
  * needed — the method is pure with respect to $args and the stubbed
- * `WC_AI_Syndication::get_settings()`).
+ * `WC_AI_Storefront::get_settings()`).
  *
  * The settings stub (tests/php/stubs/class-wc-ai-syndication-stub.php)
  * exposes `$test_settings` — each test seeds what it needs and the
  * filter reads through that mechanism.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
@@ -28,7 +28,7 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	 */
 	protected function setUp(): void {
 		parent::setUp();
-		WC_AI_Syndication::$test_settings = [];
+		WC_AI_Storefront::$test_settings = [];
 	}
 
 	// ------------------------------------------------------------------
@@ -39,9 +39,9 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// Default mode "all" = no restriction. The filter is a passthrough,
 		// preserving whatever the Store API / WC block-theme cart / etc.
 		// originally asked for.
-		WC_AI_Syndication::$test_settings = [ 'product_selection_mode' => 'all' ];
+		WC_AI_Storefront::$test_settings = [ 'product_selection_mode' => 'all' ];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$input  = [ 'orderby' => 'date', 'posts_per_page' => 10 ];
 		$result = $filter->restrict_to_syndicated_products( $input );
 
@@ -51,9 +51,9 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	public function test_missing_mode_defaults_to_all_behavior(): void {
 		// Defensive: settings with no product_selection_mode key should
 		// not blow up. The filter treats missing as "all" (no-op).
-		WC_AI_Syndication::$test_settings = [];
+		WC_AI_Storefront::$test_settings = [];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$input  = [ 'orderby' => 'date' ];
 		$result = $filter->restrict_to_syndicated_products( $input );
 
@@ -65,12 +65,12 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_categories_mode_appends_tax_query_entry(): void {
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'categories',
 			'selected_categories'    => [ 5, 12 ],
 		];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$result = $filter->restrict_to_syndicated_products( [] );
 
 		$this->assertArrayHasKey( 'tax_query', $result );
@@ -91,7 +91,7 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// Store API's own ?category=X filter) yields "both must match"
 		// semantics — products in BOTH the incoming filter AND the
 		// merchant's allow-list.
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'categories',
 			'selected_categories'    => [ 10 ],
 		];
@@ -104,7 +104,7 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$result = $filter->restrict_to_syndicated_products(
 			[ 'tax_query' => $incoming_tax_query ]
 		);
@@ -122,12 +122,12 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// Merchant has picked "categories" mode but not chosen any yet.
 		// An empty terms array would hide everything — match the existing
 		// llms.txt / JSON-LD behavior and treat this as no-op.
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'categories',
 			'selected_categories'    => [],
 		];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$input  = [ 'orderby' => 'date' ];
 		$result = $filter->restrict_to_syndicated_products( $input );
 
@@ -140,12 +140,12 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// interception producing non-int IDs. WordPress `absint()` =
 		// `abs((int) $v)`, so negatives flip to positive and strings
 		// coerce numerically.
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'categories',
 			'selected_categories'    => [ '5', '12', -3 ],
 		];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$result = $filter->restrict_to_syndicated_products( [] );
 
 		$this->assertSame( [ 5, 12, 3 ], $result['tax_query'][0]['terms'] );
@@ -156,12 +156,12 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_selected_mode_sets_post_in_when_no_existing_restriction(): void {
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'selected',
 			'selected_products'      => [ 101, 202, 303 ],
 		];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$result = $filter->restrict_to_syndicated_products( [] );
 
 		$this->assertEquals( [ 101, 202, 303 ], $result['post__in'] );
@@ -173,12 +173,12 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// INTERSECT with the merchant's allow-list rather than replacing.
 		// Replacing would let the agent see products the original
 		// request explicitly excluded.
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'selected',
 			'selected_products'      => [ 2, 4, 6 ],
 		];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$result = $filter->restrict_to_syndicated_products(
 			[ 'post__in' => [ 1, 2, 3 ] ]
 		);
@@ -193,12 +193,12 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// ID — to force zero results. Without this, an incompatible
 		// filter combination would silently match everything, the
 		// opposite of what the merchant configured.
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'selected',
 			'selected_products'      => [ 2, 4 ],
 		];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$result = $filter->restrict_to_syndicated_products(
 			[ 'post__in' => [ 99, 100 ] ]
 		);
@@ -207,12 +207,12 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_selected_mode_with_empty_selected_products_is_noop(): void {
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'selected',
 			'selected_products'      => [],
 		];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$input  = [ 'post__in' => [ 1, 2, 3 ] ];
 		$result = $filter->restrict_to_syndicated_products( $input );
 
@@ -227,12 +227,12 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// (null, scalar, empty array), treat as "no incoming restriction"
 		// and apply our allow-list directly. Defends against upstream
 		// filters producing unexpected shapes.
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'selected',
 			'selected_products'      => [ 10, 20 ],
 		];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 
 		$result_null   = $filter->restrict_to_syndicated_products( [ 'post__in' => null ] );
 		$result_scalar = $filter->restrict_to_syndicated_products( [ 'post__in' => 42 ] );
@@ -248,26 +248,26 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_categories_mode_does_not_set_post_in(): void {
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'categories',
 			'selected_categories'    => [ 5 ],
 			'selected_products'      => [ 999 ],  // present but ignored in categories mode
 		];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$result = $filter->restrict_to_syndicated_products( [] );
 
 		$this->assertArrayNotHasKey( 'post__in', $result );
 	}
 
 	public function test_selected_mode_does_not_set_tax_query(): void {
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'selected',
 			'selected_products'      => [ 42 ],
 			'selected_categories'    => [ 999 ],  // present but ignored in selected mode
 		];
 
-		$filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$result = $filter->restrict_to_syndicated_products( [] );
 
 		$this->assertArrayNotHasKey( 'tax_query', $result );

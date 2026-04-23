@@ -9,7 +9,7 @@
  * Regular customer traffic is unaffected — only requests from
  * known AI bot user-agents are rate limited.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.1.0
  */
 
@@ -18,7 +18,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Rate limits Store API requests from known AI bot user-agents.
  */
-class WC_AI_Syndication_Store_Api_Rate_Limiter {
+class WC_AI_Storefront_Store_Api_Rate_Limiter {
 
 	/**
 	 * Initialize filters.
@@ -35,7 +35,7 @@ class WC_AI_Syndication_Store_Api_Rate_Limiter {
 	 * @return array Modified options.
 	 */
 	public function configure_rate_limits( $options ) {
-		$settings = WC_AI_Syndication::get_settings();
+		$settings = WC_AI_Storefront::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			return $options;
 		}
@@ -61,9 +61,9 @@ class WC_AI_Syndication_Store_Api_Rate_Limiter {
 	public function fingerprint_ai_bots( $id ) {
 		$ua = $this->get_user_agent();
 
-		foreach ( WC_AI_Syndication_Robots::AI_CRAWLERS as $bot ) {
+		foreach ( WC_AI_Storefront_Robots::AI_CRAWLERS as $bot ) {
 			if ( stripos( $ua, $bot ) !== false ) {
-				WC_AI_Syndication_Logger::debug(
+				WC_AI_Storefront_Logger::debug(
 					'rate-limit fingerprint matched AI bot: %s',
 					$bot
 				);

@@ -6,7 +6,7 @@
  * AI commerce capabilities with web-redirect only checkout.
  * No delegated/in-chat payments (no ACP).
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.0.0
  */
 
@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Handles the /.well-known/ucp manifest endpoint.
  */
-class WC_AI_Syndication_Ucp {
+class WC_AI_Storefront_Ucp {
 
 	/**
 	 * UCP protocol version target.
@@ -28,7 +28,7 @@ class WC_AI_Syndication_Ucp {
 	 *
 	 * Bumped from 2026-01-11 → 2026-04-08 in plugin 1.3.0 to track the
 	 * then-current UCP spec revision referenced below.
-	 * `WC_AI_Syndication_UCP_Envelope::catalog_envelope()` and
+	 * `WC_AI_Storefront_UCP_Envelope::catalog_envelope()` and
 	 * `checkout_envelope()` both read this constant, so the bump flows
 	 * through to every handler response envelope automatically.
 	 *
@@ -55,7 +55,7 @@ class WC_AI_Syndication_Ucp {
 	/**
 	 * Transient key for cached UCP manifest.
 	 */
-	const CACHE_KEY = 'wc_ai_syndication_ucp';
+	const CACHE_KEY = 'wc_ai_storefront_ucp';
 
 	/**
 	 * Short-circuit canonical-URL redirects for the manifest endpoint.
@@ -65,7 +65,7 @@ class WC_AI_Syndication_Ucp {
 	 *                                   original value otherwise.
 	 */
 	public function suppress_canonical_redirect( $redirect_url ) {
-		if ( get_query_var( 'wc_ai_syndication_ucp' ) ) {
+		if ( get_query_var( 'wc_ai_storefront_ucp' ) ) {
 			return false;
 		}
 		return $redirect_url;
@@ -75,7 +75,7 @@ class WC_AI_Syndication_Ucp {
 	 * Add rewrite rule for /.well-known/ucp.
 	 */
 	public function add_rewrite_rules() {
-		add_rewrite_rule( '^\.well-known/ucp$', 'index.php?wc_ai_syndication_ucp=1', 'top' );
+		add_rewrite_rule( '^\.well-known/ucp$', 'index.php?wc_ai_storefront_ucp=1', 'top' );
 	}
 
 	/**
@@ -85,7 +85,7 @@ class WC_AI_Syndication_Ucp {
 	 * @return array
 	 */
 	public function add_query_vars( $vars ) {
-		$vars[] = 'wc_ai_syndication_ucp';
+		$vars[] = 'wc_ai_storefront_ucp';
 		return $vars;
 	}
 
@@ -93,11 +93,11 @@ class WC_AI_Syndication_Ucp {
 	 * Serve the UCP manifest.
 	 */
 	public function serve_manifest() {
-		if ( ! get_query_var( 'wc_ai_syndication_ucp' ) ) {
+		if ( ! get_query_var( 'wc_ai_storefront_ucp' ) ) {
 			return;
 		}
 
-		$settings = WC_AI_Syndication::get_settings();
+		$settings = WC_AI_Storefront::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			status_header( 404 );
 			exit;
@@ -120,11 +120,11 @@ class WC_AI_Syndication_Ucp {
 
 		$cached = get_transient( self::CACHE_KEY );
 		if ( false === $cached ) {
-			WC_AI_Syndication_Logger::debug( 'UCP manifest cache miss — regenerating' );
+			WC_AI_Storefront_Logger::debug( 'UCP manifest cache miss — regenerating' );
 			$cached = wp_json_encode( $this->generate_manifest( $settings ), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
 			set_transient( self::CACHE_KEY, $cached, HOUR_IN_SECONDS );
 		} else {
-			WC_AI_Syndication_Logger::debug( 'UCP manifest cache hit' );
+			WC_AI_Storefront_Logger::debug( 'UCP manifest cache hit' );
 		}
 		echo $cached; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON content.
 		exit;
@@ -354,7 +354,7 @@ class WC_AI_Syndication_Ucp {
 		 * @param array $manifest The UCP manifest.
 		 * @param array $settings The AI syndication settings.
 		 */
-		return apply_filters( 'wc_ai_syndication_ucp_manifest', $manifest, $settings );
+		return apply_filters( 'wc_ai_storefront_ucp_manifest', $manifest, $settings );
 	}
 
 	/**

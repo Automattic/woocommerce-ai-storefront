@@ -2,7 +2,7 @@
 /**
  * PHPUnit bootstrap for AI Syndication unit tests.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 require_once dirname( __DIR__, 2 ) . '/vendor/autoload.php';
@@ -19,7 +19,7 @@ if ( ! defined( 'HOUR_IN_SECONDS' ) ) {
 	define( 'HOUR_IN_SECONDS', 3600 );
 }
 
-// Load the settings stub before classes that reference WC_AI_Syndication statically.
+// Load the settings stub before classes that reference WC_AI_Storefront statically.
 require_once __DIR__ . '/stubs/class-wc-ai-syndication-stub.php';
 
 // Load plugin files.
@@ -51,14 +51,14 @@ require_once $plugin_path . 'admin/class-wc-ai-syndication-admin-controller.php'
 // Self-updater wrapper around the PUC library (1.4.0+).
 require_once $plugin_path . 'class-wc-ai-syndication-updater.php';
 
-// The updater uses WC_AI_SYNDICATION_PLUGIN_PATH + _FILE to locate
+// The updater uses WC_AI_STOREFRONT_PLUGIN_PATH + _FILE to locate
 // the vendored library at runtime. Define them here so unit tests
 // can exercise the init guard clauses without requiring a full
 // plugin bootstrap. These mirror the real constants set in the
 // plugin entry file.
-if ( ! defined( 'WC_AI_SYNDICATION_PLUGIN_PATH' ) ) {
-	define( 'WC_AI_SYNDICATION_PLUGIN_PATH', dirname( __DIR__, 2 ) );
+if ( ! defined( 'WC_AI_STOREFRONT_PLUGIN_PATH' ) ) {
+	define( 'WC_AI_STOREFRONT_PLUGIN_PATH', dirname( __DIR__, 2 ) );
 }
-if ( ! defined( 'WC_AI_SYNDICATION_PLUGIN_FILE' ) ) {
-	define( 'WC_AI_SYNDICATION_PLUGIN_FILE', dirname( __DIR__, 2 ) . '/woocommerce-ai-syndication.php' );
+if ( ! defined( 'WC_AI_STOREFRONT_PLUGIN_FILE' ) ) {
+	define( 'WC_AI_STOREFRONT_PLUGIN_FILE', dirname( __DIR__, 2 ) . '/woocommerce-ai-syndication.php' );
 }

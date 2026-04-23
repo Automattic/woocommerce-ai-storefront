@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_JsonLd.
+ * Tests for WC_AI_Storefront_JsonLd.
  *
  * Focuses on `enhance_product_data()` — the filter that augments
  * WooCommerce's native product JSON-LD with fields that help AI
@@ -12,7 +12,7 @@
  * WordPress's own escaping helpers, and the enhancer should not
  * synthesize string concatenation that could inject unescaped input.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -22,16 +22,16 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
-	private WC_AI_Syndication_JsonLd $jsonld;
+	private WC_AI_Storefront_JsonLd $jsonld;
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->jsonld = new WC_AI_Syndication_JsonLd();
+		$this->jsonld = new WC_AI_Storefront_JsonLd();
 
 		// Default: syndication enabled, no category restriction. Tests
 		// that exercise the disabled path or product-exclusion override.
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 		];
@@ -53,7 +53,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Syndication::$test_settings = [];
+		WC_AI_Storefront::$test_settings = [];
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -90,7 +90,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_enhancement_is_bypassed_when_syndication_disabled(): void {
-		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
 
 		$product = $this->make_product();
 		$result  = $this->jsonld->enhance_product_data( [ '@type' => 'Product' ], $product );
@@ -103,7 +103,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_enhancement_is_bypassed_when_product_not_syndicated(): void {
 		// Force the static stub's `is_product_syndicated` to return false
 		// by setting a restrictive selection mode.
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'selected',
 			'selected_products'      => [ 999 ], // not our product id 42
@@ -392,7 +392,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_enhanced_markup_is_filterable(): void {
 		Functions\when( 'apply_filters' )->alias(
 			static function ( $hook, $markup, $product, $settings ) {
-				if ( 'wc_ai_syndication_jsonld_product' === $hook ) {
+				if ( 'wc_ai_storefront_jsonld_product' === $hook ) {
 					$markup['custom_field'] = 'extension_value';
 				}
 				return $markup;

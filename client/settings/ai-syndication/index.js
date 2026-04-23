@@ -10,7 +10,7 @@ import '../../data/ai-syndication';
 // up our single CSS import cleanly). Instead, `scripts/copy-dataviews-css.js`
 // copies `node_modules/@wordpress/dataviews/build-style/style.css`
 // verbatim into `build/ai-syndication-settings.css` as a postbuild
-// step. The existing `WC_AI_Syndication::admin_scripts()` handler
+// step. The existing `WC_AI_Storefront::admin_scripts()` handler
 // already detects the file's presence and enqueues it with
 // `wp-components` as a dependency — zero new server-side plumbing.
 // Single source of truth: the file we copy IS the file Woo's own

@@ -8,14 +8,14 @@
  *
  * Intentionally NOT removed:
  *
- * - Order meta keys (`_wc_ai_syndication_agent`,
- *   `_wc_ai_syndication_session_id`, and WooCommerce's own
+ * - Order meta keys (`_wc_ai_storefront_agent`,
+ *   `_wc_ai_storefront_session_id`, and WooCommerce's own
  *   `_wc_order_attribution_*` keys). These are historical order
  *   records — merchant-owned transaction data. Destroying them
  *   would erase legitimate business history. If a merchant wants
  *   to purge this, they can do it with WP-CLI after uninstall.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 // If uninstall wasn't called by WordPress, bail. This is a security
@@ -49,9 +49,9 @@ delete_option( 'wc_ai_syndication_version' );
  * pattern. If a cache key ever changes in a class constant, update
  * this file in the same commit.
  */
-delete_transient( 'wc_ai_syndication_llms_txt' );
-delete_transient( 'wc_ai_syndication_ucp' );
-delete_transient( 'wc_ai_syndication_flush_rewrite' );
+delete_transient( 'wc_ai_storefront_llms_txt' );
+delete_transient( 'wc_ai_storefront_ucp' );
+delete_transient( 'wc_ai_storefront_flush_rewrite' );
 
 /*
  * --------------------------------------------------------------------------
@@ -59,7 +59,7 @@ delete_transient( 'wc_ai_syndication_flush_rewrite' );
  * --------------------------------------------------------------------------
  */
 
-wp_clear_scheduled_hook( 'wc_ai_syndication_warm_llms_txt_cache' );
+wp_clear_scheduled_hook( 'wc_ai_storefront_warm_llms_txt_cache' );
 
 /*
  * --------------------------------------------------------------------------
@@ -70,11 +70,11 @@ wp_clear_scheduled_hook( 'wc_ai_syndication_warm_llms_txt_cache' );
  * Loop through them all.
  */
 // Wrapped in a function to keep loop variables out of global scope.
-if ( ! function_exists( 'wc_ai_syndication_uninstall_multisite' ) ) {
+if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 	/**
 	 * Delete plugin rows from every site in a multisite network.
 	 */
-	function wc_ai_syndication_uninstall_multisite(): void {
+	function wc_ai_storefront_uninstall_multisite(): void {
 		$ids = get_sites(
 			[
 				'fields' => 'ids',
@@ -86,10 +86,10 @@ if ( ! function_exists( 'wc_ai_syndication_uninstall_multisite' ) ) {
 
 			delete_option( 'wc_ai_syndication_settings' );
 			delete_option( 'wc_ai_syndication_version' );
-			delete_transient( 'wc_ai_syndication_llms_txt' );
-			delete_transient( 'wc_ai_syndication_ucp' );
-			delete_transient( 'wc_ai_syndication_flush_rewrite' );
-			wp_clear_scheduled_hook( 'wc_ai_syndication_warm_llms_txt_cache' );
+			delete_transient( 'wc_ai_storefront_llms_txt' );
+			delete_transient( 'wc_ai_storefront_ucp' );
+			delete_transient( 'wc_ai_storefront_flush_rewrite' );
+			wp_clear_scheduled_hook( 'wc_ai_storefront_warm_llms_txt_cache' );
 
 			restore_current_blog();
 		}
@@ -97,5 +97,5 @@ if ( ! function_exists( 'wc_ai_syndication_uninstall_multisite' ) ) {
 }
 
 if ( is_multisite() ) {
-	wc_ai_syndication_uninstall_multisite();
+	wc_ai_storefront_uninstall_multisite();
 }

@@ -34,7 +34,7 @@
  * file. That's the point — changing posture should require a
  * conscious test update, not silent capability drift.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -44,12 +44,12 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
-	private WC_AI_Syndication_Ucp $ucp;
+	private WC_AI_Storefront_Ucp $ucp;
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->ucp = new WC_AI_Syndication_Ucp();
+		$this->ucp = new WC_AI_Storefront_Ucp();
 
 		Functions\when( 'home_url' )->alias(
 			static fn( $path = '' ) => 'https://example.com' . ( $path ?: '/' )
@@ -226,7 +226,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
 		sort( $registered );

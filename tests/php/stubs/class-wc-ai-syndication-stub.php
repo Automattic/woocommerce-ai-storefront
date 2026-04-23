@@ -1,18 +1,18 @@
 <?php
 /**
- * Minimal WC_AI_Syndication stub for unit tests.
+ * Minimal WC_AI_Storefront stub for unit tests.
  *
  * Provides a controllable get_settings() that tests can configure
  * via the $test_settings static property.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
-class WC_AI_Syndication {
+class WC_AI_Storefront {
 
 	/**
 	 * Test-controllable settings. Set this in your test before calling
-	 * code that uses WC_AI_Syndication::get_settings().
+	 * code that uses WC_AI_Storefront::get_settings().
 	 *
 	 * @var array
 	 */

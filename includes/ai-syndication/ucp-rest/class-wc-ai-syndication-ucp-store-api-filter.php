@@ -19,7 +19,7 @@
  * selection mode back to "all" and rely on their own storefront
  * controls.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.3.0
  */
 
@@ -28,7 +28,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Restricts Store API product queries to the plugin's selected products/categories.
  */
-class WC_AI_Syndication_UCP_Store_API_Filter {
+class WC_AI_Storefront_UCP_Store_API_Filter {
 
 	/**
 	 * Register the query-args filter.
@@ -73,7 +73,7 @@ class WC_AI_Syndication_UCP_Store_API_Filter {
 	 * @return array<string, mixed>      Modified args.
 	 */
 	public function restrict_to_syndicated_products( array $args ): array {
-		$settings = WC_AI_Syndication::get_settings();
+		$settings = WC_AI_Storefront::get_settings();
 		$mode     = $settings['product_selection_mode'] ?? 'all';
 
 		if ( 'categories' === $mode && ! empty( $settings['selected_categories'] ) ) {

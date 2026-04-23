@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_UCP_REST_Controller route registration.
+ * Tests for WC_AI_Storefront_UCP_REST_Controller route registration.
  *
  * Scope: the `register_routes()` contract only — namespace, paths,
  * methods, permission callback. The three routes must exist at their
@@ -13,7 +13,7 @@
  *   - UcpCatalogLookupTest
  *   - UcpCheckoutSessionsTest
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -83,7 +83,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_registers_expected_routes_under_wc_ucp_v1_namespace(): void {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
 		// Three commerce endpoints (catalog/search, catalog/lookup,
@@ -104,12 +104,12 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		// produce a working route at the wrong path.
 		$this->assertEquals(
 			'wc/ucp/v1',
-			WC_AI_Syndication_UCP_REST_Controller::NAMESPACE
+			WC_AI_Storefront_UCP_REST_Controller::NAMESPACE
 		);
 	}
 
 	public function test_catalog_search_route_registered(): void {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
 		$route = $this->route_for( '/catalog/search' );
@@ -119,7 +119,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_catalog_lookup_route_registered(): void {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
 		$route = $this->route_for( '/catalog/lookup' );
@@ -129,7 +129,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_checkout_sessions_route_registered(): void {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
 		$route = $this->route_for( '/checkout-sessions' );
@@ -142,7 +142,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		// Self-hosted JSON Schema endpoint for the
 		// com.woocommerce.ai_syndication merchant extension. GET,
 		// not POST — it's read-only static documentation content.
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
 		$route = $this->route_for( '/extension/schema' );
@@ -156,7 +156,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		// UCP-Agent header (used for attribution, not access control).
 		// Merchants who want to deny access should pause syndication
 		// rather than rely on route-level permissions.
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
 		foreach ( $this->registered_routes as $call ) {
@@ -169,7 +169,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_every_route_has_a_callable_handler(): void {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
 		foreach ( $this->registered_routes as $call ) {
@@ -193,7 +193,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
 		);
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_extension_schema();
 
 		$this->assertInstanceOf( WP_REST_Response::class, $response );
@@ -218,7 +218,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
 		);
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_extension_schema();
 		$data       = $response->get_data();
 
@@ -244,7 +244,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
 		);
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_extension_schema();
 		$data       = $response->get_data();
 
@@ -268,7 +268,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
 		);
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_extension_schema();
 		$data       = $response->get_data();
 
@@ -287,7 +287,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
 		);
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_extension_schema();
 		$data       = $response->get_data();
 
@@ -320,7 +320,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		// Signal keys are request-supplied → untrusted. Defensive
 		// helper caps size, strips control chars (log-injection guard),
 		// drops non-string keys, and truncates individual keys.
-		$reflection = new \ReflectionClass( WC_AI_Syndication_UCP_REST_Controller::class );
+		$reflection = new \ReflectionClass( WC_AI_Storefront_UCP_REST_Controller::class );
 		$method     = $reflection->getMethod( 'format_signal_keys_for_log' );
 		$method->setAccessible( true );
 
@@ -385,7 +385,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 			static fn( string $p ): string => 'https://example.com/wp-json/' . ltrim( $p, '/' )
 		);
 
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_extension_schema();
 
 		$this->assertStringContainsString(

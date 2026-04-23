@@ -5,7 +5,7 @@
  * Outputs deep semantic Schema.org Product markup on product pages
  * so AI agents can recommend products for specific use cases.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.0.0
  */
 
@@ -14,7 +14,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Enhances WooCommerce JSON-LD output with AI-optimized structured data.
  */
-class WC_AI_Syndication_JsonLd {
+class WC_AI_Storefront_JsonLd {
 
 	/**
 	 * Initialize hooks.
@@ -32,12 +32,12 @@ class WC_AI_Syndication_JsonLd {
 	 * @return array Enhanced markup.
 	 */
 	public function enhance_product_data( $markup, $product ) {
-		$settings = WC_AI_Syndication::get_settings();
+		$settings = WC_AI_Storefront::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			return $markup;
 		}
 
-		if ( ! WC_AI_Syndication::is_product_syndicated( $product, $settings ) ) {
+		if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 			return $markup;
 		}
 
@@ -179,7 +179,7 @@ class WC_AI_Syndication_JsonLd {
 		 * @param WC_Product $product  The product.
 		 * @param array      $settings The AI syndication settings.
 		 */
-		return apply_filters( 'wc_ai_syndication_jsonld_product', $markup, $product, $settings );
+		return apply_filters( 'wc_ai_storefront_jsonld_product', $markup, $product, $settings );
 	}
 
 	/**
@@ -190,7 +190,7 @@ class WC_AI_Syndication_JsonLd {
 			return;
 		}
 
-		$settings = WC_AI_Syndication::get_settings();
+		$settings = WC_AI_Storefront::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			return;
 		}
@@ -224,7 +224,7 @@ class WC_AI_Syndication_JsonLd {
 		 * @param array $store_data The store structured data.
 		 * @param array $settings   The AI syndication settings.
 		 */
-		$store_data = apply_filters( 'wc_ai_syndication_jsonld_store', $store_data, $settings );
+		$store_data = apply_filters( 'wc_ai_storefront_jsonld_store', $store_data, $settings );
 
 		echo '<script type="application/ld+json">' . wp_json_encode( $store_data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) . '</script>' . "\n";
 	}

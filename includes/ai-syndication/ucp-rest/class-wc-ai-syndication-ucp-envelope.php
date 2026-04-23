@@ -12,7 +12,7 @@
  *
  * See UCP spec: source/schemas/ucp.json ($defs/response_*_schema).
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.3.0
  */
 
@@ -21,7 +21,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Builds the `ucp` response wrapper for each UCP capability context.
  */
-class WC_AI_Syndication_UCP_Envelope {
+class WC_AI_Storefront_UCP_Envelope {
 
 	/**
 	 * Build the `ucp` wrapper for a catalog response.
@@ -37,10 +37,10 @@ class WC_AI_Syndication_UCP_Envelope {
 	 */
 	public static function catalog_envelope( string $capability_name ): array {
 		return [
-			'version'      => WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			'version'      => WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			'capabilities' => [
 				$capability_name => [
-					[ 'version' => WC_AI_Syndication_Ucp::PROTOCOL_VERSION ],
+					[ 'version' => WC_AI_Storefront_Ucp::PROTOCOL_VERSION ],
 				],
 			],
 		];
@@ -57,10 +57,10 @@ class WC_AI_Syndication_UCP_Envelope {
 	 */
 	public static function checkout_envelope(): array {
 		return [
-			'version'          => WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			'version'          => WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			'capabilities'     => [
 				'dev.ucp.shopping.checkout' => [
-					[ 'version' => WC_AI_Syndication_Ucp::PROTOCOL_VERSION ],
+					[ 'version' => WC_AI_Storefront_Ucp::PROTOCOL_VERSION ],
 				],
 			],
 

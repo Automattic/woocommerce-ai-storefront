@@ -8,7 +8,7 @@
  * - Get categories/products for selection UI
  * - Get discovery endpoint URLs
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.0.0
  */
 
@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Admin REST controller for AI syndication settings.
  */
-class WC_AI_Syndication_Admin_Controller {
+class WC_AI_Storefront_Admin_Controller {
 
 	/**
 	 * REST namespace.
@@ -95,7 +95,7 @@ class WC_AI_Syndication_Admin_Controller {
 		// AI Orders DataViews table — one row per order with the
 		// columns that match WC's native Orders list (Order, Date,
 		// Status, Agent, Total). Scoped to orders with our
-		// `_wc_ai_syndication_agent` meta set so we don't scan the
+		// `_wc_ai_storefront_agent` meta set so we don't scan the
 		// full order table; `per_page` is clamped to a sane max.
 		register_rest_route(
 			self::NAMESPACE,
@@ -170,7 +170,7 @@ class WC_AI_Syndication_Admin_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function get_settings() {
-		return new WP_REST_Response( WC_AI_Syndication::get_settings() );
+		return new WP_REST_Response( WC_AI_Storefront::get_settings() );
 	}
 
 	/**
@@ -190,26 +190,26 @@ class WC_AI_Syndication_Admin_Controller {
 			}
 		}
 
-		$old_settings = WC_AI_Syndication::get_settings();
-		WC_AI_Syndication::update_settings( $data );
+		$old_settings = WC_AI_Storefront::get_settings();
+		WC_AI_Storefront::update_settings( $data );
 
 		// Schedule a rewrite rule flush when enabled state changes.
 		if ( isset( $data['enabled'] ) && $data['enabled'] !== ( $old_settings['enabled'] ?? 'no' ) ) {
-			set_transient( 'wc_ai_syndication_flush_rewrite', 1, HOUR_IN_SECONDS );
+			set_transient( 'wc_ai_storefront_flush_rewrite', 1, HOUR_IN_SECONDS );
 
 			// Eagerly generate and cache llms.txt + UCP manifest.
 			if ( 'yes' === $data['enabled'] ) {
-				$llms_txt = new WC_AI_Syndication_Llms_Txt();
+				$llms_txt = new WC_AI_Storefront_Llms_Txt();
 				$content  = $llms_txt->generate();
-				set_transient( WC_AI_Syndication_Llms_Txt::CACHE_KEY, $content, HOUR_IN_SECONDS );
+				set_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY, $content, HOUR_IN_SECONDS );
 
-				$ucp      = new WC_AI_Syndication_Ucp();
-				$manifest = wp_json_encode( $ucp->generate_manifest( WC_AI_Syndication::get_settings() ), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
-				set_transient( WC_AI_Syndication_Ucp::CACHE_KEY, $manifest, HOUR_IN_SECONDS );
+				$ucp      = new WC_AI_Storefront_Ucp();
+				$manifest = wp_json_encode( $ucp->generate_manifest( WC_AI_Storefront::get_settings() ), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
+				set_transient( WC_AI_Storefront_Ucp::CACHE_KEY, $manifest, HOUR_IN_SECONDS );
 			}
 		}
 
-		return new WP_REST_Response( WC_AI_Syndication::get_settings() );
+		return new WP_REST_Response( WC_AI_Storefront::get_settings() );
 	}
 
 	/**
@@ -220,7 +220,7 @@ class WC_AI_Syndication_Admin_Controller {
 	 */
 	public function get_stats( $request ) {
 		$period = $request->get_param( 'period' );
-		$stats  = WC_AI_Syndication_Attribution::get_stats( $period );
+		$stats  = WC_AI_Storefront_Attribution::get_stats( $period );
 
 		return new WP_REST_Response( $stats );
 	}
@@ -261,7 +261,7 @@ class WC_AI_Syndication_Admin_Controller {
 				'limit'    => $per_page,
 				'orderby'  => 'date',
 				'order'    => 'DESC',
-				'meta_key' => WC_AI_Syndication_Attribution::AGENT_META_KEY, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+				'meta_key' => WC_AI_Storefront_Attribution::AGENT_META_KEY, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
 				'status'   => array_keys( wc_get_order_statuses() ),
 				'return'   => 'objects',
 			]
@@ -271,9 +271,9 @@ class WC_AI_Syndication_Admin_Controller {
 		$rows     = [];
 
 		foreach ( $orders as $order ) {
-			$raw_agent = (string) $order->get_meta( WC_AI_Syndication_Attribution::AGENT_META_KEY );
+			$raw_agent = (string) $order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY );
 			$agent     = '' !== $raw_agent
-				? WC_AI_Syndication_UCP_Agent_Header::canonicalize_host( $raw_agent )
+				? WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_agent )
 				: '';
 
 			$date_created = $order->get_date_created();

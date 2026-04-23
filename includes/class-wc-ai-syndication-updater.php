@@ -20,7 +20,7 @@
  * asset (`woocommerce-ai-syndication.zip`) produced by the release
  * workflow, which already extracts to the correct slug directory.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.4.0
  */
 
@@ -30,7 +30,7 @@ defined( 'ABSPATH' ) || exit;
  * Registers the plugin with the PUC library to enable in-place
  * updates from GitHub releases.
  */
-class WC_AI_Syndication_Updater {
+class WC_AI_Storefront_Updater {
 
 	/**
 	 * GitHub repository URL used as the update source.
@@ -73,7 +73,7 @@ class WC_AI_Syndication_Updater {
 		// The PUC library is optional — if the lib/ directory was
 		// stripped from a hand-rolled build we degrade gracefully
 		// rather than fataling the whole plugin.
-		$loader = WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/lib/plugin-update-checker/plugin-update-checker.php';
+		$loader = WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/lib/plugin-update-checker/plugin-update-checker.php';
 		if ( ! file_exists( $loader ) ) {
 			return;
 		}
@@ -85,7 +85,7 @@ class WC_AI_Syndication_Updater {
 
 		$checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
 			self::GITHUB_REPO_URL,
-			WC_AI_SYNDICATION_PLUGIN_FILE,
+			WC_AI_STOREFRONT_PLUGIN_FILE,
 			'woocommerce-ai-storefront'
 		);
 

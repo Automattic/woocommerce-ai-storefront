@@ -43,7 +43,7 @@
  * ISBN/MPN would require explicit type hints from another source
  * since they can be any length.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.8.0
  */
 
@@ -52,7 +52,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Registers extra product data on the WC Store API response.
  */
-class WC_AI_Syndication_Store_Api_Extension {
+class WC_AI_Storefront_Store_Api_Extension {
 
 	/**
 	 * Namespace under which the extension data appears in the Store

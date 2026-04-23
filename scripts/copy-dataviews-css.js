@@ -4,7 +4,7 @@
  *
  * Runs as a `postbuild` npm script. Takes `node_modules/@wordpress/dataviews/build-style/style.css`
  * and writes it verbatim to `build/ai-syndication-settings.css`, where
- * WC_AI_Syndication::admin_scripts() picks it up via `file_exists()` and
+ * WC_AI_Storefront::admin_scripts() picks it up via `file_exists()` and
  * registers it with `wp-components` as a dependency. The plugin's existing
  * enqueue path already handles the rest.
  *

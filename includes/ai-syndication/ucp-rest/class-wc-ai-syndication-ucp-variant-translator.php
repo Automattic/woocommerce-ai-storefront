@@ -16,7 +16,7 @@
  * (selected option values like "Color: Blue, Size: Large"),
  * `availability`, and optional `sku`, `barcodes`, `media`.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.3.0
  */
 
@@ -25,7 +25,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Translates WC variations into UCP variant objects.
  */
-class WC_AI_Syndication_UCP_Variant_Translator {
+class WC_AI_Storefront_UCP_Variant_Translator {
 
 	/**
 	 * UCP variant ID prefix. Distinguishes variant IDs from product
@@ -101,7 +101,7 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 		}
 
 		// Barcodes (GTIN/UPC/EAN/MPN). Sourced from the Store API
-		// extension we register in `WC_AI_Syndication_Store_Api_Extension`
+		// extension we register in `WC_AI_Storefront_Store_Api_Extension`
 		// (WC core doesn't expose `global_unique_id` on the Store API
 		// product schema yet — see the WC enhancement request). The
 		// extension surfaces it under `extensions.{namespace}.barcodes`
@@ -516,7 +516,7 @@ class WC_AI_Syndication_UCP_Variant_Translator {
 			return [];
 		}
 
-		$namespace = WC_AI_Syndication_Store_Api_Extension::NAMESPACE;
+		$namespace = WC_AI_Storefront_Store_Api_Extension::NAMESPACE;
 		$entry     = $extensions[ $namespace ] ?? [];
 		if ( ! is_array( $entry ) ) {
 			return [];

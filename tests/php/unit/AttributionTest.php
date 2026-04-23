@@ -1,13 +1,13 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_Attribution.
+ * Tests for WC_AI_Storefront_Attribution.
  *
  * Covers capture_ai_attribution (meta detection, session/agent capture).
  * The custom "AI Agent" orders-list column was removed in 1.6.7 —
  * WooCommerce core's "Origin" column already displays the same data
  * sourced from `_wc_order_attribution_utm_source`.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -17,12 +17,12 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class AttributionTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
-	private WC_AI_Syndication_Attribution $attribution;
+	private WC_AI_Storefront_Attribution $attribution;
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->attribution = new WC_AI_Syndication_Attribution();
+		$this->attribution = new WC_AI_Storefront_Attribution();
 
 		// Clear $_GET between tests.
 		$_GET = [];
@@ -60,7 +60,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertTrue( $order->was_saved() );
-		$this->assertEquals( 'chatgpt', $order->get_meta( '_wc_ai_syndication_agent' ) );
+		$this->assertEquals( 'chatgpt', $order->get_meta( '_wc_ai_storefront_agent' ) );
 	}
 
 	public function test_capture_detects_ai_medium_from_get_fallback(): void {
@@ -77,8 +77,8 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertTrue( $order->was_saved() );
-		$this->assertEquals( 'gemini', $order->get_meta( '_wc_ai_syndication_agent' ) );
-		$this->assertEquals( 'session-abc', $order->get_meta( '_wc_ai_syndication_session_id' ) );
+		$this->assertEquals( 'gemini', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		$this->assertEquals( 'session-abc', $order->get_meta( '_wc_ai_storefront_session_id' ) );
 	}
 
 	public function test_capture_stores_session_id_when_present(): void {
@@ -93,7 +93,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 
 		$this->attribution->capture_ai_attribution( $order );
 
-		$this->assertEquals( 'sess-123', $order->get_meta( '_wc_ai_syndication_session_id' ) );
+		$this->assertEquals( 'sess-123', $order->get_meta( '_wc_ai_storefront_session_id' ) );
 	}
 
 	public function test_capture_does_not_store_empty_session_id(): void {
@@ -106,8 +106,8 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 
 		$this->attribution->capture_ai_attribution( $order );
 
-		$this->assertEquals( '', $order->get_meta( '_wc_ai_syndication_session_id' ) );
-		$this->assertEquals( 'claude', $order->get_meta( '_wc_ai_syndication_agent' ) );
+		$this->assertEquals( '', $order->get_meta( '_wc_ai_storefront_session_id' ) );
+		$this->assertEquals( 'claude', $order->get_meta( '_wc_ai_storefront_agent' ) );
 	}
 
 	// ------------------------------------------------------------------

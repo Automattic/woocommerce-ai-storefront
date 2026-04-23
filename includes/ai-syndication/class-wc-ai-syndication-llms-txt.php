@@ -6,7 +6,7 @@
  * that gives AI crawlers a direct guide to the store's products
  * and API capabilities.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.0.0
  */
 
@@ -15,12 +15,12 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Handles generation and serving of the llms.txt file.
  */
-class WC_AI_Syndication_Llms_Txt {
+class WC_AI_Storefront_Llms_Txt {
 
 	/**
 	 * Transient key for cached llms.txt content.
 	 */
-	const CACHE_KEY = 'wc_ai_syndication_llms_txt';
+	const CACHE_KEY = 'wc_ai_storefront_llms_txt';
 
 	/**
 	 * Short-circuit canonical-URL redirects for the llms.txt endpoint.
@@ -31,7 +31,7 @@ class WC_AI_Syndication_Llms_Txt {
 	 *                                   original value otherwise.
 	 */
 	public function suppress_canonical_redirect( $redirect_url ) {
-		if ( get_query_var( 'wc_ai_syndication_llms_txt' ) ) {
+		if ( get_query_var( 'wc_ai_storefront_llms_txt' ) ) {
 			return false;
 		}
 		return $redirect_url;
@@ -41,7 +41,7 @@ class WC_AI_Syndication_Llms_Txt {
 	 * Add rewrite rule for /llms.txt.
 	 */
 	public function add_rewrite_rules() {
-		add_rewrite_rule( '^llms\.txt$', 'index.php?wc_ai_syndication_llms_txt=1', 'top' );
+		add_rewrite_rule( '^llms\.txt$', 'index.php?wc_ai_storefront_llms_txt=1', 'top' );
 	}
 
 	/**
@@ -51,7 +51,7 @@ class WC_AI_Syndication_Llms_Txt {
 	 * @return array
 	 */
 	public function add_query_vars( $vars ) {
-		$vars[] = 'wc_ai_syndication_llms_txt';
+		$vars[] = 'wc_ai_storefront_llms_txt';
 		return $vars;
 	}
 
@@ -97,11 +97,11 @@ class WC_AI_Syndication_Llms_Txt {
 	 * work either way; agents that search-first now work too.
 	 */
 	public function serve_llms_txt() {
-		if ( ! get_query_var( 'wc_ai_syndication_llms_txt' ) ) {
+		if ( ! get_query_var( 'wc_ai_storefront_llms_txt' ) ) {
 			return;
 		}
 
-		$settings = WC_AI_Syndication::get_settings();
+		$settings = WC_AI_Storefront::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			status_header( 404 );
 			exit;
@@ -147,7 +147,7 @@ class WC_AI_Syndication_Llms_Txt {
 	private function get_cached_content() {
 		$cached = get_transient( self::CACHE_KEY );
 		if ( false !== $cached && '' !== $cached ) {
-			WC_AI_Syndication_Logger::debug( 'llms.txt cache hit' );
+			WC_AI_Storefront_Logger::debug( 'llms.txt cache hit' );
 			return $cached;
 		}
 
@@ -177,13 +177,13 @@ class WC_AI_Syndication_Llms_Txt {
 				usleep( 100000 ); // 100ms.
 				$cached = get_transient( self::CACHE_KEY );
 				if ( false !== $cached && '' !== $cached ) {
-					WC_AI_Syndication_Logger::debug( 'llms.txt cache hit after single-flight wait' );
+					WC_AI_Storefront_Logger::debug( 'llms.txt cache hit after single-flight wait' );
 					return $cached;
 				}
 			}
 			// Primary didn't deliver; fall through to regenerate
 			// ourselves rather than serve stale-or-empty.
-			WC_AI_Syndication_Logger::debug( 'llms.txt single-flight timed out, regenerating' );
+			WC_AI_Storefront_Logger::debug( 'llms.txt single-flight timed out, regenerating' );
 		}
 
 		// Claim the sentinel for a short window covering the
@@ -200,7 +200,7 @@ class WC_AI_Syndication_Llms_Txt {
 		// symmetric with its claim.
 		$content = '';
 		try {
-			WC_AI_Syndication_Logger::debug( 'llms.txt cache miss — regenerating' );
+			WC_AI_Storefront_Logger::debug( 'llms.txt cache miss — regenerating' );
 			$content = $this->generate();
 
 			// Only cache non-empty content. Caching an empty string
@@ -209,7 +209,7 @@ class WC_AI_Syndication_Llms_Txt {
 			if ( '' !== $content ) {
 				set_transient( self::CACHE_KEY, $content, HOUR_IN_SECONDS );
 			} else {
-				WC_AI_Syndication_Logger::debug( 'llms.txt generate() returned empty — not caching' );
+				WC_AI_Storefront_Logger::debug( 'llms.txt generate() returned empty — not caching' );
 			}
 		} finally {
 			// Release the single-flight sentinel regardless of
@@ -233,7 +233,7 @@ class WC_AI_Syndication_Llms_Txt {
 		$site_url    = home_url( '/' );
 		$description = html_entity_decode( wp_strip_all_tags( get_bloginfo( 'description' ) ), ENT_QUOTES, 'UTF-8' );
 		$currency    = get_woocommerce_currency();
-		$settings    = WC_AI_Syndication::get_settings();
+		$settings    = WC_AI_Storefront::get_settings();
 
 		$lines   = [];
 		$lines[] = "# {$site_name}";
@@ -396,7 +396,7 @@ class WC_AI_Syndication_Llms_Txt {
 		// in the merchant's Orders list, and unmapped vendors have a
 		// clear path to request canonicalization (the GitHub issue
 		// pointer below). We render from
-		// WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS so the
+		// WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS so the
 		// published table and the runtime canonicalizer can't drift —
 		// a single source of truth with one reader (the runtime) and
 		// one publisher (this generator).
@@ -408,7 +408,7 @@ class WC_AI_Syndication_Llms_Txt {
 		// multiple aliased hostnames (chatgpt.com + openai.com →
 		// ChatGPT).
 		$grouped = [];
-		foreach ( WC_AI_Syndication_UCP_Agent_Header::KNOWN_AGENT_HOSTS as $host => $brand ) {
+		foreach ( WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS as $host => $brand ) {
 			$grouped[ $brand ][] = $host;
 		}
 		ksort( $grouped );
@@ -494,7 +494,7 @@ class WC_AI_Syndication_Llms_Txt {
 		 * @param array $lines    The lines of Markdown content.
 		 * @param array $settings The AI syndication settings.
 		 */
-		$lines = apply_filters( 'wc_ai_syndication_llms_txt_lines', $lines, $settings );
+		$lines = apply_filters( 'wc_ai_storefront_llms_txt_lines', $lines, $settings );
 
 		return implode( "\n", $lines );
 	}
@@ -516,7 +516,7 @@ class WC_AI_Syndication_Llms_Txt {
 	 *
 	 * Probe sources:
 	 *   - `get_sitemap_url( 'index' )` — WP core canonical (5.5+)
-	 *   - `WC_AI_Syndication_Robots::COMMON_SITEMAP_PATHS` — common
+	 *   - `WC_AI_Storefront_Robots::COMMON_SITEMAP_PATHS` — common
 	 *     plugin paths (Jetpack, Yoast, Rank Math, etc.) appended
 	 *     to site URL
 	 *
@@ -546,7 +546,7 @@ class WC_AI_Syndication_Llms_Txt {
 
 		// Common plugin paths, absolute-URL form for llms.txt output.
 		$base = rtrim( $site_url, '/' );
-		foreach ( WC_AI_Syndication_Robots::COMMON_SITEMAP_PATHS as $path ) {
+		foreach ( WC_AI_Storefront_Robots::COMMON_SITEMAP_PATHS as $path ) {
 			$candidates[] = $base . $path;
 		}
 		$candidates = array_values( array_unique( $candidates ) );

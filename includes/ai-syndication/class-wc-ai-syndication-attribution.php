@@ -11,7 +11,7 @@
  * - utm_campaign = optional campaign name
  * - Custom: ai_session_id stored as order meta for conversation tracking
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.0.0
  */
 
@@ -20,17 +20,17 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Handles AI agent order attribution via WooCommerce Order Attribution.
  */
-class WC_AI_Syndication_Attribution {
+class WC_AI_Storefront_Attribution {
 
 	/**
 	 * Meta key for storing the AI session ID on orders.
 	 */
-	const SESSION_META_KEY = '_wc_ai_syndication_session_id';
+	const SESSION_META_KEY = '_wc_ai_storefront_session_id';
 
 	/**
 	 * Meta key for storing the AI agent name on orders.
 	 */
-	const AGENT_META_KEY = '_wc_ai_syndication_agent';
+	const AGENT_META_KEY = '_wc_ai_storefront_agent';
 
 	/**
 	 * The UTM medium value used to identify AI agent traffic.
@@ -102,7 +102,7 @@ class WC_AI_Syndication_Attribution {
 
 		$order->save();
 
-		WC_AI_Syndication_Logger::debug(
+		WC_AI_Storefront_Logger::debug(
 			'attribution captured — agent=%s session=%s',
 			$utm_source ? $utm_source : '(none)',
 			$session_id ? $session_id : '(none)'
@@ -116,7 +116,7 @@ class WC_AI_Syndication_Attribution {
 		 * @param string   $utm_source The AI agent identifier.
 		 * @param string   $session_id The AI session identifier.
 		 */
-		do_action( 'wc_ai_syndication_attribution_captured', $order, $utm_source, $session_id );
+		do_action( 'wc_ai_storefront_attribution_captured', $order, $utm_source, $session_id );
 	}
 
 	/**

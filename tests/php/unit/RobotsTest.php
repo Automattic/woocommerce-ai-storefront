@@ -1,12 +1,12 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_Robots.
+ * Tests for WC_AI_Storefront_Robots.
  *
  * Focuses on `sanitize_allowed_crawlers()` — the helper responsible for
  * purging stale crawler IDs that accumulate across plugin upgrades when
  * the canonical AI_CRAWLERS list rotates.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -42,17 +42,17 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	public function test_passes_through_known_crawlers(): void {
 		$input = [ 'GPTBot', 'ClaudeBot', 'PerplexityBot' ];
 
-		$result = WC_AI_Syndication_Robots::sanitize_allowed_crawlers( $input );
+		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
 		$this->assertSame( [ 'GPTBot', 'ClaudeBot', 'PerplexityBot' ], $result );
 	}
 
 	public function test_accepts_full_canonical_list(): void {
-		$input = WC_AI_Syndication_Robots::AI_CRAWLERS;
+		$input = WC_AI_Storefront_Robots::AI_CRAWLERS;
 
-		$result = WC_AI_Syndication_Robots::sanitize_allowed_crawlers( $input );
+		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
-		$this->assertSame( WC_AI_Syndication_Robots::AI_CRAWLERS, $result );
+		$this->assertSame( WC_AI_Storefront_Robots::AI_CRAWLERS, $result );
 	}
 
 	// ------------------------------------------------------------------
@@ -88,7 +88,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 			'Claude-User',     // kept
 		];
 
-		$result = WC_AI_Syndication_Robots::sanitize_allowed_crawlers( $input );
+		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
 		$this->assertSame(
 			[ 'GPTBot', 'ChatGPT-User', 'ClaudeBot', 'Bytespider', 'CCBot', 'Claude-User' ],
@@ -103,7 +103,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// reducer's `.filter()` / `.includes()` calls in the admin UI.
 		$input = [ 'Unknown', 'GPTBot', 'Unknown2', 'ClaudeBot' ];
 
-		$result = WC_AI_Syndication_Robots::sanitize_allowed_crawlers( $input );
+		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
 		$this->assertSame( [ 0, 1 ], array_keys( $result ) );
 	}
@@ -113,10 +113,10 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_returns_empty_for_non_array_input(): void {
-		$this->assertSame( [], WC_AI_Syndication_Robots::sanitize_allowed_crawlers( null ) );
-		$this->assertSame( [], WC_AI_Syndication_Robots::sanitize_allowed_crawlers( 'GPTBot' ) );
-		$this->assertSame( [], WC_AI_Syndication_Robots::sanitize_allowed_crawlers( 42 ) );
-		$this->assertSame( [], WC_AI_Syndication_Robots::sanitize_allowed_crawlers( false ) );
+		$this->assertSame( [], WC_AI_Storefront_Robots::sanitize_allowed_crawlers( null ) );
+		$this->assertSame( [], WC_AI_Storefront_Robots::sanitize_allowed_crawlers( 'GPTBot' ) );
+		$this->assertSame( [], WC_AI_Storefront_Robots::sanitize_allowed_crawlers( 42 ) );
+		$this->assertSame( [], WC_AI_Storefront_Robots::sanitize_allowed_crawlers( false ) );
 	}
 
 	public function test_strips_injected_garbage(): void {
@@ -128,7 +128,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 			'',
 		];
 
-		$result = WC_AI_Syndication_Robots::sanitize_allowed_crawlers( $input );
+		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
 		$this->assertSame( [ 'GPTBot', 'ClaudeBot' ], $result );
 	}
@@ -139,7 +139,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// trims, so these should still match the canonical constant.
 		$input = [ '  GPTBot  ', "ClaudeBot\n", "\tPerplexityBot" ];
 
-		$result = WC_AI_Syndication_Robots::sanitize_allowed_crawlers( $input );
+		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
 		$this->assertSame( [ 'GPTBot', 'ClaudeBot', 'PerplexityBot' ], $result );
 	}
@@ -148,7 +148,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// A merchant who unchecked everything ("block all crawlers") must
 		// be able to persist that state — the sanitizer cannot quietly
 		// refill with defaults.
-		$result = WC_AI_Syndication_Robots::sanitize_allowed_crawlers( [] );
+		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( [] );
 
 		$this->assertSame( [], $result );
 	}
@@ -161,7 +161,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// accidentally collapse a legitimate case we haven't foreseen.
 		$input = [ 'GPTBot', 'GPTBot', 'ClaudeBot' ];
 
-		$result = WC_AI_Syndication_Robots::sanitize_allowed_crawlers( $input );
+		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
 		$this->assertSame( [ 'GPTBot', 'GPTBot', 'ClaudeBot' ], $result );
 	}
@@ -176,7 +176,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	 * the generated robots.txt content with base WP output passed through.
 	 */
 	private function generate_robots_output( string $base = "User-agent: *\nDisallow: /wp-admin/\n" ): string {
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'enabled'          => 'yes',
 			'allowed_crawlers' => [ 'GPTBot', 'ClaudeBot' ],
 		];
@@ -214,7 +214,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 				'https://example.com/wp-sitemap.xml'
 		);
 
-		return ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules( $base, true );
+		return ( new WC_AI_Storefront_Robots() )->add_ai_crawler_rules( $base, true );
 	}
 
 	public function test_allows_ucp_rest_endpoint_for_every_crawler(): void {
@@ -268,7 +268,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 			'Crawl-delay should appear once per allowed crawler'
 		);
 		$this->assertStringContainsString(
-			'Crawl-delay: ' . WC_AI_Syndication_Robots::CRAWL_DELAY_SECONDS,
+			'Crawl-delay: ' . WC_AI_Storefront_Robots::CRAWL_DELAY_SECONDS,
 			$output
 		);
 	}
@@ -296,9 +296,9 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// syndication, robots.txt doesn't advertise the endpoints at
 		// all. Locks in the relationship between the enabled setting
 		// and public discoverability.
-		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
 
-		$output = ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules(
+		$output = ( new WC_AI_Storefront_Robots() )->add_ai_crawler_rules(
 			"User-agent: *\nDisallow: /wp-admin/\n",
 			true
 		);
@@ -311,12 +311,12 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// A merchant who flipped Reading → "Discourage search engines"
 		// doesn't want AI crawlers pointed at the catalog either.
 		// Tested via the $is_public parameter WP passes to the filter.
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'enabled'          => 'yes',
 			'allowed_crawlers' => [ 'GPTBot' ],
 		];
 
-		$output = ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules(
+		$output = ( new WC_AI_Storefront_Robots() )->add_ai_crawler_rules(
 			"User-agent: *\nDisallow: /wp-admin/\n",
 			false  // $is_public
 		);
@@ -369,7 +369,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 				'PetalBot',
 				'YandexBot',
 			],
-			WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS
+			WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
 		);
 	}
 
@@ -399,7 +399,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 				'CCBot',
 				'cohere-ai',
 			],
-			WC_AI_Syndication_Robots::TRAINING_CRAWLERS
+			WC_AI_Storefront_Robots::TRAINING_CRAWLERS
 		);
 	}
 
@@ -419,11 +419,11 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// Empty settings array → no prior configuration → commerce-safe
 		// default. Training crawlers must NOT be present so merchants
 		// get the protection-by-default posture out of the box.
-		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers( [] );
+		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers( [] );
 
-		$this->assertSame( WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS, $result );
+		$this->assertSame( WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS, $result );
 
-		foreach ( WC_AI_Syndication_Robots::TRAINING_CRAWLERS as $training_bot ) {
+		foreach ( WC_AI_Storefront_Robots::TRAINING_CRAWLERS as $training_bot ) {
 			$this->assertNotContains(
 				$training_bot,
 				$result,
@@ -438,7 +438,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// must return `[]`, not silently revert to the fresh-install
 		// default. Pre-fix code used `! empty()` which treated empty
 		// array identically to "key missing."
-		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
 			[ 'allowed_crawlers' => [] ]
 		);
 
@@ -454,7 +454,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// the resolver must return the stored list verbatim.
 		$stored = [ 'GPTBot', 'ClaudeBot', 'Claude-User' ];
 
-		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
 			[ 'allowed_crawlers' => $stored ]
 		);
 
@@ -467,7 +467,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// as "no crawlers" rather than crashing or filling with the
 		// fresh-install default (which would be wrong — the key IS
 		// present, it's just garbled).
-		$result = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
 			[ 'allowed_crawlers' => 'not-an-array' ]
 		);
 
@@ -479,8 +479,8 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// resurrects the `Gemini` entry, this fires. The entry
 		// never matched a real crawler; re-adding it would just
 		// emit a useless robots.txt directive again.
-		$this->assertNotContains( 'Gemini', WC_AI_Syndication_Robots::TRAINING_CRAWLERS );
-		$this->assertNotContains( 'Gemini', WC_AI_Syndication_Robots::AI_CRAWLERS );
+		$this->assertNotContains( 'Gemini', WC_AI_Storefront_Robots::TRAINING_CRAWLERS );
+		$this->assertNotContains( 'Gemini', WC_AI_Storefront_Robots::AI_CRAWLERS );
 	}
 
 	public function test_ai_crawlers_is_union_of_live_and_training(): void {
@@ -491,13 +491,13 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// `sanitize_allowed_crawlers()` (which intersects against
 		// AI_CRAWLERS) would reject valid category members.
 		$expected = array_merge(
-			WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS,
-			WC_AI_Syndication_Robots::TRAINING_CRAWLERS
+			WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS,
+			WC_AI_Storefront_Robots::TRAINING_CRAWLERS
 		);
 
 		$this->assertSame(
 			$expected,
-			WC_AI_Syndication_Robots::AI_CRAWLERS,
+			WC_AI_Storefront_Robots::AI_CRAWLERS,
 			'AI_CRAWLERS must equal LIVE_BROWSING_AGENTS + TRAINING_CRAWLERS in order.'
 		);
 	}
@@ -510,8 +510,8 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// (hiding the duplicate in the other group). Regression
 		// catches both side effects.
 		$intersection = array_intersect(
-			WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS,
-			WC_AI_Syndication_Robots::TRAINING_CRAWLERS
+			WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS,
+			WC_AI_Storefront_Robots::TRAINING_CRAWLERS
 		);
 
 		$this->assertSame( [], $intersection );
@@ -519,8 +519,8 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_ai_crawlers_has_no_duplicates(): void {
 		$this->assertSame(
-			count( WC_AI_Syndication_Robots::AI_CRAWLERS ),
-			count( array_unique( WC_AI_Syndication_Robots::AI_CRAWLERS ) ),
+			count( WC_AI_Storefront_Robots::AI_CRAWLERS ),
+			count( array_unique( WC_AI_Storefront_Robots::AI_CRAWLERS ) ),
 			'Duplicate crawler IDs would emit redundant User-agent rules in robots.txt.'
 		);
 	}
@@ -630,9 +630,9 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	public function test_no_opt_out_block_when_all_bots_allowed(): void {
 		// If the merchant has every known crawler checked, there's
 		// nothing to opt out — the opt-out block must not appear.
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'enabled'          => 'yes',
-			'allowed_crawlers' => WC_AI_Syndication_Robots::AI_CRAWLERS,
+			'allowed_crawlers' => WC_AI_Storefront_Robots::AI_CRAWLERS,
 		];
 		Functions\when( 'wc_get_page_permalink' )->alias(
 			static fn( string $page ): string => 'https://example.com/' . $page . '/'
@@ -646,7 +646,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		Functions\when( 'get_sitemap_url' )->justReturn( '' );
 
-		$output = ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules(
+		$output = ( new WC_AI_Storefront_Robots() )->add_ai_crawler_rules(
 			"User-agent: *\nDisallow: /wp-admin/\n",
 			true
 		);
@@ -662,7 +662,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// "Clear selection" merchant path: zero allowed crawlers.
 		// Every AI bot in AI_CRAWLERS should appear in the explicit
 		// opt-out block — strongest possible "no AI" signal.
-		WC_AI_Syndication::$test_settings = [
+		WC_AI_Storefront::$test_settings = [
 			'enabled'          => 'yes',
 			'allowed_crawlers' => [],
 		];
@@ -678,13 +678,13 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		Functions\when( 'get_sitemap_url' )->justReturn( '' );
 
-		$output = ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules(
+		$output = ( new WC_AI_Storefront_Robots() )->add_ai_crawler_rules(
 			"User-agent: *\nDisallow: /wp-admin/\n",
 			true
 		);
 
 		// Every AI bot appears exactly once in the opt-out group.
-		foreach ( WC_AI_Syndication_Robots::AI_CRAWLERS as $bot ) {
+		foreach ( WC_AI_Storefront_Robots::AI_CRAWLERS as $bot ) {
 			$this->assertStringContainsString(
 				"User-agent: {$bot}",
 				$output,
@@ -705,11 +705,11 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// Sanity: the gates for syndication-disabled / site-private
 		// cases already bail before the Allow directives. Same gate
 		// covers Sitemap Allow / opt-out blocks.
-		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 
 		$base   = "Sitemap: https://example.com/sitemap.xml\nUser-agent: *\n";
-		$output = ( new WC_AI_Syndication_Robots() )->add_ai_crawler_rules( $base, true );
+		$output = ( new WC_AI_Storefront_Robots() )->add_ai_crawler_rules( $base, true );
 
 		$this->assertStringNotContainsString( 'Allow: /sitemap.xml', $output );
 		$this->assertStringNotContainsString( 'Explicit opt-out', $output );
@@ -766,11 +766,11 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// Lock in the method's existence + signature so a future
 		// refactor that renames or removes it fires this test.
 		$this->assertTrue(
-			method_exists( WC_AI_Syndication_Robots::class, 'send_cors_headers' ),
+			method_exists( WC_AI_Storefront_Robots::class, 'send_cors_headers' ),
 			'send_cors_headers method should exist for the do_robotstxt hook'
 		);
 
-		$reflection = new ReflectionMethod( WC_AI_Syndication_Robots::class, 'send_cors_headers' );
+		$reflection = new ReflectionMethod( WC_AI_Storefront_Robots::class, 'send_cors_headers' );
 		$this->assertTrue( $reflection->isPublic() );
 		$this->assertSame(
 			0,

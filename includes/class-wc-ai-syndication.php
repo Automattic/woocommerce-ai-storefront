@@ -9,7 +9,7 @@
  * - Attribution via WooCommerce Order Attribution
  * - Cart synchronization via WooCommerce Store API
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.0.0
  */
 
@@ -18,7 +18,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Main plugin class (Singleton).
  */
-class WC_AI_Syndication {
+class WC_AI_Storefront {
 
 	/**
 	 * Option key for syndication settings.
@@ -28,7 +28,7 @@ class WC_AI_Syndication {
 	/**
 	 * Singleton instance.
 	 *
-	 * @var WC_AI_Syndication|null
+	 * @var WC_AI_Storefront|null
 	 */
 	private static $instance = null;
 
@@ -36,7 +36,7 @@ class WC_AI_Syndication {
 	/**
 	 * Returns the singleton instance.
 	 *
-	 * @return WC_AI_Syndication
+	 * @return WC_AI_Storefront
 	 */
 	public static function get_instance() {
 		if ( null === self::$instance ) {
@@ -56,7 +56,7 @@ class WC_AI_Syndication {
 		// The serve callbacks check the enabled setting and return 404 if off.
 		$this->register_rewrite_rules();
 
-		$cache_invalidator = new WC_AI_Syndication_Cache_Invalidator();
+		$cache_invalidator = new WC_AI_Storefront_Cache_Invalidator();
 		$cache_invalidator->init();
 
 		$this->init_components();
@@ -73,7 +73,7 @@ class WC_AI_Syndication {
 	 * Load class files.
 	 */
 	private function load_dependencies() {
-		$path = WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/ai-syndication/';
+		$path = WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-syndication/';
 
 		require_once $path . 'class-wc-ai-syndication-logger.php';
 		require_once $path . 'class-wc-ai-syndication-llms-txt.php';
@@ -94,7 +94,7 @@ class WC_AI_Syndication {
 		require_once $ucp_path . 'class-wc-ai-syndication-store-api-extension.php';
 		require_once $ucp_path . 'class-wc-ai-syndication-ucp-rest-controller.php';
 
-		require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/admin/class-wc-ai-syndication-admin-controller.php';
+		require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/admin/class-wc-ai-syndication-admin-controller.php';
 	}
 
 	/**
@@ -105,7 +105,7 @@ class WC_AI_Syndication {
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			// Only load attribution (to track even when syndication is paused)
 			// and admin controller (to allow enabling).
-			$attribution = new WC_AI_Syndication_Attribution();
+			$attribution = new WC_AI_Storefront_Attribution();
 			$attribution->init();
 			return;
 		}
@@ -113,25 +113,25 @@ class WC_AI_Syndication {
 		// Discovery Layer.
 		// Note: llms.txt and UCP rewrite rules are registered unconditionally
 		// in register_rewrite_rules(). Here we only init the remaining components.
-		$jsonld = new WC_AI_Syndication_JsonLd();
+		$jsonld = new WC_AI_Storefront_JsonLd();
 		$jsonld->init();
 
-		$robots = new WC_AI_Syndication_Robots();
+		$robots = new WC_AI_Storefront_Robots();
 		$robots->init();
 
 		// Attribution.
-		$attribution = new WC_AI_Syndication_Attribution();
+		$attribution = new WC_AI_Storefront_Attribution();
 		$attribution->init();
 
 		// Store API rate limiting for AI bots.
-		$rate_limiter = new WC_AI_Syndication_Store_Api_Rate_Limiter();
+		$rate_limiter = new WC_AI_Storefront_Store_Api_Rate_Limiter();
 		$rate_limiter->init();
 
 		// Store API product collection filter — enforces the merchant's
 		// `product_selection_mode` against every Store API product query
 		// (including UCP catalog routes, which dispatch via rest_do_request).
 		// See class docblock for scope rationale.
-		$store_api_filter = new WC_AI_Syndication_UCP_Store_API_Filter();
+		$store_api_filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$store_api_filter->init();
 
 		// Store API extension — surfaces WC core's `global_unique_id`
@@ -141,7 +141,7 @@ class WC_AI_Syndication {
 		// expose `global_unique_id` yet; see the filed enhancement
 		// request in woocommerce/woocommerce for the proposal to
 		// remove this extension once core picks it up.
-		$store_api_extension = new WC_AI_Syndication_Store_Api_Extension();
+		$store_api_extension = new WC_AI_Storefront_Store_Api_Extension();
 		$store_api_extension->init();
 	}
 
@@ -154,8 +154,8 @@ class WC_AI_Syndication {
 	 * check the enabled setting and return 404 when syndication is off.
 	 */
 	private function register_rewrite_rules() {
-		$llms_txt = new WC_AI_Syndication_Llms_Txt();
-		$ucp      = new WC_AI_Syndication_Ucp();
+		$llms_txt = new WC_AI_Storefront_Llms_Txt();
+		$ucp      = new WC_AI_Storefront_Ucp();
 
 		// Register rewrite rules on init (plugins_loaded fires before init).
 		add_action( 'init', [ $llms_txt, 'add_rewrite_rules' ] );
@@ -182,21 +182,21 @@ class WC_AI_Syndication {
 		// Flush rewrite rules and bust content caches when needed:
 		//
 		// 1. After a plugin code update (stored version on disk differs
-		//    from WC_AI_SYNDICATION_VERSION). This catches two install
+		//    from WC_AI_STOREFRONT_VERSION). This catches two install
 		//    paths: in-place zip uploads AND remote auto-updates. It is
 		//    critical that the activation hook does NOT pre-write the
 		//    stored version — if it did, this branch would never detect
 		//    a mismatch on in-place upgrades. See the comment on
-		//    wc_ai_syndication_activate() for the full history.
+		//    wc_ai_storefront_activate() for the full history.
 		//
 		// 2. After toggling syndication enabled/disabled (transient flag
 		//    set by the admin controller).
-		$needs_flush    = get_transient( 'wc_ai_syndication_flush_rewrite' );
+		$needs_flush    = get_transient( 'wc_ai_storefront_flush_rewrite' );
 		$stored_version = get_option( 'wc_ai_syndication_version', '' );
 
-		if ( $needs_flush || $stored_version !== WC_AI_SYNDICATION_VERSION ) {
-			delete_transient( 'wc_ai_syndication_flush_rewrite' );
-			update_option( 'wc_ai_syndication_version', WC_AI_SYNDICATION_VERSION );
+		if ( $needs_flush || $stored_version !== WC_AI_STOREFRONT_VERSION ) {
+			delete_transient( 'wc_ai_storefront_flush_rewrite' );
+			update_option( 'wc_ai_syndication_version', WC_AI_STOREFRONT_VERSION );
 
 			// Self-healing flush: register the rules IMMEDIATELY (at the
 			// current `plugins_loaded` hook, which is before WordPress
@@ -227,8 +227,8 @@ class WC_AI_Syndication {
 
 			// Bust content caches on code updates so fixes to generation
 			// logic (e.g., entity encoding) take effect immediately.
-			delete_transient( WC_AI_Syndication_Llms_Txt::CACHE_KEY );
-			delete_transient( WC_AI_Syndication_Ucp::CACHE_KEY );
+			delete_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY );
+			delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
 		}
 	}
 
@@ -236,7 +236,7 @@ class WC_AI_Syndication {
 	 * Register REST API routes.
 	 */
 	public function register_rest_routes() {
-		$admin_controller = new WC_AI_Syndication_Admin_Controller();
+		$admin_controller = new WC_AI_Storefront_Admin_Controller();
 		$admin_controller->register_routes();
 
 		// UCP REST adapter routes at /wp-json/wc/ucp/v1/*. Registered
@@ -244,7 +244,7 @@ class WC_AI_Syndication {
 		// return an appropriate UCP error envelope when syndication is
 		// off, rather than 404 from missing registration. Matches the
 		// pattern used for llms.txt / UCP manifest rewrite rules.
-		$ucp_rest_controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$ucp_rest_controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$ucp_rest_controller->register_routes();
 	}
 
@@ -282,17 +282,17 @@ class WC_AI_Syndication {
 			return;
 		}
 
-		$asset_file = WC_AI_SYNDICATION_PLUGIN_PATH . '/build/ai-syndication-settings.asset.php';
+		$asset_file = WC_AI_STOREFRONT_PLUGIN_PATH . '/build/ai-syndication-settings.asset.php';
 		$asset      = file_exists( $asset_file )
 			? require $asset_file
 			: [
 				'dependencies' => [ 'wp-element', 'wp-components', 'wp-api-fetch', 'wp-data', 'wp-i18n' ],
-				'version'      => WC_AI_SYNDICATION_VERSION,
+				'version'      => WC_AI_STOREFRONT_VERSION,
 			];
 
 		wp_register_script(
 			'wc-ai-syndication-settings',
-			WC_AI_SYNDICATION_PLUGIN_URL . '/build/ai-syndication-settings.js',
+			WC_AI_STOREFRONT_PLUGIN_URL . '/build/ai-syndication-settings.js',
 			$asset['dependencies'],
 			$asset['version'],
 			true
@@ -307,7 +307,7 @@ class WC_AI_Syndication {
 		// change would otherwise not invalidate merchants' browser
 		// caches. Hash the file separately via `md5_file()` so the
 		// registered version tracks the file's actual contents.
-		$css_path = WC_AI_SYNDICATION_PLUGIN_PATH . '/build/ai-syndication-settings.css';
+		$css_path = WC_AI_STOREFRONT_PLUGIN_PATH . '/build/ai-syndication-settings.css';
 		if ( file_exists( $css_path ) ) {
 			// Three-tier fallback chain for the cache-bust version:
 			//   1. md5_file() content hash (normal path)
@@ -343,7 +343,7 @@ class WC_AI_Syndication {
 			}
 			wp_register_style(
 				'wc-ai-syndication-settings',
-				WC_AI_SYNDICATION_PLUGIN_URL . '/build/ai-syndication-settings.css',
+				WC_AI_STOREFRONT_PLUGIN_URL . '/build/ai-syndication-settings.css',
 				[ 'wp-components' ],
 				$css_version
 			);
@@ -360,7 +360,7 @@ class WC_AI_Syndication {
 				'llmsTxtUrl' => home_url( '/llms.txt' ),
 				'ucpUrl'     => home_url( '/.well-known/ucp' ),
 				'ordersUrl'  => admin_url( 'admin.php?page=wc-orders' ),
-				'version'    => WC_AI_SYNDICATION_VERSION,
+				'version'    => WC_AI_STOREFRONT_VERSION,
 			]
 		);
 
@@ -413,9 +413,9 @@ class WC_AI_Syndication {
 		// the three-branch resolution (fresh install vs. stored-empty
 		// vs. stored-list) is defined in one place and unit-tested
 		// independently of this settings aggregator. See
-		// `WC_AI_Syndication_Robots::resolve_allowed_crawlers()` for
+		// `WC_AI_Storefront_Robots::resolve_allowed_crawlers()` for
 		// the decision table.
-		$merged['allowed_crawlers'] = WC_AI_Syndication_Robots::resolve_allowed_crawlers(
+		$merged['allowed_crawlers'] = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
 			is_array( $settings ) ? $settings : []
 		);
 
@@ -444,7 +444,7 @@ class WC_AI_Syndication {
 			'selected_categories'    => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
 			'selected_products'      => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
 			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
-			'allowed_crawlers'       => WC_AI_Syndication_Robots::sanitize_allowed_crawlers(
+			'allowed_crawlers'       => WC_AI_Storefront_Robots::sanitize_allowed_crawlers(
 				// Fallback to live-browsing only (matching the
 				// fresh-install default from get_settings) if the
 				// caller invoked update_settings without specifying
@@ -454,7 +454,7 @@ class WC_AI_Syndication {
 				// the commerce-safer default rather than re-enabling
 				// every training crawler the merchant may have
 				// explicitly unchecked.
-				$merged['allowed_crawlers'] ?? WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS
+				$merged['allowed_crawlers'] ?? WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
 			),
 		];
 

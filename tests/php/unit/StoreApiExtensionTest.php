@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_Store_Api_Extension.
+ * Tests for WC_AI_Storefront_Store_Api_Extension.
  *
  * The extension surfaces WC core's `global_unique_id` product field
  * (GTIN/UPC/EAN/MPN/ISBN) on the Store API `/products` response
@@ -12,7 +12,7 @@
  * WC_Product field server-side and emits a typed `{type, value}`
  * pair that our UCP variant translator consumes.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -21,7 +21,7 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
-	private WC_AI_Syndication_Store_Api_Extension $extension;
+	private WC_AI_Storefront_Store_Api_Extension $extension;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -29,7 +29,7 @@ class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 		// i18n functions are stubbed as passthroughs — the extension uses
 		// __() for schema descriptions, but those strings aren't under test.
 		Monkey\Functions\when( '__' )->returnArg();
-		$this->extension = new WC_AI_Syndication_Store_Api_Extension();
+		$this->extension = new WC_AI_Storefront_Store_Api_Extension();
 	}
 
 	protected function tearDown(): void {
@@ -53,7 +53,7 @@ class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 		// some response shapes and shouldn't contain dots.
 		$this->assertSame(
 			'com-woocommerce-ai-syndication',
-			WC_AI_Syndication_Store_Api_Extension::NAMESPACE
+			WC_AI_Storefront_Store_Api_Extension::NAMESPACE
 		);
 	}
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_UCP_REST_Controller::handle_checkout_sessions_create.
+ * Tests for WC_AI_Storefront_UCP_REST_Controller::handle_checkout_sessions_create.
  *
  * The checkout-sessions handler is the most distinctive of the three:
  * stateless, redirect-only, with per-line-item validation and a
@@ -19,7 +19,7 @@
  *   - Totals computation, currency, session-id format
  *   - Round-trip-preserving ucp_id echo in line_items
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -42,7 +42,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		// Reset settings between tests so disabled-state tests don't
 		// leak. Stub defaults to `enabled => yes`.
-		WC_AI_Syndication::$test_settings = [];
+		WC_AI_Storefront::$test_settings = [];
 
 		$this->fake_store_api = [];
 
@@ -168,7 +168,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	 * @return array{data: array<string, mixed>, status: int}
 	 */
 	private function call_handler( array $body, ?string $ucp_agent = null ): array {
-		$controller = new WC_AI_Syndication_UCP_REST_Controller();
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_checkout_sessions_create(
 			$this->checkout_request( $body, $ucp_agent )
 		);
@@ -752,7 +752,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertStringContainsString(
-			'utm_source=' . WC_AI_Syndication_UCP_Agent_Header::FALLBACK_SOURCE,
+			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
 			$result['data']['continue_url']
 		);
 	}
@@ -767,7 +767,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertStringContainsString(
-			'utm_source=' . WC_AI_Syndication_UCP_Agent_Header::FALLBACK_SOURCE,
+			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
 			$result['data']['continue_url']
 		);
 	}
@@ -936,7 +936,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// to risk overflow long before we approach that ceiling.
 		$this->seed_simple_product( 1, 1000 );
 
-		$cap    = WC_AI_Syndication_UCP_REST_Controller::MAX_QUANTITY_PER_LINE_ITEM;
+		$cap    = WC_AI_Storefront_UCP_REST_Controller::MAX_QUANTITY_PER_LINE_ITEM;
 		$result = $this->call_handler(
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $cap + 1 ] ] ]
 		);
@@ -950,7 +950,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// Off-by-one: exactly MAX_QUANTITY_PER_LINE_ITEM should work.
 		$this->seed_simple_product( 1, 100 );
 
-		$cap    = WC_AI_Syndication_UCP_REST_Controller::MAX_QUANTITY_PER_LINE_ITEM;
+		$cap    = WC_AI_Storefront_UCP_REST_Controller::MAX_QUANTITY_PER_LINE_ITEM;
 		$result = $this->call_handler(
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $cap ] ] ]
 		);
@@ -965,7 +965,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	public function test_rejects_line_items_array_exceeding_limit(): void {
 		// Same DoS class as the ids cap on /catalog/lookup: each
 		// line item drives internal product-validation dispatches.
-		$cap   = WC_AI_Syndication_UCP_REST_Controller::MAX_LINE_ITEMS_PER_CHECKOUT;
+		$cap   = WC_AI_Storefront_UCP_REST_Controller::MAX_LINE_ITEMS_PER_CHECKOUT;
 		$items = [];
 		for ( $i = 0; $i < $cap + 1; $i++ ) {
 			$items[] = [ 'item' => [ 'id' => 'prod_' . $i ], 'quantity' => 1 ];
@@ -977,7 +977,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	public function test_disabled_syndication_returns_503_ucp_disabled(): void {
 		// Checkout is the highest-stakes handler to leave serving when
 		// syndication is paused — lock in the gate.
-		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
 
 		$this->assert_checkout_error(
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
@@ -1340,7 +1340,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	public function test_minimum_order_not_met_blocks_redirect(): void {
 		// Filter hook returns 5000 (minor units) — merchant requires
 		// $50 minimum. Agent sends 1 item at $25 → below threshold.
-		$this->stub_apply_filters_for( 'wc_ai_syndication_minimum_order_amount', 5000 );
+		$this->stub_apply_filters_for( 'wc_ai_storefront_minimum_order_amount', 5000 );
 
 		$this->seed_simple_product( 111, 2500 );
 
@@ -1361,7 +1361,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// visible so the agent can show the user "you have $25,
 		// need $50 — add more items." A regression that zeroed
 		// line_items or totals on this path would break that UX.
-		$this->stub_apply_filters_for( 'wc_ai_syndication_minimum_order_amount', 5000 );
+		$this->stub_apply_filters_for( 'wc_ai_storefront_minimum_order_amount', 5000 );
 
 		$this->seed_simple_product( 111, 2500 );
 
@@ -1388,7 +1388,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// gates enforcement on positive values only. Documents
 		// the cast + guard behavior so a future change that drops
 		// the `> 0` check would be caught.
-		$this->stub_apply_filters_for( 'wc_ai_syndication_minimum_order_amount', -500 );
+		$this->stub_apply_filters_for( 'wc_ai_storefront_minimum_order_amount', -500 );
 
 		$this->seed_simple_product( 111, 100 );
 
@@ -1402,7 +1402,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_minimum_order_met_allows_redirect(): void {
-		$this->stub_apply_filters_for( 'wc_ai_syndication_minimum_order_amount', 5000 );
+		$this->stub_apply_filters_for( 'wc_ai_storefront_minimum_order_amount', 5000 );
 
 		$this->seed_simple_product( 111, 2500 );
 
@@ -1432,7 +1432,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_handoff_message_filter_overrides_default(): void {
 		$this->stub_apply_filters_for(
-			'wc_ai_syndication_checkout_handoff_message',
+			'wc_ai_storefront_checkout_handoff_message',
 			'Review & secure payment at Acme Store.'
 		);
 
@@ -1458,7 +1458,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$captured_locale = null;
 		Functions\when( 'apply_filters' )->alias(
 			function ( string $hook, $default, $context = null ) use ( &$captured_locale ) {
-				if ( 'wc_ai_syndication_checkout_handoff_message' === $hook && is_array( $context ) ) {
+				if ( 'wc_ai_storefront_checkout_handoff_message' === $hook && is_array( $context ) ) {
 					$captured_locale = $context['locale'] ?? null;
 				}
 				return $default;
@@ -1487,7 +1487,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$captured_locale = null;
 		Functions\when( 'apply_filters' )->alias(
 			function ( string $hook, $default, $context = null ) use ( &$captured_locale ) {
-				if ( 'wc_ai_syndication_checkout_handoff_message' === $hook && is_array( $context ) ) {
+				if ( 'wc_ai_storefront_checkout_handoff_message' === $hook && is_array( $context ) ) {
 					$captured_locale = $context['locale'] ?? null;
 				}
 				return $default;
@@ -1514,7 +1514,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$captured_locale = null;
 		Functions\when( 'apply_filters' )->alias(
 			function ( string $hook, $default, $context = null ) use ( &$captured_locale ) {
-				if ( 'wc_ai_syndication_checkout_handoff_message' === $hook && is_array( $context ) ) {
+				if ( 'wc_ai_storefront_checkout_handoff_message' === $hook && is_array( $context ) ) {
 					$captured_locale = $context['locale'] ?? null;
 				}
 				return $default;
@@ -1542,7 +1542,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// defense against misbehaving callbacks, not a supported
 		// alternative return type. Test sends null; asserts the
 		// default English message survives to the response.
-		$this->stub_apply_filters_for( 'wc_ai_syndication_checkout_handoff_message', null );
+		$this->stub_apply_filters_for( 'wc_ai_storefront_checkout_handoff_message', null );
 
 		$this->seed_simple_product( 111, 2500 );
 
@@ -1571,7 +1571,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// `(string)` cast pattern. Our safe-coercion path returns
 		// the default for this instead of pollute the log.
 		$this->stub_apply_filters_for(
-			'wc_ai_syndication_checkout_handoff_message',
+			'wc_ai_storefront_checkout_handoff_message',
 			[ 'oops', 'array', 'return' ]
 		);
 
@@ -1655,7 +1655,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			$captured_locale = null;
 			Functions\when( 'apply_filters' )->alias(
 				function ( string $hook, $default, $context = null ) use ( &$captured_locale ) {
-					if ( 'wc_ai_syndication_checkout_handoff_message' === $hook && is_array( $context ) ) {
+					if ( 'wc_ai_storefront_checkout_handoff_message' === $hook && is_array( $context ) ) {
 						$captured_locale = $context['locale'] ?? null;
 					}
 					return $default;

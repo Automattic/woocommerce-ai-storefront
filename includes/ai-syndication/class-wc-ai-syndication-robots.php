@@ -5,7 +5,7 @@
  * Updates robots.txt to welcome AI crawlers and point them
  * to the llms.txt and UCP manifest.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.0.0
  */
 
@@ -14,7 +14,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Manages robots.txt directives for AI crawlers.
  */
-class WC_AI_Syndication_Robots {
+class WC_AI_Storefront_Robots {
 
 	/**
 	 * Live browsing / user-initiated AI agents.
@@ -378,7 +378,7 @@ class WC_AI_Syndication_Robots {
 	 * @return string Modified robots.txt content.
 	 */
 	public function add_ai_crawler_rules( $output, $is_public ) {
-		$settings = WC_AI_Syndication::get_settings();
+		$settings = WC_AI_Storefront::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			return $output;
 		}
@@ -533,7 +533,7 @@ class WC_AI_Syndication_Robots {
 		 * @param string $output   The robots.txt content.
 		 * @param array  $settings The AI syndication settings.
 		 */
-		return apply_filters( 'wc_ai_syndication_robots_txt', $output, $settings );
+		return apply_filters( 'wc_ai_storefront_robots_txt', $output, $settings );
 	}
 
 	/**

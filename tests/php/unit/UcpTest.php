@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_Ucp.
+ * Tests for WC_AI_Storefront_Ucp.
  *
  * Pins the UCP discovery profile manifest shape against the official
  * business_profile schema at:
@@ -19,7 +19,7 @@
  *      Permissive by design (UCP allows it), but agents that learn
  *      our namespace depend on the shape.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -29,12 +29,12 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class UcpTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
-	private WC_AI_Syndication_Ucp $ucp;
+	private WC_AI_Storefront_Ucp $ucp;
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->ucp = new WC_AI_Syndication_Ucp();
+		$this->ucp = new WC_AI_Storefront_Ucp();
 
 		Functions\when( 'home_url' )->alias(
 			static fn( $path = '' ) => 'https://example.com' . ( $path ?: '/' )
@@ -105,7 +105,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertEquals(
-			WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			$manifest['ucp']['version']
 		);
 	}
@@ -214,7 +214,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertStringStartsWith(
-			'https://ucp.dev/' . WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			'https://ucp.dev/' . WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			$binding['spec']
 		);
 		$this->assertStringEndsWith( '/specification/overview', $binding['spec'] );
@@ -232,7 +232,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayHasKey( 'schema', $binding );
 		$this->assertStringStartsWith(
-			'https://ucp.dev/' . WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+			'https://ucp.dev/' . WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 			$binding['schema']
 		);
 		$this->assertStringEndsWith( '.openapi.json', $binding['schema'] );
@@ -355,7 +355,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 			$this->assertIsArray( $bindings, "$cap should be an array" );
 			$this->assertCount( 1, $bindings, "$cap should declare exactly one binding" );
 			$this->assertEquals(
-				WC_AI_Syndication_Ucp::PROTOCOL_VERSION,
+				WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
 				$bindings[0]['version'],
 				"$cap binding version should match plugin PROTOCOL_VERSION"
 			);
@@ -560,7 +560,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// below and validated by a separate test.
 		$manifest = $this->ucp->generate_manifest( [] );
 		$service  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
-		$version  = WC_AI_Syndication_Ucp::PROTOCOL_VERSION;
+		$version  = WC_AI_Storefront_Ucp::PROTOCOL_VERSION;
 
 		// Service-level URLs.
 		$this->assertStringContainsString( "/{$version}/", $service['spec'] );
@@ -702,13 +702,13 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_manifest_is_filterable(): void {
 		// The filter preserves the v1 signature: `apply_filters(
-		// 'wc_ai_syndication_ucp_manifest', $manifest, $settings )`.
+		// 'wc_ai_storefront_ucp_manifest', $manifest, $settings )`.
 		// Third parties can extend the manifest (e.g., a plugin that
 		// adds Payment Token Exchange would inject a payment handler
 		// under ucp.payment_handlers).
 		Functions\when( 'apply_filters' )->alias(
 			static function ( $hook, $value ) {
-				if ( 'wc_ai_syndication_ucp_manifest' === $hook ) {
+				if ( 'wc_ai_storefront_ucp_manifest' === $hook ) {
 					$value['ucp']['custom_key'] = 'extended';
 				}
 				return $value;

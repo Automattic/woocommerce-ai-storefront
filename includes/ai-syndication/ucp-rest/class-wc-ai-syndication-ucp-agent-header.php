@@ -17,7 +17,7 @@
  * Full RFC 8941 Dictionary parsing is deferred until we need
  * additional fields from the header.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.3.0
  */
 
@@ -26,7 +26,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Parses the UCP-Agent request header.
  */
-class WC_AI_Syndication_UCP_Agent_Header {
+class WC_AI_Storefront_UCP_Agent_Header {
 
 	/**
 	 * Value used as utm_source when no UCP-Agent header is present
@@ -47,7 +47,7 @@ class WC_AI_Syndication_UCP_Agent_Header {
 	 *
 	 * Naming convention: short, brand-clean, merchant-readable.
 	 * Matches the spirit of the Discovery crawler list
-	 * (`WC_AI_Syndication_Robots::LIVE_BROWSING_AGENTS`) but drops the
+	 * (`WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS`) but drops the
 	 * UA-style suffixes (`-User`, `-SearchBot`) — those signal crawler
 	 * *variant* in robots.txt, which is noise in an Origin column where
 	 * the merchant just wants to know "which AI sent this order."

@@ -22,10 +22,10 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'WC_AI_SYNDICATION_VERSION', '2.0.0' );
-define( 'WC_AI_SYNDICATION_PLUGIN_FILE', __FILE__ );
-define( 'WC_AI_SYNDICATION_PLUGIN_PATH', untrailingslashit( plugin_dir_path( __FILE__ ) ) );
-define( 'WC_AI_SYNDICATION_PLUGIN_URL', untrailingslashit( plugin_dir_url( __FILE__ ) ) );
+define( 'WC_AI_STOREFRONT_VERSION', '2.0.0' );
+define( 'WC_AI_STOREFRONT_PLUGIN_FILE', __FILE__ );
+define( 'WC_AI_STOREFRONT_PLUGIN_PATH', untrailingslashit( plugin_dir_path( __FILE__ ) ) );
+define( 'WC_AI_STOREFRONT_PLUGIN_URL', untrailingslashit( plugin_dir_url( __FILE__ ) ) );
 
 /**
  * Declare compatibility with WooCommerce features.
@@ -47,16 +47,16 @@ add_action(
 /**
  * Initialize the plugin after WooCommerce is loaded.
  */
-function wc_ai_syndication_init() {
+function wc_ai_storefront_init() {
 	if ( ! class_exists( 'WooCommerce' ) ) {
-		add_action( 'admin_notices', 'wc_ai_syndication_missing_wc_notice' );
+		add_action( 'admin_notices', 'wc_ai_storefront_missing_wc_notice' );
 		return;
 	}
 
-	require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/class-wc-ai-syndication.php';
-	WC_AI_Syndication::get_instance();
+	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/class-wc-ai-syndication.php';
+	WC_AI_Storefront::get_instance();
 }
-add_action( 'plugins_loaded', 'wc_ai_syndication_init' );
+add_action( 'plugins_loaded', 'wc_ai_storefront_init' );
 
 /**
  * Register the self-updater against our GitHub release feed.
@@ -69,19 +69,19 @@ add_action( 'plugins_loaded', 'wc_ai_syndication_init' );
  * / cron), so skipping front-end requests avoids loading the PUC
  * library on every pageview.
  */
-function wc_ai_syndication_init_updater() {
+function wc_ai_storefront_init_updater() {
 	if ( ! is_admin() && ! ( defined( 'WP_CLI' ) && WP_CLI ) && ! wp_doing_cron() ) {
 		return;
 	}
-	require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/class-wc-ai-syndication-updater.php';
-	WC_AI_Syndication_Updater::init();
+	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/class-wc-ai-syndication-updater.php';
+	WC_AI_Storefront_Updater::init();
 }
-add_action( 'init', 'wc_ai_syndication_init_updater' );
+add_action( 'init', 'wc_ai_storefront_init_updater' );
 
 /**
  * Admin notice when WooCommerce is not active.
  */
-function wc_ai_syndication_missing_wc_notice() {
+function wc_ai_storefront_missing_wc_notice() {
 	echo '<div class="error"><p>';
 	echo esc_html__( 'WooCommerce AI Storefront requires WooCommerce to be installed and active.', 'woocommerce-ai-storefront' );
 	echo '</p></div>';
@@ -93,7 +93,7 @@ function wc_ai_syndication_missing_wc_notice() {
  * This runs on fresh activation AND on in-place upgrades (WordPress
  * fires the activation hook when the zip is uploaded over an existing
  * install). We intentionally do NOT update the stored version option
- * here — that's handled by `WC_AI_Syndication::register_rewrite_rules()`
+ * here — that's handled by `WC_AI_Storefront::register_rewrite_rules()`
  * which detects the version mismatch, clears content caches, and
  * then writes the new version. Writing the version here would
  * short-circuit that branch: the boot-time check would see a matching
@@ -104,28 +104,28 @@ function wc_ai_syndication_missing_wc_notice() {
  * in-place zip upgrades; see the "old UCP file served after upgrade"
  * diagnosis in the 1.2.0 work.
  */
-function wc_ai_syndication_activate() {
+function wc_ai_storefront_activate() {
 	if ( ! class_exists( 'WooCommerce' ) ) {
 		return;
 	}
 
-	require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/class-wc-ai-syndication.php';
-	$instance = WC_AI_Syndication::get_instance();
+	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/class-wc-ai-syndication.php';
+	$instance = WC_AI_Storefront::get_instance();
 	$instance->init_components();
 
 	flush_rewrite_rules();
 }
-register_activation_hook( __FILE__, 'wc_ai_syndication_activate' );
+register_activation_hook( __FILE__, 'wc_ai_storefront_activate' );
 
 /**
  * Clean up on deactivation.
  */
-function wc_ai_syndication_deactivate() {
+function wc_ai_storefront_deactivate() {
 	flush_rewrite_rules();
 
 	// Clean up cache and scheduled events.
-	require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/ai-syndication/class-wc-ai-syndication-llms-txt.php';
-	require_once WC_AI_SYNDICATION_PLUGIN_PATH . '/includes/ai-syndication/class-wc-ai-syndication-cache-invalidator.php';
-	WC_AI_Syndication_Cache_Invalidator::deactivate();
+	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-syndication/class-wc-ai-syndication-llms-txt.php';
+	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-syndication/class-wc-ai-syndication-cache-invalidator.php';
+	WC_AI_Storefront_Cache_Invalidator::deactivate();
 }
-register_deactivation_hook( __FILE__, 'wc_ai_syndication_deactivate' );
+register_deactivation_hook( __FILE__, 'wc_ai_storefront_deactivate' );

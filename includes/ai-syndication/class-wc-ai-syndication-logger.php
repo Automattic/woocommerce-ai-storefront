@@ -4,12 +4,12 @@
  *
  * Off by default. Enable for a single request by filter:
  *
- *     add_filter( 'wc_ai_syndication_debug', '__return_true' );
+ *     add_filter( 'wc_ai_storefront_debug', '__return_true' );
  *
  * Or conditionally (e.g. only for admins):
  *
  *     add_filter(
- *         'wc_ai_syndication_debug',
+ *         'wc_ai_storefront_debug',
  *         fn() => current_user_can( 'manage_options' )
  *     );
  *
@@ -22,7 +22,7 @@
  * `Logger::debug()` calls sprinkled throughout without paying
  * the cost when logging is off.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.2.0
  */
 
@@ -33,13 +33,13 @@ defined( 'ABSPATH' ) || exit;
  *
  * Usage:
  *
- *     WC_AI_Syndication_Logger::debug( 'llms.txt cache miss — regenerating' );
- *     WC_AI_Syndication_Logger::debug( 'rate-limit fingerprint matched: %s', $bot );
+ *     WC_AI_Storefront_Logger::debug( 'llms.txt cache miss — regenerating' );
+ *     WC_AI_Storefront_Logger::debug( 'rate-limit fingerprint matched: %s', $bot );
  */
-class WC_AI_Syndication_Logger {
+class WC_AI_Storefront_Logger {
 
 	/**
-	 * Cached result of `apply_filters( 'wc_ai_syndication_debug' )`.
+	 * Cached result of `apply_filters( 'wc_ai_storefront_debug' )`.
 	 * `null` means "not computed yet this request".
 	 *
 	 * @var bool|null
@@ -63,7 +63,7 @@ class WC_AI_Syndication_Logger {
 			 * @since 1.2.0
 			 * @param bool $enabled Whether to emit debug logs.
 			 */
-			self::$is_enabled = (bool) apply_filters( 'wc_ai_syndication_debug', false );
+			self::$is_enabled = (bool) apply_filters( 'wc_ai_storefront_debug', false );
 		}
 		return self::$is_enabled;
 	}

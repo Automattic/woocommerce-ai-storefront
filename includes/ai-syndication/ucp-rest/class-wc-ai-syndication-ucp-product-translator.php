@@ -14,7 +14,7 @@
  * products emit one default variant, variable products emit one
  * per WC variation.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  * @since 1.3.0
  */
 
@@ -23,7 +23,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Translates WooCommerce Store API product responses into UCP product objects.
  */
-class WC_AI_Syndication_UCP_Product_Translator {
+class WC_AI_Storefront_UCP_Product_Translator {
 
 	/**
 	 * UCP product ID prefix. `prod_{wc_id}` distinguishes product IDs
@@ -202,12 +202,12 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	 *
 	 *   - Caller supplied `$wc_variations` (variable product, pre-fetched
 	 *     by the REST controller): emit one real UCP variant per entry,
-	 *     translated via `WC_AI_Syndication_UCP_Variant_Translator::translate()`.
+	 *     translated via `WC_AI_Storefront_UCP_Variant_Translator::translate()`.
 	 *     Variant IDs are `var_{variation_id}` (no `_default` suffix — that
 	 *     marker is reserved for synthesized placeholders).
 	 *   - `$wc_variations` is empty (simple product, or variable product
 	 *     where caller did not pre-fetch): emit one synthesized default
-	 *     variant via `WC_AI_Syndication_UCP_Variant_Translator::synthesize_default()`
+	 *     variant via `WC_AI_Storefront_UCP_Variant_Translator::synthesize_default()`
 	 *     so the minItems:1 constraint is still satisfied. This is the safety-
 	 *     net path — callers emitting a variable product without variations
 	 *     get a defensive fallback rather than a schema-violating empty
@@ -221,13 +221,13 @@ class WC_AI_Syndication_UCP_Product_Translator {
 		if ( ! empty( $wc_variations ) ) {
 			$variants = [];
 			foreach ( $wc_variations as $wc_variation ) {
-				$variants[] = WC_AI_Syndication_UCP_Variant_Translator::translate( $wc_variation );
+				$variants[] = WC_AI_Storefront_UCP_Variant_Translator::translate( $wc_variation );
 			}
 			return $variants;
 		}
 
 		return [
-			WC_AI_Syndication_UCP_Variant_Translator::synthesize_default( $wc_product ),
+			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product ),
 		];
 	}
 
@@ -236,7 +236,7 @@ class WC_AI_Syndication_UCP_Product_Translator {
 	 * API product response.
 	 *
 	 * Source location: our own Store API extension (registered in
-	 * `WC_AI_Syndication_Store_Api_Extension`). WC 9.5+ strips
+	 * `WC_AI_Storefront_Store_Api_Extension`). WC 9.5+ strips
 	 * `date_created` / `date_modified` from Store API product
 	 * responses by default — verified against a live catalog where
 	 * not a single product had those keys at the top level. Our
@@ -263,7 +263,7 @@ class WC_AI_Syndication_UCP_Product_Translator {
 		// the dotted UCP-level namespace (`com.woocommerce.ai_syndication`).
 		// Pulled from the extension class constant so the two surfaces
 		// stay linked — the extension class is `require_once`'d
-		// during `WC_AI_Syndication::load_dependencies()` at plugin
+		// during `WC_AI_Storefront::load_dependencies()` at plugin
 		// bootstrap (this plugin doesn't use PSR-4 autoload), so
 		// referencing the constant here doesn't introduce any new
 		// load step; the class is already resolved by the time any
@@ -279,7 +279,7 @@ class WC_AI_Syndication_UCP_Product_Translator {
 		$extensions = $wc_product['extensions'] ?? [];
 		$ext        = [];
 		if ( is_array( $extensions ) ) {
-			$namespace = WC_AI_Syndication_Store_Api_Extension::NAMESPACE;
+			$namespace = WC_AI_Storefront_Store_Api_Extension::NAMESPACE;
 			$candidate = $extensions[ $namespace ] ?? [];
 			if ( is_array( $candidate ) ) {
 				$ext = $candidate;

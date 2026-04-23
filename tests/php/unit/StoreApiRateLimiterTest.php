@@ -1,8 +1,8 @@
 <?php
 /**
- * Tests for WC_AI_Syndication_Store_Api_Rate_Limiter.
+ * Tests for WC_AI_Storefront_Store_Api_Rate_Limiter.
  *
- * @package WooCommerce_AI_Syndication
+ * @package WooCommerce_AI_Storefront
  */
 
 use Brain\Monkey;
@@ -12,12 +12,12 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
-	private WC_AI_Syndication_Store_Api_Rate_Limiter $limiter;
+	private WC_AI_Storefront_Store_Api_Rate_Limiter $limiter;
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->limiter = new WC_AI_Syndication_Store_Api_Rate_Limiter();
+		$this->limiter = new WC_AI_Storefront_Store_Api_Rate_Limiter();
 	}
 
 	protected function tearDown(): void {
@@ -30,7 +30,7 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_enables_rate_limiting_when_syndication_active(): void {
-		WC_AI_Syndication::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 50 ];
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 50 ];
 
 		$result = $this->limiter->configure_rate_limits( [ 'enabled' => false ] );
 
@@ -41,7 +41,7 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_returns_default_options_when_syndication_disabled(): void {
-		WC_AI_Syndication::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
 
 		$defaults = [ 'enabled' => false, 'limit' => 25 ];
 		$result   = $this->limiter->configure_rate_limits( $defaults );
@@ -50,7 +50,7 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_uses_default_rpm_when_not_configured(): void {
-		WC_AI_Syndication::$test_settings = [ 'enabled' => 'yes' ];
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
 
 		$result = $this->limiter->configure_rate_limits( [] );
 
