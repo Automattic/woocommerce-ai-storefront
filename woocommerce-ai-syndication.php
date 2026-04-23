@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: WooCommerce AI Syndication
+ * Plugin Name: WooCommerce AI Storefront
  * Plugin URI: https://woocommerce.com/
- * Description: Merchant-led AI product syndication for WooCommerce. Expose products to AI shopping agents (ChatGPT, Gemini, Perplexity, Claude) with full merchant control. Store-only checkout, standard WooCommerce attribution.
+ * Description: Make your WooCommerce store ready for AI shopping assistants (ChatGPT, Gemini, Perplexity, Claude). Full merchant control — store-only checkout, standard WooCommerce attribution.
  * Version: 2.1.0
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
@@ -83,7 +83,7 @@ add_action( 'init', 'wc_ai_syndication_init_updater' );
  */
 function wc_ai_syndication_missing_wc_notice() {
 	echo '<div class="error"><p>';
-	echo esc_html__( 'WooCommerce AI Syndication requires WooCommerce to be installed and active.', 'woocommerce-ai-syndication' );
+	echo esc_html__( 'WooCommerce AI Storefront requires WooCommerce to be installed and active.', 'woocommerce-ai-syndication' );
 	echo '</p></div>';
 }
 

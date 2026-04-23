@@ -226,7 +226,7 @@ msgid "AI Syndication"
 msgstr ""
 
 #: woocommerce-ai-syndication.php:86
-msgid "WooCommerce AI Syndication requires WooCommerce to be installed and active."
+msgid "WooCommerce AI Storefront requires WooCommerce to be installed and active."
 msgstr ""
 
 #: client/data/ai-syndication/actions.js:42
