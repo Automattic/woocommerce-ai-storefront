@@ -334,7 +334,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 							} }
 						>
 							{ __(
-								'Go live in one click. Checkout stays on your store — no fees, no middleman, fully reversible.',
+								'Go live in one click. Checkout stays on your store.',
 								'woocommerce-ai-storefront'
 							) }
 						</p>
