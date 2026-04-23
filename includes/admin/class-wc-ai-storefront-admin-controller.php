@@ -49,9 +49,17 @@ class WC_AI_Storefront_Admin_Controller {
 						],
 						'product_selection_mode' => [
 							'type' => 'string',
-							'enum' => [ 'all', 'categories', 'selected' ],
+							'enum' => [ 'all', 'categories', 'tags', 'brands', 'selected' ],
 						],
 						'selected_categories'    => [
+							'type'  => 'array',
+							'items' => [ 'type' => 'integer' ],
+						],
+						'selected_tags'          => [
+							'type'  => 'array',
+							'items' => [ 'type' => 'integer' ],
+						],
+						'selected_brands'        => [
 							'type'  => 'array',
 							'items' => [ 'type' => 'integer' ],
 						],
@@ -115,13 +123,33 @@ class WC_AI_Storefront_Admin_Controller {
 			]
 		);
 
-		// Product/category search for selection UI.
+		// Product/category/tag/brand search for selection UI.
 		register_rest_route(
 			self::NAMESPACE,
 			'/search/categories',
 			[
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => [ $this, 'search_categories' ],
+				'permission_callback' => [ $this, 'check_admin_permission' ],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/search/tags',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'search_tags' ],
+				'permission_callback' => [ $this, 'check_admin_permission' ],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/search/brands',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'search_brands' ],
 				'permission_callback' => [ $this, 'check_admin_permission' ],
 			]
 		);
@@ -182,7 +210,7 @@ class WC_AI_Storefront_Admin_Controller {
 	public function update_settings( $request ) {
 		$data = [];
 
-		$fields = [ 'enabled', 'product_selection_mode', 'selected_categories', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers' ];
+		$fields = [ 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers' ];
 		foreach ( $fields as $field ) {
 			$value = $request->get_param( $field );
 			if ( null !== $value ) {
@@ -329,6 +357,87 @@ class WC_AI_Storefront_Admin_Controller {
 				'slug'   => $category->slug,
 				'count'  => $category->count,
 				'parent' => $category->parent,
+			];
+		}
+
+		return new WP_REST_Response( $data );
+	}
+
+	/**
+	 * Search tags for the selection UI.
+	 *
+	 * Returns all `product_tag` terms. Unlike products (which need
+	 * search + pagination due to potentially thousands of entries),
+	 * tags are typically small enough to return in one payload. If a
+	 * store has an unusually large tag vocabulary the client falls
+	 * back to in-memory filter on the full list — same pattern as
+	 * categories.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function search_tags() {
+		$tags = get_terms(
+			[
+				'taxonomy'   => 'product_tag',
+				'hide_empty' => false,
+				'orderby'    => 'name',
+				'order'      => 'ASC',
+			]
+		);
+
+		if ( is_wp_error( $tags ) ) {
+			return new WP_REST_Response( [] );
+		}
+
+		$data = [];
+		foreach ( $tags as $tag ) {
+			$data[] = [
+				'id'    => $tag->term_id,
+				'name'  => $tag->name,
+				'slug'  => $tag->slug,
+				'count' => $tag->count,
+			];
+		}
+
+		return new WP_REST_Response( $data );
+	}
+
+	/**
+	 * Search brands for the selection UI.
+	 *
+	 * `product_brand` is a native WooCommerce taxonomy introduced in
+	 * WC 9.5. On older versions (or any environment that unregisters
+	 * it) we return an empty array — the admin UI gates the Brands
+	 * segment on the `supportsBrands` bootstrap flag and won't call
+	 * this endpoint, but the guard is here for defense in depth.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function search_brands() {
+		if ( ! taxonomy_exists( 'product_brand' ) ) {
+			return new WP_REST_Response( [] );
+		}
+
+		$brands = get_terms(
+			[
+				'taxonomy'   => 'product_brand',
+				'hide_empty' => false,
+				'orderby'    => 'name',
+				'order'      => 'ASC',
+			]
+		);
+
+		if ( is_wp_error( $brands ) ) {
+			return new WP_REST_Response( [] );
+		}
+
+		$data = [];
+		foreach ( $brands as $brand ) {
+			$data[] = [
+				'id'    => $brand->term_id,
+				'name'  => $brand->name,
+				'slug'  => $brand->slug,
+				'count' => $brand->count,
 			];
 		}
 

@@ -353,14 +353,23 @@ class WC_AI_Storefront {
 			'wc-ai-storefront-settings',
 			'wcAiSyndicationParams',
 			[
-				'restUrl'    => rest_url( 'wc/v3/ai-syndication' ),
-				'adminUrl'   => rest_url( 'wc/v3/ai-storefront/admin' ),
-				'nonce'      => wp_create_nonce( 'wp_rest' ),
-				'siteUrl'    => home_url( '/' ),
-				'llmsTxtUrl' => home_url( '/llms.txt' ),
-				'ucpUrl'     => home_url( '/.well-known/ucp' ),
-				'ordersUrl'  => admin_url( 'admin.php?page=wc-orders' ),
-				'version'    => WC_AI_STOREFRONT_VERSION,
+				'restUrl'        => rest_url( 'wc/v3/ai-syndication' ),
+				'adminUrl'       => rest_url( 'wc/v3/ai-storefront/admin' ),
+				'nonce'          => wp_create_nonce( 'wp_rest' ),
+				'siteUrl'        => home_url( '/' ),
+				'llmsTxtUrl'     => home_url( '/llms.txt' ),
+				'ucpUrl'         => home_url( '/.well-known/ucp' ),
+				'ordersUrl'      => admin_url( 'admin.php?page=wc-orders' ),
+				'version'        => WC_AI_STOREFRONT_VERSION,
+				// `product_brand` is a native WC taxonomy from 9.5+.
+				// We gate client-side rendering of the Brands segment
+				// on this flag so stores running older WC versions (or
+				// any environment without the taxonomy registered) hide
+				// the segment rather than surfacing a dead toggle.
+				// Matches the server-side guard in
+				// `is_product_syndicated()` + the Store API filter +
+				// the `/search/brands` admin route.
+				'supportsBrands' => taxonomy_exists( 'product_brand' ),
 			]
 		);
 
@@ -402,6 +411,8 @@ class WC_AI_Storefront {
 			'enabled'                => 'no',
 			'product_selection_mode' => 'all',
 			'selected_categories'    => [],
+			'selected_tags'          => [],
+			'selected_brands'        => [],
 			'selected_products'      => [],
 			'rate_limit_rpm'         => 25,
 		];
@@ -438,10 +449,12 @@ class WC_AI_Storefront {
 		// Sanitize — only store known keys to keep the option clean.
 		$clean = [
 			'enabled'                => in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no',
-			'product_selection_mode' => in_array( $merged['product_selection_mode'], [ 'all', 'categories', 'selected' ], true )
+			'product_selection_mode' => in_array( $merged['product_selection_mode'], [ 'all', 'categories', 'tags', 'brands', 'selected' ], true )
 				? $merged['product_selection_mode']
 				: 'all',
 			'selected_categories'    => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
+			'selected_tags'          => array_map( 'absint', (array) ( $merged['selected_tags'] ?? [] ) ),
+			'selected_brands'        => array_map( 'absint', (array) ( $merged['selected_brands'] ?? [] ) ),
 			'selected_products'      => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
 			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
 			'allowed_crawlers'       => WC_AI_Storefront_Robots::sanitize_allowed_crawlers(
@@ -490,6 +503,31 @@ class WC_AI_Storefront {
 		if ( 'categories' === $mode && ! empty( $settings['selected_categories'] ) ) {
 			$product_cats = wc_get_product_cat_ids( $product->get_id() );
 			return ! empty( array_intersect( $product_cats, array_map( 'absint', $settings['selected_categories'] ) ) );
+		}
+
+		if ( 'tags' === $mode && ! empty( $settings['selected_tags'] ) ) {
+			$product_tags = wp_get_post_terms( $product->get_id(), 'product_tag', [ 'fields' => 'ids' ] );
+			if ( is_wp_error( $product_tags ) ) {
+				return false;
+			}
+			return ! empty( array_intersect( $product_tags, array_map( 'absint', $settings['selected_tags'] ) ) );
+		}
+
+		if ( 'brands' === $mode && ! empty( $settings['selected_brands'] ) ) {
+			// Graceful degradation: if the `product_brand` taxonomy
+			// isn't registered (pre-WC 9.5 or a custom env), the
+			// merchant's brand selection can't be enforced — return
+			// false rather than crashing. The admin UI hides the
+			// Brands segment when the taxonomy is missing, so this
+			// branch should be unreachable in practice; defensive.
+			if ( ! taxonomy_exists( 'product_brand' ) ) {
+				return false;
+			}
+			$product_brands = wp_get_post_terms( $product->get_id(), 'product_brand', [ 'fields' => 'ids' ] );
+			if ( is_wp_error( $product_brands ) ) {
+				return false;
+			}
+			return ! empty( array_intersect( $product_brands, array_map( 'absint', $settings['selected_brands'] ) ) );
 		}
 
 		if ( 'selected' === $mode && ! empty( $settings['selected_products'] ) ) {

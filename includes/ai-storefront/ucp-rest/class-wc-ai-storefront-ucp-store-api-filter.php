@@ -54,6 +54,15 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 *                    term IDs. WP_Query ANDs multiple tax_query entries
 	 *                    by default, so any incoming category filter is
 	 *                    preserved and ours becomes an additional constraint.
+	 * Mode `tags`:       append a tax_query entry for selected product_tag
+	 *                    term IDs. Same ANY-match semantics as categories.
+	 * Mode `brands`:     append a tax_query entry for selected product_brand
+	 *                    term IDs. The `product_brand` taxonomy is WC 9.5+;
+	 *                    on older stores the admin UI hides the Brands
+	 *                    segment so this branch never receives a non-empty
+	 *                    selection. Defensive `taxonomy_exists` check
+	 *                    guards against stale settings if the taxonomy is
+	 *                    unregistered by a custom env.
 	 * Mode `selected`:   restrict post__in to the merchant's allow-list.
 	 *                    If the incoming request has its own post__in,
 	 *                    intersect instead of overriding — this preserves
@@ -81,6 +90,24 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 				'taxonomy' => 'product_cat',
 				'field'    => 'term_id',
 				'terms'    => array_map( 'absint', $settings['selected_categories'] ),
+			];
+			return $args;
+		}
+
+		if ( 'tags' === $mode && ! empty( $settings['selected_tags'] ) ) {
+			$args['tax_query'][] = [
+				'taxonomy' => 'product_tag',
+				'field'    => 'term_id',
+				'terms'    => array_map( 'absint', $settings['selected_tags'] ),
+			];
+			return $args;
+		}
+
+		if ( 'brands' === $mode && ! empty( $settings['selected_brands'] ) && taxonomy_exists( 'product_brand' ) ) {
+			$args['tax_query'][] = [
+				'taxonomy' => 'product_brand',
+				'field'    => 'term_id',
+				'terms'    => array_map( 'absint', $settings['selected_brands'] ),
 			];
 			return $args;
 		}
