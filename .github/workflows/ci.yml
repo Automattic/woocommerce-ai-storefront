@@ -121,6 +121,18 @@ jobs:
     # translation surface visible during review.
     name: i18n (.pot freshness)
     runs-on: ubuntu-latest
+    # WP-CLI is pinned to a specific release for two reasons:
+    # (1) supply-chain hygiene — we fetch a versioned asset with a
+    # published sha512 and verify it before executing, instead of
+    # pulling "whatever is latest" from the build branch of
+    # wp-cli/builds. (2) reproducibility — `wp i18n make-pot` writes
+    # an `X-Generator: WP-CLI <version>` header into the .pot, which
+    # changes whenever wp-cli bumps. Pinning means an intentional
+    # wp-cli upgrade is a one-line bump here plus a committed .pot
+    # regeneration; an accidental drift on the builds branch can't
+    # turn every open PR red without warning.
+    env:
+      WP_CLI_VERSION: '2.12.0'
     steps:
       - uses: actions/checkout@v4
 
@@ -130,18 +142,56 @@ jobs:
           php-version: '8.2'
           coverage: none
 
-      - name: Install WP-CLI
+      - name: Install WP-CLI (pinned + verified)
+        shell: bash
+        # `curl -fsSL`:
+        #   -f   fail with nonzero exit on HTTP 4xx/5xx (plain -sL
+        #        would happily write a GitHub 404 HTML page to
+        #        wp-cli.phar and defer the failure to an opaque
+        #        "PHP parse error" during make-pot).
+        #   -s   silent mode (suppress progress bar).
+        #   -S   show errors if -s is active.
+        #   -L   follow GitHub's release redirect to the asset host.
+        #
+        # The sha512 file from wp-cli releases contains the hash
+        # only (no filename), so we construct the canonical
+        # "<hash>  <file>" format sha512sum expects and pipe it to
+        # `sha512sum -c`. Any tampering or network corruption flips
+        # the check non-zero and the job fails before wp-cli runs.
+        #
+        # `wp --info` is a sanity check: if the phar somehow got
+        # past the checksum but isn't actually runnable, --info
+        # surfaces the problem with a clean error rather than having
+        # make-pot error ambiguously downstream.
         run: |
-          curl -sL -o wp-cli.phar \
-            https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+          curl -fsSL -o wp-cli.phar \
+            "https://github.com/wp-cli/wp-cli/releases/download/v${WP_CLI_VERSION}/wp-cli-${WP_CLI_VERSION}.phar"
+          curl -fsSL -o wp-cli.phar.sha512 \
+            "https://github.com/wp-cli/wp-cli/releases/download/v${WP_CLI_VERSION}/wp-cli-${WP_CLI_VERSION}.phar.sha512"
+          echo "$(cat wp-cli.phar.sha512)  wp-cli.phar" | sha512sum -c -
           chmod +x wp-cli.phar
           sudo mv wp-cli.phar /usr/local/bin/wp
+          wp --info
 
       - name: Regenerate .pot in place and compare
-        # `POT-Creation-Date` changes on every run, so we strip it
-        # from both sides of the diff. Any remaining difference means
-        # a real string was added, removed, or reworded since the
-        # last regen — exactly what we want to catch.
+        shell: bash
+        # Two volatile headers are stripped from both sides of the
+        # diff before comparison:
+        #
+        #   POT-Creation-Date — changes on every run (the current
+        #     timestamp). Without stripping, every job would fail.
+        #
+        #   X-Generator — encodes the wp-cli version that produced
+        #     the file. We also pin WP_CLI_VERSION above so this
+        #     header is stable in practice, but stripping it is
+        #     belt-and-suspenders: if someone bumps the wp-cli pin
+        #     without regenerating the .pot locally first, we'd
+        #     rather flag the real issue (changed strings or
+        #     conscious version bump) than the generator line.
+        #
+        # Any remaining difference after stripping means a real
+        # string was added, removed, or reworded since the last
+        # regeneration — exactly what we want to catch.
         #
         # `--headers` overrides the `Report-Msgid-Bugs-To` URL that
         # wp-cli derives from the on-disk directory name. This repo
@@ -160,8 +210,8 @@ jobs:
             --skip-plugins --skip-themes
 
           if ! diff -u \
-              <(grep -v '^"POT-Creation-Date:' /tmp/pot-before.pot) \
-              <(grep -v '^"POT-Creation-Date:' languages/woocommerce-ai-storefront.pot); then
+              <(grep -v -e '^"POT-Creation-Date:' -e '^"X-Generator:' /tmp/pot-before.pot) \
+              <(grep -v -e '^"POT-Creation-Date:' -e '^"X-Generator:' languages/woocommerce-ai-storefront.pot); then
             echo ""
             echo "::error::The .pot translation template is out of date."
             echo ""
