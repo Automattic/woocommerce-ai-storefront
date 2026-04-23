@@ -41,11 +41,14 @@ const MODE_DESCRIPTIONS = {
 
 // Spec-aligned list of fields our endpoints serialize per product.
 // Surfaced in the shared footer as "Included fields" chips so merchants
-// see at a glance what each AI agent receives. If the extension schema
-// (see class-wc-ai-storefront-ucp-rest-controller.php
-// handle_extension_schema) grows, update this list — the schema itself
-// is the source of truth for on-the-wire contents, this is the
-// human-readable summary.
+// see at a glance what each AI agent receives. Keep this list aligned
+// with the UCP core product/variant payload definition and the PHP
+// product + variant translators that emit those on-the-wire fields
+// (class-wc-ai-storefront-ucp-product-translator.php and
+// class-wc-ai-storefront-ucp-variant-translator.php).
+// `handle_extension_schema()` documents the merchant extension contract
+// (config + accepted_request_inputs) — NOT the core serialized product
+// fields, so it's not the source of truth for this list.
 // `key` is a stable React-key identifier; `label` is the translated
 // user-visible string. Built inside the component rather than at
 // module scope so `__()` picks up runtime locale changes.
@@ -200,10 +203,23 @@ const SamplePreview = () => {
 			parse: false,
 		} )
 			.then( async ( response ) => {
-				const body = await response.json();
 				if ( cancelled ) {
 					return;
 				}
+				// `apiFetch({ parse: false })` returns the raw Response
+				// regardless of HTTP status — a 401/403/5xx from the
+				// Store API resolves .then() rather than throwing.
+				// Without this check, a JSON error body ({code, message})
+				// would pass the Array.isArray guard as `[]` and render
+				// the "No published products yet" empty state,
+				// misleading the merchant into thinking their catalog
+				// is empty when it's actually an access/server error.
+				if ( ! response.ok ) {
+					setHasError( true );
+					setIsLoading( false );
+					return;
+				}
+				const body = await response.json();
 				// `X-WP-Total` may be absent (some reverse-proxy
 				// configurations strip it from cached responses) or
 				// unparseable. Treat anything that doesn't parse to
@@ -701,27 +717,44 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			.filter( Boolean );
 	}, [ selectedProducts, selectedProductCache ] );
 
-	// Badge labels — per-mode, pluralized, reflect the current
-	// configuration. The "all" badge needs the total product count;
-	// SamplePreview exposes it via X-WP-Total but is only mounted in
-	// the expanded state, so we also fetch a lightweight total here
-	// for the collapsed-row display. Three states:
+	// Badge labels — per-mode, reflect the current configuration.
+	// The "all" badge needs the total published-product count even
+	// when the merchant is currently in `categories`/`selected`
+	// mode, so it answers "how many products would be shared if I
+	// switched to All?" — i.e. the unfiltered total.
+	//
+	// We intentionally hit the WP core REST endpoint
+	// (`/wp/v2/product`) here rather than the Store API
+	// (`/wc/store/v1/products`) because this plugin globally
+	// restricts Store API product collections via the
+	// `woocommerce_store_api_product_collection_query_args` filter
+	// when mode is not 'all'. That filter would make the Store API
+	// count reflect the merchant's current selection, not the true
+	// unfiltered total — wrong answer for this badge. `/wp/v2/product`
+	// is admin-side and not affected by the Store API filter.
+	//
+	// Three states:
 	//   - null     → still loading → show "Loading…"
 	//   - 'error'  → fetch failed or response was unusable → show
 	//                the generic label without a count ("Products")
 	//   - number   → finite integer → format + render
-	// Sentinel-string is cheaper than a separate error ref and the
-	// three-state union lines up with how the badge is rendered
-	// below.
 	const [ totalPublished, setTotalPublished ] = useState( null );
 	useEffect( () => {
 		let cancelled = false;
 		apiFetch( {
-			path: '/wc/store/v1/products?per_page=1',
+			path: '/wp/v2/product?status=publish&per_page=1&_fields=id',
 			parse: false,
 		} )
 			.then( ( response ) => {
 				if ( cancelled ) {
+					return;
+				}
+				// Non-2xx (401/403/5xx) resolves .then() when
+				// `parse: false` — check `response.ok` explicitly so
+				// an auth failure or server error maps to our 'error'
+				// sentinel instead of silently parsing an error body.
+				if ( ! response.ok ) {
+					setTotalPublished( 'error' );
 					return;
 				}
 				const totalHeader = response.headers.get( 'X-WP-Total' );
@@ -773,14 +806,13 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		selectedCategories.length
 	);
 
+	// No plural-form distinction for this copy ('%d selected' reads
+	// the same for singular + plural in English), so use a single
+	// translatable string via __() rather than _n(). Locales with
+	// distinct plural forms can override as needed.
 	const selectedBadge = sprintf(
 		/* translators: %d: number of selected products. */
-		_n(
-			'%d selected',
-			'%d selected',
-			selectedProducts.length,
-			'woocommerce-ai-storefront'
-		),
+		__( '%d selected', 'woocommerce-ai-storefront' ),
 		selectedProducts.length
 	);
 
