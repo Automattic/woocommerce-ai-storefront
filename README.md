@@ -1,4 +1,4 @@
-# WooCommerce AI Syndication
+# WooCommerce AI Storefront
 
 Make your WooCommerce catalog discoverable by AI assistants (ChatGPT, Gemini, Claude, Perplexity, Copilot) while keeping checkout, customer data, and brand experience under merchant control.
 

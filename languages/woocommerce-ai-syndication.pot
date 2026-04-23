@@ -226,7 +226,7 @@ msgid "AI Syndication"
 msgstr ""
 
 #: woocommerce-ai-syndication.php:86
-msgid "WooCommerce AI Syndication requires WooCommerce to be installed and active."
+msgid "WooCommerce AI Storefront requires WooCommerce to be installed and active."
 msgstr ""
 
 #: client/data/ai-syndication/actions.js:42
@@ -534,7 +534,7 @@ msgid "Enabling…"
 msgstr ""
 
 #: client/settings/ai-syndication/settings-page.js:355
-msgid "Enable AI Syndication"
+msgid "Enable AI Storefront"
 msgstr ""
 
 #: client/settings/ai-syndication/settings-page.js:376
@@ -598,7 +598,7 @@ msgid "%d products"
 msgstr ""
 
 #: client/settings/ai-syndication/settings-page.js:523
-msgid "AI Syndication is active"
+msgid "AI Storefront is active"
 msgstr ""
 
 #: client/settings/ai-syndication/settings-page.js:535

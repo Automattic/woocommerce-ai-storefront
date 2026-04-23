@@ -1,4 +1,4 @@
-# WooCommerce AI Syndication — Data Sovereignty for AI Commerce
+# WooCommerce AI Storefront — Data Sovereignty for AI Commerce
 
 ## What This Is
 
