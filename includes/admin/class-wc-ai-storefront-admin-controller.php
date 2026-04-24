@@ -123,6 +123,20 @@ class WC_AI_Storefront_Admin_Controller {
 			]
 		);
 
+		// Syndicated product count for the Overview "Products Exposed"
+		// card. Runs the same UNION query the Store API filter would
+		// apply, returning a single count. Purely a display metric —
+		// no per-row data crosses the wire.
+		register_rest_route(
+			self::NAMESPACE,
+			'/product-count',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'get_product_count' ],
+				'permission_callback' => [ $this, 'check_admin_permission' ],
+			]
+		);
+
 		// Product/category/tag/brand search for selection UI.
 		register_rest_route(
 			self::NAMESPACE,
@@ -251,6 +265,137 @@ class WC_AI_Storefront_Admin_Controller {
 		$stats  = WC_AI_Storefront_Attribution::get_stats( $period );
 
 		return new WP_REST_Response( $stats );
+	}
+
+	/**
+	 * Get the count of products exposed to AI via the current scoping.
+	 *
+	 * Runs the same resolution as the Store API filter and
+	 * `WC_AI_Storefront::is_product_syndicated()` so the Overview
+	 * "Products Exposed" card reflects what agents would actually see:
+	 *
+	 *   - `all`          → count of published products
+	 *   - `selected`     → count of published products in
+	 *                      `selected_products`
+	 *   - `by_taxonomy`  → UNION count across
+	 *                      `selected_categories ∪ selected_tags ∪
+	 *                      selected_brands`
+	 *
+	 * Uses `WP_Query` with `posts_per_page=1` + `no_found_rows=false`
+	 * so only the found-rows count trip hits the DB — no full
+	 * iteration of matching product rows.
+	 *
+	 * Brand-downgrade and empty-selection policies mirror the Store
+	 * API filter and per-product gate: only-brands-configured on an
+	 * unregistered taxonomy returns the total published count
+	 * (show-all); fully-empty selection returns 0.
+	 *
+	 * @return WP_REST_Response { count: int }
+	 */
+	public function get_product_count() {
+		$settings = WC_AI_Storefront::get_settings();
+		$mode     = $settings['product_selection_mode'] ?? 'all';
+
+		// Legacy mode values — defensive. Silent migration in
+		// get_settings() normally prevents these from reaching here.
+		if ( 'categories' === $mode || 'tags' === $mode || 'brands' === $mode ) {
+			$mode = 'by_taxonomy';
+		}
+
+		if ( 'all' === $mode ) {
+			$counts = wp_count_posts( 'product' );
+			return new WP_REST_Response(
+				[ 'count' => (int) ( $counts->publish ?? 0 ) ]
+			);
+		}
+
+		if ( 'selected' === $mode ) {
+			$ids = array_map( 'absint', $settings['selected_products'] ?? [] );
+			if ( empty( $ids ) ) {
+				return new WP_REST_Response( [ 'count' => 0 ] );
+			}
+			// Count only published products in the allow-list — a
+			// deleted or drafted product shouldn't inflate the card.
+			$query = new WP_Query(
+				[
+					'post_type'      => 'product',
+					'post_status'    => 'publish',
+					'post__in'       => $ids,
+					'posts_per_page' => 1,
+					'fields'         => 'ids',
+					'no_found_rows'  => false,
+				]
+			);
+			return new WP_REST_Response(
+				[ 'count' => (int) $query->found_posts ]
+			);
+		}
+
+		if ( 'by_taxonomy' === $mode ) {
+			$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? [] );
+			$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? [] );
+			$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? [] );
+
+			$brands_supported = taxonomy_exists( 'product_brand' );
+
+			$has_cats   = ! empty( $selected_categories );
+			$has_tags   = ! empty( $selected_tags );
+			$has_brands = ! empty( $selected_brands ) && $brands_supported;
+
+			// Downgrade exception: only brands set, taxonomy missing
+			// → server enforces "show all." Count matches.
+			if ( ! $has_cats && ! $has_tags && ! $brands_supported && ! empty( $selected_brands ) ) {
+				$counts = wp_count_posts( 'product' );
+				return new WP_REST_Response(
+					[ 'count' => (int) ( $counts->publish ?? 0 ) ]
+				);
+			}
+
+			// Empty: nothing enforceable → 0.
+			if ( ! $has_cats && ! $has_tags && ! $has_brands ) {
+				return new WP_REST_Response( [ 'count' => 0 ] );
+			}
+
+			$tax_query = [ 'relation' => 'OR' ];
+			if ( $has_cats ) {
+				$tax_query[] = [
+					'taxonomy' => 'product_cat',
+					'field'    => 'term_id',
+					'terms'    => $selected_categories,
+				];
+			}
+			if ( $has_tags ) {
+				$tax_query[] = [
+					'taxonomy' => 'product_tag',
+					'field'    => 'term_id',
+					'terms'    => $selected_tags,
+				];
+			}
+			if ( $has_brands ) {
+				$tax_query[] = [
+					'taxonomy' => 'product_brand',
+					'field'    => 'term_id',
+					'terms'    => $selected_brands,
+				];
+			}
+
+			$query = new WP_Query(
+				[
+					'post_type'      => 'product',
+					'post_status'    => 'publish',
+					// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+					'tax_query'      => $tax_query,
+					'posts_per_page' => 1,
+					'fields'         => 'ids',
+					'no_found_rows'  => false,
+				]
+			);
+			return new WP_REST_Response(
+				[ 'count' => (int) $query->found_posts ]
+			);
+		}
+
+		return new WP_REST_Response( [ 'count' => 0 ] );
 	}
 
 	/**

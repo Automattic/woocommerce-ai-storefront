@@ -11,7 +11,8 @@ import {
 	FlexItem,
 } from '@wordpress/components';
 import { Icon, globe, shield, chartBar } from '@wordpress/icons';
-import { __, sprintf } from '@wordpress/i18n';
+import { __, _n, sprintf } from '@wordpress/i18n';
+import apiFetch from '@wordpress/api-fetch';
 import { STORE_NAME } from '../../data/ai-storefront/constants';
 import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
@@ -485,20 +486,61 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 		fetchStats( period );
 	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Refetch when period changes.
 
-	let productCount = __( 'All', 'woocommerce-ai-storefront' );
-	if ( settings.product_selection_mode === 'categories' ) {
-		productCount = sprintf(
-			/* translators: %d: number of categories */
-			__( '%d categories', 'woocommerce-ai-storefront' ),
-			( settings.selected_categories || [] ).length
-		);
-	} else if ( settings.product_selection_mode === 'selected' ) {
-		productCount = sprintf(
-			/* translators: %d: number of products */
-			__( '%d products', 'woocommerce-ai-storefront' ),
-			( settings.selected_products || [] ).length
-		);
-	}
+	// Products Exposed card — actual count of products that will reach
+	// AI agents under the current scoping. Fetched from
+	// `/admin/product-count` so the UI doesn't have to replicate the
+	// server's UNION logic (and so the count reflects what the Store
+	// API filter would actually return, not what the client's local
+	// settings state looks like).
+	//
+	// Refetches when relevant settings fields change. Taxonomy
+	// selections AND the mode itself trigger a refetch: switching
+	// to mode=all from an empty by_taxonomy state should update the
+	// card even though no selection array changed. JSON.stringify of
+	// array/scalar dependencies is enough here — the payload is tiny.
+	const [ productCount, setProductCount ] = useState( null );
+	const productSelectionSignature = JSON.stringify( [
+		settings.product_selection_mode,
+		settings.selected_categories || [],
+		settings.selected_tags || [],
+		settings.selected_brands || [],
+		settings.selected_products || [],
+	] );
+	useEffect( () => {
+		let cancelled = false;
+		apiFetch( { path: '/wc/v3/ai-storefront/admin/product-count' } )
+			.then( ( response ) => {
+				if (
+					! cancelled &&
+					response &&
+					typeof response.count === 'number'
+				) {
+					setProductCount( response.count );
+				}
+			} )
+			.catch( () => {
+				if ( ! cancelled ) {
+					setProductCount( null );
+				}
+			} );
+		return () => {
+			cancelled = true;
+		};
+	}, [ productSelectionSignature ] );
+
+	const productCountDisplay =
+		productCount === null
+			? '\u2014'
+			: sprintf(
+					/* translators: %d: number of products exposed to AI */
+					_n(
+						'%d product',
+						'%d products',
+						productCount,
+						'woocommerce-ai-storefront'
+					),
+					productCount
+			  );
 
 	return (
 		<div>
@@ -604,7 +646,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						'Products Exposed',
 						'woocommerce-ai-storefront'
 					) }
-					value={ productCount }
+					value={ productCountDisplay }
 				/>
 				<StatCard
 					label={ sprintf(

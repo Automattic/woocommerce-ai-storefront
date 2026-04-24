@@ -2,7 +2,6 @@ import {
 	useState,
 	useEffect,
 	useMemo,
-	useRef,
 	createInterpolateElement,
 } from '@wordpress/element';
 import {
@@ -33,39 +32,69 @@ import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 import { colors } from './tokens';
 
-// Server-side enum for `product_selection_mode`. The three taxonomy
-// modes (categories/tags/brands) share a single top-level "By taxonomy"
-// radio row in the UI (backed by ToggleGroupControl for sub-selection);
-// the server still branches per taxonomy for enforcement.
+// Server-side enum for `product_selection_mode` (0.1.5+):
+//
+//   'all'          → every published product is syndicated
+//   'by_taxonomy'  → UNION of selected_categories ∪ selected_tags ∪
+//                    selected_brands
+//   'selected'     → hand-picked individual products from
+//                    selected_products
+//
+// Pre-0.1.5 used three distinct taxonomy modes (`categories`, `tags`,
+// `brands`) that each enforced only one taxonomy at a time. Those
+// values are still accepted via a defensive fallback in server-side
+// code and migrated to `by_taxonomy` on first settings read. We do
+// NOT expose them as active enum values in the client — anything
+// the client commits is one of the three 0.1.5 values above.
 const MODES = {
 	ALL: 'all',
-	CATEGORIES: 'categories',
-	TAGS: 'tags',
-	BRANDS: 'brands',
+	BY_TAXONOMY: 'by_taxonomy',
 	SELECTED: 'selected',
 };
 
-// UI-side grouping: three radio rows map to five server modes via the
-// ToggleGroupControl inside the By-Taxonomy row.
+// Viewable taxonomy tabs inside the By-taxonomy row. These are local
+// UI state (`activeTaxonomy`), NOT persisted modes. They drive which
+// picker panel is visible and are used as seed values for the toggle-
+// group segment. The strings happen to match the pre-0.1.5 server
+// enum values (`'categories'`, `'tags'`, `'brands'`) so that a stale
+// DB value read during the migration window can still map to a
+// sensible default tab — but they're not written back to the server
+// in 0.1.5+.
+const TAXONOMY_TABS = {
+	CATEGORIES: 'categories',
+	TAGS: 'tags',
+	BRANDS: 'brands',
+};
+
+const TAXONOMY_TAB_VALUES = [
+	TAXONOMY_TABS.CATEGORIES,
+	TAXONOMY_TABS.TAGS,
+	TAXONOMY_TABS.BRANDS,
+];
+
+// UI-side grouping: three radio rows map 1:1 to the three server modes.
 const UI_ROWS = {
 	ALL: 'all',
 	BY_TAXONOMY: 'by_taxonomy',
 	SELECTED: 'selected',
 };
 
-const TAXONOMY_MODES = [ MODES.CATEGORIES, MODES.TAGS, MODES.BRANDS ];
-
 /**
  * Map the server-persisted `product_selection_mode` to the UI row it
- * belongs to. All three taxonomy modes collapse into BY_TAXONOMY; the
- * toggle-group segment inside reflects which specific taxonomy is
- * active.
+ * belongs to.
+ *
+ * Under 0.1.5 this is a direct 1:1 mapping (modes and rows share
+ * values). Legacy pre-0.1.5 values (`categories` / `tags` / `brands`)
+ * are still recognized defensively — they'd normally be migrated by
+ * the server's silent migration on first settings read, but a
+ * settings payload in flight during the migration window might still
+ * carry one of them; map all three to BY_TAXONOMY.
  *
  * @param {string} mode Server mode value.
  * @return {string}     Corresponding UI row key.
  */
 const modeToUiRow = ( mode ) => {
-	if ( TAXONOMY_MODES.includes( mode ) ) {
+	if ( mode === MODES.BY_TAXONOMY || TAXONOMY_TAB_VALUES.includes( mode ) ) {
 		return UI_ROWS.BY_TAXONOMY;
 	}
 	if ( mode === MODES.SELECTED ) {
@@ -452,132 +481,50 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 
 	const serverMode = settings.product_selection_mode || MODES.ALL;
 
-	const hasUnsupportedPersistedBrandsMode =
-		! supportsBrands && serverMode === MODES.BRANDS;
-
-	// For rendering: treat an unsupported persisted mode as `all`
-	// starting from the very first render. The auto-heal `useEffect`
-	// below propagates the same correction to the draft settings via
-	// `onChange`, but effects fire AFTER the first paint — without
-	// `effectiveMode`, the initial render would momentarily
-	// show the By-taxonomy row + empty-selection warning for one
-	// frame before the healed value flowed back through props, a
-	// visible flicker. Deriving the effective mode at render time
-	// keeps the UI coherent from paint zero; the effect is still
-	// required to persist the correction so a Save captures it.
-	const effectiveMode = hasUnsupportedPersistedBrandsMode
-		? MODES.ALL
-		: serverMode;
+	const effectiveMode = serverMode;
 	const uiRow = modeToUiRow( effectiveMode );
 
-	// Normalize the persisted taxonomy to one the UI can actually
-	// render. Scenario: a merchant on WC 9.5+ saves mode=`brands`,
-	// then downgrades to WC < 9.5 (or the taxonomy gets unregistered
-	// by a custom env). `supportsBrands` flips to false, the Brands
-	// ToggleGroupControlOption disappears, but `serverMode` still
-	// reads 'brands' from the DB. Without this normalization the
-	// By-taxonomy row would show the empty-brands-selection warning
-	// with no visible way to resolve it (no Brands segment to pick
-	// into, and `setRow( BY_TAXONOMY )` would keep re-writing
-	// 'brands'). Mapping unsupported modes → CATEGORIES seeds
-	// `activeTaxonomy` so the Categories segment is the default
-	// when the merchant later switches back into By-taxonomy; the
-	// persisted `selected_brands` array stays intact so a future
-	// WC upgrade restores their prior selection.
-	const normalizedServerTaxonomy =
-		TAXONOMY_MODES.includes( serverMode ) &&
-		! hasUnsupportedPersistedBrandsMode
-			? serverMode
-			: MODES.CATEGORIES;
-
-	// Auto-heal the draft settings when we detect an unsupported
-	// persisted mode. Without this, `settings.product_selection_mode`
-	// would stay `brands` — so a merchant clicking Save without any
-	// interaction would silently re-post the unsupported mode and
-	// stay stuck on every page load.
-	//
-	// Heal to `all`, not `categories`: the server already degrades
-	// brands-mode + missing-taxonomy to "show all products" (see
-	// the Store API filter + `is_product_syndicated()` — both no-op
-	// in that state). Auto-healing to `categories` would let a
-	// merchant Save into the empty-selection policy's "hide all"
-	// posture, silently flipping effective catalog visibility from
-	// "show all" to "hide all" without the merchant intending that
-	// change. Healing to `all` preserves the effective post-
-	// downgrade behavior the server was already producing, so the
-	// merchant's next Save is a no-op from the agent's perspective
-	// rather than a surprise visibility flip.
-	//
-	// Persisted `selected_brands` stays untouched in case a future
-	// WC upgrade re-enables the taxonomy — flipping mode back to
-	// `brands` then restores the prior selection without merchant
-	// reconfiguration.
-	//
-	// Rising-edge guard via ref: the heal fires on every
-	// false→true transition of `hasUnsupportedPersistedBrandsMode`,
-	// not just once per mount. Rationale for the rising-edge shape:
-	//
-	// 1. Parent stability: if `onChange` is a fresh closure on every
-	//    render, a naive `[hasUnsupportedPersistedBrandsMode,
-	//    onChange]` effect would re-fire whenever onChange changes —
-	//    harmless if the reducer is idempotent, noisy in devtools
-	//    and prone to surprise if a future reducer observes write
-	//    frequency. The rising-edge check short-circuits: when
-	//    `prev === current` (both true, both false), we skip.
-	//
-	// 2. Late-arriving unsupported state: a per-mount one-shot guard
-	//    would fail if the settings prop is refreshed mid-lifecycle
-	//    and brings back an unsupported `brands` mode (e.g. refetch
-	//    after save, external reset, concurrent admin tab). The
-	//    component would render with `effectiveMode=all` but the
-	//    draft could still carry `brands`, and the next Save would
-	//    re-persist the unsupported mode. Rising-edge re-heals on
-	//    every recurrence.
-	const prevUnsupportedBrandsModeRef = useRef( false );
-	useEffect( () => {
-		const prev = prevUnsupportedBrandsModeRef.current;
-		prevUnsupportedBrandsModeRef.current =
-			hasUnsupportedPersistedBrandsMode;
-		if ( hasUnsupportedPersistedBrandsMode && ! prev ) {
-			onChange( { product_selection_mode: MODES.ALL } );
+	// Seed the active taxonomy tab from whichever `selected_*` array
+	// has content. Under 0.1.5's UNION enforcement the server mode is
+	// just `by_taxonomy` — there's no per-taxonomy signal to carry a
+	// "last-viewed tab" through a save. Deriving a default from
+	// populated selections preserves the pre-0.1.5 behavior
+	// meaningfully: a merchant with only brands selected lands on
+	// the Brands tab; one with only tags lands on Tags; ties fall
+	// back to Categories (the leftmost, most-common choice). Brands
+	// is only an option when `supportsBrands` is true — a downgrade
+	// scenario with stale `selected_brands` data doesn't accidentally
+	// seed a tab the ToggleGroup can't render.
+	const initialActiveTaxonomy = ( () => {
+		const hasCats = ( settings.selected_categories || [] ).length > 0;
+		const hasTags = ( settings.selected_tags || [] ).length > 0;
+		const hasBrands =
+			( settings.selected_brands || [] ).length > 0 && supportsBrands;
+		if ( hasCats ) {
+			return TAXONOMY_TABS.CATEGORIES;
 		}
-	}, [ hasUnsupportedPersistedBrandsMode, onChange ] );
-
-	// Which taxonomy sub-mode is active inside the By-Taxonomy row.
-	// Seeded from the normalized server mode so re-entering the
-	// Products tab after a save puts the merchant back where they
-	// were. Stays in local state so switching UI rows and coming
-	// back doesn't reset the toggle.
+		if ( hasTags ) {
+			return TAXONOMY_TABS.TAGS;
+		}
+		if ( hasBrands ) {
+			return TAXONOMY_TABS.BRANDS;
+		}
+		return TAXONOMY_TABS.CATEGORIES;
+	} )();
 	const [ activeTaxonomy, setActiveTaxonomy ] = useState(
-		() => normalizedServerTaxonomy
+		() => initialActiveTaxonomy
 	);
 
-	// Keep local activeTaxonomy in sync when the normalized server
-	// mode CHANGES externally — e.g. a Save completes and the
-	// canonical value comes back from the store, or a future "reset
-	// to defaults" control dispatches a write we didn't originate
-	// locally.
-	//
-	// Rising-edge pattern on `normalizedServerTaxonomy`: the effect
-	// only acts when the value actually changes vs. the previous
-	// render's value, NOT whenever `activeTaxonomy` drifts away
-	// from it. The earlier `[normalizedServerTaxonomy, activeTaxonomy]`
-	// deps + `!== activeTaxonomy` guard was a bug: when the merchant
-	// clicked a browse-only taxonomy tab (setTaxonomy → setActive-
-	// Taxonomy, serverMode untouched because PR #71 made tab click
-	// browse-only), the effect re-ran, saw `serverMode !== active`,
-	// and immediately reset activeTaxonomy back to the server value
-	// — a visible flash and silent revert. Using a ref to store the
-	// last server-origin value means only server-origin changes
-	// trigger a sync; purely-local activeTaxonomy changes are
-	// ignored.
-	const prevNormalizedTaxonomyRef = useRef( normalizedServerTaxonomy );
+	// Defensive sync: if the merchant is currently viewing the Brands
+	// tab and `supportsBrands` flips to false mid-session (plugin
+	// deactivation, custom taxonomy unregister), fall back to the
+	// Categories tab so the UI doesn't render a picker for a taxonomy
+	// that no longer has a toggle segment.
 	useEffect( () => {
-		if ( normalizedServerTaxonomy !== prevNormalizedTaxonomyRef.current ) {
-			prevNormalizedTaxonomyRef.current = normalizedServerTaxonomy;
-			setActiveTaxonomy( normalizedServerTaxonomy );
+		if ( ! supportsBrands && activeTaxonomy === TAXONOMY_TABS.BRANDS ) {
+			setActiveTaxonomy( TAXONOMY_TABS.CATEGORIES );
 		}
-	}, [ normalizedServerTaxonomy ] );
+	}, [ supportsBrands, activeTaxonomy ] );
 
 	// Load categories eagerly on mount (cheap, small list) so the
 	// By-Taxonomy radio row can show an accurate count even when
@@ -721,7 +668,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			: [ ...selectedCategories, catId ];
 		const changes = { selected_categories: updated };
 		if ( updated.length > 0 ) {
-			changes.product_selection_mode = MODES.CATEGORIES;
+			changes.product_selection_mode = MODES.BY_TAXONOMY;
 		}
 		onChange( changes );
 	};
@@ -732,7 +679,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			: [ ...selectedTags, tagId ];
 		const changes = { selected_tags: updated };
 		if ( updated.length > 0 ) {
-			changes.product_selection_mode = MODES.TAGS;
+			changes.product_selection_mode = MODES.BY_TAXONOMY;
 		}
 		onChange( changes );
 	};
@@ -743,7 +690,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			: [ ...selectedBrands, brandId ];
 		const changes = { selected_brands: updated };
 		if ( updated.length > 0 ) {
-			changes.product_selection_mode = MODES.BRANDS;
+			changes.product_selection_mode = MODES.BY_TAXONOMY;
 		}
 		onChange( changes );
 	};
@@ -1011,60 +958,58 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		selectedProducts.length
 	);
 
-	// Empty-scoping warning.
+	// Empty-scoping warning — UNION semantics.
 	//
-	// Fires off `effectiveMode` + the corresponding `selected_*`
-	// array — i.e. tracks the ENFORCING mode, not the viewed tab.
-	// Merchant sees a warning exclusively when the actually-
-	// scoping taxonomy has zero selections (saving would hide
-	// everything). Warning copy names the specific taxonomy that
-	// needs action, so a merchant on the Tags tab seeing "No
-	// categories selected…" has a clear cue to switch to the
-	// Categories tab and fix it.
-	let emptyEnforcingSelection = false;
-	let emptyTaxonomyWarning = '';
-	if (
-		effectiveMode === MODES.CATEGORIES &&
-		selectedCategories.length === 0
-	) {
-		emptyEnforcingSelection = true;
-		emptyTaxonomyWarning = __(
-			'No categories selected. Your products are currently hidden from AI agents — pick at least one category to resume sharing.',
-			'woocommerce-ai-storefront'
-		);
-	} else if ( effectiveMode === MODES.TAGS && selectedTags.length === 0 ) {
-		emptyEnforcingSelection = true;
-		emptyTaxonomyWarning = __(
-			'No tags selected. Your products are currently hidden from AI agents — pick at least one tag to resume sharing.',
-			'woocommerce-ai-storefront'
-		);
-	} else if (
-		effectiveMode === MODES.BRANDS &&
-		selectedBrands.length === 0
-	) {
-		emptyEnforcingSelection = true;
-		emptyTaxonomyWarning = __(
-			'No brands selected. Your products are currently hidden from AI agents — pick at least one brand to resume sharing.',
-			'woocommerce-ai-storefront'
-		);
-	}
+	// Under 0.1.5 `by_taxonomy` mode enforces the UNION of
+	// `selected_categories ∪ selected_tags ∪ selected_brands`.
+	// The warning fires only when NONE of the three arrays has an
+	// enforceable selection — i.e. saving would hide the entire
+	// catalog from AI agents.
+	//
+	// "Enforceable" for brands means "selected AND the taxonomy is
+	// registered." If a merchant has only `selected_brands` set on
+	// a store where `product_brand` is unregistered (pre-WC 9.5 /
+	// custom unregistration), the server-side downgrade policy
+	// returns "show all" rather than hiding — so the UI suppresses
+	// the warning too. This keeps the visible state consistent with
+	// the merchant's actual post-save experience.
+	//
+	// Copy enumerates all three dimensions so a merchant on any tab
+	// understands the resolution path ("pick a category, tag, or
+	// brand"). Before 0.1.5 the copy named the specific taxonomy
+	// of the enforcing mode, but UNION means all three are equally
+	// enforcing — single-taxonomy copy would mislead.
+	const hasCategoriesSelected = selectedCategories.length > 0;
+	const hasTagsSelected = selectedTags.length > 0;
+	const hasEnforceableBrandsSelected =
+		selectedBrands.length > 0 && supportsBrands;
+	const onlyBrandsSetButUnsupported =
+		selectedBrands.length > 0 &&
+		! supportsBrands &&
+		! hasCategoriesSelected &&
+		! hasTagsSelected;
+	const emptyEnforcingSelection =
+		effectiveMode === MODES.BY_TAXONOMY &&
+		! hasCategoriesSelected &&
+		! hasTagsSelected &&
+		! hasEnforceableBrandsSelected &&
+		! onlyBrandsSetButUnsupported;
+	const emptyTaxonomyWarning = supportsBrands
+		? __(
+				'No categories, tags, or brands selected. Your products are currently hidden from AI agents — pick at least one to resume sharing.',
+				'woocommerce-ai-storefront'
+		  )
+		: __(
+				'No categories or tags selected. Your products are currently hidden from AI agents — pick at least one to resume sharing.',
+				'woocommerce-ai-storefront'
+		  );
 
-	// Switch UI rows → write the corresponding server mode. The server
-	// enum always holds a concrete taxonomy value (`categories` /
-	// `tags` / `brands`, never a virtual `by_taxonomy`), so the
-	// BY_TAXONOMY branch maps to one of the three real modes.
-	//
-	// Mapping for BY_TAXONOMY: if `serverMode` is already one of the
-	// three taxonomy modes, keep it — re-selecting the By-taxonomy
-	// row (e.g. merchant was on Categories tab browsing Tags, then
-	// clicks the row to confirm) must NOT overwrite the persisted
-	// `brands` mode with whatever tab they're currently viewing.
-	// Otherwise (coming from ALL or SELECTED), seed the mode from
-	// the viewed tab (`activeTaxonomy`) so the merchant gets the
-	// taxonomy they're looking at. This preserves the view-vs-
-	// commit split that setTaxonomy established: tab clicks stay
-	// browse-only, and the ModeRow selection is the explicit
-	// commit point.
+	// Switch UI rows → write the corresponding server mode. Under
+	// 0.1.5 there are three enum values (`all` / `by_taxonomy` /
+	// `selected`) and each radio row maps 1:1. Pre-0.1.5 code had
+	// to pick between multiple taxonomy-specific mode values on
+	// By-taxonomy row selection; UNION enforcement eliminated that
+	// branch.
 	const setRow = ( row ) => {
 		if ( row === UI_ROWS.ALL ) {
 			onChange( { product_selection_mode: MODES.ALL } );
@@ -1074,26 +1019,11 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			onChange( { product_selection_mode: MODES.SELECTED } );
 			return;
 		}
-		// Two-step mapping so both goals are honored:
-		//
-		// 1. Check against `serverMode` (not `normalizedServerTaxonomy`)
-		//    to answer "was the persisted mode already a taxonomy?".
-		//    `normalizedServerTaxonomy` falls back to CATEGORIES for
-		//    non-taxonomy modes, so using it as the predicate would
-		//    always short-circuit to "yes" and ALL/SELECTED → By-
-		//    taxonomy transitions would wrongly commit CATEGORIES
-		//    instead of the browsed `activeTaxonomy`.
-		//
-		// 2. Use `normalizedServerTaxonomy` as the written VALUE when
-		//    the persisted mode IS a taxonomy — this way an
-		//    unsupported persisted `brands` on a store where
-		//    `supportsBrands` is false gets normalized to CATEGORIES
-		//    (what the ToggleGroupControl can actually render) rather
-		//    than re-committed unchanged.
-		const nextMode = TAXONOMY_MODES.includes( serverMode )
-			? normalizedServerTaxonomy
-			: activeTaxonomy;
-		onChange( { product_selection_mode: nextMode } );
+		// Under 0.1.5 `by_taxonomy` is the only server-side value
+		// for "the merchant is scoping by any combination of
+		// categories, tags, and brands." Single write, no per-tab
+		// variants to choose between.
+		onChange( { product_selection_mode: MODES.BY_TAXONOMY } );
 	};
 
 	// Switch between Categories / Tags / Brands inside the toggle.
@@ -1125,7 +1055,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		// numeric `0` from a future consumer. Checking the enum
 		// directly matches the three values this handler is
 		// actually designed to accept.
-		if ( ! TAXONOMY_MODES.includes( taxonomy ) ) {
+		if ( ! TAXONOMY_TAB_VALUES.includes( taxonomy ) ) {
 			// Silent in production (re-selection of the current
 			// ToggleGroupControl option is the expected non-enum
 			// path — ignoring it is correct), but surface a warn in
@@ -1264,14 +1194,14 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								onChange={ setTaxonomy }
 							>
 								<ToggleGroupControlOption
-									value={ MODES.CATEGORIES }
+									value={ TAXONOMY_TABS.CATEGORIES }
 									label={ __(
 										'Categories',
 										'woocommerce-ai-storefront'
 									) }
 								/>
 								<ToggleGroupControlOption
-									value={ MODES.TAGS }
+									value={ TAXONOMY_TABS.TAGS }
 									label={ __(
 										'Tags',
 										'woocommerce-ai-storefront'
@@ -1279,7 +1209,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								/>
 								{ supportsBrands && (
 									<ToggleGroupControlOption
-										value={ MODES.BRANDS }
+										value={ TAXONOMY_TABS.BRANDS }
 										label={ __(
 											'Brands',
 											'woocommerce-ai-storefront'
@@ -1347,7 +1277,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							</Notice>
 						) }
 
-						{ activeTaxonomy === MODES.CATEGORIES && (
+						{ activeTaxonomy === TAXONOMY_TABS.CATEGORIES && (
 							<TaxonomyPicker
 								items={ categories }
 								filtered={ filteredCategories }
@@ -1376,7 +1306,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									};
 									if ( ids.length > 0 ) {
 										changes.product_selection_mode =
-											MODES.CATEGORIES;
+											MODES.BY_TAXONOMY;
 									}
 									onChange( changes );
 								} }
@@ -1408,7 +1338,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							/>
 						) }
 
-						{ activeTaxonomy === MODES.TAGS && (
+						{ activeTaxonomy === TAXONOMY_TABS.TAGS && (
 							<TaxonomyPicker
 								items={ tags }
 								filtered={ filteredTags }
@@ -1427,7 +1357,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									const changes = { selected_tags: ids };
 									if ( ids.length > 0 ) {
 										changes.product_selection_mode =
-											MODES.TAGS;
+											MODES.BY_TAXONOMY;
 									}
 									onChange( changes );
 								} }
@@ -1462,60 +1392,63 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							/>
 						) }
 
-						{ activeTaxonomy === MODES.BRANDS && supportsBrands && (
-							<TaxonomyPicker
-								items={ brands }
-								filtered={ filteredBrands }
-								selectedIds={ selectedBrands }
-								selectedTokens={ selectedBrandTokens }
-								search={ brandSearch }
-								onSearch={ setBrandSearch }
-								onToggle={ toggleBrand }
-								onSelectAll={ () => {
-									// Bulk-select mirrors the toggle's
-									// mode-commit semantics; see
-									// toggleCategory's `onSelectAll` for
-									// full rationale.
-									const ids = brands.map(
-										( brand ) => brand.id
-									);
-									const changes = { selected_brands: ids };
-									if ( ids.length > 0 ) {
-										changes.product_selection_mode =
-											MODES.BRANDS;
+						{ activeTaxonomy === TAXONOMY_TABS.BRANDS &&
+							supportsBrands && (
+								<TaxonomyPicker
+									items={ brands }
+									filtered={ filteredBrands }
+									selectedIds={ selectedBrands }
+									selectedTokens={ selectedBrandTokens }
+									search={ brandSearch }
+									onSearch={ setBrandSearch }
+									onToggle={ toggleBrand }
+									onSelectAll={ () => {
+										// Bulk-select mirrors the toggle's
+										// mode-commit semantics; see
+										// toggleCategory's `onSelectAll` for
+										// full rationale.
+										const ids = brands.map(
+											( brand ) => brand.id
+										);
+										const changes = {
+											selected_brands: ids,
+										};
+										if ( ids.length > 0 ) {
+											changes.product_selection_mode =
+												MODES.BY_TAXONOMY;
+										}
+										onChange( changes );
+									} }
+									onClear={ () =>
+										onChange( { selected_brands: [] } )
 									}
-									onChange( changes );
-								} }
-								onClear={ () =>
-									onChange( { selected_brands: [] } )
-								}
-								isLoading={ isLoadingBrands }
-								hasError={ hasBrandsError }
-								searchPlaceholder={ __(
-									'Filter brands (e.g. Adidas, Nike)\u2026',
-									'woocommerce-ai-storefront'
-								) }
-								emptyMatchLabel={ __(
-									'No brands match your filter.',
-									'woocommerce-ai-storefront'
-								) }
-								emptyLabel={ __(
-									"You haven't created any brands yet. Add brands in Products \u2192 Brands.",
-									'woocommerce-ai-storefront'
-								) }
-								errorLabel={ __(
-									"Couldn't load your brands right now. If you have brands configured, refresh this page to retry.",
-									'woocommerce-ai-storefront'
-								) }
-								disclosure={ createInterpolateElement(
-									__(
-										'Products are included when they belong to <strong>any</strong> of the selected brands. Auto-includes future products that match.',
+									isLoading={ isLoadingBrands }
+									hasError={ hasBrandsError }
+									searchPlaceholder={ __(
+										'Filter brands (e.g. Adidas, Nike)\u2026',
 										'woocommerce-ai-storefront'
-									),
-									{ strong: <strong /> }
-								) }
-							/>
-						) }
+									) }
+									emptyMatchLabel={ __(
+										'No brands match your filter.',
+										'woocommerce-ai-storefront'
+									) }
+									emptyLabel={ __(
+										"You haven't created any brands yet. Add brands in Products \u2192 Brands.",
+										'woocommerce-ai-storefront'
+									) }
+									errorLabel={ __(
+										"Couldn't load your brands right now. If you have brands configured, refresh this page to retry.",
+										'woocommerce-ai-storefront'
+									) }
+									disclosure={ createInterpolateElement(
+										__(
+											'Products are included when they belong to <strong>any</strong> of the selected brands. Auto-includes future products that match.',
+											'woocommerce-ai-storefront'
+										),
+										{ strong: <strong /> }
+									) }
+								/>
+							) }
 					</ModeRow>
 
 					<ModeRow

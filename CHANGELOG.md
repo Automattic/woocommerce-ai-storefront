@@ -1,10 +1,24 @@
 # Changelog
 
-## [0.1.4] – 2026-04-24
+## [0.1.5] – 2026-04-24
 
-### UI polish
-- **Taxonomy selector: breathing room around the selected pill** — `ToggleGroupControl` without `isBlock` renders options at content-exact width, leaving the selected black pill nearly flush with its label. Added a scoped CSS override widening the horizontal padding so the pill has balanced space around the text.
-- **Remove redundant "new products not auto-included" Notice from Selected mode** — The yellow warning duplicated information already in the mode's header description. Hand-picked-products mode means hand-picking by definition; flagging "new products aren't auto-included" at warning severity implied something was wrong when the mode was working exactly as named. Removed to reduce visual noise.
+### Features
+- **By-taxonomy scoping is now a UNION across categories, tags, and brands.** Pre-0.1.5, the `product_selection_mode` enum had separate `categories` / `tags` / `brands` values, with only one taxonomy's selection actually enforcing at a time — the other selections were inert on-disk data. A merchant picking 3 categories + 1 brand saw only one dimension enforce (whichever they toggled last), despite the multi-count badge ("3 categories · 1 brand") implying all dimensions were active. 0.1.5 consolidates the three taxonomy modes into a single `by_taxonomy` value that enforces `selected_categories ∪ selected_tags ∪ selected_brands` everywhere — `is_product_syndicated()`, the Store API filter, `llms.txt`, and the "Products Exposed" count. The UI's multi-count badge is now truthful.
+
+### Fixes
+- **"Products Exposed" card reflects the actual scoped product count.** Pre-0.1.5 the card could display `"3 categories"` (wrong unit for a card labeled "Products Exposed") or fall through to literal `"All"` for tag/brand modes (because the client-side switch had no branch for them). New `/admin/product-count` REST endpoint runs the same UNION query the Store API filter applies and returns the actual product count.
+- **Empty-selection warning no longer fires when only unrelated taxonomies are empty.** Pre-0.1.5: merchant with `mode=tags, selected_tags=[], selected_categories=[3], selected_brands=[1]` saw "No tags selected, products hidden" — false, because under UNION the categories and brand still enforce. Now the warning fires only when all three `selected_*` arrays are empty (after accounting for the brand-downgrade exception) and mode is `by_taxonomy`.
+- **llms.txt Product Categories section now matches what's actually syndicated.** For `by_taxonomy` mode: lists `selected_categories` when non-empty, suppresses when only tags or brands are selected (because emitting generic category counts would misrepresent the UNION'd product set).
+
+### UI polish (rolled up from the closed 0.1.4 PR)
+- **Taxonomy selector: breathing room around the selected pill** — `ToggleGroupControl` without `isBlock` renders options at content-exact width, leaving the selected black pill nearly flush with its label. Added a scoped CSS override widening the horizontal padding.
+- **Remove redundant "new products not auto-included" Notice from Selected mode** — The yellow warning duplicated information already in the mode's header description. Hand-picked-products mode means hand-picking by definition.
+
+### Migration
+- **Silent upgrade on first settings read.** Any stored `product_selection_mode` value of `categories`, `tags`, or `brands` is rewritten to `by_taxonomy` in place. Non-destructive for `selected_*` arrays — all three stay intact, and the new UNION enforcement picks up whichever was populated. Also includes defensive fallbacks in `is_product_syndicated()`, the Store API filter, and `get_syndicated_categories()` so explicit callers passing a pre-0.1.5 `$settings` payload still get correct behavior.
+
+### Tests
+- 586 tests pass (up from 581). Six new tests cover: UNION tax_query with multiple taxonomies; brands-skipped-when-unregistered UNION path; legacy-mode fallback compatibility; empty-all-three zero-match policy; llms.txt category section in UNION mode with/without selected categories.
 
 ---
 

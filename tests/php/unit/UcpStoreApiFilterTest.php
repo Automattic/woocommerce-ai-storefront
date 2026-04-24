@@ -25,10 +25,24 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	 * behavior (e.g. via Brain\Monkey integration, fixture loading),
 	 * skipping the parent call would silently diverge initialization
 	 * state across tests.
+	 *
+	 * Under the 0.1.5 UNION model, `apply_union_restriction()` calls
+	 * `taxonomy_exists( 'product_brand' )` on every by_taxonomy
+	 * invocation — not just brand-configured ones — so a default stub
+	 * is provided here. Brand-specific tests that need a different
+	 * return value still scope their own `Brain\Monkey\setUp()` /
+	 * `->justReturn(false)` pair inside the test body.
 	 */
 	protected function setUp(): void {
 		parent::setUp();
+		\Brain\Monkey\setUp();
+		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
 		WC_AI_Storefront::$test_settings = [];
+	}
+
+	protected function tearDown(): void {
+		\Brain\Monkey\tearDown();
+		parent::tearDown();
 	}
 
 	// ------------------------------------------------------------------
@@ -61,12 +75,20 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Mode: categories
+	// Mode: by_taxonomy (0.1.5 UNION model)
+	//
+	// Under `by_taxonomy`, selections across `selected_categories`,
+	// `selected_tags`, and `selected_brands` are combined with an OR
+	// relation. The emitted `tax_query` is a single clause-set of the
+	// shape `[ 'relation' => 'OR', <clause>, <clause>, ... ]`. The
+	// tests below mirror the three pre-0.1.5 "single-taxonomy" modes
+	// by exercising a by_taxonomy configuration with only one of the
+	// three arrays populated — which produces a one-clause OR.
 	// ------------------------------------------------------------------
 
-	public function test_categories_mode_appends_tax_query_entry(): void {
+	public function test_by_taxonomy_mode_categories_only_emits_single_clause_or(): void {
 		WC_AI_Storefront::$test_settings = [
-			'product_selection_mode' => 'categories',
+			'product_selection_mode' => 'by_taxonomy',
 			'selected_categories'    => [ 5, 12 ],
 		];
 
@@ -74,7 +96,7 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		$result = $filter->restrict_to_syndicated_products( [] );
 
 		$this->assertArrayHasKey( 'tax_query', $result );
-		$this->assertCount( 1, $result['tax_query'] );
+		$this->assertSame( 'OR', $result['tax_query']['relation'] );
 		$this->assertEquals(
 			[
 				'taxonomy' => 'product_cat',
@@ -83,16 +105,20 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 			],
 			$result['tax_query'][0]
 		);
+		// No stray second clause.
+		$this->assertArrayNotHasKey( 1, $result['tax_query'] );
 	}
 
-	public function test_categories_mode_preserves_existing_tax_query_entries(): void {
-		// WP_Query defaults to AND relation between tax_query entries,
-		// so appending our restriction alongside an existing one (e.g.
-		// Store API's own ?category=X filter) yields "both must match"
-		// semantics — products in BOTH the incoming filter AND the
-		// merchant's allow-list.
+	public function test_by_taxonomy_mode_preserves_existing_tax_query_via_and_wrapper(): void {
+		// When the caller already supplied a `tax_query` (e.g. Store
+		// API's own `?category=X` filter), the new UNION shape can't
+		// just append a clause — that would dilute "must be in both"
+		// semantics. Instead the production code wraps both the
+		// caller's clauses AND our UNION clause in an outer
+		// `AND`-relation tax_query: "the caller's intent still holds
+		// AND our UNION restriction also holds."
 		WC_AI_Storefront::$test_settings = [
-			'product_selection_mode' => 'categories',
+			'product_selection_mode' => 'by_taxonomy',
 			'selected_categories'    => [ 10 ],
 		];
 
@@ -109,31 +135,23 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 			[ 'tax_query' => $incoming_tax_query ]
 		);
 
-		$this->assertCount( 2, $result['tax_query'] );
-		// Incoming entry preserved at index 0.
-		$this->assertEquals( 'slug', $result['tax_query'][0]['field'] );
-		$this->assertEquals( [ 'sale' ], $result['tax_query'][0]['terms'] );
-		// Our restriction appended at index 1.
-		$this->assertEquals( 'term_id', $result['tax_query'][1]['field'] );
-		$this->assertEquals( [ 10 ], $result['tax_query'][1]['terms'] );
+		$this->assertSame( 'AND', $result['tax_query']['relation'] );
+		// Caller's tax_query preserved at index 0.
+		$this->assertSame( $incoming_tax_query, $result['tax_query'][0] );
+		// Our UNION clause lands at index 1 with OR relation + one clause.
+		$this->assertSame( 'OR', $result['tax_query'][1]['relation'] );
+		$this->assertEquals( 'term_id', $result['tax_query'][1][0]['field'] );
+		$this->assertEquals( [ 10 ], $result['tax_query'][1][0]['terms'] );
 	}
 
-	public function test_categories_mode_with_empty_selected_categories_forces_zero_matches(): void {
-		// Merchant has picked "categories" mode but not chosen any yet.
-		// The enforcement policy is "hide all products" to keep the
-		// Store API + llms.txt/JSON-LD gates in lockstep (the latter
-		// also returns false in this state via
+	public function test_by_taxonomy_mode_with_empty_selected_categories_forces_zero_matches(): void {
+		// Merchant picked "by_taxonomy" but no categories/tags/brands
+		// are selected. The enforcement policy is "hide all products"
+		// to keep the Store API + llms.txt/JSON-LD gates in lockstep
+		// (the latter also returns false in this state via
 		// `WC_AI_Storefront::is_product_syndicated()`).
-		//
-		// Before the PR that added tags + brands, this branch was a
-		// no-op — the Store API exposed the full catalog while
-		// llms.txt hid everything. The divergence was a silent
-		// enforcement inconsistency; aligning both gates to the same
-		// (safer) "hide all" posture eliminates the surprise and
-		// extends the identical policy across all three taxonomy
-		// modes.
 		WC_AI_Storefront::$test_settings = [
-			'product_selection_mode' => 'categories',
+			'product_selection_mode' => 'by_taxonomy',
 			'selected_categories'    => [],
 		];
 
@@ -145,14 +163,14 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( [ 0 ], $result['post__in'] );
 	}
 
-	public function test_categories_mode_absints_stringy_ids_before_tax_query(): void {
+	public function test_by_taxonomy_mode_absints_stringy_ids_before_tax_query(): void {
 		// Settings are normalized by get_settings(), but defensive double-
 		// cast here guards against legacy stored options or filter
 		// interception producing non-int IDs. WordPress `absint()` =
 		// `abs((int) $v)`, so negatives flip to positive and strings
 		// coerce numerically.
 		WC_AI_Storefront::$test_settings = [
-			'product_selection_mode' => 'categories',
+			'product_selection_mode' => 'by_taxonomy',
 			'selected_categories'    => [ '5', '12', -3 ],
 		];
 
@@ -163,12 +181,12 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Mode: tags
+	// by_taxonomy: tags-only selection (one clause under UNION)
 	// ------------------------------------------------------------------
 
-	public function test_tags_mode_appends_tax_query_entry(): void {
+	public function test_by_taxonomy_mode_tags_only_emits_single_clause_or(): void {
 		WC_AI_Storefront::$test_settings = [
-			'product_selection_mode' => 'tags',
+			'product_selection_mode' => 'by_taxonomy',
 			'selected_tags'          => [ 7, 21 ],
 		];
 
@@ -176,7 +194,7 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		$result = $filter->restrict_to_syndicated_products( [] );
 
 		$this->assertArrayHasKey( 'tax_query', $result );
-		$this->assertCount( 1, $result['tax_query'] );
+		$this->assertSame( 'OR', $result['tax_query']['relation'] );
 		$this->assertEquals(
 			[
 				'taxonomy' => 'product_tag',
@@ -185,21 +203,7 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 			],
 			$result['tax_query'][0]
 		);
-	}
-
-	public function test_tags_mode_with_empty_selected_tags_forces_zero_matches(): void {
-		// Parallel to the categories empty-selection policy: hide all
-		// products via `post__in = [0]` so the Store API agent view
-		// matches what llms.txt/JSON-LD emit for the same state.
-		WC_AI_Storefront::$test_settings = [
-			'product_selection_mode' => 'tags',
-			'selected_tags'          => [],
-		];
-
-		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
-
-		$this->assertSame( [ 0 ], $result['post__in'] );
+		$this->assertArrayNotHasKey( 1, $result['tax_query'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -213,32 +217,28 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	// without a full WP bootstrap.
 	// ------------------------------------------------------------------
 
-	public function test_brands_mode_appends_tax_query_entry_when_taxonomy_registered(): void {
-		\Brain\Monkey\setUp();
-		try {
-			\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
+	public function test_by_taxonomy_mode_brands_only_emits_single_clause_or_when_taxonomy_registered(): void {
+		// `taxonomy_exists` default in setUp() returns true — matches
+		// a store where `product_brand` is registered (WC 9.5+).
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_brands'        => [ 3, 14, 42 ],
+		];
 
-			WC_AI_Storefront::$test_settings = [
-				'product_selection_mode' => 'brands',
-				'selected_brands'        => [ 3, 14, 42 ],
-			];
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$result = $filter->restrict_to_syndicated_products( [] );
 
-			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-			$result = $filter->restrict_to_syndicated_products( [] );
-
-			$this->assertArrayHasKey( 'tax_query', $result );
-			$this->assertCount( 1, $result['tax_query'] );
-			$this->assertEquals(
-				[
-					'taxonomy' => 'product_brand',
-					'field'    => 'term_id',
-					'terms'    => [ 3, 14, 42 ],
-				],
-				$result['tax_query'][0]
-			);
-		} finally {
-			\Brain\Monkey\tearDown();
-		}
+		$this->assertArrayHasKey( 'tax_query', $result );
+		$this->assertSame( 'OR', $result['tax_query']['relation'] );
+		$this->assertEquals(
+			[
+				'taxonomy' => 'product_brand',
+				'field'    => 'term_id',
+				'terms'    => [ 3, 14, 42 ],
+			],
+			$result['tax_query'][0]
+		);
+		$this->assertArrayNotHasKey( 1, $result['tax_query'] );
 	}
 
 	public function test_brands_mode_is_noop_when_taxonomy_not_registered(): void {
@@ -250,49 +250,177 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// for merchants who somehow persisted the mode before the
 		// taxonomy disappeared (plugin deactivation, custom registration).
 		//
+		// Under the 0.1.5 UNION model the exception is narrower: it
+		// fires only when brands is the ONLY configured taxonomy. A
+		// stored but unenforceable brand selection alongside
+		// categories or tags is simply dropped from the UNION (see
+		// `test_union_mode_skips_brands_when_taxonomy_unregistered_but_cats_tags_set`).
+		//
 		// Unlike the empty-selection case, this is a genuine no-op
 		// (args unchanged) — returning [0] here would hide the
 		// catalog on a downgrade scenario the merchant didn't opt
 		// into. Declining to act preserves the pre-downgrade view.
-		\Brain\Monkey\setUp();
-		try {
-			\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( false );
+		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( false );
 
-			WC_AI_Storefront::$test_settings = [
-				'product_selection_mode' => 'brands',
-				'selected_brands'        => [ 3, 14 ],
-			];
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_brands'        => [ 3, 14 ],
+		];
 
-			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-			$input  = [ 'orderby' => 'date' ];
-			$result = $filter->restrict_to_syndicated_products( $input );
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$input  = [ 'orderby' => 'date' ];
+		$result = $filter->restrict_to_syndicated_products( $input );
 
-			$this->assertSame( $input, $result );
-		} finally {
-			\Brain\Monkey\tearDown();
+		$this->assertSame( $input, $result );
+	}
+
+	public function test_by_taxonomy_mode_with_empty_selected_brands_forces_zero_matches(): void {
+		// Parallel to categories + tags empty-selection policy.
+		// `taxonomy_exists` default stub returns true (taxonomy is
+		// registered); the merchant just hasn't picked any brands yet.
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_brands'        => [],
+		];
+
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
+
+		$this->assertSame( [ 0 ], $result['post__in'] );
+	}
+
+	// ------------------------------------------------------------------
+	// UNION semantics — the 0.1.5 core behavior
+	// ------------------------------------------------------------------
+
+	public function test_union_mode_combines_categories_tags_brands_with_or_relation(): void {
+		// All three taxonomies have selections. The emitted tax_query
+		// is a single-level OR-clause with three inner clauses — a
+		// product matches if it's in cat 5, cat 12, tag 7, tag 21,
+		// brand 3, OR brand 42.
+		// `taxonomy_exists` default stub returns true (brands registered).
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [ 5, 12 ],
+			'selected_tags'          => [ 7, 21 ],
+			'selected_brands'        => [ 3, 42 ],
+		];
+
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$result = $filter->restrict_to_syndicated_products( [] );
+
+		$this->assertArrayHasKey( 'tax_query', $result );
+		$this->assertSame( 'OR', $result['tax_query']['relation'] );
+
+		// Three clauses, one per taxonomy, at positional indices 0..2.
+		$this->assertEquals(
+			[
+				'taxonomy' => 'product_cat',
+				'field'    => 'term_id',
+				'terms'    => [ 5, 12 ],
+			],
+			$result['tax_query'][0]
+		);
+		$this->assertEquals(
+			[
+				'taxonomy' => 'product_tag',
+				'field'    => 'term_id',
+				'terms'    => [ 7, 21 ],
+			],
+			$result['tax_query'][1]
+		);
+		$this->assertEquals(
+			[
+				'taxonomy' => 'product_brand',
+				'field'    => 'term_id',
+				'terms'    => [ 3, 42 ],
+			],
+			$result['tax_query'][2]
+		);
+
+		// No stray fourth clause.
+		$this->assertArrayNotHasKey( 3, $result['tax_query'] );
+	}
+
+	public function test_union_mode_skips_brands_when_taxonomy_unregistered_but_cats_tags_set(): void {
+		// Partial-downgrade scenario: the merchant configured all
+		// three taxonomies on a WC 9.5+ store, then product_brand
+		// disappeared (plugin deactivation, custom unregistration).
+		// Because categories + tags are also configured, the outer
+		// "brand-only downgrade no-op" doesn't apply; instead we
+		// silently drop the unenforceable brand clause and emit the
+		// remaining two-clause UNION.
+		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( false );
+
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [ 5 ],
+			'selected_tags'          => [ 7 ],
+			'selected_brands'        => [ 3 ],
+		];
+
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$result = $filter->restrict_to_syndicated_products( [] );
+
+		$this->assertArrayHasKey( 'tax_query', $result );
+		$this->assertSame( 'OR', $result['tax_query']['relation'] );
+
+		// Only two clauses: product_cat + product_tag. No product_brand.
+		$this->assertEquals( 'product_cat', $result['tax_query'][0]['taxonomy'] );
+		$this->assertEquals( 'product_tag', $result['tax_query'][1]['taxonomy'] );
+		$this->assertArrayNotHasKey( 2, $result['tax_query'] );
+
+		// Defense in depth: no product_brand clause anywhere.
+		foreach ( $result['tax_query'] as $key => $clause ) {
+			if ( 'relation' === $key ) {
+				continue;
+			}
+			$this->assertNotEquals( 'product_brand', $clause['taxonomy'] );
 		}
 	}
 
-	public function test_brands_mode_with_empty_selected_brands_forces_zero_matches(): void {
-		// Parallel to categories + tags empty-selection policy.
-		// `taxonomy_exists` returns true (taxonomy is registered);
-		// the merchant just hasn't picked any brands yet.
-		\Brain\Monkey\setUp();
-		try {
-			\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
+	public function test_legacy_categories_mode_routed_through_union_fallback(): void {
+		// Defensive legacy-mode fallback: a caller that constructs
+		// settings with the pre-0.1.5 `categories` mode (or an option
+		// row that pre-dates the silent migration) still gets correct
+		// UNION enforcement. The production code rewrites
+		// `categories|tags|brands` → `by_taxonomy` before enforcement,
+		// so the output must match a direct `by_taxonomy`
+		// configuration with the same selection.
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 
-			WC_AI_Storefront::$test_settings = [
-				'product_selection_mode' => 'brands',
-				'selected_brands'        => [],
-			];
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'categories',
+			'selected_categories'    => [ 5 ],
+		];
+		$legacy_result = $filter->restrict_to_syndicated_products( [] );
 
-			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-			$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [ 5 ],
+		];
+		$canonical_result = $filter->restrict_to_syndicated_products( [] );
 
-			$this->assertSame( [ 0 ], $result['post__in'] );
-		} finally {
-			\Brain\Monkey\tearDown();
-		}
+		$this->assertEquals( $canonical_result, $legacy_result );
+	}
+
+	public function test_union_mode_empty_all_three_arrays_forces_zero_matches(): void {
+		// `by_taxonomy` with all three selection arrays empty → there's
+		// nothing enforceable, so the filter forces `post__in = [0]`
+		// (zero matches). Mirrors `is_product_syndicated()` returning
+		// false in the same state so llms.txt / JSON-LD and the Store
+		// API catalog stay in lockstep.
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [],
+			'selected_tags'          => [],
+			'selected_brands'        => [],
+		];
+
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
+
+		$this->assertSame( [ 0 ], $result['post__in'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -391,11 +519,11 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	// Cross-mode: one mode's fields should not leak into another
 	// ------------------------------------------------------------------
 
-	public function test_categories_mode_does_not_set_post_in(): void {
+	public function test_by_taxonomy_mode_does_not_set_post_in(): void {
 		WC_AI_Storefront::$test_settings = [
-			'product_selection_mode' => 'categories',
+			'product_selection_mode' => 'by_taxonomy',
 			'selected_categories'    => [ 5 ],
-			'selected_products'      => [ 999 ],  // present but ignored in categories mode
+			'selected_products'      => [ 999 ],  // present but ignored in by_taxonomy mode
 		];
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
@@ -409,6 +537,8 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 			'product_selection_mode' => 'selected',
 			'selected_products'      => [ 42 ],
 			'selected_categories'    => [ 999 ],  // present but ignored in selected mode
+			'selected_tags'          => [ 888 ],  // present but ignored in selected mode
+			'selected_brands'        => [ 777 ],  // present but ignored in selected mode
 		];
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();

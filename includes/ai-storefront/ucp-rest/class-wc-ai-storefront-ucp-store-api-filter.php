@@ -115,38 +115,17 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		$settings = WC_AI_Storefront::get_settings();
 		$mode     = $settings['product_selection_mode'] ?? 'all';
 
-		if ( 'categories' === $mode ) {
-			return $this->apply_taxonomy_restriction(
-				$args,
-				'product_cat',
-				$settings['selected_categories'] ?? []
-			);
+		// Defensive legacy-mode fallback. Silent migration in
+		// `WC_AI_Storefront::get_settings()` rewrites stored values,
+		// but a caller that constructs args with a pre-0.1.5 mode
+		// still gets correct UNION enforcement. See the companion
+		// block in `is_product_syndicated()` for rationale.
+		if ( 'categories' === $mode || 'tags' === $mode || 'brands' === $mode ) {
+			$mode = 'by_taxonomy';
 		}
 
-		if ( 'tags' === $mode ) {
-			return $this->apply_taxonomy_restriction(
-				$args,
-				'product_tag',
-				$settings['selected_tags'] ?? []
-			);
-		}
-
-		if ( 'brands' === $mode ) {
-			// `product_brand` is WC 9.5+. On stores without the
-			// taxonomy registered, decline to act rather than emit
-			// an invalid tax_query — the admin UI also hides the
-			// Brands segment when the server-side `supportsBrands`
-			// flag is false, so a persisted `brands` mode on an
-			// older store is a rare downgrade scenario we degrade
-			// gracefully from.
-			if ( ! taxonomy_exists( 'product_brand' ) ) {
-				return $args;
-			}
-			return $this->apply_taxonomy_restriction(
-				$args,
-				'product_brand',
-				$settings['selected_brands'] ?? []
-			);
+		if ( 'by_taxonomy' === $mode ) {
+			return $this->apply_union_restriction( $args, $settings );
 		}
 
 		if ( 'selected' === $mode && ! empty( $settings['selected_products'] ) ) {
@@ -165,39 +144,97 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	}
 
 	/**
-	 * Apply a taxonomy restriction — or force zero matches when
-	 * the selection is empty.
+	 * Apply UNION restriction across categories / tags / brands.
 	 *
-	 * Extracted so the three taxonomy-mode branches
-	 * (categories / tags / brands) share a single enforcement path.
-	 * Keeping the empty-selection policy in one place guarantees
-	 * categories/tags/brands can't silently diverge in how they
-	 * handle a "picked a mode but haven't configured it yet" state.
+	 * Builds a tax_query with `relation => 'OR'` so products match
+	 * if they belong to any of the configured terms in any of the
+	 * three taxonomies. Example: `selected_categories = [3, 7]`,
+	 * `selected_brands = [12]` → products matching cat 3 OR cat 7
+	 * OR brand 12 are included.
+	 *
+	 * Brand-downgrade exception: if `product_brand` isn't
+	 * registered (pre-WC 9.5 / custom unregistration) AND brands
+	 * is the ONLY configured taxonomy, leave `$args` unchanged
+	 * (show all) — same rationale as `is_product_syndicated()`.
+	 * A stored but unenforceable brand selection alongside
+	 * categories or tags is simply dropped from the UNION.
+	 *
+	 * Empty-selection policy: no enforceable taxonomy has a non-
+	 * empty selection → force `post__in = [0]` (zero matches).
+	 * Matches `is_product_syndicated()` returning false in the
+	 * same state so llms.txt / JSON-LD and the Store API catalog
+	 * stay in lockstep.
+	 *
+	 * Incoming tax_query merge: if the caller already supplied a
+	 * `tax_query`, wrap both our UNION clause and theirs in an
+	 * `AND`-relation outer tax_query — preserves their intent
+	 * AND enforces ours.
 	 *
 	 * @param array<string, mixed> $args     Store API query args.
-	 * @param string               $taxonomy WP taxonomy slug.
-	 * @param array                $term_ids Raw term IDs from settings.
+	 * @param array<string, mixed> $settings Plugin settings.
 	 * @return array<string, mixed>          Modified args.
 	 */
-	private function apply_taxonomy_restriction( array $args, string $taxonomy, array $term_ids ): array {
-		$term_ids = array_map( 'absint', $term_ids );
+	private function apply_union_restriction( array $args, array $settings ): array {
+		$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? [] );
+		$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? [] );
+		$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? [] );
 
-		if ( empty( $term_ids ) ) {
-			// Force zero matches using the same sentinel
-			// (`post__in = [0]`) the `selected` branch uses for an
-			// empty intersection. Never a valid post ID, so
-			// WP_Query short-circuits to zero results and the
-			// agent-facing catalog matches what llms.txt/JSON-LD
-			// emit in the same state.
+		$brands_supported = taxonomy_exists( 'product_brand' );
+
+		$has_cats   = ! empty( $selected_categories );
+		$has_tags   = ! empty( $selected_tags );
+		$has_brands = ! empty( $selected_brands ) && $brands_supported;
+
+		// Brand-downgrade exception: only brands configured and the
+		// taxonomy is now missing → show all. Preserves the pre-
+		// 0.1.5 `brands` mode degradation behavior.
+		if ( ! $has_cats && ! $has_tags && ! $brands_supported && ! empty( $selected_brands ) ) {
+			return $args;
+		}
+
+		// Empty-selection policy: nothing enforceable → zero matches.
+		if ( ! $has_cats && ! $has_tags && ! $has_brands ) {
 			$args['post__in'] = [ 0 ];
 			return $args;
 		}
 
-		$args['tax_query'][] = [
-			'taxonomy' => $taxonomy,
-			'field'    => 'term_id',
-			'terms'    => $term_ids,
-		];
+		$clauses = [ 'relation' => 'OR' ];
+
+		if ( $has_cats ) {
+			$clauses[] = [
+				'taxonomy' => 'product_cat',
+				'field'    => 'term_id',
+				'terms'    => $selected_categories,
+			];
+		}
+
+		if ( $has_tags ) {
+			$clauses[] = [
+				'taxonomy' => 'product_tag',
+				'field'    => 'term_id',
+				'terms'    => $selected_tags,
+			];
+		}
+
+		if ( $has_brands ) {
+			$clauses[] = [
+				'taxonomy' => 'product_brand',
+				'field'    => 'term_id',
+				'terms'    => $selected_brands,
+			];
+		}
+
+		// Merge with any incoming tax_query via AND, so the caller's
+		// existing filter stays in effect alongside our UNION.
+		if ( empty( $args['tax_query'] ) ) {
+			$args['tax_query'] = $clauses;
+		} else {
+			$args['tax_query'] = [
+				'relation' => 'AND',
+				$args['tax_query'],
+				$clauses,
+			];
+		}
 
 		return $args;
 	}
