@@ -118,20 +118,31 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( [ 10 ], $result['tax_query'][1]['terms'] );
 	}
 
-	public function test_categories_mode_with_empty_selected_categories_is_noop(): void {
+	public function test_categories_mode_with_empty_selected_categories_forces_zero_matches(): void {
 		// Merchant has picked "categories" mode but not chosen any yet.
-		// An empty terms array would hide everything — match the existing
-		// llms.txt / JSON-LD behavior and treat this as no-op.
+		// The enforcement policy is "hide all products" to keep the
+		// Store API + llms.txt/JSON-LD gates in lockstep (the latter
+		// also returns false in this state via
+		// `WC_AI_Storefront::is_product_syndicated()`).
+		//
+		// Before the PR that added tags + brands, this branch was a
+		// no-op — the Store API exposed the full catalog while
+		// llms.txt hid everything. The divergence was a silent
+		// enforcement inconsistency; aligning both gates to the same
+		// (safer) "hide all" posture eliminates the surprise and
+		// extends the identical policy across all three taxonomy
+		// modes.
 		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'categories',
 			'selected_categories'    => [],
 		];
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$input  = [ 'orderby' => 'date' ];
-		$result = $filter->restrict_to_syndicated_products( $input );
+		$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
 
-		$this->assertSame( $input, $result );
+		// `post__in = [0]` is the same never-valid-ID sentinel the
+		// `selected` branch uses for empty intersections.
+		$this->assertSame( [ 0 ], $result['post__in'] );
 	}
 
 	public function test_categories_mode_absints_stringy_ids_before_tax_query(): void {
@@ -149,6 +160,139 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		$result = $filter->restrict_to_syndicated_products( [] );
 
 		$this->assertSame( [ 5, 12, 3 ], $result['tax_query'][0]['terms'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Mode: tags
+	// ------------------------------------------------------------------
+
+	public function test_tags_mode_appends_tax_query_entry(): void {
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'tags',
+			'selected_tags'          => [ 7, 21 ],
+		];
+
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$result = $filter->restrict_to_syndicated_products( [] );
+
+		$this->assertArrayHasKey( 'tax_query', $result );
+		$this->assertCount( 1, $result['tax_query'] );
+		$this->assertEquals(
+			[
+				'taxonomy' => 'product_tag',
+				'field'    => 'term_id',
+				'terms'    => [ 7, 21 ],
+			],
+			$result['tax_query'][0]
+		);
+	}
+
+	public function test_tags_mode_with_empty_selected_tags_forces_zero_matches(): void {
+		// Parallel to the categories empty-selection policy: hide all
+		// products via `post__in = [0]` so the Store API agent view
+		// matches what llms.txt/JSON-LD emit for the same state.
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'tags',
+			'selected_tags'          => [],
+		];
+
+		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+		$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
+
+		$this->assertSame( [ 0 ], $result['post__in'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Mode: brands
+	//
+	// `product_brand` is a WC 9.5+ native taxonomy. The production
+	// filter also guards with `taxonomy_exists( 'product_brand' )` to
+	// avoid emitting a tax_query against an unregistered taxonomy. In
+	// these unit tests `taxonomy_exists()` is mocked via Brain\Monkey
+	// so we can exercise both registered and unregistered states
+	// without a full WP bootstrap.
+	// ------------------------------------------------------------------
+
+	public function test_brands_mode_appends_tax_query_entry_when_taxonomy_registered(): void {
+		\Brain\Monkey\setUp();
+		try {
+			\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
+
+			WC_AI_Storefront::$test_settings = [
+				'product_selection_mode' => 'brands',
+				'selected_brands'        => [ 3, 14, 42 ],
+			];
+
+			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$result = $filter->restrict_to_syndicated_products( [] );
+
+			$this->assertArrayHasKey( 'tax_query', $result );
+			$this->assertCount( 1, $result['tax_query'] );
+			$this->assertEquals(
+				[
+					'taxonomy' => 'product_brand',
+					'field'    => 'term_id',
+					'terms'    => [ 3, 14, 42 ],
+				],
+				$result['tax_query'][0]
+			);
+		} finally {
+			\Brain\Monkey\tearDown();
+		}
+	}
+
+	public function test_brands_mode_is_noop_when_taxonomy_not_registered(): void {
+		// Graceful degradation: on pre-WC-9.5 stores (or any env that
+		// unregisters `product_brand`), the filter must not emit a
+		// tax_query entry — doing so would fatal in WP_Query's
+		// taxonomy resolution. Admin UI hides the Brands segment when
+		// this is the case, so this code path is a defense in depth
+		// for merchants who somehow persisted the mode before the
+		// taxonomy disappeared (plugin deactivation, custom registration).
+		//
+		// Unlike the empty-selection case, this is a genuine no-op
+		// (args unchanged) — returning [0] here would hide the
+		// catalog on a downgrade scenario the merchant didn't opt
+		// into. Declining to act preserves the pre-downgrade view.
+		\Brain\Monkey\setUp();
+		try {
+			\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( false );
+
+			WC_AI_Storefront::$test_settings = [
+				'product_selection_mode' => 'brands',
+				'selected_brands'        => [ 3, 14 ],
+			];
+
+			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$input  = [ 'orderby' => 'date' ];
+			$result = $filter->restrict_to_syndicated_products( $input );
+
+			$this->assertSame( $input, $result );
+		} finally {
+			\Brain\Monkey\tearDown();
+		}
+	}
+
+	public function test_brands_mode_with_empty_selected_brands_forces_zero_matches(): void {
+		// Parallel to categories + tags empty-selection policy.
+		// `taxonomy_exists` returns true (taxonomy is registered);
+		// the merchant just hasn't picked any brands yet.
+		\Brain\Monkey\setUp();
+		try {
+			\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
+
+			WC_AI_Storefront::$test_settings = [
+				'product_selection_mode' => 'brands',
+				'selected_brands'        => [],
+			];
+
+			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
+
+			$this->assertSame( [ 0 ], $result['post__in'] );
+		} finally {
+			\Brain\Monkey\tearDown();
+		}
 	}
 
 	// ------------------------------------------------------------------

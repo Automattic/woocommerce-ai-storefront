@@ -1,4 +1,9 @@
-import { useState, useEffect, useMemo } from '@wordpress/element';
+import {
+	useState,
+	useEffect,
+	useMemo,
+	createInterpolateElement,
+} from '@wordpress/element';
 import {
 	Card,
 	CardHeader,
@@ -9,31 +14,78 @@ import {
 	CheckboxControl,
 	Spinner,
 	Notice,
+	// ToggleGroupControl and its Option are still exported under the
+	// `__experimental` prefix as of @wordpress/components 28.x, but
+	// they've been stable in practice for multiple years and are
+	// used widely across Gutenberg + wc-admin. Keep the aliased
+	// import so a future graduation to stable surface is a one-line
+	// rename here. Suppressing `no-unsafe-wp-apis` at the specific
+	// lines rather than file-wide so any OTHER experimental usage
+	// added later still gets flagged.
+	// eslint-disable-next-line @wordpress/no-unsafe-wp-apis
+	__experimentalToggleGroupControl as ToggleGroupControl,
+	// eslint-disable-next-line @wordpress/no-unsafe-wp-apis
+	__experimentalToggleGroupControlOption as ToggleGroupControlOption,
 } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 import { colors } from './tokens';
 
+// Server-side enum for `product_selection_mode`. The three taxonomy
+// modes (categories/tags/brands) share a single top-level "By taxonomy"
+// radio row in the UI (backed by ToggleGroupControl for sub-selection);
+// the server still branches per taxonomy for enforcement.
 const MODES = {
 	ALL: 'all',
 	CATEGORIES: 'categories',
+	TAGS: 'tags',
+	BRANDS: 'brands',
 	SELECTED: 'selected',
 };
 
+// UI-side grouping: three radio rows map to five server modes via the
+// ToggleGroupControl inside the By-Taxonomy row.
+const UI_ROWS = {
+	ALL: 'all',
+	BY_TAXONOMY: 'by_taxonomy',
+	SELECTED: 'selected',
+};
+
+const TAXONOMY_MODES = [ MODES.CATEGORIES, MODES.TAGS, MODES.BRANDS ];
+
+/**
+ * Map the server-persisted `product_selection_mode` to the UI row it
+ * belongs to. All three taxonomy modes collapse into BY_TAXONOMY; the
+ * toggle-group segment inside reflects which specific taxonomy is
+ * active.
+ *
+ * @param {string} mode Server mode value.
+ * @return {string}     Corresponding UI row key.
+ */
+const modeToUiRow = ( mode ) => {
+	if ( TAXONOMY_MODES.includes( mode ) ) {
+		return UI_ROWS.BY_TAXONOMY;
+	}
+	if ( mode === MODES.SELECTED ) {
+		return UI_ROWS.SELECTED;
+	}
+	return UI_ROWS.ALL;
+};
+
 // Short, action-oriented descriptions surfaced under each radio row's
-// label. The longer "what this means" narrative lives in the detail
-// panel heading + disclosure so the collapsed row stays scannable.
+// label. The longer "what this means" narrative lives in the disclosure
+// line at the bottom of each detail panel.
 const MODE_DESCRIPTIONS = {
-	[ MODES.ALL ]: __(
+	[ UI_ROWS.ALL ]: __(
 		'Every published product in your store is discoverable by AI crawlers.',
 		'woocommerce-ai-storefront'
 	),
-	[ MODES.CATEGORIES ]: __(
-		'Share only products within specific WooCommerce categories.',
+	[ UI_ROWS.BY_TAXONOMY ]: __(
+		'Share only products that match selected categories, tags, or brands.',
 		'woocommerce-ai-storefront'
 	),
-	[ MODES.SELECTED ]: __(
+	[ UI_ROWS.SELECTED ]: __(
 		'Hand-pick individual products. New products are not auto-included.',
 		'woocommerce-ai-storefront'
 	),
@@ -100,18 +152,24 @@ const ModeBadge = ( { label, selected } ) => (
 
 /**
  * Token list showing currently-selected items with remove buttons.
- * Reused from the pre-rewrite implementation — same behavior, same
- * keyboard/screen-reader contract. Gives the selected-mode detail
- * panels a "here's what you've picked" summary at a glance.
+ * `variant="tag"` renders pill-shaped tokens with a leading `#` to
+ * visually distinguish tags from categories and brands (both of which
+ * render as rectangular tokens) at a glance — important when a
+ * merchant switches between the three taxonomy sub-modes and wants to
+ * confirm "am I looking at the tag list or the category list" without
+ * re-reading the heading.
  *
- * @param {Object}   root0          Component props.
- * @param {Array}    root0.items    Selected items with { id, name }.
- * @param {Function} root0.onRemove Callback when an item is removed.
+ * @param {Object}   root0           Component props.
+ * @param {Array}    root0.items     Selected items with { id, name }.
+ * @param {Function} root0.onRemove  Callback when an item is removed.
+ * @param {string}   [root0.variant] 'tag' renders pill + `#` prefix.
  */
-const SelectedTokens = ( { items, onRemove } ) => {
+const SelectedTokens = ( { items, onRemove, variant } ) => {
 	if ( items.length === 0 ) {
 		return null;
 	}
+
+	const isTag = variant === 'tag';
 
 	return (
 		<div
@@ -134,13 +192,28 @@ const SelectedTokens = ( { items, onRemove } ) => {
 						alignItems: 'center',
 						gap: '4px',
 						background: colors.surfaceMuted,
-						borderRadius: '3px',
+						// Tags get a fully-rounded pill; categories +
+						// brands keep the existing 3px rectangular
+						// radius so the three taxonomies are visually
+						// distinct in the UI.
+						borderRadius: isTag ? '12px' : '3px',
 						padding: '3px 6px 3px 10px',
 						fontSize: '12px',
 						color: colors.textPrimary,
 						lineHeight: '1.4',
 					} }
 				>
+					{ isTag && (
+						<span
+							aria-hidden="true"
+							style={ {
+								color: colors.textMuted,
+								fontWeight: '500',
+							} }
+						>
+							#
+						</span>
+					) }
 					{ decodeEntities( item.name ) }
 					<button
 						type="button"
@@ -174,6 +247,12 @@ const SelectedTokens = ( { items, onRemove } ) => {
  * agents hit), with the total published-product count read from the
  * `X-WP-Total` response header.
  *
+ * Ordering: newest first (`orderby=date&order=desc`) rather than the
+ * Store API default (`menu_order` + title). Newest is an honest
+ * selection criterion we can put in the label ("Recently added"),
+ * and it mirrors what a merchant sees at the top of the Products
+ * screen — so the grid looks like their catalog, not a surprise.
+ *
  * Store API is preferred over the admin product-search endpoint here
  * because it's the exact surface agents see — visibility filters
  * (catalog visibility, out-of-stock exclusion) match what gets
@@ -199,7 +278,7 @@ const SamplePreview = () => {
 		// `X-WP-Total` for the total published-product count. apiFetch's
 		// default parse mode discards headers.
 		apiFetch( {
-			path: '/wc/store/v1/products?per_page=6',
+			path: '/wc/store/v1/products?per_page=6&orderby=date&order=desc',
 			parse: false,
 		} )
 			.then( async ( response ) => {
@@ -298,6 +377,23 @@ const SamplePreview = () => {
 		);
 	}
 
+	// Label reflects the ordering we ask for — "Recently added" is
+	// honest about the selection criterion (vs. generic "Sample") and
+	// includes the total count (when known) so the merchant has
+	// catalog-size context at a glance.
+	const label =
+		total !== null
+			? sprintf(
+					/* translators: 1: number of products shown in the preview grid, 2: total published product count; both formatted via toLocaleString using the browser locale. */
+					__(
+						'Recently added (%1$s of %2$s)',
+						'woocommerce-ai-storefront'
+					),
+					products.length.toLocaleString(),
+					total.toLocaleString()
+			  )
+			: __( 'Recently added', 'woocommerce-ai-storefront' );
+
 	return (
 		<>
 			<div
@@ -318,10 +414,7 @@ const SamplePreview = () => {
 						letterSpacing: '0.4px',
 					} }
 				>
-					{ __(
-						"Sample of what's shared",
-						'woocommerce-ai-storefront'
-					) }
+					{ label }
 				</h5>
 				{ total !== null && (
 					<Button
@@ -473,21 +566,29 @@ const SamplePreviewTile = ( { product } ) => {
  * no external stylesheet in this plugin (all styling is inline
  * style props, which can't hold `:focus-within` pseudo-class rules).
  *
- * Selected state renders the children (detail panel) below the
- * label row; unselected state hides them entirely (not just
- * visually) so the DOM stays small and assistive tech doesn't read
- * hidden content.
+ * Selected state: a 3px solid WP-blue left border runs down the row
+ * AND its detail panel, matching the WP-native Notice focus-ring
+ * pattern. Tested against a background-tint-only treatment at real
+ * admin dimensions; the left border is substantially more scannable
+ * for a merchant sweeping three rows to find the selected one.
  *
- * @param {Object}   root0             Component props.
- * @param {string}   root0.value       This option's value.
- * @param {string}   root0.selected    Currently-selected option value.
- * @param {string}   root0.name        Radio group name.
- * @param {string}   root0.label       Option label (bold).
- * @param {string}   root0.description Option description (muted).
- * @param {string}   root0.badgeLabel  Text for the right-aligned badge.
- * @param {Function} root0.onSelect    Called with this option's value.
- * @param {Node}     root0.children    Detail panel content (rendered when selected).
- * @param {boolean}  root0.isLast      Suppresses the label's bottom border regardless of selection state.
+ * Selected state renders the children (detail panel) below the label
+ * row; unselected state hides them entirely (not just visually) so
+ * the DOM stays small and assistive tech doesn't read hidden content.
+ *
+ * @param {Object}                                             root0             Component props.
+ * @param {string}                                             root0.value       This option's value.
+ * @param {string}                                             root0.selected    Currently-selected option value.
+ * @param {string}                                             root0.name        Radio group name.
+ * @param {string}                                             root0.label       Option label (bold).
+ * @param {string}                                             root0.description Option description (muted).
+ * @param {string}                                             root0.badgeLabel  Text for the right-aligned badge.
+ * @param {Function}                                           root0.onSelect
+ *                                                                               Called with this option's value.
+ * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children
+ *                                                                               Detail panel content (rendered when selected).
+ * @param {boolean}                                            root0.isLast
+ *                                                                               Suppresses the label's bottom border regardless of selection state.
  */
 const ModeRow = ( {
 	value,
@@ -501,6 +602,16 @@ const ModeRow = ( {
 	isLast,
 } ) => {
 	const isSelected = selected === value;
+	// Selected-state accent: 3px WP-blue left border on both the
+	// label row and the detail panel, stitched together by a shared
+	// background tint so they read as one element. We paint the
+	// border by overriding `paddingLeft` to keep total horizontal
+	// dimensions identical to the unselected state (no layout shift
+	// on selection change).
+	const selectedAccentWidth = 3;
+	const labelPaddingLeft = isSelected
+		? `${ 20 - selectedAccentWidth }px`
+		: '20px';
 
 	return (
 		<>
@@ -521,7 +632,7 @@ const ModeRow = ( {
 					display: 'flex',
 					alignItems: 'center',
 					gap: '12px',
-					padding: '14px 20px',
+					padding: `14px 20px 14px ${ labelPaddingLeft }`,
 					// The label's bottom border separates collapsed rows from
 					// each other. When this row is `isLast` we always drop
 					// the border — whether selected or not — because the
@@ -533,6 +644,9 @@ const ModeRow = ( {
 					borderBottom: isLast
 						? 'none'
 						: `1px solid ${ colors.borderSubtle }`,
+					borderLeft: isSelected
+						? `${ selectedAccentWidth }px solid ${ colors.link }`
+						: 'none',
 					background: isSelected ? '#f6fbfd' : 'transparent',
 					cursor: 'pointer',
 				} }
@@ -572,8 +686,9 @@ const ModeRow = ( {
 			{ isSelected && (
 				<div
 					style={ {
-						padding: '0 20px 18px 50px',
+						padding: `0 20px 18px ${ 50 - selectedAccentWidth }px`,
 						background: '#f6fbfd',
+						borderLeft: `${ selectedAccentWidth }px solid ${ colors.link }`,
 						borderBottom: isLast
 							? 'none'
 							: `1px solid ${ colors.borderSubtle }`,
@@ -586,58 +701,217 @@ const ModeRow = ( {
 	);
 };
 
-/**
- * Detail-panel summary line. Every mode's panel opens with one of
- * these ("Currently sharing X …") so the three modes feel visually
- * consistent despite having different selection UIs below.
- *
- * @param {Object} root0          Component props.
- * @param {string} root0.children Summary text.
- */
-const PanelHeading = ( { children } ) => (
-	<h4
-		style={ {
-			fontSize: '14px',
-			fontWeight: '600',
-			color: colors.textPrimary,
-			margin: '14px 0',
-		} }
-	>
-		{ children }
-	</h4>
-);
-
 const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
+	// `supportsBrands` comes from `wp_localize_script` and reflects
+	// `taxonomy_exists( 'product_brand' )` at page load. When false,
+	// the Brands toggle segment is hidden and the /search/brands
+	// fetch is skipped — nothing on the client fails if an older WC
+	// version is in use.
+	/* global wcAiSyndicationParams */
+	const supportsBrands =
+		typeof wcAiSyndicationParams !== 'undefined'
+			? Boolean( wcAiSyndicationParams.supportsBrands )
+			: false;
+
 	const [ categories, setCategories ] = useState( [] );
+	const [ tags, setTags ] = useState( [] );
+	const [ brands, setBrands ] = useState( [] );
 	const [ products, setProducts ] = useState( [] );
 	const [ productSearch, setProductSearch ] = useState( '' );
 	const [ categorySearch, setCategorySearch ] = useState( '' );
+	const [ tagSearch, setTagSearch ] = useState( '' );
+	const [ brandSearch, setBrandSearch ] = useState( '' );
 	const [ isLoadingCategories, setIsLoadingCategories ] = useState( false );
+	const [ isLoadingTags, setIsLoadingTags ] = useState( false );
+	const [ isLoadingBrands, setIsLoadingBrands ] = useState( false );
 	const [ isLoadingProducts, setIsLoadingProducts ] = useState( false );
+	// Per-taxonomy fetch-error flags. Without these, a failed
+	// fetch (network drop, auth, server error) is indistinguishable
+	// from a "merchant has never created any terms" state because
+	// the catch blocks below leave `categories`/`tags`/`brands` at
+	// the initial `[]`. Downstream code in TaxonomyPicker branches
+	// on these flags to render a distinct warning Notice instead
+	// of the "You haven't created any categories yet" empty-label
+	// copy, so merchants aren't told they're missing data they
+	// actually have.
+	const [ hasCategoriesError, setHasCategoriesError ] = useState( false );
+	const [ hasTagsError, setHasTagsError ] = useState( false );
+	const [ hasBrandsError, setHasBrandsError ] = useState( false );
+
+	const serverMode = settings.product_selection_mode || MODES.ALL;
+
+	const hasUnsupportedPersistedBrandsMode =
+		! supportsBrands && serverMode === MODES.BRANDS;
+
+	// For rendering: treat an unsupported persisted mode as `all`
+	// starting from the very first render. The auto-heal `useEffect`
+	// below propagates the same correction to the draft settings via
+	// `onChange`, but effects fire AFTER the first paint — without
+	// `effectiveServerMode`, the initial render would momentarily
+	// show the By-taxonomy row + empty-selection warning for one
+	// frame before the healed value flowed back through props, a
+	// visible flicker. Deriving the effective mode at render time
+	// keeps the UI coherent from paint zero; the effect is still
+	// required to persist the correction so a Save captures it.
+	const effectiveServerMode = hasUnsupportedPersistedBrandsMode
+		? MODES.ALL
+		: serverMode;
+	const uiRow = modeToUiRow( effectiveServerMode );
+
+	// Normalize the persisted taxonomy to one the UI can actually
+	// render. Scenario: a merchant on WC 9.5+ saves mode=`brands`,
+	// then downgrades to WC < 9.5 (or the taxonomy gets unregistered
+	// by a custom env). `supportsBrands` flips to false, the Brands
+	// ToggleGroupControlOption disappears, but `serverMode` still
+	// reads 'brands' from the DB. Without this normalization the
+	// By-taxonomy row would show the empty-brands-selection warning
+	// with no visible way to resolve it (no Brands segment to pick
+	// into, and `setRow( BY_TAXONOMY )` would keep re-writing
+	// 'brands'). Mapping unsupported modes → CATEGORIES seeds
+	// `activeTaxonomy` so the Categories segment is the default
+	// when the merchant later switches back into By-taxonomy; the
+	// persisted `selected_brands` array stays intact so a future
+	// WC upgrade restores their prior selection.
+	const normalizedServerTaxonomy =
+		TAXONOMY_MODES.includes( serverMode ) &&
+		! hasUnsupportedPersistedBrandsMode
+			? serverMode
+			: MODES.CATEGORIES;
+
+	// Auto-heal the draft settings when we detect an unsupported
+	// persisted mode. Without this, `settings.product_selection_mode`
+	// would stay `brands` — so a merchant clicking Save without any
+	// interaction would silently re-post the unsupported mode and
+	// stay stuck on every page load.
+	//
+	// Heal to `all`, not `categories`: the server already degrades
+	// brands-mode + missing-taxonomy to "show all products" (see
+	// the Store API filter + `is_product_syndicated()` — both no-op
+	// in that state). Auto-healing to `categories` would let a
+	// merchant Save into the empty-selection policy's "hide all"
+	// posture, silently flipping effective catalog visibility from
+	// "show all" to "hide all" without the merchant intending that
+	// change. Healing to `all` preserves the effective post-
+	// downgrade behavior the server was already producing, so the
+	// merchant's next Save is a no-op from the agent's perspective
+	// rather than a surprise visibility flip.
+	//
+	// Persisted `selected_brands` stays untouched in case a future
+	// WC upgrade re-enables the taxonomy — flipping mode back to
+	// `brands` then restores the prior selection without merchant
+	// reconfiguration.
+	useEffect( () => {
+		if ( hasUnsupportedPersistedBrandsMode ) {
+			onChange( { product_selection_mode: MODES.ALL } );
+		}
+	}, [ hasUnsupportedPersistedBrandsMode, onChange ] );
+
+	// Which taxonomy sub-mode is active inside the By-Taxonomy row.
+	// Seeded from the normalized server mode so re-entering the
+	// Products tab after a save puts the merchant back where they
+	// were. Stays in local state so switching UI rows and coming
+	// back doesn't reset the toggle.
+	const [ activeTaxonomy, setActiveTaxonomy ] = useState(
+		() => normalizedServerTaxonomy
+	);
+
+	// Keep local activeTaxonomy in sync when the normalized server
+	// mode changes externally — e.g. a Save completes and the
+	// canonical value comes back from the store, or a future "reset
+	// to defaults" control dispatches a write we didn't originate
+	// locally. The `normalizedServerTaxonomy !== activeTaxonomy`
+	// guard short-circuits the common case where the user just
+	// toggled a segment: both values update in the same React batch,
+	// the effect re-runs, sees them already equal, and no-ops.
+	// Including `activeTaxonomy` in the dep list (rather than
+	// suppressing exhaustive-deps) makes the closure's reads
+	// explicit so a future contributor closing over additional local
+	// state gets linted instead of silently creating a stale
+	// closure.
+	useEffect( () => {
+		if ( normalizedServerTaxonomy !== activeTaxonomy ) {
+			setActiveTaxonomy( normalizedServerTaxonomy );
+		}
+	}, [ normalizedServerTaxonomy, activeTaxonomy ] );
 
 	// Load categories eagerly on mount (cheap, small list) so the
-	// categories radio row can show an accurate count even when
-	// unselected.
+	// By-Taxonomy radio row can show an accurate count even when
+	// unselected, and the merchant sees the list immediately on row
+	// expansion.
+	//
+	// On fetch failure, set `hasCategoriesError` so TaxonomyPicker
+	// surfaces a distinct warning Notice instead of the
+	// "You haven't created any categories yet" empty-label copy.
+	// Array-shape guard also flips the error flag: an unexpected
+	// non-array response (HTML error page, WP_Error envelope,
+	// cached garbage) is functionally a fetch failure — we can't
+	// display terms we can't read, and the merchant deserves the
+	// same "couldn't load" affordance we give to network errors.
 	useEffect( () => {
 		setIsLoadingCategories( true );
+		setHasCategoriesError( false );
 		apiFetch( {
 			path: '/wc/v3/ai-storefront/admin/search/categories',
 		} )
-			// Guard against unexpected response shapes (HTML error
-			// page, null, WP_Error envelope). Downstream code calls
-			// `categories.filter(...)` and `categories.every(...)` —
-			// a non-array would crash the settings tab entirely.
-			.then( ( result ) =>
-				setCategories( Array.isArray( result ) ? result : [] )
-			)
-			.catch( () => {} )
+			.then( ( result ) => {
+				if ( Array.isArray( result ) ) {
+					setCategories( result );
+				} else {
+					setHasCategoriesError( true );
+				}
+			} )
+			.catch( () => setHasCategoriesError( true ) )
 			.finally( () => setIsLoadingCategories( false ) );
 	}, [] );
+
+	// Tags: same pattern as categories — eager mount fetch so the
+	// toggle segment is instantly populated when the merchant clicks
+	// into the Tags sub-mode. Same error-flag handling as above.
+	useEffect( () => {
+		setIsLoadingTags( true );
+		setHasTagsError( false );
+		apiFetch( {
+			path: '/wc/v3/ai-storefront/admin/search/tags',
+		} )
+			.then( ( result ) => {
+				if ( Array.isArray( result ) ) {
+					setTags( result );
+				} else {
+					setHasTagsError( true );
+				}
+			} )
+			.catch( () => setHasTagsError( true ) )
+			.finally( () => setIsLoadingTags( false ) );
+	}, [] );
+
+	// Brands: only fetch when the server has `product_brand` registered
+	// (WC 9.5+). Skipping the fetch on older stores avoids a pointless
+	// round-trip to an endpoint that will return [] anyway and keeps
+	// dev-tools network panels quiet.
+	useEffect( () => {
+		if ( ! supportsBrands ) {
+			return;
+		}
+		setIsLoadingBrands( true );
+		setHasBrandsError( false );
+		apiFetch( {
+			path: '/wc/v3/ai-storefront/admin/search/brands',
+		} )
+			.then( ( result ) => {
+				if ( Array.isArray( result ) ) {
+					setBrands( result );
+				} else {
+					setHasBrandsError( true );
+				}
+			} )
+			.catch( () => setHasBrandsError( true ) )
+			.finally( () => setIsLoadingBrands( false ) );
+	}, [ supportsBrands ] );
 
 	// Product search only runs when the merchant is actively in the
 	// 'selected' mode — no point loading a product list they won't see.
 	useEffect( () => {
-		if ( settings.product_selection_mode !== MODES.SELECTED ) {
+		if ( serverMode !== MODES.SELECTED ) {
 			return;
 		}
 		setIsLoadingProducts( true );
@@ -654,23 +928,44 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			)
 			.catch( () => {} )
 			.finally( () => setIsLoadingProducts( false ) );
-	}, [ productSearch, settings.product_selection_mode ] );
+	}, [ productSearch, serverMode ] );
 
 	const selectedCategories = useMemo(
 		() => settings.selected_categories || [],
 		[ settings.selected_categories ]
 	);
+	const selectedTags = useMemo(
+		() => settings.selected_tags || [],
+		[ settings.selected_tags ]
+	);
+	const selectedBrands = useMemo(
+		() => settings.selected_brands || [],
+		[ settings.selected_brands ]
+	);
 	const selectedProducts = useMemo(
 		() => settings.selected_products || [],
 		[ settings.selected_products ]
 	);
-	const mode = settings.product_selection_mode || MODES.ALL;
 
 	const toggleCategory = ( catId ) => {
 		const updated = selectedCategories.includes( catId )
 			? selectedCategories.filter( ( id ) => id !== catId )
 			: [ ...selectedCategories, catId ];
 		onChange( { selected_categories: updated } );
+	};
+
+	const toggleTag = ( tagId ) => {
+		const updated = selectedTags.includes( tagId )
+			? selectedTags.filter( ( id ) => id !== tagId )
+			: [ ...selectedTags, tagId ];
+		onChange( { selected_tags: updated } );
+	};
+
+	const toggleBrand = ( brandId ) => {
+		const updated = selectedBrands.includes( brandId )
+			? selectedBrands.filter( ( id ) => id !== brandId )
+			: [ ...selectedBrands, brandId ];
+		onChange( { selected_brands: updated } );
 	};
 
 	const toggleProduct = ( productId ) => {
@@ -690,11 +985,41 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		);
 	}, [ categories, categorySearch ] );
 
+	const filteredTags = useMemo( () => {
+		if ( ! tagSearch.trim() ) {
+			return tags;
+		}
+		const term = tagSearch.toLowerCase();
+		return tags.filter( ( tag ) =>
+			decodeEntities( tag.name ).toLowerCase().includes( term )
+		);
+	}, [ tags, tagSearch ] );
+
+	const filteredBrands = useMemo( () => {
+		if ( ! brandSearch.trim() ) {
+			return brands;
+		}
+		const term = brandSearch.toLowerCase();
+		return brands.filter( ( brand ) =>
+			decodeEntities( brand.name ).toLowerCase().includes( term )
+		);
+	}, [ brands, brandSearch ] );
+
 	const selectedCategoryTokens = useMemo( () => {
 		return categories.filter( ( cat ) =>
 			selectedCategories.includes( cat.id )
 		);
 	}, [ categories, selectedCategories ] );
+
+	const selectedTagTokens = useMemo( () => {
+		return tags.filter( ( tag ) => selectedTags.includes( tag.id ) );
+	}, [ tags, selectedTags ] );
+
+	const selectedBrandTokens = useMemo( () => {
+		return brands.filter( ( brand ) =>
+			selectedBrands.includes( brand.id )
+		);
+	}, [ brands, selectedBrands ] );
 
 	// Products carry a visibility problem: the merchant's selection
 	// may reference products that aren't in the current (search-
@@ -721,21 +1046,26 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			.filter( Boolean );
 	}, [ selectedProducts, selectedProductCache ] );
 
-	// Badge labels — per-mode, reflect the current configuration.
+	// Badge labels — per-row, reflect the current configuration.
 	// The "all" badge needs the total published-product count even
-	// when the merchant is currently in `categories`/`selected`
-	// mode, so it answers "how many products would be shared if I
-	// switched to All?" — i.e. the unfiltered total.
+	// when the merchant is currently in `categories`/`tags`/`brands`/
+	// `selected` mode, so it answers "how many products would be
+	// shared if I switched to All?" — i.e. the unfiltered total.
 	//
-	// We intentionally hit the WP core REST endpoint
-	// (`/wp/v2/product`) here rather than the Store API
-	// (`/wc/store/v1/products`) because this plugin globally
-	// restricts Store API product collections via the
-	// `woocommerce_store_api_product_collection_query_args` filter
-	// when mode is not 'all'. That filter would make the Store API
-	// count reflect the merchant's current selection, not the true
-	// unfiltered total — wrong answer for this badge. `/wp/v2/product`
-	// is admin-side and not affected by the Store API filter.
+	// We hit the WC admin REST endpoint (`/wc/v3/products`) rather
+	// than the Store API (`/wc/store/v1/products`) because this
+	// plugin globally restricts Store API product collections via
+	// the `woocommerce_store_api_product_collection_query_args`
+	// filter when mode is not 'all' — that filter would make the
+	// Store API count reflect the merchant's current selection, not
+	// the true unfiltered total.
+	//
+	// We also don't use the WP core endpoint (`/wp/v2/product`)
+	// because it gates on `edit_posts`, which plugin admins with
+	// only `manage_woocommerce` don't always have — such a merchant
+	// would hit a 401 here and see a bare "Products" badge label.
+	// `/wc/v3/products` is gated on `manage_woocommerce` to match
+	// this plugin's own admin permission checks.
 	//
 	// Three states:
 	//   - null     → still loading → show "Loading…"
@@ -746,7 +1076,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	useEffect( () => {
 		let cancelled = false;
 		apiFetch( {
-			path: '/wp/v2/product?status=publish&per_page=1&_fields=id',
+			path: '/wc/v3/products?status=publish&per_page=1&_fields=id',
 			parse: false,
 		} )
 			.then( ( response ) => {
@@ -799,16 +1129,44 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		);
 	}
 
-	const categoriesBadge = sprintf(
-		/* translators: %d: number of selected categories. */
-		_n(
-			'%d category',
-			'%d categories',
-			selectedCategories.length,
-			'woocommerce-ai-storefront'
-		),
-		selectedCategories.length
-	);
+	// By-taxonomy row badge: count of the ACTIVE taxonomy's selection,
+	// not a cross-taxonomy sum. When the merchant is looking at Tags
+	// they want "X tags," not "X categories + Y tags."
+	let taxonomyBadge;
+	if ( activeTaxonomy === MODES.TAGS ) {
+		taxonomyBadge = sprintf(
+			/* translators: %d: number of selected tags. */
+			_n(
+				'%d tag',
+				'%d tags',
+				selectedTags.length,
+				'woocommerce-ai-storefront'
+			),
+			selectedTags.length
+		);
+	} else if ( activeTaxonomy === MODES.BRANDS ) {
+		taxonomyBadge = sprintf(
+			/* translators: %d: number of selected brands. */
+			_n(
+				'%d brand',
+				'%d brands',
+				selectedBrands.length,
+				'woocommerce-ai-storefront'
+			),
+			selectedBrands.length
+		);
+	} else {
+		taxonomyBadge = sprintf(
+			/* translators: %d: number of selected categories. */
+			_n(
+				'%d category',
+				'%d categories',
+				selectedCategories.length,
+				'woocommerce-ai-storefront'
+			),
+			selectedCategories.length
+		);
+	}
 
 	// No plural-form distinction for this copy ('%d selected' reads
 	// the same for singular + plural in English), so use a single
@@ -820,12 +1178,82 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		selectedProducts.length
 	);
 
-	const allCategoriesSelected =
-		categories.length > 0 &&
-		categories.every( ( cat ) => selectedCategories.includes( cat.id ) );
-	const noCategoriesSelected = selectedCategories.length === 0;
+	// Empty-active-taxonomy detection + per-taxonomy warning copy.
+	// Computed at render time from `activeTaxonomy` + the three
+	// selected_* arrays so the warning stays in sync with whichever
+	// segment the merchant has open. See the JSX site below for the
+	// render guard + Notice.
+	let emptyActiveSelection = false;
+	let emptyTaxonomyWarning = '';
+	if (
+		activeTaxonomy === MODES.CATEGORIES &&
+		selectedCategories.length === 0
+	) {
+		emptyActiveSelection = true;
+		emptyTaxonomyWarning = __(
+			'No categories selected. Your products are currently hidden from AI agents — pick at least one category below to resume sharing.',
+			'woocommerce-ai-storefront'
+		);
+	} else if ( activeTaxonomy === MODES.TAGS && selectedTags.length === 0 ) {
+		emptyActiveSelection = true;
+		emptyTaxonomyWarning = __(
+			'No tags selected. Your products are currently hidden from AI agents — pick at least one tag below to resume sharing.',
+			'woocommerce-ai-storefront'
+		);
+	} else if (
+		activeTaxonomy === MODES.BRANDS &&
+		selectedBrands.length === 0
+	) {
+		emptyActiveSelection = true;
+		emptyTaxonomyWarning = __(
+			'No brands selected. Your products are currently hidden from AI agents — pick at least one brand below to resume sharing.',
+			'woocommerce-ai-storefront'
+		);
+	}
 
-	const setMode = ( value ) => onChange( { product_selection_mode: value } );
+	// Switch UI rows → write the corresponding server mode. By-taxonomy
+	// writes the active taxonomy so the server enum always holds a
+	// concrete taxonomy value (not a virtual "by_taxonomy").
+	const setRow = ( row ) => {
+		if ( row === UI_ROWS.ALL ) {
+			onChange( { product_selection_mode: MODES.ALL } );
+			return;
+		}
+		if ( row === UI_ROWS.SELECTED ) {
+			onChange( { product_selection_mode: MODES.SELECTED } );
+			return;
+		}
+		// BY_TAXONOMY → write whichever taxonomy the toggle is on.
+		onChange( { product_selection_mode: activeTaxonomy } );
+	};
+
+	// Switch between Categories / Tags / Brands inside the toggle.
+	// Writes the new mode immediately so the badge + detail render
+	// stay synced with the active segment.
+	//
+	// Note on stale `selected_*` arrays: switching the active
+	// taxonomy doesn't clear `selected_tags` / `selected_brands` /
+	// `selected_categories`. The server enforcement only reads the
+	// array matching the persisted `product_selection_mode`, so the
+	// inactive arrays are inert data — preserving them lets a
+	// merchant flip back and forth between taxonomies without
+	// losing their work. If we ever add a server-side migration
+	// that reads multiple arrays at once, this comment is the
+	// reminder to clear the inactive ones on a taxonomy switch.
+	const setTaxonomy = ( taxonomy ) => {
+		// Defensive membership check rather than a plain falsy
+		// guard: `! taxonomy` would correctly swallow the
+		// `undefined` that ToggleGroupControl emits on re-selection
+		// of the current option, but it would also swallow a
+		// numeric `0` from a future consumer. Checking the enum
+		// directly matches the three values this handler is
+		// actually designed to accept.
+		if ( ! TAXONOMY_MODES.includes( taxonomy ) ) {
+			return;
+		}
+		setActiveTaxonomy( taxonomy );
+		onChange( { product_selection_mode: taxonomy } );
+	};
 
 	return (
 		<div>
@@ -861,33 +1289,20 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 				</CardHeader>
 				<CardBody style={ { padding: 0 } }>
 					<ModeRow
-						value={ MODES.ALL }
-						selected={ mode }
+						value={ UI_ROWS.ALL }
+						selected={ uiRow }
 						name="ai_syndication_mode"
 						label={ __(
 							'All published products',
 							'woocommerce-ai-storefront'
 						) }
-						description={ MODE_DESCRIPTIONS[ MODES.ALL ] }
+						description={ MODE_DESCRIPTIONS[ UI_ROWS.ALL ] }
 						badgeLabel={ allBadge }
-						onSelect={ setMode }
+						onSelect={ setRow }
 					>
-						<PanelHeading>
-							{ typeof totalPublished === 'number'
-								? sprintf(
-										/* translators: %s: total product count, formatted via toLocaleString using the browser locale. */
-										__(
-											'Currently sharing all %s published products',
-											'woocommerce-ai-storefront'
-										),
-										totalPublished.toLocaleString()
-								  )
-								: __(
-										'Currently sharing all published products',
-										'woocommerce-ai-storefront'
-								  ) }
-						</PanelHeading>
-						<SamplePreview />
+						<div style={ { paddingTop: '14px' } }>
+							<SamplePreview />
+						</div>
 						<Disclosure>
 							{ __(
 								"Auto-includes new products as they're published.",
@@ -897,119 +1312,306 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 					</ModeRow>
 
 					<ModeRow
-						value={ MODES.CATEGORIES }
-						selected={ mode }
+						value={ UI_ROWS.BY_TAXONOMY }
+						selected={ uiRow }
 						name="ai_syndication_mode"
 						label={ __(
-							'Products in selected categories',
+							'Products by category, tag, or brand',
 							'woocommerce-ai-storefront'
 						) }
-						description={ MODE_DESCRIPTIONS[ MODES.CATEGORIES ] }
-						badgeLabel={ categoriesBadge }
-						onSelect={ setMode }
+						description={ MODE_DESCRIPTIONS[ UI_ROWS.BY_TAXONOMY ] }
+						badgeLabel={ taxonomyBadge }
+						onSelect={ setRow }
 					>
-						<PanelHeading>
-							{ sprintf(
-								/* translators: %d: category count. */
-								_n(
-									'Currently sharing %d category',
-									'Currently sharing %d categories',
-									selectedCategories.length,
-									'woocommerce-ai-storefront'
-								),
-								selectedCategories.length
-							) }
-						</PanelHeading>
-						<SelectedTokens
-							items={ selectedCategoryTokens }
-							onRemove={ toggleCategory }
-						/>
-						{ ! isLoadingCategories && categories.length > 8 && (
-							<SearchControl
+						<div
+							style={ {
+								padding: '14px 0 12px',
+							} }
+						>
+							<ToggleGroupControl
+								__next40pxDefaultSize
 								__nextHasNoMarginBottom
-								value={ categorySearch }
-								onChange={ setCategorySearch }
-								placeholder={ __(
+								isBlock
+								hideLabelFromVision
+								label={ __(
+									'Taxonomy',
+									'woocommerce-ai-storefront'
+								) }
+								value={ activeTaxonomy }
+								onChange={ setTaxonomy }
+							>
+								<ToggleGroupControlOption
+									value={ MODES.CATEGORIES }
+									label={ __(
+										'Categories',
+										'woocommerce-ai-storefront'
+									) }
+								/>
+								<ToggleGroupControlOption
+									value={ MODES.TAGS }
+									label={ __(
+										'Tags',
+										'woocommerce-ai-storefront'
+									) }
+								/>
+								{ supportsBrands && (
+									<ToggleGroupControlOption
+										value={ MODES.BRANDS }
+										label={ __(
+											'Brands',
+											'woocommerce-ai-storefront'
+										) }
+									/>
+								) }
+							</ToggleGroupControl>
+						</div>
+
+						{ /*
+						   Empty-selection warning. If the merchant is in
+						   By-taxonomy and the active taxonomy has zero
+						   terms selected, both enforcement gates (Store
+						   API filter + `is_product_syndicated()`)
+						   currently hide all products. That's the
+						   correct enforcement behavior for "you picked
+						   a scoping mode but left it empty," but it's
+						   not obvious from the UI — the picker below
+						   just looks like "pick some terms to get
+						   started." This Notice spells the consequence
+						   out so the merchant doesn't inadvertently
+						   save a zero-selection state that hides their
+						   catalog from every AI agent.
+						   Same yellow severity as the `selected` panel's
+						   "new products not auto-included" warning —
+						   consistent treatment for the two modes whose
+						   empty/misconfigured states have merchant-
+						   visible consequences.
+						*/ }
+						{ emptyActiveSelection && (
+							<Notice
+								status="warning"
+								isDismissible={ false }
+								className="ai-syndication-empty-taxonomy-warning"
+							>
+								{ emptyTaxonomyWarning }
+							</Notice>
+						) }
+
+						{ activeTaxonomy === MODES.CATEGORIES && (
+							<TaxonomyPicker
+								items={ categories }
+								filtered={ filteredCategories }
+								selectedIds={ selectedCategories }
+								selectedTokens={ selectedCategoryTokens }
+								search={ categorySearch }
+								onSearch={ setCategorySearch }
+								onToggle={ toggleCategory }
+								onSelectAll={ () =>
+									onChange( {
+										selected_categories: categories.map(
+											( cat ) => cat.id
+										),
+									} )
+								}
+								onClear={ () =>
+									onChange( { selected_categories: [] } )
+								}
+								isLoading={ isLoadingCategories }
+								hasError={ hasCategoriesError }
+								searchPlaceholder={ __(
 									'Filter categories\u2026',
+									'woocommerce-ai-storefront'
+								) }
+								emptyMatchLabel={ __(
+									'No categories match your filter.',
+									'woocommerce-ai-storefront'
+								) }
+								emptyLabel={ __(
+									"You haven't created any categories yet. Create them in Products \u2192 Categories.",
+									'woocommerce-ai-storefront'
+								) }
+								errorLabel={ __(
+									"Couldn't load your categories right now. If you have categories configured, refresh this page to retry.",
+									'woocommerce-ai-storefront'
+								) }
+								disclosure={ __(
+									'Auto-includes future products added to these categories.',
 									'woocommerce-ai-storefront'
 								) }
 							/>
 						) }
-						{ ! isLoadingCategories && categories.length > 0 && (
-							<div
-								style={ {
-									display: 'flex',
-									gap: '12px',
-									margin:
-										categories.length > 8
-											? '8px 0 8px'
-											: '0 0 8px',
-								} }
-							>
-								<Button
-									variant="link"
-									disabled={ allCategoriesSelected }
-									onClick={ () =>
-										onChange( {
-											selected_categories: categories.map(
-												( cat ) => cat.id
-											),
-										} )
-									}
-									style={ {
-										fontSize: '12px',
-										padding: 0,
-										minHeight: 'auto',
-									} }
-								>
-									{ __(
-										'Select all',
+
+						{ activeTaxonomy === MODES.TAGS && (
+							<TaxonomyPicker
+								items={ tags }
+								filtered={ filteredTags }
+								selectedIds={ selectedTags }
+								selectedTokens={ selectedTagTokens }
+								tokenVariant="tag"
+								search={ tagSearch }
+								onSearch={ setTagSearch }
+								onToggle={ toggleTag }
+								onSelectAll={ () =>
+									onChange( {
+										selected_tags: tags.map(
+											( tag ) => tag.id
+										),
+									} )
+								}
+								onClear={ () =>
+									onChange( { selected_tags: [] } )
+								}
+								isLoading={ isLoadingTags }
+								hasError={ hasTagsError }
+								searchPlaceholder={ __(
+									'Filter tags (e.g. summer, sale)\u2026',
+									'woocommerce-ai-storefront'
+								) }
+								emptyMatchLabel={ __(
+									'No tags match your filter.',
+									'woocommerce-ai-storefront'
+								) }
+								emptyLabel={ __(
+									"You haven't created any tags yet. Add tags on a product's edit screen.",
+									'woocommerce-ai-storefront'
+								) }
+								errorLabel={ __(
+									"Couldn't load your tags right now. If you have tags configured, refresh this page to retry.",
+									'woocommerce-ai-storefront'
+								) }
+								disclosure={ createInterpolateElement(
+									__(
+										'Products are included when they have <strong>any</strong> of the selected tags. Auto-includes future products that match.',
 										'woocommerce-ai-storefront'
-									) }
-								</Button>
-								<Button
-									variant="link"
-									disabled={ noCategoriesSelected }
-									onClick={ () =>
-										onChange( {
-											selected_categories: [],
-										} )
-									}
-									style={ {
-										fontSize: '12px',
-										padding: 0,
-										minHeight: 'auto',
-									} }
-								>
-									{ __(
-										'Clear selection',
-										'woocommerce-ai-storefront'
-									) }
-								</Button>
-							</div>
+									),
+									{ strong: <strong /> }
+								) }
+							/>
 						) }
-						{ isLoadingCategories ? (
-							<div
-								style={ {
-									padding: '24px',
-									textAlign: 'center',
-								} }
-							>
-								<Spinner />
-							</div>
-						) : (
-							<div
-								style={ {
-									maxHeight: '260px',
-									overflow: 'auto',
-									background: colors.surface,
-									border: `1px solid ${ colors.borderSubtle }`,
-									borderRadius: '3px',
-									padding: '4px 16px',
-								} }
-							>
-								{ filteredCategories.length === 0 &&
-									categorySearch && (
+
+						{ activeTaxonomy === MODES.BRANDS && supportsBrands && (
+							<TaxonomyPicker
+								items={ brands }
+								filtered={ filteredBrands }
+								selectedIds={ selectedBrands }
+								selectedTokens={ selectedBrandTokens }
+								search={ brandSearch }
+								onSearch={ setBrandSearch }
+								onToggle={ toggleBrand }
+								onSelectAll={ () =>
+									onChange( {
+										selected_brands: brands.map(
+											( brand ) => brand.id
+										),
+									} )
+								}
+								onClear={ () =>
+									onChange( { selected_brands: [] } )
+								}
+								isLoading={ isLoadingBrands }
+								hasError={ hasBrandsError }
+								searchPlaceholder={ __(
+									'Filter brands (e.g. Adidas, Nike)\u2026',
+									'woocommerce-ai-storefront'
+								) }
+								emptyMatchLabel={ __(
+									'No brands match your filter.',
+									'woocommerce-ai-storefront'
+								) }
+								emptyLabel={ __(
+									"You haven't created any brands yet. Add brands in Products \u2192 Brands.",
+									'woocommerce-ai-storefront'
+								) }
+								errorLabel={ __(
+									"Couldn't load your brands right now. If you have brands configured, refresh this page to retry.",
+									'woocommerce-ai-storefront'
+								) }
+								disclosure={ createInterpolateElement(
+									__(
+										'Products are included when they belong to <strong>any</strong> of the selected brands. Auto-includes future products that match.',
+										'woocommerce-ai-storefront'
+									),
+									{ strong: <strong /> }
+								) }
+							/>
+						) }
+					</ModeRow>
+
+					<ModeRow
+						value={ UI_ROWS.SELECTED }
+						selected={ uiRow }
+						name="ai_syndication_mode"
+						label={ __(
+							'Specific products only',
+							'woocommerce-ai-storefront'
+						) }
+						description={ MODE_DESCRIPTIONS[ UI_ROWS.SELECTED ] }
+						badgeLabel={ selectedBadge }
+						onSelect={ setRow }
+						isLast
+					>
+						<div style={ { paddingTop: '14px' } }>
+							<SelectedTokens
+								items={ selectedProductTokens }
+								onRemove={ toggleProduct }
+							/>
+							<SearchControl
+								__nextHasNoMarginBottom
+								value={ productSearch }
+								onChange={ setProductSearch }
+								placeholder={ __(
+									'Search products\u2026',
+									'woocommerce-ai-storefront'
+								) }
+							/>
+							{ selectedProducts.length > 0 && (
+								<div
+									style={ {
+										display: 'flex',
+										gap: '12px',
+										margin: '8px 0',
+									} }
+								>
+									<Button
+										variant="link"
+										onClick={ () =>
+											onChange( {
+												selected_products: [],
+											} )
+										}
+										style={ {
+											fontSize: '12px',
+											padding: 0,
+											minHeight: 'auto',
+										} }
+									>
+										{ __(
+											'Clear selection',
+											'woocommerce-ai-storefront'
+										) }
+									</Button>
+								</div>
+							) }
+							{ isLoadingProducts ? (
+								<div
+									style={ {
+										padding: '24px',
+										textAlign: 'center',
+									} }
+								>
+									<Spinner />
+								</div>
+							) : (
+								<div
+									style={ {
+										maxHeight: '260px',
+										overflow: 'auto',
+										background: colors.surface,
+										border: `1px solid ${ colors.borderSubtle }`,
+										borderRadius: '3px',
+										padding: '4px 16px',
+									} }
+								>
+									{ products.length === 0 && (
 										<p
 											style={ {
 												color: colors.textMuted,
@@ -1019,212 +1621,73 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 												margin: 0,
 											} }
 										>
-											{ __(
-												'No categories match your filter.',
-												'woocommerce-ai-storefront'
-											) }
+											{ productSearch
+												? __(
+														'No products found. Try a different search.',
+														'woocommerce-ai-storefront'
+												  )
+												: __(
+														'Start typing to search your products.',
+														'woocommerce-ai-storefront'
+												  ) }
 										</p>
 									) }
-								{ filteredCategories.map( ( cat, index ) => (
-									<div
-										key={ cat.id }
-										style={ {
-											padding: '6px 0',
-											borderBottom:
-												index <
-												filteredCategories.length - 1
-													? `1px solid ${ colors.borderSubtle }`
-													: 'none',
-										} }
-									>
-										<CheckboxControl
-											label={ sprintf(
-												/* translators: %1$s: category name, %2$d: product count */
-												__(
-													'%1$s (%2$d)',
-													'woocommerce-ai-storefront'
-												),
-												decodeEntities( cat.name ),
-												cat.count
-											) }
-											checked={ selectedCategories.includes(
-												cat.id
-											) }
-											onChange={ () =>
-												toggleCategory( cat.id )
-											}
-											__nextHasNoMarginBottom
-										/>
-									</div>
-								) ) }
-							</div>
-						) }
-						<Disclosure>
-							{ __(
-								'Auto-includes future products added to these categories.',
-								'woocommerce-ai-storefront'
+									{ products.map( ( product, index ) => (
+										<div
+											key={ product.id }
+											style={ {
+												padding: '6px 0',
+												borderBottom:
+													index < products.length - 1
+														? `1px solid ${ colors.borderSubtle }`
+														: 'none',
+											} }
+										>
+											<CheckboxControl
+												label={ sprintf(
+													/* translators: %1$s: product name, %2$s: price */
+													__(
+														'%1$s \u2014 %2$s',
+														'woocommerce-ai-storefront'
+													),
+													decodeEntities(
+														product.name
+													),
+													decodeEntities(
+														product.price
+													)
+												) }
+												checked={ selectedProducts.includes(
+													product.id
+												) }
+												onChange={ () =>
+													toggleProduct( product.id )
+												}
+												__nextHasNoMarginBottom
+											/>
+										</div>
+									) ) }
+								</div>
 							) }
-						</Disclosure>
-					</ModeRow>
-
-					<ModeRow
-						value={ MODES.SELECTED }
-						selected={ mode }
-						name="ai_syndication_mode"
-						label={ __(
-							'Specific products only',
-							'woocommerce-ai-storefront'
-						) }
-						description={ MODE_DESCRIPTIONS[ MODES.SELECTED ] }
-						badgeLabel={ selectedBadge }
-						onSelect={ setMode }
-						isLast
-					>
-						<PanelHeading>
-							{ sprintf(
-								/* translators: %d: selected product count. */
-								_n(
-									'Currently sharing %d product',
-									'Currently sharing %d products',
-									selectedProducts.length,
+							{ /*
+							   Warning severity — unique to this mode. The other
+							   rows have benign "auto-includes …" lines; this
+							   one has a real behavioral surprise ("new products
+							   are NOT auto-included") that justifies a yellow
+							   notice. Using the Notice component (not a styled
+							   div) so screen readers announce the severity.
+							*/ }
+							<Notice
+								status="warning"
+								isDismissible={ false }
+								className="ai-syndication-selected-warning"
+							>
+								{ __(
+									'New products are not auto-included. Return here to add them manually as your catalog grows.',
 									'woocommerce-ai-storefront'
-								),
-								selectedProducts.length
-							) }
-						</PanelHeading>
-						<SelectedTokens
-							items={ selectedProductTokens }
-							onRemove={ toggleProduct }
-						/>
-						<SearchControl
-							__nextHasNoMarginBottom
-							value={ productSearch }
-							onChange={ setProductSearch }
-							placeholder={ __(
-								'Search products\u2026',
-								'woocommerce-ai-storefront'
-							) }
-						/>
-						{ selectedProducts.length > 0 && (
-							<div
-								style={ {
-									display: 'flex',
-									gap: '12px',
-									margin: '8px 0',
-								} }
-							>
-								<Button
-									variant="link"
-									onClick={ () =>
-										onChange( {
-											selected_products: [],
-										} )
-									}
-									style={ {
-										fontSize: '12px',
-										padding: 0,
-										minHeight: 'auto',
-									} }
-								>
-									{ __(
-										'Clear selection',
-										'woocommerce-ai-storefront'
-									) }
-								</Button>
-							</div>
-						) }
-						{ isLoadingProducts ? (
-							<div
-								style={ {
-									padding: '24px',
-									textAlign: 'center',
-								} }
-							>
-								<Spinner />
-							</div>
-						) : (
-							<div
-								style={ {
-									maxHeight: '260px',
-									overflow: 'auto',
-									background: colors.surface,
-									border: `1px solid ${ colors.borderSubtle }`,
-									borderRadius: '3px',
-									padding: '4px 16px',
-								} }
-							>
-								{ products.length === 0 && (
-									<p
-										style={ {
-											color: colors.textMuted,
-											fontSize: '13px',
-											textAlign: 'center',
-											padding: '16px 0',
-											margin: 0,
-										} }
-									>
-										{ productSearch
-											? __(
-													'No products found. Try a different search.',
-													'woocommerce-ai-storefront'
-											  )
-											: __(
-													'Start typing to search your products.',
-													'woocommerce-ai-storefront'
-											  ) }
-									</p>
 								) }
-								{ products.map( ( product, index ) => (
-									<div
-										key={ product.id }
-										style={ {
-											padding: '6px 0',
-											borderBottom:
-												index < products.length - 1
-													? `1px solid ${ colors.borderSubtle }`
-													: 'none',
-										} }
-									>
-										<CheckboxControl
-											label={ sprintf(
-												/* translators: %1$s: product name, %2$s: price */
-												__(
-													'%1$s \u2014 %2$s',
-													'woocommerce-ai-storefront'
-												),
-												decodeEntities( product.name ),
-												decodeEntities( product.price )
-											) }
-											checked={ selectedProducts.includes(
-												product.id
-											) }
-											onChange={ () =>
-												toggleProduct( product.id )
-											}
-											__nextHasNoMarginBottom
-										/>
-									</div>
-								) ) }
-							</div>
-						) }
-						{ /*
-						   Warning severity — unique to this mode. The other
-						   two modes have benign "auto-includes …" lines; this
-						   one has a real behavioral surprise ("new products
-						   are NOT auto-included") that justifies a yellow
-						   notice. Using the Notice component (not a styled
-						   div) so screen readers announce the severity.
-						*/ }
-						<Notice
-							status="warning"
-							isDismissible={ false }
-							className="ai-syndication-selected-warning"
-						>
-							{ __(
-								'New products are not auto-included. Return here to add them manually as your catalog grows.',
-								'woocommerce-ai-storefront'
-							) }
-						</Notice>
+							</Notice>
+						</div>
 					</ModeRow>
 				</CardBody>
 				<CardFooter>
@@ -1320,13 +1783,242 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 };
 
 /**
- * Footer-of-panel disclosure line — used by 'all' and 'categories'
- * for their benign auto-inclusion explanations. The 'selected' mode
- * uses a `<Notice status="warning">` instead because its disclosure
- * is an actual behavioral surprise, not a neutral fact.
+ * Shared selection UI for one taxonomy (categories, tags, or brands).
  *
- * @param {Object} root0          Component props.
- * @param {Node}   root0.children Disclosure text.
+ * Presents: a `SelectedTokens` chip list at the top (when a selection
+ * exists), a SearchControl when the vocabulary is large enough to
+ * warrant filtering (> 8 terms), Select-all / Clear action links, and
+ * a scrollable CheckboxControl list of terms.
+ *
+ * Pulled out into its own component because the three taxonomy modes
+ * render the same UI with different data + labels; inlining three
+ * copies in the parent would obscure the shared structure.
+ *
+ * @param {Object}                                             root0                   Component props.
+ * @param {Array}                                              root0.items             All terms for this taxonomy.
+ * @param {Array}                                              root0.filtered          Terms matching the current search filter.
+ * @param {number[]}                                           root0.selectedIds       Currently-selected term IDs.
+ * @param {Array}                                              root0.selectedTokens    Term objects for chips.
+ * @param {string}                                             [root0.tokenVariant]    Passed to SelectedTokens ('tag' for pill shape).
+ * @param {string}                                             root0.search            Current search string.
+ * @param {Function}                                           root0.onSearch          Updates the search string.
+ * @param {Function}                                           root0.onToggle          Toggles one term's selection.
+ * @param {Function}                                           root0.onSelectAll       Selects every term.
+ * @param {Function}                                           root0.onClear           Clears the selection.
+ * @param {boolean}                                            root0.isLoading         Pending fetch spinner.
+ * @param {boolean}                                            [root0.hasError]        True when the last fetch failed — renders `errorLabel` in a yellow Notice instead of `emptyLabel`.
+ * @param {string}                                             root0.searchPlaceholder Placeholder for the SearchControl.
+ * @param {string}                                             root0.emptyMatchLabel   Shown when the filter returns no results.
+ * @param {string}                                             root0.emptyLabel        Shown when the fetch succeeded but no terms exist for this taxonomy.
+ * @param {string}                                             [root0.errorLabel]      Shown when `hasError` is true; distinct from `emptyLabel` so "merchant has none" and "we couldn't fetch" read differently.
+ * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.disclosure
+ *                                                                                     Footer disclosure text (accepts inline strong via
+ *                                                                                     createInterpolateElement).
+ */
+const TaxonomyPicker = ( {
+	items,
+	filtered,
+	selectedIds,
+	selectedTokens,
+	tokenVariant,
+	search,
+	onSearch,
+	onToggle,
+	onSelectAll,
+	onClear,
+	isLoading,
+	hasError,
+	searchPlaceholder,
+	emptyMatchLabel,
+	emptyLabel,
+	// Fallback so a future caller setting `hasError` without
+	// providing `errorLabel` renders something useful rather than
+	// a blank Notice. Generic copy ("Unable to load items.") is
+	// deliberately neutral — every current call site passes a
+	// taxonomy-specific errorLabel, so this default only fires in
+	// a coding-slip scenario where having ANY text beats silence.
+	errorLabel = __( 'Unable to load items.', 'woocommerce-ai-storefront' ),
+	disclosure,
+} ) => {
+	const allSelected =
+		items.length > 0 &&
+		items.every( ( item ) => selectedIds.includes( item.id ) );
+	const noneSelected = selectedIds.length === 0;
+	const showSearch = ! isLoading && ! hasError && items.length > 8;
+
+	return (
+		<>
+			<SelectedTokens
+				items={ selectedTokens }
+				onRemove={ onToggle }
+				variant={ tokenVariant }
+			/>
+
+			{ showSearch && (
+				<SearchControl
+					__nextHasNoMarginBottom
+					value={ search }
+					onChange={ onSearch }
+					placeholder={ searchPlaceholder }
+				/>
+			) }
+
+			{ ! isLoading && ! hasError && items.length > 0 && (
+				<div
+					style={ {
+						display: 'flex',
+						gap: '12px',
+						margin: showSearch ? '8px 0 8px' : '0 0 8px',
+					} }
+				>
+					<Button
+						variant="link"
+						disabled={ allSelected }
+						onClick={ onSelectAll }
+						style={ {
+							fontSize: '12px',
+							padding: 0,
+							minHeight: 'auto',
+						} }
+					>
+						{ __( 'Select all', 'woocommerce-ai-storefront' ) }
+					</Button>
+					<Button
+						variant="link"
+						disabled={ noneSelected }
+						onClick={ onClear }
+						style={ {
+							fontSize: '12px',
+							padding: 0,
+							minHeight: 'auto',
+						} }
+					>
+						{ __( 'Clear selection', 'woocommerce-ai-storefront' ) }
+					</Button>
+				</div>
+			) }
+
+			{ /*
+			   Three mutually exclusive render branches for the
+			   terms list area. Flat conditionals (not a nested
+			   ternary) so eslint's no-nested-ternary rule stays
+			   happy and each branch reads independently.
+			*/ }
+			{ isLoading && (
+				<div
+					style={ {
+						padding: '24px',
+						textAlign: 'center',
+					} }
+				>
+					<Spinner />
+				</div>
+			) }
+			{ ! isLoading && hasError && (
+				/*
+				  Fetch failed (network, auth, unexpected response
+				  shape). Render a yellow Notice rather than the
+				  `items.length === 0` branch's "you haven't
+				  created any X yet" emptyLabel, because we don't
+				  know that to be true — we only know we couldn't
+				  load the list. Misleading copy would nudge
+				  merchants who do have terms toward a pointless
+				  "go create some" workflow.
+				*/
+				<Notice
+					status="warning"
+					isDismissible={ false }
+					className="ai-syndication-taxonomy-fetch-error"
+				>
+					{ errorLabel }
+				</Notice>
+			) }
+			{ ! isLoading && ! hasError && (
+				<div
+					style={ {
+						maxHeight: '260px',
+						overflow: 'auto',
+						background: colors.surface,
+						border: `1px solid ${ colors.borderSubtle }`,
+						borderRadius: '3px',
+						padding: '4px 16px',
+					} }
+				>
+					{ items.length === 0 && (
+						<p
+							style={ {
+								color: colors.textMuted,
+								fontSize: '13px',
+								textAlign: 'center',
+								padding: '16px 0',
+								margin: 0,
+							} }
+						>
+							{ emptyLabel }
+						</p>
+					) }
+					{ items.length > 0 && filtered.length === 0 && search && (
+						<p
+							style={ {
+								color: colors.textMuted,
+								fontSize: '13px',
+								textAlign: 'center',
+								padding: '16px 0',
+								margin: 0,
+							} }
+						>
+							{ emptyMatchLabel }
+						</p>
+					) }
+					{ filtered.map( ( item, index ) => (
+						<div
+							key={ item.id }
+							style={ {
+								padding: '6px 0',
+								borderBottom:
+									index < filtered.length - 1
+										? `1px solid ${ colors.borderSubtle }`
+										: 'none',
+							} }
+						>
+							<CheckboxControl
+								label={ sprintf(
+									/* translators: %1$s: term name, %2$d: product count */
+									__(
+										'%1$s (%2$d)',
+										'woocommerce-ai-storefront'
+									),
+									decodeEntities( item.name ),
+									item.count
+								) }
+								checked={ selectedIds.includes( item.id ) }
+								onChange={ () => onToggle( item.id ) }
+								__nextHasNoMarginBottom
+							/>
+						</div>
+					) ) }
+				</div>
+			) }
+
+			<Disclosure>{ disclosure }</Disclosure>
+		</>
+	);
+};
+
+/**
+ * Footer-of-panel disclosure line — used by 'all' and taxonomy modes
+ * for their auto-inclusion + ANY-match explanations. The 'selected'
+ * mode uses a `<Notice status="warning">` instead because its
+ * disclosure is an actual behavioral surprise, not a neutral fact.
+ *
+ * Accepts rich children (not just strings) so taxonomy disclosures
+ * built via createInterpolateElement can inline <strong> around the
+ * "any" semantics without dropping out of the styled paragraph.
+ *
+ * @param {Object}                                             root0
+ *                                                                            Component props.
+ * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children
+ *                                                                            Disclosure text or interpolated React node.
  */
 const Disclosure = ( { children } ) => (
 	<p

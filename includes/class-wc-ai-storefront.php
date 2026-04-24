@@ -353,14 +353,23 @@ class WC_AI_Storefront {
 			'wc-ai-storefront-settings',
 			'wcAiSyndicationParams',
 			[
-				'restUrl'    => rest_url( 'wc/v3/ai-syndication' ),
-				'adminUrl'   => rest_url( 'wc/v3/ai-storefront/admin' ),
-				'nonce'      => wp_create_nonce( 'wp_rest' ),
-				'siteUrl'    => home_url( '/' ),
-				'llmsTxtUrl' => home_url( '/llms.txt' ),
-				'ucpUrl'     => home_url( '/.well-known/ucp' ),
-				'ordersUrl'  => admin_url( 'admin.php?page=wc-orders' ),
-				'version'    => WC_AI_STOREFRONT_VERSION,
+				'restUrl'        => rest_url( 'wc/v3/ai-syndication' ),
+				'adminUrl'       => rest_url( 'wc/v3/ai-storefront/admin' ),
+				'nonce'          => wp_create_nonce( 'wp_rest' ),
+				'siteUrl'        => home_url( '/' ),
+				'llmsTxtUrl'     => home_url( '/llms.txt' ),
+				'ucpUrl'         => home_url( '/.well-known/ucp' ),
+				'ordersUrl'      => admin_url( 'admin.php?page=wc-orders' ),
+				'version'        => WC_AI_STOREFRONT_VERSION,
+				// `product_brand` is a native WC taxonomy from 9.5+.
+				// We gate client-side rendering of the Brands segment
+				// on this flag so stores running older WC versions (or
+				// any environment without the taxonomy registered) hide
+				// the segment rather than surfacing a dead toggle.
+				// Matches the server-side guard in
+				// `is_product_syndicated()` + the Store API filter +
+				// the `/search/brands` admin route.
+				'supportsBrands' => taxonomy_exists( 'product_brand' ),
 			]
 		);
 
@@ -402,6 +411,8 @@ class WC_AI_Storefront {
 			'enabled'                => 'no',
 			'product_selection_mode' => 'all',
 			'selected_categories'    => [],
+			'selected_tags'          => [],
+			'selected_brands'        => [],
 			'selected_products'      => [],
 			'rate_limit_rpm'         => 25,
 		];
@@ -438,10 +449,12 @@ class WC_AI_Storefront {
 		// Sanitize — only store known keys to keep the option clean.
 		$clean = [
 			'enabled'                => in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no',
-			'product_selection_mode' => in_array( $merged['product_selection_mode'], [ 'all', 'categories', 'selected' ], true )
+			'product_selection_mode' => in_array( $merged['product_selection_mode'], [ 'all', 'categories', 'tags', 'brands', 'selected' ], true )
 				? $merged['product_selection_mode']
 				: 'all',
 			'selected_categories'    => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
+			'selected_tags'          => array_map( 'absint', (array) ( $merged['selected_tags'] ?? [] ) ),
+			'selected_brands'        => array_map( 'absint', (array) ( $merged['selected_brands'] ?? [] ) ),
 			'selected_products'      => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
 			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
 			'allowed_crawlers'       => WC_AI_Storefront_Robots::sanitize_allowed_crawlers(
@@ -490,6 +503,59 @@ class WC_AI_Storefront {
 		if ( 'categories' === $mode && ! empty( $settings['selected_categories'] ) ) {
 			$product_cats = wc_get_product_cat_ids( $product->get_id() );
 			return ! empty( array_intersect( $product_cats, array_map( 'absint', $settings['selected_categories'] ) ) );
+		}
+
+		if ( 'tags' === $mode && ! empty( $settings['selected_tags'] ) ) {
+			$product_tags = wp_get_post_terms( $product->get_id(), 'product_tag', [ 'fields' => 'ids' ] );
+			if ( is_wp_error( $product_tags ) ) {
+				return false;
+			}
+			return ! empty( array_intersect( $product_tags, array_map( 'absint', $settings['selected_tags'] ) ) );
+		}
+
+		if ( 'brands' === $mode ) {
+			// Graceful degradation first — before the empty-selection
+			// check. If the `product_brand` taxonomy isn't registered
+			// (pre-WC 9.5 or a custom env), the merchant's brand
+			// selection can't be enforced. Degrade to "product is
+			// syndicated" (return true) so this gate stays symmetric
+			// with the Store API filter, which also declines to
+			// restrict in the same scenario — REGARDLESS of whether
+			// `selected_brands` is populated or empty. Without this
+			// ordering, a merchant with mode=`brands` but an empty
+			// selection AND a missing taxonomy would see llms.txt /
+			// JSON-LD hide the catalog while UCP catalog agents saw
+			// everything, recreating the exact enforcement split the
+			// brands-mode degradation path is meant to prevent.
+			//
+			// Rationale for "show all" over "hide all" in this
+			// specific degraded scenario: the merchant picked
+			// `brands` mode on a store that supported the taxonomy,
+			// then something removed that support (WC downgrade,
+			// custom taxonomy unregistration). Hiding the whole
+			// catalog is a surprising consequence of an environment
+			// change they may not have made. Showing the pre-
+			// downgrade catalog preserves their previous-actual
+			// agent-visible state until they re-configure. The
+			// persisted `selected_brands` array stays on disk so a
+			// future taxonomy re-registration restores enforcement.
+			if ( ! taxonomy_exists( 'product_brand' ) ) {
+				return true;
+			}
+
+			// Taxonomy is registered. Apply the empty-selection
+			// policy: `brands` mode with an empty `selected_brands`
+			// hides everything, matching the Store API filter's
+			// `post__in = [0]` posture for the same state.
+			if ( empty( $settings['selected_brands'] ) ) {
+				return false;
+			}
+
+			$product_brands = wp_get_post_terms( $product->get_id(), 'product_brand', [ 'fields' => 'ids' ] );
+			if ( is_wp_error( $product_brands ) ) {
+				return false;
+			}
+			return ! empty( array_intersect( $product_brands, array_map( 'absint', $settings['selected_brands'] ) ) );
 		}
 
 		if ( 'selected' === $mode && ! empty( $settings['selected_products'] ) ) {

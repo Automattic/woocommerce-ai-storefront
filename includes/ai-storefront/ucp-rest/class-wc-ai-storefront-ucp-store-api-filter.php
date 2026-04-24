@@ -54,6 +54,21 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 *                    term IDs. WP_Query ANDs multiple tax_query entries
 	 *                    by default, so any incoming category filter is
 	 *                    preserved and ours becomes an additional constraint.
+	 * Mode `tags`:       append a tax_query entry for selected product_tag
+	 *                    term IDs. Same ANY-match semantics as categories.
+	 * Mode `brands`:     append a tax_query entry for selected product_brand
+	 *                    term IDs. The `product_brand` taxonomy is WC 9.5+;
+	 *                    on older stores the admin UI hides the Brands
+	 *                    segment, which prevents NEW configuration there.
+	 *                    Persisted `selected_brands` may still exist after
+	 *                    a downgrade / stale-settings scenario (a merchant
+	 *                    configured brands on WC 9.5+, then rolled WC back
+	 *                    to an older version, so the option row in the DB
+	 *                    survives but the taxonomy doesn't). The defensive
+	 *                    `taxonomy_exists` check guards exactly that path:
+	 *                    falls back to a no-op (returns args unchanged)
+	 *                    rather than emitting an invalid tax_query against
+	 *                    an unregistered taxonomy.
 	 * Mode `selected`:   restrict post__in to the merchant's allow-list.
 	 *                    If the incoming request has its own post__in,
 	 *                    intersect instead of overriding — this preserves
@@ -64,10 +79,34 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 *                    due to WP_Query's historical handling of empty
 	 *                    post__in.
 	 *
-	 * Empty selection lists in either mode are treated as no-op — the
-	 * merchant has picked a mode but hasn't populated it yet, so applying
-	 * an empty restriction would hide everything. This matches the
-	 * behavior of the existing llms.txt / JSON-LD filters.
+	 * Empty-selection policy for taxonomy modes
+	 * ------------------------------------------
+	 * When mode is `categories`/`tags`/`brands` and the corresponding
+	 * `selected_*` array is empty, the filter forces `post__in = [0]`
+	 * to hide all products. This matches the behavior of
+	 * `WC_AI_Storefront::is_product_syndicated()` which returns false
+	 * in the same scenario — keeping llms.txt/JSON-LD (per-product
+	 * gate) and the Store API (query-args gate) in lockstep. Without
+	 * this symmetry, agents hitting the UCP catalog would see every
+	 * product while agents fetching llms.txt would see none — a
+	 * silent enforcement inconsistency.
+	 *
+	 * Exception: `brands` mode with an unregistered `product_brand`
+	 * taxonomy. The taxonomy-missing guard runs BEFORE the empty-
+	 * selection policy and returns args unchanged (no-op = show
+	 * all), regardless of whether `selected_brands` is populated.
+	 * That's a deliberate downgrade posture — the merchant picked
+	 * brands on a store that supported the taxonomy, then an
+	 * environment change removed it; hiding the catalog in that
+	 * scenario (even via the empty-selection rule) would be a
+	 * surprising consequence of a change the merchant may not have
+	 * initiated. `is_product_syndicated()` mirrors this exception
+	 * with a hoisted `taxonomy_exists` check of its own.
+	 *
+	 * The admin UI also surfaces an inline warning Notice when the
+	 * merchant picks By-taxonomy with an empty active-taxonomy
+	 * selection, so the "hides everything" posture is a visible,
+	 * recoverable state rather than a surprise.
 	 *
 	 * @param array<string, mixed> $args Store API query args.
 	 * @return array<string, mixed>      Modified args.
@@ -76,13 +115,38 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		$settings = WC_AI_Storefront::get_settings();
 		$mode     = $settings['product_selection_mode'] ?? 'all';
 
-		if ( 'categories' === $mode && ! empty( $settings['selected_categories'] ) ) {
-			$args['tax_query'][] = [
-				'taxonomy' => 'product_cat',
-				'field'    => 'term_id',
-				'terms'    => array_map( 'absint', $settings['selected_categories'] ),
-			];
-			return $args;
+		if ( 'categories' === $mode ) {
+			return $this->apply_taxonomy_restriction(
+				$args,
+				'product_cat',
+				$settings['selected_categories'] ?? []
+			);
+		}
+
+		if ( 'tags' === $mode ) {
+			return $this->apply_taxonomy_restriction(
+				$args,
+				'product_tag',
+				$settings['selected_tags'] ?? []
+			);
+		}
+
+		if ( 'brands' === $mode ) {
+			// `product_brand` is WC 9.5+. On stores without the
+			// taxonomy registered, decline to act rather than emit
+			// an invalid tax_query — the admin UI also hides the
+			// Brands segment when the server-side `supportsBrands`
+			// flag is false, so a persisted `brands` mode on an
+			// older store is a rare downgrade scenario we degrade
+			// gracefully from.
+			if ( ! taxonomy_exists( 'product_brand' ) ) {
+				return $args;
+			}
+			return $this->apply_taxonomy_restriction(
+				$args,
+				'product_brand',
+				$settings['selected_brands'] ?? []
+			);
 		}
 
 		if ( 'selected' === $mode && ! empty( $settings['selected_products'] ) ) {
@@ -96,6 +160,44 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 				$args['post__in'] = $allowed;
 			}
 		}
+
+		return $args;
+	}
+
+	/**
+	 * Apply a taxonomy restriction — or force zero matches when
+	 * the selection is empty.
+	 *
+	 * Extracted so the three taxonomy-mode branches
+	 * (categories / tags / brands) share a single enforcement path.
+	 * Keeping the empty-selection policy in one place guarantees
+	 * categories/tags/brands can't silently diverge in how they
+	 * handle a "picked a mode but haven't configured it yet" state.
+	 *
+	 * @param array<string, mixed> $args     Store API query args.
+	 * @param string               $taxonomy WP taxonomy slug.
+	 * @param array                $term_ids Raw term IDs from settings.
+	 * @return array<string, mixed>          Modified args.
+	 */
+	private function apply_taxonomy_restriction( array $args, string $taxonomy, array $term_ids ): array {
+		$term_ids = array_map( 'absint', $term_ids );
+
+		if ( empty( $term_ids ) ) {
+			// Force zero matches using the same sentinel
+			// (`post__in = [0]`) the `selected` branch uses for an
+			// empty intersection. Never a valid post ID, so
+			// WP_Query short-circuits to zero results and the
+			// agent-facing catalog matches what llms.txt/JSON-LD
+			// emit in the same state.
+			$args['post__in'] = [ 0 ];
+			return $args;
+		}
+
+		$args['tax_query'][] = [
+			'taxonomy' => $taxonomy,
+			'field'    => 'term_id',
+			'terms'    => $term_ids,
+		];
 
 		return $args;
 	}
