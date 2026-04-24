@@ -486,18 +486,25 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 		fetchStats( period );
 	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Refetch when period changes.
 
-	// Products Exposed card — actual count of products that will reach
-	// AI agents under the current scoping. Fetched from
-	// `/admin/product-count` so the UI doesn't have to replicate the
-	// server's UNION logic (and so the count reflects what the Store
-	// API filter would actually return, not what the client's local
-	// settings state looks like).
+	// Products Exposed card — actual count of products that will
+	// reach AI agents. Fetched from `/admin/product-count` so the
+	// UI mirrors what the Store API filter returns, not what
+	// client-side settings state looks like.
 	//
-	// Refetches when relevant settings fields change. Taxonomy
-	// selections AND the mode itself trigger a refetch: switching
-	// to mode=all from an empty by_taxonomy state should update the
-	// card even though no selection array changed. JSON.stringify of
-	// array/scalar dependencies is enough here — the payload is tiny.
+	// Three display states:
+	//   - `null` — initial load / pending fetch (renders as "—")
+	//   - a number — successful fetch (renders as "N products")
+	//   - `'error'` — fetch failed (renders localized "Couldn't
+	//     load") so a stuck "—" doesn't read as "no products"
+	//
+	// Debounce + AbortController: rapid taxonomy toggling (or
+	// "Select all" against a large term list) would otherwise
+	// burst-fire admin REST requests, each of which runs a real
+	// UNION query server-side. The 400ms debounce coalesces
+	// taxonomy-tap sequences into one request; the
+	// AbortController cancels in-flight requests when the
+	// signature changes mid-flight so the displayed count never
+	// reflects a stale resolution.
 	const [ productCount, setProductCount ] = useState( null );
 	const productSelectionSignature = JSON.stringify( [
 		settings.product_selection_mode,
@@ -528,7 +535,15 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						return;
 					}
 					if ( ! cancelled ) {
-						setProductCount( null );
+						setProductCount( 'error' );
+						// Dev-visible log so a persistent endpoint
+						// failure shows up in browser console without
+						// the merchant having to infer it from the UI.
+						// eslint-disable-next-line no-console
+						console.error(
+							'woocommerce-ai-storefront: product-count fetch failed',
+							error
+						);
 					}
 				} );
 		}, 400 );
@@ -539,19 +554,26 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 		};
 	}, [ productSelectionSignature ] );
 
-	const productCountDisplay =
-		productCount === null
-			? '\u2014'
-			: sprintf(
-					/* translators: %d: number of products exposed to AI */
-					_n(
-						'%d product',
-						'%d products',
-						productCount,
-						'woocommerce-ai-storefront'
-					),
-					productCount
-			  );
+	let productCountDisplay;
+	if ( productCount === 'error' ) {
+		productCountDisplay = __(
+			'Couldn\u2019t load',
+			'woocommerce-ai-storefront'
+		);
+	} else if ( productCount === null ) {
+		productCountDisplay = '\u2014';
+	} else {
+		productCountDisplay = sprintf(
+			/* translators: %d: number of products exposed to AI */
+			_n(
+				'%d product',
+				'%d products',
+				productCount,
+				'woocommerce-ai-storefront'
+			),
+			productCount
+		);
+	}
 
 	return (
 		<div>

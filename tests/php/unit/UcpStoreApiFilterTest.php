@@ -29,9 +29,10 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	 * Under the 0.1.5 UNION model, `apply_union_restriction()` calls
 	 * `taxonomy_exists( 'product_brand' )` on every by_taxonomy
 	 * invocation — not just brand-configured ones — so a default stub
-	 * is provided here. Brand-specific tests that need a different
-	 * return value still scope their own `Brain\Monkey\setUp()` /
-	 * `->justReturn(false)` pair inside the test body.
+	 * is provided here. Tests that need a different return value
+	 * (e.g. brand-downgrade scenarios) override `taxonomy_exists`
+	 * inline while relying on this shared `setUp()` / `tearDown()`
+	 * Brain\Monkey lifecycle.
 	 */
 	protected function setUp(): void {
 		parent::setUp();
@@ -241,7 +242,7 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 1, $result['tax_query'] );
 	}
 
-	public function test_brands_mode_is_noop_when_taxonomy_not_registered(): void {
+	public function test_by_taxonomy_brand_only_downgrade_is_noop_when_taxonomy_not_registered(): void {
 		// Graceful degradation: on pre-WC-9.5 stores (or any env that
 		// unregisters `product_brand`), the filter must not emit a
 		// tax_query entry — doing so would fatal in WP_Query's

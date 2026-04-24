@@ -290,7 +290,14 @@ class WC_AI_Storefront_Admin_Controller {
 	 * unregistered taxonomy returns the total published count
 	 * (show-all); fully-empty selection returns 0.
 	 *
-	 * @return WP_REST_Response { count: int }
+	 * @return WP_REST_Response|WP_Error { count: int } on success;
+	 *                                   `WP_Error` if the persisted
+	 *                                   `product_selection_mode` is
+	 *                                   not one of the recognized
+	 *                                   enum values (shouldn't happen
+	 *                                   in practice — silent migration
+	 *                                   + defensive legacy fallback
+	 *                                   normalize stored values).
 	 */
 	public function get_product_count() {
 		$settings = WC_AI_Storefront::get_settings();

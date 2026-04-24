@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-24T22:26:07+00:00\n"
+"POT-Creation-Date: 2026-04-24T22:31:00+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -36,7 +36,7 @@ msgid "WooCommerce"
 msgstr ""
 
 #. translators: %s: the unrecognized product_selection_mode enum value
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:376
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:383
 #, php-format
 msgid "Unrecognized product_selection_mode: %s"
 msgstr ""
@@ -781,70 +781,74 @@ msgstr ""
 msgid "Year"
 msgstr ""
 
+#: client/settings/ai-storefront/settings-page.js:559
+msgid "Couldn’t load"
+msgstr ""
+
 #. translators: %d: number of products exposed to AI
-#: client/settings/ai-storefront/settings-page.js:547
+#: client/settings/ai-storefront/settings-page.js:568
 #, js-format
 msgid "%d product"
 msgid_plural "%d products"
 msgstr[0] ""
 msgstr[1] ""
 
-#: client/settings/ai-storefront/settings-page.js:573
+#: client/settings/ai-storefront/settings-page.js:595
 msgid "AI Storefront is active"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:585
+#: client/settings/ai-storefront/settings-page.js:607
 msgid "Your store is ready for AI shopping assistants. Checkout and customer data stay on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:603
+#: client/settings/ai-storefront/settings-page.js:625
 msgid "Disabling…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:604
+#: client/settings/ai-storefront/settings-page.js:626
 msgid "Disable"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:615
+#: client/settings/ai-storefront/settings-page.js:637
 msgid "Last 24 hours"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:622
+#: client/settings/ai-storefront/settings-page.js:644
 msgid "Last 7 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:629
+#: client/settings/ai-storefront/settings-page.js:651
 msgid "Last 30 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:636
+#: client/settings/ai-storefront/settings-page.js:658
 msgid "Last year"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:656
+#: client/settings/ai-storefront/settings-page.js:678
 msgid "Products Exposed"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:665
+#: client/settings/ai-storefront/settings-page.js:687
 #, js-format
 msgid "Total Orders (%s)"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:673
+#: client/settings/ai-storefront/settings-page.js:695
 #, js-format
 msgid "AI Orders (%s)"
 msgstr ""
 
 #. translators: %s: percentage
-#: client/settings/ai-storefront/settings-page.js:681
+#: client/settings/ai-storefront/settings-page.js:703
 #, js-format
 msgid "%1$s%% of total"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:699
+#: client/settings/ai-storefront/settings-page.js:721
 #, js-format
 msgid "AI Revenue (%s)"
 msgstr ""
