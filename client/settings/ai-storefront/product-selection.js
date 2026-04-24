@@ -1235,11 +1235,27 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							   segmented-pill affordance. Matches how
 							   Gutenberg uses the same component (e.g.
 							   alignment toolbar).
+
+							   Padding override: @wordpress/components'
+							   ToggleGroupControlOption uses a very tight
+							   horizontal padding when !isBlock — text
+							   sits nearly flush against the selected
+							   pill's edges. A scoped `<style>` block
+							   widens the button padding so the selected
+							   segment has breathing room around its
+							   label.
 							*/ }
+							<style>{ `
+								.ai-storefront-taxonomy-toggle .components-button {
+									padding-left: 14px !important;
+									padding-right: 14px !important;
+								}
+							` }</style>
 							<ToggleGroupControl
 								__next40pxDefaultSize
 								__nextHasNoMarginBottom
 								hideLabelFromVision
+								className="ai-storefront-taxonomy-toggle"
 								label={ __(
 									'Taxonomy',
 									'woocommerce-ai-storefront'
@@ -1636,34 +1652,21 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								</div>
 							) }
 							{ /*
-							   Warning severity — unique to this mode. The other
-							   rows have benign "auto-includes …" lines; this
-							   one has a real behavioral surprise ("new products
-							   are NOT auto-included") that justifies a yellow
-							   notice. Using the Notice component (not a styled
-							   div) so screen readers announce the severity.
+							   No warning Notice here. Prior versions
+							   rendered a yellow "New products are not
+							   auto-included" banner at the bottom of
+							   this panel, but the behavior IS the mode:
+							   "hand-pick individual products" means
+							   hand-picking — auto-inclusion would
+							   defeat the semantic. The mode's header
+							   description already says "New products
+							   are not auto-included" as part of its
+							   explanation, so a yellow warning
+							   repeated the same information at higher
+							   severity than warranted. Removed to
+							   reduce visual noise in a section whose
+							   purpose is already clear from the label.
 							*/ }
-							<Notice
-								status="warning"
-								isDismissible={ false }
-								className="ai-syndication-selected-warning"
-								// See companion override on the By-
-								// taxonomy empty-selection warning for
-								// rationale: WP's Notice defaults target
-								// admin-banner placement, not card-
-								// embedded use. Matching padding/margin
-								// keeps both warnings visually
-								// consistent.
-								style={ {
-									margin: '12px 0 0',
-									padding: '8px 12px',
-								} }
-							>
-								{ __(
-									'New products are not auto-included. Return here to add them manually as your catalog grows.',
-									'woocommerce-ai-storefront'
-								) }
-							</Notice>
 						</div>
 					</ModeRow>
 				</CardBody>

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.4] – 2026-04-24
+
+### UI polish
+- **Taxonomy selector: breathing room around the selected pill** — `ToggleGroupControl` without `isBlock` renders options at content-exact width, leaving the selected black pill nearly flush with its label. Added a scoped CSS override widening the horizontal padding so the pill has balanced space around the text.
+- **Remove redundant "new products not auto-included" Notice from Selected mode** — The yellow warning duplicated information already in the mode's header description. Hand-picked-products mode means hand-picking by definition; flagging "new products aren't auto-included" at warning severity implied something was wrong when the mode was working exactly as named. Removed to reduce visual noise.
+
+---
+
 ## [0.1.3] – 2026-04-24
 
 ### Fixes
