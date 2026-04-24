@@ -575,16 +575,19 @@ const SamplePreviewTile = ( { product } ) => {
  * row; unselected state hides them entirely (not just visually) so
  * the DOM stays small and assistive tech doesn't read hidden content.
  *
- * @param {Object}   root0             Component props.
- * @param {string}   root0.value       This option's value.
- * @param {string}   root0.selected    Currently-selected option value.
- * @param {string}   root0.name        Radio group name.
- * @param {string}   root0.label       Option label (bold).
- * @param {string}   root0.description Option description (muted).
- * @param {string}   root0.badgeLabel  Text for the right-aligned badge.
- * @param {Function} root0.onSelect    Called with this option's value.
- * @param {Node}     root0.children    Detail panel content (rendered when selected).
- * @param {boolean}  root0.isLast      Suppresses the label's bottom border regardless of selection state.
+ * @param {Object}                                             root0             Component props.
+ * @param {string}                                             root0.value       This option's value.
+ * @param {string}                                             root0.selected    Currently-selected option value.
+ * @param {string}                                             root0.name        Radio group name.
+ * @param {string}                                             root0.label       Option label (bold).
+ * @param {string}                                             root0.description Option description (muted).
+ * @param {string}                                             root0.badgeLabel  Text for the right-aligned badge.
+ * @param {Function}                                           root0.onSelect
+ *                                                                               Called with this option's value.
+ * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children
+ *                                                                               Detail panel content (rendered when selected).
+ * @param {boolean}                                            root0.isLast
+ *                                                                               Suppresses the label's bottom border regardless of selection state.
  */
 const ModeRow = ( {
 	value,
@@ -1790,24 +1793,26 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
  * render the same UI with different data + labels; inlining three
  * copies in the parent would obscure the shared structure.
  *
- * @param {Object}   root0                   Component props.
- * @param {Array}    root0.items             All terms for this taxonomy.
- * @param {Array}    root0.filtered          Terms matching the current search filter.
- * @param {number[]} root0.selectedIds       Currently-selected term IDs.
- * @param {Array}    root0.selectedTokens    Term objects for chips.
- * @param {string}   [root0.tokenVariant]    Passed to SelectedTokens ('tag' for pill shape).
- * @param {string}   root0.search            Current search string.
- * @param {Function} root0.onSearch          Updates the search string.
- * @param {Function} root0.onToggle          Toggles one term's selection.
- * @param {Function} root0.onSelectAll       Selects every term.
- * @param {Function} root0.onClear           Clears the selection.
- * @param {boolean}  root0.isLoading         Pending fetch spinner.
- * @param {boolean}  [root0.hasError]        True when the last fetch failed — renders `errorLabel` in a yellow Notice instead of `emptyLabel`.
- * @param {string}   root0.searchPlaceholder Placeholder for the SearchControl.
- * @param {string}   root0.emptyMatchLabel   Shown when the filter returns no results.
- * @param {string}   root0.emptyLabel        Shown when the fetch succeeded but no terms exist for this taxonomy.
- * @param {string}   [root0.errorLabel]      Shown when `hasError` is true; distinct from `emptyLabel` so "merchant has none" and "we couldn't fetch" read differently.
- * @param {Node}     root0.disclosure        Footer disclosure text (accepts inline strong via createInterpolateElement).
+ * @param {Object}                                             root0                   Component props.
+ * @param {Array}                                              root0.items             All terms for this taxonomy.
+ * @param {Array}                                              root0.filtered          Terms matching the current search filter.
+ * @param {number[]}                                           root0.selectedIds       Currently-selected term IDs.
+ * @param {Array}                                              root0.selectedTokens    Term objects for chips.
+ * @param {string}                                             [root0.tokenVariant]    Passed to SelectedTokens ('tag' for pill shape).
+ * @param {string}                                             root0.search            Current search string.
+ * @param {Function}                                           root0.onSearch          Updates the search string.
+ * @param {Function}                                           root0.onToggle          Toggles one term's selection.
+ * @param {Function}                                           root0.onSelectAll       Selects every term.
+ * @param {Function}                                           root0.onClear           Clears the selection.
+ * @param {boolean}                                            root0.isLoading         Pending fetch spinner.
+ * @param {boolean}                                            [root0.hasError]        True when the last fetch failed — renders `errorLabel` in a yellow Notice instead of `emptyLabel`.
+ * @param {string}                                             root0.searchPlaceholder Placeholder for the SearchControl.
+ * @param {string}                                             root0.emptyMatchLabel   Shown when the filter returns no results.
+ * @param {string}                                             root0.emptyLabel        Shown when the fetch succeeded but no terms exist for this taxonomy.
+ * @param {string}                                             [root0.errorLabel]      Shown when `hasError` is true; distinct from `emptyLabel` so "merchant has none" and "we couldn't fetch" read differently.
+ * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.disclosure
+ *                                                                                     Footer disclosure text (accepts inline strong via
+ *                                                                                     createInterpolateElement).
  */
 const TaxonomyPicker = ( {
 	items,
@@ -1999,12 +2004,14 @@ const TaxonomyPicker = ( {
  * mode uses a `<Notice status="warning">` instead because its
  * disclosure is an actual behavioral surprise, not a neutral fact.
  *
- * Accepts Node children (not just strings) so taxonomy disclosures
+ * Accepts rich children (not just strings) so taxonomy disclosures
  * built via createInterpolateElement can inline <strong> around the
  * "any" semantics without dropping out of the styled paragraph.
  *
- * @param {Object} root0          Component props.
- * @param {Node}   root0.children Disclosure text or interpolated node.
+ * @param {Object}                                             root0
+ *                                                                            Component props.
+ * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children
+ *                                                                            Disclosure text or interpolated React node.
  */
 const Disclosure = ( { children } ) => (
 	<p
