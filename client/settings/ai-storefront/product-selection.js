@@ -1830,7 +1830,13 @@ const TaxonomyPicker = ( {
 	searchPlaceholder,
 	emptyMatchLabel,
 	emptyLabel,
-	errorLabel,
+	// Fallback so a future caller setting `hasError` without
+	// providing `errorLabel` renders something useful rather than
+	// a blank Notice. Generic copy ("Unable to load items.") is
+	// deliberately neutral — every current call site passes a
+	// taxonomy-specific errorLabel, so this default only fires in
+	// a coding-slip scenario where having ANY text beats silence.
+	errorLabel = __( 'Unable to load items.', 'woocommerce-ai-storefront' ),
 	disclosure,
 } ) => {
 	const allSelected =

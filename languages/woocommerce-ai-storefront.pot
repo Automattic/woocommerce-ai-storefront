@@ -380,7 +380,7 @@ msgid "%1$d of %2$d"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:643
-#: client/settings/ai-storefront/product-selection.js:1877
+#: client/settings/ai-storefront/product-selection.js:1883
 msgid "Select all"
 msgstr ""
 
@@ -682,7 +682,7 @@ msgid "Search products…"
 msgstr ""
 
 #: client/settings/ai-storefront/product-selection.js:1586
-#: client/settings/ai-storefront/product-selection.js:1889
+#: client/settings/ai-storefront/product-selection.js:1895
 msgid "Clear selection"
 msgstr ""
 
@@ -712,8 +712,12 @@ msgstr ""
 msgid "Save changes"
 msgstr ""
 
+#: client/settings/ai-storefront/product-selection.js:1839
+msgid "Unable to load items."
+msgstr ""
+
 #. translators: %1$s: term name, %2$d: product count
-#: client/settings/ai-storefront/product-selection.js:1980
+#: client/settings/ai-storefront/product-selection.js:1986
 #, js-format
 msgid "%1$s (%2$d)"
 msgstr ""
