@@ -981,8 +981,8 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// selected=[]` — the empty-selection policy hides the entire
 	// catalog from agents, and the merchant thought they were just
 	// deselecting one item. Leaving the mode alone on the empty-case
-	// keeps the merchant's previous mode (e.g. `brands` with a Diva
-	// selection still on disk) in effect; entering the "hide
+	// keeps the merchant's previous mode (e.g. `brands` with a
+	// non-empty selection on disk) in effect; entering the "hide
 	// everything" posture requires an explicit By-taxonomy +
 	// Categories confirmation via the ModeRow + ToggleGroup.
 	const toggleCategory = ( catId ) => {
