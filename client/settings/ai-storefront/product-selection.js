@@ -723,7 +723,24 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	const [ isLoadingProducts, setIsLoadingProducts ] = useState( false );
 
 	const serverMode = settings.product_selection_mode || MODES.ALL;
-	const uiRow = modeToUiRow( serverMode );
+
+	const hasUnsupportedPersistedBrandsMode =
+		! supportsBrands && serverMode === MODES.BRANDS;
+
+	// For rendering: treat an unsupported persisted mode as `all`
+	// starting from the very first render. The auto-heal `useEffect`
+	// below propagates the same correction to the draft settings via
+	// `onChange`, but effects fire AFTER the first paint — without
+	// `effectiveServerMode`, the initial render would momentarily
+	// show the By-taxonomy row + empty-selection warning for one
+	// frame before the healed value flowed back through props, a
+	// visible flicker. Deriving the effective mode at render time
+	// keeps the UI coherent from paint zero; the effect is still
+	// required to persist the correction so a Save captures it.
+	const effectiveServerMode = hasUnsupportedPersistedBrandsMode
+		? MODES.ALL
+		: serverMode;
+	const uiRow = modeToUiRow( effectiveServerMode );
 
 	// Normalize the persisted taxonomy to one the UI can actually
 	// render. Scenario: a merchant on WC 9.5+ saves mode=`brands`,
@@ -734,14 +751,11 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// By-taxonomy row would show the empty-brands-selection warning
 	// with no visible way to resolve it (no Brands segment to pick
 	// into, and `setRow( BY_TAXONOMY )` would keep re-writing
-	// 'brands'). Mapping unsupported modes → CATEGORIES at the
-	// source makes the UI coherent: the merchant lands on the
-	// Categories segment by default, can configure normally, and
-	// their persisted `selected_brands` array stays intact so a
-	// future WC upgrade restores their prior selection.
-	const hasUnsupportedPersistedBrandsMode =
-		! supportsBrands && serverMode === MODES.BRANDS;
-
+	// 'brands'). Mapping unsupported modes → CATEGORIES seeds
+	// `activeTaxonomy` so the Categories segment is the default
+	// when the merchant later switches back into By-taxonomy; the
+	// persisted `selected_brands` array stays intact so a future
+	// WC upgrade restores their prior selection.
 	const normalizedServerTaxonomy =
 		TAXONOMY_MODES.includes( serverMode ) &&
 		! hasUnsupportedPersistedBrandsMode
