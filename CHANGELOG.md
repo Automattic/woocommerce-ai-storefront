@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.6] – 2026-04-25
+
+### Fixes
+- **Plugin Update Checker: branch + auth fixes.** Two issues caused merchants to see "Could not determine if updates are available" with GitHub API 403 errors:
+  - PUC defaulted to fetching `/branches/master`, but this repo uses `main`. The 404 was masked as a 403 under GitHub's anonymous rate-limit throttle, producing a misleading error. Now sets `setBranch( 'main' )` explicitly.
+  - Anonymous GitHub API requests are limited to 60/hour per IP. Stores on shared hosting or with frequent dashboard refreshes hit the limit. Added a `wc_ai_storefront_github_token` filter that, when populated with a GitHub personal access token, raises the limit to 5,000/hour via `setAuthentication()`.
+
+---
+
 ## [0.1.5] – 2026-04-24
 
 ### Features
