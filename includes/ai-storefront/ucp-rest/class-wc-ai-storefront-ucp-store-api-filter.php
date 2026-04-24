@@ -174,7 +174,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * @param array<string, mixed> $settings Plugin settings.
 	 * @return array<string, mixed>          Modified args.
 	 */
-	private function apply_union_restriction( array $args, array $settings ): array {
+	public function apply_union_restriction( array $args, array $settings ): array {
 		$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? [] );
 		$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? [] );
 		$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? [] );

@@ -431,8 +431,8 @@ class WC_AI_Storefront {
 		// coupling to the activation hook's run timing. The
 		// `in_array` check is O(3) and runs on every settings read
 		// for stores that have already migrated; the `update_option`
-		// write only fires once (after which the check short-circuits
-		// to false).
+		// write fires until it succeeds, after which the stored mode
+		// is `by_taxonomy` and the check short-circuits to false.
 		if ( is_array( $settings )
 			&& isset( $settings['product_selection_mode'] )
 			&& in_array( $settings['product_selection_mode'], [ 'categories', 'tags', 'brands' ], true )

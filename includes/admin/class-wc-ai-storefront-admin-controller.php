@@ -332,64 +332,33 @@ class WC_AI_Storefront_Admin_Controller {
 		}
 
 		if ( 'by_taxonomy' === $mode ) {
-			$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? [] );
-			$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? [] );
-			$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? [] );
+			$base_args = [
+				'post_type'      => 'product',
+				'post_status'    => 'publish',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+				'no_found_rows'  => false,
+			];
+			$filter     = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$query_args = $filter->apply_union_restriction( $base_args, $settings );
 
-			$brands_supported = taxonomy_exists( 'product_brand' );
-
-			$has_cats   = ! empty( $selected_categories );
-			$has_tags   = ! empty( $selected_tags );
-			$has_brands = ! empty( $selected_brands ) && $brands_supported;
-
-			// Downgrade exception: only brands set, taxonomy missing
-			// → server enforces "show all." Count matches.
-			if ( ! $has_cats && ! $has_tags && ! $brands_supported && ! empty( $selected_brands ) ) {
+			// Brand-downgrade: only brands configured but taxonomy missing →
+			// apply_union_restriction() returns args unchanged (no tax_query /
+			// post__in added). Count must match the "show all" enforcement.
+			if ( ! isset( $query_args['tax_query'] ) && ! isset( $query_args['post__in'] ) ) {
 				$counts = wp_count_posts( 'product' );
 				return new WP_REST_Response(
 					[ 'count' => (int) ( $counts->publish ?? 0 ) ]
 				);
 			}
 
-			// Empty: nothing enforceable → 0.
-			if ( ! $has_cats && ! $has_tags && ! $has_brands ) {
+			// Empty-selection: apply_union_restriction() sets post__in = [0].
+			if ( isset( $query_args['post__in'] ) && [ 0 ] === $query_args['post__in'] ) {
 				return new WP_REST_Response( [ 'count' => 0 ] );
 			}
 
-			$tax_query = [ 'relation' => 'OR' ];
-			if ( $has_cats ) {
-				$tax_query[] = [
-					'taxonomy' => 'product_cat',
-					'field'    => 'term_id',
-					'terms'    => $selected_categories,
-				];
-			}
-			if ( $has_tags ) {
-				$tax_query[] = [
-					'taxonomy' => 'product_tag',
-					'field'    => 'term_id',
-					'terms'    => $selected_tags,
-				];
-			}
-			if ( $has_brands ) {
-				$tax_query[] = [
-					'taxonomy' => 'product_brand',
-					'field'    => 'term_id',
-					'terms'    => $selected_brands,
-				];
-			}
-
-			$query = new WP_Query(
-				[
-					'post_type'      => 'product',
-					'post_status'    => 'publish',
-					// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
-					'tax_query'      => $tax_query,
-					'posts_per_page' => 1,
-					'fields'         => 'ids',
-					'no_found_rows'  => false,
-				]
-			);
+			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+			$query = new WP_Query( $query_args );
 			return new WP_REST_Response(
 				[ 'count' => (int) $query->found_posts ]
 			);
