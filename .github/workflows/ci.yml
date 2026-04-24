@@ -325,14 +325,17 @@ jobs:
         # `--` guards against a future branch where `build` might
         # shadow a rev-spec.
         #
-        # Diff output is capped at 200 lines. Webpack-emitted JS
-        # often has a single minified line that spans tens of
-        # thousands of characters; `git diff` at full length
-        # would bloat the log past GitHub's per-line limit and
-        # truncate in a way that hides which file drifted. 200
-        # lines is enough for a human to see which paths changed
-        # and roughly how; the total line count is reported so
-        # the real magnitude isn't hidden.
+        # Failure output uses `git diff --stat` rather than the
+        # full content diff. Webpack emits minified JS as a single
+        # enormous line (250+ KiB on one line), which means
+        # content diffs both bloat the CI log AND get truncated
+        # unpredictably by GitHub Actions' per-line length limit
+        # — sometimes hiding exactly the path that drifted. The
+        # `--stat` format gives just `<path> | N ++--` per file,
+        # which is the useful signal for the PR author (which
+        # files + rough magnitude) without printing any code.
+        # The full diff remains available locally after
+        # `npm run build`.
         run: |
           npm run build
 
@@ -357,14 +360,23 @@ jobs:
             echo "$changed" | sed 's/^/  /'
             echo ""
 
-            diff_lines="$(git diff -- build/ | wc -l | tr -d ' ')"
-            echo "First 200 lines of diff:"
+            # Use `--stat` rather than the full content diff. Webpack
+            # emits minified JS as a SINGLE enormous line (250+ KiB of
+            # code on one line), so a content diff would print that
+            # entire line even if only one token changed — and GitHub
+            # Actions truncates long individual lines unpredictably,
+            # hiding the exact path that drifted. `--stat` gives the
+            # shape we actually want here (path + added/removed count
+            # per file) without printing any code, which means the
+            # output stays human-readable and the log stays small.
+            # The full diff is still accessible locally after
+            # `npm run build`; CI's job is just to surface WHICH
+            # files drifted and ROUGHLY how much, not reproduce the
+            # entire regeneration for review.
+            echo "Change summary (git diff --stat):"
             echo "--------"
-            git diff -- build/ | sed -n '1,200p'
+            git diff --stat -- build/
             echo "--------"
-            if [ "$diff_lines" -gt 200 ]; then
-              echo "... diff truncated (${diff_lines} total lines)."
-            fi
             echo ""
           fi
 
