@@ -364,7 +364,20 @@ class WC_AI_Storefront_Admin_Controller {
 			);
 		}
 
-		return new WP_REST_Response( [ 'count' => 0 ] );
+		// Unknown mode — shouldn't happen after silent migration +
+		// the defensive fallback above, but return a `WP_Error`
+		// rather than a silent `count: 0` so a future enum addition
+		// that forgets to update this method fails loudly instead
+		// of serving a misleading zero.
+		return new WP_Error(
+			'wc_ai_storefront_unknown_product_selection_mode',
+			sprintf(
+				/* translators: %s: the unrecognized product_selection_mode enum value */
+				__( 'Unrecognized product_selection_mode: %s', 'woocommerce-ai-storefront' ),
+				esc_html( (string) $mode )
+			),
+			[ 'status' => 500 ]
+		);
 	}
 
 	/**

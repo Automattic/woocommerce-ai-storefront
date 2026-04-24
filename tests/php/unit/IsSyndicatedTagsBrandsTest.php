@@ -25,6 +25,14 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 		parent::setUp();
 		Monkey\setUp();
 		WC_AI_Storefront::$test_settings = [];
+
+		// Default: brands taxonomy registered. Under 0.1.5's UNION
+		// gate, `taxonomy_exists('product_brand')` is consulted on
+		// every `by_taxonomy` invocation (not just brand-configured
+		// ones) to decide whether to treat `selected_brands` as
+		// enforceable. Tests that exercise the unregistered path
+		// override this with their own `Functions\when()->justReturn(false)`.
+		Functions\when( 'taxonomy_exists' )->justReturn( true );
 	}
 
 	protected function tearDown(): void {
@@ -121,10 +129,18 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue( $result );
 	}
 
-	public function test_brands_mode_returns_true_when_taxonomy_not_registered_and_selected_brands_empty(): void {
-		// Taxonomy missing + no brands selected: still true.
-		// The taxonomy guard fires before the empty-selection check,
-		// so the result is the same regardless of selected_brands content.
+	public function test_brands_mode_returns_false_when_taxonomy_not_registered_and_selected_brands_empty(): void {
+		// 0.1.5 UNION semantics: when ALL three `selected_*` arrays
+		// are empty, the empty-selection policy hides the catalog
+		// regardless of taxonomy registration state. The downgrade-
+		// safe "show all" exception is gated on `selected_brands`
+		// being NON-EMPTY (preserving merchant intent across an
+		// environment change) — empty arrays mean "nothing
+		// configured" and have no prior intent to preserve.
+		//
+		// Pre-0.1.5 behavior: this scenario returned true because
+		// the taxonomy-missing guard fired before any empty check.
+		// Updated for the consolidated UNION model.
 		Functions\when( 'taxonomy_exists' )->justReturn( false );
 
 		$result = WC_AI_Storefront::is_product_syndicated(
@@ -135,7 +151,7 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 			]
 		);
 
-		$this->assertTrue( $result );
+		$this->assertFalse( $result );
 	}
 
 	// ------------------------------------------------------------------

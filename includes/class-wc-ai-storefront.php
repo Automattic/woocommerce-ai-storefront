@@ -419,26 +419,22 @@ class WC_AI_Storefront {
 
 		$settings = get_option( self::SETTINGS_OPTION, [] );
 
-		// Silent migration from pre-0.1.5 enum values. Prior to 0.1.5
-		// `product_selection_mode` was one of `all` / `categories` /
-		// `tags` / `brands` / `selected`, with each taxonomy mode
-		// enforcing only its own selection array. 0.1.5 consolidated
-		// the three taxonomy modes into a single `by_taxonomy` value
-		// that triggers UNION enforcement across all three `selected_*`
-		// arrays. Migrating on read (rather than on plugin activation)
-		// means a store that rolls back from 0.1.5 to 0.1.x and then
-		// forward again still gets the migration; it also avoids
-		// coupling to the activation hook's run timing. The
-		// `in_array` check is O(3) and runs on every settings read
-		// for stores that have already migrated; the `update_option`
-		// write fires until it succeeds, after which the stored mode
-		// is `by_taxonomy` and the check short-circuits to false.
-		if ( is_array( $settings )
+		// Silent migration from legacy pre-0.1.5 enum values
+		// (`categories` / `tags` / `brands`) to the consolidated
+		// `by_taxonomy` value that triggers UNION enforcement.
+		// Migrating on read (rather than on activation) means a
+		// rollback-then-forward across versions still converges,
+		// and avoids coupling to activation-hook timing.
+		$needs_migration =
+			is_array( $settings )
 			&& isset( $settings['product_selection_mode'] )
-			&& in_array( $settings['product_selection_mode'], [ 'categories', 'tags', 'brands' ], true )
-		) {
+			&& in_array(
+				$settings['product_selection_mode'],
+				[ 'categories', 'tags', 'brands' ],
+				true
+			);
+		if ( $needs_migration ) {
 			$settings['product_selection_mode'] = 'by_taxonomy';
-			update_option( self::SETTINGS_OPTION, $settings, true );
 		}
 
 		$merged = wp_parse_args( is_array( $settings ) ? $settings : [], $defaults );
@@ -453,7 +449,30 @@ class WC_AI_Storefront {
 			is_array( $settings ) ? $settings : []
 		);
 
+		// Populate the cache BEFORE the migration write so any hook
+		// subscriber on `update_option_wc_ai_storefront_settings`
+		// that calls `get_settings()` during the write reads the
+		// already-migrated value from cache rather than re-entering
+		// this code path and recursing.
 		self::$settings_cache = $merged;
+
+		if ( $needs_migration ) {
+			$updated = update_option( self::SETTINGS_OPTION, $settings, true );
+			if ( $updated ) {
+				// Match `update_settings()`'s cache-invalidation
+				// behavior so a persistent-object-cache deployment
+				// (Redis / Memcached) doesn't serve the legacy value
+				// to sibling PHP workers off `alloptions`.
+				wp_cache_delete( self::SETTINGS_OPTION, 'options' );
+				wp_cache_delete( 'alloptions', 'options' );
+			} elseif ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'silent migration: update_option returned false for %s',
+					self::SETTINGS_OPTION
+				);
+			}
+		}
+
 		return $merged;
 	}
 
