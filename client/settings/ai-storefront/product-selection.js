@@ -1255,12 +1255,12 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// state the merchant hasn't opted into. When BY_TAXONOMY is the
 	// active row, the same copy IS informative: it signals the
 	// empty-selection policy that hides everything.
-	const taxonomyBadge =
-		taxonomyBadgeParts.length > 0
-			? taxonomyBadgeParts.join( badgeSeparator )
-			: uiRow === UI_ROWS.BY_TAXONOMY
-				? __( 'Nothing selected', 'woocommerce-ai-storefront' )
-				: '';
+	let taxonomyBadge = '';
+	if ( taxonomyBadgeParts.length > 0 ) {
+		taxonomyBadge = taxonomyBadgeParts.join( badgeSeparator );
+	} else if ( uiRow === UI_ROWS.BY_TAXONOMY ) {
+		taxonomyBadge = __( 'Nothing selected', 'woocommerce-ai-storefront' );
+	}
 
 	// No plural-form distinction for this copy ('%d selected' reads
 	// the same for singular + plural in English), so use a single
@@ -1293,10 +1293,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			'No categories selected. Your products are currently hidden from AI agents — pick at least one category to resume sharing.',
 			'woocommerce-ai-storefront'
 		);
-	} else if (
-		effectiveMode === MODES.TAGS &&
-		selectedTags.length === 0
-	) {
+	} else if ( effectiveMode === MODES.TAGS && selectedTags.length === 0 ) {
 		emptyEnforcingSelection = true;
 		emptyTaxonomyWarning = __(
 			'No tags selected. Your products are currently hidden from AI agents — pick at least one tag to resume sharing.',
@@ -1381,7 +1378,10 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			// consumer doesn't get silently dropped. Guard with
 			// NODE_ENV so prod bundles strip the console call via
 			// dead-code elimination.
-			if ( process.env.NODE_ENV !== 'production' && taxonomy !== undefined ) {
+			if (
+				process.env.NODE_ENV !== 'production' &&
+				taxonomy !== undefined
+			) {
 				// eslint-disable-next-line no-console
 				console.warn(
 					'setTaxonomy: ignored out-of-enum value',
