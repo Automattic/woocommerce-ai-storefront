@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-24T14:51:43+00:00\n"
+"POT-Creation-Date: 2026-04-24T16:16:52+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -48,7 +48,7 @@ msgid "Session ID:"
 msgstr ""
 
 #: includes/ai-storefront/class-wc-ai-storefront-jsonld.php:215
-#: client/settings/ai-storefront/product-selection.js:809
+#: client/settings/ai-storefront/product-selection.js:881
 msgid "Products"
 msgstr ""
 
@@ -380,7 +380,7 @@ msgid "%1$d of %2$d"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:643
-#: client/settings/ai-storefront/product-selection.js:1572
+#: client/settings/ai-storefront/product-selection.js:1804
 msgid "Select all"
 msgstr ""
 
@@ -445,7 +445,7 @@ msgid "Limits are applied per AI crawler (identified by user-agent string) using
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:960
-#: client/settings/ai-storefront/product-selection.js:1465
+#: client/settings/ai-storefront/product-selection.js:1697
 msgid "Saving…"
 msgstr ""
 
@@ -453,66 +453,74 @@ msgstr ""
 msgid "Save Changes"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:80
+#: client/settings/ai-storefront/product-selection.js:81
 msgid "Every published product in your store is discoverable by AI crawlers."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:84
+#: client/settings/ai-storefront/product-selection.js:85
 msgid "Share only products that match selected categories, tags, or brands."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:88
+#: client/settings/ai-storefront/product-selection.js:89
 msgid "Hand-pick individual products. New products are not auto-included."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:108
+#: client/settings/ai-storefront/product-selection.js:109
 msgid "name"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:111
+#: client/settings/ai-storefront/product-selection.js:112
 msgid "description"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:113
+#: client/settings/ai-storefront/product-selection.js:114
 msgid "price"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:114
+#: client/settings/ai-storefront/product-selection.js:115
 msgid "stock"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:115
+#: client/settings/ai-storefront/product-selection.js:116
 msgid "images"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:118
+#: client/settings/ai-storefront/product-selection.js:119
 msgid "categories"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:120
+#: client/settings/ai-storefront/product-selection.js:121
 msgid "SKU"
 msgstr ""
 
 #. translators: %s: item name
-#: client/settings/ai-storefront/product-selection.js:232
+#: client/settings/ai-storefront/product-selection.js:244
 #, js-format
 msgid "Remove %s"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:804
+#: client/settings/ai-storefront/product-selection.js:876
 msgid "Loading…"
 msgstr ""
 
 #. translators: %s: total published product count, formatted via toLocaleString using the browser locale.
-#: client/settings/ai-storefront/product-selection.js:813
+#: client/settings/ai-storefront/product-selection.js:885
 #, js-format
 msgid "%s product"
 msgid_plural "%s products"
 msgstr[0] ""
 msgstr[1] ""
 
+#. translators: %d: number of selected categories.
+#: client/settings/ai-storefront/product-selection.js:914
+#, js-format
+msgid "%d category"
+msgid_plural "%d categories"
+msgstr[0] ""
+msgstr[1] ""
+
 #. translators: %d: number of selected tags.
-#: client/settings/ai-storefront/product-selection.js:830
+#: client/settings/ai-storefront/product-selection.js:928
 #, js-format
 msgid "%d tag"
 msgid_plural "%d tags"
@@ -520,180 +528,181 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of selected brands.
-#: client/settings/ai-storefront/product-selection.js:841
+#: client/settings/ai-storefront/product-selection.js:951
 #, js-format
 msgid "%d brand"
 msgid_plural "%d brands"
 msgstr[0] ""
 msgstr[1] ""
 
-#. translators: %d: number of selected categories.
-#: client/settings/ai-storefront/product-selection.js:852
-#, js-format
-msgid "%d category"
-msgid_plural "%d categories"
-msgstr[0] ""
-msgstr[1] ""
+#. translators: separator between taxonomy count segments in the By-taxonomy row badge, e.g. "3 categories · 1 brand"
+#: client/settings/ai-storefront/product-selection.js:967
+msgid " · "
+msgstr ""
+
+#: client/settings/ai-storefront/product-selection.js:984
+msgid "Nothing selected"
+msgstr ""
 
 #. translators: %d: number of selected products.
-#: client/settings/ai-storefront/product-selection.js:868
+#: client/settings/ai-storefront/product-selection.js:993
 #, js-format
 msgid "%d selected"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:884
-msgid "No categories selected. Your products are currently hidden from AI agents — pick at least one category below to resume sharing."
+#: client/settings/ai-storefront/product-selection.js:1014
+msgid "No categories selected. Your products are currently hidden from AI agents — pick at least one category to resume sharing."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:890
-msgid "No tags selected. Your products are currently hidden from AI agents — pick at least one tag below to resume sharing."
+#: client/settings/ai-storefront/product-selection.js:1020
+msgid "No tags selected. Your products are currently hidden from AI agents — pick at least one tag to resume sharing."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:899
-msgid "No brands selected. Your products are currently hidden from AI agents — pick at least one brand below to resume sharing."
+#: client/settings/ai-storefront/product-selection.js:1029
+msgid "No brands selected. Your products are currently hidden from AI agents — pick at least one brand to resume sharing."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:962
+#: client/settings/ai-storefront/product-selection.js:1147
 msgid "Products available to AI crawlers"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:974
+#: client/settings/ai-storefront/product-selection.js:1159
 msgid "Choose which of your products appear in your AI Storefront endpoints."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:986
+#: client/settings/ai-storefront/product-selection.js:1171
 msgid "All published products"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:995
+#: client/settings/ai-storefront/product-selection.js:1180
 msgid "Auto-includes new products as they're published."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1006
+#: client/settings/ai-storefront/product-selection.js:1191
 msgid "Products by category, tag, or brand"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1024
+#: client/settings/ai-storefront/product-selection.js:1209
 msgid "Taxonomy"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1033
+#: client/settings/ai-storefront/product-selection.js:1218
 msgid "Categories"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1040
+#: client/settings/ai-storefront/product-selection.js:1225
 msgid "Tags"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1048
+#: client/settings/ai-storefront/product-selection.js:1233
 msgid "Brands"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1108
+#: client/settings/ai-storefront/product-selection.js:1326
 msgid "Filter categories…"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1112
+#: client/settings/ai-storefront/product-selection.js:1330
 msgid "No categories match your filter."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1116
+#: client/settings/ai-storefront/product-selection.js:1334
 msgid "You haven't created any categories yet. Create them in Products → Categories."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1120
+#: client/settings/ai-storefront/product-selection.js:1338
 msgid "Couldn't load your categories right now. If you have categories configured, refresh this page to retry."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1124
+#: client/settings/ai-storefront/product-selection.js:1342
 msgid "Auto-includes future products added to these categories."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1153
+#: client/settings/ai-storefront/product-selection.js:1377
 msgid "Filter tags (e.g. summer, sale)…"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1157
+#: client/settings/ai-storefront/product-selection.js:1381
 msgid "No tags match your filter."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1161
+#: client/settings/ai-storefront/product-selection.js:1385
 msgid "You haven't created any tags yet. Add tags on a product's edit screen."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1165
+#: client/settings/ai-storefront/product-selection.js:1389
 msgid "Couldn't load your tags right now. If you have tags configured, refresh this page to retry."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1170
+#: client/settings/ai-storefront/product-selection.js:1394
 msgid "Products are included when they have <strong>any</strong> of the selected tags. Auto-includes future products that match."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1200
+#: client/settings/ai-storefront/product-selection.js:1432
 msgid "Filter brands (e.g. Adidas, Nike)…"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1204
+#: client/settings/ai-storefront/product-selection.js:1436
 msgid "No brands match your filter."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1208
+#: client/settings/ai-storefront/product-selection.js:1440
 msgid "You haven't created any brands yet. Add brands in Products → Brands."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1212
+#: client/settings/ai-storefront/product-selection.js:1444
 msgid "Couldn't load your brands right now. If you have brands configured, refresh this page to retry."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1217
+#: client/settings/ai-storefront/product-selection.js:1449
 msgid "Products are included when they belong to <strong>any</strong> of the selected brands. Auto-includes future products that match."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1231
+#: client/settings/ai-storefront/product-selection.js:1463
 msgid "Specific products only"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1249
+#: client/settings/ai-storefront/product-selection.js:1481
 msgid "Search products…"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1275
-#: client/settings/ai-storefront/product-selection.js:1584
+#: client/settings/ai-storefront/product-selection.js:1507
+#: client/settings/ai-storefront/product-selection.js:1816
 msgid "Clear selection"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1313
+#: client/settings/ai-storefront/product-selection.js:1545
 msgid "No products found. Try a different search."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1317
+#: client/settings/ai-storefront/product-selection.js:1549
 msgid "Start typing to search your products."
 msgstr ""
 
 #. translators: %1$s: product name, %2$s: price
-#: client/settings/ai-storefront/product-selection.js:1337
+#: client/settings/ai-storefront/product-selection.js:1569
 #, js-format
 msgid "%1$s — %2$s"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1373
+#: client/settings/ai-storefront/product-selection.js:1605
 msgid "New products are not auto-included. Return here to add them manually as your catalog grows."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1403
+#: client/settings/ai-storefront/product-selection.js:1635
 msgid "Included fields"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1466
+#: client/settings/ai-storefront/product-selection.js:1698
 msgid "Save changes"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1528
+#: client/settings/ai-storefront/product-selection.js:1760
 msgid "Unable to load items."
 msgstr ""
 
 #. translators: %1$s: term name, %2$d: product count
-#: client/settings/ai-storefront/product-selection.js:1675
+#: client/settings/ai-storefront/product-selection.js:1907
 #, js-format
 msgid "%1$s (%2$d)"
 msgstr ""
