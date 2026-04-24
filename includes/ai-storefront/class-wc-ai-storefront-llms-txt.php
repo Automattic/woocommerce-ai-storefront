@@ -392,7 +392,7 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[]       = '';
 		$lines[]       = '```json';
 		$lines[]       = '{';
-		$lines[]       = '  "line_items": [{ "item": { "id": "123" }, "quantity": 1 }]';
+		$lines[]       = '  "line_items": [{ "item": { "id": "prod_123" }, "quantity": 1 }]';
 		$lines[]       = '}';
 		$lines[]       = '```';
 		$lines[]       = '';

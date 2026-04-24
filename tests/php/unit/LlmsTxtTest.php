@@ -331,6 +331,20 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'continue_url', $output );
 	}
 
+	public function test_attribution_example_uses_prefixed_ucp_id(): void {
+		// The UCP catalog/search/lookup responses emit prefixed IDs
+		// (`prod_N` for products, `var_N` for variations); the
+		// line-items example in the llms.txt Attribution section
+		// must match that wire format or agents will POST raw
+		// WooCommerce IDs and get rejected by
+		// `WC_AI_Storefront_UCP_REST_Controller::parse_ucp_id()`.
+		// Guard against a drive-by reversion to a bare numeric ID.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '"id": "prod_', $output );
+		$this->assertStringNotContainsString( '"id": "123"', $output );
+	}
+
 	public function test_url_patterns_section_not_emitted(): void {
 		// Post-v2.0.0 scope cut. The previous "URL patterns for
 		// client-side construction" block (6 URL variants:
