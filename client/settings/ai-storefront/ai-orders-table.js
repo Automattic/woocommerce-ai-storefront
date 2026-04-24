@@ -306,10 +306,11 @@ const GhostTable = () => (
  * Not exported — only used by `EmptyState` and the populated
  * render branch below.
  *
- * @param {Object} root0          Props.
- * @param {Node}   root0.children The inner body: `GhostTable` + copy
- *                                for the empty state, `<DataViews />`
- *                                for the populated state.
+ * @param {Object}                                             root0
+ *                                                                            Props.
+ * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children
+ *                                                                            The inner body — `GhostTable` + copy for the empty
+ *                                                                            state, `<DataViews />` for the populated state.
  */
 const RecentAIOrdersCard = ( { children } ) => (
 	<Card style={ { marginTop: '16px' } }>
