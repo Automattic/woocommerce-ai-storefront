@@ -472,7 +472,7 @@ class WC_AI_Storefront {
 		// Sanitize — only store known keys to keep the option clean.
 		$clean = [
 			'enabled'                => in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no',
-			'product_selection_mode' => in_array( $merged['product_selection_mode'], [ 'all', 'categories', 'tags', 'brands', 'selected' ], true )
+			'product_selection_mode' => in_array( $merged['product_selection_mode'], [ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ], true )
 				? $merged['product_selection_mode']
 				: 'all',
 			'selected_categories'    => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
@@ -524,12 +524,12 @@ class WC_AI_Storefront {
 	 * merchant selecting 3 categories + 1 brand sees products matching
 	 * any of those 3 categories OR that 1 brand — matching the "Products
 	 * by category, tag, or brand" UI copy and the multi-count By-
-	 * taxonomy badge. A plugin-load silent migration (see
-	 * `maybe_migrate_legacy_taxonomy_modes()`) rewrites any stored
-	 * legacy mode to `by_taxonomy` so the historical enum vocabulary
-	 * never leaks into fresh reads; the defensive legacy-mode fallback
-	 * at the bottom of this method covers the narrow window where a
-	 * caller passes explicit `$settings` with an old value.
+	 * taxonomy badge. A plugin-load silent migration in `get_settings()`
+	 * rewrites any stored legacy mode to `by_taxonomy` so the
+	 * historical enum vocabulary never leaks into fresh reads; the
+	 * defensive legacy-mode fallback at the bottom of this method
+	 * covers the narrow window where a caller passes explicit
+	 * `$settings` with an old value.
 	 *
 	 * Empty-selection policy for `by_taxonomy` mode: if all three
 	 * `selected_*` arrays are empty (after accounting for missing
