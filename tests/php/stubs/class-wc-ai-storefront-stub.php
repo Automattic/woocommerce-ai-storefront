@@ -34,16 +34,45 @@ class WC_AI_Storefront {
 	}
 
 	/**
-	 * Minimal stub of the production `is_product_syndicated()` logic,
-	 * sufficient for exercising the JSON-LD enhancer. Only covers the
-	 * 'all' and 'selected' modes — 'categories' is harder to fake
-	 * without category fixtures and isn't exercised in the current
-	 * unit tests.
+	 * Stub of `is_product_syndicated()` mirroring the production logic
+	 * for all modes that have unit tests. 'categories' falls through to
+	 * `return true` (no category-fixture infrastructure in unit tests).
+	 *
+	 * Keep in sync with `includes/class-wc-ai-storefront.php` when
+	 * adding new `product_selection_mode` values.
 	 */
 	public static function is_product_syndicated( $product, ?array $settings = null ): bool {
 		$settings = $settings ?? self::get_settings();
+		$mode     = $settings['product_selection_mode'] ?? 'all';
 
-		$mode = $settings['product_selection_mode'] ?? 'all';
+		if ( 'all' === $mode ) {
+			return true;
+		}
+
+		if ( 'tags' === $mode ) {
+			if ( empty( $settings['selected_tags'] ) ) {
+				return false;
+			}
+			$product_tags = wp_get_post_terms( $product->get_id(), 'product_tag', [ 'fields' => 'ids' ] );
+			if ( is_wp_error( $product_tags ) ) {
+				return false;
+			}
+			return ! empty( array_intersect( $product_tags, array_map( 'absint', $settings['selected_tags'] ) ) );
+		}
+
+		if ( 'brands' === $mode ) {
+			if ( ! taxonomy_exists( 'product_brand' ) ) {
+				return true;
+			}
+			if ( empty( $settings['selected_brands'] ) ) {
+				return false;
+			}
+			$product_brands = wp_get_post_terms( $product->get_id(), 'product_brand', [ 'fields' => 'ids' ] );
+			if ( is_wp_error( $product_brands ) ) {
+				return false;
+			}
+			return ! empty( array_intersect( $product_brands, array_map( 'absint', $settings['selected_brands'] ) ) );
+		}
 
 		if ( 'selected' === $mode ) {
 			return in_array(
@@ -53,6 +82,6 @@ class WC_AI_Storefront {
 			);
 		}
 
-		return true;
+		return true; // 'categories' + unknown modes — no fixture infra needed yet
 	}
 }
