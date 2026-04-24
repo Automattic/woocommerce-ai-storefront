@@ -275,9 +275,9 @@ class WC_AI_Storefront_Llms_Txt {
 		// machine-readable form; agents that want structured data
 		// fetch that document.
 		//
-		// Description text kept tight — "purchase URL templates" was
-		// dropped from the manifest in 1.6.5, so advertising them here
-		// would be stale.
+		// Description text kept tight — agents use the Store API +
+		// UCP manifest directly; don't advertise anything the
+		// manifest no longer carries.
 		$lines[]   = '## API Access';
 		$lines[]   = '';
 		$store_api = rest_url( 'wc/store/v1' );
@@ -288,9 +288,8 @@ class WC_AI_Storefront_Llms_Txt {
 
 		// Sitemaps section. Surfaces exhaustive URL enumeration
 		// paths for agents doing deep catalog discovery — parallel
-		// to robots.txt's per-bot `Allow:` sitemap entries from
-		// 1.6.1/1.6.2, but in llms.txt's human+machine-readable
-		// narrative form. Unlike robots.txt (where `Allow:` for
+		// to robots.txt's per-bot `Allow:` sitemap entries, but
+		// in llms.txt's human+machine-readable narrative form. Unlike robots.txt (where `Allow:` for
 		// non-existent paths is harmless), here we probe each
 		// candidate via HEAD so only URLs that actually respond
 		// make it into the document. Probes are synchronous but
@@ -374,15 +373,12 @@ class WC_AI_Storefront_Llms_Txt {
 		// human+machine-readable document, not in the wire-format
 		// manifest.
 		//
-		// 1.6.5 removed URL-template examples in favor of the
-		// API-first flow (`POST /checkout-sessions`), matching the
-		// UCP checkout spec's SHOULD directive that businesses
-		// should provide continue_url rather than platforms
-		// constructing their own. Agents that prefer direct URL
-		// construction can still derive the pattern from
-		// WooCommerce's public /checkout-link/ documentation —
-		// we just don't advertise templates that nudge agents
-		// away from the canonical path.
+		// Attribution is API-first: `POST /checkout-sessions`
+		// returns a `continue_url` with UTM values already
+		// attached. No URL-template examples are emitted —
+		// merchants who scope products via UCP get attribution
+		// "for free," and agents that can POST never need to
+		// construct UTMs themselves.
 		$ucp_rest_base = rtrim( rest_url( 'wc/ucp/v1' ), '/' );
 		$lines[]       = '## Attribution';
 		$lines[]       = '';
@@ -400,48 +396,17 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[]       = '}';
 		$lines[]       = '```';
 		$lines[]       = '';
-		$lines[]       = 'Set the `UCP-Agent` request header to your agent\'s discovery profile URL; the server extracts the hostname, maps it to a short brand name via the table below, and uses that as `utm_source` on the returned `continue_url` — so you do not need to construct UTM parameters yourself.';
+		$lines[]       = 'Set the `UCP-Agent` request header to your agent\'s discovery profile URL; the server extracts the hostname, canonicalizes it to a short brand name for known vendors (or uses the hostname verbatim otherwise), and attaches it as `utm_source` on the returned `continue_url` — so you do not need to construct UTM parameters yourself.';
 		$lines[]       = '';
 		$lines[]       = 'Response includes `status: "requires_escalation"` and a `continue_url` with `utm_source` + `utm_medium=ai_agent` already attached. Redirect the user to that URL to complete the purchase on our site.';
 		$lines[]       = '';
 
-		// Attribution name mapping table removed from the emitted
-		// document. It documented how the merchant sees attribution
-		// in their WooCommerce Orders list (`Source: ChatGPT` etc.) —
-		// which is merchant-facing context, not agent-facing. Agents
-		// don't care how their own identity is displayed downstream
-		// in someone else's admin UI. If vendor-list management
-		// becomes a community surface, move to the repo's GitHub
-		// wiki or a dedicated `/docs/agent-vendors` URL rather than
-		// crowding every agent's llms.txt read with merchant internals.
-		//
-		// The runtime canonicalization (`KNOWN_AGENT_HOSTS` →
-		// `utm_source`) is unchanged; only the PUBLISHED table is gone.
-
-		// Post-v2.0.0 cleanup — two sections that had drifted out of
-		// scope vs. the UCP-POST-first posture the plugin committed
-		// to at 2.0.0:
-		//
-		//   1. A `utm_source` / `utm_medium` / `utm_campaign` /
-		//      `ai_session_id` parameter list that encouraged agents
-		//      to build URLs client-side. Redundant now: the POST
-		//      flow attaches UTM values to `continue_url` from the
-		//      `UCP-Agent` header, and spec-aware agents never see
-		//      these keys directly.
-		//
-		//   2. A "URL patterns for client-side construction" block
-		//      (6 variants: `/checkout-link/?products=` × 4 plus
-		//      legacy `?add-to-cart=` × 2). That section predated
-		//      the `/checkout-sessions` endpoint and directly
-		//      contradicted the "MUST redirect to continue_url"
-		//      posture in the Checkout Policy block above. Rather
-		//      than maintain two flows in one document, we commit to
-		//      POST-first: agents that cannot POST should read the
-		//      UCP checkout spec for the canonical fallback, not
-		//      reverse-engineer our per-store URL shapes.
-		//
-		// If non-UCP agents ever need the URL patterns again, they
-		// belong in developer docs (README, wiki), not in llms.txt.
+		// No hostname→brand mapping table is emitted. Runtime
+		// canonicalization (`KNOWN_AGENT_HOSTS` → `utm_source`)
+		// still drives display-side labels on the merchant's
+		// Orders list, but that's merchant-facing context — agents
+		// don't need the table. See `UcpAgentHeaderTest` for the
+		// runtime contract.
 
 		// UCP merchant-extension docs — referenced from the manifest's
 		// `com.woocommerce.ai_storefront` capability as the `spec`

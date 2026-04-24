@@ -262,6 +262,12 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// specific enumerated-bullet prose should reappear.
 		$output = $this->llms->generate();
 
+		// Smoke check: confirm the generator actually produced a
+		// document before asserting removals — otherwise a silently
+		// empty `generate()` output would pass every negative
+		// assertion below and masquerade as "the trim worked."
+		$this->assertStringContainsString( '## Checkout Policy', $output );
+
 		$this->assertStringNotContainsString(
 			'Programmatic verification —',
 			$output,
@@ -279,6 +285,26 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 			'transport: "rest"',
 			$output
 		);
+	}
+
+	/**
+	 * Pins the removal of the "via the table below" forward-reference
+	 * in the Attribution section prose. Commit 133a389 removed the
+	 * `### Attribution name mapping` table; a drive-by PR could
+	 * easily re-introduce the referring phrase without realizing
+	 * the target table is gone. Keep this test honest by asserting
+	 * BOTH the specific dangling phrase AND a regex that would
+	 * catch variants.
+	 */
+	public function test_attribution_prose_does_not_reference_removed_table(): void {
+		$output = $this->llms->generate();
+
+		// Smoke check: Attribution section actually rendered.
+		$this->assertStringContainsString( '## Attribution', $output );
+
+		// The specific phrase from the pre-0.1.2 prose.
+		$this->assertStringNotContainsString( 'table below', $output );
+		$this->assertStringNotContainsString( 'via the table', $output );
 	}
 
 	public function test_attribution_leads_with_api_first_checkout_flow(): void {
@@ -500,6 +526,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	public function test_output_does_not_embed_plugin_version_in_prose(): void {
 		$output = $this->llms->generate();
 
+		// Smoke check: generator actually produced content. Without
+		// this, a silently empty `generate()` would pass every
+		// negative assertion below.
+		$this->assertNotEmpty( $output );
+
 		// Specifically the pattern that was wrong before:
 		$this->assertStringNotContainsString( 'As of 2.0.0', $output );
 		// And the general pattern — any three-digit SemVer-ish
@@ -567,6 +598,18 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 			$output = $this->llms->generate();
 
+			// Smoke check: generator actually produced content in
+			// this iteration. Without it the negative assertions
+			// below would pass for a silently broken generator.
+			$this->assertStringContainsString(
+				'## Store Information',
+				$output,
+				sprintf(
+					'Generator produced empty or malformed output in mode "%s".',
+					$mode
+				)
+			);
+
 			$this->assertStringNotContainsString(
 				'## Product Categories',
 				$output,
@@ -584,6 +627,78 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 				)
 			);
 		}
+	}
+
+	/**
+	 * `categories` mode with an EMPTY `selected_categories` array
+	 * falls through to the top-20-by-count fallback. This pins the
+	 * fallback so a future refactor tightening the mode-gate (e.g.
+	 * to `'all' === $product_mode`) doesn't silently hide the
+	 * Product Categories section from stores that deliberately
+	 * scope-by-categories without picking specific categories yet.
+	 *
+	 * Companion to `test_categories_section_omitted_for_non_category_modes`
+	 * — together they pin the 4-state truth table for
+	 * `get_syndicated_categories()`.
+	 */
+	public function test_categories_section_renders_in_categories_mode_with_empty_selection(): void {
+		$category          = new stdClass();
+		$category->name    = 'Clothing';
+		$category->slug    = 'clothing';
+		$category->count   = 42;
+		$category->term_id = 1;
+
+		// Return the category for `get_terms()` regardless of args —
+		// the fallback path doesn't set `include`, so the query
+		// returns top-20 unfiltered.
+		Functions\when( 'get_terms' )->justReturn( [ $category ] );
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'categories',
+			'selected_categories'    => [],
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Product Categories', $output );
+		$this->assertStringContainsString( 'Clothing', $output );
+	}
+
+	/**
+	 * `categories` mode with a POPULATED `selected_categories`
+	 * exercises the `$args['include']` branch — the term query is
+	 * scoped to the merchant's specific picks. Pin that the
+	 * selected IDs are passed through as `include`, not ignored or
+	 * combined with top-N-by-count.
+	 */
+	public function test_categories_mode_passes_selected_ids_to_get_terms_via_include(): void {
+		$captured_args = null;
+		Functions\when( 'get_terms' )->alias(
+			static function ( $args ) use ( &$captured_args ) {
+				$captured_args = $args;
+				return [];
+			}
+		);
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'categories',
+			'selected_categories'    => [ 5, 12, 99 ],
+		];
+
+		$this->llms->generate();
+
+		$this->assertIsArray( $captured_args );
+		$this->assertArrayHasKey( 'include', $captured_args );
+		$this->assertEquals( [ 5, 12, 99 ], $captured_args['include'] );
+		// `absint()` sanitization is applied inside the function;
+		// confirm IDs pass through unchanged when already ints.
+		$this->assertEquals(
+			0,
+			$captured_args['number'],
+			'When the merchant specifies categories explicitly, number=0 disables the top-N cap.'
+		);
 	}
 
 	// ------------------------------------------------------------------
