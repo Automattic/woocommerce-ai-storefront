@@ -386,7 +386,16 @@ const ModeRow = ( {
 				</span>
 				<ModeBadge label={ badgeLabel } selected={ isSelected } />
 			</label>
-			{ isSelected && (
+			{ /*
+			   Detail panel only renders when the row is selected AND
+			   has content to show. A selected row with no children
+			   (e.g. the "All published products" row — nothing to
+			   configure) collapses cleanly rather than opening an
+			   empty blue-tinted strip with a floating horizontal rule.
+			   The count pill + header description already convey the
+			   full state for zero-config modes.
+			*/ }
+			{ isSelected && children && (
 				<div
 					style={ {
 						padding: `0 20px 18px ${ 50 - selectedAccentWidth }px`,
@@ -544,23 +553,31 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	);
 
 	// Keep local activeTaxonomy in sync when the normalized server
-	// mode changes externally — e.g. a Save completes and the
+	// mode CHANGES externally — e.g. a Save completes and the
 	// canonical value comes back from the store, or a future "reset
 	// to defaults" control dispatches a write we didn't originate
-	// locally. The `normalizedServerTaxonomy !== activeTaxonomy`
-	// guard short-circuits the common case where the user just
-	// toggled a segment: both values update in the same React batch,
-	// the effect re-runs, sees them already equal, and no-ops.
-	// Including `activeTaxonomy` in the dep list (rather than
-	// suppressing exhaustive-deps) makes the closure's reads
-	// explicit so a future contributor closing over additional local
-	// state gets linted instead of silently creating a stale
-	// closure.
+	// locally.
+	//
+	// Rising-edge pattern on `normalizedServerTaxonomy`: the effect
+	// only acts when the value actually changes vs. the previous
+	// render's value, NOT whenever `activeTaxonomy` drifts away
+	// from it. The earlier `[normalizedServerTaxonomy, activeTaxonomy]`
+	// deps + `!== activeTaxonomy` guard was a bug: when the merchant
+	// clicked a browse-only taxonomy tab (setTaxonomy → setActive-
+	// Taxonomy, serverMode untouched because PR #71 made tab click
+	// browse-only), the effect re-ran, saw `serverMode !== active`,
+	// and immediately reset activeTaxonomy back to the server value
+	// — a visible flash and silent revert. Using a ref to store the
+	// last server-origin value means only server-origin changes
+	// trigger a sync; purely-local activeTaxonomy changes are
+	// ignored.
+	const prevNormalizedTaxonomyRef = useRef( normalizedServerTaxonomy );
 	useEffect( () => {
-		if ( normalizedServerTaxonomy !== activeTaxonomy ) {
+		if ( normalizedServerTaxonomy !== prevNormalizedTaxonomyRef.current ) {
+			prevNormalizedTaxonomyRef.current = normalizedServerTaxonomy;
 			setActiveTaxonomy( normalizedServerTaxonomy );
 		}
-	}, [ normalizedServerTaxonomy, activeTaxonomy ] );
+	}, [ normalizedServerTaxonomy ] );
 
 	// Load categories eagerly on mount (cheap, small list) so the
 	// By-Taxonomy radio row can show an accurate count even when
@@ -1164,6 +1181,20 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 					</div>
 				</CardHeader>
 				<CardBody style={ { padding: 0 } }>
+					{ /*
+					   All-row has no detail panel — the mode needs zero
+					   configuration (it IS the default, "every product"),
+					   so expanding into a panel with a single gray note
+					   just added a floating horizontal rule with
+					   whitespace above and below it. The count pill +
+					   header description already carry the full state
+					   (Label: "All published products" / Description:
+					   "Every published product… discoverable by AI
+					   crawlers" / Pill: "39 products"). Auto-include
+					   semantics are inherent in "all" — no merchant
+					   needs a separate line to explain it. ModeRow
+					   skips its panel render when children is falsy.
+					*/ }
 					<ModeRow
 						value={ UI_ROWS.ALL }
 						selected={ uiRow }
@@ -1175,14 +1206,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 						description={ MODE_DESCRIPTIONS[ UI_ROWS.ALL ] }
 						badgeLabel={ allBadge }
 						onSelect={ setRow }
-					>
-						<Disclosure>
-							{ __(
-								"Auto-includes new products as they're published.",
-								'woocommerce-ai-storefront'
-							) }
-						</Disclosure>
-					</ModeRow>
+					/>
 
 					<ModeRow
 						value={ UI_ROWS.BY_TAXONOMY }
@@ -1201,10 +1225,20 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								padding: '12px 0',
 							} }
 						>
+							{ /*
+							   Content-sized (no `isBlock`) so the three
+							   segments read as a compact "pick one of N"
+							   strip rather than stretched form fields.
+							   `isBlock` was tried in an earlier revision
+							   but made the control look like row headers
+							   spanning the panel width, weakening the
+							   segmented-pill affordance. Matches how
+							   Gutenberg uses the same component (e.g.
+							   alignment toolbar).
+							*/ }
 							<ToggleGroupControl
 								__next40pxDefaultSize
 								__nextHasNoMarginBottom
-								isBlock
 								hideLabelFromVision
 								label={ __(
 									'Taxonomy',
@@ -1280,6 +1314,18 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								status="warning"
 								isDismissible={ false }
 								className="ai-syndication-empty-taxonomy-warning"
+								// WP's default Notice styling targets
+								// admin-banner placement (edge-to-edge at
+								// the top of a page). Embedded inside a
+								// detail panel, the defaults read as
+								// cramped (text hugs the yellow left
+								// accent, no separation from content
+								// above). Override with internal padding
+								// and top margin for card-embedded use.
+								style={ {
+									margin: '12px 0 0',
+									padding: '8px 12px',
+								} }
 							>
 								{ emptyTaxonomyWarning }
 							</Notice>
@@ -1601,6 +1647,17 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								status="warning"
 								isDismissible={ false }
 								className="ai-syndication-selected-warning"
+								// See companion override on the By-
+								// taxonomy empty-selection warning for
+								// rationale: WP's Notice defaults target
+								// admin-banner placement, not card-
+								// embedded use. Matching padding/margin
+								// keeps both warnings visually
+								// consistent.
+								style={ {
+									margin: '12px 0 0',
+									padding: '8px 12px',
+								} }
 							>
 								{ __(
 									'New products are not auto-included. Return here to add them manually as your catalog grows.',
