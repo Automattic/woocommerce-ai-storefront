@@ -12,7 +12,7 @@
  * Tested up to: 6.8
  * WC requires at least: 9.9
  * WC tested up to: 9.9
- * Requires PHP: 8.0
+ * Requires PHP: 8.1
  * License: GPL-3.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  * Update URI: https://github.com/Automattic/woocommerce-ai-storefront

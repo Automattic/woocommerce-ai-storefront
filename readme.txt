@@ -3,7 +3,7 @@ Contributors: woocommerce
 Tags: woocommerce, ai, chatgpt, seo, llms-txt
 Requires at least: 6.7
 Tested up to: 6.8
-Requires PHP: 8.0
+Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
 Stable tag: 0.1.0
