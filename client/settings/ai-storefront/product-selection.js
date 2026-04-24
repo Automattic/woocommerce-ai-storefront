@@ -130,26 +130,37 @@ const getIncludedFields = () => [
  * unselected). Kept tiny and semantic (bg + fg swap) so the selected
  * row self-announces in the three-row card.
  *
+ * Returns `null` when `label` is empty/falsy so call sites can
+ * suppress the badge by passing `''` without rendering a blank pill.
+ * The By-taxonomy row relies on this: on mode=`all` / mode=`selected`
+ * with no configured taxonomy terms, the taxonomyBadge is `''` and
+ * the row renders badge-less rather than as a blank pill.
+ *
  * @param {Object}  root0          Component props.
  * @param {string}  root0.label    Text content (pre-formatted).
  * @param {boolean} root0.selected Whether the parent row is selected.
  */
-const ModeBadge = ( { label, selected } ) => (
-	<span
-		style={ {
-			background: selected ? colors.link : colors.surfaceMuted,
-			color: selected ? '#fff' : colors.textSecondary,
-			padding: '2px 10px',
-			borderRadius: '10px',
-			fontSize: '12px',
-			fontWeight: '600',
-			flexShrink: 0,
-			whiteSpace: 'nowrap',
-		} }
-	>
-		{ label }
-	</span>
-);
+const ModeBadge = ( { label, selected } ) => {
+	if ( ! label ) {
+		return null;
+	}
+	return (
+		<span
+			style={ {
+				background: selected ? colors.link : colors.surfaceMuted,
+				color: selected ? '#fff' : colors.textSecondary,
+				padding: '2px 10px',
+				borderRadius: '10px',
+				fontSize: '12px',
+				fontWeight: '600',
+				flexShrink: 0,
+				whiteSpace: 'nowrap',
+			} }
+		>
+			{ label }
+		</span>
+	);
+};
 
 /**
  * Token list showing currently-selected items with remove buttons.
@@ -493,21 +504,32 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// `brands` then restores the prior selection without merchant
 	// reconfiguration.
 	//
-	// One-shot guard via ref: the heal runs at most once per mount.
-	// Without the ref, a parent that passes a fresh `onChange`
-	// closure on every render would re-fire the effect whenever
-	// `onChange` changes — harmless if the parent reducer is
-	// idempotent, but noisy in devtools and prone to surprise if a
-	// future reducer observes write frequency (analytics, conflict
-	// detection). Ref is cheaper than depending on parent
-	// memoization discipline we can't enforce.
-	const hasHealedUnsupportedModeRef = useRef( false );
+	// Rising-edge guard via ref: the heal fires on every
+	// false→true transition of `hasUnsupportedPersistedBrandsMode`,
+	// not just once per mount. Rationale for the rising-edge shape:
+	//
+	// 1. Parent stability: if `onChange` is a fresh closure on every
+	//    render, a naive `[hasUnsupportedPersistedBrandsMode,
+	//    onChange]` effect would re-fire whenever onChange changes —
+	//    harmless if the reducer is idempotent, noisy in devtools
+	//    and prone to surprise if a future reducer observes write
+	//    frequency. The rising-edge check short-circuits: when
+	//    `prev === current` (both true, both false), we skip.
+	//
+	// 2. Late-arriving unsupported state: a per-mount one-shot guard
+	//    would fail if the settings prop is refreshed mid-lifecycle
+	//    and brings back an unsupported `brands` mode (e.g. refetch
+	//    after save, external reset, concurrent admin tab). The
+	//    component would render with `effectiveMode=all` but the
+	//    draft could still carry `brands`, and the next Save would
+	//    re-persist the unsupported mode. Rising-edge re-heals on
+	//    every recurrence.
+	const prevUnsupportedBrandsModeRef = useRef( false );
 	useEffect( () => {
-		if (
-			hasUnsupportedPersistedBrandsMode &&
-			! hasHealedUnsupportedModeRef.current
-		) {
-			hasHealedUnsupportedModeRef.current = true;
+		const prev = prevUnsupportedBrandsModeRef.current;
+		prevUnsupportedBrandsModeRef.current =
+			hasUnsupportedPersistedBrandsMode;
+		if ( hasUnsupportedPersistedBrandsMode && ! prev ) {
 			onChange( { product_selection_mode: MODES.ALL } );
 		}
 	}, [ hasUnsupportedPersistedBrandsMode, onChange ] );
@@ -1026,8 +1048,14 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			onChange( { product_selection_mode: MODES.SELECTED } );
 			return;
 		}
-		const nextMode = TAXONOMY_MODES.includes( serverMode )
-			? serverMode
+		// Prefer `normalizedServerTaxonomy` over raw `serverMode` so an
+		// unsupported persisted value (e.g. `brands` on a store where
+		// `supportsBrands` is false) doesn't get re-committed on row
+		// reselection. `normalizedServerTaxonomy` already maps
+		// unsupported persisted modes to `CATEGORIES`, matching the
+		// taxonomy the user can actually see in the ToggleGroupControl.
+		const nextMode = TAXONOMY_MODES.includes( normalizedServerTaxonomy )
+			? normalizedServerTaxonomy
 			: activeTaxonomy;
 		onChange( { product_selection_mode: nextMode } );
 	};
@@ -1231,13 +1259,30 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								search={ categorySearch }
 								onSearch={ setCategorySearch }
 								onToggle={ toggleCategory }
-								onSelectAll={ () =>
-									onChange( {
-										selected_categories: categories.map(
-											( cat ) => cat.id
-										),
-									} )
-								}
+								onSelectAll={ () => {
+									// Bulk-select mirrors the per-term
+									// toggle's commit semantics: populating
+									// the array is a deliberate act of
+									// scoping to this taxonomy, so write
+									// both the selection AND the mode
+									// atomically. Without this, a merchant
+									// could "Select all" from an unrelated
+									// mode (e.g. `all`) and walk away
+									// thinking they'd scoped to categories
+									// — but the server would still enforce
+									// `all`.
+									const ids = categories.map(
+										( cat ) => cat.id
+									);
+									const changes = {
+										selected_categories: ids,
+									};
+									if ( ids.length > 0 ) {
+										changes.product_selection_mode =
+											MODES.CATEGORIES;
+									}
+									onChange( changes );
+								} }
 								onClear={ () =>
 									onChange( { selected_categories: [] } )
 								}
@@ -1276,13 +1321,19 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								search={ tagSearch }
 								onSearch={ setTagSearch }
 								onToggle={ toggleTag }
-								onSelectAll={ () =>
-									onChange( {
-										selected_tags: tags.map(
-											( tag ) => tag.id
-										),
-									} )
-								}
+								onSelectAll={ () => {
+									// Bulk-select mirrors the toggle's
+									// mode-commit semantics; see
+									// toggleCategory's `onSelectAll` for
+									// full rationale.
+									const ids = tags.map( ( tag ) => tag.id );
+									const changes = { selected_tags: ids };
+									if ( ids.length > 0 ) {
+										changes.product_selection_mode =
+											MODES.TAGS;
+									}
+									onChange( changes );
+								} }
 								onClear={ () =>
 									onChange( { selected_tags: [] } )
 								}
@@ -1323,13 +1374,21 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								search={ brandSearch }
 								onSearch={ setBrandSearch }
 								onToggle={ toggleBrand }
-								onSelectAll={ () =>
-									onChange( {
-										selected_brands: brands.map(
-											( brand ) => brand.id
-										),
-									} )
-								}
+								onSelectAll={ () => {
+									// Bulk-select mirrors the toggle's
+									// mode-commit semantics; see
+									// toggleCategory's `onSelectAll` for
+									// full rationale.
+									const ids = brands.map(
+										( brand ) => brand.id
+									);
+									const changes = { selected_brands: ids };
+									if ( ids.length > 0 ) {
+										changes.product_selection_mode =
+											MODES.BRANDS;
+									}
+									onChange( changes );
+								} }
 								onClear={ () =>
 									onChange( { selected_brands: [] } )
 								}
