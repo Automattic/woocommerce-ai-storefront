@@ -18,6 +18,7 @@ jest.mock( '@wordpress/i18n', () => ( {
 import {
 	saveSettings,
 	fetchStats,
+	fetchRecentOrders,
 	updateSettings,
 	setStats,
 	setIsSaving,
@@ -367,6 +368,69 @@ describe( 'AI Syndication actions', () => {
 			await thunk( { dispatch: mockDispatch } );
 
 			expect( mockDispatch.setStats ).not.toHaveBeenCalled();
+		} );
+	} );
+
+	// `fetchRecentOrders` powers the Overview tab's AI Orders table.
+	// Two test-worthy contracts:
+	//   1. On success, the full endpoint payload is forwarded to the
+	//      reducer so downstream code can rely on
+	//      `{ orders, total, currency }`.
+	//   2. On failure (network / server / auth error), the thunk
+	//      dispatches an empty-shape payload — NOT silent-null — so
+	//      the component's "fetched with zero rows" branch renders
+	//      the empty-state card instead of leaving the UI stuck on
+	//      the loading sentinel forever.
+	describe( 'fetchRecentOrders', () => {
+		it( 'forwards the response to setRecentOrders on success', async () => {
+			const payload = {
+				orders: [ { id: 1, number: '1001' } ],
+				total: 1,
+				currency: 'USD',
+			};
+			apiFetch.mockResolvedValue( payload );
+
+			const thunk = fetchRecentOrders( 10 );
+			await thunk( { dispatch: mockDispatch } );
+
+			expect( mockDispatch.setRecentOrders ).toHaveBeenCalledWith(
+				payload
+			);
+		} );
+
+		it( 'dispatches a full-shape empty payload on error', async () => {
+			// Scenario: /admin/recent-orders returns 500, or the
+			// network drops. Before this contract, `recentOrders`
+			// stayed at its initial `null` and the AIOrdersTable
+			// component rendered nothing at all — no loading,
+			// no empty state, just absence. We dispatch a
+			// shape-compatible empty result so the "fetched +
+			// empty" branch wins.
+			apiFetch.mockRejectedValue( new Error( 'boom' ) );
+
+			const thunk = fetchRecentOrders( 10 );
+			await thunk( { dispatch: mockDispatch } );
+
+			expect( mockDispatch.setRecentOrders ).toHaveBeenCalledWith( {
+				orders: [],
+				total: 0,
+				currency: null,
+			} );
+		} );
+
+		it( 'defaults perPage to 10', async () => {
+			apiFetch.mockResolvedValue( {
+				orders: [],
+				total: 0,
+				currency: 'USD',
+			} );
+
+			const thunk = fetchRecentOrders();
+			await thunk( { dispatch: mockDispatch } );
+
+			expect( apiFetch ).toHaveBeenCalledWith( {
+				path: expect.stringContaining( 'per_page=10' ),
+			} );
 		} );
 	} );
 } );
