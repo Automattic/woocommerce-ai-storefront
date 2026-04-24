@@ -2,6 +2,7 @@ import {
 	useState,
 	useEffect,
 	useMemo,
+	useRef,
 	createInterpolateElement,
 } from '@wordpress/element';
 import {
@@ -747,16 +748,16 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// starting from the very first render. The auto-heal `useEffect`
 	// below propagates the same correction to the draft settings via
 	// `onChange`, but effects fire AFTER the first paint — without
-	// `effectiveServerMode`, the initial render would momentarily
+	// `effectiveMode`, the initial render would momentarily
 	// show the By-taxonomy row + empty-selection warning for one
 	// frame before the healed value flowed back through props, a
 	// visible flicker. Deriving the effective mode at render time
 	// keeps the UI coherent from paint zero; the effect is still
 	// required to persist the correction so a Save captures it.
-	const effectiveServerMode = hasUnsupportedPersistedBrandsMode
+	const effectiveMode = hasUnsupportedPersistedBrandsMode
 		? MODES.ALL
 		: serverMode;
-	const uiRow = modeToUiRow( effectiveServerMode );
+	const uiRow = modeToUiRow( effectiveMode );
 
 	// Normalize the persisted taxonomy to one the UI can actually
 	// render. Scenario: a merchant on WC 9.5+ saves mode=`brands`,
@@ -800,8 +801,22 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// WC upgrade re-enables the taxonomy — flipping mode back to
 	// `brands` then restores the prior selection without merchant
 	// reconfiguration.
+	//
+	// One-shot guard via ref: the heal runs at most once per mount.
+	// Without the ref, a parent that passes a fresh `onChange`
+	// closure on every render would re-fire the effect whenever
+	// `onChange` changes — harmless if the parent reducer is
+	// idempotent, but noisy in devtools and prone to surprise if a
+	// future reducer observes write frequency (analytics, conflict
+	// detection). Ref is cheaper than depending on parent
+	// memoization discipline we can't enforce.
+	const hasHealedUnsupportedModeRef = useRef( false );
 	useEffect( () => {
-		if ( hasUnsupportedPersistedBrandsMode ) {
+		if (
+			hasUnsupportedPersistedBrandsMode &&
+			! hasHealedUnsupportedModeRef.current
+		) {
+			hasHealedUnsupportedModeRef.current = true;
 			onChange( { product_selection_mode: MODES.ALL } );
 		}
 	}, [ hasUnsupportedPersistedBrandsMode, onChange ] );
@@ -947,46 +962,60 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		[ settings.selected_products ]
 	);
 
-	// The toggle-category/tag/brand helpers flip the product
-	// selection mode to their own taxonomy alongside updating the
-	// selection array. Rationale: clicking a term is the moment the
-	// merchant commits to scoping by that taxonomy. Before this
-	// design, `setTaxonomy` (the ToggleGroupControl onChange)
-	// eagerly flipped the mode on tab click — which caused a
-	// spurious warning flash: merchant has mode=brands + Diva
-	// selected, clicks the Tags tab just to browse, sees "No tags
-	// selected, products hidden" even though nothing on disk has
-	// changed. Deferring the mode flip until an actual term click
-	// lets tab switches be pure browse, reserving the commit for
-	// deliberate selection actions.
+	// Toggle handlers are the commit point for By-taxonomy scoping:
+	// clicking a term is the moment the merchant commits to scoping
+	// by that taxonomy, so both the selection array AND the
+	// `product_selection_mode` are written in a single atomic
+	// `onChange` call (splitting into two would create a half-
+	// committed intermediate state where mode is `categories` but
+	// `selected_categories` hasn't been updated yet, briefly tripping
+	// the empty-selection warning for one render).
+	//
+	// Tab clicks (see `setTaxonomy` below) are pure browse and do
+	// NOT write the mode — the commit is reserved for deliberate
+	// term-selection actions.
+	//
+	// Mode-commit guard: only flip `product_selection_mode` when the
+	// post-update array is non-empty. An UNCHECK that empties the
+	// selection would otherwise silently commit `mode=categories +
+	// selected=[]` — the empty-selection policy hides the entire
+	// catalog from agents, and the merchant thought they were just
+	// deselecting one item. Leaving the mode alone on the empty-case
+	// keeps the merchant's previous mode (e.g. `brands` with a Diva
+	// selection still on disk) in effect; entering the "hide
+	// everything" posture requires an explicit By-taxonomy +
+	// Categories confirmation via the ModeRow + ToggleGroup.
 	const toggleCategory = ( catId ) => {
 		const updated = selectedCategories.includes( catId )
 			? selectedCategories.filter( ( id ) => id !== catId )
 			: [ ...selectedCategories, catId ];
-		onChange( {
-			selected_categories: updated,
-			product_selection_mode: MODES.CATEGORIES,
-		} );
+		const changes = { selected_categories: updated };
+		if ( updated.length > 0 ) {
+			changes.product_selection_mode = MODES.CATEGORIES;
+		}
+		onChange( changes );
 	};
 
 	const toggleTag = ( tagId ) => {
 		const updated = selectedTags.includes( tagId )
 			? selectedTags.filter( ( id ) => id !== tagId )
 			: [ ...selectedTags, tagId ];
-		onChange( {
-			selected_tags: updated,
-			product_selection_mode: MODES.TAGS,
-		} );
+		const changes = { selected_tags: updated };
+		if ( updated.length > 0 ) {
+			changes.product_selection_mode = MODES.TAGS;
+		}
+		onChange( changes );
 	};
 
 	const toggleBrand = ( brandId ) => {
 		const updated = selectedBrands.includes( brandId )
 			? selectedBrands.filter( ( id ) => id !== brandId )
 			: [ ...selectedBrands, brandId ];
-		onChange( {
-			selected_brands: updated,
-			product_selection_mode: MODES.BRANDS,
-		} );
+		const changes = { selected_brands: updated };
+		if ( updated.length > 0 ) {
+			changes.product_selection_mode = MODES.BRANDS;
+		}
+		onChange( changes );
 	};
 
 	const toggleProduct = ( productId ) => {
@@ -1152,24 +1181,17 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 
 	// By-taxonomy row badge: surfaces every non-zero taxonomy count
 	// so merchants see what's actually being shared regardless of
-	// which tab they have open. Before this design the badge
-	// reflected only the active (viewed) tab, so a merchant with 1
-	// brand selected who clicked the Tags tab saw "0 tags" — their
-	// real scope ("1 brand") was hidden the moment they switched
-	// tabs. Multi-count badge fixes that: always visible, never
-	// hides stored selections, reads "1 brand" or "3 categories ·
-	// 1 brand" or "Nothing selected" as the count picture changes.
+	// which tab is open. Reads "1 brand", "3 categories · 1 brand",
+	// or "Nothing selected" as the count picture changes.
 	//
-	// Note on semantic: only ONE of the three counts is actively
-	// filtering products (whichever matches `effectiveServerMode`).
-	// The others are stored-but-inert data, preserved across
-	// taxonomy switches so a merchant flipping between scoping
-	// modes doesn't lose their prior selections. The
-	// ToggleGroupControl below indicates which tab is viewed; the
-	// inline warning below the picker fires only when the ACTIVE
-	// (enforcing) taxonomy has zero selections, so the split
-	// between "viewed" and "enforcing" is visible through a
-	// combination of badge + tab-highlight + warning — no single
+	// Only ONE of the three counts is actively filtering products
+	// (whichever matches `effectiveMode`). The others are stored-
+	// but-inert data, preserved across taxonomy switches so a
+	// merchant flipping between scoping modes doesn't lose their
+	// prior selections. The split between "viewed" and "enforcing"
+	// is visible through a combination of badge + tab-highlight
+	// (ToggleGroupControl below) + inline warning (fires only when
+	// the enforcing taxonomy has zero selections) — no single
 	// element has to convey all three axes.
 	const taxonomyBadgeParts = [];
 	if ( selectedCategories.length > 0 ) {
@@ -1214,10 +1236,31 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			)
 		);
 	}
+	// Separator exposed as a translatable string rather than a
+	// hard-coded ' · ' so RTL and non-Latin locales can supply a
+	// glyph that wraps correctly with surrounding text direction
+	// (e.g. Arabic/Hebrew might prefer ' ، ' or omit the spaces).
+	// Middle-dot + hair spaces happen to work in most LTR languages
+	// but aren't universally appropriate.
+	const badgeSeparator = __(
+		/* translators: separator between taxonomy count segments in the By-taxonomy row badge, e.g. "3 categories · 1 brand" */
+		' \u00B7 ',
+		'woocommerce-ai-storefront'
+	);
+	// "Nothing selected" only appears when the merchant has actually
+	// committed to By-taxonomy scoping — on `all` / `selected` modes
+	// the By-taxonomy row's count is purely advisory (zero counts
+	// mean "you haven't configured this mode"), and showing
+	// "Nothing selected" on an unselected row reads as an error
+	// state the merchant hasn't opted into. When BY_TAXONOMY is the
+	// active row, the same copy IS informative: it signals the
+	// empty-selection policy that hides everything.
 	const taxonomyBadge =
 		taxonomyBadgeParts.length > 0
-			? taxonomyBadgeParts.join( ' \u00B7 ' )
-			: __( 'Nothing selected', 'woocommerce-ai-storefront' );
+			? taxonomyBadgeParts.join( badgeSeparator )
+			: uiRow === UI_ROWS.BY_TAXONOMY
+				? __( 'Nothing selected', 'woocommerce-ai-storefront' )
+				: '';
 
 	// No plural-form distinction for this copy ('%d selected' reads
 	// the same for singular + plural in English), so use a single
@@ -1231,55 +1274,61 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 
 	// Empty-scoping warning.
 	//
-	// Fires based on the PERSISTED (enforcing) mode, not on which
-	// tab the merchant is currently viewing. Before this, the
-	// warning tracked `activeTaxonomy` — so a merchant with
-	// mode=brands + Diva selected who clicked the Tags tab to
-	// browse saw "No tags selected, products hidden" even though
-	// nothing on disk had changed and their Diva-scoped catalog
-	// was fine. Misleading.
-	//
-	// Now the warning reads off `effectiveServerMode` + the
-	// corresponding `selected_*` array. The merchant sees a
-	// warning exclusively when the actually-scoping taxonomy has
-	// zero selections — i.e. when saving would hide everything. The
-	// warning copy names the specific taxonomy that needs action,
-	// so a merchant on the Tags tab seeing "No categories selected…"
-	// has a clear cue to switch to the Categories tab and fix it.
-	let emptyActiveSelection = false;
+	// Fires off `effectiveMode` + the corresponding `selected_*`
+	// array — i.e. tracks the ENFORCING mode, not the viewed tab.
+	// Merchant sees a warning exclusively when the actually-
+	// scoping taxonomy has zero selections (saving would hide
+	// everything). Warning copy names the specific taxonomy that
+	// needs action, so a merchant on the Tags tab seeing "No
+	// categories selected…" has a clear cue to switch to the
+	// Categories tab and fix it.
+	let emptyEnforcingSelection = false;
 	let emptyTaxonomyWarning = '';
 	if (
-		effectiveServerMode === MODES.CATEGORIES &&
+		effectiveMode === MODES.CATEGORIES &&
 		selectedCategories.length === 0
 	) {
-		emptyActiveSelection = true;
+		emptyEnforcingSelection = true;
 		emptyTaxonomyWarning = __(
 			'No categories selected. Your products are currently hidden from AI agents — pick at least one category to resume sharing.',
 			'woocommerce-ai-storefront'
 		);
 	} else if (
-		effectiveServerMode === MODES.TAGS &&
+		effectiveMode === MODES.TAGS &&
 		selectedTags.length === 0
 	) {
-		emptyActiveSelection = true;
+		emptyEnforcingSelection = true;
 		emptyTaxonomyWarning = __(
 			'No tags selected. Your products are currently hidden from AI agents — pick at least one tag to resume sharing.',
 			'woocommerce-ai-storefront'
 		);
 	} else if (
-		effectiveServerMode === MODES.BRANDS &&
+		effectiveMode === MODES.BRANDS &&
 		selectedBrands.length === 0
 	) {
-		emptyActiveSelection = true;
+		emptyEnforcingSelection = true;
 		emptyTaxonomyWarning = __(
 			'No brands selected. Your products are currently hidden from AI agents — pick at least one brand to resume sharing.',
 			'woocommerce-ai-storefront'
 		);
 	}
 
-	// Switch UI rows → write the corresponding server mode. By-taxonomy
-	// writes the active taxonomy so the server enum always holds a
-	// concrete taxonomy value (not a virtual "by_taxonomy").
+	// Switch UI rows → write the corresponding server mode. The server
+	// enum always holds a concrete taxonomy value (`categories` /
+	// `tags` / `brands`, never a virtual `by_taxonomy`), so the
+	// BY_TAXONOMY branch maps to one of the three real modes.
+	//
+	// Mapping for BY_TAXONOMY: if `serverMode` is already one of the
+	// three taxonomy modes, keep it — re-selecting the By-taxonomy
+	// row (e.g. merchant was on Categories tab browsing Tags, then
+	// clicks the row to confirm) must NOT overwrite the persisted
+	// `brands` mode with whatever tab they're currently viewing.
+	// Otherwise (coming from ALL or SELECTED), seed the mode from
+	// the viewed tab (`activeTaxonomy`) so the merchant gets the
+	// taxonomy they're looking at. This preserves the view-vs-
+	// commit split that setTaxonomy established: tab clicks stay
+	// browse-only, and the ModeRow selection is the explicit
+	// commit point.
 	const setRow = ( row ) => {
 		if ( row === UI_ROWS.ALL ) {
 			onChange( { product_selection_mode: MODES.ALL } );
@@ -1289,24 +1338,23 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			onChange( { product_selection_mode: MODES.SELECTED } );
 			return;
 		}
-		// BY_TAXONOMY → write whichever taxonomy the toggle is on.
-		onChange( { product_selection_mode: activeTaxonomy } );
+		const nextMode = TAXONOMY_MODES.includes( serverMode )
+			? serverMode
+			: activeTaxonomy;
+		onChange( { product_selection_mode: nextMode } );
 	};
 
 	// Switch between Categories / Tags / Brands inside the toggle.
 	//
-	// IMPORTANT: tab click is now browse-only. The persisted mode
+	// IMPORTANT: tab click is BROWSE-ONLY. The persisted mode
 	// (`product_selection_mode`) is NOT flipped here — that write
-	// happens when the merchant actually picks a term in the tab
-	// (see `toggleCategory` / `toggleTag` / `toggleBrand`). Before
-	// this change, clicking a tab eagerly flipped the draft mode,
-	// which made the empty-selection warning fire for tabs the
-	// merchant was merely exploring — e.g. mode=brands with Diva
-	// selected on disk, click the Tags tab to look around, see
-	// "No tags selected, products hidden" even though nothing on
-	// disk had changed. Splitting the view state (local
-	// `activeTaxonomy`) from the commit state (persisted
-	// `product_selection_mode`) eliminates that false alarm.
+	// happens when the merchant picks a term in the tab (see
+	// `toggleCategory` / `toggleTag` / `toggleBrand`), or explicitly
+	// selects the By-taxonomy row (`setRow`). This split between
+	// view state (local `activeTaxonomy`) and commit state
+	// (persisted `product_selection_mode`) lets merchants browse
+	// taxonomy tabs without accidentally flipping their saved
+	// scope.
 	//
 	// Stale `selected_*` arrays: switching the active taxonomy
 	// doesn't clear `selected_tags` / `selected_brands` /
@@ -1314,9 +1362,9 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// array matching the persisted `product_selection_mode`, so
 	// the inactive arrays are inert data — preserving them lets a
 	// merchant flip back and forth between taxonomies without
-	// losing their work. If we ever add a server-side migration
-	// that reads multiple arrays at once, this comment is the
-	// reminder to clear the inactive ones on a taxonomy switch.
+	// losing their work. If a future server-side migration reads
+	// multiple arrays at once, this comment is the reminder to
+	// clear the inactive ones on a taxonomy switch.
 	const setTaxonomy = ( taxonomy ) => {
 		// Defensive membership check rather than a plain falsy
 		// guard: `! taxonomy` would correctly swallow the
@@ -1326,6 +1374,20 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		// directly matches the three values this handler is
 		// actually designed to accept.
 		if ( ! TAXONOMY_MODES.includes( taxonomy ) ) {
+			// Silent in production (re-selection of the current
+			// ToggleGroupControl option is the expected non-enum
+			// path — ignoring it is correct), but surface a warn in
+			// dev so a genuine out-of-enum value from a future
+			// consumer doesn't get silently dropped. Guard with
+			// NODE_ENV so prod bundles strip the console call via
+			// dead-code elimination.
+			if ( process.env.NODE_ENV !== 'production' && taxonomy !== undefined ) {
+				// eslint-disable-next-line no-console
+				console.warn(
+					'setTaxonomy: ignored out-of-enum value',
+					taxonomy
+				);
+			}
 			return;
 		}
 		setActiveTaxonomy( taxonomy );
@@ -1462,7 +1524,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 						   empty/misconfigured states have merchant-
 						   visible consequences.
 						*/ }
-						{ emptyActiveSelection && (
+						{ emptyEnforcingSelection && (
 							<Notice
 								status="warning"
 								isDismissible={ false }
