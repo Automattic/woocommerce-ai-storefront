@@ -49,7 +49,7 @@ class WC_AI_Storefront_Admin_Controller {
 						],
 						'product_selection_mode' => [
 							'type' => 'string',
-							'enum' => [ 'all', 'categories', 'tags', 'brands', 'selected' ],
+							'enum' => [ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ],
 						],
 						'selected_categories'    => [
 							'type'  => 'array',

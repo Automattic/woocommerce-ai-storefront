@@ -508,23 +508,34 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 	] );
 	useEffect( () => {
 		let cancelled = false;
-		apiFetch( { path: '/wc/v3/ai-storefront/admin/product-count' } )
-			.then( ( response ) => {
-				if (
-					! cancelled &&
-					response &&
-					typeof response.count === 'number'
-				) {
-					setProductCount( response.count );
-				}
+		const controller = new AbortController();
+		const timeoutId = setTimeout( () => {
+			apiFetch( {
+				path: '/wc/v3/ai-storefront/admin/product-count',
+				signal: controller.signal,
 			} )
-			.catch( () => {
-				if ( ! cancelled ) {
-					setProductCount( null );
-				}
-			} );
+				.then( ( response ) => {
+					if (
+						! cancelled &&
+						response &&
+						typeof response.count === 'number'
+					) {
+						setProductCount( response.count );
+					}
+				} )
+				.catch( ( error ) => {
+					if ( error?.name === 'AbortError' ) {
+						return;
+					}
+					if ( ! cancelled ) {
+						setProductCount( null );
+					}
+				} );
+		}, 400 );
 		return () => {
 			cancelled = true;
+			clearTimeout( timeoutId );
+			controller.abort();
 		};
 	}, [ productSelectionSignature ] );
 

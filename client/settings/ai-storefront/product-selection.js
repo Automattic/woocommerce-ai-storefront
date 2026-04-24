@@ -495,7 +495,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// is only an option when `supportsBrands` is true — a downgrade
 	// scenario with stale `selected_brands` data doesn't accidentally
 	// seed a tab the ToggleGroup can't render.
-	const initialActiveTaxonomy = ( () => {
+	const [ activeTaxonomy, setActiveTaxonomy ] = useState( () => {
 		const hasCats = ( settings.selected_categories || [] ).length > 0;
 		const hasTags = ( settings.selected_tags || [] ).length > 0;
 		const hasBrands =
@@ -510,10 +510,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			return TAXONOMY_TABS.BRANDS;
 		}
 		return TAXONOMY_TABS.CATEGORIES;
-	} )();
-	const [ activeTaxonomy, setActiveTaxonomy ] = useState(
-		() => initialActiveTaxonomy
-	);
+	} );
 
 	// Defensive sync: if the merchant is currently viewing the Brands
 	// tab and `supportsBrands` flips to false mid-session (plugin
