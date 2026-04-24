@@ -117,8 +117,28 @@ export function fetchRecentOrders( perPage = 10 ) {
 			} );
 			dispatch.setRecentOrders( result );
 		} catch ( error ) {
-			// Silent failure — the table renders an empty state if
-			// recentOrders stays null.
+			// On error, dispatch an empty-orders payload so the
+			// selector returns a non-null value and the UI can
+			// render its empty-state treatment. Without this,
+			// `recentOrders` would stay at its initial `null`
+			// forever — the AIOrdersTable component now uses that
+			// `null` as a "not yet fetched" sentinel to avoid
+			// flashing DataViews' "no results" row during the
+			// loading window, and would never surface the empty
+			// state if the fetch never resolves.
+			//
+			// Conflating error and genuine-empty is deliberate: the
+			// merchant-facing UX for "we couldn't fetch your
+			// orders right now" and "you haven't received any AI
+			// orders yet" is the same — show the "Ready for your
+			// first AI order" card. A dedicated error notice would
+			// only matter if the fetch path were unreliable enough
+			// that we expected merchants to hit it; in practice the
+			// endpoint is same-origin REST to an admin already
+			// authenticated to load this page. If real-world
+			// telemetry shows this path fires often, split the
+			// states then.
+			dispatch.setRecentOrders( { orders: [] } );
 		}
 	};
 }

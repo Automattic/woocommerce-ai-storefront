@@ -332,53 +332,75 @@ const GhostTable = () => (
  *
  * Not exported — only used by AIOrdersTable.
  */
-const EmptyState = () => (
+/**
+ * Shared Card+header wrapper for both the populated AI Orders
+ * table and the empty-state preview. The PR that introduced
+ * `EmptyState` deliberately uses the same Card shell + section
+ * heading ("Recent AI Orders") on both paths so the before-first-
+ * order and after-first-order states read as the same surface.
+ * Without this wrapper, the header markup + styling lived in two
+ * places and a future tweak (margin, font-weight, color) applied
+ * to one path would silently drift from the other.
+ *
+ * Not exported — only used by the two render branches below.
+ *
+ * @param {Object} root0          Props.
+ * @param {Node}   root0.children The inner body: `GhostTable` + copy
+ *                                for the empty state, `<DataViews />`
+ *                                for the populated state.
+ */
+const RecentAIOrdersCard = ( { children } ) => (
 	<Card style={ { marginTop: '16px' } }>
 		<CardBody>
 			<h3 style={ { margin: '0 0 12px', fontSize: '14px' } }>
 				{ __( 'Recent AI Orders', 'woocommerce-ai-storefront' ) }
 			</h3>
-
-			<GhostTable />
-
-			<div
-				style={ {
-					textAlign: 'center',
-					padding: '20px 16px 4px',
-				} }
-			>
-				<p
-					style={ {
-						margin: '0 0 6px',
-						fontSize: '14px',
-						fontWeight: '600',
-						color: colors.textPrimary,
-					} }
-				>
-					{ __(
-						'Ready for your first AI order',
-						'woocommerce-ai-storefront'
-					) }
-				</p>
-				<p
-					style={ {
-						margin: 0,
-						fontSize: '13px',
-						color: colors.textSecondary,
-						maxWidth: '520px',
-						marginLeft: 'auto',
-						marginRight: 'auto',
-						lineHeight: '1.5',
-					} }
-				>
-					{ __(
-						'Your store is discoverable by AI shopping assistants. When one refers a shopper who buys, the order will appear here with the referring agent.',
-						'woocommerce-ai-storefront'
-					) }
-				</p>
-			</div>
+			{ children }
 		</CardBody>
 	</Card>
+);
+
+const EmptyState = () => (
+	<RecentAIOrdersCard>
+		<GhostTable />
+
+		<div
+			style={ {
+				textAlign: 'center',
+				padding: '20px 16px 4px',
+			} }
+		>
+			<p
+				style={ {
+					margin: '0 0 6px',
+					fontSize: '14px',
+					fontWeight: '600',
+					color: colors.textPrimary,
+				} }
+			>
+				{ __(
+					'Ready for your first AI order',
+					'woocommerce-ai-storefront'
+				) }
+			</p>
+			<p
+				style={ {
+					margin: 0,
+					fontSize: '13px',
+					color: colors.textSecondary,
+					maxWidth: '520px',
+					marginLeft: 'auto',
+					marginRight: 'auto',
+					lineHeight: '1.5',
+				} }
+			>
+				{ __(
+					'Your store is discoverable by AI shopping assistants. When one refers a shopper who buys, the order will appear here with the referring agent.',
+					'woocommerce-ai-storefront'
+				) }
+			</p>
+		</div>
+	</RecentAIOrdersCard>
 );
 
 const AIOrdersTable = () => {
@@ -577,35 +599,25 @@ const AIOrdersTable = () => {
 	}
 
 	return (
-		<Card style={ { marginTop: '16px' } }>
-			<CardBody>
-				<h3
-					style={ {
-						margin: '0 0 12px',
-						fontSize: '14px',
-					} }
-				>
-					{ __( 'Recent AI Orders', 'woocommerce-ai-storefront' ) }
-				</h3>
-				<DataViews
-					data={ processedData }
-					fields={ fields }
-					view={ view }
-					onChangeView={ setView }
-					paginationInfo={ paginationInfo }
-					defaultLayouts={ { table: {} } }
-					// Row ID maps each row for React keys + selection
-					// tracking. Our rows use the WC order ID, which
-					// is stable and unique.
-					getItemId={ ( item ) => String( item.id ) }
-					// We don't wire selection/bulk-actions for this
-					// read-only dashboard view, so pass an empty
-					// actions array. Keeping the prop avoids a
-					// console warning from DataViews.
-					actions={ [] }
-				/>
-			</CardBody>
-		</Card>
+		<RecentAIOrdersCard>
+			<DataViews
+				data={ processedData }
+				fields={ fields }
+				view={ view }
+				onChangeView={ setView }
+				paginationInfo={ paginationInfo }
+				defaultLayouts={ { table: {} } }
+				// Row ID maps each row for React keys + selection
+				// tracking. Our rows use the WC order ID, which
+				// is stable and unique.
+				getItemId={ ( item ) => String( item.id ) }
+				// We don't wire selection/bulk-actions for this
+				// read-only dashboard view, so pass an empty
+				// actions array. Keeping the prop avoids a
+				// console warning from DataViews.
+				actions={ [] }
+			/>
+		</RecentAIOrdersCard>
 	);
 };
 
