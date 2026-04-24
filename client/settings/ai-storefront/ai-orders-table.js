@@ -294,6 +294,35 @@ const GhostTable = () => (
 );
 
 /**
+ * Shared Card+header wrapper for both the populated AI Orders
+ * table and the empty-state preview. The two render branches
+ * deliberately share the same Card shell + section heading
+ * ("Recent AI Orders") so the before-first-order and after-first-
+ * order states read as the same surface. Without this wrapper,
+ * the header markup + styling lived in two places and a future
+ * tweak (margin, font-weight, color) applied to one path would
+ * silently drift from the other.
+ *
+ * Not exported — only used by `EmptyState` and the populated
+ * render branch below.
+ *
+ * @param {Object} root0          Props.
+ * @param {Node}   root0.children The inner body: `GhostTable` + copy
+ *                                for the empty state, `<DataViews />`
+ *                                for the populated state.
+ */
+const RecentAIOrdersCard = ( { children } ) => (
+	<Card style={ { marginTop: '16px' } }>
+		<CardBody>
+			<h3 style={ { margin: '0 0 12px', fontSize: '14px' } }>
+				{ __( 'Recent AI Orders', 'woocommerce-ai-storefront' ) }
+			</h3>
+			{ children }
+		</CardBody>
+	</Card>
+);
+
+/**
  * Empty-state card rendered when AI attribution is active but no
  * orders have been referred yet.
  *
@@ -332,34 +361,6 @@ const GhostTable = () => (
  *
  * Not exported — only used by AIOrdersTable.
  */
-/**
- * Shared Card+header wrapper for both the populated AI Orders
- * table and the empty-state preview. The PR that introduced
- * `EmptyState` deliberately uses the same Card shell + section
- * heading ("Recent AI Orders") on both paths so the before-first-
- * order and after-first-order states read as the same surface.
- * Without this wrapper, the header markup + styling lived in two
- * places and a future tweak (margin, font-weight, color) applied
- * to one path would silently drift from the other.
- *
- * Not exported — only used by the two render branches below.
- *
- * @param {Object} root0          Props.
- * @param {Node}   root0.children The inner body: `GhostTable` + copy
- *                                for the empty state, `<DataViews />`
- *                                for the populated state.
- */
-const RecentAIOrdersCard = ( { children } ) => (
-	<Card style={ { marginTop: '16px' } }>
-		<CardBody>
-			<h3 style={ { margin: '0 0 12px', fontSize: '14px' } }>
-				{ __( 'Recent AI Orders', 'woocommerce-ai-storefront' ) }
-			</h3>
-			{ children }
-		</CardBody>
-	</Card>
-);
-
 const EmptyState = () => (
 	<RecentAIOrdersCard>
 		<GhostTable />

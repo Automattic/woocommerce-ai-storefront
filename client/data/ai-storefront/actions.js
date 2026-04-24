@@ -138,7 +138,17 @@ export function fetchRecentOrders( perPage = 10 ) {
 			// authenticated to load this page. If real-world
 			// telemetry shows this path fires often, split the
 			// states then.
-			dispatch.setRecentOrders( { orders: [] } );
+			// Matches the shape the /recent-orders REST endpoint
+			// returns on success (`{ orders, total, currency }`) so
+			// downstream code can treat `recentOrders` consistently
+			// regardless of fetch outcome. A future consumer that
+			// reads `recentOrders.total` or `.currency` will see a
+			// sensible zero-state rather than `undefined`.
+			dispatch.setRecentOrders( {
+				orders: [],
+				total: 0,
+				currency: null,
+			} );
 		}
 	};
 }
