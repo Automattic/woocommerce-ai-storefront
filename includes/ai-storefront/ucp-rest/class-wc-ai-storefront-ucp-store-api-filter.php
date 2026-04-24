@@ -59,12 +59,16 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * Mode `brands`:     append a tax_query entry for selected product_brand
 	 *                    term IDs. The `product_brand` taxonomy is WC 9.5+;
 	 *                    on older stores the admin UI hides the Brands
-	 *                    segment so this branch never receives a non-empty
-	 *                    selection. Defensive `taxonomy_exists` check
-	 *                    guards against stale settings if the taxonomy is
-	 *                    unregistered by a custom env — falls back to no-op
-	 *                    (returns args unchanged) rather than emitting an
-	 *                    invalid tax_query.
+	 *                    segment, which prevents NEW configuration there.
+	 *                    Persisted `selected_brands` may still exist after
+	 *                    a downgrade / stale-settings scenario (a merchant
+	 *                    configured brands on WC 9.5+, then rolled WC back
+	 *                    to an older version, so the option row in the DB
+	 *                    survives but the taxonomy doesn't). The defensive
+	 *                    `taxonomy_exists` check guards exactly that path:
+	 *                    falls back to a no-op (returns args unchanged)
+	 *                    rather than emitting an invalid tax_query against
+	 *                    an unregistered taxonomy.
 	 * Mode `selected`:   restrict post__in to the merchant's allow-list.
 	 *                    If the incoming request has its own post__in,
 	 *                    intersect instead of overriding — this preserves
