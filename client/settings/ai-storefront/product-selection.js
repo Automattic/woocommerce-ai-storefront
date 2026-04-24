@@ -384,11 +384,12 @@ const SamplePreview = () => {
 	const label =
 		total !== null
 			? sprintf(
-					/* translators: %s: total published product count, formatted via toLocaleString using the browser locale. */
+					/* translators: 1: number of products shown in the preview grid, 2: total published product count; both formatted via toLocaleString using the browser locale. */
 					__(
-						'Recently added (6 of %s)',
+						'Recently added (%1$s of %2$s)',
 						'woocommerce-ai-storefront'
 					),
+					products.length.toLocaleString(),
 					total.toLocaleString()
 			  )
 			: __( 'Recently added', 'woocommerce-ai-storefront' );
