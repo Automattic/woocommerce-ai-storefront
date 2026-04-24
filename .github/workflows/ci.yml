@@ -308,34 +308,80 @@ jobs:
 
       - name: Rebuild and compare
         shell: bash
-        # The webpack output + asset.php + the dataviews CSS copy
-        # are all under `build/`; a single `git diff --exit-code`
-        # on that directory catches any drift. `--` guards against
-        # a future branch where `build` might shadow a rev-spec.
+        # Catches two distinct classes of drift under `build/`:
         #
-        # If drift is detected, emit the diff in the failure log
-        # so the PR author can see exactly which file(s) changed.
-        # For binary / large diffs we cap at a sane line count.
+        #   1. Tracked files whose contents changed. `git diff` is
+        #      the right tool for that.
+        #   2. NEW files webpack emitted this run that aren't yet
+        #      committed — e.g. a future code-splitting bump that
+        #      starts shipping an additional chunk. `git diff`
+        #      alone won't see those (it only inspects tracked
+        #      paths); `git ls-files --others --exclude-standard`
+        #      lists untracked files the build produced. Both
+        #      checks are required: the first catches a content
+        #      regression, the second catches an emit-surface
+        #      expansion.
+        #
+        # `--` guards against a future branch where `build` might
+        # shadow a rev-spec.
+        #
+        # Diff output is capped at 200 lines. Webpack-emitted JS
+        # often has a single minified line that spans tens of
+        # thousands of characters; `git diff` at full length
+        # would bloat the log past GitHub's per-line limit and
+        # truncate in a way that hides which file drifted. 200
+        # lines is enough for a human to see which paths changed
+        # and roughly how; the total line count is reported so
+        # the real magnitude isn't hidden.
         run: |
           npm run build
-          if ! git diff --exit-code -- build/; then
-            echo ""
-            echo "::error::The build/ artifacts are out of date."
-            echo ""
-            echo "The committed webpack output doesn't match what"
-            echo "'npm run build' produces for the current source."
-            echo "That usually means a client/ source change was"
-            echo "committed without rebuilding the admin bundle."
-            echo ""
-            echo "To fix, regenerate locally:"
-            echo ""
-            echo "  npm ci"
-            echo "  npm run build"
-            echo ""
-            echo "Then commit the updated files under build/ and"
-            echo "push again."
-            exit 1
+
+          changed="$(git diff --name-only -- build/)"
+          untracked="$(git ls-files --others --exclude-standard -- build/)"
+
+          if [ -z "$changed" ] && [ -z "$untracked" ]; then
+            exit 0
           fi
+
+          echo ""
+          echo "::error::The build/ artifacts are out of date."
+          echo ""
+          echo "The committed webpack output doesn't match what"
+          echo "'npm run build' produces for the current source."
+          echo "That usually means a client/ source change was"
+          echo "committed without rebuilding the admin bundle."
+          echo ""
+
+          if [ -n "$changed" ]; then
+            echo "Modified files under build/:"
+            echo "$changed" | sed 's/^/  /'
+            echo ""
+
+            diff_lines="$(git diff -- build/ | wc -l | tr -d ' ')"
+            echo "First 200 lines of diff:"
+            echo "--------"
+            git diff -- build/ | sed -n '1,200p'
+            echo "--------"
+            if [ "$diff_lines" -gt 200 ]; then
+              echo "... diff truncated (${diff_lines} total lines)."
+            fi
+            echo ""
+          fi
+
+          if [ -n "$untracked" ]; then
+            echo "New untracked files under build/:"
+            echo "$untracked" | sed 's/^/  /'
+            echo ""
+          fi
+
+          echo "To fix, regenerate locally:"
+          echo ""
+          echo "  npm ci"
+          echo "  npm run build"
+          echo ""
+          echo "Then commit the updated files under build/ and"
+          echo "push again."
+          exit 1
 
   audit:
     # Supply-chain scanning for composer + npm dependencies.
