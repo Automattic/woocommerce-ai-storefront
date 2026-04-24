@@ -89,12 +89,44 @@ class WC_AI_Storefront_Updater {
 			'woocommerce-ai-storefront'
 		);
 
+		// Set the branch explicitly. PUC defaults to `master` when no
+		// branch is configured, but this repo (and most modern GitHub
+		// repos) uses `main`. Without this override, PUC's secondary
+		// branch-metadata fetch hits `/branches/master` and 404s. The
+		// 404 is masked as a 403 under GitHub's anonymous rate-limit
+		// throttle, producing a misleading "rate-limited" error in the
+		// admin notice when the actual cause is a configuration miss.
+		if ( method_exists( $checker, 'setBranch' ) ) {
+			$checker->setBranch( 'main' );
+		}
+
 		// Track GitHub releases (tagged, published) rather than
 		// branch HEAD. Merchants should only ever see versions we
 		// have explicitly shipped.
 		$api = $checker->getVcsApi();
 		if ( $api && method_exists( $api, 'enableReleaseAssets' ) ) {
 			$api->enableReleaseAssets( self::RELEASE_ASSET_PATTERN );
+		}
+
+		/**
+		 * Authenticate the update-check requests against GitHub.
+		 *
+		 * Anonymous GitHub API requests are rate-limited to 60/hour
+		 * per IP. A merchant hitting that limit (shared hosting,
+		 * frequent dashboard refreshes) sees a 403 and an admin
+		 * notice "Could not determine if updates are available."
+		 *
+		 * Filter: `wc_ai_storefront_github_token` — return a GitHub
+		 * personal access token (no scopes needed for public repos)
+		 * to authenticate update-checker calls. Authenticated
+		 * requests are 5,000/hour.
+		 *
+		 * @param string $token GitHub personal access token.
+		 *                       Default empty (anonymous).
+		 */
+		$github_token = apply_filters( 'wc_ai_storefront_github_token', '' );
+		if ( $github_token && method_exists( $checker, 'setAuthentication' ) ) {
+			$checker->setAuthentication( $github_token );
 		}
 	}
 }
