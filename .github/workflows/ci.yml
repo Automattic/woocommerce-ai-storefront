@@ -281,3 +281,113 @@ jobs:
               exit "$diff_status"
               ;;
           esac
+
+  build-check:
+    # Fails the build when the committed `build/` artifacts drift
+    # from what `npm run build` produces for the current source.
+    # Mirrors the i18n-check pattern: the repo commits webpack
+    # output (so merchants installing the plugin from a zip don't
+    # need Node locally), which means every PR author is
+    # responsible for re-running `npm run build` after touching
+    # `client/`. Easy to forget — and when forgotten, ships a
+    # stale admin bundle with a working `package.json` + asset.php
+    # that look fine on review. This job catches it.
+    name: Build (bundle freshness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild and compare
+        shell: bash
+        # The webpack output + asset.php + the dataviews CSS copy
+        # are all under `build/`; a single `git diff --exit-code`
+        # on that directory catches any drift. `--` guards against
+        # a future branch where `build` might shadow a rev-spec.
+        #
+        # If drift is detected, emit the diff in the failure log
+        # so the PR author can see exactly which file(s) changed.
+        # For binary / large diffs we cap at a sane line count.
+        run: |
+          npm run build
+          if ! git diff --exit-code -- build/; then
+            echo ""
+            echo "::error::The build/ artifacts are out of date."
+            echo ""
+            echo "The committed webpack output doesn't match what"
+            echo "'npm run build' produces for the current source."
+            echo "That usually means a client/ source change was"
+            echo "committed without rebuilding the admin bundle."
+            echo ""
+            echo "To fix, regenerate locally:"
+            echo ""
+            echo "  npm ci"
+            echo "  npm run build"
+            echo ""
+            echo "Then commit the updated files under build/ and"
+            echo "push again."
+            exit 1
+          fi
+
+  audit:
+    # Supply-chain scanning for composer + npm dependencies.
+    #
+    # npm audit is scoped to `--omit=dev` because
+    # `@wordpress/scripts` and the rest of the build toolchain
+    # transitively pull in old puppeteer / ws / glob versions that
+    # routinely carry advisories — those affect the build
+    # toolchain on developer machines, not the code that ships to
+    # merchants. Making every PR red when a transitive dev-dep
+    # gets a CVE would buy false urgency. Production deps only
+    # (`@wordpress/api-fetch`, components, data, element, i18n,
+    # icons, dataviews) get the high-severity gate. If the plugin
+    # ever adds a hard production runtime dep (SDK, 3rd-party
+    # client), the scan surface expands automatically via
+    # package.json's `dependencies` block.
+    #
+    # `--audit-level=high` exits nonzero on high/critical
+    # advisories only; moderate + low pass. Severe CVEs surface
+    # fast; noise stays quiet.
+    #
+    # Composer audit has no severity filter (composer 2.9). The
+    # plugin's composer deps are all dev-only (PHPUnit, PHPStan,
+    # wpcs), so any advisory there reaches developers not
+    # merchants — but we still want to know about it promptly, so
+    # composer-audit stays unfiltered.
+    name: Security audit (composer + npm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: none
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: composer audit
+        run: composer audit --format=plain
+
+      - name: npm audit (production deps, high severity)
+        run: npm audit --omit=dev --audit-level=high
