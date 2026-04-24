@@ -654,39 +654,102 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * `categories` mode with an EMPTY `selected_categories` array
-	 * falls through to the top-20-by-count fallback. This pins the
-	 * fallback so a future refactor tightening the mode-gate (e.g.
-	 * to `'all' === $product_mode`) doesn't silently hide the
-	 * Product Categories section from stores that deliberately
-	 * scope-by-categories without picking specific categories yet.
+	 * 0.1.5 semantic change: under the new UNION model,
+	 * `by_taxonomy` mode with NO `selected_categories` (and no
+	 * `selected_tags` / `selected_brands` either) means nothing is
+	 * in scope — listing top-N-by-count categories would advertise
+	 * products the scope excludes. The section is suppressed
+	 * entirely.
 	 *
-	 * Companion to `test_categories_section_omitted_for_non_category_modes`
-	 * — together they pin the 4-state truth table for
-	 * `get_syndicated_categories()`.
+	 * This test rewrites the old pre-0.1.5 fallback (which showed
+	 * top-20 in `categories` mode with empty selection) to match
+	 * the new contract. Companion to
+	 * `test_categories_section_omitted_for_non_category_modes` +
+	 * the new `by_taxonomy` happy-path test.
 	 */
-	public function test_categories_section_renders_in_categories_mode_with_empty_selection(): void {
+	public function test_categories_section_suppressed_in_by_taxonomy_mode_with_all_empty(): void {
 		$category          = new stdClass();
 		$category->name    = 'Clothing';
 		$category->slug    = 'clothing';
 		$category->count   = 42;
 		$category->term_id = 1;
 
-		// Return the category for `get_terms()` regardless of args —
-		// the fallback path doesn't set `include`, so the query
-		// returns top-20 unfiltered.
+		// Categories DO exist in the store — so the omission below
+		// is specifically due to the mode+empty-selection combo.
 		Functions\when( 'get_terms' )->justReturn( [ $category ] );
 
 		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
-			'product_selection_mode' => 'categories',
+			'product_selection_mode' => 'by_taxonomy',
 			'selected_categories'    => [],
+			'selected_tags'          => [],
+			'selected_brands'        => [],
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( '## Product Categories', $output );
+		$this->assertStringNotContainsString( 'Clothing', $output );
+	}
+
+	/**
+	 * `by_taxonomy` mode with a POPULATED `selected_categories`
+	 * emits the Product Categories section, scoped to the selected
+	 * term IDs via the `include` arg. This is the 0.1.5 replacement
+	 * for the pre-0.1.5 `categories` mode happy-path (which now
+	 * routes through the legacy-mode fallback into the same code).
+	 */
+	public function test_llms_txt_categories_section_emits_in_by_taxonomy_mode_with_selected_categories(): void {
+		$category          = new stdClass();
+		$category->name    = 'Coffee Beans';
+		$category->slug    = 'coffee-beans';
+		$category->count   = 3;
+		$category->term_id = 5;
+
+		Functions\when( 'get_terms' )->justReturn( [ $category ] );
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [ 5 ],
 		];
 
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString( '## Product Categories', $output );
-		$this->assertStringContainsString( 'Clothing', $output );
+		$this->assertStringContainsString( 'Coffee Beans', $output );
+	}
+
+	/**
+	 * `by_taxonomy` with only tags and/or brands selected (no
+	 * categories) suppresses the Product Categories section even
+	 * though the scope IS non-empty. Rationale: the selected
+	 * tags/brands narrow within some set of categories, but we
+	 * don't know which, so listing top-N-by-count would
+	 * over-report (products the tags/brands exclude) and listing
+	 * nothing is more truthful than a wrong list.
+	 */
+	public function test_llms_txt_categories_section_suppressed_when_only_tags_brands_selected(): void {
+		$category          = new stdClass();
+		$category->name    = 'Clothing';
+		$category->slug    = 'clothing';
+		$category->count   = 42;
+		$category->term_id = 1;
+
+		Functions\when( 'get_terms' )->justReturn( [ $category ] );
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [],
+			'selected_tags'          => [ 7 ],
+			'selected_brands'        => [ 3 ],
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( '## Product Categories', $output );
+		$this->assertStringNotContainsString( 'Clothing', $output );
 	}
 
 	/**

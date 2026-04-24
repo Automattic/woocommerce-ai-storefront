@@ -418,7 +418,26 @@ class WC_AI_Storefront {
 		];
 
 		$settings = get_option( self::SETTINGS_OPTION, [] );
-		$merged   = wp_parse_args( is_array( $settings ) ? $settings : [], $defaults );
+
+		// Silent migration from legacy pre-0.1.5 enum values
+		// (`categories` / `tags` / `brands`) to the consolidated
+		// `by_taxonomy` value that triggers UNION enforcement.
+		// Migrating on read (rather than on activation) means a
+		// rollback-then-forward across versions still converges,
+		// and avoids coupling to activation-hook timing.
+		$needs_migration =
+			is_array( $settings )
+			&& isset( $settings['product_selection_mode'] )
+			&& in_array(
+				$settings['product_selection_mode'],
+				[ 'categories', 'tags', 'brands' ],
+				true
+			);
+		if ( $needs_migration ) {
+			$settings['product_selection_mode'] = 'by_taxonomy';
+		}
+
+		$merged = wp_parse_args( is_array( $settings ) ? $settings : [], $defaults );
 
 		// Allowed crawlers: delegates to the Robots class's helper so
 		// the three-branch resolution (fresh install vs. stored-empty
@@ -430,7 +449,30 @@ class WC_AI_Storefront {
 			is_array( $settings ) ? $settings : []
 		);
 
+		// Populate the cache BEFORE the migration write so any hook
+		// subscriber on `update_option_wc_ai_storefront_settings`
+		// that calls `get_settings()` during the write reads the
+		// already-migrated value from cache rather than re-entering
+		// this code path and recursing.
 		self::$settings_cache = $merged;
+
+		if ( $needs_migration ) {
+			$updated = update_option( self::SETTINGS_OPTION, $settings, true );
+			if ( $updated ) {
+				// Match `update_settings()`'s cache-invalidation
+				// behavior so a persistent-object-cache deployment
+				// (Redis / Memcached) doesn't serve the legacy value
+				// to sibling PHP workers off `alloptions`.
+				wp_cache_delete( self::SETTINGS_OPTION, 'options' );
+				wp_cache_delete( 'alloptions', 'options' );
+			} elseif ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'silent migration: update_option returned false for %s',
+					self::SETTINGS_OPTION
+				);
+			}
+		}
+
 		return $merged;
 	}
 
@@ -449,7 +491,7 @@ class WC_AI_Storefront {
 		// Sanitize — only store known keys to keep the option clean.
 		$clean = [
 			'enabled'                => in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no',
-			'product_selection_mode' => in_array( $merged['product_selection_mode'], [ 'all', 'categories', 'tags', 'brands', 'selected' ], true )
+			'product_selection_mode' => in_array( $merged['product_selection_mode'], [ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ], true )
 				? $merged['product_selection_mode']
 				: 'all',
 			'selected_categories'    => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
@@ -485,6 +527,49 @@ class WC_AI_Storefront {
 	/**
 	 * Check if a product is included in syndication.
 	 *
+	 * Gating semantics by mode:
+	 *
+	 *   - `all`           → every product matches
+	 *   - `selected`      → product must appear in `selected_products`
+	 *   - `by_taxonomy`   → UNION across `selected_categories`,
+	 *                       `selected_tags`, `selected_brands`. A product
+	 *                       matches if it belongs to at least one term
+	 *                       in any of the configured arrays.
+	 *
+	 * The `by_taxonomy` mode is the 0.1.5 replacement for the previously-
+	 * separate `categories` / `tags` / `brands` modes. Under the old
+	 * enum, only one taxonomy's selection enforced at a time and the
+	 * other two `selected_*` arrays were inert storage. Under UNION a
+	 * merchant selecting 3 categories + 1 brand sees products matching
+	 * any of those 3 categories OR that 1 brand — matching the "Products
+	 * by category, tag, or brand" UI copy and the multi-count By-
+	 * taxonomy badge. A plugin-load silent migration in `get_settings()`
+	 * rewrites any stored legacy mode to `by_taxonomy` so the
+	 * historical enum vocabulary never leaks into fresh reads; the
+	 * defensive legacy-mode fallback near the start of this method
+	 * covers the narrow window where a caller passes explicit
+	 * `$settings` with an old value.
+	 *
+	 * Empty-selection policy for `by_taxonomy` mode: if all three
+	 * `selected_*` arrays are empty (after accounting for missing
+	 * taxonomies), the method returns false — hides the catalog.
+	 * This matches the Store API filter's `post__in = [0]` posture in
+	 * the same state. Rationale: "By taxonomy but pick nothing" is a
+	 * recoverable misconfiguration; hiding everything makes it
+	 * visible to the merchant immediately rather than silently
+	 * exposing the whole catalog.
+	 *
+	 * Brand-taxonomy downgrade exception: if the ONLY configured
+	 * taxonomy is brands and `product_brand` isn't registered (pre-
+	 * WC 9.5, or a custom unregistration), we return true (show
+	 * everything) rather than return false (hide everything). The
+	 * pre-0.1.5 code had the same exception for the dedicated
+	 * `brands` mode; preserving it here means a merchant who
+	 * configured brands on a WC 9.5+ store and then downgraded
+	 * doesn't see their catalog silently vanish. The stored
+	 * `selected_brands` array stays on disk; re-registration of
+	 * the taxonomy restores enforcement.
+	 *
 	 * @param WC_Product $product  The product.
 	 * @param array|null $settings Settings (null to auto-load).
 	 * @return bool
@@ -496,70 +581,83 @@ class WC_AI_Storefront {
 
 		$mode = $settings['product_selection_mode'] ?? 'all';
 
+		// Defensive legacy-mode fallback. The silent migration on
+		// plugin load rewrites stored values, but a caller that
+		// passes explicit `$settings` with a legacy enum still gets
+		// correct behavior. Mapping is 1:1 because the pre-0.1.5
+		// enum's `categories`/`tags`/`brands` values all corresponded
+		// to "scoping by a single taxonomy"; rewriting them to
+		// `by_taxonomy` preserves intent under UNION enforcement
+		// (the inert-storage arrays become live without surprise
+		// because the merchant had only populated the one matching
+		// their mode anyway).
+		if ( 'categories' === $mode || 'tags' === $mode || 'brands' === $mode ) {
+			$mode = 'by_taxonomy';
+		}
+
 		if ( 'all' === $mode ) {
 			return true;
 		}
 
-		if ( 'categories' === $mode && ! empty( $settings['selected_categories'] ) ) {
-			$product_cats = wc_get_product_cat_ids( $product->get_id() );
-			return ! empty( array_intersect( $product_cats, array_map( 'absint', $settings['selected_categories'] ) ) );
-		}
-
-		if ( 'tags' === $mode && ! empty( $settings['selected_tags'] ) ) {
-			$product_tags = wp_get_post_terms( $product->get_id(), 'product_tag', [ 'fields' => 'ids' ] );
-			if ( is_wp_error( $product_tags ) ) {
+		if ( 'selected' === $mode ) {
+			if ( empty( $settings['selected_products'] ) ) {
 				return false;
 			}
-			return ! empty( array_intersect( $product_tags, array_map( 'absint', $settings['selected_tags'] ) ) );
+			return in_array(
+				$product->get_id(),
+				array_map( 'absint', $settings['selected_products'] ),
+				true
+			);
 		}
 
-		if ( 'brands' === $mode ) {
-			// Graceful degradation first — before the empty-selection
-			// check. If the `product_brand` taxonomy isn't registered
-			// (pre-WC 9.5 or a custom env), the merchant's brand
-			// selection can't be enforced. Degrade to "product is
-			// syndicated" (return true) so this gate stays symmetric
-			// with the Store API filter, which also declines to
-			// restrict in the same scenario — REGARDLESS of whether
-			// `selected_brands` is populated or empty. Without this
-			// ordering, a merchant with mode=`brands` but an empty
-			// selection AND a missing taxonomy would see llms.txt /
-			// JSON-LD hide the catalog while UCP catalog agents saw
-			// everything, recreating the exact enforcement split the
-			// brands-mode degradation path is meant to prevent.
-			//
-			// Rationale for "show all" over "hide all" in this
-			// specific degraded scenario: the merchant picked
-			// `brands` mode on a store that supported the taxonomy,
-			// then something removed that support (WC downgrade,
-			// custom taxonomy unregistration). Hiding the whole
-			// catalog is a surprising consequence of an environment
-			// change they may not have made. Showing the pre-
-			// downgrade catalog preserves their previous-actual
-			// agent-visible state until they re-configure. The
-			// persisted `selected_brands` array stays on disk so a
-			// future taxonomy re-registration restores enforcement.
-			if ( ! taxonomy_exists( 'product_brand' ) ) {
+		if ( 'by_taxonomy' === $mode ) {
+			$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? [] );
+			$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? [] );
+			$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? [] );
+
+			$brands_supported = taxonomy_exists( 'product_brand' );
+
+			$has_cats   = ! empty( $selected_categories );
+			$has_tags   = ! empty( $selected_tags );
+			$has_brands = ! empty( $selected_brands ) && $brands_supported;
+
+			// Brand-downgrade exception: only brands configured and
+			// the taxonomy is now missing → show all. Preserves the
+			// pre-0.1.5 `brands` mode's degradation behavior so an
+			// environment change doesn't silently hide the catalog.
+			if ( ! $has_cats && ! $has_tags && ! $brands_supported && ! empty( $selected_brands ) ) {
 				return true;
 			}
 
-			// Taxonomy is registered. Apply the empty-selection
-			// policy: `brands` mode with an empty `selected_brands`
-			// hides everything, matching the Store API filter's
-			// `post__in = [0]` posture for the same state.
-			if ( empty( $settings['selected_brands'] ) ) {
+			// Empty-selection policy: nothing enforceable → hide all.
+			if ( ! $has_cats && ! $has_tags && ! $has_brands ) {
 				return false;
 			}
 
-			$product_brands = wp_get_post_terms( $product->get_id(), 'product_brand', [ 'fields' => 'ids' ] );
-			if ( is_wp_error( $product_brands ) ) {
-				return false;
-			}
-			return ! empty( array_intersect( $product_brands, array_map( 'absint', $settings['selected_brands'] ) ) );
-		}
+			$product_id = $product->get_id();
 
-		if ( 'selected' === $mode && ! empty( $settings['selected_products'] ) ) {
-			return in_array( $product->get_id(), array_map( 'absint', $settings['selected_products'] ), true );
+			if ( $has_cats ) {
+				$product_cats = wc_get_product_cat_ids( $product_id );
+				if ( ! empty( array_intersect( $product_cats, $selected_categories ) ) ) {
+					return true;
+				}
+			}
+
+			if ( $has_tags ) {
+				$product_tags = wp_get_post_terms( $product_id, 'product_tag', [ 'fields' => 'ids' ] );
+				if ( ! is_wp_error( $product_tags ) && ! empty( array_intersect( $product_tags, $selected_tags ) ) ) {
+					return true;
+				}
+			}
+
+			if ( $has_brands ) {
+				$product_brands = wp_get_post_terms( $product_id, 'product_brand', [ 'fields' => 'ids' ] );
+				if ( ! is_wp_error( $product_brands ) && ! empty( array_intersect( $product_brands, $selected_brands ) ) ) {
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		return false;

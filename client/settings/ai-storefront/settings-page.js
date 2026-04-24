@@ -11,7 +11,8 @@ import {
 	FlexItem,
 } from '@wordpress/components';
 import { Icon, globe, shield, chartBar } from '@wordpress/icons';
-import { __, sprintf } from '@wordpress/i18n';
+import { __, _n, sprintf } from '@wordpress/i18n';
+import apiFetch from '@wordpress/api-fetch';
 import { STORE_NAME } from '../../data/ai-storefront/constants';
 import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
@@ -485,18 +486,92 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 		fetchStats( period );
 	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Refetch when period changes.
 
-	let productCount = __( 'All', 'woocommerce-ai-storefront' );
-	if ( settings.product_selection_mode === 'categories' ) {
-		productCount = sprintf(
-			/* translators: %d: number of categories */
-			__( '%d categories', 'woocommerce-ai-storefront' ),
-			( settings.selected_categories || [] ).length
+	// Products Exposed card — actual count of products that will
+	// reach AI agents. Fetched from `/admin/product-count` so the
+	// UI mirrors what the Store API filter returns, not what
+	// client-side settings state looks like.
+	//
+	// Three display states:
+	//   - `null` — initial load / pending fetch (renders as "—")
+	//   - a number — successful fetch (renders as "N products")
+	//   - `'error'` — fetch failed (renders localized "Couldn't
+	//     load") so a stuck "—" doesn't read as "no products"
+	//
+	// Debounce + AbortController: rapid taxonomy toggling (or
+	// "Select all" against a large term list) would otherwise
+	// burst-fire admin REST requests, each of which runs a real
+	// UNION query server-side. The 400ms debounce coalesces
+	// taxonomy-tap sequences into one request; the
+	// AbortController cancels in-flight requests when the
+	// signature changes mid-flight so the displayed count never
+	// reflects a stale resolution.
+	const [ productCount, setProductCount ] = useState( null );
+	const productSelectionSignature = JSON.stringify( [
+		settings.product_selection_mode,
+		settings.selected_categories || [],
+		settings.selected_tags || [],
+		settings.selected_brands || [],
+		settings.selected_products || [],
+	] );
+	useEffect( () => {
+		let cancelled = false;
+		const controller = new AbortController();
+		const timeoutId = setTimeout( () => {
+			apiFetch( {
+				path: '/wc/v3/ai-storefront/admin/product-count',
+				signal: controller.signal,
+			} )
+				.then( ( response ) => {
+					if (
+						! cancelled &&
+						response &&
+						typeof response.count === 'number'
+					) {
+						setProductCount( response.count );
+					}
+				} )
+				.catch( ( error ) => {
+					if ( error?.name === 'AbortError' ) {
+						return;
+					}
+					if ( ! cancelled ) {
+						setProductCount( 'error' );
+						// Dev-visible log so a persistent endpoint
+						// failure shows up in browser console without
+						// the merchant having to infer it from the UI.
+						// eslint-disable-next-line no-console
+						console.error(
+							'woocommerce-ai-storefront: product-count fetch failed',
+							error
+						);
+					}
+				} );
+		}, 400 );
+		return () => {
+			cancelled = true;
+			clearTimeout( timeoutId );
+			controller.abort();
+		};
+	}, [ productSelectionSignature ] );
+
+	let productCountDisplay;
+	if ( productCount === 'error' ) {
+		productCountDisplay = __(
+			'Couldn\u2019t load',
+			'woocommerce-ai-storefront'
 		);
-	} else if ( settings.product_selection_mode === 'selected' ) {
-		productCount = sprintf(
-			/* translators: %d: number of products */
-			__( '%d products', 'woocommerce-ai-storefront' ),
-			( settings.selected_products || [] ).length
+	} else if ( productCount === null ) {
+		productCountDisplay = '\u2014';
+	} else {
+		productCountDisplay = sprintf(
+			/* translators: %d: number of products exposed to AI */
+			_n(
+				'%d product',
+				'%d products',
+				productCount,
+				'woocommerce-ai-storefront'
+			),
+			productCount
 		);
 	}
 
@@ -604,7 +679,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						'Products Exposed',
 						'woocommerce-ai-storefront'
 					) }
-					value={ productCount }
+					value={ productCountDisplay }
 				/>
 				<StatCard
 					label={ sprintf(

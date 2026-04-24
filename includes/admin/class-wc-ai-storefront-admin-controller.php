@@ -49,7 +49,7 @@ class WC_AI_Storefront_Admin_Controller {
 						],
 						'product_selection_mode' => [
 							'type' => 'string',
-							'enum' => [ 'all', 'categories', 'tags', 'brands', 'selected' ],
+							'enum' => [ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ],
 						],
 						'selected_categories'    => [
 							'type'  => 'array',
@@ -120,6 +120,20 @@ class WC_AI_Storefront_Admin_Controller {
 						'maximum' => 50,
 					],
 				],
+			]
+		);
+
+		// Syndicated product count for the Overview "Products Exposed"
+		// card. Runs the same UNION query the Store API filter would
+		// apply, returning a single count. Purely a display metric —
+		// no per-row data crosses the wire.
+		register_rest_route(
+			self::NAMESPACE,
+			'/product-count',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'get_product_count' ],
+				'permission_callback' => [ $this, 'check_admin_permission' ],
 			]
 		);
 
@@ -251,6 +265,126 @@ class WC_AI_Storefront_Admin_Controller {
 		$stats  = WC_AI_Storefront_Attribution::get_stats( $period );
 
 		return new WP_REST_Response( $stats );
+	}
+
+	/**
+	 * Get the count of products exposed to AI via the current scoping.
+	 *
+	 * Runs the same resolution as the Store API filter and
+	 * `WC_AI_Storefront::is_product_syndicated()` so the Overview
+	 * "Products Exposed" card reflects what agents would actually see:
+	 *
+	 *   - `all`          → count of published products
+	 *   - `selected`     → count of published products in
+	 *                      `selected_products`
+	 *   - `by_taxonomy`  → UNION count across
+	 *                      `selected_categories ∪ selected_tags ∪
+	 *                      selected_brands`
+	 *
+	 * Uses `WP_Query` with `posts_per_page=1` + `no_found_rows=false`
+	 * so only the found-rows count trip hits the DB — no full
+	 * iteration of matching product rows.
+	 *
+	 * Brand-downgrade and empty-selection policies mirror the Store
+	 * API filter and per-product gate: only-brands-configured on an
+	 * unregistered taxonomy returns the total published count
+	 * (show-all); fully-empty selection returns 0.
+	 *
+	 * @return WP_REST_Response|WP_Error { count: int } on success;
+	 *                                   `WP_Error` if the persisted
+	 *                                   `product_selection_mode` is
+	 *                                   not one of the recognized
+	 *                                   enum values (shouldn't happen
+	 *                                   in practice — silent migration
+	 *                                   + defensive legacy fallback
+	 *                                   normalize stored values).
+	 */
+	public function get_product_count() {
+		$settings = WC_AI_Storefront::get_settings();
+		$mode     = $settings['product_selection_mode'] ?? 'all';
+
+		// Legacy mode values — defensive. Silent migration in
+		// get_settings() normally prevents these from reaching here.
+		if ( 'categories' === $mode || 'tags' === $mode || 'brands' === $mode ) {
+			$mode = 'by_taxonomy';
+		}
+
+		if ( 'all' === $mode ) {
+			$counts = wp_count_posts( 'product' );
+			return new WP_REST_Response(
+				[ 'count' => (int) ( $counts->publish ?? 0 ) ]
+			);
+		}
+
+		if ( 'selected' === $mode ) {
+			$ids = array_map( 'absint', $settings['selected_products'] ?? [] );
+			if ( empty( $ids ) ) {
+				return new WP_REST_Response( [ 'count' => 0 ] );
+			}
+			// Count only published products in the allow-list — a
+			// deleted or drafted product shouldn't inflate the card.
+			$query = new WP_Query(
+				[
+					'post_type'      => 'product',
+					'post_status'    => 'publish',
+					'post__in'       => $ids,
+					'posts_per_page' => 1,
+					'fields'         => 'ids',
+					'no_found_rows'  => false,
+				]
+			);
+			return new WP_REST_Response(
+				[ 'count' => (int) $query->found_posts ]
+			);
+		}
+
+		if ( 'by_taxonomy' === $mode ) {
+			$base_args  = [
+				'post_type'      => 'product',
+				'post_status'    => 'publish',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+				'no_found_rows'  => false,
+			];
+			$filter     = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$query_args = $filter->apply_union_restriction( $base_args, $settings );
+
+			// Brand-downgrade: only brands configured but taxonomy missing →
+			// apply_union_restriction() returns args unchanged (no tax_query /
+			// post__in added). Count must match the "show all" enforcement.
+			if ( ! isset( $query_args['tax_query'] ) && ! isset( $query_args['post__in'] ) ) {
+				$counts = wp_count_posts( 'product' );
+				return new WP_REST_Response(
+					[ 'count' => (int) ( $counts->publish ?? 0 ) ]
+				);
+			}
+
+			// Empty-selection: apply_union_restriction() sets post__in = [0].
+			if ( isset( $query_args['post__in'] ) && [ 0 ] === $query_args['post__in'] ) {
+				return new WP_REST_Response( [ 'count' => 0 ] );
+			}
+
+			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+			$query = new WP_Query( $query_args );
+			return new WP_REST_Response(
+				[ 'count' => (int) $query->found_posts ]
+			);
+		}
+
+		// Unknown mode — shouldn't happen after silent migration +
+		// the defensive fallback above, but return a `WP_Error`
+		// rather than a silent `count: 0` so a future enum addition
+		// that forgets to update this method fails loudly instead
+		// of serving a misleading zero.
+		return new WP_Error(
+			'wc_ai_storefront_unknown_product_selection_mode',
+			sprintf(
+				/* translators: %s: the unrecognized product_selection_mode enum value */
+				__( 'Unrecognized product_selection_mode: %s', 'woocommerce-ai-storefront' ),
+				esc_html( (string) $mode )
+			),
+			[ 'status' => 500 ]
+		);
 	}
 
 	/**

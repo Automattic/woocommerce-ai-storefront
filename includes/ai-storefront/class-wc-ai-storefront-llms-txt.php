@@ -531,32 +531,56 @@ class WC_AI_Storefront_Llms_Txt {
 	private function get_syndicated_categories( $settings ) {
 		$product_mode = $settings['product_selection_mode'] ?? 'all';
 
-		// The `## Product Categories` section in llms.txt is a
-		// navigation hint for AI agents — "here's the shape of what
-		// this store sells." That framing only holds for two modes:
+		// Defensive legacy-mode fallback. Pre-0.1.5 enum values
+		// (`categories` / `tags` / `brands`) map to `by_taxonomy`
+		// under UNION enforcement. The silent migration in
+		// `WC_AI_Storefront::get_settings()` rewrites stored values,
+		// but handle direct callers defensively.
+		if ( in_array( $product_mode, [ 'categories', 'tags', 'brands' ], true ) ) {
+			$product_mode = 'by_taxonomy';
+		}
+
+		// The `## Product Categories` section is a navigation hint:
+		// "here's the shape of what this store sells." We only emit
+		// it when it's truthful relative to the merchant's actual
+		// scoping:
 		//
-		//   - `all`: every category in the store IS reachable by
-		//     agents, so the top-N-by-count list is accurate.
-		//   - `categories`: the merchant's selected categories ARE
-		//     the syndicated scope; listing them is informative and
-		//     matches what agents can fetch.
+		//   - `all` → top-N-by-count list (every category reachable).
+		//   - `by_taxonomy` with `selected_categories` non-empty →
+		//     list those selected categories. Tags/brands may add
+		//     more products via the UNION, but the selected
+		//     categories ARE a real (sub)set of the scope and
+		//     listing them gives agents accurate navigation into
+		//     the catalog portion defined by category scoping.
+		//     Under-reports rather than over-reports: agents that
+		//     want the full product set enumerate via Store API,
+		//     which applies the full UNION filter.
 		//
-		// In `tags` / `brands` / `selected` modes the top-N-by-count
-		// list is MISLEADING: agents see category labels + counts
-		// that don't reflect what the Store API filter actually
-		// returns for the merchant's current scope. A merchant who
-		// scopes to a single brand gets an llms.txt that advertises
-		// "Clothing (20 products)" when the single-brand subset of
-		// Clothing might be 3 products. Agents then issue queries
-		// that come back mostly empty, and it looks like the store
-		// is broken rather than narrowly-scoped.
+		// Suppressed otherwise:
 		//
-		// Suppress the section entirely for those three modes. A
-		// future enhancement could surface a per-mode replacement
-		// (selected tags / brands / product IDs), but omitting
-		// incorrect information is strictly better than the status
-		// quo.
-		if ( ! in_array( $product_mode, [ 'all', 'categories' ], true ) ) {
+		//   - `by_taxonomy` with no `selected_categories` (only tags
+		//     and/or brands) → no category is actually in scope;
+		//     listing top store categories would advertise products
+		//     the scope excludes.
+		//   - `selected` → individual product picking; category
+		//     aggregation doesn't describe the scope shape.
+		//
+		// Silent on-trailing category counts: when we list selected
+		// categories, the counts returned by `get_terms()` reflect
+		// the TOTAL products in each category, not just the subset
+		// matching the UNION. That's a minor inaccuracy when the
+		// merchant has also set `selected_tags`/`selected_brands`
+		// that narrow within those categories — the displayed
+		// count can be higher than what Store API will actually
+		// return. Acceptable for a navigation hint; agents that
+		// need precision hit Store API.
+		$has_selected_categories = ! empty( $settings['selected_categories'] );
+
+		if ( 'by_taxonomy' === $product_mode && ! $has_selected_categories ) {
+			return [];
+		}
+
+		if ( ! in_array( $product_mode, [ 'all', 'by_taxonomy' ], true ) ) {
 			return [];
 		}
 
@@ -568,7 +592,7 @@ class WC_AI_Storefront_Llms_Txt {
 			'number'     => 20,
 		];
 
-		if ( 'categories' === $product_mode && ! empty( $settings['selected_categories'] ) ) {
+		if ( 'by_taxonomy' === $product_mode && $has_selected_categories ) {
 			$args['include'] = array_map( 'absint', $settings['selected_categories'] );
 			$args['number']  = 0;
 		}

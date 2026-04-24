@@ -34,54 +34,118 @@ class WC_AI_Storefront {
 	}
 
 	/**
-	 * Stub of `is_product_syndicated()` mirroring the production logic
-	 * for all modes that have unit tests. 'categories' falls through to
-	 * `return true` (no category-fixture infrastructure in unit tests).
+	 * Stub of `is_product_syndicated()` mirroring the production
+	 * UNION logic for 0.1.5+. Legacy modes (`categories`/`tags`/
+	 * `brands`) route through `by_taxonomy` via the same defensive
+	 * fallback as production. The `by_taxonomy` category match uses
+	 * `wp_get_post_terms` (the production code uses
+	 * `wc_get_product_cat_ids`, but that helper isn't stubbed in
+	 * this unit-test harness — `wp_get_post_terms` is).
 	 *
-	 * Keep in sync with `includes/class-wc-ai-storefront.php` when
-	 * adding new `product_selection_mode` values.
+	 * Keep in sync with
+	 * `WC_AI_Storefront::is_product_syndicated()` when adding new
+	 * `product_selection_mode` values or changing the enforcement
+	 * semantics.
 	 */
 	public static function is_product_syndicated( $product, ?array $settings = null ): bool {
 		$settings = $settings ?? self::get_settings();
 		$mode     = $settings['product_selection_mode'] ?? 'all';
 
+		if ( in_array( $mode, [ 'categories', 'tags', 'brands' ], true ) ) {
+			$mode = 'by_taxonomy';
+		}
+
 		if ( 'all' === $mode ) {
 			return true;
 		}
 
-		if ( 'tags' === $mode ) {
-			if ( empty( $settings['selected_tags'] ) ) {
-				return false;
-			}
-			$product_tags = wp_get_post_terms( $product->get_id(), 'product_tag', [ 'fields' => 'ids' ] );
-			if ( is_wp_error( $product_tags ) ) {
-				return false;
-			}
-			return ! empty( array_intersect( $product_tags, array_map( 'absint', $settings['selected_tags'] ) ) );
-		}
-
-		if ( 'brands' === $mode ) {
-			if ( ! taxonomy_exists( 'product_brand' ) ) {
-				return true;
-			}
-			if ( empty( $settings['selected_brands'] ) ) {
-				return false;
-			}
-			$product_brands = wp_get_post_terms( $product->get_id(), 'product_brand', [ 'fields' => 'ids' ] );
-			if ( is_wp_error( $product_brands ) ) {
-				return false;
-			}
-			return ! empty( array_intersect( $product_brands, array_map( 'absint', $settings['selected_brands'] ) ) );
-		}
-
 		if ( 'selected' === $mode ) {
+			if ( empty( $settings['selected_products'] ) ) {
+				return false;
+			}
 			return in_array(
 				$product->get_id(),
-				$settings['selected_products'] ?? [],
+				array_map( 'absint', $settings['selected_products'] ),
 				true
 			);
 		}
 
-		return true; // 'categories' + unknown modes — no fixture infra needed yet
+		if ( 'by_taxonomy' === $mode ) {
+			$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? [] );
+			$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? [] );
+			$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? [] );
+
+			$brands_supported = taxonomy_exists( 'product_brand' );
+
+			$has_cats   = ! empty( $selected_categories );
+			$has_tags   = ! empty( $selected_tags );
+			$has_brands = ! empty( $selected_brands ) && $brands_supported;
+
+			// Brand-downgrade exception: only brands set, taxonomy
+			// missing → show all (preserves merchant intent across
+			// an environment change).
+			if ( ! $has_cats && ! $has_tags && ! $brands_supported && ! empty( $selected_brands ) ) {
+				return true;
+			}
+
+			// Empty-selection policy.
+			if ( ! $has_cats && ! $has_tags && ! $has_brands ) {
+				return false;
+			}
+
+			$product_id = $product->get_id();
+
+			if ( $has_cats ) {
+				$product_cats = wp_get_post_terms( $product_id, 'product_cat', [ 'fields' => 'ids' ] );
+				if ( ! is_wp_error( $product_cats ) && ! empty( array_intersect( $product_cats, $selected_categories ) ) ) {
+					return true;
+				}
+			}
+
+			if ( $has_tags ) {
+				$product_tags = wp_get_post_terms( $product_id, 'product_tag', [ 'fields' => 'ids' ] );
+				if ( ! is_wp_error( $product_tags ) && ! empty( array_intersect( $product_tags, $selected_tags ) ) ) {
+					return true;
+				}
+			}
+
+			if ( $has_brands ) {
+				$product_brands = wp_get_post_terms( $product_id, 'product_brand', [ 'fields' => 'ids' ] );
+				if ( ! is_wp_error( $product_brands ) && ! empty( array_intersect( $product_brands, $selected_brands ) ) ) {
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Stub of `update_settings()` mirroring the production sanitization
+	 * for `product_selection_mode`. Stores the result back into
+	 * `$test_settings` so subsequent `get_settings()` calls reflect it.
+	 *
+	 * Keep in sync with `includes/class-wc-ai-storefront.php` when the
+	 * allowed `product_selection_mode` values change.
+	 *
+	 * @param array<string, mixed> $settings Partial settings to merge in.
+	 */
+	public static function update_settings( array $settings ): void {
+		$current = self::get_settings();
+		$merged  = array_merge( $current, $settings );
+
+		$sanitized_mode = in_array(
+			$merged['product_selection_mode'],
+			[ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ],
+			true
+		) ? $merged['product_selection_mode'] : 'all';
+
+		self::$test_settings = array_merge(
+			self::$test_settings,
+			$settings,
+			[ 'product_selection_mode' => $sanitized_mode ]
+		);
 	}
 }

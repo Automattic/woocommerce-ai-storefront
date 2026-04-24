@@ -415,6 +415,26 @@ if ( ! class_exists( 'WC_Order' ) ) {
 	}
 }
 
+if ( ! class_exists( 'WP_Query' ) ) {
+	/**
+	 * Minimal WP_Query stub for unit tests.
+	 *
+	 * Tests control `found_posts` via the static `$test_found_posts`
+	 * property. Reset it in tearDown (or before each test) to avoid
+	 * cross-test leakage.
+	 */
+	class WP_Query {
+		public static int $test_found_posts = 0;
+		public int        $found_posts;
+		public array      $query_vars = [];
+
+		public function __construct( array $args = [] ) {
+			$this->found_posts = self::$test_found_posts;
+			$this->query_vars  = $args;
+		}
+	}
+}
+
 if ( ! class_exists( 'WC_DateTime_Stub' ) ) {
 	/**
 	 * Minimal stub for WC_DateTime — just the two methods the admin
