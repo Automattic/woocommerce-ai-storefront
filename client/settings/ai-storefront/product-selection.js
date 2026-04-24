@@ -935,7 +935,16 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			)
 		);
 	}
-	if ( selectedBrands.length > 0 ) {
+	// Brands segment is gated on `supportsBrands`. On a store where
+	// the `product_brand` taxonomy isn't registered (pre-WC-9.5, or a
+	// custom env that unregistered it), the Brands tab is hidden and
+	// the merchant has no way to view or edit a stored `selected_brands`
+	// selection. Showing "N brands" in the badge there would advertise
+	// a count the merchant can't act on — possibly from a prior
+	// configuration when the taxonomy was still available (stale data
+	// survives the downgrade). Hide the segment so the badge matches
+	// what's actually editable in the UI.
+	if ( supportsBrands && selectedBrands.length > 0 ) {
 		taxonomyBadgeParts.push(
 			sprintf(
 				/* translators: %d: number of selected brands. */
@@ -1048,13 +1057,23 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			onChange( { product_selection_mode: MODES.SELECTED } );
 			return;
 		}
-		// Prefer `normalizedServerTaxonomy` over raw `serverMode` so an
-		// unsupported persisted value (e.g. `brands` on a store where
-		// `supportsBrands` is false) doesn't get re-committed on row
-		// reselection. `normalizedServerTaxonomy` already maps
-		// unsupported persisted modes to `CATEGORIES`, matching the
-		// taxonomy the user can actually see in the ToggleGroupControl.
-		const nextMode = TAXONOMY_MODES.includes( normalizedServerTaxonomy )
+		// Two-step mapping so both goals are honored:
+		//
+		// 1. Check against `serverMode` (not `normalizedServerTaxonomy`)
+		//    to answer "was the persisted mode already a taxonomy?".
+		//    `normalizedServerTaxonomy` falls back to CATEGORIES for
+		//    non-taxonomy modes, so using it as the predicate would
+		//    always short-circuit to "yes" and ALL/SELECTED → By-
+		//    taxonomy transitions would wrongly commit CATEGORIES
+		//    instead of the browsed `activeTaxonomy`.
+		//
+		// 2. Use `normalizedServerTaxonomy` as the written VALUE when
+		//    the persisted mode IS a taxonomy — this way an
+		//    unsupported persisted `brands` on a store where
+		//    `supportsBrands` is false gets normalized to CATEGORIES
+		//    (what the ToggleGroupControl can actually render) rather
+		//    than re-committed unchanged.
+		const nextMode = TAXONOMY_MODES.includes( serverMode )
 			? normalizedServerTaxonomy
 			: activeTaxonomy;
 		onChange( { product_selection_mode: nextMode } );
