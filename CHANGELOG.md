@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.3] – 2026-04-24
+
+### Fixes
+- **Products tab: taxonomy tab clicks now register** — Clicking Tags or Brands inside the By-taxonomy row only produced a screen flash before reverting to the prior selection. Introduced by the browse/commit decouple in 0.1.2: the sync effect keeping `activeTaxonomy` aligned to the server's normalized taxonomy was using a dependency-based guard that fired on every render while the two were out of sync, immediately reverting any local tab-change. Switched to a rising-edge ref pattern so the sync only fires when `normalizedServerTaxonomy` actually changes (e.g. after a Save completes), not whenever local view state drifts.
+
+### UI polish
+- **Taxonomy selector: content-sized instead of full-width** — Dropped `isBlock` from the `ToggleGroupControl`, restoring the compact segmented-pill appearance. Stretched full-width, it read like form fields; at content size it reads as "pick one of three" and matches Gutenberg's use of the same component.
+- **"All published products" row collapses cleanly when selected** — Removed the empty panel that opened below the selected All row. The panel previously rendered a single gray auto-include line above a floating horizontal rule with whitespace above and below, contributing no information the header didn't already convey.
+- **Inline warning Notices have proper padding + separation** — The two yellow `<Notice>` components (By-taxonomy empty-selection, Selected-mode new-products warning) were using WP's default admin-banner styling inside a card-embedded context. Added internal padding and a top margin so the text doesn't hug the yellow accent and the Notice separates from the content above.
+
+---
+
 ## [0.1.2] – 2026-04-24
 
 ### Features
