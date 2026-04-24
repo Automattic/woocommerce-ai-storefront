@@ -776,69 +776,69 @@ msgid "Year"
 msgstr ""
 
 #. translators: %d: number of products exposed to AI
-#: client/settings/ai-storefront/settings-page.js:536
+#: client/settings/ai-storefront/settings-page.js:547
 #, js-format
 msgid "%d product"
 msgid_plural "%d products"
 msgstr[0] ""
 msgstr[1] ""
 
-#: client/settings/ai-storefront/settings-page.js:562
+#: client/settings/ai-storefront/settings-page.js:573
 msgid "AI Storefront is active"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:574
+#: client/settings/ai-storefront/settings-page.js:585
 msgid "Your store is ready for AI shopping assistants. Checkout and customer data stay on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:592
+#: client/settings/ai-storefront/settings-page.js:603
 msgid "Disabling…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:593
+#: client/settings/ai-storefront/settings-page.js:604
 msgid "Disable"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:604
+#: client/settings/ai-storefront/settings-page.js:615
 msgid "Last 24 hours"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:611
+#: client/settings/ai-storefront/settings-page.js:622
 msgid "Last 7 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:618
+#: client/settings/ai-storefront/settings-page.js:629
 msgid "Last 30 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:625
+#: client/settings/ai-storefront/settings-page.js:636
 msgid "Last year"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:645
+#: client/settings/ai-storefront/settings-page.js:656
 msgid "Products Exposed"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:654
+#: client/settings/ai-storefront/settings-page.js:665
 #, js-format
 msgid "Total Orders (%s)"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:662
+#: client/settings/ai-storefront/settings-page.js:673
 #, js-format
 msgid "AI Orders (%s)"
 msgstr ""
 
 #. translators: %s: percentage
-#: client/settings/ai-storefront/settings-page.js:670
+#: client/settings/ai-storefront/settings-page.js:681
 #, js-format
 msgid "%1$s%% of total"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:688
+#: client/settings/ai-storefront/settings-page.js:699
 #, js-format
 msgid "AI Revenue (%s)"
 msgstr ""

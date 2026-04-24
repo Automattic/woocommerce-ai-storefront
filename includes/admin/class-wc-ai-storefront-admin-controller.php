@@ -332,7 +332,7 @@ class WC_AI_Storefront_Admin_Controller {
 		}
 
 		if ( 'by_taxonomy' === $mode ) {
-			$base_args = [
+			$base_args  = [
 				'post_type'      => 'product',
 				'post_status'    => 'publish',
 				'posts_per_page' => 1,
