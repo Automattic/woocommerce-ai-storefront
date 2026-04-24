@@ -749,23 +749,30 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			: MODES.CATEGORIES;
 
 	// Auto-heal the draft settings when we detect an unsupported
-	// persisted mode. Without this, the local `activeTaxonomy` would
-	// normalize to `categories` for rendering but the underlying
-	// `settings.product_selection_mode` would stay `brands` — so a
-	// merchant clicking Save without any interaction would silently
-	// re-post the unsupported mode and stay stuck in the degraded
-	// state on every page load. Writing through `onChange` once at
-	// detection time flips `settings.product_selection_mode` to a
-	// supported value, which makes `hasUnsupportedPersistedBrandsMode`
-	// false on the next render so the effect doesn't re-fire, and
-	// lines the Save button up to persist the intended fix.
+	// persisted mode. Without this, `settings.product_selection_mode`
+	// would stay `brands` — so a merchant clicking Save without any
+	// interaction would silently re-post the unsupported mode and
+	// stay stuck on every page load.
+	//
+	// Heal to `all`, not `categories`: the server already degrades
+	// brands-mode + missing-taxonomy to "show all products" (see
+	// the Store API filter + `is_product_syndicated()` — both no-op
+	// in that state). Auto-healing to `categories` would let a
+	// merchant Save into the empty-selection policy's "hide all"
+	// posture, silently flipping effective catalog visibility from
+	// "show all" to "hide all" without the merchant intending that
+	// change. Healing to `all` preserves the effective post-
+	// downgrade behavior the server was already producing, so the
+	// merchant's next Save is a no-op from the agent's perspective
+	// rather than a surprise visibility flip.
+	//
 	// Persisted `selected_brands` stays untouched in case a future
 	// WC upgrade re-enables the taxonomy — flipping mode back to
-	// brands then restores the prior selection without merchant
+	// `brands` then restores the prior selection without merchant
 	// reconfiguration.
 	useEffect( () => {
 		if ( hasUnsupportedPersistedBrandsMode ) {
-			onChange( { product_selection_mode: MODES.CATEGORIES } );
+			onChange( { product_selection_mode: MODES.ALL } );
 		}
 	}, [ hasUnsupportedPersistedBrandsMode, onChange ] );
 
