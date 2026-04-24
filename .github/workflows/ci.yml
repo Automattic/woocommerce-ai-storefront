@@ -281,3 +281,181 @@ jobs:
               exit "$diff_status"
               ;;
           esac
+
+  build-check:
+    # Fails the build when the committed `build/` artifacts drift
+    # from what `npm run build` produces for the current source.
+    # Mirrors the i18n-check pattern: the repo commits webpack
+    # output (so merchants installing the plugin from a zip don't
+    # need Node locally), which means every PR author is
+    # responsible for re-running `npm run build` after touching
+    # `client/`. Easy to forget — and when forgotten, ships a
+    # stale admin bundle with a working `package.json` + asset.php
+    # that look fine on review. This job catches it.
+    name: Build (bundle freshness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild and compare
+        shell: bash
+        # Catches two distinct classes of drift under `build/`:
+        #
+        #   1. Tracked files whose contents changed. `git diff` is
+        #      the right tool for that.
+        #   2. NEW files webpack emitted this run that aren't yet
+        #      committed — e.g. a future code-splitting bump that
+        #      starts shipping an additional chunk. `git diff`
+        #      alone won't see those (it only inspects tracked
+        #      paths); `git ls-files --others --exclude-standard`
+        #      lists untracked files the build produced. Both
+        #      checks are required: the first catches a content
+        #      regression, the second catches an emit-surface
+        #      expansion.
+        #
+        # `--` guards against a future branch where `build` might
+        # shadow a rev-spec.
+        #
+        # Failure output uses `git diff --stat` rather than the
+        # full content diff. Webpack emits minified JS as a single
+        # enormous line (250+ KiB on one line), which means
+        # content diffs both bloat the CI log AND get truncated
+        # unpredictably by GitHub Actions' per-line length limit
+        # — sometimes hiding exactly the path that drifted. The
+        # `--stat` format gives just `<path> | N ++--` per file,
+        # which is the useful signal for the PR author (which
+        # files + rough magnitude) without printing any code.
+        # The full diff remains available locally after
+        # `npm run build`.
+        run: |
+          npm run build
+
+          changed="$(git diff --name-only -- build/)"
+          untracked="$(git ls-files --others --exclude-standard -- build/)"
+
+          if [ -z "$changed" ] && [ -z "$untracked" ]; then
+            exit 0
+          fi
+
+          echo ""
+          echo "::error::The build/ artifacts are out of date."
+          echo ""
+          echo "The committed webpack output doesn't match what"
+          echo "'npm run build' produces for the current source."
+          echo "That usually means a client/ source change was"
+          echo "committed without rebuilding the admin bundle."
+          echo ""
+
+          if [ -n "$changed" ]; then
+            echo "Modified files under build/:"
+            echo "$changed" | sed 's/^/  /'
+            echo ""
+
+            # Use `--stat` rather than the full content diff. Webpack
+            # emits minified JS as a SINGLE enormous line (250+ KiB of
+            # code on one line), so a content diff would print that
+            # entire line even if only one token changed — and GitHub
+            # Actions truncates long individual lines unpredictably,
+            # hiding the exact path that drifted. `--stat` gives the
+            # shape we actually want here (path + added/removed count
+            # per file) without printing any code, which means the
+            # output stays human-readable and the log stays small.
+            # The full diff is still accessible locally after
+            # `npm run build`; CI's job is just to surface WHICH
+            # files drifted and ROUGHLY how much, not reproduce the
+            # entire regeneration for review.
+            echo "Change summary (git diff --stat):"
+            echo "--------"
+            git diff --stat -- build/
+            echo "--------"
+            echo ""
+          fi
+
+          if [ -n "$untracked" ]; then
+            echo "New untracked files under build/:"
+            echo "$untracked" | sed 's/^/  /'
+            echo ""
+          fi
+
+          echo "To fix, regenerate locally:"
+          echo ""
+          echo "  npm ci"
+          echo "  npm run build"
+          echo ""
+          echo "Then commit the updated files under build/ and"
+          echo "push again."
+          exit 1
+
+  audit:
+    # Supply-chain scanning for composer + npm dependencies.
+    #
+    # npm audit is scoped to `--omit=dev` because
+    # `@wordpress/scripts` and the rest of the build toolchain
+    # transitively pull in old puppeteer / ws / glob versions that
+    # routinely carry advisories — those affect the build
+    # toolchain on developer machines, not the code that ships to
+    # merchants. Making every PR red when a transitive dev-dep
+    # gets a CVE would buy false urgency. Production deps only
+    # (`@wordpress/api-fetch`, components, data, element, i18n,
+    # icons, dataviews) get the high-severity gate. If the plugin
+    # ever adds a hard production runtime dep (SDK, 3rd-party
+    # client), the scan surface expands automatically via
+    # package.json's `dependencies` block.
+    #
+    # `--audit-level=high` exits nonzero on high/critical
+    # advisories only; moderate + low pass. Severe CVEs surface
+    # fast; noise stays quiet.
+    #
+    # Composer audit has no severity filter (composer 2.9). The
+    # plugin's composer deps are all dev-only (PHPUnit, PHPStan,
+    # wpcs), so any advisory there reaches developers not
+    # merchants — but we still want to know about it promptly, so
+    # composer-audit stays unfiltered.
+    name: Security audit (composer + npm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: none
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Install npm dependencies (production only)
+        # `--omit=dev` aligns with `npm audit --omit=dev` below:
+        # since the audit step scopes to production deps only,
+        # installing the devDependencies tree (several hundred MB
+        # of @wordpress/scripts + puppeteer + webpack, including
+        # lifecycle scripts like puppeteer's Chromium download)
+        # buys nothing for this job. Skipping them shaves minutes
+        # off install time and also cuts the attack surface —
+        # fewer lifecycle scripts run means fewer opportunities
+        # for a transitive dev-dep to execute arbitrary code in
+        # the CI environment.
+        run: npm ci --omit=dev
+
+      - name: composer audit
+        run: composer audit --format=plain
+
+      - name: npm audit (production deps, high severity)
+        run: npm audit --omit=dev --audit-level=high
