@@ -482,7 +482,7 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = '';
 		$lines[] = '### Product-level extension payload';
 		$lines[] = '';
-		$lines[] = 'As of 2.0.0, no product-level response fields are emitted under this extension. Rating data moved to core `product.rating` per UCP 2026-04-08. The extension namespace is retained for manifest-level `config.store_context` only, and reserved for forward-compat with future merchant-specific per-product data.';
+		$lines[] = 'No product-level response fields are emitted under this extension. Rating data uses core `product.rating` per UCP 2026-04-08. The extension namespace is retained for manifest-level `config.store_context` only, and reserved for forward-compat with future merchant-specific per-product data.';
 		$lines[] = '';
 		$lines[] = 'Note: GTIN/UPC/EAN/MPN barcodes are emitted on the canonical `variants[].barcodes` field per the UCP variant shape — sourced internally via a Store API extension that is not part of the UCP-facing contract.';
 		$lines[] = '';
@@ -579,6 +579,37 @@ class WC_AI_Storefront_Llms_Txt {
 	}
 
 	private function get_syndicated_categories( $settings ) {
+		$product_mode = $settings['product_selection_mode'] ?? 'all';
+
+		// The `## Product Categories` section in llms.txt is a
+		// navigation hint for AI agents — "here's the shape of what
+		// this store sells." That framing only holds for two modes:
+		//
+		//   - `all`: every category in the store IS reachable by
+		//     agents, so the top-N-by-count list is accurate.
+		//   - `categories`: the merchant's selected categories ARE
+		//     the syndicated scope; listing them is informative and
+		//     matches what agents can fetch.
+		//
+		// In `tags` / `brands` / `selected` modes the top-N-by-count
+		// list is MISLEADING: agents see category labels + counts
+		// that don't reflect what the Store API filter actually
+		// returns for the merchant's current scope. A merchant who
+		// scopes "only Diva-brand products" gets an llms.txt that
+		// advertises "Clothing (20 products)" when Diva-only
+		// Clothing might be 3 products. Agents then issue queries
+		// that come back mostly empty, and it looks like the store
+		// is broken rather than narrowly-scoped.
+		//
+		// Suppress the section entirely for those three modes. A
+		// future enhancement could surface a per-mode replacement
+		// (selected tags / brands / product IDs), but omitting
+		// incorrect information is strictly better than the status
+		// quo.
+		if ( ! in_array( $product_mode, [ 'all', 'categories' ], true ) ) {
+			return [];
+		}
+
 		$args = [
 			'taxonomy'   => 'product_cat',
 			'hide_empty' => true,
@@ -587,7 +618,6 @@ class WC_AI_Storefront_Llms_Txt {
 			'number'     => 20,
 		];
 
-		$product_mode = $settings['product_selection_mode'] ?? 'all';
 		if ( 'categories' === $product_mode && ! empty( $settings['selected_categories'] ) ) {
 			$args['include'] = array_map( 'absint', $settings['selected_categories'] );
 			$args['number']  = 0;

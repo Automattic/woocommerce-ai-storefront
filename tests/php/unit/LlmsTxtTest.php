@@ -465,6 +465,29 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( '[Broken]', $output );
 	}
 
+	/**
+	 * The emitted document must not embed the plugin version in its
+	 * prose. Previous revisions had "As of 2.0.0, no product-level
+	 * response fields are emitted…" hardcoded, which was stale (the
+	 * plugin was on 0.1.x by the time agents read it) and pointless
+	 * (the paragraph describes the CURRENT extension contract, not
+	 * a historical one). Pin the removal so a future copy-paste
+	 * from other release-notes doesn't reintroduce the pattern.
+	 */
+	public function test_output_does_not_embed_plugin_version_in_prose(): void {
+		$output = $this->llms->generate();
+
+		// Specifically the pattern that was wrong before:
+		$this->assertStringNotContainsString( 'As of 2.0.0', $output );
+		// And the general pattern — any three-digit SemVer-ish
+		// string in the prose is a smell.
+		$this->assertDoesNotMatchRegularExpression(
+			'/\bAs of \d+\.\d+\.\d+/',
+			$output,
+			'llms.txt should not embed a hardcoded plugin version in its prose.'
+		);
+	}
+
 	public function test_categories_section_omitted_when_no_categories(): void {
 		// Fresh stores or disabled/empty taxonomy -> no section heading.
 		Functions\when( 'get_terms' )->justReturn( [] );
@@ -483,6 +506,61 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 		// A WP_Error should be treated as "no categories", not crash.
 		$this->assertStringNotContainsString( '## Product Categories', $output );
+	}
+
+	/**
+	 * When the merchant has scoped to a NON-category dimension
+	 * (tags / brands / hand-picked products), the categories
+	 * section must NOT render — even if the store has categories.
+	 *
+	 * Pre-fix bug: `get_syndicated_categories()` always emitted
+	 * the top-20-by-count list for any mode other than
+	 * `categories`. Concrete scenario reported: a merchant scoped
+	 * to one brand ("Diva") saw their llms.txt advertise all the
+	 * top categories in their store with full product counts —
+	 * including categories whose products weren't even Diva-brand.
+	 * Agents querying off that list got mostly-empty responses,
+	 * inferred the store was broken, and moved on.
+	 *
+	 * The section is now suppressed entirely in those modes. This
+	 * test pins that contract across all three non-category modes.
+	 */
+	public function test_categories_section_omitted_for_non_category_modes(): void {
+		$category          = new stdClass();
+		$category->name    = 'Clothing';
+		$category->slug    = 'clothing';
+		$category->count   = 42;
+		$category->term_id = 1;
+
+		// Categories DO exist in the store — so the omission we
+		// assert below is specifically due to mode, not absence.
+		Functions\when( 'get_terms' )->justReturn( [ $category ] );
+
+		foreach ( [ 'tags', 'brands', 'selected' ] as $mode ) {
+			WC_AI_Storefront::$test_settings = [
+				'enabled'                => 'yes',
+				'product_selection_mode' => $mode,
+			];
+
+			$output = $this->llms->generate();
+
+			$this->assertStringNotContainsString(
+				'## Product Categories',
+				$output,
+				sprintf(
+					'Expected categories section to be suppressed in mode "%s" because the top-N-by-count list misrepresents the syndicated scope.',
+					$mode
+				)
+			);
+			$this->assertStringNotContainsString(
+				'Clothing',
+				$output,
+				sprintf(
+					'Expected no individual category rows in mode "%s".',
+					$mode
+				)
+			);
+		}
 	}
 
 	// ------------------------------------------------------------------
