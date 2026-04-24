@@ -144,13 +144,27 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( '## API Endpoints', $output );
 	}
 
-	public function test_store_information_lists_url_currency_and_checkout_policy(): void {
+	public function test_llms_txt_does_not_declare_ai_acceptance_in_body(): void {
+		// The existence of `/llms.txt` IS the "I accept AI discovery"
+		// signal per the llms.txt spec — spelling it out in the body
+		// is redundant. The removal pins that no drive-by revision
+		// reintroduces this line.
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString(
-			'- **URL**: https://example.com/',
+		$this->assertStringNotContainsString(
+			'This store accepts AI-assisted product discovery',
 			$output
 		);
+	}
+
+	public function test_store_information_lists_currency_and_checkout_policy(): void {
+		$output = $this->llms->generate();
+
+		// URL bullet deliberately NOT rendered: the store's URL is
+		// the hostname of the file the agent just fetched, always
+		// known from the request itself.
+		$this->assertStringNotContainsString( '- **URL**:', $output );
+
 		$this->assertStringContainsString( '- **Currency**: USD', $output );
 		$this->assertStringContainsString(
 			'- **Checkout**: On-site only (web redirect)',
@@ -272,86 +286,50 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 	// ------------------------------------------------------------------
 	// Attribution name mapping — the published hostname → brand table
+	// was REMOVED in the 0.1.2 llms.txt declutter. It documented how
+	// merchants see attribution in their Orders list, which is
+	// merchant-facing context that an AI agent doesn't care about
+	// (the agent already knows who it is; how the label renders
+	// downstream in someone else's admin UI is none of its business).
+	//
+	// These tests PIN the removal — if a future refactor reintroduces
+	// the table or its preamble copy, the negative assertions fire.
+	// The runtime canonicalization (`KNOWN_AGENT_HOSTS` → `utm_source`
+	// on `continue_url`) is unchanged and covered by attribution-layer
+	// tests elsewhere in the suite.
 	// ------------------------------------------------------------------
 
-	public function test_attribution_section_publishes_name_mapping_table(): void {
-		// The `### Attribution name mapping` subsection makes
-		// attribution a two-way contract: agents see, up-front, what
-		// brand name their orders will be attributed under. Without
-		// this, the canonicalization in KNOWN_AGENT_HOSTS is opaque
-		// until an agent completes a test checkout and inspects
-		// utm_source. Asserting the section header + the Markdown
-		// table header locks the structural shape.
+	public function test_llms_txt_does_not_publish_attribution_name_mapping_table(): void {
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString( '### Attribution name mapping', $output );
-		$this->assertStringContainsString( '| Attribution name | Profile hostnames |', $output );
-		$this->assertStringContainsString( '|------------------|-------------------|', $output );
-	}
+		// Section heading gone.
+		$this->assertStringNotContainsString( '### Attribution name mapping', $output );
 
-	public function test_attribution_table_contains_every_known_agent_host_entry(): void {
-		// Single source of truth: the published table is rendered
-		// from WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS
-		// at generation time. If a future PR adds a vendor to the
-		// map but the table somehow drops it (refactor regression),
-		// this test fires. Every hostname AND every brand name must
-		// appear in the output.
-		$output = $this->llms->generate();
+		// Markdown table header gone.
+		$this->assertStringNotContainsString( '| Attribution name | Profile hostnames |', $output );
 
-		foreach ( WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS as $host => $brand ) {
-			$this->assertStringContainsString( $host, $output, "Published attribution table missing hostname {$host}" );
-			$this->assertStringContainsString( $brand, $output, "Published attribution table missing brand name {$brand}" );
+		// Preamble prose gone.
+		$this->assertStringNotContainsString( 'pass through verbatim', $output );
+		$this->assertStringNotContainsString( 'ucp_unknown', $output );
+
+		// Invitation to request additions gone (tied to the removed
+		// two-way-contract framing).
+		$this->assertStringNotContainsString(
+			'github.com/Automattic/woocommerce-ai-storefront/issues',
+			$output
+		);
+
+		// And no individual known-agent hostname slipped through any
+		// surviving section. The runtime table may still GROW via
+		// KNOWN_AGENT_HOSTS; that growth must not leak back into the
+		// emitted document.
+		foreach ( WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS as $host => $_brand ) {
+			$this->assertStringNotContainsString(
+				$host,
+				$output,
+				"llms.txt unexpectedly contains the vendor hostname `{$host}` — the attribution name mapping table was removed; if this hostname now appears in some other context, update the assertion."
+			);
 		}
-	}
-
-	public function test_attribution_table_groups_aliased_hostnames_on_one_row(): void {
-		// Brands with multiple hostname aliases (ChatGPT ←
-		// chatgpt.com + openai.com; Claude ← claude.ai +
-		// anthropic.com) render as ONE row with a comma-separated
-		// hostname list, not as two separate rows. Grouping reads
-		// more naturally ("here are the brands we know") and keeps
-		// the table compact as the map grows. Assertion pattern
-		// locks both the grouping AND the delimiter format.
-		$output = $this->llms->generate();
-
-		$this->assertMatchesRegularExpression(
-			'/\| ChatGPT \| `chatgpt\.com`, `openai\.com` \|/',
-			$output,
-			'ChatGPT row should list chatgpt.com and openai.com on a single grouped row'
-		);
-		$this->assertMatchesRegularExpression(
-			'/\| Claude \| `claude\.ai`, `anthropic\.com` \|/',
-			$output,
-			'Claude row should list claude.ai and anthropic.com on a single grouped row'
-		);
-	}
-
-	public function test_attribution_section_documents_fallback_behavior(): void {
-		// The published contract isn't just the happy path — agents
-		// integrating need to know what happens when (a) their
-		// hostname isn't in the map (passthrough), and (b) no
-		// UCP-Agent header is sent (ucp_unknown sentinel). Without
-		// these explicit clauses the contract is incomplete and
-		// novel vendors would have to guess.
-		$output = $this->llms->generate();
-
-		// Unknown-hostname passthrough documented.
-		$this->assertStringContainsString( 'pass through verbatim', $output );
-
-		// Missing-header sentinel documented, referencing the exact
-		// value the runtime produces so an agent-side test harness
-		// can assertEqual against it.
-		$this->assertStringContainsString( 'ucp_unknown', $output );
-	}
-
-	public function test_attribution_section_invites_additions_via_github_issues(): void {
-		// The two-way-contract framing is only meaningful if agents
-		// have a path to request canonicalization. Pointer to the
-		// GitHub issue tracker converts "this is opaque policy" into
-		// "this is a map I can petition to be added to."
-		$output = $this->llms->generate();
-
-		$this->assertStringContainsString( 'github.com/Automattic/woocommerce-ai-storefront/issues', $output );
 	}
 
 	// ------------------------------------------------------------------
@@ -766,14 +744,30 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/extension/schema', $output );
 	}
 
-	public function test_llms_txt_extension_section_documents_config_fields(): void {
-		// The five store_context fields must each be documented so
-		// agents reading llms.txt understand what the manifest carries.
+	public function test_llms_txt_extension_section_does_not_duplicate_schema_fields(): void {
+		// The `### config.store_context` sub-section was REMOVED in
+		// the 0.1.2 declutter. Its five bullets (currency, locale,
+		// country, prices_include_tax, shipping_enabled) fully
+		// duplicated the JSON Schema at the linked schema URL — an
+		// agent that wants field-level detail reads the machine-
+		// readable schema, not a hand-maintained copy that can drift.
+		//
+		// This test pins the removal so a future PR doesn't
+		// reintroduce the section by copy-paste from an older
+		// revision. Also explicitly asserts `### Product-level
+		// extension payload` didn't sneak back — that section
+		// documented the ABSENCE of fields, which served no agent
+		// purpose.
 		$output = $this->llms->generate();
 
-		foreach ( [ 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled' ] as $field ) {
-			$this->assertStringContainsString( '**' . $field . '**', $output );
-		}
+		$this->assertStringNotContainsString( '### config.store_context', $output );
+		$this->assertStringNotContainsString( '### Product-level extension payload', $output );
+		// The schema URL MUST still be present — that's the whole
+		// point of the section now.
+		$this->assertStringContainsString(
+			'/wp-json/wc/ucp/v1/extension/schema',
+			$output
+		);
 	}
 
 	public function test_llms_txt_extension_section_does_not_document_attribution_subkey(): void {

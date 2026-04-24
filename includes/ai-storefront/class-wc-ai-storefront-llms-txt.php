@@ -244,13 +244,17 @@ class WC_AI_Storefront_Llms_Txt {
 			$lines[] = '';
 		}
 
-		$lines[] = 'This store accepts AI-assisted product discovery. Checkout occurs exclusively on this website.';
-		$lines[] = '';
-
 		// Store metadata.
+		//
+		// Previously this section opened with a free-text sentence
+		// ("This store accepts AI-assisted product discovery…") — removed
+		// because the existence of `/llms.txt` IS the "I accept AI
+		// discovery" signal per the llms.txt spec, so saying so in the
+		// body is redundant. Also previously listed `**URL**: {site_url}`
+		// — removed because the store URL is the hostname of the file
+		// the agent just fetched, always known from the request itself.
 		$lines[] = '## Store Information';
 		$lines[] = '';
-		$lines[] = "- **URL**: {$site_url}";
 		$lines[] = "- **Currency**: {$currency}";
 		$lines[] = '- **Checkout**: On-site only (web redirect)';
 		$lines[] = "- **Commerce Protocol**: {$site_url}.well-known/ucp";
@@ -389,42 +393,18 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[]       = 'Response includes `status: "requires_escalation"` and a `continue_url` with `utm_source` + `utm_medium=ai_agent` already attached. Redirect the user to that URL to complete the purchase on our site.';
 		$lines[]       = '';
 
-		// Attribution name mapping. Publishing this table makes
-		// attribution a two-way contract instead of merchant-side
-		// opaque policy: agents building UCP integrations can see up
-		// front what brand name their orders will be attributed under
-		// in the merchant's Orders list, and unmapped vendors have a
-		// clear path to request canonicalization (the GitHub issue
-		// pointer below). We render from
-		// WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS so the
-		// published table and the runtime canonicalizer can't drift —
-		// a single source of truth with one reader (the runtime) and
-		// one publisher (this generator).
+		// Attribution name mapping table removed from the emitted
+		// document. It documented how the merchant sees attribution
+		// in their WooCommerce Orders list (`Source: ChatGPT` etc.) —
+		// which is merchant-facing context, not agent-facing. Agents
+		// don't care how their own identity is displayed downstream
+		// in someone else's admin UI. If vendor-list management
+		// becomes a community surface, move to the repo's GitHub
+		// wiki or a dedicated `/docs/agent-vendors` URL rather than
+		// crowding every agent's llms.txt read with merchant internals.
 		//
-		// Grouping by brand name (not by hostname) is deliberate: one
-		// row per brand reads more naturally as "here are the brands
-		// we know" than "here are 14 individual hostnames"; the
-		// grouping also makes it obvious when a single brand has
-		// multiple aliased hostnames (chatgpt.com + openai.com →
-		// ChatGPT).
-		$grouped = [];
-		foreach ( WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS as $host => $brand ) {
-			$grouped[ $brand ][] = $host;
-		}
-		ksort( $grouped );
-
-		$lines[] = '### Attribution name mapping';
-		$lines[] = '';
-		$lines[] = 'When your `UCP-Agent` profile URL hostname matches one of the entries below, orders are attributed under the brand name shown (merchants see `Source: {name}` in the WooCommerce Orders list). Unknown hostnames pass through verbatim — merchants see `Source: your-hostname.example` — so attribution is never lost, just refined for known vendors. Missing or malformed `UCP-Agent` headers are attributed as `ucp_unknown`.';
-		$lines[] = '';
-		$lines[] = '| Attribution name | Profile hostnames |';
-		$lines[] = '|------------------|-------------------|';
-		foreach ( $grouped as $brand => $hosts ) {
-			$lines[] = '| ' . $brand . ' | `' . implode( '`, `', $hosts ) . '` |';
-		}
-		$lines[] = '';
-		$lines[] = 'If your agent\'s hostname is missing and you\'d like a specific brand name applied, open an issue on the plugin\'s [GitHub repository](https://github.com/Automattic/woocommerce-ai-storefront/issues) — additions are a single constant entry plus a test row.';
-		$lines[] = '';
+		// The runtime canonicalization (`KNOWN_AGENT_HOSTS` →
+		// `utm_source`) is unchanged; only the PUBLISHED table is gone.
 
 		// Post-v2.0.0 cleanup — two sections that had drifted out of
 		// scope vs. the UCP-POST-first posture the plugin committed
@@ -463,28 +443,21 @@ class WC_AI_Storefront_Llms_Txt {
 			? rtrim( rest_url( 'wc/ucp/v1/extension/schema' ), '/' )
 			: '/wp-json/wc/ucp/v1/extension/schema';
 
+		// UCP Extension section trimmed to just the anchor + schema
+		// URL. The prose blurb was removed (duplicated the Attribution
+		// section's "server-side handled" statement), the
+		// `### config.store_context` field listing was removed
+		// (fully duplicated the JSON Schema at the linked URL), and
+		// the `### Product-level extension payload` subsection was
+		// removed (documented the absence of fields + a pointer to
+		// the UCP core product/variant spec agents already read
+		// from). What remains: the anchor (so the manifest's `spec`
+		// URL resolves) and the machine-readable schema URL (so
+		// agents can validate payloads).
 		$lines[] = '<a id="ucp-extension"></a>';
 		$lines[] = '## UCP Extension: com.woocommerce.ai_storefront';
 		$lines[] = '';
-		$lines[] = 'The UCP manifest at `/.well-known/ucp` advertises a merchant-extension capability `com.woocommerce.ai_storefront` alongside the canonical `dev.ucp.shopping.*` capabilities. It carries commerce context (currency, locale, tax/shipping posture) agents need before calling the catalog or checkout endpoints. Attribution is handled entirely server-side by our `POST /checkout-sessions` endpoint — see the "Attribution" section earlier in this document for details, no extension field is needed.';
-		$lines[] = '';
-		$lines[] = 'Machine-readable JSON Schema:';
-		$lines[] = '';
-		$lines[] = '`' . $ucp_schema_url . '`';
-		$lines[] = '';
-		$lines[] = '### config.store_context';
-		$lines[] = '';
-		$lines[] = '- **currency** — ISO 4217 currency code. All catalog prices quote in this currency. Agents unable to transact here should decline rather than misrepresent the amount.';
-		$lines[] = '- **locale** — BCP 47 locale tag for default customer-facing content language (e.g. `en-US`, `fr-FR`, `zh-Hant-HK`).';
-		$lines[] = '- **country** — ISO 3166-1 alpha-2 for the merchant base country. `null` when not configured.';
-		$lines[] = '- **prices_include_tax** — `true` (EU-typical) means catalog prices are tax-inclusive; `false` (US-typical) means tax is added at checkout. Agents rendering cart previews use this to decide whether to show a tax line.';
-		$lines[] = '- **shipping_enabled** — `true` when the store collects shipping addresses. `false` means digital-only — skip address-collection prompts.';
-		$lines[] = '';
-		$lines[] = '### Product-level extension payload';
-		$lines[] = '';
-		$lines[] = 'No product-level response fields are emitted under this extension. Rating data uses core `product.rating` per UCP 2026-04-08. The extension namespace is retained for manifest-level `config.store_context` only, and reserved for forward-compat with future merchant-specific per-product data.';
-		$lines[] = '';
-		$lines[] = 'Note: GTIN/UPC/EAN/MPN barcodes are emitted on the canonical `variants[].barcodes` field per the UCP variant shape — sourced internally via a Store API extension that is not part of the UCP-facing contract.';
+		$lines[] = 'Machine-readable JSON Schema: `' . $ucp_schema_url . '`';
 		$lines[] = '';
 
 		/**
