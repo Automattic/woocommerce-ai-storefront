@@ -18,7 +18,7 @@
 - **Silent upgrade on first settings read.** Any stored `product_selection_mode` value of `categories`, `tags`, or `brands` is rewritten to `by_taxonomy` in place. Non-destructive for `selected_*` arrays — all three stay intact, and the new UNION enforcement picks up whichever was populated. Also includes defensive fallbacks in `is_product_syndicated()`, the Store API filter, and `get_syndicated_categories()` so explicit callers passing a pre-0.1.5 `$settings` payload still get correct behavior.
 
 ### Tests
-- 586 tests pass (up from 581). Six new tests cover: UNION tax_query with multiple taxonomies; brands-skipped-when-unregistered UNION path; legacy-mode fallback compatibility; empty-all-three zero-match policy; llms.txt category section in UNION mode with/without selected categories.
+- Test suite extended with coverage for: UNION `tax_query` across multiple taxonomies; brands-skipped-when-unregistered UNION path; legacy-mode fallback compatibility; empty-all-three zero-match policy; llms.txt category section in UNION mode with and without selected categories; settings migration (legacy → `by_taxonomy`); per-product UNION enforcement against mixed selections; `update_settings()` sanitization across the new + legacy enum vocabulary; `/admin/product-count` endpoint contract.
 
 ---
 

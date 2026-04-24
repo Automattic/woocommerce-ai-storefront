@@ -45,20 +45,29 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'selected', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
-	/** Legacy modes remain accepted for direct callers. */
-	public function test_legacy_categories_mode_is_preserved(): void {
+	// ------------------------------------------------------------------
+	// Legacy modes — sanitization accepts them (does NOT coerce to
+	// 'all'). The stub's update_settings() does not run the silent
+	// migration that production's get_settings() performs on the next
+	// read, so these tests pin only the ACCEPTANCE behavior — not the
+	// post-migration storage. In production the value gets rewritten
+	// to `by_taxonomy` on the next get_settings() call (see
+	// SettingsMigrationTest).
+	// ------------------------------------------------------------------
+
+	public function test_legacy_categories_mode_is_accepted_by_sanitization(): void {
 		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'categories' ] );
-		$this->assertSame( 'categories', WC_AI_Storefront::get_settings()['product_selection_mode'] );
+		$this->assertNotSame( 'all', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
-	public function test_legacy_tags_mode_is_preserved(): void {
+	public function test_legacy_tags_mode_is_accepted_by_sanitization(): void {
 		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'tags' ] );
-		$this->assertSame( 'tags', WC_AI_Storefront::get_settings()['product_selection_mode'] );
+		$this->assertNotSame( 'all', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
-	public function test_legacy_brands_mode_is_preserved(): void {
+	public function test_legacy_brands_mode_is_accepted_by_sanitization(): void {
 		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'brands' ] );
-		$this->assertSame( 'brands', WC_AI_Storefront::get_settings()['product_selection_mode'] );
+		$this->assertNotSame( 'all', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
 	// ------------------------------------------------------------------

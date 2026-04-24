@@ -546,7 +546,7 @@ class WC_AI_Storefront {
 	 * taxonomy badge. A plugin-load silent migration in `get_settings()`
 	 * rewrites any stored legacy mode to `by_taxonomy` so the
 	 * historical enum vocabulary never leaks into fresh reads; the
-	 * defensive legacy-mode fallback at the bottom of this method
+	 * defensive legacy-mode fallback near the start of this method
 	 * covers the narrow window where a caller passes explicit
 	 * `$settings` with an old value.
 	 *
