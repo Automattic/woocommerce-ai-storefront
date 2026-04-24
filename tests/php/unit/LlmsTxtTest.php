@@ -144,18 +144,39 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( '## API Endpoints', $output );
 	}
 
-	public function test_store_information_lists_url_currency_and_checkout_policy(): void {
+	public function test_llms_txt_does_not_declare_ai_acceptance_in_body(): void {
+		// The existence of `/llms.txt` IS the "I accept AI discovery"
+		// signal per the llms.txt spec — spelling it out in the body
+		// is redundant. The removal pins that no drive-by revision
+		// reintroduces this line.
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString(
-			'- **URL**: https://example.com/',
+		$this->assertStringNotContainsString(
+			'This store accepts AI-assisted product discovery',
 			$output
 		);
+	}
+
+	public function test_store_information_carries_currency_only(): void {
+		$output = $this->llms->generate();
+
+		// Currency is the one item in this section that doesn't
+		// duplicate a later section's content — kept as a
+		// glanceable header line for text-first agents.
 		$this->assertStringContainsString( '- **Currency**: USD', $output );
-		$this->assertStringContainsString(
-			'- **Checkout**: On-site only (web redirect)',
-			$output
-		);
+
+		// URL bullet deliberately NOT rendered — the store's URL is
+		// the hostname of the file the agent just fetched.
+		$this->assertStringNotContainsString( '- **URL**:', $output );
+
+		// Checkout bullet trimmed from this section — `## Checkout
+		// Policy` below carries far more actionable detail
+		// (including the exact endpoint to POST to).
+		$this->assertStringNotContainsString( '- **Checkout**:', $output );
+
+		// Commerce Protocol bullet trimmed from this section —
+		// `## API Access` below already links the UCP manifest URL.
+		$this->assertStringNotContainsString( '- **Commerce Protocol**:', $output );
 	}
 
 	public function test_store_information_links_ucp_manifest(): void {
@@ -202,14 +223,18 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_checkout_policy_section_explicitly_declares_merchant_only_posture(): void {
-		// 1.6.6: llms.txt now carries an explicit declaration of
-		// the merchant-only-checkout posture. Redundant with the
-		// UCP manifest (which declares by absence of capabilities),
-		// but useful for agent trust frameworks and human reviewers.
+		// 1.6.6 origin, trimmed in 0.1.2: llms.txt carries an
+		// explicit declaration of the merchant-only-checkout
+		// posture. Redundant with the UCP manifest (which declares
+		// by absence of capabilities), but useful for agent trust
+		// frameworks and human reviewers.
 		//
-		// Locks in the five "does NOT support" bullets + the four
-		// manifest-verification claims. If any of these is removed,
-		// the posture declaration becomes misleading.
+		// Covers (a) the section heading, (b) the "MUST redirect"
+		// top-line, (c) the "does NOT support" negative list that
+		// serves non-UCP-aware agents, and (d) the one-line
+		// pointer to the manifest for programmatic verification —
+		// which replaced the previous 4-bullet content duplication
+		// of the manifest fields.
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString( '## Checkout Policy', $output );
@@ -218,8 +243,78 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'Embedded checkout', $output );
 		$this->assertStringContainsString( 'AP2 Mandates', $output );
 		$this->assertStringContainsString( 'Persistent agent-managed carts', $output );
+
+		// One-line pointer to the manifest is present — mentions
+		// `payment_handlers` and `requires_escalation` as inline
+		// factoids, not as standalone bulleted claims.
+		$this->assertStringContainsString( '.well-known/ucp', $output );
 		$this->assertStringContainsString( 'payment_handlers', $output );
 		$this->assertStringContainsString( 'requires_escalation', $output );
+	}
+
+	public function test_checkout_policy_does_not_enumerate_manifest_fields_in_bullets(): void {
+		// 0.1.2 trim: the old "Programmatic verification" subsection
+		// had 4 bullets duplicating `capabilities`, `payment_handlers`,
+		// `transport`, and the checkout-response status from the
+		// UCP manifest. Collapsed into a single pointer line.
+		//
+		// Pin the collapse: neither the subsection header nor the
+		// specific enumerated-bullet prose should reappear.
+		$output = $this->llms->generate();
+
+		// Smoke check: confirm the generator actually produced a
+		// document before asserting removals — otherwise a silently
+		// empty `generate()` output would pass every negative
+		// assertion below and masquerade as "the trim worked."
+		$this->assertStringContainsString( '## Checkout Policy', $output );
+
+		$this->assertStringNotContainsString(
+			'Programmatic verification —',
+			$output,
+			'The "Programmatic verification — the UCP manifest at … reflects this posture:" lead-in should be gone.'
+		);
+		$this->assertStringNotContainsString(
+			'`capabilities` contains `dev.ucp.shopping.catalog.search`',
+			$output
+		);
+		$this->assertStringNotContainsString(
+			'`payment_handlers` is `{}`',
+			$output
+		);
+		$this->assertStringNotContainsString(
+			'transport: "rest"',
+			$output
+		);
+	}
+
+	/**
+	 * Pins the removal of the "via the table below" forward-reference
+	 * in the Attribution section prose. Commit 133a389 removed the
+	 * `### Attribution name mapping` table; a drive-by PR could
+	 * easily re-introduce the referring phrase without realizing
+	 * the target table is gone. Keep this test honest by asserting
+	 * BOTH the specific dangling phrase AND a regex that would
+	 * catch variants.
+	 */
+	public function test_attribution_prose_does_not_reference_removed_table(): void {
+		$output = $this->llms->generate();
+
+		// Smoke check: Attribution section actually rendered.
+		$this->assertStringContainsString( '## Attribution', $output );
+
+		// The specific phrases from the pre-0.1.2 prose.
+		$this->assertStringNotContainsString( 'table below', $output );
+		$this->assertStringNotContainsString( 'via the table', $output );
+
+		// Regex catches drive-by variants — "see the table", "in
+		// the table", "per the mapping table", "table above",
+		// etc. The `(?:above|below)?` slot is optional so phrases
+		// without a direction word still trip the guard.
+		$this->assertDoesNotMatchRegularExpression(
+			'/\b(?:see|via|per|in|using|from|the)\b[^.]{0,40}\btable(?:\s+(?:above|below))?\b/i',
+			$output,
+			'Attribution prose re-introduced a forward-reference to a mapping table that no longer exists.'
+		);
 	}
 
 	public function test_attribution_leads_with_api_first_checkout_flow(): void {
@@ -234,6 +329,20 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'UCP-Agent', $output );
 		$this->assertStringContainsString( 'requires_escalation', $output );
 		$this->assertStringContainsString( 'continue_url', $output );
+	}
+
+	public function test_attribution_example_uses_prefixed_ucp_id(): void {
+		// The UCP catalog/search/lookup responses emit prefixed IDs
+		// (`prod_N` for products, `var_N` for variations); the
+		// line-items example in the llms.txt Attribution section
+		// must match that wire format or agents will POST raw
+		// WooCommerce IDs and get rejected by
+		// `WC_AI_Storefront_UCP_REST_Controller::parse_ucp_id()`.
+		// Guard against a drive-by reversion to a bare numeric ID.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '"id": "prod_', $output );
+		$this->assertStringNotContainsString( '"id": "123"', $output );
 	}
 
 	public function test_url_patterns_section_not_emitted(): void {
@@ -272,86 +381,50 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 	// ------------------------------------------------------------------
 	// Attribution name mapping — the published hostname → brand table
+	// was REMOVED in the 0.1.2 llms.txt declutter. It documented how
+	// merchants see attribution in their Orders list, which is
+	// merchant-facing context that an AI agent doesn't care about
+	// (the agent already knows who it is; how the label renders
+	// downstream in someone else's admin UI is none of its business).
+	//
+	// These tests PIN the removal — if a future refactor reintroduces
+	// the table or its preamble copy, the negative assertions fire.
+	// The runtime canonicalization (`KNOWN_AGENT_HOSTS` → `utm_source`
+	// on `continue_url`) is unchanged and covered by attribution-layer
+	// tests elsewhere in the suite.
 	// ------------------------------------------------------------------
 
-	public function test_attribution_section_publishes_name_mapping_table(): void {
-		// The `### Attribution name mapping` subsection makes
-		// attribution a two-way contract: agents see, up-front, what
-		// brand name their orders will be attributed under. Without
-		// this, the canonicalization in KNOWN_AGENT_HOSTS is opaque
-		// until an agent completes a test checkout and inspects
-		// utm_source. Asserting the section header + the Markdown
-		// table header locks the structural shape.
+	public function test_llms_txt_does_not_publish_attribution_name_mapping_table(): void {
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString( '### Attribution name mapping', $output );
-		$this->assertStringContainsString( '| Attribution name | Profile hostnames |', $output );
-		$this->assertStringContainsString( '|------------------|-------------------|', $output );
-	}
+		// Section heading gone.
+		$this->assertStringNotContainsString( '### Attribution name mapping', $output );
 
-	public function test_attribution_table_contains_every_known_agent_host_entry(): void {
-		// Single source of truth: the published table is rendered
-		// from WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS
-		// at generation time. If a future PR adds a vendor to the
-		// map but the table somehow drops it (refactor regression),
-		// this test fires. Every hostname AND every brand name must
-		// appear in the output.
-		$output = $this->llms->generate();
+		// Markdown table header gone.
+		$this->assertStringNotContainsString( '| Attribution name | Profile hostnames |', $output );
 
-		foreach ( WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS as $host => $brand ) {
-			$this->assertStringContainsString( $host, $output, "Published attribution table missing hostname {$host}" );
-			$this->assertStringContainsString( $brand, $output, "Published attribution table missing brand name {$brand}" );
+		// Preamble prose gone.
+		$this->assertStringNotContainsString( 'pass through verbatim', $output );
+		$this->assertStringNotContainsString( 'ucp_unknown', $output );
+
+		// Invitation to request additions gone (tied to the removed
+		// two-way-contract framing).
+		$this->assertStringNotContainsString(
+			'github.com/Automattic/woocommerce-ai-storefront/issues',
+			$output
+		);
+
+		// And no individual known-agent hostname slipped through any
+		// surviving section. The runtime table may still GROW via
+		// KNOWN_AGENT_HOSTS; that growth must not leak back into the
+		// emitted document.
+		foreach ( WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS as $host => $_brand ) {
+			$this->assertStringNotContainsString(
+				$host,
+				$output,
+				"llms.txt unexpectedly contains the vendor hostname `{$host}` — the attribution name mapping table was removed; if this hostname now appears in some other context, update the assertion."
+			);
 		}
-	}
-
-	public function test_attribution_table_groups_aliased_hostnames_on_one_row(): void {
-		// Brands with multiple hostname aliases (ChatGPT ←
-		// chatgpt.com + openai.com; Claude ← claude.ai +
-		// anthropic.com) render as ONE row with a comma-separated
-		// hostname list, not as two separate rows. Grouping reads
-		// more naturally ("here are the brands we know") and keeps
-		// the table compact as the map grows. Assertion pattern
-		// locks both the grouping AND the delimiter format.
-		$output = $this->llms->generate();
-
-		$this->assertMatchesRegularExpression(
-			'/\| ChatGPT \| `chatgpt\.com`, `openai\.com` \|/',
-			$output,
-			'ChatGPT row should list chatgpt.com and openai.com on a single grouped row'
-		);
-		$this->assertMatchesRegularExpression(
-			'/\| Claude \| `claude\.ai`, `anthropic\.com` \|/',
-			$output,
-			'Claude row should list claude.ai and anthropic.com on a single grouped row'
-		);
-	}
-
-	public function test_attribution_section_documents_fallback_behavior(): void {
-		// The published contract isn't just the happy path — agents
-		// integrating need to know what happens when (a) their
-		// hostname isn't in the map (passthrough), and (b) no
-		// UCP-Agent header is sent (ucp_unknown sentinel). Without
-		// these explicit clauses the contract is incomplete and
-		// novel vendors would have to guess.
-		$output = $this->llms->generate();
-
-		// Unknown-hostname passthrough documented.
-		$this->assertStringContainsString( 'pass through verbatim', $output );
-
-		// Missing-header sentinel documented, referencing the exact
-		// value the runtime produces so an agent-side test harness
-		// can assertEqual against it.
-		$this->assertStringContainsString( 'ucp_unknown', $output );
-	}
-
-	public function test_attribution_section_invites_additions_via_github_issues(): void {
-		// The two-way-contract framing is only meaningful if agents
-		// have a path to request canonicalization. Pointer to the
-		// GitHub issue tracker converts "this is opaque policy" into
-		// "this is a map I can petition to be added to."
-		$output = $this->llms->generate();
-
-		$this->assertStringContainsString( 'github.com/Automattic/woocommerce-ai-storefront/issues', $output );
 	}
 
 	// ------------------------------------------------------------------
@@ -465,6 +538,34 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( '[Broken]', $output );
 	}
 
+	/**
+	 * The emitted document must not embed the plugin version in its
+	 * prose. Previous revisions had "As of 2.0.0, no product-level
+	 * response fields are emitted…" hardcoded, which was stale (the
+	 * plugin was on 0.1.x by the time agents read it) and pointless
+	 * (the paragraph describes the CURRENT extension contract, not
+	 * a historical one). Pin the removal so a future copy-paste
+	 * from other release-notes doesn't reintroduce the pattern.
+	 */
+	public function test_output_does_not_embed_plugin_version_in_prose(): void {
+		$output = $this->llms->generate();
+
+		// Smoke check: generator actually produced content. Without
+		// this, a silently empty `generate()` would pass every
+		// negative assertion below.
+		$this->assertNotEmpty( $output );
+
+		// Specifically the pattern that was wrong before:
+		$this->assertStringNotContainsString( 'As of 2.0.0', $output );
+		// And the general pattern — any three-digit SemVer-ish
+		// string in the prose is a smell.
+		$this->assertDoesNotMatchRegularExpression(
+			'/\bAs of \d+\.\d+\.\d+/',
+			$output,
+			'llms.txt should not embed a hardcoded plugin version in its prose.'
+		);
+	}
+
 	public function test_categories_section_omitted_when_no_categories(): void {
 		// Fresh stores or disabled/empty taxonomy -> no section heading.
 		Functions\when( 'get_terms' )->justReturn( [] );
@@ -483,6 +584,145 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 		// A WP_Error should be treated as "no categories", not crash.
 		$this->assertStringNotContainsString( '## Product Categories', $output );
+	}
+
+	/**
+	 * When the merchant has scoped to a NON-category dimension
+	 * (tags / brands / hand-picked products), the categories
+	 * section must NOT render — even if the store has categories.
+	 *
+	 * Pre-fix bug: `get_syndicated_categories()` always emitted
+	 * the top-20-by-count list for any mode other than
+	 * `categories`. Concrete scenario reported: a merchant scoped
+	 * to a single brand saw their llms.txt advertise all the
+	 * top categories in their store with full product counts —
+	 * including categories whose products weren't in the scoped
+	 * brand at all. Agents querying off that list got mostly-
+	 * empty responses, inferred the store was broken, and moved on.
+	 *
+	 * The section is now suppressed entirely in those modes. This
+	 * test pins that contract across all three non-category modes.
+	 */
+	public function test_categories_section_omitted_for_non_category_modes(): void {
+		$category          = new stdClass();
+		$category->name    = 'Clothing';
+		$category->slug    = 'clothing';
+		$category->count   = 42;
+		$category->term_id = 1;
+
+		// Categories DO exist in the store — so the omission we
+		// assert below is specifically due to mode, not absence.
+		Functions\when( 'get_terms' )->justReturn( [ $category ] );
+
+		foreach ( [ 'tags', 'brands', 'selected' ] as $mode ) {
+			WC_AI_Storefront::$test_settings = [
+				'enabled'                => 'yes',
+				'product_selection_mode' => $mode,
+			];
+
+			$output = $this->llms->generate();
+
+			// Smoke check: generator actually produced content in
+			// this iteration. Without it the negative assertions
+			// below would pass for a silently broken generator.
+			$this->assertStringContainsString(
+				'## Store Information',
+				$output,
+				sprintf(
+					'Generator produced empty or malformed output in mode "%s".',
+					$mode
+				)
+			);
+
+			$this->assertStringNotContainsString(
+				'## Product Categories',
+				$output,
+				sprintf(
+					'Expected categories section to be suppressed in mode "%s" because the top-N-by-count list misrepresents the syndicated scope.',
+					$mode
+				)
+			);
+			$this->assertStringNotContainsString(
+				'Clothing',
+				$output,
+				sprintf(
+					'Expected no individual category rows in mode "%s".',
+					$mode
+				)
+			);
+		}
+	}
+
+	/**
+	 * `categories` mode with an EMPTY `selected_categories` array
+	 * falls through to the top-20-by-count fallback. This pins the
+	 * fallback so a future refactor tightening the mode-gate (e.g.
+	 * to `'all' === $product_mode`) doesn't silently hide the
+	 * Product Categories section from stores that deliberately
+	 * scope-by-categories without picking specific categories yet.
+	 *
+	 * Companion to `test_categories_section_omitted_for_non_category_modes`
+	 * — together they pin the 4-state truth table for
+	 * `get_syndicated_categories()`.
+	 */
+	public function test_categories_section_renders_in_categories_mode_with_empty_selection(): void {
+		$category          = new stdClass();
+		$category->name    = 'Clothing';
+		$category->slug    = 'clothing';
+		$category->count   = 42;
+		$category->term_id = 1;
+
+		// Return the category for `get_terms()` regardless of args —
+		// the fallback path doesn't set `include`, so the query
+		// returns top-20 unfiltered.
+		Functions\when( 'get_terms' )->justReturn( [ $category ] );
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'categories',
+			'selected_categories'    => [],
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Product Categories', $output );
+		$this->assertStringContainsString( 'Clothing', $output );
+	}
+
+	/**
+	 * `categories` mode with a POPULATED `selected_categories`
+	 * exercises the `$args['include']` branch — the term query is
+	 * scoped to the merchant's specific picks. Pin that the
+	 * selected IDs are passed through as `include`, not ignored or
+	 * combined with top-N-by-count.
+	 */
+	public function test_categories_mode_passes_selected_ids_to_get_terms_via_include(): void {
+		$captured_args = null;
+		Functions\when( 'get_terms' )->alias(
+			static function ( $args ) use ( &$captured_args ) {
+				$captured_args = $args;
+				return [];
+			}
+		);
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'categories',
+			'selected_categories'    => [ 5, 12, 99 ],
+		];
+
+		$this->llms->generate();
+
+		$this->assertIsArray( $captured_args );
+		$this->assertArrayHasKey( 'include', $captured_args );
+		$this->assertEquals( [ 5, 12, 99 ], $captured_args['include'] );
+		// `absint()` sanitization is applied inside the function;
+		// confirm IDs pass through unchanged when already ints.
+		$this->assertEquals(
+			0,
+			$captured_args['number'],
+			'When the merchant specifies categories explicitly, number=0 disables the top-N cap.'
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -688,14 +928,30 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/extension/schema', $output );
 	}
 
-	public function test_llms_txt_extension_section_documents_config_fields(): void {
-		// The five store_context fields must each be documented so
-		// agents reading llms.txt understand what the manifest carries.
+	public function test_llms_txt_extension_section_does_not_duplicate_schema_fields(): void {
+		// The `### config.store_context` sub-section was REMOVED in
+		// the 0.1.2 declutter. Its five bullets (currency, locale,
+		// country, prices_include_tax, shipping_enabled) fully
+		// duplicated the JSON Schema at the linked schema URL — an
+		// agent that wants field-level detail reads the machine-
+		// readable schema, not a hand-maintained copy that can drift.
+		//
+		// This test pins the removal so a future PR doesn't
+		// reintroduce the section by copy-paste from an older
+		// revision. Also explicitly asserts `### Product-level
+		// extension payload` didn't sneak back — that section
+		// documented the ABSENCE of fields, which served no agent
+		// purpose.
 		$output = $this->llms->generate();
 
-		foreach ( [ 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled' ] as $field ) {
-			$this->assertStringContainsString( '**' . $field . '**', $output );
-		}
+		$this->assertStringNotContainsString( '### config.store_context', $output );
+		$this->assertStringNotContainsString( '### Product-level extension payload', $output );
+		// The schema URL MUST still be present — that's the whole
+		// point of the section now.
+		$this->assertStringContainsString(
+			'/wp-json/wc/ucp/v1/extension/schema',
+			$output
+		);
 	}
 
 	public function test_llms_txt_extension_section_does_not_document_attribution_subkey(): void {
