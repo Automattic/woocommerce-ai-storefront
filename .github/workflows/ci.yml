@@ -441,8 +441,18 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist
 
-      - name: Install npm dependencies
-        run: npm ci
+      - name: Install npm dependencies (production only)
+        # `--omit=dev` aligns with `npm audit --omit=dev` below:
+        # since the audit step scopes to production deps only,
+        # installing the devDependencies tree (several hundred MB
+        # of @wordpress/scripts + puppeteer + webpack, including
+        # lifecycle scripts like puppeteer's Chromium download)
+        # buys nothing for this job. Skipping them shaves minutes
+        # off install time and also cuts the attack surface —
+        # fewer lifecycle scripts run means fewer opportunities
+        # for a transitive dev-dep to execute arbitrary code in
+        # the CI environment.
+        run: npm ci --omit=dev
 
       - name: composer audit
         run: composer audit --format=plain
