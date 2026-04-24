@@ -1240,24 +1240,40 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 						</div>
 
 						{ /*
-						   Empty-selection warning. If the merchant is in
-						   By-taxonomy and the active taxonomy has zero
-						   terms selected, both enforcement gates (Store
-						   API filter + `is_product_syndicated()`)
-						   currently hide all products. That's the
-						   correct enforcement behavior for "you picked
-						   a scoping mode but left it empty," but it's
-						   not obvious from the UI — the picker below
-						   just looks like "pick some terms to get
-						   started." This Notice spells the consequence
-						   out so the merchant doesn't inadvertently
-						   save a zero-selection state that hides their
-						   catalog from every AI agent.
-						   Same yellow severity as the `selected` panel's
-						   "new products not auto-included" warning —
-						   consistent treatment for the two modes whose
-						   empty/misconfigured states have merchant-
-						   visible consequences.
+						   Empty-selection warning. Fires when the
+						   ENFORCING taxonomy (the one matching
+						   `effectiveMode`, not whichever tab the
+						   merchant is currently viewing) has zero
+						   terms selected — both enforcement gates
+						   (Store API filter + `is_product_syndicated()`)
+						   hide all products in that state. That's
+						   the correct enforcement behavior for "you
+						   picked a scoping mode but left it empty,"
+						   but it's not obvious from the UI — the
+						   picker below just looks like "pick some
+						   terms to get started." This Notice spells
+						   the consequence out so the merchant doesn't
+						   inadvertently save a zero-selection state
+						   that hides their catalog from every AI
+						   agent.
+						   The view/enforce split matters here: a
+						   merchant on mode=brands with a selection
+						   on disk who clicks the Tags tab to browse
+						   must NOT see "No tags selected, products
+						   hidden" — nothing has changed on disk,
+						   and their brand-scoped catalog is still
+						   being enforced. The Notice tracks the
+						   enforcing mode so the warning only fires
+						   when saving would actually hide the
+						   catalog, and the copy names the specific
+						   taxonomy that needs action (e.g. "No
+						   categories selected…") so a merchant on
+						   the Tags tab still gets a clear cue.
+						   Same yellow severity as the `selected`
+						   panel's "new products not auto-included"
+						   warning — consistent treatment for the
+						   two modes whose empty/misconfigured states
+						   have merchant-visible consequences.
 						*/ }
 						{ emptyEnforcingSelection && (
 							<Notice
