@@ -513,17 +513,20 @@ class WC_AI_Storefront {
 			return ! empty( array_intersect( $product_tags, array_map( 'absint', $settings['selected_tags'] ) ) );
 		}
 
-		if ( 'brands' === $mode && ! empty( $settings['selected_brands'] ) ) {
-			// Graceful degradation: if the `product_brand` taxonomy
-			// isn't registered (pre-WC 9.5 or a custom env), the
-			// merchant's brand selection can't be enforced. Degrade
-			// to "product is syndicated" (return true) so this gate
-			// stays symmetric with the Store API filter, which also
-			// declines to restrict in the same scenario. Without the
-			// symmetry, llms.txt/JSON-LD would hide the catalog while
-			// the UCP Store API surface returned the full catalog —
-			// a silent enforcement split the merchant didn't opt
-			// into and can't see.
+		if ( 'brands' === $mode ) {
+			// Graceful degradation first — before the empty-selection
+			// check. If the `product_brand` taxonomy isn't registered
+			// (pre-WC 9.5 or a custom env), the merchant's brand
+			// selection can't be enforced. Degrade to "product is
+			// syndicated" (return true) so this gate stays symmetric
+			// with the Store API filter, which also declines to
+			// restrict in the same scenario — REGARDLESS of whether
+			// `selected_brands` is populated or empty. Without this
+			// ordering, a merchant with mode=`brands` but an empty
+			// selection AND a missing taxonomy would see llms.txt /
+			// JSON-LD hide the catalog while UCP catalog agents saw
+			// everything, recreating the exact enforcement split the
+			// brands-mode degradation path is meant to prevent.
 			//
 			// Rationale for "show all" over "hide all" in this
 			// specific degraded scenario: the merchant picked
@@ -539,6 +542,15 @@ class WC_AI_Storefront {
 			if ( ! taxonomy_exists( 'product_brand' ) ) {
 				return true;
 			}
+
+			// Taxonomy is registered. Apply the empty-selection
+			// policy: `brands` mode with an empty `selected_brands`
+			// hides everything, matching the Store API filter's
+			// `post__in = [0]` posture for the same state.
+			if ( empty( $settings['selected_brands'] ) ) {
+				return false;
+			}
+
 			$product_brands = wp_get_post_terms( $product->get_id(), 'product_brand', [ 'fields' => 'ids' ] );
 			if ( is_wp_error( $product_brands ) ) {
 				return false;

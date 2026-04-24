@@ -739,11 +739,35 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// Categories segment by default, can configure normally, and
 	// their persisted `selected_brands` array stays intact so a
 	// future WC upgrade restores their prior selection.
+	const hasUnsupportedPersistedBrandsMode =
+		! supportsBrands && serverMode === MODES.BRANDS;
+
 	const normalizedServerTaxonomy =
 		TAXONOMY_MODES.includes( serverMode ) &&
-		( supportsBrands || serverMode !== MODES.BRANDS )
+		! hasUnsupportedPersistedBrandsMode
 			? serverMode
 			: MODES.CATEGORIES;
+
+	// Auto-heal the draft settings when we detect an unsupported
+	// persisted mode. Without this, the local `activeTaxonomy` would
+	// normalize to `categories` for rendering but the underlying
+	// `settings.product_selection_mode` would stay `brands` — so a
+	// merchant clicking Save without any interaction would silently
+	// re-post the unsupported mode and stay stuck in the degraded
+	// state on every page load. Writing through `onChange` once at
+	// detection time flips `settings.product_selection_mode` to a
+	// supported value, which makes `hasUnsupportedPersistedBrandsMode`
+	// false on the next render so the effect doesn't re-fire, and
+	// lines the Save button up to persist the intended fix.
+	// Persisted `selected_brands` stays untouched in case a future
+	// WC upgrade re-enables the taxonomy — flipping mode back to
+	// brands then restores the prior selection without merchant
+	// reconfiguration.
+	useEffect( () => {
+		if ( hasUnsupportedPersistedBrandsMode ) {
+			onChange( { product_selection_mode: MODES.CATEGORIES } );
+		}
+	}, [ hasUnsupportedPersistedBrandsMode, onChange ] );
 
 	// Which taxonomy sub-mode is active inside the By-Taxonomy row.
 	// Seeded from the normalized server mode so re-entering the

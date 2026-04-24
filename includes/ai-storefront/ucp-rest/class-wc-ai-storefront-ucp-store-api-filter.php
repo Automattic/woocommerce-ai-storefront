@@ -87,6 +87,18 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * product while agents fetching llms.txt would see none — a
 	 * silent enforcement inconsistency.
 	 *
+	 * Exception: `brands` mode with an unregistered `product_brand`
+	 * taxonomy. The taxonomy-missing guard runs BEFORE the empty-
+	 * selection policy and returns args unchanged (no-op = show
+	 * all), regardless of whether `selected_brands` is populated.
+	 * That's a deliberate downgrade posture — the merchant picked
+	 * brands on a store that supported the taxonomy, then an
+	 * environment change removed it; hiding the catalog in that
+	 * scenario (even via the empty-selection rule) would be a
+	 * surprising consequence of a change the merchant may not have
+	 * initiated. `is_product_syndicated()` mirrors this exception
+	 * with a hoisted `taxonomy_exists` check of its own.
+	 *
 	 * The admin UI also surfaces an inline warning Notice when the
 	 * merchant picks By-taxonomy with an empty active-taxonomy
 	 * selection, so the "hides everything" posture is a visible,
