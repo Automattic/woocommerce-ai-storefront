@@ -157,19 +157,26 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_store_information_lists_currency_and_checkout_policy(): void {
+	public function test_store_information_carries_currency_only(): void {
 		$output = $this->llms->generate();
 
-		// URL bullet deliberately NOT rendered: the store's URL is
-		// the hostname of the file the agent just fetched, always
-		// known from the request itself.
+		// Currency is the one item in this section that doesn't
+		// duplicate a later section's content — kept as a
+		// glanceable header line for text-first agents.
+		$this->assertStringContainsString( '- **Currency**: USD', $output );
+
+		// URL bullet deliberately NOT rendered — the store's URL is
+		// the hostname of the file the agent just fetched.
 		$this->assertStringNotContainsString( '- **URL**:', $output );
 
-		$this->assertStringContainsString( '- **Currency**: USD', $output );
-		$this->assertStringContainsString(
-			'- **Checkout**: On-site only (web redirect)',
-			$output
-		);
+		// Checkout bullet trimmed from this section — `## Checkout
+		// Policy` below carries far more actionable detail
+		// (including the exact endpoint to POST to).
+		$this->assertStringNotContainsString( '- **Checkout**:', $output );
+
+		// Commerce Protocol bullet trimmed from this section —
+		// `## API Access` below already links the UCP manifest URL.
+		$this->assertStringNotContainsString( '- **Commerce Protocol**:', $output );
 	}
 
 	public function test_store_information_links_ucp_manifest(): void {
@@ -216,14 +223,18 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_checkout_policy_section_explicitly_declares_merchant_only_posture(): void {
-		// 1.6.6: llms.txt now carries an explicit declaration of
-		// the merchant-only-checkout posture. Redundant with the
-		// UCP manifest (which declares by absence of capabilities),
-		// but useful for agent trust frameworks and human reviewers.
+		// 1.6.6 origin, trimmed in 0.1.2: llms.txt carries an
+		// explicit declaration of the merchant-only-checkout
+		// posture. Redundant with the UCP manifest (which declares
+		// by absence of capabilities), but useful for agent trust
+		// frameworks and human reviewers.
 		//
-		// Locks in the five "does NOT support" bullets + the four
-		// manifest-verification claims. If any of these is removed,
-		// the posture declaration becomes misleading.
+		// Covers (a) the section heading, (b) the "MUST redirect"
+		// top-line, (c) the "does NOT support" negative list that
+		// serves non-UCP-aware agents, and (d) the one-line
+		// pointer to the manifest for programmatic verification —
+		// which replaced the previous 4-bullet content duplication
+		// of the manifest fields.
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString( '## Checkout Policy', $output );
@@ -232,8 +243,42 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'Embedded checkout', $output );
 		$this->assertStringContainsString( 'AP2 Mandates', $output );
 		$this->assertStringContainsString( 'Persistent agent-managed carts', $output );
+
+		// One-line pointer to the manifest is present — mentions
+		// `payment_handlers` and `requires_escalation` as inline
+		// factoids, not as standalone bulleted claims.
+		$this->assertStringContainsString( '.well-known/ucp', $output );
 		$this->assertStringContainsString( 'payment_handlers', $output );
 		$this->assertStringContainsString( 'requires_escalation', $output );
+	}
+
+	public function test_checkout_policy_does_not_enumerate_manifest_fields_in_bullets(): void {
+		// 0.1.2 trim: the old "Programmatic verification" subsection
+		// had 4 bullets duplicating `capabilities`, `payment_handlers`,
+		// `transport`, and the checkout-response status from the
+		// UCP manifest. Collapsed into a single pointer line.
+		//
+		// Pin the collapse: neither the subsection header nor the
+		// specific enumerated-bullet prose should reappear.
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString(
+			'Programmatic verification —',
+			$output,
+			'The "Programmatic verification — the UCP manifest at … reflects this posture:" lead-in should be gone.'
+		);
+		$this->assertStringNotContainsString(
+			'`capabilities` contains `dev.ucp.shopping.catalog.search`',
+			$output
+		);
+		$this->assertStringNotContainsString(
+			'`payment_handlers` is `{}`',
+			$output
+		);
+		$this->assertStringNotContainsString(
+			'transport: "rest"',
+			$output
+		);
 	}
 
 	public function test_attribution_leads_with_api_first_checkout_flow(): void {

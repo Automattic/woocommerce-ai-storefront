@@ -244,20 +244,29 @@ class WC_AI_Storefront_Llms_Txt {
 			$lines[] = '';
 		}
 
-		// Store metadata.
+		// Store metadata — trimmed to just Currency.
 		//
-		// Previously this section opened with a free-text sentence
-		// ("This store accepts AI-assisted product discovery…") — removed
-		// because the existence of `/llms.txt` IS the "I accept AI
-		// discovery" signal per the llms.txt spec, so saying so in the
-		// body is redundant. Also previously listed `**URL**: {site_url}`
-		// — removed because the store URL is the hostname of the file
-		// the agent just fetched, always known from the request itself.
+		// Previous revisions of this section listed:
+		//   - `**URL**: {site_url}` — removed; the store URL is the
+		//     hostname of the file the agent just fetched.
+		//   - A free-text "This store accepts AI-assisted product
+		//     discovery…" sentence — removed; file existence IS the
+		//     signal per the llms.txt spec.
+		//   - `**Checkout**: On-site only (web redirect)` — removed;
+		//     `## Checkout Policy` below re-states this with far
+		//     more detail, including the exact endpoint agents must
+		//     POST to.
+		//   - `**Commerce Protocol**: {site_url}.well-known/ucp` —
+		//     removed; `## API Access` below already lists the UCP
+		//     manifest URL.
+		//
+		// Currency is the only item that doesn't duplicate a later
+		// section — spec-aware agents CAN read it from the UCP
+		// manifest's `store_context.currency`, but text-first agents
+		// benefit from a compact glanceable section.
 		$lines[] = '## Store Information';
 		$lines[] = '';
 		$lines[] = "- **Currency**: {$currency}";
-		$lines[] = '- **Checkout**: On-site only (web redirect)';
-		$lines[] = "- **Commerce Protocol**: {$site_url}.well-known/ucp";
 		$lines[] = '';
 
 		// API access. This plugin does NOT expose its own authenticated
@@ -345,12 +354,15 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = '- Persistent agent-managed carts';
 		$lines[] = '- Payment handler tokens (Google Pay, Shop Pay, etc. via UCP)';
 		$lines[] = '';
-		$lines[] = 'Programmatic verification — the UCP manifest at `' . $site_url . '.well-known/ucp` reflects this posture:';
-		$lines[] = '';
-		$lines[] = '- `capabilities` contains `dev.ucp.shopping.catalog.search`, `.catalog.lookup`, `.checkout`, plus the `com.woocommerce.ai_storefront` merchant extension — and nothing else';
-		$lines[] = '- `payment_handlers` is `{}` (empty — no delegated payment)';
-		$lines[] = '- The service binding declares `transport: "rest"` exclusively (no Embedded Protocol, MCP, or A2A)';
-		$lines[] = '- Checkout responses always return `status: "requires_escalation"` with `continue_url` — never `ready_for_complete` or `complete_in_progress`';
+		// Programmatic verification: the UCP manifest is the
+		// canonical machine-readable source for the checkout
+		// posture. Earlier revisions spelled out 4 bullets
+		// duplicating `capabilities` / `payment_handlers` /
+		// `transport` / checkout-response-status from the manifest —
+		// redundant for UCP-aware agents and a drift hazard
+		// (manifest could change while this prose lagged). One
+		// pointer line does the job without the duplication.
+		$lines[] = 'See `' . $site_url . '.well-known/ucp` for the machine-readable manifest that encodes this posture (no `payment_handlers`, REST-only transport, `requires_escalation` on every checkout response).';
 		$lines[] = '';
 
 		// Attribution instructions. This section is the
