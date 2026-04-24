@@ -302,9 +302,19 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// Smoke check: Attribution section actually rendered.
 		$this->assertStringContainsString( '## Attribution', $output );
 
-		// The specific phrase from the pre-0.1.2 prose.
+		// The specific phrases from the pre-0.1.2 prose.
 		$this->assertStringNotContainsString( 'table below', $output );
 		$this->assertStringNotContainsString( 'via the table', $output );
+
+		// Regex catches drive-by variants — "see the table", "in
+		// the table", "per the mapping table", "table above",
+		// etc. The `(?:above|below)?` slot is optional so phrases
+		// without a direction word still trip the guard.
+		$this->assertDoesNotMatchRegularExpression(
+			'/\b(?:see|via|per|in|using|from|the)\b[^.]{0,40}\btable(?:\s+(?:above|below))?\b/i',
+			$output,
+			'Attribution prose re-introduced a forward-reference to a mapping table that no longer exists.'
+		);
 	}
 
 	public function test_attribution_leads_with_api_first_checkout_flow(): void {
