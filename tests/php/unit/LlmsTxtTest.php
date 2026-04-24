@@ -580,11 +580,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	 * Pre-fix bug: `get_syndicated_categories()` always emitted
 	 * the top-20-by-count list for any mode other than
 	 * `categories`. Concrete scenario reported: a merchant scoped
-	 * to one brand ("Diva") saw their llms.txt advertise all the
+	 * to a single brand saw their llms.txt advertise all the
 	 * top categories in their store with full product counts —
-	 * including categories whose products weren't even Diva-brand.
-	 * Agents querying off that list got mostly-empty responses,
-	 * inferred the store was broken, and moved on.
+	 * including categories whose products weren't in the scoped
+	 * brand at all. Agents querying off that list got mostly-
+	 * empty responses, inferred the store was broken, and moved on.
 	 *
 	 * The section is now suppressed entirely in those modes. This
 	 * test pins that contract across all three non-category modes.

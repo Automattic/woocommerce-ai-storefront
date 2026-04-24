@@ -545,8 +545,8 @@ class WC_AI_Storefront_Llms_Txt {
 		// list is MISLEADING: agents see category labels + counts
 		// that don't reflect what the Store API filter actually
 		// returns for the merchant's current scope. A merchant who
-		// scopes "only Diva-brand products" gets an llms.txt that
-		// advertises "Clothing (20 products)" when Diva-only
+		// scopes to a single brand gets an llms.txt that advertises
+		// "Clothing (20 products)" when the single-brand subset of
 		// Clothing might be 3 products. Agents then issue queries
 		// that come back mostly empty, and it looks like the store
 		// is broken rather than narrowly-scoped.
