@@ -721,6 +721,18 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	const [ isLoadingTags, setIsLoadingTags ] = useState( false );
 	const [ isLoadingBrands, setIsLoadingBrands ] = useState( false );
 	const [ isLoadingProducts, setIsLoadingProducts ] = useState( false );
+	// Per-taxonomy fetch-error flags. Without these, a failed
+	// fetch (network drop, auth, server error) is indistinguishable
+	// from a "merchant has never created any terms" state because
+	// the catch blocks below leave `categories`/`tags`/`brands` at
+	// the initial `[]`. Downstream code in TaxonomyPicker branches
+	// on these flags to render a distinct warning Notice instead
+	// of the "You haven't created any categories yet" empty-label
+	// copy, so merchants aren't told they're missing data they
+	// actually have.
+	const [ hasCategoriesError, setHasCategoriesError ] = useState( false );
+	const [ hasTagsError, setHasTagsError ] = useState( false );
+	const [ hasBrandsError, setHasBrandsError ] = useState( false );
 
 	const serverMode = settings.product_selection_mode || MODES.ALL;
 
@@ -822,34 +834,49 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// By-Taxonomy radio row can show an accurate count even when
 	// unselected, and the merchant sees the list immediately on row
 	// expansion.
+	//
+	// On fetch failure, set `hasCategoriesError` so TaxonomyPicker
+	// surfaces a distinct warning Notice instead of the
+	// "You haven't created any categories yet" empty-label copy.
+	// Array-shape guard also flips the error flag: an unexpected
+	// non-array response (HTML error page, WP_Error envelope,
+	// cached garbage) is functionally a fetch failure — we can't
+	// display terms we can't read, and the merchant deserves the
+	// same "couldn't load" affordance we give to network errors.
 	useEffect( () => {
 		setIsLoadingCategories( true );
+		setHasCategoriesError( false );
 		apiFetch( {
 			path: '/wc/v3/ai-storefront/admin/search/categories',
 		} )
-			// Guard against unexpected response shapes (HTML error
-			// page, null, WP_Error envelope). Downstream code calls
-			// `categories.filter(...)` and `categories.every(...)` —
-			// a non-array would crash the settings tab entirely.
-			.then( ( result ) =>
-				setCategories( Array.isArray( result ) ? result : [] )
-			)
-			.catch( () => {} )
+			.then( ( result ) => {
+				if ( Array.isArray( result ) ) {
+					setCategories( result );
+				} else {
+					setHasCategoriesError( true );
+				}
+			} )
+			.catch( () => setHasCategoriesError( true ) )
 			.finally( () => setIsLoadingCategories( false ) );
 	}, [] );
 
 	// Tags: same pattern as categories — eager mount fetch so the
 	// toggle segment is instantly populated when the merchant clicks
-	// into the Tags sub-mode.
+	// into the Tags sub-mode. Same error-flag handling as above.
 	useEffect( () => {
 		setIsLoadingTags( true );
+		setHasTagsError( false );
 		apiFetch( {
 			path: '/wc/v3/ai-storefront/admin/search/tags',
 		} )
-			.then( ( result ) =>
-				setTags( Array.isArray( result ) ? result : [] )
-			)
-			.catch( () => {} )
+			.then( ( result ) => {
+				if ( Array.isArray( result ) ) {
+					setTags( result );
+				} else {
+					setHasTagsError( true );
+				}
+			} )
+			.catch( () => setHasTagsError( true ) )
 			.finally( () => setIsLoadingTags( false ) );
 	}, [] );
 
@@ -862,13 +889,18 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			return;
 		}
 		setIsLoadingBrands( true );
+		setHasBrandsError( false );
 		apiFetch( {
 			path: '/wc/v3/ai-storefront/admin/search/brands',
 		} )
-			.then( ( result ) =>
-				setBrands( Array.isArray( result ) ? result : [] )
-			)
-			.catch( () => {} )
+			.then( ( result ) => {
+				if ( Array.isArray( result ) ) {
+					setBrands( result );
+				} else {
+					setHasBrandsError( true );
+				}
+			} )
+			.catch( () => setHasBrandsError( true ) )
 			.finally( () => setIsLoadingBrands( false ) );
 	}, [ supportsBrands ] );
 
@@ -1380,6 +1412,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									onChange( { selected_categories: [] } )
 								}
 								isLoading={ isLoadingCategories }
+								hasError={ hasCategoriesError }
 								searchPlaceholder={ __(
 									'Filter categories\u2026',
 									'woocommerce-ai-storefront'
@@ -1390,6 +1423,10 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								) }
 								emptyLabel={ __(
 									"You haven't created any categories yet. Create them in Products \u2192 Categories.",
+									'woocommerce-ai-storefront'
+								) }
+								errorLabel={ __(
+									"Couldn't load your categories right now. If you have categories configured, refresh this page to retry.",
 									'woocommerce-ai-storefront'
 								) }
 								disclosure={ __(
@@ -1420,6 +1457,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									onChange( { selected_tags: [] } )
 								}
 								isLoading={ isLoadingTags }
+								hasError={ hasTagsError }
 								searchPlaceholder={ __(
 									'Filter tags (e.g. summer, sale)\u2026',
 									'woocommerce-ai-storefront'
@@ -1430,6 +1468,10 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								) }
 								emptyLabel={ __(
 									"You haven't created any tags yet. Add tags on a product's edit screen.",
+									'woocommerce-ai-storefront'
+								) }
+								errorLabel={ __(
+									"Couldn't load your tags right now. If you have tags configured, refresh this page to retry.",
 									'woocommerce-ai-storefront'
 								) }
 								disclosure={ createInterpolateElement(
@@ -1462,6 +1504,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									onChange( { selected_brands: [] } )
 								}
 								isLoading={ isLoadingBrands }
+								hasError={ hasBrandsError }
 								searchPlaceholder={ __(
 									'Filter brands (e.g. Adidas, Nike)\u2026',
 									'woocommerce-ai-storefront'
@@ -1472,6 +1515,10 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 								) }
 								emptyLabel={ __(
 									"You haven't created any brands yet. Add brands in Products \u2192 Brands.",
+									'woocommerce-ai-storefront'
+								) }
+								errorLabel={ __(
+									"Couldn't load your brands right now. If you have brands configured, refresh this page to retry.",
 									'woocommerce-ai-storefront'
 								) }
 								disclosure={ createInterpolateElement(
@@ -1755,9 +1802,11 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
  * @param {Function} root0.onSelectAll       Selects every term.
  * @param {Function} root0.onClear           Clears the selection.
  * @param {boolean}  root0.isLoading         Pending fetch spinner.
+ * @param {boolean}  [root0.hasError]        True when the last fetch failed — renders `errorLabel` in a yellow Notice instead of `emptyLabel`.
  * @param {string}   root0.searchPlaceholder Placeholder for the SearchControl.
  * @param {string}   root0.emptyMatchLabel   Shown when the filter returns no results.
- * @param {string}   root0.emptyLabel        Shown when there are no terms in this taxonomy at all.
+ * @param {string}   root0.emptyLabel        Shown when the fetch succeeded but no terms exist for this taxonomy.
+ * @param {string}   [root0.errorLabel]      Shown when `hasError` is true; distinct from `emptyLabel` so "merchant has none" and "we couldn't fetch" read differently.
  * @param {Node}     root0.disclosure        Footer disclosure text (accepts inline strong via createInterpolateElement).
  */
 const TaxonomyPicker = ( {
@@ -1772,16 +1821,18 @@ const TaxonomyPicker = ( {
 	onSelectAll,
 	onClear,
 	isLoading,
+	hasError,
 	searchPlaceholder,
 	emptyMatchLabel,
 	emptyLabel,
+	errorLabel,
 	disclosure,
 } ) => {
 	const allSelected =
 		items.length > 0 &&
 		items.every( ( item ) => selectedIds.includes( item.id ) );
 	const noneSelected = selectedIds.length === 0;
-	const showSearch = ! isLoading && items.length > 8;
+	const showSearch = ! isLoading && ! hasError && items.length > 8;
 
 	return (
 		<>
@@ -1800,7 +1851,7 @@ const TaxonomyPicker = ( {
 				/>
 			) }
 
-			{ ! isLoading && items.length > 0 && (
+			{ ! isLoading && ! hasError && items.length > 0 && (
 				<div
 					style={ {
 						display: 'flex',
@@ -1835,7 +1886,13 @@ const TaxonomyPicker = ( {
 				</div>
 			) }
 
-			{ isLoading ? (
+			{ /*
+			   Three mutually exclusive render branches for the
+			   terms list area. Flat conditionals (not a nested
+			   ternary) so eslint's no-nested-ternary rule stays
+			   happy and each branch reads independently.
+			*/ }
+			{ isLoading && (
 				<div
 					style={ {
 						padding: '24px',
@@ -1844,7 +1901,27 @@ const TaxonomyPicker = ( {
 				>
 					<Spinner />
 				</div>
-			) : (
+			) }
+			{ ! isLoading && hasError && (
+				/*
+				  Fetch failed (network, auth, unexpected response
+				  shape). Render a yellow Notice rather than the
+				  `items.length === 0` branch's "you haven't
+				  created any X yet" emptyLabel, because we don't
+				  know that to be true — we only know we couldn't
+				  load the list. Misleading copy would nudge
+				  merchants who do have terms toward a pointless
+				  "go create some" workflow.
+				*/
+				<Notice
+					status="warning"
+					isDismissible={ false }
+					className="ai-syndication-taxonomy-fetch-error"
+				>
+					{ errorLabel }
+				</Notice>
+			) }
+			{ ! isLoading && ! hasError && (
 				<div
 					style={ {
 						maxHeight: '260px',
