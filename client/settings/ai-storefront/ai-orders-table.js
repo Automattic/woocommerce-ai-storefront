@@ -552,22 +552,27 @@ const AIOrdersTable = () => {
 		[ data, view, fields ]
 	);
 
-	// Render a "ready for your first order" empty state when there
-	// are no AI-attributed orders yet. Earlier revisions hid the
-	// card entirely in this state, but the empty space made the
-	// Overview tab look under-configured — merchants who just
-	// enabled the plugin couldn't see what the capability would
-	// actually produce. A medium empty state (ghost row framed by
-	// the real column headers + positive-framing copy) fixes that:
-	// the table structure is visible so the layout self-documents
-	// what's coming, and the copy sets realistic expectations
-	// without over-promising.
-	//
-	// Distinct from the `recentOrders` not-yet-loaded state — if
-	// the fetch hasn't resolved we return null so DataViews owns
-	// the loading render downstream. The empty state below is for
-	// `recentOrders` resolved with zero rows.
-	if ( recentOrders && data.length === 0 ) {
+	// Not-fetched state: the data store initializes `recentOrders`
+	// to `null`; the fetch kicked off in the useEffect above will
+	// replace it with an object. While we're waiting, render null
+	// rather than falling through to a Card + DataViews with an
+	// empty data array — which would flash DataViews' internal
+	// "no results" row for a frame or two before the real data
+	// (or EmptyState) takes over. An explicit null return keeps
+	// the loading affordance visibly owned by the parent instead
+	// of leaking a transient empty-table flash into the Overview.
+	if ( recentOrders === null ) {
+		return null;
+	}
+
+	// Fetch resolved with zero AI-attributed orders → render the
+	// medium empty-state card. Earlier revisions hid the card
+	// entirely here, but the empty space made the Overview tab
+	// look under-configured on a freshly-enabled store. A visible
+	// card (ghost row framed by the real column headers +
+	// positive-framing copy) self-documents what's coming without
+	// over-promising. See `EmptyState` for copy rationale.
+	if ( data.length === 0 ) {
 		return <EmptyState />;
 	}
 
