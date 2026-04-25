@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.10] – 2026-04-25
+
+### Fixes
+- **Option-selector visual treatment now actually applies.** The 0.1.8 ToggleGroupControl restyle (elevated white pill on recessed neutral track) targeted hard-coded class names (`.components-toggle-group-control-backdrop`, etc.) that don't exist in the rendered DOM — `@wordpress/components` 28.x uses Emotion CSS-in-JS with dynamically-generated class names. The override rules silently didn't match anything, leaving the WP default (flat black `::before` pseudo-element pill, plus a vivid `:focus-within` border in the merchant's admin theme color). 0.1.10 retargets the actual rendered structure: `.ai-storefront-taxonomy-toggle::before` for the moving "selected" pill (it's a CSS pseudo-element on the wrapping div, not a separate `.backdrop` node), and `[aria-checked="true"]` for selected-state text styling (ARIA is the stable contract across WP component versions). Also tones down the `:focus-within` border so the admin theme color doesn't compete with the elevated-pill visual signal — keyboard focus indication is preserved on the selected button via `:focus-visible` + WP admin theme color outline.
+- **llms.txt: `all` mode no longer enumerates taxonomies.** Pre-0.1.10 the `## Product Categories` / `## Product Tags` / `## Product Brands` sections rendered top-N (≤20) terms by count even when the merchant had `product_selection_mode = 'all'` (no scoping). That falsely implied a restriction the merchant hadn't configured AND under-reported (the truncated 20-term list could miss long-tail terms agents would want to navigate by). 0.1.10 suppresses these sections entirely in `all` mode — the merchant exposed the full catalog, so agents wanting enumeration use the Store API (the canonical source of truth). The sections still emit under `by_taxonomy` mode where they describe the actual scoping; `selected` mode continues to suppress them.
+
+### Tests
+- New `LlmsTxtTest::test_all_mode_suppresses_taxonomy_sections` locks the new behavior. Three category-rendering tests updated to seed `by_taxonomy` mode + `selected_categories` so they continue to exercise the now-restricted rendering path.
+
+---
+
 ## [0.1.9] – 2026-04-25
 
 ### Fixes
