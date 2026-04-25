@@ -22,7 +22,11 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Restricts Store API product queries to the plugin's selected products/categories.
+ * Restricts Store API product queries to the merchant's syndication
+ * scope (UNION across selected_categories / selected_tags /
+ * selected_brands under `by_taxonomy` mode, or `selected_products`
+ * under `selected` mode), but only inside UCP-controller-initiated
+ * dispatches. See file docblock for the full UCP-scoping rationale.
  */
 class WC_AI_Storefront_UCP_Store_API_Filter {
 

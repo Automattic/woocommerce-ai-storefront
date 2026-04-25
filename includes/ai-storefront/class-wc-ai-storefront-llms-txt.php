@@ -570,7 +570,7 @@ class WC_AI_Storefront_Llms_Txt {
 			// brands plugin deactivation) that orphans the
 			// stored selection. Logging makes the silent
 			// "section disappeared" symptom diagnosable.
-			if ( ! empty( $settings['selected_brands'] )
+			if ( ! empty( $settings['selected_brands'] ?? [] )
 				&& class_exists( 'WC_AI_Storefront_Logger' ) ) {
 				WC_AI_Storefront_Logger::debug(
 					'llms.txt: selected_brands non-empty but product_brand taxonomy is not registered; brand section omitted'
@@ -632,7 +632,12 @@ class WC_AI_Storefront_Llms_Txt {
 			return [];
 		}
 
-		$has_selection = ! empty( $settings[ $selection_key ] );
+		// Normalize once: callers can pass partial settings arrays
+		// (and the test stub's defaults don't include all three
+		// `selected_*` keys), so default to [] before any reads to
+		// avoid PHP 8.1+ undefined-key warnings.
+		$selection     = (array) ( $settings[ $selection_key ] ?? [] );
+		$has_selection = ! empty( $selection );
 
 		if ( 'by_taxonomy' === $product_mode && ! $has_selection ) {
 			return [];
@@ -647,7 +652,7 @@ class WC_AI_Storefront_Llms_Txt {
 		];
 
 		if ( 'by_taxonomy' === $product_mode && $has_selection ) {
-			$args['include'] = array_map( 'absint', $settings[ $selection_key ] );
+			$args['include'] = array_map( 'absint', $selection );
 			$args['number']  = 0;
 		}
 
