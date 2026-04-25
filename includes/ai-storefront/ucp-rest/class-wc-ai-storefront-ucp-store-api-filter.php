@@ -3,11 +3,21 @@
  * AI Storefront: Store API Product Collection Filter
  *
  * Hooks `woocommerce_store_api_product_collection_query_args` to
- * restrict Store API product queries by the plugin's
+ * restrict Store API product COLLECTION queries by the plugin's
  * `product_selection_mode` — only when the request is a UCP-
  * controller-initiated dispatch (gated via
  * `enter_ucp_dispatch()` / `exit_ucp_dispatch()` markers around
- * every `rest_do_request()` call inside the UCP REST controller).
+ * the controller's collection-style `rest_do_request()` calls).
+ *
+ * Single-product fetches (e.g. `fetch_store_api_product()` for
+ * `/catalog/lookup`) bypass `woocommerce_store_api_product_collection_query_args`
+ * entirely — that filter only fires for collection queries — so
+ * the controller gates those dispatches separately via a direct
+ * `WC_AI_Storefront::is_product_syndicated()` check before the
+ * inner `rest_do_request()` runs. All three enforcement gates
+ * (this collection filter, the per-id `is_product_syndicated()`
+ * gate, and the per-product gate used by llms.txt and JSON-LD)
+ * stay in lockstep on the merchant's UNION scope.
  *
  * Why scoped: the Products tab is labeled "Products available to
  * AI crawlers" — applying this filter to every Store API call
@@ -16,7 +26,6 @@
  * whatever they configured for AI, violating that UI promise.
  *
  * @package WooCommerce_AI_Storefront
- * @since 0.1.7
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -69,9 +78,11 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	/**
 	 * Mark the start of a UCP-controller-initiated Store API
 	 * dispatch. Pair with `exit_ucp_dispatch()` in a `try/finally`
-	 * around every `rest_do_request()` call inside the UCP REST
-	 * controller. Enables the query-args filter for the duration
-	 * of the inner dispatch.
+	 * around the controller's collection-style `rest_do_request()`
+	 * calls. Enables the query-args filter for the duration of the
+	 * inner dispatch.
+	 *
+	 * @since 0.1.7
 	 */
 	public static function enter_ucp_dispatch(): void {
 		++self::$ucp_dispatch_depth;
@@ -82,6 +93,8 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * dispatch. Idempotent: never decrements below zero, so an
 	 * accidental double-call from a `finally` block can't leak
 	 * negative depth.
+	 *
+	 * @since 0.1.7
 	 */
 	public static function exit_ucp_dispatch(): void {
 		if ( self::$ucp_dispatch_depth <= 0 ) {
@@ -103,6 +116,8 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	/**
 	 * Whether the current Store API request is inside a
 	 * UCP-controller dispatch. Public so tests can introspect.
+	 *
+	 * @since 0.1.7
 	 */
 	public static function is_in_ucp_dispatch(): bool {
 		return self::$ucp_dispatch_depth > 0;
