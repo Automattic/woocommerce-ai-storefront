@@ -238,28 +238,6 @@ class WC_AI_Storefront_Robots {
 	];
 
 	/**
-	 * Crawl-delay (in seconds) emitted alongside each AI-crawler
-	 * `User-agent:` block in robots.txt.
-	 *
-	 * Crawl-delay is an advisory directive originally introduced by
-	 * Google as a robots.txt extension. Well-behaved crawlers respect
-	 * it and wait this many seconds between requests; less-careful
-	 * ones ignore it. Combined with the plugin's Store API rate
-	 * limiter (hard enforcement at 25 req/min per bot by default),
-	 * Crawl-delay acts as the polite-signal layer before the hard
-	 * limit kicks in.
-	 *
-	 * The value (2 seconds) is deliberately conservative — matches
-	 * the merchant-protection guidance recommended for e-commerce
-	 * sites facing aggressive AI search bots (OAI-SearchBot and
-	 * similar live agents have been observed bursting dozens of
-	 * requests in seconds during product-comparison queries). Two
-	 * seconds is low enough to not materially hurt user-perceived
-	 * agent latency, high enough to dampen the worst burst behavior.
-	 */
-	const CRAWL_DELAY_SECONDS = 2;
-
-	/**
 	 * Sanitize an `allowed_crawlers` input against the canonical crawler list.
 	 *
 	 * Strips unknown IDs left over from plugin upgrades that rotated the
@@ -424,15 +402,20 @@ class WC_AI_Storefront_Robots {
 			$bot     = sanitize_text_field( $bot );
 			$output .= "User-agent: {$bot}\n";
 
-			// Advisory rate-hint: well-behaved crawlers wait this many
-			// seconds between requests, which dampens burst traffic
-			// (AI search bots in particular have been observed firing
-			// 10+ requests in a second during product-comparison
-			// queries). Emitted before the Allow/Disallow rules per
-			// robots.txt convention so crawlers pick it up before
-			// they fetch anything. See the CRAWL_DELAY_SECONDS
-			// constant docblock for value rationale.
-			$output .= 'Crawl-delay: ' . self::CRAWL_DELAY_SECONDS . "\n";
+			// Note: pre-0.1.9 each per-bot block also emitted
+			// `Crawl-delay: 2` as a polite advisory rate hint. Removed
+			// in 0.1.9 because (1) Google explicitly doesn't support
+			// `Crawl-delay` and Search Console's robots.txt tester
+			// flags it as an "ignored" directive globally (regardless
+			// of which User-agent block contains it), creating
+			// merchant-facing noise; (2) Bing's compliance is
+			// inconsistent in practice; (3) the major AI crawlers
+			// (OpenAI, Anthropic, Perplexity) don't publish their
+			// stance on `Crawl-delay`. Hard rate enforcement remains
+			// via the plugin's Store API rate limiter (HTTP 429 +
+			// Retry-After at 25 req/min per bot by default), which
+			// every well-behaved crawler honors more reliably than
+			// the polite advisory ever did.
 
 			$output .= "Allow: /llms.txt\n";
 			$output .= "Allow: /.well-known/ucp\n";

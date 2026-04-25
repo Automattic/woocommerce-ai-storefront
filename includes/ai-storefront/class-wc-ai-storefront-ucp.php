@@ -278,111 +278,105 @@ class WC_AI_Storefront_Ucp {
 				// level to the checkout capability — all fields are
 				// valid on the entity schema but semantically belong
 				// with the capability they describe.
-				'capabilities'     => [
-					'dev.ucp.shopping.catalog.search' => [
-						[
-							'version' => self::PROTOCOL_VERSION,
-							'spec'    => $spec_base . '/specification/catalog/search',
-							'schema'  => $spec_base . '/schemas/shopping/catalog_search.json',
-						],
-					],
-					'dev.ucp.shopping.catalog.lookup' => [
-						[
-							'version' => self::PROTOCOL_VERSION,
-							'spec'    => $spec_base . '/specification/catalog/lookup',
-							'schema'  => $spec_base . '/schemas/shopping/catalog_lookup.json',
-						],
-					],
-					// Pure canonical UCP — no `mode`, no `config`. The
-					// pre-1.6.5 `mode: "handoff"` hint is non-canonical
-					// (not defined in capability.json) and redundant
-					// with the runtime `status: requires_escalation`
-					// signal that already carries the handoff intent
-					// in the response. The pre-1.6.5 `config` with
-					// purchase URL templates was the "less preferred"
-					// path per the UCP checkout spec's SHOULD directive
-					// on business-provided continue_url. Canonical
-					// flow: agent POSTs to /checkout-sessions → server
-					// builds continue_url with UTM → returns with
-					// status: requires_escalation → agent redirects.
-					'dev.ucp.shopping.checkout'       => [
-						[
-							'version' => self::PROTOCOL_VERSION,
-							'spec'    => $spec_base . '/specification/checkout',
-							'schema'  => $spec_base . '/schemas/shopping/checkout.json',
-						],
-					],
-
-					// Merchant-specific extension capability. Carries
-					// commerce context (currency, locale, tax/shipping
-					// posture) that UCP doesn't define but agents benefit
-					// from knowing upfront — currency for price quoting,
-					// tax/shipping posture so quoted totals don't mislead.
-					//
-					// `extends` uses the spec-defined array form to
-					// declare multi-parent inheritance over all three
-					// canonical shopping capabilities. Per the UCP
-					// 2026-04-08 capability schema (see
-					// https://ucp.dev/2026-04-08/schemas/capability.json
-					// `base.extends`): the regex pattern accepts any
-					// matching identifier, but the field's description
-					// constrains the meaning to capability IDs — "Parent
-					// capability(s) this extends. Use array for
-					// multi-parent extensions." Pre-0.1.9 this field
-					// pointed at the service ID (`dev.ucp.shopping`),
-					// which is a service, not a capability — passing the
-					// regex but not the description's intent. The array
-					// form below is more honest about what the extension
-					// actually augments: store_context applies to
-					// search, lookup, AND checkout, so all three are
-					// listed as parents.
-					//
-					// Constructed from `CANONICAL_CAPABILITIES` so the
-					// extension's `extends` list and the canonical
-					// capability declarations above stay structurally
-					// in lockstep — adding a fourth capability updates
-					// one constant and both sides reflect it.
-					//
-					// Agents that only iterate standard `dev.ucp.*`
-					// capabilities ignore this entirely; agents that
-					// want upfront store facts (currency to quote in,
-					// whether prices include tax, whether shipping
-					// applies) find them without an extra API call.
-					'com.woocommerce.ai_storefront'   => [
-						[
-							'version' => self::PROTOCOL_VERSION,
-							'extends' => array_map(
-								static fn( string $suffix ): string => self::SERVICE_NAME . '.' . $suffix,
-								self::CANONICAL_CAPABILITIES
-							),
-							// Self-hosted docs URLs. The spec + schema
-							// are served from this site (not GitHub) for
-							// three reasons:
-							//   1. Permission parity — if the store
-							//      restricts REST access, the docs
-							//      restrict alongside. No third-party
-							//      leak vector.
-							//   2. Version truth — the schema served
-							//      describes the version of the plugin
-							//      the merchant is running. No drift
-							//      from "latest".
-							//   3. Zero external dependency — a GitHub
-							//      outage or repo visibility change
-							//      can't break agent integrations.
-							// Same self-hosting pattern as the manifest
-							// itself (at /.well-known/ucp) and llms.txt.
-							'spec'    => function_exists( 'home_url' )
-								? home_url( '/llms.txt#ucp-extension' )
-								: '/llms.txt#ucp-extension',
-							'schema'  => function_exists( 'rest_url' )
-								? rest_url( 'wc/ucp/v1/extension/schema' )
-								: '/wp-json/wc/ucp/v1/extension/schema',
-							'config'  => [
-								'store_context' => $this->build_store_context(),
+				// Canonical capabilities are constructed from
+				// `CANONICAL_CAPABILITIES` (see
+				// `build_canonical_capabilities()` for URL transforms).
+				// The merchant-specific extension capability is appended
+				// after via `array_merge`. This shape keeps the canonical
+				// capability list and the extension's `extends` array
+				// derived from the same constant — adding a fourth
+				// canonical capability updates one place and both sides
+				// reflect it.
+				//
+				// Pure canonical UCP — no `mode`, no `config` on any
+				// canonical capability. The pre-1.6.5 `mode: "handoff"`
+				// hint on `checkout` was non-canonical (not defined in
+				// capability.json) and redundant with the runtime
+				// `status: requires_escalation` signal that already
+				// carries the handoff intent in the response. The
+				// pre-1.6.5 `config` with purchase URL templates was
+				// the "less preferred" path per the UCP checkout spec's
+				// SHOULD directive on business-provided continue_url.
+				'capabilities'     => array_merge(
+					self::build_canonical_capabilities( $spec_base ),
+					[
+						// Merchant-specific extension capability. Carries
+						// commerce context (currency, locale, tax/shipping
+						// posture) that UCP doesn't define but agents
+						// benefit from knowing upfront — currency for
+						// price quoting, tax/shipping posture so quoted
+						// totals don't mislead.
+						//
+						// `extends` uses the spec-defined array form to
+						// declare multi-parent inheritance over all three
+						// canonical shopping capabilities. Per the UCP
+						// 2026-04-08 capability schema (see
+						// https://ucp.dev/2026-04-08/schemas/capability.json
+						// `base.extends`): the regex pattern accepts any
+						// matching identifier, but the field's description
+						// constrains the meaning to capability IDs —
+						// "Parent capability(s) this extends. Use array
+						// for multi-parent extensions." Pre-0.1.9 this
+						// field pointed at the service ID
+						// (`dev.ucp.shopping`), which is a service, not
+						// a capability — passing the regex but not the
+						// description's intent. The array form below is
+						// more honest about what the extension actually
+						// augments: store_context applies to search,
+						// lookup, AND checkout, so all three are listed
+						// as parents.
+						//
+						// Constructed from `CANONICAL_CAPABILITIES` so
+						// the extension's `extends` list and the
+						// canonical capability declarations above stay
+						// structurally in lockstep — adding a fourth
+						// capability updates one constant and both sides
+						// reflect it.
+						//
+						// Agents that only iterate standard `dev.ucp.*`
+						// capabilities ignore this entirely; agents that
+						// want upfront store facts (currency to quote
+						// in, whether prices include tax, whether
+						// shipping applies) find them without an extra
+						// API call.
+						'com.woocommerce.ai_storefront' => [
+							[
+								'version' => self::PROTOCOL_VERSION,
+								'extends' => array_map(
+									static fn( string $suffix ): string => self::SERVICE_NAME . '.' . $suffix,
+									self::CANONICAL_CAPABILITIES
+								),
+								// Self-hosted docs URLs. The spec +
+								// schema are served from this site
+								// (not GitHub) for three reasons:
+								//   1. Permission parity — if the
+								//      store restricts REST access,
+								//      the docs restrict alongside.
+								//      No third-party leak vector.
+								//   2. Version truth — the schema
+								//      served describes the version
+								//      of the plugin the merchant is
+								//      running. No drift from "latest".
+								//   3. Zero external dependency — a
+								//      GitHub outage or repo
+								//      visibility change can't break
+								//      agent integrations.
+								// Same self-hosting pattern as the
+								// manifest itself (at /.well-known/ucp)
+								// and llms.txt.
+								'spec'    => function_exists( 'home_url' )
+									? home_url( '/llms.txt#ucp-extension' )
+									: '/llms.txt#ucp-extension',
+								'schema'  => function_exists( 'rest_url' )
+									? rest_url( 'wc/ucp/v1/extension/schema' )
+									: '/wp-json/wc/ucp/v1/extension/schema',
+								'config'  => [
+									'store_context' => $this->build_store_context(),
+								],
 							],
 						],
-					],
-				],
+					]
+				),
 
 				// Required by business_schema. Empty object is the
 				// valid "zero handlers" declaration — merchant's WC
@@ -399,6 +393,54 @@ class WC_AI_Storefront_Ucp {
 		 * @param array $settings The AI syndication settings.
 		 */
 		return apply_filters( 'wc_ai_storefront_ucp_manifest', $manifest, $settings );
+	}
+
+	/**
+	 * Build the canonical UCP shopping capability declarations.
+	 *
+	 * Iterates `CANONICAL_CAPABILITIES` and constructs both the
+	 * fully-qualified capability key (`dev.ucp.shopping.{suffix}`) and
+	 * the per-binding `spec` + `schema` URLs for each. Returns the
+	 * `manifest.capabilities` slice for the canonical caps; the caller
+	 * `array_merge`s it with the merchant-extension capability.
+	 *
+	 * URL transformations from the suffix:
+	 *
+	 *   - `spec` path: `.` → `/` so `catalog.search` becomes
+	 *     `/specification/catalog/search` and `checkout` stays
+	 *     `/specification/checkout`. Matches how the UCP spec's
+	 *     directory structure mirrors capability nesting.
+	 *
+	 *   - `schema` filename: `.` → `_` so `catalog.search` becomes
+	 *     `catalog_search.json` and `checkout` stays `checkout.json`.
+	 *     Matches the JSON-Schema filenames in the UCP spec repo.
+	 *
+	 * Adding a new canonical capability is a one-line change to the
+	 * `CANONICAL_CAPABILITIES` constant — both the capability
+	 * declaration here AND the extension's `extends` array (which
+	 * reads the same constant via `array_map` in `generate_manifest()`)
+	 * pick up the new entry automatically.
+	 *
+	 * @param string $spec_base Base URL for spec/schema docs (e.g.
+	 *                          `https://ucp.dev/2026-04-08`).
+	 * @return array<string, array<int, array{version: string, spec: string, schema: string}>>
+	 */
+	private static function build_canonical_capabilities( string $spec_base ): array {
+		$capabilities = [];
+		foreach ( self::CANONICAL_CAPABILITIES as $suffix ) {
+			$key             = self::SERVICE_NAME . '.' . $suffix;
+			$spec_path       = str_replace( '.', '/', $suffix );
+			$schema_filename = str_replace( '.', '_', $suffix );
+
+			$capabilities[ $key ] = [
+				[
+					'version' => self::PROTOCOL_VERSION,
+					'spec'    => $spec_base . '/specification/' . $spec_path,
+					'schema'  => $spec_base . '/schemas/shopping/' . $schema_filename . '.json',
+				],
+			];
+		}
+		return $capabilities;
 	}
 
 	/**

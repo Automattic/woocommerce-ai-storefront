@@ -254,41 +254,29 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 1, $lines_between, 'Store and UCP allows should be adjacent' );
 	}
 
-	public function test_crawl_delay_emitted_once_per_crawler(): void {
-		// Crawl-delay is advisory; value is the CRAWL_DELAY_SECONDS
-		// constant. Must appear exactly once per User-agent block —
-		// one directive per bot, placed before the Allow/Disallow
-		// rules so crawlers see the hint before they fetch anything.
+	public function test_crawl_delay_directive_not_emitted(): void {
+		// Pre-0.1.9 each per-bot block included `Crawl-delay: 2` as
+		// a polite advisory rate hint. Removed in 0.1.9 because:
+		//   - Google explicitly doesn't support the directive and
+		//     Search Console's robots.txt tester flags it as
+		//     "ignored" globally, creating merchant-facing noise.
+		//   - Bing's compliance is inconsistent in practice.
+		//   - Major AI crawlers (OpenAI, Anthropic, Perplexity)
+		//     don't publish their stance on `Crawl-delay`.
+		// Hard rate enforcement remains via the plugin's Store API
+		// rate limiter (429 + Retry-After), which every well-behaved
+		// crawler honors more reliably than the polite advisory.
+		//
+		// This test locks the regression: any reintroduction of
+		// `Crawl-delay` in the AI-bot section must fail tests so
+		// the trade-off above is reconsidered explicitly.
 		$output = $this->generate_robots_output();
 
-		// GPTBot + ClaudeBot in the fixture = 2 Crawl-delay lines.
-		$this->assertEquals(
-			2,
-			substr_count( $output, 'Crawl-delay: ' ),
-			'Crawl-delay should appear once per allowed crawler'
+		$this->assertSame(
+			0,
+			substr_count( $output, 'Crawl-delay:' ),
+			'Crawl-delay directive should not appear in robots.txt output'
 		);
-		$this->assertStringContainsString(
-			'Crawl-delay: ' . WC_AI_Storefront_Robots::CRAWL_DELAY_SECONDS,
-			$output
-		);
-	}
-
-	public function test_crawl_delay_appears_before_allow_rules(): void {
-		// Per robots.txt convention, directives that constrain
-		// behavior (Crawl-delay, Disallow) are emitted alongside
-		// the allowances so crawlers have the full picture in the
-		// one User-agent block. Crawl-delay specifically should be
-		// the first line after User-agent so a crawler parsing
-		// top-down sees the rate hint before any fetch decision.
-		$output = $this->generate_robots_output();
-
-		$ua_pos       = strpos( $output, 'User-agent: GPTBot' );
-		$delay_pos    = strpos( $output, 'Crawl-delay: ', $ua_pos );
-		$first_allow  = strpos( $output, 'Allow:', $ua_pos );
-
-		$this->assertNotFalse( $delay_pos );
-		$this->assertNotFalse( $first_allow );
-		$this->assertLessThan( $first_allow, $delay_pos, 'Crawl-delay must precede the first Allow' );
 	}
 
 	public function test_rules_skipped_when_syndication_disabled(): void {
@@ -759,12 +747,16 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// CORS + nosniff headers on robots.txt (do_robotstxt hook)
 	// ------------------------------------------------------------------
 
-	// Note: pre-0.1.9 there were two tests here covering `COMMON_SITEMAP_PATHS`
-	// (the hardcoded fallback list of common sitemap paths) and dedupe behavior
-	// when discovered + hardcoded paths overlapped. Both deleted alongside the
-	// per-block emission and the constant itself. See
+	// Note: pre-0.1.9 there were two tests here covering robots.txt behavior
+	// around `COMMON_SITEMAP_PATHS` — specifically the per-block `Allow:`
+	// emission of every entry in that constant, and dedupe with discovered
+	// paths. Both deleted when robots.txt stopped emitting per-block sitemap
+	// allows in 0.1.9. The `COMMON_SITEMAP_PATHS` constant itself remains —
+	// it's still used by `WC_AI_Storefront_Llms_Txt::discover_sitemap_urls()`
+	// for HEAD-probing candidate paths to list in llms.txt — it's just no
+	// longer consumed by robots.txt. See
 	// `test_sitemap_paths_not_emitted_as_per_bot_allow_rules` above for the
-	// regression guard that locks the new behavior.
+	// regression guard that locks the new robots.txt behavior.
 
 	public function test_cors_headers_method_is_hooked_on_do_robotstxt(): void {
 		// Can't test the actual `header()` calls without process
