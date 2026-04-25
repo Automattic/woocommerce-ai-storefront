@@ -325,14 +325,34 @@ class WC_AI_Storefront_Admin_Controller {
 	 * unregistered taxonomy returns the total published count
 	 * (show-all); fully-empty selection returns 0.
 	 *
-	 * @return WP_REST_Response|WP_Error { count: int } on success;
-	 *                                   `WP_Error` if the persisted
-	 *                                   `product_selection_mode` is
-	 *                                   not one of the recognized
-	 *                                   enum values (shouldn't happen
-	 *                                   in practice — silent migration
-	 *                                   + defensive legacy fallback
-	 *                                   normalize stored values).
+	 * @param WP_REST_Request|null $request Optional request. When
+	 *                                      provided, query params
+	 *                                      (`mode`, `selected_categories`,
+	 *                                      `selected_tags`, `selected_brands`,
+	 *                                      `selected_products`) override
+	 *                                      the merchant's saved settings
+	 *                                      for the count computation —
+	 *                                      used by the Products tab's
+	 *                                      by_taxonomy row to preview
+	 *                                      the count for the in-progress
+	 *                                      UI selection before save.
+	 *                                      `null` (or omitted entirely
+	 *                                      when called outside a REST
+	 *                                      context) reads from saved
+	 *                                      settings — used by the
+	 *                                      Overview tab's "Products
+	 *                                      Exposed" card.
+	 * @return WP_REST_Response|WP_Error    { count: int } on success;
+	 *                                      `WP_Error` if the resolved
+	 *                                      `product_selection_mode` is
+	 *                                      not one of the recognized
+	 *                                      enum values (shouldn't happen
+	 *                                      in practice — silent migration
+	 *                                      + defensive legacy fallback
+	 *                                      normalize stored values, and
+	 *                                      param overrides go through
+	 *                                      sanitize-callback enum
+	 *                                      validation).
 	 */
 	public function get_product_count( $request = null ) {
 		$settings = WC_AI_Storefront::get_settings();

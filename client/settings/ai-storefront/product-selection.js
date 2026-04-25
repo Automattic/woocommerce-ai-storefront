@@ -194,32 +194,46 @@ const ModeBadge = ( { label, selected } ) => {
 
 /**
  * Render one or more ModeBadges side-by-side. Accepts either a single
- * string (rendered as one pill) or an array of strings (rendered as
- * adjacent pills with a small gap). Used by ModeRow so the by_taxonomy
- * row can show both its taxonomy-count summary AND the resulting
- * product count without growing the ModeRow API.
+ * string (rendered as one pill) or an array of `{ key, label }` objects
+ * (rendered as adjacent pills with a small gap). Used by ModeRow so
+ * the by_taxonomy row can show both its taxonomy-count summary AND the
+ * resulting product count without growing the ModeRow API.
  *
- * Falsy entries in the array are filtered, so a caller can pass
- * `[ taxonomyBadge, scopedCountBadge ]` and let either fall through to
- * a single-pill render when one of them isn't ready yet.
+ * Object form is required for multi-pill rendering: each entry's `key`
+ * supplies React's reconciliation identity. Label-content keys would
+ * remount the same logical pill on every text update (e.g. "Loading…"
+ * → "12 products"), causing transient flashes — exactly what we're
+ * trying to avoid. Index keys would have the same problem on filter-
+ * driven reorder. The stable explicit `key` (e.g. `'taxonomy'` and
+ * `'count'`) decouples React identity from display content.
  *
- * @param {Object}          root0          Component props.
- * @param {string|string[]} root0.labels   One badge label, or an
- *                                         array of labels for adjacent
- *                                         pills.
- * @param {boolean}         root0.selected Whether the parent row is
- *                                         selected (controls pill
- *                                         color).
+ * Falsy entries (a `null`/`undefined`/empty `label`) are filtered, so
+ * a caller can pass `[{ key: 'a', label: maybe }, { key: 'b', label: ok }]`
+ * and let `a` drop out without changing `b`'s identity.
+ *
+ * @param {Object}                                     root0          Component props.
+ * @param {string|Array<{key: string, label: string}>} root0.labels   One badge label string, or an
+ *                                                                    array of `{key, label}` objects
+ *                                                                    for adjacent pills with stable
+ *                                                                    reconciliation identity.
+ * @param {boolean}                                    root0.selected Whether the parent row is
+ *                                                                    selected (controls pill color).
  */
 const ModeBadgeGroup = ( { labels, selected } ) => {
-	const list = Array.isArray( labels )
-		? labels.filter( Boolean )
-		: [ labels ];
+	if ( typeof labels === 'string' ) {
+		return labels ? (
+			<ModeBadge label={ labels } selected={ selected } />
+		) : null;
+	}
+	if ( ! Array.isArray( labels ) ) {
+		return null;
+	}
+	const list = labels.filter( ( entry ) => entry && entry.label );
 	if ( list.length === 0 ) {
 		return null;
 	}
 	if ( list.length === 1 ) {
-		return <ModeBadge label={ list[ 0 ] } selected={ selected } />;
+		return <ModeBadge label={ list[ 0 ].label } selected={ selected } />;
 	}
 	return (
 		<span
@@ -230,22 +244,8 @@ const ModeBadgeGroup = ( { labels, selected } ) => {
 				alignItems: 'center',
 			} }
 		>
-			{ /*
-			   React key derived from the label content rather than the
-			   array index. Index keys would remount the badge subtree
-			   when the labels array reorders or a label changes
-			   identity even though its position holds — causing
-			   transient flashes during rapid taxonomy toggling.
-			   Content-keyed reconciliation is stable across both
-			   reorders AND through the loading/loaded state cycle of
-			   the same logical pill.
-			*/ }
-			{ list.map( ( label ) => (
-				<ModeBadge
-					key={ label }
-					label={ label }
-					selected={ selected }
-				/>
+			{ list.map( ( { key, label } ) => (
+				<ModeBadge key={ key } label={ label } selected={ selected } />
 			) ) }
 		</span>
 	);
@@ -1012,14 +1012,32 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// the "All published products" row has surfaced via its own
 	// product-count badge since 0.1.5.
 	//
-	// Pass the IN-PROGRESS UI selection (mode + selected_*) as query
-	// params, NOT the saved settings. The `/admin/product-count`
-	// endpoint accepts overrides so the count reflects what the
-	// merchant is configuring RIGHT NOW, not what's persisted.
-	// Without this, every taxonomy click would still show the
-	// last-saved count until the merchant clicked Save — defeating
-	// the live-feedback purpose of the pill. See the param-override
-	// branch at the top of `get_product_count()` in
+	// Always requests `mode=by_taxonomy` regardless of the merchant's
+	// currently-saved mode. Reason: the by_taxonomy row may render
+	// (with its taxonomy-count badge) even when the merchant is
+	// currently in `all` or `selected` mode, because the taxonomy
+	// selections are stored-but-inert across mode switches. Sending
+	// the saved mode in that case would compute a count for `all`
+	// (or `selected`) and surface it as if it were the by_taxonomy
+	// scope's count — confusingly wrong. Hard-coding
+	// `mode=by_taxonomy` here makes the pill a consistent "what
+	// would by_taxonomy scope to right now?" preview, regardless of
+	// what's currently active.
+	//
+	// `selected_products` is intentionally omitted — it's only
+	// relevant to `selected` mode, and we're always querying
+	// by_taxonomy. Including it would (a) bloat the URL when the
+	// merchant has a large hand-picked list saved (potentially
+	// hitting server/proxy URL length limits) and (b) trigger
+	// useless refetches when that list changes.
+	//
+	// The `/admin/product-count` endpoint accepts override params so
+	// the count reflects what the merchant is configuring RIGHT NOW,
+	// not what's persisted. Without these, every taxonomy click
+	// would still show the last-saved count until the merchant
+	// clicked Save — defeating the live-feedback purpose of the
+	// pill. See the param-override branch at the top of
+	// `get_product_count()` in
 	// class-wc-ai-storefront-admin-controller.php.
 	//
 	// Debounce + AbortController mirrors the OverviewTab pattern:
@@ -1039,11 +1057,9 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	//   - number    → "12 products" with proper plural forms
 	const [ scopedProductCount, setScopedProductCount ] = useState( null );
 	const scopedCountSignature = JSON.stringify( [
-		settings.product_selection_mode,
 		settings.selected_categories || [],
 		settings.selected_tags || [],
 		settings.selected_brands || [],
-		settings.selected_products || [],
 	] );
 	useEffect( () => {
 		// Reset to null so the pill shows "Loading…" instead of the
@@ -1059,11 +1075,10 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 				path: addQueryArgs(
 					'/wc/v3/ai-storefront/admin/product-count',
 					{
-						mode: settings.product_selection_mode,
+						mode: 'by_taxonomy',
 						selected_categories: settings.selected_categories || [],
 						selected_tags: settings.selected_tags || [],
 						selected_brands: settings.selected_brands || [],
-						selected_products: settings.selected_products || [],
 					}
 				),
 				signal: controller.signal,
@@ -1123,7 +1138,10 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// the row's badges semantically anchored to the by_taxonomy
 	// scoping the pill describes.
 	const taxonomyRowBadges = taxonomyBadge
-		? [ taxonomyBadge, scopedCountBadge ]
+		? [
+				{ key: 'taxonomy', label: taxonomyBadge },
+				{ key: 'count', label: scopedCountBadge },
+		  ]
 		: [];
 
 	// No plural-form distinction for this copy ('%d selected' reads
