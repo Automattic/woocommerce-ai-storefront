@@ -188,6 +188,27 @@ const AssistantChip = ( { children } ) => (
 	</span>
 );
 
+// Format a money amount using the /stats response's currency hints.
+// Prefers `currency_symbol` (e.g. "$", "€"); falls back to the ISO
+// `currency` code (e.g. "USD") with a space separator so it doesn't
+// render glued to the digits like "USD42.00"; finally falls back to
+// "$" for the very-degraded case where the backend response is missing
+// both fields. Shared by AI Revenue and AOV cards (and any future
+// money-shaped card) so currency presentation is consistent everywhere.
+const formatMoney = ( stats, amount ) => {
+	const numeric = parseFloat( amount || 0 ).toFixed( 2 );
+	if ( stats?.currency_symbol ) {
+		return `${ stats.currency_symbol }${ numeric }`;
+	}
+	if ( stats?.currency ) {
+		// Space separator: "USD 42.00" reads cleanly; "USD42.00"
+		// looks like a typo. The symbol path above doesn't need
+		// the space because "$42.00" is the conventional form.
+		return `${ stats.currency } ${ numeric }`;
+	}
+	return `$${ numeric }`;
+};
+
 // Hand-rolled stat card for the Overview stats row. We evaluated Woo's
 // `SummaryNumber` from `@woocommerce/components` and deferred adoption —
 // see AGENTS.md "Styling" section for the rationale. In short: Woo
@@ -723,13 +744,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					) }
 					value={
 						stats
-							? `${
-									stats.currency_symbol ||
-									stats.currency ||
-									'$'
-							  }${ parseFloat( stats.ai_revenue || 0 ).toFixed(
-									2
-							  ) }`
+							? formatMoney( stats, stats.ai_revenue )
 							: '\u2014'
 					}
 				/>
@@ -741,13 +756,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					) }
 					value={
 						stats && stats.ai_orders > 0
-							? `${
-									stats.currency_symbol ||
-									stats.currency ||
-									'$'
-							  }${ parseFloat( stats.ai_aov || 0 ).toFixed(
-									2
-							  ) }`
+							? formatMoney( stats, stats.ai_aov )
 							: '\u2014'
 					}
 				/>

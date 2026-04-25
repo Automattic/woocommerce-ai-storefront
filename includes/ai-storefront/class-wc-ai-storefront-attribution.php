@@ -346,9 +346,9 @@ class WC_AI_Storefront_Attribution {
 	 * with a meaningless zero share — silently misleading the merchant.
 	 * Better to render the empty-state em-dash than silently-wrong data.
 	 *
-	 * @param int                                                                          $total_orders  Total AI-attributed orders in the period.
-	 * @param float                                                                        $total_revenue Total AI-attributed revenue in the period.
-	 * @param array<non-empty-string, array{orders: int<0, max>, revenue: float}>          $by_agent      Per-agent breakdown.
+	 * @param int                                                              $total_orders  Total AI-attributed orders in the period.
+	 * @param float                                                            $total_revenue Total AI-attributed revenue in the period.
+	 * @param array<string, array{orders: int<0, max>, revenue: float}>        $by_agent      Per-agent breakdown. Empty-string keys are accepted but skipped during ranking (defense-in-depth alongside the SQL `meta_value <> ''` filter in `get_stats()`).
 	 * @return array{ai_aov: float, top_agent: array{name: string, orders: int, revenue: float, share_percent: float}|null}
 	 */
 	public static function derive_stats( int $total_orders, float $total_revenue, array $by_agent ): array {
@@ -400,8 +400,18 @@ class WC_AI_Storefront_Attribution {
 				$top_agent = [
 					// Cap at TOP_AGENT_NAME_MAX_LENGTH chars so an
 					// abnormally long utm_source can't push the card
-					// width past its layout slot.
-					'name'          => mb_substr( (string) $winner['name'], 0, self::TOP_AGENT_NAME_MAX_LENGTH ),
+					// width past its layout slot. mbstring is a
+					// "Recommended" PHP extension but not strictly
+					// required by WordPress; guard with function_exists
+					// and fall back to substr() so the plugin doesn't
+					// fatal on minimal hosting. substr() can split a
+					// multi-byte character mid-codepoint, but agent
+					// names from utm_source are almost always ASCII
+					// (chatgpt, gemini, etc.), so the fallback is
+					// safe in the realistic failure mode.
+					'name'          => function_exists( 'mb_substr' )
+						? mb_substr( (string) $winner['name'], 0, self::TOP_AGENT_NAME_MAX_LENGTH )
+						: substr( (string) $winner['name'], 0, self::TOP_AGENT_NAME_MAX_LENGTH ),
 					'orders'        => $winner['orders'],
 					'revenue'       => $winner['revenue'],
 					// Always a float — `round()` returns float on the
