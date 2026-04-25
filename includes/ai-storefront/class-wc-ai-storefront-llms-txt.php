@@ -308,17 +308,47 @@ class WC_AI_Storefront_Llms_Txt {
 			$lines[] = '';
 		}
 
-		// Product categories summary.
-		$categories = $this->get_syndicated_categories( $settings );
-		if ( ! empty( $categories ) ) {
-			$lines[] = '## Product Categories';
+		// Per-taxonomy navigation summary. Three independent
+		// sections (categories / tags / brands) so an agent reading
+		// llms.txt sees ALL the dimensions in scope, not just the
+		// category dimension. Pre-0.1.6 only categories rendered,
+		// which under-reported what merchants had configured —
+		// e.g., a merchant scoping by 3 categories + 1 tag + 1
+		// brand saw only the 3 categories, with no signal that
+		// tags or brands were also part of the scope.
+		//
+		// Each section follows the same shape: a heading + a
+		// bulleted list of `[term name](term link) (N products)`
+		// entries. The same per-taxonomy gate applies (see
+		// `get_syndicated_terms()`) so a section is suppressed
+		// when its corresponding `selected_*` array is empty in
+		// `by_taxonomy` mode.
+		$taxonomy_sections = [
+			[
+				'heading' => '## Product Categories',
+				'terms'   => $this->get_syndicated_categories( $settings ),
+			],
+			[
+				'heading' => '## Product Tags',
+				'terms'   => $this->get_syndicated_tags( $settings ),
+			],
+			[
+				'heading' => '## Product Brands',
+				'terms'   => $this->get_syndicated_brands( $settings ),
+			],
+		];
+		foreach ( $taxonomy_sections as $section ) {
+			if ( empty( $section['terms'] ) ) {
+				continue;
+			}
+			$lines[] = $section['heading'];
 			$lines[] = '';
-			foreach ( $categories as $category ) {
-				$link = get_term_link( $category );
+			foreach ( $section['terms'] as $term ) {
+				$link = get_term_link( $term );
 				if ( ! is_wp_error( $link ) ) {
-					$cat_name    = html_entity_decode( wp_strip_all_tags( $category->name ), ENT_QUOTES, 'UTF-8' );
-					$count_label = 1 === (int) $category->count ? 'product' : 'products';
-					$lines[]     = "- [{$cat_name}]({$link}) ({$category->count} {$count_label})";
+					$term_name   = html_entity_decode( wp_strip_all_tags( $term->name ), ENT_QUOTES, 'UTF-8' );
+					$count_label = 1 === (int) $term->count ? 'product' : 'products';
+					$lines[]     = "- [{$term_name}]({$link}) ({$term->count} {$count_label})";
 				}
 			}
 			$lines[] = '';
@@ -529,71 +559,90 @@ class WC_AI_Storefront_Llms_Txt {
 	}
 
 	private function get_syndicated_categories( $settings ) {
+		return $this->get_syndicated_terms( $settings, 'product_cat', 'selected_categories' );
+	}
+
+	private function get_syndicated_tags( $settings ) {
+		return $this->get_syndicated_terms( $settings, 'product_tag', 'selected_tags' );
+	}
+
+	private function get_syndicated_brands( $settings ) {
+		// `product_brand` is WC 9.5+. Without the taxonomy
+		// registered, return empty rather than emit a `get_terms()`
+		// call against an unknown taxonomy.
+		if ( ! taxonomy_exists( 'product_brand' ) ) {
+			return [];
+		}
+		return $this->get_syndicated_terms( $settings, 'product_brand', 'selected_brands' );
+	}
+
+	/**
+	 * Resolve syndicated terms for a given taxonomy + selection key.
+	 *
+	 * The three `## Product {Categories,Tags,Brands}` sections in
+	 * llms.txt are navigation hints: "here's the shape of what
+	 * this store sells." We only emit them when truthful relative
+	 * to the merchant's actual scoping:
+	 *
+	 *   - `all` → top-N-by-count list (every term reachable).
+	 *   - `by_taxonomy` with the matching `selected_*` non-empty
+	 *     → list those selected terms. Other taxonomies in the
+	 *     UNION may widen the product set, but THIS taxonomy's
+	 *     selections are a real (sub)set of the scope and listing
+	 *     them gives agents accurate navigation. Under-reports
+	 *     rather than over-reports — agents that want precision
+	 *     enumerate via the Store API, which applies the full
+	 *     UNION filter.
+	 *   - `by_taxonomy` with the matching `selected_*` empty →
+	 *     suppressed for that taxonomy.
+	 *   - `selected` → suppressed (individual product picking;
+	 *     taxonomy aggregation doesn't describe scope shape).
+	 *
+	 * Defensive legacy-mode fallback: pre-0.1.5 stored values of
+	 * `categories` / `tags` / `brands` route through `by_taxonomy`.
+	 *
+	 * On term counts: when listing selected terms, `get_terms()`
+	 * returns the TOTAL products in each term — not the subset
+	 * matching the full UNION. The displayed count can differ
+	 * from what Store API returns. Acceptable for a navigation
+	 * hint.
+	 *
+	 * @param array  $settings      Plugin settings.
+	 * @param string $taxonomy      Taxonomy slug
+	 *                              (`product_cat` / `product_tag`
+	 *                              / `product_brand`).
+	 * @param string $selection_key Settings key holding the
+	 *                              merchant's selected term IDs
+	 *                              for this taxonomy.
+	 * @return array<int, WP_Term>
+	 */
+	private function get_syndicated_terms( $settings, $taxonomy, $selection_key ) {
 		$product_mode = $settings['product_selection_mode'] ?? 'all';
 
-		// Defensive legacy-mode fallback. Pre-0.1.5 enum values
-		// (`categories` / `tags` / `brands`) map to `by_taxonomy`
-		// under UNION enforcement. The silent migration in
-		// `WC_AI_Storefront::get_settings()` rewrites stored values,
-		// but handle direct callers defensively.
 		if ( in_array( $product_mode, [ 'categories', 'tags', 'brands' ], true ) ) {
 			$product_mode = 'by_taxonomy';
-		}
-
-		// The `## Product Categories` section is a navigation hint:
-		// "here's the shape of what this store sells." We only emit
-		// it when it's truthful relative to the merchant's actual
-		// scoping:
-		//
-		//   - `all` → top-N-by-count list (every category reachable).
-		//   - `by_taxonomy` with `selected_categories` non-empty →
-		//     list those selected categories. Tags/brands may add
-		//     more products via the UNION, but the selected
-		//     categories ARE a real (sub)set of the scope and
-		//     listing them gives agents accurate navigation into
-		//     the catalog portion defined by category scoping.
-		//     Under-reports rather than over-reports: agents that
-		//     want the full product set enumerate via Store API,
-		//     which applies the full UNION filter.
-		//
-		// Suppressed otherwise:
-		//
-		//   - `by_taxonomy` with no `selected_categories` (only tags
-		//     and/or brands) → no category is actually in scope;
-		//     listing top store categories would advertise products
-		//     the scope excludes.
-		//   - `selected` → individual product picking; category
-		//     aggregation doesn't describe the scope shape.
-		//
-		// Silent on-trailing category counts: when we list selected
-		// categories, the counts returned by `get_terms()` reflect
-		// the TOTAL products in each category, not just the subset
-		// matching the UNION. That's a minor inaccuracy when the
-		// merchant has also set `selected_tags`/`selected_brands`
-		// that narrow within those categories — the displayed
-		// count can be higher than what Store API will actually
-		// return. Acceptable for a navigation hint; agents that
-		// need precision hit Store API.
-		$has_selected_categories = ! empty( $settings['selected_categories'] );
-
-		if ( 'by_taxonomy' === $product_mode && ! $has_selected_categories ) {
-			return [];
 		}
 
 		if ( ! in_array( $product_mode, [ 'all', 'by_taxonomy' ], true ) ) {
 			return [];
 		}
 
+		$has_selection = ! empty( $settings[ $selection_key ] );
+
+		if ( 'by_taxonomy' === $product_mode && ! $has_selection ) {
+			return [];
+		}
+
 		$args = [
-			'taxonomy'   => 'product_cat',
+			'taxonomy'   => $taxonomy,
 			'hide_empty' => true,
 			'orderby'    => 'count',
 			'order'      => 'DESC',
 			'number'     => 20,
 		];
 
-		if ( 'by_taxonomy' === $product_mode && $has_selected_categories ) {
-			$args['include'] = array_map( 'absint', $settings['selected_categories'] );
+		if ( 'by_taxonomy' === $product_mode && $has_selection ) {
+			$args['include'] = array_map( 'absint', $settings[ $selection_key ] );
 			$args['number']  = 0;
 		}
 
