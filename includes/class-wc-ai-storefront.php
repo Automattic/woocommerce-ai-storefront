@@ -76,6 +76,7 @@ class WC_AI_Storefront {
 		$path = WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-storefront/';
 
 		require_once $path . 'class-wc-ai-storefront-logger.php';
+		require_once $path . 'class-wc-ai-storefront-return-policy.php';
 		require_once $path . 'class-wc-ai-storefront-llms-txt.php';
 		require_once $path . 'class-wc-ai-storefront-jsonld.php';
 		require_once $path . 'class-wc-ai-storefront-robots.php';
@@ -127,14 +128,15 @@ class WC_AI_Storefront {
 		$rate_limiter = new WC_AI_Storefront_Store_Api_Rate_Limiter();
 		$rate_limiter->init();
 
-		// Store API product collection filter — enforces the merchant's
-		// `product_selection_mode` only when the UCP REST controller
-		// dispatches an inner Store API request (via the
-		// `enter_ucp_dispatch()` / `exit_ucp_dispatch()` markers).
-		// Other Store API consumers (front-end Cart, block-theme
-		// Checkout, themes, third-party plugins) are unaffected.
-		// See the filter class's docblock for the scoping
-		// rationale.
+		// UCP product-scoping hook — enforces the merchant's
+		// `product_selection_mode` on product `WP_Query` instances
+		// only when the UCP REST controller dispatches an inner Store
+		// API request (via the `enter_ucp_dispatch()` /
+		// `exit_ucp_dispatch()` markers). Other product queries
+		// (front-end Cart, block-theme Checkout, themes, admin product
+		// list, third-party plugins) are unaffected. The hook layer is
+		// `pre_get_posts`; see the filter class's docblock for why a
+		// global WP-level hook is the right place to apply UCP scope.
 		$store_api_filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$store_api_filter->init();
 
@@ -543,90 +545,21 @@ class WC_AI_Storefront {
 	/**
 	 * Sanitize the `return_policy` nested settings object.
 	 *
-	 * Validates each field independently. Bad values fall back to
-	 * permissive defaults rather than rejecting the whole save —
-	 * the admin REST controller's args schema rejects egregiously
-	 * malformed input upstream, so this method's job is to keep
-	 * the on-disk shape consistent and prevent invalid Schema.org
-	 * emission downstream.
+	 * Thin delegation to `WC_AI_Storefront_Return_Policy::sanitize()` —
+	 * the actual rules live there so the unit-test stub class can
+	 * exercise the production sanitizer rather than hand-mirroring it.
 	 *
-	 * Field rules:
-	 *   - `mode`: one of `unconfigured`, `returns_accepted`,
-	 *     `final_sale`. Default `unconfigured` (emit no policy).
-	 *   - `page_id`: WP page ID. Must point to an existing,
-	 *     published `page` post. Otherwise reset to 0 (omit
-	 *     `merchantReturnLink`).
-	 *   - `days`: integer 0–365. 0 means "no days configured" —
-	 *     `build_return_policy_block()` smart-degrades to the
-	 *     `Unspecified` enum so we never emit a `FiniteReturnWindow`
-	 *     without a `merchantReturnDays` value.
-	 *   - `fees`: one of `FreeReturn`, `ReturnFeesCustomerResponsibility`,
-	 *     `OriginalShippingFees`, `RestockingFees`. Default `FreeReturn`.
-	 *   - `methods`: array of `ReturnByMail`, `ReturnInStore`,
-	 *     `ReturnAtKiosk`. Deduped and reindexed. Empty array
-	 *     allowed (smart-degrade omits the field).
+	 * Mode-aware persistence: only the fields that are meaningful for
+	 * the resolved mode are stored. `unconfigured` returns just `mode`;
+	 * `final_sale` returns `mode` + `page_id`; `returns_accepted`
+	 * returns the full 5-field shape. See the helper's docblock for
+	 * the full per-field rules.
 	 *
 	 * @param mixed $policy Raw return-policy input.
-	 * @return array{mode: string, page_id: int, days: int, fees: string, methods: array<int, string>}
+	 * @return array<string, mixed>
 	 */
-	private static function sanitize_return_policy( $policy ): array {
-		if ( ! is_array( $policy ) ) {
-			$policy = [];
-		}
-
-		$allowed_modes = [ 'unconfigured', 'returns_accepted', 'final_sale' ];
-		$mode          = isset( $policy['mode'] ) && in_array( $policy['mode'], $allowed_modes, true )
-			? $policy['mode']
-			: 'unconfigured';
-
-		// Page ID validation. We only accept IDs that point to a
-		// published `page` post — preventing a stale/draft/deleted
-		// page from emitting a broken `merchantReturnLink`. Stub
-		// `get_post_status` / `get_post_type` are unit-testable
-		// via Brain\Monkey.
-		$page_id = isset( $policy['page_id'] ) ? absint( $policy['page_id'] ) : 0;
-		if ( $page_id > 0 ) {
-			$status = function_exists( 'get_post_status' ) ? get_post_status( $page_id ) : false;
-			$type   = function_exists( 'get_post_type' ) ? get_post_type( $page_id ) : false;
-			if ( 'publish' !== $status || 'page' !== $type ) {
-				$page_id = 0;
-			}
-		}
-
-		$days = isset( $policy['days'] ) ? absint( $policy['days'] ) : 0;
-		if ( $days > 365 ) {
-			$days = 365;
-		}
-
-		$allowed_fees = [
-			'FreeReturn',
-			'ReturnFeesCustomerResponsibility',
-			'OriginalShippingFees',
-			'RestockingFees',
-		];
-		$fees         = isset( $policy['fees'] ) && in_array( $policy['fees'], $allowed_fees, true )
-			? $policy['fees']
-			: 'FreeReturn';
-
-		$allowed_methods = [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ];
-		$methods_input   = isset( $policy['methods'] ) && is_array( $policy['methods'] )
-			? $policy['methods']
-			: [];
-		$methods         = [];
-		foreach ( $methods_input as $method ) {
-			if ( is_string( $method ) && in_array( $method, $allowed_methods, true ) ) {
-				$methods[] = $method;
-			}
-		}
-		$methods = array_values( array_unique( $methods ) );
-
-		return [
-			'mode'    => $mode,
-			'page_id' => $page_id,
-			'days'    => $days,
-			'fees'    => $fees,
-			'methods' => $methods,
-		];
+	public static function sanitize_return_policy( $policy ): array {
+		return WC_AI_Storefront_Return_Policy::sanitize( $policy );
 	}
 
 	/**
