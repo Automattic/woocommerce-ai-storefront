@@ -293,14 +293,25 @@ class WC_AI_Storefront_Ucp {
 					// commerce context (currency, locale, tax/shipping
 					// posture) that UCP doesn't define but agents benefit
 					// from knowing upfront — currency for price quoting,
-					// tax/shipping posture so quoted totals don't
-					// mislead. Uses the spec-defined extension pattern
-					// (`extends` pointing at a parent service/capability)
-					// rather than a root-level custom field — this
-					// is the idiomatic UCP home for vendor-specific
-					// merchant data. See
-					// `source/schemas/capability.json` `base.extends`
-					// for the pattern definition.
+					// tax/shipping posture so quoted totals don't mislead.
+					//
+					// `extends` uses the spec-defined array form to
+					// declare multi-parent inheritance over all three
+					// canonical shopping capabilities. Per the UCP
+					// 2026-04-08 capability schema description: "Parent
+					// capability(s) this extends. Use array for
+					// multi-parent extensions." See
+					// https://ucp.dev/2026-04-08/schemas/capability.json
+					// `base.extends`.
+					//
+					// Pre-0.1.9 this field pointed at the service ID
+					// (`dev.ucp.shopping`), which the schema regex
+					// accepted but the description ("Parent capability(s)")
+					// did not endorse — services are not capabilities.
+					// The array form below is more honest about what the
+					// extension actually augments: store_context applies
+					// to search, lookup, AND checkout, so all three are
+					// listed as parents.
 					//
 					// Agents that only iterate standard `dev.ucp.*`
 					// capabilities ignore this entirely; agents that
@@ -310,7 +321,11 @@ class WC_AI_Storefront_Ucp {
 					'com.woocommerce.ai_storefront'   => [
 						[
 							'version' => self::PROTOCOL_VERSION,
-							'extends' => self::SERVICE_NAME,
+							'extends' => [
+								self::SERVICE_NAME . '.catalog.search',
+								self::SERVICE_NAME . '.catalog.lookup',
+								self::SERVICE_NAME . '.checkout',
+							],
 							// Self-hosted docs URLs. The spec + schema
 							// are served from this site (not GitHub) for
 							// three reasons:

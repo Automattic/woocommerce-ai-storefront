@@ -394,9 +394,25 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 			);
 		}
 
-		// The extension MUST carry `extends` pointing at the parent.
+		// The extension MUST carry `extends` pointing at parent
+		// capability(ies). Per the UCP 2026-04-08 capability schema:
+		// "Parent capability(s) this extends. Use array for multi-
+		// parent extensions." Pre-0.1.9 this asserted the string form
+		// pointing at the service ID `dev.ucp.shopping` (a service is
+		// not a capability — schema regex passed but the description
+		// didn't endorse it). 0.1.9 switched to the array form
+		// listing all three canonical shopping capabilities, since
+		// the extension's `store_context` applies to search, lookup,
+		// AND checkout (not to "the service" abstractly).
 		$ext = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0];
-		$this->assertSame( 'dev.ucp.shopping', $ext['extends'] );
+		$this->assertSame(
+			[
+				'dev.ucp.shopping.catalog.search',
+				'dev.ucp.shopping.catalog.lookup',
+				'dev.ucp.shopping.checkout',
+			],
+			$ext['extends']
+		);
 	}
 
 	public function test_payment_handlers_is_empty_object(): void {
