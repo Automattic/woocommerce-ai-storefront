@@ -723,9 +723,13 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					) }
 					value={
 						stats
-							? `${ stats.currency || '$' } ${ parseFloat(
-									stats.ai_revenue || 0
-							  ).toFixed( 2 ) }`
+							? `${
+									stats.currency_symbol ||
+									stats.currency ||
+									'$'
+							  }${ parseFloat( stats.ai_revenue || 0 ).toFixed(
+									2
+							  ) }`
 							: '\u2014'
 					}
 				/>
@@ -737,9 +741,13 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					) }
 					value={
 						stats && stats.ai_orders > 0
-							? `${ stats.currency || '$' } ${ parseFloat(
-									stats.ai_aov || 0
-							  ).toFixed( 2 ) }`
+							? `${
+									stats.currency_symbol ||
+									stats.currency ||
+									'$'
+							  }${ parseFloat( stats.ai_aov || 0 ).toFixed(
+									2
+							  ) }`
 							: '\u2014'
 					}
 				/>
@@ -749,7 +757,11 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						__( 'Top agent (%s)', 'woocommerce-ai-storefront' ),
 						periodLabels[ period ]
 					) }
-					value={ stats?.top_agent?.name ?? '\u2014' }
+					/* `||` (not `??`) so an empty-string agent name from a corrupt
+					   utm_source also falls through to the em-dash. The backend
+					   already filters empty meta_value at the SQL level + skips
+					   empty names in derive_stats(); this is belt-and-suspenders. */
+					value={ stats?.top_agent?.name || '\u2014' }
 					subvalue={
 						stats && stats.top_agent
 							? sprintf(

@@ -33,21 +33,11 @@
  * @package WooCommerce_AI_Storefront
  */
 
-use Brain\Monkey;
-use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
+// `derive_stats()` is a pure function — no WP globals, no filters,
+// no `$wpdb` — so it doesn't need Brain Monkey or Mockery. Plain
+// PHPUnit assertions are sufficient.
 
 class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
-	use MockeryPHPUnitIntegration;
-
-	protected function setUp(): void {
-		parent::setUp();
-		Monkey\setUp();
-	}
-
-	protected function tearDown(): void {
-		Monkey\tearDown();
-		parent::tearDown();
-	}
 
 	// ------------------------------------------------------------------
 	// AOV
@@ -152,14 +142,20 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'gemini', $result['top_agent']['name'] );
 	}
 
-	public function test_top_agent_tiebreak_uses_spaceship_not_subtraction(): void {
-		// `<=>` returns -1/0/1 regardless of magnitude; `-` would
-		// silently cast floats to int. With revenues that differ
-		// only in the cents column, subtraction-based comparators
-		// truncate to 0 and the tie isn't resolved (you get
-		// whichever happened to be first in the input — non-deterministic
-		// across PHP versions). This test would fail if anyone "simplified"
-		// the comparator to `$b['revenue'] - $a['revenue']`.
+	public function test_top_agent_tiebreak_resolves_sub_dollar_revenue_differences(): void {
+		// Both agents at 2 orders, revenues differ only in cents.
+		// What this actually verifies: a subtraction-based comparator
+		// (`return $b['revenue'] - $a['revenue']`) would lose this
+		// tie because `usort` casts the comparator's RETURN value to
+		// `int`, so `0.25` truncates to `0` and the agents stay
+		// indistinguishable. The spaceship operator returns clean
+		// `-1/0/1` regardless of float magnitude, so cents-only
+		// revenue differences resolve correctly. (Earlier versions
+		// of this test were named "uses_spaceship_not_subtraction",
+		// but the assertion itself catches both failure modes —
+		// subtraction-based AND any other comparator that truncates
+		// sub-dollar precision — so the rename reflects what's
+		// actually pinned.)
 		$by_agent = [
 			'chatgpt' => [ 'orders' => 2, 'revenue' => 300.25 ],
 			'gemini'  => [ 'orders' => 2, 'revenue' => 300.50 ],
@@ -168,6 +164,114 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		$result = WC_AI_Storefront_Attribution::derive_stats( 4, 600.75, $by_agent );
 
 		$this->assertSame( 'gemini', $result['top_agent']['name'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Defensive branches
+	// ------------------------------------------------------------------
+
+	public function test_returns_empty_state_when_total_orders_zero_with_nonempty_by_agent(): void {
+		// Inconsistent input: the helper's contract assumes
+		// `$total_orders == sum(by_agent[*].orders)`, but the early-
+		// exit guard handles a caller-bug scenario where they
+		// disagree. Returns the empty-state shape rather than
+		// silently producing a "winner with `share_percent = 0`"
+		// that would render a populated card with meaningless
+		// zero share. Currently unreachable from `get_stats()`
+		// (both totals come from the same SQL row loop) but
+		// `derive_stats()` is `public static` and may grow other
+		// callers in PR-B.
+		$by_agent = [
+			'chatgpt' => [ 'orders' => 5, 'revenue' => 250.00 ],
+		];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 0, 250.00, $by_agent );
+
+		$this->assertSame( 0.0, $result['ai_aov'] );
+		$this->assertNull( $result['top_agent'] );
+	}
+
+	public function test_returns_empty_state_when_total_orders_negative(): void {
+		// `int $total_orders` accepts negatives; the early-exit
+		// guard catches them. Same rationale as the zero-total
+		// test: silently dividing by a negative would yield a
+		// negative AOV that would render as "$-50.00" — silently-
+		// wrong is worse than empty-state.
+		$result = WC_AI_Storefront_Attribution::derive_stats( -1, 100.00, [] );
+
+		$this->assertSame( 0.0, $result['ai_aov'] );
+		$this->assertNull( $result['top_agent'] );
+	}
+
+	public function test_skips_empty_string_agent_names(): void {
+		// SQL filters `meta_value <> ''` in `get_stats()` so this
+		// scenario shouldn't arise from production data, but the
+		// helper is public-static and any future caller passing
+		// pre-aggregated data needs the same protection. An empty
+		// agent name in the winner slot would render an empty
+		// value cell on the React side with a populated subvalue —
+		// looks like a render bug. Better to skip and fall through
+		// to the next-best agent.
+		$by_agent = [
+			''        => [ 'orders' => 10, 'revenue' => 500.00 ],
+			'chatgpt' => [ 'orders' => 3, 'revenue' => 150.00 ],
+		];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 13, 650.00, $by_agent );
+
+		// Empty-name agent is filtered out; chatgpt becomes the winner
+		// despite having fewer orders.
+		$this->assertSame( 'chatgpt', $result['top_agent']['name'] );
+	}
+
+	public function test_returns_null_top_agent_when_only_empty_string_agent_present(): void {
+		// All `by_agent` rows have empty names → after skipping,
+		// `$ranked` is empty → no winner.
+		$by_agent = [
+			'' => [ 'orders' => 5, 'revenue' => 250.00 ],
+		];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 5, 250.00, $by_agent );
+
+		$this->assertNull( $result['top_agent'] );
+	}
+
+	public function test_truncates_long_agent_name_to_max_length(): void {
+		// `_wc_ai_storefront_agent` meta is populated from
+		// `utm_source`, which is merchant-uncontrolled inbound URL
+		// content. An abnormally long name would push the StatCard
+		// width past its layout slot. The helper caps at
+		// TOP_AGENT_NAME_MAX_LENGTH (64 chars).
+		$long_name = str_repeat( 'a', 200 );
+		$by_agent  = [
+			$long_name => [ 'orders' => 1, 'revenue' => 50.00 ],
+		];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 1, 50.00, $by_agent );
+
+		$this->assertSame( 64, strlen( $result['top_agent']['name'] ) );
+		$this->assertSame( WC_AI_Storefront_Attribution::TOP_AGENT_NAME_MAX_LENGTH, strlen( $result['top_agent']['name'] ) );
+	}
+
+	public function test_share_percent_returns_float_in_zero_branch(): void {
+		// Type drift guard. The early-exit returns `top_agent => null`,
+		// so this test exercises a happy-path zero (single agent with
+		// 0 orders — possible if revenue accumulated but the row's
+		// order_count cast to 0 for some reason). NOTE: this is a
+		// hypothetical edge case; the SQL `COUNT(DISTINCT ...)` won't
+		// produce 0 from a row that JOINed successfully. Keeping the
+		// test for the type contract only.
+		//
+		// More importantly: the happy-path `share_percent` must always
+		// be `float`, not `int`. `round()` returns `float`, so we just
+		// verify that here on a normal case.
+		$by_agent = [
+			'chatgpt' => [ 'orders' => 1, 'revenue' => 50.00 ],
+		];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 1, 50.00, $by_agent );
+
+		$this->assertIsFloat( $result['top_agent']['share_percent'] );
 	}
 
 	// ------------------------------------------------------------------

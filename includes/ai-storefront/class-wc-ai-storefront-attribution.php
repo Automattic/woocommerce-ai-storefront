@@ -187,6 +187,7 @@ class WC_AI_Storefront_Attribution {
 						ON o.id = agent_meta.order_id AND agent_meta.meta_key = %s
 					 WHERE o.status IN ( 'wc-completed', 'wc-processing' )
 					   AND o.date_created_gmt >= %s
+					   AND agent_meta.meta_value <> ''
 					 GROUP BY agent_meta.meta_value",
 					self::AGENT_META_KEY,
 					$after_date
@@ -209,6 +210,7 @@ class WC_AI_Storefront_Attribution {
 					 WHERE p.post_type = 'shop_order'
 					   AND p.post_status IN ( 'wc-completed', 'wc-processing' )
 					   AND p.post_date_gmt >= %s
+					   AND pm.meta_value <> ''
 					 GROUP BY pm.meta_value",
 					self::AGENT_META_KEY,
 					$after_date
@@ -264,6 +266,14 @@ class WC_AI_Storefront_Attribution {
 
 		$derived = self::derive_stats( $total_orders, $total_revenue, $by_agent );
 
+		// Both currency code and symbol are exposed. The card UI uses
+		// the symbol for display ("$42.00", "€42.00"); some callers may
+		// still need the code for formatting downstream (e.g., third-
+		// party integrations relying on ISO 4217). Keeping `currency`
+		// as the code preserves backward compatibility for any
+		// consumer reading the response shape that landed pre-0.1.8.
+		$currency_code = get_woocommerce_currency();
+
 		return [
 			'period'           => $period,
 			'ai_orders'        => $total_orders,
@@ -273,11 +283,28 @@ class WC_AI_Storefront_Attribution {
 			'ai_share_percent' => $all_orders_count > 0
 				? round( ( $total_orders / $all_orders_count ) * 100, 1 )
 				: 0,
-			'currency'         => get_woocommerce_currency(),
+			'currency'         => $currency_code,
+			'currency_symbol'  => function_exists( 'get_woocommerce_currency_symbol' )
+				? html_entity_decode( get_woocommerce_currency_symbol( $currency_code ) )
+				: $currency_code,
 			'by_agent'         => $by_agent,
 			'top_agent'        => $derived['top_agent'],
 		];
 	}
+
+	/**
+	 * Maximum length for the agent name surfaced on the Top Agent card.
+	 *
+	 * `_wc_ai_storefront_agent` meta is populated from `utm_source` query
+	 * params, which are merchant-uncontrolled inbound URL parameters. A
+	 * pathological agent name (extremely long, attacker-controlled, or
+	 * raw HTML markup) would break the StatCard layout when rendered as
+	 * a React text child. React escapes HTML so it's not an XSS vector,
+	 * but width-wise an unbounded string still degrades the dashboard.
+	 * 64 characters is generous for canonical names ("chatgpt",
+	 * "gemini.google.com", "perplexity") while bounding the layout impact.
+	 */
+	const TOP_AGENT_NAME_MAX_LENGTH = 64;
 
 	/**
 	 * Derive the AOV + top-agent fields from the aggregate query result.
@@ -300,51 +327,88 @@ class WC_AI_Storefront_Attribution {
 	 * empty so the React side renders an em-dash, matching the other
 	 * cards' empty-state convention.
 	 *
-	 * `<=>` (spaceship) is used for the comparator instead of `-` so
-	 * float revenue isn't silently cast to int during the secondary
-	 * sort — `300.50 - 300.25` casts to `0` and loses the tie-break.
+	 * The comparator uses `<=>` (spaceship) and is split into a primary +
+	 * secondary check rather than the more compact `?:` short-ternary,
+	 * for two reasons:
+	 * (1) WP coding standard's `Universal.Operators.DisallowShortTernary`
+	 *     forbids `?:`; an explicit `0 !== $primary` makes the WP-CS
+	 *     reviewer happy.
+	 * (2) Subtraction-based comparators (`return $b['revenue'] - $a['revenue']`)
+	 *     would lose sub-dollar tie-breaks: `usort` casts the comparator's
+	 *     return value to `int`, so a return of `0.25` truncates to `0` and
+	 *     the tie isn't resolved. The spaceship operator returns clean
+	 *     `-1`/`0`/`1` regardless of float magnitude.
 	 *
-	 * @param int                                                              $total_orders  Total AI-attributed orders in the period.
-	 * @param float                                                            $total_revenue Total AI-attributed revenue in the period.
-	 * @param array<string, array{orders: int, revenue: float}>                $by_agent      Per-agent breakdown.
+	 * Defensive early-exit: when `$total_orders <= 0` we skip the ranking
+	 * entirely. Even if `$by_agent` is non-empty (a caller-bug scenario
+	 * the helper's contract doesn't strictly forbid), returning a "winner
+	 * with `share_percent = 0`" would render a populated Top Agent card
+	 * with a meaningless zero share — silently misleading the merchant.
+	 * Better to render the empty-state em-dash than silently-wrong data.
+	 *
+	 * @param int                                                                          $total_orders  Total AI-attributed orders in the period.
+	 * @param float                                                                        $total_revenue Total AI-attributed revenue in the period.
+	 * @param array<non-empty-string, array{orders: int<0, max>, revenue: float}>          $by_agent      Per-agent breakdown.
 	 * @return array{ai_aov: float, top_agent: array{name: string, orders: int, revenue: float, share_percent: float}|null}
 	 */
 	public static function derive_stats( int $total_orders, float $total_revenue, array $by_agent ): array {
-		$ai_aov = $total_orders > 0
-			? round( $total_revenue / $total_orders, 2 )
-			: 0.0;
+		// Defensive early-exit. Negative or zero totals can't yield a
+		// meaningful AOV or top-agent ranking; render empty state.
+		if ( $total_orders <= 0 ) {
+			return [
+				'ai_aov'    => 0.0,
+				'top_agent' => null,
+			];
+		}
+
+		$ai_aov = round( $total_revenue / $total_orders, 2 );
 
 		$top_agent = null;
 		if ( ! empty( $by_agent ) ) {
 			$ranked = [];
 			foreach ( $by_agent as $name => $row ) {
+				// Skip empty-string agent names defensively. The SQL
+				// in `get_stats()` already filters these out (see
+				// `meta_value <> ''` in both query branches), but
+				// `derive_stats()` is `public static` and could be
+				// called by a future caller that doesn't share that
+				// guarantee.
+				if ( '' === $name ) {
+					continue;
+				}
 				$ranked[] = [
 					'name'    => $name,
 					'orders'  => $row['orders'],
 					'revenue' => $row['revenue'],
 				];
 			}
-			usort(
-				$ranked,
-				static function ( $a, $b ) {
-					// Primary: orders DESC. If equal, revenue DESC.
-					// Expanded ternary (vs short `?:`) per WP coding
-					// standard Universal.Operators.DisallowShortTernary.
-					$primary = $b['orders'] <=> $a['orders'];
-					return 0 !== $primary
-						? $primary
-						: ( $b['revenue'] <=> $a['revenue'] );
-				}
-			);
-			$winner    = $ranked[0];
-			$top_agent = [
-				'name'          => $winner['name'],
-				'orders'        => $winner['orders'],
-				'revenue'       => $winner['revenue'],
-				'share_percent' => $total_orders > 0
-					? round( ( $winner['orders'] / $total_orders ) * 100, 1 )
-					: 0,
-			];
+
+			if ( ! empty( $ranked ) ) {
+				usort(
+					$ranked,
+					static function ( $a, $b ) {
+						// Primary: orders DESC. If equal, revenue DESC.
+						// See class docblock above re: spaceship vs
+						// subtraction and short-ternary vs expanded.
+						$primary = $b['orders'] <=> $a['orders'];
+						return 0 !== $primary
+							? $primary
+							: ( $b['revenue'] <=> $a['revenue'] );
+					}
+				);
+				$winner    = $ranked[0];
+				$top_agent = [
+					// Cap at TOP_AGENT_NAME_MAX_LENGTH chars so an
+					// abnormally long utm_source can't push the card
+					// width past its layout slot.
+					'name'          => mb_substr( (string) $winner['name'], 0, self::TOP_AGENT_NAME_MAX_LENGTH ),
+					'orders'        => $winner['orders'],
+					'revenue'       => $winner['revenue'],
+					// Always a float — `round()` returns float on the
+					// happy path; the early-exit handles the zero case.
+					'share_percent' => round( ( $winner['orders'] / $total_orders ) * 100, 1 ),
+				];
+			}
 		}
 
 		return [
