@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Refactors
+- **Discovery tab: replaced "Store API" row with "UCP API".** The row used to surface `/wp-json/wc/store/v1/` as if it were the AI commerce surface, but AI agents actually call our UCP wrapper at `/wp-json/wc/ucp/v1/` (per the manifest at `/.well-known/ucp`). Store API is the underlying transport our UCP catalog/search/lookup/checkout-sessions handlers dispatch through; naming the row "Store API" forced merchants to reason about an implementation layer that has nothing to do with what AI agents see. The new "UCP API" row points at the correct endpoint and describes its purpose ("Structured commerce API for AI agents — catalog search, lookup, and checkout sessions"). Code-level vocabulary stays unchanged — `WC_AI_Storefront_UCP_Store_API_Filter` and the rate-limiter class are correctly named for their architectural roles.
+- **Rate-limit section: dropped "Store API" framing in merchant-facing copy.** The limiter still lives at the Store API filter layer (correct architecturally — that's where the request lands), but it only throttles AI user-agents and only applies through the UCP path. Merchant copy now talks about throttling "AI agents" and "AI crawlers", which is what's actually observable to the merchant, not the internal layer where enforcement happens.
+
+---
+
 ## [0.1.14] – 2026-04-25
 
 ### Features

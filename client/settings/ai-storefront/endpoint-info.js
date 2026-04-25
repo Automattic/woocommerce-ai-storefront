@@ -298,7 +298,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 		isEnabled &&
 		( endpointStatus.llms_txt === 'unreachable' ||
 			endpointStatus.ucp === 'unreachable' ||
-			endpointStatus.store_api === 'unreachable' ||
+			endpointStatus.ucp_api === 'unreachable' ||
 			endpointStatus.robots === 'unreachable' );
 	const allowedCrawlers =
 		settings.allowed_crawlers || KNOWN_CRAWLERS.map( ( c ) => c.id );
@@ -484,23 +484,23 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							</tr>
 							<tr>
 								<td>
-									<strong>Store API</strong>
+									<strong>UCP API</strong>
 								</td>
 								<td>
-									{ endpoints.store_api ? (
-										<code>{ endpoints.store_api }</code>
+									{ endpoints.ucp_api ? (
+										<code>{ endpoints.ucp_api }</code>
 									) : (
 										<Spinner />
 									) }
 								</td>
 								<td>
 									<StatusBadge
-										status={ endpointStatus.store_api }
+										status={ endpointStatus.ucp_api }
 									/>
 								</td>
 								<td>
 									{ __(
-										'WooCommerce Store API for product search and cart (public)',
+										'Structured commerce API for AI agents — catalog search, lookup, and checkout sessions',
 										'woocommerce-ai-storefront'
 									) }
 								</td>
@@ -839,7 +839,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						} }
 					>
 						{ __(
-							'Control how frequently AI crawlers can query your Store API. Higher limits allow faster product discovery but use more server resources.',
+							'Control how frequently AI agents can query your store. Higher limits allow faster product discovery but use more server resources.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>
@@ -927,7 +927,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						} }
 					>
 						{ __(
-							'Limits are applied per AI crawler (identified by user-agent string) using the WooCommerce Store API rate limiter. Your regular store traffic is not affected.',
+							'Limits are applied per AI crawler (identified by user-agent string). Your regular store traffic is not affected.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>

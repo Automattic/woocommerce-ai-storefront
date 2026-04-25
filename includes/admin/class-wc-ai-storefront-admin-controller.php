@@ -700,15 +700,24 @@ class WC_AI_Storefront_Admin_Controller {
 	public function get_endpoints_info() {
 		return new WP_REST_Response(
 			[
-				'llms_txt'  => home_url( '/llms.txt' ),
-				'ucp'       => home_url( '/.well-known/ucp' ),
-				'store_api' => rest_url( 'wc/store/v1' ),
+				'llms_txt' => home_url( '/llms.txt' ),
+				'ucp'      => home_url( '/.well-known/ucp' ),
+				// UCP API: the structured commerce surface AI agents
+				// actually call (catalog search, lookup, checkout
+				// sessions). Replaced the prior `store_api` row in
+				// the Discovery tab — Store API is the underlying
+				// transport our UCP wrapper dispatches through, but
+				// it's not the AI commerce surface. Naming the row
+				// "Store API" forced merchants to reason about an
+				// implementation layer that has nothing to do with
+				// what AI agents see.
+				'ucp_api'  => rest_url( 'wc/ucp/v1' ),
 				// robots.txt is always reachable (WordPress serves it
 				// unconditionally), but our plugin appends the AI-crawler
 				// allow-list + Allow directives when syndication is
 				// enabled. Surfacing it here gives merchants a direct
 				// view of what the plugin publishes to bots.
-				'robots'    => home_url( '/robots.txt' ),
+				'robots'   => home_url( '/robots.txt' ),
 			]
 		);
 	}

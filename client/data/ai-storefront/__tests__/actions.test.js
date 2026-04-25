@@ -52,7 +52,7 @@ describe( 'AI Syndication actions', () => {
 			getEndpoints: jest.fn( () => ( {
 				llms_txt: 'https://example.com/llms.txt',
 				ucp: 'https://example.com/.well-known/ucp',
-				store_api: 'https://example.com/wp-json/wc/store/v1',
+				ucp_api: 'https://example.com/wp-json/wc/ucp/v1',
 				robots: 'https://example.com/robots.txt',
 			} ) ),
 		};
@@ -222,7 +222,7 @@ describe( 'AI Syndication actions', () => {
 				'disabled'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
-				'store_api',
+				'ucp_api',
 				'disabled'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
@@ -238,7 +238,7 @@ describe( 'AI Syndication actions', () => {
 			const thunk = checkEndpoints();
 			await thunk( { dispatch: mockDispatch, select: mockSelect } );
 
-			// One probe per endpoint: llms_txt, ucp, store_api, robots.
+			// One probe per endpoint: llms_txt, ucp, ucp_api, robots.
 			expect( global.fetch ).toHaveBeenCalledTimes( 4 );
 			expect( global.fetch ).toHaveBeenCalledWith(
 				'https://example.com/llms.txt',
@@ -257,7 +257,7 @@ describe( 'AI Syndication actions', () => {
 				'reachable'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
-				'store_api',
+				'ucp_api',
 				'reachable'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
@@ -301,7 +301,7 @@ describe( 'AI Syndication actions', () => {
 				'unreachable'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
-				'store_api',
+				'ucp_api',
 				'unreachable'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
@@ -336,7 +336,7 @@ describe( 'AI Syndication actions', () => {
 				'checking'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
-				'store_api',
+				'ucp_api',
 				'checking'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(

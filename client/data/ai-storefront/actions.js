@@ -160,7 +160,7 @@ export function fetchRecentOrders( perPage = 10 ) {
 /**
  * Set the status for a single endpoint key.
  *
- * @param {string} key    Endpoint key (llms_txt / ucp / store_api).
+ * @param {string} key    Endpoint key (llms_txt / ucp / ucp_api / robots).
  * @param {string} status One of: checking | reachable | unreachable | disabled.
  */
 export function setEndpointStatus( key, status ) {
@@ -211,7 +211,7 @@ export function checkEndpoints() {
 		if ( settings.enabled !== 'yes' ) {
 			dispatch.setEndpointStatus( 'llms_txt', 'disabled' );
 			dispatch.setEndpointStatus( 'ucp', 'disabled' );
-			dispatch.setEndpointStatus( 'store_api', 'disabled' );
+			dispatch.setEndpointStatus( 'ucp_api', 'disabled' );
 			dispatch.setEndpointStatus( 'robots', 'disabled' );
 			return;
 		}
@@ -220,7 +220,7 @@ export function checkEndpoints() {
 		// immediately. Each probe then resolves independently.
 		dispatch.setEndpointStatus( 'llms_txt', 'checking' );
 		dispatch.setEndpointStatus( 'ucp', 'checking' );
-		dispatch.setEndpointStatus( 'store_api', 'checking' );
+		dispatch.setEndpointStatus( 'ucp_api', 'checking' );
 		dispatch.setEndpointStatus( 'robots', 'checking' );
 
 		const probe = async ( key, url ) => {
@@ -248,7 +248,7 @@ export function checkEndpoints() {
 		await Promise.all( [
 			probe( 'llms_txt', endpoints.llms_txt ),
 			probe( 'ucp', endpoints.ucp ),
-			probe( 'store_api', endpoints.store_api ),
+			probe( 'ucp_api', endpoints.ucp_api ),
 			probe( 'robots', endpoints.robots ),
 		] );
 	};
