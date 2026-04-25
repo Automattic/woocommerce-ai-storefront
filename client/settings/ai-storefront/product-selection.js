@@ -192,6 +192,51 @@ const ModeBadge = ( { label, selected } ) => {
 };
 
 /**
+ * Render one or more ModeBadges side-by-side. Accepts either a single
+ * string (rendered as one pill) or an array of strings (rendered as
+ * adjacent pills with a small gap). Used by ModeRow so the by_taxonomy
+ * row can show both its taxonomy-count summary AND the resulting
+ * product count without growing the ModeRow API.
+ *
+ * Falsy entries in the array are filtered, so a caller can pass
+ * `[ taxonomyBadge, scopedCountBadge ]` and let either fall through to
+ * a single-pill render when one of them isn't ready yet.
+ *
+ * @param {Object}          root0          Component props.
+ * @param {string|string[]} root0.labels   One badge label, or an
+ *                                         array of labels for adjacent
+ *                                         pills.
+ * @param {boolean}         root0.selected Whether the parent row is
+ *                                         selected (controls pill
+ *                                         color).
+ */
+const ModeBadgeGroup = ( { labels, selected } ) => {
+	const list = Array.isArray( labels )
+		? labels.filter( Boolean )
+		: [ labels ];
+	if ( list.length === 0 ) {
+		return null;
+	}
+	if ( list.length === 1 ) {
+		return <ModeBadge label={ list[ 0 ] } selected={ selected } />;
+	}
+	return (
+		<span
+			style={ {
+				display: 'inline-flex',
+				gap: '6px',
+				flexShrink: 0,
+				alignItems: 'center',
+			} }
+		>
+			{ list.map( ( label, i ) => (
+				<ModeBadge key={ i } label={ label } selected={ selected } />
+			) ) }
+		</span>
+	);
+};
+
+/**
  * Token list showing currently-selected items with remove buttons.
  * `variant="tag"` renders pill-shaped tokens with a leading `#` to
  * visually distinguish tags from categories and brands (both of which
@@ -413,7 +458,7 @@ const ModeRow = ( {
 						{ description }
 					</span>
 				</span>
-				<ModeBadge label={ badgeLabel } selected={ isSelected } />
+				<ModeBadgeGroup labels={ badgeLabel } selected={ isSelected } />
 			</label>
 			{ /*
 			   Detail panel only renders when the row is selected AND
@@ -945,6 +990,94 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		taxonomyBadge = __( 'Nothing selected', 'woocommerce-ai-storefront' );
 	}
 
+	// Scoped product-count badge for the By-taxonomy row. Pairs with
+	// the taxonomy-count badge above so merchants see both "what they
+	// selected" (`1 category · 1 tag · 1 brand`) AND "what that
+	// scopes to" (`12 products`) at a glance — same information shape
+	// the "All published products" row has surfaced via its own
+	// product-count badge since 0.1.5. Same `/admin/product-count`
+	// endpoint OverviewTab uses (computes the actual UNION'd count
+	// server-side, not from client-side selection state).
+	//
+	// Debounce + AbortController mirrors the OverviewTab pattern:
+	// rapid taxonomy toggling (or "Select all" against a large term
+	// list) coalesces into one request; in-flight requests cancel
+	// when the signature changes mid-flight so the displayed count
+	// never reflects a stale resolution.
+	//
+	// Three display states match the All-row badge convention:
+	//   - `null`    → initial / pending → "Loading…"
+	//   - `'error'` → fetch failed → "Products" (no count, accurate
+	//                 fallback that doesn't mislead about catalog size)
+	//   - number    → "12 products" with proper plural forms
+	const [ scopedProductCount, setScopedProductCount ] = useState( null );
+	const scopedCountSignature = JSON.stringify( [
+		settings.product_selection_mode,
+		settings.selected_categories || [],
+		settings.selected_tags || [],
+		settings.selected_brands || [],
+		settings.selected_products || [],
+	] );
+	useEffect( () => {
+		let cancelled = false;
+		const controller = new AbortController();
+		const timeoutId = setTimeout( () => {
+			apiFetch( {
+				path: '/wc/v3/ai-storefront/admin/product-count',
+				signal: controller.signal,
+			} )
+				.then( ( response ) => {
+					if (
+						! cancelled &&
+						response &&
+						typeof response.count === 'number'
+					) {
+						setScopedProductCount( response.count );
+					}
+				} )
+				.catch( ( error ) => {
+					if ( error?.name === 'AbortError' ) {
+						return;
+					}
+					if ( ! cancelled ) {
+						setScopedProductCount( 'error' );
+					}
+				} );
+		}, 400 );
+		return () => {
+			cancelled = true;
+			clearTimeout( timeoutId );
+			controller.abort();
+		};
+	}, [ scopedCountSignature ] );
+
+	let scopedCountBadge;
+	if ( scopedProductCount === null ) {
+		scopedCountBadge = __( 'Loading…', 'woocommerce-ai-storefront' );
+	} else if ( scopedProductCount === 'error' ) {
+		scopedCountBadge = __( 'Products', 'woocommerce-ai-storefront' );
+	} else {
+		scopedCountBadge = sprintf(
+			/* translators: %s: scoped product count after applying selected categories/tags/brands. */
+			_n(
+				'%s product',
+				'%s products',
+				scopedProductCount,
+				'woocommerce-ai-storefront'
+			),
+			scopedProductCount.toLocaleString()
+		);
+	}
+
+	// Compose the by_taxonomy row's badge as a 2-pill array: the
+	// taxonomy-count summary (always present in some form, including
+	// "Nothing selected" when the row is selected with empty config),
+	// followed by the scoped product count. Filtered downstream in
+	// `ModeBadgeGroup` so a falsy taxonomyBadge doesn't render an
+	// empty pill — keeps the visual lean when the merchant hasn't
+	// committed to by_taxonomy yet.
+	const taxonomyRowBadges = [ taxonomyBadge, scopedCountBadge ];
+
 	// No plural-form distinction for this copy ('%d selected' reads
 	// the same for singular + plural in English), so use a single
 	// translatable string via __() rather than _n(). Locales with
@@ -1144,7 +1277,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							'woocommerce-ai-storefront'
 						) }
 						description={ MODE_DESCRIPTIONS[ UI_ROWS.BY_TAXONOMY ] }
-						badgeLabel={ taxonomyBadge }
+						badgeLabel={ taxonomyRowBadges }
 						onSelect={ setRow }
 					>
 						<div
