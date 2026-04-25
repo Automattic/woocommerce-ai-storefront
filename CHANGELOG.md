@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.13] – 2026-04-25
+
+### Fixes
+- **robots.txt: dropped bottom-of-section `Sitemap:` re-emission.** Pre-0.1.13 the AI Storefront section appended `Sitemap:` directives at the bottom, justified as "defense against parsers that process directives in document order." Two failure modes drove the deletion: (1) when the input had no `Sitemap:` directive at filter-time (because Jetpack et al. emit theirs via the `do_robotstxt` action, AFTER our `robots_txt` filter runs), the fallback to `get_sitemap_url('index')` fired and emitted a fictional `wp-sitemap.xml` URL — observed on `pierorocca.com` pointing crawlers at a 404 because Jetpack disables WP-core's sitemap; (2) RFC 9309 specifies `Sitemap:` as a top-level directive whose position is not order-sensitive, so the "ordering defense" was theoretical, not load-bearing. Top-level Sitemap directives (whoever emits them — WP core, Jetpack, Yoast, etc.) are authoritative and stand alone. The `extract_sitemap_urls()` helper that fed the bottom-of-section emission has been removed entirely as dead code.
+
+### Tests
+- Replaced `test_sitemap_directive_reemitted_at_end_of_section` and `test_sitemap_directive_falls_back_to_wp_core_when_no_sitemap_in_input` with two regression guards covering both shapes of the deletion: `test_no_bottom_of_section_sitemap_reemission` asserts top-level `Sitemap:` directives appear exactly once in the output (at their original location), not duplicated at the bottom; `test_no_sitemap_directive_emitted_when_input_has_none` covers the other failure mode — verifies no `Sitemap:` directive is emitted at all when the filtered input contains none (the case where Jetpack's `do_robotstxt`-emitted directives aren't visible to our filter).
+
+---
+
 ## [0.1.12] – 2026-04-25
 
 ### Fixes
