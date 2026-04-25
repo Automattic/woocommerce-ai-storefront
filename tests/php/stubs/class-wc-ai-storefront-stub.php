@@ -28,9 +28,76 @@ class WC_AI_Storefront {
 				'selected_categories'    => [],
 				'selected_products'      => [],
 				'rate_limit_rpm'         => 25,
+				'return_policy'          => [ 'mode' => 'unconfigured' ],
 			],
 			self::$test_settings
 		);
+	}
+
+	/**
+	 * Mirror of production `sanitize_return_policy()`. Keep in sync
+	 * with `includes/class-wc-ai-storefront.php` when adding new
+	 * fields or enum values.
+	 */
+	public static function sanitize_return_policy( $policy ): array {
+		if ( ! is_array( $policy ) ) {
+			$policy = [];
+		}
+
+		$allowed_modes = [ 'unconfigured', 'returns_accepted', 'final_sale' ];
+		$mode          = isset( $policy['mode'] ) && in_array( $policy['mode'], $allowed_modes, true )
+			? $policy['mode']
+			: 'unconfigured';
+
+		$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
+		if ( $page_id < 0 ) {
+			$page_id = 0;
+		}
+		if ( $page_id > 0 ) {
+			$status = function_exists( 'get_post_status' ) ? get_post_status( $page_id ) : false;
+			$type   = function_exists( 'get_post_type' ) ? get_post_type( $page_id ) : false;
+			if ( 'publish' !== $status || 'page' !== $type ) {
+				$page_id = 0;
+			}
+		}
+
+		$days = isset( $policy['days'] ) ? (int) $policy['days'] : 0;
+		if ( $days < 0 ) {
+			$days = 0;
+		}
+		if ( $days > 365 ) {
+			$days = 365;
+		}
+
+		$allowed_fees = [
+			'FreeReturn',
+			'ReturnFeesCustomerResponsibility',
+			'OriginalShippingFees',
+			'RestockingFees',
+		];
+		$fees         = isset( $policy['fees'] ) && in_array( $policy['fees'], $allowed_fees, true )
+			? $policy['fees']
+			: 'FreeReturn';
+
+		$allowed_methods = [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ];
+		$methods_input   = isset( $policy['methods'] ) && is_array( $policy['methods'] )
+			? $policy['methods']
+			: [];
+		$methods         = [];
+		foreach ( $methods_input as $method ) {
+			if ( is_string( $method ) && in_array( $method, $allowed_methods, true ) ) {
+				$methods[] = $method;
+			}
+		}
+		$methods = array_values( array_unique( $methods ) );
+
+		return [
+			'mode'    => $mode,
+			'page_id' => $page_id,
+			'days'    => $days,
+			'fees'    => $fees,
+			'methods' => $methods,
+		];
 	}
 
 	/**
@@ -156,10 +223,19 @@ class WC_AI_Storefront {
 			true
 		) ? $merged['product_selection_mode'] : 'all';
 
+		$overrides = [ 'product_selection_mode' => $sanitized_mode ];
+
+		// If a return_policy was passed in, route it through the
+		// production-mirrored sanitizer so tests against the REST
+		// surface assert real sanitized values.
+		if ( array_key_exists( 'return_policy', $settings ) ) {
+			$overrides['return_policy'] = self::sanitize_return_policy( $settings['return_policy'] );
+		}
+
 		self::$test_settings = array_merge(
 			self::$test_settings,
 			$settings,
-			[ 'product_selection_mode' => $sanitized_mode ]
+			$overrides
 		);
 	}
 }

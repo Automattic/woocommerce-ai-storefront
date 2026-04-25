@@ -76,6 +76,35 @@ class WC_AI_Storefront_Admin_Controller {
 							'type'  => 'array',
 							'items' => [ 'type' => 'string' ],
 						],
+						'return_policy'          => [
+							'type'       => 'object',
+							'properties' => [
+								'mode'    => [
+									'type' => 'string',
+									'enum' => [ 'unconfigured', 'returns_accepted', 'final_sale' ],
+								],
+								'page_id' => [
+									'type'    => 'integer',
+									'minimum' => 0,
+								],
+								'days'    => [
+									'type'    => 'integer',
+									'minimum' => 0,
+									'maximum' => 365,
+								],
+								'fees'    => [
+									'type' => 'string',
+									'enum' => [ 'FreeReturn', 'ReturnFeesCustomerResponsibility', 'OriginalShippingFees', 'RestockingFees' ],
+								],
+								'methods' => [
+									'type'  => 'array',
+									'items' => [
+										'type' => 'string',
+										'enum' => [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ],
+									],
+								],
+							],
+						],
 					],
 				],
 			]
@@ -259,7 +288,7 @@ class WC_AI_Storefront_Admin_Controller {
 	public function update_settings( $request ) {
 		$data = [];
 
-		$fields = [ 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers' ];
+		$fields = [ 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'return_policy' ];
 		foreach ( $fields as $field ) {
 			$value = $request->get_param( $field );
 			if ( null !== $value ) {

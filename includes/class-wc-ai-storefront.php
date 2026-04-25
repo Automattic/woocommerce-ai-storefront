@@ -419,6 +419,15 @@ class WC_AI_Storefront {
 			'selected_brands'        => [],
 			'selected_products'      => [],
 			'rate_limit_rpm'         => 25,
+			// Return/refund policy exposed to AI agents at the
+			// Offer level via `hasMerchantReturnPolicy`. Default
+			// `unconfigured` mode emits NO policy block — until a
+			// merchant opts into one of the explicit modes
+			// (`returns_accepted` / `final_sale`) we never publish
+			// a structurally invalid claim. See
+			// `WC_AI_Storefront_JsonLd::build_return_policy_block()`
+			// for the per-mode emission logic.
+			'return_policy'          => [ 'mode' => 'unconfigured' ],
 		];
 
 		$settings = get_option( self::SETTINGS_OPTION, [] );
@@ -515,6 +524,9 @@ class WC_AI_Storefront {
 				// explicitly unchecked.
 				$merged['allowed_crawlers'] ?? WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
 			),
+			'return_policy'          => self::sanitize_return_policy(
+				$merged['return_policy'] ?? []
+			),
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.
@@ -526,6 +538,95 @@ class WC_AI_Storefront {
 		wp_cache_delete( 'alloptions', 'options' );
 
 		return $result;
+	}
+
+	/**
+	 * Sanitize the `return_policy` nested settings object.
+	 *
+	 * Validates each field independently. Bad values fall back to
+	 * permissive defaults rather than rejecting the whole save —
+	 * the admin REST controller's args schema rejects egregiously
+	 * malformed input upstream, so this method's job is to keep
+	 * the on-disk shape consistent and prevent invalid Schema.org
+	 * emission downstream.
+	 *
+	 * Field rules:
+	 *   - `mode`: one of `unconfigured`, `returns_accepted`,
+	 *     `final_sale`. Default `unconfigured` (emit no policy).
+	 *   - `page_id`: WP page ID. Must point to an existing,
+	 *     published `page` post. Otherwise reset to 0 (omit
+	 *     `merchantReturnLink`).
+	 *   - `days`: integer 0–365. 0 means "no days configured" —
+	 *     `build_return_policy_block()` smart-degrades to the
+	 *     `Unspecified` enum so we never emit a `FiniteReturnWindow`
+	 *     without a `merchantReturnDays` value.
+	 *   - `fees`: one of `FreeReturn`, `ReturnFeesCustomerResponsibility`,
+	 *     `OriginalShippingFees`, `RestockingFees`. Default `FreeReturn`.
+	 *   - `methods`: array of `ReturnByMail`, `ReturnInStore`,
+	 *     `ReturnAtKiosk`. Deduped and reindexed. Empty array
+	 *     allowed (smart-degrade omits the field).
+	 *
+	 * @param mixed $policy Raw return-policy input.
+	 * @return array{mode: string, page_id: int, days: int, fees: string, methods: array<int, string>}
+	 */
+	private static function sanitize_return_policy( $policy ): array {
+		if ( ! is_array( $policy ) ) {
+			$policy = [];
+		}
+
+		$allowed_modes = [ 'unconfigured', 'returns_accepted', 'final_sale' ];
+		$mode          = isset( $policy['mode'] ) && in_array( $policy['mode'], $allowed_modes, true )
+			? $policy['mode']
+			: 'unconfigured';
+
+		// Page ID validation. We only accept IDs that point to a
+		// published `page` post — preventing a stale/draft/deleted
+		// page from emitting a broken `merchantReturnLink`. Stub
+		// `get_post_status` / `get_post_type` are unit-testable
+		// via Brain\Monkey.
+		$page_id = isset( $policy['page_id'] ) ? absint( $policy['page_id'] ) : 0;
+		if ( $page_id > 0 ) {
+			$status = function_exists( 'get_post_status' ) ? get_post_status( $page_id ) : false;
+			$type   = function_exists( 'get_post_type' ) ? get_post_type( $page_id ) : false;
+			if ( 'publish' !== $status || 'page' !== $type ) {
+				$page_id = 0;
+			}
+		}
+
+		$days = isset( $policy['days'] ) ? absint( $policy['days'] ) : 0;
+		if ( $days > 365 ) {
+			$days = 365;
+		}
+
+		$allowed_fees = [
+			'FreeReturn',
+			'ReturnFeesCustomerResponsibility',
+			'OriginalShippingFees',
+			'RestockingFees',
+		];
+		$fees         = isset( $policy['fees'] ) && in_array( $policy['fees'], $allowed_fees, true )
+			? $policy['fees']
+			: 'FreeReturn';
+
+		$allowed_methods = [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ];
+		$methods_input   = isset( $policy['methods'] ) && is_array( $policy['methods'] )
+			? $policy['methods']
+			: [];
+		$methods         = [];
+		foreach ( $methods_input as $method ) {
+			if ( is_string( $method ) && in_array( $method, $allowed_methods, true ) ) {
+				$methods[] = $method;
+			}
+		}
+		$methods = array_values( array_unique( $methods ) );
+
+		return [
+			'mode'    => $mode,
+			'page_id' => $page_id,
+			'days'    => $days,
+			'fees'    => $fees,
+			'methods' => $methods,
+		];
 	}
 
 	/**
