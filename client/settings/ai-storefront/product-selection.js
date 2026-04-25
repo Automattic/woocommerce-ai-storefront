@@ -30,6 +30,7 @@ import {
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
+import { addQueryArgs } from '@wordpress/url';
 import { colors } from './tokens';
 
 // Server-side enum for `product_selection_mode` (0.1.5+):
@@ -192,6 +193,69 @@ const ModeBadge = ( { label, selected } ) => {
 };
 
 /**
+ * Render one or more ModeBadges side-by-side. Accepts either a single
+ * string (rendered as one pill) or an array of `{ key, label }` objects
+ * (rendered as adjacent pills with a small gap). Used by ModeRow so
+ * the by_taxonomy row can show both its taxonomy-count summary AND the
+ * resulting product count without growing the ModeRow API.
+ *
+ * Object form is required for multi-pill rendering: each entry's `key`
+ * supplies React's reconciliation identity. Label-content keys would
+ * remount the same logical pill on every text update (e.g. "Loading…"
+ * → "12 products"), causing transient flashes — exactly what we're
+ * trying to avoid. Index keys would have the same problem on filter-
+ * driven reorder. The stable explicit `key` (e.g. `'taxonomy'` and
+ * `'count'`) decouples React identity from display content.
+ *
+ * Falsy entries (a `null`/`undefined`/empty `label`) are filtered, so
+ * a caller can pass `[{ key: 'a', label: maybe }, { key: 'b', label: ok }]`
+ * and let `a` drop out without changing `b`'s identity.
+ *
+ * @param {Object}                                     root0          Component props.
+ * @param {string|Array<{key: string, label: string}>} root0.labels   One badge label string, or an
+ *                                                                    array of `{key, label}` objects
+ *                                                                    for adjacent pills with stable
+ *                                                                    reconciliation identity.
+ * @param {boolean}                                    root0.selected Whether the parent row is
+ *                                                                    selected (controls pill color).
+ */
+const ModeBadgeGroup = ( { labels, selected } ) => {
+	if ( typeof labels === 'string' ) {
+		return labels ? (
+			<ModeBadge label={ labels } selected={ selected } />
+		) : null;
+	}
+	if ( ! Array.isArray( labels ) ) {
+		return null;
+	}
+	const list = labels.filter( ( entry ) => entry && entry.label );
+	if ( list.length === 0 ) {
+		return null;
+	}
+	// Always render the wrapper + map() form, even for a single-entry
+	// array, so the stable {key, label} contract holds across length
+	// transitions. A length-1 fast path that returned a bare <ModeBadge>
+	// would change the parent element type when an array transitions
+	// [a, b] → [a] (one entry filtered), forcing React to remount the
+	// surviving pill — exactly the flash the explicit-key contract is
+	// designed to prevent.
+	return (
+		<span
+			style={ {
+				display: 'inline-flex',
+				gap: '6px',
+				flexShrink: 0,
+				alignItems: 'center',
+			} }
+		>
+			{ list.map( ( { key, label } ) => (
+				<ModeBadge key={ key } label={ label } selected={ selected } />
+			) ) }
+		</span>
+	);
+};
+
+/**
  * Token list showing currently-selected items with remove buttons.
  * `variant="tag"` renders pill-shaped tokens with a leading `#` to
  * visually distinguish tags from categories and brands (both of which
@@ -314,7 +378,13 @@ const SelectedTokens = ( { items, onRemove, variant } ) => {
  * @param {string}                                             root0.name        Radio group name.
  * @param {string}                                             root0.label       Option label (bold).
  * @param {string}                                             root0.description Option description (muted).
- * @param {string}                                             root0.badgeLabel  Text for the right-aligned badge.
+ * @param {string|Array<{key: string, label: string}>}         root0.badgeLabel
+ *                                                                               Right-aligned badge content. Pass a single
+ *                                                                               string for one pill, or an array of
+ *                                                                               `{key, label}` objects for multiple adjacent
+ *                                                                               pills with stable React identity (each entry's
+ *                                                                               `key` decouples reconciliation from display
+ *                                                                               content — see `ModeBadgeGroup` JSDoc).
  * @param {Function}                                           root0.onSelect
  *                                                                               Called with this option's value.
  * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children
@@ -413,7 +483,7 @@ const ModeRow = ( {
 						{ description }
 					</span>
 				</span>
-				<ModeBadge label={ badgeLabel } selected={ isSelected } />
+				<ModeBadgeGroup labels={ badgeLabel } selected={ isSelected } />
 			</label>
 			{ /*
 			   Detail panel only renders when the row is selected AND
@@ -945,6 +1015,145 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		taxonomyBadge = __( 'Nothing selected', 'woocommerce-ai-storefront' );
 	}
 
+	// Scoped product-count badge for the By-taxonomy row. Pairs with
+	// the taxonomy-count badge above so merchants see both "what they
+	// selected" (`1 category · 1 tag · 1 brand`) AND "what that
+	// scopes to" (`12 products`) at a glance — same information shape
+	// the "All published products" row has surfaced via its own
+	// product-count badge since 0.1.5.
+	//
+	// Always requests `mode=by_taxonomy` regardless of the merchant's
+	// currently-saved mode. Reason: the by_taxonomy row may render
+	// (with its taxonomy-count badge) even when the merchant is
+	// currently in `all` or `selected` mode, because the taxonomy
+	// selections are stored-but-inert across mode switches. Sending
+	// the saved mode in that case would compute a count for `all`
+	// (or `selected`) and surface it as if it were the by_taxonomy
+	// scope's count — confusingly wrong. Hard-coding
+	// `mode=by_taxonomy` here makes the pill a consistent "what
+	// would by_taxonomy scope to right now?" preview, regardless of
+	// what's currently active.
+	//
+	// `selected_products` is intentionally omitted — it's only
+	// relevant to `selected` mode, and we're always querying
+	// by_taxonomy. Including it would (a) bloat the URL when the
+	// merchant has a large hand-picked list saved (potentially
+	// hitting server/proxy URL length limits) and (b) trigger
+	// useless refetches when that list changes.
+	//
+	// The `/admin/product-count` endpoint accepts override params so
+	// the count reflects what the merchant is configuring RIGHT NOW,
+	// not what's persisted. Without these, every taxonomy click
+	// would still show the last-saved count until the merchant
+	// clicked Save — defeating the live-feedback purpose of the
+	// pill. See the param-override branch at the top of
+	// `get_product_count()` in
+	// class-wc-ai-storefront-admin-controller.php.
+	//
+	// Debounce + AbortController mirrors the OverviewTab pattern:
+	// rapid taxonomy toggling (or "Select all" against a large term
+	// list) coalesces into one request; in-flight requests cancel
+	// when the signature changes mid-flight so the displayed count
+	// never reflects a stale resolution. The `setScopedProductCount(
+	// null )` reset at the start of the effect ensures the pill
+	// shows "Loading…" while the new signature's request is in
+	// flight, instead of displaying the previous resolution's
+	// stale count.
+	//
+	// Three display states match the All-row badge convention:
+	//   - `null`    → initial / pending → "Loading…"
+	//   - `'error'` → fetch failed → "Products" (no count, accurate
+	//                 fallback that doesn't mislead about catalog size)
+	//   - number    → "12 products" with proper plural forms
+	const [ scopedProductCount, setScopedProductCount ] = useState( null );
+	const scopedCountSignature = JSON.stringify( [
+		settings.selected_categories || [],
+		settings.selected_tags || [],
+		settings.selected_brands || [],
+	] );
+	useEffect( () => {
+		// Reset to null so the pill shows "Loading…" instead of the
+		// previous signature's stale count while the new fetch is
+		// pending. Catches rapid sequential changes too — each new
+		// signature gets a clean loading state.
+		setScopedProductCount( null );
+
+		let cancelled = false;
+		const controller = new AbortController();
+		const timeoutId = setTimeout( () => {
+			apiFetch( {
+				path: addQueryArgs(
+					'/wc/v3/ai-storefront/admin/product-count',
+					{
+						mode: 'by_taxonomy',
+						selected_categories: settings.selected_categories || [],
+						selected_tags: settings.selected_tags || [],
+						selected_brands: settings.selected_brands || [],
+					}
+				),
+				signal: controller.signal,
+			} )
+				.then( ( response ) => {
+					if (
+						! cancelled &&
+						response &&
+						typeof response.count === 'number'
+					) {
+						setScopedProductCount( response.count );
+					}
+				} )
+				.catch( ( error ) => {
+					if ( error?.name === 'AbortError' ) {
+						return;
+					}
+					if ( ! cancelled ) {
+						setScopedProductCount( 'error' );
+					}
+				} );
+		}, 400 );
+		return () => {
+			cancelled = true;
+			clearTimeout( timeoutId );
+			controller.abort();
+		};
+	}, [ scopedCountSignature ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Settings consumed via signature; stringified deps would re-fire on object identity changes that don't affect query params.
+
+	let scopedCountBadge;
+	if ( scopedProductCount === null ) {
+		scopedCountBadge = __( 'Loading…', 'woocommerce-ai-storefront' );
+	} else if ( scopedProductCount === 'error' ) {
+		scopedCountBadge = __( 'Products', 'woocommerce-ai-storefront' );
+	} else {
+		scopedCountBadge = sprintf(
+			/* translators: %s: scoped product count after applying selected categories/tags/brands. */
+			_n(
+				'%s product',
+				'%s products',
+				scopedProductCount,
+				'woocommerce-ai-storefront'
+			),
+			scopedProductCount.toLocaleString()
+		);
+	}
+
+	// Compose the by_taxonomy row's badge. The scoped count pill only
+	// appears when there's actual taxonomy context to anchor it to —
+	// either the merchant has selected terms (`taxonomyBadgeParts`
+	// non-empty) OR the row is currently active and showing the
+	// "Nothing selected" placeholder. Otherwise (merchant in `all`
+	// or `selected` mode, no taxonomy selection) the lone count pill
+	// would float without context and show a count derived from the
+	// CURRENT saved mode — confusingly redundant with the All-row's
+	// own count or with the Selected-mode display. Suppressing keeps
+	// the row's badges semantically anchored to the by_taxonomy
+	// scoping the pill describes.
+	const taxonomyRowBadges = taxonomyBadge
+		? [
+				{ key: 'taxonomy', label: taxonomyBadge },
+				{ key: 'count', label: scopedCountBadge },
+		  ]
+		: [];
+
 	// No plural-form distinction for this copy ('%d selected' reads
 	// the same for singular + plural in English), so use a single
 	// translatable string via __() rather than _n(). Locales with
@@ -1144,7 +1353,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							'woocommerce-ai-storefront'
 						) }
 						description={ MODE_DESCRIPTIONS[ UI_ROWS.BY_TAXONOMY ] }
-						badgeLabel={ taxonomyBadge }
+						badgeLabel={ taxonomyRowBadges }
 						onSelect={ setRow }
 					>
 						<div

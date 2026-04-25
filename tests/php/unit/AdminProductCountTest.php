@@ -191,4 +191,80 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( [ 'count' => 5 ], $response->data );
 	}
+
+	// ------------------------------------------------------------------
+	// Request parameter overrides (live-preview path for the Products
+	// tab's by_taxonomy row count pill — saved settings stay untouched
+	// while the merchant explores selections).
+	// ------------------------------------------------------------------
+
+	public function test_request_param_mode_overrides_saved_settings(): void {
+		// Saved mode is `all`; the request-time `mode=by_taxonomy`
+		// override flips the path so the by_taxonomy branch runs
+		// against the merchant's configured (saved) selections —
+		// letting the merchant preview "what would happen if I
+		// switched to by_taxonomy" without committing.
+		//
+		// `wp_count_posts` is intentionally NOT stubbed here: under
+		// the override the by_taxonomy/WP_Query path runs, and
+		// reaching `wp_count_posts` would mean the override didn't
+		// take effect (the saved `all` mode leaked through). If the
+		// override regresses the test will fail loudly with an
+		// undefined-function error rather than silently returning a
+		// stale count.
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'all',
+			'selected_categories'    => [ 3 ],
+			'selected_tags'          => [],
+			'selected_brands'        => [],
+		];
+		WP_Query::$test_found_posts = 12;
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'mode', 'by_taxonomy' );
+
+		$response = $this->controller->get_product_count( $request );
+
+		$this->assertSame( [ 'count' => 12 ], $response->data );
+	}
+
+	public function test_request_param_selected_categories_overrides_saved_settings(): void {
+		// Saved selected_categories is empty — would return 0 under
+		// by_taxonomy with empty selections. The request-time
+		// override `selected_categories=[5,9]` previews a count
+		// against the hypothetical selection without persisting.
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [],
+			'selected_tags'          => [],
+			'selected_brands'        => [],
+		];
+		WP_Query::$test_found_posts = 17;
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'selected_categories', [ 5, 9 ] );
+
+		$response = $this->controller->get_product_count( $request );
+
+		// With overridden selection populated, by_taxonomy runs the
+		// UNION query and returns found_posts.
+		$this->assertSame( [ 'count' => 17 ], $response->data );
+	}
+
+	public function test_no_request_falls_back_to_saved_settings(): void {
+		// Backward compat: callers passing no request (e.g. unit
+		// tests that pre-date the param-override branch, or the
+		// Overview tab's own client which deliberately reads saved
+		// state) get the persisted-settings count.
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'all',
+		];
+		$counts          = new stdClass();
+		$counts->publish = 33;
+		Functions\when( 'wp_count_posts' )->justReturn( $counts );
+
+		$response = $this->controller->get_product_count();
+
+		$this->assertSame( [ 'count' => 33 ], $response->data );
+	}
 }
