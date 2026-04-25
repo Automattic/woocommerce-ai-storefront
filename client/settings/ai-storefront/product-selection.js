@@ -232,9 +232,13 @@ const ModeBadgeGroup = ( { labels, selected } ) => {
 	if ( list.length === 0 ) {
 		return null;
 	}
-	if ( list.length === 1 ) {
-		return <ModeBadge label={ list[ 0 ].label } selected={ selected } />;
-	}
+	// Always render the wrapper + map() form, even for a single-entry
+	// array, so the stable {key, label} contract holds across length
+	// transitions. A length-1 fast path that returned a bare <ModeBadge>
+	// would change the parent element type when an array transitions
+	// [a, b] → [a] (one entry filtered), forcing React to remount the
+	// surviving pill — exactly the flash the explicit-key contract is
+	// designed to prevent.
 	return (
 		<span
 			style={ {
@@ -374,7 +378,13 @@ const SelectedTokens = ( { items, onRemove, variant } ) => {
  * @param {string}                                             root0.name        Radio group name.
  * @param {string}                                             root0.label       Option label (bold).
  * @param {string}                                             root0.description Option description (muted).
- * @param {string}                                             root0.badgeLabel  Text for the right-aligned badge.
+ * @param {string|Array<{key: string, label: string}>}         root0.badgeLabel
+ *                                                                               Right-aligned badge content. Pass a single
+ *                                                                               string for one pill, or an array of
+ *                                                                               `{key, label}` objects for multiple adjacent
+ *                                                                               pills with stable React identity (each entry's
+ *                                                                               `key` decouples reconciliation from display
+ *                                                                               content — see `ModeBadgeGroup` JSDoc).
  * @param {Function}                                           root0.onSelect
  *                                                                               Called with this option's value.
  * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children
