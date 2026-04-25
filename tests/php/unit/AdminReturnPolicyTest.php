@@ -218,12 +218,133 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Authorization
+	// Mode-aware sanitization (Finding #8)
+	// ------------------------------------------------------------------
+
+	public function test_unconfigured_mode_drops_all_subfields(): void {
+		// Switching to `unconfigured` mode after previously
+		// configuring a full return policy must NOT carry the
+		// `page_id` / `days` / `fees` / `methods` ghost values
+		// forward on disk. Mode-aware sanitization scrubs them so
+		// a future "ghost field" bug can't read stale data.
+		$this->post_settings(
+			[
+				'return_policy' => [
+					'mode'    => 'unconfigured',
+					// Garbage values that must NOT survive sanitization:
+					'page_id' => 99,
+					'days'    => 30,
+					'fees'    => 'RestockingFees',
+					'methods' => [ 'ReturnByMail', 'ReturnInStore' ],
+				],
+			]
+		);
+		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
+		$this->assertSame( [ 'mode' => 'unconfigured' ], $persisted );
+	}
+
+	public function test_final_sale_mode_drops_days_fees_methods(): void {
+		// `final_sale` only consumes `mode` + `page_id` at emission.
+		// `days` / `fees` / `methods` are nonsensical (returns aren't
+		// permitted, so there's no window, fee, or method) — sanitizer
+		// drops them so storage doesn't carry meaningless state.
+		$this->post_settings(
+			[
+				'return_policy' => [
+					'mode'    => 'final_sale',
+					'page_id' => 17,
+					'days'    => 30,
+					'fees'    => 'FreeReturn',
+					'methods' => [ 'ReturnByMail' ],
+				],
+			]
+		);
+		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
+		$this->assertSame(
+			[ 'mode' => 'final_sale', 'page_id' => 17 ],
+			$persisted
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// REST round-trip (Finding #6)
+	// ------------------------------------------------------------------
+
+	public function test_round_trip_persists_return_policy_through_rest(): void {
+		// End-to-end: POST a complete return_policy via the REST
+		// controller's update_settings → GET via get_settings →
+		// assert the payload survived. Catches regressions where
+		// the controller's $fields whitelist forgets `return_policy`
+		// (a real risk: the whitelist is a hand-maintained array
+		// at the top of update_settings(), trivially out of sync
+		// with the args schema below it).
+		$this->post_settings(
+			[
+				'return_policy' => [
+					'mode'    => 'returns_accepted',
+					'page_id' => 42,
+					'days'    => 14,
+					'fees'    => 'OriginalShippingFees',
+					'methods' => [ 'ReturnByMail', 'ReturnAtKiosk' ],
+				],
+			]
+		);
+
+		$response = $this->controller->get_settings();
+		$policy   = $response->data['return_policy'];
+
+		$this->assertSame( 'returns_accepted', $policy['mode'] );
+		$this->assertSame( 42, $policy['page_id'] );
+		$this->assertSame( 14, $policy['days'] );
+		$this->assertSame( 'OriginalShippingFees', $policy['fees'] );
+		$this->assertSame(
+			[ 'ReturnByMail', 'ReturnAtKiosk' ],
+			$policy['methods']
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// Authorization (Finding #7 — wiring + capability)
 	// ------------------------------------------------------------------
 
 	public function test_unauthorized_request_rejected(): void {
 		Functions\when( 'current_user_can' )->justReturn( false );
 
 		$this->assertFalse( $this->controller->check_admin_permission() );
+	}
+
+	public function test_settings_route_wires_check_admin_permission_callback(): void {
+		// Verifies the registered route's permission_callback is
+		// actually our `check_admin_permission()` method, not the
+		// dangerous default `__return_true`. A regression that swaps
+		// the callback would let unauthenticated users update settings;
+		// asserting the wiring catches that even when capability
+		// behavior is otherwise correct.
+		//
+		// We stub the WP REST `register_rest_route` to record what
+		// our controller registers, then assert the recorded args
+		// reference the permission_callback we expect.
+		$registered = [];
+		Functions\when( 'register_rest_route' )->alias(
+			static function ( $namespace, $route, $args ) use ( &$registered ) {
+				$registered[ $route ] = $args;
+				return true;
+			}
+		);
+		$controller = new WC_AI_Storefront_Admin_Controller();
+		$controller->register_routes();
+
+		$this->assertArrayHasKey( '/settings', $registered );
+		// `/settings` registers an array of method handlers.
+		$settings_handlers = $registered['/settings'];
+		$this->assertIsArray( $settings_handlers );
+		foreach ( $settings_handlers as $handler ) {
+			$this->assertIsArray( $handler );
+			$this->assertArrayHasKey( 'permission_callback', $handler );
+			$this->assertSame(
+				[ $controller, 'check_admin_permission' ],
+				$handler['permission_callback']
+			);
+		}
 	}
 }

@@ -499,29 +499,36 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 
 	// Reflect external setting changes (e.g. server-side migration on
 	// reload) into the draft when the saved policy actually changes.
+	// Preserves in-flight edits by comparing field-by-field rather than
+	// stringifying — JSON.stringify is order-sensitive (a server response
+	// that returns keys in a different order than the local draft would
+	// look "different" even when semantically identical), and any future
+	// schema addition would silently break the comparison until both
+	// sides are updated. Explicit field compare is robust to both.
 	useEffect( () => {
-		if ( settings.return_policy ) {
-			setDraft( ( prev ) => ( {
-				...DEFAULT_POLICY,
-				...settings.return_policy,
-				// Preserve in-flight edits that haven't been saved yet
-				// — only sync from server when the saved object differs
-				// from our last-known sync. Cheap deep-compare via JSON.
-				...( JSON.stringify( prev ) ===
-				JSON.stringify( {
-					...DEFAULT_POLICY,
-					...settings.return_policy,
-				} )
-					? prev
-					: {} ),
-			} ) );
+		if ( ! settings.return_policy ) {
+			return;
 		}
+		setDraft( ( prev ) => {
+			const merged = { ...DEFAULT_POLICY, ...settings.return_policy };
+			const same =
+				prev.mode === merged.mode &&
+				prev.page_id === merged.page_id &&
+				prev.days === merged.days &&
+				prev.fees === merged.fees &&
+				Array.isArray( prev.methods ) &&
+				Array.isArray( merged.methods ) &&
+				prev.methods.length === merged.methods.length &&
+				prev.methods.every( ( m, i ) => m === merged.methods[ i ] );
+			return same ? prev : merged;
+		} );
 	}, [ settings.return_policy ] );
 
 	const [ pages, setPages ] = useState( [] );
 	const [ pagesLoading, setPagesLoading ] = useState( true );
 	const [ pagesError, setPagesError ] = useState( false );
 	const [ saved, setSaved ] = useState( false );
+	const [ saveError, setSaveError ] = useState( null );
 
 	useEffect( () => {
 		let cancelled = false;
@@ -564,8 +571,24 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 			: '';
 
 	const handleSave = () => {
+		setSaveError( null );
+		setSaved( false );
 		onChange( { return_policy: draft } );
-		Promise.resolve( onSave() ).then( () => setSaved( true ) );
+		Promise.resolve( onSave() )
+			.then( () => setSaved( true ) )
+			.catch( ( err ) => {
+				// Surface a real error so the merchant doesn't click
+				// Save repeatedly wondering why nothing happens.
+				// `err.message` may be undefined for non-Error
+				// rejections; fall back to a generic string.
+				setSaveError(
+					( err && err.message ) ||
+						__(
+							'Save failed. Try again, or check the browser console for details.',
+							'woocommerce-ai-storefront'
+						)
+				);
+			} );
 	};
 
 	return (
@@ -636,7 +659,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 						? __( 'Saving…', 'woocommerce-ai-storefront' )
 						: __( 'Save changes', 'woocommerce-ai-storefront' ) }
 				</Button>
-				{ saved && ! isSaving && (
+				{ saved && ! isSaving && ! saveError && (
 					<span
 						style={ {
 							color: colors.success,
@@ -645,6 +668,16 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 					>
 						{ __( 'Settings saved.', 'woocommerce-ai-storefront' ) }
 					</span>
+				) }
+				{ saveError && ! isSaving && (
+					<Notice
+						status="error"
+						isDismissible
+						onRemove={ () => setSaveError( null ) }
+						style={ { margin: 0, flex: 1 } }
+					>
+						{ saveError }
+					</Notice>
 				) }
 			</div>
 		</div>
