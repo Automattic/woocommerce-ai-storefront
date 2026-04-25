@@ -123,10 +123,18 @@ class WC_AI_Storefront_Admin_Controller {
 			]
 		);
 
-		// Syndicated product count for the Overview "Products Exposed"
-		// card. Runs the same UNION query the Store API filter would
+		// Syndicated product count for display surfaces (Overview tab's
+		// "Products Exposed" card, Products tab's by_taxonomy row count
+		// pill). Runs the same UNION query the Store API filter would
 		// apply, returning a single count. Purely a display metric —
 		// no per-row data crosses the wire.
+		//
+		// Optional query params let the caller override the merchant's
+		// CURRENTLY-SAVED settings to preview a hypothetical count.
+		// Used by the Products tab to show a live count for the
+		// merchant's IN-PROGRESS taxonomy selection (before they save).
+		// Without overrides, the endpoint reads from saved settings —
+		// matching what the Store API filter actually enforces today.
 		register_rest_route(
 			self::NAMESPACE,
 			'/product-count',
@@ -134,6 +142,33 @@ class WC_AI_Storefront_Admin_Controller {
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => [ $this, 'get_product_count' ],
 				'permission_callback' => [ $this, 'check_admin_permission' ],
+				'args'                => [
+					'mode'                => [
+						'type'              => 'string',
+						'enum'              => [ 'all', 'by_taxonomy', 'selected' ],
+						'sanitize_callback' => 'sanitize_text_field',
+					],
+					'selected_categories' => [
+						'type'              => 'array',
+						'items'             => [ 'type' => 'integer' ],
+						'sanitize_callback' => static fn( $v ) => array_map( 'absint', (array) $v ),
+					],
+					'selected_tags'       => [
+						'type'              => 'array',
+						'items'             => [ 'type' => 'integer' ],
+						'sanitize_callback' => static fn( $v ) => array_map( 'absint', (array) $v ),
+					],
+					'selected_brands'     => [
+						'type'              => 'array',
+						'items'             => [ 'type' => 'integer' ],
+						'sanitize_callback' => static fn( $v ) => array_map( 'absint', (array) $v ),
+					],
+					'selected_products'   => [
+						'type'              => 'array',
+						'items'             => [ 'type' => 'integer' ],
+						'sanitize_callback' => static fn( $v ) => array_map( 'absint', (array) $v ),
+					],
+				],
 			]
 		);
 
@@ -299,9 +334,30 @@ class WC_AI_Storefront_Admin_Controller {
 	 *                                   + defensive legacy fallback
 	 *                                   normalize stored values).
 	 */
-	public function get_product_count() {
+	public function get_product_count( $request = null ) {
 		$settings = WC_AI_Storefront::get_settings();
-		$mode     = $settings['product_selection_mode'] ?? 'all';
+
+		// Optional param overrides — let the caller preview a count
+		// for hypothetical settings (used by the Products tab's
+		// by_taxonomy row pill to reflect IN-PROGRESS UI state before
+		// the merchant saves). Without overrides, the endpoint reads
+		// from saved settings — what the Store API filter actually
+		// enforces today (used by the Overview tab's
+		// "Products Exposed" card).
+		if ( null !== $request ) {
+			$param_mode = $request->get_param( 'mode' );
+			if ( null !== $param_mode ) {
+				$settings['product_selection_mode'] = $param_mode;
+			}
+			foreach ( [ 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products' ] as $key ) {
+				$param = $request->get_param( $key );
+				if ( null !== $param ) {
+					$settings[ $key ] = $param;
+				}
+			}
+		}
+
+		$mode = $settings['product_selection_mode'] ?? 'all';
 
 		// Legacy mode values — defensive. Silent migration in
 		// get_settings() normally prevents these from reaching here.

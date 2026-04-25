@@ -30,6 +30,7 @@ import {
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
+import { addQueryArgs } from '@wordpress/url';
 import { colors } from './tokens';
 
 // Server-side enum for `product_selection_mode` (0.1.5+):
@@ -229,8 +230,22 @@ const ModeBadgeGroup = ( { labels, selected } ) => {
 				alignItems: 'center',
 			} }
 		>
-			{ list.map( ( label, i ) => (
-				<ModeBadge key={ i } label={ label } selected={ selected } />
+			{ /*
+			   React key derived from the label content rather than the
+			   array index. Index keys would remount the badge subtree
+			   when the labels array reorders or a label changes
+			   identity even though its position holds — causing
+			   transient flashes during rapid taxonomy toggling.
+			   Content-keyed reconciliation is stable across both
+			   reorders AND through the loading/loaded state cycle of
+			   the same logical pill.
+			*/ }
+			{ list.map( ( label ) => (
+				<ModeBadge
+					key={ label }
+					label={ label }
+					selected={ selected }
+				/>
 			) ) }
 		</span>
 	);
@@ -995,15 +1010,27 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 	// selected" (`1 category · 1 tag · 1 brand`) AND "what that
 	// scopes to" (`12 products`) at a glance — same information shape
 	// the "All published products" row has surfaced via its own
-	// product-count badge since 0.1.5. Same `/admin/product-count`
-	// endpoint OverviewTab uses (computes the actual UNION'd count
-	// server-side, not from client-side selection state).
+	// product-count badge since 0.1.5.
+	//
+	// Pass the IN-PROGRESS UI selection (mode + selected_*) as query
+	// params, NOT the saved settings. The `/admin/product-count`
+	// endpoint accepts overrides so the count reflects what the
+	// merchant is configuring RIGHT NOW, not what's persisted.
+	// Without this, every taxonomy click would still show the
+	// last-saved count until the merchant clicked Save — defeating
+	// the live-feedback purpose of the pill. See the param-override
+	// branch at the top of `get_product_count()` in
+	// class-wc-ai-storefront-admin-controller.php.
 	//
 	// Debounce + AbortController mirrors the OverviewTab pattern:
 	// rapid taxonomy toggling (or "Select all" against a large term
 	// list) coalesces into one request; in-flight requests cancel
 	// when the signature changes mid-flight so the displayed count
-	// never reflects a stale resolution.
+	// never reflects a stale resolution. The `setScopedProductCount(
+	// null )` reset at the start of the effect ensures the pill
+	// shows "Loading…" while the new signature's request is in
+	// flight, instead of displaying the previous resolution's
+	// stale count.
 	//
 	// Three display states match the All-row badge convention:
 	//   - `null`    → initial / pending → "Loading…"
@@ -1019,11 +1046,26 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		settings.selected_products || [],
 	] );
 	useEffect( () => {
+		// Reset to null so the pill shows "Loading…" instead of the
+		// previous signature's stale count while the new fetch is
+		// pending. Catches rapid sequential changes too — each new
+		// signature gets a clean loading state.
+		setScopedProductCount( null );
+
 		let cancelled = false;
 		const controller = new AbortController();
 		const timeoutId = setTimeout( () => {
 			apiFetch( {
-				path: '/wc/v3/ai-storefront/admin/product-count',
+				path: addQueryArgs(
+					'/wc/v3/ai-storefront/admin/product-count',
+					{
+						mode: settings.product_selection_mode,
+						selected_categories: settings.selected_categories || [],
+						selected_tags: settings.selected_tags || [],
+						selected_brands: settings.selected_brands || [],
+						selected_products: settings.selected_products || [],
+					}
+				),
 				signal: controller.signal,
 			} )
 				.then( ( response ) => {
@@ -1049,7 +1091,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 			clearTimeout( timeoutId );
 			controller.abort();
 		};
-	}, [ scopedCountSignature ] );
+	}, [ scopedCountSignature ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Settings consumed via signature; stringified deps would re-fire on object identity changes that don't affect query params.
 
 	let scopedCountBadge;
 	if ( scopedProductCount === null ) {
@@ -1069,14 +1111,20 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 		);
 	}
 
-	// Compose the by_taxonomy row's badge as a 2-pill array: the
-	// taxonomy-count summary (always present in some form, including
-	// "Nothing selected" when the row is selected with empty config),
-	// followed by the scoped product count. Filtered downstream in
-	// `ModeBadgeGroup` so a falsy taxonomyBadge doesn't render an
-	// empty pill — keeps the visual lean when the merchant hasn't
-	// committed to by_taxonomy yet.
-	const taxonomyRowBadges = [ taxonomyBadge, scopedCountBadge ];
+	// Compose the by_taxonomy row's badge. The scoped count pill only
+	// appears when there's actual taxonomy context to anchor it to —
+	// either the merchant has selected terms (`taxonomyBadgeParts`
+	// non-empty) OR the row is currently active and showing the
+	// "Nothing selected" placeholder. Otherwise (merchant in `all`
+	// or `selected` mode, no taxonomy selection) the lone count pill
+	// would float without context and show a count derived from the
+	// CURRENT saved mode — confusingly redundant with the All-row's
+	// own count or with the Selected-mode display. Suppressing keeps
+	// the row's badges semantically anchored to the by_taxonomy
+	// scoping the pill describes.
+	const taxonomyRowBadges = taxonomyBadge
+		? [ taxonomyBadge, scopedCountBadge ]
+		: [];
 
 	// No plural-form distinction for this copy ('%d selected' reads
 	// the same for singular + plural in English), so use a single
