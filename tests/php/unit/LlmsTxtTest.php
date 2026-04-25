@@ -472,7 +472,35 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	// Category section
 	// ------------------------------------------------------------------
 
+	public function test_all_mode_suppresses_taxonomy_sections(): void {
+		// Pre-0.1.10 `all` mode emitted top-N (≤20) terms by count
+		// for each taxonomy, which falsely implied a restriction
+		// the merchant hadn't configured. 0.1.10 suppresses the
+		// taxonomy sections entirely in `all` mode — the merchant
+		// exposed everything, so listing a (truncated) subset
+		// would mislead. Agents wanting the catalog enumerate
+		// via the Store API instead.
+		$category = (object) [
+			'term_id' => 5,
+			'name'    => 'Coffee Beans',
+			'slug'    => 'coffee-beans',
+			'count'   => 3,
+		];
+		Functions\when( 'get_terms' )->justReturn( [ $category ] );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( '## Product Categories', $output );
+		$this->assertStringNotContainsString( '## Product Tags', $output );
+		$this->assertStringNotContainsString( '## Product Brands', $output );
+	}
+
 	public function test_categories_section_renders_when_categories_exist(): void {
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [ 5 ],
+		];
 		$category = (object) [
 			'term_id' => 5,
 			'name'    => 'Coffee Beans',
@@ -494,6 +522,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	public function test_category_with_one_product_uses_singular_grammar(): void {
 		// Category counts feeding "(1 products)" is a grammar bug AI
 		// readers will notice. Singular vs plural is explicitly handled.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [ 5 ],
+		];
 		$category = (object) [
 			'term_id' => 5,
 			'name'    => 'Espresso',
@@ -509,6 +542,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_category_name_with_entities_is_decoded(): void {
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [ 5 ],
+		];
 		$category = (object) [
 			'term_id' => 5,
 			'name'    => 'Tea &amp; Infusions',

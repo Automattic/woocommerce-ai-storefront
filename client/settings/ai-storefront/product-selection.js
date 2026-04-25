@@ -1213,49 +1213,64 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 									padding-left: 14px !important;
 									padding-right: 14px !important;
 								}
-								/* Track: recessed neutral surface so the pill reads as floating above it. */
-								.ai-storefront-taxonomy-toggle .components-toggle-group-control {
-									background: rgba( 0, 0, 0, 0.04 );
-									border: 1px solid rgba( 0, 0, 0, 0.08 );
-									box-shadow: inset 0 1px 1px rgba( 0, 0, 0, 0.04 );
-									border-radius: 6px;
+								/* Track: recessed neutral surface so the pill reads as floating above it.
+								   Targets the wrapping element directly via our scope class — WP
+								   components 28.x uses Emotion CSS-in-JS with dynamically-generated
+								   class names (no stable .components-toggle-group-control class), so
+								   the pre-0.1.10 selectors targeting that name didn't match anything. */
+								.ai-storefront-taxonomy-toggle {
+									background: rgba( 0, 0, 0, 0.04 ) !important;
+									border: 1px solid rgba( 0, 0, 0, 0.08 ) !important;
+									box-shadow: inset 0 1px 1px rgba( 0, 0, 0, 0.04 ) !important;
+									border-radius: 6px !important;
 								}
-								/* Backdrop (the moving pill): white surface + soft shadow for elevation. */
-								.ai-storefront-taxonomy-toggle .components-toggle-group-control-backdrop {
+								/* The "moving pill" is the WP component's :before pseudo-element
+								   on the same wrapping div (positioned absolutely, animated via
+								   CSS variables). Override the default COLORS.gray[900] black
+								   background with white + a soft contact shadow + 0.5px ring,
+								   yielding the elevation cue the design needs. */
+								.ai-storefront-taxonomy-toggle::before {
 									background: #fff !important;
-									border-radius: 5px;
 									box-shadow:
 										0 1px 2px rgba( 0, 0, 0, 0.12 ),
-										0 0 0 0.5px rgba( 0, 0, 0, 0.08 );
+										0 0 0 0.5px rgba( 0, 0, 0, 0.08 ) !important;
 								}
-								/* Selected label: dark text + slightly heavier weight for emphasis. */
-								.ai-storefront-taxonomy-toggle .components-toggle-group-control-option-base[aria-checked="true"] {
-									color: #1e1e1e;
+								/* Suppress WP's :focus-within border that uses the admin theme
+								   color (vivid pink/magenta on Sunrise, blue on Modern, etc.)
+								   so the loud color doesn't compete with the elevated-pill
+								   visual signal. Keyboard-only focus indication moves to the
+								   selected button below via :focus-visible. */
+								.ai-storefront-taxonomy-toggle:focus-within {
+									border-color: rgba( 0, 0, 0, 0.08 ) !important;
+									box-shadow: inset 0 1px 1px rgba( 0, 0, 0, 0.04 ) !important;
+								}
+								/* Selected button text. WP defaults to white because the pill
+								   was black; the pill is now white, so the text needs to be dark
+								   for contrast. Selector keys off [aria-checked="true"] which is
+								   stable across WP component versions (ARIA is the contract). */
+								.ai-storefront-taxonomy-toggle [aria-checked="true"] {
+									color: #1e1e1e !important;
 									font-weight: 500;
 								}
-								/* Unselected label: muted, readable on the track. */
-								.ai-storefront-taxonomy-toggle .components-toggle-group-control-option-base[aria-checked="false"] {
-									color: #50575e;
+								/* Unselected hover affordance — only on the [aria-checked="false"]
+								   options so it doesn't fight the active pill. */
+								.ai-storefront-taxonomy-toggle [aria-checked="false"]:hover {
+									color: #1e1e1e !important;
 								}
-								/* Hover affordance on unselected only — don't fight the active pill. */
-								.ai-storefront-taxonomy-toggle .components-toggle-group-control-option-base[aria-checked="false"]:hover {
-									color: #1e1e1e;
-									background: rgba( 0, 0, 0, 0.04 );
-									border-radius: 5px;
-								}
-								/* Keyboard-only focus ring; suppresses the default WP focus shadow that would double up. */
-								.ai-storefront-taxonomy-toggle .components-toggle-group-control-option-base:focus-visible {
+								/* Keyboard-only focus ring on the selected button using the
+								   WP admin theme color. :focus-visible (not :focus) prevents
+								   the ring from appearing on mouse clicks — the Gutenberg
+								   standard since WP 6.0. */
+								.ai-storefront-taxonomy-toggle [aria-checked="true"]:focus-visible {
 									outline: 2px solid var( --wp-admin-theme-color, #3858e9 );
 									outline-offset: 2px;
 									border-radius: 5px;
 								}
-								.ai-storefront-taxonomy-toggle .components-toggle-group-control-option-base:focus {
-									box-shadow: none;
-								}
-								/* Windows High Contrast mode: ensure the pill carries a visible edge when forced colors strip the shadow. */
+								/* Windows High Contrast mode: ensure the pill carries a
+								   visible edge when forced colors strip the box-shadow. */
 								@media ( forced-colors: active ) {
-									.ai-storefront-taxonomy-toggle .components-toggle-group-control-backdrop {
-										border: 1px solid CanvasText;
+									.ai-storefront-taxonomy-toggle::before {
+										outline: 1px solid CanvasText !important;
 									}
 								}
 							` }</style>

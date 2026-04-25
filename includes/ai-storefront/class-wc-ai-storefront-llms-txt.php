@@ -586,10 +586,19 @@ class WC_AI_Storefront_Llms_Txt {
 	 *
 	 * The three `## Product {Categories,Tags,Brands}` sections in
 	 * llms.txt are navigation hints: "here's the shape of what
-	 * this store sells." We only emit them when truthful relative
-	 * to the merchant's actual scoping:
+	 * this store sells." We only emit them when the merchant has
+	 * actually scoped the catalog by taxonomy — otherwise the
+	 * sections imply a restriction that isn't there.
 	 *
-	 *   - `all` → top-N-by-count list (every term reachable).
+	 *   - `all` → suppressed. The merchant exposed the entire
+	 *     catalog; emitting a (truncated) per-taxonomy enumeration
+	 *     would imply an "allowed list" restriction the merchant
+	 *     hasn't actually configured. Pre-0.1.10 this branch
+	 *     emitted top-N by count, which both falsely implied a
+	 *     restriction AND under-reported (the truncated 20-term
+	 *     list could miss long-tail terms agents would want to
+	 *     navigate by). Agents wanting the catalog enumerate via
+	 *     the Store API, which is the canonical source of truth.
 	 *   - `by_taxonomy` with the matching `selected_*` non-empty
 	 *     → list those selected terms. Other taxonomies in the
 	 *     UNION may widen the product set, but THIS taxonomy's
@@ -628,7 +637,12 @@ class WC_AI_Storefront_Llms_Txt {
 			$product_mode = 'by_taxonomy';
 		}
 
-		if ( ! in_array( $product_mode, [ 'all', 'by_taxonomy' ], true ) ) {
+		// Only `by_taxonomy` mode lists taxonomies — and only when the
+		// matching `selected_*` is non-empty. `all` and `selected`
+		// modes both suppress the section. Pre-0.1.10 `all` emitted a
+		// top-20 list, which falsely implied a restriction; see method
+		// docblock for full rationale.
+		if ( 'by_taxonomy' !== $product_mode ) {
 			return [];
 		}
 
@@ -639,24 +653,20 @@ class WC_AI_Storefront_Llms_Txt {
 		$selection     = (array) ( $settings[ $selection_key ] ?? [] );
 		$has_selection = ! empty( $selection );
 
-		if ( 'by_taxonomy' === $product_mode && ! $has_selection ) {
+		if ( ! $has_selection ) {
 			return [];
 		}
 
-		$args = [
-			'taxonomy'   => $taxonomy,
-			'hide_empty' => true,
-			'orderby'    => 'count',
-			'order'      => 'DESC',
-			'number'     => 20,
-		];
-
-		if ( 'by_taxonomy' === $product_mode && $has_selection ) {
-			$args['include'] = array_map( 'absint', $selection );
-			$args['number']  = 0;
-		}
-
-		$terms = get_terms( $args );
+		$terms = get_terms(
+			[
+				'taxonomy'   => $taxonomy,
+				'hide_empty' => true,
+				'orderby'    => 'count',
+				'order'      => 'DESC',
+				'include'    => array_map( 'absint', $selection ),
+				'number'     => 0,
+			]
+		);
 		// Defensive: `get_terms` should return array|WP_Error per
 		// the documented contract, but a third-party `get_terms`
 		// filter could return null/false/scalar. Coerce anything
