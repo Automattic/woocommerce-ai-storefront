@@ -238,28 +238,6 @@ class WC_AI_Storefront_Robots {
 	];
 
 	/**
-	 * Crawl-delay (in seconds) emitted alongside each AI-crawler
-	 * `User-agent:` block in robots.txt.
-	 *
-	 * Crawl-delay is an advisory directive originally introduced by
-	 * Google as a robots.txt extension. Well-behaved crawlers respect
-	 * it and wait this many seconds between requests; less-careful
-	 * ones ignore it. Combined with the plugin's Store API rate
-	 * limiter (hard enforcement at 25 req/min per bot by default),
-	 * Crawl-delay acts as the polite-signal layer before the hard
-	 * limit kicks in.
-	 *
-	 * The value (2 seconds) is deliberately conservative — matches
-	 * the merchant-protection guidance recommended for e-commerce
-	 * sites facing aggressive AI search bots (OAI-SearchBot and
-	 * similar live agents have been observed bursting dozens of
-	 * requests in seconds during product-comparison queries). Two
-	 * seconds is low enough to not materially hurt user-perceived
-	 * agent latency, high enough to dampen the worst burst behavior.
-	 */
-	const CRAWL_DELAY_SECONDS = 2;
-
-	/**
 	 * Sanitize an `allowed_crawlers` input against the canonical crawler list.
 	 *
 	 * Strips unknown IDs left over from plugin upgrades that rotated the
@@ -424,15 +402,20 @@ class WC_AI_Storefront_Robots {
 			$bot     = sanitize_text_field( $bot );
 			$output .= "User-agent: {$bot}\n";
 
-			// Advisory rate-hint: well-behaved crawlers wait this many
-			// seconds between requests, which dampens burst traffic
-			// (AI search bots in particular have been observed firing
-			// 10+ requests in a second during product-comparison
-			// queries). Emitted before the Allow/Disallow rules per
-			// robots.txt convention so crawlers pick it up before
-			// they fetch anything. See the CRAWL_DELAY_SECONDS
-			// constant docblock for value rationale.
-			$output .= 'Crawl-delay: ' . self::CRAWL_DELAY_SECONDS . "\n";
+			// Note: pre-0.1.9 each per-bot block also emitted
+			// `Crawl-delay: 2` as a polite advisory rate hint. Removed
+			// in 0.1.9 because (1) Google explicitly doesn't support
+			// `Crawl-delay` and Search Console's robots.txt tester
+			// flags it as an "ignored" directive globally (regardless
+			// of which User-agent block contains it), creating
+			// merchant-facing noise; (2) Bing's compliance is
+			// inconsistent in practice; (3) the major AI crawlers
+			// (OpenAI, Anthropic, Perplexity) don't publish their
+			// stance on `Crawl-delay`. Hard rate enforcement remains
+			// via the plugin's Store API rate limiter (HTTP 429 +
+			// Retry-After at 25 req/min per bot by default), which
+			// every well-behaved crawler honors more reliably than
+			// the polite advisory ever did.
 
 			$output .= "Allow: /llms.txt\n";
 			$output .= "Allow: /.well-known/ucp\n";
@@ -444,40 +427,22 @@ class WC_AI_Storefront_Robots {
 			// discovery manifest, which announces that these exist.
 			$output .= "Allow: /wp-json/wc/ucp/\n";
 
-			// Sitemap Allows, emitted inside each named block as
-			// defense against crawlers that only parse directives
-			// within their own User-agent group (a spec-noncompliant
-			// but not-unheard-of behavior). The top-level Sitemap:
-			// directive is already authoritative per spec, so this
-			// is pure redundancy — but it's free and it accommodates
-			// implementations that over-scope their parsing.
-			//
-			// Two-source strategy: paths discovered from the existing
-			// robots.txt body (via `extract_sitemap_urls`, covers
-			// SEO plugins that use the `robots_txt` filter) plus the
-			// hardcoded `COMMON_SITEMAP_PATHS` list (covers SEO
-			// plugins that emit via `do_robotstxt` action — invisible
-			// to our filter but commonly at known paths). Union,
-			// deduped — non-existent paths are no-ops for bots.
-			$discovered_paths = array_filter(
-				array_map(
-					static function ( string $url ): ?string {
-						$parsed = wp_parse_url( $url, PHP_URL_PATH );
-						return ( is_string( $parsed ) && '' !== $parsed ) ? $parsed : null;
-					},
-					$sitemap_urls
-				)
-			);
-			$emit_paths       = array_values(
-				array_unique(
-					array_merge( $discovered_paths, self::COMMON_SITEMAP_PATHS )
-				)
-			);
-			foreach ( $emit_paths as $sitemap_path ) {
-				if ( is_string( $sitemap_path ) && '' !== $sitemap_path ) {
-					$output .= "Allow: {$sitemap_path}\n";
-				}
-			}
+			// Note: pre-0.1.9 this loop also emitted `Allow:` rules for
+			// the discovered sitemap paths, justified as "defense
+			// against crawlers that only parse directives within their
+			// own User-agent group." That defense was misdirected —
+			// `Allow:` only matters when there's a `Disallow:` that
+			// would otherwise block the path, and none of the per-bot
+			// `Disallow:` rules below touch sitemap paths. The rules
+			// were permitting something that was never blocked. Sitemap
+			// discovery happens via the top-level `Sitemap:` directives
+			// (emitted by WP core / Jetpack / SEO plugins above this
+			// section, and re-emitted at the bottom of our section).
+			// With every bot in `LIVE_BROWSING_AGENTS` × 4 sitemap
+			// paths the deletion saves dozens of redundant lines on
+			// a typical merchant's robots.txt (rather than hardcoding
+			// the count, which would rot the next time a bot is added
+			// to the constant).
 
 			if ( '/' !== $shop_path ) {
 				$output .= "Allow: {$shop_path}\n";
@@ -538,14 +503,23 @@ class WC_AI_Storefront_Robots {
 
 	/**
 	 * Common sitemap paths emitted by WordPress core and popular SEO
-	 * plugins. We emit `Allow:` for every entry in this list
-	 * regardless of whether the specific path is active on the
-	 * merchant's site — an `Allow:` directive for a non-existent
-	 * path is a no-op (bots still get 404 if they try to fetch it),
-	 * so this is harmless fallback coverage for sites whose SEO
-	 * plugin emits `Sitemap:` via the `do_robotstxt` action rather
-	 * than the `robots_txt` filter (a common pattern that leaves
-	 * our auto-discovery blind to their URLs).
+	 * plugins.
+	 *
+	 * Used by `WC_AI_Storefront_Llms_Txt::discover_sitemap_urls()` to
+	 * HEAD-probe candidate sitemap locations on the merchant's origin —
+	 * llms.txt is user-facing content, so it only lists sitemaps that
+	 * actually respond. The probing covers SEO plugins that emit
+	 * `Sitemap:` via the `do_robotstxt` action (direct echo) rather
+	 * than the `robots_txt` filter, which the regex discovery in
+	 * `extract_sitemap_urls()` below can't see.
+	 *
+	 * Pre-0.1.9 this constant was ALSO used to emit per-bot
+	 * `Allow:` rules in robots.txt. That use was redundant and
+	 * removed — sitemap discovery happens via top-level `Sitemap:`
+	 * directives, not `Allow:`, so the per-bot Allow rules were
+	 * permitting paths nothing was ever Disallowing. The constant
+	 * remains for the llms.txt probe path, which is its only remaining
+	 * caller.
 	 *
 	 * Paths chosen from observed real-world usage:
 	 *   - `/sitemap.xml`        — Yoast, Rank Math, AIOSEO default,
@@ -582,10 +556,14 @@ class WC_AI_Storefront_Robots {
 	 * NOT covered by either strategy: SEO plugins that emit
 	 * `Sitemap:` via the `do_robotstxt` action (direct `echo`).
 	 * Those lines appear in the final robots.txt body but aren't
-	 * visible to our filter. For those sites, the caller falls
-	 * back to the hardcoded `COMMON_SITEMAP_PATHS` list — this
-	 * function's job is to return specifically-discovered URLs,
-	 * not to guarantee coverage.
+	 * visible to our filter. Their `Sitemap:` directives still get
+	 * picked up by crawlers since `Sitemap:` is a top-level
+	 * directive — we just don't see them at filter-time. Pre-0.1.9
+	 * we tried to compensate by emitting redundant `Allow:` rules
+	 * for a hardcoded list of common sitemap paths, but those
+	 * `Allow:` rules were doing nothing useful (sitemap discovery
+	 * happens via `Sitemap:`, not `Allow:`) so the compensation
+	 * was removed.
 	 *
 	 * @param string $robots_txt The full robots.txt body at the
 	 *                           moment our filter runs.

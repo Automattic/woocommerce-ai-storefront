@@ -254,41 +254,29 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 1, $lines_between, 'Store and UCP allows should be adjacent' );
 	}
 
-	public function test_crawl_delay_emitted_once_per_crawler(): void {
-		// Crawl-delay is advisory; value is the CRAWL_DELAY_SECONDS
-		// constant. Must appear exactly once per User-agent block —
-		// one directive per bot, placed before the Allow/Disallow
-		// rules so crawlers see the hint before they fetch anything.
+	public function test_crawl_delay_directive_not_emitted(): void {
+		// Pre-0.1.9 each per-bot block included `Crawl-delay: 2` as
+		// a polite advisory rate hint. Removed in 0.1.9 because:
+		//   - Google explicitly doesn't support the directive and
+		//     Search Console's robots.txt tester flags it as
+		//     "ignored" globally, creating merchant-facing noise.
+		//   - Bing's compliance is inconsistent in practice.
+		//   - Major AI crawlers (OpenAI, Anthropic, Perplexity)
+		//     don't publish their stance on `Crawl-delay`.
+		// Hard rate enforcement remains via the plugin's Store API
+		// rate limiter (429 + Retry-After), which every well-behaved
+		// crawler honors more reliably than the polite advisory.
+		//
+		// This test locks the regression: any reintroduction of
+		// `Crawl-delay` in the AI-bot section must fail tests so
+		// the trade-off above is reconsidered explicitly.
 		$output = $this->generate_robots_output();
 
-		// GPTBot + ClaudeBot in the fixture = 2 Crawl-delay lines.
-		$this->assertEquals(
-			2,
-			substr_count( $output, 'Crawl-delay: ' ),
-			'Crawl-delay should appear once per allowed crawler'
+		$this->assertSame(
+			0,
+			substr_count( $output, 'Crawl-delay:' ),
+			'Crawl-delay directive should not appear in robots.txt output'
 		);
-		$this->assertStringContainsString(
-			'Crawl-delay: ' . WC_AI_Storefront_Robots::CRAWL_DELAY_SECONDS,
-			$output
-		);
-	}
-
-	public function test_crawl_delay_appears_before_allow_rules(): void {
-		// Per robots.txt convention, directives that constrain
-		// behavior (Crawl-delay, Disallow) are emitted alongside
-		// the allowances so crawlers have the full picture in the
-		// one User-agent block. Crawl-delay specifically should be
-		// the first line after User-agent so a crawler parsing
-		// top-down sees the rate hint before any fetch decision.
-		$output = $this->generate_robots_output();
-
-		$ua_pos       = strpos( $output, 'User-agent: GPTBot' );
-		$delay_pos    = strpos( $output, 'Crawl-delay: ', $ua_pos );
-		$first_allow  = strpos( $output, 'Allow:', $ua_pos );
-
-		$this->assertNotFalse( $delay_pos );
-		$this->assertNotFalse( $first_allow );
-		$this->assertLessThan( $first_allow, $delay_pos, 'Crawl-delay must precede the first Allow' );
 	}
 
 	public function test_rules_skipped_when_syndication_disabled(): void {
@@ -543,30 +531,86 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// (confirmed blocker for Perplexity's browsing tool, same fix
 	// family as llms.txt in 1.4.1).
 
-	public function test_sitemap_allow_emitted_inside_each_named_block(): void {
-		// Base robots.txt with multiple Sitemap directives (mirroring
-		// what a Yoast/Rank Math site looks like). Each is discovered
-		// and translated to a path-level Allow inside every named
-		// AI-bot block.
+	public function test_sitemap_paths_not_emitted_as_per_bot_allow_rules(): void {
+		// Pre-0.1.9, this method emitted `Allow: /sitemap.xml` (and
+		// related paths) inside every per-bot block, justified as
+		// "defense against crawlers that only parse directives within
+		// their own User-agent group." The defense was misdirected:
+		// `Allow:` only matters when there's a `Disallow:` that would
+		// otherwise block the path, and none of the per-bot
+		// `Disallow:` rules touch sitemap paths. With every bot in
+		// `LIVE_BROWSING_AGENTS` × 4 sitemap paths in
+		// `COMMON_SITEMAP_PATHS`, the result was dozens of redundant
+		// lines on a typical merchant's robots.txt (observed on
+		// pierorocca.com test deployment).
+		//
+		// 0.1.9 dropped the per-block sitemap Allows. Sitemap
+		// discovery still works via the top-level `Sitemap:`
+		// directives (emitted by WP core / Jetpack / SEO plugins
+		// above this section, plus re-emitted at the bottom of
+		// our section). This test locks the regression: per-bot
+		// `Allow: <sitemap-path>` lines must not reappear without
+		// a deliberate design discussion.
+		//
+		// Tightened from a 4-string deny-list to a regex match —
+		// catches reintroduction at a non-canonical path too (e.g.
+		// `/custom-sitemap.xml` from a future SEO plugin's
+		// hardcoded list). The four canonical paths are still
+		// asserted explicitly for diagnostic clarity.
 		$base = "Sitemap: https://example.com/sitemap.xml\n"
 			. "Sitemap: https://example.com/news-sitemap.xml\n"
 			. "User-agent: *\nDisallow: /wp-admin/\n";
 
 		$output = $this->generate_robots_output( $base );
 
-		// Two allowed bots (GPTBot + ClaudeBot per the fixture) × 2
-		// sitemaps = 4 emissions. Counting by the path string avoids
-		// false positives on the top-level Sitemap directives (which
-		// use full URLs, not paths).
-		$this->assertEquals(
-			2,
-			substr_count( $output, 'Allow: /sitemap.xml' ),
-			'Sitemap path should be allowed inside each named block'
+		// Per-bot `Allow:` rules that include "sitemap" anywhere in
+		// the path indicate the redundant emission has returned.
+		// The regex matches `Allow: <whitespace> <anything>sitemap<anything>`
+		// at line start, multiline-mode, anchored end-of-line.
+		$this->assertSame(
+			0,
+			preg_match_all( '/^Allow:\s+\S*sitemap\S*$/m', $output ),
+			'No per-bot Allow rule should reference any sitemap-shaped path'
 		);
-		$this->assertEquals(
-			2,
-			substr_count( $output, 'Allow: /news-sitemap.xml' ),
-			'Secondary sitemap path should also be allowed per block'
+
+		// Spot-check the four canonical paths the previous
+		// implementation emitted, for diagnostic clarity if the
+		// regex assertion ever fires.
+		$this->assertStringNotContainsString( 'Allow: /sitemap.xml', $output );
+		$this->assertStringNotContainsString( 'Allow: /news-sitemap.xml', $output );
+		$this->assertStringNotContainsString( 'Allow: /sitemap_index.xml', $output );
+		$this->assertStringNotContainsString( 'Allow: /wp-sitemap.xml', $output );
+	}
+
+	public function test_sitemap_directive_falls_back_to_wp_core_when_no_sitemap_in_input(): void {
+		// `extract_sitemap_urls()` has two layered strategies: regex
+		// the existing robots.txt for `Sitemap:` directives, then
+		// fall back to `get_sitemap_url( 'index' )` for sites without
+		// any external sitemap declared in the input.
+		//
+		// Pre-0.1.9 the WP-core fallback path was tested via the
+		// per-block `Allow:` emission (which has been deleted). With
+		// that test gone, the fallback branch was uncovered — a
+		// regression that broke `get_sitemap_url()` consumption
+		// would silently leave SEO-pluginless merchants with no
+		// `Sitemap:` re-emit at the bottom of our section.
+		//
+		// This test seeds an empty (no Sitemap directive) base and
+		// stubs `get_sitemap_url()` to return the WP-core canonical
+		// URL. The WP-core URL must appear in the bottom-of-section
+		// `Sitemap:` re-emission.
+		$base = "User-agent: *\nDisallow: /wp-admin/\n"; // no Sitemap directive
+
+		$output = $this->generate_robots_output( $base );
+
+		// `generate_robots_output()` stubs `get_sitemap_url` to
+		// return `https://example.com/wp-sitemap.xml`. The
+		// bottom-of-section emission re-renders that URL as a
+		// `Sitemap:` directive (full URL form, not Allow:).
+		$this->assertStringContainsString(
+			'Sitemap: https://example.com/wp-sitemap.xml',
+			$output,
+			'WP-core fallback sitemap URL should appear in the bottom-of-section Sitemap: re-emission'
 		);
 	}
 
@@ -586,22 +630,6 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 			2,
 			substr_count( $output, 'Sitemap: https://example.com/sitemap.xml' ),
 			'Sitemap URL should appear both at top (from input) and at bottom (re-emitted)'
-		);
-	}
-
-	public function test_sitemap_allow_falls_back_to_wp_core_sitemap_when_none_in_input(): void {
-		// Sites without Yoast/Rank Math/etc. rely on WP core's
-		// `get_sitemap_url( 'index' )` which emits `/wp-sitemap.xml`.
-		// The extract helper falls back to that when no `Sitemap:`
-		// lines exist in the input robots.txt.
-		$base = "User-agent: *\nDisallow: /wp-admin/\n"; // no Sitemap directive
-
-		$output = $this->generate_robots_output( $base );
-
-		$this->assertStringContainsString(
-			'Allow: /wp-sitemap.xml',
-			$output,
-			'WP core fallback sitemap should be allowed per-block when no external sitemap is declared'
 		);
 	}
 
@@ -719,46 +747,16 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// CORS + nosniff headers on robots.txt (do_robotstxt hook)
 	// ------------------------------------------------------------------
 
-	public function test_common_sitemap_paths_always_emitted_even_without_discovery(): void {
-		// Real-world case from pierorocca.com: Yoast SEO emits
-		// Sitemap directives via `do_robotstxt` action (direct
-		// echo) rather than the `robots_txt` filter, so our
-		// regex discovery sees nothing. Without the hardcoded
-		// fallback the merchant's `/sitemap.xml` URL never
-		// makes it into an `Allow:` directive.
-		//
-		// With COMMON_SITEMAP_PATHS, `/sitemap.xml` is always
-		// in each named block regardless of what we could or
-		// couldn't discover — covering this common deployment.
-		$base = "User-agent: *\nDisallow: /wp-admin/\n";
-
-		$output = $this->generate_robots_output( $base );
-
-		$this->assertStringContainsString( 'Allow: /sitemap.xml', $output );
-		$this->assertStringContainsString( 'Allow: /sitemap_index.xml', $output );
-		$this->assertStringContainsString( 'Allow: /wp-sitemap.xml', $output );
-		$this->assertStringContainsString( 'Allow: /news-sitemap.xml', $output );
-	}
-
-	public function test_discovered_sitemap_paths_not_duplicated_with_hardcoded(): void {
-		// Union + dedupe: when `/sitemap.xml` is both discovered
-		// from the input AND in COMMON_SITEMAP_PATHS, it should
-		// only appear once per named block — not twice.
-		$base = "Sitemap: https://example.com/sitemap.xml\n"
-			. "User-agent: *\nDisallow: /wp-admin/\n";
-
-		$output = $this->generate_robots_output( $base );
-
-		// Count per-block occurrences. Two allowed bots in the
-		// fixture, so we expect exactly 2 instances of
-		// `Allow: /sitemap.xml` — not 4 (which would indicate
-		// discovered + hardcoded both emitted).
-		$this->assertEquals(
-			2,
-			substr_count( $output, 'Allow: /sitemap.xml' ),
-			'Duplicate /sitemap.xml from discovered + hardcoded should be deduped'
-		);
-	}
+	// Note: pre-0.1.9 there were two tests here covering robots.txt behavior
+	// around `COMMON_SITEMAP_PATHS` — specifically the per-block `Allow:`
+	// emission of every entry in that constant, and dedupe with discovered
+	// paths. Both deleted when robots.txt stopped emitting per-block sitemap
+	// allows in 0.1.9. The `COMMON_SITEMAP_PATHS` constant itself remains —
+	// it's still used by `WC_AI_Storefront_Llms_Txt::discover_sitemap_urls()`
+	// for HEAD-probing candidate paths to list in llms.txt — it's just no
+	// longer consumed by robots.txt. See
+	// `test_sitemap_paths_not_emitted_as_per_bot_allow_rules` above for the
+	// regression guard that locks the new robots.txt behavior.
 
 	public function test_cors_headers_method_is_hooked_on_do_robotstxt(): void {
 		// Can't test the actual `header()` calls without process

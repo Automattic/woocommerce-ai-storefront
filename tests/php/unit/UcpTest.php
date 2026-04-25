@@ -394,9 +394,56 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 			);
 		}
 
-		// The extension MUST carry `extends` pointing at the parent.
+		// The extension MUST carry `extends` pointing at parent
+		// capability(ies). Per the UCP 2026-04-08 capability schema:
+		// "Parent capability(s) this extends. Use array for multi-
+		// parent extensions." Pre-0.1.9 this asserted the string form
+		// pointing at the service ID `dev.ucp.shopping` (a service is
+		// not a capability — schema regex passed but the description
+		// didn't endorse it). 0.1.9 switched to the array form
+		// listing all three canonical shopping capabilities, since
+		// the extension's `store_context` applies to search, lookup,
+		// AND checkout (not to "the service" abstractly).
 		$ext = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0];
-		$this->assertSame( 'dev.ucp.shopping', $ext['extends'] );
+		$this->assertSame(
+			[
+				'dev.ucp.shopping.catalog.search',
+				'dev.ucp.shopping.catalog.lookup',
+				'dev.ucp.shopping.checkout',
+			],
+			$ext['extends']
+		);
+	}
+
+	public function test_extends_entries_are_real_capabilities(): void {
+		// Semantic invariant: every entry in `extends` must reference
+		// a key that actually exists under `manifest.capabilities`.
+		// The shape-only assertion above (literal array equality)
+		// catches typos in the test, but a future PR that edits both
+		// the production array AND this test to reference a fictional
+		// capability ID — say, `dev.ucp.shopping.catalog.fictional` —
+		// would pass shape-equality and silently produce a structurally
+		// invalid manifest. This loop closes that gap by tying
+		// `extends` to the actual declared capability set.
+		//
+		// Doubles as a regression guard against the `CANONICAL_CAPABILITIES`
+		// constant + canonical-capability declarations drifting apart:
+		// if a future PR renames a capability suffix in only one place,
+		// this test fires.
+		$manifest    = $this->ucp->generate_manifest( [] );
+		$declared    = array_keys( $manifest['ucp']['capabilities'] );
+		$ext         = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0];
+		$extends_ids = (array) $ext['extends'];
+
+		$this->assertNotEmpty( $extends_ids, 'extends must declare at least one parent' );
+
+		foreach ( $extends_ids as $cap_id ) {
+			$this->assertContains(
+				$cap_id,
+				$declared,
+				"extends references `$cap_id` but no such capability is declared in manifest.capabilities"
+			);
+		}
 	}
 
 	public function test_payment_handlers_is_empty_object(): void {
