@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.14] – 2026-04-25
 
 ### Features
 - **Product count pill on the By-taxonomy row.** The "Products by category, tag, or brand" row previously showed only the taxonomy-count summary (e.g. `1 category · 1 tag · 1 brand`), leaving merchants to switch to the Overview tab to see how many products their selection actually scoped to. Adds a second pill alongside the taxonomy summary showing the live scoped product count (e.g. `12 products`), pulled from the same `/admin/product-count` endpoint the Overview tab uses. Visual symmetry with the All-row's existing "35 products" pill — each row now tells the merchant both "what you selected" and "how many products that means" at a glance.
