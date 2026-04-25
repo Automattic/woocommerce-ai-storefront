@@ -81,7 +81,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * of the inner dispatch.
 	 */
 	public static function enter_ucp_dispatch(): void {
-		self::$ucp_dispatch_depth++;
+		++self::$ucp_dispatch_depth;
 	}
 
 	/**
