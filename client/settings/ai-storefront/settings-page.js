@@ -17,6 +17,7 @@ import { STORE_NAME } from '../../data/ai-storefront/constants';
 import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
 import AIOrdersTable from './ai-orders-table';
+import PoliciesTab from './policies-tab';
 import { colors } from './tokens';
 
 // Rate-limit UI (card + presets + RPM state) lives in the Discovery
@@ -69,6 +70,10 @@ const AISyndicationSettings = () => {
 			name: 'endpoints',
 			title: __( 'Discovery', 'woocommerce-ai-storefront' ),
 		},
+		{
+			name: 'policies',
+			title: __( 'Policies', 'woocommerce-ai-storefront' ),
+		},
 	];
 
 	return (
@@ -94,6 +99,14 @@ const AISyndicationSettings = () => {
 						) }
 						{ tab.name === 'endpoints' && (
 							<EndpointInfo
+								settings={ settings }
+								onChange={ updateSettingsValues }
+								onSave={ saveSettings }
+								isSaving={ isSaving }
+							/>
+						) }
+						{ tab.name === 'policies' && (
+							<PoliciesTab
 								settings={ settings }
 								onChange={ updateSettingsValues }
 								onSave={ saveSettings }
