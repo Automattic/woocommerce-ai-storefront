@@ -546,10 +546,22 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 		};
 	}, [] );
 
+	// Read store base country from server-localized params. PHP localizes
+	// `wc_get_base_location()['country']` (or empty string when the
+	// merchant hasn't configured a store address) into
+	// `wcAiSyndicationParams.storeCountry`. Mirroring the server's
+	// behavior is critical here: `derivePreview()` suppresses the entire
+	// policy block when country is empty, matching the server's
+	// `if ( $country && ... )` gate at emission time. Falling back to
+	// `'US'` when the param is missing or empty would silently produce
+	// a misleading preview for non-US merchants and merchants who haven't
+	// configured a country yet.
 	const country =
-		typeof window !== 'undefined' && window.wcAiSyndicationParams
-			? window.wcAiSyndicationParams.storeCountry || 'US'
-			: 'US';
+		typeof window !== 'undefined' &&
+		window.wcAiSyndicationParams &&
+		typeof window.wcAiSyndicationParams.storeCountry === 'string'
+			? window.wcAiSyndicationParams.storeCountry
+			: '';
 
 	const handleSave = () => {
 		onChange( { return_policy: draft } );

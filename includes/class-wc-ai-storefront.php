@@ -376,6 +376,17 @@ class WC_AI_Storefront {
 				// `is_product_syndicated()` + the Store API filter +
 				// the `/search/brands` admin route.
 				'supportsBrands' => taxonomy_exists( 'product_brand' ),
+				// Store base country for the Policies tab's live
+				// JSON-LD preview. Mirrors what the server uses at
+				// emission time (`wc_get_base_location()['country']`)
+				// so the preview shows the same `applicableCountry`
+				// the merchant's actual product schema will carry.
+				// Empty string when the merchant hasn't configured a
+				// store address — the preview suppresses the policy
+				// block entirely in that case, matching the server's
+				// `if ( $country && ... )` gate in
+				// `WC_AI_Storefront_JsonLd::enhance_product_data()`.
+				'storeCountry'   => wc_get_base_location()['country'] ?? '',
 			]
 		);
 

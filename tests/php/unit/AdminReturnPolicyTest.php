@@ -148,7 +148,13 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertSame( 365, WC_AI_Storefront::get_settings()['return_policy']['days'] );
 
-		// Negative → clamped to 0 by absint().
+		// Negative → absint produces 0 → mapped to null (the
+		// "no window configured" sentinel; smart-degrades to
+		// MerchantReturnUnspecified at emission time). 0 itself
+		// has no semantic meaning under the post-Finding-#9
+		// design — a finite-window claim with 0 days is structurally
+		// invalid, so the sanitizer drops the field entirely rather
+		// than carry a misleading value.
 		$this->post_settings(
 			[
 				'return_policy' => [
@@ -158,7 +164,7 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 				],
 			]
 		);
-		$this->assertSame( 0, WC_AI_Storefront::get_settings()['return_policy']['days'] );
+		$this->assertNull( WC_AI_Storefront::get_settings()['return_policy']['days'] );
 	}
 
 	public function test_post_dedupes_method_array(): void {

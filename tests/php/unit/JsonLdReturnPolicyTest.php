@@ -42,6 +42,11 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_permalink' )->alias(
 			static fn( $id ) => "https://example.com/?p={$id}"
 		);
+		// Default policy pages to `publish` status. Tests that
+		// exercise the unpublished-page degradation path override
+		// this with `Functions\when( 'get_post_status' )->justReturn( 'draft' )`
+		// or similar — see `test_emission_omits_merchant_return_link_when_page_unpublished`.
+		Functions\when( 'get_post_status' )->justReturn( 'publish' );
 	}
 
 	protected function tearDown(): void {
@@ -241,6 +246,64 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 			[
 				'mode'    => 'final_sale',
 				'page_id' => 0,
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory']
+		);
+		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
+	}
+
+	// ------------------------------------------------------------------
+	// Stale page_id degradation (page unpublished after save)
+	// ------------------------------------------------------------------
+
+	public function test_emission_omits_merchant_return_link_when_page_unpublished(): void {
+		// Save-time sanitization enforces published status, but a
+		// merchant can unpublish the page later. Without this gate,
+		// `get_permalink()` would still return a URL pointing at a
+		// dead/draft post — Google validators get a stale link, the
+		// JS preview (which uses the published-only pages list)
+		// silently omits the link, and the two outputs drift.
+		// Re-checking at emission time keeps PHP and JS in lockstep.
+		Functions\when( 'get_post_status' )->justReturn( 'draft' );
+
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 99,
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+				'methods' => [ 'ReturnByMail' ],
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
+		// Other fields still emit — only the link is gated.
+		$this->assertSame(
+			'https://schema.org/MerchantReturnFiniteReturnWindow',
+			$block['returnPolicyCategory']
+		);
+		$this->assertSame( 30, $block['merchantReturnDays'] );
+	}
+
+	public function test_final_sale_omits_merchant_return_link_when_page_unpublished(): void {
+		// Same gate applies in final_sale mode — a merchant might
+		// have a "no returns / final sale" disclaimer page they
+		// later unpublish. The category claim still emits; just the
+		// stale link drops.
+		Functions\when( 'get_post_status' )->justReturn( 'draft' );
+
+		$this->set_settings(
+			[
+				'mode'    => 'final_sale',
+				'page_id' => 17,
 			]
 		);
 

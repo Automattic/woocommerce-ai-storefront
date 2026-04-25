@@ -371,11 +371,9 @@ class WC_AI_Storefront_JsonLd {
 				'returnPolicyCategory' => 'https://schema.org/MerchantReturnNotPermitted',
 			];
 			$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
-			if ( $page_id > 0 ) {
-				$link = function_exists( 'get_permalink' ) ? get_permalink( $page_id ) : '';
-				if ( is_string( $link ) && '' !== $link ) {
-					$block['merchantReturnLink'] = $link;
-				}
+			$link    = self::resolve_merchant_return_link( $page_id );
+			if ( '' !== $link ) {
+				$block['merchantReturnLink'] = $link;
 			}
 			return $block;
 		}
@@ -400,11 +398,9 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
-		if ( $page_id > 0 ) {
-			$link = function_exists( 'get_permalink' ) ? get_permalink( $page_id ) : '';
-			if ( is_string( $link ) && '' !== $link ) {
-				$block['merchantReturnLink'] = $link;
-			}
+		$link    = self::resolve_merchant_return_link( $page_id );
+		if ( '' !== $link ) {
+			$block['merchantReturnLink'] = $link;
 		}
 
 		// Always emit returnFees (sanitization defaults to FreeReturn
@@ -425,6 +421,45 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		return $block;
+	}
+
+	/**
+	 * Resolve the `merchantReturnLink` URL for a configured policy page.
+	 *
+	 * Re-validates the page is currently published before emitting the
+	 * link. Sanitization on save already enforces the same gate, but
+	 * `get_post_status()` can flip from `publish` to `draft` / `trash`
+	 * any time after the merchant saves — without this re-check, a
+	 * subsequent unpublish would leave the JSON-LD pointing at a stale
+	 * URL while the JS preview (which filters `?status=publish`)
+	 * correctly omits the link, producing visible drift between
+	 * preview and emission.
+	 *
+	 * Returns an empty string in any of these cases (caller skips the
+	 * `merchantReturnLink` field):
+	 *   - `$page_id` is non-positive
+	 *   - `get_post_status()` is missing or returns anything other than
+	 *     `publish`
+	 *   - `get_permalink()` is missing or returns a falsy/non-string
+	 *
+	 * @param int $page_id Sanitized policy page ID (0 = no page configured).
+	 * @return string Permalink URL when the page is currently published,
+	 *                empty string otherwise.
+	 */
+	private static function resolve_merchant_return_link( int $page_id ): string {
+		if ( $page_id <= 0 ) {
+			return '';
+		}
+		// Re-check published status — see method docblock for why
+		// the save-time gate isn't sufficient on its own.
+		if ( ! function_exists( 'get_post_status' ) ) {
+			return '';
+		}
+		if ( 'publish' !== get_post_status( $page_id ) ) {
+			return '';
+		}
+		$link = function_exists( 'get_permalink' ) ? get_permalink( $page_id ) : '';
+		return is_string( $link ) ? $link : '';
 	}
 
 	/**
