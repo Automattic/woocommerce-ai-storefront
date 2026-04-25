@@ -618,6 +618,35 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_no_sitemap_directive_emitted_when_input_has_none(): void {
+		// Companion to the test above: covers the OTHER failure mode
+		// the 0.1.13 deletion fixed. Pre-0.1.13, when the input
+		// robots.txt had no `Sitemap:` directive at filter-time
+		// (because Jetpack et al. emit via `do_robotstxt` AFTER our
+		// filter runs), the bottom-of-section emit fell back to
+		// `get_sitemap_url('index')` and produced a fictional
+		// `wp-sitemap.xml` URL. On `pierorocca.com` that pointed
+		// crawlers at a 404 because Jetpack disables WP-core's
+		// sitemap. 0.1.13 dropped the entire fallback path.
+		//
+		// This test seeds an empty (no Sitemap directive) base and
+		// asserts the output ALSO contains no `Sitemap:` directive
+		// from our AI section. Our plugin neither emits nor
+		// fabricates a sitemap URL when the input doesn't already
+		// declare one — Jetpack's `do_robotstxt` emission still
+		// flows through to crawlers, just not visible to our
+		// filter at this point.
+		$base = "User-agent: *\nDisallow: /wp-admin/\n"; // no Sitemap directive
+
+		$output = $this->generate_robots_output( $base );
+
+		$this->assertSame(
+			0,
+			substr_count( $output, 'Sitemap:' ),
+			'No Sitemap: directive should be emitted by our AI section when the input had none'
+		);
+	}
+
 	public function test_opted_out_bots_get_explicit_disallow_block(): void {
 		// The fixture has `allowed_crawlers = [GPTBot, ClaudeBot]`.
 		// Every other bot in AI_CRAWLERS should be opted out.
