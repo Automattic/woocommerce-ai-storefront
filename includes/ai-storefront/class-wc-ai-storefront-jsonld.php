@@ -99,9 +99,18 @@ class WC_AI_Storefront_JsonLd {
 
 		// Weight and dimensions using store-configured units.
 		if ( $product->has_weight() ) {
+			// Normalize the WC-stored weight to a numeric form. WC
+			// persists weight as a free-form string (often a leading-
+			// dot value like `.5` saved by the product editor without
+			// the leading zero). Casting through `(float)` produces a
+			// canonical `0.5` numeric so consumers parsing JSON-LD with
+			// strict number deserializers (Google's Rich Results test,
+			// AI agents JSON-parsing the markup) see a well-formed
+			// number instead of a string that round-trips to a quoted
+			// `".5"` literal. Audit bug #4.
 			$markup['weight'] = [
 				'@type'    => 'QuantitativeValue',
-				'value'    => $product->get_weight(),
+				'value'    => (float) $product->get_weight(),
 				'unitCode' => $this->get_weight_unit_code(),
 			];
 		}
@@ -151,12 +160,57 @@ class WC_AI_Storefront_JsonLd {
 			}
 		}
 
-		// Shipping information.
+		// Shipping + return policy live at the Offer level (Schema.org/
+		// Google preferred placement). Pre-PR-C this code wrote the same
+		// blocks at the Product level; that was historically tolerated
+		// but no longer the documented best location. Moved here as part
+		// of the same refactor that makes the return-policy emission
+		// settings-driven and structurally valid.
 		$base_location = wc_get_base_location();
 		$country       = $base_location['country'] ?? '';
 
-		if ( $country ) {
-			$markup['shippingDetails'] = [
+		// `priceCurrency` at Offer level — Google's preferred top-level
+		// placement. WC core writes the currency under the nested
+		// `priceSpecification[0].priceCurrency`; copy it up to the
+		// outer Offer dict so consumers reading from either location
+		// resolve a value. We never overwrite an existing top-level
+		// `priceCurrency` (defensive against a future WC core change
+		// or a third-party filter that already populated it). Audit
+		// bug #5.
+		if ( isset( $markup['offers'][0] ) && is_array( $markup['offers'][0] ) ) {
+			$nested_currency = $markup['offers'][0]['priceSpecification'][0]['priceCurrency'] ?? null;
+			if ( null !== $nested_currency && ! isset( $markup['offers'][0]['priceCurrency'] ) ) {
+				$markup['offers'][0]['priceCurrency'] = $nested_currency;
+			}
+
+			// `seller.name` double-encoding fix. WC core writes the
+			// store name through esc_html() into the structured-data
+			// markup, but the call site sometimes feeds an already-
+			// encoded value (e.g. `Piero&amp;#039;s` for a name
+			// containing an apostrophe), producing visible literal
+			// `&amp;` and `&#039;` in JSON-LD that AI agents parse
+			// verbatim. We decode twice to handle this double-encoded
+			// case in one pass: first decode peels the outer `&amp;`,
+			// second decode resolves the now-visible `&#039;` (or
+			// other inner entities). Idempotent for already-clean
+			// input — `html_entity_decode` of a string with no
+			// entities is the identity function. Audit bug #3.
+			if ( isset( $markup['offers'][0]['seller']['name'] ) && is_string( $markup['offers'][0]['seller']['name'] ) ) {
+				$decoded                               = html_entity_decode(
+					$markup['offers'][0]['seller']['name'],
+					ENT_QUOTES | ENT_HTML5,
+					'UTF-8'
+				);
+				$markup['offers'][0]['seller']['name'] = html_entity_decode(
+					$decoded,
+					ENT_QUOTES | ENT_HTML5,
+					'UTF-8'
+				);
+			}
+		}
+
+		if ( $country && isset( $markup['offers'][0] ) && is_array( $markup['offers'][0] ) ) {
+			$markup['offers'][0]['shippingDetails'] = [
 				'@type'               => 'OfferShippingDetails',
 				'shippingDestination' => [
 					'@type'          => 'DefinedRegion',
@@ -164,11 +218,13 @@ class WC_AI_Storefront_JsonLd {
 				],
 			];
 
-			$markup['hasMerchantReturnPolicy'] = [
-				'@type'                => 'MerchantReturnPolicy',
-				'applicableCountry'    => $country,
-				'returnPolicyCategory' => 'https://schema.org/MerchantReturnFiniteReturnWindow',
-			];
+			$policy       = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
+				? $settings['return_policy']
+				: [ 'mode' => 'unconfigured' ];
+			$policy_block = $this->build_return_policy_block( $policy, $country );
+			if ( null !== $policy_block ) {
+				$markup['offers'][0]['hasMerchantReturnPolicy'] = $policy_block;
+			}
 		}
 
 		/**
@@ -265,6 +321,110 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		return $items;
+	}
+
+	/**
+	 * Build the `hasMerchantReturnPolicy` structured-data block from
+	 * the merchant's saved return-policy settings.
+	 *
+	 * Three modes:
+	 *
+	 *   - `unconfigured` → returns `null`. Caller omits the
+	 *     `hasMerchantReturnPolicy` field entirely. Removes today's
+	 *     structurally invalid emission on every existing install
+	 *     until the merchant explicitly opts into one of the modes
+	 *     below.
+	 *
+	 *   - `returns_accepted` → emits a `MerchantReturnPolicy` with
+	 *     `applicableCountry`, `returnPolicyCategory` (smart-degrade:
+	 *     `MerchantReturnFiniteReturnWindow` + `merchantReturnDays`
+	 *     when days > 0; `MerchantReturnUnspecified` otherwise — never
+	 *     emit `FiniteReturnWindow` without the days field, which
+	 *     Google validators reject), `returnFees`, `merchantReturnLink`
+	 *     (only when a published page is configured), and `returnMethod`
+	 *     (scalar string when one method is selected, array when
+	 *     multiple — Schema.org accepts both forms; cleaner JSON for
+	 *     the common single-method case).
+	 *
+	 *   - `final_sale` → emits `MerchantReturnPolicy` with
+	 *     `returnPolicyCategory: NotPermitted`. `merchantReturnLink`
+	 *     attached when a page is configured (so merchants can link
+	 *     to a "no returns" explainer). No `returnFees`/`returnMethod`
+	 *     because the policy precludes returns.
+	 *
+	 * @param array  $policy  Sanitized return-policy settings.
+	 * @param string $country ISO country code from the WC store base.
+	 * @return array<string, mixed>|null Structured-data block, or null when the
+	 *                                   policy is `unconfigured` (caller skips emission).
+	 */
+	private function build_return_policy_block( array $policy, string $country ): ?array {
+		$mode = $policy['mode'] ?? 'unconfigured';
+
+		if ( 'unconfigured' === $mode ) {
+			return null;
+		}
+
+		if ( 'final_sale' === $mode ) {
+			$block   = [
+				'@type'                => 'MerchantReturnPolicy',
+				'applicableCountry'    => $country,
+				'returnPolicyCategory' => 'https://schema.org/MerchantReturnNotPermitted',
+			];
+			$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
+			if ( $page_id > 0 ) {
+				$link = function_exists( 'get_permalink' ) ? get_permalink( $page_id ) : '';
+				if ( is_string( $link ) && '' !== $link ) {
+					$block['merchantReturnLink'] = $link;
+				}
+			}
+			return $block;
+		}
+
+		// Mode: returns_accepted.
+		$days = isset( $policy['days'] ) ? (int) $policy['days'] : 0;
+		if ( $days > 0 ) {
+			$block = [
+				'@type'                => 'MerchantReturnPolicy',
+				'applicableCountry'    => $country,
+				'returnPolicyCategory' => 'https://schema.org/MerchantReturnFiniteReturnWindow',
+				'merchantReturnDays'   => $days,
+			];
+		} else {
+			// Smart-degrade: no days configured → declare Unspecified
+			// rather than emit a FiniteReturnWindow without days.
+			$block = [
+				'@type'                => 'MerchantReturnPolicy',
+				'applicableCountry'    => $country,
+				'returnPolicyCategory' => 'https://schema.org/MerchantReturnUnspecified',
+			];
+		}
+
+		$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
+		if ( $page_id > 0 ) {
+			$link = function_exists( 'get_permalink' ) ? get_permalink( $page_id ) : '';
+			if ( is_string( $link ) && '' !== $link ) {
+				$block['merchantReturnLink'] = $link;
+			}
+		}
+
+		// Always emit returnFees (sanitization defaults to FreeReturn
+		// when unset).
+		$fees                = isset( $policy['fees'] ) && is_string( $policy['fees'] ) ? $policy['fees'] : 'FreeReturn';
+		$block['returnFees'] = 'https://schema.org/' . $fees;
+
+		// returnMethod: scalar string when 1 method selected, array
+		// when 2+, omitted when none.
+		$methods = isset( $policy['methods'] ) && is_array( $policy['methods'] ) ? $policy['methods'] : [];
+		if ( count( $methods ) === 1 ) {
+			$block['returnMethod'] = 'https://schema.org/' . $methods[0];
+		} elseif ( count( $methods ) >= 2 ) {
+			$block['returnMethod'] = array_map(
+				static fn( $m ) => 'https://schema.org/' . $m,
+				$methods
+			);
+		}
+
+		return $block;
 	}
 
 	/**

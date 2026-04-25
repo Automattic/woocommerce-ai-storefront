@@ -352,22 +352,43 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$product = $this->make_product();
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		$result  = $this->jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$product
+		);
 
+		// shippingDetails moved from Product → Offer level in PR-C
+		// (Schema.org / Google preferred placement).
 		$this->assertEquals(
 			'GB',
-			$result['shippingDetails']['shippingDestination']['addressCountry']
+			$result['offers'][0]['shippingDetails']['shippingDestination']['addressCountry']
 		);
 	}
 
 	public function test_return_policy_is_declared(): void {
-		$product = $this->make_product();
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		// PR-C: hasMerchantReturnPolicy emission is settings-driven and
+		// lives at the Offer level. Default mode `unconfigured` emits
+		// no block; switch to `returns_accepted` to assert presence.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => [
+				'mode' => 'returns_accepted',
+				'days' => 30,
+				'fees' => 'FreeReturn',
+			],
+		];
 
-		$this->assertArrayHasKey( 'hasMerchantReturnPolicy', $result );
+		$product = $this->make_product();
+		$result  = $this->jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$product
+		);
+
+		$this->assertArrayHasKey( 'hasMerchantReturnPolicy', $result['offers'][0] );
 		$this->assertEquals(
 			'MerchantReturnPolicy',
-			$result['hasMerchantReturnPolicy']['@type']
+			$result['offers'][0]['hasMerchantReturnPolicy']['@type']
 		);
 	}
 
@@ -379,10 +400,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$product = $this->make_product();
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		$result  = $this->jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$product
+		);
 
-		$this->assertArrayNotHasKey( 'shippingDetails', $result );
-		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $result );
+		$this->assertArrayNotHasKey( 'shippingDetails', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $result['offers'][0] );
 	}
 
 	// ------------------------------------------------------------------
