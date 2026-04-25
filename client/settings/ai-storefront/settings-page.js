@@ -496,12 +496,6 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 
 	const { fetchStats } = useDispatch( STORE_NAME );
 	const [ period, setPeriod ] = useState( 'month' );
-	const periodLabels = {
-		day: __( '24h', 'woocommerce-ai-storefront' ),
-		week: __( '7d', 'woocommerce-ai-storefront' ),
-		month: __( '30d', 'woocommerce-ai-storefront' ),
-		year: __( 'Year', 'woocommerce-ai-storefront' ),
-	};
 
 	useEffect( () => {
 		fetchStats( period );
@@ -702,20 +696,19 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					) }
 					value={ productCountDisplay }
 				/>
+				{ /* Card labels intentionally omit the time-period
+				     suffix (e.g. "Total Orders (7d)"). The period
+				     dropdown above the cards already conveys the
+				     time scope; repeating it on every card was
+				     redundant noise. The dropdown is the single
+				     source of truth \u2014 change it once and all five
+				     cards refetch with the new period. */ }
 				<StatCard
-					label={ sprintf(
-						/* translators: %s: time period label */
-						__( 'Total Orders (%s)', 'woocommerce-ai-storefront' ),
-						periodLabels[ period ]
-					) }
+					label={ __( 'Total Orders', 'woocommerce-ai-storefront' ) }
 					value={ stats?.all_orders ?? '\u2014' }
 				/>
 				<StatCard
-					label={ sprintf(
-						/* translators: %s: time period label */
-						__( 'AI Orders (%s)', 'woocommerce-ai-storefront' ),
-						periodLabels[ period ]
-					) }
+					label={ __( 'AI Orders', 'woocommerce-ai-storefront' ) }
 					value={ stats?.ai_orders ?? '\u2014' }
 					subvalue={
 						stats && stats.ai_share_percent > 0
@@ -737,11 +730,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					}
 				/>
 				<StatCard
-					label={ sprintf(
-						/* translators: %s: time period label */
-						__( 'AI Revenue (%s)', 'woocommerce-ai-storefront' ),
-						periodLabels[ period ]
-					) }
+					label={ __( 'AI Revenue', 'woocommerce-ai-storefront' ) }
 					value={
 						stats
 							? formatMoney( stats, stats.ai_revenue )
@@ -749,11 +738,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					}
 				/>
 				<StatCard
-					label={ sprintf(
-						/* translators: %s: time period label */
-						__( 'AOV (%s)', 'woocommerce-ai-storefront' ),
-						periodLabels[ period ]
-					) }
+					label={ __( 'AOV', 'woocommerce-ai-storefront' ) }
 					value={
 						stats && stats.ai_orders > 0
 							? formatMoney( stats, stats.ai_aov )
@@ -761,11 +746,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					}
 				/>
 				<StatCard
-					label={ sprintf(
-						/* translators: %s: time period label */
-						__( 'Top agent (%s)', 'woocommerce-ai-storefront' ),
-						periodLabels[ period ]
-					) }
+					label={ __( 'Top agent', 'woocommerce-ai-storefront' ) }
 					/* `||` (not `??`) so an empty-string agent name from a corrupt
 					   utm_source also falls through to the em-dash. The backend
 					   already filters empty meta_value at the SQL level + skips
