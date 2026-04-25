@@ -544,5 +544,4 @@ class WC_AI_Storefront_Robots {
 		'/wp-sitemap.xml',
 		'/news-sitemap.xml',
 	];
-
 }
