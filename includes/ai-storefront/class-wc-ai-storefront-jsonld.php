@@ -161,11 +161,12 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		// Shipping + return policy live at the Offer level (Schema.org/
-		// Google preferred placement). Pre-PR-C this code wrote the same
-		// blocks at the Product level; that was historically tolerated
-		// but no longer the documented best location. Moved here as part
-		// of the same refactor that makes the return-policy emission
-		// settings-driven and structurally valid.
+		// Google preferred placement). Before the policies-tab refactor
+		// these blocks were written at the Product level; that placement
+		// was historically tolerated but is no longer the documented
+		// best location. Moved here as part of the same refactor that
+		// made the return-policy emission settings-driven and
+		// structurally valid.
 		$base_location = wc_get_base_location();
 		$country       = $base_location['country'] ?? '';
 

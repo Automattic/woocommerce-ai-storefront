@@ -3,16 +3,18 @@
  *
  * Today this tab hosts a single "Return & refund policy" section that
  * drives the structured-data emission of `hasMerchantReturnPolicy` at
- * the Offer level. Pre-PR-C the plugin emitted a structurally invalid
- * `MerchantReturnFiniteReturnWindow` block on every product (no
- * `merchantReturnDays`, no `merchantReturnLink`); Google's validators
- * reject that combination. The new flow lets merchants choose one of
- * three explicit modes (returns accepted / final sale / don't expose)
- * and smart-degrades to `MerchantReturnUnspecified` when days aren't
- * set, so we never publish a broken claim.
+ * the Offer level. Before this section shipped, the plugin emitted a
+ * structurally invalid `MerchantReturnFiniteReturnWindow` block on
+ * every product (no `merchantReturnDays`, no `merchantReturnLink`);
+ * Google's validators reject that combination. The current flow lets
+ * merchants choose one of three explicit modes (returns accepted /
+ * final sale / don't expose) and smart-degrades to
+ * `MerchantReturnUnspecified` when days aren't set, so the plugin
+ * never publishes a broken claim.
  *
- * Future tabs sections (shipping policy, legal pages) live here too —
- * see PR-E / PR-F. Today only the return-policy section ships.
+ * The tab is structured to host additional policy sections in the
+ * future (shipping policy, legal pages); for now the return-policy
+ * section is the only one rendered.
  */
 
 import { useEffect, useMemo, useState } from '@wordpress/element';
@@ -166,6 +168,25 @@ const prettyPrint = ( block ) => {
 	return JSON.stringify( block, null, 2 );
 };
 
+/**
+ * The return & refund policy configuration section inside the Policies
+ * tab. Renders the three-way mode toggle (returns accepted / final
+ * sale / don't expose), conditional fields per mode, and a live
+ * JSON-LD preview of what the server will emit.
+ *
+ * The section is purely presentational: every state change is bubbled
+ * up through `onChange` so the parent (`PoliciesTab`) owns the
+ * canonical draft. The preview is computed via `derivePreview()` and
+ * mirrors the server-side `build_return_policy_block()` smart-degrade
+ * logic — the two are exercised in lockstep by the test suite.
+ *
+ * @param {Object}   props
+ * @param {Object}   props.policy       Current policy draft (mode + sub-fields).
+ * @param {Function} props.onChange     Called with `(partialPolicy)` when any field changes.
+ * @param {string}   props.country      Store base country (ISO 3166-1 alpha-2). Empty string suppresses preview.
+ * @param {Array}    props.pages        Published pages list `[{id, title, link}]`.
+ * @param {boolean}  props.pagesLoading Whether the pages list is still resolving.
+ */
 const ReturnRefundPolicySection = ( {
 	policy,
 	onChange,
@@ -485,6 +506,24 @@ const ReturnRefundPolicySection = ( {
 	);
 };
 
+/**
+ * Top-level Policies tab component. Owns the local draft of all
+ * policy sections, hydrates it from saved settings, fetches the
+ * published-pages list once on mount, and orchestrates save +
+ * feedback (success / error notice).
+ *
+ * Plugs into the same `useSelect(getSettings) /
+ * useDispatch(updateSettingsValues, saveSettings)` flow as the other
+ * tabs (Settings, Discovery, Overview) — the parent passes settings
+ * + onChange + onSave + isSaving rather than the tab fetching its
+ * own.
+ *
+ * @param {Object}   props
+ * @param {Object}   props.settings Full plugin settings from the data store.
+ * @param {Function} props.onChange Called with `(partialSettings)` to sync local edits to the store.
+ * @param {Function} props.onSave   Called with no args; returns a promise that resolves on REST success.
+ * @param {boolean}  props.isSaving Whether a save is in flight (drives Save button busy state).
+ */
 const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 	// Hydrate from saved settings, falling back to safe defaults.
 	const initial = useMemo(
