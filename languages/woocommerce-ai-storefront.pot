@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-25T13:00:36+00:00\n"
+"POT-Creation-Date: 2026-04-25T13:28:59+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -717,156 +717,156 @@ msgstr ""
 msgid "Discovery"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:310
+#: client/settings/ai-storefront/settings-page.js:331
 msgid "Status: Not enabled"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:324
+#: client/settings/ai-storefront/settings-page.js:345
 msgid "Make your store ready for AI shopping assistants"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:337
+#: client/settings/ai-storefront/settings-page.js:358
 msgid "Go live in one click. Checkout stays on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:352
+#: client/settings/ai-storefront/settings-page.js:373
 msgid "Enabling…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:353
+#: client/settings/ai-storefront/settings-page.js:374
 msgid "Enable AI Storefront"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:374
+#: client/settings/ai-storefront/settings-page.js:395
 msgid "Read-only · Reversible anytime · No frontend changes"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:415
+#: client/settings/ai-storefront/settings-page.js:436
 msgid "One setup, every AI assistant"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:420
+#: client/settings/ai-storefront/settings-page.js:441
 msgid "Your catalog becomes visible to ChatGPT, Gemini, Claude, Perplexity, and Copilot — with no per-platform work when new agents launch."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:429
+#: client/settings/ai-storefront/settings-page.js:450
 msgid "Checkout stays on your store"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:434
+#: client/settings/ai-storefront/settings-page.js:455
 msgid "No AI-platform checkout fees. No delegated payments. You keep the customer, the checkout, and the data."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:443
+#: client/settings/ai-storefront/settings-page.js:464
 msgid "See which AI drove each sale"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:448
+#: client/settings/ai-storefront/settings-page.js:469
 msgid "Every AI-referred order is tagged with its source agent and revenue — using standard WooCommerce Order Attribution."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:479
+#: client/settings/ai-storefront/settings-page.js:500
 msgid "24h"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:480
+#: client/settings/ai-storefront/settings-page.js:501
 msgid "7d"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:481
+#: client/settings/ai-storefront/settings-page.js:502
 msgid "30d"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:482
+#: client/settings/ai-storefront/settings-page.js:503
 msgid "Year"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:559
+#: client/settings/ai-storefront/settings-page.js:580
 msgid "Couldn’t load"
 msgstr ""
 
 #. translators: %d: number of products exposed to AI
-#: client/settings/ai-storefront/settings-page.js:568
+#: client/settings/ai-storefront/settings-page.js:589
 #, js-format
 msgid "%d product"
 msgid_plural "%d products"
 msgstr[0] ""
 msgstr[1] ""
 
-#: client/settings/ai-storefront/settings-page.js:595
+#: client/settings/ai-storefront/settings-page.js:616
 msgid "AI Storefront is active"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:607
+#: client/settings/ai-storefront/settings-page.js:628
 msgid "Your store is ready for AI shopping assistants. Checkout and customer data stay on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:625
+#: client/settings/ai-storefront/settings-page.js:646
 msgid "Disabling…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:626
+#: client/settings/ai-storefront/settings-page.js:647
 msgid "Disable"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:637
+#: client/settings/ai-storefront/settings-page.js:658
 msgid "Last 24 hours"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:644
+#: client/settings/ai-storefront/settings-page.js:665
 msgid "Last 7 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:651
+#: client/settings/ai-storefront/settings-page.js:672
 msgid "Last 30 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:658
+#: client/settings/ai-storefront/settings-page.js:679
 msgid "Last year"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:678
+#: client/settings/ai-storefront/settings-page.js:699
 msgid "Products Exposed"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:687
+#: client/settings/ai-storefront/settings-page.js:708
 #, js-format
 msgid "Total Orders (%s)"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:695
+#: client/settings/ai-storefront/settings-page.js:716
 #, js-format
 msgid "AI Orders (%s)"
 msgstr ""
 
 #. translators: %s: percentage
-#: client/settings/ai-storefront/settings-page.js:703
+#: client/settings/ai-storefront/settings-page.js:724
 #, js-format
 msgid "%1$s%% of total"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:721
+#: client/settings/ai-storefront/settings-page.js:742
 #, js-format
 msgid "AI Revenue (%s)"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:739
+#: client/settings/ai-storefront/settings-page.js:754
 #, js-format
 msgid "AOV (%s)"
 msgstr ""
 
 #. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:757
+#: client/settings/ai-storefront/settings-page.js:766
 #, js-format
 msgid "Top agent (%s)"
 msgstr ""
 
 #. translators: 1: order count, 2: percent share of AI orders
-#: client/settings/ai-storefront/settings-page.js:769
+#: client/settings/ai-storefront/settings-page.js:778
 #, js-format
 msgid "%1$d orders | %2$s%% of AI orders"
 msgstr ""
