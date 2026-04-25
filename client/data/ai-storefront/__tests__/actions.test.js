@@ -244,6 +244,16 @@ describe( 'AI Syndication actions', () => {
 				'https://example.com/llms.txt',
 				expect.objectContaining( { method: 'HEAD' } )
 			);
+			// Pin the UCP API URL explicitly. Without this, a future
+			// rename (e.g. `wc/ucp/v1` → `wc/ucp/v2` without updating
+			// rest_url() in the controller) would silently pass the
+			// "fetch called 4 times" check while every probe targeted
+			// a wrong URL — the kind of regression an integer-count
+			// assertion can't catch.
+			expect( global.fetch ).toHaveBeenCalledWith(
+				'https://example.com/wp-json/wc/ucp/v1',
+				expect.objectContaining( { method: 'HEAD' } )
+			);
 			expect( global.fetch ).toHaveBeenCalledWith(
 				'https://example.com/robots.txt',
 				expect.objectContaining( { method: 'HEAD' } )

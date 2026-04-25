@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-25T23:23:53+00:00\n"
+"POT-Creation-Date: 2026-04-25T23:50:03+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -352,111 +352,111 @@ msgstr ""
 msgid "AI-crawler allow-list (Allow/Disallow directives appended to your site’s robots.txt)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:502
+#: client/settings/ai-storefront/endpoint-info.js:506
 msgid "Structured commerce API for AI agents — catalog search, lookup, and checkout sessions"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:525
+#: client/settings/ai-storefront/endpoint-info.js:529
 msgid "One or more endpoints are not reachable. If you just upgraded the plugin, try Settings → Permalinks → Save Changes to flush rewrite rules, then click Re-check."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:546
+#: client/settings/ai-storefront/endpoint-info.js:550
 msgid "Reachability is checked from your browser."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:556
+#: client/settings/ai-storefront/endpoint-info.js:560
 msgid "Re-check"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:566
+#: client/settings/ai-storefront/endpoint-info.js:570
 msgid "AI Crawler Access"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:578
+#: client/settings/ai-storefront/endpoint-info.js:582
 msgid "Control which AI crawlers are allowed to discover your store via robots.txt. Unchecked crawlers will be blocked from crawling your product pages."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:599
+#: client/settings/ai-storefront/endpoint-info.js:603
 msgid "Allowed crawlers"
 msgstr ""
 
 #. translators: %1$d: allowed count, %2$d: total count
-#: client/settings/ai-storefront/endpoint-info.js:626
+#: client/settings/ai-storefront/endpoint-info.js:630
 #, js-format
 msgid "%1$d of %2$d"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:643
+#: client/settings/ai-storefront/endpoint-info.js:647
 #: client/settings/ai-storefront/product-selection.js:2111
 msgid "Select all"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:658
+#: client/settings/ai-storefront/endpoint-info.js:662
 msgid "Clear"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:678
+#: client/settings/ai-storefront/endpoint-info.js:682
 msgid "Live browsing"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:682
+#: client/settings/ai-storefront/endpoint-info.js:686
 msgid "User-initiated fetches during an active query. These agents see fresh inventory and route revenue — recommended on."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:689
+#: client/settings/ai-storefront/endpoint-info.js:693
 msgid "Training crawlers"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:693
+#: client/settings/ai-storefront/endpoint-info.js:697
 msgid "Static crawls that feed AI model training. Captured snapshots may surface as stale answers months later, with wrong prices or availability. Merchant discretion."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:774
+#: client/settings/ai-storefront/endpoint-info.js:778
 msgid "These rules are added to your robots.txt. Well-behaved AI crawlers respect robots.txt directives."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:804
+#: client/settings/ai-storefront/endpoint-info.js:808
 msgid "AI-referred orders appear in the Orders list under WooCommerce’s built-in Origin column as each agent’s brand name (e.g. \"Source: ChatGPT\", \"Source: Gemini\") rather than the technical crawler IDs shown above."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:832
+#: client/settings/ai-storefront/endpoint-info.js:836
 msgid "Rate Limits"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:841
+#: client/settings/ai-storefront/endpoint-info.js:845
 msgid "Control how frequently AI agents can query your store. Higher limits allow faster product discovery but use more server resources."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:851
+#: client/settings/ai-storefront/endpoint-info.js:855
 msgid "Recommended — 25/min (works well for most stores)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:858
+#: client/settings/ai-storefront/endpoint-info.js:862
 msgid "Conservative — 10/min (shared hosting or low-traffic stores)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:865
+#: client/settings/ai-storefront/endpoint-info.js:869
 msgid "Generous — 100/min (high-traffic stores on dedicated hosting)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:872
+#: client/settings/ai-storefront/endpoint-info.js:876
 msgid "Custom"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:904
+#: client/settings/ai-storefront/endpoint-info.js:908
 msgid "Requests per minute"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:929
+#: client/settings/ai-storefront/endpoint-info.js:933
 msgid "Limits are applied per AI crawler (identified by user-agent string). Your regular store traffic is not affected."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:960
+#: client/settings/ai-storefront/endpoint-info.js:964
 #: client/settings/ai-storefront/product-selection.js:2004
 msgid "Saving…"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:961
+#: client/settings/ai-storefront/endpoint-info.js:965
 msgid "Save Changes"
 msgstr ""
 

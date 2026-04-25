@@ -15,7 +15,7 @@ import { STORE_NAME } from '../../data/ai-storefront/constants';
 import { colors } from './tokens';
 
 /**
- * Rate-limit presets for the Store API request-throttling control.
+ * Rate-limit presets for the AI-agent request-throttling control.
  *
  * The three presets cover the bulk of real-world merchant hosting
  * situations: shared/low-traffic, typical, and dedicated/high-traffic.
@@ -488,7 +488,11 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 								</td>
 								<td>
 									{ endpoints.ucp_api ? (
-										<code>{ endpoints.ucp_api }</code>
+										<ExternalLink
+											href={ endpoints.ucp_api }
+										>
+											{ endpoints.ucp_api }
+										</ExternalLink>
 									) : (
 										<Spinner />
 									) }

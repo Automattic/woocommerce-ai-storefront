@@ -185,7 +185,7 @@ export function resetEndpointStatus() {
  *   - Network / CORS error  -> 'unreachable'
  *
  * When `settings.enabled !== 'yes'`, we skip the probes entirely and mark
- * all four endpoints (llms.txt, UCP manifest, Store API, robots.txt) as
+ * all four endpoints (llms.txt, UCP manifest, UCP API, robots.txt) as
  * 'disabled'. That's more honest than showing red X's for a state the
  * merchant intentionally chose.
  */
