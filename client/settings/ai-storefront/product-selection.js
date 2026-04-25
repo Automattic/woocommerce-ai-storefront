@@ -1209,9 +1209,21 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							      Gutenberg standard since WP 6.0.
 							*/ }
 							<style>{ `
-								.ai-storefront-taxonomy-toggle .components-button {
-									padding-left: 14px !important;
-									padding-right: 14px !important;
+								/* Padding override on each option button. WP component's
+								   default is 12px horizontal which renders the selected
+								   pill cramped against the text edges. Bumped to 18px for
+								   visible breathing room — the white pill needs ~6px of
+								   "halo" on each side of the label to read as elevated.
+								   Selector targets [role="radio"] (the stable ARIA contract
+								   on the option buttons) rather than the Emotion-generated
+								   class. The pre-0.1.11 selector was the literal string
+								   ".components-button", which doesn't match any element
+								   in WP components 28.x for this control — same
+								   Emotion-CSS-in-JS issue that broke the rest of Option A
+								   in 0.1.8 / 0.1.9. */
+								.ai-storefront-taxonomy-toggle [role="radio"] {
+									padding-left: 18px !important;
+									padding-right: 18px !important;
 								}
 								/* Track: recessed neutral surface so the pill reads as floating above it.
 								   Targets the wrapping element directly via our scope class — WP

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11] – 2026-04-25
+
+### Fixes
+- **Option-selector: padding override now applies, breathing room visibly increased.** The 0.1.10 hotfix correctly retargeted the elevated-pill styling to `::before` and `[aria-checked="true"]`, but the padding override was still using `.components-button` — same Emotion-CSS-in-JS broken-class-name issue. The selected pill rendered cramped, with the label text touching the pill edges. 0.1.11 retargets the padding via `[role="radio"]` (the stable ARIA contract on the option buttons) and bumps the value from 14px to 18px so the pill carries ~6px of "halo" space on each side of the label, matching the elevation visual the rest of Option A is selling.
+
+---
+
 ## [0.1.10] – 2026-04-25
 
 ### Fixes
