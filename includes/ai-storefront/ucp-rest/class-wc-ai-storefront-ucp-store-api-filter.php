@@ -187,8 +187,22 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			return $this->apply_union_restriction( $args, $settings );
 		}
 
-		if ( 'selected' === $mode && ! empty( $settings['selected_products'] ) ) {
-			$allowed = array_map( 'absint', $settings['selected_products'] );
+		if ( 'selected' === $mode ) {
+			$allowed = array_map( 'absint', $settings['selected_products'] ?? [] );
+
+			// Empty allow-list under `selected` mode: force zero
+			// matches via the `post__in = [0]` sentinel. Mirrors
+			// `is_product_syndicated()` returning false and
+			// `get_product_count()` returning 0 in the same state
+			// — without this branch, an empty `selected_products`
+			// would let the filter return args unchanged and
+			// expose the entire catalog to AI agents, contradicting
+			// the merchant's "hand-picked, none picked yet"
+			// configuration.
+			if ( empty( $allowed ) ) {
+				$args['post__in'] = [ 0 ];
+				return $args;
+			}
 
 			if ( isset( $args['post__in'] ) && is_array( $args['post__in'] ) && ! empty( $args['post__in'] ) ) {
 				$incoming         = array_map( 'absint', $args['post__in'] );

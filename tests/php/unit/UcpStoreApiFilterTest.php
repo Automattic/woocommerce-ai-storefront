@@ -547,7 +547,14 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( [ 0 ], $result['post__in'] );
 	}
 
-	public function test_selected_mode_with_empty_selected_products_is_noop(): void {
+	public function test_selected_mode_with_empty_selected_products_forces_zero_matches(): void {
+		// 0.1.7 semantic fix: empty `selected_products` under
+		// `selected` mode now forces `post__in = [0]` instead of
+		// returning args unchanged. The previous behavior let an
+		// empty allow-list expose the entire catalog, contradicting
+		// `is_product_syndicated()` (returns false in the same
+		// state) and `get_product_count()` (returns 0). All three
+		// gates now agree: empty allow-list => zero products.
 		WC_AI_Storefront::$test_settings = [
 			'product_selection_mode' => 'selected',
 			'selected_products'      => [],
@@ -557,10 +564,7 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		$input  = [ 'post__in' => [ 1, 2, 3 ] ];
 		$result = $filter->restrict_to_syndicated_products( $input );
 
-		// Incoming post__in unchanged — empty allow-list means the
-		// merchant hasn't configured the mode yet; don't apply an
-		// empty restriction.
-		$this->assertSame( [ 1, 2, 3 ], $result['post__in'] );
+		$this->assertSame( [ 0 ], $result['post__in'] );
 	}
 
 	public function test_selected_mode_ignores_malformed_incoming_post_in(): void {
