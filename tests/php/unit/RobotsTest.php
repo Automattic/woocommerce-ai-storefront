@@ -546,11 +546,13 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		//
 		// 0.1.9 dropped the per-block sitemap Allows. Sitemap
 		// discovery still works via the top-level `Sitemap:`
-		// directives (emitted by WP core / Jetpack / SEO plugins
-		// above this section, plus re-emitted at the bottom of
-		// our section). This test locks the regression: per-bot
-		// `Allow: <sitemap-path>` lines must not reappear without
-		// a deliberate design discussion.
+		// directives emitted by WP core / Jetpack / SEO plugins
+		// above this section. (Pre-0.1.13 we also re-emitted those
+		// directives at the bottom of our section; that re-emission
+		// was removed in 0.1.13 — see the deletion-rationale block
+		// in `class-wc-ai-storefront-robots.php`.) This test locks
+		// the regression: per-bot `Allow: <sitemap-path>` lines must
+		// not reappear without a deliberate design discussion.
 		//
 		// Tightened from a 4-string deny-list to a regex match —
 		// catches reintroduction at a non-canonical path too (e.g.
