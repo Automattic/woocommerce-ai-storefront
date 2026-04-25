@@ -541,8 +541,8 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// `Disallow:` rules touch sitemap paths. With every bot in
 		// `LIVE_BROWSING_AGENTS` × 4 sitemap paths in
 		// `COMMON_SITEMAP_PATHS`, the result was dozens of redundant
-		// lines on a typical merchant's robots.txt (observed on
-		// pierorocca.com test deployment).
+		// lines on a typical merchant's robots.txt (observed on a
+		// merchant's test deployment).
 		//
 		// 0.1.9 dropped the per-block sitemap Allows. Sitemap
 		// discovery still works via the top-level `Sitemap:`
