@@ -729,6 +729,41 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 							: '\u2014'
 					}
 				/>
+				<StatCard
+					label={ sprintf(
+						/* translators: %s: time period label */
+						__( 'AOV (%s)', 'woocommerce-ai-storefront' ),
+						periodLabels[ period ]
+					) }
+					value={
+						stats && stats.ai_orders > 0
+							? `${ stats.currency || '$' } ${ parseFloat(
+									stats.ai_aov || 0
+							  ).toFixed( 2 ) }`
+							: '\u2014'
+					}
+				/>
+				<StatCard
+					label={ sprintf(
+						/* translators: %s: time period label */
+						__( 'Top agent (%s)', 'woocommerce-ai-storefront' ),
+						periodLabels[ period ]
+					) }
+					value={ stats?.top_agent?.name ?? '\u2014' }
+					subvalue={
+						stats && stats.top_agent
+							? sprintf(
+									/* translators: 1: order count, 2: percent share of AI orders */
+									__(
+										'%1$d orders | %2$s%% of AI orders',
+										'woocommerce-ai-storefront'
+									),
+									stats.top_agent.orders,
+									stats.top_agent.share_percent
+							  )
+							: undefined
+					}
+				/>
 			</div>
 
 			{ /*

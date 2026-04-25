@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.8] – 2026-04-25
+
+### Features
+- **Two new Overview stat cards: AOV and Top agent.** Pre-0.1.8 the Overview tab showed 4 cards (Products Exposed, Total Orders, AI Orders, AI Revenue). 0.1.8 adds two more derived directly from data already in the `/stats` REST response — no new tables, no new queries. AOV is the weighted mean across AI-attributed orders (computed from totals, not averaged from per-agent AOVs to avoid the unweighted-mean-of-weighted-means trap). Top agent is sorted by `orders DESC, revenue DESC` so the card stays stable across daily snapshots when order counts tie; the subvalue reads `N orders | M% of AI orders` where the share denominator is AI orders, not all-store orders. The four agent-instrumented cards (visits, queries, products surfaced, top product) ship in a follow-up release once the counter-table schema lands.
+- **Option-selector visual refresh.** The taxonomy `ToggleGroupControl` (Categories / Tags / Brands) now renders as a white pill with a soft contact shadow on a recessed neutral track, replacing the flat black `backdrop` that the WP default ships. Two depth cues — track inset + pill elevation — give the selected state a "lit thumb on a groove" affordance instead of a paint-fill rectangle. Hover-only on unselected, `:focus-visible` keyboard ring against the WP admin theme color, and a `forced-colors: active` rule for Windows High Contrast mode.
+
+### Refactors
+- **`derive_stats()` extracted from `get_stats()`.** The post-query math (AOV, top-agent ranking, share-percent) now lives in a static helper that takes pre-aggregated totals + per-agent breakdown. The `$wpdb` query stays in `get_stats()`; the helper is unit-testable without mocking. Net no behavior change for callers — `get_stats()` returns the same shape it did before plus the two new `ai_aov` / `top_agent` fields.
+
+### Tests
+- 12 new tests for `derive_stats()` covering AOV math (zero-orders, basic division, weighted-mean correctness for unequal volumes, two-decimal rounding), top-agent winner selection (highest orders wins regardless of revenue), tie-break semantics (revenue secondary, spaceship-not-subtraction), share-percent denominator (AI orders, not all-store orders) and rounding, plus return-shape contract locks. 645 tests / 1932 assertions total (was 633 / 1918).
+
+---
+
 ## [0.1.7] – 2026-04-25
 
 ### Fixes

@@ -1163,19 +1163,100 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							   Gutenberg uses the same component (e.g.
 							   alignment toolbar).
 
-							   Padding override: @wordpress/components'
-							   ToggleGroupControlOption uses a very tight
-							   horizontal padding when !isBlock — text
-							   sits nearly flush against the selected
-							   pill's edges. A scoped `<style>` block
-							   widens the button padding so the selected
-							   segment has breathing room around its
-							   label.
+							   Styling overrides below (scoped via
+							   `.ai-storefront-taxonomy-toggle`):
+
+							   1. Padding: @wordpress/components'
+							      ToggleGroupControlOption uses very tight
+							      horizontal padding when !isBlock — text
+							      sits nearly flush against the selected
+							      pill's edges. Widening to 14px gives
+							      the selected segment breathing room.
+
+							   2. Selected-state visual treatment (the
+							      "elevated white pill on a recessed
+							      neutral track" pattern, matching iOS
+							      Settings / macOS Finder / Gutenberg's
+							      block-toolbar alignment control). The
+							      WP default renders a flat black
+							      backdrop with no depth cues — no
+							      shadow, no border-radius differential,
+							      no inset on the track — so the
+							      selected state reads as a paint-fill
+							      rather than an interactive thumb.
+							      Adding (a) an inset shadow + hairline
+							      border on the track so it looks
+							      pressed in, and (b) a white backdrop
+							      with a soft contact shadow + 0.5px
+							      ring so the pill looks raised, gives
+							      the merchant the two depth signals
+							      that "selected" needs to land.
+
+							      Critical: the selected-text styling
+							      keys off `[aria-checked="true"]` on
+							      the option button rather than the
+							      backdrop sibling. The backdrop is
+							      presentational; ARIA-state is the
+							      single source of truth that visual
+							      and screen-reader signals can't drift
+							      apart.
+
+							   3. Hover only fires on UNSELECTED options
+							      so it doesn't fight the pill, and
+							      `:focus-visible` (not `:focus`) gates
+							      the keyboard ring — preventing the
+							      ring on mouse clicks, which is the
+							      Gutenberg standard since WP 6.0.
 							*/ }
 							<style>{ `
 								.ai-storefront-taxonomy-toggle .components-button {
 									padding-left: 14px !important;
 									padding-right: 14px !important;
+								}
+								/* Track: recessed neutral surface so the pill reads as floating above it. */
+								.ai-storefront-taxonomy-toggle .components-toggle-group-control {
+									background: rgba( 0, 0, 0, 0.04 );
+									border: 1px solid rgba( 0, 0, 0, 0.08 );
+									box-shadow: inset 0 1px 1px rgba( 0, 0, 0, 0.04 );
+									border-radius: 6px;
+								}
+								/* Backdrop (the moving pill): white surface + soft shadow for elevation. */
+								.ai-storefront-taxonomy-toggle .components-toggle-group-control-backdrop {
+									background: #fff !important;
+									border-radius: 5px;
+									box-shadow:
+										0 1px 2px rgba( 0, 0, 0, 0.12 ),
+										0 0 0 0.5px rgba( 0, 0, 0, 0.08 );
+								}
+								/* Selected label: dark text + slightly heavier weight for emphasis. */
+								.ai-storefront-taxonomy-toggle .components-toggle-group-control-option-base[aria-checked="true"] {
+									color: #1e1e1e;
+									font-weight: 500;
+								}
+								/* Unselected label: muted, readable on the track. */
+								.ai-storefront-taxonomy-toggle .components-toggle-group-control-option-base[aria-checked="false"] {
+									color: #50575e;
+								}
+								/* Hover affordance on unselected only — don't fight the active pill. */
+								.ai-storefront-taxonomy-toggle .components-toggle-group-control-option-base[aria-checked="false"]:hover {
+									color: #1e1e1e;
+									background: rgba( 0, 0, 0, 0.04 );
+									border-radius: 5px;
+								}
+								/* Keyboard-only focus ring; suppresses the default WP focus shadow that would double up. */
+								.ai-storefront-taxonomy-toggle .components-toggle-group-control-option-base:focus-visible {
+									outline: 2px solid var( --wp-admin-theme-color, #3858e9 );
+									outline-offset: 2px;
+									border-radius: 5px;
+								}
+								.ai-storefront-taxonomy-toggle .components-toggle-group-control-option-base:focus {
+									box-shadow: none;
+								}
+								/* Windows High Contrast mode: ensure the pill carries a visible edge when forced colors strip the shadow. */
+								@media ( forced-colors: active ) {
+									.ai-storefront-taxonomy-toggle .components-toggle-group-control-backdrop {
+										border: 1px solid CanvasText;
+									}
 								}
 							` }</style>
 							<ToggleGroupControl

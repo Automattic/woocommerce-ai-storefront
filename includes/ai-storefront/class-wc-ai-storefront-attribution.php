@@ -262,16 +262,94 @@ class WC_AI_Storefront_Attribution {
 			);
 		}
 
+		$derived = self::derive_stats( $total_orders, $total_revenue, $by_agent );
+
 		return [
 			'period'           => $period,
 			'ai_orders'        => $total_orders,
 			'ai_revenue'       => $total_revenue,
+			'ai_aov'           => $derived['ai_aov'],
 			'all_orders'       => $all_orders_count,
 			'ai_share_percent' => $all_orders_count > 0
 				? round( ( $total_orders / $all_orders_count ) * 100, 1 )
 				: 0,
 			'currency'         => get_woocommerce_currency(),
 			'by_agent'         => $by_agent,
+			'top_agent'        => $derived['top_agent'],
+		];
+	}
+
+	/**
+	 * Derive the AOV + top-agent fields from the aggregate query result.
+	 *
+	 * Extracted from `get_stats()` so the math is unit-testable without
+	 * mocking `$wpdb`. The query that produces `$by_agent` already runs
+	 * elsewhere; this method's contract is "given a totals + per-agent
+	 * breakdown, return the stat-card fields the React Overview tab needs."
+	 *
+	 * AOV is computed from totals (`$total_revenue / $total_orders`),
+	 * not by averaging per-agent AOVs — averaging weighted means is
+	 * the unweighted-mean-of-weighted-means trap and produces the
+	 * wrong number when agent volumes differ.
+	 *
+	 * Top-agent tie-break is `orders DESC, revenue DESC`. For low-volume
+	 * stores in a 7-day window, ties on order count are common; revenue
+	 * as the secondary sort surfaces the agent driving more business
+	 * AND keeps the card stable across daily snapshots (no flicker
+	 * between Tuesday and Wednesday). Returns null when `$by_agent` is
+	 * empty so the React side renders an em-dash, matching the other
+	 * cards' empty-state convention.
+	 *
+	 * `<=>` (spaceship) is used for the comparator instead of `-` so
+	 * float revenue isn't silently cast to int during the secondary
+	 * sort — `300.50 - 300.25` casts to `0` and loses the tie-break.
+	 *
+	 * @param int                                                              $total_orders  Total AI-attributed orders in the period.
+	 * @param float                                                            $total_revenue Total AI-attributed revenue in the period.
+	 * @param array<string, array{orders: int, revenue: float}>                $by_agent      Per-agent breakdown.
+	 * @return array{ai_aov: float, top_agent: array{name: string, orders: int, revenue: float, share_percent: float}|null}
+	 */
+	public static function derive_stats( int $total_orders, float $total_revenue, array $by_agent ): array {
+		$ai_aov = $total_orders > 0
+			? round( $total_revenue / $total_orders, 2 )
+			: 0.0;
+
+		$top_agent = null;
+		if ( ! empty( $by_agent ) ) {
+			$ranked = [];
+			foreach ( $by_agent as $name => $row ) {
+				$ranked[] = [
+					'name'    => $name,
+					'orders'  => $row['orders'],
+					'revenue' => $row['revenue'],
+				];
+			}
+			usort(
+				$ranked,
+				static function ( $a, $b ) {
+					// Primary: orders DESC. If equal, revenue DESC.
+					// Expanded ternary (vs short `?:`) per WP coding
+					// standard Universal.Operators.DisallowShortTernary.
+					$primary = $b['orders'] <=> $a['orders'];
+					return 0 !== $primary
+						? $primary
+						: ( $b['revenue'] <=> $a['revenue'] );
+				}
+			);
+			$winner    = $ranked[0];
+			$top_agent = [
+				'name'          => $winner['name'],
+				'orders'        => $winner['orders'],
+				'revenue'       => $winner['revenue'],
+				'share_percent' => $total_orders > 0
+					? round( ( $winner['orders'] / $total_orders ) * 100, 1 )
+					: 0,
+			];
+		}
+
+		return [
+			'ai_aov'    => $ai_aov,
+			'top_agent' => $top_agent,
 		];
 	}
 }
