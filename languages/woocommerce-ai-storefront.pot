@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-3.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: WooCommerce AI Storefront 0.1.11\n"
+"Project-Id-Version: WooCommerce AI Storefront 0.1.12\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/woocommerce-ai-storefront\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-25T14:56:30+00:00\n"
+"POT-Creation-Date: 2026-04-25T15:01:48+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -765,108 +765,82 @@ msgstr ""
 msgid "Every AI-referred order is tagged with its source agent and revenue — using standard WooCommerce Order Attribution."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:500
-msgid "24h"
-msgstr ""
-
-#: client/settings/ai-storefront/settings-page.js:501
-msgid "7d"
-msgstr ""
-
-#: client/settings/ai-storefront/settings-page.js:502
-msgid "30d"
-msgstr ""
-
-#: client/settings/ai-storefront/settings-page.js:503
-msgid "Year"
-msgstr ""
-
-#: client/settings/ai-storefront/settings-page.js:580
+#: client/settings/ai-storefront/settings-page.js:574
 msgid "Couldn’t load"
 msgstr ""
 
 #. translators: %d: number of products exposed to AI
-#: client/settings/ai-storefront/settings-page.js:589
+#: client/settings/ai-storefront/settings-page.js:583
 #, js-format
 msgid "%d product"
 msgid_plural "%d products"
 msgstr[0] ""
 msgstr[1] ""
 
-#: client/settings/ai-storefront/settings-page.js:616
+#: client/settings/ai-storefront/settings-page.js:610
 msgid "AI Storefront is active"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:628
+#: client/settings/ai-storefront/settings-page.js:622
 msgid "Your store is ready for AI shopping assistants. Checkout and customer data stay on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:646
+#: client/settings/ai-storefront/settings-page.js:640
 msgid "Disabling…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:647
+#: client/settings/ai-storefront/settings-page.js:641
 msgid "Disable"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:658
+#: client/settings/ai-storefront/settings-page.js:652
 msgid "Last 24 hours"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:665
+#: client/settings/ai-storefront/settings-page.js:659
 msgid "Last 7 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:672
+#: client/settings/ai-storefront/settings-page.js:666
 msgid "Last 30 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:679
+#: client/settings/ai-storefront/settings-page.js:673
 msgid "Last year"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:699
+#: client/settings/ai-storefront/settings-page.js:693
 msgid "Products Exposed"
 msgstr ""
 
-#. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:708
-#, js-format
-msgid "Total Orders (%s)"
+#: client/settings/ai-storefront/settings-page.js:707
+msgid "Total Orders"
 msgstr ""
 
-#. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:716
-#, js-format
-msgid "AI Orders (%s)"
+#: client/settings/ai-storefront/settings-page.js:711
+msgid "AI Orders"
 msgstr ""
 
 #. translators: %s: percentage
-#: client/settings/ai-storefront/settings-page.js:724
+#: client/settings/ai-storefront/settings-page.js:717
 #, js-format
 msgid "%1$s%% of total"
 msgstr ""
 
-#. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:742
-#, js-format
-msgid "AI Revenue (%s)"
+#: client/settings/ai-storefront/settings-page.js:733
+msgid "AI Revenue"
 msgstr ""
 
-#. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:754
-#, js-format
-msgid "AOV (%s)"
+#: client/settings/ai-storefront/settings-page.js:741
+msgid "AOV"
 msgstr ""
 
-#. translators: %s: time period label
-#: client/settings/ai-storefront/settings-page.js:766
-#, js-format
-msgid "Top agent (%s)"
+#: client/settings/ai-storefront/settings-page.js:749
+msgid "Top agent"
 msgstr ""
 
 #. translators: 1: order count, 2: percent share of AI orders
-#: client/settings/ai-storefront/settings-page.js:778
+#: client/settings/ai-storefront/settings-page.js:759
 #, js-format
 msgid "%1$d orders | %2$s%% of AI orders"
 msgstr ""

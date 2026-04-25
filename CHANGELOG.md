@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12] – 2026-04-25
+
+### Fixes
+- **Stat cards no longer repeat the time-period suffix.** Pre-0.1.12 each Overview card label included a parenthetical period (e.g. "Total Orders (7d)", "AI Revenue (30d)"), but the period dropdown directly above the cards already conveys the same scope. Repeating it on every card was redundant noise that competed with the actual metric label for the merchant's attention. Dropped the suffix from all five Overview cards (Total Orders, AI Orders, AI Revenue, AOV, Top agent). The dropdown is the single source of truth — change it once, all cards refetch with the new period. Removes the now-unused `periodLabels` constant + 4 translatable strings (`24h`, `7d`, `30d`, `Year`) and 4 sprintf templates from the i18n surface.
+
+---
+
 ## [0.1.11] – 2026-04-25
 
 ### Fixes
