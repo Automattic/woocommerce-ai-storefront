@@ -51,6 +51,19 @@ class WC_AI_Storefront {
 		$settings = $settings ?? self::get_settings();
 		$mode     = $settings['product_selection_mode'] ?? 'all';
 
+		// Accept int OR WC_Product-like object — mirrors the
+		// production refactor in 0.1.7 that lets UCP REST callers
+		// pass a raw ID without paying for `wc_get_product()`.
+		$product_id = is_int( $product )
+			? $product
+			: ( is_object( $product ) && method_exists( $product, 'get_id' )
+				? (int) $product->get_id()
+				: 0 );
+
+		if ( $product_id <= 0 ) {
+			return false;
+		}
+
 		if ( in_array( $mode, [ 'categories', 'tags', 'brands' ], true ) ) {
 			$mode = 'by_taxonomy';
 		}
@@ -64,7 +77,7 @@ class WC_AI_Storefront {
 				return false;
 			}
 			return in_array(
-				$product->get_id(),
+				$product_id,
 				array_map( 'absint', $settings['selected_products'] ),
 				true
 			);
@@ -93,7 +106,8 @@ class WC_AI_Storefront {
 				return false;
 			}
 
-			$product_id = $product->get_id();
+			// `$product_id` is already resolved at the top of this
+			// method.
 
 			if ( $has_cats ) {
 				$product_cats = wp_get_post_terms( $product_id, 'product_cat', [ 'fields' => 'ids' ] );

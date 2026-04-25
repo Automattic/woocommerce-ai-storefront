@@ -310,19 +310,12 @@ class WC_AI_Storefront_Llms_Txt {
 
 		// Per-taxonomy navigation summary. Three independent
 		// sections (categories / tags / brands) so an agent reading
-		// llms.txt sees ALL the dimensions in scope, not just the
-		// category dimension. Pre-0.1.6 only categories rendered,
-		// which under-reported what merchants had configured —
-		// e.g., a merchant scoping by 3 categories + 1 tag + 1
-		// brand saw only the 3 categories, with no signal that
-		// tags or brands were also part of the scope.
-		//
-		// Each section follows the same shape: a heading + a
-		// bulleted list of `[term name](term link) (N products)`
-		// entries. The same per-taxonomy gate applies (see
-		// `get_syndicated_terms()`) so a section is suppressed
-		// when its corresponding `selected_*` array is empty in
-		// `by_taxonomy` mode.
+		// llms.txt sees ALL the dimensions in scope. Each section
+		// follows the same shape: a heading + a bulleted list of
+		// `[term name](term link) (N products)` entries. The same
+		// per-taxonomy gate applies (see `get_syndicated_terms()`)
+		// so a section is suppressed when its corresponding
+		// `selected_*` array is empty in `by_taxonomy` mode.
 		$taxonomy_sections = [
 			[
 				'heading' => '## Product Categories',
@@ -571,6 +564,18 @@ class WC_AI_Storefront_Llms_Txt {
 		// registered, return empty rather than emit a `get_terms()`
 		// call against an unknown taxonomy.
 		if ( ! taxonomy_exists( 'product_brand' ) ) {
+			// Log when the merchant has a non-empty brand
+			// selection but the taxonomy isn't registered —
+			// usually an environment change (WC downgrade or
+			// brands plugin deactivation) that orphans the
+			// stored selection. Logging makes the silent
+			// "section disappeared" symptom diagnosable.
+			if ( ! empty( $settings['selected_brands'] )
+				&& class_exists( 'WC_AI_Storefront_Logger' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'llms.txt: selected_brands non-empty but product_brand taxonomy is not registered; brand section omitted'
+				);
+			}
 			return [];
 		}
 		return $this->get_syndicated_terms( $settings, 'product_brand', 'selected_brands' );
@@ -647,7 +652,15 @@ class WC_AI_Storefront_Llms_Txt {
 		}
 
 		$terms = get_terms( $args );
-		return is_wp_error( $terms ) ? [] : $terms;
+		// Defensive: `get_terms` should return array|WP_Error per
+		// the documented contract, but a third-party `get_terms`
+		// filter could return null/false/scalar. Coerce anything
+		// non-array to [] so the caller's foreach iterates zero
+		// times rather than tripping on the unexpected type.
+		if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
+			return [];
+		}
+		return $terms;
 	}
 
 	// `get_featured_products()` was removed alongside the

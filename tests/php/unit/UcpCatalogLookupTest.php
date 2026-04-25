@@ -827,4 +827,71 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 42400, $variant['list_price']['amount'] );
 		$this->assertEquals( 'EUR', $variant['list_price']['currency'] );
 	}
+
+	// ------------------------------------------------------------------
+	// Scope enforcement (0.1.7)
+	// ------------------------------------------------------------------
+	//
+	// `fetch_store_api_product()` calls
+	// `WC_AI_Storefront::is_product_syndicated()` BEFORE dispatching
+	// the Store API request and returns null when the gate fails.
+	// This pins the security regression: an agent supplying raw IDs
+	// outside the merchant's `selected_*` scope must NOT receive
+	// product data, AND we must not even dispatch a Store API
+	// request for the out-of-scope ID (it would otherwise leak
+	// metadata via response timing).
+
+	public function test_lookup_returns_null_for_out_of_scope_product_id(): void {
+		// `selected` mode: only product 1 is syndicated. Product 99
+		// is not in `selected_products`, so the gate must reject it
+		// at `fetch_store_api_product` BEFORE rest_do_request is
+		// ever invoked for it.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'selected',
+			'selected_products'      => [ 1 ],
+		];
+
+		// Seed both products in the fake Store API. If the gate
+		// were missing, both would resolve to product fixtures.
+		$this->seed_simple_product( 1, 'In-scope Widget' );
+		$this->seed_simple_product( 99, 'Out-of-scope Widget' );
+
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'prod_1', 'prod_99' ] ]
+		);
+
+		// In-scope product resolves.
+		$this->assertCount( 1, $body['products'] );
+		$this->assertEquals( 'prod_1', $body['products'][0]['id'] );
+		$this->assertEquals( 'In-scope Widget', $body['products'][0]['title'] );
+
+		// Out-of-scope product produces a not_found message at
+		// inputs[1] (where prod_99 lives in the deduped list).
+		$this->assertNotEmpty( $body['messages'] );
+		$not_found = array_values(
+			array_filter(
+				$body['messages'],
+				static fn( array $m ): bool => 'not_found' === ( $m['code'] ?? '' )
+			)
+		);
+		$this->assertCount( 1, $not_found );
+		$this->assertEquals( '$.inputs[1]', $not_found[0]['path'] );
+
+		// Crux of the regression test: rest_do_request was NOT
+		// invoked for product 99. The dispatch counter only
+		// increments for IDs that pass the syndication gate, so
+		// product 99 must have zero dispatches even though the
+		// fixture is seeded.
+		$this->assertSame(
+			1,
+			$this->store_api_dispatch_counts[1] ?? 0,
+			'In-scope product (id=1) should be dispatched exactly once.'
+		);
+		$this->assertSame(
+			0,
+			$this->store_api_dispatch_counts[99] ?? 0,
+			'Out-of-scope product (id=99) must NOT be dispatched — gate runs before rest_do_request.'
+		);
+	}
 }

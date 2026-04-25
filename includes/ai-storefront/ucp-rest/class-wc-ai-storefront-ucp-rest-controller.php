@@ -1629,16 +1629,48 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *
 	 * Using `rest_do_request` rather than a direct WC_Data_Store call
 	 * matters: it threads the request through the Store API's full
-	 * pipeline, which means our `woocommerce_store_api_product_collection_query_args`
-	 * filter still applies — products excluded by the
-	 * merchant's selected_categories/products settings return 404 here,
-	 * even though the agent supplied a raw numeric ID.
+	 * pipeline (variation expansion, image URL resolution, embedded
+	 * pricing, etc.) — so the resulting array is the exact same
+	 * shape an external Store API consumer would see.
+	 *
+	 * Scope enforcement note: the Store API's
+	 * `woocommerce_store_api_product_collection_query_args` filter
+	 * applies ONLY to collection queries. Single-product requests
+	 * (this method) bypass that filter entirely. To keep agents
+	 * from looking up products outside the merchant's `selected_*`
+	 * scope by supplying raw IDs, this method calls
+	 * `WC_AI_Storefront::is_product_syndicated()` BEFORE the
+	 * dispatch and returns null (treated as "not found" by callers)
+	 * when the gate fails. This mirrors what llms.txt and JSON-LD
+	 * emit for the same product — all three gates stay in
+	 * lockstep.
 	 *
 	 * @return ?array<string, mixed>
 	 */
 	private static function fetch_store_api_product( int $id ): ?array {
 		if ( isset( self::$request_product_cache_has_key[ $id ] ) ) {
 			return self::$request_product_cache[ $id ];
+		}
+
+		// Scope-enforcement gate. The Store API filter only fires
+		// on COLLECTION queries; this method dispatches a SINGLE-
+		// PRODUCT request which bypasses that filter (Store API has
+		// distinct internal handling for the two). Without an
+		// explicit gate here, an agent calling /catalog/lookup with
+		// arbitrary product IDs would receive products outside the
+		// merchant's `selected_*` scope. The check uses the same
+		// UNION enforcement as `WC_AI_Storefront::
+		// is_product_syndicated()` for llms.txt and JSON-LD, so all
+		// gates stay in lockstep. Memoized as a `null` cache entry
+		// so repeated lookups of the same out-of-scope ID don't
+		// re-run the per-id checks.
+		if ( ! WC_AI_Storefront::is_product_syndicated( $id ) ) {
+			WC_AI_Storefront_Logger::debug(
+				sprintf( 'UCP fetch_store_api_product(%d): out of merchant scope, returning null', $id )
+			);
+			self::$request_product_cache[ $id ]         = null;
+			self::$request_product_cache_has_key[ $id ] = true;
+			return null;
 		}
 
 		$request  = new WP_REST_Request( 'GET', '/wc/store/v1/products/' . $id );
