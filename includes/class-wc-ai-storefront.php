@@ -128,9 +128,13 @@ class WC_AI_Storefront {
 		$rate_limiter->init();
 
 		// Store API product collection filter — enforces the merchant's
-		// `product_selection_mode` against every Store API product query
-		// (including UCP catalog routes, which dispatch via rest_do_request).
-		// See class docblock for scope rationale.
+		// `product_selection_mode` only when the UCP REST controller
+		// dispatches an inner Store API request (via the
+		// `enter_ucp_dispatch()` / `exit_ucp_dispatch()` markers).
+		// Other Store API consumers (front-end Cart, block-theme
+		// Checkout, themes, third-party plugins) are unaffected.
+		// See the filter class's docblock for the scoping
+		// rationale.
 		$store_api_filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$store_api_filter->init();
 
@@ -570,13 +574,33 @@ class WC_AI_Storefront {
 	 * `selected_brands` array stays on disk; re-registration of
 	 * the taxonomy restores enforcement.
 	 *
-	 * @param WC_Product $product  The product.
+	 * @param WC_Product|int $product  WC_Product object OR an int product ID.
+	 *                                 The int form is what UCP REST callers
+	 *                                 (catalog/lookup, etc.) have at hand
+	 *                                 without paying for `wc_get_product()`.
 	 * @param array|null $settings Settings (null to auto-load).
 	 * @return bool
 	 */
 	public static function is_product_syndicated( $product, $settings = null ) {
 		if ( null === $settings ) {
 			$settings = self::get_settings();
+		}
+
+		// Accept either a `WC_Product`-like object (with `get_id()`)
+		// or a raw int product ID. The int form is what UCP REST
+		// callers (catalog/lookup, checkout line-item resolution)
+		// have at hand without paying the cost of `wc_get_product()`
+		// just to satisfy the type. The method only consults the
+		// product's ID and its term memberships — both addressable
+		// via the int directly.
+		$product_id = is_int( $product )
+			? $product
+			: ( is_object( $product ) && method_exists( $product, 'get_id' )
+				? (int) $product->get_id()
+				: 0 );
+
+		if ( $product_id <= 0 ) {
+			return false;
 		}
 
 		$mode = $settings['product_selection_mode'] ?? 'all';
@@ -604,7 +628,7 @@ class WC_AI_Storefront {
 				return false;
 			}
 			return in_array(
-				$product->get_id(),
+				$product_id,
 				array_map( 'absint', $settings['selected_products'] ),
 				true
 			);
@@ -634,7 +658,8 @@ class WC_AI_Storefront {
 				return false;
 			}
 
-			$product_id = $product->get_id();
+			// `$product_id` is already resolved at the top of this
+			// method from either the int or the WC_Product input.
 
 			if ( $has_cats ) {
 				$product_cats = wc_get_product_cat_ids( $product_id );

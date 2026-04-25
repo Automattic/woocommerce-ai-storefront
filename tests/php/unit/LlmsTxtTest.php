@@ -69,6 +69,12 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_products' )->justReturn( [] );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 
+		// `get_syndicated_brands()` consults `taxonomy_exists` to
+		// decide whether to query the `product_brand` taxonomy.
+		// Default to true so brand-aware tests work; brand-absent
+		// tests can override.
+		Functions\when( 'taxonomy_exists' )->justReturn( true );
+
 		// Sitemap-discovery stubs. Default: nothing found (no sitemap
 		// section in output). Individual tests override via
 		// `Functions\when()->alias()` to simulate found sitemaps.
@@ -730,13 +736,45 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	 * nothing is more truthful than a wrong list.
 	 */
 	public function test_llms_txt_categories_section_suppressed_when_only_tags_brands_selected(): void {
+		// Taxonomy-aware stub: only the `product_cat` query needs
+		// to be specifically tested. Tag and brand queries return
+		// their own fixture data so the `## Product Tags` and
+		// `## Product Brands` sections (added in 0.1.7) get
+		// reasonable mocks rather than the category fixture
+		// leaking across taxonomy boundaries.
 		$category          = new stdClass();
 		$category->name    = 'Clothing';
 		$category->slug    = 'clothing';
 		$category->count   = 42;
 		$category->term_id = 1;
 
-		Functions\when( 'get_terms' )->justReturn( [ $category ] );
+		$tag          = new stdClass();
+		$tag->name    = 'Summer';
+		$tag->slug    = 'summer';
+		$tag->count   = 5;
+		$tag->term_id = 7;
+
+		$brand          = new stdClass();
+		$brand->name    = 'Acme';
+		$brand->slug    = 'acme';
+		$brand->count   = 3;
+		$brand->term_id = 3;
+
+		Functions\when( 'get_terms' )->alias(
+			static function ( $args ) use ( $category, $tag, $brand ) {
+				$taxonomy = $args['taxonomy'] ?? '';
+				if ( 'product_cat' === $taxonomy ) {
+					return [ $category ];
+				}
+				if ( 'product_tag' === $taxonomy ) {
+					return [ $tag ];
+				}
+				if ( 'product_brand' === $taxonomy ) {
+					return [ $brand ];
+				}
+				return [];
+			}
+		);
 
 		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
@@ -748,8 +786,18 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 		$output = $this->llms->generate();
 
+		// Categories section suppressed: empty `selected_categories`
+		// + `by_taxonomy` mode means no category is in scope.
 		$this->assertStringNotContainsString( '## Product Categories', $output );
 		$this->assertStringNotContainsString( 'Clothing', $output );
+
+		// Tag and brand sections render with their own fixtures —
+		// the merchant's tag and brand selections ARE in scope
+		// (UNION semantics).
+		$this->assertStringContainsString( '## Product Tags', $output );
+		$this->assertStringContainsString( 'Summer', $output );
+		$this->assertStringContainsString( '## Product Brands', $output );
+		$this->assertStringContainsString( 'Acme', $output );
 	}
 
 	/**
@@ -1051,6 +1099,126 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString( '- https://example.com/wp-sitemap.xml', $output );
+	}
+
+	/**
+	 * `## Product Brands` section is suppressed when the
+	 * `product_brand` taxonomy isn't registered (WC < 9.5 or a site
+	 * where the brands feature is unavailable). The merchant may
+	 * have stored `selected_brands` from a previous WC version, but
+	 * the rendered llms.txt must omit the section rather than
+	 * emit an empty heading or fall over on the unregistered
+	 * taxonomy lookup.
+	 */
+	public function test_llms_txt_brand_section_suppressed_when_product_brand_taxonomy_unregistered(): void {
+		// Brand taxonomy isn't registered on this site.
+		Functions\when( 'taxonomy_exists' )->justReturn( false );
+
+		$brand          = new stdClass();
+		$brand->name    = 'Acme Brand';
+		$brand->slug    = 'acme-brand';
+		$brand->count   = 4;
+		$brand->term_id = 3;
+
+		// If the gate ever leaks, get_terms would be called for
+		// product_brand and return our fixture — we pin that the
+		// fixture name does NOT appear in the output.
+		Functions\when( 'get_terms' )->alias(
+			static function ( $args ) use ( $brand ) {
+				$taxonomy = $args['taxonomy'] ?? '';
+				if ( 'product_brand' === $taxonomy ) {
+					return [ $brand ];
+				}
+				return [];
+			}
+		);
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [],
+			'selected_tags'          => [],
+			'selected_brands'        => [ 3 ],
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( '## Product Brands', $output );
+		$this->assertStringNotContainsString( 'Acme Brand', $output );
+	}
+
+	/**
+	 * All three taxonomy sections render simultaneously when the
+	 * merchant has selected categories, tags, AND brands. Pin the
+	 * heading order (categories → tags → brands) and that each
+	 * section's fixture name appears in the output.
+	 */
+	public function test_llms_txt_all_three_taxonomy_sections_render_when_all_selected(): void {
+		$category          = new stdClass();
+		$category->name    = 'Clothing';
+		$category->slug    = 'clothing';
+		$category->count   = 42;
+		$category->term_id = 1;
+
+		$tag          = new stdClass();
+		$tag->name    = 'Summer';
+		$tag->slug    = 'summer';
+		$tag->count   = 5;
+		$tag->term_id = 7;
+
+		$brand          = new stdClass();
+		$brand->name    = 'Acme';
+		$brand->slug    = 'acme';
+		$brand->count   = 3;
+		$brand->term_id = 3;
+
+		// Taxonomy-aware stub: each get_terms() call returns its
+		// own taxonomy-specific fixture.
+		Functions\when( 'get_terms' )->alias(
+			static function ( $args ) use ( $category, $tag, $brand ) {
+				$taxonomy = $args['taxonomy'] ?? '';
+				if ( 'product_cat' === $taxonomy ) {
+					return [ $category ];
+				}
+				if ( 'product_tag' === $taxonomy ) {
+					return [ $tag ];
+				}
+				if ( 'product_brand' === $taxonomy ) {
+					return [ $brand ];
+				}
+				return [];
+			}
+		);
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [ 1 ],
+			'selected_tags'          => [ 7 ],
+			'selected_brands'        => [ 3 ],
+		];
+
+		$output = $this->llms->generate();
+
+		// All three section headings present.
+		$this->assertStringContainsString( '## Product Categories', $output );
+		$this->assertStringContainsString( '## Product Tags', $output );
+		$this->assertStringContainsString( '## Product Brands', $output );
+
+		// Each fixture's name renders.
+		$this->assertStringContainsString( 'Clothing', $output );
+		$this->assertStringContainsString( 'Summer', $output );
+		$this->assertStringContainsString( 'Acme', $output );
+
+		// Order: categories → tags → brands.
+		$cat_pos   = strpos( $output, '## Product Categories' );
+		$tag_pos   = strpos( $output, '## Product Tags' );
+		$brand_pos = strpos( $output, '## Product Brands' );
+		$this->assertNotFalse( $cat_pos );
+		$this->assertNotFalse( $tag_pos );
+		$this->assertNotFalse( $brand_pos );
+		$this->assertLessThan( $tag_pos, $cat_pos, 'Categories section must precede Tags section.' );
+		$this->assertLessThan( $brand_pos, $tag_pos, 'Tags section must precede Brands section.' );
 	}
 
 	/**

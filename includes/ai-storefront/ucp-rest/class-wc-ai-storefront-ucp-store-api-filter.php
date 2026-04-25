@@ -1,34 +1,64 @@
 <?php
 /**
- * AI Syndication: Store API Product Collection Filter
+ * AI Storefront: Store API Product Collection Filter
  *
  * Hooks `woocommerce_store_api_product_collection_query_args` to
- * restrict Store API product queries according to the plugin's
- * `product_selection_mode` setting. Without this filter, the
- * merchant's "only these categories" or "only these products"
- * choice silently applies to llms.txt / JSON-LD but NOT to the
- * Store API — meaning AI agents hitting our UCP catalog routes
- * would see every product, including ones the merchant explicitly
- * chose to hide.
+ * restrict Store API product COLLECTION queries by the plugin's
+ * `product_selection_mode` — only when the request is a UCP-
+ * controller-initiated dispatch (gated via
+ * `enter_ucp_dispatch()` / `exit_ucp_dispatch()` markers around
+ * the controller's collection-style `rest_do_request()` calls).
  *
- * The filter fires for ALL Store API product queries (not just
- * UCP routes), which is intentional — if a merchant configures
- * "only these products," they mean it everywhere (including
- * block-theme Cart/Checkout blocks that hit Store API). Merchants
- * who need the filter scoped only to UCP routes can toggle the
- * selection mode back to "all" and rely on their own storefront
- * controls.
+ * Single-product fetches (e.g. `fetch_store_api_product()` for
+ * `/catalog/lookup`) bypass `woocommerce_store_api_product_collection_query_args`
+ * entirely — that filter only fires for collection queries — so
+ * the controller gates those dispatches separately via a direct
+ * `WC_AI_Storefront::is_product_syndicated()` check before the
+ * inner `rest_do_request()` runs. All three enforcement gates
+ * (this collection filter, the per-id `is_product_syndicated()`
+ * gate, and the per-product gate used by llms.txt and JSON-LD)
+ * stay in lockstep on the merchant's UNION scope.
+ *
+ * Why scoped: the Products tab is labeled "Products available to
+ * AI crawlers" — applying this filter to every Store API call
+ * (front-end Cart, block-theme Checkout, themes, third-party
+ * plugins) would silently scope the merchant's storefront to
+ * whatever they configured for AI, violating that UI promise.
  *
  * @package WooCommerce_AI_Storefront
- * @since 1.3.0
  */
 
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Restricts Store API product queries to the plugin's selected products/categories.
+ * Restricts Store API product queries to the merchant's syndication
+ * scope (UNION across selected_categories / selected_tags /
+ * selected_brands under `by_taxonomy` mode, or `selected_products`
+ * under `selected` mode), but only inside UCP-controller-initiated
+ * dispatches. See file docblock for the full UCP-scoping rationale.
  */
 class WC_AI_Storefront_UCP_Store_API_Filter {
+
+	/**
+	 * Depth counter for UCP-initiated dispatches.
+	 *
+	 * Incremented by `enter_ucp_dispatch()` before every UCP
+	 * controller call to `rest_do_request()`, decremented by
+	 * `exit_ucp_dispatch()` immediately after (in a `finally`
+	 * block so exceptions don't leak the depth). The query-args
+	 * filter checks this counter and short-circuits when zero,
+	 * meaning Store API requests OUTSIDE UCP-controller dispatch
+	 * (front-end cart, block-theme Checkout, third-party Store
+	 * API consumers) are unaffected by the merchant's AI-scoping
+	 * settings.
+	 *
+	 * Counter (not boolean) so nested dispatches still terminate
+	 * correctly — current code doesn't nest, but future
+	 * controllers might compose UCP requests internally.
+	 *
+	 * @var int
+	 */
+	private static int $ucp_dispatch_depth = 0;
 
 	/**
 	 * Register the query-args filter.
@@ -46,72 +76,101 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	}
 
 	/**
+	 * Mark the start of a UCP-controller-initiated Store API
+	 * dispatch. Pair with `exit_ucp_dispatch()` in a `try/finally`
+	 * around the controller's collection-style `rest_do_request()`
+	 * calls. Enables the query-args filter for the duration of the
+	 * inner dispatch.
+	 *
+	 * @since 0.1.7
+	 */
+	public static function enter_ucp_dispatch(): void {
+		++self::$ucp_dispatch_depth;
+	}
+
+	/**
+	 * Mark the end of a UCP-controller-initiated Store API
+	 * dispatch. Idempotent: never decrements below zero, so an
+	 * accidental double-call from a `finally` block can't leak
+	 * negative depth.
+	 *
+	 * @since 0.1.7
+	 */
+	public static function exit_ucp_dispatch(): void {
+		if ( self::$ucp_dispatch_depth <= 0 ) {
+			// Unbalanced exit. Either a controller called
+			// exit without a matching enter, or a finally
+			// block fired twice. The clamp below keeps the
+			// depth non-negative (safe-fail: filter no-ops
+			// outside scope), but log so a developer can
+			// catch the invariant violation in dev/staging.
+			if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch called with depth=0 (unbalanced enter/exit)'
+				);
+			}
+		}
+		self::$ucp_dispatch_depth = max( 0, self::$ucp_dispatch_depth - 1 );
+	}
+
+	/**
+	 * Whether the current Store API request is inside a
+	 * UCP-controller dispatch. Public so tests can introspect.
+	 *
+	 * @since 0.1.7
+	 */
+	public static function is_in_ucp_dispatch(): bool {
+		return self::$ucp_dispatch_depth > 0;
+	}
+
+	/**
 	 * Modify the Store API product collection query args to respect
-	 * the plugin's product_selection_mode setting.
+	 * the plugin's `product_selection_mode` setting.
 	 *
-	 * Mode `all`:        return args unchanged.
-	 * Mode `categories`: append a tax_query entry for selected product_cat
-	 *                    term IDs. WP_Query ANDs multiple tax_query entries
-	 *                    by default, so any incoming category filter is
-	 *                    preserved and ours becomes an additional constraint.
-	 * Mode `tags`:       append a tax_query entry for selected product_tag
-	 *                    term IDs. Same ANY-match semantics as categories.
-	 * Mode `brands`:     append a tax_query entry for selected product_brand
-	 *                    term IDs. The `product_brand` taxonomy is WC 9.5+;
-	 *                    on older stores the admin UI hides the Brands
-	 *                    segment, which prevents NEW configuration there.
-	 *                    Persisted `selected_brands` may still exist after
-	 *                    a downgrade / stale-settings scenario (a merchant
-	 *                    configured brands on WC 9.5+, then rolled WC back
-	 *                    to an older version, so the option row in the DB
-	 *                    survives but the taxonomy doesn't). The defensive
-	 *                    `taxonomy_exists` check guards exactly that path:
-	 *                    falls back to a no-op (returns args unchanged)
-	 *                    rather than emitting an invalid tax_query against
-	 *                    an unregistered taxonomy.
-	 * Mode `selected`:   restrict post__in to the merchant's allow-list.
-	 *                    If the incoming request has its own post__in,
-	 *                    intersect instead of overriding — this preserves
-	 *                    the original request's intent AND enforces the
-	 *                    merchant's allow-list. Empty intersection produces
-	 *                    `post__in = [0]` (never a valid ID) to force zero
-	 *                    matches; raw `[]` would ironically match all posts
-	 *                    due to WP_Query's historical handling of empty
-	 *                    post__in.
+	 *   - `all`          → args unchanged.
+	 *   - `by_taxonomy`  → delegate to `apply_union_restriction()`,
+	 *                      which emits a UNION `tax_query` across
+	 *                      `selected_categories ∪ selected_tags ∪
+	 *                      selected_brands`. See that method's
+	 *                      docblock for full decision table
+	 *                      (empty-selection policy, brand-downgrade
+	 *                      exception, incoming-tax_query merge).
+	 *   - `selected`     → restrict `post__in` to the merchant's
+	 *                      allow-list. If the incoming request has
+	 *                      its own `post__in`, intersect instead
+	 *                      of overriding (preserves caller intent
+	 *                      AND enforces our list). Empty
+	 *                      intersection produces `post__in = [0]`
+	 *                      (never a valid ID) to force zero
+	 *                      matches; raw `[]` would ironically match
+	 *                      all posts due to WP_Query's historical
+	 *                      handling of empty `post__in`.
 	 *
-	 * Empty-selection policy for taxonomy modes
-	 * ------------------------------------------
-	 * When mode is `categories`/`tags`/`brands` and the corresponding
-	 * `selected_*` array is empty, the filter forces `post__in = [0]`
-	 * to hide all products. This matches the behavior of
-	 * `WC_AI_Storefront::is_product_syndicated()` which returns false
-	 * in the same scenario — keeping llms.txt/JSON-LD (per-product
-	 * gate) and the Store API (query-args gate) in lockstep. Without
-	 * this symmetry, agents hitting the UCP catalog would see every
-	 * product while agents fetching llms.txt would see none — a
-	 * silent enforcement inconsistency.
+	 * Pre-0.1.5 enum values (`categories` / `tags` / `brands`) route
+	 * to `by_taxonomy` via the silent-migration fallback at the top
+	 * of this method. Stored values are normalized on first read by
+	 * `WC_AI_Storefront::get_settings()`; this defensive mapping
+	 * covers in-flight requests during the migration window.
 	 *
-	 * Exception: `brands` mode with an unregistered `product_brand`
-	 * taxonomy. The taxonomy-missing guard runs BEFORE the empty-
-	 * selection policy and returns args unchanged (no-op = show
-	 * all), regardless of whether `selected_brands` is populated.
-	 * That's a deliberate downgrade posture — the merchant picked
-	 * brands on a store that supported the taxonomy, then an
-	 * environment change removed it; hiding the catalog in that
-	 * scenario (even via the empty-selection rule) would be a
-	 * surprising consequence of a change the merchant may not have
-	 * initiated. `is_product_syndicated()` mirrors this exception
-	 * with a hoisted `taxonomy_exists` check of its own.
-	 *
-	 * The admin UI also surfaces an inline warning Notice when the
-	 * merchant picks By-taxonomy with an empty active-taxonomy
-	 * selection, so the "hides everything" posture is a visible,
-	 * recoverable state rather than a surprise.
+	 * Empty-selection policy and brand-downgrade exception live in
+	 * `apply_union_restriction()` — see that method's docblock.
 	 *
 	 * @param array<string, mixed> $args Store API query args.
 	 * @return array<string, mixed>      Modified args.
 	 */
 	public function restrict_to_syndicated_products( array $args ): array {
+		// UCP-dispatch gate. The filter is registered globally
+		// (WordPress doesn't expose a "fire only for these
+		// callers" registration), so we self-gate based on the
+		// UCP controller's enter/exit_ucp_dispatch markers. Any
+		// Store API request OUTSIDE that scope (front-end cart,
+		// block-theme Checkout, theme product carousels, third-
+		// party plugins consuming Store API) returns args
+		// unchanged.
+		if ( ! self::is_in_ucp_dispatch() ) {
+			return $args;
+		}
+
 		$settings = WC_AI_Storefront::get_settings();
 		$mode     = $settings['product_selection_mode'] ?? 'all';
 
@@ -128,8 +187,22 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			return $this->apply_union_restriction( $args, $settings );
 		}
 
-		if ( 'selected' === $mode && ! empty( $settings['selected_products'] ) ) {
-			$allowed = array_map( 'absint', $settings['selected_products'] );
+		if ( 'selected' === $mode ) {
+			$allowed = array_map( 'absint', $settings['selected_products'] ?? [] );
+
+			// Empty allow-list under `selected` mode: force zero
+			// matches via the `post__in = [0]` sentinel. Mirrors
+			// `is_product_syndicated()` returning false and
+			// `get_product_count()` returning 0 in the same state
+			// — without this branch, an empty `selected_products`
+			// would let the filter return args unchanged and
+			// expose the entire catalog to AI agents, contradicting
+			// the merchant's "hand-picked, none picked yet"
+			// configuration.
+			if ( empty( $allowed ) ) {
+				$args['post__in'] = [ 0 ];
+				return $args;
+			}
 
 			if ( isset( $args['post__in'] ) && is_array( $args['post__in'] ) && ! empty( $args['post__in'] ) ) {
 				$incoming         = array_map( 'absint', $args['post__in'] );

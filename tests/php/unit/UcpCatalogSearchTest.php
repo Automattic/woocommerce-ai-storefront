@@ -2199,4 +2199,86 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		}
 		$this->fail( "Expected warning with code '{$code}' in response messages." );
 	}
+
+	// ------------------------------------------------------------------
+	// UCP-dispatch scope wrapping (controller seam)
+	// ------------------------------------------------------------------
+	//
+	// The Store API list dispatch is wrapped in
+	// `enter_ucp_dispatch()` / `exit_ucp_dispatch()` (try/finally).
+	// The other tests in this file stub `rest_do_request` directly, so
+	// the wrapping is invisible to them. The two tests below assert
+	// (1) the scope IS active inside the dispatch, and (2) the
+	// try/finally cleanup fires even when the dispatch throws.
+
+	public function test_search_dispatch_wraps_store_api_request_in_ucp_scope(): void {
+		// Override rest_do_request with a callback that asserts the
+		// UCP scope flag is set during the dispatch. The default
+		// stub from setUp doesn't check this; we replace it for
+		// this test.
+		$saw_in_scope = false;
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $request ) use ( &$saw_in_scope ) {
+				if ( '/wc/store/v1/products' === $request->get_route() ) {
+					$saw_in_scope = WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch();
+					return new WP_REST_Response( [], 200 );
+				}
+				return new WP_REST_Response( null, 500 );
+			}
+		);
+
+		// Sanity: we are NOT in scope before the controller runs.
+		$this->assertFalse(
+			WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch(),
+			'Pre-condition: dispatch scope must be inactive before controller invocation.'
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_catalog_search( $this->search_request( [] ) );
+
+		$this->assertInstanceOf( WP_REST_Response::class, $response );
+		$this->assertTrue(
+			$saw_in_scope,
+			'Inside rest_do_request, is_in_ucp_dispatch() must return true.'
+		);
+
+		// Post-condition: scope was exited cleanly.
+		$this->assertFalse(
+			WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch(),
+			'Post-condition: dispatch scope must be inactive after controller returns.'
+		);
+	}
+
+	public function test_dispatch_scope_exits_when_store_api_throws(): void {
+		// Make rest_do_request throw — exercise the `finally` branch
+		// of the controller's try/finally so we know the dispatch
+		// scope is decremented even when the Store API blows up.
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $request ): WP_REST_Response {
+				throw new RuntimeException( 'Simulated Store API failure' );
+			}
+		);
+
+		$this->assertFalse(
+			WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch(),
+			'Pre-condition: dispatch scope must be inactive before controller invocation.'
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$threw      = false;
+		try {
+			$controller->handle_catalog_search( $this->search_request( [] ) );
+		} catch ( RuntimeException $e ) {
+			$threw = true;
+		}
+
+		$this->assertTrue( $threw, 'Expected exception to propagate through controller.' );
+
+		// The crux of the test: the try/finally in the controller
+		// must have run `exit_ucp_dispatch()` despite the throw.
+		$this->assertFalse(
+			WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch(),
+			'finally must decrement dispatch depth even when rest_do_request throws.'
+		);
+	}
 }
