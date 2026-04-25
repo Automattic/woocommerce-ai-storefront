@@ -367,18 +367,6 @@ class WC_AI_Storefront_Robots {
 
 		$allowed_bots = $settings['allowed_crawlers'] ?? self::AI_CRAWLERS;
 
-		// Discover sitemap URLs from the existing robots.txt content
-		// (WordPress core since 5.5 emits one at the top; SEO plugins
-		// like Yoast and Rank Math emit their own). We parse what's
-		// already there rather than hardcoding a path, so any source
-		// of truth a merchant's site is using — WP core, Yoast, Rank
-		// Math, custom — flows through to the AI-bot blocks.
-		//
-		// Captured before the `$output .=` loop so we're reading the
-		// ORIGINAL input, not lines we've already appended ourselves
-		// (which would create a feedback loop if we re-emitted them).
-		$sitemap_urls = self::extract_sitemap_urls( $output );
-
 		$output .= "\n# WooCommerce AI Storefront\n";
 		$output .= "# Machine-readable store data for AI-assisted product discovery\n\n";
 
@@ -480,16 +468,34 @@ class WC_AI_Storefront_Robots {
 			$output .= "Disallow: /\n\n";
 		}
 
-		// Re-emit sitemap references at the bottom of our section.
-		// Industry convention is to place Sitemap: declarations at
-		// the end of robots.txt so parsers that process directives
-		// in document order encounter them after they've finished
-		// their User-agent group parsing. WordPress core emits them
-		// at the top (valid per spec); duplicating at the bottom
-		// is defense against both orderings.
-		foreach ( $sitemap_urls as $sitemap_url ) {
-			$output .= "Sitemap: {$sitemap_url}\n";
-		}
+		// Note: pre-0.1.13 this section re-emitted `Sitemap:` URLs
+		// at the bottom of our section (paired with the top-level
+		// emissions from WP core / Jetpack / SEO plugins). The
+		// duplication was justified as "defense against parsers
+		// that process directives in document order," but in
+		// practice it created two failure modes:
+		//
+		//   1. When the existing `$output` body had no `Sitemap:`
+		//      directive (because Jetpack et al. emit theirs via
+		//      the `do_robotstxt` action, AFTER our `robots_txt`
+		//      filter runs), the fallback to `get_sitemap_url('index')`
+		//      fired and emitted a `wp-sitemap.xml` URL that was
+		//      a different file than the merchant's actual sitemap
+		//      — and on sites where WP-core sitemap is disabled,
+		//      the URL pointed at a 404. Observed on `pierorocca.com`:
+		//      Jetpack emitted `sitemap.xml` + `news-sitemap.xml`
+		//      at the top, our fallback emitted `wp-sitemap.xml`
+		//      at the bottom, and the WP-core file didn't exist.
+		//
+		//   2. RFC 9309 specifies `Sitemap:` as a top-level
+		//      directive whose position is not order-sensitive.
+		//      No conformant parser cares whether it appears at
+		//      top or bottom. The "defense against ordering-sensitive
+		//      parsers" is theoretical, not load-bearing.
+		//
+		// Net: the top-level Sitemap: directives (whoever emits
+		// them — WP core, Jetpack, Yoast, etc.) are authoritative
+		// and stand alone. Our plugin doesn't need to re-emit.
 
 		/**
 		 * Filter the AI crawler robots.txt rules.
@@ -539,51 +545,4 @@ class WC_AI_Storefront_Robots {
 		'/news-sitemap.xml',
 	];
 
-	/**
-	 * Extract sitemap URLs from existing robots.txt content.
-	 *
-	 * Two discovery strategies layered:
-	 *
-	 *   1. Regex the existing `$output` body for `Sitemap:`
-	 *      directives. Catches any SEO plugin that uses the
-	 *      `robots_txt` filter correctly (emission flows through
-	 *      `$output`).
-	 *
-	 *   2. Fall back to `get_sitemap_url( 'index' )` — WP core
-	 *      helper since 5.5 — for sites running the default
-	 *      core sitemap with no SEO plugin configured.
-	 *
-	 * NOT covered by either strategy: SEO plugins that emit
-	 * `Sitemap:` via the `do_robotstxt` action (direct `echo`).
-	 * Those lines appear in the final robots.txt body but aren't
-	 * visible to our filter. Their `Sitemap:` directives still get
-	 * picked up by crawlers since `Sitemap:` is a top-level
-	 * directive — we just don't see them at filter-time. Pre-0.1.9
-	 * we tried to compensate by emitting redundant `Allow:` rules
-	 * for a hardcoded list of common sitemap paths, but those
-	 * `Allow:` rules were doing nothing useful (sitemap discovery
-	 * happens via `Sitemap:`, not `Allow:`) so the compensation
-	 * was removed.
-	 *
-	 * @param string $robots_txt The full robots.txt body at the
-	 *                           moment our filter runs.
-	 * @return string[]          Discovered sitemap URLs (may be empty).
-	 */
-	private static function extract_sitemap_urls( string $robots_txt ): array {
-		if ( preg_match_all( '/^\s*Sitemap:\s*(\S+)/mi', $robots_txt, $matches ) ) {
-			return array_values( array_unique( $matches[1] ) );
-		}
-
-		// No Sitemap directive in input → fall back to WP core's
-		// canonical sitemap URL. Returns empty string on sites where
-		// the core sitemap is disabled via filter; we filter that out.
-		if ( function_exists( 'get_sitemap_url' ) ) {
-			$core_sitemap = get_sitemap_url( 'index' );
-			if ( is_string( $core_sitemap ) && '' !== $core_sitemap ) {
-				return [ $core_sitemap ];
-			}
-		}
-
-		return [];
-	}
 }

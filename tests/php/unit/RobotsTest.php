@@ -582,54 +582,39 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'Allow: /wp-sitemap.xml', $output );
 	}
 
-	public function test_sitemap_directive_falls_back_to_wp_core_when_no_sitemap_in_input(): void {
-		// `extract_sitemap_urls()` has two layered strategies: regex
-		// the existing robots.txt for `Sitemap:` directives, then
-		// fall back to `get_sitemap_url( 'index' )` for sites without
-		// any external sitemap declared in the input.
+	public function test_no_bottom_of_section_sitemap_reemission(): void {
+		// Pre-0.1.13 our plugin re-emitted top-level `Sitemap:`
+		// directives at the bottom of our AI section, justified as
+		// "defense against ordering-sensitive parsers." Two failure
+		// modes drove the deletion in 0.1.13:
 		//
-		// Pre-0.1.9 the WP-core fallback path was tested via the
-		// per-block `Allow:` emission (which has been deleted). With
-		// that test gone, the fallback branch was uncovered — a
-		// regression that broke `get_sitemap_url()` consumption
-		// would silently leave SEO-pluginless merchants with no
-		// `Sitemap:` re-emit at the bottom of our section.
+		//   1. The fallback to `get_sitemap_url('index')` fired when
+		//      the input had no `Sitemap:` directive at filter-time
+		//      (because Jetpack et al. emit theirs via the
+		//      `do_robotstxt` action, AFTER our `robots_txt` filter
+		//      runs). On `pierorocca.com` that produced a fictional
+		//      `wp-sitemap.xml` URL when WP-core sitemap was
+		//      disabled by Jetpack — pointing crawlers at a 404.
 		//
-		// This test seeds an empty (no Sitemap directive) base and
-		// stubs `get_sitemap_url()` to return the WP-core canonical
-		// URL. The WP-core URL must appear in the bottom-of-section
-		// `Sitemap:` re-emission.
-		$base = "User-agent: *\nDisallow: /wp-admin/\n"; // no Sitemap directive
-
-		$output = $this->generate_robots_output( $base );
-
-		// `generate_robots_output()` stubs `get_sitemap_url` to
-		// return `https://example.com/wp-sitemap.xml`. The
-		// bottom-of-section emission re-renders that URL as a
-		// `Sitemap:` directive (full URL form, not Allow:).
-		$this->assertStringContainsString(
-			'Sitemap: https://example.com/wp-sitemap.xml',
-			$output,
-			'WP-core fallback sitemap URL should appear in the bottom-of-section Sitemap: re-emission'
-		);
-	}
-
-	public function test_sitemap_directive_reemitted_at_end_of_section(): void {
-		// Industry convention + defense against ordering-sensitive
-		// parsers — Sitemap declarations are duplicated at the end
-		// of our appended section, not just left at the top.
+		//   2. RFC 9309 specifies `Sitemap:` as a top-level directive
+		//      whose position is not order-sensitive; the
+		//      "ordering defense" was theoretical, not load-bearing.
+		//
+		// This test locks the regression: any future re-introduction
+		// of bottom-of-section `Sitemap:` emission must fail tests
+		// so the trade-off is reconsidered explicitly. It pins the
+		// case where the input has Jetpack-style top-of-file
+		// directives — those should appear once (at the top, as the
+		// input had them) and not be duplicated at the bottom.
 		$base = "Sitemap: https://example.com/sitemap.xml\n"
 			. "User-agent: *\nDisallow: /wp-admin/\n";
 
 		$output = $this->generate_robots_output( $base );
 
-		// Top-of-file + end-of-our-section = 2 occurrences of the
-		// full URL form (`Sitemap: https://...`). The path-only
-		// Allow emissions don't count.
 		$this->assertEquals(
-			2,
+			1,
 			substr_count( $output, 'Sitemap: https://example.com/sitemap.xml' ),
-			'Sitemap URL should appear both at top (from input) and at bottom (re-emitted)'
+			'Sitemap URL should appear exactly once (at the top from input), not duplicated at the bottom of our AI section'
 		);
 	}
 
