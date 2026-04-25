@@ -424,8 +424,11 @@ class WC_AI_Storefront_Robots {
 			// `Disallow:` rules below touch sitemap paths. The rules
 			// were permitting something that was never blocked. Sitemap
 			// discovery happens via the top-level `Sitemap:` directives
-			// (emitted by WP core / Jetpack / SEO plugins above this
-			// section, and re-emitted at the bottom of our section).
+			// emitted by WP core / Jetpack / SEO plugins outside this
+			// section. (Pre-0.1.13 our plugin also re-emitted them at
+			// the bottom of our section; that re-emission was removed
+			// for separate reasons — see the comment block below the
+			// opt-out group at the end of `add_ai_crawler_rules`.)
 			// With every bot in `LIVE_BROWSING_AGENTS` × 4 sitemap
 			// paths the deletion saves dozens of redundant lines on
 			// a typical merchant's robots.txt (rather than hardcoding
@@ -482,10 +485,11 @@ class WC_AI_Storefront_Robots {
 		//      fired and emitted a `wp-sitemap.xml` URL that was
 		//      a different file than the merchant's actual sitemap
 		//      — and on sites where WP-core sitemap is disabled,
-		//      the URL pointed at a 404. Observed on `pierorocca.com`:
-		//      Jetpack emitted `sitemap.xml` + `news-sitemap.xml`
-		//      at the top, our fallback emitted `wp-sitemap.xml`
-		//      at the bottom, and the WP-core file didn't exist.
+		//      the URL pointed at a 404. Observed on a merchant
+		//      site where Jetpack emitted `sitemap.xml` +
+		//      `news-sitemap.xml` at the top, our fallback emitted
+		//      `wp-sitemap.xml` at the bottom, and the WP-core
+		//      file didn't exist.
 		//
 		//   2. RFC 9309 specifies `Sitemap:` as a top-level
 		//      directive whose position is not order-sensitive.
@@ -516,16 +520,22 @@ class WC_AI_Storefront_Robots {
 	 * llms.txt is user-facing content, so it only lists sitemaps that
 	 * actually respond. The probing covers SEO plugins that emit
 	 * `Sitemap:` via the `do_robotstxt` action (direct echo) rather
-	 * than the `robots_txt` filter, which the regex discovery in
-	 * `extract_sitemap_urls()` below can't see.
+	 * than the `robots_txt` filter — the latter only sees what's been
+	 * passed through the filter callbacks, not what the action callbacks
+	 * echo afterward. HEAD-probing the canonical path list is how
+	 * llms.txt enumerates sitemaps regardless of which mechanism the
+	 * site's SEO plugin uses.
 	 *
-	 * Pre-0.1.9 this constant was ALSO used to emit per-bot
-	 * `Allow:` rules in robots.txt. That use was redundant and
-	 * removed — sitemap discovery happens via top-level `Sitemap:`
-	 * directives, not `Allow:`, so the per-bot Allow rules were
-	 * permitting paths nothing was ever Disallowing. The constant
-	 * remains for the llms.txt probe path, which is its only remaining
-	 * caller.
+	 * Two prior consumers of this constant were removed in earlier
+	 * releases:
+	 *   - Pre-0.1.9 the robots.txt generator emitted per-bot `Allow:`
+	 *     rules for every path here. Redundant — sitemap discovery
+	 *     happens via `Sitemap:` directives, not `Allow:`.
+	 *   - Pre-0.1.13 a private `extract_sitemap_urls()` helper paired
+	 *     a regex pass over `$output` with a `get_sitemap_url('index')`
+	 *     fallback to feed a bottom-of-section `Sitemap:` re-emission.
+	 *     Both helper and re-emission removed; the constant remains
+	 *     only for the llms.txt probe path above.
 	 *
 	 * Paths chosen from observed real-world usage:
 	 *   - `/sitemap.xml`        — Yoast, Rank Math, AIOSEO default,
