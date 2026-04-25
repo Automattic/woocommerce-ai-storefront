@@ -272,6 +272,16 @@ class WC_AI_Storefront_Attribution {
 		// party integrations relying on ISO 4217). Keeping `currency`
 		// as the code preserves backward compatibility for any
 		// consumer reading the response shape that landed pre-0.1.8.
+		//
+		// `currency_symbol` is an empty string (NOT the currency code)
+		// when `get_woocommerce_currency_symbol()` is unavailable. The
+		// frontend's `formatMoney()` helper does
+		// `currency_symbol || currency || '$'`; falling back to the
+		// code here would short-circuit that chain and render
+		// glued-to-digits ("USD42.00") instead of space-separated
+		// ("USD 42.00"). We keep this field strictly "symbol or empty"
+		// and let the frontend's currency-code branch handle the
+		// separator.
 		$currency_code = get_woocommerce_currency();
 
 		return [
@@ -286,7 +296,7 @@ class WC_AI_Storefront_Attribution {
 			'currency'         => $currency_code,
 			'currency_symbol'  => function_exists( 'get_woocommerce_currency_symbol' )
 				? html_entity_decode( get_woocommerce_currency_symbol( $currency_code ) )
-				: $currency_code,
+				: '',
 			'by_agent'         => $by_agent,
 			'top_agent'        => $derived['top_agent'],
 		];
@@ -387,13 +397,35 @@ class WC_AI_Storefront_Attribution {
 				usort(
 					$ranked,
 					static function ( $a, $b ) {
-						// Primary: orders DESC. If equal, revenue DESC.
+						// Primary: orders DESC. Secondary: revenue DESC.
+						// Tertiary: agent name ASC.
+						//
+						// `usort` is NOT stable in PHP — when a comparator
+						// returns 0, the relative order of those elements
+						// is implementation-defined and can flicker
+						// between snapshots. The tertiary tie-break
+						// guarantees deterministic ordering even when
+						// two agents tie on BOTH orders AND revenue (a
+						// realistic case for low-volume stores: two
+						// agents each driving 1 order at the same price
+						// point). Without it, the card winner could swap
+						// between Tuesday and Wednesday's snapshot for
+						// no merchant-visible reason. ASC name keeps
+						// alphabetical familiarity ("Anthropic" wins
+						// over "ChatGPT" on a true tie, which is
+						// arbitrary but stable).
+						//
 						// See class docblock above re: spaceship vs
 						// subtraction and short-ternary vs expanded.
 						$primary = $b['orders'] <=> $a['orders'];
-						return 0 !== $primary
-							? $primary
-							: ( $b['revenue'] <=> $a['revenue'] );
+						if ( 0 !== $primary ) {
+							return $primary;
+						}
+						$secondary = $b['revenue'] <=> $a['revenue'];
+						if ( 0 !== $secondary ) {
+							return $secondary;
+						}
+						return $a['name'] <=> $b['name'];
 					}
 				);
 				$winner    = $ranked[0];

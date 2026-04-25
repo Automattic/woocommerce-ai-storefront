@@ -166,6 +166,32 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'gemini', $result['top_agent']['name'] );
 	}
 
+	public function test_top_agent_name_is_tertiary_tiebreak_when_orders_and_revenue_both_tie(): void {
+		// Realistic case: two agents tied on both orders AND revenue
+		// (each drove 1 order at $50 — same price, same count). PHP's
+		// `usort` is not stable, so the relative order of the tied
+		// elements is implementation-defined and can swap between
+		// runs / PHP versions / hash seed values. Without a tertiary
+		// tie-break the merchant could see the Top Agent card flicker
+		// between Tuesday and Wednesday for no visible reason.
+		//
+		// Tertiary is agent name ASC (alphabetical), so the winner
+		// is deterministic regardless of input order. This test
+		// passes the tied agents in REVERSE alphabetical order to
+		// verify the tertiary actually fires (not just "happens to
+		// match input order").
+		$by_agent = [
+			'gemini'  => [ 'orders' => 1, 'revenue' => 50.00 ],
+			'chatgpt' => [ 'orders' => 1, 'revenue' => 50.00 ],
+		];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 2, 100.00, $by_agent );
+
+		// 'chatgpt' < 'gemini' alphabetically — wins on tertiary
+		// despite being second in input order.
+		$this->assertSame( 'chatgpt', $result['top_agent']['name'] );
+	}
+
 	// ------------------------------------------------------------------
 	// Defensive branches
 	// ------------------------------------------------------------------
