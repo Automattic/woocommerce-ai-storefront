@@ -1,33 +1,26 @@
 <?php
 /**
- * AI Storefront: Store API Product Collection Filter
+ * AI Syndication: Store API Product Collection Filter
  *
  * Hooks `woocommerce_store_api_product_collection_query_args` to
  * restrict Store API product queries according to the plugin's
- * `product_selection_mode` setting — but ONLY when the request is
- * a UCP-controller-initiated dispatch (i.e., an AI agent hit
- * `/wc/ucp/v1/catalog/...` and the controller is delegating to
- * `/wc/store/v1/products` via `rest_do_request`).
+ * `product_selection_mode` setting. Without this filter, the
+ * merchant's "only these categories" or "only these products"
+ * choice silently applies to llms.txt / JSON-LD but NOT to the
+ * Store API — meaning AI agents hitting our UCP catalog routes
+ * would see every product, including ones the merchant explicitly
+ * chose to hide.
  *
- * Why scoped: the Products tab is labeled "Products available to
- * AI crawlers" — the merchant's mental model is "filter what AI
- * sees." Applying the filter to every Store API call (front-end
- * cart, block-theme Checkout, third-party plugins consuming
- * Store API) would silently scope the merchant's own storefront
- * to whatever they configured for AI, which violates the UI
- * promise.
- *
- * How scoping works: the UCP REST controller calls
- * `enter_ucp_dispatch()` immediately before each
- * `rest_do_request()` and `exit_ucp_dispatch()` immediately after
- * (in a `try/finally` so an exception still cleans up). The
- * filter checks `is_in_ucp_dispatch()` and short-circuits to
- * "no-op return $args" outside that scope. A counter (not a
- * boolean) handles nested dispatches, though current code never
- * nests.
+ * The filter fires for ALL Store API product queries (not just
+ * UCP routes), which is intentional — if a merchant configures
+ * "only these products," they mean it everywhere (including
+ * block-theme Cart/Checkout blocks that hit Store API). Merchants
+ * who need the filter scoped only to UCP routes can toggle the
+ * selection mode back to "all" and rely on their own storefront
+ * controls.
  *
  * @package WooCommerce_AI_Storefront
- * @since 1.3.0 (initial); 0.1.7 (UCP-scoped enforcement)
+ * @since 1.3.0
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -36,27 +29,6 @@ defined( 'ABSPATH' ) || exit;
  * Restricts Store API product queries to the plugin's selected products/categories.
  */
 class WC_AI_Storefront_UCP_Store_API_Filter {
-
-	/**
-	 * Depth counter for UCP-initiated dispatches.
-	 *
-	 * Incremented by `enter_ucp_dispatch()` before every UCP
-	 * controller call to `rest_do_request()`, decremented by
-	 * `exit_ucp_dispatch()` immediately after (in a `finally`
-	 * block so exceptions don't leak the depth). The query-args
-	 * filter checks this counter and short-circuits when zero,
-	 * meaning Store API requests OUTSIDE UCP-controller dispatch
-	 * (front-end cart, block-theme Checkout, third-party Store
-	 * API consumers) are unaffected by the merchant's AI-scoping
-	 * settings.
-	 *
-	 * Counter (not boolean) so nested dispatches still terminate
-	 * correctly — current code doesn't nest, but future
-	 * controllers might compose UCP requests internally.
-	 *
-	 * @var int
-	 */
-	private static int $ucp_dispatch_depth = 0;
 
 	/**
 	 * Register the query-args filter.
@@ -71,35 +43,6 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			'woocommerce_store_api_product_collection_query_args',
 			[ $this, 'restrict_to_syndicated_products' ]
 		);
-	}
-
-	/**
-	 * Mark the start of a UCP-controller-initiated Store API
-	 * dispatch. Pair with `exit_ucp_dispatch()` in a `try/finally`
-	 * around every `rest_do_request()` call inside the UCP REST
-	 * controller. Enables the query-args filter for the duration
-	 * of the inner dispatch.
-	 */
-	public static function enter_ucp_dispatch(): void {
-		self::$ucp_dispatch_depth++;
-	}
-
-	/**
-	 * Mark the end of a UCP-controller-initiated Store API
-	 * dispatch. Idempotent: never decrements below zero, so an
-	 * accidental double-call from a `finally` block can't leak
-	 * negative depth.
-	 */
-	public static function exit_ucp_dispatch(): void {
-		self::$ucp_dispatch_depth = max( 0, self::$ucp_dispatch_depth - 1 );
-	}
-
-	/**
-	 * Whether the current Store API request is inside a
-	 * UCP-controller dispatch. Public so tests can introspect.
-	 */
-	public static function is_in_ucp_dispatch(): bool {
-		return self::$ucp_dispatch_depth > 0;
 	}
 
 	/**
@@ -169,18 +112,6 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * @return array<string, mixed>      Modified args.
 	 */
 	public function restrict_to_syndicated_products( array $args ): array {
-		// UCP-dispatch gate. The filter is registered globally
-		// (WordPress doesn't expose a "fire only for these
-		// callers" registration), so we self-gate based on the
-		// UCP controller's enter/exit_ucp_dispatch markers. Any
-		// Store API request OUTSIDE that scope (front-end cart,
-		// block-theme Checkout, theme product carousels, third-
-		// party plugins consuming Store API) returns args
-		// unchanged.
-		if ( ! self::is_in_ucp_dispatch() ) {
-			return $args;
-		}
-
 		$settings = WC_AI_Storefront::get_settings();
 		$mode     = $settings['product_selection_mode'] ?? 'all';
 

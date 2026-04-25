@@ -324,18 +324,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$store_request->set_param( $k, $v );
 		}
 
-		// Mark this dispatch as UCP-initiated so the Store API
-		// query-args filter fires (the filter is otherwise
-		// self-gated to no-op outside UCP scope — see
-		// `WC_AI_Storefront_UCP_Store_API_Filter` class docblock).
-		// `try/finally` ensures the depth is decremented even if
-		// `rest_do_request()` throws.
-		WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
-		try {
-			$store_response = rest_do_request( $store_request );
-		} finally {
-			WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
-		}
+		$store_response = rest_do_request( $store_request );
 
 		if ( $store_response instanceof WP_Error ) {
 			WC_AI_Storefront_Logger::debug(

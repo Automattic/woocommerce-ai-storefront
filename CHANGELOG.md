@@ -1,17 +1,5 @@
 # Changelog
 
-## [0.1.7] – 2026-04-25
-
-### Fixes
-- **Store API filter is now scoped to UCP-controller dispatches.** Pre-0.1.7 the `woocommerce_store_api_product_collection_query_args` filter was registered globally — every Store API consumer (front-end Cart, block-theme Checkout, themes, third-party plugins) silently saw the merchant's AI scoping applied to their own queries. The Products tab is labeled "Products available to AI crawlers"; applying the scope to non-AI Store API traffic violated that promise. New `enter_ucp_dispatch()` / `exit_ucp_dispatch()` markers wrap the UCP REST controller's `rest_do_request` calls; the filter self-gates and returns args unchanged outside that scope.
-- **llms.txt now lists selected tags and brands, not just categories.** Pre-0.1.7 only the `## Product Categories` section emitted under `by_taxonomy` mode, so a merchant scoping by 3 categories + 1 tag + 1 brand saw only the categories. Now emits three independent sections (`## Product Categories`, `## Product Tags`, `## Product Brands`), each populated from its corresponding `selected_*` array.
-
-### Tests
-- Two new tests for the Store API filter UCP-dispatch gate (`test_filter_is_noop_outside_ucp_dispatch`, `test_dispatch_depth_counter_balances`).
-- LlmsTxtTest's `categories_section_suppressed_when_only_tags_brands_selected` extended to verify the new tag and brand sections render with their own fixtures.
-
----
-
 ## [0.1.6] – 2026-04-25
 
 ### Fixes

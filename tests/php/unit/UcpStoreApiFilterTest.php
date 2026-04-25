@@ -39,79 +39,11 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		\Brain\Monkey\setUp();
 		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
 		WC_AI_Storefront::$test_settings = [];
-
-		// As of 0.1.7 the filter is gated to UCP-controller-
-		// initiated dispatches via an `is_in_ucp_dispatch()`
-		// counter check. Tests that exercise the enforcement
-		// behavior need to enter that scope; tearDown exits it
-		// so a leak from one test can't contaminate another.
-		// The dedicated test
-		// `test_filter_is_noop_outside_ucp_dispatch` exits before
-		// asserting, then re-enters in its own finally so this
-		// shared lifecycle stays consistent.
-		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 	}
 
 	protected function tearDown(): void {
-		\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		\Brain\Monkey\tearDown();
 		parent::tearDown();
-	}
-
-	// ------------------------------------------------------------------
-	// UCP-dispatch gate (0.1.7+)
-	// ------------------------------------------------------------------
-
-	public function test_filter_is_noop_outside_ucp_dispatch(): void {
-		// 0.1.7 scoped the filter to UCP-controller-initiated
-		// dispatches so unrelated Store API consumers (front-end
-		// cart, block-theme Checkout, themes, third-party plugins)
-		// aren't silently scoped to the merchant's AI settings.
-		// The shared setUp() enters UCP scope; this test exits to
-		// exercise the no-op path, then re-enters so tearDown's
-		// pair stays balanced.
-		\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
-		try {
-			WC_AI_Storefront::$test_settings = [
-				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [ 5, 12 ],
-			];
-
-			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-			$input  = [ 'orderby' => 'date', 'posts_per_page' => 10 ];
-			$result = $filter->restrict_to_syndicated_products( $input );
-
-			// No tax_query, no post__in injection — the filter
-			// short-circuited because we're outside UCP scope.
-			$this->assertSame( $input, $result );
-		} finally {
-			\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
-		}
-	}
-
-	public function test_dispatch_depth_counter_balances(): void {
-		// Counter starts at 1 (set by shared setUp). Verify the
-		// enter/exit pair is balanced so a nested dispatch
-		// doesn't leak depth into subsequent tests.
-		$this->assertTrue( \WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch() );
-
-		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
-		$this->assertTrue( \WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch() );
-
-		\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
-		$this->assertTrue( \WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch() );
-
-		// Excessive exit_ucp_dispatch() is idempotent (clamps
-		// to zero) so a buggy controller can't drive the counter
-		// negative.
-		\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
-		\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
-		\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
-		$this->assertFalse( \WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch() );
-
-		// Restore so tearDown's exit_ucp_dispatch can decrement
-		// to a clean state (zero) before the next test's setUp.
-		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 	}
 
 	// ------------------------------------------------------------------
