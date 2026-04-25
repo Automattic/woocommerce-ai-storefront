@@ -550,48 +550,79 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// their own User-agent group." The defense was misdirected:
 		// `Allow:` only matters when there's a `Disallow:` that would
 		// otherwise block the path, and none of the per-bot
-		// `Disallow:` rules touch sitemap paths. With 16 bots × 4
-		// sitemap paths in `COMMON_SITEMAP_PATHS`, the result was 64
-		// redundant lines on a typical merchant's robots.txt
-		// (observed on pierorocca.com test deployment).
+		// `Disallow:` rules touch sitemap paths. With every bot in
+		// `LIVE_BROWSING_AGENTS` × 4 sitemap paths in
+		// `COMMON_SITEMAP_PATHS`, the result was dozens of redundant
+		// lines on a typical merchant's robots.txt (observed on
+		// pierorocca.com test deployment).
 		//
 		// 0.1.9 dropped the per-block sitemap Allows. Sitemap
 		// discovery still works via the top-level `Sitemap:`
 		// directives (emitted by WP core / Jetpack / SEO plugins
 		// above this section, plus re-emitted at the bottom of
 		// our section). This test locks the regression: per-bot
-		// `Allow: /sitemap.xml` lines must not reappear without
+		// `Allow: <sitemap-path>` lines must not reappear without
 		// a deliberate design discussion.
+		//
+		// Tightened from a 4-string deny-list to a regex match —
+		// catches reintroduction at a non-canonical path too (e.g.
+		// `/custom-sitemap.xml` from a future SEO plugin's
+		// hardcoded list). The four canonical paths are still
+		// asserted explicitly for diagnostic clarity.
 		$base = "Sitemap: https://example.com/sitemap.xml\n"
 			. "Sitemap: https://example.com/news-sitemap.xml\n"
 			. "User-agent: *\nDisallow: /wp-admin/\n";
 
 		$output = $this->generate_robots_output( $base );
 
-		// Path-only Allow lines for sitemaps should not appear at
-		// all — only the top-level full-URL `Sitemap:` directive
-		// (which uses absolute URLs, not paths). Sub-string
-		// `Allow: /sitemap.xml` would only match if we re-introduced
-		// the per-block emission.
-		$this->assertStringNotContainsString(
-			'Allow: /sitemap.xml',
-			$output,
-			'Per-block Allow: /sitemap.xml is redundant with top-level Sitemap: directives and should not be emitted'
+		// Per-bot `Allow:` rules that include "sitemap" anywhere in
+		// the path indicate the redundant emission has returned.
+		// The regex matches `Allow: <whitespace> <anything>sitemap<anything>`
+		// at line start, multiline-mode, anchored end-of-line.
+		$this->assertSame(
+			0,
+			preg_match_all( '/^Allow:\s+\S*sitemap\S*$/m', $output ),
+			'No per-bot Allow rule should reference any sitemap-shaped path'
 		);
-		$this->assertStringNotContainsString(
-			'Allow: /news-sitemap.xml',
+
+		// Spot-check the four canonical paths the previous
+		// implementation emitted, for diagnostic clarity if the
+		// regex assertion ever fires.
+		$this->assertStringNotContainsString( 'Allow: /sitemap.xml', $output );
+		$this->assertStringNotContainsString( 'Allow: /news-sitemap.xml', $output );
+		$this->assertStringNotContainsString( 'Allow: /sitemap_index.xml', $output );
+		$this->assertStringNotContainsString( 'Allow: /wp-sitemap.xml', $output );
+	}
+
+	public function test_sitemap_directive_falls_back_to_wp_core_when_no_sitemap_in_input(): void {
+		// `extract_sitemap_urls()` has two layered strategies: regex
+		// the existing robots.txt for `Sitemap:` directives, then
+		// fall back to `get_sitemap_url( 'index' )` for sites without
+		// any external sitemap declared in the input.
+		//
+		// Pre-0.1.9 the WP-core fallback path was tested via the
+		// per-block `Allow:` emission (which has been deleted). With
+		// that test gone, the fallback branch was uncovered — a
+		// regression that broke `get_sitemap_url()` consumption
+		// would silently leave SEO-pluginless merchants with no
+		// `Sitemap:` re-emit at the bottom of our section.
+		//
+		// This test seeds an empty (no Sitemap directive) base and
+		// stubs `get_sitemap_url()` to return the WP-core canonical
+		// URL. The WP-core URL must appear in the bottom-of-section
+		// `Sitemap:` re-emission.
+		$base = "User-agent: *\nDisallow: /wp-admin/\n"; // no Sitemap directive
+
+		$output = $this->generate_robots_output( $base );
+
+		// `generate_robots_output()` stubs `get_sitemap_url` to
+		// return `https://example.com/wp-sitemap.xml`. The
+		// bottom-of-section emission re-renders that URL as a
+		// `Sitemap:` directive (full URL form, not Allow:).
+		$this->assertStringContainsString(
+			'Sitemap: https://example.com/wp-sitemap.xml',
 			$output,
-			'Per-block Allow: /news-sitemap.xml is redundant with top-level Sitemap: directives and should not be emitted'
-		);
-		$this->assertStringNotContainsString(
-			'Allow: /sitemap_index.xml',
-			$output,
-			'Per-block Allow: /sitemap_index.xml is redundant with top-level Sitemap: directives and should not be emitted'
-		);
-		$this->assertStringNotContainsString(
-			'Allow: /wp-sitemap.xml',
-			$output,
-			'Per-block Allow: /wp-sitemap.xml is redundant with top-level Sitemap: directives and should not be emitted'
+			'WP-core fallback sitemap URL should appear in the bottom-of-section Sitemap: re-emission'
 		);
 	}
 
@@ -613,13 +644,6 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 			'Sitemap URL should appear both at top (from input) and at bottom (re-emitted)'
 		);
 	}
-
-	// Note: pre-0.1.9 there was a `test_sitemap_allow_falls_back_to_wp_core_sitemap`
-	// here that asserted per-block emission of `/wp-sitemap.xml` when no external
-	// sitemap was declared. Deleted alongside the per-block emission itself.
-	// The fallback path through `get_sitemap_url( 'index' )` still exists in
-	// `extract_sitemap_urls()` — it now feeds the bottom-of-section `Sitemap:`
-	// re-emission, which is exercised by `test_sitemap_directive_reemitted_at_end_of_section`.
 
 	public function test_opted_out_bots_get_explicit_disallow_block(): void {
 		// The fixture has `allowed_crawlers = [GPTBot, ClaudeBot]`.

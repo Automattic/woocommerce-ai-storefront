@@ -53,6 +53,30 @@ class WC_AI_Storefront_Ucp {
 	const SERVICE_NAME = 'dev.ucp.shopping';
 
 	/**
+	 * Canonical shopping capability suffixes this plugin implements.
+	 *
+	 * Single source of truth for the three capability IDs emitted under
+	 * `manifest.capabilities` AND listed in
+	 * `com.woocommerce.ai_storefront[0].extends`. Keeping the list in one
+	 * place enforces the structural invariant that the extension's
+	 * `extends` array stays in lockstep with the canonical capabilities
+	 * declared elsewhere in the manifest. A future addition (e.g.
+	 * `subscription`) updates this constant in one place and both sides
+	 * pick it up automatically.
+	 *
+	 * Suffixes only — fully-qualified IDs are constructed as
+	 * `SERVICE_NAME . '.' . $suffix` at use-site (e.g.
+	 * `'dev.ucp.shopping.catalog.search'`).
+	 *
+	 * @var string[]
+	 */
+	const CANONICAL_CAPABILITIES = [
+		'catalog.search',
+		'catalog.lookup',
+		'checkout',
+	];
+
+	/**
 	 * Transient key for cached UCP manifest.
 	 */
 	const CACHE_KEY = 'wc_ai_storefront_ucp';
@@ -298,20 +322,26 @@ class WC_AI_Storefront_Ucp {
 					// `extends` uses the spec-defined array form to
 					// declare multi-parent inheritance over all three
 					// canonical shopping capabilities. Per the UCP
-					// 2026-04-08 capability schema description: "Parent
-					// capability(s) this extends. Use array for
-					// multi-parent extensions." See
+					// 2026-04-08 capability schema (see
 					// https://ucp.dev/2026-04-08/schemas/capability.json
-					// `base.extends`.
-					//
-					// Pre-0.1.9 this field pointed at the service ID
-					// (`dev.ucp.shopping`), which the schema regex
-					// accepted but the description ("Parent capability(s)")
-					// did not endorse — services are not capabilities.
-					// The array form below is more honest about what the
-					// extension actually augments: store_context applies
-					// to search, lookup, AND checkout, so all three are
+					// `base.extends`): the regex pattern accepts any
+					// matching identifier, but the field's description
+					// constrains the meaning to capability IDs — "Parent
+					// capability(s) this extends. Use array for
+					// multi-parent extensions." Pre-0.1.9 this field
+					// pointed at the service ID (`dev.ucp.shopping`),
+					// which is a service, not a capability — passing the
+					// regex but not the description's intent. The array
+					// form below is more honest about what the extension
+					// actually augments: store_context applies to
+					// search, lookup, AND checkout, so all three are
 					// listed as parents.
+					//
+					// Constructed from `CANONICAL_CAPABILITIES` so the
+					// extension's `extends` list and the canonical
+					// capability declarations above stay structurally
+					// in lockstep — adding a fourth capability updates
+					// one constant and both sides reflect it.
 					//
 					// Agents that only iterate standard `dev.ucp.*`
 					// capabilities ignore this entirely; agents that
@@ -321,11 +351,10 @@ class WC_AI_Storefront_Ucp {
 					'com.woocommerce.ai_storefront'   => [
 						[
 							'version' => self::PROTOCOL_VERSION,
-							'extends' => [
-								self::SERVICE_NAME . '.catalog.search',
-								self::SERVICE_NAME . '.catalog.lookup',
-								self::SERVICE_NAME . '.checkout',
-							],
+							'extends' => array_map(
+								static fn( string $suffix ): string => self::SERVICE_NAME . '.' . $suffix,
+								self::CANONICAL_CAPABILITIES
+							),
 							// Self-hosted docs URLs. The spec + schema
 							// are served from this site (not GitHub) for
 							// three reasons:

@@ -455,8 +455,11 @@ class WC_AI_Storefront_Robots {
 			// discovery happens via the top-level `Sitemap:` directives
 			// (emitted by WP core / Jetpack / SEO plugins above this
 			// section, and re-emitted at the bottom of our section).
-			// With 16 bots × 4 sitemap paths the deletion saves 64
-			// redundant lines on a typical merchant's robots.txt.
+			// With every bot in `LIVE_BROWSING_AGENTS` × 4 sitemap
+			// paths the deletion saves dozens of redundant lines on
+			// a typical merchant's robots.txt (rather than hardcoding
+			// the count, which would rot the next time a bot is added
+			// to the constant).
 
 			if ( '/' !== $shop_path ) {
 				$output .= "Allow: {$shop_path}\n";
