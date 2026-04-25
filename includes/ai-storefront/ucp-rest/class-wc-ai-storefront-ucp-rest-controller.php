@@ -308,6 +308,33 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
+		// Log unrecognized top-level params at debug level so client
+		// integrators can self-diagnose. The UCP catalog/search spec
+		// defines these top-level fields: `query`, `filters`,
+		// `pagination`, `sort`, `context`, `signals`. Anything else
+		// is silently ignored (we treat the body as if those fields
+		// weren't there). Most common real-world mistake we've seen:
+		// clients sending `search` instead of `query`, resulting in
+		// an empty-body "browse all" path that returns the full
+		// catalog — visually indistinguishable from "search matched
+		// nothing". A debug line surfaces the misnaming without us
+		// breaking conformance by 400-ing on unknown keys (the spec
+		// permits vendor extensions, so silent-ignore is the right
+		// default behavior; the log is purely observability).
+		if ( WC_AI_Storefront_Logger::is_enabled() ) {
+			$body = $request->get_json_params();
+			if ( is_array( $body ) ) {
+				$known   = [ 'query', 'filters', 'pagination', 'sort', 'context', 'signals' ];
+				$unknown = array_diff( array_keys( $body ), $known );
+				if ( ! empty( $unknown ) ) {
+					WC_AI_Storefront_Logger::debug(
+						'UCP catalog/search: received unrecognized params (ignored): '
+						. implode( ', ', array_map( 'sanitize_key', $unknown ) )
+					);
+				}
+			}
+		}
+
 		// Note: spec has a MUST clause about validating that a request
 		// "contains at least one recognized input" and a SHOULD about
 		// rejecting empty ones. We satisfy the MUST (shape validation
