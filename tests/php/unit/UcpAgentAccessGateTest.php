@@ -47,9 +47,23 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		$this->controller = new WC_AI_Storefront_UCP_REST_Controller();
 
 		// Logger::debug() runs every denied request through
-		// `apply_filters` to check the debug-enabled gate. Tests don't
-		// care about the log output — short-circuit by stubbing the
-		// filter to return false, which skips the error_log call.
+		// `apply_filters( 'wc_ai_storefront_debug', false )` to check
+		// the debug-enabled gate. Two pieces have to line up here:
+		//
+		//   1. Stub `apply_filters` to return false so the filter
+		//      short-circuits to "logging off" — that skips the
+		//      `error_log` call, which Brain Monkey can't intercept
+		//      cleanly because it's a PHP internal.
+		//
+		//   2. Reset the Logger's static enabled-cache. The cache is
+		//      populated on the FIRST `is_enabled()` call per process
+		//      and persists across tests — if a prior test (in this
+		//      file or any other) already triggered a `true` evaluation,
+		//      our stub never runs, the gate proceeds to `error_log`,
+		//      and we get unstubbed-call errors. Reset guarantees the
+		//      first denied-path call in this test re-runs the filter
+		//      and picks up our stub.
+		WC_AI_Storefront_Logger::reset_cache();
 		Functions\when( 'apply_filters' )->justReturn( false );
 
 		// `__()` passthrough: the gate's WP_Error message uses i18n
@@ -63,6 +77,11 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 
 	protected function tearDown(): void {
 		WC_AI_Storefront::$test_settings = [];
+		// Reset the Logger cache on the way out too — leaving a
+		// `false` cached value behind from this test's stub would
+		// suppress legit debug logging in any subsequent test that
+		// expects to capture log output.
+		WC_AI_Storefront_Logger::reset_cache();
 		Monkey\tearDown();
 		parent::tearDown();
 	}

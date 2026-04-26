@@ -161,12 +161,30 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *      when syndication is paused, and the schema it points at must
 	 *      resolve to stay consistent).
 	 *
-	 * All routes are public (`permission_callback => '__return_true'`):
-	 * UCP's agent authentication happens at the `UCP-Agent` header
-	 * level and is currently used only for attribution (utm_source in
-	 * checkout handoff) and logging, not for access control. Merchants
-	 * who need to gate access can pause syndication (commerce routes
-	 * refuse) or use WP's standard REST permission filters.
+	 * Permission model:
+	 *
+	 *   - The three commerce routes (catalog/search, catalog/lookup,
+	 *     checkout-sessions) gate on `check_agent_access` — the
+	 *     merchant's saved `allowed_crawlers` list is honored at the
+	 *     REST endpoint, not just in robots.txt. A `UCP-Agent` header
+	 *     resolving to a known brand whose mapped crawler IDs are all
+	 *     absent from the allow-list returns `WP_Error` 403.
+	 *     Pre-UCP traffic, unparseable headers, and brands without a
+	 *     robots-controllable crawler ("Other AI", You, Kagi) pass
+	 *     through unchanged — preserving the open-spec wedge.
+	 *
+	 *   - The docs route (extension/schema) stays public
+	 *     (`permission_callback => '__return_true'`). Manifest
+	 *     discovery must resolve for any agent regardless of brand —
+	 *     gating it would break the manifest's `schema` URL for
+	 *     agents the merchant hasn't pre-approved. Schema content is
+	 *     metadata, not commerce data.
+	 *
+	 * Merchants who want to fully refuse traffic (rather than per-brand
+	 * gate) can also pause syndication; commerce routes still refuse on
+	 * the `is_syndication_disabled()` check independent of
+	 * `allowed_crawlers`. Standard WP REST permission filters layer on
+	 * top.
 	 *
 	 * Keeping routes registered (versus unregistering on disable) avoids
 	 * rewrite-flush churn every time a merchant toggles the setting.
