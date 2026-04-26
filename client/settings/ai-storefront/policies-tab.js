@@ -628,16 +628,21 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 			} ),
 		];
 		if ( savedPageId > 0 ) {
-			// Best-effort recovery for the case where the saved page
-			// has been moved to draft/trash since save: the main
-			// `/policy-pages` fetch only returns published pages, so
-			// the saved id may not appear in the list. The fallback
-			// `/wp/v2/pages?include=...` resolves the title (gracefully
-			// handles a since-unpublished page by returning empty —
-			// the server-side emission gate already drops the link in
-			// that case, and the dropdown agrees so the merchant
-			// doesn't see a "selected" value that silently won't be
-			// emitted).
+			// Recover the saved id when it's a WC system page that
+			// `/policy-pages` excludes. Stores that selected a system
+			// page (e.g. Cart, Checkout) as their refund-policy link
+			// before the server-side `wc_get_page_id()` exclusion was
+			// added still have that id stored in settings — without
+			// this fallback the dropdown would render the saved row as
+			// blank "selected" because `/policy-pages` filters it out.
+			// `?include=` resolves any published page by id regardless
+			// of the system-page filter, so the title comes back.
+			//
+			// Draft / trash / private pages stay invisible by design
+			// (`status=publish`): an unpublished saved page is
+			// intentionally hidden, and the server-side JSON-LD gate
+			// already drops `merchantReturnLink` for non-published
+			// pages — so a stale dropdown value wouldn't ship anyway.
 			requests.push(
 				apiFetch( {
 					path: `/wp/v2/pages?include=${ savedPageId }&status=publish&_fields=id,title,link`,
@@ -650,10 +655,10 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 			}
 			// Main fetch (index 0) is the load-bearing request — its
 			// failure indicates the pages endpoint is genuinely broken
-			// for this merchant. The optional `include=` request (index
-			// 1, if present) is best-effort: it covers the
-			// >100-pages drift case but is not the canonical pages
-			// list, so its failure is not user-facing.
+			// for this merchant. The optional `include=` request
+			// (index 1, if present) is best-effort: it only adds a
+			// system-page row to the dropdown when the merchant
+			// previously saved one, so its failure is not user-facing.
 			const mainFailed = results[ 0 ].status === 'rejected';
 			const all = results.flatMap( ( r ) =>
 				r.status === 'fulfilled' && Array.isArray( r.value )

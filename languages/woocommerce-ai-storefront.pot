@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-26T15:24:59+00:00\n"
+"POT-Creation-Date: 2026-04-26T15:46:00+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -468,7 +468,7 @@ msgid "Limits are applied per AI crawler (identified by user-agent string). Your
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:1026
-#: client/settings/ai-storefront/policies-tab.js:756
+#: client/settings/ai-storefront/policies-tab.js:761
 #: client/settings/ai-storefront/product-selection.js:1894
 msgid "Saving…"
 msgstr ""
@@ -566,19 +566,19 @@ msgstr ""
 msgid "Link AI agents to a \"no returns\" explainer on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:706
+#: client/settings/ai-storefront/policies-tab.js:711
 msgid "Policies exposed to AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:718
+#: client/settings/ai-storefront/policies-tab.js:723
 msgid "WooCommerce doesn't have a built-in setting for your return policy, but AI agents need it to confidently recommend your products. Set it once here."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:727
+#: client/settings/ai-storefront/policies-tab.js:732
 msgid "Could not load your pages. Page links won’t be available."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:757
+#: client/settings/ai-storefront/policies-tab.js:762
 #: client/settings/ai-storefront/product-selection.js:1895
 msgid "Save changes"
 msgstr ""
