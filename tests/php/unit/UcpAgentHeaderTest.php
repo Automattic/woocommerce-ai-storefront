@@ -270,6 +270,21 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 			// is a different DNS name from `openai.com`. Recognizing it
 			// requires an explicit `KNOWN_AGENT_HOSTS` entry.
 			'www prefix preserved'          => [ 'www.openai.com', 'www.openai.com' ],
+			// Protocol-relative URLs (`//host/path`). `wp_parse_url`
+			// handles these when given a hint scheme; the bare-host
+			// branch's `strpos($value, '/')` would otherwise match
+			// at index 0 and silently drop the host.
+			'protocol-relative URL'         => [ '//openai.com', 'openai.com' ],
+			'protocol-relative with path'   => [ '//openai.com/agent.json', 'openai.com' ],
+			'protocol-relative trailing /'  => [ '//openai.com/', 'openai.com' ],
+			// IPv6 literals contain multiple colons and must NOT have
+			// any colon-stripping applied. The unbracketed form is
+			// what `wp_parse_url` produces from the bracketed
+			// `[2001:db8::1]:443` URL syntax. Pass through unchanged so
+			// a future IPv6-only KNOWN_AGENT_HOSTS entry would match.
+			'IPv6 literal'                  => [ '2001:db8::1', '2001:db8::1' ],
+			'IPv6 with embedded :: shape'   => [ 'fe80::1', 'fe80::1' ],
+			'IPv6 URL with port'            => [ 'http://[2001:db8::1]:443/', '2001:db8::1' ],
 		];
 	}
 }

@@ -64,12 +64,35 @@ class WC_AI_Storefront_Attribution {
 	const AGENT_META_KEY = '_wc_ai_storefront_agent';
 
 	/**
-	 * Meta key for storing the raw (untransformed) hostname from the
-	 * UCP-Agent profile URL.
+	 * Meta key for storing the hostname from the UCP-Agent profile URL,
+	 * normalized to a clean lookup-key shape.
 	 *
 	 * Captured alongside `AGENT_META_KEY` to preserve provenance for
 	 * orders that bucket under "Other AI" — merchants who drill into
-	 * an "Other AI" order still see the actual hostname that sent it.
+	 * an "Other AI" order still see the actual host that sent it.
+	 *
+	 * Two writers feed this meta:
+	 *
+	 *   - Strict path (continue_url with `utm_medium=ai_agent`):
+	 *     receives the literal hostname from the
+	 *     `ai_agent_host_raw` URL parameter our checkout-link builder
+	 *     emits. That parameter is already produced from
+	 *     `WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname()`
+	 *     on the producer side, so it's host-shape and
+	 *     unaltered.
+	 *
+	 *   - Lenient path (utm_source matches a `KNOWN_AGENT_HOSTS` key):
+	 *     receives the value passed through
+	 *     `normalize_host_string()` — scheme / path / port stripped,
+	 *     lowercased, FQDN trailing dot removed. Storing the
+	 *     normalized form (rather than the raw URL-shape utm_source)
+	 *     keeps drill-in/debug surfaces showing a tidy
+	 *     `openai.com` rather than `https://openai.com:443/foo`.
+	 *
+	 * The truly verbatim user-facing value (whatever the agent put on
+	 * the URL) is preserved by WC core in
+	 * `_wc_order_attribution_utm_source` — that meta is the source of
+	 * truth if a debug session needs the exact bytes the agent sent.
 	 *
 	 * Future use: feeds aggregate review for graduating frequent
 	 * unknown hostnames into `WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS`
@@ -224,16 +247,21 @@ class WC_AI_Storefront_Attribution {
 			$order->update_meta_data( self::SESSION_META_KEY, $session_id );
 		}
 
-		if ( $utm_source ) {
-			// Stamp the canonical brand name when the lenient gate
-			// matched a hostname (so the Recent Orders display + Top
-			// Agent stats both surface the friendly form). For the
-			// strict path with already-canonical utm_source (our own
-			// continue_url emits "Gemini") OR for unmatched lenient
-			// values, keep utm_source verbatim — the display layer's
-			// `canonicalize_host_idempotent()` is the safety net.
-			$value_to_store = $is_known_ai_host ? $lenient_canonical : $utm_source;
-			$order->update_meta_data( self::AGENT_META_KEY, $value_to_store );
+		// Resolve the single canonical-agent identifier used by ALL
+		// downstream surfaces — the meta stamp, log lines, and the
+		// `wc_ai_storefront_attribution_captured` action's payload.
+		// Without this, lenient captures stored "ChatGPT" in meta but
+		// emitted "openai.com" in the hook, so external listeners saw
+		// a different identifier than the merchant-facing display.
+		// Resolves to:
+		//   - lenient match: the canonical brand name ("ChatGPT", ...).
+		//   - strict path / unmatched: utm_source verbatim. The
+		//     display layer's `canonicalize_host_idempotent()` is the
+		//     safety net for the verbatim case.
+		$canonical_agent = $is_known_ai_host ? $lenient_canonical : (string) $utm_source;
+
+		if ( '' !== $canonical_agent ) {
+			$order->update_meta_data( self::AGENT_META_KEY, $canonical_agent );
 		}
 
 		// When the lenient gate matched, stamp the NORMALIZED hostname
@@ -301,7 +329,7 @@ class WC_AI_Storefront_Attribution {
 		// canonical name already says everything the operator needs.
 		if (
 			$raw_host
-			&& WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET === $utm_source
+			&& WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET === $canonical_agent
 		) {
 			WC_AI_Storefront_Logger::debug(
 				'unknown AI agent bucketed as "Other AI": host=%s session=%s',
@@ -312,7 +340,7 @@ class WC_AI_Storefront_Attribution {
 
 		WC_AI_Storefront_Logger::debug(
 			'attribution captured — agent=%s session=%s raw_host=%s',
-			$utm_source ? $utm_source : '(none)',
+			'' !== $canonical_agent ? $canonical_agent : '(none)',
 			$session_id ? $session_id : '(none)',
 			$raw_host ? $raw_host : '(none)'
 		);
@@ -321,11 +349,17 @@ class WC_AI_Storefront_Attribution {
 		 * Fires when an AI agent order attribution is captured.
 		 *
 		 * @since 1.0.0
-		 * @param WC_Order $order      The order.
-		 * @param string   $utm_source The AI agent identifier.
-		 * @param string   $session_id The AI session identifier.
+		 * @param WC_Order $order           The order.
+		 * @param string   $canonical_agent The AI agent identifier — the
+		 *                                  same value stored in
+		 *                                  `_wc_ai_storefront_agent` meta.
+		 *                                  Lenient captures pass the
+		 *                                  canonical brand name (e.g.
+		 *                                  "ChatGPT"), strict captures
+		 *                                  pass utm_source verbatim.
+		 * @param string   $session_id      The AI session identifier.
 		 */
-		do_action( 'wc_ai_storefront_attribution_captured', $order, $utm_source, $session_id );
+		do_action( 'wc_ai_storefront_attribution_captured', $order, $canonical_agent, $session_id );
 	}
 
 	/**

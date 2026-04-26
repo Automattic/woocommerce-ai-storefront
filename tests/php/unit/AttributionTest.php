@@ -624,4 +624,50 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY )
 		);
 	}
+
+	public function test_capture_lenient_gate_emits_canonical_identifier_to_action_hook(): void {
+		// External listeners on `wc_ai_storefront_attribution_captured`
+		// should receive the SAME identifier that's stored in
+		// `AGENT_META_KEY` — anything else means a third-party plugin
+		// hooking the action sees a different agent name than the
+		// merchant-facing display. Pre-fix, the hook fired with the raw
+		// utm_source (`openai.com`) while the meta carried "ChatGPT";
+		// the two surfaces diverged on every lenient capture. Lock the
+		// invariant.
+		$captured_args = null;
+		Functions\expect( 'do_action' )
+			->once()
+			->andReturnUsing(
+				static function ( ...$args ) use ( &$captured_args ) {
+					$captured_args = $args;
+				}
+			);
+
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'openai.com' );
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertNotNull( $captured_args, 'Hook must fire on a successful lenient capture.' );
+		$this->assertSame(
+			'wc_ai_storefront_attribution_captured',
+			$captured_args[0]
+		);
+		$this->assertSame(
+			$order,
+			$captured_args[1],
+			'First payload arg is the order.'
+		);
+		$this->assertSame(
+			'ChatGPT',
+			$captured_args[2],
+			'Second payload arg must be the canonical identifier (matches AGENT_META_KEY), not the raw utm_source.'
+		);
+		// And confirm meta + hook agree.
+		$this->assertSame(
+			$captured_args[2],
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY )
+		);
+	}
 }

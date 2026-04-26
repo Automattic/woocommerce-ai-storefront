@@ -295,10 +295,19 @@ class WC_AI_Storefront_UCP_Agent_Header {
 			return '';
 		}
 
-		// If the value looks URL-shaped (has a scheme), let `wp_parse_url`
-		// extract the host. `wp_parse_url` returns null for malformed
-		// URLs and an array (with optional 'host' key) for valid ones.
-		if ( false !== strpos( $value, '://' ) ) {
+		// Protocol-relative URL (`//openai.com/path`) — `wp_parse_url`
+		// can handle these directly when given a hint scheme. Without
+		// this branch the bare-host path below would `strpos($value, '/')`
+		// at index 0 and substring to "" — silently dropping the host.
+		if ( 0 === strpos( $value, '//' ) ) {
+			$parsed_host = wp_parse_url( 'https:' . $value, PHP_URL_HOST );
+			if ( ! is_string( $parsed_host ) || '' === $parsed_host ) {
+				return '';
+			}
+			$value = $parsed_host;
+		} elseif ( false !== strpos( $value, '://' ) ) {
+			// Full URL with scheme — let `wp_parse_url` extract the host.
+			// Returns null for malformed URLs.
 			$parsed_host = wp_parse_url( $value, PHP_URL_HOST );
 			if ( ! is_string( $parsed_host ) || '' === $parsed_host ) {
 				return '';
@@ -314,11 +323,29 @@ class WC_AI_Storefront_UCP_Agent_Header {
 			}
 		}
 
-		// Strip an optional `:port` suffix. (After URL parsing the host
-		// won't contain a colon, but the bare-host branch can.)
-		$colon_pos = strpos( $value, ':' );
-		if ( false !== $colon_pos ) {
-			$value = substr( $value, 0, $colon_pos );
+		// Unwrap IPv6 literal brackets if present. `wp_parse_url`
+		// returns the host of `http://[2001:db8::1]:443/` as
+		// `[2001:db8::1]` — brackets included. Strip them so the
+		// stored value is the canonical literal that a future
+		// IPv6-only KNOWN_AGENT_HOSTS entry would match against.
+		if ( '' !== $value && '[' === $value[0] && ']' === substr( $value, -1 ) ) {
+			$value = substr( $value, 1, -1 );
+		}
+
+		// Strip an optional `:port` suffix. Three forms to handle:
+		//
+		//   - `openai.com:443`           → strip `:443`
+		//   - `2001:db8::1`              → IPv6 literal, MUST NOT touch
+		//   - `[2001:db8::1]:443`        → IPv6 + port (already
+		//                                  unwrapped by wp_parse_url
+		//                                  + the bracket strip above)
+		//
+		// IPv6 literals contain multiple colons. Match the `host:port`
+		// shape strictly with a single trailing `:digits` sequence;
+		// any value with more than one colon (an IPv6 literal) doesn't
+		// match the pattern and passes through unchanged.
+		if ( 1 === preg_match( '/^([^:\[\]]+):\d+$/', $value, $matches ) ) {
+			$value = $matches[1];
 		}
 
 		// Strip a single trailing dot (FQDN form) and lowercase. Hosts
