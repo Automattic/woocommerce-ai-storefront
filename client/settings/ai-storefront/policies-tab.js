@@ -367,12 +367,27 @@ const ReturnRefundPolicySection = ( {
 									min={ 0 }
 									max={ 365 }
 									value={ policy.days }
-									onChange={ ( val ) =>
-										handleField(
-											'days',
-											parseInt( val, 10 ) || 0
+									onChange={ ( val ) => {
+										// Clamp to [0, 365] explicitly. The
+										// `min`/`max` props on NumberControl
+										// are advisory in browsers — users
+										// can still type values outside the
+										// range, and `parseInt(val, 10) || 0`
+										// preserves negatives (e.g. `-5` is
+										// truthy). Clamp here so the UI
+										// state, preview, and save payload
+										// all agree on a valid value.
+										const parsed = parseInt( val, 10 );
+										const normalized = Number.isNaN(
+											parsed
 										)
-									}
+											? 0
+											: Math.min(
+													365,
+													Math.max( 0, parsed )
+											  );
+										handleField( 'days', normalized );
+									} }
 								/>
 							</div>
 

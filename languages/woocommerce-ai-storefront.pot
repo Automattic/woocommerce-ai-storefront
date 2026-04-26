@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-26T00:33:44+00:00\n"
+"POT-Creation-Date: 2026-04-26T00:41:09+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -452,7 +452,7 @@ msgid "Limits are applied per AI crawler (identified by user-agent string) using
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:960
-#: client/settings/ai-storefront/policies-tab.js:752
+#: client/settings/ai-storefront/policies-tab.js:762
 #: client/settings/ai-storefront/product-selection.js:2004
 msgid "Saving…"
 msgstr ""
@@ -526,7 +526,7 @@ msgid "No return policy will be exposed to AI agents. Pick \"Returns accepted\" 
 msgstr ""
 
 #: client/settings/ai-storefront/policies-tab.js:328
-#: client/settings/ai-storefront/policies-tab.js:448
+#: client/settings/ai-storefront/policies-tab.js:458
 msgid "Policy page (optional)"
 msgstr ""
 
@@ -542,35 +542,35 @@ msgstr ""
 msgid "Leave at 0 to publish \"Unspecified\" instead of a finite window."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:388
+#: client/settings/ai-storefront/policies-tab.js:398
 msgid "Return fees"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:415
+#: client/settings/ai-storefront/policies-tab.js:425
 msgid "Return methods"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:452
+#: client/settings/ai-storefront/policies-tab.js:462
 msgid "Link AI agents to a \"no returns\" explainer on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:484
+#: client/settings/ai-storefront/policies-tab.js:494
 msgid "Live preview"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:701
+#: client/settings/ai-storefront/policies-tab.js:711
 msgid "Policies exposed to AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:713
+#: client/settings/ai-storefront/policies-tab.js:723
 msgid "Configure the policy signals AI agents see for your store."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:722
+#: client/settings/ai-storefront/policies-tab.js:732
 msgid "Could not load your pages. Page links won’t be available."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:753
+#: client/settings/ai-storefront/policies-tab.js:763
 #: client/settings/ai-storefront/product-selection.js:2005
 msgid "Save changes"
 msgstr ""
