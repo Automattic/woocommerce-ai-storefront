@@ -2,12 +2,26 @@
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] – 2026-04-26
+
+### Features
+- **Per-product final-sale override on the WC product editor's Inventory tab.** Single "AI: Final sale" checkbox flips the product's JSON-LD `hasMerchantReturnPolicy` to `MerchantReturnNotPermitted` regardless of the store-wide policy mode. Variants inherit from their parent (resolved via `wp_get_post_parent_id()` at the JSON-LD layer). Override gate runs before store-wide mode logic, so flagged products emit the override even when store-wide is `unconfigured`. Reuses store-wide policy page link when configured. New `WC_AI_Storefront_Product_Meta_Box` class with strict `'yes' ===` POST validation and disambiguated `update_post_meta` failure logging.
+- **Test crawlers category in the Discovery tab — UCPPlayground entry.** New `TEST_CRAWLERS` constant in `WC_AI_Storefront_Robots`. Discovery tab's "Training crawlers" group renamed to "Training and Test Crawlers"; UCP Playground (`ucpplayground.com`) is the first entry, default-off (merchant opts in for validation sessions). Group definition supports a `categories: [...]` override so one merchant-facing heading can cover multiple backend categories.
+
 ### Fixes
+- **`inventoryLevel` JSON-LD emission targeted the wrong shape.** Pre-fix, the assignment `$markup['offers']['inventoryLevel'] = ...` mixed list + assoc shapes when the input was the production WC core shape (a list of Offer dicts). PHP serializes mixed-keys arrays as JSON objects (`{"0": {...}, "inventoryLevel": {...}}`), which Schema.org/Google validators reject as a malformed Offer list. Now targets `$markup['offers'][0]['inventoryLevel']` with the `isset() && is_array()` guard the priceCurrency / hasMerchantReturnPolicy / shippingDetails emissions also use.
+- **Drop em-dash from plugin Description header.** Em-dash rendered inconsistently across WP plugin-listing surfaces (wp-cli CSV split on the dash, ASCII-rendering tools showed `?` or stripped). Replaced with a comma-joined ASCII-clean alternative. Same meaning, no rendering edge cases.
 - **Policies tab: ToggleGroupControl rendered full-width with the WP-default flat-black filled pill instead of the elevated-pill treatment used on Product Visibility.** Two compounding causes: (1) `isBlock` prop was set, which stretches the segments to container width — the established pattern (documented in `product-selection.js`) explicitly omits `isBlock` so the segments read as a compact "pick one of N" strip rather than row headers spanning the panel; (2) the inline `<style>` block delivering the elevated-pill visual treatment lived only in `product-selection.js`, scoped to that one component, so it never reached the Policies tab. Removed `isBlock`. Extracted the style block into a shared `<ToggleGroupStyles />` component (`client/settings/ai-storefront/toggle-group-styles.js`) that both tabs render — future tabs using this control inherit the styling automatically.
 - **Policies tab: "Return methods" checkboxes stacked flush against each other with no row breathing room.** The `__nextHasNoMarginBottom` prop on each `CheckboxControl` strips WP's default bottom margin, but the surrounding `<fieldset>` had no replacement gap. Wrapped the checkboxes in a `display: flex; flex-direction: column; gap: 6px` container so spacing is deterministic regardless of WP component-version changes to default margins.
 
 ### Refactors
 - **Extract toggle-group visual treatment to a shared component.** The elevated-pill `<style>` block previously lived inline inside `product-selection.js`; new `<ToggleGroupStyles />` exports both the JSX style element + the `TOGGLE_GROUP_CLASSNAME` constant. Both `product-selection.js` and `policies-tab.js` import + render it. Future tabs adding a primary mode-selector inherit the visual treatment by importing the same module — no copy-paste, no drift between tabs.
+- **Bucket unknown AI agents under "Other AI" instead of scattering raw hostnames.** Pre-this-release, when a UCP-Agent profile hostname wasn't in `KNOWN_AGENT_HOSTS`, attribution stamped the raw hostname into the order (`utm_source = "novel-ai.example.com"`), scattering the merchant's Origin column and Top Agent stats card with one-off vendor names. Unknown agents now bucket to `OTHER_AI_BUCKET` ("Other AI"). The raw hostname is preserved separately in the new `_wc_ai_storefront_agent_host_raw` order meta + `ai_agent_host_raw` URL param + a debug-log line — so merchants who drill into an "Other AI" order still see who actually sent it. Length-cap (RFC 1035 max 253 chars) + hostname-shape regex applied at capture time. New `canonicalize_host_idempotent()` sibling helper at the display layer prevents already-canonical brand names from being re-canonicalized into "Other AI" — protects the admin Recent Orders panel from mis-labelling every modern AI order.
+
+### Observability
+- **Admin order-edit screen surfaces the raw agent host alongside the canonical name.** When an order has both `_wc_ai_storefront_agent` (canonical, e.g. "Other AI") and `_wc_ai_storefront_agent_host_raw` (raw hostname) stamped, the existing AI Agent Attribution box in the order-edit screen shows both. Drill-in surface for "Other AI" bucketed orders so merchants can identify the actual hostname.
 
 ---
 
