@@ -375,13 +375,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			if ( strlen( $joined ) > 256 ) {
 				$joined = substr( $joined, 0, 253 ) . '...';
 			}
-			// Surface as a single string for the header path; keep
-			// the original sanitized array for log readability.
-			$unknown_params = [
-				'list'   => $sanitized,
-				'header' => $joined,
-			];
-			if ( ! empty( $sanitized ) && WC_AI_Storefront_Logger::is_enabled() ) {
+			// Single string representation reused by both the header
+			// emission below and the debug log here. A previous
+			// iteration carried both an array and the joined string;
+			// the array form was never read so it was removed.
+			$unknown_params = [ 'header' => $joined ];
+			if ( '' !== $joined && WC_AI_Storefront_Logger::is_enabled() ) {
 				WC_AI_Storefront_Logger::debug(
 					'UCP catalog/search: received unrecognized params (ignored): '
 					. $joined

@@ -40,10 +40,17 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 	protected function tearDown(): void {
 		// Some tests enter UCP scope; defensively drain any depth
 		// the test left behind so a failure in mid-test doesn't
-		// leak state to the next test. Loop bound matches the
-		// largest plausible nesting (current code never nests).
-		for ( $i = 0; $i < 5; $i++ ) {
+		// leak state to the next test. Drain only while dispatch
+		// scope is actually active — calling `exit_ucp_dispatch()`
+		// at depth=0 emits an "unbalanced enter/exit" debug log,
+		// and an unconditional 5-iteration loop would generate
+		// 4-5 spurious debug lines per test (training maintainers
+		// to ignore the warning that's supposed to flag real
+		// leaks). Loop bound matches the largest plausible nesting.
+		$drain = 0;
+		while ( $drain < 5 && \WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch() ) {
 			\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
+			$drain++;
 		}
 		\Brain\Monkey\tearDown();
 		parent::tearDown();
