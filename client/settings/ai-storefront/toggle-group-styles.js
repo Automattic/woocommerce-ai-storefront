@@ -6,11 +6,16 @@
  *   - `product-selection.js` (Product Visibility tab — taxonomy/all/selected)
  *   - `policies-tab.js`      (Policies tab — returns_accepted/final_sale/unconfigured)
  *
- * Both render `<ToggleGroupStyles />` once per tab to inject the rules
- * (the `<style>` element survives unmount cleanup; rendering twice is a
- * no-op once the rules are in the document, but each tab still ships
- * its own copy so the styling lands regardless of which tab a merchant
- * lands on first).
+ * Each consumer renders `<ToggleGroupStyles />` where the toggle is used.
+ * Because this component returns a React-managed `<style>` element, the
+ * node is mounted and unmounted with that consumer, and multiple mounted
+ * consumers will produce multiple identical `<style>` tags in the DOM.
+ * The duplication is harmless here — the CSS rules are idempotent, the
+ * runtime cost is negligible, and it keeps the styling colocated with
+ * the tab that needs it. If a future tab needs the styling without
+ * being a sibling consumer (e.g. portaled outside the tab tree), that's
+ * the moment to switch to a one-shot `useEffect` that injects a tagged
+ * `<style>` into `document.head` with a `data-*` guard for dedup.
  *
  * Why a shared component instead of a global stylesheet:
  *  - `wp-scripts` build pipeline already inlines per-component styles
@@ -21,15 +26,19 @@
  *  - Easier to delete: when the toggle treatment is replaced, one
  *    component goes away and no orphan stylesheet lingers.
  *
- * Why every rule uses `!important` and the `[aria-checked="true"]`
- * selector instead of a stable Emotion class:
+ * Why this uses the `[aria-checked="true"]` selector and selective
+ * `!important` overrides instead of a stable Emotion class:
  *  WP `@wordpress/components` 28.x uses Emotion CSS-in-JS with
  *  dynamically-generated class names — there is no stable
  *  `.components-toggle-group-control-backdrop` etc. to target. The
- *  scoped className (`.ai-storefront-taxonomy-toggle`) plus ARIA-state
+ *  scoped className (`TOGGLE_GROUP_CLASSNAME`) plus ARIA-state
  *  selectors are the only contract that survives library version
- *  bumps. `!important` is required to win specificity against
- *  Emotion's hash-classed rules that ship at the same level.
+ *  bumps. `!important` is applied selectively — only to declarations
+ *  that must reliably win specificity against Emotion's hash-classed
+ *  rules (background, border, box-shadow, padding, color). Other
+ *  declarations (font-weight, outline, outline-offset, border-radius)
+ *  don't need it because Emotion doesn't ship competing values for
+ *  those properties on this control.
  *
  * Historical context: pre-0.1.11 a different selector
  * (`.components-toggle-group-control-backdrop`) was used, which never
@@ -39,7 +48,7 @@
  *
  * @return {JSX.Element} A `<style>` element with the rules above.
  */
-export const TOGGLE_GROUP_CLASSNAME = 'ai-storefront-taxonomy-toggle';
+export const TOGGLE_GROUP_CLASSNAME = 'ai-storefront-toggle-group';
 
 export function ToggleGroupStyles() {
 	return (
