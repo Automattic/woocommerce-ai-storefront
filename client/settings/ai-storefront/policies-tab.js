@@ -116,6 +116,17 @@ export const derivePreview = ( policy, country ) => {
 		return block;
 	}
 
+	// Fail closed for any unknown mode. `unconfigured` and
+	// `final_sale` were handled above; only `returns_accepted` should
+	// reach the structured-block construction below. A corrupted /
+	// legacy / filter-mutated mode value would otherwise silently
+	// produce a returns-accepted preview that disagrees with the
+	// server's `build_return_policy_block()` (which now also fails
+	// closed). Defense in depth.
+	if ( policy.mode !== POLICY_MODES.RETURNS_ACCEPTED ) {
+		return null;
+	}
+
 	// returns_accepted
 	const days = Number( policy.days ) || 0;
 	const block =

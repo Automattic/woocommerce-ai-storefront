@@ -394,6 +394,18 @@ class WC_AI_Storefront_JsonLd {
 			return $block;
 		}
 
+		// Fail closed for any mode the sanitizer doesn't recognize.
+		// `get_settings()` doesn't run `return_policy` through the
+		// sanitizer on read — a corrupted/legacy/filter-mutated
+		// `mode` value would otherwise fall through to the
+		// `returns_accepted` branch below and silently emit a
+		// returns-accepted policy block. Defense in depth: only
+		// emit when the mode is explicitly `returns_accepted`.
+		// `unconfigured` and `final_sale` were handled above.
+		if ( 'returns_accepted' !== $mode ) {
+			return null;
+		}
+
 		// Mode: returns_accepted.
 		$days = isset( $policy['days'] ) ? (int) $policy['days'] : 0;
 		if ( $days > 0 ) {
