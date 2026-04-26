@@ -155,14 +155,19 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// Inventory (only when managing stock)
 	// ------------------------------------------------------------------
 
-	public function test_inventory_level_added_when_stock_is_tracked(): void {
+	public function test_inventory_level_added_at_offer_level_when_stock_is_tracked(): void {
+		// Production input shape: `offers` is a list of Offer dicts
+		// (numeric indices), per WC core's structured_data_product
+		// filter contract. The inventoryLevel emission must land at
+		// `offers[0]`, NOT at `offers['inventoryLevel']` (which would
+		// mix list + assoc shapes and produce invalid JSON-LD).
 		$product = $this->make_product( [
 			'managing_stock' => true,
 			'stock_quantity' => 17,
 		] );
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ '@type' => 'Offer' ] ],
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
 			$product
 		);
 
@@ -171,18 +176,25 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				'@type' => 'QuantitativeValue',
 				'value' => 17,
 			],
-			$result['offers']['inventoryLevel']
+			$result['offers'][0]['inventoryLevel']
 		);
+		// Regression guard: inventoryLevel MUST NOT appear as a string
+		// key on the outer `offers` list. Pre-fix the assignment
+		// `$markup['offers']['inventoryLevel'] = ...` would silently
+		// poison the list shape and serialize as
+		// `"offers": [{...}, "inventoryLevel": {...}]` — broken JSON-LD.
+		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'] );
 	}
 
 	public function test_inventory_level_omitted_when_stock_is_not_tracked(): void {
 		$product = $this->make_product( [ 'managing_stock' => false ] );
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ '@type' => 'Offer' ] ],
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
 			$product
 		);
 
+		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'][0] );
 		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'] );
 	}
 
@@ -196,11 +208,35 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		] );
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ '@type' => 'Offer' ] ],
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
 			$product
 		);
 
+		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'][0] );
 		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'] );
+	}
+
+	public function test_inventory_level_omitted_when_offers_is_missing(): void {
+		// Defensive: if a third-party filter strips `offers` entirely
+		// before our hook fires, the inventoryLevel emission must
+		// gracefully skip rather than write to a non-existent path.
+		// The `isset($markup['offers'][0])` guard mirrors the same
+		// defense used by the priceCurrency / hasMerchantReturnPolicy
+		// emissions.
+		$product = $this->make_product( [
+			'managing_stock' => true,
+			'stock_quantity' => 17,
+		] );
+
+		$result = $this->jsonld->enhance_product_data(
+			// No 'offers' key at all.
+			[ '@type' => 'Product' ],
+			$product
+		);
+
+		// No fatal, no spurious offers key, no inventoryLevel
+		// orphaned at the top level.
+		$this->assertArrayNotHasKey( 'inventoryLevel', $result );
 	}
 
 	// ------------------------------------------------------------------

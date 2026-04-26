@@ -62,11 +62,30 @@ class WC_AI_Storefront_JsonLd {
 			],
 		];
 
-		// Enhanced availability with inventory detail.
+		// Enhanced availability with inventory detail. Emit at the
+		// Offer level (Schema.org/Google preferred placement) — the
+		// outer `$markup['offers']` is a LIST array (numeric indices)
+		// per WC core's structured_data_product output, so the
+		// assignment must target `offers[0]`, not `offers` directly.
+		// Pre-this-fix the assignment was
+		// `$markup['offers']['inventoryLevel'] = ...`, which only
+		// worked if `offers` were associative; on production stores
+		// it produced a list with a string key mixed in — JSON-LD
+		// parsers see that as `[{...}, "inventoryLevel" => {...}]`
+		// which serializes to invalid output.
+		//
+		// Same `isset() && is_array()` guard the other Offer-level
+		// emissions (priceCurrency, hasMerchantReturnPolicy,
+		// shippingDetails) use so a third-party filter that strips
+		// or rewrites `offers` doesn't fatal the path.
 		if ( $product->managing_stock() ) {
 			$stock_qty = $product->get_stock_quantity();
-			if ( null !== $stock_qty ) {
-				$markup['offers']['inventoryLevel'] = [
+			if (
+				null !== $stock_qty
+				&& isset( $markup['offers'][0] )
+				&& is_array( $markup['offers'][0] )
+			) {
+				$markup['offers'][0]['inventoryLevel'] = [
 					'@type' => 'QuantitativeValue',
 					'value' => $stock_qty,
 				];
