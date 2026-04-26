@@ -38,10 +38,6 @@ import { __ } from '@wordpress/i18n';
 import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 import { colors } from './tokens';
-import {
-	ToggleGroupStyles,
-	TOGGLE_GROUP_CLASSNAME,
-} from './toggle-group-styles';
 
 const POLICY_MODES = {
 	UNCONFIGURED: 'unconfigured',
@@ -289,11 +285,10 @@ const ReturnRefundPolicySection = ( {
 					) }
 				</p>
 
-				<ToggleGroupStyles />
 				<ToggleGroupControl
 					__nextHasNoMarginBottom
 					__next40pxDefaultSize
-					className={ TOGGLE_GROUP_CLASSNAME }
+					isBlock
 					value={ policy.mode }
 					onChange={ ( val ) => handleField( 'mode', val ) }
 					label={ __( 'Policy mode', 'woocommerce-ai-storefront' ) }
@@ -448,40 +443,22 @@ const ReturnRefundPolicySection = ( {
 										'woocommerce-ai-storefront'
 									) }
 								</legend>
-								{ /*
-								   `__nextHasNoMarginBottom` strips WP's default
-								   bottom margin on each CheckboxControl. Without
-								   a replacement gap on the fieldset the three
-								   options stack flush against each other (no
-								   row breathing room). Flex-column + 6px gap
-								   restores the visual rhythm and is more
-								   deterministic than the legacy margin
-								   collapsing-via-stylesheet pattern.
-								*/ }
-								<div
-									style={ {
-										display: 'flex',
-										flexDirection: 'column',
-										gap: '6px',
-									} }
-								>
-									{ METHOD_OPTIONS.map( ( opt ) => (
-										<CheckboxControl
-											__nextHasNoMarginBottom
-											key={ opt.value }
-											label={ opt.label }
-											checked={ (
-												policy.methods || []
-											).includes( opt.value ) }
-											onChange={ ( checked ) =>
-												handleMethodToggle(
-													opt.value,
-													checked
-												)
-											}
-										/>
-									) ) }
-								</div>
+								{ METHOD_OPTIONS.map( ( opt ) => (
+									<CheckboxControl
+										__nextHasNoMarginBottom
+										key={ opt.value }
+										label={ opt.label }
+										checked={ (
+											policy.methods || []
+										).includes( opt.value ) }
+										onChange={ ( checked ) =>
+											handleMethodToggle(
+												opt.value,
+												checked
+											)
+										}
+									/>
+								) ) }
 							</fieldset>
 						</>
 					) }

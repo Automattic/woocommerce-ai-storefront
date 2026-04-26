@@ -4,17 +4,6 @@
 
 ---
 
-## [0.2.1] – 2026-04-26
-
-### Fixes
-- **Policies tab: ToggleGroupControl rendered full-width with the WP-default flat-black filled pill instead of the elevated-pill treatment used on Product Visibility.** Two compounding causes: (1) `isBlock` prop was set, which stretches the segments to container width — the established pattern (documented in `product-selection.js`) explicitly omits `isBlock` so the segments read as a compact "pick one of N" strip rather than row headers spanning the panel; (2) the inline `<style>` block delivering the elevated-pill visual treatment lived only in `product-selection.js`, scoped to that one component, so it never reached the Policies tab. Removed `isBlock`. Extracted the style block into a shared `<ToggleGroupStyles />` component (`client/settings/ai-storefront/toggle-group-styles.js`) that both tabs render — future tabs using this control inherit the styling automatically.
-- **Policies tab: "Return methods" checkboxes stacked flush against each other with no row breathing room.** The `__nextHasNoMarginBottom` prop on each `CheckboxControl` strips WP's default bottom margin, but the surrounding `<fieldset>` had no replacement gap. Wrapped the checkboxes in a `display: flex; flex-direction: column; gap: 6px` container so spacing is deterministic regardless of WP component-version changes to default margins.
-
-### Refactors
-- **Extract toggle-group visual treatment to a shared component.** Pre-0.2.1 the elevated-pill `<style>` block lived inline inside `product-selection.js`; new `<ToggleGroupStyles />` exports both the JSX style element + the `TOGGLE_GROUP_CLASSNAME` constant. Both `product-selection.js` and `policies-tab.js` import + render it. Future tabs adding a primary mode-selector inherit the visual treatment by importing the same module — no copy-paste, no drift between tabs.
-
----
-
 ## [0.2.0] – 2026-04-26
 
 ### Features

@@ -32,10 +32,6 @@ import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 import { addQueryArgs } from '@wordpress/url';
 import { colors } from './tokens';
-import {
-	ToggleGroupStyles,
-	TOGGLE_GROUP_CLASSNAME,
-} from './toggle-group-styles';
 
 // Server-side enum for `product_selection_mode` (0.1.5+):
 //
@@ -1376,20 +1372,134 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 							   Gutenberg uses the same component (e.g.
 							   alignment toolbar).
 
-							   Visual treatment (elevated white pill on a
-							   recessed neutral track) lives in
-							   ./toggle-group-styles.js — the same
-							   component is rendered on the Policies tab so
-							   both surfaces inherit the styling without
-							   duplication. See that file for the per-rule
-							   rationale + Emotion-class-name history.
+							   Styling overrides below (scoped via
+							   `.ai-storefront-taxonomy-toggle`):
+
+							   1. Padding: @wordpress/components'
+							      ToggleGroupControlOption uses very tight
+							      horizontal padding when !isBlock — text
+							      sits nearly flush against the selected
+							      pill's edges. Widening to 14px gives
+							      the selected segment breathing room.
+
+							   2. Selected-state visual treatment (the
+							      "elevated white pill on a recessed
+							      neutral track" pattern, matching iOS
+							      Settings / macOS Finder / Gutenberg's
+							      block-toolbar alignment control). The
+							      WP default renders a flat black
+							      backdrop with no depth cues — no
+							      shadow, no border-radius differential,
+							      no inset on the track — so the
+							      selected state reads as a paint-fill
+							      rather than an interactive thumb.
+							      Adding (a) an inset shadow + hairline
+							      border on the track so it looks
+							      pressed in, and (b) a white backdrop
+							      with a soft contact shadow + 0.5px
+							      ring so the pill looks raised, gives
+							      the merchant the two depth signals
+							      that "selected" needs to land.
+
+							      Critical: the selected-text styling
+							      keys off `[aria-checked="true"]` on
+							      the option button rather than the
+							      backdrop sibling. The backdrop is
+							      presentational; ARIA-state is the
+							      single source of truth that visual
+							      and screen-reader signals can't drift
+							      apart.
+
+							   3. Hover only fires on UNSELECTED options
+							      so it doesn't fight the pill, and
+							      `:focus-visible` (not `:focus`) gates
+							      the keyboard ring — preventing the
+							      ring on mouse clicks, which is the
+							      Gutenberg standard since WP 6.0.
 							*/ }
-							<ToggleGroupStyles />
+							<style>{ `
+								/* Padding override on each option button. WP component's
+								   default is 12px horizontal which renders the selected
+								   pill cramped against the text edges. Bumped to 18px for
+								   visible breathing room — the white pill needs ~6px of
+								   "halo" on each side of the label to read as elevated.
+								   Selector targets [role="radio"] (the stable ARIA contract
+								   on the option buttons) rather than the Emotion-generated
+								   class. The pre-0.1.11 selector was the literal string
+								   ".components-button", which doesn't match any element
+								   in WP components 28.x for this control — same
+								   Emotion-CSS-in-JS issue that broke the rest of Option A
+								   in 0.1.8 / 0.1.9. */
+								.ai-storefront-taxonomy-toggle [role="radio"] {
+									padding-left: 18px !important;
+									padding-right: 18px !important;
+								}
+								/* Track: recessed neutral surface so the pill reads as floating above it.
+								   Targets the wrapping element directly via our scope class — WP
+								   components 28.x uses Emotion CSS-in-JS with dynamically-generated
+								   class names (no stable .components-toggle-group-control class), so
+								   the pre-0.1.10 selectors targeting that name didn't match anything. */
+								.ai-storefront-taxonomy-toggle {
+									background: rgba( 0, 0, 0, 0.04 ) !important;
+									border: 1px solid rgba( 0, 0, 0, 0.08 ) !important;
+									box-shadow: inset 0 1px 1px rgba( 0, 0, 0, 0.04 ) !important;
+									border-radius: 6px !important;
+								}
+								/* The "moving pill" is the WP component's :before pseudo-element
+								   on the same wrapping div (positioned absolutely, animated via
+								   CSS variables). Override the default COLORS.gray[900] black
+								   background with white + a soft contact shadow + 0.5px ring,
+								   yielding the elevation cue the design needs. */
+								.ai-storefront-taxonomy-toggle::before {
+									background: #fff !important;
+									box-shadow:
+										0 1px 2px rgba( 0, 0, 0, 0.12 ),
+										0 0 0 0.5px rgba( 0, 0, 0, 0.08 ) !important;
+								}
+								/* Suppress WP's :focus-within border that uses the admin theme
+								   color (vivid pink/magenta on Sunrise, blue on Modern, etc.)
+								   so the loud color doesn't compete with the elevated-pill
+								   visual signal. Keyboard-only focus indication moves to the
+								   selected button below via :focus-visible. */
+								.ai-storefront-taxonomy-toggle:focus-within {
+									border-color: rgba( 0, 0, 0, 0.08 ) !important;
+									box-shadow: inset 0 1px 1px rgba( 0, 0, 0, 0.04 ) !important;
+								}
+								/* Selected button text. WP defaults to white because the pill
+								   was black; the pill is now white, so the text needs to be dark
+								   for contrast. Selector keys off [aria-checked="true"] which is
+								   stable across WP component versions (ARIA is the contract). */
+								.ai-storefront-taxonomy-toggle [aria-checked="true"] {
+									color: #1e1e1e !important;
+									font-weight: 500;
+								}
+								/* Unselected hover affordance — only on the [aria-checked="false"]
+								   options so it doesn't fight the active pill. */
+								.ai-storefront-taxonomy-toggle [aria-checked="false"]:hover {
+									color: #1e1e1e !important;
+								}
+								/* Keyboard-only focus ring on the selected button using the
+								   WP admin theme color. :focus-visible (not :focus) prevents
+								   the ring from appearing on mouse clicks — the Gutenberg
+								   standard since WP 6.0. */
+								.ai-storefront-taxonomy-toggle [aria-checked="true"]:focus-visible {
+									outline: 2px solid var( --wp-admin-theme-color, #3858e9 );
+									outline-offset: 2px;
+									border-radius: 5px;
+								}
+								/* Windows High Contrast mode: ensure the pill carries a
+								   visible edge when forced colors strip the box-shadow. */
+								@media ( forced-colors: active ) {
+									.ai-storefront-taxonomy-toggle::before {
+										outline: 1px solid CanvasText !important;
+									}
+								}
+							` }</style>
 							<ToggleGroupControl
 								__next40pxDefaultSize
 								__nextHasNoMarginBottom
 								hideLabelFromVision
-								className={ TOGGLE_GROUP_CLASSNAME }
+								className="ai-storefront-taxonomy-toggle"
 								label={ __(
 									'Taxonomy',
 									'woocommerce-ai-storefront'
