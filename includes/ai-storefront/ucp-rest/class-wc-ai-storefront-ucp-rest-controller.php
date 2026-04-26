@@ -350,13 +350,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					static fn( string $s ): bool => '' !== $s
 				)
 			);
+			// Use ASCII `...` (not the Unicode ellipsis `…`) so the
+			// joined string stays ASCII-safe end-to-end. Header values
+			// are nominally ISO-8859-1 / opaque-byte per RFC 9110;
+			// many proxies/CDNs (older nginx with strict header
+			// validation, mod_security, some AWS ALB configs) reject
+			// or strip non-ASCII bytes in header values, which would
+			// drop the diagnostic header silently. Logs would tolerate
+			// `…` but consistency beats prettier punctuation here —
+			// the truncation marker is the same in both paths.
 			if ( count( $sanitized ) > 8 ) {
 				$sanitized   = array_slice( $sanitized, 0, 8 );
-				$sanitized[] = '…';
+				$sanitized[] = '...';
 			}
 			$joined = implode( ', ', $sanitized );
 			if ( strlen( $joined ) > 256 ) {
-				$joined = substr( $joined, 0, 253 ) . '…';
+				$joined = substr( $joined, 0, 253 ) . '...';
 			}
 			// Surface as a single string for the header path; keep
 			// the original sanitized array for log readability.
