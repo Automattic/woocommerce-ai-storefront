@@ -83,6 +83,31 @@ const getActivePreset = ( rpm ) => {
  * `AI_CRAWLERS` (which is the union of all three). Drift would
  * produce silently-dropped checkboxes on save.
  */
+/**
+ * Shape of a section in the AI Crawlers list.
+ *
+ * The render path filters `KNOWN_CRAWLERS` by category to populate
+ * each section. Most groups are 1:1 with a backend category (e.g.
+ * `live`); when a single merchant-facing section spans multiple
+ * backend categories (e.g. "Training and Test Crawlers" covers
+ * `training` + `test`), supply the full list via `categories`.
+ *
+ * @typedef {Object} CrawlerGroup
+ * @property {string}   key          Stable React reconciliation key,
+ *                                   AND the default backend-category
+ *                                   filter when `categories` isn't
+ *                                   supplied. Required.
+ * @property {string}   title        Section heading (translated).
+ * @property {string}   subtitle     One-line context paragraph below
+ *                                   the heading (translated).
+ * @property {string[]} [categories] When this section spans more than
+ *                                   one backend category, list all of
+ *                                   them. Missing OR empty → fall back
+ *                                   to `[key]` (single-category mode).
+ *                                   See the render-time guard for the
+ *                                   exact fallback rule.
+ */
+
 const KNOWN_CRAWLERS = [
 	// Live browsing — user-initiated fetches + live-answer indexing.
 	// Recommended on; these route revenue.
@@ -684,11 +709,13 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						decision legible: the top group (live
 						browsing) is the revenue-path AI traffic that
 						most commerce sites want; the bottom group
-						(training) is a brand-strategy decision where
-						accepting means your catalog becomes training
-						data — potentially surfacing stale answers
-						months later. See KNOWN_CRAWLERS above for
-						category-assignment rationale.
+						(training + test) is a brand-strategy decision
+						where accepting means your catalog becomes
+						training data — potentially surfacing stale
+						answers months later. See KNOWN_CRAWLERS above
+						for category-assignment rationale. Each group
+						entry conforms to the CrawlerGroup typedef
+						declared above the component.
 					*/ }
 					{ [
 						{
@@ -722,9 +749,19 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							categories: [ 'training', 'test' ],
 						},
 					].map( ( group, groupIndex ) => {
-						const groupCategories = group.categories || [
-							group.key,
-						];
+						// Robust fallback: only treat `categories` as a
+						// valid override when it'''s a non-empty array.
+						// `group.categories || [group.key]` would still
+						// fall back on `null`/`undefined` but NOT on `[]`,
+						// which would silently filter to zero crawlers
+						// (heading + subtitle render, body is empty).
+						// Explicit guard converts the silent-empty failure
+						// mode into "act like a single-category group."
+						const groupCategories =
+							Array.isArray( group.categories ) &&
+							group.categories.length > 0
+								? group.categories
+								: [ group.key ];
 						const crawlers = KNOWN_CRAWLERS.filter( ( c ) =>
 							groupCategories.includes( c.category )
 						);

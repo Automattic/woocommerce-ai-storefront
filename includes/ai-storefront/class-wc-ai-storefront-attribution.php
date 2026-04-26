@@ -34,6 +34,32 @@ class WC_AI_Storefront_Attribution {
 	 * "Gemini", "Other AI") via `WC_AI_Storefront_UCP_Agent_Header::canonicalize_host()`.
 	 * Unknown agents bucket to "Other AI"; the raw hostname is preserved
 	 * separately in `AGENT_HOST_RAW_META_KEY`.
+	 *
+	 * Mixed-era cardinality (important for stats consumers):
+	 *   - pre-1.6.7 orders: stored as raw hostnames (e.g. "agent.foo.com").
+	 *     `canonicalize_host_idempotent()` at display time maps known
+	 *     pre-1.6.7 raw hostnames (anything in `KNOWN_AGENT_HOSTS`'s
+	 *     keys) to canonical names; unknown raw hostnames pass through
+	 *     to `OTHER_AI_BUCKET`.
+	 *   - 1.6.7 → 0.2.x (pre-Other-AI): stored as canonical brand names
+	 *     for known hosts, raw hostnames for unknown agents (the bug
+	 *     this PR fixed prospectively).
+	 *   - 0.3.x onward: stored as canonical brand names for known hosts,
+	 *     `OTHER_AI_BUCKET` for unknown.
+	 *
+	 * `get_stats()` `GROUP BY` on this meta will therefore mix:
+	 *   - canonical brand names ("Gemini", "ChatGPT", ...) that match
+	 *     across all three eras.
+	 *   - the literal `"Other AI"` value, only present from 0.3.x.
+	 *   - long-tail raw hostnames from pre-1.6.7 + middle-era unknown
+	 *     agents.
+	 *
+	 * Pre-1.6.7 unknown-agent rows continue to appear as their own
+	 * buckets in stats, partially defeating the "Other AI" rollup until
+	 * those orders age out of the rolling stats window. Acceptable for
+	 * the rolling-window stats (day/week/month/year) since pre-1.6.7
+	 * data ages out within ~14 months. A migration pass is out of scope
+	 * for this rollout.
 	 */
 	const AGENT_META_KEY = '_wc_ai_storefront_agent';
 
@@ -125,9 +151,37 @@ class WC_AI_Storefront_Attribution {
 		// who actually sent the request. For known-canonical agents
 		// (e.g. utm_source=Gemini) the raw host (gemini.google.com) is
 		// also stamped for completeness.
+		//
+		// The continue_url's `ai_agent_host_raw` param flows through
+		// the buyer's browser, so we treat it as untrusted here even
+		// though it originated from our own controller. Two-layer
+		// validation:
+		//   (a) Length cap at 253 — RFC 1035 max DNS hostname length.
+		//       Without this, a forged UCP-Agent → forged URL param
+		//       can stuff multi-KB strings into postmeta (longtext, no
+		//       schema cap), bloating the database and the admin order
+		//       view's <code> blob.
+		//   (b) Hostname-shape regex (alphanum + dot + hyphen). The
+		//       upstream extract_profile_hostname() already enforces
+		//       this on the producer side via wp_parse_url, so legit
+		//       values always pass; only attacker-tampered URLs (e.g.
+		//       carrying `<script>` or shell metachars) fail. Reject
+		//       silently with a debug log so the rejection is auditable
+		//       without poisoning the order.
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params.
-		$raw_host = isset( $_GET['ai_agent_host_raw'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_host_raw'] ) ) : '';
-		if ( $raw_host ) {
+		$raw_host_input = isset( $_GET['ai_agent_host_raw'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_host_raw'] ) ) : '';
+		$raw_host       = '';
+		if ( '' !== $raw_host_input ) {
+			if ( strlen( $raw_host_input ) > 253 || ! preg_match( '/^[a-z0-9.\-]+$/i', $raw_host_input ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'rejected malformed ai_agent_host_raw (len=%d)',
+					strlen( $raw_host_input )
+				);
+			} else {
+				$raw_host = $raw_host_input;
+			}
+		}
+		if ( '' !== $raw_host ) {
 			$order->update_meta_data( self::AGENT_HOST_RAW_META_KEY, $raw_host );
 		}
 

@@ -143,8 +143,15 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 *     out the named brands the merchant cares about.
 	 *   - Attribution still works. The order is correctly tagged as
 	 *     "AI traffic" (utm_medium=ai_agent) just with a generic label.
-	 *   - Provenance preserved. The raw hostname lives on the order and
-	 *     in the WP debug log, so the merchant can drill in.
+	 *   - Provenance preserved. The raw hostname is stamped on the
+	 *     order's `_wc_ai_storefront_agent_host_raw` meta whenever the
+	 *     UCP-Agent header was parseable, AND a dedicated debug-log
+	 *     line ("unknown AI agent bucketed as Other AI") is emitted
+	 *     when the raw host AND the bucketed canonical land on the
+	 *     same order — that is the conjunction that signals "novel
+	 *     vendor seen". The general "attribution captured" debug line
+	 *     also includes the raw host on every capture, so the merchant
+	 *     can drill in either way.
 	 */
 	const OTHER_AI_BUCKET = 'Other AI';
 
@@ -179,6 +186,62 @@ class WC_AI_Storefront_UCP_Agent_Header {
 
 		$lower = strtolower( $host );
 		return self::KNOWN_AGENT_HOSTS[ $lower ] ?? self::OTHER_AI_BUCKET;
+	}
+
+	/**
+	 * Idempotent canonicalization for already-stamped values.
+	 *
+	 * Use this at display time when reading a stored `utm_source` /
+	 * `_wc_ai_storefront_agent` meta value, where the input may be:
+	 *
+	 *   - A raw hostname from a pre-1.6.7 order — needs canonicalization.
+	 *   - An already-canonical brand name from a post-1.6.7 order — must
+	 *     pass through unchanged. Re-running `canonicalize_host()` on a
+	 *     branded value (e.g. `'Gemini'`, `'ChatGPT'`) would lower-case it,
+	 *     find no entry in `KNOWN_AGENT_HOSTS` (whose keys are hostnames,
+	 *     not brand names), and bucket it under `OTHER_AI_BUCKET`. Net
+	 *     effect: every modern AI-attributed order would mis-display as
+	 *     "Other AI" in the admin Recent Orders table.
+	 *
+	 * The fix: detect already-canonical values up front and short-circuit.
+	 * Any value that appears in `KNOWN_AGENT_HOSTS`'s VALUE set, or equals
+	 * `OTHER_AI_BUCKET`, is already canonical and passes through.
+	 *
+	 * Why a sibling helper rather than baking this into `canonicalize_host()`:
+	 * the producer side (UCP request handlers building `utm_source` from a
+	 * just-extracted hostname) wants the strict semantic — every input is
+	 * a hostname, every output is canonical or the bucket. Mixing the
+	 * idempotent fallback into the producer path would let attacker-forged
+	 * UCP-Agent headers carrying brand-name strings (`profile="https://Gemini/..."`)
+	 * silently round-trip a fake-canonical value into utm_source. Keep the
+	 * strict check on the producer side; expose this leniency only at
+	 * display-layer call sites.
+	 *
+	 * @param string $value Either a raw hostname (pre-1.6.7 legacy) or
+	 *                      an already-canonical brand name (post-1.6.7).
+	 * @return string Short canonical brand name, `OTHER_AI_BUCKET` for
+	 *                unknown hosts, or the input unchanged when it's
+	 *                already canonical. Empty input returns empty.
+	 */
+	public static function canonicalize_host_idempotent( string $value ): string {
+		if ( '' === $value ) {
+			return '';
+		}
+
+		// Already-canonical values pass through. The brand-name set is
+		// the values of KNOWN_AGENT_HOSTS plus the OTHER_AI_BUCKET sentinel.
+		// `array_values()` allocates a small array each call; static-cache
+		// it as a property if this becomes a hot path (currently only hit
+		// from admin-controller's per-order loop, ~10 orders/render).
+		$canonical_names = array_values( self::KNOWN_AGENT_HOSTS );
+		if ( in_array( $value, $canonical_names, true ) ) {
+			return $value;
+		}
+		if ( self::OTHER_AI_BUCKET === $value ) {
+			return $value;
+		}
+
+		return self::canonicalize_host( $value );
 	}
 
 	/**

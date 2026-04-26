@@ -553,8 +553,15 @@ class WC_AI_Storefront_Admin_Controller {
 
 		foreach ( $orders as $order ) {
 			$raw_agent = (string) $order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY );
-			$agent     = '' !== $raw_agent
-				? WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_agent )
+			// Use the idempotent variant: post-1.6.7 orders stamp the
+			// canonical brand name (e.g. "Gemini") directly into the
+			// meta, while pre-1.6.7 orders carry the raw hostname
+			// (e.g. "gemini.google.com"). Plain `canonicalize_host()`
+			// would treat the canonical "Gemini" string as an unknown
+			// hostname and bucket it as "Other AI" — see the helper's
+			// docblock for the trap and rationale.
+			$agent = '' !== $raw_agent
+				? WC_AI_Storefront_UCP_Agent_Header::canonicalize_host_idempotent( $raw_agent )
 				: '';
 
 			$date_created = $order->get_date_created();

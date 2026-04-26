@@ -801,6 +801,16 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
 			$result['data']['continue_url']
 		);
+		// Empty raw_host MUST result in the param being OMITTED from
+		// the URL entirely — never `&ai_agent_host_raw=` with empty
+		// value. Regression guard: a refactor that always appends the
+		// param (drops the `if ( '' !== $raw_host )` guard in
+		// build_continue_url) would silently emit empty raw_host on
+		// every fallback order, polluting analytics + downstream meta.
+		$this->assertStringNotContainsString(
+			'ai_agent_host_raw',
+			$result['data']['continue_url']
+		);
 	}
 
 	public function test_malformed_ucp_agent_falls_back_to_sentinel_utm_source(): void {
@@ -814,6 +824,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertStringContainsString(
 			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['data']['continue_url']
+		);
+		// Same omission contract as above: malformed UCP-Agent →
+		// extract_profile_hostname returns '' → raw_host stays empty →
+		// param is omitted from the URL. Parallel coverage with the
+		// missing-header case.
+		$this->assertStringNotContainsString(
+			'ai_agent_host_raw',
 			$result['data']['continue_url']
 		);
 	}

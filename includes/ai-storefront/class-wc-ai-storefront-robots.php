@@ -232,6 +232,15 @@ class WC_AI_Storefront_Robots {
 	 * the distinction matters (e.g. default-on/default-off logic
 	 * in the admin UI).
 	 *
+	 * Order invariant — must remain
+	 *   `LIVE_BROWSING_AGENTS` ++ `TRAINING_CRAWLERS` ++ `TEST_CRAWLERS`
+	 * in declaration order. Adding a new entry: append it to the
+	 * appropriate category constant AND add it here at the end of the
+	 * matching block. Don't sort alphabetically and don't introduce a
+	 * fourth category without updating both this constant and
+	 * `RobotsTest::test_ai_crawlers_is_union_of_live_training_and_test`,
+	 * which `assertSame()`s the order.
+	 *
 	 * @var string[]
 	 */
 	const AI_CRAWLERS = [

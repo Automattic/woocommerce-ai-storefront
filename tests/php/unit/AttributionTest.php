@@ -178,4 +178,164 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 			);
 		}
 	}
+
+	// ------------------------------------------------------------------
+	// Raw-host capture (`ai_agent_host_raw` URL param → meta stamp)
+	// ------------------------------------------------------------------
+
+	public function test_capture_stamps_raw_host_meta_when_well_formed(): void {
+		// Well-formed hostname value in $_GET → captured into the
+		// AGENT_HOST_RAW_META_KEY meta. This is the happy path: agent
+		// sends a known hostname, controller round-trips it through
+		// the continue_url, attribution layer pins it to the order
+		// for diagnostic/graduation review.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'ai_agent' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'Gemini' );
+
+		$_GET['ai_agent_host_raw'] = 'gemini.google.com';
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertEquals(
+			'gemini.google.com',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY )
+		);
+	}
+
+	public function test_capture_rejects_oversized_raw_host(): void {
+		// 254 chars exceeds RFC 1035 max DNS hostname length (253).
+		// Without the cap, an attacker-forged UCP-Agent → forged URL
+		// param → unbounded postmeta write. Regression guard: this
+		// assertion fires if the strlen() check is removed.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'ai_agent' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'Other AI' );
+
+		$_GET['ai_agent_host_raw'] = str_repeat( 'a', 254 );
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertEquals(
+			'',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY ),
+			'Oversized raw_host (>253 chars) must be rejected, not stamped to meta.'
+		);
+	}
+
+	public function test_capture_rejects_malformed_raw_host(): void {
+		// Hostname-shape regex is the second-layer validator. A value
+		// that passes sanitize_text_field (no HTML to strip) but isn't
+		// a plausible hostname (e.g. shell metachars, JSON injection,
+		// URL fragments) gets rejected. The producer-side
+		// extract_profile_hostname filters real values via wp_parse_url,
+		// so legitimate traffic always passes; only attacker-tampered
+		// URLs fail.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'ai_agent' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'Other AI' );
+
+		$_GET['ai_agent_host_raw'] = 'not a hostname; rm -rf /';
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertEquals(
+			'',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY ),
+			'Malformed raw_host (non-hostname charset) must be rejected.'
+		);
+	}
+
+	public function test_capture_skips_raw_host_meta_when_param_absent(): void {
+		// No ai_agent_host_raw URL param at all (UCP request without a
+		// UCP-Agent header — fallback path) → meta is NOT stamped
+		// (left blank). Important: an absent param must not write an
+		// empty string into the meta.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'ai_agent' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'ucp_unknown' );
+
+		// $_GET intentionally has no ai_agent_host_raw key.
+
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertEquals(
+			'',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY )
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// display_attribution_in_admin (admin order-edit screen rendering)
+	// ------------------------------------------------------------------
+
+	public function test_display_renders_canonical_agent_only_when_no_raw_host(): void {
+		// Pre-PR-93 orders won't have AGENT_HOST_RAW_META_KEY stamped,
+		// so the raw-host paragraph must NOT render for them. Just the
+		// canonical agent line + (optional) session-id line.
+		$order = new WC_Order();
+		$order->set_test_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY, 'Gemini' );
+
+		Functions\expect( 'esc_html__' )->andReturnFirstArg();
+		Functions\expect( 'esc_html' )->andReturnFirstArg();
+
+		ob_start();
+		$this->attribution->display_attribution_in_admin( $order );
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( 'Gemini', $html );
+		$this->assertStringNotContainsString( 'Agent host:', $html );
+	}
+
+	public function test_display_renders_raw_host_paragraph_when_present(): void {
+		// Post-PR-93 orders that round-tripped a raw_host through
+		// continue_url get the new "Agent host:" paragraph rendered
+		// alongside the canonical agent. Drill-in surface for "Other AI"
+		// orders so merchants can identify the actual hostname.
+		$order = new WC_Order();
+		$order->set_test_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY, 'Other AI' );
+		$order->set_test_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY, 'novel-agent.example.com' );
+
+		Functions\expect( 'esc_html__' )->andReturnFirstArg();
+		Functions\expect( 'esc_html' )->andReturnFirstArg();
+
+		ob_start();
+		$this->attribution->display_attribution_in_admin( $order );
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( 'Other AI', $html );
+		$this->assertStringContainsString( 'Agent host:', $html );
+		$this->assertStringContainsString( 'novel-agent.example.com', $html );
+	}
+
+	public function test_display_returns_early_when_no_agent_meta(): void {
+		// Non-AI orders (no AGENT_META_KEY stamped) must produce zero
+		// output — the meta-box's add_action only fires this callback
+		// for orders that flowed through capture_ai_attribution, but a
+		// defensive zero-output guard prevents a stray empty
+		// "AI Agent Attribution" heading from appearing on non-AI
+		// orders if the gating logic ever drifts.
+		$order = new WC_Order();
+		// No AGENT_META_KEY meta set.
+
+		ob_start();
+		$this->attribution->display_attribution_in_admin( $order );
+		$html = ob_get_clean();
+
+		$this->assertSame( '', $html );
+	}
 }
