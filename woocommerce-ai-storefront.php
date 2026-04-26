@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WooCommerce AI Storefront
  * Plugin URI: https://woocommerce.com/
- * Description: Make your WooCommerce store ready for AI shopping assistants (ChatGPT, Gemini, Perplexity, Claude). Full merchant control — store-only checkout, standard WooCommerce attribution.
+ * Description: Make your WooCommerce store ready for AI shopping assistants (ChatGPT, Gemini, Perplexity, Claude). Full merchant control with store-only checkout and standard WooCommerce attribution.
  * Version: 0.2.0
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
