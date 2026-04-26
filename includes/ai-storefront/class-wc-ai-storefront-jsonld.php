@@ -397,8 +397,11 @@ class WC_AI_Storefront_JsonLd {
 	 * @param string   $country    ISO country code from the WC store base.
 	 * @param int|null $product_id Optional product ID for per-product
 	 *                             override lookup. When non-null AND the
-	 *                             product is flagged final-sale via the
-	 *                             `_ai_storefront_final_sale` meta, the
+	 *                             product is flagged final-sale via
+	 *                             `WC_AI_Storefront_Product_Meta_Box::is_final_sale()`
+	 *                             (which reads
+	 *                             `WC_AI_Storefront_Product_Meta_Box::META_KEY` —
+	 *                             `_wc_ai_storefront_final_sale`), the
 	 *                             store-wide policy is bypassed and a
 	 *                             `MerchantReturnNotPermitted` block is
 	 *                             emitted regardless of mode. `null`

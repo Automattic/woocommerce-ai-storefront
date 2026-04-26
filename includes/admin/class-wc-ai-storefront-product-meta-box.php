@@ -28,8 +28,9 @@
  * the parent. Per-variant override is Pattern B and deferred.
  *
  * Meta convention:
- *   - Key: `_ai_storefront_final_sale` — underscore prefix marks it as
- *     hidden from WC's Custom Fields panel.
+ *   - Key: `_wc_ai_storefront_final_sale` — underscore prefix marks it
+ *     as hidden from WC's Custom Fields panel; `_wc_ai_storefront_*`
+ *     namespace matches the rest of the plugin's order meta.
  *   - Value: `'yes'` / `'no'` strings, matching WC core's existing
  *     boolean meta convention (`_manage_stock`, `_sold_individually`,
  *     `_virtual`, `_downloadable`). Avoids null/empty-string ambiguity.

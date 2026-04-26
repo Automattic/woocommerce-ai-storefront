@@ -49,7 +49,7 @@ require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-rest-controller.php';
 // stats, recent-orders) — exercised by AdminRecentOrdersTest.
 require_once $plugin_path . 'admin/class-wc-ai-storefront-admin-controller.php';
 
-// Per-product final-sale meta box. Reads `_ai_storefront_final_sale`
+// Per-product final-sale meta box. Reads `_wc_ai_storefront_final_sale`
 // post meta which is consumed by the JSON-LD return-policy emitter
 // — exercised by JsonLdReturnPolicyTest's per-product override
 // branches plus the dedicated ProductMetaBoxTest.
