@@ -50,6 +50,10 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 			static fn( $key, $default = '' ) =>
 				'woocommerce_weight_unit' === $key ? 'kg' : $default
 		);
+		// Stub the per-product final-sale meta read to "not flagged"
+		// — these normalization tests are about the store-wide policy
+		// emission flow, not the per-product override gate.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
 	}
 
 	protected function tearDown(): void {

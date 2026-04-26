@@ -50,6 +50,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			[ 'country' => 'US', 'state' => 'CA' ]
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
+		// Stub the per-product final-sale meta read to "not flagged"
+		// across all tests in this file. Per-product override coverage
+		// lives in JsonLdReturnPolicyTest's dedicated branch.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
 	}
 
 	protected function tearDown(): void {

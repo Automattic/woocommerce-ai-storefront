@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-26T07:59:33+00:00\n"
+"POT-Creation-Date: 2026-04-26T08:03:24+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -41,6 +41,14 @@ msgstr ""
 msgid "Unrecognized product_selection_mode: %s"
 msgstr ""
 
+#: includes/admin/class-wc-ai-storefront-product-meta-box.php:128
+msgid "AI: Final sale"
+msgstr ""
+
+#: includes/admin/class-wc-ai-storefront-product-meta-box.php:129
+msgid "Override the store-wide return policy for this product. AI agents will see \"no returns\" regardless of your store policy. Use for clearance items, custom orders, or any product whose return terms diverge from the store default."
+msgstr ""
+
 #: includes/ai-storefront/class-wc-ai-storefront-attribution.php:240
 msgid "AI Agent Attribution"
 msgstr ""
@@ -57,7 +65,7 @@ msgstr ""
 msgid "Session ID:"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-jsonld.php:287
+#: includes/ai-storefront/class-wc-ai-storefront-jsonld.php:291
 #: client/settings/ai-storefront/product-selection.js:916
 #: client/settings/ai-storefront/product-selection.js:1129
 msgid "Products"
@@ -248,9 +256,9 @@ msgstr ""
 msgid "Line item could not be processed."
 msgstr ""
 
-#: includes/class-wc-ai-storefront.php:263
-#: includes/class-wc-ai-storefront.php:264
-#: includes/class-wc-ai-storefront.php:276
+#: includes/class-wc-ai-storefront.php:277
+#: includes/class-wc-ai-storefront.php:278
+#: includes/class-wc-ai-storefront.php:290
 msgid "AI Storefront"
 msgstr ""
 

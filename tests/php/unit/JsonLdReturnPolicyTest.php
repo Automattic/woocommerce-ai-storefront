@@ -52,6 +52,15 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// `'page' === get_post_type()`).
 		Functions\when( 'get_post_status' )->justReturn( 'publish' );
 		Functions\when( 'get_post_type' )->justReturn( 'page' );
+
+		// Default the per-product final-sale flag to "not flagged" for
+		// every test. The store-wide policy tests below all use the
+		// default mock product (id=42) which is NOT flagged final-sale,
+		// so the override gate in `build_return_policy_block` should
+		// fall through to the store-wide logic. Per-product override
+		// tests further down override this stub to return 'yes' for
+		// product id 42 to exercise the override branch.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
 	}
 
 	protected function tearDown(): void {
@@ -406,5 +415,181 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $result['offers'][0] );
 		$this->assertArrayNotHasKey( 'shippingDetails', $result['offers'][0] );
+	}
+
+	// ------------------------------------------------------------------
+	// Per-product final-sale override (PR-D)
+	//
+	// The override gate runs BEFORE store-wide mode logic. A flagged
+	// product emits MerchantReturnNotPermitted regardless of the
+	// store-wide setting — including when the store-wide is
+	// `unconfigured` (the override forces a structured claim even
+	// when the merchant otherwise opted out).
+	//
+	// All tests here flip the meta read to 'yes' for product 42
+	// (the make_product() default ID) to exercise the override
+	// branch.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Helper: flip the per-product final-sale flag on for product 42.
+	 * Tests that need the flag OFF rely on the setUp default ('').
+	 */
+	private function flag_product_as_final_sale(): void {
+		Functions\when( 'get_post_meta' )->alias(
+			static function ( int $product_id, string $key, bool $single = false ) {
+				if (
+					42 === $product_id
+					&& WC_AI_Storefront_Product_Meta_Box::META_KEY === $key
+				) {
+					return 'yes';
+				}
+				return '';
+			}
+		);
+	}
+
+	public function test_per_product_final_sale_overrides_returns_accepted_mode(): void {
+		// Store-wide is `returns_accepted` with a full configuration.
+		// Per-product flag forces MerchantReturnNotPermitted instead.
+		$this->flag_product_as_final_sale();
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 0,
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+				'methods' => [ 'ReturnByMail' ],
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory'],
+			'Per-product flag must force NotPermitted regardless of store-wide accepts mode.'
+		);
+		// Override must NOT carry the store-wide accepts-returns
+		// fields (days/fees/methods) — those describe the opposite
+		// posture from "no returns".
+		$this->assertArrayNotHasKey( 'merchantReturnDays', $block );
+		$this->assertArrayNotHasKey( 'returnFees', $block );
+		$this->assertArrayNotHasKey( 'returnMethod', $block );
+	}
+
+	public function test_per_product_final_sale_overrides_unconfigured_mode(): void {
+		// Store-wide is `unconfigured` (merchant chose "don't expose
+		// any policy"). Per-product flag still emits a policy block
+		// — the override is the merchant's most-specific intent.
+		// Without this branch, a flagged product on an unconfigured
+		// store would silently emit nothing, defeating the merchant's
+		// per-product opt-in.
+		$this->flag_product_as_final_sale();
+		$this->set_settings( [ 'mode' => 'unconfigured' ] );
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory']
+		);
+	}
+
+	public function test_per_product_final_sale_overrides_store_wide_final_sale_mode(): void {
+		// Both store-wide AND per-product flag agree (final-sale).
+		// The override path still wins; the result is the same as
+		// the store-wide path would emit, but produced by the
+		// override branch. Locks the no-op equivalence so a future
+		// refactor that drops one of the two paths can verify both
+		// continue to emit the same shape.
+		$this->flag_product_as_final_sale();
+		$this->set_settings(
+			[
+				'mode'    => 'final_sale',
+				'page_id' => 0,
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory']
+		);
+	}
+
+	public function test_per_product_final_sale_reuses_store_wide_policy_page(): void {
+		// Override block reuses `merchantReturnLink` from the
+		// store-wide policy when configured — a "no returns" page
+		// often documents what's covered (defective goods, statutory
+		// rights), so reusing the link beats omission.
+		$this->flag_product_as_final_sale();
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 99,
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory']
+		);
+		$this->assertSame(
+			'https://example.com/?p=99',
+			$block['merchantReturnLink']
+		);
+	}
+
+	public function test_per_product_final_sale_omits_link_when_no_store_wide_page(): void {
+		// No store-wide page configured → override block emits the
+		// bare minimum (no `merchantReturnLink`). Verifying the
+		// optional-link branch under the override path.
+		$this->flag_product_as_final_sale();
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 0,
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
+	}
+
+	public function test_unflagged_product_uses_store_wide_setting(): void {
+		// Regression guard: the override gate must not fire when the
+		// product is NOT flagged. Without the meta read returning ''
+		// (setUp default), the product falls through to the
+		// store-wide returns_accepted logic. This is the ~99% common
+		// path — every other JsonLdReturnPolicyTest exercises it
+		// implicitly, but pinning a dedicated assertion here makes
+		// the contract explicit.
+		// (No flag — setUp's default get_post_meta('') applies.)
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 0,
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnFiniteReturnWindow',
+			$block['returnPolicyCategory'],
+			'Unflagged product must fall through to store-wide accepts mode.'
+		);
+		$this->assertSame( 30, $block['merchantReturnDays'] );
 	}
 }
