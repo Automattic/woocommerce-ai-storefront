@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-26T07:30:32+00:00\n"
+"POT-Creation-Date: 2026-04-26T07:43:50+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -41,15 +41,19 @@ msgstr ""
 msgid "Unrecognized product_selection_mode: %s"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:136
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:186
 msgid "AI Agent Attribution"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:137
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:187
 msgid "Agent:"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:140
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:195
+msgid "Agent host:"
+msgstr ""
+
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:199
 msgid "Session ID:"
 msgstr ""
 
@@ -115,132 +119,132 @@ msgid "The \"line_items\" array exceeds the per-request limit of %d entries."
 msgstr ""
 
 #. translators: 1: current subtotal (minor units), 2: minimum order (minor units).
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:1242
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:1244
 #, php-format
 msgid "Order subtotal %1$d is below the merchant minimum of %2$d (minor units). Add more items to proceed."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:1261
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:1263
 msgid "Complete your purchase on the merchant site."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:1299
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:1301
 msgid "Total excludes tax and shipping, which are calculated at the merchant checkout."
 msgstr ""
 
 #. translators: 1: number of variations missing, 2: WC product ID.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2152
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2154
 #, php-format
 msgid "%1$d variation of product %2$d is not included in the variants list; the list is incomplete."
 msgid_plural "%1$d variations of product %2$d are not included in the variants list; the list is incomplete."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2223
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2225
 msgid "pagination must be an object; using defaults."
 msgstr ""
 
 #. translators: 1: requested limit, 2: applied limit, 3: max allowed.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2254
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2256
 #, php-format
 msgid "Requested pagination.limit %1$d was clamped to %2$d (allowed range: 1–%3$d)."
 msgstr ""
 
 #. translators: %d is the applied default limit.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2274
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2276
 #, php-format
 msgid "pagination.limit must be a non-negative integer; using default %d."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2299
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2301
 msgid "Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2332
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2334
 msgid "sort.field and sort.direction must be strings; using default ordering."
 msgstr ""
 
 #. translators: %s is the unsupported sort field the agent sent.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2368
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2370
 #, php-format
 msgid "Sort field \"%s\" is not supported; using default ordering."
 msgstr ""
 
 #. translators: %s is the category slug/name the agent sent that couldn't be resolved.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2399
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2401
 #, php-format
 msgid "Category \"%s\" was not found; filter ignored for this value."
 msgstr ""
 
 #. translators: 1: agent-supplied currency, 2: store currency.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2471
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2473
 #, php-format
 msgid "context.currency \"%1$s\" does not match store currency \"%2$s\" and conversion is not supported; price filter ignored."
 msgstr ""
 
 #. translators: %s is the tag slug/name the agent sent that couldn't be resolved.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2522
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2524
 #, php-format
 msgid "Tag \"%s\" was not found; filter ignored for this value."
 msgstr ""
 
 #. translators: %s is the brand slug/name the agent sent that couldn't be resolved.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2552
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2554
 #, php-format
 msgid "Brand \"%s\" was not found; filter ignored for this value."
 msgstr ""
 
 #. translators: %s is the attribute taxonomy name the agent sent that doesn't exist on the store.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2642
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2644
 #, php-format
 msgid "Attribute taxonomy \"%s\" was not found on the store; filter ignored for this axis."
 msgstr ""
 
 #. translators: 1: filter path, 2: original count, 3: applied cap.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2881
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2883
 #, php-format
 msgid "%1$s received %2$d values; truncated to the first %3$d. Further values were ignored."
 msgstr ""
 
 #. translators: 1: filter path, 2: original count, 3: applied cap.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2916
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2918
 #, php-format
 msgid "%1$s received %2$d keys; truncated to the first %3$d. Further keys were ignored."
 msgstr ""
 
 #. translators: 1: expected amount (minor units), 2: current amount (minor units).
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3330
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3353
 #, php-format
 msgid "Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3481
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3528
 msgid "Line item must be an object with \"item.id\" and \"quantity\"."
 msgstr ""
 
 #. translators: %d is the maximum quantity per line item.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3485
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3532
 #, php-format
 msgid "Quantity must be a positive integer up to %d."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3489
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3536
 msgid "Product not found."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3491
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3538
 msgid "Product type cannot be added via the Shareable Checkout URL; link to the product page directly."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3493
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3540
 msgid "Product is out of stock."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3497
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3544
 msgid "Product is variable — specify a variation ID instead of the parent product ID."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3499
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3546
 msgid "Line item could not be processed."
 msgstr ""
 
@@ -274,7 +278,7 @@ msgstr ""
 
 #: client/settings/ai-storefront/ai-orders-table.js:274
 #: client/settings/ai-storefront/ai-orders-table.js:473
-#: client/settings/ai-storefront/endpoint-info.js:394
+#: client/settings/ai-storefront/endpoint-info.js:408
 msgid "Status"
 msgstr ""
 
@@ -300,164 +304,164 @@ msgstr ""
 msgid "Your store is discoverable by AI shopping assistants. When one refers a shopper who buys, the order will appear here with the referring agent."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:223
+#: client/settings/ai-storefront/endpoint-info.js:237
 msgid "Checking…"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:231
+#: client/settings/ai-storefront/endpoint-info.js:245
 msgid "Reachable"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:236
+#: client/settings/ai-storefront/endpoint-info.js:250
 msgid "Not reachable"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:241
+#: client/settings/ai-storefront/endpoint-info.js:255
 msgid "Not published"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:348
+#: client/settings/ai-storefront/endpoint-info.js:362
 msgid "Discovery Endpoints"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:360
+#: client/settings/ai-storefront/endpoint-info.js:374
 msgid "These endpoints are automatically available when AI Storefront is enabled."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:374
+#: client/settings/ai-storefront/endpoint-info.js:388
 msgid "AI Storefront is currently disabled. Enable it in the Overview tab to activate these endpoints."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:385
+#: client/settings/ai-storefront/endpoint-info.js:399
 msgid "Endpoint"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:391
+#: client/settings/ai-storefront/endpoint-info.js:405
 msgid "URL"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:400
+#: client/settings/ai-storefront/endpoint-info.js:414
 msgid "Purpose"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:429
+#: client/settings/ai-storefront/endpoint-info.js:443
 msgid "Machine-readable store guide for AI crawlers"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:454
+#: client/settings/ai-storefront/endpoint-info.js:468
 msgid "Universal Commerce Protocol — declares capabilities"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:479
+#: client/settings/ai-storefront/endpoint-info.js:493
 msgid "AI-crawler allow-list (Allow/Disallow directives appended to your site’s robots.txt)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:506
+#: client/settings/ai-storefront/endpoint-info.js:520
 msgid "Structured commerce API for AI agents — catalog search, lookup, and checkout sessions"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:529
+#: client/settings/ai-storefront/endpoint-info.js:543
 msgid "One or more endpoints are not reachable. If you just upgraded the plugin, try Settings → Permalinks → Save Changes to flush rewrite rules, then click Re-check."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:550
+#: client/settings/ai-storefront/endpoint-info.js:564
 msgid "Reachability is checked from your browser."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:560
+#: client/settings/ai-storefront/endpoint-info.js:574
 msgid "Re-check"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:570
+#: client/settings/ai-storefront/endpoint-info.js:584
 msgid "AI Crawler Access"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:582
+#: client/settings/ai-storefront/endpoint-info.js:596
 msgid "Control which AI crawlers are allowed to discover your store via robots.txt. Unchecked crawlers will be blocked from crawling your product pages."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:603
+#: client/settings/ai-storefront/endpoint-info.js:617
 msgid "Allowed crawlers"
 msgstr ""
 
 #. translators: %1$d: allowed count, %2$d: total count
-#: client/settings/ai-storefront/endpoint-info.js:630
+#: client/settings/ai-storefront/endpoint-info.js:644
 #, js-format
 msgid "%1$d of %2$d"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:647
+#: client/settings/ai-storefront/endpoint-info.js:661
 #: client/settings/ai-storefront/product-selection.js:2001
 msgid "Select all"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:662
+#: client/settings/ai-storefront/endpoint-info.js:676
 msgid "Clear"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:682
+#: client/settings/ai-storefront/endpoint-info.js:696
 msgid "Live browsing"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:686
+#: client/settings/ai-storefront/endpoint-info.js:700
 msgid "User-initiated fetches during an active query. These agents see fresh inventory and route revenue — recommended on."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:693
-msgid "Training crawlers"
+#: client/settings/ai-storefront/endpoint-info.js:707
+msgid "Training and Test Crawlers"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:697
-msgid "Static crawls that feed AI model training. Captured snapshots may surface as stale answers months later, with wrong prices or availability. Merchant discretion."
+#: client/settings/ai-storefront/endpoint-info.js:711
+msgid "Non-revenue AI bots — training crawlers that feed model corpora (stale-snapshot risk: a crawl captured today may surface as an answer months later with wrong prices) and test crawlers (validation tools you run against your own store). Both default off; merchant discretion."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:778
+#: client/settings/ai-storefront/endpoint-info.js:803
 msgid "These rules are added to your robots.txt. Well-behaved AI crawlers respect robots.txt directives."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:808
+#: client/settings/ai-storefront/endpoint-info.js:833
 msgid "AI-referred orders appear in the Orders list under WooCommerce’s built-in Origin column as each agent’s brand name (e.g. \"Source: ChatGPT\", \"Source: Gemini\") rather than the technical crawler IDs shown above."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:836
+#: client/settings/ai-storefront/endpoint-info.js:861
 msgid "Rate Limits"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:845
+#: client/settings/ai-storefront/endpoint-info.js:870
 msgid "Control how frequently AI agents can query your store. Higher limits allow faster product discovery but use more server resources."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:855
+#: client/settings/ai-storefront/endpoint-info.js:880
 msgid "Recommended — 25/min (works well for most stores)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:862
+#: client/settings/ai-storefront/endpoint-info.js:887
 msgid "Conservative — 10/min (shared hosting or low-traffic stores)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:869
+#: client/settings/ai-storefront/endpoint-info.js:894
 msgid "Generous — 100/min (high-traffic stores on dedicated hosting)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:876
+#: client/settings/ai-storefront/endpoint-info.js:901
 msgid "Custom"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:908
+#: client/settings/ai-storefront/endpoint-info.js:933
 msgid "Requests per minute"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:933
+#: client/settings/ai-storefront/endpoint-info.js:958
 msgid "Limits are applied per AI crawler (identified by user-agent string). Your regular store traffic is not affected."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:964
+#: client/settings/ai-storefront/endpoint-info.js:989
 #: client/settings/ai-storefront/policies-tab.js:801
 #: client/settings/ai-storefront/product-selection.js:1894
 msgid "Saving…"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:965
+#: client/settings/ai-storefront/endpoint-info.js:990
 msgid "Save Changes"
 msgstr ""
 

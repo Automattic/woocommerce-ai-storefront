@@ -701,11 +701,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	// UTM attribution
 	// ------------------------------------------------------------------
 
-	public function test_unknown_agent_hostname_passes_through_to_utm_source(): void {
+	public function test_unknown_agent_hostname_buckets_to_other_ai_in_utm_source(): void {
 		// Novel / unregistered agent hostname — not in KNOWN_AGENT_HOSTS.
-		// Canonicalization should pass it through verbatim so merchants
-		// still see something useful in the Origin column rather than
-		// losing attribution entirely for unknown vendors.
+		// Canonicalization buckets unknown hostnames into the "Other AI"
+		// label rather than scattering one Origin row per novel hostname.
+		// The raw hostname is preserved separately as `ai_agent_host_raw`
+		// in the continue_url (and on the order's
+		// `_wc_ai_storefront_agent_host_raw` meta) for diagnostic /
+		// graduation purposes — see resolve_agent_host() docblock.
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
@@ -713,12 +716,21 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			'profile="https://agent.example.com/profile.json"'
 		);
 
+		// Canonical "Other AI" lands in utm_source — what the merchant
+		// sees in the Origin column. URL-encoded space → "%20".
 		$this->assertStringContainsString(
-			'utm_source=agent.example.com',
+			'utm_source=Other%20AI',
 			$result['data']['continue_url']
 		);
 		$this->assertStringContainsString(
 			'utm_medium=ai_agent',
+			$result['data']['continue_url']
+		);
+		// Raw hostname is preserved in the new ai_agent_host_raw param
+		// so merchants who drill into an "Other AI" order can see who
+		// actually sent it.
+		$this->assertStringContainsString(
+			'ai_agent_host_raw=agent.example.com',
 			$result['data']['continue_url']
 		);
 	}
@@ -739,6 +751,40 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertStringContainsString(
 			'utm_source=Gemini',
+			$result['data']['continue_url']
+		);
+		// Raw hostname is also preserved for known hosts (parallel with
+		// the unknown-host case); guards against a regression that
+		// would drop ai_agent_host_raw emission only when the host is
+		// known. The merchant-facing `Origin` column shows the canonical
+		// "Gemini" but the order's `_wc_ai_storefront_agent_host_raw`
+		// meta still reflects the actual hostname for completeness.
+		$this->assertStringContainsString(
+			'ai_agent_host_raw=gemini.google.com',
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_ucpplayground_hostname_canonicalizes_to_ucpplayground(): void {
+		// UCP Playground is a test crawler — merchants flip it on
+		// during validation sessions. When it hits the UCP endpoint
+		// the order should attribute as "UCPPlayground" (clean canonical
+		// name), not "Other AI" (which would defeat the purpose of
+		// having it in KNOWN_AGENT_HOSTS) and not the raw hostname
+		// (pre-this-change behavior).
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			'profile="https://ucpplayground.com/profile.json"'
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=UCPPlayground',
+			$result['data']['continue_url']
+		);
+		$this->assertStringContainsString(
+			'ai_agent_host_raw=ucpplayground.com',
 			$result['data']['continue_url']
 		);
 	}

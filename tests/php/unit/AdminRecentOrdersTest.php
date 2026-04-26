@@ -171,19 +171,32 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Gemini', $row['agent'] );
 	}
 
-	public function test_unknown_hostname_agent_meta_passes_through(): void {
-		// Novel agents not in KNOWN_AGENT_HOSTS must not be blanked
-		// or altered — they pass through verbatim so merchants
-		// still see attribution for unmapped vendors. Same contract
-		// as `canonicalize_host()` unit tests, pinned at the
+	public function test_unknown_hostname_agent_meta_buckets_to_other_ai(): void {
+		// Novel agents not in KNOWN_AGENT_HOSTS bucket under the
+		// "Other AI" label rather than scattering one Origin row per
+		// novel hostname. The raw hostname stamped on the order
+		// (`_wc_ai_storefront_agent_host_raw`) preserves provenance for
+		// graduation review — see resolve_agent_host() docblock. Same
+		// contract as the canonicalize_host() unit test, pinned at the
 		// response layer.
+		//
+		// IMPORTANT: this assertion guards against a regression where
+		// the admin Recent Orders endpoint would surface raw hostnames
+		// in the agent column, which:
+		//   (a) clutters merchant stats with one-off vendor names
+		//   (b) erodes the "Top Agent" card's signal as novel hostnames
+		//       proliferate
+		//   (c) leaks internal hostnames to the merchant when a partner
+		//       AI experiment is in flight
+		// Bucketing into "Other AI" is the documented contract; this
+		// test is the regression guard.
 		$order = $this->make_order( 100, 'novel-agent.example.com' );
 		Functions\when( 'wc_get_orders' )->justReturn( [ $order ] );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$row      = $response->get_data()['orders'][0];
 
-		$this->assertSame( 'novel-agent.example.com', $row['agent'] );
+		$this->assertSame( 'Other AI', $row['agent'] );
 	}
 
 	// ------------------------------------------------------------------

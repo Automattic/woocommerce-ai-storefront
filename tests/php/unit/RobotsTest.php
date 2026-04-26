@@ -471,38 +471,60 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotContains( 'Gemini', WC_AI_Storefront_Robots::AI_CRAWLERS );
 	}
 
-	public function test_ai_crawlers_is_union_of_live_and_training(): void {
+	public function test_ai_crawlers_is_union_of_live_training_and_test(): void {
 		// Backward compat: AI_CRAWLERS is the pre-1.5.0 public
 		// constant that external callers and the sanitizer have
 		// been consuming since 1.0.0. It must exactly equal the
-		// concatenation of the two new category lists — otherwise
-		// `sanitize_allowed_crawlers()` (which intersects against
-		// AI_CRAWLERS) would reject valid category members.
+		// concatenation of all category lists in declaration order —
+		// otherwise `sanitize_allowed_crawlers()` (which intersects
+		// against AI_CRAWLERS) would reject valid category members.
+		// TEST_CRAWLERS was added in the 0.2.x series for validation
+		// tools (e.g. UCPPlayground) and follows training in the
+		// concatenation order.
 		$expected = array_merge(
 			WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS,
-			WC_AI_Storefront_Robots::TRAINING_CRAWLERS
+			WC_AI_Storefront_Robots::TRAINING_CRAWLERS,
+			WC_AI_Storefront_Robots::TEST_CRAWLERS
 		);
 
 		$this->assertSame(
 			$expected,
 			WC_AI_Storefront_Robots::AI_CRAWLERS,
-			'AI_CRAWLERS must equal LIVE_BROWSING_AGENTS + TRAINING_CRAWLERS in order.'
+			'AI_CRAWLERS must equal LIVE_BROWSING_AGENTS + TRAINING_CRAWLERS + TEST_CRAWLERS in order.'
 		);
 	}
 
 	public function test_categories_are_disjoint(): void {
-		// A crawler is either a live agent or a training crawler,
-		// never both. If a future addition ends up in both lists,
-		// the admin UI renders a duplicate checkbox (confusing) and
-		// the render `filter` logic selects the first category only
-		// (hiding the duplicate in the other group). Regression
-		// catches both side effects.
-		$intersection = array_intersect(
-			WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS,
-			WC_AI_Storefront_Robots::TRAINING_CRAWLERS
+		// A crawler is in exactly one category — never two. If a future
+		// addition ends up in multiple lists, the admin UI renders a
+		// duplicate checkbox (confusing) and the render `filter` logic
+		// selects the first category only (hiding the duplicate in the
+		// other group). Regression catches both side effects across all
+		// three pairs (live∩training, live∩test, training∩test).
+		$this->assertSame(
+			[],
+			array_intersect(
+				WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS,
+				WC_AI_Storefront_Robots::TRAINING_CRAWLERS
+			),
+			'LIVE_BROWSING_AGENTS and TRAINING_CRAWLERS must be disjoint.'
 		);
-
-		$this->assertSame( [], $intersection );
+		$this->assertSame(
+			[],
+			array_intersect(
+				WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS,
+				WC_AI_Storefront_Robots::TEST_CRAWLERS
+			),
+			'LIVE_BROWSING_AGENTS and TEST_CRAWLERS must be disjoint.'
+		);
+		$this->assertSame(
+			[],
+			array_intersect(
+				WC_AI_Storefront_Robots::TRAINING_CRAWLERS,
+				WC_AI_Storefront_Robots::TEST_CRAWLERS
+			),
+			'TRAINING_CRAWLERS and TEST_CRAWLERS must be disjoint.'
+		);
 	}
 
 	public function test_ai_crawlers_has_no_duplicates(): void {

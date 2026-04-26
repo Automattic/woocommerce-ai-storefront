@@ -77,10 +77,11 @@ const getActivePreset = ( rpm ) => {
  * merchant-facing UX cue, not a wire-format requirement.
  *
  * Keep this list in sync with the PHP constants
- * `WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS` and
- * `::TRAINING_CRAWLERS`. The frontend renders from this constant;
- * the backend sanitizes against the PHP list. Drift would produce
- * silently-dropped checkboxes on save.
+ * `WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS`,
+ * `::TRAINING_CRAWLERS`, and `::TEST_CRAWLERS`. The frontend renders
+ * from this constant; the backend sanitizes against the PHP-side
+ * `AI_CRAWLERS` (which is the union of all three). Drift would
+ * produce silently-dropped checkboxes on save.
  */
 const KNOWN_CRAWLERS = [
 	// Live browsing — user-initiated fetches + live-answer indexing.
@@ -190,6 +191,19 @@ const KNOWN_CRAWLERS = [
 	},
 	{ id: 'CCBot', label: 'CCBot (CommonCrawl)', category: 'training' },
 	{ id: 'cohere-ai', label: 'cohere-ai (Cohere)', category: 'training' },
+
+	// Test / validation crawlers — third-party UCP validation tools
+	// merchants run against their own store. Functionally distinct
+	// from training (no model corpus contribution) and from live
+	// (no real revenue route), so they get their own category that
+	// shares the same default-off, merchant-discretion semantic as
+	// training. Visually grouped with training under the "Training
+	// and Test Crawlers" heading in the UI.
+	{
+		id: 'UCPPlayground',
+		label: 'UCPPlayground (ucpplayground.com — UCP validation tool)',
+		category: 'test',
+	},
 ];
 
 /**
@@ -689,19 +703,30 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							),
 						},
 						{
-							key: 'training',
+							key: 'training_and_test',
 							title: __(
-								'Training crawlers',
+								'Training and Test Crawlers',
 								'woocommerce-ai-storefront'
 							),
 							subtitle: __(
-								'Static crawls that feed AI model training. Captured snapshots may surface as stale answers months later, with wrong prices or availability. Merchant discretion.',
+								'Non-revenue AI bots — training crawlers that feed model corpora (stale-snapshot risk: a crawl captured today may surface as an answer months later with wrong prices) and test crawlers (validation tools you run against your own store). Both default off; merchant discretion.',
 								'woocommerce-ai-storefront'
 							),
+							// This group covers two backend categories
+							// (training + test) under one merchant-facing
+							// heading. They share the same "non-revenue
+							// AI bot, default off" semantic and benefit
+							// from being stacked in one section. If a
+							// future category needs separate treatment,
+							// split into another group entry above.
+							categories: [ 'training', 'test' ],
 						},
 					].map( ( group, groupIndex ) => {
-						const crawlers = KNOWN_CRAWLERS.filter(
-							( c ) => c.category === group.key
+						const groupCategories = group.categories || [
+							group.key,
+						];
+						const crawlers = KNOWN_CRAWLERS.filter( ( c ) =>
+							groupCategories.includes( c.category )
 						);
 						return (
 							<div

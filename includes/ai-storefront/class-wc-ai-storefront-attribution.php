@@ -29,8 +29,27 @@ class WC_AI_Storefront_Attribution {
 
 	/**
 	 * Meta key for storing the AI agent name on orders.
+	 *
+	 * Stamped with the canonical merchant-facing name (e.g. "ChatGPT",
+	 * "Gemini", "Other AI") via `WC_AI_Storefront_UCP_Agent_Header::canonicalize_host()`.
+	 * Unknown agents bucket to "Other AI"; the raw hostname is preserved
+	 * separately in `AGENT_HOST_RAW_META_KEY`.
 	 */
 	const AGENT_META_KEY = '_wc_ai_storefront_agent';
+
+	/**
+	 * Meta key for storing the raw (untransformed) hostname from the
+	 * UCP-Agent profile URL.
+	 *
+	 * Captured alongside `AGENT_META_KEY` to preserve provenance for
+	 * orders that bucket under "Other AI" — merchants who drill into
+	 * an "Other AI" order still see the actual hostname that sent it.
+	 *
+	 * Future use: feeds aggregate review for graduating frequent
+	 * unknown hostnames into `WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS`
+	 * with proper canonical names.
+	 */
+	const AGENT_HOST_RAW_META_KEY = '_wc_ai_storefront_agent_host_raw';
 
 	/**
 	 * The UTM medium value used to identify AI agent traffic.
@@ -100,12 +119,42 @@ class WC_AI_Storefront_Attribution {
 			$order->update_meta_data( self::AGENT_META_KEY, $utm_source );
 		}
 
+		// Capture the raw (untransformed) hostname when present. This
+		// is the unaltered value from the UCP-Agent profile URL — for
+		// "Other AI" bucketed orders it lets merchants drill in and see
+		// who actually sent the request. For known-canonical agents
+		// (e.g. utm_source=Gemini) the raw host (gemini.google.com) is
+		// also stamped for completeness.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params.
+		$raw_host = isset( $_GET['ai_agent_host_raw'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_host_raw'] ) ) : '';
+		if ( $raw_host ) {
+			$order->update_meta_data( self::AGENT_HOST_RAW_META_KEY, $raw_host );
+		}
+
 		$order->save();
 
+		// Log the raw hostname when the canonical bucket is "Other AI"
+		// so the WP debug log accumulates a record of unknown agents
+		// for retrospective graduation review (which novel hostnames
+		// are showing up often enough to warrant a KNOWN_AGENT_HOSTS
+		// entry?). Known agents don't need this log line — their
+		// canonical name already says everything the operator needs.
+		if (
+			$raw_host
+			&& WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET === $utm_source
+		) {
+			WC_AI_Storefront_Logger::debug(
+				'unknown AI agent bucketed as "Other AI": host=%s session=%s',
+				$raw_host,
+				$session_id ? $session_id : '(none)'
+			);
+		}
+
 		WC_AI_Storefront_Logger::debug(
-			'attribution captured — agent=%s session=%s',
+			'attribution captured — agent=%s session=%s raw_host=%s',
 			$utm_source ? $utm_source : '(none)',
-			$session_id ? $session_id : '(none)'
+			$session_id ? $session_id : '(none)',
+			$raw_host ? $raw_host : '(none)'
 		);
 
 		/**
@@ -127,6 +176,7 @@ class WC_AI_Storefront_Attribution {
 	public function display_attribution_in_admin( $order ) {
 		$agent      = $order->get_meta( self::AGENT_META_KEY );
 		$session_id = $order->get_meta( self::SESSION_META_KEY );
+		$raw_host   = $order->get_meta( self::AGENT_HOST_RAW_META_KEY );
 
 		if ( ! $agent ) {
 			return;
@@ -135,6 +185,15 @@ class WC_AI_Storefront_Attribution {
 		echo '<div class="wc-ai-storefront-attribution">';
 		echo '<h3>' . esc_html__( 'AI Agent Attribution', 'woocommerce-ai-storefront' ) . '</h3>';
 		echo '<p><strong>' . esc_html__( 'Agent:', 'woocommerce-ai-storefront' ) . '</strong> ' . esc_html( $agent ) . '</p>';
+
+		// Surface the raw hostname when present — gives merchants the
+		// underlying provenance for "Other AI" bucketed orders, plus
+		// useful context even for known canonical agents (e.g. seeing
+		// `bing.com` confirms the UCP-Agent really came from there
+		// rather than a misconfigured proxy).
+		if ( $raw_host ) {
+			echo '<p><strong>' . esc_html__( 'Agent host:', 'woocommerce-ai-storefront' ) . '</strong> <code>' . esc_html( $raw_host ) . '</code></p>';
+		}
 
 		if ( $session_id ) {
 			echo '<p><strong>' . esc_html__( 'Session ID:', 'woocommerce-ai-storefront' ) . '</strong> <code>' . esc_html( $session_id ) . '</code></p>';

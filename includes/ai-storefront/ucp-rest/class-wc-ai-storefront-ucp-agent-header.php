@@ -116,23 +116,61 @@ class WC_AI_Storefront_UCP_Agent_Header {
 
 		// Kagi.
 		'kagi.com'              => 'Kagi',
+
+		// UCP Playground — third-party validation tool. Maps to a clean
+		// canonical name so merchants who flip on the test crawler in
+		// settings can recognize their own validation hits in stats.
+		'ucpplayground.com'     => 'UCPPlayground',
 	];
+
+	/**
+	 * Display label for unknown AI agents — agents whose UCP-Agent profile
+	 * hostname isn't in `KNOWN_AGENT_HOSTS`. They're still allowed to
+	 * transact (UCP is an open spec), but their attribution is bucketed
+	 * under this label rather than scattering one Origin-column row per
+	 * novel hostname.
+	 *
+	 * The raw hostname is preserved separately on the order
+	 * (`_wc_ai_storefront_agent_host_raw` meta) for diagnostic/graduation
+	 * purposes — when a particular unknown hostname becomes prominent
+	 * across enough orders, it can be promoted into `KNOWN_AGENT_HOSTS`
+	 * with a proper canonical name in a follow-up PR.
+	 *
+	 * Why bucket rather than scatter:
+	 *   - Stats stay legible. The Top Agent card and per-agent breakdown
+	 *     would otherwise show a long tail of one-off hostnames
+	 *     (`agent.foo-startup.com`, `bot.experiment.dev`) that crowd
+	 *     out the named brands the merchant cares about.
+	 *   - Attribution still works. The order is correctly tagged as
+	 *     "AI traffic" (utm_medium=ai_agent) just with a generic label.
+	 *   - Provenance preserved. The raw hostname lives on the order and
+	 *     in the WP debug log, so the merchant can drill in.
+	 */
+	const OTHER_AI_BUCKET = 'Other AI';
 
 	/**
 	 * Canonicalize a hostname to a short brand name for merchant-facing
 	 * attribution display (utm_source → Origin column).
 	 *
-	 * Returns the mapped brand name when the hostname is known, else
-	 * the hostname itself. NEVER returns empty — callers can use the
-	 * result directly as a utm_source value without a null-check.
+	 * Returns:
+	 *   - The mapped brand name when the hostname is in `KNOWN_AGENT_HOSTS`.
+	 *   - `OTHER_AI_BUCKET` ("Other AI") when the hostname isn't mapped —
+	 *     the unknown-agent bucket (see constant docblock for rationale).
+	 *   - Empty string only when input is empty (no UCP-Agent header at all).
+	 *
+	 * NEVER returns the raw hostname directly — that would scatter the
+	 * Origin column with one-off hostnames. Pre-this-change behavior
+	 * was raw-hostname fall-through; preserved for diagnostics via the
+	 * separate `_wc_ai_storefront_agent_host_raw` order meta + WP debug
+	 * log emission at the controller layer.
 	 *
 	 * Separate from `extract_profile_hostname()` so the raw-hostname
 	 * extraction stays pure (useful for logging/diagnostics) while
 	 * display-layer canonicalization is explicit at the call site.
 	 *
 	 * @param string $host Hostname extracted from a UCP-Agent profile URL.
-	 * @return string Short canonical brand name, or the hostname unchanged
-	 *                when no mapping exists. Empty input returns empty.
+	 * @return string Short canonical brand name, `OTHER_AI_BUCKET` for
+	 *                unknown hosts, or empty string when input is empty.
 	 */
 	public static function canonicalize_host( string $host ): string {
 		if ( '' === $host ) {
@@ -140,7 +178,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		}
 
 		$lower = strtolower( $host );
-		return self::KNOWN_AGENT_HOSTS[ $lower ] ?? $host;
+		return self::KNOWN_AGENT_HOSTS[ $lower ] ?? self::OTHER_AI_BUCKET;
 	}
 
 	/**
