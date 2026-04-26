@@ -289,10 +289,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return true;
 		}
 
-		$settings         = WC_AI_Storefront::get_settings();
-		$allowed_crawlers = is_array( $settings['allowed_crawlers'] ?? null )
-			? $settings['allowed_crawlers']
-			: WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS;
+		// Delegate to the shared `resolve_allowed_crawlers()` helper so
+		// the gate, robots.txt builder, and admin UI all interpret the
+		// stored option identically. Drift here would mean a merchant's
+		// "I cleared the allow-list" intent could be honored by one
+		// surface and silently reverted to LIVE_BROWSING_AGENTS by
+		// another — see the helper's docblock for the
+		// missing-key vs explicit-empty vs corrupted-value contract.
+		$allowed_crawlers = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
+			WC_AI_Storefront::get_settings()
+		);
 
 		if ( WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( $canonical, $allowed_crawlers ) ) {
 			return true;

@@ -267,10 +267,11 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 	public function test_falls_back_to_live_browsing_default_when_setting_absent(): void {
 		// `allowed_crawlers` key entirely missing from settings (older
 		// installs that haven't been touched by the modern UI yet).
-		// The gate falls back to LIVE_BROWSING_AGENTS — which contains
-		// ChatGPT-User — so a fresh-install user with no UI changes
-		// still sees ChatGPT pass through. Honors "secure-by-default"
-		// for new brands but doesn't break existing default behavior.
+		// `resolve_allowed_crawlers()` returns LIVE_BROWSING_AGENTS in
+		// that case — which contains ChatGPT-User — so a fresh-install
+		// user with no UI changes still sees ChatGPT pass through.
+		// Honors "secure-by-default" for new brands but doesn't break
+		// existing default behavior.
 		WC_AI_Storefront::$test_settings = []; // no allowed_crawlers key
 
 		$result = $this->controller->check_agent_access(
@@ -280,17 +281,38 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue( $result );
 	}
 
-	public function test_falls_back_to_live_browsing_default_when_setting_not_array(): void {
-		// `allowed_crawlers` is the wrong type (e.g. someone pushed a
-		// stringified value into options). The gate must not crash
-		// or treat the value as a single-element list — fall back to
-		// the LIVE_BROWSING_AGENTS default.
+	public function test_blocks_when_setting_value_is_corrupted(): void {
+		// `allowed_crawlers` key is PRESENT but the value is the wrong
+		// type (e.g. someone pushed a stringified value into options).
+		// `resolve_allowed_crawlers()` treats this as `[]` — same as
+		// "merchant explicitly cleared the list" — so the gate blocks.
+		// Reverting to LIVE_BROWSING_AGENTS instead would silently
+		// undo a corrupted-but-present opt-out, masking the bad state
+		// from the merchant. Failing closed surfaces it.
 		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => 'not-an-array' ];
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://openai.com/chatgpt.json"' )
 		);
 
-		$this->assertTrue( $result );
+		$this->assertInstanceOf( WP_Error::class, $result );
+	}
+
+	public function test_blocks_when_setting_value_is_explicit_empty_array(): void {
+		// `allowed_crawlers => []` is the merchant's explicit "block
+		// every brand" opt-out via the AI Crawlers UI. The gate must
+		// honor that intent — never re-expand to the
+		// LIVE_BROWSING_AGENTS default. Pinning here so a future
+		// refactor that re-introduces the array-vs-empty fallback
+		// trips this test loudly. The pre-1.0 plugin had this exact
+		// regression and silently re-enabled brands the merchant had
+		// turned off.
+		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'profile="https://openai.com/chatgpt.json"' )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $result );
 	}
 }
