@@ -331,7 +331,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// response headers).
 		$body           = $request->get_json_params();
 		$unknown_params = [];
-		if ( is_array( $body ) ) {
+		// Only inspect associative-array bodies. A list-style payload
+		// (e.g. `[1,2,3]`) decodes to an array with integer keys 0,1,2;
+		// running the unknown-params detection would report
+		// `0, 1, 2` in the response header — meaningless noise that
+		// looks like real misnaming. The spec body shape for
+		// catalog/search is always a JSON object; rejecting list
+		// shapes downstream is a separate validation concern, but
+		// this diagnostic should silently skip non-objects.
+		if ( is_array( $body ) && ! empty( $body ) && ! array_is_list( $body ) ) {
 			$known        = [ 'query', 'filters', 'pagination', 'sort', 'context', 'signals' ];
 			$unknown_keys = array_values( array_diff( array_keys( $body ), $known ) );
 			// Sanitize, drop empty results, then bound the count and
