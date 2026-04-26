@@ -62,14 +62,14 @@ class WC_AI_Storefront_JsonLd {
 			],
 		];
 
-		// Inventory detail at Offer level. WC core's
-		// `structured_data_product` emits `offers` as a list, so the
-		// assignment targets `offers[0]`, not `offers` directly.
-		// Mirrors the `isset() && is_array()` guard the priceCurrency
-		// + hasMerchantReturnPolicy + shippingDetails emissions later
-		// in this method use; consider consolidating into one
-		// Offer-level block in a future cleanup. Regression locked
-		// by JsonLdTest.
+		// Inventory detail at Offer level. In the markup filtered by
+		// `woocommerce_structured_data_product`, `offers` is emitted
+		// as a list, so the assignment targets `offers[0]`, not
+		// `offers` directly. Mirrors the `isset() && is_array()`
+		// guard the priceCurrency + hasMerchantReturnPolicy +
+		// shippingDetails emissions later in this method use;
+		// consider consolidating into one Offer-level block in a
+		// future cleanup. Regression locked by JsonLdTest.
 		if ( $product->managing_stock() ) {
 			$stock_qty = $product->get_stock_quantity();
 			if (
