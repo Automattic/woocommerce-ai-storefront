@@ -107,9 +107,45 @@ class WC_AI_Storefront_Attribution {
 	/**
 	 * Capture AI attribution data from the request onto the order.
 	 *
-	 * WooCommerce Order Attribution already captures utm_source, utm_medium, etc.
-	 * We just need to capture our custom ai_session_id parameter and identify
-	 * whether the order came from an AI agent.
+	 * Two recognition gates:
+	 *
+	 *   1. STRICT — utm_medium === 'ai_agent'. Set by our own
+	 *      `build_continue_url()` so any order placed via the link
+	 *      OUR /checkout-sessions endpoint produced lands here. This
+	 *      is the canonical AI-order signal.
+	 *
+	 *   2. LENIENT — utm_source canonicalizes to a known AI agent host
+	 *      via `KNOWN_AGENT_HOSTS`. Agents that bypass our endpoint
+	 *      and build their own checkout-link URL (e.g. UCPPlayground
+	 *      sending `?utm_source=ucpplayground.com&utm_medium=referral`)
+	 *      get recognized via the host match. Without this gate, those
+	 *      orders looked like ordinary referral traffic and never got
+	 *      `_wc_ai_storefront_agent` meta — surfacing as
+	 *      "AI orders = 0" in the dashboard even when AI agents drove
+	 *      real purchases.
+	 *
+	 * The host match is safe because `KNOWN_AGENT_HOSTS` is a
+	 * code-controlled allow-list, not a free-form string. A random
+	 * referrer can't spoof itself into AI attribution by sending
+	 * `utm_source=evil.example` — that hostname isn't in the map.
+	 *
+	 * Stored values:
+	 *   - `AGENT_META_KEY` = canonical brand name when host-matched
+	 *     (so the Recent Orders display + Top Agent stats show
+	 *     "UCPPlayground", not "ucpplayground.com"). Falls back to
+	 *     the raw utm_source for legacy orders or when the source
+	 *     wasn't a recognized host.
+	 *   - `AGENT_HOST_RAW_META_KEY` = the unaltered hostname for
+	 *     "Other AI" drill-in or graduation review. Two write paths
+	 *     converge here — the lenient gate stamps utm_source as the
+	 *     raw host, then the strict gate's `ai_agent_host_raw` URL
+	 *     param overwrites if present (more accurate since the
+	 *     producer side stamped the literal hostname there).
+	 *
+	 * WooCommerce core's Order Attribution captures utm_source /
+	 * utm_medium itself; we don't duplicate that work, just lift the
+	 * AI-specific signals into our own meta and an ai_session_id from
+	 * the request.
 	 *
 	 * @param WC_Order $order The order object.
 	 */
@@ -118,13 +154,52 @@ class WC_AI_Storefront_Attribution {
 		// WooCommerce Order Attribution stores utm_medium in order meta.
 		$utm_medium = $order->get_meta( '_wc_order_attribution_utm_medium' );
 
-		if ( self::AI_AGENT_MEDIUM !== $utm_medium ) {
-			// Also check the current request parameters as a fallback.
-			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params, not processing form.
-			$request_medium = isset( $_GET['utm_medium'] ) ? sanitize_text_field( wp_unslash( $_GET['utm_medium'] ) ) : '';
-			if ( self::AI_AGENT_MEDIUM !== $request_medium ) {
-				return;
-			}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params, not processing form.
+		$request_medium = isset( $_GET['utm_medium'] ) ? sanitize_text_field( wp_unslash( $_GET['utm_medium'] ) ) : '';
+
+		// Resolve utm_source up front — both the strict (utm_medium =
+		// ai_agent) and lenient (host-match) gates need it.
+		$utm_source = $order->get_meta( '_wc_order_attribution_utm_source' );
+		if ( ! $utm_source ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params.
+			$utm_source = isset( $_GET['utm_source'] ) ? sanitize_text_field( wp_unslash( $_GET['utm_source'] ) ) : '';
+		}
+
+		// Two ways to recognize an AI order:
+		//
+		//   1. STRICT: utm_medium === 'ai_agent'. This is the value our
+		//      own continue_url builder emits, so it's unambiguous —
+		//      every order WE built the link for hits this branch.
+		//
+		//   2. LENIENT: utm_source canonicalizes to a known AI agent
+		//      host. Agents that bypass our /checkout-sessions endpoint
+		//      and build their own checkout-link URL set whatever
+		//      utm_medium they want (UCPPlayground sends `referral`,
+		//      others may send `agent`, `ai`, `bot`, etc.). The host
+		//      identifies the agent unambiguously regardless. We trust
+		//      the host match here because it requires an entry in
+		//      `KNOWN_AGENT_HOSTS` — that's a code-controlled allow-list
+		//      of hostnames we've explicitly recognized as AI vendors,
+		//      not a free-form string a random referrer can spoof into.
+		//
+		// Either path = AI order. Otherwise the order is regular
+		// referral / direct / paid-search traffic and we leave it
+		// alone.
+		$canonical_from_source = '';
+		if ( '' !== $utm_source ) {
+			$canonical_from_source =
+				WC_AI_Storefront_UCP_Agent_Header::canonicalize_host_idempotent( (string) $utm_source );
+		}
+		$is_known_ai_host =
+			'' !== $canonical_from_source
+			&& WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET !== $canonical_from_source;
+
+		if (
+			self::AI_AGENT_MEDIUM !== $utm_medium
+			&& self::AI_AGENT_MEDIUM !== $request_medium
+			&& ! $is_known_ai_host
+		) {
+			return;
 		}
 
 		// Capture AI session ID from request.
@@ -134,15 +209,24 @@ class WC_AI_Storefront_Attribution {
 			$order->update_meta_data( self::SESSION_META_KEY, $session_id );
 		}
 
-		// Capture the agent name from utm_source.
-		$utm_source = $order->get_meta( '_wc_order_attribution_utm_source' );
-		if ( ! $utm_source ) {
-			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params.
-			$utm_source = isset( $_GET['utm_source'] ) ? sanitize_text_field( wp_unslash( $_GET['utm_source'] ) ) : '';
+		if ( $utm_source ) {
+			// Stamp the canonical brand name when we recognized the
+			// host, so the Recent Orders display + stats breakdown both
+			// see the friendly form. For unrecognized hosts we keep
+			// the raw utm_source as-is (legacy behavior; the display
+			// layer's `canonicalize_host_idempotent()` is the safety
+			// net).
+			$value_to_store = $is_known_ai_host ? $canonical_from_source : $utm_source;
+			$order->update_meta_data( self::AGENT_META_KEY, $value_to_store );
 		}
 
-		if ( $utm_source ) {
-			$order->update_meta_data( self::AGENT_META_KEY, $utm_source );
+		// When we recognized an AI host via lenient match, also stamp
+		// the raw hostname into the host_raw meta so merchants drilling
+		// in see the original source the agent declared. (The strict
+		// path stamps this from the `ai_agent_host_raw` URL param a few
+		// lines below.)
+		if ( $is_known_ai_host && '' !== $utm_source ) {
+			$order->update_meta_data( self::AGENT_HOST_RAW_META_KEY, (string) $utm_source );
 		}
 
 		// Capture the raw (untransformed) hostname when present. This
