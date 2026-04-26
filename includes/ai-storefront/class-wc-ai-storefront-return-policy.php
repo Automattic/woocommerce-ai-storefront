@@ -139,17 +139,22 @@ class WC_AI_Storefront_Return_Policy {
 	}
 
 	/**
-	 * `absint`-equivalent helper. Standalone to keep the sanitizer a
-	 * pure function callable from the test harness without pulling in
-	 * the WP `absint` stub. Falls back to `absint()` when WP is loaded.
+	 * Clamp a value to a non-negative integer.
+	 *
+	 * Standalone (does NOT delegate to WP's `absint()`) because WP's
+	 * `absint()` takes the absolute value — `absint( -5 )` returns
+	 * `5`, not `0`. That contradicts the sanitizer's "negative →
+	 * unset" contract: a merchant typing `-5` for days should produce
+	 * the null sentinel (no window configured), not 5 days. Casting
+	 * via `max( 0, (int) $v )` clamps negatives to 0 cleanly,
+	 * which the days/page_id branches above interpret as "no value."
+	 * Same logic applies in test (no WP) and production (with WP)
+	 * — the contract doesn't bend on environment.
 	 *
 	 * @param mixed $v Input value.
 	 * @return int
 	 */
 	private static function absint( $v ): int {
-		if ( function_exists( 'absint' ) ) {
-			return absint( $v );
-		}
 		return max( 0, (int) $v );
 	}
 }

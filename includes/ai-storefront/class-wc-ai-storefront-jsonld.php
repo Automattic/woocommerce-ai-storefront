@@ -466,12 +466,27 @@ class WC_AI_Storefront_JsonLd {
 		if ( $page_id <= 0 ) {
 			return '';
 		}
-		// Re-check published status — see method docblock for why
-		// the save-time gate isn't sufficient on its own.
+		// Re-check published status AND post type — both are enforced
+		// at save-time by the sanitizer (`get_post_status === 'publish'`
+		// AND `get_post_type === 'page'`), but emission must mirror
+		// to handle three drift cases:
+		//   1. Page unpublished after save (status flips publish → draft).
+		//   2. Page deleted after save (status returns false / post type
+		//      returns false).
+		//   3. Settings corrupted/bypassed by direct DB write or a
+		//      future UI that writes a non-page post ID.
+		// All three should produce no link rather than emit a stale
+		// or wrong-shape URL.
 		if ( ! function_exists( 'get_post_status' ) ) {
 			return '';
 		}
 		if ( 'publish' !== get_post_status( $page_id ) ) {
+			return '';
+		}
+		if ( ! function_exists( 'get_post_type' ) ) {
+			return '';
+		}
+		if ( 'page' !== get_post_type( $page_id ) ) {
 			return '';
 		}
 		$link = function_exists( 'get_permalink' ) ? get_permalink( $page_id ) : '';

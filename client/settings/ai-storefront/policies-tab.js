@@ -608,9 +608,17 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 			} ),
 		];
 		if ( savedPageId > 0 ) {
+			// `status=publish` mirrors the main list fetch: an
+			// unpublished page (saved when published, later moved to
+			// draft/trash) must NOT come back as a valid dropdown
+			// option — the server-side emission gate at
+			// `resolve_merchant_return_link()` already drops the link
+			// in that case, and the dropdown / preview need to agree
+			// so the merchant doesn't see a "selected" value that
+			// silently won't be emitted.
 			requests.push(
 				apiFetch( {
-					path: `/wp/v2/pages?include=${ savedPageId }&_fields=id,title,link`,
+					path: `/wp/v2/pages?include=${ savedPageId }&status=publish&_fields=id,title,link`,
 				} )
 			);
 		}

@@ -42,11 +42,16 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_permalink' )->alias(
 			static fn( $id ) => "https://example.com/?p={$id}"
 		);
-		// Default policy pages to `publish` status. Tests that
-		// exercise the unpublished-page degradation path override
-		// this with `Functions\when( 'get_post_status' )->justReturn( 'draft' )`
-		// or similar — see `test_emission_omits_merchant_return_link_when_page_unpublished`.
+		// Default policy pages to `publish` status + `page` type.
+		// Tests that exercise the degradation paths (unpublished page,
+		// wrong post type) override these — see
+		// `test_emission_omits_merchant_return_link_when_page_unpublished`
+		// for an example. Both are required because emission re-checks
+		// both at runtime to mirror the sanitizer's save-time gate
+		// (which enforces `'publish' === get_post_status()` AND
+		// `'page' === get_post_type()`).
 		Functions\when( 'get_post_status' )->justReturn( 'publish' );
+		Functions\when( 'get_post_type' )->justReturn( 'page' );
 	}
 
 	protected function tearDown(): void {
@@ -314,6 +319,37 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 			$block['returnPolicyCategory']
 		);
 		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
+	}
+
+	public function test_emission_omits_merchant_return_link_when_post_type_is_not_page(): void {
+		// Same gate as the unpublished-page check, different drift
+		// case: settings corrupted/bypassed (or future UI expanded
+		// to other post types) such that page_id points at a
+		// post/attachment instead of a page. Save-time sanitizer
+		// would reject this, but a direct DB write or settings
+		// migration could land an out-of-contract value. Emission
+		// must mirror the sanitizer's `'page' === get_post_type()`
+		// gate to refuse a wrong-shape link.
+		Functions\when( 'get_post_type' )->justReturn( 'post' );
+
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 99,
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+				'methods' => [ 'ReturnByMail' ],
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
+		// Other fields still emit — only the link is gated.
+		$this->assertSame(
+			'https://schema.org/MerchantReturnFiniteReturnWindow',
+			$block['returnPolicyCategory']
+		);
 	}
 
 	// ------------------------------------------------------------------
