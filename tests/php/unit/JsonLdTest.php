@@ -155,7 +155,45 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// Inventory (only when managing stock)
 	// ------------------------------------------------------------------
 
-	public function test_inventory_level_added_when_stock_is_tracked(): void {
+	public function test_inventory_level_added_at_offer_level_when_stock_is_tracked(): void {
+		// Production input shape: WC core emits `offers` as a list of
+		// Offer dicts. Emission must land at `offers[0]`, never as a
+		// string key on the outer `offers` list (would mix list +
+		// assoc shapes — PHP serializes that as a JSON object, not
+		// an Offer array).
+		$product = $this->make_product( [
+			'managing_stock' => true,
+			'stock_quantity' => 17,
+		] );
+
+		$result = $this->jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$product
+		);
+
+		$this->assertEquals(
+			[
+				'@type' => 'QuantitativeValue',
+				'value' => 17,
+			],
+			$result['offers'][0]['inventoryLevel']
+		);
+		// Regression guard: `inventoryLevel` must never be a string
+		// key on the outer `offers` list. The earlier-shipped form
+		// `$markup['offers']['inventoryLevel'] = ...` would smuggle
+		// it in there and break Offer-array shape on serialization.
+		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'] );
+	}
+
+	public function test_inventory_level_omitted_when_offers_is_assoc_shape(): void {
+		// Defensive: a third-party filter could pass associative
+		// `offers` (e.g., `['@type' => 'Offer']` instead of
+		// `[['@type' => 'Offer']]`). The `isset($markup['offers'][0])`
+		// guard returns false on assoc input, so emission correctly
+		// skips. Without this test, a future refactor that loosens
+		// the guard to `is_array($markup['offers'])` could
+		// accidentally re-introduce the original assoc-key write
+		// against this shape.
 		$product = $this->make_product( [
 			'managing_stock' => true,
 			'stock_quantity' => 17,
@@ -166,23 +204,22 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$product
 		);
 
-		$this->assertEquals(
-			[
-				'@type' => 'QuantitativeValue',
-				'value' => 17,
-			],
-			$result['offers']['inventoryLevel']
-		);
+		// inventoryLevel must be absent at every level — neither
+		// stamped as a string key on `offers` (the original bug)
+		// nor injected at the top level.
+		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'] );
+		$this->assertArrayNotHasKey( 'inventoryLevel', $result );
 	}
 
 	public function test_inventory_level_omitted_when_stock_is_not_tracked(): void {
 		$product = $this->make_product( [ 'managing_stock' => false ] );
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ '@type' => 'Offer' ] ],
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
 			$product
 		);
 
+		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'][0] );
 		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'] );
 	}
 
@@ -196,11 +233,35 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		] );
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ '@type' => 'Offer' ] ],
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
 			$product
 		);
 
+		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'][0] );
 		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'] );
+	}
+
+	public function test_inventory_level_omitted_when_offers_is_missing(): void {
+		// Defensive: if a third-party filter strips `offers` entirely
+		// before our hook fires, the inventoryLevel emission must
+		// gracefully skip rather than write to a non-existent path.
+		// The `isset($markup['offers'][0])` guard mirrors the same
+		// defense used by the priceCurrency / hasMerchantReturnPolicy
+		// emissions.
+		$product = $this->make_product( [
+			'managing_stock' => true,
+			'stock_quantity' => 17,
+		] );
+
+		$result = $this->jsonld->enhance_product_data(
+			// No 'offers' key at all.
+			[ '@type' => 'Product' ],
+			$product
+		);
+
+		// No fatal, no spurious offers key, no inventoryLevel
+		// orphaned at the top level.
+		$this->assertArrayNotHasKey( 'inventoryLevel', $result );
 	}
 
 	// ------------------------------------------------------------------

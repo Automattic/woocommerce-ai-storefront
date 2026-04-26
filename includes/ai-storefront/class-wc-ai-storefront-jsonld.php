@@ -62,11 +62,22 @@ class WC_AI_Storefront_JsonLd {
 			],
 		];
 
-		// Enhanced availability with inventory detail.
+		// Inventory detail at Offer level. In the markup filtered by
+		// `woocommerce_structured_data_product`, `offers` is emitted
+		// as a list, so the assignment targets `offers[0]`, not
+		// `offers` directly. Mirrors the `isset() && is_array()`
+		// guard the priceCurrency + hasMerchantReturnPolicy +
+		// shippingDetails emissions later in this method use;
+		// consider consolidating into one Offer-level block in a
+		// future cleanup. Regression locked by JsonLdTest.
 		if ( $product->managing_stock() ) {
 			$stock_qty = $product->get_stock_quantity();
-			if ( null !== $stock_qty ) {
-				$markup['offers']['inventoryLevel'] = [
+			if (
+				null !== $stock_qty
+				&& isset( $markup['offers'][0] )
+				&& is_array( $markup['offers'][0] )
+			) {
+				$markup['offers'][0]['inventoryLevel'] = [
 					'@type' => 'QuantitativeValue',
 					'value' => $stock_qty,
 				];
