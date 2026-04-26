@@ -332,15 +332,37 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$body           = $request->get_json_params();
 		$unknown_params = [];
 		if ( is_array( $body ) ) {
-			$known          = [ 'query', 'filters', 'pagination', 'sort', 'context', 'signals' ];
-			$unknown_keys   = array_values( array_diff( array_keys( $body ), $known ) );
-			$unknown_params = function_exists( 'sanitize_key' )
+			$known        = [ 'query', 'filters', 'pagination', 'sort', 'context', 'signals' ];
+			$unknown_keys = array_values( array_diff( array_keys( $body ), $known ) );
+			// Sanitize, drop empty results, then bound the count and
+			// total length so a malicious or buggy client sending a
+			// large JSON object can't push us past common proxy/CDN
+			// header limits (~8 KiB total per header on most stacks).
+			// 8 keys + 256 chars is well under any plausible limit
+			// while still surfacing useful diagnostic signal — most
+			// real misnaming bugs are 1–3 stray keys.
+			$sanitized = function_exists( 'sanitize_key' )
 				? array_map( 'sanitize_key', $unknown_keys )
 				: $unknown_keys;
-			if ( ! empty( $unknown_params ) && WC_AI_Storefront_Logger::is_enabled() ) {
+			$sanitized = array_values( array_filter( $sanitized, 'strlen' ) );
+			if ( count( $sanitized ) > 8 ) {
+				$sanitized   = array_slice( $sanitized, 0, 8 );
+				$sanitized[] = '…';
+			}
+			$joined = implode( ', ', $sanitized );
+			if ( strlen( $joined ) > 256 ) {
+				$joined = substr( $joined, 0, 253 ) . '…';
+			}
+			// Surface as a single string for the header path; keep
+			// the original sanitized array for log readability.
+			$unknown_params = [
+				'list'   => $sanitized,
+				'header' => $joined,
+			];
+			if ( ! empty( $sanitized ) && WC_AI_Storefront_Logger::is_enabled() ) {
 				WC_AI_Storefront_Logger::debug(
 					'UCP catalog/search: received unrecognized params (ignored): '
-					. implode( ', ', $unknown_params )
+					. $joined
 				);
 			}
 		}
@@ -501,11 +523,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// `query`) without us breaking conformance by returning 400 —
 		// the spec permits vendor extensions, so silent-ignore is the
 		// right default. The log line above gates on debug; the header
-		// is unconditional so production installs surface the signal too.
-		if ( ! empty( $unknown_params ) ) {
+		// is unconditional so production installs surface the signal
+		// too. Header value is pre-bounded to ≤8 keys and ≤256 chars
+		// at capture time (see the sanitization block at the top of
+		// the handler) so a malicious client can't push us past common
+		// proxy/CDN per-header size limits.
+		if ( ! empty( $unknown_params ) && ! empty( $unknown_params['header'] ) ) {
 			$response->header(
 				'X-WC-AI-Storefront-Unknown-Params',
-				implode( ', ', $unknown_params )
+				$unknown_params['header']
 			);
 		}
 
