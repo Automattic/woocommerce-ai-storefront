@@ -127,9 +127,27 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			}
 			return;
 		}
+		// Priority `PHP_INT_MAX` so the UCP merchant-scope mutations
+		// are applied LAST. `pre_get_posts` is a notoriously crowded
+		// hook — themes, search plugins, related-products plugins,
+		// and WC core itself all register callbacks. Anything that
+		// fires AFTER us at a higher priority number could read our
+		// mutated `tax_query` / `post__in`, modify, and write back
+		// in a way that clobbers part or all of the merchant's
+		// syndication scope. By being last we guarantee no later
+		// callback gets to override us — the merchant's scope is
+		// the final word on what an AI agent sees.
+		//
+		// Explicit `accepted_args = 1` because the `pre_get_posts`
+		// hook only ever passes one argument (`WP_Query`); spelling
+		// it out documents intent and prevents a theoretical edge
+		// case where another callback in the chain alters the
+		// hook's signature via core changes.
 		add_action(
 			'pre_get_posts',
-			[ $this, 'on_pre_get_posts' ]
+			[ $this, 'on_pre_get_posts' ],
+			PHP_INT_MAX,
+			1
 		);
 		self::$hook_registered = true;
 	}

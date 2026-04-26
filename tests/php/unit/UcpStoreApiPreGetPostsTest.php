@@ -314,13 +314,23 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		//      loudly.
 		\Brain\Monkey\Actions\expectAdded( 'pre_get_posts' )
 			->once()
-			->with( \Mockery::on(
-				static function ( $callback ): bool {
-					return is_array( $callback )
-						&& $callback[0] instanceof \WC_AI_Storefront_UCP_Store_API_Filter
-						&& 'on_pre_get_posts' === $callback[1];
-				}
-			) );
+			->with(
+				\Mockery::on(
+					static function ( $callback ): bool {
+						return is_array( $callback )
+							&& $callback[0] instanceof \WC_AI_Storefront_UCP_Store_API_Filter
+							&& 'on_pre_get_posts' === $callback[1];
+					}
+				),
+				// Priority must be PHP_INT_MAX so any other
+				// `pre_get_posts` callback in the chain can't
+				// overwrite our `tax_query` / `post__in`
+				// mutations. A regression that drops the
+				// priority back to default (10) silently
+				// re-opens the override window.
+				PHP_INT_MAX,
+				1
+			);
 
 		\Brain\Monkey\Filters\expectAdded(
 			'woocommerce_store_api_product_collection_query_args'
