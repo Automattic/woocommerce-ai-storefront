@@ -216,6 +216,22 @@ class WC_AI_Storefront_Admin_Controller {
 		);
 
 		// Product/category/tag/brand search for selection UI.
+		// Pages suitable for linking from the Policies tab — excludes
+		// WC system pages (Cart, Checkout, My Account, Shop) which are
+		// never the merchant's policy page. Privacy / Terms / Refund
+		// pages are kept, since merchants may legitimately link them.
+		// Returns the same shape `/wp/v2/pages` does (id, title, link)
+		// for drop-in replacement at the JS call site.
+		register_rest_route(
+			self::NAMESPACE,
+			'/policy-pages',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'get_policy_pages' ],
+				'permission_callback' => [ $this, 'check_admin_permission' ],
+			]
+		);
+
 		register_rest_route(
 			self::NAMESPACE,
 			'/search/categories',
@@ -588,6 +604,61 @@ class WC_AI_Storefront_Admin_Controller {
 				'currency' => get_woocommerce_currency(),
 			]
 		);
+	}
+
+	/**
+	 * Pages suitable for linking from the Policies tab.
+	 *
+	 * Returns published pages MINUS WC's system pages (Cart,
+	 * Checkout, My Account, Shop) which are never the merchant's
+	 * policy page. WC core's `wc_get_page_id()` is the canonical way
+	 * to identify these — it tracks the actual page IDs from WC's
+	 * settings, so it correctly excludes the merchant's renamed-or-
+	 * customised system pages, not just slug-matches against the
+	 * defaults.
+	 *
+	 * Privacy-policy / terms / refund-explainer pages are kept in
+	 * the list because merchants may legitimately link to them as
+	 * their return policy; the filter is narrow on purpose.
+	 *
+	 * Response shape mirrors `/wp/v2/pages` (id, title, link) so the
+	 * JS call site is a drop-in replacement.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function get_policy_pages() {
+		$excluded = [];
+		foreach ( [ 'cart', 'checkout', 'myaccount', 'shop' ] as $slug ) {
+			$page_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( $slug ) : 0;
+			if ( $page_id > 0 ) {
+				$excluded[] = $page_id;
+			}
+		}
+
+		$pages = get_pages(
+			[
+				'post_status' => 'publish',
+				'sort_column' => 'post_title',
+				'sort_order'  => 'ASC',
+				'number'      => 200,
+				'exclude'     => $excluded,
+			]
+		);
+
+		$result = [];
+		if ( is_array( $pages ) ) {
+			foreach ( $pages as $page ) {
+				$result[] = [
+					'id'    => (int) $page->ID,
+					'title' => [
+						'rendered' => $page->post_title,
+					],
+					'link'  => get_permalink( $page->ID ),
+				];
+			}
+		}
+
+		return new WP_REST_Response( $result );
 	}
 
 	/**

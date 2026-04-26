@@ -165,25 +165,6 @@ export const derivePreview = ( policy, country ) => {
 };
 
 /**
- * Safe pretty-printer using textContent (NOT innerHTML) so a
- * malicious page title or other merchant-controlled string can't
- * inject markup into the preview. JSON.stringify gives us a string,
- * we render it inside a `<pre>` via React's normal text path.
- *
- * @param {Object|null} block Preview block, or null for unconfigured.
- * @return {string}           JSON pretty-print, or a placeholder note.
- */
-const prettyPrint = ( block ) => {
-	if ( block === null ) {
-		return __(
-			'(No hasMerchantReturnPolicy will be emitted)',
-			'woocommerce-ai-storefront'
-		);
-	}
-	return JSON.stringify( block, null, 2 );
-};
-
-/**
  * The return & refund policy configuration section inside the Policies
  * tab. Renders the three-way mode toggle (returns accepted / final
  * sale / don't expose), conditional fields per mode, and a live
@@ -198,14 +179,12 @@ const prettyPrint = ( block ) => {
  * @param {Object}   props
  * @param {Object}   props.policy       Current policy draft (mode + sub-fields).
  * @param {Function} props.onChange     Called with `(partialPolicy)` when any field changes.
- * @param {string}   props.country      Store base country (ISO 3166-1 alpha-2). Empty string suppresses preview.
  * @param {Array}    props.pages        Published pages list `[{id, title, link}]`.
  * @param {boolean}  props.pagesLoading Whether the pages list is still resolving.
  */
 const ReturnRefundPolicySection = ( {
 	policy,
 	onChange,
-	country,
 	pages,
 	pagesLoading,
 } ) => {
@@ -219,23 +198,6 @@ const ReturnRefundPolicySection = ( {
 			: ( policy.methods || [] ).filter( ( m ) => m !== method );
 		onChange( { ...policy, methods: next } );
 	};
-
-	// Resolve the selected page's permalink for the live preview. The
-	// pages list returned by /wp/v2/pages includes a `link` field, so
-	// we look it up from the cached array rather than firing a second
-	// REST call.
-	const pageLink = useMemo( () => {
-		if ( ! policy.page_id || ! Array.isArray( pages ) ) {
-			return '';
-		}
-		const match = pages.find( ( p ) => p.id === policy.page_id );
-		return match ? match.link || '' : '';
-	}, [ policy.page_id, pages ] );
-
-	const previewBlock = useMemo(
-		() => derivePreview( { ...policy, pageLink }, country ),
-		[ policy, pageLink, country ]
-	);
 
 	const pageOptions = useMemo( () => {
 		const opts = [
@@ -284,7 +246,7 @@ const ReturnRefundPolicySection = ( {
 					} }
 				>
 					{ __(
-						'Choose what AI agents see for returns. The default is to expose nothing — pick a mode to publish a structured policy.',
+						'AI agents read this to decide whether to recommend your products and place buy actions. Without a clear return policy, they typically downgrade or skip your products in favour of competitors who publish one.',
 						'woocommerce-ai-storefront'
 					) }
 				</p>
@@ -309,7 +271,7 @@ const ReturnRefundPolicySection = ( {
 					<ToggleGroupControlOption
 						value={ POLICY_MODES.FINAL_SALE }
 						label={ __(
-							'No returns (final sale)',
+							'No returns',
 							'woocommerce-ai-storefront'
 						) }
 					/>
@@ -324,9 +286,9 @@ const ReturnRefundPolicySection = ( {
 
 				<div style={ { marginTop: '20px' } }>
 					{ policy.mode === POLICY_MODES.UNCONFIGURED && (
-						<Notice status="info" isDismissible={ false }>
+						<Notice status="warning" isDismissible={ false }>
 							{ __(
-								'No return policy will be exposed to AI agents. Pick "Returns accepted" or "No returns" to publish one.',
+								'AI agents may downgrade your products in recommendations, or skip them entirely. Pick "Returns accepted" or "No returns" to publish a policy.',
 								'woocommerce-ai-storefront'
 							) }
 						</Notice>
@@ -334,7 +296,12 @@ const ReturnRefundPolicySection = ( {
 
 					{ policy.mode === POLICY_MODES.RETURNS_ACCEPTED && (
 						<>
-							<div style={ { marginBottom: '16px' } }>
+							<div
+								style={ {
+									marginBottom: '16px',
+									maxWidth: '480px',
+								} }
+							>
 								{ pagesLoading ? (
 									<Spinner />
 								) : (
@@ -518,38 +485,6 @@ const ReturnRefundPolicySection = ( {
 						</div>
 					) }
 				</div>
-
-				<div style={ { marginTop: '24px' } }>
-					<h4
-						style={ {
-							margin: '0 0 8px',
-							fontSize: '12px',
-							fontWeight: 600,
-							textTransform: 'uppercase',
-							letterSpacing: '0.5px',
-							color: colors.textMuted,
-						} }
-					>
-						{ __( 'Live preview', 'woocommerce-ai-storefront' ) }
-					</h4>
-					<pre
-						style={ {
-							margin: 0,
-							padding: '12px 14px',
-							background: colors.surfaceSubtle,
-							border: `1px solid ${ colors.borderSubtle }`,
-							borderRadius: '4px',
-							fontSize: '12px',
-							lineHeight: '1.5',
-							color: colors.textPrimary,
-							overflow: 'auto',
-							whiteSpace: 'pre-wrap',
-							wordBreak: 'break-word',
-						} }
-					>
-						{ prettyPrint( previewBlock ) }
-					</pre>
-				</div>
 			</CardBody>
 		</Card>
 	);
@@ -651,20 +586,29 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 		// "no published pages exist" (success with empty result) from
 		// "pages endpoint failed" (network/auth/CORS error). Only the
 		// former is benign; the latter shows the warning notice.
+		// Use the plugin's own `/policy-pages` endpoint instead of
+		// `/wp/v2/pages` so WC system pages (Cart, Checkout, My
+		// Account, Shop) are excluded server-side via `wc_get_page_id()`.
+		// That filter respects merchant-renamed system pages (slug
+		// matching wouldn't), and centralises the inclusion rule so
+		// the dropdown semantic is enforced on the server, not
+		// client-side via keyword guessing.
 		const requests = [
 			apiFetch( {
-				path: '/wp/v2/pages?per_page=100&status=publish&_fields=id,title,link',
+				path: '/wc/v3/ai-storefront/admin/policy-pages',
 			} ),
 		];
 		if ( savedPageId > 0 ) {
-			// `status=publish` mirrors the main list fetch: an
-			// unpublished page (saved when published, later moved to
-			// draft/trash) must NOT come back as a valid dropdown
-			// option — the server-side emission gate at
-			// `resolve_merchant_return_link()` already drops the link
-			// in that case, and the dropdown / preview need to agree
-			// so the merchant doesn't see a "selected" value that
-			// silently won't be emitted.
+			// Best-effort recovery for the case where the saved page
+			// has been moved to draft/trash since save: the main
+			// `/policy-pages` fetch only returns published pages, so
+			// the saved id may not appear in the list. The fallback
+			// `/wp/v2/pages?include=...` resolves the title (gracefully
+			// handles a since-unpublished page by returning empty —
+			// the server-side emission gate already drops the link in
+			// that case, and the dropdown agrees so the merchant
+			// doesn't see a "selected" value that silently won't be
+			// emitted).
 			requests.push(
 				apiFetch( {
 					path: `/wp/v2/pages?include=${ savedPageId }&status=publish&_fields=id,title,link`,
@@ -705,23 +649,6 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 		};
 	}, [ savedPageId ] );
 
-	// Read store base country from server-localized params. PHP localizes
-	// `wc_get_base_location()['country']` (or empty string when the
-	// merchant hasn't configured a store address) into
-	// `wcAiSyndicationParams.storeCountry`. Mirroring the server's
-	// behavior is critical here: `derivePreview()` suppresses the entire
-	// policy block when country is empty, matching the server's
-	// `if ( $country && ... )` gate at emission time. Falling back to
-	// `'US'` when the param is missing or empty would silently produce
-	// a misleading preview for non-US merchants and merchants who haven't
-	// configured a country yet.
-	const country =
-		typeof window !== 'undefined' &&
-		window.wcAiSyndicationParams &&
-		typeof window.wcAiSyndicationParams.storeCountry === 'string'
-			? window.wcAiSyndicationParams.storeCountry
-			: '';
-
 	const handleSave = () => {
 		// Save feedback (success + error) is owned by `saveSettings()`
 		// in the data-store layer, which dispatches global
@@ -760,7 +687,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 					} }
 				>
 					{ __(
-						'Configure the policy signals AI agents see for your store.',
+						"WooCommerce doesn't have a built-in setting for your return policy, but AI agents need it to confidently recommend your products. Set it once here.",
 						'woocommerce-ai-storefront'
 					) }
 				</p>
@@ -778,7 +705,6 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 			<ReturnRefundPolicySection
 				policy={ draft }
 				onChange={ setDraft }
-				country={ country }
 				pages={ pages }
 				pagesLoading={ pagesLoading }
 			/>
