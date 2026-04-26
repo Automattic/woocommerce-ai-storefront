@@ -2,16 +2,35 @@
 /**
  * Tests for WC_AI_Storefront_UCP_REST_Controller route registration.
  *
- * Scope: the `register_routes()` contract only — namespace, paths,
- * methods, permission callback. The three routes must exist at their
- * canonical paths under `wc/ucp/v1`, accept POST, and be public.
+ * Scope: the `register_routes()` contract — namespace, paths,
+ * methods, permission_callback wiring. Four routes register under
+ * `wc/ucp/v1`:
+ *
+ *   - `/catalog/search`     POST, gated by `check_agent_access`
+ *   - `/catalog/lookup`     POST, gated by `check_agent_access`
+ *   - `/checkout-sessions`  POST, gated by `check_agent_access`
+ *   - `/extension/schema`   GET,  public (`__return_true`) so manifest
+ *                                 discovery resolves regardless of
+ *                                 per-brand merchant settings
+ *
+ * Commerce routes share the gate so the merchant's `allowed_crawlers`
+ * setting is honored at the REST layer (not just in robots.txt).
+ * `extension/schema` stays public because the manifest's `schema`
+ * URL must resolve for any agent — gating it would break manifest
+ * discovery for agents the merchant hasn't pre-approved.
  *
  * Handler behavior (request/response shapes, filter mapping,
- * line-item validation, the syndication-disabled gate) is tested in
- * the dedicated per-handler files:
+ * line-item validation, the syndication-disabled gate that returns
+ * a UCP-shaped 503 envelope) is tested in the dedicated per-handler
+ * files:
  *   - UcpCatalogSearchTest
  *   - UcpCatalogLookupTest
  *   - UcpCheckoutSessionsTest
+ *
+ * The `check_agent_access()` permission callback itself has its own
+ * dedicated test file (UcpAgentAccessGateTest) that covers the
+ * brand-allow-list logic, syndication-disabled bypass, and WP_Error
+ * envelope shape.
  *
  * @package WooCommerce_AI_Storefront
  */
