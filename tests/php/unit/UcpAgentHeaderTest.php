@@ -229,4 +229,47 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 			WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( 'foo.openai.com' )
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// normalize_host_string() — utm_source variant collapsing
+	// ------------------------------------------------------------------
+	//
+	// Lenient host-match attribution reads `utm_source` directly from WC
+	// core; agents send that value in many lexical forms. The normalizer
+	// must collapse all of them to a single lookup key.
+
+	/**
+	 * @dataProvider host_normalization_provider
+	 */
+	public function test_normalize_host_string_collapses_variants( string $input, string $expected ): void {
+		$this->assertEquals(
+			$expected,
+			WC_AI_Storefront_UCP_Agent_Header::normalize_host_string( $input )
+		);
+	}
+
+	public static function host_normalization_provider(): array {
+		return [
+			'bare hostname'                 => [ 'openai.com', 'openai.com' ],
+			'mixed case'                    => [ 'OpenAI.COM', 'openai.com' ],
+			'https URL'                     => [ 'https://openai.com', 'openai.com' ],
+			'https URL trailing slash'      => [ 'https://openai.com/', 'openai.com' ],
+			'https URL with path'           => [ 'https://openai.com/foo/bar', 'openai.com' ],
+			'http URL'                      => [ 'http://openai.com', 'openai.com' ],
+			'host with port'                => [ 'openai.com:443', 'openai.com' ],
+			'URL with port'                 => [ 'https://openai.com:443/path', 'openai.com' ],
+			'FQDN trailing dot'             => [ 'openai.com.', 'openai.com' ],
+			'whitespace padding'            => [ '  openai.com  ', 'openai.com' ],
+			'bare host with path'           => [ 'openai.com/', 'openai.com' ],
+			'mixed case URL with path'      => [ 'HTTPS://OpenAI.COM/', 'openai.com' ],
+			'empty input'                   => [ '', '' ],
+			'whitespace-only input'         => [ '   ', '' ],
+			'malformed URL'                 => [ '://no-scheme', '' ],
+			'subdomain preserved'           => [ 'shopping.openai.com', 'shopping.openai.com' ],
+			// Non-feature: leading `www.` is NOT stripped. `www.openai.com`
+			// is a different DNS name from `openai.com`. Recognizing it
+			// requires an explicit `KNOWN_AGENT_HOSTS` entry.
+			'www prefix preserved'          => [ 'www.openai.com', 'www.openai.com' ],
+		];
+	}
 }

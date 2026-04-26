@@ -534,14 +534,65 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 			'ChatGPT',
 			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY )
 		);
-		// host_raw preserves the actual case the agent sent, since
-		// it's diagnostic provenance — DNS may be case-insensitive
-		// but a future debug session might need to know the agent
-		// declared "OpenAI.COM" specifically.
+		// host_raw stores the NORMALIZED form (lowercase, no scheme,
+		// no port, no trailing dot). Earlier behavior preserved the
+		// agent's raw casing for "diagnostic provenance," but in
+		// practice the value is consumed by display surfaces that
+		// expect a clean hostname shape — and DNS case-insensitivity
+		// makes the casing cosmetic noise. If a debug session needs
+		// the literal raw value the agent sent, that's what
+		// `_wc_order_attribution_utm_source` already preserves
+		// verbatim (WC core writes it without modification).
 		$this->assertEquals(
-			'OpenAI.COM',
+			'openai.com',
 			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY )
 		);
+	}
+
+	public function test_capture_lenient_gate_normalizes_url_shaped_utm_source(): void {
+		// Real-world variants Copilot flagged: `https://openai.com`,
+		// `openai.com/`, `openai.com:443`, trailing dot. All five
+		// forms below must collapse to the same `openai.com` lookup
+		// key and produce identical attribution. Without
+		// `normalize_host_string()`, the lenient gate silently
+		// missed any non-bare-host form.
+		$variants = [
+			'https://openai.com',
+			'https://openai.com/',
+			'https://openai.com/some/path',
+			'openai.com:443',
+			'openai.com.',
+		];
+
+		foreach ( $variants as $utm_source ) {
+			$order = new WC_Order();
+			$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+			$order->set_test_meta( '_wc_order_attribution_utm_source', $utm_source );
+
+			Functions\expect( 'do_action' )->once();
+
+			$this->attribution->capture_ai_attribution( $order );
+
+			$this->assertEquals(
+				'ChatGPT',
+				$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY ),
+				"utm_source variant '{$utm_source}' should canonicalize to ChatGPT"
+			);
+			$this->assertEquals(
+				'openai.com',
+				$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY ),
+				"utm_source variant '{$utm_source}' should normalize to bare openai.com in host_raw"
+			);
+
+			// Critical PHPUnit detail: `Functions\expect` accumulates
+			// expectations across each iteration of the loop. Mockery
+			// counts each invocation once, so without verifying-and-
+			// closing between iterations a multi-variant loop trips
+			// the once() count check on do_action. `verifyMockObjects`
+			// + a fresh setup keeps each iteration isolated.
+			\Mockery::close();
+			Monkey\setUp();
+		}
 	}
 
 	public function test_capture_strict_path_uses_url_param_for_host_raw(): void {

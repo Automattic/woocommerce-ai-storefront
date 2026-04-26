@@ -194,13 +194,18 @@ class WC_AI_Storefront_Attribution {
 		// referral / direct / paid-search traffic and we leave it
 		// alone.
 		$lenient_canonical = '';
+		$normalized_host   = '';
 		if ( '' !== $utm_source ) {
-			// Case-insensitive hostname-key lookup. DNS hostnames are
-			// case-insensitive per RFC, so `OpenAI.com` should resolve
-			// the same as `openai.com`. `KNOWN_AGENT_HOSTS` keys are
-			// stored lowercase by convention.
-			$lower_source = strtolower( (string) $utm_source );
-			$lenient_canonical = WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS[ $lower_source ] ?? '';
+			// Normalize utm_source through the shared helper so common
+			// real-world variants (`https://openai.com/`,
+			// `OpenAI.COM:443`, `openai.com.`, etc.) all collapse to
+			// the same lookup key. Without this, attribution silently
+			// missed orders where the agent declared the same host in
+			// a different lexical form.
+			$normalized_host   = WC_AI_Storefront_UCP_Agent_Header::normalize_host_string( (string) $utm_source );
+			$lenient_canonical = '' !== $normalized_host
+				? ( WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS[ $normalized_host ] ?? '' )
+				: '';
 		}
 		$is_known_ai_host = '' !== $lenient_canonical;
 
@@ -231,17 +236,19 @@ class WC_AI_Storefront_Attribution {
 			$order->update_meta_data( self::AGENT_META_KEY, $value_to_store );
 		}
 
-		// When the lenient gate matched, stamp the actual hostname
-		// (utm_source itself) into host_raw so merchants drilling in
-		// see the original source the agent declared. ONLY fires for
-		// the lenient path — strict-path utm_source carries the
-		// already-canonical brand name (e.g. "Gemini"), not a hostname,
-		// and stamping that into a meta named "host_raw" would mislead
-		// drill-in/debugging. The strict path's correct host_raw value
-		// arrives via the `ai_agent_host_raw` URL param processed
-		// further down.
-		if ( $is_known_ai_host && '' !== $utm_source ) {
-			$order->update_meta_data( self::AGENT_HOST_RAW_META_KEY, (string) $utm_source );
+		// When the lenient gate matched, stamp the NORMALIZED hostname
+		// into host_raw so merchants drilling in see a clean
+		// hostname-shape value rather than whatever URL-form the agent
+		// happened to send (`https://openai.com/`,
+		// `OpenAI.COM:443`, etc. all collapse to `openai.com` here).
+		// ONLY fires for the lenient path — strict-path utm_source
+		// carries the already-canonical brand name (e.g. "Gemini"),
+		// which the gate would not have matched, so this branch
+		// doesn't run for it. The strict path's correct host_raw
+		// value arrives via the `ai_agent_host_raw` URL param
+		// processed further down.
+		if ( $is_known_ai_host && '' !== $normalized_host ) {
+			$order->update_meta_data( self::AGENT_HOST_RAW_META_KEY, $normalized_host );
 		}
 
 		// Capture the raw (untransformed) hostname when present. This

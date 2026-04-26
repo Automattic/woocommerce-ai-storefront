@@ -252,6 +252,82 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	}
 
 	/**
+	 * Normalize a host-shaped string for `KNOWN_AGENT_HOSTS` lookup.
+	 *
+	 * The Order Attribution capture path reads `utm_source` directly
+	 * from WooCommerce core — that value is whatever the agent (or
+	 * upstream URL builder) put on the URL. Real-world variants we
+	 * have to handle:
+	 *
+	 *   - `openai.com`              (bare, canonical)
+	 *   - `OpenAI.COM`              (mixed case — DNS RFC 1035)
+	 *   - `https://openai.com`      (full URL, often when an agent
+	 *                                copies its profile URL into utm_source)
+	 *   - `https://openai.com/`     (trailing slash)
+	 *   - `https://openai.com/path` (URL with path)
+	 *   - `openai.com:443`          (host:port)
+	 *   - `openai.com.`             (FQDN trailing dot)
+	 *   - ` openai.com `            (whitespace from URL-decoder edge cases)
+	 *
+	 * Every form above must collapse to the same `openai.com` so the
+	 * downstream `KNOWN_AGENT_HOSTS` key lookup matches. Without this,
+	 * the lenient host-match attribution gate would silently miss
+	 * orders where the agent declared the same host in a different
+	 * lexical form.
+	 *
+	 * Deliberate non-features:
+	 *   - We do NOT strip a leading `www.`. `www.openai.com` and
+	 *     `openai.com` are different DNS names; treating them as the
+	 *     same would be a heuristic that could produce false matches.
+	 *     If we want to recognize `www.openai.com`, the right move is
+	 *     to add it as an explicit entry in `KNOWN_AGENT_HOSTS`.
+	 *   - We do NOT subdomain-glob. Same rationale as
+	 *     `canonicalize_host()` — a vendor's training-bot subdomain
+	 *     might be a different product than the buying-bot subdomain.
+	 *
+	 * @param string $value Raw value (any of the forms above, or junk).
+	 * @return string Normalized lowercase host, or empty string when
+	 *                the input doesn't yield a parseable host.
+	 */
+	public static function normalize_host_string( string $value ): string {
+		$value = trim( $value );
+		if ( '' === $value ) {
+			return '';
+		}
+
+		// If the value looks URL-shaped (has a scheme), let `wp_parse_url`
+		// extract the host. `wp_parse_url` returns null for malformed
+		// URLs and an array (with optional 'host' key) for valid ones.
+		if ( false !== strpos( $value, '://' ) ) {
+			$parsed_host = wp_parse_url( $value, PHP_URL_HOST );
+			if ( ! is_string( $parsed_host ) || '' === $parsed_host ) {
+				return '';
+			}
+			$value = $parsed_host;
+		} else {
+			// Bare host — but it might have a path-like suffix
+			// (`openai.com/foo`). Strip everything from the first `/`
+			// onward.
+			$slash_pos = strpos( $value, '/' );
+			if ( false !== $slash_pos ) {
+				$value = substr( $value, 0, $slash_pos );
+			}
+		}
+
+		// Strip an optional `:port` suffix. (After URL parsing the host
+		// won't contain a colon, but the bare-host branch can.)
+		$colon_pos = strpos( $value, ':' );
+		if ( false !== $colon_pos ) {
+			$value = substr( $value, 0, $colon_pos );
+		}
+
+		// Strip a single trailing dot (FQDN form) and lowercase. Hosts
+		// are case-insensitive per DNS RFC 1035; `KNOWN_AGENT_HOSTS`
+		// keys are stored lowercase by convention.
+		return strtolower( rtrim( $value, '.' ) );
+	}
+
+	/**
 	 * Extract the agent's profile URL hostname from a UCP-Agent header value.
 	 *
 	 * Implementation is a v1 shortcut — it finds the first occurrence of
