@@ -24,6 +24,9 @@
 ### Observability
 - **UCP REST controller: log unknown query params + surface them via `X-WC-AI-Storefront-Unknown-Params` response header.** When agents send keys not declared in the route schema (e.g. `search` instead of `query`), we now log the unknown keys and echo them in a response header, bounded to 8 keys × 256 chars total with ASCII `...` truncation (RFC 9110 token-safe). Gated to associative-shape bodies (`! array_is_list($body)`) to skip well-formed list payloads. Helps agent authors diagnose silent param-name typos.
 
+### Hardening
+- **Declare WooCommerce as a hard plugin dependency via `Requires Plugins: woocommerce` header.** WP 6.5+ enforces this declaratively: the Plugins screen now shows "Cannot Activate" until WooCommerce is installed and active, blocks `activate_plugin()` from succeeding without WC, and surfaces an inline "Install WooCommerce" link. The legacy `WC requires at least: 9.9` header is informational only — it tells merchants what version they need but doesn't block activation. The existing runtime guards (`class_exists('WooCommerce')` checks in `wc_ai_storefront_init()` and `wc_ai_storefront_activate()`) are kept as defense-in-depth for the `--force` activation path and for the case where WC is deactivated after this plugin was already active. Plugin's `Requires at least: 6.7` already exceeds the 6.5 minimum for this header, so it's safe to add unconditionally.
+
 ---
 
 ## [0.1.14] – 2026-04-25
