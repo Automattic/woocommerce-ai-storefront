@@ -234,13 +234,27 @@ class WC_AI_Storefront_JsonLd {
 				],
 			];
 
-			$policy       = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
+			$policy = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
 				? $settings['return_policy']
 				: [ 'mode' => 'unconfigured' ];
+			// Resolve the per-product override-flag scope. Variations
+			// inherit from their parent — a merchant flagging a parent
+			// "Final sale" expects every color/size variant to inherit
+			// that posture without re-flagging each one. WC_Product's
+			// `get_parent_id()` returns the parent product ID for
+			// variations and 0 for everything else (simple, grouped,
+			// external). Use the parent ID when present so the flag
+			// is read off the parent's meta; fall back to the
+			// product's own ID for non-variation product types.
+			$policy_product_id = null;
+			if ( $product instanceof WC_Product ) {
+				$parent_id         = $product->get_parent_id();
+				$policy_product_id = $parent_id > 0 ? $parent_id : $product->get_id();
+			}
 			$policy_block = $this->build_return_policy_block(
 				$policy,
 				$country,
-				$product instanceof WC_Product ? $product->get_id() : null
+				$policy_product_id
 			);
 			if ( null !== $policy_block ) {
 				$markup['offers'][0]['hasMerchantReturnPolicy'] = $policy_block;

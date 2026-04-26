@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-26T08:03:24+00:00\n"
+"POT-Creation-Date: 2026-04-26T08:26:58+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -65,7 +65,7 @@ msgstr ""
 msgid "Session ID:"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-jsonld.php:291
+#: includes/ai-storefront/class-wc-ai-storefront-jsonld.php:305
 #: client/settings/ai-storefront/product-selection.js:916
 #: client/settings/ai-storefront/product-selection.js:1129
 msgid "Products"

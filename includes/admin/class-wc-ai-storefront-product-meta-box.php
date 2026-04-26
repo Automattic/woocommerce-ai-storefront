@@ -63,7 +63,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 	 *   'no'  → store-wide setting applies (the default for new products).
 	 *   ''    → never set; treated identically to 'no' by the reader.
 	 */
-	const META_KEY = '_ai_storefront_final_sale';
+	const META_KEY = '_wc_ai_storefront_final_sale';
 
 	/**
 	 * Initialize hooks.
@@ -141,9 +141,24 @@ class WC_AI_Storefront_Product_Meta_Box {
 	 * WC's product save handler calls this with the product post ID
 	 * after running its own nonce + capability checks. We sanitize the
 	 * incoming POST value to a strict 'yes'/'no' to keep the meta
-	 * value normalized — anything other than the literal 'yes' string
-	 * coerces to 'no', so a forged or junk POST can't smuggle an
-	 * unexpected value into meta.
+	 * value normalized — only the literal `'yes'` string flips the
+	 * flag on; anything else (forged `value="no"`, `value=""`, junk,
+	 * or absent key) writes the literal `'no'`. Two layers of
+	 * defense:
+	 *
+	 *   - `isset()` ensures the key was present in POST.
+	 *   - `'yes' === $_POST[key]` ensures the value is the canonical
+	 *     literal. A tampered payload like
+	 *     `<input name="…" value="no">` (still in POST so isset()
+	 *     would be true) is correctly rejected by the value check
+	 *     and written as `'no'` rather than smuggled in as `'yes'`.
+	 *
+	 * `update_post_meta` returns false on DB failure OR when the
+	 * value is unchanged. We disambiguate by reading the current
+	 * value first: a `false` return when the value DID change is a
+	 * real write failure and gets logged so the merchant has a
+	 * trail (the WC admin UI renders "Update successful" no matter
+	 * what we return here).
 	 *
 	 * @param int $product_id Product post ID being saved.
 	 */
@@ -153,18 +168,34 @@ class WC_AI_Storefront_Product_Meta_Box {
 		}
 
 		// HTML checkboxes that are unchecked send NO key in the POST
-		// payload; checked sends the input's value (typically 'yes').
-		// `isset()` is the canonical way to detect "checked or not"
-		// for an HTML checkbox. WC's nonce + capability check ran
-		// before this hook fired (woocommerce_process_product_meta is
-		// downstream of save_post's auth gate), so we read $_POST
-		// directly with a PHPCS suppression and an explanatory comment.
+		// payload; checked sends the input's value (literally `'yes'`
+		// per WC's `woocommerce_wp_checkbox()` helper). WC's nonce +
+		// capability check ran before this hook fired
+		// (`woocommerce_process_product_meta` is downstream of
+		// `save_post`'s auth gate per
+		// `WC_Admin_Meta_Boxes::save_meta_boxes()` in WC core), so we
+		// read $_POST directly with a PHPCS suppression.
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- WC core verified the nonce before firing woocommerce_process_product_meta.
-		$is_checked = isset( $_POST[ self::META_KEY ] );
+		$posted_value = isset( $_POST[ self::META_KEY ] ) ? sanitize_text_field( wp_unslash( $_POST[ self::META_KEY ] ) ) : '';
+		$value        = 'yes' === $posted_value ? 'yes' : 'no';
 
-		$value = $is_checked ? 'yes' : 'no';
+		$existing = get_post_meta( $product_id, self::META_KEY, true );
+		$result   = update_post_meta( $product_id, self::META_KEY, $value );
 
-		update_post_meta( $product_id, self::META_KEY, $value );
+		// `update_post_meta` returns truthy on success and `false`
+		// either when the write failed OR when the value was
+		// unchanged. Disambiguate using the pre-read: if the value
+		// actually changed and the call returned `false`, log it.
+		// Without this distinction we'd either spam logs on every
+		// save-with-no-changes or miss real failures entirely.
+		if ( false === $result && $existing !== $value ) {
+			WC_AI_Storefront_Logger::debug(
+				'failed to persist final-sale flag — product=%d key=%s value=%s',
+				$product_id,
+				self::META_KEY,
+				$value
+			);
+		}
 	}
 
 	/**
@@ -195,8 +226,12 @@ class WC_AI_Storefront_Product_Meta_Box {
 
 		// Strict 'yes' comparison: anything else (`''`, `'no'`,
 		// `null`, `false`, future garbage) is "not flagged". WC core
-		// uses the same idiom for its own boolean meta reads — see
-		// `WC_Product::get_manage_stock()` etc.
+		// uses the same idiom for its own option/meta reads — see
+		// `'yes' === get_option( 'woocommerce_manage_stock' )` in
+		// `abstract-wc-product.php`. (`WC_Product::get_manage_stock()`
+		// itself returns the prop-bag value pre-coerced via
+		// `wc_string_to_bool()`, but the option-level reads still use
+		// the strict-string idiom and predate the boolean migration.)
 		return 'yes' === $value;
 	}
 }

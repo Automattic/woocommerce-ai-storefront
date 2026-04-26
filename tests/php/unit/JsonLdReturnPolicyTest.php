@@ -69,9 +69,13 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		parent::tearDown();
 	}
 
-	private function make_product(): Mockery\MockInterface {
+	private function make_product( int $id = 42, int $parent_id = 0 ): Mockery\MockInterface {
 		$product = Mockery::mock( 'WC_Product' );
-		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		$product->shouldReceive( 'get_id' )->andReturn( $id );
+		// Defaults to 0 (non-variation: simple, grouped, external).
+		// Variant-specific tests pass a non-zero parent_id to mock a
+		// WC_Product_Variation whose parent provides the override flag.
+		$product->shouldReceive( 'get_parent_id' )->andReturn( $parent_id );
 		$product->shouldReceive( 'get_permalink' )
 			->andReturn( 'https://example.com/product/test/' );
 		$product->shouldReceive( 'managing_stock' )->andReturn( false );
@@ -93,11 +97,11 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		];
 	}
 
-	private function run_with_offer( array $extra_offer = [] ): array {
+	private function run_with_offer( array $extra_offer = [], ?Mockery\MockInterface $product = null ): array {
 		$offer = array_merge( [ '@type' => 'Offer' ], $extra_offer );
 		return $this->jsonld->enhance_product_data(
 			[ 'offers' => [ $offer ] ],
-			$this->make_product()
+			$product ?? $this->make_product()
 		);
 	}
 
@@ -591,5 +595,184 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 			'Unflagged product must fall through to store-wide accepts mode.'
 		);
 		$this->assertSame( 30, $block['merchantReturnDays'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Per-product override: variation inheritance
+	//
+	// `WC_Product_Variation` reports its parent's product ID via
+	// `get_parent_id()`. The JSON-LD layer resolves the override-flag
+	// scope to the parent product so a merchant flagging the parent
+	// "Final sale" sees every variant inherit that posture without
+	// re-flagging each one. Pin both directions:
+	//   - parent flagged → variant emits NotPermitted
+	//   - parent unflagged → variant follows store-wide policy
+	// ------------------------------------------------------------------
+
+	public function test_variant_inherits_parent_final_sale_flag(): void {
+		// Variant id=43 with parent id=42. Parent is flagged final-sale;
+		// variant's own meta is unset. Expectation: NotPermitted.
+		Functions\when( 'get_post_meta' )->alias(
+			static function ( int $product_id, string $key, bool $single = false ) {
+				if (
+					42 === $product_id
+					&& WC_AI_Storefront_Product_Meta_Box::META_KEY === $key
+				) {
+					return 'yes';
+				}
+				return '';
+			}
+		);
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 0,
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+			]
+		);
+
+		$variant = $this->make_product( 43, 42 );
+		$block   = $this->run_with_offer( [], $variant )['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory'],
+			'Variant must inherit parent final-sale flag — store-wide accepts mode would otherwise win.'
+		);
+	}
+
+	public function test_variant_does_not_inherit_when_parent_unflagged(): void {
+		// Variant id=43 with parent id=42. Neither parent nor variant
+		// is flagged. Expectation: store-wide policy applies (variant
+		// gets its parent's "no flag" instead of variant-self meta —
+		// the resolution is parent-first regardless of the variant's
+		// own meta state, and parent has no flag, so store-wide wins).
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 0,
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+			]
+		);
+
+		$variant = $this->make_product( 43, 42 );
+		$block   = $this->run_with_offer( [], $variant )['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnFiniteReturnWindow',
+			$block['returnPolicyCategory'],
+			'Unflagged variant must use store-wide policy via parent fall-through.'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// Per-product override: page-status degradation
+	//
+	// Mirror the store-wide path's coverage: when the configured
+	// policy page is unpublished or not a `page` post type, the
+	// override block omits `merchantReturnLink` rather than emit a
+	// 404-bound URL. The override branch shares the same
+	// `resolve_merchant_return_link()` helper as the store-wide path,
+	// so behavior should match — pin it explicitly so a future
+	// refactor that diverges the two branches gets caught.
+	// ------------------------------------------------------------------
+
+	public function test_per_product_override_omits_link_when_page_unpublished(): void {
+		Functions\when( 'get_post_status' )->justReturn( 'draft' );
+		$this->flag_product_as_final_sale();
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 99,
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory']
+		);
+		$this->assertArrayNotHasKey(
+			'merchantReturnLink',
+			$block,
+			'Override block must omit merchantReturnLink when the policy page is unpublished.'
+		);
+	}
+
+	public function test_per_product_override_omits_link_when_page_is_not_a_page(): void {
+		// page_id points at a post (or any non-`page` post type) —
+		// reject the link emission to mirror the sanitizer's save-time
+		// gate (`'page' === get_post_type()`). Without this re-check,
+		// a merchant who flipped a `page_id` to point at a `post` via
+		// direct option edit would get an unintended URL leaked into
+		// JSON-LD.
+		Functions\when( 'get_post_type' )->justReturn( 'post' );
+		$this->flag_product_as_final_sale();
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 99,
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertArrayNotHasKey(
+			'merchantReturnLink',
+			$block,
+			'Override block must omit merchantReturnLink when the configured page is not a `page` post type.'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// Per-product override: build_return_policy_block null short-circuit
+	//
+	// The `?int $product_id = null` signature default exists for
+	// callers that legitimately want the store-wide-only logic
+	// (admin Policies-tab live-preview rendering, isolated unit
+	// tests). Verify the override gate skips entirely when null is
+	// passed — even when the meta read would otherwise return 'yes'
+	// for some other product ID. Reflection is needed because the
+	// method is private.
+	// ------------------------------------------------------------------
+
+	public function test_build_return_policy_block_skips_override_when_product_id_is_null(): void {
+		// Set up a meta state that WOULD trigger the override if a
+		// product ID were passed — `get_post_meta` returns 'yes' for
+		// any input. Then call build_return_policy_block(...null) and
+		// assert the override branch was not taken (returnPolicyCategory
+		// reflects the store-wide returns_accepted mode, not
+		// MerchantReturnNotPermitted).
+		Functions\when( 'get_post_meta' )->justReturn( 'yes' );
+
+		$method = new ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'build_return_policy_block' );
+		$method->setAccessible( true );
+
+		$result = $method->invoke(
+			$this->jsonld,
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 0,
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+			],
+			'US',
+			null
+		);
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnFiniteReturnWindow',
+			$result['returnPolicyCategory'],
+			'Null product_id must skip the override gate entirely, regardless of meta state.'
+		);
+		$this->assertSame( 30, $result['merchantReturnDays'] );
 	}
 }
