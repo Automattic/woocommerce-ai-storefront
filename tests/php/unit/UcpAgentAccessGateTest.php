@@ -315,4 +315,31 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertInstanceOf( WP_Error::class, $result );
 	}
+
+	public function test_paused_syndication_short_circuits_to_allow_so_handler_returns_503(): void {
+		// When syndication is paused (enabled='no'), the route handlers
+		// each return a UCP-shaped 503 envelope. If the gate ran first
+		// and 403'd a blocked brand, agents would see the wrong retry
+		// semantic — 403 says "permanent deny", 503 says "transient
+		// pause". The gate must short-circuit to allow on a paused
+		// store so the handler can run and return the consistent 503
+		// response across all routes.
+		//
+		// Test setup: paused store + brand explicitly blocked. The
+		// gate's per-brand check would otherwise return WP_Error 403.
+		// The syndication-disabled short-circuit must win.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'          => 'no', // syndication paused
+			'allowed_crawlers' => [],   // and no brands enabled
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'profile="https://openai.com/chatgpt.json"' )
+		);
+
+		$this->assertTrue(
+			$result,
+			'Paused syndication must let the handler run so it can return the canonical 503 envelope, not a 403 from the gate.'
+		);
+	}
 }

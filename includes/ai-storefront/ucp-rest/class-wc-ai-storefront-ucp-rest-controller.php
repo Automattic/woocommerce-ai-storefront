@@ -274,6 +274,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                        explicitly blocked by the merchant.
 	 */
 	public function check_agent_access( WP_REST_Request $request ) {
+		// Don't gate when syndication is paused — the handlers each
+		// check `is_syndication_disabled()` and return a UCP-shaped
+		// 503 envelope ("come back later"). If the gate ran first
+		// and returned a 403 ("you are forbidden"), agents would get
+		// the wrong retry semantics: 403 says "permanent deny", 503
+		// says "transient pause." A paused store should consistently
+		// answer 503 across all routes regardless of the merchant's
+		// per-brand settings.
+		if ( self::is_syndication_disabled() ) {
+			return true;
+		}
+
 		$header = $request->get_header( 'ucp-agent' );
 		if ( ! is_string( $header ) || '' === $header ) {
 			return true;

@@ -359,6 +359,35 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
+	public function test_is_agent_allowed_every_mapped_id_exists_in_ai_crawlers(): void {
+		// Stricter structural check: every crawler ID listed in
+		// UCP_AGENT_CRAWLER_MAP must actually appear in
+		// `WC_AI_Storefront_Robots::AI_CRAWLERS`. The two sources have
+		// to stay in lockstep because the merchant's UI saves IDs from
+		// the AI_CRAWLERS list, and the gate looks them up via this map.
+		// A typo in either side ("ChatGTP-User", "Gemin-Searchbot") would
+		// produce an ID the merchant can never save through the UI —
+		// that brand would be permanently blocked at the endpoint
+		// regardless of merchant intent. This test catches the typo at
+		// CI time, before a release ships with a silently-blocked brand.
+		foreach (
+			WC_AI_Storefront_UCP_Agent_Header::UCP_AGENT_CRAWLER_MAP
+			as $brand => $ids
+		) {
+			foreach ( $ids as $id ) {
+				$this->assertContains(
+					$id,
+					WC_AI_Storefront_Robots::AI_CRAWLERS,
+					sprintf(
+						'Brand "%s" maps to crawler ID "%s" which is NOT in WC_AI_Storefront_Robots::AI_CRAWLERS — the merchant UI would never offer that ID, so the brand is permanently blocked.',
+						$brand,
+						$id
+					)
+				);
+			}
+		}
+	}
+
 	public function test_is_agent_allowed_ucpplayground_self_referential(): void {
 		// UCPPlayground is the dev/test crawler we ship with the
 		// plugin. The map entry pairs canonical "UCPPlayground" with
