@@ -308,6 +308,94 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
+		// Log unrecognized top-level params at debug level so client
+		// integrators can self-diagnose. The UCP catalog/search spec
+		// defines these top-level fields: `query`, `filters`,
+		// `pagination`, `sort`, `context`, `signals`. Anything else
+		// is silently ignored (we treat the body as if those fields
+		// weren't there). Most common real-world mistake we've seen:
+		// clients sending `search` instead of `query`, resulting in
+		// an empty-body "browse all" path that returns the full
+		// catalog — visually indistinguishable from "search matched
+		// nothing". A debug line surfaces the misnaming without us
+		// breaking conformance by 400-ing on unknown keys (the spec
+		// permits vendor extensions, so silent-ignore is the right
+		// default behavior; the log is purely observability).
+		// Detect unrecognized params unconditionally (the diff is cheap)
+		// so we can surface them via BOTH the debug log AND a response
+		// header. Debug-only would be invisible on production installs
+		// where logging is off — exactly the silent-failure shape we
+		// want to avoid surfacing in this very controller. The header
+		// is non-PII (just enum keys), bounded by the request body,
+		// and a no-op for spec-compliant clients (they ignore unknown
+		// response headers).
+		$body           = $request->get_json_params();
+		$unknown_params = [];
+		// Only inspect associative-array bodies. A list-style payload
+		// (e.g. `[1,2,3]`) decodes to an array with integer keys 0,1,2;
+		// running the unknown-params detection would report
+		// `0, 1, 2` in the response header — meaningless noise that
+		// looks like real misnaming. The spec body shape for
+		// catalog/search is always a JSON object; rejecting list
+		// shapes downstream is a separate validation concern, but
+		// this diagnostic should silently skip non-objects.
+		if ( is_array( $body ) && ! empty( $body ) && ! array_is_list( $body ) ) {
+			$known        = [ 'query', 'filters', 'pagination', 'sort', 'context', 'signals' ];
+			$unknown_keys = array_values( array_diff( array_keys( $body ), $known ) );
+			// Sanitize, drop empty results, then bound the count and
+			// total length so a malicious or buggy client sending a
+			// large JSON object can't push us past common proxy/CDN
+			// header limits (~8 KiB total per header on most stacks).
+			// 8 keys + 256 chars is well under any plausible limit
+			// while still surfacing useful diagnostic signal — most
+			// real misnaming bugs are 1–3 stray keys.
+			$sanitized = function_exists( 'sanitize_key' )
+				? array_map( 'sanitize_key', $unknown_keys )
+				: $unknown_keys;
+			// Drop the `string` type-hint on the closure: in the
+			// `sanitize_key`-unavailable branch above, `$sanitized`
+			// can carry integer keys if the JSON body is a list
+			// rather than an object (e.g. body `[1,2,3]` →
+			// array_keys returns `[0,1,2]`). PHP would TypeError
+			// before we got to the request-shape rejection later.
+			// Cast each value through `(string)` for the comparison
+			// so empty strings AND `'0'` both register correctly.
+			$sanitized = array_values(
+				array_filter(
+					$sanitized,
+					static fn( $s ): bool => '' !== (string) $s
+				)
+			);
+			// Use ASCII `...` (not the Unicode ellipsis `…`) so the
+			// joined string stays ASCII-safe end-to-end. Header values
+			// are nominally ISO-8859-1 / opaque-byte per RFC 9110;
+			// many proxies/CDNs (older nginx with strict header
+			// validation, mod_security, some AWS ALB configs) reject
+			// or strip non-ASCII bytes in header values, which would
+			// drop the diagnostic header silently. Logs would tolerate
+			// `…` but consistency beats prettier punctuation here —
+			// the truncation marker is the same in both paths.
+			if ( count( $sanitized ) > 8 ) {
+				$sanitized   = array_slice( $sanitized, 0, 8 );
+				$sanitized[] = '...';
+			}
+			$joined = implode( ', ', $sanitized );
+			if ( strlen( $joined ) > 256 ) {
+				$joined = substr( $joined, 0, 253 ) . '...';
+			}
+			// Single string representation reused by both the header
+			// emission below and the debug log here. A previous
+			// iteration carried both an array and the joined string;
+			// the array form was never read so it was removed.
+			$unknown_params = [ 'header' => $joined ];
+			if ( '' !== $joined && WC_AI_Storefront_Logger::is_enabled() ) {
+				WC_AI_Storefront_Logger::debug(
+					'UCP catalog/search: received unrecognized params (ignored): '
+					. $joined
+				);
+			}
+		}
+
 		// Note: spec has a MUST clause about validating that a request
 		// "contains at least one recognized input" and a SHOULD about
 		// rejecting empty ones. We satisfy the MUST (shape validation
@@ -454,7 +542,29 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$body['messages'] = $messages;
 		}
 
-		return new WP_REST_Response( $body, 200 );
+		$response = new WP_REST_Response( $body, 200 );
+
+		// Surface unrecognized request params back to the client via a
+		// response header. Captured at the top of the handler; this is
+		// the only place we emit them on the success path. Clients
+		// integrating UCP can read this header to self-diagnose
+		// misnamed keys (the canonical example: `search` instead of
+		// `query`) without us breaking conformance by returning 400 —
+		// the spec permits vendor extensions, so silent-ignore is the
+		// right default. The log line above gates on debug; the header
+		// is unconditional so production installs surface the signal
+		// too. Header value is pre-bounded to ≤8 keys and ≤256 chars
+		// at capture time (see the sanitization block at the top of
+		// the handler) so a malicious client can't push us past common
+		// proxy/CDN per-header size limits.
+		if ( ! empty( $unknown_params ) && ! empty( $unknown_params['header'] ) ) {
+			$response->header(
+				'X-WC-AI-Storefront-Unknown-Params',
+				$unknown_params['header']
+			);
+		}
+
+		return $response;
 	}
 
 	/**

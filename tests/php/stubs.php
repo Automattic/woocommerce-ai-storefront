@@ -422,6 +422,12 @@ if ( ! class_exists( 'WP_Query' ) ) {
 	 * Tests control `found_posts` via the static `$test_found_posts`
 	 * property. Reset it in tearDown (or before each test) to avoid
 	 * cross-test leakage.
+	 *
+	 * Implements `get()` / `set()` so callers that mutate query vars
+	 * mid-build (e.g. `pre_get_posts` listeners) can be exercised.
+	 * Defaults match WordPress's real `WP_Query::get()` — empty
+	 * string when the key isn't present unless an explicit default
+	 * is supplied.
 	 */
 	class WP_Query {
 		public static int $test_found_posts = 0;
@@ -431,6 +437,14 @@ if ( ! class_exists( 'WP_Query' ) ) {
 		public function __construct( array $args = [] ) {
 			$this->found_posts = self::$test_found_posts;
 			$this->query_vars  = $args;
+		}
+
+		public function get( string $key, $default_value = '' ) {
+			return $this->query_vars[ $key ] ?? $default_value;
+		}
+
+		public function set( string $key, $value ): void {
+			$this->query_vars[ $key ] = $value;
 		}
 	}
 }

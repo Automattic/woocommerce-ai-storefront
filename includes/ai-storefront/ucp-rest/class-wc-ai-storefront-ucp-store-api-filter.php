@@ -1,29 +1,52 @@
 <?php
 /**
- * AI Storefront: Store API Product Collection Filter
+ * AI Storefront: UCP Product-Scoping Hook
  *
- * Hooks `woocommerce_store_api_product_collection_query_args` to
- * restrict Store API product COLLECTION queries by the plugin's
- * `product_selection_mode` — only when the request is a UCP-
- * controller-initiated dispatch (gated via
- * `enter_ucp_dispatch()` / `exit_ucp_dispatch()` markers around
- * the controller's collection-style `rest_do_request()` calls).
+ * Hooks `pre_get_posts` to restrict product `WP_Query` instances by
+ * the plugin's `product_selection_mode` — only when the request is a
+ * UCP-controller-initiated dispatch (gated via
+ * `enter_ucp_dispatch()` / `exit_ucp_dispatch()` markers around the
+ * controller's collection-style `rest_do_request()` calls).
+ *
+ * Hook layer: `pre_get_posts` is a global WP-level hook that fires
+ * before every `WP_Query` SQL build. Prior to this commit the class
+ * registered against `woocommerce_store_api_product_collection_query_args`,
+ * which does not exist in WooCommerce core — WC's Store API
+ * delegates straight to `ProductQuery::get_objects()` → `WP_Query`
+ * with no such filter, so the callback never ran in production. The
+ * `pre_get_posts` hook is the only WP-level point where the
+ * mutations can land on the actual `WP_Query` Store API constructs
+ * internally.
+ *
+ * Threefold gate (see `on_pre_get_posts()` for the implementation):
+ *
+ *   1. `is_in_ucp_dispatch()` — depth counter is positive.
+ *   2. `post_type === 'product'` (or array containing it).
+ *   3. Per-mode logic only applies for `by_taxonomy` and `selected`;
+ *      `all` mode is a no-op even within UCP scope.
  *
  * Single-product fetches (e.g. `fetch_store_api_product()` for
- * `/catalog/lookup`) bypass `woocommerce_store_api_product_collection_query_args`
- * entirely — that filter only fires for collection queries — so
- * the controller gates those dispatches separately via a direct
+ * `/catalog/lookup`) take a different path — the controller already
+ * gates those dispatches via a direct
  * `WC_AI_Storefront::is_product_syndicated()` check before the
  * inner `rest_do_request()` runs. All three enforcement gates
- * (this collection filter, the per-id `is_product_syndicated()`
- * gate, and the per-product gate used by llms.txt and JSON-LD)
- * stay in lockstep on the merchant's UNION scope.
+ * (this hook, the per-id `is_product_syndicated()` gate, and the
+ * per-product gate used by llms.txt and JSON-LD) stay in lockstep
+ * on the merchant's UNION scope.
  *
  * Why scoped: the Products tab is labeled "Products available to
- * AI crawlers" — applying this filter to every Store API call
+ * AI crawlers" — applying this scope to every product query
  * (front-end Cart, block-theme Checkout, themes, third-party
- * plugins) would silently scope the merchant's storefront to
- * whatever they configured for AI, violating that UI promise.
+ * plugins, admin product list) would silently scope the merchant's
+ * storefront to whatever they configured for AI, violating that UI
+ * promise. The `is_in_ucp_dispatch()` gate is what makes the
+ * pre_get_posts registration safe.
+ *
+ * The class name `WC_AI_Storefront_UCP_Store_API_Filter` reflects
+ * the conceptual purpose ("scope Store-API-mediated product queries
+ * to UCP dispatch"); the hook layer is `pre_get_posts` for
+ * implementation reasons (the Store-API-specific hook this class
+ * was originally written for does not exist).
  *
  * @package WooCommerce_AI_Storefront
  */
@@ -61,18 +84,150 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	private static int $ucp_dispatch_depth = 0;
 
 	/**
-	 * Register the query-args filter.
+	 * Per-request sentinel preventing duplicate hook registration.
+	 *
+	 * `add_action` doesn't deduplicate by callback shape — it
+	 * compares array callbacks by identity, so
+	 * `[ $instance_a, 'on_pre_get_posts' ]` and
+	 * `[ $instance_b, 'on_pre_get_posts' ]` register as two distinct
+	 * callbacks. A `has_action(...)` check would only catch the
+	 * same-instance case (and would also misfire on priority 0,
+	 * which `has_action` returns as `0 === falsy`). A class-level
+	 * static flag catches the cross-instance case correctly and
+	 * resets per request.
+	 *
+	 * @var bool
+	 */
+	private static bool $hook_registered = false;
+
+	/**
+	 * Register the `pre_get_posts` action.
 	 *
 	 * Called from `init_components()` inside the enabled branch —
-	 * meaning the filter only applies when AI syndication is on.
-	 * Disabling the plugin removes the filter entirely, restoring
-	 * unfiltered Store API behavior.
+	 * meaning the hook only fires when AI syndication is on.
+	 * Disabling the plugin removes the action entirely, restoring
+	 * unfiltered WP_Query behavior.
 	 */
 	public function init(): void {
-		add_filter(
-			'woocommerce_store_api_product_collection_query_args',
-			[ $this, 'restrict_to_syndicated_products' ]
+		// Idempotency guard. Without this, a second `init()` call
+		// (plugin re-init in tests, future code instantiating a second
+		// filter, activation/deactivation cycle in the same request)
+		// would stack a second callback. The mutator is idempotent on
+		// its own output, but with stacked callbacks the first writes
+		// a UNION `tax_query` and the second wraps it in an outer AND
+		// because `$incoming_tax_query` is now non-empty — query is
+		// silently mutated into a stricter form than the merchant
+		// configured. See the `$hook_registered` docblock above for
+		// why a static sentinel beats `has_action()` for this case.
+		if ( self::$hook_registered ) {
+			if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'WC_AI_Storefront_UCP_Store_API_Filter::init() called when pre_get_posts callback was already registered; skipping duplicate registration'
+				);
+			}
+			return;
+		}
+		// Priority `PHP_INT_MAX` so the UCP merchant-scope mutations
+		// are applied LAST. `pre_get_posts` is a notoriously crowded
+		// hook — themes, search plugins, related-products plugins,
+		// and WC core itself all register callbacks. Anything that
+		// fires AFTER us at a higher priority number could read our
+		// mutated `tax_query` / `post__in`, modify, and write back
+		// in a way that clobbers part or all of the merchant's
+		// syndication scope. By being last we guarantee no later
+		// callback gets to override us — the merchant's scope is
+		// the final word on what an AI agent sees.
+		//
+		// Explicit `accepted_args = 1` because the `pre_get_posts`
+		// hook only ever passes one argument (`WP_Query`); spelling
+		// it out documents intent and prevents a theoretical edge
+		// case where another callback in the chain alters the
+		// hook's signature via core changes.
+		add_action(
+			'pre_get_posts',
+			[ $this, 'on_pre_get_posts' ],
+			PHP_INT_MAX,
+			1
 		);
+		self::$hook_registered = true;
+	}
+
+	/**
+	 * Reset the idempotency sentinel. Test-only hook so the suite
+	 * can re-init the filter across cases without leaking state.
+	 *
+	 * @internal
+	 */
+	public static function reset_hook_registered_for_test(): void {
+		self::$hook_registered = false;
+	}
+
+	/**
+	 * Apply UCP syndication scope to product WP_Query instances.
+	 *
+	 * Bridges the args-shape mutation function below
+	 * (`restrict_to_syndicated_products()`) onto the live `WP_Query`
+	 * object that the Store API ultimately runs. Reads the relevant
+	 * fields off `$query`, builds an args array, hands it to the pure
+	 * function, and writes the mutations back via `$query->set()`.
+	 *
+	 * Threefold gate (any failing means no-op):
+	 *
+	 *   1. `is_in_ucp_dispatch()` — front-end Cart, block-theme
+	 *      Checkout, themes, and third-party Store API consumers all
+	 *      run `WP_Query` outside this scope and must be untouched.
+	 *   2. `post_type === 'product'` — `pre_get_posts` fires for menus,
+	 *      widgets, related-posts queries, etc. Mutating those would
+	 *      silently break unrelated parts of the site.
+	 *   3. Per-mode logic inside `restrict_to_syndicated_products()`
+	 *      no-ops for `all` mode, so even an in-scope product query
+	 *      passes through unchanged when the merchant hasn't opted
+	 *      into scoping.
+	 *
+	 * Only `tax_query` and `post__in` round-trip through `$query` —
+	 * those are the two fields the underlying mutation function may
+	 * touch. Other args (orderby, posts_per_page, etc.) stay on the
+	 * query object untouched.
+	 *
+	 * @since 0.1.15
+	 *
+	 * @param WP_Query $query The query about to execute.
+	 */
+	public function on_pre_get_posts( WP_Query $query ): void {
+		// Gate 1: only inside a UCP-controller-initiated dispatch.
+		if ( ! self::is_in_ucp_dispatch() ) {
+			return;
+		}
+
+		// Gate 2: only product queries. `post_type` may be a string
+		// or array; treat both shapes.
+		$post_type = $query->get( 'post_type' );
+		if ( 'product' !== $post_type && ! ( is_array( $post_type ) && in_array( 'product', $post_type, true ) ) ) {
+			return;
+		}
+
+		// Read existing args off the query, run them through the pure
+		// mutation function, write back any changes. Only fields the
+		// mutator may touch (`tax_query`, `post__in`) are reflected.
+		$incoming_tax_query = $query->get( 'tax_query' );
+		$incoming_post_in   = $query->get( 'post__in' );
+
+		$args = [];
+		if ( ! empty( $incoming_tax_query ) ) {
+			$args['tax_query'] = $incoming_tax_query;
+		}
+		if ( ! empty( $incoming_post_in ) ) {
+			$args['post__in'] = $incoming_post_in;
+		}
+
+		$mutated = $this->restrict_to_syndicated_products( $args );
+
+		if ( array_key_exists( 'tax_query', $mutated ) ) {
+			$query->set( 'tax_query', $mutated['tax_query'] );
+		}
+		if ( array_key_exists( 'post__in', $mutated ) ) {
+			$query->set( 'post__in', $mutated['post__in'] );
+		}
 	}
 
 	/**
