@@ -61,9 +61,16 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 * research — under a single label and lose valuable attribution
 	 * detail, so keep the map literal.
 	 *
-	 * When a hostname is NOT in this map, the raw hostname is returned
-	 * verbatim (see `canonicalize_host()`). That preserves traceability
-	 * for novel agents while the map catches the 90% of known vendors.
+	 * When a hostname is NOT in this map, `canonicalize_host()` buckets
+	 * it under `OTHER_AI_BUCKET` ("Other AI") rather than scattering
+	 * one Origin-column row per novel hostname. The raw hostname is
+	 * preserved separately on the order via the
+	 * `_wc_ai_storefront_agent_host_raw` meta (see
+	 * `WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY`) so
+	 * merchants who drill into an "Other AI" order still see who
+	 * actually sent it. That meta also feeds aggregate review for
+	 * graduating frequent unknown hostnames into this map with proper
+	 * canonical names.
 	 *
 	 * @var array<string, string>
 	 */

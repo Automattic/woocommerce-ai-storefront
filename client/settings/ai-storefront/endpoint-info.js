@@ -750,7 +750,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						},
 					].map( ( group, groupIndex ) => {
 						// Robust fallback: only treat `categories` as a
-						// valid override when it'''s a non-empty array.
+						// valid override when it's a non-empty array.
 						// `group.categories || [group.key]` would still
 						// fall back on `null`/`undefined` but NOT on `[]`,
 						// which would silently filter to zero crawlers
