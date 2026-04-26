@@ -52,7 +52,7 @@ describe( 'AI Syndication actions', () => {
 			getEndpoints: jest.fn( () => ( {
 				llms_txt: 'https://example.com/llms.txt',
 				ucp: 'https://example.com/.well-known/ucp',
-				store_api: 'https://example.com/wp-json/wc/store/v1',
+				ucp_api: 'https://example.com/wp-json/wc/ucp/v1',
 				robots: 'https://example.com/robots.txt',
 			} ) ),
 		};
@@ -222,7 +222,7 @@ describe( 'AI Syndication actions', () => {
 				'disabled'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
-				'store_api',
+				'ucp_api',
 				'disabled'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
@@ -238,10 +238,20 @@ describe( 'AI Syndication actions', () => {
 			const thunk = checkEndpoints();
 			await thunk( { dispatch: mockDispatch, select: mockSelect } );
 
-			// One probe per endpoint: llms_txt, ucp, store_api, robots.
+			// One probe per endpoint: llms_txt, ucp, ucp_api, robots.
 			expect( global.fetch ).toHaveBeenCalledTimes( 4 );
 			expect( global.fetch ).toHaveBeenCalledWith(
 				'https://example.com/llms.txt',
+				expect.objectContaining( { method: 'HEAD' } )
+			);
+			// Pin the UCP API URL explicitly. Without this, a future
+			// rename (e.g. `wc/ucp/v1` → `wc/ucp/v2` without updating
+			// rest_url() in the controller) would silently pass the
+			// "fetch called 4 times" check while every probe targeted
+			// a wrong URL — the kind of regression an integer-count
+			// assertion can't catch.
+			expect( global.fetch ).toHaveBeenCalledWith(
+				'https://example.com/wp-json/wc/ucp/v1',
 				expect.objectContaining( { method: 'HEAD' } )
 			);
 			expect( global.fetch ).toHaveBeenCalledWith(
@@ -257,7 +267,7 @@ describe( 'AI Syndication actions', () => {
 				'reachable'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
-				'store_api',
+				'ucp_api',
 				'reachable'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
@@ -301,7 +311,7 @@ describe( 'AI Syndication actions', () => {
 				'unreachable'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
-				'store_api',
+				'ucp_api',
 				'unreachable'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
@@ -336,7 +346,7 @@ describe( 'AI Syndication actions', () => {
 				'checking'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(
-				'store_api',
+				'ucp_api',
 				'checking'
 			);
 			expect( mockDispatch.setEndpointStatus ).toHaveBeenCalledWith(

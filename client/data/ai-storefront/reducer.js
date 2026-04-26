@@ -9,7 +9,7 @@ const defaultState = {
 	// Per-endpoint reachability status. Shape:
 	//   { llms_txt: 'checking' | 'reachable' | 'unreachable' | 'disabled',
 	//     ucp:      'checking' | 'reachable' | 'unreachable' | 'disabled',
-	//     store_api: ...  }
+	//     ucp_api:  ...  }
 	// Empty object means "not yet probed" — the UI treats that as
 	// equivalent to 'checking' for display purposes.
 	endpointStatus: {},
