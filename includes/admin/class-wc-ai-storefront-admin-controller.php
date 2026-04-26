@@ -215,6 +215,22 @@ class WC_AI_Storefront_Admin_Controller {
 			]
 		);
 
+		// Pages suitable for linking from the Policies tab — excludes
+		// WC system pages (Cart, Checkout, My Account, Shop) which are
+		// never the merchant's policy page. Privacy / Terms / Refund
+		// pages are kept, since merchants may legitimately link them.
+		// Returns the same shape `/wp/v2/pages` does (id, title, link)
+		// for drop-in replacement at the JS call site.
+		register_rest_route(
+			self::NAMESPACE,
+			'/policy-pages',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'get_policy_pages' ],
+				'permission_callback' => [ $this, 'check_admin_permission' ],
+			]
+		);
+
 		// Product/category/tag/brand search for selection UI.
 		register_rest_route(
 			self::NAMESPACE,
@@ -588,6 +604,103 @@ class WC_AI_Storefront_Admin_Controller {
 				'currency' => get_woocommerce_currency(),
 			]
 		);
+	}
+
+	/**
+	 * Pages suitable for linking from the Policies tab.
+	 *
+	 * Returns published pages MINUS WC's system pages (Cart,
+	 * Checkout, My Account, Shop) which are never the merchant's
+	 * policy page. WC core's `wc_get_page_id()` is the canonical way
+	 * to identify these — it tracks the actual page IDs from WC's
+	 * settings, so it correctly excludes the merchant's renamed-or-
+	 * customised system pages, not just slug-matches against the
+	 * defaults.
+	 *
+	 * Privacy-policy / terms / refund-explainer pages are kept in
+	 * the list because merchants may legitimately link to them as
+	 * their return policy; the filter is narrow on purpose.
+	 *
+	 * Response shape mirrors `/wp/v2/pages` (id, title, link) so the
+	 * JS call site is a drop-in replacement.
+	 *
+	 * @return WP_REST_Response|WP_Error WP_Error returned (status 500)
+	 *                                   when `get_pages()` fails so the
+	 *                                   JS pagesError state lights up
+	 *                                   instead of silently rendering
+	 *                                   an empty dropdown.
+	 */
+	public function get_policy_pages() {
+		// `wc_get_page_id()` is always available here — this controller
+		// only loads when WooCommerce is active (the plugin's
+		// `Requires Plugins: woocommerce` header + runtime
+		// `class_exists('WooCommerce')` gate). No `function_exists`
+		// guard needed at this layer.
+		$excluded = [];
+		foreach ( [ 'cart', 'checkout', 'myaccount', 'shop' ] as $slug ) {
+			$page_id = (int) wc_get_page_id( $slug );
+			// `wc_get_page_id()` returns -1 for unconfigured pages; the
+			// `> 0` test correctly excludes -1 from the exclude list.
+			if ( $page_id > 0 ) {
+				$excluded[] = $page_id;
+			}
+		}
+
+		$pages = get_pages(
+			[
+				'post_status' => 'publish',
+				'sort_column' => 'post_title',
+				'sort_order'  => 'ASC',
+				// 200 is intentional: WP-default get_pages() pagination
+				// would otherwise return everything, and merchants with
+				// 1000+ pages would see a slow dropdown render. 200 is
+				// generous for a policy-link picker (typical Woo store
+				// has 5-30 pages); the bounded result avoids surprises.
+				'number'      => 200,
+				'exclude'     => $excluded,
+			]
+		);
+
+		// `get_pages()` returns false on DB error, an array on success
+		// (possibly empty). Distinguishing the two matters: an empty
+		// array is "no policy-eligible pages exist" (legitimate fresh
+		// store) and we return []; false is a real DB failure that
+		// should surface as a 500 so the JS pagesError state lights up
+		// rather than render an empty dropdown that looks identical to
+		// the legitimate-empty case. Without this distinction, a
+		// merchant reporting "my policies dropdown is empty" has no
+		// traceable signal to debug.
+		if ( false === $pages ) {
+			return new WP_Error(
+				'wc_ai_storefront_pages_query_failed',
+				__( 'Could not load pages.', 'woocommerce-ai-storefront' ),
+				[ 'status' => 500 ]
+			);
+		}
+
+		$result = [];
+		foreach ( $pages as $page ) {
+			// Run the title through `the_title` filter to match the
+			// `/wp/v2/pages` REST endpoint's output shape: it filters
+			// the title (entity decoding, shortcode stripping, plugin
+			// hooks like Yoast's title-tweaking). The JS does
+			// `decodeEntities()` on the result, so we pre-render here
+			// for parity. Raw `$page->post_title` would diverge from
+			// what `/wp/v2/pages` returns under `title.rendered` and
+			// surface in the dropdown as the literal pre-filter
+			// string (e.g., shortcodes unexpanded, entities double-
+			// encoded after the JS-side decode).
+			$result[] = [
+				'id'    => (int) $page->ID,
+				'title' => [
+					// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's `the_title` filter to mirror the `/wp/v2/pages` REST endpoint's `title.rendered` field shape (entity decoding, shortcode stripping, third-party title-tweaking plugins). The drop-in-replacement contract requires identical filtering, not a plugin-prefixed parallel hook.
+					'rendered' => apply_filters( 'the_title', $page->post_title, $page->ID ),
+				],
+				'link'  => get_permalink( $page->ID ),
+			];
+		}
+
+		return new WP_REST_Response( $result );
 	}
 
 	/**
