@@ -229,4 +229,183 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 			WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( 'foo.openai.com' )
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// is_agent_allowed() — the gate behind the UCP REST endpoint
+	// ------------------------------------------------------------------
+
+	public function test_is_agent_allowed_empty_canonical_passes(): void {
+		// Empty canonical means there was no UCP-Agent header (or it
+		// was unparseable). We don't gate on header presence — pre-UCP
+		// traffic uses standard WP auth + rate-limit layers. Closing
+		// this would break manifest crawls and any non-UCP client.
+		$this->assertTrue(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( '', [] )
+		);
+	}
+
+	public function test_is_agent_allowed_unknown_brand_passes(): void {
+		// "Other AI" + brands without a crawler equivalent (You.com,
+		// Kagi) aren't in UCP_AGENT_CRAWLER_MAP. Pass-through is the
+		// open-spec wedge: any agent with a parseable UCP-Agent header
+		// gets in unless the merchant has an explicit way to block it.
+		$this->assertTrue(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
+				WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+				[]
+			)
+		);
+		$this->assertTrue(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( 'You', [] )
+		);
+		$this->assertTrue(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( 'Kagi', [] )
+		);
+	}
+
+	public function test_is_agent_allowed_known_brand_with_one_crawler_id_present(): void {
+		// Merchant has ONE of ChatGPT's two crawler IDs in their
+		// allowed list — that's enough. The merchant's mental model
+		// is "I'm OK with this brand," not "I'm OK with each named
+		// user-agent." OR-semantics across mapped IDs.
+		$this->assertTrue(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
+				'ChatGPT',
+				[ 'ChatGPT-User' ]
+			)
+		);
+		$this->assertTrue(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
+				'ChatGPT',
+				[ 'OAI-SearchBot' ]
+			)
+		);
+	}
+
+	public function test_is_agent_allowed_known_brand_with_all_crawler_ids_present(): void {
+		// Both ChatGPT crawler IDs in the allow-list — straightforward
+		// allow.
+		$this->assertTrue(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
+				'ChatGPT',
+				[ 'ChatGPT-User', 'OAI-SearchBot' ]
+			)
+		);
+	}
+
+	public function test_is_agent_allowed_known_brand_with_no_mapped_crawler_ids_blocks(): void {
+		// Merchant's allow-list contains OTHER vendors but none of
+		// ChatGPT's mapped crawler IDs. The gate must deny — this is
+		// the central behavior the production bug surfaced (a brand
+		// the merchant turned off in robots.txt was still hitting UCP).
+		$this->assertFalse(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
+				'ChatGPT',
+				[ 'PerplexityBot', 'KlarnaBot' ]
+			)
+		);
+	}
+
+	public function test_is_agent_allowed_known_brand_with_empty_allow_list_blocks(): void {
+		// Empty allow-list = merchant has explicitly turned off every
+		// crawler. Don't accept "ChatGPT" via the UCP endpoint when
+		// they've turned every brand's crawlers off — that would let
+		// UCP traffic in through a side door the merchant believed
+		// was closed.
+		$this->assertFalse(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
+				'ChatGPT',
+				[]
+			)
+		);
+	}
+
+	public function test_is_agent_allowed_match_is_strict_string_compare(): void {
+		// `in_array($id, $list, true)` — strict comparison. A
+		// case-mismatched or whitespace-padded entry won't satisfy
+		// the gate. Merchant settings sanitization happens upstream;
+		// the gate trusts what's in the saved list verbatim.
+		$this->assertFalse(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
+				'ChatGPT',
+				[ 'chatgpt-user' ] // wrong case
+			)
+		);
+		$this->assertFalse(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
+				'ChatGPT',
+				[ ' ChatGPT-User ' ] // padded whitespace
+			)
+		);
+	}
+
+	public function test_is_agent_allowed_each_brand_in_map_has_at_least_one_id(): void {
+		// Defensive structural check: every entry in
+		// UCP_AGENT_CRAWLER_MAP must list at least one crawler ID.
+		// An empty list would silently DENY that brand for any
+		// merchant settings (because the foreach would never enter
+		// the `in_array` branch and we'd fall through to `false`).
+		// A future contributor adding a brand row must include at
+		// least the brand's own bot ID.
+		foreach (
+			WC_AI_Storefront_UCP_Agent_Header::UCP_AGENT_CRAWLER_MAP
+			as $brand => $ids
+		) {
+			$this->assertNotEmpty(
+				$ids,
+				sprintf( 'Brand "%s" has no mapped crawler IDs.', $brand )
+			);
+			$this->assertContainsOnly( 'string', $ids );
+		}
+	}
+
+	public function test_is_agent_allowed_every_mapped_id_exists_in_ai_crawlers(): void {
+		// Stricter structural check: every crawler ID listed in
+		// UCP_AGENT_CRAWLER_MAP must actually appear in
+		// `WC_AI_Storefront_Robots::AI_CRAWLERS`. The two sources have
+		// to stay in lockstep because the merchant's UI saves IDs from
+		// the AI_CRAWLERS list, and the gate looks them up via this map.
+		// A typo in either side ("ChatGTP-User", "Gemin-Searchbot") would
+		// produce an ID the merchant can never save through the UI —
+		// that brand would be permanently blocked at the endpoint
+		// regardless of merchant intent. This test catches the typo at
+		// CI time, before a release ships with a silently-blocked brand.
+		foreach (
+			WC_AI_Storefront_UCP_Agent_Header::UCP_AGENT_CRAWLER_MAP
+			as $brand => $ids
+		) {
+			foreach ( $ids as $id ) {
+				$this->assertContains(
+					$id,
+					WC_AI_Storefront_Robots::AI_CRAWLERS,
+					sprintf(
+						'Brand "%s" maps to crawler ID "%s" which is NOT in WC_AI_Storefront_Robots::AI_CRAWLERS — the merchant UI would never offer that ID, so the brand is permanently blocked.',
+						$brand,
+						$id
+					)
+				);
+			}
+		}
+	}
+
+	public function test_is_agent_allowed_ucpplayground_self_referential(): void {
+		// UCPPlayground is the dev/test crawler we ship with the
+		// plugin. The map entry pairs canonical "UCPPlayground" with
+		// crawler ID "UCPPlayground" so the merchant can flip it on
+		// or off in the AI Crawlers list and have that flip honored
+		// at the endpoint. Without this row UCPPlayground would fall
+		// to "Other AI" and bypass the gate.
+		$this->assertTrue(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
+				'UCPPlayground',
+				[ 'UCPPlayground' ]
+			)
+		);
+		$this->assertFalse(
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
+				'UCPPlayground',
+				[ 'ChatGPT-User' ]
+			)
+		);
+	}
 }

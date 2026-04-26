@@ -4,6 +4,16 @@
 
 ---
 
+## [0.3.1] – 2026-04-26
+
+### Fixes
+- **Merchant's `allowed_crawlers` setting was not enforced at the UCP REST endpoint.** Pre-fix: a merchant could disable a brand (e.g. ChatGPT) in the AI Crawlers list and that brand's `robots.txt` lines would update accordingly, but a UCP request from `openai.com` still hit `/wc/ucp/v1/catalog/search` and got commerce data. The endpoint trusted the merchant's intent only at the discovery layer, not at the access layer. New `check_agent_access` permission_callback wires the UCP-Agent header parse + canonical-brand lookup into the existing allowed_crawlers list, returning WP_Error 403 when every crawler ID mapped to that brand is absent. Three commerce routes are gated (`catalog/search`, `catalog/lookup`, `checkout-sessions`); `extension/schema` stays public so manifest discovery still works for any agent. Open-spec wedge preserved: agents that don't canonicalize to a known brand ("Other AI", You.com, Kagi) pass through unchanged. New `UCP_AGENT_CRAWLER_MAP` translation table bridges the canonical-brand-name namespace (used for attribution) to the crawler-ID namespace (used in robots.txt + the AI Crawlers UI).
+
+### Tests
+- 13 new tests covering the gate at three layers: pure-function `is_agent_allowed()` decision logic (9 cases — empty/unknown/known-allowed/known-blocked/strict-string-compare/structural map check/UCPPlayground self-reference), route-wiring (commerce routes gated, schema public), and `check_agent_access()` end-to-end (12 cases — header missing/empty/unparseable/Other-AI pass-through, blocked-with-403, blocked-message-includes-brand-name, settings-source fallbacks for missing-key + wrong-type).
+
+---
+
 ## [0.3.0] – 2026-04-26
 
 ### Features
