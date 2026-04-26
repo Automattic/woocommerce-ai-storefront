@@ -96,6 +96,7 @@ class WC_AI_Storefront {
 		require_once $ucp_path . 'class-wc-ai-storefront-ucp-rest-controller.php';
 
 		require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/admin/class-wc-ai-storefront-admin-controller.php';
+		require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/admin/class-wc-ai-storefront-product-meta-box.php';
 	}
 
 	/**
@@ -149,6 +150,19 @@ class WC_AI_Storefront {
 		// remove this extension once core picks it up.
 		$store_api_extension = new WC_AI_Storefront_Store_Api_Extension();
 		$store_api_extension->init();
+
+		// Per-product final-sale meta box (admin-only). Adds the
+		// "AI: Final sale" checkbox to the WC product editor's
+		// Inventory tab and persists the merchant's choice. The
+		// checkbox is read by `WC_AI_Storefront_JsonLd::build_return_policy_block()`
+		// at JSON-LD emission time to override the store-wide return
+		// policy on a per-product basis. Frontend has no use for the
+		// meta box — gate the registration so we don't pay the hook
+		// cost on store visitor pageloads.
+		if ( is_admin() ) {
+			$product_meta_box = new WC_AI_Storefront_Product_Meta_Box();
+			$product_meta_box->init();
+		}
 	}
 
 	/**

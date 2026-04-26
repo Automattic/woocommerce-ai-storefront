@@ -50,6 +50,15 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 			static fn( $key, $default = '' ) =>
 				'woocommerce_weight_unit' === $key ? 'kg' : $default
 		);
+		// Stub the per-product final-sale meta read to "not flagged"
+		// — these normalization tests are about the store-wide policy
+		// emission flow, not the per-product override gate.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		// Default `wp_get_post_parent_id()` to 0 (non-variation
+		// products). The override-scope resolution at
+		// `enhance_product_data` calls this to determine whether to
+		// read the flag off a parent product.
+		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
 	}
 
 	protected function tearDown(): void {

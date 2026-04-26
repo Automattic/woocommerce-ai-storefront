@@ -234,10 +234,35 @@ class WC_AI_Storefront_JsonLd {
 				],
 			];
 
-			$policy       = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
+			$policy = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
 				? $settings['return_policy']
 				: [ 'mode' => 'unconfigured' ];
-			$policy_block = $this->build_return_policy_block( $policy, $country );
+			// Resolve the per-product override-flag scope. Variations
+			// inherit from their parent — a merchant flagging a parent
+			// "Final sale" expects every color/size variant to inherit
+			// that posture without re-flagging each one. WC stores
+			// variations as posts whose `post_parent` is the parent
+			// product's ID; `wp_get_post_parent_id()` returns 0 for
+			// non-variation products (simple, grouped, external), so
+			// the same call works uniformly. Use the parent ID when
+			// present so the flag is read off the parent's meta;
+			// fall back to the product's own ID otherwise.
+			//
+			// `wp_get_post_parent_id` (rather than
+			// `WC_Product::get_parent_id`) so PHPStan's WC stubs don't
+			// flag the call — `get_parent_id` exists on WC_Product but
+			// isn't in `php-stubs/woocommerce-stubs` at the version we
+			// pin. Same wire-level result either way.
+			$policy_product_id = null;
+			if ( $product instanceof WC_Product ) {
+				$parent_id         = wp_get_post_parent_id( $product->get_id() );
+				$policy_product_id = $parent_id > 0 ? $parent_id : $product->get_id();
+			}
+			$policy_block = $this->build_return_policy_block(
+				$policy,
+				$country,
+				$policy_product_id
+			);
 			if ( null !== $policy_block ) {
 				$markup['offers'][0]['hasMerchantReturnPolicy'] = $policy_block;
 			}
@@ -368,12 +393,62 @@ class WC_AI_Storefront_JsonLd {
 	 *     to a "no returns" explainer). No `returnFees`/`returnMethod`
 	 *     because the policy precludes returns.
 	 *
-	 * @param array  $policy  Sanitized return-policy settings.
-	 * @param string $country ISO country code from the WC store base.
+	 * @param array    $policy     Sanitized return-policy settings.
+	 * @param string   $country    ISO country code from the WC store base.
+	 * @param int|null $product_id Optional product ID for per-product
+	 *                             override lookup. When non-null AND the
+	 *                             product is flagged final-sale via
+	 *                             `WC_AI_Storefront_Product_Meta_Box::is_final_sale()`
+	 *                             (which reads
+	 *                             `WC_AI_Storefront_Product_Meta_Box::META_KEY` —
+	 *                             `_wc_ai_storefront_final_sale`), the
+	 *                             store-wide policy is bypassed and a
+	 *                             `MerchantReturnNotPermitted` block is
+	 *                             emitted regardless of mode. `null`
+	 *                             skips the override lookup (used by
+	 *                             store-wide preview rendering or unit
+	 *                             tests that exercise the store-wide
+	 *                             logic in isolation).
 	 * @return array<string, mixed>|null Structured-data block, or null when the
 	 *                                   policy is `unconfigured` (caller skips emission).
 	 */
-	private function build_return_policy_block( array $policy, string $country ): ?array {
+	private function build_return_policy_block( array $policy, string $country, ?int $product_id = null ): ?array {
+		// Per-product final-sale override (highest-priority gate). A
+		// flagged product emits MerchantReturnNotPermitted regardless
+		// of the store-wide mode — including when the store-wide mode
+		// is `unconfigured` (the override forces a structured claim
+		// even when the merchant otherwise opted out of exposing one).
+		// Unflagged products fall through to the store-wide logic
+		// below.
+		//
+		// The override deliberately ignores the store-wide `days` /
+		// `fees` / `methods` settings — those describe an
+		// accepts-returns posture, which is the exact opposite of
+		// what the override declares. Keeping the override block
+		// minimal also avoids surprising merchants who flagged a
+		// product expecting "no returns" and got an emission that
+		// somehow includes a return-window number.
+		//
+		// `merchantReturnLink` is reused from the store-wide policy
+		// page when configured — a "no returns" page typically
+		// documents what's covered (defective goods, statutory
+		// rights), so reusing the link beats omission. If the
+		// merchant hasn't configured a policy page, the override
+		// emits the bare-bones block without a link.
+		if ( null !== $product_id && WC_AI_Storefront_Product_Meta_Box::is_final_sale( $product_id ) ) {
+			$block   = [
+				'@type'                => 'MerchantReturnPolicy',
+				'applicableCountry'    => $country,
+				'returnPolicyCategory' => 'https://schema.org/MerchantReturnNotPermitted',
+			];
+			$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
+			$link    = self::resolve_merchant_return_link( $page_id );
+			if ( '' !== $link ) {
+				$block['merchantReturnLink'] = $link;
+			}
+			return $block;
+		}
+
 		$mode = $policy['mode'] ?? 'unconfigured';
 
 		if ( 'unconfigured' === $mode ) {
