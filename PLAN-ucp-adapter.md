@@ -1,5 +1,14 @@
 # PLAN: UCP REST Adapter (Plugin v1.3.0)
 
+> **Superseded by 0.1.15.** Several references below name the hook
+> `woocommerce_store_api_product_collection_query_args` as the
+> registration target for product-scope filtering. That hook does not
+> exist in WC core; the working implementation registers the
+> equivalent gate against `pre_get_posts` instead. See the file
+> docblock of `class-wc-ai-storefront-ucp-store-api-filter.php` for
+> the current architecture. This document is preserved as an archival
+> design record.
+
 **Status**: Draft — awaiting implementation.
 **Target version**: 1.3.0
 **Scope**: Build UCP-compliant REST endpoints for the `dev.ucp.shopping.catalog` and `dev.ucp.shopping.checkout` capabilities, hosted at `/wp-json/wc/ucp/v1/`.

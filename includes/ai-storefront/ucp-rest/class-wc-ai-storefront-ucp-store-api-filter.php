@@ -92,6 +92,28 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * unfiltered WP_Query behavior.
 	 */
 	public function init(): void {
+		// Idempotency guard. WordPress's `add_action` does NOT
+		// deduplicate by callback identity across object instances —
+		// `[ $instance_a, 'on_pre_get_posts' ]` and
+		// `[ $instance_b, 'on_pre_get_posts' ]` register as distinct
+		// callbacks. Without this guard, a second `init()` call (plugin
+		// re-init in tests, future code instantiating a second filter,
+		// activation/deactivation cycle in the same request) would
+		// stack a second callback. The mutator is idempotent on its
+		// own output, but with stacked callbacks the first writes a
+		// UNION `tax_query` and the second wraps it in an outer AND
+		// because `$incoming_tax_query` is now non-empty — query is
+		// silently mutated into a stricter form than the merchant
+		// configured. The static sentinel below is per-request, so a
+		// future `wp_reset_postdata`-style reset would still work.
+		if ( has_action( 'pre_get_posts', [ $this, 'on_pre_get_posts' ] ) ) {
+			if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'WC_AI_Storefront_UCP_Store_API_Filter::init() called when pre_get_posts callback was already registered; skipping duplicate registration'
+				);
+			}
+			return;
+		}
 		add_action(
 			'pre_get_posts',
 			[ $this, 'on_pre_get_posts' ]

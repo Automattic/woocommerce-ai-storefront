@@ -201,6 +201,106 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// Bridge contract: tax_query merge / post__in intersect / sentinel
+	// ------------------------------------------------------------------
+
+	public function test_pre_get_posts_merges_incoming_tax_query_via_outer_and(): void {
+		// A theme or another plugin running inside UCP dispatch may
+		// already have constrained the WP_Query via its own tax_query
+		// (e.g. "products tagged #featured"). The bridge must wrap the
+		// caller's tax_query AND our UNION clause in an outer
+		// AND-relation so both filters stay in effect — overriding the
+		// caller would silently undo their intent.
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'by_taxonomy',
+			'selected_categories'    => [ 7 ],
+		];
+
+		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
+		try {
+			$incoming_tax_query = [
+				[
+					'taxonomy' => 'product_tag',
+					'field'    => 'slug',
+					'terms'    => [ 'featured' ],
+				],
+			];
+			$query = new WP_Query(
+				[
+					'post_type' => 'product',
+					'tax_query' => $incoming_tax_query,
+				]
+			);
+			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$filter->on_pre_get_posts( $query );
+
+			$result = $query->get( 'tax_query' );
+			$this->assertIsArray( $result );
+			$this->assertSame( 'AND', $result['relation'] );
+			// First slot = caller's clause preserved verbatim.
+			$this->assertSame( $incoming_tax_query, $result[0] );
+			// Second slot = our UNION block (relation OR + selected_categories).
+			$this->assertSame( 'OR', $result[1]['relation'] );
+		} finally {
+			\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
+		}
+	}
+
+	public function test_pre_get_posts_intersects_incoming_post_in_for_selected_mode(): void {
+		// `selected` mode + an incoming `post__in` (e.g. theme limiting
+		// to a related-products list) → intersection, not override.
+		// Override would either expose the merchant's full allow-list
+		// (ignoring the caller) or hide everything (ignoring the
+		// merchant). Intersection respects both.
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'selected',
+			'selected_products'      => [ 10, 20, 30 ],
+		];
+
+		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
+		try {
+			$query = new WP_Query(
+				[
+					'post_type' => 'product',
+					'post__in'  => [ 20, 30, 40 ],
+				]
+			);
+			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$filter->on_pre_get_posts( $query );
+
+			// 20 and 30 in both → intersection. 40 in caller only,
+			// 10 in merchant only → both excluded.
+			$this->assertSame( [ 20, 30 ], $query->get( 'post__in' ) );
+		} finally {
+			\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
+		}
+	}
+
+	public function test_pre_get_posts_preserves_post_in_zero_sentinel_for_empty_selection(): void {
+		// `selected` mode with empty allow-list (or `by_taxonomy`
+		// with no enforceable terms) forces `post__in = [0]` — a
+		// sentinel that matches no real product ID, producing zero
+		// results. WP_Query treats raw `[]` as "no filter applied",
+		// which would expose the entire catalog — exactly inverted
+		// from the merchant's "nothing picked yet" intent.
+		WC_AI_Storefront::$test_settings = [
+			'product_selection_mode' => 'selected',
+			'selected_products'      => [],
+		];
+
+		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
+		try {
+			$query  = new WP_Query( [ 'post_type' => 'product' ] );
+			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$filter->on_pre_get_posts( $query );
+
+			$this->assertSame( [ 0 ], $query->get( 'post__in' ) );
+		} finally {
+			\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
+		}
+	}
+
+	// ------------------------------------------------------------------
 	// Hook registration: regression guard against the dead hook
 	// ------------------------------------------------------------------
 
@@ -228,11 +328,11 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 
 		( new WC_AI_Storefront_UCP_Store_API_Filter() )->init();
 
-		// Brain Monkey verifies the expectations in tearDown, but
-		// PHPUnit doesn't count those as native assertions and flags
-		// the test risky. Make the contract explicit so the test
-		// still asserts something even if Brain Monkey's lifecycle
-		// changes.
-		$this->assertTrue( true );
+		// Brain Monkey's expectations get verified during tearDown
+		// but PHPUnit doesn't count those as native assertions, so
+		// the test would otherwise be flagged "risky" — bumping the
+		// count explicitly is the canonical way to acknowledge
+		// non-native assertions without a misleading assertTrue(true).
+		$this->addToAssertionCount( 2 );
 	}
 }

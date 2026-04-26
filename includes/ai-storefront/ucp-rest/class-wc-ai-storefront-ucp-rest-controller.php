@@ -321,17 +321,27 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// breaking conformance by 400-ing on unknown keys (the spec
 		// permits vendor extensions, so silent-ignore is the right
 		// default behavior; the log is purely observability).
-		if ( WC_AI_Storefront_Logger::is_enabled() ) {
-			$body = $request->get_json_params();
-			if ( is_array( $body ) ) {
-				$known   = [ 'query', 'filters', 'pagination', 'sort', 'context', 'signals' ];
-				$unknown = array_diff( array_keys( $body ), $known );
-				if ( ! empty( $unknown ) ) {
-					WC_AI_Storefront_Logger::debug(
-						'UCP catalog/search: received unrecognized params (ignored): '
-						. implode( ', ', array_map( 'sanitize_key', $unknown ) )
-					);
-				}
+		// Detect unrecognized params unconditionally (the diff is cheap)
+		// so we can surface them via BOTH the debug log AND a response
+		// header. Debug-only would be invisible on production installs
+		// where logging is off — exactly the silent-failure shape we
+		// want to avoid surfacing in this very controller. The header
+		// is non-PII (just enum keys), bounded by the request body,
+		// and a no-op for spec-compliant clients (they ignore unknown
+		// response headers).
+		$body           = $request->get_json_params();
+		$unknown_params = [];
+		if ( is_array( $body ) ) {
+			$known          = [ 'query', 'filters', 'pagination', 'sort', 'context', 'signals' ];
+			$unknown_keys   = array_values( array_diff( array_keys( $body ), $known ) );
+			$unknown_params = function_exists( 'sanitize_key' )
+				? array_map( 'sanitize_key', $unknown_keys )
+				: $unknown_keys;
+			if ( ! empty( $unknown_params ) && WC_AI_Storefront_Logger::is_enabled() ) {
+				WC_AI_Storefront_Logger::debug(
+					'UCP catalog/search: received unrecognized params (ignored): '
+					. implode( ', ', $unknown_params )
+				);
 			}
 		}
 
@@ -481,7 +491,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$body['messages'] = $messages;
 		}
 
-		return new WP_REST_Response( $body, 200 );
+		$response = new WP_REST_Response( $body, 200 );
+
+		// Surface unrecognized request params back to the client via a
+		// response header. Captured at the top of the handler; this is
+		// the only place we emit them on the success path. Clients
+		// integrating UCP can read this header to self-diagnose
+		// misnamed keys (the canonical example: `search` instead of
+		// `query`) without us breaking conformance by returning 400 —
+		// the spec permits vendor extensions, so silent-ignore is the
+		// right default. The log line above gates on debug; the header
+		// is unconditional so production installs surface the signal too.
+		if ( ! empty( $unknown_params ) ) {
+			$response->header(
+				'X-WC-AI-Storefront-Unknown-Params',
+				implode( ', ', $unknown_params )
+			);
+		}
+
+		return $response;
 	}
 
 	/**
