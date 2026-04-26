@@ -76,6 +76,7 @@ class WC_AI_Storefront {
 		$path = WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-storefront/';
 
 		require_once $path . 'class-wc-ai-storefront-logger.php';
+		require_once $path . 'class-wc-ai-storefront-return-policy.php';
 		require_once $path . 'class-wc-ai-storefront-llms-txt.php';
 		require_once $path . 'class-wc-ai-storefront-jsonld.php';
 		require_once $path . 'class-wc-ai-storefront-robots.php';
@@ -127,14 +128,15 @@ class WC_AI_Storefront {
 		$rate_limiter = new WC_AI_Storefront_Store_Api_Rate_Limiter();
 		$rate_limiter->init();
 
-		// Store API product collection filter — enforces the merchant's
-		// `product_selection_mode` only when the UCP REST controller
-		// dispatches an inner Store API request (via the
-		// `enter_ucp_dispatch()` / `exit_ucp_dispatch()` markers).
-		// Other Store API consumers (front-end Cart, block-theme
-		// Checkout, themes, third-party plugins) are unaffected.
-		// See the filter class's docblock for the scoping
-		// rationale.
+		// UCP product-scoping hook — enforces the merchant's
+		// `product_selection_mode` on product `WP_Query` instances
+		// only when the UCP REST controller dispatches an inner Store
+		// API request (via the `enter_ucp_dispatch()` /
+		// `exit_ucp_dispatch()` markers). Other product queries
+		// (front-end Cart, block-theme Checkout, themes, admin product
+		// list, third-party plugins) are unaffected. The hook layer is
+		// `pre_get_posts`; see the filter class's docblock for why a
+		// global WP-level hook is the right place to apply UCP scope.
 		$store_api_filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$store_api_filter->init();
 
@@ -374,6 +376,17 @@ class WC_AI_Storefront {
 				// `is_product_syndicated()` + the Store API filter +
 				// the `/search/brands` admin route.
 				'supportsBrands' => taxonomy_exists( 'product_brand' ),
+				// Store base country for the Policies tab's live
+				// JSON-LD preview. Mirrors what the server uses at
+				// emission time (`wc_get_base_location()['country']`)
+				// so the preview shows the same `applicableCountry`
+				// the merchant's actual product schema will carry.
+				// Empty string when the merchant hasn't configured a
+				// store address — the preview suppresses the policy
+				// block entirely in that case, matching the server's
+				// `if ( $country && ... )` gate in
+				// `WC_AI_Storefront_JsonLd::enhance_product_data()`.
+				'storeCountry'   => wc_get_base_location()['country'] ?? '',
 			]
 		);
 
@@ -419,6 +432,15 @@ class WC_AI_Storefront {
 			'selected_brands'        => [],
 			'selected_products'      => [],
 			'rate_limit_rpm'         => 25,
+			// Return/refund policy exposed to AI agents at the
+			// Offer level via `hasMerchantReturnPolicy`. Default
+			// `unconfigured` mode emits NO policy block — until a
+			// merchant opts into one of the explicit modes
+			// (`returns_accepted` / `final_sale`) we never publish
+			// a structurally invalid claim. See
+			// `WC_AI_Storefront_JsonLd::build_return_policy_block()`
+			// for the per-mode emission logic.
+			'return_policy'          => [ 'mode' => 'unconfigured' ],
 		];
 
 		$settings = get_option( self::SETTINGS_OPTION, [] );
@@ -515,6 +537,9 @@ class WC_AI_Storefront {
 				// explicitly unchecked.
 				$merged['allowed_crawlers'] ?? WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
 			),
+			'return_policy'          => self::sanitize_return_policy(
+				$merged['return_policy'] ?? []
+			),
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.
@@ -526,6 +551,26 @@ class WC_AI_Storefront {
 		wp_cache_delete( 'alloptions', 'options' );
 
 		return $result;
+	}
+
+	/**
+	 * Sanitize the `return_policy` nested settings object.
+	 *
+	 * Thin delegation to `WC_AI_Storefront_Return_Policy::sanitize()` —
+	 * the actual rules live there so the unit-test stub class can
+	 * exercise the production sanitizer rather than hand-mirroring it.
+	 *
+	 * Mode-aware persistence: only the fields that are meaningful for
+	 * the resolved mode are stored. `unconfigured` returns just `mode`;
+	 * `final_sale` returns `mode` + `page_id`; `returns_accepted`
+	 * returns the full 5-field shape. See the helper's docblock for
+	 * the full per-field rules.
+	 *
+	 * @param mixed $policy Raw return-policy input.
+	 * @return array<string, mixed>
+	 */
+	public static function sanitize_return_policy( $policy ): array {
+		return WC_AI_Storefront_Return_Policy::sanitize( $policy );
 	}
 
 	/**

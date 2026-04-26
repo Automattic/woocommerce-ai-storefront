@@ -76,6 +76,49 @@ class WC_AI_Storefront_Admin_Controller {
 							'type'  => 'array',
 							'items' => [ 'type' => 'string' ],
 						],
+						// Return policy schema is intentionally type-only:
+						// no `enum`, no `minimum/maximum`. The canonical
+						// validation/normalization rules live in
+						// `WC_AI_Storefront_Return_Policy::sanitize()`,
+						// which accepts unknown values and normalizes
+						// them to safe defaults rather than rejecting.
+						// If we declared `enum` here, WP REST would 400
+						// out-of-enum values BEFORE the sanitizer ran —
+						// that contradicts the sanitizer's "accept then
+						// normalize" contract and would surprise
+						// integration tests that exercise the full
+						// REST flow. Type checking still catches gross
+						// shape errors (string where integer expected,
+						// etc.) at the boundary.
+						'return_policy'          => [
+							'type'       => 'object',
+							'properties' => [
+								'mode'    => [
+									'type' => 'string',
+								],
+								'page_id' => [
+									'type' => 'integer',
+								],
+								// `days` accepts integer OR null (the
+								// "no window configured" sentinel
+								// returned by the sanitizer). Without
+								// `'null'` in the type list, sending
+								// `days: null` would 400 even though
+								// it's a canonical sanitizer output.
+								'days'    => [
+									'type' => [ 'integer', 'null' ],
+								],
+								'fees'    => [
+									'type' => 'string',
+								],
+								'methods' => [
+									'type'  => 'array',
+									'items' => [
+										'type' => 'string',
+									],
+								],
+							],
+						],
 					],
 				],
 			]
@@ -259,7 +302,7 @@ class WC_AI_Storefront_Admin_Controller {
 	public function update_settings( $request ) {
 		$data = [];
 
-		$fields = [ 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers' ];
+		$fields = [ 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'return_policy' ];
 		foreach ( $fields as $field ) {
 			$value = $request->get_param( $field );
 			if ( null !== $value ) {

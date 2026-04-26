@@ -2,7 +2,17 @@
 
 ## [Unreleased]
 
+### Features
+- **Policies tab with store-wide return & refund policy section.** New "Policies" tab on the AI Storefront admin page lets merchants choose between "Returns accepted" / "No returns (final sale)" / "Don't expose" with optional days, fees, methods, and a policy page link. Drives the `hasMerchantReturnPolicy` JSON-LD emission at the Offer level — no more structurally invalid claims on every product.
+
+### Fixes
+- **Drop invalid `MerchantReturnFiniteReturnWindow` emission lacking `merchantReturnDays`; replace with smart-degrade structured emission.** Pre-this-release every product page emitted a `MerchantReturnFiniteReturnWindow` enum with no `merchantReturnDays`, no `merchantReturnLink`, no `returnFees`, no `returnMethod`. Google validators reject this combination. Default `unconfigured` mode now emits no policy block; `returns_accepted` smart-degrades to `MerchantReturnUnspecified` when days are unset.
+- **Decode double-encoded `seller.name` HTML entities.** WC core sometimes feeds an already-encoded value into structured data (e.g. `Piero&amp;#039;s` for a name with an apostrophe), surfacing visible literal `&amp;` and `&#039;` in JSON-LD. We now decode twice through `html_entity_decode()` so AI agents JSON.parse-ing the markup get the literal merchant-typed string. Audit bug #3.
+- **Normalize `weight` value to numeric form.** WC stores weight as a free-form string (often `.5` without the leading zero); casting through `(float)` produces a canonical `0.5` numeric so consumers parsing JSON-LD with strict number deserializers see a well-formed number. Audit bug #4.
+- **Copy `priceCurrency` to top-level `Offer` for Google's preferred placement.** WC core writes the currency under nested `priceSpecification[0].priceCurrency`; we now also surface it at the outer Offer level (without overwriting an existing value). Audit bug #5.
+
 ### Refactors
+- **Move `hasMerchantReturnPolicy` and `shippingDetails` from Product to Offer level (Schema.org/Google preferred placement).** Audit bug #6 fix folded into the same change.
 - **Discovery tab: replaced "Store API" row with "UCP API".** The row used to surface `/wp-json/wc/store/v1/` as if it were the AI commerce surface, but AI agents actually call our UCP wrapper at `/wp-json/wc/ucp/v1/` (per the manifest at `/.well-known/ucp`). Store API is the underlying transport our UCP catalog/search/lookup/checkout-sessions handlers dispatch through; naming the row "Store API" forced merchants to reason about an implementation layer that has nothing to do with what AI agents see. The new "UCP API" row points at the correct endpoint and describes its purpose ("Structured commerce API for AI agents — catalog search, lookup, and checkout sessions"). Code-level vocabulary stays unchanged — `WC_AI_Storefront_UCP_Store_API_Filter` and the rate-limiter class are correctly named for their architectural roles.
 - **Rate-limit section: dropped "Store API" framing in merchant-facing copy.** The limiter still lives at the Store API filter layer (correct architecturally — that's where the request lands), but it only throttles AI user-agents and only applies through the UCP path. Merchant copy now talks about throttling "AI agents" and "AI crawlers", which is what's actually observable to the merchant, not the internal layer where enforcement happens.
 

@@ -5,6 +5,12 @@
  * Provides a controllable get_settings() that tests can configure
  * via the $test_settings static property.
  *
+ * Sanitization rules are NOT mirrored here — `sanitize_return_policy()`
+ * delegates to `WC_AI_Storefront_Return_Policy::sanitize()`, the same
+ * helper production calls. Tests therefore exercise real production
+ * sanitization, eliminating the historical drift risk where the
+ * stub's hand-mirrored rules masked production regressions.
+ *
  * @package WooCommerce_AI_Storefront
  */
 
@@ -28,9 +34,18 @@ class WC_AI_Storefront {
 				'selected_categories'    => [],
 				'selected_products'      => [],
 				'rate_limit_rpm'         => 25,
+				'return_policy'          => [ 'mode' => 'unconfigured' ],
 			],
 			self::$test_settings
 		);
+	}
+
+	/**
+	 * Sanitize a return-policy payload. Delegates to the production
+	 * helper so tests assert real sanitization behavior.
+	 */
+	public static function sanitize_return_policy( $policy ): array {
+		return WC_AI_Storefront_Return_Policy::sanitize( $policy );
 	}
 
 	/**
@@ -156,10 +171,19 @@ class WC_AI_Storefront {
 			true
 		) ? $merged['product_selection_mode'] : 'all';
 
+		$overrides = [ 'product_selection_mode' => $sanitized_mode ];
+
+		// If a return_policy was passed in, route it through the
+		// production sanitizer so tests against the REST surface
+		// assert real sanitized values.
+		if ( array_key_exists( 'return_policy', $settings ) ) {
+			$overrides['return_policy'] = self::sanitize_return_policy( $settings['return_policy'] );
+		}
+
 		self::$test_settings = array_merge(
 			self::$test_settings,
 			$settings,
-			[ 'product_selection_mode' => $sanitized_mode ]
+			$overrides
 		);
 	}
 }
