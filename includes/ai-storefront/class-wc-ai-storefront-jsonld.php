@@ -179,7 +179,22 @@ class WC_AI_Storefront_JsonLd {
 		// or a third-party filter that already populated it). Audit
 		// bug #5.
 		if ( isset( $markup['offers'][0] ) && is_array( $markup['offers'][0] ) ) {
-			$nested_currency = $markup['offers'][0]['priceSpecification'][0]['priceCurrency'] ?? null;
+			// Drill into priceSpecification with explicit is_array
+			// guards at every level. PHP 8's null-coalescing on a
+			// chained subscript would short-circuit safely on missing
+			// keys, but a third-party filter or future WC core change
+			// could plausibly produce a non-list scalar / object at
+			// any level — `is_array` narrows that down to "list of
+			// arrays, with index 0" before we read the leaf.
+			$nested_currency = null;
+			if (
+				isset( $markup['offers'][0]['priceSpecification'] ) &&
+				is_array( $markup['offers'][0]['priceSpecification'] ) &&
+				isset( $markup['offers'][0]['priceSpecification'][0] ) &&
+				is_array( $markup['offers'][0]['priceSpecification'][0] )
+			) {
+				$nested_currency = $markup['offers'][0]['priceSpecification'][0]['priceCurrency'] ?? null;
+			}
 			if ( null !== $nested_currency && ! isset( $markup['offers'][0]['priceCurrency'] ) ) {
 				$markup['offers'][0]['priceCurrency'] = $nested_currency;
 			}
