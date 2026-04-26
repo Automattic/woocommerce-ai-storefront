@@ -77,11 +77,37 @@ const getActivePreset = ( rpm ) => {
  * merchant-facing UX cue, not a wire-format requirement.
  *
  * Keep this list in sync with the PHP constants
- * `WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS` and
- * `::TRAINING_CRAWLERS`. The frontend renders from this constant;
- * the backend sanitizes against the PHP list. Drift would produce
- * silently-dropped checkboxes on save.
+ * `WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS`,
+ * `::TRAINING_CRAWLERS`, and `::TEST_CRAWLERS`. The frontend renders
+ * from this constant; the backend sanitizes against the PHP-side
+ * `AI_CRAWLERS` (which is the union of all three). Drift would
+ * produce silently-dropped checkboxes on save.
  */
+/**
+ * Shape of a section in the AI Crawlers list.
+ *
+ * The render path filters `KNOWN_CRAWLERS` by category to populate
+ * each section. Most groups are 1:1 with a backend category (e.g.
+ * `live`); when a single merchant-facing section spans multiple
+ * backend categories (e.g. "Training and Test Crawlers" covers
+ * `training` + `test`), supply the full list via `categories`.
+ *
+ * @typedef {Object} CrawlerGroup
+ * @property {string}   key          Stable React reconciliation key,
+ *                                   AND the default backend-category
+ *                                   filter when `categories` isn't
+ *                                   supplied. Required.
+ * @property {string}   title        Section heading (translated).
+ * @property {string}   subtitle     One-line context paragraph below
+ *                                   the heading (translated).
+ * @property {string[]} [categories] When this section spans more than
+ *                                   one backend category, list all of
+ *                                   them. Missing OR empty → fall back
+ *                                   to `[key]` (single-category mode).
+ *                                   See the render-time guard for the
+ *                                   exact fallback rule.
+ */
+
 const KNOWN_CRAWLERS = [
 	// Live browsing — user-initiated fetches + live-answer indexing.
 	// Recommended on; these route revenue.
@@ -190,6 +216,19 @@ const KNOWN_CRAWLERS = [
 	},
 	{ id: 'CCBot', label: 'CCBot (CommonCrawl)', category: 'training' },
 	{ id: 'cohere-ai', label: 'cohere-ai (Cohere)', category: 'training' },
+
+	// Test / validation crawlers — third-party UCP validation tools
+	// merchants run against their own store. Functionally distinct
+	// from training (no model corpus contribution) and from live
+	// (no real revenue route), so they get their own category that
+	// shares the same default-off, merchant-discretion semantic as
+	// training. Visually grouped with training under the "Training
+	// and Test Crawlers" heading in the UI.
+	{
+		id: 'UCPPlayground',
+		label: 'UCPPlayground (ucpplayground.com — UCP validation tool)',
+		category: 'test',
+	},
 ];
 
 /**
@@ -670,11 +709,13 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 						decision legible: the top group (live
 						browsing) is the revenue-path AI traffic that
 						most commerce sites want; the bottom group
-						(training) is a brand-strategy decision where
-						accepting means your catalog becomes training
-						data — potentially surfacing stale answers
-						months later. See KNOWN_CRAWLERS above for
-						category-assignment rationale.
+						(training + test) is a brand-strategy decision
+						where accepting means your catalog becomes
+						training data — potentially surfacing stale
+						answers months later. See KNOWN_CRAWLERS above
+						for category-assignment rationale. Each group
+						entry conforms to the CrawlerGroup typedef
+						declared above the component.
 					*/ }
 					{ [
 						{
@@ -689,19 +730,40 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							),
 						},
 						{
-							key: 'training',
+							key: 'training_and_test',
 							title: __(
-								'Training crawlers',
+								'Training and Test Crawlers',
 								'woocommerce-ai-storefront'
 							),
 							subtitle: __(
-								'Static crawls that feed AI model training. Captured snapshots may surface as stale answers months later, with wrong prices or availability. Merchant discretion.',
+								'Non-revenue AI bots — training crawlers that feed model corpora (stale-snapshot risk: a crawl captured today may surface as an answer months later with wrong prices) and test crawlers (validation tools you run against your own store). Both default off; merchant discretion.',
 								'woocommerce-ai-storefront'
 							),
+							// This group covers two backend categories
+							// (training + test) under one merchant-facing
+							// heading. They share the same "non-revenue
+							// AI bot, default off" semantic and benefit
+							// from being stacked in one section. If a
+							// future category needs separate treatment,
+							// split into another group entry above.
+							categories: [ 'training', 'test' ],
 						},
 					].map( ( group, groupIndex ) => {
-						const crawlers = KNOWN_CRAWLERS.filter(
-							( c ) => c.category === group.key
+						// Robust fallback: only treat `categories` as a
+						// valid override when it's a non-empty array.
+						// `group.categories || [group.key]` would still
+						// fall back on `null`/`undefined` but NOT on `[]`,
+						// which would silently filter to zero crawlers
+						// (heading + subtitle render, body is empty).
+						// Explicit guard converts the silent-empty failure
+						// mode into "act like a single-category group."
+						const groupCategories =
+							Array.isArray( group.categories ) &&
+							group.categories.length > 0
+								? group.categories
+								: [ group.key ];
+						const crawlers = KNOWN_CRAWLERS.filter( ( c ) =>
+							groupCategories.includes( c.category )
 						);
 						return (
 							<div

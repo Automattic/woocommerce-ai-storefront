@@ -188,14 +188,20 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_canonicalize_host_returns_hostname_when_unknown(): void {
-		// Unknown agents keep their hostname so merchants still see
-		// *something* in the Origin column — "Source: foo-ai.example"
-		// is useful traceability. An empty/sentinel value here would
-		// erase attribution for every novel vendor.
+	public function test_canonicalize_host_buckets_unknown_to_other_ai(): void {
+		// Unknown agents bucket under the "Other AI" label rather than
+		// scattering one Origin-column row per novel hostname. The raw
+		// hostname is preserved separately on the order
+		// (`_wc_ai_storefront_agent_host_raw` meta) for diagnostic /
+		// graduation purposes — see resolve_agent_host() docblock.
 		$this->assertEquals(
-			'unknown-agent.example.com',
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
 			WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( 'unknown-agent.example.com' )
+		);
+		$this->assertEquals(
+			'Other AI',
+			WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( 'unknown-agent.example.com' ),
+			'OTHER_AI_BUCKET constant should be the literal string "Other AI" — locking the value here so a typo does not silently change every merchant\'s Origin column.'
 		);
 	}
 
@@ -215,9 +221,11 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		// `foo.openai.com` is NOT `openai.com`; an agent at that
 		// subdomain might be a different product (training bot,
 		// internal tool, partner integration) and collapsing it to
-		// "ChatGPT" would misattribute.
+		// "ChatGPT" would misattribute. Unknown subdomains bucket
+		// under "Other AI"; the raw hostname is preserved on the
+		// order meta for graduation review.
 		$this->assertEquals(
-			'foo.openai.com',
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
 			WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( 'foo.openai.com' )
 		);
 	}

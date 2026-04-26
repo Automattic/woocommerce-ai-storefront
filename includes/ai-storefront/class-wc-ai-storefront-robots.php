@@ -190,7 +190,37 @@ class WC_AI_Storefront_Robots {
 	];
 
 	/**
-	 * Combined allow-list — live browsing + training.
+	 * Test / validation crawlers.
+	 *
+	 * Developer tools merchants run against their own store to validate
+	 * UCP compliance, indexing structure, or AI-readiness — not actual
+	 * AI training corpora and not revenue-routing live agents.
+	 *
+	 * Default-off, like training crawlers: a test crawler hitting the
+	 * store inflates the merchant's stats with non-real activity (a
+	 * UCPPlayground validation pass would show up as "1 AI order" if
+	 * left enabled). Merchants explicitly opt in for the duration of
+	 * a validation session, then opt out.
+	 *
+	 * Visually grouped with `TRAINING_CRAWLERS` in the admin UI under
+	 * the "Training and Test Crawlers" heading — both categories share
+	 * the "non-revenue AI bot" semantic, and the merchant treats them
+	 * the same way (toggle on/off case-by-case).
+	 *
+	 * @var string[]
+	 */
+	const TEST_CRAWLERS = [
+		// UCP Playground (ucpplayground.com) — third-party validation
+		// tool that exercises the UCP catalog/search/lookup/checkout
+		// flow against a merchant's store. Useful when merchants want
+		// to confirm their UCP endpoint is responding correctly before
+		// soliciting traffic from real AI agents. Default-off; merchant
+		// flips it on while validating, off when done.
+		'UCPPlayground',
+	];
+
+	/**
+	 * Combined allow-list — live browsing + training + test.
 	 *
 	 * Preserved as the pre-1.5.0 canonical list for backward
 	 * compatibility: existing installs' saved `allowed_crawlers`
@@ -201,6 +231,15 @@ class WC_AI_Storefront_Robots {
 	 * New code should prefer the category-specific constants when
 	 * the distinction matters (e.g. default-on/default-off logic
 	 * in the admin UI).
+	 *
+	 * Order invariant — must remain
+	 *   `LIVE_BROWSING_AGENTS` ++ `TRAINING_CRAWLERS` ++ `TEST_CRAWLERS`
+	 * in declaration order. Adding a new entry: append it to the
+	 * appropriate category constant AND add it here at the end of the
+	 * matching block. Don't sort alphabetically and don't introduce a
+	 * fourth category without updating both this constant and
+	 * `RobotsTest::test_ai_crawlers_is_union_of_live_training_and_test`,
+	 * which `assertSame()`s the order.
 	 *
 	 * @var string[]
 	 */
@@ -235,6 +274,10 @@ class WC_AI_Storefront_Robots {
 		'Bytespider',
 		'CCBot',
 		'cohere-ai',
+
+		// Test / validation crawlers (default-off; merchant opts in
+		// for validation sessions).
+		'UCPPlayground',
 	];
 
 	/**

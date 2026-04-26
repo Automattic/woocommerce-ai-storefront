@@ -171,19 +171,82 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Gemini', $row['agent'] );
 	}
 
-	public function test_unknown_hostname_agent_meta_passes_through(): void {
-		// Novel agents not in KNOWN_AGENT_HOSTS must not be blanked
-		// or altered — they pass through verbatim so merchants
-		// still see attribution for unmapped vendors. Same contract
-		// as `canonicalize_host()` unit tests, pinned at the
+	public function test_unknown_hostname_agent_meta_buckets_to_other_ai(): void {
+		// Novel agents not in KNOWN_AGENT_HOSTS bucket under the
+		// "Other AI" label rather than scattering one Origin row per
+		// novel hostname. The raw hostname stamped on the order
+		// (`_wc_ai_storefront_agent_host_raw`) preserves provenance for
+		// graduation review — see resolve_agent_host() docblock. Same
+		// contract as the canonicalize_host() unit test, pinned at the
 		// response layer.
+		//
+		// IMPORTANT: this assertion guards against a regression where
+		// the admin Recent Orders endpoint would surface raw hostnames
+		// in the agent column, which:
+		//   (a) clutters merchant stats with one-off vendor names
+		//   (b) erodes the "Top Agent" card's signal as novel hostnames
+		//       proliferate
+		//   (c) leaks internal hostnames to the merchant when a partner
+		//       AI experiment is in flight
+		// Bucketing into "Other AI" is the documented contract; this
+		// test is the regression guard.
 		$order = $this->make_order( 100, 'novel-agent.example.com' );
 		Functions\when( 'wc_get_orders' )->justReturn( [ $order ] );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$row      = $response->get_data()['orders'][0];
 
-		$this->assertSame( 'novel-agent.example.com', $row['agent'] );
+		$this->assertSame(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$row['agent']
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// Regression guard: canonical brand names round-trip unchanged
+	// ------------------------------------------------------------------
+
+	/**
+	 * @dataProvider canonical_brand_names_provider
+	 */
+	public function test_canonical_brand_names_pass_through_in_response( string $brand_name ): void {
+		// Post-1.6.7 orders stamp `_wc_ai_storefront_agent` with the
+		// CANONICAL brand name (e.g. "Gemini") rather than the raw
+		// hostname. The display-time canonicalization in
+		// `get_recent_orders` MUST treat already-canonical values as
+		// already-canonical and pass them through unchanged.
+		//
+		// Pre-`canonicalize_host_idempotent`, the response handler
+		// re-canonicalized via `canonicalize_host()`, which lower-cased
+		// and looked up the brand string in `KNOWN_AGENT_HOSTS` (whose
+		// keys are *hostnames* like `gemini.google.com`) — found
+		// nothing — and bucketed every modern AI order as "Other AI".
+		// This data-provider locks in the regression guard for the
+		// full canonical roster.
+		$order = $this->make_order( 7, $brand_name );
+		Functions\when( 'wc_get_orders' )->justReturn( [ $order ] );
+
+		$response = $this->controller->get_recent_orders( $this->request() );
+		$row      = $response->get_data()['orders'][0];
+
+		$this->assertSame( $brand_name, $row['agent'] );
+	}
+
+	public static function canonical_brand_names_provider(): array {
+		return [
+			'OpenAI ChatGPT'    => [ 'ChatGPT' ],
+			'Anthropic Claude'  => [ 'Claude' ],
+			'Google Gemini'     => [ 'Gemini' ],
+			'Microsoft Copilot' => [ 'Copilot' ],
+			'Perplexity'        => [ 'Perplexity' ],
+			'Apple Siri'        => [ 'Siri' ],
+			'Amazon Rufus'      => [ 'Rufus' ],
+			'Klarna'            => [ 'Klarna' ],
+			'You.com'           => [ 'You' ],
+			'Kagi'              => [ 'Kagi' ],
+			'UCPPlayground'     => [ 'UCPPlayground' ],
+			'Other AI bucket'   => [ 'Other AI' ],
+		];
 	}
 
 	// ------------------------------------------------------------------

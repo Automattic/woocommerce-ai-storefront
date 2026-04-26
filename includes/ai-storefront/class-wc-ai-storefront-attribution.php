@@ -29,8 +29,53 @@ class WC_AI_Storefront_Attribution {
 
 	/**
 	 * Meta key for storing the AI agent name on orders.
+	 *
+	 * Stamped with the canonical merchant-facing name (e.g. "ChatGPT",
+	 * "Gemini", "Other AI") via `WC_AI_Storefront_UCP_Agent_Header::canonicalize_host()`.
+	 * Unknown agents bucket to "Other AI"; the raw hostname is preserved
+	 * separately in `AGENT_HOST_RAW_META_KEY`.
+	 *
+	 * Mixed-era cardinality (important for stats consumers):
+	 *   - pre-1.6.7 orders: stored as raw hostnames (e.g. "agent.foo.com").
+	 *     `canonicalize_host_idempotent()` at display time maps known
+	 *     pre-1.6.7 raw hostnames (anything in `KNOWN_AGENT_HOSTS`'s
+	 *     keys) to canonical names; unknown raw hostnames pass through
+	 *     to `OTHER_AI_BUCKET`.
+	 *   - 1.6.7 → 0.2.x (pre-Other-AI): stored as canonical brand names
+	 *     for known hosts, raw hostnames for unknown agents (the bug
+	 *     this PR fixed prospectively).
+	 *   - 0.3.x onward: stored as canonical brand names for known hosts,
+	 *     `OTHER_AI_BUCKET` for unknown.
+	 *
+	 * `get_stats()` `GROUP BY` on this meta will therefore mix:
+	 *   - canonical brand names ("Gemini", "ChatGPT", ...) that match
+	 *     across all three eras.
+	 *   - the literal `"Other AI"` value, only present from 0.3.x.
+	 *   - long-tail raw hostnames from pre-1.6.7 + middle-era unknown
+	 *     agents.
+	 *
+	 * Pre-1.6.7 unknown-agent rows continue to appear as their own
+	 * buckets in stats, partially defeating the "Other AI" rollup until
+	 * those orders age out of the rolling stats window. Acceptable for
+	 * the rolling-window stats (day/week/month/year) since pre-1.6.7
+	 * data ages out within ~14 months. A migration pass is out of scope
+	 * for this rollout.
 	 */
 	const AGENT_META_KEY = '_wc_ai_storefront_agent';
+
+	/**
+	 * Meta key for storing the raw (untransformed) hostname from the
+	 * UCP-Agent profile URL.
+	 *
+	 * Captured alongside `AGENT_META_KEY` to preserve provenance for
+	 * orders that bucket under "Other AI" — merchants who drill into
+	 * an "Other AI" order still see the actual hostname that sent it.
+	 *
+	 * Future use: feeds aggregate review for graduating frequent
+	 * unknown hostnames into `WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS`
+	 * with proper canonical names.
+	 */
+	const AGENT_HOST_RAW_META_KEY = '_wc_ai_storefront_agent_host_raw';
 
 	/**
 	 * The UTM medium value used to identify AI agent traffic.
@@ -100,12 +145,70 @@ class WC_AI_Storefront_Attribution {
 			$order->update_meta_data( self::AGENT_META_KEY, $utm_source );
 		}
 
+		// Capture the raw (untransformed) hostname when present. This
+		// is the unaltered value from the UCP-Agent profile URL — for
+		// "Other AI" bucketed orders it lets merchants drill in and see
+		// who actually sent the request. For known-canonical agents
+		// (e.g. utm_source=Gemini) the raw host (gemini.google.com) is
+		// also stamped for completeness.
+		//
+		// The continue_url's `ai_agent_host_raw` param flows through
+		// the buyer's browser, so we treat it as untrusted here even
+		// though it originated from our own controller. Two-layer
+		// validation:
+		//   (a) Length cap at 253 — RFC 1035 max DNS hostname length.
+		//       Without this, a forged UCP-Agent → forged URL param
+		//       can stuff multi-KB strings into postmeta (longtext, no
+		//       schema cap), bloating the database and the admin order
+		//       view's <code> blob.
+		//   (b) Hostname-shape regex (alphanum + dot + hyphen). The
+		//       upstream extract_profile_hostname() already enforces
+		//       this on the producer side via wp_parse_url, so legit
+		//       values always pass; only attacker-tampered URLs (e.g.
+		//       carrying `<script>` or shell metachars) fail. Reject
+		//       silently with a debug log so the rejection is auditable
+		//       without poisoning the order.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params.
+		$raw_host_input = isset( $_GET['ai_agent_host_raw'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_host_raw'] ) ) : '';
+		$raw_host       = '';
+		if ( '' !== $raw_host_input ) {
+			if ( strlen( $raw_host_input ) > 253 || ! preg_match( '/^[a-z0-9.\-]+$/i', $raw_host_input ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'rejected malformed ai_agent_host_raw (len=%d)',
+					strlen( $raw_host_input )
+				);
+			} else {
+				$raw_host = $raw_host_input;
+			}
+		}
+		if ( '' !== $raw_host ) {
+			$order->update_meta_data( self::AGENT_HOST_RAW_META_KEY, $raw_host );
+		}
+
 		$order->save();
 
+		// Log the raw hostname when the canonical bucket is "Other AI"
+		// so the WP debug log accumulates a record of unknown agents
+		// for retrospective graduation review (which novel hostnames
+		// are showing up often enough to warrant a KNOWN_AGENT_HOSTS
+		// entry?). Known agents don't need this log line — their
+		// canonical name already says everything the operator needs.
+		if (
+			$raw_host
+			&& WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET === $utm_source
+		) {
+			WC_AI_Storefront_Logger::debug(
+				'unknown AI agent bucketed as "Other AI": host=%s session=%s',
+				$raw_host,
+				$session_id ? $session_id : '(none)'
+			);
+		}
+
 		WC_AI_Storefront_Logger::debug(
-			'attribution captured — agent=%s session=%s',
+			'attribution captured — agent=%s session=%s raw_host=%s',
 			$utm_source ? $utm_source : '(none)',
-			$session_id ? $session_id : '(none)'
+			$session_id ? $session_id : '(none)',
+			$raw_host ? $raw_host : '(none)'
 		);
 
 		/**
@@ -127,6 +230,7 @@ class WC_AI_Storefront_Attribution {
 	public function display_attribution_in_admin( $order ) {
 		$agent      = $order->get_meta( self::AGENT_META_KEY );
 		$session_id = $order->get_meta( self::SESSION_META_KEY );
+		$raw_host   = $order->get_meta( self::AGENT_HOST_RAW_META_KEY );
 
 		if ( ! $agent ) {
 			return;
@@ -135,6 +239,15 @@ class WC_AI_Storefront_Attribution {
 		echo '<div class="wc-ai-storefront-attribution">';
 		echo '<h3>' . esc_html__( 'AI Agent Attribution', 'woocommerce-ai-storefront' ) . '</h3>';
 		echo '<p><strong>' . esc_html__( 'Agent:', 'woocommerce-ai-storefront' ) . '</strong> ' . esc_html( $agent ) . '</p>';
+
+		// Surface the raw hostname when present — gives merchants the
+		// underlying provenance for "Other AI" bucketed orders, plus
+		// useful context even for known canonical agents (e.g. seeing
+		// `bing.com` confirms the UCP-Agent really came from there
+		// rather than a misconfigured proxy).
+		if ( $raw_host ) {
+			echo '<p><strong>' . esc_html__( 'Agent host:', 'woocommerce-ai-storefront' ) . '</strong> <code>' . esc_html( $raw_host ) . '</code></p>';
+		}
 
 		if ( $session_id ) {
 			echo '<p><strong>' . esc_html__( 'Session ID:', 'woocommerce-ai-storefront' ) . '</strong> <code>' . esc_html( $session_id ) . '</code></p>';

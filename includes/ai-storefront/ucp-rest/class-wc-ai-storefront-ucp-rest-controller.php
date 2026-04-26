@@ -1103,8 +1103,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		$agent_name = self::resolve_agent_host( $request );
-		$currency   = function_exists( 'get_woocommerce_currency' )
+		$agent_data     = self::resolve_agent_host( $request );
+		$agent_name     = $agent_data['name'];
+		$agent_raw_host = $agent_data['raw_host'];
+		$currency       = function_exists( 'get_woocommerce_currency' )
 			? (string) get_woocommerce_currency()
 			: 'USD';
 
@@ -1248,7 +1250,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		$continue_url = $should_redirect
-			? self::build_continue_url( $processed, $agent_name )
+			? self::build_continue_url( $processed, $agent_name, $agent_raw_host )
 			: '';
 
 		if ( $should_redirect ) {
@@ -3080,31 +3082,52 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	// ------------------------------------------------------------------
 
 	/**
-	 * Resolve the canonical agent name for attribution, derived from the
-	 * UCP-Agent header's profile URL. Falls back to the `ucp_unknown`
-	 * sentinel when the header is missing/malformed.
+	 * Resolve agent attribution data from the UCP-Agent header's profile URL.
 	 *
-	 * The returned value lands in `utm_source` on the continue_url, is
-	 * captured by WooCommerce Order Attribution into
-	 * `_wc_order_attribution_utm_source`, and shows up verbatim in the
-	 * Orders list's "Origin" column as `Source: {name}`. Canonicalizing
-	 * here (rather than at display time) keeps that WC-captured value
-	 * clean and queryable for stats breakdowns.
+	 * Returns BOTH the canonical merchant-facing name AND the raw hostname,
+	 * because each lands in a different downstream sink:
+	 *
+	 *   - `name` (canonical) → `utm_source` on the continue_url, captured
+	 *     by WooCommerce Order Attribution into
+	 *     `_wc_order_attribution_utm_source`, displayed as `Source: {name}`
+	 *     in the Origin column. Canonicalization at this layer (not at
+	 *     display time) keeps the WC-captured value clean and queryable
+	 *     for stats breakdowns. Unknown hostnames bucket to "Other AI"
+	 *     (per `WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET`)
+	 *     rather than scattering one Origin row per novel hostname.
+	 *
+	 *   - `raw_host` (untransformed) → `ai_agent_host_raw` URL param on
+	 *     the continue_url, captured into
+	 *     `_wc_ai_storefront_agent_host_raw` order meta. Preserves the
+	 *     hostname so merchants can drill into an "Other AI" order and
+	 *     see who actually sent it; also feeds aggregate review for
+	 *     graduating frequent unknown hostnames into `KNOWN_AGENT_HOSTS`.
+	 *
+	 * Falls back to the `ucp_unknown` sentinel for `name` and empty
+	 * string for `raw_host` when the header is missing/malformed.
+	 *
+	 * @param WP_REST_Request $request The incoming UCP request.
+	 * @return array{name: string, raw_host: string}
 	 *
 	 * @see WC_AI_Storefront_UCP_Agent_Header::canonicalize_host() for
 	 *      the hostname → brand-name mapping rationale.
 	 */
-	private static function resolve_agent_host( WP_REST_Request $request ): string {
-		$header = $request->get_header( 'ucp-agent' );
+	private static function resolve_agent_host( WP_REST_Request $request ): array {
+		$header   = $request->get_header( 'ucp-agent' );
+		$raw_host = '';
 
 		if ( is_string( $header ) && '' !== $header ) {
-			$host = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header );
-			if ( '' !== $host ) {
-				return WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $host );
-			}
+			$raw_host = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header );
 		}
 
-		return WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
+		$name = '' !== $raw_host
+			? WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_host )
+			: WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
+
+		return [
+			'name'     => $name,
+			'raw_host' => $raw_host,
+		];
 	}
 
 	/**
@@ -3361,17 +3384,35 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * UTM parameters append for attribution:
 	 *   &utm_source={agent_name}&utm_medium=ai_agent
 	 *
-	 * WC's own Order Attribution system captures these on the resulting
-	 * order, so merchants see agent-sourced traffic without needing any
-	 * extra plumbing.
+	 * Plus, when the agent's hostname was extracted from a UCP-Agent
+	 * header, the raw hostname is appended as `ai_agent_host_raw`:
+	 *   &ai_agent_host_raw={raw_host}
+	 *
+	 * The raw-host param is for "Other AI" bucketed orders so merchants
+	 * can drill in and see the actual hostname behind the bucket. Empty
+	 * raw-host (no UCP-Agent header) means the param is omitted entirely
+	 * — no spurious `&ai_agent_host_raw=` in the URL.
+	 *
+	 * WC's own Order Attribution system captures `utm_source` /
+	 * `utm_medium` on the resulting order. The `ai_agent_host_raw` param
+	 * is captured by `WC_AI_Storefront_Attribution::capture_ai_attribution()`
+	 * into `_wc_ai_storefront_agent_host_raw` meta.
 	 *
 	 * @param array<int, array<string, mixed>> $processed  Successfully-processed line items.
 	 * @param string                           $agent_name Canonical brand name for `utm_source`
-	 *                                                     (e.g. "Gemini", "ChatGPT"), as produced
-	 *                                                     by `resolve_agent_host()`. Shows up in
-	 *                                                     WC's Origin column as `Source: {name}`.
+	 *                                                     (e.g. "Gemini", "ChatGPT", "Other AI"),
+	 *                                                     as produced by `resolve_agent_host()`.
+	 *                                                     Shows up in WC's Origin column as
+	 *                                                     `Source: {name}`.
+	 * @param string                           $raw_host   Untransformed hostname from the
+	 *                                                     UCP-Agent profile URL (e.g.
+	 *                                                     "ucpplayground.com"). Empty when no
+	 *                                                     UCP-Agent header was present. Stored
+	 *                                                     on the order as
+	 *                                                     `_wc_ai_storefront_agent_host_raw`
+	 *                                                     for diagnostic / graduation purposes.
 	 */
-	private static function build_continue_url( array $processed, string $agent_name ): string {
+	private static function build_continue_url( array $processed, string $agent_name, string $raw_host ): string {
 		$segments = [];
 		foreach ( $processed as $p ) {
 			$segments[] = $p['wc_id'] . ':' . $p['quantity'];
@@ -3381,10 +3422,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			? home_url( '/checkout-link/' )
 			: '/checkout-link/';
 
-		return $base
+		$url = $base
 			. '?products=' . implode( ',', $segments )
 			. '&utm_source=' . rawurlencode( $agent_name )
 			. '&utm_medium=ai_agent';
+
+		if ( '' !== $raw_host ) {
+			$url .= '&ai_agent_host_raw=' . rawurlencode( $raw_host );
+		}
+
+		return $url;
 	}
 
 	/**
