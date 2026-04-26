@@ -594,45 +594,55 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 	useEffect( () => {
 		let cancelled = false;
 		setPagesLoading( true );
+		setPagesError( false );
+
+		// Use `Promise.allSettled` so a partial failure (e.g. include
+		// fetch fails, main list succeeds) doesn't lose all pages.
+		// Tracking failure explicitly per-request lets us distinguish
+		// "no published pages exist" (success with empty result) from
+		// "pages endpoint failed" (network/auth/CORS error). Only the
+		// former is benign; the latter shows the warning notice.
 		const requests = [
 			apiFetch( {
 				path: '/wp/v2/pages?per_page=100&status=publish&_fields=id,title,link',
-			} ).catch( () => [] ),
+			} ),
 		];
 		if ( savedPageId > 0 ) {
 			requests.push(
 				apiFetch( {
 					path: `/wp/v2/pages?include=${ savedPageId }&_fields=id,title,link`,
-				} ).catch( () => [] )
+				} )
 			);
 		}
-		Promise.all( requests )
-			.then( ( results ) => {
-				if ( cancelled ) {
-					return;
+		Promise.allSettled( requests ).then( ( results ) => {
+			if ( cancelled ) {
+				return;
+			}
+			// Main fetch (index 0) is the load-bearing request — its
+			// failure indicates the pages endpoint is genuinely broken
+			// for this merchant. The optional `include=` request (index
+			// 1, if present) is best-effort: it covers the
+			// >100-pages drift case but is not the canonical pages
+			// list, so its failure is not user-facing.
+			const mainFailed = results[ 0 ].status === 'rejected';
+			const all = results.flatMap( ( r ) =>
+				r.status === 'fulfilled' && Array.isArray( r.value )
+					? r.value
+					: []
+			);
+			// Dedupe by id; first occurrence wins.
+			const seen = new Set();
+			const deduped = [];
+			for ( const p of all ) {
+				if ( ! seen.has( p.id ) ) {
+					seen.add( p.id );
+					deduped.push( p );
 				}
-				const all = results.flatMap( ( r ) =>
-					Array.isArray( r ) ? r : []
-				);
-				// Dedupe by id; first occurrence wins.
-				const seen = new Set();
-				const deduped = [];
-				for ( const p of all ) {
-					if ( ! seen.has( p.id ) ) {
-						seen.add( p.id );
-						deduped.push( p );
-					}
-				}
-				setPages( deduped );
-				setPagesError( deduped.length === 0 );
-				setPagesLoading( false );
-			} )
-			.catch( () => {
-				if ( ! cancelled ) {
-					setPagesError( true );
-					setPagesLoading( false );
-				}
-			} );
+			}
+			setPages( deduped );
+			setPagesError( mainFailed );
+			setPagesLoading( false );
+		} );
 		return () => {
 			cancelled = true;
 		};

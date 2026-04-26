@@ -76,31 +76,45 @@ class WC_AI_Storefront_Admin_Controller {
 							'type'  => 'array',
 							'items' => [ 'type' => 'string' ],
 						],
+						// Return policy schema is intentionally type-only:
+						// no `enum`, no `minimum/maximum`. The canonical
+						// validation/normalization rules live in
+						// `WC_AI_Storefront_Return_Policy::sanitize()`,
+						// which accepts unknown values and normalizes
+						// them to safe defaults rather than rejecting.
+						// If we declared `enum` here, WP REST would 400
+						// out-of-enum values BEFORE the sanitizer ran —
+						// that contradicts the sanitizer's "accept then
+						// normalize" contract and would surprise
+						// integration tests that exercise the full
+						// REST flow. Type checking still catches gross
+						// shape errors (string where integer expected,
+						// etc.) at the boundary.
 						'return_policy'          => [
 							'type'       => 'object',
 							'properties' => [
 								'mode'    => [
 									'type' => 'string',
-									'enum' => [ 'unconfigured', 'returns_accepted', 'final_sale' ],
 								],
 								'page_id' => [
-									'type'    => 'integer',
-									'minimum' => 0,
+									'type' => 'integer',
 								],
+								// `days` accepts integer OR null (the
+								// "no window configured" sentinel
+								// returned by the sanitizer). Without
+								// `'null'` in the type list, sending
+								// `days: null` would 400 even though
+								// it's a canonical sanitizer output.
 								'days'    => [
-									'type'    => 'integer',
-									'minimum' => 0,
-									'maximum' => 365,
+									'type' => [ 'integer', 'null' ],
 								],
 								'fees'    => [
 									'type' => 'string',
-									'enum' => [ 'FreeReturn', 'ReturnFeesCustomerResponsibility', 'OriginalShippingFees', 'RestockingFees' ],
 								],
 								'methods' => [
 									'type'  => 'array',
 									'items' => [
 										'type' => 'string',
-										'enum' => [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ],
 									],
 								],
 							],
