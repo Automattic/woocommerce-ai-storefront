@@ -157,7 +157,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_inventory_level_added_at_offer_level_when_stock_is_tracked(): void {
 		// Production input shape: WC core emits `offers` as a list of
-		// Offer dicts. Emission must land at `offers[0]`. See PR #95.
+		// Offer dicts. Emission must land at `offers[0]`, never as a
+		// string key on the outer `offers` list (would mix list +
+		// assoc shapes — PHP serializes that as a JSON object, not
+		// an Offer array).
 		$product = $this->make_product( [
 			'managing_stock' => true,
 			'stock_quantity' => 17,
@@ -175,8 +178,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			],
 			$result['offers'][0]['inventoryLevel']
 		);
-		// Regression guard for the pre-fix bug
-		// `$markup['offers']['inventoryLevel'] = ...`. See PR #95.
+		// Regression guard: `inventoryLevel` must never be a string
+		// key on the outer `offers` list. The earlier-shipped form
+		// `$markup['offers']['inventoryLevel'] = ...` would smuggle
+		// it in there and break Offer-array shape on serialization.
 		$this->assertArrayNotHasKey( 'inventoryLevel', $result['offers'] );
 	}
 
