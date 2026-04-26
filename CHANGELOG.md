@@ -2,10 +2,15 @@
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] – 2026-04-26
+
 ### Features
 - **Policies tab with store-wide return & refund policy section.** New "Policies" tab on the AI Storefront admin page lets merchants choose between "Returns accepted" / "No returns (final sale)" / "Don't expose" with optional days, fees, methods, and a policy page link. Drives the `hasMerchantReturnPolicy` JSON-LD emission at the Offer level — no more structurally invalid claims on every product.
 
 ### Fixes
+- **UCP catalog & search: product-scope filter was registered against a fictitious WC hook, never ran.** The plugin registered `restrict_to_syndicated_products()` against `woocommerce_store_api_product_collection_query_args` — a hook that doesn't exist in WooCommerce core. WC's Store API delegates straight to `ProductQuery::get_objects()` → `WP_Query` with no such filter, so the product-scoping callback never ran in production. Tests passed because they invoked the callback directly without going through `apply_filters()` or `rest_do_request()`. Re-registered against `pre_get_posts` (a real WP-level hook) at `PHP_INT_MAX` priority, gated by (1) UCP-controller-initiated dispatch, (2) `post_type === 'product'`, (3) per-mode logic. Static-class sentinel ensures cross-instance idempotency. New `UcpStoreApiPreGetPostsTest` (11 tests, including a regression guard asserting registration against `pre_get_posts` and never against the fictitious hook).
 - **Drop invalid `MerchantReturnFiniteReturnWindow` emission lacking `merchantReturnDays`; replace with smart-degrade structured emission.** Pre-this-release every product page emitted a `MerchantReturnFiniteReturnWindow` enum with no `merchantReturnDays`, no `merchantReturnLink`, no `returnFees`, no `returnMethod`. Google validators reject this combination. Default `unconfigured` mode now emits no policy block; `returns_accepted` smart-degrades to `MerchantReturnUnspecified` when days are unset.
 - **Decode double-encoded `seller.name` HTML entities.** WC core sometimes feeds an already-encoded value into structured data (e.g. `Piero&amp;#039;s` for a name with an apostrophe), surfacing visible literal `&amp;` and `&#039;` in JSON-LD. We now decode twice through `html_entity_decode()` so AI agents JSON.parse-ing the markup get the literal merchant-typed string. Audit bug #3.
 - **Normalize `weight` value to numeric form.** WC stores weight as a free-form string (often `.5` without the leading zero); casting through `(float)` produces a canonical `0.5` numeric so consumers parsing JSON-LD with strict number deserializers see a well-formed number. Audit bug #4.
@@ -15,6 +20,12 @@
 - **Move `hasMerchantReturnPolicy` and `shippingDetails` from Product to Offer level (Schema.org/Google preferred placement).** Audit bug #6 fix folded into the same change.
 - **Discovery tab: replaced "Store API" row with "UCP API".** The row used to surface `/wp-json/wc/store/v1/` as if it were the AI commerce surface, but AI agents actually call our UCP wrapper at `/wp-json/wc/ucp/v1/` (per the manifest at `/.well-known/ucp`). Store API is the underlying transport our UCP catalog/search/lookup/checkout-sessions handlers dispatch through; naming the row "Store API" forced merchants to reason about an implementation layer that has nothing to do with what AI agents see. The new "UCP API" row points at the correct endpoint and describes its purpose ("Structured commerce API for AI agents — catalog search, lookup, and checkout sessions"). Code-level vocabulary stays unchanged — `WC_AI_Storefront_UCP_Store_API_Filter` and the rate-limiter class are correctly named for their architectural roles.
 - **Rate-limit section: dropped "Store API" framing in merchant-facing copy.** The limiter still lives at the Store API filter layer (correct architecturally — that's where the request lands), but it only throttles AI user-agents and only applies through the UCP path. Merchant copy now talks about throttling "AI agents" and "AI crawlers", which is what's actually observable to the merchant, not the internal layer where enforcement happens.
+
+### Observability
+- **UCP REST controller: log unknown query params + surface them via `X-WC-AI-Storefront-Unknown-Params` response header.** When agents send keys not declared in the route schema (e.g. `search` instead of `query`), we now log the unknown keys and echo them in a response header, bounded to 8 keys × 256 chars total with ASCII `...` truncation (RFC 9110 token-safe). Gated to associative-shape bodies (`! array_is_list($body)`) to skip well-formed list payloads. Helps agent authors diagnose silent param-name typos.
+
+### Hardening
+- **Declare WooCommerce as a hard plugin dependency via `Requires Plugins: woocommerce` header.** WP 6.5+ enforces this declaratively: the Plugins screen now shows "Cannot Activate" until WooCommerce is installed and active, blocks `activate_plugin()` from succeeding without WC, and surfaces an inline "Install WooCommerce" link. The legacy `WC requires at least: 9.9` header is informational only — it tells merchants what version they need but doesn't block activation. The existing runtime guards (`class_exists('WooCommerce')` checks in `wc_ai_storefront_init()` and `wc_ai_storefront_activate()`) are kept as defense-in-depth for the `--force` activation path and for the case where WC is deactivated after this plugin was already active. Plugin's `Requires at least: 6.7` already exceeds the 6.5 minimum for this header, so it's safe to add unconditionally.
 
 ---
 
