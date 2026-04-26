@@ -474,7 +474,12 @@ const ReturnRefundPolicySection = ( {
 					) }
 
 					{ policy.mode === POLICY_MODES.FINAL_SALE && (
-						<div style={ { marginBottom: '16px' } }>
+						<div
+							style={ {
+								marginBottom: '16px',
+								maxWidth: '480px',
+							} }
+						>
 							{ pagesLoading ? (
 								<Spinner />
 							) : (

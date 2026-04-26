@@ -693,6 +693,7 @@ class WC_AI_Storefront_Admin_Controller {
 			$result[] = [
 				'id'    => (int) $page->ID,
 				'title' => [
+					// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's `the_title` filter to mirror the `/wp/v2/pages` REST endpoint's `title.rendered` field shape (entity decoding, shortcode stripping, third-party title-tweaking plugins). The drop-in-replacement contract requires identical filtering, not a plugin-prefixed parallel hook.
 					'rendered' => apply_filters( 'the_title', $page->post_title, $page->ID ),
 				],
 				'link'  => get_permalink( $page->ID ),
