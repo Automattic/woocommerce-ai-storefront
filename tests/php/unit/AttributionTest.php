@@ -460,24 +460,97 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 			'Gemini',
 			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY )
 		);
-		// "Gemini" is already canonical — the canonicalize_host_idempotent
-		// helper passes it through unchanged, so the lenient path's
-		// host_raw stamp uses the canonical literal. The legacy block
-		// below would overwrite from the URL param if present, but
-		// it's absent here.
+		// "Gemini" is a canonical brand name, NOT a hostname — the
+		// lenient gate intentionally does NOT match it (matching
+		// canonical names would be a spoofing surface). So host_raw
+		// is NOT stamped by the lenient path here. The legacy block
+		// below would write it from the `ai_agent_host_raw` URL
+		// param if present; absent here, the meta stays empty. This
+		// is the correct shape: host_raw is for HOSTNAMES, not for
+		// canonical name strings — putting "Gemini" in a meta named
+		// "host_raw" would mislead drill-in/debugging.
 		$this->assertEquals(
-			'Gemini',
+			'',
 			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY )
 		);
 	}
 
-	public function test_capture_url_param_host_raw_overwrites_lenient_stamp(): void {
-		// When BOTH gates fire (continue_url with canonical utm_source
-		// AND `ai_agent_host_raw` URL param), the legacy block should
-		// overwrite host_raw from the URL param. The URL param carries
-		// the actual raw hostname (gemini.google.com) while utm_source
-		// has the already-canonicalized "Gemini" — the URL param is
-		// the more useful value to preserve for drill-in.
+	// ------------------------------------------------------------------
+	// Lenient gate: spoofing defenses
+	// ------------------------------------------------------------------
+
+	public function test_capture_lenient_gate_rejects_canonical_brand_name_in_utm_source(): void {
+		// Critical: the lenient gate matches HOSTNAME KEYS in
+		// KNOWN_AGENT_HOSTS, not canonical brand-name VALUES. A
+		// non-AI referrer with `utm_source=Gemini&utm_medium=referral`
+		// must NOT self-attribute as AI traffic — canonical brand
+		// names are publicly known, so accepting them would be a
+		// trivial spoofing surface. Hostnames are a much narrower
+		// allow-list to attack.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'Gemini' );
+
+		Functions\expect( 'do_action' )->never();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertFalse( $order->was_saved() );
+		$this->assertEquals( '', $order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY ) );
+	}
+
+	public function test_capture_lenient_gate_rejects_other_ai_string_in_utm_source(): void {
+		// The OTHER_AI_BUCKET sentinel ("Other AI") is an internal
+		// canonical value — it must not be a self-attribution path.
+		// Without the strict-key match, an attacker setting
+		// `utm_source=Other AI` could route their orders into the
+		// catch-all bucket, polluting "Other AI" stats with non-AI
+		// traffic.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'Other AI' );
+
+		Functions\expect( 'do_action' )->never();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertFalse( $order->was_saved() );
+	}
+
+	public function test_capture_lenient_gate_is_case_insensitive(): void {
+		// DNS hostnames are case-insensitive per RFC 1035. An agent
+		// sending `utm_source=OpenAI.COM` should resolve the same as
+		// `openai.com` — `KNOWN_AGENT_HOSTS` keys are stored
+		// lowercase, so the lookup uses strtolower.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'OpenAI.COM' );
+
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertEquals(
+			'ChatGPT',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY )
+		);
+		// host_raw preserves the actual case the agent sent, since
+		// it's diagnostic provenance — DNS may be case-insensitive
+		// but a future debug session might need to know the agent
+		// declared "OpenAI.COM" specifically.
+		$this->assertEquals(
+			'OpenAI.COM',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY )
+		);
+	}
+
+	public function test_capture_strict_path_uses_url_param_for_host_raw(): void {
+		// Strict path (continue_url with utm_medium=ai_agent + canonical
+		// utm_source like "Gemini") relies on the `ai_agent_host_raw`
+		// URL param to populate the host_raw meta. The lenient path
+		// no longer fires for canonical brand names (correctly — that
+		// would be a spoofing surface), so there's nothing to "overwrite";
+		// the URL param is the SOLE source of host_raw on this path.
 		$order = new WC_Order();
 		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'ai_agent' );
 		$order->set_test_meta( '_wc_order_attribution_utm_source', 'Gemini' );
@@ -493,9 +566,8 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 			'Gemini',
 			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY )
 		);
-		// URL param wins — it's the raw hostname, more useful than
-		// the (already-canonical) utm_source value the lenient path
-		// would have stamped.
+		// URL-param value lands in host_raw — the canonical "Gemini"
+		// in utm_source is correctly NOT used here.
 		$this->assertEquals(
 			'gemini.google.com',
 			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY )

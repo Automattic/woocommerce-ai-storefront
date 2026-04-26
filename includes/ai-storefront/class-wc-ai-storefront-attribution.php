@@ -171,28 +171,38 @@ class WC_AI_Storefront_Attribution {
 		//      own continue_url builder emits, so it's unambiguous —
 		//      every order WE built the link for hits this branch.
 		//
-		//   2. LENIENT: utm_source canonicalizes to a known AI agent
-		//      host. Agents that bypass our /checkout-sessions endpoint
-		//      and build their own checkout-link URL set whatever
-		//      utm_medium they want (UCPPlayground sends `referral`,
-		//      others may send `agent`, `ai`, `bot`, etc.). The host
-		//      identifies the agent unambiguously regardless. We trust
-		//      the host match here because it requires an entry in
-		//      `KNOWN_AGENT_HOSTS` — that's a code-controlled allow-list
-		//      of hostnames we've explicitly recognized as AI vendors,
-		//      not a free-form string a random referrer can spoof into.
+		//   2. LENIENT: utm_source is an exact match for a hostname
+		//      KEY in `KNOWN_AGENT_HOSTS` (e.g. `ucpplayground.com`,
+		//      `openai.com`). Agents that bypass our /checkout-sessions
+		//      endpoint and build their own checkout-link URL set
+		//      whatever utm_medium they want (UCPPlayground sends
+		//      `referral`, others may send `agent`, `ai`, `bot`, etc.).
+		//      The host identifies the agent unambiguously regardless.
+		//
+		//      Critical: we match the hostname KEY set, NOT the
+		//      canonical-name VALUE set. A non-AI referrer could
+		//      otherwise spoof AI attribution by sending
+		//      `utm_source=Gemini&utm_medium=referral` — the canonical
+		//      brand-name string is publicly guessable, but the
+		//      hostname-keys set requires sending an actual hostname
+		//      that we've curated into the allow-list. That's a much
+		//      narrower spoofing surface (an attacker would have to
+		//      both know we recognize a host AND want to attribute
+		//      their fake order to that host's brand).
 		//
 		// Either path = AI order. Otherwise the order is regular
 		// referral / direct / paid-search traffic and we leave it
 		// alone.
-		$canonical_from_source = '';
+		$lenient_canonical = '';
 		if ( '' !== $utm_source ) {
-			$canonical_from_source =
-				WC_AI_Storefront_UCP_Agent_Header::canonicalize_host_idempotent( (string) $utm_source );
+			// Case-insensitive hostname-key lookup. DNS hostnames are
+			// case-insensitive per RFC, so `OpenAI.com` should resolve
+			// the same as `openai.com`. `KNOWN_AGENT_HOSTS` keys are
+			// stored lowercase by convention.
+			$lower_source = strtolower( (string) $utm_source );
+			$lenient_canonical = WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS[ $lower_source ] ?? '';
 		}
-		$is_known_ai_host =
-			'' !== $canonical_from_source
-			&& WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET !== $canonical_from_source;
+		$is_known_ai_host = '' !== $lenient_canonical;
 
 		if (
 			self::AI_AGENT_MEDIUM !== $utm_medium
@@ -210,21 +220,26 @@ class WC_AI_Storefront_Attribution {
 		}
 
 		if ( $utm_source ) {
-			// Stamp the canonical brand name when we recognized the
-			// host, so the Recent Orders display + stats breakdown both
-			// see the friendly form. For unrecognized hosts we keep
-			// the raw utm_source as-is (legacy behavior; the display
-			// layer's `canonicalize_host_idempotent()` is the safety
-			// net).
-			$value_to_store = $is_known_ai_host ? $canonical_from_source : $utm_source;
+			// Stamp the canonical brand name when the lenient gate
+			// matched a hostname (so the Recent Orders display + Top
+			// Agent stats both surface the friendly form). For the
+			// strict path with already-canonical utm_source (our own
+			// continue_url emits "Gemini") OR for unmatched lenient
+			// values, keep utm_source verbatim — the display layer's
+			// `canonicalize_host_idempotent()` is the safety net.
+			$value_to_store = $is_known_ai_host ? $lenient_canonical : $utm_source;
 			$order->update_meta_data( self::AGENT_META_KEY, $value_to_store );
 		}
 
-		// When we recognized an AI host via lenient match, also stamp
-		// the raw hostname into the host_raw meta so merchants drilling
-		// in see the original source the agent declared. (The strict
-		// path stamps this from the `ai_agent_host_raw` URL param a few
-		// lines below.)
+		// When the lenient gate matched, stamp the actual hostname
+		// (utm_source itself) into host_raw so merchants drilling in
+		// see the original source the agent declared. ONLY fires for
+		// the lenient path — strict-path utm_source carries the
+		// already-canonical brand name (e.g. "Gemini"), not a hostname,
+		// and stamping that into a meta named "host_raw" would mislead
+		// drill-in/debugging. The strict path's correct host_raw value
+		// arrives via the `ai_agent_host_raw` URL param processed
+		// further down.
 		if ( $is_known_ai_host && '' !== $utm_source ) {
 			$order->update_meta_data( self::AGENT_HOST_RAW_META_KEY, (string) $utm_source );
 		}
