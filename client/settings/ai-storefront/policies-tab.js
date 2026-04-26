@@ -93,12 +93,31 @@ const DEFAULT_POLICY = {
 
 /**
  * Pure helper: derive the JSON-LD `hasMerchantReturnPolicy` block from
- * the merchant's current draft policy. Mirrors the server-side
- * `WC_AI_Storefront_JsonLd::build_return_policy_block()` so the live
- * preview matches what gets emitted on save.
+ * a draft policy state. Mirrors the server-side
+ * `WC_AI_Storefront_JsonLd::build_return_policy_block()` so a JS-side
+ * caller can compute the would-be emission shape without a roundtrip.
  *
- * @param {Object} policy  Draft policy state.
+ * Currently consumed only by the unit-test suite
+ * (`__tests__/policies-tab.test.js`), which exercises both this helper
+ * and the server emitter against the same fixtures to keep the two
+ * implementations in lockstep. No production render path uses this
+ * function — the merchant-facing live-preview block was removed; the
+ * Discovery tab's reachability check + the actual product page's
+ * JSON-LD inspector are the wire-level verification surfaces.
+ *
+ * Retained as `export` because the test parity has real value
+ * (catches client-server emission drift), and the helper is small +
+ * pure. If a future preview surface comes back, this is the right
+ * primitive to render from.
+ *
+ * @param {Object} policy  Draft policy state. Recognised fields:
+ *                         `mode`, `page_id`, `days`, `fees`,
+ *                         `methods[]`, `pageLink` — the last is a
+ *                         test-input shape (production code resolves
+ *                         the URL server-side).
  * @param {string} country Store base country (ISO 3166-1 alpha-2).
+ *                         Empty string returns null, mirroring the
+ *                         server-side `if ( $country && ... )` gate.
  * @return {Object|null}   Structured-data block, or `null` for
  *                         `unconfigured` (no emission).
  */
@@ -124,9 +143,10 @@ export const derivePreview = ( policy, country ) => {
 	// `final_sale` were handled above; only `returns_accepted` should
 	// reach the structured-block construction below. A corrupted /
 	// legacy / filter-mutated mode value would otherwise silently
-	// produce a returns-accepted preview that disagrees with the
-	// server's `build_return_policy_block()` (which now also fails
-	// closed). Defense in depth.
+	// produce a returns-accepted block in tests that disagrees with
+	// the server's `build_return_policy_block()` (which also fails
+	// closed). Mirrors the server's defense-in-depth so client-server
+	// parity stays intact under malformed input.
 	if ( policy.mode !== POLICY_MODES.RETURNS_ACCEPTED ) {
 		return null;
 	}

@@ -624,12 +624,23 @@ class WC_AI_Storefront_Admin_Controller {
 	 * Response shape mirrors `/wp/v2/pages` (id, title, link) so the
 	 * JS call site is a drop-in replacement.
 	 *
-	 * @return WP_REST_Response
+	 * @return WP_REST_Response|WP_Error WP_Error returned (status 500)
+	 *                                   when `get_pages()` fails so the
+	 *                                   JS pagesError state lights up
+	 *                                   instead of silently rendering
+	 *                                   an empty dropdown.
 	 */
 	public function get_policy_pages() {
+		// `wc_get_page_id()` is always available here — this controller
+		// only loads when WooCommerce is active (the plugin's
+		// `Requires Plugins: woocommerce` header + runtime
+		// `class_exists('WooCommerce')` gate). No `function_exists`
+		// guard needed at this layer.
 		$excluded = [];
 		foreach ( [ 'cart', 'checkout', 'myaccount', 'shop' ] as $slug ) {
-			$page_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( $slug ) : 0;
+			$page_id = (int) wc_get_page_id( $slug );
+			// `wc_get_page_id()` returns -1 for unconfigured pages; the
+			// `> 0` test correctly excludes -1 from the exclude list.
 			if ( $page_id > 0 ) {
 				$excluded[] = $page_id;
 			}
@@ -640,22 +651,52 @@ class WC_AI_Storefront_Admin_Controller {
 				'post_status' => 'publish',
 				'sort_column' => 'post_title',
 				'sort_order'  => 'ASC',
+				// 200 is intentional: WP-default get_pages() pagination
+				// would otherwise return everything, and merchants with
+				// 1000+ pages would see a slow dropdown render. 200 is
+				// generous for a policy-link picker (typical Woo store
+				// has 5-30 pages); the bounded result avoids surprises.
 				'number'      => 200,
 				'exclude'     => $excluded,
 			]
 		);
 
+		// `get_pages()` returns false on DB error, an array on success
+		// (possibly empty). Distinguishing the two matters: an empty
+		// array is "no policy-eligible pages exist" (legitimate fresh
+		// store) and we return []; false is a real DB failure that
+		// should surface as a 500 so the JS pagesError state lights up
+		// rather than render an empty dropdown that looks identical to
+		// the legitimate-empty case. Without this distinction, a
+		// merchant reporting "my policies dropdown is empty" has no
+		// traceable signal to debug.
+		if ( false === $pages ) {
+			return new WP_Error(
+				'wc_ai_storefront_pages_query_failed',
+				__( 'Could not load pages.', 'woocommerce-ai-storefront' ),
+				[ 'status' => 500 ]
+			);
+		}
+
 		$result = [];
-		if ( is_array( $pages ) ) {
-			foreach ( $pages as $page ) {
-				$result[] = [
-					'id'    => (int) $page->ID,
-					'title' => [
-						'rendered' => $page->post_title,
-					],
-					'link'  => get_permalink( $page->ID ),
-				];
-			}
+		foreach ( $pages as $page ) {
+			// Run the title through `the_title` filter to match the
+			// `/wp/v2/pages` REST endpoint's output shape: it filters
+			// the title (entity decoding, shortcode stripping, plugin
+			// hooks like Yoast's title-tweaking). The JS does
+			// `decodeEntities()` on the result, so we pre-render here
+			// for parity. Raw `$page->post_title` would diverge from
+			// what `/wp/v2/pages` returns under `title.rendered` and
+			// surface in the dropdown as the literal pre-filter
+			// string (e.g., shortcodes unexpanded, entities double-
+			// encoded after the JS-side decode).
+			$result[] = [
+				'id'    => (int) $page->ID,
+				'title' => [
+					'rendered' => apply_filters( 'the_title', $page->post_title, $page->ID ),
+				],
+				'link'  => get_permalink( $page->ID ),
+			];
 		}
 
 		return new WP_REST_Response( $result );
