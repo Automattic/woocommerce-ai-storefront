@@ -179,51 +179,53 @@ class ProductMetaBoxTest extends \PHPUnit\Framework\TestCase {
 		$this->meta_box->save_meta( 100 );
 	}
 
-	public function test_save_logs_on_update_post_meta_failure(): void {
+	public function test_save_reaches_failure_branch_without_throwing(): void {
 		// `update_post_meta` returns false either when the value is
 		// unchanged OR when the DB write actually failed. We
 		// disambiguate by reading the existing value first: if the
 		// new value differs from the old AND update_post_meta
-		// returned false, that's a real failure — log it. (No-op
-		// writes — same value over same value — must NOT log.)
+		// returned false, that's a real failure — production code
+		// emits a debug log via `WC_AI_Storefront_Logger::debug`.
+		//
+		// The logger emits via `error_log()`, which is a PHP internal
+		// function. Brain Monkey + Patchwork intercept of internals
+		// is brittle (requires patchwork.json's redefinable-internals
+		// AND timing-sensitive bootstrap loading), so this test
+		// settles for a smoke-test contract: the failure branch must
+		// be REACHED without throwing. The Logger interface itself is
+		// covered by its own unit tests; that the failure branch
+		// invokes the logger is documented in the production code's
+		// inline comment.
+		//
+		// Functions\expect on update_post_meta with the expected
+		// args proves we reached save_meta's mutation path with the
+		// right value, before the disambiguation logic decides
+		// whether to log.
 		$_POST[ WC_AI_Storefront_Product_Meta_Box::META_KEY ] = 'yes';
 
-		// Existing value is 'no' (merchant is flipping ON), but
-		// update_post_meta returns false (DB failure simulated).
 		Functions\when( 'get_post_meta' )->justReturn( 'no' );
-		Functions\when( 'update_post_meta' )->justReturn( false );
+		Functions\expect( 'update_post_meta' )
+			->once()
+			->with( 100, WC_AI_Storefront_Product_Meta_Box::META_KEY, 'yes' )
+			->andReturn( false );
 
-		// The test passes if save_meta() runs to completion without
-		// throwing — the disambiguation logic correctly identifies
-		// this as a real failure (existing 'no' !== new 'yes'),
-		// reaches the logger branch, and the logger interface
-		// accepts the call. We don't assert directly on the logger
-		// because Brain Monkey static-method expectations are
-		// brittle and the contract here is about the logging branch
-		// being REACHED, which the no-throw outcome verifies.
-		$this->expectNotToPerformAssertions();
 		$this->meta_box->save_meta( 100 );
 	}
 
-	public function test_save_does_not_log_on_unchanged_value(): void {
+	public function test_save_reaches_no_op_branch_without_throwing(): void {
 		// update_post_meta returns false when the value IS the same
 		// as what's already stored — that's a no-op, not a failure.
-		// The disambiguation guard must NOT log in this case (would
-		// otherwise spam the log on every product save where the
-		// flag wasn't toggled).
+		// The disambiguation guard ($existing === $value) skips the
+		// log call. Companion smoke test to the failure-branch case
+		// above; same caveat about logger-spying brittleness applies.
 		$_POST[ WC_AI_Storefront_Product_Meta_Box::META_KEY ] = 'yes';
 
-		// Existing value is already 'yes'; update_post_meta returns
-		// false BUT the value is unchanged.
 		Functions\when( 'get_post_meta' )->justReturn( 'yes' );
-		Functions\when( 'update_post_meta' )->justReturn( false );
+		Functions\expect( 'update_post_meta' )
+			->once()
+			->with( 100, WC_AI_Storefront_Product_Meta_Box::META_KEY, 'yes' )
+			->andReturn( false );
 
-		// No assertion here beyond "doesn't throw" — the guard's
-		// $existing !== $value check correctly evaluates to false
-		// (yes === yes) and skips the log. The companion
-		// test above verifies the LOG path. Both tests together
-		// pin the disambiguation contract.
-		$this->expectNotToPerformAssertions();
 		$this->meta_box->save_meta( 100 );
 	}
 

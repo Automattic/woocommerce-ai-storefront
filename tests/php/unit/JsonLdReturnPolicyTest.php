@@ -75,13 +75,14 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		parent::tearDown();
 	}
 
-	private function make_product( int $id = 42, int $parent_id = 0 ): Mockery\MockInterface {
+	private function make_product( int $id = 42 ): Mockery\MockInterface {
+		// Variant-vs-parent resolution happens at the call site via
+		// `wp_get_post_parent_id($product->get_id())` (a global WP
+		// function), NOT via any product-level method. Variant tests
+		// stub `wp_get_post_parent_id` directly to return the parent
+		// product's ID.
 		$product = Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_id' )->andReturn( $id );
-		// Defaults to 0 (non-variation: simple, grouped, external).
-		// Variant-specific tests pass a non-zero parent_id to mock a
-		// WC_Product_Variation whose parent provides the override flag.
-		$product->shouldReceive( 'get_parent_id' )->andReturn( $parent_id );
 		$product->shouldReceive( 'get_permalink' )
 			->andReturn( 'https://example.com/product/test/' );
 		$product->shouldReceive( 'managing_stock' )->andReturn( false );

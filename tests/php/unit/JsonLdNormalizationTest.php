@@ -70,7 +70,6 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 	private function make_product( array $overrides = [] ): Mockery\MockInterface {
 		$product = Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_id' )->andReturn( $overrides['id'] ?? 42 );
-		$product->shouldReceive( 'get_parent_id' )->andReturn( $overrides['parent_id'] ?? 0 );
 		$product->shouldReceive( 'get_permalink' )
 			->andReturn( $overrides['permalink'] ?? 'https://example.com/product/test/' );
 		$product->shouldReceive( 'managing_stock' )->andReturn( false );
