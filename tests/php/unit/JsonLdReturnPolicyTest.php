@@ -61,6 +61,12 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// tests further down override this stub to return 'yes' for
 		// product id 42 to exercise the override branch.
 		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		// Default `wp_get_post_parent_id()` to 0 (non-variation
+		// products). Variant-specific tests override this alias to
+		// return a parent product ID when the variation's own ID is
+		// passed.
+		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
 	}
 
 	protected function tearDown(): void {
@@ -623,6 +629,13 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 				return '';
 			}
 		);
+		// `wp_get_post_parent_id(43)` resolves the variant's parent to
+		// id=42, which is what `enhance_product_data` uses to look up
+		// the override flag. Mirrors WC's actual data shape: variations
+		// are posts whose `post_parent` is the parent product ID.
+		Functions\when( 'wp_get_post_parent_id' )->alias(
+			static fn( int $post_id ) => 43 === $post_id ? 42 : 0
+		);
 		$this->set_settings(
 			[
 				'mode'    => 'returns_accepted',
@@ -632,7 +645,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 			]
 		);
 
-		$variant = $this->make_product( 43, 42 );
+		$variant = $this->make_product( 43 );
 		$block   = $this->run_with_offer( [], $variant )['offers'][0]['hasMerchantReturnPolicy'];
 
 		$this->assertSame(
@@ -649,6 +662,9 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// the resolution is parent-first regardless of the variant's
 		// own meta state, and parent has no flag, so store-wide wins).
 		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'wp_get_post_parent_id' )->alias(
+			static fn( int $post_id ) => 43 === $post_id ? 42 : 0
+		);
 		$this->set_settings(
 			[
 				'mode'    => 'returns_accepted',
@@ -658,7 +674,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 			]
 		);
 
-		$variant = $this->make_product( 43, 42 );
+		$variant = $this->make_product( 43 );
 		$block   = $this->run_with_offer( [], $variant )['offers'][0]['hasMerchantReturnPolicy'];
 
 		$this->assertSame(

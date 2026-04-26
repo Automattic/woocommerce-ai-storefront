@@ -240,15 +240,22 @@ class WC_AI_Storefront_JsonLd {
 			// Resolve the per-product override-flag scope. Variations
 			// inherit from their parent — a merchant flagging a parent
 			// "Final sale" expects every color/size variant to inherit
-			// that posture without re-flagging each one. WC_Product's
-			// `get_parent_id()` returns the parent product ID for
-			// variations and 0 for everything else (simple, grouped,
-			// external). Use the parent ID when present so the flag
-			// is read off the parent's meta; fall back to the
-			// product's own ID for non-variation product types.
+			// that posture without re-flagging each one. WC stores
+			// variations as posts whose `post_parent` is the parent
+			// product's ID; `wp_get_post_parent_id()` returns 0 for
+			// non-variation products (simple, grouped, external), so
+			// the same call works uniformly. Use the parent ID when
+			// present so the flag is read off the parent's meta;
+			// fall back to the product's own ID otherwise.
+			//
+			// `wp_get_post_parent_id` (rather than
+			// `WC_Product::get_parent_id`) so PHPStan's WC stubs don't
+			// flag the call — `get_parent_id` exists on WC_Product but
+			// isn't in `php-stubs/woocommerce-stubs` at the version we
+			// pin. Same wire-level result either way.
 			$policy_product_id = null;
 			if ( $product instanceof WC_Product ) {
-				$parent_id         = $product->get_parent_id();
+				$parent_id         = wp_get_post_parent_id( $product->get_id() );
 				$policy_product_id = $parent_id > 0 ? $parent_id : $product->get_id();
 			}
 			$policy_block = $this->build_return_policy_block(

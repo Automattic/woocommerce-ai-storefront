@@ -54,6 +54,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// across all tests in this file. Per-product override coverage
 		// lives in JsonLdReturnPolicyTest's dedicated branch.
 		Functions\when( 'get_post_meta' )->justReturn( '' );
+		// Default `wp_get_post_parent_id()` to 0 — these tests use
+		// non-variation product mocks. Override-scope resolution
+		// happens at the `enhance_product_data` entry point.
+		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
 	}
 
 	protected function tearDown(): void {
