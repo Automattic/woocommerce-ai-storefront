@@ -287,4 +287,57 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 			'Page titles must be passed through the `the_title` filter for /wp/v2/pages parity.'
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// Contract: route registration (namespace + path + permission_callback)
+	// ------------------------------------------------------------------
+
+	public function test_policy_pages_route_is_registered_with_admin_permission(): void {
+		// Mirrors AdminReturnPolicyTest's `/settings` registration test.
+		// A regression that swaps the permission_callback to
+		// `__return_true` would expose merchant page titles to anyone;
+		// a regression that drops the route entirely would silently
+		// blank the dropdown. Asserting the wiring catches both.
+		$registered = [];
+		Functions\when( 'register_rest_route' )->alias(
+			static function ( $namespace, $route, $args ) use ( &$registered ) {
+				$registered[ $route ] = [
+					'namespace' => $namespace,
+					'args'      => $args,
+				];
+				return true;
+			}
+		);
+
+		$controller = new WC_AI_Storefront_Admin_Controller();
+		$controller->register_routes();
+
+		$this->assertArrayHasKey(
+			'/policy-pages',
+			$registered,
+			'`/policy-pages` route must be registered.'
+		);
+		$this->assertSame(
+			WC_AI_Storefront_Admin_Controller::NAMESPACE,
+			$registered['/policy-pages']['namespace'],
+			'`/policy-pages` must register under the admin REST namespace.'
+		);
+
+		$args = $registered['/policy-pages']['args'];
+		$this->assertSame(
+			\WP_REST_Server::READABLE,
+			$args['methods'],
+			'`/policy-pages` must be GET-only — it returns merchant page metadata.'
+		);
+		$this->assertSame(
+			[ $controller, 'check_admin_permission' ],
+			$args['permission_callback'],
+			'`/policy-pages` must use the admin permission gate, not `__return_true`.'
+		);
+		$this->assertSame(
+			[ $controller, 'get_policy_pages' ],
+			$args['callback'],
+			'`/policy-pages` must dispatch to `get_policy_pages()`.'
+		);
+	}
 }

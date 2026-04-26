@@ -215,7 +215,6 @@ class WC_AI_Storefront_Admin_Controller {
 			]
 		);
 
-		// Product/category/tag/brand search for selection UI.
 		// Pages suitable for linking from the Policies tab — excludes
 		// WC system pages (Cart, Checkout, My Account, Shop) which are
 		// never the merchant's policy page. Privacy / Terms / Refund
@@ -232,6 +231,7 @@ class WC_AI_Storefront_Admin_Controller {
 			]
 		);
 
+		// Product/category/tag/brand search for selection UI.
 		register_rest_route(
 			self::NAMESPACE,
 			'/search/categories',
