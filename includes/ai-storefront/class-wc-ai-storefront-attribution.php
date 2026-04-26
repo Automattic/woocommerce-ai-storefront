@@ -158,12 +158,16 @@ class WC_AI_Storefront_Attribution {
 	 *     "UCPPlayground", not "ucpplayground.com"). Falls back to
 	 *     the raw utm_source for legacy orders or when the source
 	 *     wasn't a recognized host.
-	 *   - `AGENT_HOST_RAW_META_KEY` = the unaltered hostname for
-	 *     "Other AI" drill-in or graduation review. Two write paths
-	 *     converge here — the lenient gate stamps utm_source as the
-	 *     raw host, then the strict gate's `ai_agent_host_raw` URL
-	 *     param overwrites if present (more accurate since the
-	 *     producer side stamped the literal hostname there).
+	 *   - `AGENT_HOST_RAW_META_KEY` = a clean hostname-shape value
+	 *     for "Other AI" drill-in or graduation review. Two writers:
+	 *     the strict-gate path stamps the `ai_agent_host_raw` URL
+	 *     param verbatim (already host-shaped because the producer
+	 *     side ran it through `extract_profile_hostname()`); the
+	 *     lenient-gate path stamps the output of
+	 *     `normalize_host_string()` — scheme / path / port stripped,
+	 *     lowercased, FQDN trailing dot removed. The verbatim
+	 *     user-facing value (whatever the agent put on the URL) is
+	 *     preserved by WC core in `_wc_order_attribution_utm_source`.
 	 *
 	 * WooCommerce core's Order Attribution captures utm_source /
 	 * utm_medium itself; we don't duplicate that work, just lift the
