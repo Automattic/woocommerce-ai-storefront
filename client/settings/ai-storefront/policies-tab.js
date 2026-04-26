@@ -589,35 +589,39 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 	const [ pagesLoading, setPagesLoading ] = useState( true );
 	const [ pagesError, setPagesError ] = useState( false );
 
-	// Fetch the published-pages list for the policy-page dropdown.
-	// `per_page=100` covers the common case (most stores have <100
-	// published pages). Stores with more pages would risk silently
-	// missing the merchant's saved selection, which would in turn
-	// drop `merchantReturnLink` from the live preview while PHP
-	// emission still includes it (drift between preview and output).
-	// Defense: also fetch the saved `page_id` explicitly via
-	// `include=` so the selected page is ALWAYS present in `pages`,
-	// regardless of pagination position. The two fetches run in
-	// parallel; results merge into a deduped list.
+	// Fetch the page list for the policy-page dropdown.
+	//
+	// Main fetch: the plugin's own `/policy-pages` endpoint. It
+	// returns only published pages and excludes WC system pages
+	// (Cart, Checkout, My Account, Shop) server-side via
+	// `wc_get_page_id()`. Doing the system-page filter on the server
+	// means it survives merchant renames (slug matching client-side
+	// wouldn't) and keeps the inclusion rule in one place.
+	//
+	// Optional second fetch: when a `page_id` is already saved in
+	// settings, also resolve that id by `include=` against
+	// `/wp/v2/pages`. This recovers the case where the saved page
+	// has since been moved to draft or trash — `/policy-pages`
+	// would no longer include it, so the dropdown would render the
+	// stored id as "blank" and the merchant would have no signal
+	// that their previous selection is now invisible. The fallback
+	// fetch surfaces the title so the dropdown can show the saved
+	// row even when it's no longer published. Server-side emission
+	// already gates `merchantReturnLink` on a published page, so a
+	// since-unpublished id silently drops from JSON-LD; the
+	// dropdown row is just a "you previously picked this, here's
+	// its name" affordance.
 	const savedPageId = settings.return_policy?.page_id || 0;
 	useEffect( () => {
 		let cancelled = false;
 		setPagesLoading( true );
 		setPagesError( false );
 
-		// Use `Promise.allSettled` so a partial failure (e.g. include
-		// fetch fails, main list succeeds) doesn't lose all pages.
-		// Tracking failure explicitly per-request lets us distinguish
-		// "no published pages exist" (success with empty result) from
-		// "pages endpoint failed" (network/auth/CORS error). Only the
-		// former is benign; the latter shows the warning notice.
-		// Use the plugin's own `/policy-pages` endpoint instead of
-		// `/wp/v2/pages` so WC system pages (Cart, Checkout, My
-		// Account, Shop) are excluded server-side via `wc_get_page_id()`.
-		// That filter respects merchant-renamed system pages (slug
-		// matching wouldn't), and centralises the inclusion rule so
-		// the dropdown semantic is enforced on the server, not
-		// client-side via keyword guessing.
+		// `Promise.allSettled` so a failure of the optional `include=`
+		// fetch doesn't tank the main list. We distinguish "no
+		// published pages exist" (main resolves with []) from "pages
+		// endpoint broke" (main rejects) — only the latter shows the
+		// merchant the warning notice.
 		const requests = [
 			apiFetch( {
 				path: '/wc/v3/ai-storefront/admin/policy-pages',
