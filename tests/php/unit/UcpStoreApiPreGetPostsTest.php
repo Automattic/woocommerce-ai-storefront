@@ -26,6 +26,15 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		\Brain\Monkey\setUp();
 		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
 		WC_AI_Storefront::$test_settings = [];
+		// Reset the per-request idempotency sentinel so each test
+		// can independently exercise `init()` without seeing the
+		// prior test's state. Without this, the regression-guard
+		// test below would early-return after another test elsewhere
+		// in the suite already called `init()` in this PHPUnit
+		// process, and Brain Monkey's `expectAdded(...)` would fail
+		// with a "callback not registered" mismatch despite the
+		// production code being correct.
+		\WC_AI_Storefront_UCP_Store_API_Filter::reset_hook_registered_for_test();
 	}
 
 	protected function tearDown(): void {

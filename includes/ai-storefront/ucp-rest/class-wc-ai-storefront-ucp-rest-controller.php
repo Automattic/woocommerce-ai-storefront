@@ -344,10 +344,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$sanitized = function_exists( 'sanitize_key' )
 				? array_map( 'sanitize_key', $unknown_keys )
 				: $unknown_keys;
+			// Drop the `string` type-hint on the closure: in the
+			// `sanitize_key`-unavailable branch above, `$sanitized`
+			// can carry integer keys if the JSON body is a list
+			// rather than an object (e.g. body `[1,2,3]` →
+			// array_keys returns `[0,1,2]`). PHP would TypeError
+			// before we got to the request-shape rejection later.
+			// Cast each value through `(string)` for the comparison
+			// so empty strings AND `'0'` both register correctly.
 			$sanitized = array_values(
 				array_filter(
 					$sanitized,
-					static fn( string $s ): bool => '' !== $s
+					static fn( $s ): bool => '' !== (string) $s
 				)
 			);
 			// Use ASCII `...` (not the Unicode ellipsis `…`) so the
