@@ -344,7 +344,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$sanitized = function_exists( 'sanitize_key' )
 				? array_map( 'sanitize_key', $unknown_keys )
 				: $unknown_keys;
-			$sanitized = array_values( array_filter( $sanitized, 'strlen' ) );
+			$sanitized = array_values(
+				array_filter(
+					$sanitized,
+					static fn( string $s ): bool => '' !== $s
+				)
+			);
 			if ( count( $sanitized ) > 8 ) {
 				$sanitized   = array_slice( $sanitized, 0, 8 );
 				$sanitized[] = '…';
