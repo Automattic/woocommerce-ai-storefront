@@ -526,11 +526,24 @@ const ReturnRefundPolicySection = ( {
  */
 const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 	// Hydrate from saved settings, falling back to safe defaults.
+	// Normalize sanitized server values into UI-friendly defaults.
+	// PHP's sanitizer maps `days = 0` to `null` on persistence (the
+	// "no window configured" sentinel — emission smart-degrades to
+	// MerchantReturnUnspecified). The UI's NumberControl, however,
+	// expects an integer; rendering `null` produces an empty input
+	// even though the helper text says "Leave at 0 for no specific
+	// window". Map `null` → `0` for the draft so the input always
+	// reflects a concrete value the merchant can read and edit.
+	const hydrate = ( returnPolicy ) => {
+		const merged = { ...DEFAULT_POLICY, ...( returnPolicy || {} ) };
+		if ( merged.days === null || merged.days === undefined ) {
+			merged.days = 0;
+		}
+		return merged;
+	};
+
 	const initial = useMemo(
-		() => ( {
-			...DEFAULT_POLICY,
-			...( settings.return_policy || {} ),
-		} ),
+		() => hydrate( settings.return_policy ),
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 		[]
 	);
@@ -549,7 +562,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 			return;
 		}
 		setDraft( ( prev ) => {
-			const merged = { ...DEFAULT_POLICY, ...settings.return_policy };
+			const merged = hydrate( settings.return_policy );
 			const same =
 				prev.mode === merged.mode &&
 				prev.page_id === merged.page_id &&
@@ -566,20 +579,53 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 	const [ pages, setPages ] = useState( [] );
 	const [ pagesLoading, setPagesLoading ] = useState( true );
 	const [ pagesError, setPagesError ] = useState( false );
-	const [ saved, setSaved ] = useState( false );
-	const [ saveError, setSaveError ] = useState( null );
 
+	// Fetch the published-pages list for the policy-page dropdown.
+	// `per_page=100` covers the common case (most stores have <100
+	// published pages). Stores with more pages would risk silently
+	// missing the merchant's saved selection, which would in turn
+	// drop `merchantReturnLink` from the live preview while PHP
+	// emission still includes it (drift between preview and output).
+	// Defense: also fetch the saved `page_id` explicitly via
+	// `include=` so the selected page is ALWAYS present in `pages`,
+	// regardless of pagination position. The two fetches run in
+	// parallel; results merge into a deduped list.
+	const savedPageId = settings.return_policy?.page_id || 0;
 	useEffect( () => {
 		let cancelled = false;
 		setPagesLoading( true );
-		apiFetch( {
-			path: '/wp/v2/pages?per_page=100&status=publish&_fields=id,title,link',
-		} )
-			.then( ( resp ) => {
-				if ( ! cancelled ) {
-					setPages( Array.isArray( resp ) ? resp : [] );
-					setPagesLoading( false );
+		const requests = [
+			apiFetch( {
+				path: '/wp/v2/pages?per_page=100&status=publish&_fields=id,title,link',
+			} ).catch( () => [] ),
+		];
+		if ( savedPageId > 0 ) {
+			requests.push(
+				apiFetch( {
+					path: `/wp/v2/pages?include=${ savedPageId }&_fields=id,title,link`,
+				} ).catch( () => [] )
+			);
+		}
+		Promise.all( requests )
+			.then( ( results ) => {
+				if ( cancelled ) {
+					return;
 				}
+				const all = results.flatMap( ( r ) =>
+					Array.isArray( r ) ? r : []
+				);
+				// Dedupe by id; first occurrence wins.
+				const seen = new Set();
+				const deduped = [];
+				for ( const p of all ) {
+					if ( ! seen.has( p.id ) ) {
+						seen.add( p.id );
+						deduped.push( p );
+					}
+				}
+				setPages( deduped );
+				setPagesError( deduped.length === 0 );
+				setPagesLoading( false );
 			} )
 			.catch( () => {
 				if ( ! cancelled ) {
@@ -590,7 +636,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 		return () => {
 			cancelled = true;
 		};
-	}, [] );
+	}, [ savedPageId ] );
 
 	// Read store base country from server-localized params. PHP localizes
 	// `wc_get_base_location()['country']` (or empty string when the
@@ -610,24 +656,17 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 			: '';
 
 	const handleSave = () => {
-		setSaveError( null );
-		setSaved( false );
+		// Save feedback (success + error) is owned by `saveSettings()`
+		// in the data-store layer, which dispatches global
+		// `core/notices` notices on both paths. The previous inline
+		// "Settings saved." span and inline error Notice rendered
+		// duplicate feedback for the same save action — dropped per
+		// review feedback in favor of relying on the global notices.
+		// `saveSettings` swallows rejections internally (catches and
+		// dispatches an error notice rather than rethrowing), so no
+		// `.catch` is needed here either — the promise always resolves.
 		onChange( { return_policy: draft } );
-		Promise.resolve( onSave() )
-			.then( () => setSaved( true ) )
-			.catch( ( err ) => {
-				// Surface a real error so the merchant doesn't click
-				// Save repeatedly wondering why nothing happens.
-				// `err.message` may be undefined for non-Error
-				// rejections; fall back to a generic string.
-				setSaveError(
-					( err && err.message ) ||
-						__(
-							'Save failed. Try again, or check the browser console for details.',
-							'woocommerce-ai-storefront'
-						)
-				);
-			} );
+		Promise.resolve( onSave() );
 	};
 
 	return (
@@ -671,10 +710,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 
 			<ReturnRefundPolicySection
 				policy={ draft }
-				onChange={ ( next ) => {
-					setDraft( next );
-					setSaved( false );
-				} }
+				onChange={ setDraft }
 				country={ country }
 				pages={ pages }
 				pagesLoading={ pagesLoading }
@@ -698,26 +734,6 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 						? __( 'Saving…', 'woocommerce-ai-storefront' )
 						: __( 'Save changes', 'woocommerce-ai-storefront' ) }
 				</Button>
-				{ saved && ! isSaving && ! saveError && (
-					<span
-						style={ {
-							color: colors.success,
-							fontSize: '13px',
-						} }
-					>
-						{ __( 'Settings saved.', 'woocommerce-ai-storefront' ) }
-					</span>
-				) }
-				{ saveError && ! isSaving && (
-					<Notice
-						status="error"
-						isDismissible
-						onRemove={ () => setSaveError( null ) }
-						style={ { margin: 0, flex: 1 } }
-					>
-						{ saveError }
-					</Notice>
-				) }
 			</div>
 		</div>
 	);

@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-26T00:10:38+00:00\n"
+"POT-Creation-Date: 2026-04-26T00:18:12+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -255,7 +255,6 @@ msgid "WooCommerce AI Storefront requires WooCommerce to be installed and active
 msgstr ""
 
 #: client/data/ai-storefront/actions.js:42
-#: client/settings/ai-storefront/policies-tab.js:708
 msgid "Settings saved."
 msgstr ""
 
@@ -453,7 +452,7 @@ msgid "Limits are applied per AI crawler (identified by user-agent string) using
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:960
-#: client/settings/ai-storefront/policies-tab.js:698
+#: client/settings/ai-storefront/policies-tab.js:734
 #: client/settings/ai-storefront/product-selection.js:2004
 msgid "Saving…"
 msgstr ""
@@ -559,23 +558,19 @@ msgstr ""
 msgid "Live preview"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:625
-msgid "Save failed. Try again, or check the browser console for details."
-msgstr ""
-
-#: client/settings/ai-storefront/policies-tab.js:644
+#: client/settings/ai-storefront/policies-tab.js:683
 msgid "Policies exposed to AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:656
+#: client/settings/ai-storefront/policies-tab.js:695
 msgid "Configure the policy signals AI agents see for your store."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:665
+#: client/settings/ai-storefront/policies-tab.js:704
 msgid "Could not load your pages. Page links won’t be available."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:699
+#: client/settings/ai-storefront/policies-tab.js:735
 #: client/settings/ai-storefront/product-selection.js:2005
 msgid "Save changes"
 msgstr ""
