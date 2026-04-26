@@ -57,6 +57,13 @@ const AISyndicationSettings = () => {
 		);
 	}
 
+	// Tab order: Overview (read) → Product Visibility (what's exposed)
+	// → Policies (additional signal on what's exposed) → Discovery
+	// (how AI agents find the store; reachability checks). Visibility
+	// + Policies are the "content" tabs (what AI agents see); Discovery
+	// is the "plumbing" tab (how they get to it). Pairing the content
+	// tabs makes the merchant journey conceptually cleaner: configure
+	// what's shown first, verify it's discoverable second.
 	const tabs = [
 		{
 			name: 'overview',
@@ -67,12 +74,12 @@ const AISyndicationSettings = () => {
 			title: __( 'Product Visibility', 'woocommerce-ai-storefront' ),
 		},
 		{
-			name: 'endpoints',
-			title: __( 'Discovery', 'woocommerce-ai-storefront' ),
-		},
-		{
 			name: 'policies',
 			title: __( 'Policies', 'woocommerce-ai-storefront' ),
+		},
+		{
+			name: 'endpoints',
+			title: __( 'Discovery', 'woocommerce-ai-storefront' ),
 		},
 	];
 
