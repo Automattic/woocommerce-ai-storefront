@@ -36,6 +36,16 @@ const AISyndicationSettings = () => {
 		( select ) => select( STORE_NAME ).isSaving(),
 		[]
 	);
+	// Dirty-aware Save: each tab's footer disables its Save button
+	// when the merchant hasn't actually changed anything away from
+	// the saved snapshot. Mirrors the WooCommerce / Block Editor
+	// convention. See `client/data/ai-storefront/selectors.js::isDirty`
+	// for the comparison rule and `reducer.js::SET_SETTINGS` for the
+	// save-success resync that flips dirty back to clean.
+	const isDirty = useSelect(
+		( select ) => select( STORE_NAME ).isDirty(),
+		[]
+	);
 	const isLoading = useSelect( ( select ) => {
 		const { isResolving, hasFinishedResolution } = select( STORE_NAME );
 		return (
@@ -94,6 +104,7 @@ const AISyndicationSettings = () => {
 								onChange={ updateSettingsValues }
 								onSave={ saveSettings }
 								isSaving={ isSaving }
+								isDirty={ isDirty }
 							/>
 						) }
 						{ tab.name === 'products' && (
@@ -102,6 +113,7 @@ const AISyndicationSettings = () => {
 								onChange={ updateSettingsValues }
 								onSave={ saveSettings }
 								isSaving={ isSaving }
+								isDirty={ isDirty }
 							/>
 						) }
 						{ tab.name === 'endpoints' && (
@@ -110,6 +122,7 @@ const AISyndicationSettings = () => {
 								onChange={ updateSettingsValues }
 								onSave={ saveSettings }
 								isSaving={ isSaving }
+								isDirty={ isDirty }
 							/>
 						) }
 						{ tab.name === 'policies' && (
@@ -118,6 +131,7 @@ const AISyndicationSettings = () => {
 								onChange={ updateSettingsValues }
 								onSave={ saveSettings }
 								isSaving={ isSaving }
+								isDirty={ isDirty }
 							/>
 						) }
 					</div>

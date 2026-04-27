@@ -351,10 +351,22 @@ const ReturnRefundPolicySection = ( {
 								) }
 							</div>
 
+							{ /*
+								Width: 120px. Bounded numeric (0–365)
+								renders within ~3 digit slots — a
+								wider field would lie about how much
+								input is expected and create a ragged
+								right edge against the 480px dropdowns
+								above and below. Designer-validated
+								"field width = expected content
+								magnitude" pattern; matches the
+								WooCommerce convention for short
+								numeric inputs.
+							*/ }
 							<div
 								style={ {
 									marginBottom: '16px',
-									maxWidth: '240px',
+									maxWidth: '120px',
 								} }
 							>
 								<NumberControl
@@ -394,10 +406,21 @@ const ReturnRefundPolicySection = ( {
 								/>
 							</div>
 
+							{ /*
+								Width: 480px to match the Policy page
+								dropdown above. The two SelectControls
+								form a vertical "policy attributes"
+								column — uniform width keeps the eye
+								tracking down the column rather than
+								zigzagging between widths. NumberControl
+								between them deliberately diverges
+								(120px) because numeric magnitude is a
+								different signal than dropdown choice.
+							*/ }
 							<div
 								style={ {
 									marginBottom: '16px',
-									maxWidth: '320px',
+									maxWidth: '480px',
 								} }
 							>
 								<SelectControl
@@ -532,8 +555,9 @@ const ReturnRefundPolicySection = ( {
  * @param {Function} props.onChange Called with `(partialSettings)` to sync local edits to the store.
  * @param {Function} props.onSave   Called with no args; returns a promise that resolves on REST success.
  * @param {boolean}  props.isSaving Whether a save is in flight (drives Save button busy state).
+ * @param {boolean}  props.isDirty  Whether the merchant has unsaved changes (disables Save when false).
  */
-const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
+const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	// Hydrate from saved settings, falling back to safe defaults.
 	// Normalize sanitized server values into UI-friendly defaults.
 	// PHP's sanitizer maps `days = 0` to `null` on persistence (the
@@ -743,18 +767,25 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving } ) => {
 				pagesLoading={ pagesLoading }
 			/>
 
+			{ /*
+				Page-level Save footer. Right-aligned + 24px top margin
+				to match the Discovery (Endpoint Info) and Product
+				Visibility tabs. The button is dirty-aware: disabled
+				when `isDirty` is false, even if the merchant clicks
+				rapidly during a save (`isSaving` keeps it disabled
+				through the in-flight window). Mirrors WC Settings +
+				Block Editor's pattern.
+			*/ }
 			<div
 				style={ {
-					marginTop: '20px',
-					display: 'flex',
-					gap: '12px',
-					alignItems: 'center',
+					marginTop: '24px',
+					textAlign: 'right',
 				} }
 			>
 				<Button
 					variant="primary"
 					isBusy={ isSaving }
-					disabled={ isSaving }
+					disabled={ isSaving || ! isDirty }
 					onClick={ handleSave }
 				>
 					{ isSaving

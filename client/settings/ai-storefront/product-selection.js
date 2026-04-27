@@ -516,7 +516,13 @@ const ModeRow = ( {
 	);
 };
 
-const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
+const ProductSelection = ( {
+	settings,
+	onChange,
+	onSave,
+	isSaving,
+	isDirty,
+} ) => {
 	// `supportsBrands` comes from `wp_localize_script` and reflects
 	// `taxonomy_exists( 'product_brand' )` at page load. When false,
 	// the Brands toggle segment is hidden and the /search/brands
@@ -1899,7 +1905,7 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 				<Button
 					variant="primary"
 					isBusy={ isSaving }
-					disabled={ isSaving }
+					disabled={ isSaving || ! isDirty }
 					onClick={ onSave }
 				>
 					{ isSaving
