@@ -714,10 +714,10 @@ class WC_AI_Storefront {
 		// the post type being `product_variation`, so non-variation
 		// products skip it entirely. The catalog-loop hot path
 		// (`/catalog/lookup` fetching N products) does pay one
-		// post-type lookup per product on a cold worker — see the
-		// follow-up TODO in `is_product_syndicated()`'s caller for a
-		// future `_prime_post_caches()` batch upstream if that ever
-		// shows up in profiling.
+		// post-type lookup per product on a cold worker; if profiling
+		// ever flags it, the right fix is a `_prime_post_caches()`
+		// batch in the catalog/lookup REST handler before iterating,
+		// not here.
 		//
 		// Single redirect, NOT recursive. WC enforces in admin that a
 		// variation's parent is a top-level product — so one hop
@@ -729,16 +729,17 @@ class WC_AI_Storefront {
 		// and the variation reads as out-of-scope). Recursing would
 		// hide the data corruption rather than expose it.
 		//
-		// `function_exists` guard exists solely because Brain Monkey's
-		// WP preset breaks the test bootstrap otherwise — the preset
-		// makes `function_exists()` return true for every WP-preset
-		// name globally, but throws `MissingFunctionExpectations` when
-		// the function is called without a stub set in that test.
-		// Without the guard, every unrelated test that touches
-		// `is_product_syndicated()` would crash. WP core always
-		// provides both functions in production; the guard is never
-		// false on a live site. Don't cargo-cult this pattern into
-		// other production paths — it's a test-bootstrap workaround.
+		// `function_exists` guard is defense-in-depth for non-WP
+		// loading contexts (static analyzers, scaffolding scripts,
+		// hypothetical CLI tooling that includes this file outside
+		// a full WP bootstrap). WP core always provides both
+		// functions in production, and the unit-test harness loads
+		// the stub class at `tests/php/stubs/class-wc-ai-storefront-stub.php`
+		// rather than this file — so the guard is genuinely never
+		// false in either production or the current test suite. It
+		// exists purely so the file remains include-safe in any
+		// environment where WP isn't loaded, which is cheap insurance
+		// against future tooling that does so.
 		if (
 			function_exists( 'get_post_type' )
 			&& function_exists( 'wp_get_post_parent_id' )

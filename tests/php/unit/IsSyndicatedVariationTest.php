@@ -159,11 +159,19 @@ class IsSyndicatedVariationTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( WC_AI_Storefront::is_product_syndicated( 1112 ) );
 	}
 
-	public function test_non_variation_post_skips_redirect(): void {
-		// Regression guard: a regular `product` post must NOT be
-		// rewritten via the variation map. ID 23 is absent from the
-		// map → no redirect → ID 23 checked directly against
-		// selected_products and found.
+	public function test_id_absent_from_variation_map_skips_redirect(): void {
+		// Regression guard: any ID that isn't a key in `$test_variations`
+		// is treated as a regular product — the redirect block doesn't
+		// fire. In production this corresponds to "post type isn't
+		// `product_variation`" (see the WP `get_post_type()` call gated
+		// on the strict-equals check). The stub's gating mechanism is
+		// deliberately different: it branches on `array_key_exists()`
+		// against the test-controllable map rather than calling
+		// `get_post_type()`. See the property docblock on
+		// `WC_AI_Storefront::$test_variations` for the full rationale.
+		// The two mechanisms map 1:1 — "missing key" in the stub
+		// corresponds to "non-variation post type" in production —
+		// so this test pins the equivalent behavior.
 		WC_AI_Storefront::$test_variations = [];
 
 		WC_AI_Storefront::$test_settings = [
