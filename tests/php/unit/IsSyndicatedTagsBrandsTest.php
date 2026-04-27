@@ -25,6 +25,13 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 		parent::setUp();
 		Monkey\setUp();
 		WC_AI_Storefront::$test_settings = [];
+		// Defense in depth: reset the variation-redirect map even
+		// though no test in this file uses it. Static properties
+		// persist across PHPUnit instances within the same process,
+		// so a future variation test elsewhere that forgets its
+		// tearDown could otherwise pollute these tests' product_id
+		// → parent_id resolution.
+		WC_AI_Storefront::$test_variations = [];
 
 		// Default: brands taxonomy registered. Under 0.1.5's UNION
 		// gate, `taxonomy_exists('product_brand')` is consulted on

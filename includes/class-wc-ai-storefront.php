@@ -710,12 +710,27 @@ class WC_AI_Storefront {
 		// (a single DB hit at most, cached by WP), and resolve the
 		// parent via `wp_get_post_parent_id()` (also cached). For
 		// non-variation IDs both calls are no-ops at the cache layer.
-		// Recursive case is bounded — variations don't have variations.
-		// `function_exists` guard so tests that don't stub these
-		// functions don't blow up. WP core always provides them in
-		// production. Tests that need variation behavior register
-		// stubs via Brain Monkey's `Functions\when()` (which makes
-		// `function_exists` return true for the stubbed name).
+		//
+		// Single redirect, NOT recursive. WC enforces in admin that a
+		// variation's parent is a top-level product — so one hop
+		// reaches the parent in every well-formed store. A raw
+		// `wp_insert_post` could theoretically create a
+		// `product_variation` whose parent is itself a variation; the
+		// consequence here is a benign false negative (the misformed
+		// parent ID gets checked against `selected_products`, fails,
+		// and the variation reads as out-of-scope). Recursing would
+		// hide the data corruption rather than expose it.
+		//
+		// `function_exists` guard exists solely because Brain Monkey's
+		// WP preset breaks the test bootstrap otherwise — the preset
+		// makes `function_exists()` return true for every WP-preset
+		// name globally, but throws `MissingFunctionExpectations` when
+		// the function is called without a stub set in that test.
+		// Without the guard, every unrelated test that touches
+		// `is_product_syndicated()` would crash. WP core always
+		// provides both functions in production; the guard is never
+		// false on a live site. Don't cargo-cult this pattern into
+		// other production paths — it's a test-bootstrap workaround.
 		if (
 			function_exists( 'get_post_type' )
 			&& function_exists( 'wp_get_post_parent_id' )

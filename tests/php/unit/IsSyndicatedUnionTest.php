@@ -39,6 +39,14 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		parent::setUp();
 		Monkey\setUp();
 		WC_AI_Storefront::$test_settings = [];
+		// Defense in depth: reset the variation-redirect map. Static
+		// properties on `WC_AI_Storefront` persist across PHPUnit
+		// instances within one process, so a future variation test
+		// that forgets its tearDown could otherwise pollute these
+		// tests' product_id → parent_id resolution. Empty map = no
+		// redirect, which matches what every test in this file
+		// implicitly expects.
+		WC_AI_Storefront::$test_variations = [];
 
 		// Default: brands taxonomy registered. Tests exercising the
 		// downgrade branch override with `justReturn( false )`.
