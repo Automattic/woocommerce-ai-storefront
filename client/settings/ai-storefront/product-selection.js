@@ -1878,10 +1878,22 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 				(Settings → General, Writing, Reading, every WC
 				Settings tab) — one save at the bottom, not per-card.
 			*/ }
+			{ /*
+				`textAlign: 'end'` instead of `'right'` so the Save
+				button respects writing direction — the right edge in
+				LTR, the left edge in RTL (Arabic, Hebrew, Persian,
+				Urdu). Logical property; tracks `direction` automatically.
+				The Discovery footer (`endpoint-info.js`) ships the same
+				value in this PR. The Policies footer follows in PR #102
+				— if these merge out of order, the Policies tab is the
+				last to gain RTL parity, but `'end'` and `'right'` have
+				identical visual results in LTR locales so there's no
+				regression risk to non-RTL stores during the transition.
+			*/ }
 			<div
 				style={ {
 					marginTop: '24px',
-					textAlign: 'right',
+					textAlign: 'end',
 				} }
 			>
 				<Button
