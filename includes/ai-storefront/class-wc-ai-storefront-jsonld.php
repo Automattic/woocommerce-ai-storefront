@@ -42,6 +42,14 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		// Add purchase action pointing to store checkout with attribution placeholders.
+		// Canonical UTM shape (0.5.0+): `utm_medium=referral` is
+		// Google-canonical, `utm_id=woo_ucp` flags "we routed this"
+		// without overloading the medium field. See
+		// `WC_AI_Storefront_UCP_REST_Controller::build_continue_url()`
+		// for the full rationale; the JSON-LD potentialAction emits
+		// the same shape so an agent that constructs the URL from
+		// the schema (rather than calling /checkout-sessions) lands
+		// on STRICT attribution via the same `utm_id` path.
 		$markup['potentialAction'] = [
 			'@type'  => 'BuyAction',
 			'target' => [
@@ -50,7 +58,8 @@ class WC_AI_Storefront_JsonLd {
 					[
 						'add-to-cart'   => $product->get_id(),
 						'utm_source'    => '{agent_id}',
-						'utm_medium'    => 'ai_agent',
+						'utm_medium'    => 'referral',
+						'utm_id'        => 'woo_ucp',
 						'ai_session_id' => '{session_id}',
 					],
 					$product->get_permalink()
@@ -314,7 +323,9 @@ class WC_AI_Storefront_JsonLd {
 				'@type'       => 'SearchAction',
 				'target'      => [
 					'@type'       => 'EntryPoint',
-					'urlTemplate' => home_url( '/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=ai_agent' ),
+					// Canonical UTM shape (0.5.0+) — see BuyAction
+					// urlTemplate above for rationale.
+					'urlTemplate' => home_url( '/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=woo_ucp' ),
 				],
 				'query-input' => 'required name=search_term',
 			],

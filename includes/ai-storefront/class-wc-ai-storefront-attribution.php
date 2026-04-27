@@ -101,9 +101,35 @@ class WC_AI_Storefront_Attribution {
 	const AGENT_HOST_RAW_META_KEY = '_wc_ai_storefront_agent_host_raw';
 
 	/**
-	 * The UTM medium value used to identify AI agent traffic.
+	 * Legacy UTM medium value our pre-0.5.0 continue_url builder
+	 * stamped to identify AI agent traffic. Still recognized by the
+	 * STRICT attribution gate so already-placed orders attribute
+	 * correctly through the canonical-UTM-shape upgrade window.
+	 *
+	 * The 0.5.0+ continue_url builder emits `utm_medium=referral`
+	 * (Google-canonical) and signals "we routed this" via the
+	 * `utm_id=woo_ucp` flag instead. See `WOO_UCP_ID` below.
+	 *
+	 * Removable from the STRICT gate after ~6 months once orders
+	 * placed pre-0.5.0 age out of any reporting window the merchant
+	 * cares about. The constant itself can stay as a historical
+	 * reference even after the gate stops checking it.
 	 */
 	const AI_AGENT_MEDIUM = 'ai_agent';
+
+	/**
+	 * The UTM ID value our 0.5.0+ continue_url builder stamps to
+	 * identify "this URL was routed through OUR /checkout-sessions
+	 * endpoint." The STRICT attribution gate recognizes orders
+	 * carrying this flag regardless of utm_medium / utm_source.
+	 *
+	 * The `woo_` prefix scopes the value to the WooCommerce ecosystem
+	 * — if other UCP server implementations emerge, they'd use their
+	 * own prefix. The `_ucp` suffix names the protocol context,
+	 * leaving room for future `woo_acp` / `woo_other` if we ever
+	 * route traffic through a different protocol.
+	 */
+	const WOO_UCP_ID = 'woo_ucp';
 
 	/**
 	 * Initialize hooks.
@@ -178,14 +204,16 @@ class WC_AI_Storefront_Attribution {
 	 */
 	public function capture_ai_attribution( $order ) {
 		// Check if this order was attributed to an AI agent.
-		// WooCommerce Order Attribution stores utm_medium in order meta.
+		// WooCommerce Order Attribution stores utm_medium / utm_id in order meta.
 		$utm_medium = $order->get_meta( '_wc_order_attribution_utm_medium' );
+		$utm_id     = $order->get_meta( '_wc_order_attribution_utm_id' );
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params, not processing form.
 		$request_medium = isset( $_GET['utm_medium'] ) ? sanitize_text_field( wp_unslash( $_GET['utm_medium'] ) ) : '';
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params, not processing form.
+		$request_id = isset( $_GET['utm_id'] ) ? sanitize_text_field( wp_unslash( $_GET['utm_id'] ) ) : '';
 
-		// Resolve utm_source up front — both the strict (utm_medium =
-		// ai_agent) and lenient (host-match) gates need it.
+		// Resolve utm_source up front — both STRICT and LENIENT gates need it.
 		$utm_source = $order->get_meta( '_wc_order_attribution_utm_source' );
 		if ( ! $utm_source ) {
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params.
@@ -194,9 +222,15 @@ class WC_AI_Storefront_Attribution {
 
 		// Two ways to recognize an AI order:
 		//
-		//   1. STRICT: utm_medium === 'ai_agent'. This is the value our
-		//      own continue_url builder emits, so it's unambiguous —
-		//      every order WE built the link for hits this branch.
+		//   1. STRICT: utm_id === 'woo_ucp' (canonical 0.5.0+ shape) OR
+		//      legacy utm_medium === 'ai_agent' (pre-0.5.0 shape).
+		//      Both signals were emitted by our own continue_url
+		//      builder. Dual-checking keeps already-placed orders
+		//      attributing correctly through the upgrade window. The
+		//      `ai_agent` legacy branch is removable after ~6 months
+		//      once those orders age out of any reporting window the
+		//      merchant cares about; until then it preserves accuracy
+		//      for the historical cohort.
 		//
 		//   2. LENIENT: utm_source is an exact match for a hostname
 		//      KEY in `KNOWN_AGENT_HOSTS` (e.g. `ucpplayground.com`,
@@ -206,6 +240,12 @@ class WC_AI_Storefront_Attribution {
 		//      `referral`, others may send `agent`, `ai`, `bot`, etc.).
 		//      The host identifies the agent unambiguously regardless.
 		//
+		//      Note: post-0.5.0 our OWN continue_url also emits
+		//      `utm_medium=referral`, but the STRICT path catches it
+		//      first via `utm_id=woo_ucp` so the LENIENT path's spoof
+		//      surface (canonical-name string) is not exposed by our
+		//      own emissions.
+		//
 		//      Critical: we match the hostname KEY set, NOT the
 		//      canonical-name VALUE set. A non-AI referrer could
 		//      otherwise spoof AI attribution by sending
@@ -213,9 +253,7 @@ class WC_AI_Storefront_Attribution {
 		//      brand-name string is publicly guessable, but the
 		//      hostname-keys set requires sending an actual hostname
 		//      that we've curated into the allow-list. That's a much
-		//      narrower spoofing surface (an attacker would have to
-		//      both know we recognize a host AND want to attribute
-		//      their fake order to that host's brand).
+		//      narrower spoofing surface.
 		//
 		// Either path = AI order. Otherwise the order is regular
 		// referral / direct / paid-search traffic and we leave it
@@ -236,11 +274,13 @@ class WC_AI_Storefront_Attribution {
 		}
 		$is_known_ai_host = '' !== $lenient_canonical;
 
-		if (
-			self::AI_AGENT_MEDIUM !== $utm_medium
-			&& self::AI_AGENT_MEDIUM !== $request_medium
-			&& ! $is_known_ai_host
-		) {
+		// STRICT: 0.5.0+ utm_id flag OR legacy utm_medium=ai_agent.
+		$is_strict = self::WOO_UCP_ID === $utm_id
+			|| self::WOO_UCP_ID === $request_id
+			|| self::AI_AGENT_MEDIUM === $utm_medium
+			|| self::AI_AGENT_MEDIUM === $request_medium;
+
+		if ( ! $is_strict && ! $is_known_ai_host ) {
 			return;
 		}
 

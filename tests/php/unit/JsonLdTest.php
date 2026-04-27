@@ -138,7 +138,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		$this->assertStringContainsString( 'add-to-cart=42', $url );
 		$this->assertStringContainsString( 'utm_source=%7Bagent_id%7D', $url );
-		$this->assertStringContainsString( 'utm_medium=ai_agent', $url );
+		// Canonical UTM shape (0.5.0+): medium=referral (Google-canonical),
+		// utm_id=woo_ucp flags "we routed this".
+		$this->assertStringContainsString( 'utm_medium=referral', $url );
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
 		$this->assertStringContainsString( 'ai_session_id=%7Bsession_id%7D', $url );
 	}
 

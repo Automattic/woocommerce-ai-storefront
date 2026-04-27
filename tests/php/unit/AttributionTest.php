@@ -63,6 +63,84 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'chatgpt', $order->get_meta( '_wc_ai_storefront_agent' ) );
 	}
 
+	// ------------------------------------------------------------------
+	// STRICT gate dual-check (added 0.5.0)
+	// ------------------------------------------------------------------
+	//
+	// 0.5.0 introduced a canonical UTM shape:
+	// `utm_source=hostname&utm_medium=referral&utm_id=woo_ucp`. The
+	// STRICT gate now matches `utm_id === 'woo_ucp'` as the canonical
+	// "we routed this" signal AND keeps matching legacy
+	// `utm_medium === 'ai_agent'` so already-placed orders attribute
+	// correctly through the upgrade window. Both branches are tested
+	// independently; either one alone must satisfy STRICT.
+
+	public function test_capture_strict_gate_fires_on_woo_ucp_utm_id_meta(): void {
+		// Canonical 0.5.0 shape: utm_id=woo_ucp on order meta
+		// triggers STRICT regardless of utm_medium value (which is
+		// `referral` in the new shape, not `ai_agent`).
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_id', 'woo_ucp' );
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'chatgpt.com' );
+
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertTrue( $order->was_saved() );
+		// utm_source=chatgpt.com IS a KNOWN_AGENT_HOSTS key, so the
+		// lenient gate canonicalizes it to the brand name "ChatGPT"
+		// before stamping `_wc_ai_storefront_agent`. Same canonical-
+		// brand-display behavior as pre-0.5.0; the change in this PR
+		// is what utm_source carries on the URL, not what the meta
+		// stamps.
+		$this->assertEquals( 'ChatGPT', $order->get_meta( '_wc_ai_storefront_agent' ) );
+	}
+
+	public function test_capture_strict_gate_fires_on_woo_ucp_utm_id_get_fallback(): void {
+		// Canonical 0.5.0 shape via $_GET: utm_id=woo_ucp triggers
+		// STRICT before WC core has finished writing meta (the
+		// `wc_order_attribution_install_metadata` race the legacy gate
+		// also covers via the $_GET fallback).
+		$order = new WC_Order();
+		$_GET['utm_id']        = 'woo_ucp';
+		$_GET['utm_medium']    = 'referral';
+		$_GET['utm_source']    = 'gemini.google.com';
+		$_GET['ai_session_id'] = 'session-xyz';
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertTrue( $order->was_saved() );
+		// gemini.google.com is in KNOWN_AGENT_HOSTS → lenient gate
+		// canonicalizes to "Gemini" before stamping the agent meta.
+		$this->assertEquals( 'Gemini', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		$this->assertEquals( 'session-xyz', $order->get_meta( '_wc_ai_storefront_session_id' ) );
+	}
+
+	public function test_capture_strict_gate_legacy_ai_agent_medium_still_fires(): void {
+		// Pre-0.5.0 orders have `utm_medium=ai_agent` but no `utm_id`.
+		// The dual-check must still recognize them so historical
+		// orders attribute correctly through the upgrade window.
+		// This is the "removable after 6 months" branch — pinning the
+		// behavior so a premature removal fails CI loudly.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'ai_agent' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'ChatGPT' );
+		// No utm_id meta at all (pre-0.5.0 shape).
+
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertTrue( $order->was_saved() );
+		$this->assertEquals( 'ChatGPT', $order->get_meta( '_wc_ai_storefront_agent' ) );
+	}
+
 	public function test_capture_detects_ai_medium_from_get_fallback(): void {
 		$order = new WC_Order();
 		// No meta, but $_GET has the params.

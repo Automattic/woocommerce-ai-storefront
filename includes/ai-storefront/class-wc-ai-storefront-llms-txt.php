@@ -419,9 +419,9 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[]       = '}';
 		$lines[]       = '```';
 		$lines[]       = '';
-		$lines[]       = 'Set the `UCP-Agent` request header to your agent\'s discovery profile URL; the server extracts the hostname, canonicalizes it to a short brand name for known vendors (or uses the hostname verbatim otherwise), and attaches it as `utm_source` on the returned `continue_url` — so you do not need to construct UTM parameters yourself.';
+		$lines[]       = 'Set the `UCP-Agent` request header to your agent\'s discovery profile URL (preferred) or `Product/Version` form (e.g. `MyAgent/1.0`); the server extracts the hostname or product token, resolves it to a canonical hostname for known vendors, and attaches it as `utm_source` on the returned `continue_url` — so you do not need to construct UTM parameters yourself. Clients that cannot send custom headers may instead include `meta.source` in the request body as a fallback identifier.';
 		$lines[]       = '';
-		$lines[]       = 'Response includes `status: "requires_escalation"` and a `continue_url` with `utm_source` + `utm_medium=ai_agent` already attached. Redirect the user to that URL to complete the purchase on our site.';
+		$lines[]       = 'Response includes `status: "requires_escalation"` and a `continue_url` with `utm_source={hostname}&utm_medium=referral&utm_id=woo_ucp` already attached. Redirect the user to that URL to complete the purchase on our site.';
 		$lines[]       = '';
 
 		// No hostname→brand mapping table is emitted. Runtime

@@ -4,6 +4,22 @@
 
 ---
 
+## [0.5.0] – 2026-04-28
+
+### Refactors
+- **Canonical UTM shape on continue_url + JSON-LD potentialActions.** The continue_url returned from `POST /checkout-sessions` (and the analogous `BuyAction` / `SearchAction` urlTemplate emissions in product page JSON-LD) now stamps three coordinated UTM fields:
+  - `utm_source` is a **lowercase hostname** (e.g. `chatgpt.com`, `ucpplayground.com`) rather than a canonical brand name (e.g. `ChatGPT`, `UCPPlayground`). Hostnames match the WooCommerce convention (`google`, `facebook`, etc.) and converge with what bypass-path agents naturally stamp on Shareable Checkout links — fragmenting attribution across our continue_url and bypass paths was the dominant pre-0.5.0 problem (the same agent showed up in WC Origin as both `ChatGPT` and `chatgpt.com` for different orders). Product/Version-form requests resolve through the new `PRODUCT_TO_HOSTNAME` map (e.g. `ucp-playground` → `ucpplayground.com`) so utm_source converges across all identification paths for known agents.
+  - `utm_medium` is `referral` (Google-canonical) rather than `ai_agent`. AI agent traffic IS referral traffic by Google's analytics taxonomy; `referral` lets GA4 auto-bucket under the Referral default channel grouping rather than "Unassigned". Merchants who want AI-specific reports add a custom GA4 channel grouping rule (Source matches AI agent hostnames).
+  - New `utm_id=woo_ucp` flag identifies "we routed this through our /checkout-sessions endpoint." Carries the "we routed this" signal that `utm_medium=ai_agent` previously carried — decouples WHO sent the user (utm_source) from HOW it was routed (utm_id), so changing one doesn't fragment the other. The `woo_` prefix scopes the value to our ecosystem in case other UCP server implementations emerge.
+- **STRICT attribution gate dual-checks** `utm_id === 'woo_ucp'` (canonical 0.5.0+ shape) OR legacy `utm_medium === 'ai_agent'` (pre-0.5.0 shape). The legacy branch keeps already-placed orders attributing correctly through the upgrade window; documented as removable after ~6 months once those orders age out of any reporting window the merchant cares about. New `WOO_UCP_ID = 'woo_ucp'` constant on `WC_AI_Storefront_Attribution` alongside the pre-existing `AI_AGENT_MEDIUM = 'ai_agent'`.
+- **`resolve_agent_host()` returns a third `source_host` field** (the hostname-shape value for utm_source) alongside the existing `name` (canonical brand) and `raw_host` (untransformed identifier). `build_continue_url()` consumes `source_host` for utm_source emission so the hostname-resolution logic lives in one place and is testable in isolation.
+- **llms.txt agent guidance updated** to describe the new utm shape (`utm_source={hostname}&utm_medium=referral&utm_id=woo_ucp`) and to mention both UCP-Agent header forms (`profile="<URL>"` and `Product/Version`) plus the `meta.source` body fallback path agents can use when they can't send custom headers.
+
+### Tests
+- 3 new tests in `AttributionTest` cover the STRICT gate dual-check: woo_ucp utm_id from order meta path, woo_ucp utm_id from $_GET fallback path, and the legacy ai_agent medium path that must still fire (regression guard for the "removable after 6 months" branch). Existing 9 tests covering the continue_url emission shape were updated to expect the new utm_source / utm_medium / utm_id values; behavioral coverage unchanged. Total tests now 892, assertions 2466.
+
+---
+
 ## [0.4.0] – 2026-04-28
 
 ### Fixes

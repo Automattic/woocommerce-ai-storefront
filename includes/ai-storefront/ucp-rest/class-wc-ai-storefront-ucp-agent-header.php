@@ -168,6 +168,41 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	];
 
 	/**
+	 * Map: UCP-Agent product-name token → canonical hostname.
+	 *
+	 * Parallel to `KNOWN_AGENT_PRODUCT_NAMES`. Used by the canonical
+	 * UTM shape (added 0.5.0) where `utm_source` is a lowercase
+	 * hostname rather than a canonical brand name.
+	 *
+	 * Why a separate map rather than extending `KNOWN_AGENT_PRODUCT_NAMES`'s
+	 * value shape: the existing constant maps `product → brand_name`
+	 * and is consumed by display-layer code (admin Recent Orders,
+	 * stats breakdown). Changing its values to an associative array
+	 * would ripple through every consumer. A sibling map keeps each
+	 * lookup direction independently tunable and avoids that churn.
+	 *
+	 * Why hostnames rather than canonical names for `utm_source`:
+	 * lowercase hostnames are the WC convention (matches `google`,
+	 * `facebook`, etc. in WC Order Attribution), and they converge
+	 * with what bypass-path agents naturally stamp (UCPPlayground's
+	 * playground harness sends `utm_source=ucpplayground.com` on
+	 * orders that don't go through our `/checkout-sessions`). Stamping
+	 * the hostname even for product-form requests means the same
+	 * agent attributes to one consistent source string regardless of
+	 * which path the order took.
+	 *
+	 * Add an entry here ALONGSIDE every `KNOWN_AGENT_PRODUCT_NAMES`
+	 * entry. The product token must canonicalize to a brand AND to a
+	 * stable hostname — gaps in this map mean the new utm_source
+	 * shape falls back to the product token itself (e.g.
+	 * `utm_source=ucp-playground`), which fragments stats against the
+	 * profile-URL path (`utm_source=ucpplayground.com`).
+	 */
+	const PRODUCT_TO_HOSTNAME = [
+		'ucp-playground' => 'ucpplayground.com',
+	];
+
+	/**
 	 * Display label for unknown AI agents — agents whose UCP-Agent profile
 	 * hostname isn't in `KNOWN_AGENT_HOSTS`. They're still allowed to
 	 * transact (UCP is an open spec), but their attribution is bucketed
