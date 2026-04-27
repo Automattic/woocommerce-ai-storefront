@@ -876,29 +876,18 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 					{ /*
 						Unknown-agent toggle. Lives inside the same Card
 						as the per-brand crawler list because both
-						control the same gate ("which AI agents can
-						talk to my store") at different granularities:
+						control the same gate at different granularities:
 						the list above is per-brand opt-in; this toggle
-						is the catch-all for agents whose hostname
-						isn't in our recognized brand list (the
-						`OTHER_AI_BUCKET` canonical value, server-side).
-
-						Default `'no'` for both new installs and
-						upgrades. Pre-this-flag behavior was
-						unconditional pass-through, which created an
-						asymmetry where a merchant who explicitly
-						disabled ChatGPT would block ChatGPT but
-						`attacker.example` (an unknown host with a
-						parseable UCP-Agent header) would still get
-						full UCP access. The toggle exposes the
-						trade-off explicitly: secure-by-default vs.
-						open-spec admit-anyone-with-a-parseable-header.
+						is the catch-all for hostnames the server-side
+						canonicalizer maps to `OTHER_AI_BUCKET`.
 
 						See `WC_AI_Storefront_UCP_REST_Controller::check_agent_access()`
-						for the corresponding gate logic, and
-						`WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET`
-						for the canonical sentinel that triggers this
-						code path.
+						for the gate's full rationale (the asymmetry,
+						the secure-by-default trade-off, the open-spec
+						alternative). Keeping the narrative there avoids
+						the four-copies drift surface that would
+						otherwise grow as this toggle accumulates
+						context over time.
 					*/ }
 					<div
 						style={ {

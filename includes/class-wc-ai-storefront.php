@@ -435,19 +435,19 @@ class WC_AI_Storefront {
 			'selected_brands'          => [],
 			'selected_products'        => [],
 			'rate_limit_rpm'           => 25,
-			// UCP REST gate for agents whose `UCP-Agent` profile
-			// hostname isn't in `KNOWN_AGENT_HOSTS` (i.e. canonicalize
-			// to `OTHER_AI_BUCKET`). Default `'no'` for both new
-			// installs AND upgrades — secure-by-default. Pre-this-flag
-			// behavior was unconditional pass-through, which created
-			// the asymmetry where a merchant who explicitly disabled
-			// ChatGPT would block ChatGPT but `attacker.example`
-			// (an arbitrary unknown host with a parseable UCP-Agent
-			// header) would still get full UCP access. Merchants who
-			// want the open-spec wedge — any agent with a parseable
-			// UCP-Agent header gets in regardless of brand recognition
-			// — can flip this to `'yes'`. See `check_agent_access()`
-			// for the gate logic.
+			// UCP REST gate for unknown AI agents (hostnames not in
+			// `KNOWN_AGENT_HOSTS`). Default `'no'` is secure-by-default
+			// for both new installs and upgrades — `wp_parse_args`
+			// merges this default into stored options on read, so
+			// existing stores get `'no'` without a migration step.
+			//
+			// Scope: this flag is UCP-REST-only. The merchant's
+			// `robots.txt` (`WC_AI_Storefront_Robots`) and the per-brand
+			// `allowed_crawlers` list are independent mechanisms; do
+			// NOT extend this flag to those surfaces — add siblings.
+			//
+			// See `WC_AI_Storefront_UCP_REST_Controller::check_agent_access()`
+			// for the gate's full rationale + trade-off.
 			'allow_unknown_ucp_agents' => 'no',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
