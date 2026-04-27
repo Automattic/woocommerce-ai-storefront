@@ -694,6 +694,44 @@ class WC_AI_Storefront {
 			return false;
 		}
 
+		// Variations inherit their parent's syndication status. The
+		// merchant's selection mechanisms — `selected_products`,
+		// `selected_categories`, `selected_tags`, `selected_brands` —
+		// all attach to PARENT product posts. Variation posts carry no
+		// term memberships of their own, and `selected_products` only
+		// stores parent IDs. Without this redirect, a child variation
+		// always reads as "out of merchant scope" even when its parent
+		// is syndicated — breaking UCP catalog/lookup's per-variation
+		// fetch path (every fetch returns null, the response falls
+		// through to a synthesized `var_{parent_id}_default` placeholder,
+		// and agents never see Small / Medium / Large).
+		//
+		// Cheap implementation: check post type via `get_post_type()`
+		// (a single DB hit at most, cached by WP), and resolve the
+		// parent via `wp_get_post_parent_id()` (also cached). For
+		// non-variation IDs both calls are no-ops at the cache layer.
+		// Recursive case is bounded — variations don't have variations.
+		// `function_exists` guard so tests that don't stub these
+		// functions don't blow up. WP core always provides them in
+		// production. Tests that need variation behavior register
+		// stubs via Brain Monkey's `Functions\when()` (which makes
+		// `function_exists` return true for the stubbed name).
+		if (
+			function_exists( 'get_post_type' )
+			&& function_exists( 'wp_get_post_parent_id' )
+			&& 'product_variation' === get_post_type( $product_id )
+		) {
+			$parent_id = (int) wp_get_post_parent_id( $product_id );
+			if ( $parent_id <= 0 ) {
+				// Orphaned variation (parent deleted but variation
+				// row still exists). Treat as out-of-scope rather
+				// than silently leaking — this is the only path
+				// where there's no parent to inherit from.
+				return false;
+			}
+			$product_id = $parent_id;
+		}
+
 		$mode = $settings['product_selection_mode'] ?? 'all';
 
 		// Defensive legacy-mode fallback. The silent migration on

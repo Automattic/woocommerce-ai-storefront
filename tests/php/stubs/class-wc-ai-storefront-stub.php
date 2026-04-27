@@ -24,6 +24,31 @@ class WC_AI_Storefront {
 	 */
 	public static array $test_settings = [];
 
+	/**
+	 * Test-controllable variation → parent map. Mirrors the production
+	 * `wp_get_post_parent_id()` semantic that the production
+	 * `is_product_syndicated()` uses for the variation-redirect block.
+	 *
+	 * Why a dedicated map instead of stubbing `get_post_type`/
+	 * `wp_get_post_parent_id` via Brain Monkey: Brain Monkey makes
+	 * `function_exists()` return true for every WP-preset name globally,
+	 * but throws `MissingFunctionExpectations` when the function is
+	 * called without a stub set in THIS test. That means the production
+	 * `function_exists` guard fires in every test that touches
+	 * `is_product_syndicated()` — even ones that have nothing to do
+	 * with variations — and they all blow up. A purpose-built map keeps
+	 * variation tests explicit and leaves every other test untouched.
+	 *
+	 * Keys are variation IDs, values are parent IDs. A value of 0 (or
+	 * a missing key) means "treat as a regular product, no redirect."
+	 * To exercise the orphaned-variation path (parent deleted but
+	 * variation row lingers), set the value to a sentinel like -1 so
+	 * the entry exists but resolves to a non-positive parent.
+	 *
+	 * @var array<int, int>
+	 */
+	public static array $test_variations = [];
+
 	const SETTINGS_OPTION = 'wc_ai_storefront_settings';
 
 	public static function get_settings(): array {
@@ -85,6 +110,32 @@ class WC_AI_Storefront {
 
 		if ( $product_id <= 0 ) {
 			return false;
+		}
+
+		// Variations inherit their parent's syndication status. See
+		// production `WC_AI_Storefront::is_product_syndicated()` for
+		// the full rationale — `selected_products` stores parent IDs,
+		// `selected_categories`/`tags`/`brands` attach to parents, and
+		// variation posts have no term memberships of their own.
+		// Without this redirect every variation reads as out-of-scope
+		// and UCP catalog/lookup falls through to a synthesized
+		// `var_{parent_id}_default` placeholder.
+		//
+		// In this stub the variation lookup goes through `$test_variations`
+		// rather than `get_post_type` + `wp_get_post_parent_id`. See
+		// the property docblock above for why — short version: Brain
+		// Monkey's WP preset registers those functions globally, so
+		// the production `function_exists` guard always fires under
+		// test, and unrelated tests would crash with
+		// `MissingFunctionExpectations`.
+		if ( array_key_exists( $product_id, self::$test_variations ) ) {
+			$parent_id = (int) self::$test_variations[ $product_id ];
+			if ( $parent_id <= 0 ) {
+				// Orphaned variation. No parent to inherit from —
+				// treat as out-of-scope rather than silently leak.
+				return false;
+			}
+			$product_id = $parent_id;
 		}
 
 		if ( in_array( $mode, [ 'categories', 'tags', 'brands' ], true ) ) {
