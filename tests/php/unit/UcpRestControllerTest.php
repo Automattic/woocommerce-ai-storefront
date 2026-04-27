@@ -3,15 +3,19 @@
  * Tests for WC_AI_Storefront_UCP_REST_Controller route registration.
  *
  * Scope: the `register_routes()` contract — namespace, paths,
- * methods, permission_callback wiring. Four routes register under
+ * methods, permission_callback wiring. Five routes register under
  * `wc/ucp/v1`:
  *
- *   - `/catalog/search`     POST, gated by `check_agent_access`
- *   - `/catalog/lookup`     POST, gated by `check_agent_access`
- *   - `/checkout-sessions`  POST, gated by `check_agent_access`
- *   - `/extension/schema`   GET,  public (`__return_true`) so manifest
- *                                 discovery resolves regardless of
- *                                 per-brand merchant settings
+ *   - `/catalog/search`               POST,                gated
+ *   - `/catalog/lookup`               POST,                gated
+ *   - `/checkout-sessions`            POST,                gated
+ *   - `/checkout-sessions/{id}`       GET/PUT/PATCH/DELETE gated
+ *                                     (stub returning structured 405
+ *                                     `unsupported_operation`)
+ *   - `/extension/schema`             GET,                 public
+ *                                     (`__return_true`) so manifest
+ *                                     discovery resolves regardless
+ *                                     of per-brand merchant settings
  *
  * Commerce routes share the gate so the merchant's `allowed_crawlers`
  * setting is honored at the REST layer (not just in robots.txt).
@@ -26,6 +30,7 @@
  *   - UcpCatalogSearchTest
  *   - UcpCatalogLookupTest
  *   - UcpCheckoutSessionsTest
+ *   - UcpCheckoutSessionsUnsupportedMethodTest
  *
  * The `check_agent_access()` permission callback itself has its own
  * dedicated test file (UcpAgentAccessGateTest) that covers the
@@ -106,11 +111,16 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$controller->register_routes();
 
 		// Three commerce endpoints (catalog/search, catalog/lookup,
-		// checkout-sessions) + one docs endpoint (extension/schema).
-		// The commerce endpoints are the UCP 2026-04-08 surface; the
-		// docs endpoint is our self-hosted JSON Schema for the
-		// `com.woocommerce.ai_storefront` extension.
-		$this->assertCount( 4, $this->registered_routes );
+		// checkout-sessions POST) + one unsupported-method stub
+		// (checkout-sessions/{id} accepting GET/PUT/PATCH/DELETE,
+		// returns structured 405 `unsupported_operation` so agents
+		// that try to read, replace, modify, or cancel a session
+		// don't see WP REST's generic 404) + one docs endpoint
+		// (extension/schema). The commerce endpoints are the UCP
+		// 2026-04-08 surface; the docs endpoint is our self-hosted
+		// JSON Schema for the `com.woocommerce.ai_storefront`
+		// extension.
+		$this->assertCount( 5, $this->registered_routes );
 		foreach ( $this->registered_routes as $call ) {
 			$this->assertEquals( 'wc/ucp/v1', $call['namespace'] );
 		}
@@ -170,13 +180,51 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'GET', $route['args']['methods'] );
 	}
 
+	public function test_checkout_sessions_unsupported_method_stub_route_registered(): void {
+		// Stub for `/checkout-sessions/{id}` covering all four
+		// unsupported member-resource verbs (GET to read, PUT to
+		// replace, PATCH to modify, DELETE to cancel — none of
+		// which our stateless model supports). Locks the route shape
+		// AND the method list so a regression that drops a verb
+		// (silently 404-ing it again) or loosens the regex (e.g.
+		// dropping `_-` and silently 404-ing dashed UUIDs) fails
+		// loudly here rather than at the agent surface. See
+		// `handle_checkout_sessions_unsupported_method()` for the
+		// rationale; this test pins the wire-level contract.
+		//
+		// Methods are registered as a comma-separated string the way
+		// WP REST accepts in `methods`. Keeping the assertion as a
+		// string-equals (rather than splitting + sorting) so a verb
+		// reorder or whitespace change shows up as an explicit diff
+		// — that drift would change the agent-facing 405-response
+		// matrix and warrants a conscious test update.
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->register_routes();
+
+		$route = $this->route_for( '/checkout-sessions/(?P<id>[A-Za-z0-9_-]+)' );
+
+		$this->assertNotNull( $route, 'unsupported-method stub route should be registered' );
+		$this->assertEquals( 'GET, PUT, PATCH, DELETE', $route['args']['methods'] );
+		$this->assertSame(
+			[ $controller, 'handle_checkout_sessions_unsupported_method' ],
+			$route['args']['callback'],
+			'Stub must dispatch to handle_checkout_sessions_unsupported_method'
+		);
+	}
+
 	public function test_commerce_routes_gated_by_check_agent_access(): void {
 		// Commerce routes (catalog/search, catalog/lookup,
-		// checkout-sessions) are gated by `check_agent_access` so
-		// the merchant's `allowed_crawlers` setting is honored at the
-		// REST endpoint — not just in robots.txt. Locking the wiring
-		// here so a regression that flips back to `__return_true`
-		// (the easy mistake during refactoring) fails loudly.
+		// checkout-sessions POST + the unsupported-method stub on
+		// /checkout-sessions/{id}) are gated by `check_agent_access`
+		// so the merchant's `allowed_crawlers` setting is honored at
+		// the REST endpoint — not just in robots.txt. Locking the
+		// wiring here so a regression that flips back to
+		// `__return_true` (the easy mistake during refactoring)
+		// fails loudly. The unsupported-method stub is included
+		// even though it never returns commerce data — the gate
+		// also keeps the route's existence from leaking to
+		// unauthorized agents (they get 403 short-circuit, not the
+		// 405 unsupported-operation envelope).
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
@@ -184,6 +232,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 			'/catalog/search',
 			'/catalog/lookup',
 			'/checkout-sessions',
+			'/checkout-sessions/(?P<id>[A-Za-z0-9_-]+)',
 		];
 		foreach ( $gated_paths as $path ) {
 			$route = $this->route_for( $path );

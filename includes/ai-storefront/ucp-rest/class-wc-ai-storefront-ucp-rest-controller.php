@@ -229,6 +229,75 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			]
 		);
 
+		// Stub for unsupported methods on /checkout-sessions/{id},
+		// returning a structured `unsupported_operation` envelope.
+		//
+		// Background: UCP agents that come from a stateful-session
+		// mental model try to act on a session via several verbs:
+		//   - PATCH to add items / change quantities / update shipping
+		//   - PUT to replace the session payload wholesale
+		//   - GET to look up current session status
+		//   - DELETE to cancel a pending session
+		// Our implementation is intentionally stateless — every POST
+		// is a fresh computation and the response is a one-shot
+		// redirect to WooCommerce's native Shareable Checkout URL.
+		// There's no persistent session for any of these verbs to
+		// act on.
+		//
+		// Without these routes, those requests get WP REST's generic
+		// 404 `rest_no_route` envelope. Agents read that as "the
+		// session doesn't exist" or "the API is broken," neither of
+		// which describes reality, and may retry destructively or
+		// abandon the cart. Returning a structured 405 with
+		// `code=unsupported_operation` and an explanatory message
+		// pointing at the POST flow gives them an actionable path
+		// forward without us ever holding state.
+		//
+		// All four verbs route to the same handler — the response is
+		// verb-agnostic ("this URL doesn't expose state under any
+		// operation; POST a fresh /checkout-sessions"). PATCH was
+		// the verb that originally surfaced the problem during a
+		// Gemini-3-Flash agent run; the others are bundled here
+		// because the architectural answer is identical and splitting
+		// across PRs would just double the review overhead.
+		//
+		// The `id` placeholder accepts the same charset our POST
+		// session IDs use (`chk_` + 16 hex chars) plus broader
+		// alphanumerics in case an agent invents its own ID. We do
+		// nothing with it beyond echoing it back in the envelope's
+		// `id` field — there's no state to look up.
+		register_rest_route(
+			self::NAMESPACE,
+			'/checkout-sessions/(?P<id>[A-Za-z0-9_-]+)',
+			[
+				'methods'             => 'GET, PUT, PATCH, DELETE',
+				'callback'            => [ $this, 'handle_checkout_sessions_unsupported_method' ],
+				'permission_callback' => [ $this, 'check_agent_access' ],
+				'args'                => [
+					'id' => [
+						'description'       => 'Session correlation token returned by POST /checkout-sessions. Echoed back in the response; not validated against any stored state because no state is stored.',
+						'type'              => 'string',
+						'required'          => true,
+						// WP REST invokes validate_callback with three
+						// args (value, request, param-name). Accept all
+						// three — a 1-arg closure would emit a "too
+						// many arguments" warning on strict PHP
+						// runtimes the moment a request hits the
+						// route. Only the first is consulted; route
+						// regex already enforces non-empty + safe
+						// charset, so this callback is belt-and-
+						// suspenders against a future regex
+						// relaxation that ever lets an empty string
+						// through.
+						// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+						'validate_callback' => static function ( $value, $request = null, $param = null ) {
+							return is_string( $value ) && '' !== $value;
+						},
+					],
+				],
+			]
+		);
+
 		// JSON Schema for our merchant extension capability
 		// (com.woocommerce.ai_storefront). Served per-site so the
 		// schema matches the running plugin version exactly. Public —
@@ -1862,6 +1931,125 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			],
 			$status
 		);
+	}
+
+	/**
+	 * Handler for unsupported methods on /checkout-sessions/{id}
+	 * (GET, PUT, PATCH, DELETE).
+	 *
+	 * Always returns a structured `unsupported_operation` envelope
+	 * with HTTP 405. The route exists solely to give agents a
+	 * UCP-shaped response (rather than WP REST's generic
+	 * `rest_no_route` 404) when they try to read, replace, modify,
+	 * or cancel a session — see the route registration in
+	 * `register_routes()` for the full rationale.
+	 *
+	 * Verb-agnostic by design: every method that lands here gets
+	 * the same response. The agent's mental model varies (PATCH =
+	 * "modify cart," GET = "look up status," PUT = "replace
+	 * session," DELETE = "cancel"), but the architectural answer is
+	 * always the same — there's no persistent session for any verb
+	 * to act on, and the right next action is POST a fresh
+	 * /checkout-sessions. One generic message covers all four cases
+	 * accurately and keeps the response surface uniform.
+	 *
+	 * Why HTTP 405 (not 400 or 501):
+	 *   - 405 is the RFC 7231 §6.5.5 status: the request method is
+	 *     "known by the origin server but not supported by the target
+	 *     resource." The resource exists (the session ID namespace is
+	 *     real), but the supplied method is not one of the supported
+	 *     methods. That's exactly 405's semantic. Agents that handle
+	 *     405 generically will redirect their flow instead of giving
+	 *     up the session.
+	 *   - 400 would say "the server cannot understand the request due
+	 *     to client error," which misleads — the request is
+	 *     well-formed, the operation is just not supported here.
+	 *   - 501 would say "the method is unrecognized server-wide,"
+	 *     which mis-scopes to the whole site instead of this resource.
+	 *
+	 * `Allow: POST` header — deliberate ergonomic divergence from a
+	 * strict RFC 7231 §6.5.5 reading. The RFC says `Allow` lists
+	 * methods supported by THIS target resource; on this URL
+	 * (`/checkout-sessions/{id}`) the strict answer is "no methods,"
+	 * because the parent collection (`/checkout-sessions`) is what
+	 * accepts POST, not the {id} member. We deviate intentionally:
+	 * agents that read the `Allow` header as a "where do I retry?"
+	 * hint get pointed at the right verb, even if the header's
+	 * semantic is technically about this URL rather than the
+	 * collection. The body's `messages[0].content` carries the same
+	 * directive in human-readable form for agents that ignore the
+	 * header. If RFC purity ever matters more than agent ergonomics
+	 * here, the right move is `Allow:` (empty — RFC 7231 §7.4.1
+	 * permits this and means "no methods supported on this
+	 * resource"); leaving `POST` in until that trade-off is
+	 * re-litigated.
+	 *
+	 * The session-id placeholder is echoed back in `id` rather than
+	 * generating a fresh one — preserves the agent's correlation
+	 * thread even though we hold no state. If the captured `id` is
+	 * empty (route regex enforces non-empty, but defense-in-depth
+	 * for a future regex relaxation or for tests that bypass the
+	 * route layer) we synthesize one matching the POST handler's
+	 * `chk_<hex>` shape — `bin2hex(random_bytes(8))` produces 16
+	 * lowercase hex chars, matching every other session-id-emitting
+	 * site in this controller.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public function handle_checkout_sessions_unsupported_method( WP_REST_Request $request ): WP_REST_Response {
+		$session_id = $request->get_param( 'id' );
+		if ( ! is_string( $session_id ) || '' === $session_id ) {
+			$session_id = 'chk_' . bin2hex( random_bytes( 8 ) );
+		}
+
+		$currency = function_exists( 'get_woocommerce_currency' )
+			? (string) get_woocommerce_currency()
+			: 'USD';
+
+		$message = [
+			'type'     => 'error',
+			'code'     => 'unsupported_operation',
+			'severity' => 'unrecoverable',
+			'content'  => __(
+				'This /checkout-sessions/{id} URL is stateless and supports no operations: there is no persistent session to read, replace, modify, or cancel. To start or continue a checkout, POST /checkout-sessions with the desired line_items array. The continue_url returned by that POST redirects the buyer to the merchant\'s native checkout, replacing any prior session.',
+				'woocommerce-ai-storefront'
+			),
+		];
+
+		$response = new WP_REST_Response(
+			[
+				'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope(),
+				'id'         => $session_id,
+				'status'     => 'incomplete',
+				'currency'   => $currency,
+				'line_items' => [],
+				'totals'     => [
+					[
+						'type'   => 'subtotal',
+						'amount' => 0,
+					],
+					[
+						'type'   => 'total',
+						'amount' => 0,
+					],
+				],
+				'links'      => [],
+				'messages'   => [ $message ],
+			],
+			405
+		);
+
+		// `Allow: POST` is an ergonomic hint at the parent collection's
+		// supported verb, not a strict-conformance answer about this
+		// specific URL. See the docblock above for the deliberate
+		// divergence from RFC 7231 §6.5.5 (which would say `Allow:`
+		// empty here because `/checkout-sessions/{id}` accepts no
+		// methods directly). Agents that follow the header directly
+		// land at the right verb without re-reading the manifest.
+		$response->header( 'Allow', 'POST' );
+
+		return $response;
 	}
 
 	/**

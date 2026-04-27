@@ -202,9 +202,12 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_registered_rest_routes_are_the_exact_posture_set(): void {
 		// The plugin registers three commerce POST routes
-		// (catalog/search, catalog/lookup, checkout-sessions) and
-		// one docs GET route (extension/schema). No Complete
-		// Checkout, no Update Checkout, no GET /checkout-sessions/{id},
+		// (catalog/search, catalog/lookup, checkout-sessions), one
+		// docs GET route (extension/schema), and one
+		// unsupported-method stub on checkout-sessions/{id}
+		// accepting GET/PUT/PATCH/DELETE — all returning 405. No
+		// Complete Checkout, no real (state-mutating) Update
+		// Checkout, no stateful read on /checkout-sessions/{id},
 		// no cart routes — those would either enable programmatic
 		// completion or imply persistent checkout state that the
 		// handoff model rejects.
@@ -214,6 +217,22 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// serves static documentation content, NOT commerce state. It
 		// is explicitly posture-compatible: no order/cart/payment
 		// semantics.
+		//
+		// `GET/PUT/PATCH/DELETE checkout-sessions/{id}` is a
+		// posture-PRESERVING stub. The route is registered
+		// specifically to NOT support any of those operations:
+		// every request returns HTTP 405 with a structured
+		// `unsupported_operation` envelope and an `Allow: POST`
+		// header pointing the agent at the stateless POST flow.
+		// The route exists only because the alternative (no route
+		// at all) produces WP REST's generic `rest_no_route` 404,
+		// which agents misread as "session expired" or "API down"
+		// and may retry destructively. Explicitly answering with
+		// 405 + an actionable message is more posture-aligned than
+		// letting the 404 leak agents into incorrect retry
+		// behavior. See
+		// `WC_AI_Storefront_UCP_REST_Controller::handle_checkout_sessions_unsupported_method()`
+		// for the full rationale.
 		//
 		// If a future change adds any route not in this whitelist,
 		// this test fires — forcing the maintainer to either legitimize
@@ -235,10 +254,43 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 				'wc/ucp/v1/catalog/lookup',
 				'wc/ucp/v1/catalog/search',
 				'wc/ucp/v1/checkout-sessions',
+				'wc/ucp/v1/checkout-sessions/(?P<id>[A-Za-z0-9_-]+)',
 				'wc/ucp/v1/extension/schema',
 			],
 			$registered
 		);
+	}
+
+	public function test_unsupported_method_stub_returns_unsupported_operation(): void {
+		// The unsupported-method stub on /checkout-sessions/{id}
+		// (covering GET/PUT/PATCH/DELETE) is included in the route
+		// whitelist above with the rationale "explicit non-support,
+		// not enabling state." This test converts that comment
+		// into a behavioral constraint: the handler MUST return
+		// HTTP 405 with `code=unsupported_operation`. A future
+		// change that turns the stub into a stateful handler
+		// (loading state, modifying it, returning 200) would pass
+		// the route-whitelist check above but fail this assertion,
+		// surfacing the posture violation that the comment alone
+		// could only describe. Pinning behavior under PATCH is
+		// representative — the handler is verb-agnostic, and the
+		// per-verb fan-out is exercised in
+		// `UcpCheckoutSessionsUnsupportedMethodTest::test_all_unsupported_verbs_return_same_405_envelope`.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( '__' )->returnArg();
+
+		$request = new WP_REST_Request( 'PATCH', '/wc/ucp/v1/checkout-sessions/chk_postureguard0' );
+		$request->set_param( 'id', 'chk_postureguard0' );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_unsupported_method( $request );
+
+		$this->assertSame( 405, $response->get_status() );
+
+		$messages = $response->get_data()['messages'];
+		$this->assertNotEmpty( $messages );
+		$this->assertSame( 'unsupported_operation', $messages[0]['code'] );
+		$this->assertSame( 'unrecoverable', $messages[0]['severity'] );
 	}
 
 	public function test_declared_capabilities_list_is_exactly_expected(): void {
