@@ -229,6 +229,50 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			]
 		);
 
+		// Stub for PATCH /checkout-sessions/{id} returning a structured
+		// `unsupported_operation` envelope.
+		//
+		// Background: UCP agents that come from a stateful-session
+		// mental model expect to PATCH an existing session to add
+		// items, change quantities, update shipping, etc. Our
+		// implementation is intentionally stateless — every POST is a
+		// fresh computation and the response is a one-shot redirect to
+		// WooCommerce's native Shareable Checkout URL. We don't store
+		// session state, so PATCH has no surface to act on.
+		//
+		// Without this route, a PATCH request gets WP REST's generic
+		// 404 `rest_no_route` envelope. Agents read that as "the
+		// session doesn't exist" or "the API is broken," neither of
+		// which describes reality. Returning a structured 405 with
+		// `code=unsupported_operation` and an explanatory message
+		// pointing the agent at the POST flow gives them an
+		// actionable path forward without us ever holding state.
+		//
+		// The `id` placeholder accepts the same charset our POST
+		// session IDs use (`chk_` + 16 hex chars) plus broader
+		// alphanumerics in case an agent invents its own ID. We do
+		// nothing with it beyond echoing it back in the envelope's
+		// `id` field — there's no state to look up.
+		register_rest_route(
+			self::NAMESPACE,
+			'/checkout-sessions/(?P<id>[A-Za-z0-9_-]+)',
+			[
+				'methods'             => 'PATCH',
+				'callback'            => [ $this, 'handle_checkout_sessions_unsupported_patch' ],
+				'permission_callback' => [ $this, 'check_agent_access' ],
+				'args'                => [
+					'id' => [
+						'description'       => 'Session correlation token returned by POST /checkout-sessions. Echoed back in the response; not validated against any stored state because no state is stored.',
+						'type'              => 'string',
+						'required'          => true,
+						'validate_callback' => static function ( $value ) {
+							return is_string( $value ) && '' !== $value;
+						},
+					],
+				],
+			]
+		);
+
 		// JSON Schema for our merchant extension capability
 		// (com.woocommerce.ai_storefront). Served per-site so the
 		// schema matches the running plugin version exactly. Public —
@@ -1862,6 +1906,97 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			],
 			$status
 		);
+	}
+
+	/**
+	 * Handler for PATCH /checkout-sessions/{id}.
+	 *
+	 * Always returns a structured `unsupported_operation` envelope
+	 * with HTTP 405. The route exists solely to give agents a
+	 * UCP-shaped response (rather than WP REST's generic
+	 * `rest_no_route` 404) when they try to modify a session — see
+	 * the route registration in `register_rest_routes()` for the
+	 * full rationale.
+	 *
+	 * Why HTTP 405 (not 400 or 501):
+	 *   - 405 is the RFC 7231 status for "method not allowed on
+	 *     this resource." The resource exists (the session ID
+	 *     namespace is real), but PATCH is not one of the supported
+	 *     methods. That's exactly 405's semantic. Agents that handle
+	 *     405 generically will retry with a different method instead
+	 *     of giving up the session.
+	 *   - 400 would say "the request itself is malformed," which
+	 *     misleads — the request is well-formed, the operation is
+	 *     just not supported.
+	 *   - 501 would say "the server doesn't implement this method
+	 *     globally," which mis-scopes to the whole site instead of
+	 *     this resource.
+	 *
+	 * Per RFC 7231 §6.5.5 the 405 response MUST include an `Allow`
+	 * header listing the methods this resource accepts. The parent
+	 * collection accepts POST; we mirror that here so an agent that
+	 * reads the header gets a complete map of "what CAN I do."
+	 *
+	 * The session-id placeholder is echoed back in `id` rather than
+	 * generating a fresh one — preserves the agent's correlation
+	 * thread even though we hold no state. If the captured `id` is
+	 * empty (route regex enforces non-empty, but defense-in-depth
+	 * for a future regex relaxation) we synthesize one matching the
+	 * POST handler's `chk_<hex>` shape.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public function handle_checkout_sessions_unsupported_patch( WP_REST_Request $request ): WP_REST_Response {
+		$session_id = $request->get_param( 'id' );
+		if ( ! is_string( $session_id ) || '' === $session_id ) {
+			$session_id = 'chk_' . bin2hex( random_bytes( 8 ) );
+		}
+
+		$currency = function_exists( 'get_woocommerce_currency' )
+			? (string) get_woocommerce_currency()
+			: 'USD';
+
+		$message = [
+			'type'     => 'error',
+			'code'     => 'unsupported_operation',
+			'severity' => 'unrecoverable',
+			'content'  => __(
+				'This checkout session is stateless and cannot be modified. To change the cart, POST a fresh /checkout-sessions request with the updated line_items array. The continue_url returned by the new session redirects the buyer to the merchant\'s native checkout, replacing any prior session.',
+				'woocommerce-ai-storefront'
+			),
+		];
+
+		$response = new WP_REST_Response(
+			[
+				'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope(),
+				'id'         => $session_id,
+				'status'     => 'incomplete',
+				'currency'   => $currency,
+				'line_items' => [],
+				'totals'     => [
+					[
+						'type'   => 'subtotal',
+						'amount' => 0,
+					],
+					[
+						'type'   => 'total',
+						'amount' => 0,
+					],
+				],
+				'links'      => [],
+				'messages'   => [ $message ],
+			],
+			405
+		);
+
+		// RFC 7231 §6.5.5: a 405 response MUST include `Allow` listing
+		// the methods this resource supports. The /checkout-sessions
+		// collection accepts POST — agents that follow the header
+		// directly can retry without re-reading the manifest.
+		$response->header( 'Allow', 'POST' );
+
+		return $response;
 	}
 
 	/**

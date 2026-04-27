@@ -202,18 +202,33 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_registered_rest_routes_are_the_exact_posture_set(): void {
 		// The plugin registers three commerce POST routes
-		// (catalog/search, catalog/lookup, checkout-sessions) and
-		// one docs GET route (extension/schema). No Complete
-		// Checkout, no Update Checkout, no GET /checkout-sessions/{id},
-		// no cart routes — those would either enable programmatic
-		// completion or imply persistent checkout state that the
-		// handoff model rejects.
+		// (catalog/search, catalog/lookup, checkout-sessions), one
+		// docs GET route (extension/schema), and one PATCH stub
+		// (checkout-sessions/{id}). No Complete Checkout, no Update
+		// Checkout that actually mutates anything, no GET
+		// /checkout-sessions/{id}, no cart routes — those would
+		// either enable programmatic completion or imply persistent
+		// checkout state that the handoff model rejects.
 		//
 		// `extension/schema` is a read-only JSON Schema endpoint for
 		// the `com.woocommerce.ai_storefront` merchant extension —
 		// serves static documentation content, NOT commerce state. It
 		// is explicitly posture-compatible: no order/cart/payment
 		// semantics.
+		//
+		// `PATCH checkout-sessions/{id}` is a posture-PRESERVING stub.
+		// It is registered specifically to NOT support the operation:
+		// every request returns HTTP 405 with a structured
+		// `unsupported_operation` envelope and an `Allow: POST`
+		// header pointing the agent at the stateless POST flow. The
+		// route exists only because the alternative (no route at all)
+		// produces WP REST's generic `rest_no_route` 404, which
+		// agents misread as "session expired" or "API down" and may
+		// retry destructively. Explicitly answering with 405 + an
+		// actionable message is more posture-aligned than letting the
+		// 404 leak agents into incorrect retry behavior. See
+		// `WC_AI_Storefront_UCP_REST_Controller::handle_checkout_sessions_unsupported_patch()`
+		// for the full rationale.
 		//
 		// If a future change adds any route not in this whitelist,
 		// this test fires — forcing the maintainer to either legitimize
@@ -235,6 +250,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 				'wc/ucp/v1/catalog/lookup',
 				'wc/ucp/v1/catalog/search',
 				'wc/ucp/v1/checkout-sessions',
+				'wc/ucp/v1/checkout-sessions/(?P<id>[A-Za-z0-9_-]+)',
 				'wc/ucp/v1/extension/schema',
 			],
 			$registered
