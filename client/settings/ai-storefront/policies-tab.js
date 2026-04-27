@@ -17,7 +17,7 @@
  * section is the only one rendered.
  */
 
-import { useEffect, useMemo, useState } from '@wordpress/element';
+import { useCallback, useEffect, useMemo, useState } from '@wordpress/element';
 import {
 	Button,
 	Card,
@@ -609,6 +609,30 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 		} );
 	}, [ settings.return_policy ] );
 
+	// Bubble user edits up to the store as they happen. Without this,
+	// the local `draft` state diverges from `state.settings.return_policy`
+	// until `handleSave()` runs — which means the global `isDirty`
+	// selector reads clean (settings.return_policy still equals
+	// savedSettings.return_policy) and the dirty-aware Save button stays
+	// disabled, locking the merchant out of saving their edits.
+	//
+	// The hydration `useEffect` above intentionally uses raw `setDraft`
+	// (no store propagation) so initial mount + server-side migration
+	// reflows don't falsely mark the form as dirty before the merchant
+	// has touched anything. Only this user-edit path bubbles to the
+	// store. No automated regression test today — the test harness for
+	// this file (`policies-tab.test.js`) covers `derivePreview` only,
+	// not the React component. Manual verify: edit any field on the
+	// Policies tab → Save button enables; revert the edit → Save
+	// button disables.
+	const handleUserEdit = useCallback(
+		( nextPolicy ) => {
+			setDraft( nextPolicy );
+			onChange( { return_policy: nextPolicy } );
+		},
+		[ onChange ]
+	);
+
 	const [ pages, setPages ] = useState( [] );
 	const [ pagesLoading, setPagesLoading ] = useState( true );
 	const [ pagesError, setPagesError ] = useState( false );
@@ -717,7 +741,12 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 		// `saveSettings` swallows rejections internally (catches and
 		// dispatches an error notice rather than rethrowing), so no
 		// `.catch` is needed here either — the promise always resolves.
-		onChange( { return_policy: draft } );
+		//
+		// No `onChange( { return_policy: draft } )` call here — every
+		// user edit already routed through `handleUserEdit` which
+		// bubbled the new policy up to the store synchronously, so the
+		// store's draft is already current. A pre-save sync would just
+		// dispatch a redundant action.
 		Promise.resolve( onSave() );
 	};
 
@@ -762,7 +791,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 
 			<ReturnRefundPolicySection
 				policy={ draft }
-				onChange={ setDraft }
+				onChange={ handleUserEdit }
 				pages={ pages }
 				pagesLoading={ pagesLoading }
 			/>

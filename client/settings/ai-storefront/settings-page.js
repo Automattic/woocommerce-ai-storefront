@@ -111,7 +111,6 @@ const AISyndicationSettings = () => {
 								onChange={ updateSettingsValues }
 								onSave={ saveSettings }
 								isSaving={ isSaving }
-								isDirty={ isDirty }
 							/>
 						) }
 						{ tab.name === 'products' && (

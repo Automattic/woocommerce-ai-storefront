@@ -63,6 +63,21 @@ export const getRecentOrders = ( state ) => state?.recentOrders || null;
  * shape, wrap the comparison and default to `true` on throw (safer to
  * show enabled Save than crash the React tree).
  *
+ * Performance: full-object stringify on every store update is
+ * acceptable for the current settings shape — the blob is bounded
+ * (~10–20 top-level keys, mostly primitives) and the largest array
+ * (`selected_products`) is rarely edited interactively (the UI is
+ * a multi-select with explicit add/remove, not per-keystroke
+ * mutation). `useSelect` memoizes the result by reference equality
+ * on the returned value, so React only re-renders subscribed
+ * components when the boolean actually flips. If a future surface
+ * adds large arrays edited per-keystroke (e.g. a search-as-you-type
+ * picker that mutates `selected_products` on every input event),
+ * switch to a per-key dirty bitmap maintained in the reducer
+ * (set on `SET_SETTINGS_VALUES`, cleared on `SET_SETTINGS`) — that
+ * sidesteps the serialize cost without changing the merchant-facing
+ * contract.
+ *
  * @param {Object} state Redux store state.
  * @return {boolean}     True when draft differs from saved.
  */
