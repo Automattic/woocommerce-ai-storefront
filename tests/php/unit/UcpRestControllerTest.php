@@ -2,16 +2,35 @@
 /**
  * Tests for WC_AI_Storefront_UCP_REST_Controller route registration.
  *
- * Scope: the `register_routes()` contract only — namespace, paths,
- * methods, permission callback. The three routes must exist at their
- * canonical paths under `wc/ucp/v1`, accept POST, and be public.
+ * Scope: the `register_routes()` contract — namespace, paths,
+ * methods, permission_callback wiring. Four routes register under
+ * `wc/ucp/v1`:
+ *
+ *   - `/catalog/search`     POST, gated by `check_agent_access`
+ *   - `/catalog/lookup`     POST, gated by `check_agent_access`
+ *   - `/checkout-sessions`  POST, gated by `check_agent_access`
+ *   - `/extension/schema`   GET,  public (`__return_true`) so manifest
+ *                                 discovery resolves regardless of
+ *                                 per-brand merchant settings
+ *
+ * Commerce routes share the gate so the merchant's `allowed_crawlers`
+ * setting is honored at the REST layer (not just in robots.txt).
+ * `extension/schema` stays public because the manifest's `schema`
+ * URL must resolve for any agent — gating it would break manifest
+ * discovery for agents the merchant hasn't pre-approved.
  *
  * Handler behavior (request/response shapes, filter mapping,
- * line-item validation, the syndication-disabled gate) is tested in
- * the dedicated per-handler files:
+ * line-item validation, the syndication-disabled gate that returns
+ * a UCP-shaped 503 envelope) is tested in the dedicated per-handler
+ * files:
  *   - UcpCatalogSearchTest
  *   - UcpCatalogLookupTest
  *   - UcpCheckoutSessionsTest
+ *
+ * The `check_agent_access()` permission callback itself has its own
+ * dedicated test file (UcpAgentAccessGateTest) that covers the
+ * brand-allow-list logic, syndication-disabled bypass, and WP_Error
+ * envelope shape.
  *
  * @package WooCommerce_AI_Storefront
  */
@@ -151,21 +170,48 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'GET', $route['args']['methods'] );
 	}
 
-	public function test_all_routes_are_public(): void {
-		// UCP routes are public by design — agent auth is via the
-		// UCP-Agent header (used for attribution, not access control).
-		// Merchants who want to deny access should pause syndication
-		// rather than rely on route-level permissions.
+	public function test_commerce_routes_gated_by_check_agent_access(): void {
+		// Commerce routes (catalog/search, catalog/lookup,
+		// checkout-sessions) are gated by `check_agent_access` so
+		// the merchant's `allowed_crawlers` setting is honored at the
+		// REST endpoint — not just in robots.txt. Locking the wiring
+		// here so a regression that flips back to `__return_true`
+		// (the easy mistake during refactoring) fails loudly.
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
-		foreach ( $this->registered_routes as $call ) {
-			$this->assertEquals(
-				'__return_true',
-				$call['args']['permission_callback'],
-				"Route {$call['route']} should have public permission_callback"
+		$gated_paths = [
+			'/catalog/search',
+			'/catalog/lookup',
+			'/checkout-sessions',
+		];
+		foreach ( $gated_paths as $path ) {
+			$route = $this->route_for( $path );
+			$this->assertNotNull( $route, "Route {$path} should be registered" );
+			$this->assertSame(
+				[ $controller, 'check_agent_access' ],
+				$route['args']['permission_callback'],
+				"Route {$path} must be gated by check_agent_access"
 			);
 		}
+	}
+
+	public function test_extension_schema_stays_public(): void {
+		// `extension/schema` is JSON Schema metadata referenced by the
+		// manifest's extension capability `schema` URL. Gating it
+		// would break manifest discovery for any agent the merchant
+		// has not pre-allowed. Schema content is not commerce data;
+		// keeping it public is intentional.
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->register_routes();
+
+		$route = $this->route_for( '/extension/schema' );
+		$this->assertNotNull( $route );
+		$this->assertSame(
+			'__return_true',
+			$route['args']['permission_callback'],
+			'extension/schema must remain public for manifest discovery'
+		);
 	}
 
 	public function test_every_route_has_a_callable_handler(): void {

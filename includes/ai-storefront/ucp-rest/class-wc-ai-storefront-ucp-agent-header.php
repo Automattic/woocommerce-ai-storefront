@@ -163,6 +163,101 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	const OTHER_AI_BUCKET = 'Other AI';
 
 	/**
+	 * Map: UCP-Agent canonical brand name → matching crawler IDs in
+	 * `WC_AI_Storefront_Robots::AI_CRAWLERS`.
+	 *
+	 * Two namespaces meet here:
+	 *   - `KNOWN_AGENT_HOSTS` values are short brand names ("ChatGPT",
+	 *     "Claude") used for merchant-facing attribution display.
+	 *   - `AI_CRAWLERS` IDs are the literal user-agent tokens the
+	 *     vendors use when crawling robots.txt ("ChatGPT-User",
+	 *     "OAI-SearchBot"). The merchant's `allowed_crawlers` setting
+	 *     stores these IDs.
+	 *
+	 * The merchant's mental model is "I want to allow / block this
+	 * brand," not "I want to allow / block this user-agent string."
+	 * So when an agent hits the UCP REST endpoint with a `UCP-Agent`
+	 * header that resolves to canonical "ChatGPT," we need to know
+	 * which crawler IDs (ChatGPT-User, OAI-SearchBot) collectively
+	 * represent the merchant's intent for that brand. If the merchant
+	 * has any of them in `allowed_crawlers`, the brand is allowed at
+	 * the endpoint level; if all of them are missing, the brand is
+	 * blocked.
+	 *
+	 * Brands with no crawler equivalent (You.com, Kagi) are NOT in
+	 * this map — they don't crawl robots.txt today, so there's no
+	 * configuration surface for the merchant to block them via the
+	 * AI Crawlers list. Their requests pass through the access gate
+	 * uncontested. If a merchant needs to block one of those agents
+	 * while UCP is still exposed, that's a follow-up: introduce a
+	 * separate "AI Agents" allow-list keyed by canonical name (an
+	 * orthogonal axis to "AI Crawlers" which is keyed by user-agent).
+	 *
+	 * @var array<string, string[]>
+	 */
+	const UCP_AGENT_CRAWLER_MAP = [
+		'ChatGPT'       => [ 'ChatGPT-User', 'OAI-SearchBot' ],
+		'Claude'        => [ 'Claude-User', 'Claude-SearchBot' ],
+		'Gemini'        => [ 'Storebot-Google' ],
+		'Copilot'       => [ 'AdIdxBot' ],
+		'Perplexity'    => [ 'PerplexityBot', 'Perplexity-User' ],
+		'Siri'          => [ 'Applebot' ],
+		'Rufus'         => [ 'AmazonBuyForMe' ],
+		'Klarna'        => [ 'KlarnaBot' ],
+		'UCPPlayground' => [ 'UCPPlayground' ],
+	];
+
+	/**
+	 * Whether an agent (identified by canonical brand name) is allowed
+	 * to access the UCP REST endpoint based on the merchant's
+	 * `allowed_crawlers` setting.
+	 *
+	 * Decision logic:
+	 *   - Canonical name not in `UCP_AGENT_CRAWLER_MAP` (e.g. unknown
+	 *     hosts → "Other AI", or You / Kagi which have no crawler
+	 *     equivalent today): ALLOW. The open-spec design admits any
+	 *     agent that sends a parseable UCP-Agent header; we don't
+	 *     have a configuration surface to block these brands today.
+	 *   - Canonical name in the map and AT LEAST ONE of its mapped
+	 *     crawler IDs is in `allowed_crawlers`: ALLOW. The merchant
+	 *     has signaled "I'm OK with at least one face of this brand."
+	 *   - Canonical name in the map but ALL of its mapped crawler
+	 *     IDs are missing from `allowed_crawlers`: DENY. The merchant
+	 *     has signaled "I don't want any traffic from this brand"
+	 *     and we honor that consistently across robots.txt + UCP
+	 *     endpoint.
+	 *   - Empty canonical (no UCP-Agent header at all): ALLOW.
+	 *     Pre-UCP traffic is already covered by WP's standard auth +
+	 *     rate-limit layers; we don't gate on header presence.
+	 *
+	 * Pure function — caller passes both the canonical name + the
+	 * allowed_crawlers list, no global state read. Makes the logic
+	 * trivially testable and keeps the gate's settings dependency
+	 * explicit at the call site.
+	 *
+	 * @param string   $canonical        Canonical brand name from
+	 *                                   `canonicalize_host()` (or empty).
+	 * @param string[] $allowed_crawlers Merchant's saved allow-list of
+	 *                                   crawler IDs.
+	 * @return bool True when allowed; false when blocked.
+	 */
+	public static function is_agent_allowed( string $canonical, array $allowed_crawlers ): bool {
+		if ( '' === $canonical ) {
+			return true;
+		}
+		if ( ! isset( self::UCP_AGENT_CRAWLER_MAP[ $canonical ] ) ) {
+			return true;
+		}
+		$mapped_ids = self::UCP_AGENT_CRAWLER_MAP[ $canonical ];
+		foreach ( $mapped_ids as $crawler_id ) {
+			if ( in_array( $crawler_id, $allowed_crawlers, true ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * Canonicalize a hostname to a short brand name for merchant-facing
 	 * attribution display (utm_source → Origin column).
 	 *
