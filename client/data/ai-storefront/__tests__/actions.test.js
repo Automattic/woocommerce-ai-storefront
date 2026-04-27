@@ -291,6 +291,44 @@ describe( 'AI Syndication actions', () => {
 					'Failed to fetch'
 				);
 			} );
+
+			it( 'falls back to generic when error is null (defensive)', async () => {
+				// Optional-chain branch: `null?.message` is undefined,
+				// the typeof check fails, fallback wins. Pinning this
+				// because a Promise rejection without a value (e.g. a
+				// middleware that does `Promise.reject()` with no
+				// argument) lands here.
+				apiFetch.mockRejectedValue( null );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Error saving settings.'
+				);
+			} );
+
+			it( 'falls back to generic when a raw string is thrown', async () => {
+				// `'boom'.message === undefined` — a primitive string
+				// has no `message` property, so the optional chain +
+				// typeof check both fall through to the generic
+				// fallback. Same shape applies to thrown numbers,
+				// booleans, etc.
+				apiFetch.mockRejectedValue( 'boom' );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Error saving settings.'
+				);
+			} );
 		} );
 	} );
 

@@ -68,6 +68,16 @@ export function saveSettings() {
 			// guards against an exotic rejection shape (e.g. a
 			// raw `Response` thrown by a misbehaving filter) where
 			// `error.message` could be `undefined` or an object.
+			//
+			// Safety: `createErrorNotice( string )` from
+			// `@wordpress/notices` renders the body via React children,
+			// which text-escapes — so a server emitting `<script>` in a
+			// WP_Error message cannot XSS the admin. DO NOT switch to
+			// `createErrorNotice( str, { __unstableHTML: true } )` or
+			// any HTML-rendering variant without first sanitizing
+			// `detail` server-side or via `wp_strip_all_tags`-equivalent
+			// here. The text-escaping is the only thing that makes
+			// passing the raw server message safe.
 			const detail =
 				typeof error?.message === 'string' && error.message
 					? error.message
