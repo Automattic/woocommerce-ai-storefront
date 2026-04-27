@@ -182,11 +182,12 @@ class WC_AI_Storefront {
 		// Mirror production: strict yes/no enum, anything else falls
 		// back to `'no'`. Documented at
 		// `includes/class-wc-ai-storefront.php::update_settings()`.
-		$sanitized_unknown = in_array(
-			$merged['allow_unknown_ucp_agents'] ?? 'no',
-			[ 'yes', 'no' ],
-			true
-		) ? $merged['allow_unknown_ucp_agents'] : 'no';
+		// Coalesce ONCE into the local — see production for the
+		// explicit-null hole that made the inline shape unsafe.
+		$sanitized_unknown = $merged['allow_unknown_ucp_agents'] ?? 'no';
+		if ( ! in_array( $sanitized_unknown, [ 'yes', 'no' ], true ) ) {
+			$sanitized_unknown = 'no';
+		}
 
 		$overrides = [
 			'product_selection_mode'   => $sanitized_mode,

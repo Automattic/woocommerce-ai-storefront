@@ -43,36 +43,36 @@ class WC_AI_Storefront_Admin_Controller {
 					'callback'            => [ $this, 'update_settings' ],
 					'permission_callback' => [ $this, 'check_admin_permission' ],
 					'args'                => [
-						'enabled'                => [
+						'enabled'                  => [
 							'type' => 'string',
 							'enum' => [ 'yes', 'no' ],
 						],
-						'product_selection_mode' => [
+						'product_selection_mode'   => [
 							'type' => 'string',
 							'enum' => [ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ],
 						],
-						'selected_categories'    => [
+						'selected_categories'      => [
 							'type'  => 'array',
 							'items' => [ 'type' => 'integer' ],
 						],
-						'selected_tags'          => [
+						'selected_tags'            => [
 							'type'  => 'array',
 							'items' => [ 'type' => 'integer' ],
 						],
-						'selected_brands'        => [
+						'selected_brands'          => [
 							'type'  => 'array',
 							'items' => [ 'type' => 'integer' ],
 						],
-						'selected_products'      => [
+						'selected_products'        => [
 							'type'  => 'array',
 							'items' => [ 'type' => 'integer' ],
 						],
-						'rate_limit_rpm'         => [
+						'rate_limit_rpm'           => [
 							'type'    => 'integer',
 							'minimum' => 1,
 							'maximum' => 1000,
 						],
-						'allowed_crawlers'       => [
+						'allowed_crawlers'         => [
 							'type'  => 'array',
 							'items' => [ 'type' => 'string' ],
 						],
@@ -99,7 +99,7 @@ class WC_AI_Storefront_Admin_Controller {
 						// REST flow. Type checking still catches gross
 						// shape errors (string where integer expected,
 						// etc.) at the boundary.
-						'return_policy'          => [
+						'return_policy'            => [
 							'type'       => 'object',
 							'properties' => [
 								'mode'    => [

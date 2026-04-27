@@ -343,7 +343,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 * The action fires AFTER the deny decision — listeners
 			 * can't veto the 403, only observe.
 			 *
-			 * @since 0.3.2
+			 * @since 0.3.1
 			 * @param string          $host    Raw hostname extracted
 			 *                                 from the UCP-Agent
 			 *                                 profile URL.
@@ -391,7 +391,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$host
 		);
 
-		/** This filter is documented at the top of this file (unknown-agent path). */
+		/** This action is documented in the unknown-agent denial branch of `check_agent_access()` above. */
 		do_action(
 			'wc_ai_storefront_ucp_access_denied',
 			$host,

@@ -531,18 +531,33 @@ class WC_AI_Storefront {
 		$current = self::get_settings();
 		$merged  = wp_parse_args( $settings, $current );
 
+		// Strict yes/no enum: anything else falls back to 'no',
+		// matching the get_settings() default. A merchant POSTing a
+		// malformed value (or no value at all) gets the secure-by-
+		// default behavior automatically. Coalesce ONCE into a local
+		// — the earlier shape
+		// (`in_array($merged[key] ?? 'no', ...) ? $merged[key] : 'no'`)
+		// had a hole: explicit `null` passed validation against the
+		// coalesced `'no'` but persisted the raw `null`. With
+		// `$allow_unknown` resolved up front, validation and storage
+		// see the same value.
+		$allow_unknown = $merged['allow_unknown_ucp_agents'] ?? 'no';
+		if ( ! in_array( $allow_unknown, [ 'yes', 'no' ], true ) ) {
+			$allow_unknown = 'no';
+		}
+
 		// Sanitize — only store known keys to keep the option clean.
 		$clean = [
-			'enabled'                => in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no',
-			'product_selection_mode' => in_array( $merged['product_selection_mode'], [ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ], true )
+			'enabled'                  => in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no',
+			'product_selection_mode'   => in_array( $merged['product_selection_mode'], [ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ], true )
 				? $merged['product_selection_mode']
 				: 'all',
-			'selected_categories'    => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
-			'selected_tags'          => array_map( 'absint', (array) ( $merged['selected_tags'] ?? [] ) ),
-			'selected_brands'        => array_map( 'absint', (array) ( $merged['selected_brands'] ?? [] ) ),
-			'selected_products'      => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
-			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
-			'allowed_crawlers'       => WC_AI_Storefront_Robots::sanitize_allowed_crawlers(
+			'selected_categories'      => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
+			'selected_tags'            => array_map( 'absint', (array) ( $merged['selected_tags'] ?? [] ) ),
+			'selected_brands'          => array_map( 'absint', (array) ( $merged['selected_brands'] ?? [] ) ),
+			'selected_products'        => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
+			'rate_limit_rpm'           => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
+			'allowed_crawlers'         => WC_AI_Storefront_Robots::sanitize_allowed_crawlers(
 				// Fallback to live-browsing only (matching the
 				// fresh-install default from get_settings) if the
 				// caller invoked update_settings without specifying
@@ -554,16 +569,12 @@ class WC_AI_Storefront {
 				// explicitly unchecked.
 				$merged['allowed_crawlers'] ?? WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
 			),
-			'return_policy'          => self::sanitize_return_policy(
+			'return_policy'            => self::sanitize_return_policy(
 				$merged['return_policy'] ?? []
 			),
-			// Strict yes/no enum: anything else falls back to 'no',
-			// matching the get_settings() default. A merchant POSTing
-			// a malformed value (or no value at all) gets the
-			// secure-by-default behavior automatically.
-			'allow_unknown_ucp_agents' => in_array( $merged['allow_unknown_ucp_agents'] ?? 'no', [ 'yes', 'no' ], true )
-				? $merged['allow_unknown_ucp_agents']
-				: 'no',
+			// See `$allow_unknown` resolution above the array literal
+			// for why we don't inline this with `??` + ternary.
+			'allow_unknown_ucp_agents' => $allow_unknown,
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.

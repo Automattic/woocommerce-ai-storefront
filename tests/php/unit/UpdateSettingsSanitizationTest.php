@@ -142,6 +142,14 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 			'string 1'         => [ '1' ],
 			'uppercase YES'    => [ 'YES' ],
 			'truthy text'      => [ 'true' ],
+			// Regression test for the bug Copilot caught in PR #100
+			// review: when the key is explicit `null`, the earlier
+			// inline `??` + ternary shape had a hole — the in_array
+			// check ran against the coalesced `'no'` and PASSED, but
+			// the true-branch returned the raw `null`. The current
+			// shape (assign-coalesce-then-validate) closes the hole.
+			// Pin it.
+			'explicit null'    => [ null ],
 		];
 	}
 }
