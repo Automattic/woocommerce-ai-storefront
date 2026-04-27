@@ -332,9 +332,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 
 			/**
-			 * Fires when a UCP REST request is denied because the
-			 * agent's hostname isn't in `KNOWN_AGENT_HOSTS` and the
-			 * merchant hasn't opted into `allow_unknown_ucp_agents`.
+			 * Fires when `check_agent_access()` denies a UCP REST
+			 * request, regardless of which gate triggered the deny.
+			 * Two reasons are emitted today:
+			 *
+			 *   - `unknown_agent` — the hostname isn't in
+			 *     `KNOWN_AGENT_HOSTS` and the merchant hasn't opted
+			 *     into `allow_unknown_ucp_agents`.
+			 *   - `brand_blocked` — the hostname IS in
+			 *     `KNOWN_AGENT_HOSTS` but every crawler ID mapped to
+			 *     that brand is missing from the merchant's
+			 *     `allowed_crawlers` list.
+			 *
+			 * Listeners should switch on `$reason` rather than infer
+			 * the cause from `$host`. Future denial paths will add
+			 * more reason tokens; treat unknown values as "denial,
+			 * cause unspecified" and surface accordingly.
 			 *
 			 * Decoupled from the `WC_AI_Storefront_Logger::debug()`
 			 * line above so security plugins (Wordfence, etc.) and
@@ -348,8 +361,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 *                                 from the UCP-Agent
 			 *                                 profile URL.
 			 * @param string          $reason  Why the request was
-			 *                                 denied. Stable token,
-			 *                                 not for end-user display.
+			 *                                 denied. Stable token
+			 *                                 from a small enumerated
+			 *                                 set; see method
+			 *                                 docblock for current
+			 *                                 values. Not for
+			 *                                 end-user display.
 			 * @param WP_REST_Request $request The denied request, for
 			 *                                 listeners that need
 			 *                                 route / headers.

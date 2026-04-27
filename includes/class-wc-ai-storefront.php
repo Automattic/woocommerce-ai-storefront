@@ -531,11 +531,22 @@ class WC_AI_Storefront {
 		$current = self::get_settings();
 		$merged  = wp_parse_args( $settings, $current );
 
-		// Strict yes/no enum: anything else falls back to 'no',
-		// matching the get_settings() default. A merchant POSTing a
-		// malformed value (or no value at all) gets the secure-by-
-		// default behavior automatically. Coalesce ONCE into a local
-		// — the earlier shape
+		// Strict yes/no enum. Behavior depends on what the POST body
+		// contains AFTER the wp_parse_args merge above:
+		//
+		//   - Key omitted from the POST → `$merged[key]` carries the
+		//     existing stored value forward (or the get_settings()
+		//     default `'no'` if the key was never stored). Correct
+		//     behavior: omitting the field on a partial PATCH-style
+		//     update preserves the merchant's prior choice.
+		//   - Key present with `'yes'` or `'no'` → preserved verbatim.
+		//   - Key present with anything else (malformed string, bool,
+		//     int, explicit null) → falls back to `'no'`. Schema-level
+		//     enum should reject most of these at the REST layer
+		//     before they reach this sanitizer; this is the safety
+		//     net for direct option writes / future schema loosening.
+		//
+		// Coalesce ONCE into a local — the earlier shape
 		// (`in_array($merged[key] ?? 'no', ...) ? $merged[key] : 'no'`)
 		// had a hole: explicit `null` passed validation against the
 		// coalesced `'no'` but persisted the raw `null`. With
