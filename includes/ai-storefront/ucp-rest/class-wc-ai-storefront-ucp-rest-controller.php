@@ -374,13 +374,48 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return true;
 		}
 
-		$host = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header );
-		if ( '' === $host ) {
+		// Try both UCP-Agent header formats: profile-URL (RFC 8941
+		// Dictionary) first, then Product/Version (RFC 7231 §5.5.3).
+		// The gate must understand both formats for the same reason
+		// `resolve_agent_host()` does — a merchant who set
+		// `allow_unknown_ucp_agents=no` (secure-by-default) or
+		// disabled a specific brand in `allowed_crawlers` expects
+		// those gates to fire regardless of which UCP-Agent format
+		// the incoming request uses. Pre-0.4.0 the gate only
+		// understood profile-URL form, so Product/Version-form
+		// requests bypassed it entirely and reached the handler — a
+		// blind spot that mirrored the original UCPPlayground
+		// attribution miss but on the security side. Body
+		// `meta.source` deliberately does NOT participate in the
+		// gate (it does in attribution): body fields are part of
+		// the request payload and don't carry the same trust model
+		// as request headers, so allowing a body field to satisfy
+		// the gate would be too permissive.
+		$raw_id    = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header );
+		$canonical = '' !== $raw_id
+			? WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_id )
+			: '';
+
+		if ( '' === $canonical ) {
+			$product = WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( $header );
+			if ( '' !== $product ) {
+				$raw_id    = $product;
+				$canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $product );
+			}
+		}
+
+		if ( '' === $canonical ) {
+			// Header was present but neither parser could extract an
+			// identity. Permissive fallback (current pre-0.4.0
+			// behavior for unparseable headers): allow through. The
+			// merchant's gate intent only applies to identifiable
+			// agents — truly malformed headers are noise and dropping
+			// them at the gate would risk false-positive blocks of
+			// edge-case but legitimate clients.
 			return true;
 		}
 
-		$canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $host );
-		$settings  = WC_AI_Storefront::get_settings();
+		$settings = WC_AI_Storefront::get_settings();
 
 		// Unknown-agent gate. See the method docblock above for the
 		// full rationale (asymmetry, secure-by-default, open-spec
@@ -394,9 +429,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				return true;
 			}
 			WC_AI_Storefront_Logger::debug(
-				'UCP access denied — agent=%s host=%s route=%s',
+				'UCP access denied — agent=%s raw_id=%s route=%s',
 				$canonical,
-				$host,
+				$raw_id,
 				$request->get_route()
 			);
 
@@ -405,16 +440,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 * request, regardless of which gate triggered the deny.
 			 * Two reasons are emitted today:
 			 *
-			 *   - `unknown_agent` — the hostname isn't in
-			 *     `KNOWN_AGENT_HOSTS` and the merchant hasn't opted
-			 *     into `allow_unknown_ucp_agents`.
-			 *   - `brand_blocked` — the hostname IS in
-			 *     `KNOWN_AGENT_HOSTS` but every crawler ID mapped to
-			 *     that brand is missing from the merchant's
-			 *     `allowed_crawlers` list.
+			 *   - `unknown_agent` — the agent identifier isn't in
+			 *     `KNOWN_AGENT_HOSTS` / `KNOWN_AGENT_PRODUCT_NAMES`
+			 *     and the merchant hasn't opted into
+			 *     `allow_unknown_ucp_agents`.
+			 *   - `brand_blocked` — the agent identifier IS recognized
+			 *     but every crawler ID mapped to that brand is missing
+			 *     from the merchant's `allowed_crawlers` list.
 			 *
 			 * Listeners should switch on `$reason` rather than infer
-			 * the cause from `$host`. Future denial paths will add
+			 * the cause from `$raw_id`. Future denial paths will add
 			 * more reason tokens; treat unknown values as "denial,
 			 * cause unspecified" and surface accordingly.
 			 *
@@ -426,9 +461,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 * can't veto the 403, only observe.
 			 *
 			 * @since 0.3.1
-			 * @param string          $host    Raw hostname extracted
-			 *                                 from the UCP-Agent
-			 *                                 profile URL.
+			 * @since 0.4.0 First parameter renamed from `$host` to
+			 *              `$raw_id` to reflect that it can carry
+			 *              either a hostname (from `profile="<URL>"`
+			 *              form) or a product token (from
+			 *              `Product/Version` form).
+			 * @param string          $raw_id  Raw agent identifier
+			 *                                 extracted from the
+			 *                                 UCP-Agent header. Either
+			 *                                 a hostname (profile-URL
+			 *                                 form) or a lowercased
+			 *                                 product token
+			 *                                 (Product/Version form).
 			 * @param string          $reason  Why the request was
 			 *                                 denied. Stable token
 			 *                                 from a small enumerated
@@ -442,7 +486,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 */
 			do_action(
 				'wc_ai_storefront_ucp_access_denied',
-				$host,
+				$raw_id,
 				'unknown_agent',
 				$request
 			);
@@ -450,9 +494,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return new WP_Error(
 				'ucp_unknown_agent_blocked',
 				sprintf(
-					/* translators: 1: raw hostname from the UCP-Agent profile URL */
-					__( 'Access to this UCP endpoint is not enabled for unknown AI agents on this store. Host: %1$s', 'woocommerce-ai-storefront' ),
-					$host
+					/* translators: 1: raw agent identifier extracted from the UCP-Agent header (hostname or product token) */
+					__( 'Access to this UCP endpoint is not enabled for unknown AI agents on this store. Agent: %1$s', 'woocommerce-ai-storefront' ),
+					$raw_id
 				),
 				[ 'status' => 403 ]
 			);
@@ -472,15 +516,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		WC_AI_Storefront_Logger::debug(
-			'UCP access denied — agent=%s host=%s',
+			'UCP access denied — agent=%s raw_id=%s',
 			$canonical,
-			$host
+			$raw_id
 		);
 
 		/** This action is documented in the unknown-agent denial branch of `check_agent_access()` above. */
 		do_action(
 			'wc_ai_storefront_ucp_access_denied',
-			$host,
+			$raw_id,
 			'brand_blocked',
 			$request
 		);
@@ -3478,51 +3522,119 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	// ------------------------------------------------------------------
 
 	/**
-	 * Resolve agent attribution data from the UCP-Agent header's profile URL.
+	 * Resolve agent attribution data from a UCP request, trying multiple
+	 * identification paths in priority order.
 	 *
-	 * Returns BOTH the canonical merchant-facing name AND the raw hostname,
-	 * because each lands in a different downstream sink:
+	 * Returns BOTH the canonical merchant-facing name AND a raw identifier
+	 * (hostname OR product token) because each lands in a different
+	 * downstream sink:
 	 *
 	 *   - `name` (canonical) → `utm_source` on the continue_url, captured
 	 *     by WooCommerce Order Attribution into
 	 *     `_wc_order_attribution_utm_source`, displayed as `Source: {name}`
 	 *     in the Origin column. Canonicalization at this layer (not at
 	 *     display time) keeps the WC-captured value clean and queryable
-	 *     for stats breakdowns. Unknown hostnames bucket to "Other AI"
+	 *     for stats breakdowns. Unknown identifiers bucket to "Other AI"
 	 *     (per `WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET`)
-	 *     rather than scattering one Origin row per novel hostname.
+	 *     rather than scattering one Origin row per novel identifier.
 	 *
 	 *   - `raw_host` (untransformed) → `ai_agent_host_raw` URL param on
 	 *     the continue_url, captured into
 	 *     `_wc_ai_storefront_agent_host_raw` order meta. Preserves the
-	 *     hostname so merchants can drill into an "Other AI" order and
-	 *     see who actually sent it; also feeds aggregate review for
-	 *     graduating frequent unknown hostnames into `KNOWN_AGENT_HOSTS`.
+	 *     raw identifier so merchants can drill into an "Other AI" order
+	 *     and see who actually sent it; also feeds aggregate review for
+	 *     graduating frequent unknowns into `KNOWN_AGENT_HOSTS` /
+	 *     `KNOWN_AGENT_PRODUCT_NAMES`.
 	 *
-	 * Falls back to the `ucp_unknown` sentinel for `name` and empty
-	 * string for `raw_host` when the header is missing/malformed.
+	 * Identification priority (first non-empty wins):
+	 *   1. `UCP-Agent: profile="https://example.com/..."` — the RFC 8941
+	 *      Dictionary structured form. Hostname lookup against
+	 *      `KNOWN_AGENT_HOSTS`. Most spec-aligned.
+	 *   2. `UCP-Agent: Product/Version` — the RFC 7231 §5.5.3 User-Agent
+	 *      style. Product-name lookup against `KNOWN_AGENT_PRODUCT_NAMES`.
+	 *      UCPPlayground (as of 0.4.0) sends this form; without this
+	 *      branch their orders attributed as `ucp_unknown` even though
+	 *      the agent self-identified.
+	 *   3. Request body `meta.source` — some UCP clients
+	 *      (UCPPlayground today) place a self-identification string at
+	 *      this body field as a secondary identification path. The
+	 *      field is not currently formalized in the UCP spec we're
+	 *      tracking; we accept it as a last-resort fallback so we can
+	 *      recover attribution for clients that send it. Treated as a
+	 *      product-name token for canonicalization (lowercased, looked
+	 *      up in `KNOWN_AGENT_PRODUCT_NAMES`).
+	 *   4. Falls back to the `ucp_unknown` sentinel for `name` and empty
+	 *      `raw_host` when none of the above yields a value.
+	 *
+	 * The order matters: the UCP spec defines self-identification at
+	 * the header layer, so a header signal carries the authoritative
+	 * intent. `meta.source` is a body-field path we honor for
+	 * recovery, not a peer of the header signal. Body fields also
+	 * deliberately do NOT participate in `check_agent_access()`'s
+	 * security gate — only header signals do. See `check_agent_access()`
+	 * for the rationale.
 	 *
 	 * @param WP_REST_Request $request The incoming UCP request.
 	 * @return array{name: string, raw_host: string}
 	 *
 	 * @see WC_AI_Storefront_UCP_Agent_Header::canonicalize_host() for
 	 *      the hostname → brand-name mapping rationale.
+	 * @see WC_AI_Storefront_UCP_Agent_Header::canonicalize_product() for
+	 *      the product-name → brand-name mapping rationale.
 	 */
 	private static function resolve_agent_host( WP_REST_Request $request ): array {
-		$header   = $request->get_header( 'ucp-agent' );
-		$raw_host = '';
+		$header     = $request->get_header( 'ucp-agent' );
+		$header_str = is_string( $header ) ? $header : '';
 
-		if ( is_string( $header ) && '' !== $header ) {
-			$raw_host = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header );
+		// Path 1: profile URL hostname.
+		$raw_host = '' !== $header_str
+			? WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header_str )
+			: '';
+		if ( '' !== $raw_host ) {
+			return [
+				'name'     => WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_host ),
+				'raw_host' => $raw_host,
+			];
 		}
 
-		$name = '' !== $raw_host
-			? WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_host )
-			: WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
+		// Path 2: Product/Version product-name token.
+		$product = '' !== $header_str
+			? WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( $header_str )
+			: '';
+		if ( '' !== $product ) {
+			return [
+				'name'     => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $product ),
+				'raw_host' => $product,
+			];
+		}
 
+		// Path 3: body `meta.source` field.
+		//
+		// `get_json_params()` returns the parsed JSON body for
+		// application/json requests; it returns `null` (which we
+		// coalesce to an empty array) for non-JSON requests or when
+		// the body wasn't parseable. We never throw for a missing
+		// body field — this is a fallback path; the calling endpoint
+		// validates required body fields separately.
+		$body        = (array) ( $request->get_json_params() ?? [] );
+		$meta        = isset( $body['meta'] ) && is_array( $body['meta'] )
+			? $body['meta']
+			: [];
+		$meta_source = isset( $meta['source'] ) && is_string( $meta['source'] )
+			? trim( $meta['source'] )
+			: '';
+		if ( '' !== $meta_source ) {
+			$normalized = strtolower( $meta_source );
+			return [
+				'name'     => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $normalized ),
+				'raw_host' => $meta_source,
+			];
+		}
+
+		// Path 4: nothing identified the agent.
 		return [
-			'name'     => $name,
-			'raw_host' => $raw_host,
+			'name'     => WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			'raw_host' => '',
 		];
 	}
 

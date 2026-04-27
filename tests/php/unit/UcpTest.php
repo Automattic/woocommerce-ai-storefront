@@ -46,6 +46,12 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 
+		// `__()` returns the input string verbatim — manifest content
+		// includes `agent_guide` whose value goes through `__()`. Without
+		// this stub Brain Monkey errors with "function not mocked" the
+		// moment `generate_manifest()` builds the extension capability.
+		Functions\when( '__' )->returnArg( 1 );
+
 		// Store-context defaults. Individual tests override via
 		// Functions\when() to exercise specific scenarios (e.g.
 		// VAT-inclusive EU store, digital-only catalog).
@@ -587,6 +593,63 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	// ------------------------------------------------------------------
+	// agent_guide — operational guidance for clients that inject
+	// the manifest into an LLM system prompt at session start.
+	// UCPPlayground reads this field directly. Tests pin the field's
+	// presence and content shape; the prose itself is intentionally
+	// not pinned phrase-by-phrase since it can be tuned without
+	// breaking the contract.
+	// ------------------------------------------------------------------
+
+	public function test_extension_config_includes_agent_guide(): void {
+		// `agent_guide` lives at
+		// `manifest.ucp.capabilities.com.woocommerce.ai_storefront[0].config.agent_guide`.
+		// Same nesting level as `store_context`. Clients that inject
+		// the manifest into an LLM context (e.g. UCPPlayground) read
+		// from this field; structural drift would silently break that
+		// contract.
+		$manifest = $this->ucp->generate_manifest( [] );
+		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config'];
+
+		$this->assertArrayHasKey( 'agent_guide', $config );
+	}
+
+	public function test_agent_guide_is_non_empty_string(): void {
+		// Whatever the prose, the field must be non-empty. An empty
+		// string would inject blank context into the LLM and waste
+		// the integration. Contract is "string with operational
+		// guidance"; emptiness is a regression.
+		$manifest = $this->ucp->generate_manifest( [] );
+		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config'];
+
+		$this->assertIsString( $config['agent_guide'] );
+		$this->assertNotSame( '', $config['agent_guide'] );
+	}
+
+	public function test_agent_guide_mentions_required_concepts(): void {
+		// Soft-pin the operational concepts that MUST be in the
+		// guide for it to do its job. Phrasing can drift; these
+		// concept anchors must not. If a future edit removes any
+		// of these the test fires and forces a conscious revisit.
+		//
+		// 1. `requires_escalation` — the foundational "agents do not
+		//    place orders directly here" signal.
+		// 2. `continue_url` — how the agent hands off to merchant
+		//    checkout.
+		// 3. `/checkout-sessions` — the canonical entry-point path
+		//    the agent should POST to.
+		// 4. `UCP-Agent` — self-identification mechanism that drives
+		//    attribution canonicalization.
+		$manifest = $this->ucp->generate_manifest( [] );
+		$guide    = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config']['agent_guide'];
+
+		$this->assertStringContainsString( 'requires_escalation', $guide );
+		$this->assertStringContainsString( 'continue_url', $guide );
+		$this->assertStringContainsString( '/checkout-sessions', $guide );
+		$this->assertStringContainsString( 'UCP-Agent', $guide );
+	}
+
 	public function test_spec_and_schema_urls_are_pinned_to_protocol_version(): void {
 		// Iteration of spec-URL pinning through 1.4.5 → 1.6.4:
 		//   - Pre-1.4.5: `/tree/main/` (moving target, wrong)
@@ -726,20 +789,27 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'config', $binding );
 	}
 
-	public function test_extension_config_contains_only_store_context(): void {
-		// After dropping `config.attribution`, the only remaining
-		// config key under the extension capability should be
-		// `store_context`. If a future refactor adds another
-		// machine-readable config block here, this test fires and
-		// forces a re-review: does it truly belong under a merchant-
-		// specific extension, or should it go in llms.txt narrative
-		// (the usual home for things UCP doesn't define)? Catches
-		// accidental reintroduction of attribution or sibling blocks
-		// that duplicate server-side contracts.
+	public function test_extension_config_keys_are_exactly_documented_set(): void {
+		// Lock the full set of config keys under the extension
+		// capability. If a future refactor adds another machine-
+		// readable config block here, this test fires and forces a
+		// re-review: does it truly belong under a merchant-specific
+		// extension, or should it go in llms.txt narrative (the usual
+		// home for things UCP doesn't define)? Catches accidental
+		// reintroduction of attribution or sibling blocks that
+		// duplicate server-side contracts.
+		//
+		// Current set:
+		//   - `store_context`: commerce-semantic hints (currency,
+		//     locale, country, tax/shipping posture).
+		//   - `agent_guide`:   operational LLM-prompt-friendly text
+		//     describing checkout posture and self-identification.
+		// `attribution` was deliberately removed in 1.6.5 — the
+		// continue_url contract is server-side only.
 		$manifest = $this->ucp->generate_manifest( [] );
 		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config'];
 
-		$this->assertSame( [ 'store_context' ], array_keys( $config ) );
+		$this->assertSame( [ 'store_context', 'agent_guide' ], array_keys( $config ) );
 		$this->assertArrayNotHasKey( 'attribution', $config );
 	}
 

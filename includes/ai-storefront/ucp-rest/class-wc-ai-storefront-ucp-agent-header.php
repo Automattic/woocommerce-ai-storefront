@@ -131,6 +131,43 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	];
 
 	/**
+	 * Map: UCP-Agent product-name token → canonical brand name.
+	 *
+	 * Some UCP clients send the header in `Product/Version` form
+	 * (RFC 7231 §5.5.3 User-Agent style — e.g. `UCP-Playground/1.0`,
+	 * `Curl/8.4.0`) rather than the `profile="<URL>"` form
+	 * `extract_profile_hostname()` parses. The product token has no
+	 * intrinsic hostname to canonicalize against, so we maintain a
+	 * parallel lookup keyed by lowercased product name.
+	 *
+	 * Discovered when UCPPlayground reported their REST integration
+	 * sends `UCP-Agent: UCP-Playground/1.0` on every request, which
+	 * our profile-URL-only parser couldn't consume — every order
+	 * routed through their playground attributed as `ucp_unknown`
+	 * even though the agent was clearly identified.
+	 *
+	 * Keys are lowercased product names, values are the same canonical
+	 * brand strings used in `KNOWN_AGENT_HOSTS`. Sharing the brand
+	 * namespace means stats roll up the same regardless of which
+	 * header format the agent used.
+	 *
+	 * Add new entries when an agent's UCP-Agent header is observed in
+	 * Product/Version form on enough requests to warrant a canonical
+	 * name — same graduation bar as `KNOWN_AGENT_HOSTS` (see that
+	 * map's docblock for the broader "feeds aggregate review" framing).
+	 * Single one-off appearances bucket as "Other AI" via the
+	 * fallback in `canonicalize_product()`; promote into this map only
+	 * when distinct-merchant volume warrants it.
+	 */
+	const KNOWN_AGENT_PRODUCT_NAMES = [
+		// UCP Playground — sends `UCP-Playground/1.0` on every REST
+		// request (both User-Agent and UCP-Agent headers). Mirrors the
+		// `ucpplayground.com` host entry so attribution converges on
+		// the same canonical brand whichever header format is sent.
+		'ucp-playground' => 'UCPPlayground',
+	];
+
+	/**
 	 * Display label for unknown AI agents — agents whose UCP-Agent profile
 	 * hostname isn't in `KNOWN_AGENT_HOSTS`. They're still allowed to
 	 * transact (UCP is an open spec), but their attribution is bucketed
@@ -452,13 +489,18 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	/**
 	 * Extract the agent's profile URL hostname from a UCP-Agent header value.
 	 *
-	 * Implementation is a v1 shortcut — it finds the first occurrence of
-	 * `profile="..."` via regex, then parses the quoted URL's hostname.
-	 * It does NOT implement full RFC 8941 Dictionary Structured Field
-	 * semantics (escape sequences, parameter lists, bare tokens). If we
-	 * ever need other fields from the header we'll upgrade to a proper
-	 * parser, but for "extract the hostname for utm_source" this is
-	 * enough.
+	 * Handles the RFC 8941 Dictionary Structured Field shape where the
+	 * agent self-identifies via a `profile="..."` URL. This is one of
+	 * two parser entry points on this class — see also
+	 * `extract_agent_product()` for the RFC 7231 §5.5.3 Product/Version
+	 * shape. Callers (`resolve_agent_host()` in the REST controller,
+	 * `check_agent_access()` for the security gate) chain both parsers
+	 * to cover both formats.
+	 *
+	 * Implementation finds the `profile=` field via regex, then parses
+	 * the quoted URL's hostname. We do NOT implement full RFC 8941
+	 * semantics (escape sequences, parameter lists, bare tokens) —
+	 * only what's needed to pull the hostname for utm_source.
 	 *
 	 * @param string $header_value Raw header value, e.g. `profile="https://agent.example.com/..."`.
 	 * @return string Hostname (e.g. "agent.example.com") or empty string if absent/malformed.
@@ -468,11 +510,27 @@ class WC_AI_Storefront_UCP_Agent_Header {
 			return '';
 		}
 
-		// Find the quoted URL that follows `profile=`. Rejecting
-		// unquoted values intentionally — RFC 8941 Dictionary strings
-		// must be quoted, and accepting an unquoted value would let
-		// non-compliant agents look compliant.
-		if ( ! preg_match( '/profile="([^"]+)"/', $header_value, $matches ) ) {
+		// Find the quoted URL that follows `profile=`. Three guards
+		// here:
+		//
+		//   1. The `profile` token must appear at the start of the
+		//      header value or after a whitespace / `,` / `;`
+		//      separator. Otherwise a header value like
+		//      `notprofile="https://evil.example/"` (or any field
+		//      whose name happens to end in `profile`) would silently
+		//      match and we'd extract `evil.example` as the agent
+		//      hostname. RFC 8941 Dictionary fields are
+		//      comma-separated, so requiring a separator before the
+		//      key is the right defensive boundary.
+		//   2. The value must be quoted. RFC 8941 Dictionary strings
+		//      require quotes; accepting unquoted values would let
+		//      non-compliant agents look compliant.
+		//   3. We use an explicit `(?:^|[\s,;])` prefix guard rather
+		//      than relying on a regex word-boundary, keeping the
+		//      match aligned with RFC 8941 separators (comma is the
+		//      canonical Dictionary separator; whitespace and
+		//      semicolon are tolerated for real-world variants).
+		if ( ! preg_match( '/(?:^|[\s,;])profile="([^"]+)"/', $header_value, $matches ) ) {
 			return '';
 		}
 
@@ -484,5 +542,110 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// accidentally pass null into string contexts (which PHP
 		// silently converts to "" but deprecated in PHP 8.1+).
 		return is_string( $host ) ? $host : '';
+	}
+
+	/**
+	 * Extract the agent's product-name token from a `Product/Version`
+	 * format UCP-Agent header value.
+	 *
+	 * Companion to `extract_profile_hostname()` for the alternate UCP-Agent
+	 * format some clients use:
+	 *
+	 *     UCP-Agent: UCP-Playground/1.0
+	 *
+	 * This is RFC 7231 §5.5.3 User-Agent style (a product, optionally
+	 * followed by a version), not the RFC 8941 Dictionary structured
+	 * form `profile="<URL>"`. Both shapes appear in the wild; we accept
+	 * either.
+	 *
+	 * Returns the lowercased product name (e.g. `"ucp-playground"`)
+	 * suitable as a key into `KNOWN_AGENT_PRODUCT_NAMES`. Empty string
+	 * when the header is absent, malformed, or in `profile=` form
+	 * (callers should try `extract_profile_hostname()` first or in
+	 * parallel; the two formats are mutually exclusive in practice but
+	 * the parser doesn't enforce that).
+	 *
+	 * Validation rules:
+	 * - Match a leading product token of letters / digits / dashes /
+	 *   underscores / dots, optionally followed by `/version`. The
+	 *   character class permits dots primarily so the version
+	 *   segment can carry semver values like `Mozilla/5.0`. The
+	 *   product token also permits dots — uncommon in real
+	 *   `KNOWN_AGENT_PRODUCT_NAMES` entries today but cheap to
+	 *   accept.
+	 * - Reject any header value containing `profile=` anywhere in
+	 *   the string (slightly broader than "leading-anchored" — we
+	 *   use `stripos` for simplicity since the false-positive risk
+	 *   on real product names is negligible).
+	 * - Reject empty input up front.
+	 *
+	 * Lowercasing happens here (not at the lookup site) so the produced
+	 * value is always a stable lookup key regardless of how the agent
+	 * cased its header. Mirrors the `strtolower()` in `canonicalize_host()`
+	 * for the same reason.
+	 *
+	 * @param string $header_value Raw header value, e.g. `UCP-Playground/1.0`.
+	 * @return string Lowercased product name (e.g. `"ucp-playground"`),
+	 *                or empty string if absent/malformed/wrong format.
+	 */
+	public static function extract_agent_product( string $header_value ): string {
+		if ( '' === $header_value ) {
+			return '';
+		}
+
+		// Reject `profile="..."` — that's the structured-field shape
+		// `extract_profile_hostname()` handles, not a product token.
+		// `stripos` so case-variant values like `Profile=` also bail.
+		if ( false !== stripos( $header_value, 'profile=' ) ) {
+			return '';
+		}
+
+		// Match the leading product token. Anchored at the start
+		// (^) so the token has to be the first thing in the header
+		// (not a fragment buried inside some other syntax) and at
+		// the end (`\s*$`) so trailing junk produces a no-match
+		// rather than partial extraction. The version segment is
+		// matched but NOT captured — its content doesn't affect the
+		// canonical mapping. The version-segment quantifier is `+`
+		// (not `*`) so a header ending in a bare slash like
+		// `Agent/` doesn't parse as `agent` — RFC 7231's
+		// `product/version` grammar requires the version token to
+		// be non-empty when the slash is present. Note the regex
+		// still constrains version characters to `[A-Za-z0-9._-]`
+		// and rejects values with trailing parenthesized comments
+		// (e.g. `Mozilla/5.0 (compatible; UCP-Bot)`), so non-trivial
+		// User-Agent-style values won't parse.
+		if ( ! preg_match( '#^([A-Za-z0-9._-]+)(?:/[A-Za-z0-9._-]+)?\s*$#', trim( $header_value ), $matches ) ) {
+			return '';
+		}
+
+		return strtolower( $matches[1] );
+	}
+
+	/**
+	 * Canonicalize a product-name token to a brand name.
+	 *
+	 * Sibling to `canonicalize_host()`, but for the
+	 * `KNOWN_AGENT_PRODUCT_NAMES` lookup table. Returns the canonical
+	 * brand string when the product token is recognized, the
+	 * `OTHER_AI_BUCKET` sentinel when an unknown product was provided,
+	 * and empty string when the input itself was empty.
+	 *
+	 * Empty-vs-bucket distinction matches `canonicalize_host()` — empty
+	 * means "no signal at all"; bucket means "a valid signal we just
+	 * don't recognize." Callers use the empty case to fall through to
+	 * the next identification path (e.g. body field), and the bucket
+	 * case to stamp `Other AI` and stop searching.
+	 *
+	 * @param string $product Lowercased product name token (output of
+	 *                        `extract_agent_product()`).
+	 * @return string Canonical brand name, `OTHER_AI_BUCKET`, or empty.
+	 */
+	public static function canonicalize_product( string $product ): string {
+		if ( '' === $product ) {
+			return '';
+		}
+
+		return self::KNOWN_AGENT_PRODUCT_NAMES[ $product ] ?? self::OTHER_AI_BUCKET;
 	}
 }

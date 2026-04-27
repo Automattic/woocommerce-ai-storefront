@@ -516,4 +516,114 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 	//   - POST `allow_unknown_ucp_agents=null`   → 400 from REST validator
 	//   - POST `allow_unknown_ucp_agents=yes`    → 200 + stored as 'yes'
 	//   - POST `allow_unknown_ucp_agents=no`     → 200 + stored as 'no'
+
+	// ------------------------------------------------------------------
+	// Product/Version-form headers (added 0.4.0)
+	// ------------------------------------------------------------------
+	//
+	// Pre-0.4.0 the gate only understood `profile="<URL>"` form. A
+	// merchant who set `allow_unknown_ucp_agents=no` (secure-by-default)
+	// or who blocked a specific brand expected those gates to fire
+	// regardless of which UCP-Agent shape the request used. But
+	// Product/Version-form headers (`UCP-Agent: UCP-Playground/1.0`)
+	// fell through to `extract_profile_hostname() === ''` and the gate
+	// short-circuited to allow — bypassing both gates. These tests pin
+	// the post-0.4.0 behavior: both header forms hit the same gate
+	// outcomes.
+
+	public function test_product_form_known_brand_blocked_when_no_mapped_crawler_ids_in_allow_list(): void {
+		// Product-form analog of test_known_brand_blocked_when_no_mapped_crawler_ids_in_allow_list.
+		// `UCP-Playground/1.0` canonicalizes to `UCPPlayground` via
+		// `KNOWN_AGENT_PRODUCT_NAMES`. With an empty allow_list, the
+		// brand-blocked gate should 403, NOT silently allow through.
+		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'UCP-Playground/1.0' )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'ucp_agent_blocked', $result->get_error_code() );
+	}
+
+	public function test_product_form_unknown_brand_blocked_by_default(): void {
+		// Product-form analog of test_unknown_host_blocked_by_default.
+		// `Random-Agent/1.0` is a parseable Product/Version token but
+		// not in `KNOWN_AGENT_PRODUCT_NAMES`, so canonicalize_product()
+		// returns the OTHER_AI bucket. Default `allow_unknown_ucp_agents`
+		// (key absent / 'no') should 403 just like profile-URL form.
+		WC_AI_Storefront::$test_settings = [
+			'allowed_crawlers' => [],
+			// `allow_unknown_ucp_agents` intentionally absent.
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'Random-Agent/1.0' )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'ucp_unknown_agent_blocked', $result->get_error_code() );
+	}
+
+	public function test_product_form_unknown_brand_allowed_when_setting_yes(): void {
+		// Product-form analog of test_unknown_host_allowed_when_setting_yes.
+		// Pinning the symmetric-permissive case so a future refactor that
+		// special-cases one form doesn't break the other.
+		WC_AI_Storefront::$test_settings = [
+			'allowed_crawlers'         => [],
+			'allow_unknown_ucp_agents' => 'yes',
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'Random-Agent/1.0' )
+		);
+
+		$this->assertTrue( $result );
+	}
+
+	public function test_product_form_known_brand_passes_when_mapped_crawler_id_in_allow_list(): void {
+		// Product-form analog of test_known_brand_passes. A crawler ID
+		// mapped to UCPPlayground in `BRAND_TO_CRAWLER_IDS` must allow
+		// a Product/Version-form UCPPlayground request through.
+		// `BRAND_TO_CRAWLER_IDS` maps `UCPPlayground` (canonical brand)
+		// to crawler ID `UCPPlayground` (no dash), so the allow_list
+		// must contain that exact ID — not the dashed product name.
+		WC_AI_Storefront::$test_settings = [
+			'allowed_crawlers' => [ 'UCPPlayground' ],
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'UCP-Playground/1.0' )
+		);
+
+		$this->assertTrue( $result );
+	}
+
+	public function test_meta_source_body_does_not_satisfy_gate(): void {
+		// Body field `meta.source` is honored by `resolve_agent_host()`
+		// for ATTRIBUTION but deliberately NOT by `check_agent_access()`
+		// for SECURITY. Body fields are part of the request payload and
+		// don't carry the same trust model as request headers. A request
+		// with no UCP-Agent header but a `{"meta":{"source":"ucp-playground"}}`
+		// body must NOT bypass the gate via the body field.
+		//
+		// Construct a request with NO UCP-Agent header but a populated
+		// body. Since `make_request()` only sets headers, this is the
+		// header-empty path which short-circuits to allow at the gate
+		// (truly unidentifiable). The point of this test is to pin
+		// that the gate doesn't reach into the body — if a future
+		// refactor mistakenly added a body-fallback to the gate, the
+		// gate would report the body-derived canonical and either
+		// allow (if the brand is in allow_list) or block (if not).
+		// Either change would fail this test's assumption.
+		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+
+		// No UCP-Agent header at all → gate's existing "no header"
+		// branch short-circuits to allow. The body could have anything;
+		// the gate doesn't read it.
+		$request = new WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
+		$request->set_json_params( [ 'meta' => [ 'source' => 'ucp-playground' ] ] );
+
+		$this->assertTrue( $this->controller->check_agent_access( $request ) );
+	}
 }

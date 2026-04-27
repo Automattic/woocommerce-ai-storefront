@@ -813,6 +813,203 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_product_version_ucp_agent_canonicalizes_known_product(): void {
+		// UCPPlayground sends `UCP-Agent: UCP-Playground/1.0` rather
+		// than `profile="..."`. Pre-0.4.0 the controller fell back
+		// to ucp_unknown for these requests; the parser only handled
+		// the structured-field form. The Product/Version path now
+		// canonicalizes via KNOWN_AGENT_PRODUCT_NAMES so the order
+		// attributes correctly to the agent's brand.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			'UCP-Playground/1.0'
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=UCPPlayground',
+			$result['data']['continue_url']
+		);
+		// raw_host is the lowercased product token (not a hostname),
+		// so the diagnostic field is non-empty but reflects what was
+		// actually sent. A merchant drilling into the order meta
+		// sees `_wc_ai_storefront_agent_host_raw=ucp-playground`,
+		// which is the right diagnostic signal.
+		$this->assertStringContainsString(
+			'ai_agent_host_raw=ucp-playground',
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_product_version_ucp_agent_buckets_unknown_product(): void {
+		// A Product/Version-shaped header that doesn't appear in
+		// KNOWN_AGENT_PRODUCT_NAMES still yields an "Other AI" attribution
+		// (not ucp_unknown) because we DID identify *something* — just
+		// not a brand we recognize. Distinct cohort from "agent didn't
+		// identify itself at all" (which keeps ucp_unknown).
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			'NovelAgent/2.0'
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=Other%20AI',
+			$result['data']['continue_url']
+		);
+		$this->assertStringContainsString(
+			'ai_agent_host_raw=novelagent',
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_meta_source_body_fallback_when_no_ucp_agent_header(): void {
+		// Some clients identify themselves via `meta.source` in the
+		// request body rather than the UCP-Agent header. UCPPlayground
+		// flagged this as their secondary identification path. When
+		// the header path yields nothing, the controller falls through
+		// to body.meta.source.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				'meta'       => [ 'source' => 'ucp-playground' ],
+			]
+			// No UCP-Agent header set — falls through to meta.source.
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=UCPPlayground',
+			$result['data']['continue_url']
+		);
+		$this->assertStringContainsString(
+			'ai_agent_host_raw=ucp-playground',
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_header_takes_priority_over_meta_source_body(): void {
+		// Priority gate: when both signals are present, the UCP-Agent
+		// header wins. Header semantics are part of the UCP spec; body
+		// `meta.source` is a community convention. A header-trusted
+		// agent that ALSO sends a divergent body field shouldn't have
+		// its identification overridden by the weaker signal.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				// Body says one thing.
+				'meta'       => [ 'source' => 'ucp-playground' ],
+			],
+			// Header says another. Header wins.
+			'profile="https://gemini.google.com/profile.json"'
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=Gemini',
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_meta_source_buckets_unknown_value_to_other_ai(): void {
+		// Body-fallback equivalent of the unknown-product test:
+		// meta.source provided a signal but it isn't in
+		// KNOWN_AGENT_PRODUCT_NAMES → bucket to Other AI rather than
+		// fall through to ucp_unknown. The raw value is preserved
+		// for diagnostics.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				'meta'       => [ 'source' => 'mysteryAgent' ],
+			]
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=Other%20AI',
+			$result['data']['continue_url']
+		);
+		// raw_host preserves the case the agent sent, since the
+		// downstream meta is for diagnostics only and the canonical
+		// has already been computed.
+		$this->assertStringContainsString(
+			'ai_agent_host_raw=mysteryAgent',
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_meta_with_non_array_value_falls_back_to_sentinel(): void {
+		// Defensive guard: `meta` arrives as a string instead of an
+		// object. Without `is_array()` in resolve_agent_host(), PHP
+		// would either fatal on array access against a string or
+		// silently coerce — both bad. Pin the guard so a future
+		// refactor that simplifies to `$meta = $body['meta'] ?? [];`
+		// fails this test instead of fataling in production.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				'meta'       => 'ucp-playground', // String, not array.
+			]
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_meta_source_with_non_string_value_falls_back_to_sentinel(): void {
+		// Defensive guard: `meta.source` arrives as an integer or
+		// array instead of a string. Without `is_string()`, `trim()`
+		// would fatal on a non-scalar or coerce a number to its
+		// string representation (and "42" probably isn't an agent
+		// brand). Pin the guard.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				'meta'       => [ 'source' => 42 ], // Number, not string.
+			]
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_meta_source_whitespace_only_falls_back_to_sentinel(): void {
+		// Edge case: `meta.source` arrives as whitespace ("   ").
+		// `trim()` reduces it to empty string, and the empty-check
+		// path sends us to the FALLBACK_SOURCE sentinel — same as
+		// not setting the field at all. Pinning this so a refactor
+		// that drops `trim()` or changes the empty-check ordering
+		// doesn't silently start passing whitespace through to
+		// `canonicalize_product()` (which would then bucket it as
+		// "Other AI" instead of "ucp_unknown" — different cohort).
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				'meta'       => [ 'source' => "   \t\n  " ],
+			]
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['data']['continue_url']
+		);
+	}
+
 	public function test_malformed_ucp_agent_falls_back_to_sentinel_utm_source(): void {
 		// Header present but malformed (no profile= value). Treat as missing.
 		$this->seed_simple_product( 1 );

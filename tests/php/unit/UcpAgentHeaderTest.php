@@ -126,6 +126,25 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_does_not_match_field_name_substring_profile(): void {
+		// Regression guard: a header value like `notprofile="..."` or
+		// `myprofile="..."` must NOT match. Without the
+		// boundary-anchored regex (separator before `profile=`), an
+		// attacker or buggy intermediary could craft a field name
+		// ending in "profile" and have its quoted URL extracted as
+		// the agent hostname. RFC 8941 Dictionary fields are
+		// comma-separated, so we anchor `profile=` to the start of
+		// the header value or after a separator (`\s`, `,`, `;`).
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( 'notprofile="https://evil.example/agent.json"' )
+		);
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( 'myprofile="https://evil.example/agent.json"' )
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// FALLBACK_SOURCE constant exists and has expected value
 	// ------------------------------------------------------------------
@@ -465,5 +484,119 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 			'IPv6 with embedded :: shape'   => [ 'fe80::1', 'fe80::1' ],
 			'IPv6 URL with port'            => [ 'http://[2001:db8::1]:443/', '2001:db8::1' ],
 		];
+	}
+
+	// ------------------------------------------------------------------
+	// extract_agent_product() — Product/Version format
+	// ------------------------------------------------------------------
+
+	public function test_extract_product_returns_lowercased_token_for_product_with_version(): void {
+		// UCPPlayground's actual header format. The lowercased token
+		// is what KNOWN_AGENT_PRODUCT_NAMES is keyed by.
+		$this->assertEquals(
+			'ucp-playground',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'UCP-Playground/1.0' )
+		);
+	}
+
+	public function test_extract_product_returns_lowercased_token_for_bare_product(): void {
+		// Spec-permitted but uncommon: product token without version.
+		// Still extractable.
+		$this->assertEquals(
+			'someagent',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'SomeAgent' )
+		);
+	}
+
+	public function test_extract_product_returns_empty_for_profile_form(): void {
+		// Mutual-exclusion guard: a header in `profile="..."` shape
+		// must NOT round-trip through the product parser as the literal
+		// string "profile". `extract_profile_hostname()` is the right
+		// parser for this shape.
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'profile="https://example.com/agent.json"' )
+		);
+	}
+
+	public function test_extract_product_returns_empty_for_empty_input(): void {
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( '' )
+		);
+	}
+
+	public function test_extract_product_handles_whitespace(): void {
+		// Trim leading/trailing whitespace before regex match — some
+		// HTTP intermediaries (and some clients) add whitespace.
+		$this->assertEquals(
+			'ucp-playground',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( '  UCP-Playground/1.0  ' )
+		);
+	}
+
+	public function test_extract_product_returns_empty_for_malformed_input(): void {
+		// A garbage value with no recognizable token shape returns
+		// empty rather than partial data — keeps the contract clean
+		// for the caller's "did this yield anything?" branch.
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( '{garbage} <not> [a] product/version' )
+		);
+	}
+
+	public function test_extract_product_accepts_dotted_version(): void {
+		// Real-world example: `Mozilla/5.0` style. Our regex
+		// permits dots in the version segment.
+		$this->assertEquals(
+			'mozilla',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Mozilla/5.0' )
+		);
+	}
+
+	public function test_extract_product_rejects_empty_version(): void {
+		// RFC 7231's `product/version` grammar requires the version
+		// to be non-empty when the slash is present. A header like
+		// `Agent/` is malformed; we return empty rather than parse
+		// it as `agent` (and silently absorb broken clients into
+		// stats). Regression guard for the version-segment `+`
+		// quantifier — if a future refactor weakens it to `*`,
+		// `Agent/` would parse as `agent` and this test would fire.
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Agent/' )
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// canonicalize_product() — product token → canonical brand
+	// ------------------------------------------------------------------
+
+	public function test_canonicalize_product_maps_known_token(): void {
+		$this->assertEquals(
+			'UCPPlayground',
+			WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( 'ucp-playground' )
+		);
+	}
+
+	public function test_canonicalize_product_buckets_unknown_to_other_ai(): void {
+		// An identified-but-unrecognized product still produces a
+		// non-empty canonical name (the OTHER_AI bucket) so the
+		// caller can distinguish "we have a signal but don't know
+		// the brand" from "no signal at all" (empty input).
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( 'novel-agent' )
+		);
+	}
+
+	public function test_canonicalize_product_returns_empty_for_empty_input(): void {
+		// Empty input is the "no signal" case — distinct from bucketed
+		// output because callers treat it as fall-through to the next
+		// identification path (e.g. `meta.source` body field).
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( '' )
+		);
 	}
 }

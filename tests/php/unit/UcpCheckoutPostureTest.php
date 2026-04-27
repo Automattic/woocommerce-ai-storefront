@@ -58,6 +58,9 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 			static fn( $path ) => 'https://example.com/wp-json/' . ltrim( $path, '/' )
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
+		// `__()` returns input verbatim — `agent_guide` (added 0.4.0)
+		// goes through `__()` and Brain Monkey errors otherwise.
+		Functions\when( '__' )->returnArg( 1 );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
 		Functions\when( 'wc_prices_include_tax' )->justReturn( false );
