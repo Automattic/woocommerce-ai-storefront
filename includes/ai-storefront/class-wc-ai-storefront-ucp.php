@@ -561,7 +561,7 @@ class WC_AI_Storefront_Ucp {
 	 */
 	private function build_agent_guide() {
 		return __(
-			/* translators: This string is injected verbatim into LLM system prompts via the UCP manifest. Translate the natural-language prose, but DO NOT translate the technical identifiers (`requires_escalation`, `continue_url`, `/checkout-sessions`, `unsupported_operation`, `UCP-Agent`, `Product/Version`, `Other AI`) or HTTP methods (GET, PUT, PATCH, DELETE) — agents must see these tokens exactly. */
+			/* translators: This string is injected verbatim into LLM system prompts via the UCP manifest. Translate the natural-language prose, but DO NOT translate the technical identifiers (`requires_escalation`, `continue_url`, `/checkout-sessions`, `unsupported_operation`, `UCP-Agent`, `Product/Version`, `Other AI`) or HTTP methods (POST, GET, PUT, PATCH, DELETE) — agents must see these tokens exactly. */
 			'This store uses requires_escalation checkout: agents do not place orders directly. POST /checkout-sessions returns a continue_url with attribution UTMs already attached; redirect the user to that URL to complete the purchase on the merchant site. The /checkout-sessions/{id} URL is stateless — GET, PUT, PATCH, and DELETE all return HTTP 405 with code "unsupported_operation" because there is no persistent session to act on. Send your agent identity via the UCP-Agent header (profile URL form preferred, Product/Version form also accepted) so attribution canonicalizes to your brand rather than bucketing as "Other AI".',
 			'woocommerce-ai-storefront'
 		);

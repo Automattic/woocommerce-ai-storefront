@@ -415,7 +415,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return true;
 		}
 
-		$host     = $raw_id; // Backward-compat alias for downstream branches.
 		$settings = WC_AI_Storefront::get_settings();
 
 		// Unknown-agent gate. See the method docblock above for the
@@ -430,9 +429,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				return true;
 			}
 			WC_AI_Storefront_Logger::debug(
-				'UCP access denied — agent=%s host=%s route=%s',
+				'UCP access denied — agent=%s raw_id=%s route=%s',
 				$canonical,
-				$host,
+				$raw_id,
 				$request->get_route()
 			);
 
@@ -441,16 +440,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 * request, regardless of which gate triggered the deny.
 			 * Two reasons are emitted today:
 			 *
-			 *   - `unknown_agent` — the hostname isn't in
-			 *     `KNOWN_AGENT_HOSTS` and the merchant hasn't opted
-			 *     into `allow_unknown_ucp_agents`.
-			 *   - `brand_blocked` — the hostname IS in
-			 *     `KNOWN_AGENT_HOSTS` but every crawler ID mapped to
-			 *     that brand is missing from the merchant's
-			 *     `allowed_crawlers` list.
+			 *   - `unknown_agent` — the agent identifier isn't in
+			 *     `KNOWN_AGENT_HOSTS` / `KNOWN_AGENT_PRODUCT_NAMES`
+			 *     and the merchant hasn't opted into
+			 *     `allow_unknown_ucp_agents`.
+			 *   - `brand_blocked` — the agent identifier IS recognized
+			 *     but every crawler ID mapped to that brand is missing
+			 *     from the merchant's `allowed_crawlers` list.
 			 *
 			 * Listeners should switch on `$reason` rather than infer
-			 * the cause from `$host`. Future denial paths will add
+			 * the cause from `$raw_id`. Future denial paths will add
 			 * more reason tokens; treat unknown values as "denial,
 			 * cause unspecified" and surface accordingly.
 			 *
@@ -462,9 +461,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 * can't veto the 403, only observe.
 			 *
 			 * @since 0.3.1
-			 * @param string          $host    Raw hostname extracted
-			 *                                 from the UCP-Agent
-			 *                                 profile URL.
+			 * @since 0.4.0 First parameter renamed from `$host` to
+			 *              `$raw_id` to reflect that it can carry
+			 *              either a hostname (from `profile="<URL>"`
+			 *              form) or a product token (from
+			 *              `Product/Version` form).
+			 * @param string          $raw_id  Raw agent identifier
+			 *                                 extracted from the
+			 *                                 UCP-Agent header. Either
+			 *                                 a hostname (profile-URL
+			 *                                 form) or a lowercased
+			 *                                 product token
+			 *                                 (Product/Version form).
 			 * @param string          $reason  Why the request was
 			 *                                 denied. Stable token
 			 *                                 from a small enumerated
@@ -478,7 +486,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 */
 			do_action(
 				'wc_ai_storefront_ucp_access_denied',
-				$host,
+				$raw_id,
 				'unknown_agent',
 				$request
 			);
@@ -486,9 +494,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return new WP_Error(
 				'ucp_unknown_agent_blocked',
 				sprintf(
-					/* translators: 1: raw hostname from the UCP-Agent profile URL */
-					__( 'Access to this UCP endpoint is not enabled for unknown AI agents on this store. Host: %1$s', 'woocommerce-ai-storefront' ),
-					$host
+					/* translators: 1: raw agent identifier extracted from the UCP-Agent header (hostname or product token) */
+					__( 'Access to this UCP endpoint is not enabled for unknown AI agents on this store. Agent: %1$s', 'woocommerce-ai-storefront' ),
+					$raw_id
 				),
 				[ 'status' => 403 ]
 			);
@@ -508,15 +516,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		WC_AI_Storefront_Logger::debug(
-			'UCP access denied — agent=%s host=%s',
+			'UCP access denied — agent=%s raw_id=%s',
 			$canonical,
-			$host
+			$raw_id
 		);
 
 		/** This action is documented in the unknown-agent denial branch of `check_agent_access()` above. */
 		do_action(
 			'wc_ai_storefront_ucp_access_denied',
-			$host,
+			$raw_id,
 			'brand_blocked',
 			$request
 		);

@@ -525,8 +525,11 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		//   2. The value must be quoted. RFC 8941 Dictionary strings
 		//      require quotes; accepting unquoted values would let
 		//      non-compliant agents look compliant.
-		//   3. We use `\b` rather than a whole-word regex flavor to
-		//      keep the pattern PCRE-portable across PHP versions.
+		//   3. We use an explicit `(?:^|[\s,;])` prefix guard rather
+		//      than relying on a regex word-boundary, keeping the
+		//      match aligned with RFC 8941 separators (comma is the
+		//      canonical Dictionary separator; whitespace and
+		//      semicolon are tolerated for real-world variants).
 		if ( ! preg_match( '/(?:^|[\s,;])profile="([^"]+)"/', $header_value, $matches ) ) {
 			return '';
 		}
@@ -603,12 +606,16 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// the end (`\s*$`) so trailing junk produces a no-match
 		// rather than partial extraction. The version segment is
 		// matched but NOT captured — its content doesn't affect the
-		// canonical mapping. Note the regex still constrains version
-		// characters to `[A-Za-z0-9._-]` and rejects values with
-		// trailing parenthesized comments (e.g.
-		// `Mozilla/5.0 (compatible; UCP-Bot)`), so non-trivial
+		// canonical mapping. The version-segment quantifier is `+`
+		// (not `*`) so a header ending in a bare slash like
+		// `Agent/` doesn't parse as `agent` — RFC 7231's
+		// `product/version` grammar requires the version token to
+		// be non-empty when the slash is present. Note the regex
+		// still constrains version characters to `[A-Za-z0-9._-]`
+		// and rejects values with trailing parenthesized comments
+		// (e.g. `Mozilla/5.0 (compatible; UCP-Bot)`), so non-trivial
 		// User-Agent-style values won't parse.
-		if ( ! preg_match( '#^([A-Za-z0-9._-]+)(?:/[A-Za-z0-9._-]*)?\s*$#', trim( $header_value ), $matches ) ) {
+		if ( ! preg_match( '#^([A-Za-z0-9._-]+)(?:/[A-Za-z0-9._-]+)?\s*$#', trim( $header_value ), $matches ) ) {
 			return '';
 		}
 

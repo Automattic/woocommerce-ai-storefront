@@ -554,6 +554,20 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_extract_product_rejects_empty_version(): void {
+		// RFC 7231's `product/version` grammar requires the version
+		// to be non-empty when the slash is present. A header like
+		// `Agent/` is malformed; we return empty rather than parse
+		// it as `agent` (and silently absorb broken clients into
+		// stats). Regression guard for the version-segment `+`
+		// quantifier — if a future refactor weakens it to `*`,
+		// `Agent/` would parse as `agent` and this test would fire.
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Agent/' )
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// canonicalize_product() — product token → canonical brand
 	// ------------------------------------------------------------------
