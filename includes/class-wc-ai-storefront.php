@@ -694,6 +694,68 @@ class WC_AI_Storefront {
 			return false;
 		}
 
+		// Variations inherit their parent's syndication status. The
+		// merchant's selection mechanisms — `selected_products`,
+		// `selected_categories`, `selected_tags`, `selected_brands` —
+		// all attach to PARENT product posts. Variation posts carry no
+		// term memberships of their own, and `selected_products` only
+		// stores parent IDs. Without this redirect, a child variation
+		// always reads as "out of merchant scope" even when its parent
+		// is syndicated — breaking UCP catalog/lookup's per-variation
+		// fetch path (every fetch returns null, the response falls
+		// through to a synthesized `var_{parent_id}_default` placeholder,
+		// and agents never see Small / Medium / Large).
+		//
+		// Cost shape: every call to `is_product_syndicated()` now
+		// invokes `get_post_type()` once. WP's object cache makes that
+		// a memory lookup after the first hit per request — no extra
+		// DB round-trip for repeated checks of the same product within
+		// one request. The `wp_get_post_parent_id()` call is gated on
+		// the post type being `product_variation`, so non-variation
+		// products skip it entirely. The catalog-loop hot path
+		// (`/catalog/lookup` fetching N products) does pay one
+		// post-type lookup per product on a cold worker; if profiling
+		// ever flags it, the right fix is a `_prime_post_caches()`
+		// batch in the catalog/lookup REST handler before iterating,
+		// not here.
+		//
+		// Single redirect, NOT recursive. WC enforces in admin that a
+		// variation's parent is a top-level product — so one hop
+		// reaches the parent in every well-formed store. A raw
+		// `wp_insert_post` could theoretically create a
+		// `product_variation` whose parent is itself a variation; the
+		// consequence here is a benign false negative (the misformed
+		// parent ID gets checked against `selected_products`, fails,
+		// and the variation reads as out-of-scope). Recursing would
+		// hide the data corruption rather than expose it.
+		//
+		// `function_exists` guard is defense-in-depth for non-WP
+		// loading contexts (static analyzers, scaffolding scripts,
+		// hypothetical CLI tooling that includes this file outside
+		// a full WP bootstrap). WP core always provides both
+		// functions in production, and the unit-test harness loads
+		// the stub class at `tests/php/stubs/class-wc-ai-storefront-stub.php`
+		// rather than this file — so the guard is genuinely never
+		// false in either production or the current test suite. It
+		// exists purely so the file remains include-safe in any
+		// environment where WP isn't loaded, which is cheap insurance
+		// against future tooling that does so.
+		if (
+			function_exists( 'get_post_type' )
+			&& function_exists( 'wp_get_post_parent_id' )
+			&& 'product_variation' === get_post_type( $product_id )
+		) {
+			$parent_id = (int) wp_get_post_parent_id( $product_id );
+			if ( $parent_id <= 0 ) {
+				// Orphaned variation (parent deleted but variation
+				// row still exists). Treat as out-of-scope rather
+				// than silently leaking — this is the only path
+				// where there's no parent to inherit from.
+				return false;
+			}
+			$product_id = $parent_id;
+		}
+
 		$mode = $settings['product_selection_mode'] ?? 'all';
 
 		// Defensive legacy-mode fallback. The silent migration on

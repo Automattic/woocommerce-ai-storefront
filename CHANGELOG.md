@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixes
+- **Variations of variable products were silently dropped from syndication, even when the parent was scoped in.** Pre-fix `is_product_syndicated()` checked the variation's own ID in `selected` mode (which always failed because `selected_products` only stores parent IDs) and the variation's own term memberships in `by_taxonomy` mode (which always failed because `product_variation` posts carry no taxonomy terms — terms attach to parents). UCP catalog/lookup's per-variation pre-fetch path silently dropped every variation, the response fell through to a synthesized `var_{parent_id}_default` placeholder, and AI agents lost the ability to distinguish or buy specific sizes/colors. Surfaced by a Gemini-3-Flash UCPPlayground test trying to buy a Hoodie in size Medium — agent saw only `var_23_default`. Fix: in `is_product_syndicated()`, when the post type is `product_variation`, redirect to the parent ID before the mode check. Orphaned variations (parent deleted, variation row lingers) return false rather than silently leak. Same code path is consulted by every UCP commerce surface that gates on syndication, so the fix lands across catalog/lookup, checkout-sessions line-item resolution, and the Store API filter in one place.
+
+### Tests
+- 6 new tests in `IsSyndicatedVariationTest`: variation-redirect in selected mode (allow + block), variation-redirect in by_taxonomy mode (parent's term membership inherited), variation in `all` mode short-circuits, orphaned-variation returns false, and a regression guard that non-variation posts skip the redirect. Stub gains a `$test_variations` map property — see the property docblock for why it diverges from production's `get_post_type` + `wp_get_post_parent_id` calls (Brain Monkey's WP preset would otherwise force every unrelated test to mock both names).
+
 ---
 
 ## [0.3.1] – 2026-04-27
