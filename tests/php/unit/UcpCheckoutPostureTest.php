@@ -227,7 +227,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// retry destructively. Explicitly answering with 405 + an
 		// actionable message is more posture-aligned than letting the
 		// 404 leak agents into incorrect retry behavior. See
-		// `WC_AI_Storefront_UCP_REST_Controller::handle_checkout_sessions_unsupported_patch()`
+		// `WC_AI_Storefront_UCP_REST_Controller::handle_checkout_sessions_unsupported_method()`
 		// for the full rationale.
 		//
 		// If a future change adds any route not in this whitelist,
@@ -255,6 +255,34 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 			],
 			$registered
 		);
+	}
+
+	public function test_patch_checkout_sessions_stub_returns_unsupported_operation(): void {
+		// The PATCH stub on /checkout-sessions/{id} is included in
+		// the route whitelist above with the rationale "explicit
+		// non-support, not enabling state." This test converts that
+		// comment into a behavioral constraint: the handler MUST
+		// return HTTP 405 with `code=unsupported_operation`. A
+		// future change that turns the stub into a stateful PATCH
+		// (loading state, modifying it, returning 200) would pass
+		// the route-whitelist check above but fail this assertion,
+		// surfacing the posture violation that the comment alone
+		// could only describe.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( '__' )->returnArg();
+
+		$request = new WP_REST_Request( 'PATCH', '/wc/ucp/v1/checkout-sessions/chk_postureguard0' );
+		$request->set_param( 'id', 'chk_postureguard0' );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_unsupported_method( $request );
+
+		$this->assertSame( 405, $response->get_status() );
+
+		$messages = $response->get_data()['messages'];
+		$this->assertNotEmpty( $messages );
+		$this->assertSame( 'unsupported_operation', $messages[0]['code'] );
+		$this->assertSame( 'unrecoverable', $messages[0]['severity'] );
 	}
 
 	public function test_declared_capabilities_list_is_exactly_expected(): void {
