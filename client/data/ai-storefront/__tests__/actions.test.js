@@ -33,6 +33,23 @@ describe( 'AI Syndication actions', () => {
 
 	beforeEach( () => {
 		jest.clearAllMocks();
+		// `jest.clearAllMocks()` clears call history but does NOT reset
+		// mock IMPLEMENTATIONS. Without this restore, a nested describe
+		// that calls `dispatch.mockImplementation(...)` (the
+		// "error notice detail surfacing" block below does this for
+		// each test to capture `createErrorNoticeMock`) would leak its
+		// per-test implementation into every subsequent test in the
+		// file — they'd see stale mock methods bound to closures from
+		// already-completed tests instead of fresh `jest.fn()`s. Reset
+		// the implementation to the default factory here so every test
+		// starts with the same `dispatch()` return shape regardless of
+		// describe-block ordering.
+		// eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
+		const { dispatch } = require( '@wordpress/data' );
+		dispatch.mockImplementation( () => ( {
+			createSuccessNotice: jest.fn(),
+			createErrorNotice: jest.fn(),
+		} ) );
 		mockDispatch = {
 			setIsSaving: jest.fn(),
 			updateSettings: jest.fn(),
@@ -178,6 +195,157 @@ describe( 'AI Syndication actions', () => {
 			const calls = mockDispatch.setIsSaving.mock.calls;
 			const lastCall = calls[ calls.length - 1 ];
 			expect( lastCall ).toEqual( [ false, error ] );
+		} );
+
+		// The merchant-facing notice should carry the server's error
+		// detail when available, not a generic placeholder. Pre-fix,
+		// every error mode (400 validation, 403 nonce-expired, 500
+		// fatal, network drop) collapsed to the same five-word
+		// message. These tests pin the message-detail fallback chain.
+		describe( 'error notice detail surfacing', () => {
+			let createErrorNoticeMock;
+
+			beforeEach( () => {
+				createErrorNoticeMock = jest.fn();
+				const { dispatch } = require( '@wordpress/data' );
+				dispatch.mockImplementation( () => ( {
+					createSuccessNotice: jest.fn(),
+					createErrorNotice: createErrorNoticeMock,
+				} ) );
+			} );
+
+			it( 'surfaces error.message when present (typical WP_Error case)', async () => {
+				// WP_Error from `apiFetch` rejection carries a
+				// server-translated `message` field. The merchant
+				// sees the server's detail verbatim.
+				const error = Object.assign( new Error(), {
+					code: 'rest_invalid_param',
+					message: 'Invalid parameter: rate_limit_rpm.',
+					data: { status: 400 },
+				} );
+				apiFetch.mockRejectedValue( error );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Invalid parameter: rate_limit_rpm.'
+				);
+			} );
+
+			it( 'falls back to generic when error.message is empty string', async () => {
+				// Rare but possible: an exotic rejection shape with
+				// no message (e.g. a misbehaving `apiFetch` filter
+				// throwing a bare object). The empty-string guard
+				// catches this.
+				apiFetch.mockRejectedValue( { message: '' } );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Error saving settings.'
+				);
+			} );
+
+			it( 'falls back to generic when error has no message field', async () => {
+				// Some thrown values (raw strings, Response objects)
+				// have no `message` property at all. Optional-chain +
+				// type check handle this.
+				apiFetch.mockRejectedValue( { code: 'something_broke' } );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Error saving settings.'
+				);
+			} );
+
+			it( 'falls back to generic when error.message is non-string (defensive)', async () => {
+				// Defensive: a filter that mistakenly nests an object
+				// under `message` shouldn't render `[object Object]`
+				// in the merchant's notice.
+				apiFetch.mockRejectedValue( {
+					message: { nested: 'oops' },
+				} );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Error saving settings.'
+				);
+			} );
+
+			it( 'surfaces native Error.message (network failure case)', async () => {
+				// `apiFetch` wraps a network failure in a TypeError
+				// with a meaningful message ("Failed to fetch") in
+				// most browsers. The merchant sees that directly.
+				apiFetch.mockRejectedValue(
+					new TypeError( 'Failed to fetch' )
+				);
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Failed to fetch'
+				);
+			} );
+
+			it( 'falls back to generic when error is null (defensive)', async () => {
+				// Optional-chain branch: `null?.message` is undefined,
+				// the typeof check fails, fallback wins. Pinning this
+				// because a Promise rejection without a value (e.g. a
+				// middleware that does `Promise.reject()` with no
+				// argument) lands here.
+				apiFetch.mockRejectedValue( null );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Error saving settings.'
+				);
+			} );
+
+			it( 'falls back to generic when a raw string is thrown', async () => {
+				// `'boom'.message === undefined` — a primitive string
+				// has no `message` property, so the optional chain +
+				// typeof check both fall through to the generic
+				// fallback. Same shape applies to thrown numbers,
+				// booleans, etc.
+				apiFetch.mockRejectedValue( 'boom' );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Error saving settings.'
+				);
+			} );
 		} );
 	} );
 

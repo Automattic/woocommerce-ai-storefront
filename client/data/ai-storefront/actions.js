@@ -43,9 +43,49 @@ export function saveSettings() {
 			);
 		} catch ( error ) {
 			dispatch.setIsSaving( false, error );
-			globalDispatch( 'core/notices' ).createErrorNotice(
-				__( 'Error saving settings.', 'woocommerce-ai-storefront' )
-			);
+			// Surface the server's error detail so the merchant has
+			// something actionable. `@wordpress/api-fetch` rejects
+			// with an object carrying the WP_Error fields (`code`,
+			// `message`, `data.status`); the message is already
+			// server-translated via WP's locale so we use it
+			// directly without wrapping in `__()` (the i18n
+			// extractor only handles literal strings, and the
+			// message isn't ours to translate).
+			//
+			// Pre-fix this surfaced a hardcoded "Error saving
+			// settings." for every failure mode — 400 (validation
+			// rejected one field), 403 (nonce expired after the tab
+			// sat open for 24+ hours), 500 (PHP fatal in a settings
+			// filter), network drop. Merchants got zero actionable
+			// signal. Now they see the underlying message verbatim,
+			// which is the most useful thing we can do without
+			// per-error-code routing logic that would drift from
+			// server-side error vocabulary.
+			//
+			// Fallback to the generic when `error.message` is empty
+			// or non-string (rare — usually network failures still
+			// resolve a TypeError with a message). String check
+			// guards against an exotic rejection shape (e.g. a
+			// raw `Response` thrown by a misbehaving filter) where
+			// `error.message` could be `undefined` or an object.
+			//
+			// Safety: `createErrorNotice( string )` from
+			// `@wordpress/notices` renders the body via React children,
+			// which text-escapes — so a server emitting `<script>` in a
+			// WP_Error message cannot XSS the admin. DO NOT switch to
+			// `createErrorNotice( str, { __unstableHTML: true } )` or
+			// any HTML-rendering variant without first sanitizing
+			// `detail` server-side or via `wp_strip_all_tags`-equivalent
+			// here. The text-escaping is the only thing that makes
+			// passing the raw server message safe.
+			const detail =
+				typeof error?.message === 'string' && error.message
+					? error.message
+					: __(
+							'Error saving settings.',
+							'woocommerce-ai-storefront'
+					  );
+			globalDispatch( 'core/notices' ).createErrorNotice( detail );
 			return;
 		}
 
