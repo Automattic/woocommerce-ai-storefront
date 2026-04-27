@@ -39,11 +39,13 @@ class WC_AI_Storefront {
 	 * with variations — and they all blow up. A purpose-built map keeps
 	 * variation tests explicit and leaves every other test untouched.
 	 *
-	 * Keys are variation IDs, values are parent IDs. A value of 0 (or
-	 * a missing key) means "treat as a regular product, no redirect."
-	 * To exercise the orphaned-variation path (parent deleted but
-	 * variation row lingers), set the value to a sentinel like -1 so
-	 * the entry exists but resolves to a non-positive parent.
+	 * Keys are variation IDs, values are parent IDs. A MISSING key
+	 * means "treat as a regular product, no redirect." A PRESENT
+	 * entry with a non-positive parent ID (`0` or `-1`) exercises
+	 * the orphaned-variation path (parent deleted but variation row
+	 * lingers) and resolves as out-of-scope — the implementation
+	 * branches on `array_key_exists($id, $test_variations)` first
+	 * and then on whether the resolved parent is positive.
 	 *
 	 * @var array<int, int>
 	 */

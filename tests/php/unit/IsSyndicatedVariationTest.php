@@ -99,8 +99,15 @@ class IsSyndicatedVariationTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront::$test_variations = [ 1112 => 23 ];
 		// `wp_get_post_terms` is queried with the resolved parent ID
 		// (23), not the variation ID. Stub returns the parent's terms.
+		//
+		// Closure signature accepts a third `$args = []` parameter
+		// because the stub's by_taxonomy branch calls
+		// `wp_get_post_terms( $id, $taxonomy, [ 'fields' => 'ids' ] )`
+		// — a 2-arg closure works under Brain Monkey's lenient call
+		// path today but a future PHP/runtime upgrade with strict
+		// callable enforcement would reject it.
 		Functions\when( 'wp_get_post_terms' )->alias(
-			static fn( $id, $tax ) => 23 === $id && 'product_cat' === $tax
+			static fn( $id, $tax, $args = [] ) => 23 === $id && 'product_cat' === $tax
 				? [ 5 ]
 				: []
 		);

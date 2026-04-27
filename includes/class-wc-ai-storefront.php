@@ -706,10 +706,18 @@ class WC_AI_Storefront {
 		// through to a synthesized `var_{parent_id}_default` placeholder,
 		// and agents never see Small / Medium / Large).
 		//
-		// Cheap implementation: check post type via `get_post_type()`
-		// (a single DB hit at most, cached by WP), and resolve the
-		// parent via `wp_get_post_parent_id()` (also cached). For
-		// non-variation IDs both calls are no-ops at the cache layer.
+		// Cost shape: every call to `is_product_syndicated()` now
+		// invokes `get_post_type()` once. WP's object cache makes that
+		// a memory lookup after the first hit per request — no extra
+		// DB round-trip for repeated checks of the same product within
+		// one request. The `wp_get_post_parent_id()` call is gated on
+		// the post type being `product_variation`, so non-variation
+		// products skip it entirely. The catalog-loop hot path
+		// (`/catalog/lookup` fetching N products) does pay one
+		// post-type lookup per product on a cold worker — see the
+		// follow-up TODO in `is_product_syndicated()`'s caller for a
+		// future `_prime_post_caches()` batch upstream if that ever
+		// shows up in profiling.
 		//
 		// Single redirect, NOT recursive. WC enforces in admin that a
 		// variation's parent is a top-level product — so one hop
