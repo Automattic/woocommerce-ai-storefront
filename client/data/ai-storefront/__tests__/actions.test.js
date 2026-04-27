@@ -33,6 +33,23 @@ describe( 'AI Syndication actions', () => {
 
 	beforeEach( () => {
 		jest.clearAllMocks();
+		// `jest.clearAllMocks()` clears call history but does NOT reset
+		// mock IMPLEMENTATIONS. Without this restore, a nested describe
+		// that calls `dispatch.mockImplementation(...)` (the
+		// "error notice detail surfacing" block below does this for
+		// each test to capture `createErrorNoticeMock`) would leak its
+		// per-test implementation into every subsequent test in the
+		// file — they'd see stale mock methods bound to closures from
+		// already-completed tests instead of fresh `jest.fn()`s. Reset
+		// the implementation to the default factory here so every test
+		// starts with the same `dispatch()` return shape regardless of
+		// describe-block ordering.
+		// eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
+		const { dispatch } = require( '@wordpress/data' );
+		dispatch.mockImplementation( () => ( {
+			createSuccessNotice: jest.fn(),
+			createErrorNotice: jest.fn(),
+		} ) );
 		mockDispatch = {
 			setIsSaving: jest.fn(),
 			updateSettings: jest.fn(),
