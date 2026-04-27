@@ -4,6 +4,14 @@ import ACTION_TYPES from '../action-types';
 describe( 'AI Syndication reducer', () => {
 	const defaultState = {
 		settings: {},
+		// `savedSettings` is the last-known-saved snapshot driving the
+		// `isDirty` selector. SET_SETTINGS writes both `settings` and
+		// `savedSettings` in lockstep (initial REST load + post-save
+		// refetch are the "draft equals saved" sync points);
+		// SET_SETTINGS_VALUES only updates the draft. Mirror the real
+		// reducer's `defaultState` shape exactly — this constant is
+		// compared against the reducer's output via `toEqual`.
+		savedSettings: {},
 		isSaving: false,
 		savingError: null,
 		stats: null,
@@ -32,6 +40,26 @@ describe( 'AI Syndication reducer', () => {
 			} );
 			expect( state.settings ).toEqual( settings );
 		} );
+
+		it( 'writes both settings and savedSettings (dirty-aware sync point)', () => {
+			// Pin the load-bearing invariant for the `isDirty` selector:
+			// SET_SETTINGS is the moment the server's view IS the
+			// merchant's committed state, so both copies must converge.
+			// If this test ever regresses, `isDirty` will read true
+			// after a successful save and the Save button will never
+			// re-disable.
+			const settings = { enabled: 'yes', rate_limit_rpm: 50 };
+			const state = reducer( defaultState, {
+				type: ACTION_TYPES.SET_SETTINGS,
+				data: settings,
+			} );
+			expect( state.settings ).toEqual( settings );
+			expect( state.savedSettings ).toEqual( settings );
+			// And specifically: the same object reference is fine for
+			// the dirty-comparison contract (the JSON.stringify path
+			// doesn't care), but they must be value-equal at minimum.
+			expect( state.settings ).toEqual( state.savedSettings );
+		} );
 	} );
 
 	describe( 'SET_SETTINGS_VALUES', () => {
@@ -47,6 +75,32 @@ describe( 'AI Syndication reducer', () => {
 			expect( state.settings ).toEqual( {
 				enabled: 'yes',
 				rate_limit_rpm: 50,
+			} );
+		} );
+
+		it( 'leaves savedSettings unchanged (draft-only update)', () => {
+			// The other half of the dirty-aware contract: edits flow
+			// into the draft only. The saved snapshot stays pinned to
+			// the last server-confirmed state until the next
+			// SET_SETTINGS resyncs both copies. Without this asymmetry
+			// the dirty selector would always read clean and the
+			// feature collapses.
+			const initial = {
+				...defaultState,
+				settings: { enabled: 'yes', rate_limit_rpm: 25 },
+				savedSettings: { enabled: 'yes', rate_limit_rpm: 25 },
+			};
+			const state = reducer( initial, {
+				type: ACTION_TYPES.SET_SETTINGS_VALUES,
+				payload: { rate_limit_rpm: 50 },
+			} );
+			expect( state.settings ).toEqual( {
+				enabled: 'yes',
+				rate_limit_rpm: 50,
+			} );
+			expect( state.savedSettings ).toEqual( {
+				enabled: 'yes',
+				rate_limit_rpm: 25,
 			} );
 		} );
 

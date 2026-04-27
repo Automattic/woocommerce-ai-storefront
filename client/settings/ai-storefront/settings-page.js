@@ -38,10 +38,17 @@ const AISyndicationSettings = () => {
 	);
 	// Dirty-aware Save: each tab's footer disables its Save button
 	// when the merchant hasn't actually changed anything away from
-	// the saved snapshot. Mirrors the WooCommerce / Block Editor
-	// convention. See `client/data/ai-storefront/selectors.js::isDirty`
-	// for the comparison rule and `reducer.js::SET_SETTINGS` for the
-	// save-success resync that flips dirty back to clean.
+	// the saved snapshot. Conceptually mirrors the WooCommerce /
+	// Block Editor convention (different mechanism — see selectors.js
+	// for details). The selector is GLOBAL on purpose: any unsaved
+	// change on any tab enables Save on every tab, because the save
+	// callback POSTs the full settings blob — clicking Save on
+	// Endpoints correctly persists pending Policies edits too. This
+	// avoids the surprise of a merchant editing on tab A, switching
+	// to tab B, and losing the affordance to save. See
+	// `client/data/ai-storefront/selectors.js::isDirty` for the
+	// comparison rule and `reducer.js::SET_SETTINGS` for the save-
+	// success resync that flips dirty back to clean.
 	const isDirty = useSelect(
 		( select ) => select( STORE_NAME ).isDirty(),
 		[]
