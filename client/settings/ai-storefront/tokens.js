@@ -47,6 +47,36 @@ export const colors = {
 };
 
 /**
+ * Typography tokens for repeated micro-label patterns.
+ *
+ * The "eyebrow label" — uppercase tracked small caps used for table
+ * column headers, StatCard labels, action-toolbar headings, inline
+ * group titles, and status pre-titles — was previously inlined at five
+ * different sites with three different letter-spacing values
+ * (`0.4px`, `0.5px`, `0.8px`, `0.04em`). The visual intent at every
+ * site is the same: WordPress's `.components-base-control__label`
+ * small-caps tracked treatment. The tokenized value is `0.04em`,
+ * which scales with the element's font-size — pixel values lock the
+ * tracking and read inconsistently when font-size changes.
+ *
+ * Spread into a JSX `style={ ... }` prop:
+ *   <span style={ { ...typography.eyebrowLabel, color: ... } }>
+ *
+ * Don't add new uppercase-tracked labels without using this token.
+ * If a new label needs a different fontSize, override that key
+ * specifically (`...typography.eyebrowLabel, fontSize: '11px'`) so the
+ * tracking stays uniform.
+ */
+export const typography = {
+	eyebrowLabel: {
+		fontSize: '12px',
+		fontWeight: '600',
+		textTransform: 'uppercase',
+		letterSpacing: '0.04em',
+	},
+};
+
+/**
  * WooCommerce order-status pill palette — bg + fg per status key.
  *
  * Lifted here out of `ai-orders-table.js` to satisfy the "colors

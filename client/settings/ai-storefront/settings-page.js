@@ -18,7 +18,7 @@ import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
 import AIOrdersTable from './ai-orders-table';
 import PoliciesTab from './policies-tab';
-import { colors } from './tokens';
+import { colors, typography } from './tokens';
 
 // Rate-limit UI (card + presets + RPM state) lives in the Discovery
 // tab now — see `endpoint-info.js`. Rationale: rate limiting is a
@@ -311,11 +311,9 @@ const StatCard = ( { label, value, subvalue, href } ) => {
 			</div>
 			<div
 				style={ {
-					fontSize: '12px',
 					color: colors.textMuted,
 					marginTop: '4px',
-					textTransform: 'uppercase',
-					letterSpacing: '0.5px',
+					...typography.eyebrowLabel,
 				} }
 			>
 				{ label }
@@ -361,10 +359,14 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 						<p
 							style={ {
 								margin: '0 0 8px',
+								...typography.eyebrowLabel,
+								// Smaller variant: this eyebrow lives
+								// inside the pre-enable hero, paired
+								// with a 22px h2 right below — 11px
+								// keeps it visually subordinate while
+								// the rest of the eyebrow stack uses
+								// the token's default 12px.
 								fontSize: '11px',
-								fontWeight: '600',
-								textTransform: 'uppercase',
-								letterSpacing: '0.8px',
 								color: colors.textMuted,
 							} }
 						>

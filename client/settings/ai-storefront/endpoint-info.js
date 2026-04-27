@@ -12,7 +12,7 @@ import {
 } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-storefront/constants';
-import { colors } from './tokens';
+import { colors, typography } from './tokens';
 
 /**
  * Rate-limit presets for the AI-agent request-throttling control.
@@ -624,83 +624,77 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						) }
 					</p>
 
+					{ /*
+						Action toolbar: count pill ("X of Y") + bulk
+						Select all / Clear actions, right-aligned above
+						the first crawler-category group. The previous
+						"Allowed crawlers" left-side label was redundant
+						with the card heading "AI Crawler Access" plus
+						the eyebrow group titles below ("LIVE BROWSING",
+						"TRAINING AND TEST CRAWLERS"), which already
+						establish what each row is. Dropping it removes
+						an orphan heading that read as a third
+						hierarchy level when there are really only two.
+					*/ }
 					<div
 						style={ {
 							display: 'flex',
-							justifyContent: 'space-between',
+							justifyContent: 'flex-end',
 							alignItems: 'center',
 							marginBottom: '12px',
 						} }
 					>
 						<span
 							style={ {
-								fontSize: '13px',
-								fontWeight: '500',
-								color: colors.textPrimary,
+								display: 'inline-block',
+								background:
+									checkedCount > 0
+										? colors.successBg
+										: colors.surfaceMuted,
+								color:
+									checkedCount > 0
+										? colors.success
+										: colors.textMuted,
+								fontWeight: checkedCount > 0 ? '600' : '400',
+								fontSize: '12px',
+								borderRadius: '10px',
+								padding: '2px 10px',
+								marginRight: '8px',
 							} }
 						>
-							{ __(
-								'Allowed crawlers',
-								'woocommerce-ai-storefront'
+							{ sprintf(
+								/* translators: %1$d: allowed count, %2$d: total count */
+								__(
+									'%1$d of %2$d',
+									'woocommerce-ai-storefront'
+								),
+								checkedCount,
+								KNOWN_CRAWLERS.length
 							) }
 						</span>
-						<span>
-							<span
-								style={ {
-									display: 'inline-block',
-									background:
-										checkedCount > 0
-											? colors.successBg
-											: colors.surfaceMuted,
-									color:
-										checkedCount > 0
-											? colors.success
-											: colors.textMuted,
-									fontWeight:
-										checkedCount > 0 ? '600' : '400',
-									fontSize: '12px',
-									borderRadius: '10px',
-									padding: '2px 10px',
-									marginRight: '8px',
-								} }
-							>
-								{ sprintf(
-									/* translators: %1$d: allowed count, %2$d: total count */
-									__(
-										'%1$d of %2$d',
-										'woocommerce-ai-storefront'
-									),
-									checkedCount,
-									KNOWN_CRAWLERS.length
-								) }
-							</span>
-							<Button
-								variant="link"
-								style={ {
-									fontSize: '12px',
-									padding: 0,
-									minHeight: 'auto',
-								} }
-								onClick={ selectAll }
-							>
-								{ __(
-									'Select all',
-									'woocommerce-ai-storefront'
-								) }
-							</Button>
-							{ ' | ' }
-							<Button
-								variant="link"
-								style={ {
-									fontSize: '12px',
-									padding: 0,
-									minHeight: 'auto',
-								} }
-								onClick={ clearAll }
-							>
-								{ __( 'Clear', 'woocommerce-ai-storefront' ) }
-							</Button>
-						</span>
+						<Button
+							variant="link"
+							style={ {
+								fontSize: '12px',
+								padding: 0,
+								minHeight: 'auto',
+							} }
+							onClick={ selectAll }
+						>
+							{ __( 'Select all', 'woocommerce-ai-storefront' ) }
+						</Button>
+						{ ' | ' }
+						<Button
+							variant="link"
+							style={ {
+								fontSize: '12px',
+								padding: 0,
+								minHeight: 'auto',
+							} }
+							onClick={ clearAll }
+						>
+							{ __( 'Clear', 'woocommerce-ai-storefront' ) }
+						</Button>
 					</div>
 
 					{ /*
@@ -774,12 +768,9 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							>
 								<div
 									style={ {
-										fontSize: '12px',
-										fontWeight: '600',
 										color: colors.textPrimary,
 										marginBottom: '2px',
-										textTransform: 'uppercase',
-										letterSpacing: '0.04em',
+										...typography.eyebrowLabel,
 									} }
 								>
 									{ group.title }
@@ -898,12 +889,9 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 					>
 						<div
 							style={ {
-								fontSize: '12px',
-								fontWeight: '600',
 								color: colors.textPrimary,
 								marginBottom: '2px',
-								textTransform: 'uppercase',
-								letterSpacing: '0.04em',
+								...typography.eyebrowLabel,
 							} }
 						>
 							{ __(

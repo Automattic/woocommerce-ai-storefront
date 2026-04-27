@@ -47,7 +47,7 @@ import { Card, CardBody } from '@wordpress/components';
 import { DataViews, filterSortAndPaginate } from '@wordpress/dataviews';
 import { __ } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-storefront/constants';
-import { colors, statusColors } from './tokens';
+import { colors, statusColors, typography } from './tokens';
 
 /**
  * Format a currency amount via Intl.NumberFormat with a safe fallback.
@@ -262,11 +262,8 @@ const GhostTable = () => (
 				padding: '12px 16px',
 				background: colors.surfaceSubtle,
 				borderBottom: `1px solid ${ colors.borderSubtle }`,
-				fontSize: '12px',
-				fontWeight: '600',
 				color: colors.textSecondary,
-				textTransform: 'uppercase',
-				letterSpacing: '0.4px',
+				...typography.eyebrowLabel,
 			} }
 		>
 			<span>{ __( 'Order', 'woocommerce-ai-storefront' ) }</span>

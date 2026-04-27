@@ -31,7 +31,7 @@ import { __, _n, sprintf } from '@wordpress/i18n';
 import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 import { addQueryArgs } from '@wordpress/url';
-import { colors } from './tokens';
+import { colors, typography } from './tokens';
 import {
 	ToggleGroupStyles,
 	TOGGLE_GROUP_CLASSNAME,
@@ -1302,7 +1302,14 @@ const ProductSelection = ( {
 						<h3
 							style={ {
 								margin: 0,
-								fontSize: '16px',
+								// 14px to match every other Card section
+								// h3 in the plugin (Discovery, Policies,
+								// AI Orders, Endpoint groups). Was 16px
+								// — the only outlier — which read as a
+								// higher hierarchy level than its peers
+								// when the merchant scrolled past
+								// adjacent Cards.
+								fontSize: '14px',
 								fontWeight: '600',
 								color: colors.textPrimary,
 							} }
@@ -1827,12 +1834,9 @@ const ProductSelection = ( {
 						<div>
 							<span
 								style={ {
-									fontSize: '12px',
-									fontWeight: '600',
 									color: colors.textSecondary,
-									textTransform: 'uppercase',
-									letterSpacing: '0.4px',
 									marginRight: '8px',
+									...typography.eyebrowLabel,
 								} }
 							>
 								{ __(
