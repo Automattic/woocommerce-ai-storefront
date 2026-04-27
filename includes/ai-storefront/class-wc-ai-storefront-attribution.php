@@ -370,10 +370,23 @@ class WC_AI_Storefront_Attribution {
 		 * @param string   $canonical_agent The AI agent identifier — the
 		 *                                  same value stored in
 		 *                                  `_wc_ai_storefront_agent` meta.
-		 *                                  Lenient captures pass the
-		 *                                  canonical brand name (e.g.
-		 *                                  "ChatGPT"), strict captures
-		 *                                  pass utm_source verbatim.
+		 *                                  When the normalized
+		 *                                  `utm_source` matches a known
+		 *                                  host (`KNOWN_AGENT_HOSTS`
+		 *                                  key), this is the canonical
+		 *                                  brand name (e.g. "ChatGPT");
+		 *                                  otherwise it is the
+		 *                                  `utm_source` value verbatim.
+		 *                                  The rule is path-independent:
+		 *                                  a strict-gate capture whose
+		 *                                  `utm_source` happens to be a
+		 *                                  hostname (e.g. an agent that
+		 *                                  bypassed our continue_url
+		 *                                  AND happened to also match
+		 *                                  `utm_medium=ai_agent`) gets
+		 *                                  canonicalized too — listeners
+		 *                                  shouldn't switch logic on
+		 *                                  which gate fired.
 		 * @param string   $session_id      The AI session identifier.
 		 */
 		do_action( 'wc_ai_storefront_attribution_captured', $order, $canonical_agent, $session_id );
