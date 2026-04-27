@@ -179,6 +179,119 @@ describe( 'AI Syndication actions', () => {
 			const lastCall = calls[ calls.length - 1 ];
 			expect( lastCall ).toEqual( [ false, error ] );
 		} );
+
+		// The merchant-facing notice should carry the server's error
+		// detail when available, not a generic placeholder. Pre-fix,
+		// every error mode (400 validation, 403 nonce-expired, 500
+		// fatal, network drop) collapsed to the same five-word
+		// message. These tests pin the message-detail fallback chain.
+		describe( 'error notice detail surfacing', () => {
+			let createErrorNoticeMock;
+
+			beforeEach( () => {
+				createErrorNoticeMock = jest.fn();
+				const { dispatch } = require( '@wordpress/data' );
+				dispatch.mockImplementation( () => ( {
+					createSuccessNotice: jest.fn(),
+					createErrorNotice: createErrorNoticeMock,
+				} ) );
+			} );
+
+			it( 'surfaces error.message when present (typical WP_Error case)', async () => {
+				// WP_Error from `apiFetch` rejection carries a
+				// server-translated `message` field. The merchant
+				// sees the server's detail verbatim.
+				const error = Object.assign( new Error(), {
+					code: 'rest_invalid_param',
+					message: 'Invalid parameter: rate_limit_rpm.',
+					data: { status: 400 },
+				} );
+				apiFetch.mockRejectedValue( error );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Invalid parameter: rate_limit_rpm.'
+				);
+			} );
+
+			it( 'falls back to generic when error.message is empty string', async () => {
+				// Rare but possible: an exotic rejection shape with
+				// no message (e.g. a misbehaving `apiFetch` filter
+				// throwing a bare object). The empty-string guard
+				// catches this.
+				apiFetch.mockRejectedValue( { message: '' } );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Error saving settings.'
+				);
+			} );
+
+			it( 'falls back to generic when error has no message field', async () => {
+				// Some thrown values (raw strings, Response objects)
+				// have no `message` property at all. Optional-chain +
+				// type check handle this.
+				apiFetch.mockRejectedValue( { code: 'something_broke' } );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Error saving settings.'
+				);
+			} );
+
+			it( 'falls back to generic when error.message is non-string (defensive)', async () => {
+				// Defensive: a filter that mistakenly nests an object
+				// under `message` shouldn't render `[object Object]`
+				// in the merchant's notice.
+				apiFetch.mockRejectedValue( {
+					message: { nested: 'oops' },
+				} );
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Error saving settings.'
+				);
+			} );
+
+			it( 'surfaces native Error.message (network failure case)', async () => {
+				// `apiFetch` wraps a network failure in a TypeError
+				// with a meaningful message ("Failed to fetch") in
+				// most browsers. The merchant sees that directly.
+				apiFetch.mockRejectedValue(
+					new TypeError( 'Failed to fetch' )
+				);
+
+				const thunk = saveSettings();
+				await thunk( {
+					dispatch: mockDispatch,
+					select: mockSelect,
+				} );
+
+				expect( createErrorNoticeMock ).toHaveBeenCalledWith(
+					'Failed to fetch'
+				);
+			} );
+		} );
 	} );
 
 	describe( 'checkEndpoints', () => {
