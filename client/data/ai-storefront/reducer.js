@@ -2,6 +2,13 @@ import ACTION_TYPES from './action-types';
 
 const defaultState = {
 	settings: {},
+	// Last-known-saved snapshot of `settings`. Drives the dirty-aware
+	// Save button via the `isDirty` selector — empty until the initial
+	// SET_SETTINGS load resolves, and resynced after every successful
+	// save. Diverges from `settings` whenever the merchant edits a
+	// field; converges back when they save (or undo back to the
+	// saved values, since the comparison is value-based).
+	savedSettings: {},
 	isSaving: false,
 	savingError: null,
 	stats: null,
@@ -22,12 +29,25 @@ const defaultState = {
 const reducer = ( state = defaultState, action ) => {
 	switch ( action.type ) {
 		case ACTION_TYPES.SET_SETTINGS:
-			return { ...state, settings: action.data };
+			// SET_SETTINGS is the "draft equals saved" sync point.
+			// Fired by (a) the initial REST load on tab mount, and
+			// (b) the post-save refetch in `saveSettings()`. Both
+			// moments are when the server's view IS the merchant's
+			// committed state — write to both copies so the dirty
+			// selector reads as clean immediately afterward.
+			return {
+				...state,
+				settings: action.data,
+				savedSettings: action.data,
+			};
 
 		case ACTION_TYPES.SET_SETTINGS_VALUES:
 			return {
 				...state,
 				savingError: null,
+				// Only the draft updates here. `savedSettings` stays
+				// pinned to the last-known-saved snapshot, which is
+				// what the `isDirty` selector compares against.
 				settings: { ...state.settings, ...action.payload },
 			};
 

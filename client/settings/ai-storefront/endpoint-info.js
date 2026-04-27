@@ -308,7 +308,7 @@ const StatusBadge = ( { status } ) => {
 	);
 };
 
-const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
+const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	const endpoints = useSelect(
 		( select ) => select( STORE_NAME ).getEndpoints(),
 		[]
@@ -1099,12 +1099,12 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 				<Button
 					variant="primary"
 					isBusy={ isSaving }
-					disabled={ isSaving }
+					disabled={ isSaving || ! isDirty }
 					onClick={ onSave }
 				>
 					{ isSaving
 						? __( 'Saving…', 'woocommerce-ai-storefront' )
-						: __( 'Save Changes', 'woocommerce-ai-storefront' ) }
+						: __( 'Save changes', 'woocommerce-ai-storefront' ) }
 				</Button>
 			</div>
 		</div>

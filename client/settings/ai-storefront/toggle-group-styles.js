@@ -57,10 +57,23 @@ export function ToggleGroupStyles() {
 			   default is 12px horizontal which renders the selected
 			   pill cramped against the text edges. Bumped to 18px for
 			   visible breathing room — the white pill needs ~6px of
-			   "halo" on each side of the label to read as elevated. */
+			   "halo" on each side of the label to read as elevated.
+
+			   Min-width of 150px ensures the longest current labels
+			   ("Returns accepted" 16ch on Policies, "Selected
+			   products" 17ch on Product Visibility) fit on a single
+			   line. The WP default sizes each segment to ~1/N of the
+			   container, so when one label is meaningfully longer
+			   than its siblings it wraps inside a too-narrow segment.
+			   Pinning min-width to the worst-case content width is
+			   simpler than overriding the per-segment flex
+			   distribution. If a future tab adds an even longer
+			   label, bump this value rather than playing whack-a-mole
+			   with per-tab width overrides. */
 			.${ TOGGLE_GROUP_CLASSNAME } [role="radio"] {
 				padding-left: 18px !important;
 				padding-right: 18px !important;
+				min-width: 150px;
 			}
 			/* Track: recessed neutral surface so the pill reads as
 			   floating above it. Targets the wrapping element directly
