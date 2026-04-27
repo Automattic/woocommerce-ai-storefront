@@ -3478,51 +3478,114 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	// ------------------------------------------------------------------
 
 	/**
-	 * Resolve agent attribution data from the UCP-Agent header's profile URL.
+	 * Resolve agent attribution data from a UCP request, trying multiple
+	 * identification paths in priority order.
 	 *
-	 * Returns BOTH the canonical merchant-facing name AND the raw hostname,
-	 * because each lands in a different downstream sink:
+	 * Returns BOTH the canonical merchant-facing name AND a raw identifier
+	 * (hostname OR product token) because each lands in a different
+	 * downstream sink:
 	 *
 	 *   - `name` (canonical) → `utm_source` on the continue_url, captured
 	 *     by WooCommerce Order Attribution into
 	 *     `_wc_order_attribution_utm_source`, displayed as `Source: {name}`
 	 *     in the Origin column. Canonicalization at this layer (not at
 	 *     display time) keeps the WC-captured value clean and queryable
-	 *     for stats breakdowns. Unknown hostnames bucket to "Other AI"
+	 *     for stats breakdowns. Unknown identifiers bucket to "Other AI"
 	 *     (per `WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET`)
-	 *     rather than scattering one Origin row per novel hostname.
+	 *     rather than scattering one Origin row per novel identifier.
 	 *
 	 *   - `raw_host` (untransformed) → `ai_agent_host_raw` URL param on
 	 *     the continue_url, captured into
 	 *     `_wc_ai_storefront_agent_host_raw` order meta. Preserves the
-	 *     hostname so merchants can drill into an "Other AI" order and
-	 *     see who actually sent it; also feeds aggregate review for
-	 *     graduating frequent unknown hostnames into `KNOWN_AGENT_HOSTS`.
+	 *     raw identifier so merchants can drill into an "Other AI" order
+	 *     and see who actually sent it; also feeds aggregate review for
+	 *     graduating frequent unknowns into `KNOWN_AGENT_HOSTS` /
+	 *     `KNOWN_AGENT_PRODUCT_NAMES`.
 	 *
-	 * Falls back to the `ucp_unknown` sentinel for `name` and empty
-	 * string for `raw_host` when the header is missing/malformed.
+	 * Identification priority (first non-empty wins):
+	 *   1. `UCP-Agent: profile="https://example.com/..."` — the RFC 8941
+	 *      Dictionary structured form. Hostname lookup against
+	 *      `KNOWN_AGENT_HOSTS`. Most spec-aligned.
+	 *   2. `UCP-Agent: Product/Version` — the RFC 7231 §5.5.3 User-Agent
+	 *      style. Product-name lookup against `KNOWN_AGENT_PRODUCT_NAMES`.
+	 *      UCPPlayground (as of 0.4.0) sends this form; without this
+	 *      branch their orders attributed as `ucp_unknown` even though
+	 *      the agent self-identified.
+	 *   3. Request body `meta.source` — agreed-on convention some clients
+	 *      use to identify themselves at the body layer rather than the
+	 *      header layer. Treated as a product-name token for canonicalization
+	 *      (lowercased, looked up in `KNOWN_AGENT_PRODUCT_NAMES`).
+	 *      Last-resort fallback.
+	 *   4. Falls back to the `ucp_unknown` sentinel for `name` and empty
+	 *      `raw_host` when none of the above yields a value.
+	 *
+	 * The order matters: header signals are stronger than body signals
+	 * (a body field can be controlled by request payload tampering more
+	 * easily than a request header in some intermediary topologies, and
+	 * header semantics are explicitly part of the UCP spec while
+	 * `meta.source` is a community convention).
 	 *
 	 * @param WP_REST_Request $request The incoming UCP request.
 	 * @return array{name: string, raw_host: string}
 	 *
 	 * @see WC_AI_Storefront_UCP_Agent_Header::canonicalize_host() for
 	 *      the hostname → brand-name mapping rationale.
+	 * @see WC_AI_Storefront_UCP_Agent_Header::canonicalize_product() for
+	 *      the product-name → brand-name mapping rationale.
 	 */
 	private static function resolve_agent_host( WP_REST_Request $request ): array {
-		$header   = $request->get_header( 'ucp-agent' );
-		$raw_host = '';
+		$header     = $request->get_header( 'ucp-agent' );
+		$header_str = is_string( $header ) ? $header : '';
 
-		if ( is_string( $header ) && '' !== $header ) {
-			$raw_host = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header );
+		// Path 1: profile URL hostname.
+		$raw_host = '' !== $header_str
+			? WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header_str )
+			: '';
+		if ( '' !== $raw_host ) {
+			return [
+				'name'     => WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_host ),
+				'raw_host' => $raw_host,
+			];
 		}
 
-		$name = '' !== $raw_host
-			? WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_host )
-			: WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
+		// Path 2: Product/Version product-name token.
+		$product = '' !== $header_str
+			? WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( $header_str )
+			: '';
+		if ( '' !== $product ) {
+			return [
+				'name'     => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $product ),
+				'raw_host' => $product,
+			];
+		}
 
+		// Path 3: body `meta.source` field.
+		//
+		// `get_json_params()` returns the parsed JSON body for
+		// application/json requests; it returns `null` (which we
+		// coalesce to an empty array) for non-JSON requests or when
+		// the body wasn't parseable. We never throw for a missing
+		// body field — this is a fallback path; the calling endpoint
+		// validates required body fields separately.
+		$body = (array) ( $request->get_json_params() ?? [] );
+		$meta = isset( $body['meta'] ) && is_array( $body['meta'] )
+			? $body['meta']
+			: [];
+		$meta_source = isset( $meta['source'] ) && is_string( $meta['source'] )
+			? trim( $meta['source'] )
+			: '';
+		if ( '' !== $meta_source ) {
+			$normalized = strtolower( $meta_source );
+			return [
+				'name'     => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $normalized ),
+				'raw_host' => $meta_source,
+			];
+		}
+
+		// Path 4: nothing identified the agent.
 		return [
-			'name'     => $name,
-			'raw_host' => $raw_host,
+			'name'     => WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			'raw_host' => '',
 		];
 	}
 

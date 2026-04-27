@@ -372,6 +372,7 @@ class WC_AI_Storefront_Ucp {
 									: '/wp-json/wc/ucp/v1/extension/schema',
 								'config'  => [
 									'store_context' => $this->build_store_context(),
+									'agent_guide'   => $this->build_agent_guide(),
 								],
 							],
 						],
@@ -487,6 +488,54 @@ class WC_AI_Storefront_Ucp {
 	 *
 	 * @return array The store context block.
 	 */
+	/**
+	 * Build the operational `agent_guide` string for the manifest.
+	 *
+	 * Some UCP clients (notably UCPPlayground as of mid-2026) inject
+	 * the manifest's `agent_guide` field directly into the LLM's
+	 * system prompt at session start, bypassing llms.txt entirely.
+	 * This gives the agent immediate operational context — what
+	 * checkout posture the store enforces, which endpoints are
+	 * stateless, how to identify itself for attribution — without
+	 * needing a separate fetch.
+	 *
+	 * Why concise: every word here costs the consuming agent tokens
+	 * on every conversation that includes this manifest in context.
+	 * Cover only what the agent must know to behave correctly:
+	 *
+	 *   1. Checkout posture (`requires_escalation`) — the foundational
+	 *      "you cannot place orders directly here" signal that prevents
+	 *      destructive retries and incorrect API patterns.
+	 *   2. The `continue_url` flow — how the agent should hand the
+	 *      user off to merchant-side checkout.
+	 *   3. The stateless `/checkout-sessions/{id}` posture — prevents
+	 *      agents trained on REST-style "look up / modify / cancel"
+	 *      patterns from issuing GET/PUT/PATCH/DELETE requests we
+	 *      explicitly reject.
+	 *   4. Self-identification via `UCP-Agent` header — both formats
+	 *      we accept, so attribution converges on the agent's brand
+	 *      rather than bucketing as "Other AI".
+	 *
+	 * Defer comprehensive behavior docs to llms.txt and the canonical
+	 * UCP spec at ucp.dev. This field is operational guidance, not
+	 * documentation.
+	 *
+	 * Single translatable string rather than concatenated sentences
+	 * because translators must be able to restructure the text for
+	 * other languages (Romance languages may want clause reordering;
+	 * agglutinative languages may need different connective grammar).
+	 * Concatenating four `__()` calls would lock the English clause
+	 * order into all locales.
+	 *
+	 * @return string The agent guide string.
+	 */
+	private function build_agent_guide() {
+		return __(
+			'This store uses requires_escalation checkout: agents do not place orders directly. POST /checkout-sessions returns a continue_url with attribution UTMs already attached; redirect the user to that URL to complete the purchase on the merchant site. The /checkout-sessions/{id} URL is stateless — GET, PUT, PATCH, and DELETE all return HTTP 405 with code "unsupported_operation" because there is no persistent session to act on. Send your agent identity via the UCP-Agent header (profile URL form preferred, Product/Version form also accepted) so attribution canonicalizes to your brand rather than bucketing as "Other AI".',
+			'woocommerce-ai-storefront'
+		);
+	}
+
 	private function build_store_context() {
 		// `countries` is a PROPERTY on the WooCommerce singleton (an
 		// instance of WC_Countries), not a method — a `method_exists`
