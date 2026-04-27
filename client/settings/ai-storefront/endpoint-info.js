@@ -683,7 +683,27 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						>
 							{ __( 'Select all', 'woocommerce-ai-storefront' ) }
 						</Button>
-						{ ' | ' }
+						{ /*
+							Wrap the separator in a span so it's an
+							explicit flex item with controllable
+							spacing — a bare ` | ` text node sandwiched
+							between two flex Button children renders
+							with whitespace handling that depends on
+							the parent's flex behavior, and reads
+							inconsistently across browsers / zoom
+							levels. The span gives the divider its own
+							layout box.
+						*/ }
+						<span
+							style={ {
+								padding: '0 6px',
+								color: colors.textMuted,
+								fontSize: '12px',
+							} }
+							aria-hidden="true"
+						>
+							|
+						</span>
 						<Button
 							variant="link"
 							style={ {

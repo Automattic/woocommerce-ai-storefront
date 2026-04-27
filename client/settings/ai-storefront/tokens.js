@@ -51,13 +51,14 @@ export const colors = {
  *
  * The "eyebrow label" — uppercase tracked small caps used for table
  * column headers, StatCard labels, action-toolbar headings, inline
- * group titles, and status pre-titles — was previously inlined at five
- * different sites with three different letter-spacing values
- * (`0.4px`, `0.5px`, `0.8px`, `0.04em`). The visual intent at every
- * site is the same: WordPress's `.components-base-control__label`
- * small-caps tracked treatment. The tokenized value is `0.04em`,
- * which scales with the element's font-size — pixel values lock the
- * tracking and read inconsistently when font-size changes.
+ * group titles, and status pre-titles — was previously inlined at
+ * every such site with inconsistent letter-spacing values
+ * (`0.4px`, `0.5px`, `0.8px`, `0.04em` all in use). The visual
+ * intent at every site is the same: WordPress's
+ * `.components-base-control__label` small-caps tracked treatment.
+ * The tokenized value is `0.04em`, which scales with the element's
+ * font-size — pixel values lock the tracking and read inconsistently
+ * when font-size changes.
  *
  * Spread into a JSX `style={ ... }` prop:
  *   <span style={ { ...typography.eyebrowLabel, color: ... } }>

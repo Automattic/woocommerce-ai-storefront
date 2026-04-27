@@ -321,10 +321,11 @@ const ReturnRefundPolicySection = ( {
 								Field order: Policy page → Return fees →
 								Return window → Return methods. The two
 								Select dropdowns sit adjacent at the top
-								as a "what is your policy" pair (uniform
-								320px keeps the eye tracking down the
-								column). Return window is a numeric
-								detail that follows the policy choice;
+								as a "what is your policy" pair, sharing
+								the same 320px width so the eye tracks
+								down the column rather than zigzagging.
+								Return window is a numeric detail that
+								follows the policy choice (96px input);
 								Return methods is a multi-select that
 								closes the section.
 
@@ -463,42 +464,52 @@ const ReturnRefundPolicySection = ( {
 							</div>
 
 							{ /*
-								Return methods: BaseControl wrapper
-								gives this group the same uppercase
-								tracked label treatment as the three
-								form fields above (matching the
-								@wordpress/components default — 11px /
-								500 / uppercase). The previous custom
-								`<fieldset>/<legend>` rendered as
-								13px / 500 sentence-case, which read as
-								a different visual hierarchy level
-								mid-section.
+								Return methods: a CheckboxControl
+								*group* labeled with the same uppercase
+								tracked treatment as the three form
+								fields above. We use
+								`<BaseControl.VisualLabel>` rather than
+								the BaseControl `label` prop because:
 
-								`__nextHasNoMarginBottom` strips WP's
-								default bottom margin on each
-								CheckboxControl. Without a replacement
-								gap on the wrapper the three options
-								stack flush. Flex-column + 6px gap
-								restores breathing room.
+								- BaseControl's `label` prop renders a
+								  `<label htmlFor={id}>` which expects
+								  the `id` to belong to a single
+								  labelable form control (input,
+								  select, textarea). A `<div>` with
+								  `role="group"` is NOT labelable, so
+								  pointing `htmlFor` at it is invalid
+								  HTML.
+								- VisualLabel renders a plain `<span
+								  class="components-base-control__label">`
+								  with the same 11px / 500 / uppercase
+								  styling, AND accepts an explicit
+								  `id` we can target with the group
+								  div's `aria-labelledby` for screen-
+								  reader association.
 
-								Per-checkbox `<label>` elements provide
-								keyboard / screen-reader association
-								for each option, so omitting `htmlFor`
-								on BaseControl (no single input to
-								associate with) is acceptable here —
-								matches WordPress core's pattern for
-								CheckboxControl groups.
+								Per-checkbox `<label>` elements still
+								provide keyboard / screen-reader
+								association for each individual option;
+								`role="group"` + `aria-labelledby`
+								gives the cluster a single accessible
+								name ("Return methods") that wraps the
+								three options.
+
+								`__nextHasNoMarginBottom` on each
+								CheckboxControl strips WP's default
+								bottom margin. Without a replacement
+								gap the three options stack flush;
+								flex-column + 6px gap restores
+								breathing room.
 							*/ }
-							<BaseControl
-								__nextHasNoMarginBottom
-								id="wc-ai-storefront-return-methods"
-								label={ __(
-									'Return methods',
-									'woocommerce-ai-storefront'
-								) }
-							>
+							<BaseControl __nextHasNoMarginBottom>
+								<BaseControl.VisualLabel id="wc-ai-storefront-return-methods-label">
+									{ __(
+										'Return methods',
+										'woocommerce-ai-storefront'
+									) }
+								</BaseControl.VisualLabel>
 								<div
-									id="wc-ai-storefront-return-methods"
 									role="group"
 									aria-labelledby="wc-ai-storefront-return-methods-label"
 									style={ {

@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-27T18:42:33+00:00\n"
+"POT-Creation-Date: 2026-04-27T22:02:40+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -419,86 +419,86 @@ msgstr ""
 msgid "Select all"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:696
+#: client/settings/ai-storefront/endpoint-info.js:716
 msgid "Clear"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:717
+#: client/settings/ai-storefront/endpoint-info.js:737
 msgid "Live browsing"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:721
+#: client/settings/ai-storefront/endpoint-info.js:741
 msgid "User-initiated fetches during an active query. These agents see fresh inventory and route revenue — recommended on."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:728
+#: client/settings/ai-storefront/endpoint-info.js:748
 msgid "Training and Test Crawlers"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:732
+#: client/settings/ai-storefront/endpoint-info.js:752
 msgid "Non-revenue AI bots — training crawlers that feed model corpora (stale-snapshot risk: a crawl captured today may surface as an answer months later with wrong prices) and test crawlers (validation tools you run against your own store). Both default off; merchant discretion."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:831
+#: client/settings/ai-storefront/endpoint-info.js:851
 msgid "These rules are added to your robots.txt. Well-behaved AI crawlers respect robots.txt directives."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:861
+#: client/settings/ai-storefront/endpoint-info.js:881
 msgid "AI-referred orders appear in the Orders list under WooCommerce’s built-in Origin column as each agent’s brand name (e.g. \"Source: ChatGPT\", \"Source: Gemini\") rather than the technical crawler IDs shown above."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:897
+#: client/settings/ai-storefront/endpoint-info.js:917
 msgid "Other AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:910
+#: client/settings/ai-storefront/endpoint-info.js:930
 msgid "When off, only the AI brands above can use the UCP API. When on, agents whose brand isn’t in the list can use it too."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:916
+#: client/settings/ai-storefront/endpoint-info.js:936
 msgid "Allow agents not on the list"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:956
+#: client/settings/ai-storefront/endpoint-info.js:976
 msgid "Rate Limits"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:965
+#: client/settings/ai-storefront/endpoint-info.js:985
 msgid "Control how frequently AI agents can query your store. Higher limits allow faster product discovery but use more server resources."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:975
+#: client/settings/ai-storefront/endpoint-info.js:995
 msgid "Recommended — 25/min (works well for most stores)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:982
+#: client/settings/ai-storefront/endpoint-info.js:1002
 msgid "Conservative — 10/min (shared hosting or low-traffic stores)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:989
+#: client/settings/ai-storefront/endpoint-info.js:1009
 msgid "Generous — 100/min (high-traffic stores on dedicated hosting)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:996
+#: client/settings/ai-storefront/endpoint-info.js:1016
 msgid "Custom"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1028
+#: client/settings/ai-storefront/endpoint-info.js:1048
 msgid "Requests per minute"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1053
+#: client/settings/ai-storefront/endpoint-info.js:1073
 msgid "Limits are applied per AI crawler (identified by user-agent string). Your regular store traffic is not affected."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1094
-#: client/settings/ai-storefront/policies-tab.js:864
+#: client/settings/ai-storefront/endpoint-info.js:1114
+#: client/settings/ai-storefront/policies-tab.js:877
 #: client/settings/ai-storefront/product-selection.js:1916
 msgid "Saving…"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1095
-#: client/settings/ai-storefront/policies-tab.js:865
+#: client/settings/ai-storefront/endpoint-info.js:1115
+#: client/settings/ai-storefront/policies-tab.js:878
 #: client/settings/ai-storefront/product-selection.js:1917
 msgid "Save changes"
 msgstr ""
@@ -563,48 +563,48 @@ msgstr ""
 msgid "AI agents may downgrade your products in recommendations, or skip them entirely. Pick \"Returns accepted\" or \"No returns\" to publish a policy."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:362
-#: client/settings/ai-storefront/policies-tab.js:544
+#: client/settings/ai-storefront/policies-tab.js:363
+#: client/settings/ai-storefront/policies-tab.js:557
 msgid "Policy page (optional)"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:366
+#: client/settings/ai-storefront/policies-tab.js:367
 msgid "Link AI agents to a full-text policy page on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:394
+#: client/settings/ai-storefront/policies-tab.js:395
 msgid "Return fees"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:398
+#: client/settings/ai-storefront/policies-tab.js:399
 msgid "Applied as the default for all returns. You can override this per product on the Product edit screen."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:414
+#: client/settings/ai-storefront/policies-tab.js:415
 msgid "Return window (days)"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:418
+#: client/settings/ai-storefront/policies-tab.js:419
 msgid "Leave at 0 to publish \"Unspecified\" instead of a finite window."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:495
+#: client/settings/ai-storefront/policies-tab.js:509
 msgid "Return methods"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:548
+#: client/settings/ai-storefront/policies-tab.js:561
 msgid "Link AI agents to a \"no returns\" explainer on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:796
+#: client/settings/ai-storefront/policies-tab.js:809
 msgid "Policies exposed to AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:808
+#: client/settings/ai-storefront/policies-tab.js:821
 msgid "WooCommerce doesn't have a built-in setting for your return policy, but AI agents need it to confidently recommend your products. Set it once here."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:817
+#: client/settings/ai-storefront/policies-tab.js:830
 msgid "Could not load your pages. Page links won’t be available."
 msgstr ""
 
