@@ -549,50 +549,56 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_capture_lenient_gate_normalizes_url_shaped_utm_source(): void {
-		// Real-world variants Copilot flagged: `https://openai.com`,
-		// `openai.com/`, `openai.com:443`, trailing dot. All five
-		// forms below must collapse to the same `openai.com` lookup
-		// key and produce identical attribution. Without
-		// `normalize_host_string()`, the lenient gate silently
-		// missed any non-bare-host form.
-		$variants = [
-			'https://openai.com',
-			'https://openai.com/',
-			'https://openai.com/some/path',
-			'openai.com:443',
-			'openai.com.',
+	/**
+	 * Real-world utm_source variants Copilot flagged: `https://openai.com`,
+	 * `openai.com/`, `openai.com:443`, trailing dot, etc. All forms
+	 * must collapse to the same `openai.com` lookup key and produce
+	 * identical attribution. Without `normalize_host_string()` the
+	 * lenient gate silently missed any non-bare-host form.
+	 *
+	 * Each variant is its own test invocation via the data provider,
+	 * which gives a clean Brain Monkey + Mockery lifecycle per
+	 * iteration (PHPUnit's standard setUp/tearDown runs around each
+	 * invocation). An earlier revision used a foreach loop with
+	 * `\Mockery::close()` + `Monkey\setUp()` mid-test to reset
+	 * expectations — that worked but left Brain Monkey in a
+	 * half-torn-down shape that would silently leak into other tests
+	 * if a future iteration ever threw. The data provider is the
+	 * idiomatic fix.
+	 *
+	 * @dataProvider lenient_gate_url_shaped_variant_provider
+	 */
+	public function test_capture_lenient_gate_normalizes_url_shaped_utm_source(
+		string $utm_source
+	): void {
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', $utm_source );
+
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertEquals(
+			'ChatGPT',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY ),
+			"utm_source variant '{$utm_source}' should canonicalize to ChatGPT"
+		);
+		$this->assertEquals(
+			'openai.com',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY ),
+			"utm_source variant '{$utm_source}' should normalize to bare openai.com in host_raw"
+		);
+	}
+
+	public static function lenient_gate_url_shaped_variant_provider(): array {
+		return [
+			'https URL'                 => [ 'https://openai.com' ],
+			'https URL trailing slash'  => [ 'https://openai.com/' ],
+			'https URL with path'       => [ 'https://openai.com/some/path' ],
+			'host with port'            => [ 'openai.com:443' ],
+			'FQDN trailing dot'         => [ 'openai.com.' ],
 		];
-
-		foreach ( $variants as $utm_source ) {
-			$order = new WC_Order();
-			$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
-			$order->set_test_meta( '_wc_order_attribution_utm_source', $utm_source );
-
-			Functions\expect( 'do_action' )->once();
-
-			$this->attribution->capture_ai_attribution( $order );
-
-			$this->assertEquals(
-				'ChatGPT',
-				$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY ),
-				"utm_source variant '{$utm_source}' should canonicalize to ChatGPT"
-			);
-			$this->assertEquals(
-				'openai.com',
-				$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY ),
-				"utm_source variant '{$utm_source}' should normalize to bare openai.com in host_raw"
-			);
-
-			// Critical PHPUnit detail: `Functions\expect` accumulates
-			// expectations across each iteration of the loop. Mockery
-			// counts each invocation once, so without verifying-and-
-			// closing between iterations a multi-variant loop trips
-			// the once() count check on do_action. `verifyMockObjects`
-			// + a fresh setup keeps each iteration isolated.
-			\Mockery::close();
-			Monkey\setUp();
-		}
 	}
 
 	public function test_capture_strict_path_uses_url_param_for_host_raw(): void {

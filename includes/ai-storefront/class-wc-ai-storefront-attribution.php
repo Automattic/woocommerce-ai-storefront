@@ -342,11 +342,24 @@ class WC_AI_Storefront_Attribution {
 			);
 		}
 
+		// Resolve the host value actually stored in
+		// AGENT_HOST_RAW_META_KEY for this capture, regardless of which
+		// gate fired:
+		//   - Strict path: the `ai_agent_host_raw` URL param flows
+		//     through `$raw_host`.
+		//   - Lenient path: utm_source IS the host, normalized
+		//     upstream into `$normalized_host` (and the URL param is
+		//     usually absent on this path).
+		// Reading the meta directly keeps the log honest — the line
+		// reports the same value the order persists, even when the
+		// two source variables ($raw_host vs $normalized_host) point
+		// at different captured values for the same logical concept.
+		$logged_host = (string) $order->get_meta( self::AGENT_HOST_RAW_META_KEY );
 		WC_AI_Storefront_Logger::debug(
 			'attribution captured — agent=%s session=%s raw_host=%s',
 			'' !== $canonical_agent ? $canonical_agent : '(none)',
 			$session_id ? $session_id : '(none)',
-			$raw_host ? $raw_host : '(none)'
+			'' !== $logged_host ? $logged_host : '(none)'
 		);
 
 		/**
