@@ -1878,10 +1878,17 @@ const ProductSelection = ( { settings, onChange, onSave, isSaving } ) => {
 				(Settings → General, Writing, Reading, every WC
 				Settings tab) — one save at the bottom, not per-card.
 			*/ }
+			{ /*
+				`textAlign: 'end'` instead of `'right'` so the Save
+				button respects writing direction — the right edge in
+				LTR, the left edge in RTL (Arabic, Hebrew, Persian,
+				Urdu). Logical property; tracks `direction` automatically.
+				Same fix applied to Discovery and Policies footers.
+			*/ }
 			<div
 				style={ {
 					marginTop: '24px',
-					textAlign: 'right',
+					textAlign: 'end',
 				} }
 			>
 				<Button

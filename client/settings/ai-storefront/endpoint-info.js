@@ -1080,10 +1080,20 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 				WC Settings tab: one save, at the bottom, labeled
 				generically.
 			*/ }
+			{ /*
+				`textAlign: 'end'` instead of `'right'` so the Save
+				button sits on the visual end side under any writing
+				direction — the right edge in LTR, the left edge in
+				RTL (Arabic, Hebrew, Persian, Urdu). The CSS logical
+				property tracks `direction` automatically; the
+				physical-property form does not. Same fix applied to
+				the Product Visibility footer; Policies tab adopts
+				the same pattern when its right-aligned footer lands.
+			*/ }
 			<div
 				style={ {
 					marginTop: '24px',
-					textAlign: 'right',
+					textAlign: 'end',
 				} }
 			>
 				<Button
