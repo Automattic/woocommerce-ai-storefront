@@ -289,6 +289,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						// suspenders against a future regex
 						// relaxation that ever lets an empty string
 						// through.
+						// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
 						'validate_callback' => static function ( $value, $request = null, $param = null ) {
 							return is_string( $value ) && '' !== $value;
 						},
