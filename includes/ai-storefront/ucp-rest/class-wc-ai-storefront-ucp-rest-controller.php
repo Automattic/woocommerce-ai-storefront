@@ -247,20 +247,33 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 	/**
 	 * Permission callback for UCP commerce routes — gates by the
-	 * merchant's `allowed_crawlers` setting.
+	 * merchant's `allowed_crawlers` setting and the
+	 * `allow_unknown_ucp_agents` toggle.
 	 *
-	 * Three outcomes:
-	 *   - No UCP-Agent header → allow (pre-UCP traffic, anonymous
-	 *     manifest crawls; gating on header presence would close the
-	 *     spec).
-	 *   - Header present and resolves to a known brand canonical
-	 *     name → check `WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed()`
+	 * Four outcomes:
+	 *   - Syndication is paused → allow. Each route handler returns
+	 *     a UCP-shaped 503 envelope; gating with 403 here would give
+	 *     agents the wrong retry semantics.
+	 *   - No (or unparseable) UCP-Agent header → allow. Pre-UCP
+	 *     traffic and anonymous manifest crawls; gating on header
+	 *     presence would close the spec.
+	 *   - Header resolves to a KNOWN brand canonical name → delegate
+	 *     to `WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed()`
 	 *     against the merchant's saved `allowed_crawlers` list.
 	 *     Returns true when at least one of the brand's mapped
 	 *     crawler IDs is in the list; WP_Error 403 otherwise.
-	 *   - Header present but doesn't resolve to a known brand
-	 *     ("Other AI") → allow (open-spec design; the merchant
-	 *     can't enumerate every novel vendor in advance).
+	 *   - Header resolves to UNKNOWN host (canonicalizes to
+	 *     `OTHER_AI_BUCKET`) → check the new
+	 *     `allow_unknown_ucp_agents` setting. Default `'no'` returns
+	 *     `WP_Error 403` (`ucp_unknown_agent_blocked`); explicit
+	 *     `'yes'` allows. Pre-this-flag behavior was unconditional
+	 *     pass-through, which created an asymmetry where a merchant
+	 *     who explicitly disabled ChatGPT would 403 ChatGPT but
+	 *     `attacker.example` would still get full UCP access. The
+	 *     toggle exposes the trade-off: secure-by-default vs.
+	 *     open-spec admit-anyone-with-a-parseable-header. See the
+	 *     CHANGELOG entry for `allow_unknown_ucp_agents` for the
+	 *     full rationale.
 	 *
 	 * Returning `true` lets WP REST proceed to the route handler.
 	 * Returning `WP_Error` short-circuits with the configured status
@@ -298,8 +311,82 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		$canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $host );
+		$settings  = WC_AI_Storefront::get_settings();
+
+		// Unknown-agent gate. See the method docblock above for the
+		// full rationale (asymmetry, secure-by-default, open-spec
+		// trade-off). Setting key absent → behaves like explicit
+		// `'no'` (secure-by-default for upgraded stores that haven't
+		// seen the new toggle yet).
 		if ( WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET === $canonical ) {
-			return true;
+			$allow_unknown = isset( $settings['allow_unknown_ucp_agents'] )
+				&& 'yes' === $settings['allow_unknown_ucp_agents'];
+			if ( $allow_unknown ) {
+				return true;
+			}
+			WC_AI_Storefront_Logger::debug(
+				'UCP access denied — agent=%s host=%s route=%s',
+				$canonical,
+				$host,
+				$request->get_route()
+			);
+
+			/**
+			 * Fires when `check_agent_access()` denies a UCP REST
+			 * request, regardless of which gate triggered the deny.
+			 * Two reasons are emitted today:
+			 *
+			 *   - `unknown_agent` — the hostname isn't in
+			 *     `KNOWN_AGENT_HOSTS` and the merchant hasn't opted
+			 *     into `allow_unknown_ucp_agents`.
+			 *   - `brand_blocked` — the hostname IS in
+			 *     `KNOWN_AGENT_HOSTS` but every crawler ID mapped to
+			 *     that brand is missing from the merchant's
+			 *     `allowed_crawlers` list.
+			 *
+			 * Listeners should switch on `$reason` rather than infer
+			 * the cause from `$host`. Future denial paths will add
+			 * more reason tokens; treat unknown values as "denial,
+			 * cause unspecified" and surface accordingly.
+			 *
+			 * Decoupled from the `WC_AI_Storefront_Logger::debug()`
+			 * line above so security plugins (Wordfence, etc.) and
+			 * analytics pipelines can subscribe to denials regardless
+			 * of whether the merchant has the debug filter enabled.
+			 * The action fires AFTER the deny decision — listeners
+			 * can't veto the 403, only observe.
+			 *
+			 * @since 0.3.1
+			 * @param string          $host    Raw hostname extracted
+			 *                                 from the UCP-Agent
+			 *                                 profile URL.
+			 * @param string          $reason  Why the request was
+			 *                                 denied. Stable token
+			 *                                 from a small enumerated
+			 *                                 set; see method
+			 *                                 docblock for current
+			 *                                 values. Not for
+			 *                                 end-user display.
+			 * @param WP_REST_Request $request The denied request, for
+			 *                                 listeners that need
+			 *                                 route / headers.
+			 */
+			do_action(
+				'wc_ai_storefront_ucp_access_denied',
+				$host,
+				'unknown_agent',
+				$request
+			);
+
+			return new WP_Error(
+				'ucp_unknown_agent_blocked',
+				sprintf(
+					/* translators: 1: raw hostname from the UCP-Agent profile URL */
+					__( 'Access to this UCP endpoint is not enabled for unknown AI agents on this store. Host: %1$s', 'woocommerce-ai-storefront' ),
+					$host
+				),
+				[ 'status' => 403 ]
+			);
 		}
 
 		// Delegate to the shared `resolve_allowed_crawlers()` helper so
@@ -309,9 +396,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// surface and silently reverted to LIVE_BROWSING_AGENTS by
 		// another — see the helper's docblock for the
 		// missing-key vs explicit-empty vs corrupted-value contract.
-		$allowed_crawlers = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
-			WC_AI_Storefront::get_settings()
-		);
+		$allowed_crawlers = WC_AI_Storefront_Robots::resolve_allowed_crawlers( $settings );
 
 		if ( WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( $canonical, $allowed_crawlers ) ) {
 			return true;
@@ -321,6 +406,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'UCP access denied — agent=%s host=%s',
 			$canonical,
 			$host
+		);
+
+		/** This action is documented in the unknown-agent denial branch of `check_agent_access()` above. */
+		do_action(
+			'wc_ai_storefront_ucp_access_denied',
+			$host,
+			'brand_blocked',
+			$request
 		);
 
 		return new WP_Error(

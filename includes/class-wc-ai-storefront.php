@@ -428,13 +428,27 @@ class WC_AI_Storefront {
 		}
 
 		$defaults = [
-			'enabled'                => 'no',
-			'product_selection_mode' => 'all',
-			'selected_categories'    => [],
-			'selected_tags'          => [],
-			'selected_brands'        => [],
-			'selected_products'      => [],
-			'rate_limit_rpm'         => 25,
+			'enabled'                  => 'no',
+			'product_selection_mode'   => 'all',
+			'selected_categories'      => [],
+			'selected_tags'            => [],
+			'selected_brands'          => [],
+			'selected_products'        => [],
+			'rate_limit_rpm'           => 25,
+			// UCP REST gate for unknown AI agents (hostnames not in
+			// `KNOWN_AGENT_HOSTS`). Default `'no'` is secure-by-default
+			// for both new installs and upgrades — `wp_parse_args`
+			// merges this default into stored options on read, so
+			// existing stores get `'no'` without a migration step.
+			//
+			// Scope: this flag is UCP-REST-only. The merchant's
+			// `robots.txt` (`WC_AI_Storefront_Robots`) and the per-brand
+			// `allowed_crawlers` list are independent mechanisms; do
+			// NOT extend this flag to those surfaces — add siblings.
+			//
+			// See `WC_AI_Storefront_UCP_REST_Controller::check_agent_access()`
+			// for the gate's full rationale + trade-off.
+			'allow_unknown_ucp_agents' => 'no',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
 			// `unconfigured` mode emits NO policy block — until a
@@ -443,7 +457,7 @@ class WC_AI_Storefront {
 			// a structurally invalid claim. See
 			// `WC_AI_Storefront_JsonLd::build_return_policy_block()`
 			// for the per-mode emission logic.
-			'return_policy'          => [ 'mode' => 'unconfigured' ],
+			'return_policy'            => [ 'mode' => 'unconfigured' ],
 		];
 
 		$settings = get_option( self::SETTINGS_OPTION, [] );
@@ -517,18 +531,44 @@ class WC_AI_Storefront {
 		$current = self::get_settings();
 		$merged  = wp_parse_args( $settings, $current );
 
+		// Strict yes/no enum. Behavior depends on what the POST body
+		// contains AFTER the wp_parse_args merge above:
+		//
+		//   - Key omitted from the POST → `$merged[key]` carries the
+		//     existing stored value forward (or the get_settings()
+		//     default `'no'` if the key was never stored). Correct
+		//     behavior: omitting the field on a partial PATCH-style
+		//     update preserves the merchant's prior choice.
+		//   - Key present with `'yes'` or `'no'` → preserved verbatim.
+		//   - Key present with anything else (malformed string, bool,
+		//     int, explicit null) → falls back to `'no'`. Schema-level
+		//     enum should reject most of these at the REST layer
+		//     before they reach this sanitizer; this is the safety
+		//     net for direct option writes / future schema loosening.
+		//
+		// Coalesce ONCE into a local — the earlier shape
+		// (`in_array($merged[key] ?? 'no', ...) ? $merged[key] : 'no'`)
+		// had a hole: explicit `null` passed validation against the
+		// coalesced `'no'` but persisted the raw `null`. With
+		// `$allow_unknown` resolved up front, validation and storage
+		// see the same value.
+		$allow_unknown = $merged['allow_unknown_ucp_agents'] ?? 'no';
+		if ( ! in_array( $allow_unknown, [ 'yes', 'no' ], true ) ) {
+			$allow_unknown = 'no';
+		}
+
 		// Sanitize — only store known keys to keep the option clean.
 		$clean = [
-			'enabled'                => in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no',
-			'product_selection_mode' => in_array( $merged['product_selection_mode'], [ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ], true )
+			'enabled'                  => in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no',
+			'product_selection_mode'   => in_array( $merged['product_selection_mode'], [ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ], true )
 				? $merged['product_selection_mode']
 				: 'all',
-			'selected_categories'    => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
-			'selected_tags'          => array_map( 'absint', (array) ( $merged['selected_tags'] ?? [] ) ),
-			'selected_brands'        => array_map( 'absint', (array) ( $merged['selected_brands'] ?? [] ) ),
-			'selected_products'      => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
-			'rate_limit_rpm'         => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
-			'allowed_crawlers'       => WC_AI_Storefront_Robots::sanitize_allowed_crawlers(
+			'selected_categories'      => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
+			'selected_tags'            => array_map( 'absint', (array) ( $merged['selected_tags'] ?? [] ) ),
+			'selected_brands'          => array_map( 'absint', (array) ( $merged['selected_brands'] ?? [] ) ),
+			'selected_products'        => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
+			'rate_limit_rpm'           => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
+			'allowed_crawlers'         => WC_AI_Storefront_Robots::sanitize_allowed_crawlers(
 				// Fallback to live-browsing only (matching the
 				// fresh-install default from get_settings) if the
 				// caller invoked update_settings without specifying
@@ -540,9 +580,12 @@ class WC_AI_Storefront {
 				// explicitly unchecked.
 				$merged['allowed_crawlers'] ?? WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
 			),
-			'return_policy'          => self::sanitize_return_policy(
+			'return_policy'            => self::sanitize_return_policy(
 				$merged['return_policy'] ?? []
 			),
+			// See `$allow_unknown` resolution above the array literal
+			// for why we don't inline this with `??` + ternary.
+			'allow_unknown_ucp_agents' => $allow_unknown,
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.

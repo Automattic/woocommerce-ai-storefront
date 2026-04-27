@@ -140,21 +140,89 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Outcome 3: unknown brand → allow ("Other AI" pass-through)
+	// Outcome 3: unknown brand → secure-by-default block, opt-in to allow
 	// ------------------------------------------------------------------
 
-	public function test_unknown_host_passes_as_other_ai(): void {
+	public function test_unknown_host_blocked_by_default(): void {
 		// Hostname not in KNOWN_AGENT_HOSTS canonicalizes to
-		// "Other AI". The open-spec wedge: any agent with a parseable
-		// UCP-Agent header gets in unless we have an explicit
-		// configuration surface to block its brand.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		// "Other AI". Pre-this-flag behavior was unconditional
+		// pass-through; the production asymmetry that motivated the
+		// change is "merchant blocks ChatGPT but `attacker.example`
+		// still gets full UCP access." Default `'no'` honors the
+		// merchant's strict-allow-list intent. Setting key entirely
+		// absent (fresh install or upgraded store that hasn't seen
+		// the new UI yet) takes the same path — secure-by-default.
+		WC_AI_Storefront::$test_settings = [
+			'allowed_crawlers' => [],
+			// Setting key intentionally absent.
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'ucp_unknown_agent_blocked', $result->get_error_code() );
+		$data = $result->get_error_data();
+		$this->assertSame( 403, $data['status'] );
+	}
+
+	public function test_unknown_host_blocked_when_setting_explicit_no(): void {
+		// Same as the default-absent case, but with an explicit
+		// `'no'` value stored. Pinning both paths separately so a
+		// future bug that special-cases "key absent" doesn't silently
+		// skip the explicit-no enforcement (or vice versa).
+		WC_AI_Storefront::$test_settings = [
+			'allowed_crawlers'         => [],
+			'allow_unknown_ucp_agents' => 'no',
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+	}
+
+	public function test_unknown_host_allowed_when_setting_yes(): void {
+		// Merchant opted into the open-spec wedge: any agent with a
+		// parseable UCP-Agent header gets in regardless of brand
+		// recognition. This is the "research / dev / open ecosystem"
+		// posture — preserves pre-this-flag behavior for merchants
+		// who explicitly opt in.
+		WC_AI_Storefront::$test_settings = [
+			'allowed_crawlers'         => [],
+			'allow_unknown_ucp_agents' => 'yes',
+		];
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
 		);
 
 		$this->assertTrue( $result );
+	}
+
+	public function test_unknown_host_block_message_includes_raw_host(): void {
+		// Merchant-facing error context: the agent (or its log
+		// pipeline) needs to know WHICH host was blocked so they can
+		// either add it to the allow-list or report the unwanted
+		// traffic. The known-brand block carries the canonical name
+		// for the same reason; this is the parallel for the unknown
+		// path.
+		WC_AI_Storefront::$test_settings = [
+			'allow_unknown_ucp_agents' => 'no',
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertStringContainsString(
+			'novel-vendor.example',
+			$result->get_error_message(),
+			'Unknown-agent block message should name the raw host the merchant rejected.'
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -342,4 +410,110 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 			'Paused syndication must let the handler run so it can return the canonical 503 envelope, not a 403 from the gate.'
 		);
 	}
+
+	public function test_paused_syndication_short_circuits_to_allow_for_unknown_host_too(): void {
+		// Same precedence rule as the known-brand-blocked case above,
+		// but exercising the unknown-host code path. The OTHER_AI
+		// branch lives in a different `if` block; a future refactor
+		// that moved the syndication check or added an unknown-host
+		// fast-path BEFORE the syndication check would silently flip
+		// 503 to 403 for paused stores. Pin the precedence explicitly.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                  => 'no',  // syndication paused
+			'allow_unknown_ucp_agents' => 'no',  // and unknown blocked
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
+		);
+
+		$this->assertTrue(
+			$result,
+			'Paused syndication must beat the unknown-host gate too — agent should see 503, not 403.'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// Type-juggled stored values (defends against future loosening of
+	// the gate's strict `=== 'yes'` comparison).
+	// ------------------------------------------------------------------
+	//
+	// The `'yes' === $settings['allow_unknown_ucp_agents']` check
+	// correctly rejects everything that isn't the literal string
+	// `'yes'`. A future refactor that loosens to `==` (or a `! empty`
+	// reflex) would silently flip the gate open for legacy/corrupted
+	// stored values. These tests pin the strict-string-only contract
+	// so any regression fails CI.
+
+	/**
+	 * @dataProvider type_juggled_stored_value_provider
+	 */
+	public function test_unknown_host_blocked_for_type_juggled_stored_value( $stored_value ): void {
+		WC_AI_Storefront::$test_settings = [
+			'allow_unknown_ucp_agents' => $stored_value,
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
+		);
+
+		$this->assertInstanceOf(
+			WP_Error::class,
+			$result,
+			'Stored value other than literal string "yes" must be treated as deny.'
+		);
+	}
+
+	public static function type_juggled_stored_value_provider(): array {
+		return [
+			'boolean true'      => [ true ],
+			'integer 1'         => [ 1 ],
+			'string 1'          => [ '1' ],
+			'uppercase YES'     => [ 'YES' ],
+			'whitespace padded' => [ ' yes ' ],
+			'truthy string'     => [ 'true' ],
+			'array'             => [ [ 'yes' ] ],
+		];
+	}
+
+	// ------------------------------------------------------------------
+	// Settings defaults — the security guarantee for upgrades
+	// ------------------------------------------------------------------
+
+	public function test_get_settings_default_for_allow_unknown_ucp_agents_is_no(): void {
+		// The whole secure-by-default story for upgraded stores
+		// depends on `WC_AI_Storefront::get_settings()` returning
+		// `'no'` for stores that don't have the key in their stored
+		// option (every store before this PR shipped). If a future
+		// merge resolved a conflict by accidentally setting the
+		// default to `'yes'` (or removing the key entirely), every
+		// upgraded store would silently lose protection. Pin it.
+		WC_AI_Storefront::$test_settings = []; // fresh-install simulation
+
+		$settings = WC_AI_Storefront::get_settings();
+
+		$this->assertArrayHasKey( 'allow_unknown_ucp_agents', $settings );
+		$this->assertSame( 'no', $settings['allow_unknown_ucp_agents'] );
+	}
+
+	// ------------------------------------------------------------------
+	// REST schema enum enforcement — TODO: integration coverage
+	// ------------------------------------------------------------------
+	//
+	// `class-wc-ai-storefront-admin-controller.php` declares
+	// `enum: ['yes', 'no']` on the `allow_unknown_ucp_agents` REST
+	// arg. WP REST should 400 a malformed POST before our sanitizer
+	// runs — that's the documented contract the schema is there to
+	// enforce. We can't test that here without booting the WP REST
+	// stack (the unit-test harness short-circuits permission_callback
+	// + REST validation). The sanitizer's strict `in_array(..., true)`
+	// is the safety net for malformed input that bypasses the schema,
+	// and that path IS tested via the `type_juggled_stored_value_provider`
+	// data set above. If integration coverage is added later, exercise:
+	//
+	//   - POST `allow_unknown_ucp_agents=maybe`  → 400 from REST validator
+	//   - POST `allow_unknown_ucp_agents=true`   → 400 from REST validator
+	//   - POST `allow_unknown_ucp_agents=null`   → 400 from REST validator
+	//   - POST `allow_unknown_ucp_agents=yes`    → 200 + stored as 'yes'
+	//   - POST `allow_unknown_ucp_agents=no`     → 200 + stored as 'no'
 }

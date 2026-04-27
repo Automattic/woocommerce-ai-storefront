@@ -872,6 +872,76 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							'woocommerce-ai-storefront'
 						) }
 					</p>
+
+					{ /*
+						Unknown-agent toggle. Lives inside the same Card
+						as the per-brand crawler list because both
+						control the same gate at different granularities:
+						the list above is per-brand opt-in; this toggle
+						is the catch-all for hostnames the server-side
+						canonicalizer maps to `OTHER_AI_BUCKET`.
+
+						See `WC_AI_Storefront_UCP_REST_Controller::check_agent_access()`
+						for the gate's full rationale (the asymmetry,
+						the secure-by-default trade-off, the open-spec
+						alternative). Keeping the narrative there avoids
+						the four-copies drift surface that would
+						otherwise grow as this toggle accumulates
+						context over time.
+					*/ }
+					<div
+						style={ {
+							marginTop: '20px',
+							paddingTop: '16px',
+							borderTop: `1px solid ${ colors.borderSubtle }`,
+						} }
+					>
+						<div
+							style={ {
+								fontSize: '12px',
+								fontWeight: '600',
+								color: colors.textPrimary,
+								marginBottom: '2px',
+								textTransform: 'uppercase',
+								letterSpacing: '0.04em',
+							} }
+						>
+							{ __(
+								'Other AI agents',
+								'woocommerce-ai-storefront'
+							) }
+						</div>
+						<p
+							style={ {
+								color: colors.textMuted,
+								fontSize: '12px',
+								marginTop: 0,
+								marginBottom: '8px',
+							} }
+						>
+							{ __(
+								'When off, only the AI brands above can use the UCP API. When on, agents whose brand isn\u2019t in the list can use it too.',
+								'woocommerce-ai-storefront'
+							) }
+						</p>
+						<CheckboxControl
+							label={ __(
+								'Allow agents not on the list',
+								'woocommerce-ai-storefront'
+							) }
+							checked={
+								settings.allow_unknown_ucp_agents === 'yes'
+							}
+							onChange={ ( checked ) =>
+								onChange( {
+									allow_unknown_ucp_agents: checked
+										? 'yes'
+										: 'no',
+								} )
+							}
+							__nextHasNoMarginBottom
+						/>
+					</div>
 				</CardBody>
 			</Card>
 

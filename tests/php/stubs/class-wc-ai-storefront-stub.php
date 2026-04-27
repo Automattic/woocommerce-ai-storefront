@@ -29,12 +29,20 @@ class WC_AI_Storefront {
 	public static function get_settings(): array {
 		return array_merge(
 			[
-				'enabled'                => 'yes',
-				'product_selection_mode' => 'all',
-				'selected_categories'    => [],
-				'selected_products'      => [],
-				'rate_limit_rpm'         => 25,
-				'return_policy'          => [ 'mode' => 'unconfigured' ],
+				'enabled'                  => 'yes',
+				'product_selection_mode'   => 'all',
+				'selected_categories'      => [],
+				'selected_products'        => [],
+				'rate_limit_rpm'           => 25,
+				'return_policy'            => [ 'mode' => 'unconfigured' ],
+				// Mirror production default. The gate consumer only
+				// reads this with `isset() && 'yes' ===`, so a missing
+				// key behaves identically to `'no'` today — but the
+				// stub doc above (lines 8–12) explicitly warns about
+				// silent drift between the stub's defaults and the
+				// production defaults, and that's the failure mode
+				// every test in this codebase is trying to avoid.
+				'allow_unknown_ucp_agents' => 'no',
 			],
 			self::$test_settings
 		);
@@ -171,7 +179,20 @@ class WC_AI_Storefront {
 			true
 		) ? $merged['product_selection_mode'] : 'all';
 
-		$overrides = [ 'product_selection_mode' => $sanitized_mode ];
+		// Mirror production: strict yes/no enum, anything else falls
+		// back to `'no'`. Documented at
+		// `includes/class-wc-ai-storefront.php::update_settings()`.
+		// Coalesce ONCE into the local — see production for the
+		// explicit-null hole that made the inline shape unsafe.
+		$sanitized_unknown = $merged['allow_unknown_ucp_agents'] ?? 'no';
+		if ( ! in_array( $sanitized_unknown, [ 'yes', 'no' ], true ) ) {
+			$sanitized_unknown = 'no';
+		}
+
+		$overrides = [
+			'product_selection_mode'   => $sanitized_mode,
+			'allow_unknown_ucp_agents' => $sanitized_unknown,
+		];
 
 		// If a return_policy was passed in, route it through the
 		// production sanitizer so tests against the REST surface
