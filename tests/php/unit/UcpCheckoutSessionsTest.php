@@ -943,6 +943,73 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_meta_with_non_array_value_falls_back_to_sentinel(): void {
+		// Defensive guard: `meta` arrives as a string instead of an
+		// object. Without `is_array()` in resolve_agent_host(), PHP
+		// would either fatal on array access against a string or
+		// silently coerce — both bad. Pin the guard so a future
+		// refactor that simplifies to `$meta = $body['meta'] ?? [];`
+		// fails this test instead of fataling in production.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				'meta'       => 'ucp-playground', // String, not array.
+			]
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_meta_source_with_non_string_value_falls_back_to_sentinel(): void {
+		// Defensive guard: `meta.source` arrives as an integer or
+		// array instead of a string. Without `is_string()`, `trim()`
+		// would fatal on a non-scalar or coerce a number to its
+		// string representation (and "42" probably isn't an agent
+		// brand). Pin the guard.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				'meta'       => [ 'source' => 42 ], // Number, not string.
+			]
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_meta_source_whitespace_only_falls_back_to_sentinel(): void {
+		// Edge case: `meta.source` arrives as whitespace ("   ").
+		// `trim()` reduces it to empty string, and the empty-check
+		// path sends us to the FALLBACK_SOURCE sentinel — same as
+		// not setting the field at all. Pinning this so a refactor
+		// that drops `trim()` or changes the empty-check ordering
+		// doesn't silently start passing whitespace through to
+		// `canonicalize_product()` (which would then bucket it as
+		// "Other AI" instead of "ucp_unknown" — different cohort).
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				'meta'       => [ 'source' => "   \t\n  " ],
+			]
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['data']['continue_url']
+		);
+	}
+
 	public function test_malformed_ucp_agent_falls_back_to_sentinel_utm_source(): void {
 		// Header present but malformed (no profile= value). Treat as missing.
 		$this->seed_simple_product( 1 );

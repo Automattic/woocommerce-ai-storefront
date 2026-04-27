@@ -126,6 +126,25 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_does_not_match_field_name_substring_profile(): void {
+		// Regression guard: a header value like `notprofile="..."` or
+		// `myprofile="..."` must NOT match. Without the
+		// boundary-anchored regex (separator before `profile=`), an
+		// attacker or buggy intermediary could craft a field name
+		// ending in "profile" and have its quoted URL extracted as
+		// the agent hostname. RFC 8941 Dictionary fields are
+		// comma-separated, so we anchor `profile=` to the start of
+		// the header value or after a separator (`\s`, `,`, `;`).
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( 'notprofile="https://evil.example/agent.json"' )
+		);
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( 'myprofile="https://evil.example/agent.json"' )
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// FALLBACK_SOURCE constant exists and has expected value
 	// ------------------------------------------------------------------

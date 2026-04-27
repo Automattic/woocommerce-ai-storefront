@@ -488,10 +488,40 @@ class WC_AI_Storefront_Ucp {
 	 *
 	 * @return array The store context block.
 	 */
+	private function build_store_context() {
+		// `countries` is a PROPERTY on the WooCommerce singleton (an
+		// instance of WC_Countries), not a method — a `method_exists`
+		// check would always return false. Guard via `isset()` on the
+		// property to pick up the country when WC is fully loaded
+		// and fall through gracefully otherwise (tests, early boot,
+		// WC-deactivated state). Same pattern as build_seller() in
+		// the REST controller — kept in sync deliberately.
+		$country     = null;
+		$woocommerce = function_exists( 'WC' ) ? WC() : null;
+		if ( $woocommerce && isset( $woocommerce->countries ) && is_object( $woocommerce->countries ) ) {
+			$country = $woocommerce->countries->get_base_country();
+		}
+
+		// `get_locale()` returns ICU format (e.g. `en_US`). BCP 47
+		// uses hyphens. Swap the single underscore delimiter; if
+		// future WP releases add more (e.g. script subtags), the
+		// conversion still holds because BCP 47 also uses hyphens
+		// for those.
+		$locale = str_replace( '_', '-', get_locale() );
+
+		return [
+			'currency'           => get_woocommerce_currency(),
+			'locale'             => $locale,
+			'country'            => $country ? $country : null,
+			'prices_include_tax' => (bool) wc_prices_include_tax(),
+			'shipping_enabled'   => (bool) wc_shipping_enabled(),
+		];
+	}
+
 	/**
 	 * Build the operational `agent_guide` string for the manifest.
 	 *
-	 * Some UCP clients (notably UCPPlayground as of mid-2026) inject
+	 * Some UCP clients (e.g. UCPPlayground as of plugin 0.4.0) inject
 	 * the manifest's `agent_guide` field directly into the LLM's
 	 * system prompt at session start, bypassing llms.txt entirely.
 	 * This gives the agent immediate operational context — what
@@ -531,38 +561,9 @@ class WC_AI_Storefront_Ucp {
 	 */
 	private function build_agent_guide() {
 		return __(
+			/* translators: This string is injected verbatim into LLM system prompts via the UCP manifest. Translate the natural-language prose, but DO NOT translate the technical identifiers (`requires_escalation`, `continue_url`, `/checkout-sessions`, `unsupported_operation`, `UCP-Agent`, `Product/Version`, `Other AI`) or HTTP methods (GET, PUT, PATCH, DELETE) — agents must see these tokens exactly. */
 			'This store uses requires_escalation checkout: agents do not place orders directly. POST /checkout-sessions returns a continue_url with attribution UTMs already attached; redirect the user to that URL to complete the purchase on the merchant site. The /checkout-sessions/{id} URL is stateless — GET, PUT, PATCH, and DELETE all return HTTP 405 with code "unsupported_operation" because there is no persistent session to act on. Send your agent identity via the UCP-Agent header (profile URL form preferred, Product/Version form also accepted) so attribution canonicalizes to your brand rather than bucketing as "Other AI".',
 			'woocommerce-ai-storefront'
 		);
-	}
-
-	private function build_store_context() {
-		// `countries` is a PROPERTY on the WooCommerce singleton (an
-		// instance of WC_Countries), not a method — a `method_exists`
-		// check would always return false. Guard via `isset()` on the
-		// property to pick up the country when WC is fully loaded
-		// and fall through gracefully otherwise (tests, early boot,
-		// WC-deactivated state). Same pattern as build_seller() in
-		// the REST controller — kept in sync deliberately.
-		$country     = null;
-		$woocommerce = function_exists( 'WC' ) ? WC() : null;
-		if ( $woocommerce && isset( $woocommerce->countries ) && is_object( $woocommerce->countries ) ) {
-			$country = $woocommerce->countries->get_base_country();
-		}
-
-		// `get_locale()` returns ICU format (e.g. `en_US`). BCP 47
-		// uses hyphens. Swap the single underscore delimiter; if
-		// future WP releases add more (e.g. script subtags), the
-		// conversion still holds because BCP 47 also uses hyphens
-		// for those.
-		$locale = str_replace( '_', '-', get_locale() );
-
-		return [
-			'currency'           => get_woocommerce_currency(),
-			'locale'             => $locale,
-			'country'            => $country ? $country : null,
-			'prices_include_tax' => (bool) wc_prices_include_tax(),
-			'shipping_enabled'   => (bool) wc_shipping_enabled(),
-		];
 	}
 }

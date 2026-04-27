@@ -374,13 +374,49 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return true;
 		}
 
-		$host = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header );
-		if ( '' === $host ) {
+		// Try both UCP-Agent header formats: profile-URL (RFC 8941
+		// Dictionary) first, then Product/Version (RFC 7231 §5.5.3).
+		// The gate must understand both formats for the same reason
+		// `resolve_agent_host()` does — a merchant who set
+		// `allow_unknown_ucp_agents=no` (secure-by-default) or
+		// disabled a specific brand in `allowed_crawlers` expects
+		// those gates to fire regardless of which UCP-Agent format
+		// the incoming request uses. Pre-0.4.0 the gate only
+		// understood profile-URL form, so Product/Version-form
+		// requests bypassed it entirely and reached the handler — a
+		// blind spot that mirrored the original UCPPlayground
+		// attribution miss but on the security side. Body
+		// `meta.source` deliberately does NOT participate in the
+		// gate (it does in attribution): body fields are part of
+		// the request payload and don't carry the same trust model
+		// as request headers, so allowing a body field to satisfy
+		// the gate would be too permissive.
+		$raw_id    = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header );
+		$canonical = '' !== $raw_id
+			? WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_id )
+			: '';
+
+		if ( '' === $canonical ) {
+			$product = WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( $header );
+			if ( '' !== $product ) {
+				$raw_id    = $product;
+				$canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $product );
+			}
+		}
+
+		if ( '' === $canonical ) {
+			// Header was present but neither parser could extract an
+			// identity. Permissive fallback (current pre-0.4.0
+			// behavior for unparseable headers): allow through. The
+			// merchant's gate intent only applies to identifiable
+			// agents — truly malformed headers are noise and dropping
+			// them at the gate would risk false-positive blocks of
+			// edge-case but legitimate clients.
 			return true;
 		}
 
-		$canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $host );
-		$settings  = WC_AI_Storefront::get_settings();
+		$host     = $raw_id; // Backward-compat alias for downstream branches.
+		$settings = WC_AI_Storefront::get_settings();
 
 		// Unknown-agent gate. See the method docblock above for the
 		// full rationale (asymmetry, secure-by-default, open-spec
@@ -3511,19 +3547,24 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *      UCPPlayground (as of 0.4.0) sends this form; without this
 	 *      branch their orders attributed as `ucp_unknown` even though
 	 *      the agent self-identified.
-	 *   3. Request body `meta.source` — agreed-on convention some clients
-	 *      use to identify themselves at the body layer rather than the
-	 *      header layer. Treated as a product-name token for canonicalization
-	 *      (lowercased, looked up in `KNOWN_AGENT_PRODUCT_NAMES`).
-	 *      Last-resort fallback.
+	 *   3. Request body `meta.source` — some UCP clients
+	 *      (UCPPlayground today) place a self-identification string at
+	 *      this body field as a secondary identification path. The
+	 *      field is not currently formalized in the UCP spec we're
+	 *      tracking; we accept it as a last-resort fallback so we can
+	 *      recover attribution for clients that send it. Treated as a
+	 *      product-name token for canonicalization (lowercased, looked
+	 *      up in `KNOWN_AGENT_PRODUCT_NAMES`).
 	 *   4. Falls back to the `ucp_unknown` sentinel for `name` and empty
 	 *      `raw_host` when none of the above yields a value.
 	 *
-	 * The order matters: header signals are stronger than body signals
-	 * (a body field can be controlled by request payload tampering more
-	 * easily than a request header in some intermediary topologies, and
-	 * header semantics are explicitly part of the UCP spec while
-	 * `meta.source` is a community convention).
+	 * The order matters: the UCP spec defines self-identification at
+	 * the header layer, so a header signal carries the authoritative
+	 * intent. `meta.source` is a body-field path we honor for
+	 * recovery, not a peer of the header signal. Body fields also
+	 * deliberately do NOT participate in `check_agent_access()`'s
+	 * security gate — only header signals do. See `check_agent_access()`
+	 * for the rationale.
 	 *
 	 * @param WP_REST_Request $request The incoming UCP request.
 	 * @return array{name: string, raw_host: string}
@@ -3567,8 +3608,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// the body wasn't parseable. We never throw for a missing
 		// body field — this is a fallback path; the calling endpoint
 		// validates required body fields separately.
-		$body = (array) ( $request->get_json_params() ?? [] );
-		$meta = isset( $body['meta'] ) && is_array( $body['meta'] )
+		$body        = (array) ( $request->get_json_params() ?? [] );
+		$meta        = isset( $body['meta'] ) && is_array( $body['meta'] )
 			? $body['meta']
 			: [];
 		$meta_source = isset( $meta['source'] ) && is_string( $meta['source'] )
