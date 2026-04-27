@@ -428,13 +428,27 @@ class WC_AI_Storefront {
 		}
 
 		$defaults = [
-			'enabled'                => 'no',
-			'product_selection_mode' => 'all',
-			'selected_categories'    => [],
-			'selected_tags'          => [],
-			'selected_brands'        => [],
-			'selected_products'      => [],
-			'rate_limit_rpm'         => 25,
+			'enabled'                  => 'no',
+			'product_selection_mode'   => 'all',
+			'selected_categories'      => [],
+			'selected_tags'            => [],
+			'selected_brands'          => [],
+			'selected_products'        => [],
+			'rate_limit_rpm'           => 25,
+			// UCP REST gate for agents whose `UCP-Agent` profile
+			// hostname isn't in `KNOWN_AGENT_HOSTS` (i.e. canonicalize
+			// to `OTHER_AI_BUCKET`). Default `'no'` for both new
+			// installs AND upgrades — secure-by-default. Pre-this-flag
+			// behavior was unconditional pass-through, which created
+			// the asymmetry where a merchant who explicitly disabled
+			// ChatGPT would block ChatGPT but `attacker.example`
+			// (an arbitrary unknown host with a parseable UCP-Agent
+			// header) would still get full UCP access. Merchants who
+			// want the open-spec wedge — any agent with a parseable
+			// UCP-Agent header gets in regardless of brand recognition
+			// — can flip this to `'yes'`. See `check_agent_access()`
+			// for the gate logic.
+			'allow_unknown_ucp_agents' => 'no',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
 			// `unconfigured` mode emits NO policy block — until a
@@ -443,7 +457,7 @@ class WC_AI_Storefront {
 			// a structurally invalid claim. See
 			// `WC_AI_Storefront_JsonLd::build_return_policy_block()`
 			// for the per-mode emission logic.
-			'return_policy'          => [ 'mode' => 'unconfigured' ],
+			'return_policy'            => [ 'mode' => 'unconfigured' ],
 		];
 
 		$settings = get_option( self::SETTINGS_OPTION, [] );
@@ -543,6 +557,13 @@ class WC_AI_Storefront {
 			'return_policy'          => self::sanitize_return_policy(
 				$merged['return_policy'] ?? []
 			),
+			// Strict yes/no enum: anything else falls back to 'no',
+			// matching the get_settings() default. A merchant POSTing
+			// a malformed value (or no value at all) gets the
+			// secure-by-default behavior automatically.
+			'allow_unknown_ucp_agents' => in_array( $merged['allow_unknown_ucp_agents'] ?? 'no', [ 'yes', 'no' ], true )
+				? $merged['allow_unknown_ucp_agents']
+				: 'no',
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.

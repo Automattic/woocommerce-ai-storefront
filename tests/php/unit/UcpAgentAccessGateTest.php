@@ -140,21 +140,89 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Outcome 3: unknown brand → allow ("Other AI" pass-through)
+	// Outcome 3: unknown brand → secure-by-default block, opt-in to allow
 	// ------------------------------------------------------------------
 
-	public function test_unknown_host_passes_as_other_ai(): void {
+	public function test_unknown_host_blocked_by_default(): void {
 		// Hostname not in KNOWN_AGENT_HOSTS canonicalizes to
-		// "Other AI". The open-spec wedge: any agent with a parseable
-		// UCP-Agent header gets in unless we have an explicit
-		// configuration surface to block its brand.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		// "Other AI". Pre-this-flag behavior was unconditional
+		// pass-through; the production asymmetry that motivated the
+		// change is "merchant blocks ChatGPT but `attacker.example`
+		// still gets full UCP access." Default `'no'` honors the
+		// merchant's strict-allow-list intent. Setting key entirely
+		// absent (fresh install or upgraded store that hasn't seen
+		// the new UI yet) takes the same path — secure-by-default.
+		WC_AI_Storefront::$test_settings = [
+			'allowed_crawlers' => [],
+			// Setting key intentionally absent.
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'ucp_unknown_agent_blocked', $result->get_error_code() );
+		$data = $result->get_error_data();
+		$this->assertSame( 403, $data['status'] );
+	}
+
+	public function test_unknown_host_blocked_when_setting_explicit_no(): void {
+		// Same as the default-absent case, but with an explicit
+		// `'no'` value stored. Pinning both paths separately so a
+		// future bug that special-cases "key absent" doesn't silently
+		// skip the explicit-no enforcement (or vice versa).
+		WC_AI_Storefront::$test_settings = [
+			'allowed_crawlers'         => [],
+			'allow_unknown_ucp_agents' => 'no',
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+	}
+
+	public function test_unknown_host_allowed_when_setting_yes(): void {
+		// Merchant opted into the open-spec wedge: any agent with a
+		// parseable UCP-Agent header gets in regardless of brand
+		// recognition. This is the "research / dev / open ecosystem"
+		// posture — preserves pre-this-flag behavior for merchants
+		// who explicitly opt in.
+		WC_AI_Storefront::$test_settings = [
+			'allowed_crawlers'         => [],
+			'allow_unknown_ucp_agents' => 'yes',
+		];
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
 		);
 
 		$this->assertTrue( $result );
+	}
+
+	public function test_unknown_host_block_message_includes_raw_host(): void {
+		// Merchant-facing error context: the agent (or its log
+		// pipeline) needs to know WHICH host was blocked so they can
+		// either add it to the allow-list or report the unwanted
+		// traffic. The known-brand block carries the canonical name
+		// for the same reason; this is the parallel for the unknown
+		// path.
+		WC_AI_Storefront::$test_settings = [
+			'allow_unknown_ucp_agents' => 'no',
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertStringContainsString(
+			'novel-vendor.example',
+			$result->get_error_message(),
+			'Unknown-agent block message should name the raw host the merchant rejected.'
+		);
 	}
 
 	// ------------------------------------------------------------------

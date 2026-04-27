@@ -76,6 +76,15 @@ class WC_AI_Storefront_Admin_Controller {
 							'type'  => 'array',
 							'items' => [ 'type' => 'string' ],
 						],
+						// UCP REST gate for unknown-host AI agents.
+						// Strict enum here so REST 400s on a malformed
+						// value before the sanitizer runs — there's
+						// only two valid states for a yes/no toggle and
+						// no normalization to do.
+						'allow_unknown_ucp_agents' => [
+							'type' => 'string',
+							'enum' => [ 'yes', 'no' ],
+						],
 						// Return policy schema is intentionally type-only:
 						// no `enum`, no `minimum/maximum`. The canonical
 						// validation/normalization rules live in

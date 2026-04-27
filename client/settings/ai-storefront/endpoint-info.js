@@ -872,6 +872,87 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 							'woocommerce-ai-storefront'
 						) }
 					</p>
+
+					{ /*
+						Unknown-agent toggle. Lives inside the same Card
+						as the per-brand crawler list because both
+						control the same gate ("which AI agents can
+						talk to my store") at different granularities:
+						the list above is per-brand opt-in; this toggle
+						is the catch-all for agents whose hostname
+						isn't in our recognized brand list (the
+						`OTHER_AI_BUCKET` canonical value, server-side).
+
+						Default `'no'` for both new installs and
+						upgrades. Pre-this-flag behavior was
+						unconditional pass-through, which created an
+						asymmetry where a merchant who explicitly
+						disabled ChatGPT would block ChatGPT but
+						`attacker.example` (an unknown host with a
+						parseable UCP-Agent header) would still get
+						full UCP access. The toggle exposes the
+						trade-off explicitly: secure-by-default vs.
+						open-spec admit-anyone-with-a-parseable-header.
+
+						See `WC_AI_Storefront_UCP_REST_Controller::check_agent_access()`
+						for the corresponding gate logic, and
+						`WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET`
+						for the canonical sentinel that triggers this
+						code path.
+					*/ }
+					<div
+						style={ {
+							marginTop: '20px',
+							paddingTop: '16px',
+							borderTop: `1px solid ${ colors.borderSubtle }`,
+						} }
+					>
+						<div
+							style={ {
+								fontSize: '12px',
+								fontWeight: '600',
+								color: colors.textPrimary,
+								marginBottom: '2px',
+								textTransform: 'uppercase',
+								letterSpacing: '0.04em',
+							} }
+						>
+							{ __(
+								'Other AI agents',
+								'woocommerce-ai-storefront'
+							) }
+						</div>
+						<p
+							style={ {
+								color: colors.textMuted,
+								fontSize: '12px',
+								marginTop: 0,
+								marginBottom: '8px',
+							} }
+						>
+							{ __(
+								'When off, only the AI brands above can use the UCP API. When on, agents whose brand isn\u2019t in the list can use it too.',
+								'woocommerce-ai-storefront'
+							) }
+						</p>
+						<CheckboxControl
+							label={ __(
+								'Allow agents not on the list',
+								'woocommerce-ai-storefront'
+							) }
+							checked={
+								settings.allow_unknown_ucp_agents === 'yes'
+							}
+							onChange={ ( checked ) =>
+								onChange( {
+									allow_unknown_ucp_agents: checked
+										? 'yes'
+										: 'no',
+								} )
+							}
+							__nextHasNoMarginBottom
+						/>
+					</div>
 				</CardBody>
 			</Card>
 

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixes
+- **Unknown AI agents bypassed the merchant's allow-list at the UCP REST endpoint.** Pre-fix the gate had an asymmetry: a merchant who explicitly disabled ChatGPT in the AI Crawlers list would block ChatGPT, but `attacker.example` (or any arbitrary host with a parseable UCP-Agent header) would still get full UCP access — the unknown-host path was an unconditional pass-through. Known-and-disabled brands ended up MORE restricted than completely-unknown ones; that's a backdoor, not a wedge. New `allow_unknown_ucp_agents` setting (string `'yes'`/`'no'`, default `'no'` for both new installs and upgrades) gives the merchant explicit control over the catch-all bucket. Default `'no'` blocks any UCP request whose host canonicalizes to `OTHER_AI_BUCKET` with a `WP_Error` 403; `'yes'` restores the open-spec wedge for merchants who want to admit any agent with a parseable UCP-Agent header. Discovery tab gains an "Other AI agents" toggle row inside the AI Crawlers card explaining the trade-off. The strict known-brand allow-list logic (PR #98) is unchanged.
+
+### Tests
+- 4 new tests in `UcpAgentAccessGateTest`: unknown host blocked when setting key absent (fresh install / upgrade default), unknown host blocked when setting explicit `'no'` (pinning both paths separately so a future "key absent" special-case can't drift apart from explicit-no), unknown host allowed when setting `'yes'` (open-spec opt-in), block message includes the raw host for actionable error context.
+
 ---
 
 ## [0.3.1] – 2026-04-26

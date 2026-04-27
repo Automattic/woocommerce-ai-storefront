@@ -298,8 +298,38 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		$canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $host );
+		$settings  = WC_AI_Storefront::get_settings();
+
+		// Unknown-agent gate. Hostnames not in `KNOWN_AGENT_HOSTS`
+		// canonicalize to `OTHER_AI_BUCKET` ("Other AI"). Pre-fix
+		// behavior was unconditional pass-through, which created an
+		// asymmetry: a merchant who turned off ChatGPT would block
+		// ChatGPT but `attacker.example` (an arbitrary unknown host
+		// sending a UCP-Agent header) would still get full UCP access.
+		// The new `allow_unknown_ucp_agents` setting gives the merchant
+		// explicit control over the catch-all bucket. Default `'no'`
+		// for both new installs and upgrades — secure-by-default.
+		// Merchants can flip on if they want the open-spec wedge:
+		// any agent with a parseable UCP-Agent header gets in.
 		if ( WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET === $canonical ) {
-			return true;
+			$allow_unknown = isset( $settings['allow_unknown_ucp_agents'] )
+				&& 'yes' === $settings['allow_unknown_ucp_agents'];
+			if ( $allow_unknown ) {
+				return true;
+			}
+			WC_AI_Storefront_Logger::debug(
+				'UCP access denied — unknown agent (canonical=Other AI) host=%s',
+				$host
+			);
+			return new WP_Error(
+				'ucp_unknown_agent_blocked',
+				sprintf(
+					/* translators: 1: raw hostname from the UCP-Agent profile URL */
+					__( 'Access to this UCP endpoint is not enabled for unknown AI agents on this store. Host: %1$s', 'woocommerce-ai-storefront' ),
+					$host
+				),
+				[ 'status' => 403 ]
+			);
 		}
 
 		// Delegate to the shared `resolve_allowed_crawlers()` helper so
@@ -309,9 +339,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// surface and silently reverted to LIVE_BROWSING_AGENTS by
 		// another — see the helper's docblock for the
 		// missing-key vs explicit-empty vs corrupted-value contract.
-		$allowed_crawlers = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
-			WC_AI_Storefront::get_settings()
-		);
+		$allowed_crawlers = WC_AI_Storefront_Robots::resolve_allowed_crawlers( $settings );
 
 		if ( WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( $canonical, $allowed_crawlers ) ) {
 			return true;
