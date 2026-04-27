@@ -810,9 +810,15 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 					marginTop: '24px',
 					// `'end'` (logical) instead of `'right'` (physical)
 					// so the Save button respects writing direction —
-					// right edge in LTR, left edge in RTL. Matches the
-					// fix landing concurrently for the Discovery and
-					// Product Visibility footers (PR #103).
+					// right edge in LTR, left edge in RTL (Arabic,
+					// Hebrew, Persian, Urdu). The Discovery and Product
+					// Visibility footers carry the same value via PR
+					// #103. Note the cross-PR coordination: until both
+					// land, this tab is RTL-correct while the others
+					// temporarily aren't. Reviewers seeing the Discovery
+					// or Product Visibility footers still on `'right'`
+					// in this PR's diff base are seeing the pre-#103
+					// state — that's expected, not a regression.
 					textAlign: 'end',
 				} }
 			>
