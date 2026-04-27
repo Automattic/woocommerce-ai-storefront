@@ -36,24 +36,37 @@ cd "${REPO_ROOT}"
 
 # `i18n make-pot` walks the source tree and extracts every translatable
 # string (calls to __(), _e(), _n(), etc.) into a Gettext template.
+#
+# IMPORTANT: these flags must stay byte-identical with the
+# `wp i18n make-pot` invocation in `.github/workflows/ci.yml`'s
+# "i18n (.pot freshness)" job. CI regenerates the .pot with its own
+# args and diffs against the committed file; if the local script
+# uses different args (e.g. a different `--headers` value or a
+# different `--exclude` set), the local-regenerated file looks
+# fresh locally but fails CI freshness check.
+#
 # Options:
-#   --slug                  — used for the "Project-Id-Version" header
-#   --domain                — matches the plugin's Text Domain header
-#   --exclude               — skip dev/vendor/build artifacts
-#   --file-comment          — prepended to the .pot file as a header
-#   --skip-audit            — suppress warnings about string reuse /
-#                             unnecessary escapes; we can run with
-#                             audit on periodically, but it's noisy
-#                             in routine regenerations.
+#   --domain                — matches the plugin's Text Domain header.
+#   --exclude               — skip build artifacts + vendor + tests.
+#                             CI excludes 4 dirs; mirrored exactly here.
+#   --headers               — overrides wp-cli's directory-derived
+#                             `Report-Msgid-Bugs-To` URL with the
+#                             canonical wordpress.org URL so the file
+#                             is byte-stable regardless of which
+#                             directory name a contributor checks the
+#                             repo into.
+#   --skip-plugins          — don't bootstrap WP plugins during scan.
+#   --skip-themes           — don't bootstrap WP themes during scan.
+#
 # `build/` is excluded (the minified bundle contains the same strings
 # as `client/` source, and scanning both produces duplicates).
 # `client/` IS scanned — that's where the admin UI's translatable
 # strings live (`__(...)`, `sprintf(__(...))`, etc.).
 php "${WP_CLI}" i18n make-pot . languages/woocommerce-ai-storefront.pot \
-	--slug=woocommerce-ai-storefront \
 	--domain=woocommerce-ai-storefront \
-	--exclude=build,tests,vendor,node_modules,.claude,.tools,.github,release-staging \
-	--skip-audit
+	--exclude=build,node_modules,vendor,tests \
+	--headers='{"Report-Msgid-Bugs-To":"https://wordpress.org/support/plugin/woocommerce-ai-storefront"}' \
+	--skip-plugins --skip-themes
 
 echo ""
 echo "✓ Wrote languages/woocommerce-ai-storefront.pot"

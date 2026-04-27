@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from '@wordpress/element';
 import {
+	BaseControl,
 	Button,
 	Card,
 	CardBody,
@@ -316,10 +317,41 @@ const ReturnRefundPolicySection = ( {
 
 					{ policy.mode === POLICY_MODES.RETURNS_ACCEPTED && (
 						<>
+							{ /*
+								Field order: Policy page → Return fees →
+								Return window → Return methods. The two
+								Select dropdowns sit adjacent at the top
+								as a "what is your policy" pair, sharing
+								the same 320px width so the eye tracks
+								down the column rather than zigzagging.
+								Return window is a numeric detail that
+								follows the policy choice (96px input);
+								Return methods is a multi-select that
+								closes the section.
+
+								Width rule:
+								- Select dropdowns: 320px. Comfortably
+								  fits the longest fee label
+								  ("Customer pays return fees", 24
+								  chars) and matches the WordPress core
+								  settings-field rhythm. 480px (the
+								  prior value) was wider than any
+								  option content needed.
+								- Number input: 96px on the input
+								  itself; the BaseControl wrapper spans
+								  the panel so its uppercase tracked
+								  label "RETURN WINDOW (DAYS)" and
+								  helper text don't truncate or wrap
+								  to 4 narrow lines under a 120px
+								  field. NumberControl's built-in
+								  label/help props are deliberately
+								  unused here — they would inherit the
+								  96px input width.
+							*/ }
 							<div
 								style={ {
 									marginBottom: '16px',
-									maxWidth: '480px',
+									maxWidth: '320px',
 								} }
 							>
 								{ pagesLoading ? (
@@ -351,76 +383,10 @@ const ReturnRefundPolicySection = ( {
 								) }
 							</div>
 
-							{ /*
-								Width: 120px. Bounded numeric (0–365)
-								renders within ~3 digit slots — a
-								wider field would lie about how much
-								input is expected and create a ragged
-								right edge against the 480px dropdowns
-								above and below. Designer-validated
-								"field width = expected content
-								magnitude" pattern; matches the
-								WooCommerce convention for short
-								numeric inputs.
-							*/ }
 							<div
 								style={ {
 									marginBottom: '16px',
-									maxWidth: '120px',
-								} }
-							>
-								<NumberControl
-									__next40pxDefaultSize
-									label={ __(
-										'Return window (days)',
-										'woocommerce-ai-storefront'
-									) }
-									help={ __(
-										'Leave at 0 to publish "Unspecified" instead of a finite window.',
-										'woocommerce-ai-storefront'
-									) }
-									min={ 0 }
-									max={ 365 }
-									value={ policy.days }
-									onChange={ ( val ) => {
-										// Clamp to [0, 365] explicitly. The
-										// `min`/`max` props on NumberControl
-										// are advisory in browsers — users
-										// can still type values outside the
-										// range, and `parseInt(val, 10) || 0`
-										// preserves negatives (e.g. `-5` is
-										// truthy). Clamp here so the UI
-										// state, preview, and save payload
-										// all agree on a valid value.
-										const parsed = parseInt( val, 10 );
-										const normalized = Number.isNaN(
-											parsed
-										)
-											? 0
-											: Math.min(
-													365,
-													Math.max( 0, parsed )
-											  );
-										handleField( 'days', normalized );
-									} }
-								/>
-							</div>
-
-							{ /*
-								Width: 480px to match the Policy page
-								dropdown above. The two SelectControls
-								form a vertical "policy attributes"
-								column — uniform width keeps the eye
-								tracking down the column rather than
-								zigzagging between widths. NumberControl
-								between them deliberately diverges
-								(120px) because numeric magnitude is a
-								different signal than dropdown choice.
-							*/ }
-							<div
-								style={ {
-									marginBottom: '16px',
-									maxWidth: '480px',
+									maxWidth: '320px',
 								} }
 							>
 								<SelectControl
@@ -428,6 +394,10 @@ const ReturnRefundPolicySection = ( {
 									__next40pxDefaultSize
 									label={ __(
 										'Return fees',
+										'woocommerce-ai-storefront'
+									) }
+									help={ __(
+										'Applied as the default for all returns. You can override this per product on the Product edit screen.',
 										'woocommerce-ai-storefront'
 									) }
 									value={ policy.fees }
@@ -438,37 +408,110 @@ const ReturnRefundPolicySection = ( {
 								/>
 							</div>
 
-							<fieldset
-								style={ {
-									border: 'none',
-									padding: 0,
-									margin: 0,
-								} }
-							>
-								<legend
-									style={ {
-										fontSize: '13px',
-										fontWeight: 500,
-										color: colors.textPrimary,
-										marginBottom: '8px',
-									} }
+							<div style={ { marginBottom: '16px' } }>
+								<BaseControl
+									__nextHasNoMarginBottom
+									id="wc-ai-storefront-return-window"
+									label={ __(
+										'Return window (days)',
+										'woocommerce-ai-storefront'
+									) }
+									help={ __(
+										'Leave at 0 to publish "Unspecified" instead of a finite window.',
+										'woocommerce-ai-storefront'
+									) }
 								>
+									<div style={ { maxWidth: '96px' } }>
+										<NumberControl
+											__next40pxDefaultSize
+											id="wc-ai-storefront-return-window"
+											min={ 0 }
+											max={ 365 }
+											value={ policy.days }
+											onChange={ ( val ) => {
+												// Clamp to [0, 365] explicitly. The
+												// `min`/`max` props on NumberControl
+												// are advisory in browsers — users
+												// can still type values outside the
+												// range, and `parseInt(val, 10) || 0`
+												// preserves negatives (e.g. `-5` is
+												// truthy). Clamp here so the UI
+												// state, preview, and save payload
+												// all agree on a valid value.
+												const parsed = parseInt(
+													val,
+													10
+												);
+												const normalized = Number.isNaN(
+													parsed
+												)
+													? 0
+													: Math.min(
+															365,
+															Math.max(
+																0,
+																parsed
+															)
+													  );
+												handleField(
+													'days',
+													normalized
+												);
+											} }
+										/>
+									</div>
+								</BaseControl>
+							</div>
+
+							{ /*
+								Return methods: a CheckboxControl
+								*group* labeled with the same uppercase
+								tracked treatment as the three form
+								fields above. We use
+								`<BaseControl.VisualLabel>` rather than
+								the BaseControl `label` prop because:
+
+								- BaseControl's `label` prop renders a
+								  `<label htmlFor={id}>` which expects
+								  the `id` to belong to a single
+								  labelable form control (input,
+								  select, textarea). A `<div>` with
+								  `role="group"` is NOT labelable, so
+								  pointing `htmlFor` at it is invalid
+								  HTML.
+								- VisualLabel renders a plain `<span
+								  class="components-base-control__label">`
+								  with the same 11px / 500 / uppercase
+								  styling, AND accepts an explicit
+								  `id` we can target with the group
+								  div's `aria-labelledby` for screen-
+								  reader association.
+
+								Per-checkbox `<label>` elements still
+								provide keyboard / screen-reader
+								association for each individual option;
+								`role="group"` + `aria-labelledby`
+								gives the cluster a single accessible
+								name ("Return methods") that wraps the
+								three options.
+
+								`__nextHasNoMarginBottom` on each
+								CheckboxControl strips WP's default
+								bottom margin. Without a replacement
+								gap the three options stack flush;
+								flex-column + 6px gap restores
+								breathing room.
+							*/ }
+							<BaseControl __nextHasNoMarginBottom>
+								<BaseControl.VisualLabel id="wc-ai-storefront-return-methods-label">
 									{ __(
 										'Return methods',
 										'woocommerce-ai-storefront'
 									) }
-								</legend>
-								{ /*
-								   `__nextHasNoMarginBottom` strips WP's default
-								   bottom margin on each CheckboxControl. Without
-								   a replacement gap on the fieldset the three
-								   options stack flush against each other (no
-								   row breathing room). Flex-column + 6px gap
-								   restores the visual rhythm and is more
-								   deterministic than the legacy margin
-								   collapsing-via-stylesheet pattern.
-								*/ }
+								</BaseControl.VisualLabel>
 								<div
+									role="group"
+									aria-labelledby="wc-ai-storefront-return-methods-label"
 									style={ {
 										display: 'flex',
 										flexDirection: 'column',
@@ -492,7 +535,7 @@ const ReturnRefundPolicySection = ( {
 										/>
 									) ) }
 								</div>
-							</fieldset>
+							</BaseControl>
 						</>
 					) }
 
@@ -500,7 +543,7 @@ const ReturnRefundPolicySection = ( {
 						<div
 							style={ {
 								marginBottom: '16px',
-								maxWidth: '480px',
+								maxWidth: '320px',
 							} }
 						>
 							{ pagesLoading ? (
