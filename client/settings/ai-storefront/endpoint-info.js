@@ -1086,10 +1086,9 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving } ) => {
 				direction — the right edge in LTR, the left edge in
 				RTL (Arabic, Hebrew, Persian, Urdu). The CSS logical
 				property tracks `direction` automatically; the
-				physical-property form does not. Same pattern is used
-				on the Product Visibility (`product-selection.js`) and
-				Policies (`policies-tab.js`) Save footers — see those
-				files for the matching treatment.
+				physical-property form does not. The Product Visibility
+				footer (`product-selection.js`) ships the same value in
+				this PR; the Policies footer follows in PR #102.
 			*/ }
 			<div
 				style={ {

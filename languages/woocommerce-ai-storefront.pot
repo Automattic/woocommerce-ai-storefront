@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-27T10:34:55+00:00\n"
+"POT-Creation-Date: 2026-04-27T15:28:13+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -415,7 +415,7 @@ msgid "%1$d of %2$d"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:686
-#: client/settings/ai-storefront/product-selection.js:2001
+#: client/settings/ai-storefront/product-selection.js:2013
 msgid "Select all"
 msgstr ""
 
@@ -491,13 +491,13 @@ msgstr ""
 msgid "Limits are applied per AI crawler (identified by user-agent string). Your regular store traffic is not affected."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1096
+#: client/settings/ai-storefront/endpoint-info.js:1106
 #: client/settings/ai-storefront/policies-tab.js:761
-#: client/settings/ai-storefront/product-selection.js:1894
+#: client/settings/ai-storefront/product-selection.js:1906
 msgid "Saving…"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1097
+#: client/settings/ai-storefront/endpoint-info.js:1107
 msgid "Save Changes"
 msgstr ""
 
@@ -603,7 +603,7 @@ msgid "Could not load your pages. Page links won’t be available."
 msgstr ""
 
 #: client/settings/ai-storefront/policies-tab.js:762
-#: client/settings/ai-storefront/product-selection.js:1895
+#: client/settings/ai-storefront/product-selection.js:1907
 msgid "Save changes"
 msgstr ""
 
@@ -816,7 +816,7 @@ msgid "Search products…"
 msgstr ""
 
 #: client/settings/ai-storefront/product-selection.js:1706
-#: client/settings/ai-storefront/product-selection.js:2013
+#: client/settings/ai-storefront/product-selection.js:2025
 msgid "Clear selection"
 msgstr ""
 
@@ -838,12 +838,12 @@ msgstr ""
 msgid "Included fields"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1957
+#: client/settings/ai-storefront/product-selection.js:1969
 msgid "Unable to load items."
 msgstr ""
 
 #. translators: %1$s: term name, %2$d: product count
-#: client/settings/ai-storefront/product-selection.js:2104
+#: client/settings/ai-storefront/product-selection.js:2116
 #, js-format
 msgid "%1$s (%2$d)"
 msgstr ""
