@@ -278,7 +278,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						'description'       => 'Session correlation token returned by POST /checkout-sessions. Echoed back in the response; not validated against any stored state because no state is stored.',
 						'type'              => 'string',
 						'required'          => true,
-						'validate_callback' => static function ( $value ) {
+						// WP REST invokes validate_callback with three
+						// args (value, request, param-name). Accept all
+						// three — a 1-arg closure would emit a "too
+						// many arguments" warning on strict PHP
+						// runtimes the moment a request hits the
+						// route. Only the first is consulted; route
+						// regex already enforces non-empty + safe
+						// charset, so this callback is belt-and-
+						// suspenders against a future regex
+						// relaxation that ever lets an empty string
+						// through.
+						'validate_callback' => static function ( $value, $request = null, $param = null ) {
 							return is_string( $value ) && '' !== $value;
 						},
 					],

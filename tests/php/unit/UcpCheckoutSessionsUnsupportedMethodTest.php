@@ -67,7 +67,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 	 * the original surface; the verb-agnostic tests use
 	 * `verb_provider()` to fan out across all four.
 	 */
-	private function call_patch( string $session_id, string $verb = 'PATCH' ): WP_REST_Response {
+	private function call_handler( string $session_id, string $verb = 'PATCH' ): WP_REST_Response {
 		$request = new WP_REST_Request( $verb, '/wc/ucp/v1/checkout-sessions/' . $session_id );
 		$request->set_param( 'id', $session_id );
 
@@ -105,7 +105,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		// just not on this resource." A 400 or 501 would mis-describe
 		// the situation and lead agents to give up the session
 		// instead of retrying via POST.
-		$response = $this->call_patch( 'chk_abcdef0123456789' );
+		$response = $this->call_handler( 'chk_abcdef0123456789' );
 
 		$this->assertSame( 405, $response->get_status() );
 	}
@@ -118,7 +118,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		// /checkout-sessions/{id} accepts no methods directly). Agents
 		// that handle 405 generically can read this and retry with
 		// the correct verb without re-fetching the UCP manifest.
-		$response = $this->call_patch( 'chk_abcdef0123456789' );
+		$response = $this->call_handler( 'chk_abcdef0123456789' );
 
 		$headers = $response->get_headers();
 		$this->assertArrayHasKey( 'Allow', $headers );
@@ -136,7 +136,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 	 * @dataProvider verb_provider
 	 */
 	public function test_all_unsupported_verbs_return_same_405_envelope( string $verb ): void {
-		$response = $this->call_patch( 'chk_abcdef0123456789', $verb );
+		$response = $this->call_handler( 'chk_abcdef0123456789', $verb );
 
 		$this->assertSame( 405, $response->get_status(), "Verb {$verb} must return 405" );
 
@@ -161,7 +161,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		// A regression dropping any of these would break those
 		// clients; enumerating them here forces the regression to
 		// surface in this test rather than in field telemetry.
-		$response = $this->call_patch( 'chk_abcdef0123456789' );
+		$response = $this->call_handler( 'chk_abcdef0123456789' );
 		$data     = $response->get_data();
 
 		foreach ( [ 'ucp', 'id', 'status', 'currency', 'line_items', 'totals', 'links', 'messages' ] as $field ) {
@@ -180,7 +180,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		// successful action took place" — same value the validation-
 		// error path on POST uses, keeping the failure-shape
 		// consistent across the two unsupported entry points.
-		$response = $this->call_patch( 'chk_abcdef0123456789' );
+		$response = $this->call_handler( 'chk_abcdef0123456789' );
 
 		$this->assertSame( 'incomplete', $response->get_data()['status'] );
 	}
@@ -191,7 +191,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		// special-case the unsupported-operation path.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'EUR' );
 
-		$response = $this->call_patch( 'chk_abcdef0123456789' );
+		$response = $this->call_handler( 'chk_abcdef0123456789' );
 
 		$this->assertSame( 'EUR', $response->get_data()['currency'] );
 	}
@@ -215,7 +215,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		// did nothing. Empty arrays (not null, not absent) match the
 		// schema's required-but-empty contract that the validation-
 		// error path also uses.
-		$response = $this->call_patch( 'chk_abcdef0123456789' );
+		$response = $this->call_handler( 'chk_abcdef0123456789' );
 		$data     = $response->get_data();
 
 		$this->assertSame( [], $data['line_items'] );
@@ -227,7 +227,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		// `total` entry (both minContains:1, maxContains:1). Zero
 		// amount on the unsupported-operation path; the message
 		// carries the semantic that nothing was processed.
-		$response = $this->call_patch( 'chk_abcdef0123456789' );
+		$response = $this->call_handler( 'chk_abcdef0123456789' );
 		$totals   = $response->get_data()['totals'];
 
 		$this->assertCount( 2, $totals );
@@ -251,7 +251,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		// The message is the only place an agent learns WHY they got
 		// 405. Pin code + severity + non-empty content so a regression
 		// that drops any of those is loud.
-		$response = $this->call_patch( 'chk_abcdef0123456789' );
+		$response = $this->call_handler( 'chk_abcdef0123456789' );
 		$messages = $response->get_data()['messages'];
 
 		$this->assertCount( 1, $messages );
@@ -272,7 +272,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		// catching a content regression that omits the action
 		// guidance outweighs the maintenance cost — if the wording
 		// changes, both tokens should still be present.
-		$response = $this->call_patch( 'chk_abcdef0123456789' );
+		$response = $this->call_handler( 'chk_abcdef0123456789' );
 		$content  = $response->get_data()['messages'][0]['content'];
 
 		$this->assertStringContainsString( 'POST', $content );
@@ -287,7 +287,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		// Preserves the agent's correlation thread. Even though we
 		// hold no state, the agent uses the session ID for client-
 		// side bookkeeping; rewriting it would break that.
-		$response = $this->call_patch( 'chk_thecorrelationtoken' );
+		$response = $this->call_handler( 'chk_thecorrelationtoken' );
 
 		$this->assertSame( 'chk_thecorrelationtoken', $response->get_data()['id'] );
 	}

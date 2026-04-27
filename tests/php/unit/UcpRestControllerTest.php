@@ -111,14 +111,15 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$controller->register_routes();
 
 		// Three commerce endpoints (catalog/search, catalog/lookup,
-		// checkout-sessions POST) + one PATCH stub
-		// (checkout-sessions/{id}, returns structured 405
-		// `unsupported_operation` so agents that try to modify a
-		// session don't see WP REST's generic 404) + one docs
-		// endpoint (extension/schema). The commerce endpoints are
-		// the UCP 2026-04-08 surface; the docs endpoint is our
-		// self-hosted JSON Schema for the
-		// `com.woocommerce.ai_storefront` extension.
+		// checkout-sessions POST) + one unsupported-method stub
+		// (checkout-sessions/{id} accepting GET/PUT/PATCH/DELETE,
+		// returns structured 405 `unsupported_operation` so agents
+		// that try to read, replace, modify, or cancel a session
+		// don't see WP REST's generic 404) + one docs endpoint
+		// (extension/schema). The commerce endpoints are the UCP
+		// 2026-04-08 surface; the docs endpoint is our self-hosted
+		// JSON Schema for the `com.woocommerce.ai_storefront`
+		// extension.
 		$this->assertCount( 5, $this->registered_routes );
 		foreach ( $this->registered_routes as $call ) {
 			$this->assertEquals( 'wc/ucp/v1', $call['namespace'] );
@@ -181,7 +182,9 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_checkout_sessions_unsupported_method_stub_route_registered(): void {
 		// Stub for `/checkout-sessions/{id}` covering all four
-		// unsupported state-modifying verbs. Locks the route shape
+		// unsupported member-resource verbs (GET to read, PUT to
+		// replace, PATCH to modify, DELETE to cancel — none of
+		// which our stateless model supports). Locks the route shape
 		// AND the method list so a regression that drops a verb
 		// (silently 404-ing it again) or loosens the regex (e.g.
 		// dropping `_-` and silently 404-ing dashed UUIDs) fails
@@ -211,16 +214,17 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_commerce_routes_gated_by_check_agent_access(): void {
 		// Commerce routes (catalog/search, catalog/lookup,
-		// checkout-sessions POST + PATCH stub) are gated by
-		// `check_agent_access` so the merchant's `allowed_crawlers`
-		// setting is honored at the REST endpoint — not just in
-		// robots.txt. Locking the wiring here so a regression that
-		// flips back to `__return_true` (the easy mistake during
-		// refactoring) fails loudly. The PATCH stub is included even
-		// though it never returns commerce data — the gate also keeps
-		// the route's existence from leaking to unauthorized agents
-		// (they get 403 short-circuit, not the 405 unsupported-
-		// operation envelope).
+		// checkout-sessions POST + the unsupported-method stub on
+		// /checkout-sessions/{id}) are gated by `check_agent_access`
+		// so the merchant's `allowed_crawlers` setting is honored at
+		// the REST endpoint — not just in robots.txt. Locking the
+		// wiring here so a regression that flips back to
+		// `__return_true` (the easy mistake during refactoring)
+		// fails loudly. The unsupported-method stub is included
+		// even though it never returns commerce data — the gate
+		// also keeps the route's existence from leaking to
+		// unauthorized agents (they get 403 short-circuit, not the
+		// 405 unsupported-operation envelope).
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
