@@ -779,7 +779,12 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 			<div
 				style={ {
 					marginTop: '24px',
-					textAlign: 'right',
+					// `'end'` (logical) instead of `'right'` (physical)
+					// so the Save button respects writing direction —
+					// right edge in LTR, left edge in RTL. Matches the
+					// fix landing concurrently for the Discovery and
+					// Product Visibility footers (PR #103).
+					textAlign: 'end',
 				} }
 			>
 				<Button
