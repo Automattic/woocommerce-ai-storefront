@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixes
+- **AI orders placed via Shareable Checkout links with non-`ai_agent` utm_medium were not recognized as AI-attributed.** Pre-fix, `capture_ai_attribution()` only fired when `_wc_order_attribution_utm_medium === 'ai_agent'` — the value our own continue_url builder emits. Agents that bypass our `/checkout-sessions` endpoint and build their own Shareable Checkout link (UCPPlayground sends `?utm_source=ucpplayground.com&utm_medium=referral`, others may send `agent`/`bot`/`ai`/etc.) slipped through the gate. Their orders showed up as ordinary referral traffic — `_wc_ai_storefront_agent` meta was never stamped, AI Orders count read 0, Top Agent stats card was empty — even when AI agents drove the purchase. Added a lenient second gate: when `utm_source` canonicalizes to a known AI agent host via `KNOWN_AGENT_HOSTS`, treat the order as AI-attributed regardless of `utm_medium`. The host match is safe because it requires a code-controlled allow-list entry (random referrers can't spoof themselves into AI attribution). When the lenient gate fires, we stamp the canonical brand name (e.g. "UCPPlayground") into `_wc_ai_storefront_agent` and the raw hostname into `_wc_ai_storefront_agent_host_raw`, so the Recent Orders display shows the friendly form. Strict `utm_medium=ai_agent` path unchanged for orders placed via our own continue_url.
+
+### Tests
+- 6 new tests in `AttributionTest` covering the lenient gate: production scenario (UCPPlayground host with `utm_medium=referral`), generic known-host canonicalization (openai.com → ChatGPT), unknown-host rejection (defends against random-referrer self-attribution), empty-source skip, strict-gate regression, and the URL-param-overwrites-lenient-stamp interaction when both gates apply.
+
 ---
 
 ## [0.3.1] – 2026-04-26

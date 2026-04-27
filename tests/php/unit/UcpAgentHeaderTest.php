@@ -408,4 +408,62 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 			)
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// normalize_host_string() — utm_source variant collapsing
+	// ------------------------------------------------------------------
+	//
+	// Lenient host-match attribution reads `utm_source` directly from WC
+	// core; agents send that value in many lexical forms. The normalizer
+	// must collapse all of them to a single lookup key.
+
+	/**
+	 * @dataProvider host_normalization_provider
+	 */
+	public function test_normalize_host_string_collapses_variants( string $input, string $expected ): void {
+		$this->assertEquals(
+			$expected,
+			WC_AI_Storefront_UCP_Agent_Header::normalize_host_string( $input )
+		);
+	}
+
+	public static function host_normalization_provider(): array {
+		return [
+			'bare hostname'                 => [ 'openai.com', 'openai.com' ],
+			'mixed case'                    => [ 'OpenAI.COM', 'openai.com' ],
+			'https URL'                     => [ 'https://openai.com', 'openai.com' ],
+			'https URL trailing slash'      => [ 'https://openai.com/', 'openai.com' ],
+			'https URL with path'           => [ 'https://openai.com/foo/bar', 'openai.com' ],
+			'http URL'                      => [ 'http://openai.com', 'openai.com' ],
+			'host with port'                => [ 'openai.com:443', 'openai.com' ],
+			'URL with port'                 => [ 'https://openai.com:443/path', 'openai.com' ],
+			'FQDN trailing dot'             => [ 'openai.com.', 'openai.com' ],
+			'whitespace padding'            => [ '  openai.com  ', 'openai.com' ],
+			'bare host with path'           => [ 'openai.com/', 'openai.com' ],
+			'mixed case URL with path'      => [ 'HTTPS://OpenAI.COM/', 'openai.com' ],
+			'empty input'                   => [ '', '' ],
+			'whitespace-only input'         => [ '   ', '' ],
+			'malformed URL'                 => [ '://no-scheme', '' ],
+			'subdomain preserved'           => [ 'shopping.openai.com', 'shopping.openai.com' ],
+			// Non-feature: leading `www.` is NOT stripped. `www.openai.com`
+			// is a different DNS name from `openai.com`. Recognizing it
+			// requires an explicit `KNOWN_AGENT_HOSTS` entry.
+			'www prefix preserved'          => [ 'www.openai.com', 'www.openai.com' ],
+			// Protocol-relative URLs (`//host/path`). `wp_parse_url`
+			// handles these when given a hint scheme; the bare-host
+			// branch's `strpos($value, '/')` would otherwise match
+			// at index 0 and silently drop the host.
+			'protocol-relative URL'         => [ '//openai.com', 'openai.com' ],
+			'protocol-relative with path'   => [ '//openai.com/agent.json', 'openai.com' ],
+			'protocol-relative trailing /'  => [ '//openai.com/', 'openai.com' ],
+			// IPv6 literals contain multiple colons and must NOT have
+			// any colon-stripping applied. The unbracketed form is
+			// what `wp_parse_url` produces from the bracketed
+			// `[2001:db8::1]:443` URL syntax. Pass through unchanged so
+			// a future IPv6-only KNOWN_AGENT_HOSTS entry would match.
+			'IPv6 literal'                  => [ '2001:db8::1', '2001:db8::1' ],
+			'IPv6 with embedded :: shape'   => [ 'fe80::1', 'fe80::1' ],
+			'IPv6 URL with port'            => [ 'http://[2001:db8::1]:443/', '2001:db8::1' ],
+		];
+	}
 }
