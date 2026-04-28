@@ -581,6 +581,122 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// URL UTM stamping (attribution)
+	//
+	// When the controller threads an agent context through
+	// (`$source_host` non-null), the translator stamps our canonical
+	// UTM payload onto the product `url`. This is the buyer-clicks-the-
+	// link-in-chat path: without it, those orders bucket as "direct"
+	// in WC Order Attribution rather than rolling up under the agent.
+	//
+	// `null` source_host (default, the existing call shape) preserves
+	// the bare permalink — covered by `test_url_from_permalink` above.
+	// ------------------------------------------------------------------
+
+	public function test_url_stamped_with_utm_when_source_host_provided(): void {
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[],
+			null,
+			'chatgpt.com'
+		);
+
+		// Order is enforced by add_query_arg's stable iteration: the
+		// helper passes utm_source first, then utm_medium, then utm_id.
+		$this->assertEquals(
+			'https://example.com/product/widget/'
+				. '?utm_source=chatgpt.com'
+				. '&utm_medium=referral'
+				. '&utm_id=woo_ucp',
+			$result['url']
+		);
+	}
+
+	public function test_url_includes_ai_agent_host_raw_when_provided(): void {
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[],
+			null,
+			'chatgpt.com',
+			'chatgpt.com'
+		);
+
+		$this->assertStringContainsString( 'utm_source=chatgpt.com', $result['url'] );
+		$this->assertStringContainsString( 'ai_agent_host_raw=chatgpt.com', $result['url'] );
+	}
+
+	public function test_url_omits_ai_agent_host_raw_when_empty(): void {
+		// Default `$raw_host = ''` — no `ai_agent_host_raw` param
+		// should appear in the URL.
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[],
+			null,
+			'chatgpt.com'
+		);
+
+		$this->assertStringNotContainsString( 'ai_agent_host_raw', $result['url'] );
+	}
+
+	public function test_url_substitutes_fallback_source_when_source_host_empty(): void {
+		// Empty string source_host = "agent context exists but no
+		// hostname could be resolved". The helper substitutes the
+		// FALLBACK_SOURCE sentinel so the cohort stays observable
+		// in WC Origin breakdowns rather than collapsing into "direct".
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[],
+			null,
+			''
+		);
+
+		$this->assertStringContainsString( 'utm_source=ucp_unknown', $result['url'] );
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $result['url'] );
+	}
+
+	public function test_url_preserves_existing_query_params_on_permalink(): void {
+		// Polylang/WPML language plugins, custom rewrite rules, and
+		// paginated archives can put query strings on permalinks.
+		// The UTM helper uses `add_query_arg()` which merges into the
+		// existing query rather than naively appending `?`, so a
+		// permalink like `/product/widget/?lang=fr` should land as
+		// `/product/widget/?lang=fr&utm_source=...&utm_medium=...&utm_id=...`
+		// rather than the broken `/product/widget/?lang=fr?utm_source=...`.
+		$fixture              = $this->simple_product_fixture();
+		$fixture['permalink'] = 'https://example.com/product/widget/?lang=fr';
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$fixture,
+			[],
+			null,
+			'chatgpt.com'
+		);
+
+		$this->assertStringContainsString( 'lang=fr', $result['url'] );
+		$this->assertStringContainsString( 'utm_source=chatgpt.com', $result['url'] );
+		// One `?`, the rest must be `&`. Two `?` would mean we broke
+		// the URL.
+		$this->assertEquals( 1, substr_count( $result['url'], '?' ) );
+	}
+
+	public function test_url_left_bare_when_source_host_null(): void {
+		// The default-null case is the "no agent context" path —
+		// future internal callers and direct-call test contexts.
+		// Permalink should pass through verbatim, no UTMs.
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$this->simple_product_fixture(),
+			[],
+			null,
+			null
+		);
+
+		$this->assertEquals(
+			'https://example.com/product/widget/',
+			$result['url']
+		);
+	}
+
+	// ------------------------------------------------------------------
 	// Categories
 	// ------------------------------------------------------------------
 

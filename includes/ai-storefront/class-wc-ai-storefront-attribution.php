@@ -146,6 +146,115 @@ class WC_AI_Storefront_Attribution {
 	const WOO_UCP_ID = 'woo_ucp';
 
 	/**
+	 * Stamp our canonical attribution UTM shape onto a URL.
+	 *
+	 * Two emission surfaces share this helper so the wire shape stays
+	 * identical across both:
+	 *
+	 *   - `/checkout-sessions` continue_url (built by the REST
+	 *     controller's `build_continue_url()`). The continue_url is the
+	 *     primary attribution path: agents redirect the buyer to it,
+	 *     WC Order Attribution captures the params on the resulting
+	 *     order.
+	 *
+	 *   - `/catalog/search` and `/catalog/lookup` product `url` field
+	 *     (applied by `WC_AI_Storefront_UCP_Product_Translator`). The
+	 *     bare product permalink is what agents render as the "view
+	 *     product" link in chat. Buyers who follow that link directly,
+	 *     add to cart, and check out (rather than going through the
+	 *     agent's checkout-session integration) need the same UTM
+	 *     payload to attribute correctly. Without this, those orders
+	 *     bucket as "direct" or get attributed to the agent's referrer
+	 *     header — invisible to the AI-orders dashboard.
+	 *
+	 * UTM shape (canonical 0.5.0+):
+	 *
+	 *   - `utm_source` — `$source_host` when non-empty, else
+	 *     `WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE`
+	 *     (`ucp_unknown`). Keeping the sentinel preserves the "agent
+	 *     didn't identify itself" cohort as a distinct row in WC
+	 *     Origin breakdowns rather than collapsing it into "direct".
+	 *
+	 *   - `utm_medium` — `referral` (Google-canonical). AI agent
+	 *     traffic IS referral traffic by Google's analytics taxonomy;
+	 *     `referral` lets GA4 auto-bucket under the Referral default
+	 *     channel grouping rather than "Unassigned".
+	 *
+	 *   - `utm_id` — `WOO_UCP_ID` (`woo_ucp`). The "we routed this"
+	 *     flag the STRICT attribution gate matches on, regardless of
+	 *     `utm_source`/`utm_medium` values. Decouples WHO sent the
+	 *     user (utm_source) from HOW it was routed (utm_id).
+	 *
+	 * Plus, when `$raw_host` is non-empty, an `ai_agent_host_raw`
+	 * param carries the producer-side raw identifier for "Other AI"
+	 * drill-in. Captured by `capture_ai_attribution()` into
+	 * `AGENT_HOST_RAW_META_KEY`. Empty raw_host (no UCP-Agent header
+	 * AND no body fallback) means the param is omitted entirely — no
+	 * spurious `&ai_agent_host_raw=` in the URL.
+	 *
+	 * Implementation uses string concatenation rather than
+	 * `add_query_arg()` for two reasons:
+	 *
+	 *   - `add_query_arg()` runs existing query parameters through
+	 *     `urlencode_deep()` and rebuilds via `build_query()`, which
+	 *     re-encodes characters that the original URL left raw.
+	 *     Pre-0.6.4 `build_continue_url()` used string concat and
+	 *     produced `?products=100:2&...` with a literal `:`. Routing
+	 *     through `add_query_arg()` would silently change the wire
+	 *     shape to `?products=100%3A2&...` — semantically equivalent
+	 *     but a real byte-level diff for any agent with a fragile URL
+	 *     parser. Wire-shape stability across this refactor matters
+	 *     more than `add_query_arg()`'s "merge into existing query"
+	 *     elegance.
+	 *
+	 *   - Permalinks with existing query strings (Polylang/WPML
+	 *     `?lang=fr`, custom rewrite-rule params, paginated archives)
+	 *     are handled by the `?` vs `&` separator check below — naive
+	 *     "always append `?utm_source=`" would produce
+	 *     `permalink?lang=fr?utm_source=...` (broken — the second `?`
+	 *     becomes part of `lang`'s value). Detecting existing `?` and
+	 *     using `&` keeps both clean-permalink and existing-query
+	 *     cases correct without `add_query_arg()`'s re-encoding side
+	 *     effect.
+	 *
+	 * @param string $url         Base URL to tag. May or may not
+	 *                            already have a query string.
+	 * @param string $source_host Lowercase identifier for `utm_source`:
+	 *                            usually a normalized hostname (e.g.
+	 *                            `chatgpt.com`); may be a lowercase
+	 *                            product / agent token fallback when
+	 *                            no hostname mapping exists. Empty
+	 *                            falls back to `FALLBACK_SOURCE`.
+	 * @param string $raw_host    Untransformed identifier from the
+	 *                            UCP-Agent header or body field.
+	 *                            Empty string skips the
+	 *                            `ai_agent_host_raw` param entirely.
+	 *                            Defaults to empty.
+	 * @return string             URL with attribution params stamped.
+	 */
+	public static function with_woo_ucp_utm( string $url, string $source_host, string $raw_host = '' ): string {
+		$utm_source = '' !== $source_host
+			? $source_host
+			: WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
+
+		// `?` if URL has no query yet; `&` to append onto existing
+		// query. `str_contains()` over the simpler `false === strpos()`
+		// for readability — same semantics, PHP 8.0+.
+		$separator = str_contains( $url, '?' ) ? '&' : '?';
+
+		$url .= $separator
+			. 'utm_source=' . rawurlencode( $utm_source )
+			. '&utm_medium=referral'
+			. '&utm_id=' . self::WOO_UCP_ID;
+
+		if ( '' !== $raw_host ) {
+			$url .= '&ai_agent_host_raw=' . rawurlencode( $raw_host );
+		}
+
+		return $url;
+	}
+
+	/**
 	 * Initialize hooks.
 	 *
 	 * Deliberately minimal: we capture agent metadata onto the order
