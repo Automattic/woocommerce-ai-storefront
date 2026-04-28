@@ -766,8 +766,8 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				     dropdown above the cards already conveys the
 				     time scope; repeating it on every card was
 				     redundant noise. The dropdown is the single
-				     source of truth \u2014 change it once and all six
-				     cards refetch with the new period.
+				     source of truth \u2014 change it once and every
+				     period-scoped card refetches with the new period.
 
 				     Card order: AI Orders intentionally precedes Total
 				     Orders. Merchants land on this tab to scan AI
@@ -827,7 +827,18 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						'woocommerce-ai-storefront'
 					) }
 					value={
-						stats?.top_agent
+						/* `!= null` covers undefined and null without
+						   coercing legitimate 0 (which can happen mid-
+						   period when a brief AI agent fallout drops to
+						   no orders) to the em-dash. The defensive
+						   inner-field guard hardens against schema
+						   drift in `derive_stats()` \u2014 the outer
+						   `top_agent` could exist while
+						   `share_percent` is missing if a future
+						   refactor added `top_agent.name` separately. */
+						stats?.top_agent &&
+						stats.top_agent.share_percent !== null &&
+						stats.top_agent.share_percent !== undefined
 							? sprintf(
 									/* translators: %1$s: percent share of AI orders attributed to the top agent. The literal trailing percent sign comes from `%%` in the format string. Ordered placeholder (`%1$s`) keeps the file consistent with @wordpress/valid-sprintf rules. */
 									__( '%1$s%%', 'woocommerce-ai-storefront' ),

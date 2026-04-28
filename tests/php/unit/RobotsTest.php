@@ -346,6 +346,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 				'PerplexityBot',
 				'Perplexity-User',
 				'Applebot',
+				'DuckAssistBot',
 				'AmazonBuyForMe',
 				'KlarnaBot',
 				'Storebot-Google',

@@ -138,6 +138,11 @@ const KNOWN_CRAWLERS = [
 		label: 'Applebot (Apple Siri / Spotlight)',
 		category: 'live',
 	},
+	{
+		id: 'DuckAssistBot',
+		label: 'DuckAssistBot (DuckDuckGo)',
+		category: 'live',
+	},
 
 	// Agentic shopping — AI that places orders, not just reads.
 	{

@@ -54,6 +54,15 @@ class WC_AI_Storefront_Robots {
 		// newer AI-training variant and lives in TRAINING_CRAWLERS.
 		'Applebot',
 
+		// DuckDuckGo — DuckAssistBot powers DuckAssist (DDG's
+		// AI-generated answer summaries surfaced inline above search
+		// results) and indexes pages for live retrieval. Privacy-
+		// positioning + Western-market reach makes it a relevant
+		// discovery surface for merchants whose buyers opt out of
+		// Google. Per DDG's published docs the bot UA is
+		// `DuckAssistBot/1.0` and it respects robots.txt.
+		'DuckAssistBot',
+
 		// Agentic shopping — AI that doesn't just read the catalog
 		// but ALSO places the order on the user's behalf. Highest-
 		// value AI traffic for commerce: showing up here means
@@ -252,6 +261,7 @@ class WC_AI_Storefront_Robots {
 		'PerplexityBot',
 		'Perplexity-User',
 		'Applebot',
+		'DuckAssistBot',
 		'AmazonBuyForMe',
 		'KlarnaBot',
 		'Storebot-Google',
