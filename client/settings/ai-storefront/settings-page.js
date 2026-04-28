@@ -257,7 +257,7 @@ const formatMoney = ( stats, amount ) => {
 // and the handle names drift between WC versions. Until wc-admin
 // provides a reliable way to opt into its stylesheet from a custom
 // submenu page, hand-rolled cards are lower-maintenance.
-const StatCard = ( { label, value, subvalue, href } ) => {
+const StatCard = ( { label, value, href } ) => {
 	const cardStyle = {
 		// `flex: 1 1 0; min-width: 140px` removed — the parent grid
 		// container now controls card width via
@@ -273,15 +273,13 @@ const StatCard = ( { label, value, subvalue, href } ) => {
 		display: 'block',
 	};
 
-	// Value, optional subvalue, and label stack vertically — three
-	// rows in card order. The big number's row-1 position is what
-	// preserves cross-card baseline alignment across the strip;
-	// inline-baseline value+subvalue would buy a tighter visual
-	// composition but breaks when subvalues are long enough that
-	// the flex child shrinks to ~1ch and each word lands on its
-	// own line. Stacking is the more robust default — at 24px
-	// green numerics the value already dominates the eye
-	// regardless of subvalue placement.
+	// Value above label, two rows. Cards previously supported an
+	// optional `subvalue` row between value and label, but that
+	// added per-card height variance — cards with subvalues were
+	// taller than cards without, breaking the cross-card baseline
+	// alignment merchants rely on to scan the strip. Removed in
+	// 0.6.1; if a stat needs companion data, it goes in its own
+	// adjacent card.
 	const inner = (
 		<>
 			<div
@@ -299,18 +297,6 @@ const StatCard = ( { label, value, subvalue, href } ) => {
 			>
 				{ value }
 			</div>
-			{ subvalue && (
-				<div
-					style={ {
-						fontSize: '11px',
-						color: colors.success,
-						fontWeight: '400',
-						marginTop: '2px',
-					} }
-				>
-					{ subvalue }
-				</div>
-			) }
 			<div
 				style={ {
 					color: colors.textMuted,
@@ -780,33 +766,29 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				     dropdown above the cards already conveys the
 				     time scope; repeating it on every card was
 				     redundant noise. The dropdown is the single
-				     source of truth \u2014 change it once and all five
-				     cards refetch with the new period. */ }
-				<StatCard
-					label={ __( 'Total Orders', 'woocommerce-ai-storefront' ) }
-					value={ stats?.all_orders ?? '\u2014' }
-				/>
+				     source of truth \u2014 change it once and every
+				     period-scoped card refetches with the new period.
+
+				     Card order: AI Orders intentionally precedes Total
+				     Orders. Merchants land on this tab to scan AI
+				     signal first; AI Orders is the headline metric and
+				     Total Orders is context. The earlier order
+				     (Total Orders \u2192 AI Orders) read as "look at all
+				     your orders, then a small carve-out is AI" \u2014
+				     which buries the signal we're surfacing. */ }
 				<StatCard
 					label={ __( 'AI Orders', 'woocommerce-ai-storefront' ) }
 					value={ stats?.ai_orders ?? '\u2014' }
-					subvalue={
-						stats && stats.ai_share_percent > 0
-							? sprintf(
-									/* translators: %s: percentage */
-									__(
-										'%1$s%% of total',
-										'woocommerce-ai-storefront'
-									),
-									stats.ai_share_percent
-							  )
-							: undefined
-					}
 					href={
 						/* global wcAiSyndicationParams */
 						typeof wcAiSyndicationParams !== 'undefined'
 							? wcAiSyndicationParams.ordersUrl
 							: undefined
 					}
+				/>
+				<StatCard
+					label={ __( 'Total Orders', 'woocommerce-ai-storefront' ) }
+					value={ stats?.all_orders ?? '\u2014' }
 				/>
 				<StatCard
 					label={ __( 'AI Revenue', 'woocommerce-ai-storefront' ) }
@@ -817,7 +799,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					}
 				/>
 				<StatCard
-					label={ __( 'AOV', 'woocommerce-ai-storefront' ) }
+					label={ __( 'AI AOV', 'woocommerce-ai-storefront' ) }
 					value={
 						stats && stats.ai_orders > 0
 							? formatMoney( stats, stats.ai_aov )
@@ -831,25 +813,38 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					   already filters empty meta_value at the SQL level + skips
 					   empty names in derive_stats(); this is belt-and-suspenders. */
 					value={ stats?.top_agent?.name || '\u2014' }
-					/* Subvalue carries only the share percent. Pre-0.5.1 it
-					   also included the order count ("N orders | M% of AI
-					   orders") but that duplicated the "AI Orders" card's
-					   value, made the subvalue too long to fit at 4-column
-					   card widths, and tripped the "1 orders" pluralization
-					   bug. The percent is the unique signal of the Top
-					   Agent card; the order count's natural home is the
-					   AI Orders card next to it. */
-					subvalue={
-						stats && stats.top_agent
+				/>
+				{ /* Top agent's share of AI orders — promoted from a
+				     subvalue on the Top Agent card to its own card in
+				     0.6.1. Sits adjacent so the two cards read as a
+				     pair: "UCPPlayground / 100%". Promoting it preserves
+				     cross-card baseline alignment (the subvalue created
+				     per-card height variance) and gives the percent its
+				     own visual weight at 24px green numerics. */ }
+				<StatCard
+					label={ __(
+						'% of AI orders',
+						'woocommerce-ai-storefront'
+					) }
+					value={
+						/* `!= null` covers undefined and null without
+						   coercing legitimate 0 (which can happen mid-
+						   period when a brief AI agent fallout drops to
+						   no orders) to the em-dash. The defensive
+						   inner-field guard hardens against schema
+						   drift in `derive_stats()` \u2014 the outer
+						   `top_agent` could exist while
+						   `share_percent` is missing if a future
+						   refactor added `top_agent.name` separately. */
+						stats?.top_agent &&
+						stats.top_agent.share_percent !== null &&
+						stats.top_agent.share_percent !== undefined
 							? sprintf(
-									/* translators: %1$s: percent share of AI orders attributed to the top agent. Ordered (`%1$s` rather than bare `%s`) to satisfy `@wordpress/valid-sprintf` — other sprintf calls in this file use ordered placeholders, and the rule fires on a mix. */
-									__(
-										'%1$s%% of AI orders',
-										'woocommerce-ai-storefront'
-									),
+									/* translators: %1$s: percent share of AI orders attributed to the top agent. The literal trailing percent sign comes from `%%` in the format string. Ordered placeholder (`%1$s`) keeps the file consistent with @wordpress/valid-sprintf rules. */
+									__( '%1$s%%', 'woocommerce-ai-storefront' ),
 									stats.top_agent.share_percent
 							  )
-							: undefined
+							: '\u2014'
 					}
 				/>
 			</div>

@@ -339,22 +339,28 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// bots predate the modern AI-agent taxonomy.
 		$this->assertSame(
 			[
-				'ChatGPT-User',
-				'OAI-SearchBot',
-				'Claude-User',
-				'Claude-SearchBot',
-				'PerplexityBot',
-				'Perplexity-User',
+				// General-purpose AI assistants (alphabetical).
 				'Applebot',
+				'ChatGPT-User',
+				'Claude-SearchBot',
+				'Claude-User',
+				'DuckAssistBot',
+				'OAI-SearchBot',
+				'Perplexity-User',
+				'PerplexityBot',
+				// Agentic shopping (alphabetical).
 				'AmazonBuyForMe',
 				'KlarnaBot',
-				'Storebot-Google',
+				// Commerce search engines (alphabetical).
 				'AdIdxBot',
+				'Storebot-Google',
+				// Regional — Asia (alphabetical).
 				'ERNIEBot',
-				'YiyanBot',
-				'WRTNBot',
 				'NaverBot',
 				'PetalBot',
+				'WRTNBot',
+				'YiyanBot',
+				// Regional — Europe.
 				'YandexBot',
 			],
 			WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
@@ -376,16 +382,18 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// crawlers merchants need to consciously allow or block.
 		$this->assertSame(
 			[
-				'GPTBot',
-				'Google-Extended',
-				'ClaudeBot',
-				'Meta-ExternalAgent',
+				// Alphabetical (case-insensitive). Reordered in 0.6.1
+				// for scannability.
 				'Amazonbot',
 				'Applebot-Extended',
-				'Microsoft-BingBot-Extended',
 				'Bytespider',
 				'CCBot',
+				'ClaudeBot',
 				'cohere-ai',
+				'Google-Extended',
+				'GPTBot',
+				'Meta-ExternalAgent',
+				'Microsoft-BingBot-Extended',
 			],
 			WC_AI_Storefront_Robots::TRAINING_CRAWLERS
 		);
@@ -469,6 +477,93 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// emit a useless robots.txt directive again.
 		$this->assertNotContains( 'Gemini', WC_AI_Storefront_Robots::TRAINING_CRAWLERS );
 		$this->assertNotContains( 'Gemini', WC_AI_Storefront_Robots::AI_CRAWLERS );
+	}
+
+	// ------------------------------------------------------------------
+	// JS ↔ PHP parity: KNOWN_CRAWLERS in endpoint-info.js must match
+	// AI_CRAWLERS in robots.php (membership, order-independent).
+	// ------------------------------------------------------------------
+
+	public function test_known_crawlers_js_matches_ai_crawlers_php(): void {
+		// PHP is the authoritative source — `sanitize_allowed_crawlers()`
+		// intersects merchant input against AI_CRAWLERS server-side, so
+		// drift creates two silent failure modes:
+		//
+		// 1. JS knows about a bot PHP doesn't: the merchant ticks the
+		//    checkbox in the admin UI, settings save round-trips through
+		//    `sanitize_allowed_crawlers()`, the unknown ID is stripped,
+		//    and the merchant's choice silently disappears with no UI
+		//    signal.
+		// 2. PHP knows about a bot JS doesn't: the bot rule lands in
+		//    robots.txt (driven server-side off AI_CRAWLERS) but the
+		//    merchant has no checkbox to toggle it. Effectively
+		//    permanently-on-or-off depending on default state, with no
+		//    way for the merchant to change it.
+		//
+		// Both modes were caught only by author discipline pre-0.6.1.
+		// This test enforces parity at PR time.
+		//
+		// Membership equality (order-independent): the JS list uses a
+		// sub-grouped declaration order optimized for the admin UI scan
+		// (general-purpose → agentic shopping → commerce search →
+		// regional). The PHP union order is its own concatenation
+		// (LIVE + TRAINING + TEST) — order overlap is incidental, not
+		// contractual. Locking order would force the JS to track PHP's
+		// union order even if a UX reorganization made sense.
+		$js_path = WC_AI_STOREFRONT_PLUGIN_PATH . '/client/settings/ai-storefront/endpoint-info.js';
+		$this->assertFileExists(
+			$js_path,
+			'endpoint-info.js must be present at the expected path; if this fails, either the file was moved or the parity check loses its source of truth.'
+		);
+
+		$contents = file_get_contents( $js_path );
+		$this->assertNotFalse( $contents, 'Could not read endpoint-info.js.' );
+
+		// Locate the KNOWN_CRAWLERS array body. The `\n];\n` terminator
+		// is the established pattern in the file (every const-array
+		// declaration in the project closes with that token sequence)
+		// and it can't appear inside the array body because all string
+		// literals are single-quoted. Anchored on `const` so we don't
+		// match a partial-name like `KNOWN_CRAWLERS_FALLBACK` if one
+		// gets added later.
+		$start_marker = 'const KNOWN_CRAWLERS = [';
+		$start        = strpos( $contents, $start_marker );
+		$this->assertNotFalse(
+			$start,
+			'`const KNOWN_CRAWLERS = [` not found in endpoint-info.js — was it renamed?'
+		);
+		$end = strpos( $contents, "\n];\n", $start );
+		$this->assertNotFalse(
+			$end,
+			'Could not find end of KNOWN_CRAWLERS array (`\n];\n` terminator missing).'
+		);
+		$block = substr( $contents, $start, $end - $start );
+
+		// Extract `id: 'XXX'` occurrences. The pattern matches both
+		// inline (`{ id: 'X', ... }`) and multi-line (`{\n\tid: 'X',\n}`)
+		// object-literal styles. Single-quote-only is intentional: the
+		// project's eslint config enforces single quotes for string
+		// literals.
+		$matched = preg_match_all( "/id:\s*'([^']+)'/", $block, $matches );
+		$this->assertNotFalse( $matched, 'preg_match_all failed to scan KNOWN_CRAWLERS.' );
+		$this->assertGreaterThan(
+			0,
+			$matched,
+			'Zero crawler IDs extracted from KNOWN_CRAWLERS — pattern may have regressed.'
+		);
+
+		$js_ids = $matches[1];
+		sort( $js_ids );
+
+		$php_ids = WC_AI_Storefront_Robots::AI_CRAWLERS;
+		sort( $php_ids );
+
+		$this->assertSame(
+			$php_ids,
+			$js_ids,
+			"KNOWN_CRAWLERS in endpoint-info.js must contain the same set of IDs as AI_CRAWLERS in robots.php. \n"
+			. 'JS-only IDs are silently stripped on settings save; PHP-only IDs are bots merchants cannot toggle.'
+		);
 	}
 
 	public function test_ai_crawlers_is_union_of_live_training_and_test(): void {

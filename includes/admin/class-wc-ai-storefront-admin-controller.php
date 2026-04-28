@@ -655,6 +655,26 @@ class WC_AI_Storefront_Admin_Controller {
 			}
 		}
 
+		// Slug-based fallback exclusion. Catches the case where the
+		// merchant has a page with a default WC system slug
+		// (`cart`, `checkout`, `my-account`, `shop`) that isn't the
+		// configured-page ID `wc_get_page_id()` returns — for example
+		// stores where WC's Page setup never completed (every
+		// `wc_get_page_id()` returns -1) but the system pages were
+		// auto-created during install, or stores with duplicates of
+		// the system pages. A page whose slug is literally `cart` is
+		// almost certainly not the merchant's refund-policy page.
+		// Both `my-account` (the WP-hyphenated default WC slug) and
+		// `myaccount` (the legacy unhyphenated form) are checked.
+		foreach ( [ 'cart', 'checkout', 'my-account', 'myaccount', 'shop' ] as $slug ) {
+			$page = get_page_by_path( $slug );
+			if ( $page && (int) $page->ID > 0 ) {
+				$excluded[] = (int) $page->ID;
+			}
+		}
+
+		$excluded = array_values( array_unique( $excluded ) );
+
 		$pages = get_pages(
 			[
 				'post_status' => 'publish',

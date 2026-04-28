@@ -34,67 +34,49 @@ class WC_AI_Storefront_Robots {
 	 * @var string[]
 	 */
 	const LIVE_BROWSING_AGENTS = [
-		// OpenAI.
-		'ChatGPT-User',
-		'OAI-SearchBot',
-
-		// Anthropic.
-		'Claude-User',
-		'Claude-SearchBot',
-
-		// Perplexity — PerplexityBot indexes for live answer
-		// retrieval (search-index style), distinct from training
-		// corpus construction. Per Perplexity's documentation it
-		// maps to the same live-answer path as Perplexity-User.
-		'PerplexityBot',
-		'Perplexity-User',
-
-		// Apple — plain Applebot is the long-standing Siri/Spotlight
-		// search crawler (since 2015). Applebot-Extended is the
-		// newer AI-training variant and lives in TRAINING_CRAWLERS.
-		'Applebot',
-
-		// Agentic shopping — AI that doesn't just read the catalog
-		// but ALSO places the order on the user's behalf. Highest-
-		// value AI traffic for commerce: showing up here means
-		// showing up at purchase intent, not just research.
+		// General-purpose AI assistants — alphabetical.
 		//
-		// AmazonBuyForMe powers Amazon Rufus's "buy from the open
-		// web" feature — Rufus compares your products to Amazon's
-		// catalog and can execute purchases. KlarnaBot drives
-		// high-intent shopping queries primarily in the EU and US
-		// fashion/lifestyle verticals.
+		// Foundation-model / search-assistant bots. The `-User` suffix
+		// (ChatGPT-User, Claude-User, Perplexity-User) signals
+		// "triggered by an active user session" per each vendor's
+		// documentation. Applebot is the long-standing Siri/Spotlight
+		// search crawler (since 2015) — Applebot-Extended is the AI-
+		// training variant and lives in TRAINING_CRAWLERS.
+		// DuckAssistBot powers DDG's AI-generated answer summaries.
+		'Applebot',
+		'ChatGPT-User',
+		'Claude-SearchBot',
+		'Claude-User',
+		'DuckAssistBot',
+		'OAI-SearchBot',
+		'Perplexity-User',
+		'PerplexityBot',
+
+		// Agentic shopping — AI that places orders, not just reads.
+		// Highest commerce intent: appearing here means appearing at
+		// purchase time, not just research. AmazonBuyForMe powers
+		// Amazon Rufus's "buy from the open web" feature; KlarnaBot
+		// drives high-intent shopping queries primarily in EU and US
+		// fashion/lifestyle.
 		'AmazonBuyForMe',
 		'KlarnaBot',
 
-		// Google Shopping — distinct from Googlebot (search indexing)
-		// and Google-Extended (training). Storebot-Google powers
-		// the Shopping Overviews surface and "AI Outfit" visual
-		// recommendations. US-centric but global for commerce.
+		// Commerce search engines. AdIdxBot indexes product landing
+		// pages for Microsoft Advertising / Bing Ads / Copilot
+		// shopping answers — the commerce prerequisite for Copilot
+		// discoverability. Storebot-Google powers Shopping Overviews
+		// and "AI Outfit" recommendations; distinct from Googlebot
+		// (general search) and Google-Extended (training).
+		'AdIdxBot',
 		'Storebot-Google',
 
-		// Microsoft Shopping / Bing Ads — Microsoft's counterpart
-		// to Storebot-Google. AdIdxBot validates and indexes
-		// product landing pages for Microsoft Advertising (Bing
-		// Ads) and Microsoft Shopping listings. The index it
-		// builds also feeds Copilot's shopping answers, so
-		// allowing AdIdxBot is the commerce prerequisite for
-		// Copilot discoverability — parallels the Storebot-Google
-		// → Gemini relationship. Distinct from `bingbot` (general
-		// search) and `Microsoft-BingBot-Extended` (training
-		// opt-out, see TRAINING_CRAWLERS).
-		'AdIdxBot',
-
-		// Regional search + AI — Asia. Baidu (China) dominates
-		// Chinese discovery with ERNIEBot (general crawling for
-		// the Ernie model) and YiyanBot (real-time conversational
-		// citations). Wrtn ("the Korean ChatGPT") is the lifestyle
-		// product-discovery leader in South Korea. Naver powers
-		// AiRSearch, vital for the Korean market in a different
-		// slice from Wrtn. Huawei's PetalBot backs Petal Search
-		// and the AI Assistant shipped on hundreds of millions of
-		// Huawei devices (primary Android alternative in China
-		// and growing presence across Asia + emerging markets).
+		// Regional search + AI — Asia. Baidu (China) — ERNIEBot
+		// (general crawling for the Ernie model) + YiyanBot (real-
+		// time conversational citations). Naver (Korea) powers
+		// AiRSearch. Huawei's PetalBot backs Petal Search and the
+		// AI Assistant shipped on hundreds of millions of Huawei
+		// devices. Wrtn ("the Korean ChatGPT") is the lifestyle
+		// product-discovery leader in South Korea.
 		//
 		// Merchants selling only in English-speaking markets can
 		// safely keep these checked without traffic impact — they
@@ -102,17 +84,15 @@ class WC_AI_Storefront_Robots {
 		// region. Merchants selling in Asia lose significant AI
 		// discovery if these are blocked.
 		'ERNIEBot',
-		'YiyanBot',
-		'WRTNBot',
 		'NaverBot',
 		'PetalBot',
+		'WRTNBot',
+		'YiyanBot',
 
 		// Regional search + AI — Europe. YandexBot powers Yandex's
-		// AI Assistant plus the traditional Yandex search engine;
-		// covers Russian-speaking markets (Russia, Belarus,
-		// Kazakhstan, Ukraine, and Russian-language speakers
-		// globally). The search + AI fusion is similar to
-		// Naver/Baidu — one bot, dual duties.
+		// AI Assistant plus the traditional Yandex search engine —
+		// covers Russian-speaking markets globally. Search + AI
+		// fusion similar to Naver/Baidu (one bot, dual duties).
 		'YandexBot',
 	];
 
@@ -142,51 +122,20 @@ class WC_AI_Storefront_Robots {
 	 * @var string[]
 	 */
 	const TRAINING_CRAWLERS = [
-		// OpenAI.
-		'GPTBot',
-
-		// Google.
-		'Google-Extended',
-
-		// Anthropic.
-		'ClaudeBot',
-
-		// Meta.
-		'Meta-ExternalAgent',
-
-		// Amazon.
+		// Alphabetical (case-insensitive). The list is a flat
+		// brand-strategy decision — no functional sub-grouping
+		// (compare LIVE_BROWSING_AGENTS where revenue-vs-discovery
+		// distinctions matter), so ordering is pure scannability.
 		'Amazonbot',
-
-		// Apple.
 		'Applebot-Extended',
-
-		// Microsoft — Bing's AI-training opt-out token. Parallels
-		// Google-Extended / Applebot-Extended: honoring it keeps
-		// your content out of Microsoft's generative-AI training
-		// corpora without affecting Bing's regular search ranking
-		// or shopping index (those are governed by `bingbot` and
-		// `AdIdxBot` respectively, not this token). Default-off
-		// under the training-crawlers policy; merchants who want
-		// to contribute content to Copilot's training explicitly
-		// opt in.
-		'Microsoft-BingBot-Extended',
-
-		// ByteDance (TikTok). Primarily training, but also powers
-		// TikTok's internal search and commerce surfaces. Merchants
-		// who rely on TikTok Shop or viral-traffic discovery should
-		// consider manually enabling this from the admin UI —
-		// defaulting to training-blocked keeps it consistent with
-		// the other training crawlers but loses TikTok visibility.
 		'Bytespider',
-
-		// CommonCrawl — feeds most open-source LLM training corpora.
-		// Merchants who want maximum visibility across the AI
-		// ecosystem enable this; those who prefer catalog privacy
-		// block it.
 		'CCBot',
-
-		// Cohere.
+		'ClaudeBot',
 		'cohere-ai',
+		'Google-Extended',
+		'GPTBot',
+		'Meta-ExternalAgent',
+		'Microsoft-BingBot-Extended',
 	];
 
 	/**
@@ -244,39 +193,43 @@ class WC_AI_Storefront_Robots {
 	 * @var string[]
 	 */
 	const AI_CRAWLERS = [
-		// Live browsing (revenue path — recommended on).
-		'ChatGPT-User',
-		'OAI-SearchBot',
-		'Claude-User',
-		'Claude-SearchBot',
-		'PerplexityBot',
-		'Perplexity-User',
+		// Live browsing — alphabetical within sub-groups
+		// (general-purpose, agentic shopping, commerce search,
+		// regional Asia, regional Europe). See LIVE_BROWSING_AGENTS
+		// for sub-group rationale.
 		'Applebot',
+		'ChatGPT-User',
+		'Claude-SearchBot',
+		'Claude-User',
+		'DuckAssistBot',
+		'OAI-SearchBot',
+		'Perplexity-User',
+		'PerplexityBot',
 		'AmazonBuyForMe',
 		'KlarnaBot',
-		'Storebot-Google',
 		'AdIdxBot',
+		'Storebot-Google',
 		'ERNIEBot',
-		'YiyanBot',
-		'WRTNBot',
 		'NaverBot',
 		'PetalBot',
+		'WRTNBot',
+		'YiyanBot',
 		'YandexBot',
 
-		// Training crawlers (brand-strategy decision — merchant choice).
-		'GPTBot',
-		'Google-Extended',
-		'ClaudeBot',
-		'Meta-ExternalAgent',
+		// Training crawlers — alphabetical (case-insensitive).
 		'Amazonbot',
 		'Applebot-Extended',
-		'Microsoft-BingBot-Extended',
 		'Bytespider',
 		'CCBot',
+		'ClaudeBot',
 		'cohere-ai',
+		'Google-Extended',
+		'GPTBot',
+		'Meta-ExternalAgent',
+		'Microsoft-BingBot-Extended',
 
 		// Test / validation crawlers (default-off; merchant opts in
-		// for validation sessions).
+		// for validation sessions). Alphabetical for forward-compat.
 		'UCPPlayground',
 	];
 
