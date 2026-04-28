@@ -18,9 +18,37 @@ defined( 'ABSPATH' ) || exit;
 class WC_AI_Storefront_Llms_Txt {
 
 	/**
-	 * Transient key for cached llms.txt content.
+	 * Base transient key for cached llms.txt content.
+	 *
+	 * Never use this constant directly in `get_transient` / `set_transient`
+	 * / `delete_transient` calls — always use `self::host_cache_key()`
+	 * instead so the stored value is segmented by HTTP Host. This base
+	 * constant is kept for backward-compat (third-party code, legacy
+	 * delete_transient calls).
 	 */
 	const CACHE_KEY = 'wc_ai_storefront_llms_txt';
+
+	/**
+	 * Return a Host-specific transient key for the llms.txt cache.
+	 *
+	 * llms.txt body contains URLs derived from `home_url()` and
+	 * `rest_url()`, which are Host-derived on loose-vhost / multisite
+	 * installs. Keying the transient on the current HTTP Host value
+	 * ensures two requests from different virtual hosts never share a
+	 * cached body through the PHP layer. The CDN/proxy layer is
+	 * separately defended by the `Vary: Host` response header.
+	 *
+	 * The key is `CACHE_KEY + '_' + md5(HTTP_HOST)`.  md5 is used for
+	 * compactness (WP transient keys are limited to 172 chars), not for
+	 * security. In non-HTTP contexts (WP-Cron, CLI) `HTTP_HOST` is the
+	 * WP_HOME hostname, which is the correct host for those contexts.
+	 *
+	 * @return string Transient key for the current Host value.
+	 */
+	public static function host_cache_key(): string {
+		$host = sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ?? '' ) );
+		return self::CACHE_KEY . '_' . md5( $host );
+	}
 
 	/**
 	 * Short-circuit canonical-URL redirects for the llms.txt endpoint.
@@ -109,6 +137,14 @@ class WC_AI_Storefront_Llms_Txt {
 
 		header( 'Content-Type: text/plain; charset=utf-8' );
 		header( 'Cache-Control: public, max-age=3600' );
+		// `Vary: Host` is required because the llms.txt body contains
+		// URLs derived from `home_url()` / `rest_url()`, which are
+		// Host-derived on loose-vhost / multisite installs. Without
+		// this header a shared CDN or reverse proxy keyed on URL alone
+		// could serve a body whose endpoint URLs point at a different
+		// virtual host. `Vary: Host` forces the cache to maintain a
+		// separate entry per Host value.
+		header( 'Vary: Host' );
 		header( 'X-Content-Type-Options: nosniff' );
 		header( 'Access-Control-Allow-Origin: *' );
 		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
@@ -145,7 +181,12 @@ class WC_AI_Storefront_Llms_Txt {
 	 * @return string Markdown content.
 	 */
 	private function get_cached_content() {
-		$cached = get_transient( self::CACHE_KEY );
+		// All transient operations use the Host-specific key so two
+		// requests from different virtual hosts never share a cached body
+		// through the PHP layer. See self::host_cache_key() for rationale.
+		$cache_key = self::host_cache_key();
+
+		$cached = get_transient( $cache_key );
 		if ( false !== $cached && '' !== $cached ) {
 			WC_AI_Storefront_Logger::debug( 'llms.txt cache hit' );
 			return $cached;
@@ -167,7 +208,7 @@ class WC_AI_Storefront_Llms_Txt {
 		// poisoned value) as "no lock held." Without the empty-string
 		// guard, a transient backend returning '' for a missing key
 		// would falsely trigger the wait loop.
-		$lock = get_transient( self::CACHE_KEY . '_regenerating' );
+		$lock = get_transient( $cache_key . '_regenerating' );
 		if ( false !== $lock && '' !== $lock ) {
 			// Primary is in-flight. Poll up to 5 seconds for the
 			// main cache to appear. Using usleep with short
@@ -175,7 +216,7 @@ class WC_AI_Storefront_Llms_Txt {
 			// release early when the primary succeeds.
 			for ( $i = 0; $i < 50; $i++ ) {
 				usleep( 100000 ); // 100ms.
-				$cached = get_transient( self::CACHE_KEY );
+				$cached = get_transient( $cache_key );
 				if ( false !== $cached && '' !== $cached ) {
 					WC_AI_Storefront_Logger::debug( 'llms.txt cache hit after single-flight wait' );
 					return $cached;
@@ -188,7 +229,7 @@ class WC_AI_Storefront_Llms_Txt {
 
 		// Claim the sentinel for a short window covering the
 		// probe-timeout worst case (4s) plus a margin.
-		set_transient( self::CACHE_KEY . '_regenerating', 1, 10 );
+		set_transient( $cache_key . '_regenerating', 1, 10 );
 
 		// Wrap generation in try/finally so the sentinel ALWAYS
 		// releases on exit — even if generate() or the subsequent
@@ -207,7 +248,7 @@ class WC_AI_Storefront_Llms_Txt {
 			// would re-create the poisoning scenario the cache-hit
 			// check above now defends against; belt + suspenders.
 			if ( '' !== $content ) {
-				set_transient( self::CACHE_KEY, $content, HOUR_IN_SECONDS );
+				set_transient( $cache_key, $content, HOUR_IN_SECONDS );
 			} else {
 				WC_AI_Storefront_Logger::debug( 'llms.txt generate() returned empty — not caching' );
 			}
@@ -217,7 +258,7 @@ class WC_AI_Storefront_Llms_Txt {
 			// main cache; if we threw or generated empty they'll
 			// either serve the cached content from a prior successful
 			// run or regenerate themselves.
-			delete_transient( self::CACHE_KEY . '_regenerating' );
+			delete_transient( $cache_key . '_regenerating' );
 		}
 
 		return $content;

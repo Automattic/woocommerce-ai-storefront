@@ -109,7 +109,7 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 		// the version is written, then the content caches are deleted.
 		// The important invariant: update_option is NOT the last thing
 		// to fire — content-cache deletes come after.
-		$llms_delete_pos = strpos( $branch, 'WC_AI_Storefront_Llms_Txt::CACHE_KEY' );
+		$llms_delete_pos = strpos( $branch, 'WC_AI_Storefront_Llms_Txt::host_cache_key' );
 		$this->assertNotFalse(
 			$llms_delete_pos,
 			'Cache-bust branch missing llms.txt transient delete.'

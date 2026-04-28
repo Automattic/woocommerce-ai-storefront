@@ -67,7 +67,14 @@ class WC_AI_Storefront_Cache_Invalidator {
 	 * since warm_cache() is itself idempotent (skips if cache already exists).
 	 */
 	public function invalidate() {
-		delete_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY );
+		// llms.txt transient is Host-keyed — delete the key for the
+		// current Host (the Host active when the invalidation fires,
+		// typically the main site host). Each virtual host maintains
+		// its own cache slot and expires independently on the next
+		// request under that host.
+		delete_transient( WC_AI_Storefront_Llms_Txt::host_cache_key() );
+		// UCP manifest is computed per-request (no transient) — the
+		// delete below is a harmless no-op kept for backward compat.
 		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
 
 		// Schedule a one-shot warm-up, unless one is already pending.
@@ -84,7 +91,7 @@ class WC_AI_Storefront_Cache_Invalidator {
 	 */
 	public function warm_cache() {
 		// If the cache was already rebuilt by a real request, nothing to do.
-		if ( false !== get_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY ) ) {
+		if ( false !== get_transient( WC_AI_Storefront_Llms_Txt::host_cache_key() ) ) {
 			return;
 		}
 
@@ -95,14 +102,14 @@ class WC_AI_Storefront_Cache_Invalidator {
 
 		$llms_txt = new WC_AI_Storefront_Llms_Txt();
 		$content  = $llms_txt->generate();
-		set_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY, $content, HOUR_IN_SECONDS );
+		set_transient( WC_AI_Storefront_Llms_Txt::host_cache_key(), $content, HOUR_IN_SECONDS );
 	}
 
 	/**
 	 * Clean up on plugin deactivation.
 	 */
 	public static function deactivate() {
-		delete_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY );
+		delete_transient( WC_AI_Storefront_Llms_Txt::host_cache_key() );
 		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
 		wp_clear_scheduled_hook( self::WARMUP_CRON_HOOK );
 	}
