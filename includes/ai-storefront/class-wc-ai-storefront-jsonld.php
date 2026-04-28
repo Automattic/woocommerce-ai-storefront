@@ -309,11 +309,21 @@ class WC_AI_Storefront_JsonLd {
 		 * Filter the enhanced JSON-LD product data.
 		 *
 		 * @since 1.0.0
-		 * @param array      $markup   The enhanced product structured data.
-		 * @param WC_Product $product  The product.
-		 * @param array      $settings The AI syndication settings.
+		 * @param array      $markup          The enhanced product structured data.
+		 * @param WC_Product $product         The product.
+		 * @param array      $settings_subset Minimal safe subset of settings:
+		 *                                    `enabled`, `product_selection_mode`,
+		 *                                    `return_policy`. Security-sensitive
+		 *                                    fields (rate limits, access-control
+		 *                                    flags, crawler allow-lists) are
+		 *                                    intentionally excluded.
 		 */
-		return apply_filters( 'wc_ai_storefront_jsonld_product', $markup, $product, $settings );
+		$settings_subset = [
+			'enabled'                => $settings['enabled'] ?? 'no',
+			'product_selection_mode' => $settings['product_selection_mode'] ?? 'all',
+			'return_policy'          => $settings['return_policy'] ?? [],
+		];
+		return apply_filters( 'wc_ai_storefront_jsonld_product', $markup, $product, $settings_subset );
 	}
 
 	/**
@@ -362,10 +372,20 @@ class WC_AI_Storefront_JsonLd {
 		 * Filter the store-level JSON-LD data.
 		 *
 		 * @since 1.0.0
-		 * @param array $store_data The store structured data.
-		 * @param array $settings   The AI syndication settings.
+		 * @param array $store_data      The store structured data.
+		 * @param array $settings_subset Minimal safe subset of settings:
+		 *                               `enabled`, `product_selection_mode`,
+		 *                               `return_policy`. Security-sensitive
+		 *                               fields (rate limits, access-control
+		 *                               flags, crawler allow-lists) are
+		 *                               intentionally excluded.
 		 */
-		$store_data = apply_filters( 'wc_ai_storefront_jsonld_store', $store_data, $settings );
+		$settings_subset = [
+			'enabled'                => $settings['enabled'] ?? 'no',
+			'product_selection_mode' => $settings['product_selection_mode'] ?? 'all',
+			'return_policy'          => $settings['return_policy'] ?? [],
+		];
+		$store_data = apply_filters( 'wc_ai_storefront_jsonld_store', $store_data, $settings_subset );
 
 		// `JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT`
 		// over the previous `JSON_UNESCAPED_SLASHES` flag: ensures
@@ -592,13 +612,22 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		// Always emit returnFees (sanitization defaults to FreeReturn
-		// when unset).
-		$fees                = isset( $policy['fees'] ) && is_string( $policy['fees'] ) ? $policy['fees'] : 'FreeReturn';
+		// when unset). Allow-list validated here at emission time as a
+		// second gate — save-time sanitization is the primary defence,
+		// but a future DB import or direct option write could bypass it.
+		$allowed_fees = [ 'FreeReturn', 'ReturnFeesCustomerResponsibility', 'OriginalShippingFees', 'RestockingFees' ];
+		$fees         = isset( $policy['fees'] ) && is_string( $policy['fees'] ) && in_array( $policy['fees'], $allowed_fees, true )
+			? $policy['fees']
+			: 'FreeReturn';
 		$block['returnFees'] = 'https://schema.org/' . $fees;
 
 		// returnMethod: scalar string when 1 method selected, array
-		// when 2+, omitted when none.
-		$methods = isset( $policy['methods'] ) && is_array( $policy['methods'] ) ? $policy['methods'] : [];
+		// when 2+, omitted when none. Methods are also allow-list
+		// validated at emission time for the same reason as fees above.
+		$allowed_methods = [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ];
+		$methods         = isset( $policy['methods'] ) && is_array( $policy['methods'] )
+			? array_values( array_filter( $policy['methods'], static fn( $m ) => in_array( $m, $allowed_methods, true ) ) )
+			: [];
 		if ( count( $methods ) === 1 ) {
 			$block['returnMethod'] = 'https://schema.org/' . $methods[0];
 		} elseif ( count( $methods ) >= 2 ) {
