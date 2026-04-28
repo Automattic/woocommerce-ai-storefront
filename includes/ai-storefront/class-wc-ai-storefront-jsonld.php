@@ -626,7 +626,11 @@ class WC_AI_Storefront_JsonLd {
 		// validated at emission time for the same reason as fees above.
 		$allowed_methods = [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ];
 		$methods         = isset( $policy['methods'] ) && is_array( $policy['methods'] )
-			? array_values( array_filter( $policy['methods'], static fn( $m ) => in_array( $m, $allowed_methods, true ) ) )
+			? array_values(
+				array_unique(
+					array_filter( $policy['methods'], static fn( $m ) => in_array( $m, $allowed_methods, true ) )
+				)
+			)
 			: [];
 		if ( count( $methods ) === 1 ) {
 			$block['returnMethod'] = 'https://schema.org/' . $methods[0];
