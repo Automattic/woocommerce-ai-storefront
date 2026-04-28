@@ -249,6 +249,8 @@ class WC_AI_Storefront_JsonLd {
 			}
 		}
 
+		// shippingDetails requires a known store country — a
+		// DefinedRegion without addressCountry is meaningless.
 		if ( $country && isset( $markup['offers'][0] ) && is_array( $markup['offers'][0] ) ) {
 			$markup['offers'][0]['shippingDetails'] = [
 				'@type'               => 'OfferShippingDetails',
@@ -257,7 +259,18 @@ class WC_AI_Storefront_JsonLd {
 					'addressCountry' => $country,
 				],
 			];
+		}
 
+		// Return policy runs independently of shippingDetails.
+		// MerchantReturnNotPermitted (per-product final-sale override
+		// and store-wide final_sale mode) is valid without
+		// applicableCountry — Schema.org marks the field as
+		// recommended, not required, for no-return policies.
+		// build_return_policy_block omits applicableCountry when
+		// $country is empty for those paths. Returns-accepted mode
+		// still returns null when country is absent (a return window
+		// is meaningless without a target region).
+		if ( isset( $markup['offers'][0] ) && is_array( $markup['offers'][0] ) ) {
 			$policy = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
 				? $settings['return_policy']
 				: [ 'mode' => 'unconfigured' ];
@@ -484,11 +497,19 @@ class WC_AI_Storefront_JsonLd {
 		// merchant hasn't configured a policy page, the override
 		// emits the bare-bones block without a link.
 		if ( null !== $product_id && WC_AI_Storefront_Product_Meta_Box::is_final_sale( $product_id ) ) {
-			$block   = [
+			// applicableCountry is recommended, not required, for
+			// MerchantReturnNotPermitted — omit when the store's base
+			// country is unset so the block still emits. Merchants who
+			// flag a product final-sale are expressing a clear
+			// structured intent; losing the entire block because the
+			// store address is missing would silently discard it.
+			$block = [
 				'@type'                => 'MerchantReturnPolicy',
-				'applicableCountry'    => $country,
 				'returnPolicyCategory' => 'https://schema.org/MerchantReturnNotPermitted',
 			];
+			if ( '' !== $country ) {
+				$block['applicableCountry'] = $country;
+			}
 			$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
 			$link    = self::resolve_merchant_return_link( $page_id );
 			if ( '' !== $link ) {
@@ -504,11 +525,15 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		if ( 'final_sale' === $mode ) {
-			$block   = [
+			// Same applicableCountry omission rationale as the
+			// per-product override above.
+			$block = [
 				'@type'                => 'MerchantReturnPolicy',
-				'applicableCountry'    => $country,
 				'returnPolicyCategory' => 'https://schema.org/MerchantReturnNotPermitted',
 			];
+			if ( '' !== $country ) {
+				$block['applicableCountry'] = $country;
+			}
 			$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
 			$link    = self::resolve_merchant_return_link( $page_id );
 			if ( '' !== $link ) {
@@ -526,6 +551,14 @@ class WC_AI_Storefront_JsonLd {
 		// emit when the mode is explicitly `returns_accepted`.
 		// `unconfigured` and `final_sale` were handled above.
 		if ( 'returns_accepted' !== $mode ) {
+			return null;
+		}
+
+		// Returns-accepted mode requires a country — a return window
+		// without a target region is not useful to validators or
+		// agents. Return null (same as before this refactor) so the
+		// block is omitted when the store address is unset.
+		if ( '' === $country ) {
 			return null;
 		}
 
