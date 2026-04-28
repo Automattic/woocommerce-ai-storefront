@@ -1603,10 +1603,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'code'     => 'minimum_not_met',
 				// `requires_buyer_input`, not `unrecoverable`: the
 				// message instructs the buyer to "add more items to
-				// proceed" — it's a fixable condition, parallel to
-				// `buyer_handoff_required`. Using unrecoverable would
-				// mislead agents into treating this as a terminal
-				// failure and abandoning the cart.
+				// proceed" — a fixable condition that requires buyer
+				// action (modify the cart) before retry. Using
+				// unrecoverable would mislead agents into treating
+				// this as a terminal failure and abandoning the cart.
+				// Distinct from `buyer_handoff_required` (the
+				// happy-path redirect message), which is `type: info`
+				// + `severity: advisory` because it's not an error —
+				// just informational copy accompanying the redirect.
 				'severity' => 'requires_buyer_input',
 				'path'     => '$.line_items',
 				'content'  => sprintf(
@@ -1650,10 +1654,26 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			if ( ! is_string( $handoff_content ) ) {
 				$handoff_content = $default_handoff;
 			}
+			// Type `info` + severity `advisory` rather than `error` /
+			// `requires_buyer_input`: this message accompanies the
+			// happy-path redirect, not a failure. Agents (UCPPlayground
+			// observed; production agents likely follow) read
+			// `messages[].type` as a UI rendering hint — `error`
+			// triggers red/warning styling and the AI mirrors the
+			// problem-flavored framing back to the user, producing
+			// "there was an issue, here's the link" copy instead of
+			// "you're set, click here to buy." The `status` field
+			// already says `requires_escalation` to signal the redirect
+			// posture; the message type/severity should match the
+			// emotional valence (informational, not an error condition)
+			// rather than restate the protocol-level state. The
+			// partner `total_is_provisional` message below uses the
+			// same `info` / `advisory` shape and renders correctly —
+			// staying consistent with that.
 			$messages[] = [
-				'type'     => 'error',
+				'type'     => 'info',
 				'code'     => 'buyer_handoff_required',
-				'severity' => 'requires_buyer_input',
+				'severity' => 'advisory',
 				'content'  => $handoff_content,
 			];
 
