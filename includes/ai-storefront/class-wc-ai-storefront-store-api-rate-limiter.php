@@ -124,10 +124,10 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 	 * small number of extra requests through — this matches WC's own
 	 * rate-limiter behavior and is acceptable for a per-minute budget.
 	 *
-	 * @return true|WP_Error True when the request is within budget;
+	 * @return bool|WP_Error True when the request is within budget;
 	 *                       WP_Error(status=429) when exceeded.
 	 */
-	public static function check_outer_rate_limit(): true|WP_Error {
+	public static function check_outer_rate_limit(): bool|WP_Error {
 		$settings = WC_AI_Storefront::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			return true;
