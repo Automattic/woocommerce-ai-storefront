@@ -108,6 +108,41 @@ class WC_AI_Storefront_Updater {
 			$api->enableReleaseAssets( self::RELEASE_ASSET_PATTERN );
 		}
 
+		// Include pre-release tags in the eligible-update set.
+		//
+		// Background: PUC's default `STRATEGY_LATEST_RELEASE` calls
+		// GitHub's `/releases/latest` endpoint, which only returns
+		// the most recent NON-prerelease release (a GitHub-side
+		// filter, not configurable on the API). Our distribution
+		// model marks every GitHub release as Pre-release until the
+		// plugin lands on WP.org's stable directory, so
+		// `/releases/latest` returns 404 and PUC falls through to
+		// `/tags` and `/branches/main`. Anonymous calls to those
+		// endpoints either rate-limit (60/hr/IP) or 403 in some
+		// host configurations — surfacing as the merchant-facing
+		// "Could not determine if updates are available" notice
+		// even though the latest release is sitting right there.
+		//
+		// `setReleaseVersionFilter` switches PUC to the
+		// `/releases` (no /latest) endpoint and applies our regex
+		// to the full list. The `RELEASE_FILTER_ALL` flag (= 3 per
+		// `Puc\v5p6\Vcs\Api::RELEASE_FILTER_ALL`) tells PUC to
+		// include pre-releases in the filter. Hardcoding the int
+		// rather than the namespaced constant avoids coupling to
+		// the v5p6 path; if PUC bumps the version path in a
+		// future bundle update, the int stays valid.
+		//
+		// The semver regex pins the tag shape we ship — `vX.Y.Z`
+		// only. PUC strips the `v` prefix before passing the
+		// version to the regex, so the pattern matches `X.Y.Z`.
+		// Any non-semver tag (a draft branch tag, a hotfix tag
+		// with a suffix) is skipped — defensive against
+		// accidentally publishing a non-version tag and having
+		// every merchant prompted to "upgrade" to it.
+		if ( $api && method_exists( $api, 'setReleaseVersionFilter' ) ) {
+			$api->setReleaseVersionFilter( '/^\d+\.\d+\.\d+$/', 3 );
+		}
+
 		/**
 		 * Authenticate the update-check requests against GitHub.
 		 *

@@ -259,8 +259,11 @@ const formatMoney = ( stats, amount ) => {
 // submenu page, hand-rolled cards are lower-maintenance.
 const StatCard = ( { label, value, subvalue, href } ) => {
 	const cardStyle = {
-		flex: '1 1 0',
-		minWidth: '140px',
+		// `flex: 1 1 0; min-width: 140px` removed — the parent grid
+		// container now controls card width via
+		// `grid-template-columns: repeat(auto-fit, minmax(...))`.
+		// See OverviewTab's stat-card grid for the formula and the
+		// 4-column-cap rationale.
 		padding: '16px',
 		background: colors.surfaceSubtle,
 		border: 'none',
@@ -270,45 +273,46 @@ const StatCard = ( { label, value, subvalue, href } ) => {
 		display: 'block',
 	};
 
-	// Value + optional subvalue render on ONE baseline-aligned row.
-	// Stacking the subvalue below the value (pre-fix) made the AI
-	// Orders card visually taller than the three subvalue-less
-	// cards next to it — the big number's vertical center shifted
-	// up, breaking the four-across row alignment the merchant reads
-	// at a glance. Inlining with `align-items: baseline` keeps the
-	// "1" and "10% of total" sharing the same type baseline, so
-	// every card's big number sits at the same y-coordinate.
+	// Value, optional subvalue, and label stack vertically — three
+	// rows in card order. Pre-0.5.1 we tried inline-baseline for
+	// value+subvalue (with flex-wrap as a fallback) to keep the big
+	// numbers visually composed. That broke on the Top Agent card
+	// when the subvalue grew long enough that the flex child shrank
+	// to ~1ch and every word landed on its own line. Per ui-designer
+	// review: at 24px green numerics the value already dominates
+	// regardless of subvalue placement, and the cross-card baseline
+	// alignment goal is preserved by virtue of the value being row 1
+	// of every card. Stacking eliminates an entire class of
+	// per-card-height-variance bugs.
 	const inner = (
 		<>
 			<div
 				style={ {
-					display: 'flex',
-					justifyContent: 'center',
-					alignItems: 'baseline',
-					gap: '6px',
+					fontSize: '24px',
+					fontWeight: '600',
+					color: colors.success,
+					// Defense against ultra-long agent brand names
+					// (e.g. "PerplexityShopping") overflowing the
+					// card's grid track. Without this, a 20-char
+					// value pushes the card wider than its track and
+					// breaks the row layout for adjacent cards.
+					overflowWrap: 'anywhere',
 				} }
 			>
+				{ value }
+			</div>
+			{ subvalue && (
 				<div
 					style={ {
-						fontSize: '24px',
-						fontWeight: '600',
+						fontSize: '11px',
 						color: colors.success,
+						fontWeight: '400',
+						marginTop: '2px',
 					} }
 				>
-					{ value }
+					{ subvalue }
 				</div>
-				{ subvalue && (
-					<div
-						style={ {
-							fontSize: '11px',
-							color: colors.success,
-							fontWeight: '400',
-						} }
-					>
-						{ subvalue }
-					</div>
-				) }
-			</div>
+			) }
 			<div
 				style={ {
 					color: colors.textMuted,
@@ -723,12 +727,39 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					__nextHasNoMarginBottom
 				/>
 			</Flex>
+			{ /*
+				Stat-card grid: max 4 cards per row, with cards
+				expanding to fill horizontal space until they hit
+				the 4-column cap. Layout shape on a typical
+				1100-1300px WP-admin content area:
+				- 6 cards (current): 4 + 2 (last 2 cards in row 2,
+				  left-aligned, columns 3-4 of row 2 stay empty)
+				- 8 cards (RSM goal): 4 + 4 (clean 4×2 grid)
+
+				The `max(240px, calc((100% - 48px) / 4))` formula:
+				- `(100% - 48px) / 4` = card width if 4 columns fit
+				  (48px = 3 gaps × 16px gap)
+				- `max(240px, ...)` = each card is at least 240px
+				- On wide containers (≥1008px), the calc value wins
+				  and caps column count at 4
+				- On narrow containers (<1008px), 240px wins and
+				  cards reflow to fewer per row (3 ≤ ~1024px,
+				  2 ≤ ~544px, 1 ≤ ~304px)
+				- `auto-fit` collapses empty trailing slots so the
+				  4+2 case left-aligns the partial row
+
+				`min-width: 0` defends against sub-250px viewport
+				horizontal scroll (rare but reachable on phone in
+				narrow drawers / zoom).
+			*/ }
 			<div
 				style={ {
-					display: 'flex',
+					display: 'grid',
+					gridTemplateColumns:
+						'repeat(auto-fit, minmax(max(240px, calc((100% - 48px) / 4)), 1fr))',
 					gap: '16px',
 					marginTop: '12px',
-					flexWrap: 'wrap',
+					minWidth: 0,
 				} }
 			>
 				<StatCard
@@ -794,15 +825,22 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					   already filters empty meta_value at the SQL level + skips
 					   empty names in derive_stats(); this is belt-and-suspenders. */
 					value={ stats?.top_agent?.name || '\u2014' }
+					/* Subvalue carries only the share percent. Pre-0.5.1 it
+					   also included the order count ("N orders | M% of AI
+					   orders") but that duplicated the "AI Orders" card's
+					   value, made the subvalue too long to fit at 4-column
+					   card widths, and tripped the "1 orders" pluralization
+					   bug. The percent is the unique signal of the Top
+					   Agent card; the order count's natural home is the
+					   AI Orders card next to it. */
 					subvalue={
 						stats && stats.top_agent
 							? sprintf(
-									/* translators: 1: order count, 2: percent share of AI orders */
+									/* translators: %1$s: percent share of AI orders attributed to the top agent. */
 									__(
-										'%1$d orders | %2$s%% of AI orders',
+										'%1$s%% of AI orders',
 										'woocommerce-ai-storefront'
 									),
-									stats.top_agent.orders,
 									stats.top_agent.share_percent
 							  )
 							: undefined
