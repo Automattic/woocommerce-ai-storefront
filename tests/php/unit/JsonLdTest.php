@@ -41,9 +41,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'add_query_arg' )->alias(
 			static function ( $args, $url ) {
 				// Strip any fragment before appending query params, then
-				// re-append it — matching WordPress core's behavior and
-				// preventing malformed URLs like `?q=1#frag` where the
-				// query string would be absorbed into the fragment.
+				// re-append it — matching WordPress core's behavior.
+				// Without this, a permalink like `.../widget/#reviews`
+				// would produce `.../widget/#reviews?add-to-cart=42`
+				// where the entire query string is part of the fragment
+				// and never reaches the server.
 				$fragment = '';
 				if ( str_contains( $url, '#' ) ) {
 					[ $url, $fragment ] = explode( '#', $url, 2 );
@@ -196,6 +198,44 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		// Sanity: attribution params must survive too.
 		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+	}
+
+	public function test_buyaction_uritemplate_preserves_fragment_when_permalink_has_existing_query(): void {
+		// Combination case: permalink already carries a query string
+		// (e.g. a language plugin adds `?lang=fr`) AND has a fragment.
+		// The mock's `?`-vs-`&` separator check must look at the
+		// fragment-stripped URL so it finds the existing `?` and uses
+		// `&`. Without the fragment strip, a naive check on the full
+		// URL including `#reviews` would still find `?` and use `&`
+		// — but only by accident; the fragment would still land in the
+		// wrong position. This test pins both invariants explicitly.
+		$product = $this->make_product(
+			[ 'permalink' => 'https://example.com/product/widget/?lang=fr#tab-description' ]
+		);
+		$result  = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+
+		// Original query param must survive.
+		$this->assertStringContainsString( 'lang=fr', $url );
+
+		// All added params must appear before the fragment.
+		$fragment_pos    = strpos( $url, '#' );
+		$query_param_pos = strpos( $url, 'add-to-cart=' );
+
+		$this->assertNotFalse( $fragment_pos );
+		$this->assertNotFalse( $query_param_pos );
+		$this->assertLessThan(
+			$fragment_pos,
+			$query_param_pos,
+			'Added query params must appear before the # separator'
+		);
+
+		// Exactly one `#` — no duplication of the fragment marker.
+		$this->assertSame( 1, substr_count( $url, '#' ) );
+
+		// Fragment intact at the end.
+		$this->assertStringEndsWith( '#tab-description', $url );
 	}
 
 	// ------------------------------------------------------------------
