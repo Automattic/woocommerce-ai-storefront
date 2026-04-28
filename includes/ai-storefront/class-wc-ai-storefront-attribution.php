@@ -535,7 +535,15 @@ class WC_AI_Storefront_Attribution {
 				$raw_host = $raw_host_input;
 			}
 		}
-		if ( '' !== $raw_host ) {
+		// Only write the URL-param value when the lenient gate did NOT
+		// already write a normalized hostname above. When both fire,
+		// the KNOWN_AGENT_HOSTS-validated normalized value is the
+		// authoritative answer; a diverging URL-param value (e.g. an
+		// agent that puts a Product/Version-form token in
+		// ai_agent_host_raw while utm_source carries the canonical
+		// lookup key) would contradict the class docblock contract and
+		// confuse the admin drill-in display.
+		if ( '' !== $raw_host && ! $is_known_ai_host ) {
 			$order->update_meta_data( self::AGENT_HOST_RAW_META_KEY, $raw_host );
 		}
 
