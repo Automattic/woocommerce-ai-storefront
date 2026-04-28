@@ -385,7 +385,7 @@ class WC_AI_Storefront_JsonLd {
 			'product_selection_mode' => $settings['product_selection_mode'] ?? 'all',
 			'return_policy'          => $settings['return_policy'] ?? [],
 		];
-		$store_data = apply_filters( 'wc_ai_storefront_jsonld_store', $store_data, $settings_subset );
+		$store_data      = apply_filters( 'wc_ai_storefront_jsonld_store', $store_data, $settings_subset );
 
 		// `JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT`
 		// over the previous `JSON_UNESCAPED_SLASHES` flag: ensures
@@ -615,8 +615,8 @@ class WC_AI_Storefront_JsonLd {
 		// when unset). Allow-list validated here at emission time as a
 		// second gate — save-time sanitization is the primary defence,
 		// but a future DB import or direct option write could bypass it.
-		$allowed_fees = [ 'FreeReturn', 'ReturnFeesCustomerResponsibility', 'OriginalShippingFees', 'RestockingFees' ];
-		$fees         = isset( $policy['fees'] ) && is_string( $policy['fees'] ) && in_array( $policy['fees'], $allowed_fees, true )
+		$allowed_fees        = [ 'FreeReturn', 'ReturnFeesCustomerResponsibility', 'OriginalShippingFees', 'RestockingFees' ];
+		$fees                = isset( $policy['fees'] ) && is_string( $policy['fees'] ) && in_array( $policy['fees'], $allowed_fees, true )
 			? $policy['fees']
 			: 'FreeReturn';
 		$block['returnFees'] = 'https://schema.org/' . $fees;
