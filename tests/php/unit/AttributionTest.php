@@ -53,18 +53,19 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 	public function test_capture_detects_ai_medium_from_order_meta(): void {
 		$order = new WC_Order();
 		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'ai_agent' );
-		$order->set_test_meta( '_wc_order_attribution_utm_source', 'chatgpt' );
+		// Use a safely-fictional sentinel that can never become a
+		// KNOWN_AGENT_HOSTS key — avoids coupling the test to the
+		// current allowlist roster.
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'mysteryagent.example' );
 
 		Functions\expect( 'do_action' )->once();
 
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertTrue( $order->was_saved() );
-		// `chatgpt` is NOT a KNOWN_AGENT_HOSTS key (the key is
-		// `chatgpt.com`), so the lenient gate doesn't fire and the
-		// STRICT branch buckets to "Other AI" per 0.5.2 behavior.
-		// (Pre-0.5.2 this test stored the raw `'chatgpt'` value
-		// verbatim, which fragmented Top Agent stats.)
+		// `mysteryagent.example` is NOT in KNOWN_AGENT_HOSTS, so the
+		// lenient gate doesn't fire and the STRICT branch buckets to
+		// "Other AI" per 0.5.2 behavior.
 		$this->assertEquals(
 			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
 			$order->get_meta( '_wc_ai_storefront_agent' )
@@ -222,7 +223,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$order = new WC_Order();
 		// No stored meta — WC core saw a regular landing page.
 		$_GET['utm_medium']    = 'ai_agent';
-		$_GET['utm_source']    = 'gemini'; // not in KNOWN_AGENT_HOSTS (key is gemini.google.com).
+		$_GET['utm_source']    = 'mysteryagent.example'; // not in KNOWN_AGENT_HOSTS.
 		$_GET['ai_session_id'] = 'session-abc';
 
 		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
@@ -255,7 +256,8 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 	public function test_capture_does_not_store_empty_session_id(): void {
 		$order = new WC_Order();
 		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'ai_agent' );
-		$order->set_test_meta( '_wc_order_attribution_utm_source', 'claude' );
+		// Safely-fictional sentinel: never a KNOWN_AGENT_HOSTS key.
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'mysteryagent.example' );
 		// No ai_session_id in $_GET.
 
 		Functions\expect( 'do_action' )->once();
@@ -263,7 +265,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertEquals( '', $order->get_meta( '_wc_ai_storefront_session_id' ) );
-		// `claude` is NOT a KNOWN_AGENT_HOSTS key (key is `claude.ai`)
+		// `mysteryagent.example` is NOT in KNOWN_AGENT_HOSTS
 		// → 0.5.2 buckets to "Other AI".
 		$this->assertEquals(
 			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
