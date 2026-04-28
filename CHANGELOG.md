@@ -4,6 +4,13 @@
 
 ---
 
+## [0.6.5] – 2026-04-28
+
+### Fixes
+- **Checkout-session buyer-handoff message no longer reads as an error.** Pre-fix, the happy-path message accompanying every `requires_escalation` redirect carried `type: error` + `severity: requires_buyer_input`, which UCPPlayground (and any agent reading `messages[].type` as a UI rendering hint) styled in red/error framing. The result: AI assistants paraphrased the response as "there was an issue, here's a link" instead of "you're set, click here to buy" — and rendered the `continue_url` as a plain hyperlink rather than a primary Buy Now CTA. Now `type: info` + `severity: advisory`, matching the partner `total_is_provisional` info message that's already in the same response. Same `code` (`buyer_handoff_required`) and same `content` — only the rendering hints changed. The `status: requires_escalation` field continues to signal the redirect posture; the message type/severity now matches the emotional valence (informational, not failure).
+
+---
+
 ## [0.6.4] – 2026-04-28
 
 ### Fixes

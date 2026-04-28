@@ -1175,7 +1175,19 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertCount( 1, $handoff );
 		$msg = array_values( $handoff )[0];
-		$this->assertEquals( 'requires_buyer_input', $msg['severity'] );
+		// Type `info` + severity `advisory` — the buyer-handoff
+		// message accompanies the happy-path redirect, not a failure.
+		// Pre-fix this carried `type: error` / `severity:
+		// requires_buyer_input`, which agents (UCPPlayground confirmed,
+		// production agents likely) read as a UI hint to render the
+		// response in error styling, producing "there was an issue,
+		// here's the link" copy instead of a Buy Now CTA. The
+		// `status: requires_escalation` field already signals the
+		// redirect posture; the message type/severity should match
+		// the emotional valence (informational), not restate the
+		// protocol-level state.
+		$this->assertEquals( 'info', $msg['type'] );
+		$this->assertEquals( 'advisory', $msg['severity'] );
 	}
 
 	public function test_buyer_handoff_message_omitted_when_no_continue_url(): void {
