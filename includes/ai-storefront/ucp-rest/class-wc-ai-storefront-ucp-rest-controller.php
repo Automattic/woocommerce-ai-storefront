@@ -1551,8 +1551,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		foreach ( $processed as $p ) {
 			$key = $p['wc_id'];
 			if ( isset( $dedup_keyed[ $key ] ) ) {
-				$dedup_keyed[ $key ]['quantity']   += $p['quantity'];
-				$dedup_keyed[ $key ]['was_merged']  = true;
+				$dedup_keyed[ $key ]['quantity']  += $p['quantity'];
+				$dedup_keyed[ $key ]['was_merged'] = true;
 			} else {
 				$dedup_keyed[ $key ]               = $p;
 				$dedup_keyed[ $key ]['was_merged'] = false;

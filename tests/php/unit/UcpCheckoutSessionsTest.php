@@ -1302,19 +1302,26 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// `process_line_item`'s single-line over-cap path.
 		$this->seed_simple_product( 1, 100 );
 
-		$cap    = WC_AI_Storefront_UCP_REST_Controller::MAX_QUANTITY_PER_LINE_ITEM;
-		$half   = (int) ( $cap / 2 );
+		$cap          = WC_AI_Storefront_UCP_REST_Controller::MAX_QUANTITY_PER_LINE_ITEM;
+		$line_qty     = (int) ( $cap / 2 ) + 1;
+		$expected_sum = $line_qty * 2;
+		// Pre-condition: each line is below the cap, but the sum
+		// exceeds it. Derived from `$cap` so the test stays valid if
+		// the cap is later changed to an odd value.
+		$this->assertLessThanOrEqual( $cap, $line_qty );
+		$this->assertGreaterThan( $cap, $expected_sum );
+
 		$result = $this->call_handler(
 			[
 				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $half + 1 ],
-					[ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $half + 1 ],
+					[ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $line_qty ],
+					[ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $line_qty ],
 				],
 			]
 		);
 
-		// Sum is cap+2 → over-cap → entry dropped. With nothing to
-		// redirect to, status is `incomplete`.
+		// Sum is over-cap → entry dropped. With nothing to redirect
+		// to, status is `incomplete`.
 		$this->assertEquals( 'incomplete', $result['data']['status'] );
 		$codes = array_column( $result['data']['messages'], 'code' );
 		$this->assertContains( 'invalid_quantity', $codes );
