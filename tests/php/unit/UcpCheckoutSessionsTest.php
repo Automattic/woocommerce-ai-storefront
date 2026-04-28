@@ -1318,12 +1318,29 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'incomplete', $result['data']['status'] );
 		$codes = array_column( $result['data']['messages'], 'code' );
 		$this->assertContains( 'invalid_quantity', $codes );
-		// Merge message still fires because the merge DID happen
-		// (quantities were summed) — the error is about the post-merge
-		// validation. Surfacing both gives the agent enough signal to
-		// understand: "we tried to merge your duplicates, but the sum
-		// exceeded the per-line cap."
-		$this->assertContains( 'merged_duplicate_items', $codes );
+		// `merged_duplicate_items` does NOT fire when the merged
+		// entry got dropped — the agent would otherwise look for a
+		// merged line in the response and find nothing. Truthful
+		// posture: only claim a merge happened when the response
+		// actually shows it. The `invalid_quantity` error's content
+		// carries the agent's ucp_id and summed quantity, so the
+		// affected product is still identifiable without the merge
+		// message.
+		$this->assertNotContains( 'merged_duplicate_items', $codes );
+
+		// Verify the error message content includes the offending
+		// ucp_id + summed quantity so agents can self-diagnose
+		// without the JSONPath being a specific index.
+		$over_cap_msg = null;
+		foreach ( $result['data']['messages'] as $msg ) {
+			if ( 'invalid_quantity' === ( $msg['code'] ?? '' ) ) {
+				$over_cap_msg = $msg;
+				break;
+			}
+		}
+		$this->assertNotNull( $over_cap_msg, 'invalid_quantity message must be present.' );
+		$this->assertStringContainsString( 'prod_1', $over_cap_msg['content'] );
+		$this->assertStringContainsString( (string) ( $cap + 2 ), $over_cap_msg['content'] );
 	}
 
 	public function test_quantity_at_exactly_the_cap_is_accepted(): void {

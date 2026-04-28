@@ -1540,15 +1540,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// sent first); `unit_price_minor` is identical across
 		// duplicates by definition (same product = same price at
 		// fetch time).
-		$dedup_keyed    = [];
-		$merge_happened = false;
+		// Per-key bookkeeping: track whether each key's accumulated
+		// entry came from a merge. The flag survives into the
+		// re-validation loop below so we can distinguish "merged
+		// entry that survived" from "merged entry that got dropped
+		// due to over-cap" — important for the `merged_duplicate_items`
+		// info-message, which should only fire when the agent will
+		// actually SEE a merged line in the response.
+		$dedup_keyed = [];
 		foreach ( $processed as $p ) {
 			$key = $p['wc_id'];
 			if ( isset( $dedup_keyed[ $key ] ) ) {
-				$dedup_keyed[ $key ]['quantity'] += $p['quantity'];
-				$merge_happened                   = true;
+				$dedup_keyed[ $key ]['quantity']   += $p['quantity'];
+				$dedup_keyed[ $key ]['was_merged']  = true;
 			} else {
-				$dedup_keyed[ $key ] = $p;
+				$dedup_keyed[ $key ]               = $p;
+				$dedup_keyed[ $key ]['was_merged'] = false;
 			}
 		}
 
@@ -1556,31 +1563,51 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// sum to over-cap (e.g. 6000 + 5000 = 11000 > MAX 10000).
 		// Drop the merged entry and emit `invalid_quantity` — same
 		// posture as `process_line_item`'s single-line over-cap path
-		// at line ~3819: drop the line, surface the error. The
-		// JSONPath on the message is the line_items collection
-		// rather than a specific index because the merged entry no
-		// longer maps 1:1 to a request-side index.
-		$processed_dedup = [];
+		// at line ~3819: drop the line, surface the error. JSONPath
+		// stays on the line_items collection because the merged entry
+		// no longer maps 1:1 to a request-side index; the message
+		// content carries the agent's `ucp_id` and the summed
+		// quantity so the affected product is still identifiable
+		// without the path.
+		$processed_dedup  = [];
+		$surviving_merges = false;
 		foreach ( $dedup_keyed as $entry ) {
 			if ( $entry['quantity'] > self::MAX_QUANTITY_PER_LINE_ITEM ) {
 				$messages[] = self::checkout_error_message(
 					'invalid_quantity',
-					'$.line_items'
+					'$.line_items',
+					sprintf(
+						/* translators: 1: agent's UCP product ID, 2: summed quantity after merging duplicates, 3: maximum quantity per line item. */
+						__( 'Summed quantity %2$d for "%1$s" (after merging duplicate line items) exceeds the per-line cap of %3$d.', 'woocommerce-ai-storefront' ),
+						$entry['ucp_id'],
+						$entry['quantity'],
+						self::MAX_QUANTITY_PER_LINE_ITEM
+					)
 				);
 				continue;
 			}
+			if ( $entry['was_merged'] ) {
+				$surviving_merges = true;
+			}
+			// Strip bookkeeping flag before downstream consumers
+			// (response_line_items, build_continue_url) see the
+			// entry — they expect the original wc_id/ucp_id/
+			// quantity/unit_price_minor shape, not extras.
+			unset( $entry['was_merged'] );
 			$processed_dedup[] = $entry;
 		}
 		$processed = $processed_dedup;
 
-		// Surface the collapse to the agent so their model of the
-		// response shape (one line per `wc_id`) is explicit. Without
-		// this info-message, an agent comparing its sent payload
-		// (multiple lines for the same product) against our response
-		// (one line) would see a discrepancy without explanation —
-		// risk of double-billing logic on the agent side, or worse,
-		// silent assumptions that one of the duplicates was rejected.
-		if ( $merge_happened ) {
+		// Surface the collapse to the agent ONLY when at least one
+		// merged entry survived to the response. Without this gate,
+		// a request with duplicates that sum to over-cap (so the
+		// merged entry was dropped) would still emit
+		// `merged_duplicate_items` alongside `invalid_quantity` —
+		// agents would look for a merged line in the response and
+		// find nothing, making the message misleading. Truthful
+		// posture: only claim a merge happened when the agent will
+		// actually see the merged line.
+		if ( $surviving_merges ) {
 			$messages[] = [
 				'type'     => 'info',
 				'code'     => 'merged_duplicate_items',
