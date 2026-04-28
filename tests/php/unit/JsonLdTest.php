@@ -289,14 +289,54 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->jsonld->output_store_jsonld();
 		$output = ob_get_clean();
 
+		// Positive proof the emission ran: presence of the wrapping
+		// opening tag. Without this, a regression that returned early
+		// before echoing anything would leave `$output` empty — and
+		// the rest of the assertions below would all trivially pass.
+		$this->assertStringContainsString(
+			'<script type="application/ld+json">',
+			$output,
+			'output_store_jsonld() must emit the wrapping script tag.'
+		);
+
 		// Critical assertion: the literal `</script>` byte sequence
 		// MUST NOT appear inside the JSON body, only as the closing
-		// of our own intended `<script type="application/ld+json">`
-		// wrapper. Total occurrence count = 1 (our closing tag).
+		// of our own intended wrapper. The fixture injects two payloads
+		// (in site name AND in category name) each containing two
+		// `</script>` occurrences, so a complete fix produces exactly
+		// 1 occurrence (the wrapper close); a complete regression
+		// produces 5 (1 wrapper + 2 fields × 2 occurrences). Anything
+		// in between is a partial regression and also fails the
+		// `=== 1` check, so this single assertion catches every
+		// regression class.
 		$this->assertSame(
 			1,
 			substr_count( $output, '</script>' ),
-			'JSON body must not contain literal </script> — only our wrapper closing tag is permitted.'
+			'JSON body must contain ZERO literal </script> sequences (only our wrapper close is permitted).'
+		);
+
+		// Same defense for the OPENING-tag-injection variant. Sneaky
+		// regressions that hex-escape `</script>` but leave `<script`
+		// raw would still allow injection of NEW script blocks into
+		// the page. The fixture payloads each contain one literal
+		// `<script` (the second tag in `</script><script>...`); a
+		// complete fix produces exactly 1 (our wrapper open).
+		$this->assertSame(
+			1,
+			substr_count( $output, '<script' ),
+			'JSON body must not contain a literal <script (only our wrapper open is permitted).'
+		);
+
+		// Same defense for HTML-comment injection. The flag set
+		// hex-escapes `<` so `<!--` becomes `<!--` — the
+		// canonical comment-injection vector should be blocked too.
+		// Fixture doesn't inject this, but a future test extension
+		// adding a `<!--` payload would land here without a code
+		// change.
+		$this->assertStringNotContainsString(
+			'<!--',
+			$output,
+			'JSON body must not contain HTML-comment open sequence.'
 		);
 
 		// Extract the JSON between the script tags and confirm it
@@ -306,6 +346,17 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 2, $matches, 'Expected exactly one matched script-tag pair.' );
 		$decoded = json_decode( $matches[1], true );
 		$this->assertIsArray( $decoded, 'JSON inside the script tag must parse to an array.' );
+
+		// Cross-field round-trip: BOTH the site name AND the category
+		// name should be preserved as data. A regression that fixed
+		// only one path (e.g., site-name encoding fixed but
+		// `get_catalog_summary()`'s category-name path still raw)
+		// would fail one of these.
+		$this->assertEquals(
+			'</script><script>document.cookie</script>',
+			$decoded['hasOfferCatalog']['itemListElement'][0]['name'],
+			'Malicious category name must round-trip through hex-escape and JSON-decode.'
+		);
 		// Round-trip through decode confirms the malicious string is
 		// preserved as data (not as breakout markup): the decoded
 		// `name` equals the original input.
