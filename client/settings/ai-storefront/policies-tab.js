@@ -421,9 +421,21 @@ const ReturnRefundPolicySection = ( {
 										'woocommerce-ai-storefront'
 									) }
 								>
-									<div style={ { maxWidth: '96px' } }>
+									<div style={ { maxWidth: '120px' } }>
 										<NumberControl
 											__next40pxDefaultSize
+											/* `spinControls="custom"` swaps the
+											   browser-native HTML spinners (tiny
+											   arrows browsers render by default
+											   for input[type=number] — barely
+											   targetable, especially on touch)
+											   for WP-styled +/- buttons sized to
+											   match the input's 40px height.
+											   Wrapper widened from 96px to 120px
+											   so the suffixed buttons get
+											   breathing room without crowding
+											   the 3-digit input. */
+											spinControls="custom"
 											id="wc-ai-storefront-return-window"
 											min={ 0 }
 											max={ 365 }

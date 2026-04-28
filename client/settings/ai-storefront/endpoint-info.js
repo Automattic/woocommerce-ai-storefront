@@ -871,7 +871,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								'woocommerce-ai-storefront'
 							),
 							subtitle: __(
-								'Non-revenue AI bots — training crawlers that feed model corpora (stale-snapshot risk: a crawl captured today may surface as an answer months later with wrong prices) and test crawlers (validation tools you run against your own store). Both default off; merchant discretion.',
+								'Non-revenue bots. Training crawlers feed AI training data — today’s crawl may surface as an answer months later with stale prices. Test crawlers are validation tools. Default off.',
 								'woocommerce-ai-storefront'
 							),
 							// This group covers two backend categories
@@ -1134,7 +1134,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						} }
 					>
 						{ __(
-							'AI-referred orders appear in the Orders list under WooCommerce\u2019s built-in Origin column as each agent\u2019s brand name (e.g. "Source: ChatGPT", "Source: Gemini") rather than the technical crawler IDs shown above.',
+							'AI-attributed orders show under WooCommerce\u2019s built-in Origin column on the Orders list (the agent hostname, e.g. \u201cSource: Chatgpt.com\u201d) and in this plugin\u2019s Overview tab (the friendly brand name, e.g. \u201cChatGPT\u201d) \u2014 not the technical crawler IDs above.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>

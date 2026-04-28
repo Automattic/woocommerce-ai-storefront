@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-3.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: WooCommerce AI Storefront 0.6.2\n"
+"Project-Id-Version: WooCommerce AI Storefront 0.6.3\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/woocommerce-ai-storefront\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-28T11:45:29+00:00\n"
+"POT-Creation-Date: 2026-04-28T13:34:44+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -467,7 +467,7 @@ msgid "Training and Test Crawlers"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:873
-msgid "Non-revenue AI bots — training crawlers that feed model corpora (stale-snapshot risk: a crawl captured today may surface as an answer months later with wrong prices) and test crawlers (validation tools you run against your own store). Both default off; merchant discretion."
+msgid "Non-revenue bots. Training crawlers feed AI training data — today’s crawl may surface as an answer months later with stale prices. Test crawlers are validation tools. Default off."
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:1068
@@ -479,7 +479,7 @@ msgid "These rules are added to your robots.txt. Well-behaved AI crawlers respec
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:1136
-msgid "AI-referred orders appear in the Orders list under WooCommerce’s built-in Origin column as each agent’s brand name (e.g. \"Source: ChatGPT\", \"Source: Gemini\") rather than the technical crawler IDs shown above."
+msgid "AI-attributed orders show under WooCommerce’s built-in Origin column on the Orders list (the agent hostname, e.g. “Source: Chatgpt.com”) and in this plugin’s Overview tab (the friendly brand name, e.g. “ChatGPT”) — not the technical crawler IDs above."
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:1172
@@ -527,13 +527,13 @@ msgid "Limits are applied per AI crawler (identified by user-agent string). Your
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:1369
-#: client/settings/ai-storefront/policies-tab.js:875
+#: client/settings/ai-storefront/policies-tab.js:887
 #: client/settings/ai-storefront/product-selection.js:1916
 msgid "Saving…"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:1370
-#: client/settings/ai-storefront/policies-tab.js:876
+#: client/settings/ai-storefront/policies-tab.js:888
 #: client/settings/ai-storefront/product-selection.js:1917
 msgid "Save changes"
 msgstr ""
@@ -599,7 +599,7 @@ msgid "AI agents may downgrade your products in recommendations, or skip them en
 msgstr ""
 
 #: client/settings/ai-storefront/policies-tab.js:363
-#: client/settings/ai-storefront/policies-tab.js:555
+#: client/settings/ai-storefront/policies-tab.js:567
 msgid "Policy page (optional)"
 msgstr ""
 
@@ -623,23 +623,23 @@ msgstr ""
 msgid "Leave at 0 to publish \"Unspecified\" instead of a finite window."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:507
+#: client/settings/ai-storefront/policies-tab.js:519
 msgid "Return methods"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:559
+#: client/settings/ai-storefront/policies-tab.js:571
 msgid "Link AI agents to a \"no returns\" explainer on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:807
+#: client/settings/ai-storefront/policies-tab.js:819
 msgid "Policies exposed to AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:819
+#: client/settings/ai-storefront/policies-tab.js:831
 msgid "WooCommerce doesn't have a built-in setting for your return policy, but AI agents need it to confidently recommend your products. Set it once here."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:828
+#: client/settings/ai-storefront/policies-tab.js:840
 msgid "Could not load your pages. Page links won’t be available."
 msgstr ""
 
