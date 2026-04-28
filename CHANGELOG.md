@@ -4,6 +4,23 @@
 
 ---
 
+## [0.5.1] – 2026-04-28
+
+### Fixes
+- **Plugin update checks now succeed.** Pre-fix, every store running a v0.5.0-or-earlier release showed "Could not determine if updates are available." in the WP-Admin Updates page. Background: PUC's default `STRATEGY_LATEST_RELEASE` calls GitHub's `/releases/latest`, which only returns NON-prerelease releases (a GitHub-side filter that's not configurable). Every release we ship is marked Pre-release on GitHub (the plugin isn't on WP.org's stable directory yet), so `/releases/latest` returns 404 and PUC fell through to `/tags` and `/branches/main` — both anonymous calls hitting GitHub's 60-req/hr rate limit on most shared-hosting IPs. The fix calls `setReleaseVersionFilter('/^\\d+\\.\\d+\\.\\d+$/', RELEASE_FILTER_ALL, 50)` on PUC's GitHub API instance: `RELEASE_FILTER_ALL` opts pre-releases in, the semver regex pins the tag shape we ship so accidentally-published non-version tags can't prompt every merchant to "upgrade", and the explicit max-releases bound (50) gives 5–10× headroom over the current ship cadence without scanning the entire releases history. The filter constant is read from the live PUC API class via `defined()` lookup with a fall-through literal `3` so a future PUC bundle update that renumbers the values can't silently mismatch our intent. Note: merchants on v0.5.0 can't auto-update to v0.5.1 (the bug is in their installed updater); they'll need to manually upload the v0.5.1 zip from the GitHub release page once. Auto-updates work normally from v0.5.1 forward.
+- **Overview tab: 6-card stat row no longer breaks on the Top Agent card.** Pre-fix, on a typical ~1200px WP-admin layout each card got ~187px width via `flex: 1 1 0` — not enough to fit the Top Agent card's `"UCPPlayground"` value alongside its `"1 orders | 100% of AI orders"` subvalue. The flex-shrink behavior squeezed the subvalue child to ~1ch wide and every word in the subvalue stacked on its own line, producing a ~10-line vertical tower in one card while the others stayed 1-line. Three coordinated changes:
+  - **Container switches from flex to CSS grid** with a 4-column cap formula (`grid-template-columns: repeat(auto-fit, minmax(max(240px, calc((100% - 48px) / 4)), 1fr))`). Cards expand to fill horizontal space until 4-per-row is reached at 1008px container width, then reflow to fewer-per-row at the natural breakpoints (3 cols at 752–1007px, 2 cols at 496–751px, 1 col at 240–495px, all derived from `N × 240 + (N-1) × 16` gap math). Future-proof for the RSM 8-card goal: 6 cards renders 4+2 today, 8 cards will render 4+4.
+  - **StatCard inner layout switches from inline-baseline value+subvalue to vertical stack** across all cards. Removes a class of per-card-height-variance bugs (the inline-baseline + flex-wrap fallback approach worked for short subvalues but degraded on long ones). Cross-card big-number alignment is preserved by virtue of the value being row 1 of every card. Adds `overflow-wrap: anywhere` on the value div as defense against ultra-long agent names overflowing the grid track. Designer-validated via ui-designer review.
+  - **Top Agent subvalue tightened** to `"%s%% of AI orders"` from `"%d orders | %s%% of AI orders"`. Drops the redundant order count (the AI Orders card next to it carries that signal) and fixes the latent `"1 orders"` pluralization bug. Subvalue now ~16 chars (was ~28), comfortably fitting at 240px card-width floor.
+
+### Refactors
+- **GitHub API configuration extracted from `init()` into `configure_github_api( $api )`.** Pre-refactor the `enableReleaseAssets` + `setReleaseVersionFilter` calls were inlined inside `init()`, which made them only reachable via the full PUC factory boot — untestable at the unit level without mocking the entire factory. The extracted helper takes the api object as a parameter, so a fake api stub records the calls and we get direct unit coverage of the configuration contract (release-asset pattern, semver regex, filter constant resolution, max-releases bound).
+
+### Tests
+- 4 new tests in `UpdaterTest` covering `configure_github_api()`: happy path asserts both `enableReleaseAssets` and `setReleaseVersionFilter` are called with the expected args; defensive-fallback path asserts the filter value falls through to literal `3` when the api class lacks `RELEASE_FILTER_ALL` (e.g. a future PUC bundle that renamed it); degenerate-api path asserts the helper no-ops cleanly when neither method is implemented (forward-compat for PUC API surface changes); non-object-input path asserts the helper rejects arrays / scalars / `false` without raising a `TypeError` (defensive against a future factory contract change). Total tests now 901, assertions 2490.
+
+---
+
 ## [0.5.0] – 2026-04-28
 
 ### Refactors

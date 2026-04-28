@@ -259,8 +259,11 @@ const formatMoney = ( stats, amount ) => {
 // submenu page, hand-rolled cards are lower-maintenance.
 const StatCard = ( { label, value, subvalue, href } ) => {
 	const cardStyle = {
-		flex: '1 1 0',
-		minWidth: '140px',
+		// `flex: 1 1 0; min-width: 140px` removed — the parent grid
+		// container now controls card width via
+		// `grid-template-columns: repeat(auto-fit, minmax(...))`.
+		// See OverviewTab's stat-card grid for the formula and the
+		// 4-column-cap rationale.
 		padding: '16px',
 		background: colors.surfaceSubtle,
 		border: 'none',
@@ -270,45 +273,44 @@ const StatCard = ( { label, value, subvalue, href } ) => {
 		display: 'block',
 	};
 
-	// Value + optional subvalue render on ONE baseline-aligned row.
-	// Stacking the subvalue below the value (pre-fix) made the AI
-	// Orders card visually taller than the three subvalue-less
-	// cards next to it — the big number's vertical center shifted
-	// up, breaking the four-across row alignment the merchant reads
-	// at a glance. Inlining with `align-items: baseline` keeps the
-	// "1" and "10% of total" sharing the same type baseline, so
-	// every card's big number sits at the same y-coordinate.
+	// Value, optional subvalue, and label stack vertically — three
+	// rows in card order. The big number's row-1 position is what
+	// preserves cross-card baseline alignment across the strip;
+	// inline-baseline value+subvalue would buy a tighter visual
+	// composition but breaks when subvalues are long enough that
+	// the flex child shrinks to ~1ch and each word lands on its
+	// own line. Stacking is the more robust default — at 24px
+	// green numerics the value already dominates the eye
+	// regardless of subvalue placement.
 	const inner = (
 		<>
 			<div
 				style={ {
-					display: 'flex',
-					justifyContent: 'center',
-					alignItems: 'baseline',
-					gap: '6px',
+					fontSize: '24px',
+					fontWeight: '600',
+					color: colors.success,
+					// Defense against ultra-long agent brand names
+					// (e.g. "PerplexityShopping") overflowing the
+					// card's grid track. Without this, a 20-char
+					// value pushes the card wider than its track and
+					// breaks the row layout for adjacent cards.
+					overflowWrap: 'anywhere',
 				} }
 			>
+				{ value }
+			</div>
+			{ subvalue && (
 				<div
 					style={ {
-						fontSize: '24px',
-						fontWeight: '600',
+						fontSize: '11px',
 						color: colors.success,
+						fontWeight: '400',
+						marginTop: '2px',
 					} }
 				>
-					{ value }
+					{ subvalue }
 				</div>
-				{ subvalue && (
-					<div
-						style={ {
-							fontSize: '11px',
-							color: colors.success,
-							fontWeight: '400',
-						} }
-					>
-						{ subvalue }
-					</div>
-				) }
-			</div>
+			) }
 			<div
 				style={ {
 					color: colors.textMuted,
@@ -723,12 +725,47 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					__nextHasNoMarginBottom
 				/>
 			</Flex>
+			{ /*
+				Stat-card grid: max 4 cards per row, with cards
+				expanding to fill horizontal space until they hit
+				the 4-column cap. Layout shape on a typical
+				1100-1300px WP-admin content area:
+				- 6 cards (current): 4 + 2 (last 2 cards in row 2,
+				  left-aligned, columns 3-4 of row 2 stay empty)
+				- 8 cards (RSM goal): 4 + 4 (clean 4×2 grid)
+
+				The `max(240px, calc((100% - 48px) / 4))` formula:
+				- `(100% - 48px) / 4` = card width if 4 columns fit
+				  (48px = 3 gaps × 16px gap)
+				- `max(240px, ...)` = each card is at least 240px
+				- On wide containers (≥1008px), the calc value wins
+				  and caps column count at 4 (because 4 cards at the
+				  240px floor + 3 gaps = 1008px exactly)
+				- On narrow containers (<1008px), the 240px floor
+				  wins and `auto-fit` packs as many ≥240px columns
+				  as fit. Breakpoints, derived from
+				  `N * 240 + (N-1) * 16`:
+				    - 3 columns at 752–1007px
+				    - 2 columns at 496–751px
+				    - 1 column   at 240–495px
+				- `auto-fit` collapses empty trailing slots so the
+				  4+2 case left-aligns the partial row.
+
+				`min-width: 0` overrides the default `min-width: auto`
+				on this grid container so it can shrink below its
+				own min-content size when wedged into a narrow
+				flex/grid parent (e.g. very narrow viewports in a
+				drawer or zoom). Per-card overflow defense lives on
+				the value div via `overflow-wrap: anywhere`.
+			*/ }
 			<div
 				style={ {
-					display: 'flex',
+					display: 'grid',
+					gridTemplateColumns:
+						'repeat(auto-fit, minmax(max(240px, calc((100% - 48px) / 4)), 1fr))',
 					gap: '16px',
 					marginTop: '12px',
-					flexWrap: 'wrap',
+					minWidth: 0,
 				} }
 			>
 				<StatCard
@@ -794,15 +831,22 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					   already filters empty meta_value at the SQL level + skips
 					   empty names in derive_stats(); this is belt-and-suspenders. */
 					value={ stats?.top_agent?.name || '\u2014' }
+					/* Subvalue carries only the share percent. Pre-0.5.1 it
+					   also included the order count ("N orders | M% of AI
+					   orders") but that duplicated the "AI Orders" card's
+					   value, made the subvalue too long to fit at 4-column
+					   card widths, and tripped the "1 orders" pluralization
+					   bug. The percent is the unique signal of the Top
+					   Agent card; the order count's natural home is the
+					   AI Orders card next to it. */
 					subvalue={
 						stats && stats.top_agent
 							? sprintf(
-									/* translators: 1: order count, 2: percent share of AI orders */
+									/* translators: %1$s: percent share of AI orders attributed to the top agent. Ordered (`%1$s` rather than bare `%s`) to satisfy `@wordpress/valid-sprintf` — other sprintf calls in this file use ordered placeholders, and the rule fires on a mix. */
 									__(
-										'%1$d orders | %2$s%% of AI orders',
+										'%1$s%% of AI orders',
 										'woocommerce-ai-storefront'
 									),
-									stats.top_agent.orders,
 									stats.top_agent.share_percent
 							  )
 							: undefined
