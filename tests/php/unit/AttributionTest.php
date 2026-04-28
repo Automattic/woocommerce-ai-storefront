@@ -60,7 +60,15 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertTrue( $order->was_saved() );
-		$this->assertEquals( 'chatgpt', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		// `chatgpt` is NOT a KNOWN_AGENT_HOSTS key (the key is
+		// `chatgpt.com`), so the lenient gate doesn't fire and the
+		// STRICT branch buckets to "Other AI" per 0.5.2 behavior.
+		// (Pre-0.5.2 this test stored the raw `'chatgpt'` value
+		// verbatim, which fragmented Top Agent stats.)
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$order->get_meta( '_wc_ai_storefront_agent' )
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -100,7 +108,14 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		// stamps the raw utm_source verbatim per the post-STRICT
 		// fallback at attribution.php's `$canonical_agent = ... :
 		// (string) $utm_source` branch.
-		$this->assertEquals( 'mysteryagent.example', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		// `mysteryagent.example` is NOT in KNOWN_AGENT_HOSTS → STRICT
+		// fires but LENIENT doesn't → 0.5.2 buckets to "Other AI"
+		// (was: stored the raw value, which fragmented Top Agent
+		// stats for unknown agents).
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$order->get_meta( '_wc_ai_storefront_agent' )
+		);
 	}
 
 	public function test_capture_strict_gate_fires_on_woo_ucp_utm_id_get_fallback(): void {
@@ -126,7 +141,14 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertTrue( $order->was_saved() );
-		$this->assertEquals( 'mysteryagent.example', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		// `mysteryagent.example` is NOT in KNOWN_AGENT_HOSTS → STRICT
+		// fires but LENIENT doesn't → 0.5.2 buckets to "Other AI"
+		// (was: stored the raw value, which fragmented Top Agent
+		// stats for unknown agents).
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$order->get_meta( '_wc_ai_storefront_agent' )
+		);
 		$this->assertEquals( 'session-xyz', $order->get_meta( '_wc_ai_storefront_session_id' ) );
 	}
 
@@ -155,7 +177,14 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertTrue( $order->was_saved() );
-		$this->assertEquals( 'mysteryagent.example', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		// `mysteryagent.example` is NOT in KNOWN_AGENT_HOSTS → STRICT
+		// fires but LENIENT doesn't → 0.5.2 buckets to "Other AI"
+		// (was: stored the raw value, which fragmented Top Agent
+		// stats for unknown agents).
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$order->get_meta( '_wc_ai_storefront_agent' )
+		);
 	}
 
 	public function test_capture_strict_gate_legacy_ai_agent_medium_still_fires(): void {
@@ -174,7 +203,19 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertTrue( $order->was_saved() );
-		$this->assertEquals( 'ChatGPT', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		// Pre-0.5.0 utm_source values were canonical brand names
+		// like "ChatGPT" — not in KNOWN_AGENT_HOSTS (which keys on
+		// hostnames like `chatgpt.com`). 0.5.2 buckets these
+		// pre-canonical-shape orders to "Other AI" too. The display
+		// layer's `canonicalize_host_idempotent()` already maps the
+		// "ChatGPT" string back to the brand for legacy-stats reads
+		// from `_wc_ai_storefront_agent` — so historical orders
+		// captured pre-0.5.2 keep their original values; only orders
+		// captured AFTER this change get the bucket.
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$order->get_meta( '_wc_ai_storefront_agent' )
+		);
 	}
 
 	public function test_capture_detects_ai_medium_from_get_fallback(): void {
@@ -191,7 +232,12 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertTrue( $order->was_saved() );
-		$this->assertEquals( 'gemini', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		// `gemini` is NOT a KNOWN_AGENT_HOSTS key (the key is
+		// `gemini.google.com`) → 0.5.2 buckets to "Other AI".
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$order->get_meta( '_wc_ai_storefront_agent' )
+		);
 		$this->assertEquals( 'session-abc', $order->get_meta( '_wc_ai_storefront_session_id' ) );
 	}
 
@@ -221,7 +267,12 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertEquals( '', $order->get_meta( '_wc_ai_storefront_session_id' ) );
-		$this->assertEquals( 'claude', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		// `claude` is NOT a KNOWN_AGENT_HOSTS key (key is `claude.ai`)
+		// → 0.5.2 buckets to "Other AI".
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$order->get_meta( '_wc_ai_storefront_agent' )
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -558,10 +609,16 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_capture_strict_gate_still_fires_on_canonical_utm_source(): void {
-		// Regression check: orders placed via OUR continue_url have
-		// utm_source = canonical brand name (e.g. "Gemini") + utm_medium
-		// = 'ai_agent'. The strict gate must keep firing — not be
-		// shadowed by lenient-gate behavior.
+		// Regression check: pre-0.5.0 orders placed via OUR
+		// continue_url had utm_source = canonical brand name
+		// (e.g. "Gemini") + utm_medium = 'ai_agent'. The strict gate
+		// must keep firing — not be shadowed by lenient-gate behavior.
+		// Post-0.5.2: STRICT-only matches (utm_source not in
+		// KNOWN_AGENT_HOSTS) bucket to "Other AI" rather than storing
+		// the raw "Gemini" canonical-string verbatim. This is fine —
+		// the canonical string is publicly guessable and storing it
+		// verbatim was never load-bearing for the cohort that
+		// captured the brand display.
 		$order = new WC_Order();
 		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'ai_agent' );
 		$order->set_test_meta( '_wc_order_attribution_utm_source', 'Gemini' );
@@ -571,7 +628,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertEquals(
-			'Gemini',
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
 			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY )
 		);
 		// "Gemini" is a canonical brand name, NOT a hostname — the
@@ -733,15 +790,89 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 
 		$this->attribution->capture_ai_attribution( $order );
 
+		// 0.5.2 buckets STRICT-only orders to "Other AI" when the
+		// utm_source isn't in KNOWN_AGENT_HOSTS. "Gemini" canonical
+		// string isn't a KNOWN_AGENT_HOSTS key (the key is
+		// `gemini.google.com`), so this lands in the bucket. The
+		// `_wc_ai_storefront_agent_host_raw` URL-param still
+		// populates separately, preserving the actual hostname for
+		// drill-in.
 		$this->assertEquals(
-			'Gemini',
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
 			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY )
 		);
-		// URL-param value lands in host_raw — the canonical "Gemini"
-		// in utm_source is correctly NOT used here.
+		// URL-param value lands in host_raw — drill-in still shows
+		// the actual hostname even when the friendly meta says
+		// "Other AI".
 		$this->assertEquals(
 			'gemini.google.com',
 			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY )
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// 0.5.2: STRICT-only unknown agents bucket to "Other AI"
+	// ------------------------------------------------------------------
+	//
+	// Pre-0.5.2, STRICT-captured orders whose `utm_source` was not in
+	// `KNOWN_AGENT_HOSTS` stored the raw `utm_source` verbatim in
+	// `_wc_ai_storefront_agent` meta. With the canonical UTM shape
+	// (0.5.0+) emitting hostname-shaped `utm_source` for unknown
+	// agents, that fragmented `get_stats()` and the Top Agent card
+	// into long-tail buckets. 0.5.2 buckets these to `OTHER_AI_BUCKET`
+	// while preserving the raw identifier in
+	// `_wc_ai_storefront_agent_host_raw` for drill-in.
+
+	public function test_capture_strict_unknown_buckets_to_other_ai_via_utm_id(): void {
+		// 0.5.2 canonical-shape STRICT path: utm_id=woo_ucp +
+		// hostname-shape utm_source not in KNOWN_AGENT_HOSTS.
+		// Friendly meta should be "Other AI"; raw identifier still
+		// flows into the host_raw meta when the URL param is set.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_id', 'woo_ucp' );
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'agent.example.com' );
+		$_GET['ai_agent_host_raw'] = 'agent.example.com';
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY )
+		);
+		$this->assertEquals(
+			'agent.example.com',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY )
+		);
+	}
+
+	public function test_capture_strict_unknown_skips_meta_when_utm_source_empty(): void {
+		// Edge case: STRICT fires (utm_id=woo_ucp) but utm_source is
+		// empty. Pre-0.5.2 the empty-source path stored an empty
+		// canonical-agent value (the `'' !== $canonical_agent` guard
+		// dropped the meta write). 0.5.2 must preserve that no-stamp
+		// behavior — bucketing an empty-source order to "Other AI"
+		// would manufacture an attribution where there's none.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_id', 'woo_ucp' );
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		// utm_source empty, simulating the FALLBACK_SOURCE='ucp_unknown'
+		// case where build_continue_url stamped the sentinel.
+		$order->set_test_meta( '_wc_order_attribution_utm_source', '' );
+
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		// `_wc_ai_storefront_agent` not stamped (empty utm_source
+		// means we have nothing to bucket).
+		$this->assertEquals(
+			'',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY )
 		);
 	}
 

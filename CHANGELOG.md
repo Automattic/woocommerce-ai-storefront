@@ -4,6 +4,20 @@
 
 ---
 
+## [0.6.0] – 2026-04-28
+
+### Fixes
+- **STRICT-captured unknown agents now bucket to "Other AI" in the friendly meta instead of storing the raw `utm_source`.** Pre-fix, when an order matched the STRICT attribution gate (utm_id=woo_ucp or legacy utm_medium=ai_agent) but the `utm_source` value wasn't in `KNOWN_AGENT_HOSTS`, the canonical-agent meta `_wc_ai_storefront_agent` stored the raw `utm_source` verbatim. Combined with the canonical UTM shape (0.5.0+) emitting hostname-shaped `utm_source` for unknown agents (e.g. `agent.foo-startup.example`), this fragmented `get_stats()` and the Top Agent card into long-tail one-off buckets instead of rolling up cleanly under "Other AI". The fix stores `OTHER_AI_BUCKET` in the friendly meta for the STRICT-only-unknown case while preserving the raw identifier in `_wc_ai_storefront_agent_host_raw` for drill-in / graduation review and in WC core's `_wc_order_attribution_utm_source` for the Origin column. Empty-utm_source orders skip the meta stamp entirely (the no-bucket guard prevents manufacturing attribution where there's none). Surfaced by Copilot review on the closed v0.5.0 PR.
+- **`source_host` now normalized via `normalize_host_string()` rather than bare `strtolower()`.** Pre-fix, the profile-URL form's hostname extraction ran through `strtolower()` only, which collapses case but doesn't strip FQDN trailing dots, embedded ports, or other lexical variants. Real-world `extract_profile_hostname()` outputs include all of these. Using the existing `normalize_host_string()` helper collapses every variant to the same `utm_source` shape — important now that the Origin column displays the value verbatim. Same helper the LENIENT attribution gate already uses for the order-meta lookup, so producer and consumer sides stay in sync.
+
+### Refactors
+- **`@param $source_host` docblock corrected** to reflect the real contract: it's "lowercase identifier for utm_source — usually a normalized hostname, may be a lowercase product / agent token fallback when no `PRODUCT_TO_HOSTNAME` mapping exists." Pre-fix the docblock said "always-hostname," misleading future maintainers about the unknown-product fallback path that's been there since 0.4.0.
+
+### Tests
+- 2 new tests in `AttributionTest`: `test_capture_strict_unknown_buckets_to_other_ai_via_utm_id` (positive coverage of the new bucketing behavior) and `test_capture_strict_unknown_skips_meta_when_utm_source_empty` (regression guard against bucketing empty-source orders, which would manufacture attribution where there's none). 7 existing tests in `AttributionTest` updated to expect the bucketing behavior — they previously asserted the raw `utm_source` value was stored verbatim. Total tests now 899, assertions 2488.
+
+---
+
 ## [0.5.1] – 2026-04-28
 
 ### Fixes

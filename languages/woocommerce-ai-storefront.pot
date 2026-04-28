@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-3.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: WooCommerce AI Storefront 0.5.1\n"
+"Project-Id-Version: WooCommerce AI Storefront 0.6.0\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/woocommerce-ai-storefront\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-28T03:10:10+00:00\n"
+"POT-Creation-Date: 2026-04-28T04:24:35+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -53,19 +53,19 @@ msgstr ""
 msgid "Override the store-wide return policy for this product. AI agents will see \"no returns\" regardless of your store policy. Use for clearance items, custom orders, or any product whose return terms diverge from the store default."
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:481
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:499
 msgid "AI Agent Attribution"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:482
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:500
 msgid "Agent:"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:490
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:508
 msgid "Agent host:"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:494
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:512
 msgid "Session ID:"
 msgstr ""
 
@@ -246,38 +246,38 @@ msgid "%1$s received %2$d keys; truncated to the first %3$d. Further keys were i
 msgstr ""
 
 #. translators: 1: expected amount (minor units), 2: current amount (minor units).
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3893
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3899
 #, php-format
 msgid "Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4122
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4136
 msgid "Line item must be an object with \"item.id\" and \"quantity\"."
 msgstr ""
 
 #. translators: %d is the maximum quantity per line item.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4126
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4140
 #, php-format
 msgid "Quantity must be a positive integer up to %d."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4130
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4144
 msgid "Product not found."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4132
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4146
 msgid "Product type cannot be added via the Shareable Checkout URL; link to the product page directly."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4134
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4148
 msgid "Product is out of stock."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4138
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4152
 msgid "Product is variable — specify a variation ID instead of the parent product ID."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4140
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4154
 msgid "Line item could not be processed."
 msgstr ""
 

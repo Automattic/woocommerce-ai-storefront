@@ -332,10 +332,28 @@ class WC_AI_Storefront_Attribution {
 		// a different identifier than the merchant-facing display.
 		// Resolves to:
 		//   - lenient match: the canonical brand name ("ChatGPT", ...).
-		//   - strict path / unmatched: utm_source verbatim. The
-		//     display layer's `canonicalize_host_idempotent()` is the
-		//     safety net for the verbatim case.
-		$canonical_agent = $is_known_ai_host ? $lenient_canonical : (string) $utm_source;
+		//   - STRICT-only (utm_id=woo_ucp or legacy utm_medium=ai_agent
+		//     fired but utm_source is not in `KNOWN_AGENT_HOSTS`):
+		//     `OTHER_AI_BUCKET` ("Other AI"). Pre-0.5.2 we stored the
+		//     raw utm_source verbatim here, but with the canonical
+		//     UTM shape (0.5.0+) emitting hostname-shaped utm_source
+		//     for unknown agents (e.g. `agent.example.com`), that
+		//     fragmented `get_stats()` and the Top Agent card into
+		//     long-tail one-off buckets instead of rolling up cleanly
+		//     under "Other AI". The raw identifier is still preserved
+		//     in `_wc_ai_storefront_agent_host_raw` for drill-in /
+		//     graduation review, and WC core's
+		//     `_wc_order_attribution_utm_source` still has the raw
+		//     value too — this change only affects the AI-specific
+		//     surface meta.
+		//   - Empty-utm_source edge case: empty string fall-through
+		//     skips the stamp below entirely (the `'' !==` guard).
+		$canonical_agent = '';
+		if ( $is_known_ai_host ) {
+			$canonical_agent = $lenient_canonical;
+		} elseif ( $is_strict && '' !== (string) $utm_source ) {
+			$canonical_agent = WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET;
+		}
 
 		if ( '' !== $canonical_agent ) {
 			$order->update_meta_data( self::AGENT_META_KEY, $canonical_agent );
