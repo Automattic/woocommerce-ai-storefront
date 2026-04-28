@@ -440,6 +440,41 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_lenient_gate_wins_host_raw_when_both_conditions_fire(): void {
+		// When utm_source is a known hostname (lenient gate fires) AND
+		// ai_agent_host_raw is ALSO present in the URL, the lenient-path
+		// normalized value must win. The URL-param write is suppressed by
+		// the `!$is_known_ai_host` guard so that a diverging or
+		// attacker-tampered URL param cannot overwrite the
+		// KNOWN_AGENT_HOSTS-validated value.
+		//
+		// Scenario: order arrives with utm_source=openai.com (known host,
+		// lenient gate fires → normalized_host = 'openai.com') AND a
+		// URL param ai_agent_host_raw='evil-override.example.com'. The
+		// meta must hold 'openai.com', NOT 'evil-override.example.com'.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'openai.com' );
+		$_GET['ai_agent_host_raw'] = 'evil-override.example.com';
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertEquals(
+			'ChatGPT',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY ),
+			'Lenient gate must still produce the canonical agent name.'
+		);
+		$this->assertEquals(
+			'openai.com',
+			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY ),
+			'Lenient-path normalized hostname must be stored, not the URL-param value.'
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// display_attribution_in_admin (admin order-edit screen rendering)
 	// ------------------------------------------------------------------
