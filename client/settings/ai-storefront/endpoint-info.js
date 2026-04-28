@@ -615,7 +615,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						style={ {
 							color: colors.textSecondary,
 							fontSize: '13px',
-							margin: '0 0 16px',
+							margin: '0 0 8px',
 						} }
 					>
 						{ __(
@@ -632,16 +632,17 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						with the card heading "AI Crawler Access" plus
 						the eyebrow group titles below ("LIVE BROWSING",
 						"TRAINING AND TEST CRAWLERS"), which already
-						establish what each row is. Dropping it removes
-						an orphan heading that read as a third
-						hierarchy level when there are really only two.
+						establish what each row is. Dropping it removed
+						an orphan heading; trimmed margins (`<p>` 16→8,
+						this div 12→8) eliminate the residual whitespace
+						that the old label-bearing row used to occupy.
 					*/ }
 					<div
 						style={ {
 							display: 'flex',
 							justifyContent: 'flex-end',
 							alignItems: 'center',
-							marginBottom: '12px',
+							marginBottom: '8px',
 						} }
 					>
 						{ /*

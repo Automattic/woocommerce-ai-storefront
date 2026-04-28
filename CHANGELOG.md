@@ -4,6 +4,23 @@
 
 ---
 
+## [0.6.1] – 2026-04-28
+
+### Fixes
+- **Overview tab stat cards: dropped the inline subvalues that broke cross-card baseline alignment.** Pre-fix, the AI Orders card carried an "X% of total" subvalue and the Top Agent card carried an "X% of AI orders" subvalue. Cards with subvalues were taller than cards without, so the strip didn't read as a clean horizontal baseline. The subvalues are removed from the StatCard primitive entirely — when companion data is worth showing, it now goes in its own adjacent card.
+- **Top Agent's share-of-AI-orders is now its own stat card.** Promoted from the deleted Top Agent subvalue ("X% of AI orders") to a dedicated card titled "% of AI orders" sitting adjacent. The two cards read as a pair: "UCPPlayground / 100%". Promoting the percent to a full card preserves cross-card baseline alignment and gives the figure its own visual weight at the same 24px green numeric treatment every other stat card uses.
+- **Discovery tab: residual whitespace below the AI Crawler Access description trimmed.** When the orphan "Allowed crawlers" left-side label was removed in 0.3.3, the `<p>` description's `margin-bottom: 16px` and the count-pill toolbar's `margin-bottom: 12px` weren't tightened to match — leaving ~28px of stacked vertical gap above the LIVE BROWSING group. Both reduced to 8px so the description, count toolbar, and first crawler group sit at consistent rhythm with the rest of the card.
+- **Policy page dropdown no longer surfaces pages with default WC system slugs (`cart`, `checkout`, `my-account`, `myaccount`, `shop`).** Pre-fix the exclusion only ran through `wc_get_page_id()`, which depends on the merchant having completed WC > Settings > Advanced page assignment. Stores where Page setup never finished (every `wc_get_page_id()` returns `-1`) had their auto-installed Cart / Checkout / My Account / Shop pages still showing as candidate refund-policy targets. Added a slug-based fallback exclusion via `get_page_by_path()` that catches both the WP-hyphenated default slug (`my-account`) and the legacy unhyphenated form (`myaccount`). Two new tests in `AdminPolicyPagesTest` lock the slug-fallback path and the dedupe behavior when both exclusion paths converge on the same IDs.
+
+### Refactors
+- **AI Orders card moved before Total Orders** in the Overview tab card row. Merchants land on this tab to scan AI signal first; AI Orders is the headline metric and Total Orders is the context. The earlier order (Total Orders → AI Orders) read as "look at all your orders, then a small carve-out is AI" — which buried the signal we're surfacing.
+- **AOV stat card relabeled "AI AOV".** The metric only counts AI-attributed orders (`stats.ai_aov`), not the merchant's overall store AOV. The bare "AOV" label invited misreading the figure as a store-wide average.
+
+### Tests
+- 2 new tests in `AdminPolicyPagesTest` covering the slug-based exclusion: `test_excludes_system_slug_pages_when_wc_unconfigured` (the bug-report case — fresh store with WC pages auto-installed but page assignment never run) and `test_slug_and_settings_exclusions_dedupe` (regression guard against passing duplicate IDs to `get_pages()` when both exclusion paths converge). Existing `AdminPolicyPagesTest` setUp gained a `Functions\when('get_page_by_path')->justReturn(null)` default so the existing 9 tests continue to exercise only the wc_get_page_id path. Total tests now 905, assertions 2499.
+
+---
+
 ## [0.6.0] – 2026-04-28
 
 ### Fixes

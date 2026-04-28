@@ -44,6 +44,11 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		// `__()` passthrough: tests don't depend on translation, just
 		// the literal English string the WP_Error payload carries.
 		Functions\when( '__' )->returnArg();
+
+		// `get_page_by_path()` default: no system-slug page exists.
+		// Tests that exercise the slug-based fallback override this
+		// alias with a per-slug match.
+		Functions\when( 'get_page_by_path' )->justReturn( null );
 	}
 
 	protected function tearDown(): void {
@@ -156,6 +161,103 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 			[ 10, 40 ],
 			$captured_args['exclude'] ?? null,
 			'Only positive page IDs should land in `exclude`; -1 (unconfigured) and 0 (never set) must be skipped.'
+		);
+	}
+
+	public function test_excludes_system_slug_pages_when_wc_unconfigured(): void {
+		// Catches the case the WC-settings exclusion misses: a store
+		// where `wc_get_page_id()` returns -1 for everything (Page
+		// setup never completed) but pages with default system slugs
+		// like `cart` and `checkout` still exist on disk. Without
+		// this fallback, every newly-installed Woo store would surface
+		// Cart and Checkout as candidate refund-policy pages — which
+		// is what surfaced as a bug report.
+		Functions\when( 'wc_get_page_id' )->justReturn( -1 );
+
+		Functions\when( 'get_page_by_path' )->alias(
+			static function ( $slug ) {
+				$slug_to_id = [
+					'cart'       => 11,
+					'checkout'   => 22,
+					'my-account' => 33,
+					'myaccount'  => 33, // Same page; both slug forms hit
+					                    // it. `array_unique()` collapses
+					                    // the duplicate.
+					'shop'       => 44,
+				];
+				if ( ! isset( $slug_to_id[ $slug ] ) ) {
+					return null;
+				}
+				$page     = new \stdClass();
+				$page->ID = $slug_to_id[ $slug ];
+				return $page;
+			}
+		);
+
+		$captured_args = null;
+		Functions\when( 'get_pages' )->alias(
+			static function ( $args ) use ( &$captured_args ) {
+				$captured_args = $args;
+				return [];
+			}
+		);
+
+		$this->controller->get_policy_pages();
+
+		$this->assertSame(
+			[ 11, 22, 33, 44 ],
+			$captured_args['exclude'] ?? null,
+			'Slug-based fallback must exclude pages with default WC system slugs even when wc_get_page_id() is unconfigured. The two `my-account` aliases must dedupe.'
+		);
+	}
+
+	public function test_slug_and_settings_exclusions_dedupe(): void {
+		// A correctly-configured store may have BOTH paths point at
+		// the same page IDs (wc_get_page_id resolves to the page that
+		// also matches the slug lookup). The merged exclude list
+		// must dedupe so we don't pass duplicate IDs to get_pages().
+		Functions\when( 'wc_get_page_id' )->alias(
+			static fn( $slug ) => match ( $slug ) {
+				'cart'      => 10,
+				'checkout'  => 20,
+				'myaccount' => 30,
+				'shop'      => 40,
+				default     => 0,
+			}
+		);
+
+		Functions\when( 'get_page_by_path' )->alias(
+			static function ( $slug ) {
+				$slug_to_id = [
+					'cart'       => 10,
+					'checkout'   => 20,
+					'my-account' => 30,
+					'myaccount'  => 30,
+					'shop'       => 40,
+				];
+				if ( ! isset( $slug_to_id[ $slug ] ) ) {
+					return null;
+				}
+				$page     = new \stdClass();
+				$page->ID = $slug_to_id[ $slug ];
+				return $page;
+			}
+		);
+
+		$captured_args = null;
+		Functions\when( 'get_pages' )->alias(
+			static function ( $args ) use ( &$captured_args ) {
+				$captured_args = $args;
+				return [];
+			}
+		);
+
+		$this->controller->get_policy_pages();
+
+		$this->assertSame(
+			[ 10, 20, 30, 40 ],
+			$captured_args['exclude'] ?? null,
+			'When both exclusion paths converge on the same IDs, the merged list must dedupe.'
 		);
 	}
 
