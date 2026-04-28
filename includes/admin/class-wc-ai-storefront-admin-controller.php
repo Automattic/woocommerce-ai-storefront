@@ -348,8 +348,15 @@ class WC_AI_Storefront_Admin_Controller {
 				$content  = $llms_txt->generate();
 				set_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY, $content, HOUR_IN_SECONDS );
 
-				$ucp      = new WC_AI_Storefront_Ucp();
-				$manifest = wp_json_encode( $ucp->generate_manifest( WC_AI_Storefront::get_settings() ), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
+				$ucp = new WC_AI_Storefront_Ucp();
+				// Safe-encoding flag set matches `WC_AI_Storefront_Ucp::serve_manifest()`
+				// — uniform across the two write sites that populate
+				// `WC_AI_Storefront_Ucp::CACHE_KEY` so a read from the
+				// transient lands on identically-encoded bytes regardless
+				// of which writer produced it. See that method for the
+				// HEX-escape rationale (script-tag breakout + adjacent
+				// injection vectors).
+				$manifest = wp_json_encode( $ucp->generate_manifest( WC_AI_Storefront::get_settings() ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT );
 				set_transient( WC_AI_Storefront_Ucp::CACHE_KEY, $manifest, HOUR_IN_SECONDS );
 			}
 		}

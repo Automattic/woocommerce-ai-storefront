@@ -237,6 +237,85 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'utm_medium=ai_agent', $url );
 	}
 
+	public function test_store_jsonld_hex_escapes_script_close_tag_in_taxonomy_names(): void {
+		// Regression guard for the script-tag-breakout class: any
+		// string field flowing into the JSON-LD body that contains
+		// `</script>` would, under the previous `JSON_UNESCAPED_SLASHES`
+		// flag, survive verbatim and break out of the
+		// `<script type="application/ld+json">` CDATA context. A
+		// taxonomy name like `</script><script>alert(1)</script>`
+		// (creatable by any role with `manage_categories`, typically
+		// Editor) becomes a stored XSS on the homepage and shop page.
+		//
+		// Fix uses `JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT`
+		// so `<` and `>` hex-escape to `<` / `>`. The script
+		// tag's CDATA is preserved; Schema.org parsers handle the hex
+		// escapes per the JSON spec.
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'home_url' )->alias(
+			static fn( $path = '' ) => 'https://example.com' . $path
+		);
+		// Site name carries the malicious payload — the most reachable
+		// path: an admin types it into Settings → General → Site Title.
+		Functions\when( 'get_bloginfo' )->alias(
+			static function ( $key ) {
+				if ( 'name' === $key ) {
+					return '</script><script>alert("xss")</script>';
+				}
+				if ( 'description' === $key ) {
+					return 'normal description';
+				}
+				return '';
+			}
+		);
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// Add a taxonomy with the same payload — covers the Editor-role
+		// `manage_categories` reach as well.
+		$category       = new stdClass();
+		$category->name = '</script><script>document.cookie</script>';
+		$category->slug = 'malicious-category';
+		$category->count = 1;
+		Functions\when( 'get_terms' )->justReturn( [ $category ] );
+		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/category/malicious-category/' );
+		// Real `wp_json_encode` so we exercise the actual flag set
+		// rather than the string-builder alias used elsewhere.
+		Functions\when( 'wp_json_encode' )->alias(
+			static fn( $data, $flags = 0 ) => json_encode( $data, $flags )
+		);
+		Functions\when( '__' )->returnArg( 1 );
+
+		ob_start();
+		$this->jsonld->output_store_jsonld();
+		$output = ob_get_clean();
+
+		// Critical assertion: the literal `</script>` byte sequence
+		// MUST NOT appear inside the JSON body, only as the closing
+		// of our own intended `<script type="application/ld+json">`
+		// wrapper. Total occurrence count = 1 (our closing tag).
+		$this->assertSame(
+			1,
+			substr_count( $output, '</script>' ),
+			'JSON body must not contain literal </script> — only our wrapper closing tag is permitted.'
+		);
+
+		// Extract the JSON between the script tags and confirm it
+		// parses — the hex-escaped output is still valid JSON-LD.
+		$matches = [];
+		preg_match( '/<script type="application\/ld\+json">(.*?)<\/script>/s', $output, $matches );
+		$this->assertCount( 2, $matches, 'Expected exactly one matched script-tag pair.' );
+		$decoded = json_decode( $matches[1], true );
+		$this->assertIsArray( $decoded, 'JSON inside the script tag must parse to an array.' );
+		// Round-trip through decode confirms the malicious string is
+		// preserved as data (not as breakout markup): the decoded
+		// `name` equals the original input.
+		$this->assertEquals(
+			'</script><script>alert("xss")</script>',
+			$decoded['name'],
+			'Malicious site-name must round-trip cleanly through hex-escape and JSON-decode.'
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// Inventory (only when managing stock)
 	// ------------------------------------------------------------------

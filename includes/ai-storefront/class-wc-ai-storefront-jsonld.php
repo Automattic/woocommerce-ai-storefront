@@ -354,7 +354,23 @@ class WC_AI_Storefront_JsonLd {
 		 */
 		$store_data = apply_filters( 'wc_ai_storefront_jsonld_store', $store_data, $settings );
 
-		echo '<script type="application/ld+json">' . wp_json_encode( $store_data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) . '</script>' . "\n";
+		// `JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT`
+		// over the previous `JSON_UNESCAPED_SLASHES` flag: ensures
+		// `<`, `>`, `&`, `'`, `"` in any string field are hex-escaped
+		// to `<` / `>` / `&` / `'` / `"`,
+		// which closes the `</script>` breakout class — a category
+		// name like `</script><script>alert(1)</script>` (creatable
+		// by any user with `manage_categories`, typically Editor role)
+		// would otherwise survive `JSON_UNESCAPED_SLASHES` and break
+		// out of the JSON-LD script-tag CDATA context. The HEX flags
+		// also pre-emptively close adjacent injection vectors
+		// (attribute-breakout via quotes, comment injection via `&`).
+		// `JSON_UNESCAPED_UNICODE` retained so non-ASCII strings
+		// (international product / brand / description text) don't
+		// bloat into `\uXXXX` sequences. Schema.org parsers and
+		// Google's structured-data validator handle hex-escaped
+		// characters correctly per the JSON spec.
+		echo '<script type="application/ld+json">' . wp_json_encode( $store_data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE ) . '</script>' . "\n";
 	}
 
 	/**
