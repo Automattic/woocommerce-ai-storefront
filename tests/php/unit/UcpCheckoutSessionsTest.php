@@ -1963,4 +1963,93 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// Cross-path convergence (added 0.5.0)
+	// ------------------------------------------------------------------
+	//
+	// The whole point of the canonical UTM shape + PRODUCT_TO_HOSTNAME
+	// resolution is "all three identification paths for the same agent
+	// stamp the same utm_source value." The three independent path
+	// tests above each assert a literal string ("ucpplayground.com")
+	// — that locks the literal but not the convergence invariant.
+	// A refactor that changes one path to emit "ucp-playground.com"
+	// would break only that path's test. This test compares the three
+	// paths' utm_source extractions directly, so any divergence is
+	// caught regardless of which side moved.
+
+	public function test_all_three_identification_paths_for_ucpplayground_emit_identical_utm_source(): void {
+		$this->seed_simple_product( 1 );
+
+		$line_items = [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ];
+
+		// Path 1: profile-URL form (RFC 8941 Dictionary).
+		$profile_url_result = $this->call_handler(
+			[ 'line_items' => $line_items ],
+			'profile="https://ucpplayground.com/profile.json"'
+		);
+
+		// Path 2: Product/Version form (RFC 7231 §5.5.3 User-Agent).
+		$product_version_result = $this->call_handler(
+			[ 'line_items' => $line_items ],
+			'UCP-Playground/1.0'
+		);
+
+		// Path 3: meta.source body fallback.
+		$meta_source_result = $this->call_handler(
+			[
+				'line_items' => $line_items,
+				'meta'       => [ 'source' => 'ucp-playground' ],
+			]
+			// No UCP-Agent header.
+		);
+
+		$path1_source = $this->extract_utm_source( $profile_url_result['data']['continue_url'] );
+		$path2_source = $this->extract_utm_source( $product_version_result['data']['continue_url'] );
+		$path3_source = $this->extract_utm_source( $meta_source_result['data']['continue_url'] );
+
+		// The convergence invariant: all three paths produce the same
+		// utm_source value. Asserting equality directly (rather than
+		// a literal substring per path) means a future refactor that
+		// changes the canonical hostname for UCPPlayground only needs
+		// to update PRODUCT_TO_HOSTNAME — this test still passes
+		// because the three paths converge, regardless of value.
+		$this->assertSame(
+			$path1_source,
+			$path2_source,
+			'Profile-URL and Product/Version paths must emit identical utm_source for the same agent.'
+		);
+		$this->assertSame(
+			$path2_source,
+			$path3_source,
+			'Product/Version and meta.source body paths must emit identical utm_source for the same agent.'
+		);
+
+		// Also pin the actual value at this snapshot so that a
+		// refactor which broke convergence by setting all three to
+		// the wrong but-equal value (e.g. all three return the empty
+		// sentinel) still fails. Belt + suspenders.
+		$this->assertSame( 'ucpplayground.com', $path1_source );
+	}
+
+	/**
+	 * Parse the utm_source query parameter out of a continue_url.
+	 *
+	 * Tighter than `assertStringContainsString( 'utm_source=...', $url )`
+	 * because it round-trips through `parse_url` + `parse_str` so a
+	 * URL like `?products=foo&utm_source=foo.com.evil&...` doesn't
+	 * accidentally match a substring assertion against `utm_source=foo.com`.
+	 *
+	 * @param string $url The continue_url to parse.
+	 * @return string The decoded utm_source value, or empty string when absent.
+	 */
+	private function extract_utm_source( string $url ): string {
+		$query = wp_parse_url( $url, PHP_URL_QUERY );
+		if ( ! is_string( $query ) ) {
+			return '';
+		}
+		$params = [];
+		parse_str( $query, $params );
+		return is_string( $params['utm_source'] ?? null ) ? $params['utm_source'] : '';
+	}
 }

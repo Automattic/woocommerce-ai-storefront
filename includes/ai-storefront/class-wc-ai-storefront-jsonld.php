@@ -59,7 +59,11 @@ class WC_AI_Storefront_JsonLd {
 						'add-to-cart'   => $product->get_id(),
 						'utm_source'    => '{agent_id}',
 						'utm_medium'    => 'referral',
-						'utm_id'        => 'woo_ucp',
+						// Reference the constant rather than the literal
+						// `'woo_ucp'` so a future rename can't silently
+						// drift between this emit site and the matcher
+						// in `WC_AI_Storefront_Attribution::capture_ai_attribution()`.
+						'utm_id'        => WC_AI_Storefront_Attribution::WOO_UCP_ID,
 						'ai_session_id' => '{session_id}',
 					],
 					$product->get_permalink()
@@ -324,8 +328,13 @@ class WC_AI_Storefront_JsonLd {
 				'target'      => [
 					'@type'       => 'EntryPoint',
 					// Canonical UTM shape (0.5.0+) — see BuyAction
-					// urlTemplate above for rationale.
-					'urlTemplate' => home_url( '/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=woo_ucp' ),
+					// urlTemplate above for rationale. The `utm_id`
+					// value comes from the constant rather than the
+					// literal string for the same drift-prevention
+					// reason documented at the BuyAction emit site.
+					'urlTemplate' => home_url(
+						'/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=' . WC_AI_Storefront_Attribution::WOO_UCP_ID
+					),
 				],
 				'query-input' => 'required name=search_term',
 			],

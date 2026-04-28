@@ -3916,13 +3916,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *
 	 *   - `utm_source` is now a lowercase hostname (e.g.
 	 *     `chatgpt.com`) rather than a canonical brand name (e.g.
-	 *     `ChatGPT`). Hostnames match the WC convention (`google`,
-	 *     `facebook`, etc.) and converge with what bypass-path agents
-	 *     naturally stamp on Shareable Checkout links — fragmenting
-	 *     attribution across our continue_url and bypass paths was
-	 *     the dominant pre-0.5.0 problem (the same agent showed up
-	 *     in WC Origin as both `ChatGPT` and `chatgpt.com` for
-	 *     different orders).
+	 *     `ChatGPT`). Hostnames match the GA4 / Google Analytics
+	 *     `utm_source` convention (`google`, `facebook`, etc.) that
+	 *     WC's Origin column surfaces verbatim, and they converge
+	 *     with what bypass-path agents naturally stamp on Shareable
+	 *     Checkout links. Fragmenting attribution across our
+	 *     continue_url and bypass paths was the dominant pre-0.5.0
+	 *     problem — the same agent showed up in WC Origin as both
+	 *     `ChatGPT` and `chatgpt.com` for different orders.
 	 *
 	 *   - `utm_medium` is now `referral` (Google-canonical) rather
 	 *     than `ai_agent`. AI agent traffic IS referral traffic by
@@ -3938,14 +3939,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *     previously carried. Decouples WHO sent the user (utm_source)
 	 *     from HOW it was routed (utm_id), so changing one doesn't
 	 *     fragment the other. The `woo_` prefix scopes the value to
-	 *     our ecosystem in case other UCP server implementations
-	 *     emerge.
+	 *     our ecosystem.
 	 *
 	 * Migration: the STRICT attribution gate dual-checks
 	 * `utm_id === 'woo_ucp'` OR legacy `utm_medium === 'ai_agent'` to
 	 * keep already-placed orders attributing correctly through the
-	 * upgrade window. The legacy `utm_medium` check is documented as
-	 * removable after ~6 months.
+	 * upgrade window. See `WC_AI_Storefront_Attribution::AI_AGENT_MEDIUM`
+	 * docblock for the legacy-branch removal horizon (tied to WC
+	 * Analytics' default reporting windows).
 	 *
 	 * Plus, when an agent identifier was resolved (any path), the raw
 	 * value is appended as `ai_agent_host_raw`:
@@ -3995,11 +3996,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			? $source_host
 			: WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
 
+		// Use the `WOO_UCP_ID` constant from the attribution class
+		// rather than a literal string here. The STRICT gate's matcher
+		// in `WC_AI_Storefront_Attribution::capture_ai_attribution()`
+		// reads the same constant — keeping both sides on the constant
+		// means a future rename can't silently break round-trip
+		// recognition of orders we routed.
 		$url = $base
 			. '?products=' . implode( ',', $segments )
 			. '&utm_source=' . rawurlencode( $utm_source )
 			. '&utm_medium=referral'
-			. '&utm_id=woo_ucp';
+			. '&utm_id=' . WC_AI_Storefront_Attribution::WOO_UCP_ID;
 
 		if ( '' !== $raw_host ) {
 			$url .= '&ai_agent_host_raw=' . rawurlencode( $raw_host );

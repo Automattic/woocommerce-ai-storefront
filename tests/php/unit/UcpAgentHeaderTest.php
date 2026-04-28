@@ -599,4 +599,42 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 			WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( '' )
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// PRODUCT_TO_HOSTNAME / KNOWN_AGENT_PRODUCT_NAMES key-set parity
+	// ------------------------------------------------------------------
+
+	public function test_product_to_hostname_keys_match_known_agent_product_names(): void {
+		// Drift guard: every entry in `KNOWN_AGENT_PRODUCT_NAMES` MUST
+		// have a corresponding entry in `PRODUCT_TO_HOSTNAME`. Without
+		// this parity, a future contributor who adds a new product
+		// token to KNOWN_AGENT_PRODUCT_NAMES (e.g. `'claude-cli' =>
+		// 'Claude'`) without also adding the hostname mapping
+		// (`'claude-cli' => 'claude.ai'`) would silently fragment
+		// stats: the order's friendly display name becomes "Claude"
+		// (correct) but utm_source becomes the bare product token
+		// `claude-cli` instead of the canonical hostname `claude.ai`.
+		// Two separate rows in WC's Origin column for what is
+		// effectively the same agent.
+		//
+		// PRODUCT_TO_HOSTNAME may contain MORE keys than
+		// KNOWN_AGENT_PRODUCT_NAMES (a hostname mapping for an unknown
+		// product is harmless — it just never gets looked up), but it
+		// MUST contain at least the same key set. Asserting symmetric
+		// difference == [] catches the dominant drift direction.
+		$names_keys = array_keys( WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_PRODUCT_NAMES );
+		$hosts_keys = array_keys( WC_AI_Storefront_UCP_Agent_Header::PRODUCT_TO_HOSTNAME );
+
+		$missing_hostname = array_diff( $names_keys, $hosts_keys );
+
+		$this->assertEmpty(
+			$missing_hostname,
+			sprintf(
+				'KNOWN_AGENT_PRODUCT_NAMES has %d entries that are missing from PRODUCT_TO_HOSTNAME (%s). '
+					. 'Add a hostname mapping for each entry to prevent stats fragmentation.',
+				count( $missing_hostname ),
+				implode( ', ', $missing_hostname )
+			)
+		);
+	}
 }

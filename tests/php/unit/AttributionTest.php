@@ -79,23 +79,28 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		// Canonical 0.5.0 shape: utm_id=woo_ucp on order meta
 		// triggers STRICT regardless of utm_medium value (which is
 		// `referral` in the new shape, not `ai_agent`).
+		//
+		// `utm_source=mysteryagent.example` is deliberately NOT in
+		// `KNOWN_AGENT_HOSTS`, so the LENIENT path cannot fire here —
+		// the only way this test passes is via STRICT. A regression
+		// that broke STRICT but left LENIENT intact would not be
+		// caught by an assertion that uses `chatgpt.com` (which both
+		// gates would match).
 		$order = new WC_Order();
 		$order->set_test_meta( '_wc_order_attribution_utm_id', 'woo_ucp' );
 		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
-		$order->set_test_meta( '_wc_order_attribution_utm_source', 'chatgpt.com' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'mysteryagent.example' );
 
 		Functions\expect( 'do_action' )->once();
 
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertTrue( $order->was_saved() );
-		// utm_source=chatgpt.com IS a KNOWN_AGENT_HOSTS key, so the
-		// lenient gate canonicalizes it to the brand name "ChatGPT"
-		// before stamping `_wc_ai_storefront_agent`. Same canonical-
-		// brand-display behavior as pre-0.5.0; the change in this PR
-		// is what utm_source carries on the URL, not what the meta
-		// stamps.
-		$this->assertEquals( 'ChatGPT', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		// LENIENT did not fire (host unknown), so the agent meta
+		// stamps the raw utm_source verbatim per the post-STRICT
+		// fallback at attribution.php's `$canonical_agent = ... :
+		// (string) $utm_source` branch.
+		$this->assertEquals( 'mysteryagent.example', $order->get_meta( '_wc_ai_storefront_agent' ) );
 	}
 
 	public function test_capture_strict_gate_fires_on_woo_ucp_utm_id_get_fallback(): void {
@@ -103,10 +108,15 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		// STRICT before WC core has finished writing meta (the
 		// `wc_order_attribution_install_metadata` race the legacy gate
 		// also covers via the $_GET fallback).
+		//
+		// Same self-fulfilling guard as the meta variant above:
+		// `utm_source=mysteryagent.example` is NOT in
+		// `KNOWN_AGENT_HOSTS`, so the only way this test passes is
+		// the STRICT path matching utm_id.
 		$order = new WC_Order();
 		$_GET['utm_id']        = 'woo_ucp';
 		$_GET['utm_medium']    = 'referral';
-		$_GET['utm_source']    = 'gemini.google.com';
+		$_GET['utm_source']    = 'mysteryagent.example';
 		$_GET['ai_session_id'] = 'session-xyz';
 
 		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
@@ -116,10 +126,36 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution->capture_ai_attribution( $order );
 
 		$this->assertTrue( $order->was_saved() );
-		// gemini.google.com is in KNOWN_AGENT_HOSTS → lenient gate
-		// canonicalizes to "Gemini" before stamping the agent meta.
-		$this->assertEquals( 'Gemini', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		$this->assertEquals( 'mysteryagent.example', $order->get_meta( '_wc_ai_storefront_agent' ) );
 		$this->assertEquals( 'session-xyz', $order->get_meta( '_wc_ai_storefront_session_id' ) );
+	}
+
+	public function test_capture_strict_gate_fires_when_both_signals_present(): void {
+		// Migration-window cross-cohort case: an order carrying BOTH
+		// the canonical `utm_id=woo_ucp` AND the legacy
+		// `utm_medium=ai_agent` (e.g., re-attempted order from a
+		// session straddling deploys, or a defensively-stamped
+		// continue_url) must still attribute through STRICT.
+		//
+		// A future "be clever" refactor that checked utm_id first
+		// and silently returned without examining utm_medium when
+		// utm_id was present would still pass — that's fine. But a
+		// refactor that special-cased "if utm_id is set, ONLY fire
+		// when it's woo_ucp; ignore utm_medium entirely" could
+		// regress legacy-cohort orders where utm_id might
+		// accidentally be set to something else by an intermediary.
+		// This test pins the OR-semantic explicitly.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_id', 'woo_ucp' );
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'ai_agent' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'mysteryagent.example' );
+
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertTrue( $order->was_saved() );
+		$this->assertEquals( 'mysteryagent.example', $order->get_meta( '_wc_ai_storefront_agent' ) );
 	}
 
 	public function test_capture_strict_gate_legacy_ai_agent_medium_still_fires(): void {
