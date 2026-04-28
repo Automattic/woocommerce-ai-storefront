@@ -248,9 +248,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Editor) becomes a stored XSS on the homepage and shop page.
 		//
 		// Fix uses `JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT`
-		// so `<` and `>` hex-escape to `<` / `>`. The script
-		// tag's CDATA is preserved; Schema.org parsers handle the hex
-		// escapes per the JSON spec.
+		// so `<` and `>` serialize as `\u003C` and `\u003E` (and
+		// the other flagged characters likewise serialize as escaped
+		// code points). The script tag's CDATA is preserved; Schema.org
+		// parsers handle these escapes per the JSON spec.
 		Functions\when( 'is_front_page' )->justReturn( true );
 		Functions\when( 'is_shop' )->justReturn( false );
 		Functions\when( 'home_url' )->alias(
@@ -278,11 +279,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$category->count = 1;
 		Functions\when( 'get_terms' )->justReturn( [ $category ] );
 		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/category/malicious-category/' );
-		// Real `wp_json_encode` so we exercise the actual flag set
-		// rather than the string-builder alias used elsewhere.
-		Functions\when( 'wp_json_encode' )->alias(
-			static fn( $data, $flags = 0 ) => json_encode( $data, $flags )
-		);
+		// Real `wp_json_encode` stand-in via PHP's encoder so we
+		// exercise the actual flag handling rather than the
+		// string-builder alias used elsewhere in this file. Aliasing
+		// directly to `json_encode` (per Copilot review on PR #131)
+		// is consistent with surrounding tests and forwards all
+		// arguments correctly.
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
 		Functions\when( '__' )->returnArg( 1 );
 
 		ob_start();
@@ -341,10 +344,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		// Extract the JSON between the script tags and confirm it
 		// parses — the hex-escaped output is still valid JSON-LD.
+		// `preg_match_all` over `preg_match` (per Copilot review on
+		// PR #131): `preg_match` returns the FIRST match only, so a
+		// regression that emitted TWO `<script type=...>` blocks
+		// would slip past `preg_match`'s result-shape check entirely.
+		// `preg_match_all` with PREG_SET_ORDER groups each match's
+		// captures together so we can assert exactly one block.
 		$matches = [];
-		preg_match( '/<script type="application\/ld\+json">(.*?)<\/script>/s', $output, $matches );
-		$this->assertCount( 2, $matches, 'Expected exactly one matched script-tag pair.' );
-		$decoded = json_decode( $matches[1], true );
+		preg_match_all(
+			'/<script type="application\/ld\+json">(.*?)<\/script>/s',
+			$output,
+			$matches,
+			PREG_SET_ORDER
+		);
+		$this->assertCount( 1, $matches, 'Expected exactly one <script type="application/ld+json"> block in output.' );
+		$decoded = json_decode( $matches[0][1], true );
 		$this->assertIsArray( $decoded, 'JSON inside the script tag must parse to an array.' );
 
 		// Cross-field round-trip: BOTH the site name AND the category

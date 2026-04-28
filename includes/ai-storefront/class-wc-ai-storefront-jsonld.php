@@ -356,8 +356,9 @@ class WC_AI_Storefront_JsonLd {
 
 		// `JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT`
 		// over the previous `JSON_UNESCAPED_SLASHES` flag: ensures
-		// `<`, `>`, `&`, `'`, `"` in any string field are hex-escaped
-		// to `<` / `>` / `&` / `'` / `"`,
+		// `<`, `>`, `&`, `'`, `"` in any string field serialize as
+		// Unicode escape sequences (`\u003C`, `\u003E`, `\u0026`,
+		// `\u0027`, `\u0022`),
 		// which closes the `</script>` breakout class — a category
 		// name like `</script><script>alert(1)</script>` (creatable
 		// by any user with `manage_categories`, typically Editor role)
