@@ -29,9 +29,18 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 		Functions\when( 'add_query_arg' )->alias(
 			static function ( $args, $url ) {
+				// Strip any fragment before appending query params, then
+				// re-append it — matching WordPress core's behavior and
+				// preventing malformed URLs like `?q=1#frag` where the
+				// query string would be absorbed into the fragment.
+				$fragment = '';
+				if ( str_contains( $url, '#' ) ) {
+					[ $url, $fragment ] = explode( '#', $url, 2 );
+					$fragment = '#' . $fragment;
+				}
 				$query = http_build_query( $args );
 				$sep   = str_contains( $url, '?' ) ? '&' : '?';
-				return $url . $sep . $query;
+				return $url . $sep . $query . $fragment;
 			}
 		);
 		Functions\when( 'wc_get_product_cat_ids' )->justReturn( [] );

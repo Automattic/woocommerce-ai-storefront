@@ -40,9 +40,18 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// across tests — simple passthrough that appends params.
 		Functions\when( 'add_query_arg' )->alias(
 			static function ( $args, $url ) {
+				// Strip any fragment before appending query params, then
+				// re-append it — matching WordPress core's behavior and
+				// preventing malformed URLs like `?q=1#frag` where the
+				// query string would be absorbed into the fragment.
+				$fragment = '';
+				if ( str_contains( $url, '#' ) ) {
+					[ $url, $fragment ] = explode( '#', $url, 2 );
+					$fragment = '#' . $fragment;
+				}
 				$query = http_build_query( $args );
 				$sep   = str_contains( $url, '?' ) ? '&' : '?';
-				return $url . $sep . $query;
+				return $url . $sep . $query . $fragment;
 			}
 		);
 		Functions\when( 'wc_get_product_cat_ids' )->justReturn( [] );
@@ -152,6 +161,41 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$platforms = $result['potentialAction']['target']['actionPlatform'];
 		$this->assertContains( 'https://schema.org/DesktopWebPlatform', $platforms );
 		$this->assertContains( 'https://schema.org/MobileWebPlatform', $platforms );
+	}
+
+	public function test_buyaction_uritemplate_preserves_fragment_from_permalink(): void {
+		// Some themes append tab deep-links to product permalinks, e.g.
+		// `https://example.com/product/widget/#tab-description`. The real
+		// `add_query_arg()` strips the fragment, appends query params to
+		// the base URL, then re-appends the fragment — producing a
+		// well-formed URL where the query string is readable by the server.
+		//
+		// Regression guard: the mock must behave identically so CI catches
+		// any future production-code change that re-introduces the bug.
+		$product = $this->make_product(
+			[ 'permalink' => 'https://example.com/product/widget/#tab-description' ]
+		);
+		$result  = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+
+		// Query params must appear BEFORE the fragment separator.
+		$fragment_pos    = strpos( $url, '#' );
+		$query_param_pos = strpos( $url, 'add-to-cart=' );
+
+		$this->assertNotFalse( $fragment_pos, 'urlTemplate should still contain the fragment' );
+		$this->assertNotFalse( $query_param_pos, 'urlTemplate should contain add-to-cart param' );
+		$this->assertLessThan(
+			$fragment_pos,
+			$query_param_pos,
+			'Query params must appear before the # fragment separator'
+		);
+
+		// The fragment itself should be intact at the very end.
+		$this->assertStringEndsWith( '#tab-description', $url );
+
+		// Sanity: attribution params must survive too.
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
 	}
 
 	// ------------------------------------------------------------------
