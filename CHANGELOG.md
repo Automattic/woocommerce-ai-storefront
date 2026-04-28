@@ -4,6 +4,15 @@
 
 ---
 
+## [0.6.3] – 2026-04-28
+
+### Fixes
+- **Discovery tab: training/test crawler subtitle trimmed and de-jargoned.** Was 42 words, including "model corpora" (ML term that's opaque to non-engineers). Now 28 words: "Non-revenue bots. Training crawlers feed AI training data. Today's crawl may surface as an answer months later with stale prices. Test crawlers are validation tools. Default off." Same merchant decision content, plainer English.
+- **Discovery tab: Origin column footer corrected for post-0.5.0 hostname behavior.** Pre-fix the copy claimed AI-attributed orders show under WooCommerce's built-in Origin column as the agent's brand name (e.g. "Source: ChatGPT"). That was true before 0.5.0; the canonical-UTM-shape work in 0.5.0 deliberately switched `utm_source` from brand-name to hostname (e.g. `chatgpt.com`) for cross-path attribution convergence, so the Origin column now renders "Source: Chatgpt.com". The friendly brand name is still surfaced (in the plugin's Overview tab via the `_wc_ai_storefront_agent` meta), but the merchant-facing copy in the Discovery tab now distinguishes the two surfaces honestly.
+- **Policies tab: Return window NumberControl uses WP-styled +/- buttons.** Pre-fix, the field defaulted to NumberControl's browser-native HTML spinner arrows — tiny up/down chevrons rendered by the browser for `input[type=number]`. Hard to target with a mouse; nearly unusable on touch. Adding `spinControls="custom"` swaps in WP's properly-sized +/- buttons that match the input's 40px height. Wrapper widened from 96px to 120px so the suffixed buttons get breathing room.
+
+---
+
 ## [0.6.2] – 2026-04-28
 
 ### Fixes
