@@ -1,35 +1,30 @@
-# API Reference
+# REST API Reference
 
 Endpoint-level reference for the two REST surfaces this plugin exposes:
 
-- **UCP REST adapter** — `/wp-json/wc/ucp/v1/*`. Public, called by AI agents. Implements the Universal Commerce Protocol's catalog and checkout-session capabilities.
-- **Admin REST API** — `/wp-json/wc/v3/ai-storefront/admin/*`. Authenticated, called by the React admin UI.
+- **UCP REST adapter** — `/wp-json/wc/ucp/v1/*`. Public; called by AI agents.
+- **Admin REST API** — `/wp-json/wc/v3/ai-storefront/admin/*`. Authenticated; called by the React admin UI.
 
-Plus three discovery surfaces that aren't REST per se but are part of the public contract:
-
-- `/llms.txt` — Markdown store guide
-- `/.well-known/ucp` — JSON manifest
-- `/robots.txt` — Crawler allow-list (WordPress-served, AI Storefront amends)
+Discovery surfaces (`/llms.txt`, `/.well-known/ucp`, `/robots.txt`) aren't REST in the conventional sense — they're rewrite-rule-served virtual paths. They're documented in [`ARCHITECTURE.md`](ARCHITECTURE.md#discovery-layer).
 
 ## Conventions
 
-- All UCP endpoints emit responses inside a `ucp` envelope with `version`, `capabilities`, and `payment_handlers`. The envelope is built by `WC_AI_Storefront_UCP_Envelope`.
-- Error envelopes use `error: { code, message }` plus an HTTP status code that matches the failure class.
-- Currency amounts are integers in **minor units** (cents for USD, pence for GBP, etc.). No floats. No hardcoded `* 100` — read currency precision from the response context.
+- Every UCP response is wrapped in a `ucp` envelope with `version`, `capabilities`, and `payment_handlers`. Built by `WC_AI_Storefront_UCP_Envelope`.
+- Errors use `error: { code, message }` plus an HTTP status code matching the failure class.
+- Currency amounts on UCP responses are integers in **minor units** (cents for USD, pence for GBP). No floats. Read currency precision from the response context.
 - Date-times are ISO 8601 UTC.
-- The `UCP-Agent` request header is parsed for two formats: profile-URL (RFC 8941 Dictionary) and Product/Version (RFC 7231 §5.5.3). Either form works; absence is also valid (treated as anonymous).
+- The `UCP-Agent` request header is parsed in two formats: profile-URL (RFC 8941 Dictionary) and Product/Version (RFC 7231 §5.5.3). Either form works; absence is also valid (anonymous).
 
 ## Authentication
 
 | Surface | Auth model |
 |---------|------------|
-| UCP REST (`/wc/ucp/v1/*`) | None. Public. Permission gate is `WC_AI_Storefront_UCP_REST_Controller::check_agent_access()` which inspects merchant settings (`allowed_crawlers`, `allow_unknown_ucp_agents`) against the `UCP-Agent` header. |
+| UCP REST (`/wc/ucp/v1/*`) | None. Public. Permission gate is `WC_AI_Storefront_UCP_REST_Controller::check_agent_access()`, which inspects merchant settings (`allowed_crawlers`, `allow_unknown_ucp_agents`) against the `UCP-Agent` header. |
 | Admin REST (`/wc/v3/ai-storefront/admin/*`) | `manage_woocommerce` capability via WordPress's standard cookie/nonce or application-password authentication. |
-| `/llms.txt`, `/.well-known/ucp`, `/robots.txt` | None. Public. |
 
 The UCP gate is **secure-by-default**: an unrecognized `UCP-Agent` host returns 403 unless the merchant has opted in via `allow_unknown_ucp_agents=yes`. Agents whose host resolves to a known brand (e.g. `chatgpt.com`) are allowed only if at least one of their mapped crawler IDs is in the merchant's `allowed_crawlers` list.
 
-When syndication is paused (`enabled=no`), every UCP commerce route returns **503** with `error.code=ucp_disabled`. Agents read 503 as "transient pause, retry later" — preserving the right semantic vs. 403 ("permanent deny").
+When syndication is paused (`enabled=no`), every UCP commerce route returns **503** with `error.code=ucp_disabled` so agents read it as "transient pause, retry later" rather than 403's "permanent deny."
 
 ---
 
@@ -41,7 +36,7 @@ Module: [`includes/ai-storefront/ucp-rest/`](../../includes/ai-storefront/ucp-re
 
 ### `POST /catalog/search`
 
-Search the merchant's syndicated catalog. Translates UCP search params into a WooCommerce Store API call.
+Search the merchant's syndicated catalog. Translates UCP search params into a WC Store API call.
 
 **Permission:** `check_agent_access`.
 
@@ -51,12 +46,12 @@ Search the merchant's syndicated catalog. Translates UCP search params into a Wo
 |-------|------|----------|-------------|
 | `query` | string | no | Free-text search term. |
 | `filters` | object | no | UCP filter object. Honored fields: `categories`, `tags`, `brands`, `price` (`{min, max}`). |
-| `pagination` | object | no | `{ "page": int, "per_page": int }`. Default 1 / 20. Max `per_page` is 100. |
-| `sort` | object | no | `{ "field": "relevance"|"price"|"date", "order": "asc"|"desc" }`. |
+| `pagination` | object | no | `{ "page": int, "per_page": int }`. Default 1 / 20. Max `per_page` 100. |
+| `sort` | object | no | `{ "field": "relevance"\|"price"\|"date", "order": "asc"\|"desc" }`. |
 | `context` | object | no | UCP context block (currency, locale). Logged but not currently honored. |
 | `signals` | object | no | Platform-observed environment data. Logged but not honored — UCP spec mandates these MUST NOT be buyer-asserted; until we have a trust model we ignore values. |
 
-**Response:** `200 OK` with a UCP catalog envelope:
+**Response (200):**
 
 ```json
 {
@@ -70,7 +65,7 @@ Search the merchant's syndicated catalog. Translates UCP search params into a Wo
       "id": "wc_42",
       "title": "Acme Running Shoes",
       "description": "...",
-      "url": "https://your-store.com/product/acme-running-shoes/?utm_source=chatgpt&utm_medium=ai_agent&ai_session_id=...",
+      "url": "https://your-store.com/product/acme-running-shoes/?utm_source=chatgpt.com&utm_medium=referral&utm_id=woo_ucp&ai_agent_host_raw=chatgpt.com",
       "variants": [
         {
           "id": "wc_42_default",
@@ -85,12 +80,14 @@ Search the merchant's syndicated catalog. Translates UCP search params into a Wo
 }
 ```
 
-**Errors:**
-- `503` `ucp_disabled` — syndication is paused.
-- `400` `ucp_invalid_request` — body fails JSON Schema validation.
-- `429` — Store API rate limit exceeded for this user-agent.
+The product `url` carries the canonical 0.5.0+ UTM payload (`utm_source=<hostname>`, `utm_medium=referral`, `utm_id=woo_ucp`, optional `ai_agent_host_raw`). Buyers who follow the bare product link from chat — rather than going through `/checkout-sessions` — still attribute correctly via WC Order Attribution.
 
-**Curl example:**
+**Errors:**
+- `503` `ucp_disabled` — syndication paused.
+- `400` `ucp_invalid_request` — body fails JSON Schema validation.
+- `429` — Store API rate limit exceeded for the user-agent.
+
+**Curl:**
 
 ```bash
 curl -X POST https://your-store.com/wp-json/wc/ucp/v1/catalog/search \
@@ -112,20 +109,16 @@ Look up specific products by ID.
 **Request body:**
 
 ```json
-{
-  "products": ["wc_42", "wc_43", "wc_99"]
-}
+{ "products": ["wc_42", "wc_43", "wc_99"] }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `products` | string[] | yes | Array of UCP product IDs (`wc_<post_id>` for simple, `wc_<post_id>_<variation_id>` for variations). |
+| `products` | string[] | yes | Array of UCP product IDs (`wc_<post_id>` for simple, `wc_<post_id>_<variation_id>` for variations). Max 100 items. |
 
-**Response:** Same envelope as `/catalog/search` but with `products` matching the requested IDs in order. Missing or excluded products are omitted (no error per ID — agents are expected to diff against their request).
+**Response:** same envelope as `/catalog/search` but with `products` matching requested IDs in order. Missing or excluded products are omitted (no per-ID error — agents diff against their request). Same UTM stamping on the product `url` field.
 
-**Errors:**
-- `503` `ucp_disabled`
-- `400` `ucp_invalid_request` — `products` missing, empty, or > 100 items.
+**Errors:** `503` `ucp_disabled`; `400` `ucp_invalid_request` when `products` is missing, empty, or > 100 items.
 
 ### `POST /checkout-sessions`
 
@@ -148,31 +141,40 @@ Validate a cart and return a redirect URL to WooCommerce's native Shareable Chec
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `items` | array | yes | Each item: `variant_id` (string, UCP variant ID format), `quantity` (int, >=1). Max 100 items. |
+| `items` | array | yes | `variant_id` (string), `quantity` (int >=1). Max 100 items. |
 | `shipping_address` | object | no | UCP address block. Used for shipping/tax preview. |
 | `context` | object | no | UCP context block (currency, locale). |
 
-**Response — happy path** (`200 OK`):
+**Response — happy path (200):**
 
 ```json
 {
   "ucp": { "version": "2026-04-08", "capabilities": ["dev.ucp.shopping.checkout"], "payment_handlers": {} },
   "id": "chk_a1b2c3d4e5f6g7h8",
   "status": "requires_escalation",
-  "continue_url": "https://your-store.com/checkout-link/?products=42:1,56:2&utm_source=chatgpt&utm_medium=ai_agent&ai_session_id=chk_a1b2c3d4e5f6g7h8",
+  "continue_url": "https://your-store.com/checkout-link/?products=42:1,56:2&utm_source=chatgpt.com&utm_medium=referral&utm_id=woo_ucp&ai_agent_host_raw=chatgpt.com&ai_session_id=chk_a1b2c3d4e5f6g7h8",
   "totals": {
     "subtotal": { "amount_minor": 38997, "currency": "USD" },
     "shipping": { "amount_minor": 0, "currency": "USD" },
-    "tax": { "amount_minor": 0, "currency": "USD" },
-    "total": { "amount_minor": 38997, "currency": "USD" }
+    "tax":      { "amount_minor": 0, "currency": "USD" },
+    "total":    { "amount_minor": 38997, "currency": "USD" }
   },
-  "messages": []
+  "messages": [
+    {
+      "type": "info",
+      "code": "buyer_handoff_required",
+      "severity": "advisory",
+      "content": "Continue checkout on the merchant's site to complete your purchase."
+    }
+  ]
 }
 ```
 
-The `continue_url` is the agent's signal to render a "Buy" button. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md) for the full decision tree.
+The `continue_url` is the agent's signal to render a Buy CTA. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md) for the three-layer decision tree.
 
-**Response — incomplete** (`200 OK`, but no `continue_url`):
+The `buyer_handoff_required` message uses `type: info` + `severity: advisory` (post-PR #119) so AI assistants render it informationally, not as an error. The continue_url's UTM payload matches the canonical 0.5.0+ shape — same as bare product URLs.
+
+**Response — incomplete (200, no `continue_url`):**
 
 ```json
 {
@@ -180,20 +182,23 @@ The `continue_url` is the agent's signal to render a "Buy" button. See [`UCP-BUY
   "id": "chk_...",
   "status": "incomplete",
   "messages": [
-    { "code": "out_of_stock", "message": "Acme Running Shoes (Size 11) is out of stock." }
+    {
+      "type": "error",
+      "code": "out_of_stock",
+      "severity": "requires_buyer_input",
+      "content": "Acme Running Shoes (Size 11) is out of stock."
+    }
   ]
 }
 ```
 
-**Errors:**
-- `503` `ucp_disabled`
-- `400` `ucp_invalid_request` — missing/empty `items`, malformed variant IDs.
+**Errors:** `503` `ucp_disabled`; `400` `ucp_invalid_request` for missing/empty `items` or malformed variant IDs.
 
-**Note on session IDs:** `chk_<16 hex chars>` is a correlation token for logging and attribution. There is no GET/PUT/PATCH/DELETE endpoint that operates on it — see the next section.
+**Note on session IDs.** `chk_<16 hex chars>` is a correlation token for logging and attribution. There is no GET/PUT/PATCH/DELETE endpoint that operates on it — see the next section.
 
 ### `GET|PUT|PATCH|DELETE /checkout-sessions/{id}`
 
-Returns a structured `405 Method Not Allowed` for any verb other than POST on a session URL. The response body explains the stateless model:
+Returns a structured `405 Method Not Allowed` for any verb other than POST on a session URL:
 
 ```json
 {
@@ -208,7 +213,7 @@ Returns a structured `405 Method Not Allowed` for any verb other than POST on a 
 
 **Permission:** `check_agent_access`.
 
-**Why this exists:** UCP-aware agents that come from a stateful-session mental model try PATCH (add items), PUT (replace cart), GET (look up status), DELETE (cancel). Without these route stubs WP REST would return generic `rest_no_route` 404s, which agents misinterpret as "the session was lost" and may retry destructively. The structured 405 gives them an actionable answer: "no state under any verb; POST again."
+**Why this exists.** UCP-aware agents that come from a stateful-session model try PATCH (add items), PUT (replace cart), GET (look up status), DELETE (cancel). Without these route stubs WP REST returns generic `rest_no_route` 404s, which agents misinterpret as "the session was lost" and may retry destructively. The structured 405 gives them an actionable answer.
 
 ### `GET /extension/schema`
 
@@ -226,7 +231,7 @@ Base URL: `https://your-store.com/wp-json/wc/v3/ai-storefront/admin`
 
 Module: [`includes/admin/class-wc-ai-storefront-admin-controller.php`](../../includes/admin/class-wc-ai-storefront-admin-controller.php)
 
-All endpoints require the `manage_woocommerce` capability. Authentication is via WordPress's standard cookie/nonce (when called from the admin UI) or application-password (when called externally).
+All endpoints require the `manage_woocommerce` capability. Authentication is via WordPress's standard cookie/nonce (admin UI) or application-password (external).
 
 ### `GET /settings`
 
@@ -258,7 +263,7 @@ Update settings. Partial updates allowed — only fields present in the body are
 | Field | Type | Validation |
 |-------|------|------------|
 | `enabled` | string | enum: `yes`, `no` |
-| `product_selection_mode` | string | enum: `all`, `by_taxonomy`, `selected` (legacy: `categories`, `tags`, `brands` silently migrated to `by_taxonomy`) |
+| `product_selection_mode` | string | enum: `all`, `by_taxonomy`, `selected` (legacy `categories`/`tags`/`brands` silently migrated to `by_taxonomy`) |
 | `selected_categories` | int[] | term IDs |
 | `selected_tags` | int[] | term IDs |
 | `selected_brands` | int[] | term IDs |
@@ -268,11 +273,9 @@ Update settings. Partial updates allowed — only fields present in the body are
 | `allow_unknown_ucp_agents` | string | enum: `yes`, `no` |
 | `return_policy` | object | sub-fields validated by `WC_AI_Storefront_Return_Policy::sanitize()` |
 
-**Response:** the updated settings object (same shape as `GET /settings`).
+**Response:** the updated settings object.
 
-**Side effects:**
-- If `enabled` flipped, schedules a rewrite-rule flush.
-- On enable, eagerly warms the `/llms.txt` and UCP manifest caches.
+**Side effects:** when `enabled` flips, schedules a rewrite-rule flush; on enable, eagerly warms the `/llms.txt` and UCP-manifest transients.
 
 ### `GET /stats`
 
@@ -288,15 +291,29 @@ AI-attributed order aggregates by period.
 
 ```json
 {
+  "period": "month",
   "ai_orders": 42,
-  "ai_revenue": { "amount_minor": 5400000, "currency": "USD" },
-  "by_agent": [
-    { "agent": "chatgpt", "orders": 24, "revenue": { "amount_minor": 3100000 } },
-    { "agent": "perplexity", "orders": 12, "revenue": { "amount_minor": 1500000 } },
-    { "agent": "gemini", "orders": 6, "revenue": { "amount_minor": 800000 } }
-  ]
+  "ai_revenue": 5400.00,
+  "ai_aov": 128.57,
+  "all_orders": 100,
+  "ai_share_percent": 42.0,
+  "currency": "USD",
+  "currency_symbol": "$",
+  "by_agent": {
+    "chatgpt": { "orders": 24, "revenue": 3100.00 },
+    "perplexity": { "orders": 12, "revenue": 1500.00 },
+    "gemini": { "orders": 6, "revenue": 800.00 }
+  },
+  "top_agent": {
+    "name": "chatgpt",
+    "orders": 24,
+    "revenue": 3100.00,
+    "share_percent": 57.1
+  }
 }
 ```
+
+`ai_revenue` and per-agent `revenue` are floats in the store's currency. `currency_symbol` is the decoded symbol (`$`, `€`, `£`) or empty when unavailable; `currency` is always the ISO 4217 code. `top_agent` is `null` when there are no AI orders in the period. Tie-break for `top_agent` is `orders DESC, revenue DESC, name ASC` (stable across snapshots).
 
 ### `GET /recent-orders`
 
@@ -324,7 +341,7 @@ Count of products that would currently be exposed under the saved (or hypothetic
 | `selected_brands` | int[] | |
 | `selected_products` | int[] | |
 
-**Response:** `{ "count": int }`. Without overrides, reads saved settings — what the Store API filter actually enforces today.
+**Response:** `{ "count": int }`. Without overrides, reads saved settings — what the Store API filter actually enforces.
 
 ### `GET /policy-pages`
 
@@ -332,7 +349,7 @@ Pages suitable for linking from the Policies tab. Excludes WC system pages (Cart
 
 ### `GET /search/categories`, `/search/tags`, `/search/brands`, `/search/products`
 
-Picker data for the Products tab. Each returns an array of `{ id, name, count }` (or `{ id, name, sku, image }` for products).
+Picker data for the Product Visibility tab. Each returns an array of `{ id, name, count }` (or `{ id, name, sku, image }` for products).
 
 `/search/products` accepts:
 
@@ -358,73 +375,10 @@ Discovery endpoint URLs for the Discovery tab.
 
 ---
 
-## Discovery surfaces
-
-### `GET /llms.txt`
-
-A Markdown store guide. Generated by `WC_AI_Storefront_Llms_Txt`, cached as a transient (`wc_ai_storefront_llms_txt`), invalidated on product/category/settings changes by `WC_AI_Storefront_Cache_Invalidator`.
-
-Returns `404` when syndication is paused.
-
-Content-Type: `text/markdown; charset=utf-8`.
-
-### `GET /.well-known/ucp`
-
-JSON manifest. Generated by `WC_AI_Storefront_Ucp::generate_manifest()`, cached as a transient (`wc_ai_storefront_ucp`).
-
-Top-level keys:
-
-- `name`, `version`, `description`
-- `capabilities` — array of `dev.ucp.shopping.catalog.search`, `.lookup`, `.checkout`
-- `payment_handlers` — empty object (web-redirect-only posture)
-- `services` — array with one entry pointing at the UCP REST adapter (`/wp-json/wc/ucp/v1`)
-- `config.store_context` — currency, `prices_include_tax`, `shipping_enabled`, country, locale
-- `com.woocommerce.ai_storefront` — vendor extension block; references the schema URL at `/wc/ucp/v1/extension/schema`
-
-Returns `404` when syndication is paused.
-
-Content-Type: `application/json; charset=utf-8`.
-
-### `GET /robots.txt`
-
-WordPress serves this; AI Storefront filters it via `do_robots`. When enabled, the plugin appends:
-
-```
-User-agent: GPTBot
-Allow: /
-User-agent: ChatGPT-User
-Allow: /
-User-agent: ClaudeBot
-Allow: /
-... (one stanza per checked crawler)
-
-Disallow: /checkout/
-Disallow: /my-account/
-```
-
-When disabled, the filter is removed and `robots.txt` reverts to WordPress default.
-
----
-
-## Order meta keys (write-side surface)
-
-When a customer completes checkout via an AI-referred URL, AI Storefront writes these meta keys on the resulting order:
-
-| Key | Source | Description |
-|-----|--------|-------------|
-| `_wc_order_attribution_utm_source` | WC core | Agent identifier (`chatgpt`, `gemini`, etc.) |
-| `_wc_order_attribution_utm_medium` | WC core | Always `ai_agent` for AI-referred orders |
-| `_wc_ai_storefront_agent` | This plugin | Canonical brand name (denormalized for fast queries) |
-| `_wc_ai_storefront_agent_host_raw` | This plugin | Raw host from `UCP-Agent` header for provenance |
-| `_wc_ai_storefront_session_id` | This plugin | Session correlation ID (`chk_...` from `/checkout-sessions`) |
-
-See [`DATA-MODEL.md`](DATA-MODEL.md) for the full data inventory.
-
----
-
 ## See also
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — component overview and design rationale
-- [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md) — how an AI agent decides to render a "Buy" button from the three discovery layers
-- [`DATA-MODEL.md`](DATA-MODEL.md) — option keys, transients, and meta keys
+- [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md) — how an agent decides to render a Buy CTA from the discovery layers
+- [`DATA-MODEL.md`](DATA-MODEL.md) — options, transients, and meta keys this API reads/writes
+- [`HOOKS.md`](HOOKS.md) — filters and actions extending plugins can use
 - [`TESTING.md`](TESTING.md) — how to test endpoints without a live WP install
