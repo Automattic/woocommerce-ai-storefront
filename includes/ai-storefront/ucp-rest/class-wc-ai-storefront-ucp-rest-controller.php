@@ -3605,13 +3605,19 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			: '';
 		if ( '' !== $raw_host ) {
 			// Profile-URL form: raw_host IS a hostname. Lowercase it
-			// for utm_source consistency (DNS hostnames are case-
-			// insensitive but agents may send mixed-case in profile
-			// URLs — observed: `Gemini.Google.COM`).
+			// for utm_source consistency. Use `normalize_host_string`
+			// rather than bare `strtolower` because real-world
+			// `extract_profile_hostname()` outputs include lexical
+			// variants the bare-lowercase path misses: mixed case
+			// (observed: `Gemini.Google.COM`), trailing dot
+			// (FQDN form: `openai.com.`), embedded port (rare but
+			// possible from a profile URL), etc. Normalization
+			// collapses all of those to the same `utm_source` shape
+			// merchants will see in WC Origin column.
 			return [
 				'name'        => WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_host ),
 				'raw_host'    => $raw_host,
-				'source_host' => strtolower( $raw_host ),
+				'source_host' => WC_AI_Storefront_UCP_Agent_Header::normalize_host_string( $raw_host ),
 			];
 		}
 
@@ -3978,11 +3984,19 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * `_wc_ai_storefront_agent_host_raw` meta.
 	 *
 	 * @param array<int, array<string, mixed>> $processed   Successfully-processed line items.
-	 * @param string                           $source_host Lowercase hostname for `utm_source`
+	 * @param string                           $source_host Lowercase identifier for `utm_source`:
+	 *                                                      usually a normalized hostname
 	 *                                                      (e.g. "chatgpt.com",
-	 *                                                      "ucpplayground.com"). Empty when no
-	 *                                                      agent could be identified — falls
-	 *                                                      back to the FALLBACK_SOURCE sentinel
+	 *                                                      "ucpplayground.com") for
+	 *                                                      profile-URL-form requests and
+	 *                                                      Product/Version-form requests with
+	 *                                                      a `PRODUCT_TO_HOSTNAME` mapping;
+	 *                                                      may be a lowercase product / agent
+	 *                                                      token fallback (e.g. "novelagent")
+	 *                                                      when no hostname mapping exists.
+	 *                                                      Empty when no agent could be
+	 *                                                      identified — falls back to the
+	 *                                                      FALLBACK_SOURCE sentinel
 	 *                                                      ("ucp_unknown") so the cohort stays
 	 *                                                      observable.
 	 * @param string                           $raw_host    Untransformed identifier from the
