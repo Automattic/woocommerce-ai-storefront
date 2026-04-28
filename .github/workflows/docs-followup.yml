@@ -1,0 +1,141 @@
+name: docs follow-up
+
+# Triggers on every push to main. Computes a path-based diff against the
+# previous commit, maps the touched paths to potentially-affected docs, and
+# only invokes Claude Code when there's plausible doc impact. The LLM run
+# audits the docs against the merged code and opens a follow-up PR if
+# anything is stale; otherwise the job exits cleanly with no PR.
+#
+# Cost shape:
+#   - Pure-docs / pure-test / pure-CI merges: no LLM run. Free.
+#   - Code merges with no doc-mapped path: no LLM run. Free.
+#   - Code merges with a doc-mapped path: one Claude Code invocation. Cost
+#     is bounded by the diff size + the doc files it reads.
+#
+# The path → doc map below mirrors the structure of docs/engineering/. Edit
+# both together when adding a new doc or moving a class.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write       # branch + commit
+  pull-requests: write  # open follow-up PR
+  issues: read
+
+jobs:
+  detect-impact:
+    runs-on: ubuntu-latest
+    outputs:
+      impact: ${{ steps.classify.outputs.impact }}
+      docs:   ${{ steps.classify.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # need HEAD~1 for the diff
+
+      - name: Compute changed files
+        id: changed
+        run: |
+          git diff --name-only HEAD~1..HEAD > /tmp/changed.txt
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          cat /tmp/changed.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Classify against the path → doc map
+        id: classify
+        run: |
+          # Path patterns that affect each doc. Keep these in sync with the
+          # engineering docs themselves — if a new file lives outside these
+          # patterns, the LLM won't see it as impact.
+          declare -A MAP=(
+            ["includes/ai-storefront/ucp-rest/"]="docs/engineering/API-REFERENCE.md docs/engineering/UCP-BUY-FLOW.md docs/engineering/ARCHITECTURE.md"
+            ["includes/admin/class-wc-ai-storefront-admin-controller.php"]="docs/engineering/API-REFERENCE.md docs/engineering/ARCHITECTURE.md docs/user-guide/USER-GUIDE.md"
+            ["includes/ai-storefront/class-wc-ai-storefront-attribution.php"]="docs/engineering/DATA-MODEL.md docs/engineering/UCP-BUY-FLOW.md docs/user-guide/USER-GUIDE.md"
+            ["includes/ai-storefront/class-wc-ai-storefront-ucp.php"]="docs/engineering/API-REFERENCE.md docs/engineering/UCP-BUY-FLOW.md"
+            ["includes/ai-storefront/class-wc-ai-storefront-llms-txt.php"]="docs/engineering/ARCHITECTURE.md docs/engineering/HOOKS.md"
+            ["includes/ai-storefront/class-wc-ai-storefront-jsonld.php"]="docs/engineering/ARCHITECTURE.md docs/engineering/HOOKS.md docs/user-guide/USER-GUIDE.md"
+            ["includes/ai-storefront/class-wc-ai-storefront-robots.php"]="docs/engineering/ARCHITECTURE.md docs/engineering/HOOKS.md docs/user-guide/USER-GUIDE.md"
+            ["includes/ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php"]="docs/engineering/ARCHITECTURE.md docs/user-guide/USER-GUIDE.md"
+            ["includes/ai-storefront/class-wc-ai-storefront-cache-invalidator.php"]="docs/engineering/DATA-MODEL.md docs/engineering/ARCHITECTURE.md"
+            ["includes/ai-storefront/class-wc-ai-storefront-logger.php"]="docs/engineering/HOOKS.md"
+            ["includes/ai-storefront/class-wc-ai-storefront-return-policy.php"]="docs/engineering/DATA-MODEL.md docs/user-guide/USER-GUIDE.md"
+            ["includes/admin/class-wc-ai-storefront-product-meta-box.php"]="docs/engineering/DATA-MODEL.md docs/user-guide/USER-GUIDE.md"
+            ["includes/class-wc-ai-storefront.php"]="docs/engineering/DATA-MODEL.md docs/engineering/ARCHITECTURE.md"
+            ["uninstall.php"]="docs/engineering/DATA-MODEL.md"
+            ["client/settings/ai-storefront/"]="docs/engineering/UI-CONVENTIONS.md docs/user-guide/USER-GUIDE.md"
+            ["client/data/ai-storefront/"]="docs/engineering/UI-CONVENTIONS.md"
+            ["webpack.config.js"]="docs/engineering/UI-CONVENTIONS.md docs/engineering/ARCHITECTURE.md"
+            ["composer.json"]="docs/engineering/TESTING.md"
+            ["package.json"]="docs/engineering/TESTING.md docs/engineering/RELEASE.md"
+            ["phpcs.xml.dist"]="docs/engineering/TESTING.md"
+            ["phpstan.neon.dist"]="docs/engineering/TESTING.md"
+            [".github/workflows/"]="docs/engineering/TESTING.md docs/engineering/RELEASE.md"
+          )
+
+          DOCS=""
+          while read -r changed; do
+            for prefix in "${!MAP[@]}"; do
+              if [[ "$changed" == "$prefix"* ]]; then
+                for doc in ${MAP[$prefix]}; do
+                  if [[ "$DOCS" != *"$doc"* ]]; then
+                    DOCS="$DOCS $doc"
+                  fi
+                done
+              fi
+            done
+          done < /tmp/changed.txt
+
+          DOCS=$(echo "$DOCS" | xargs -n1 | sort -u | xargs)
+
+          if [ -z "$DOCS" ]; then
+            echo "impact=false" >> "$GITHUB_OUTPUT"
+            echo "Path-based check: no doc-mapped paths in this push. Skipping LLM run."
+          else
+            echo "impact=true" >> "$GITHUB_OUTPUT"
+            echo "docs=$DOCS" >> "$GITHUB_OUTPUT"
+            echo "Path-based check: doc impact detected. Affected docs: $DOCS"
+          fi
+
+  audit-and-update:
+    needs: detect-impact
+    if: needs.detect-impact.outputs.impact == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: anthropic/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_tools: "Read,Edit,Write,Grep,Glob,Bash"
+          prompt: |
+            Audit the documentation for staleness against the most recent commit on main.
+
+            Affected docs (computed from a path-based diff): ${{ needs.detect-impact.outputs.docs }}
+
+            Steps:
+            1. Run `git show HEAD --stat` and `git show HEAD` to read the full merged diff.
+            2. Read each affected doc listed above.
+            3. For each doc, identify any content that is now stale, incorrect, or missing
+               coverage of the change. Be specific about what changed and why the doc
+               needs updating — "version reference is now wrong" is a real reason; "the
+               doc could mention this" usually isn't.
+            4. If updates are needed:
+               - Make the edits in-place.
+               - Create a new branch named `docs/auto-followup-<short-sha>` where
+                 <short-sha> is the first 7 chars of the merged commit's SHA.
+               - Commit with `docs: auto follow-up to <commit subject>`.
+               - Push and open a PR against main with the title
+                 `docs: auto follow-up to <commit subject>` and a body that:
+                 a) summarizes what changed in the merged commit
+                 b) lists each doc edit with a one-line rationale
+                 c) includes "Auto-generated by docs-followup workflow."
+                 Label the PR `documentation` and `automated`.
+            5. If no updates are needed, exit without making any changes — do not open
+               an empty PR. Print a brief summary of what you checked.
+
+            Bias toward conservative edits. The goal is keeping docs honest, not
+            rewriting them on every merge.
