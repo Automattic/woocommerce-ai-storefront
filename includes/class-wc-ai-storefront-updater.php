@@ -123,14 +123,13 @@ class WC_AI_Storefront_Updater {
 		// "Could not determine if updates are available" notice
 		// even though the latest release is sitting right there.
 		//
-		// `setReleaseVersionFilter` switches PUC to the
-		// `/releases` (no /latest) endpoint and applies our regex
-		// to the full list. The `RELEASE_FILTER_ALL` flag (= 3 per
-		// `Puc\v5p6\Vcs\Api::RELEASE_FILTER_ALL`) tells PUC to
-		// include pre-releases in the filter. Hardcoding the int
-		// rather than the namespaced constant avoids coupling to
-		// the v5p6 path; if PUC bumps the version path in a
-		// future bundle update, the int stays valid.
+		// `setReleaseVersionFilter` makes PUC enumerate `/releases`
+		// (not `/releases/latest`) and filter by regex; the
+		// `RELEASE_FILTER_ALL` flag opts pre-releases in. The third
+		// arg pins how many recent releases PUC scans — 50 is
+		// well above current count (~20) and leaves headroom for
+		// non-semver tags accumulating above the latest release in
+		// future hotfix scenarios.
 		//
 		// The semver regex pins the tag shape we ship — `vX.Y.Z`
 		// only. PUC strips the `v` prefix before passing the
@@ -140,7 +139,11 @@ class WC_AI_Storefront_Updater {
 		// accidentally publishing a non-version tag and having
 		// every merchant prompted to "upgrade" to it.
 		if ( $api && method_exists( $api, 'setReleaseVersionFilter' ) ) {
-			$api->setReleaseVersionFilter( '/^\d+\.\d+\.\d+$/', 3 );
+			$api->setReleaseVersionFilter(
+				'/^\d+\.\d+\.\d+$/',
+				3, // = RELEASE_FILTER_ALL on PUC v5p6+; stable across v5 minors.
+				50
+			);
 		}
 
 		/**

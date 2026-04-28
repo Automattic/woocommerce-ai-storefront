@@ -274,16 +274,14 @@ const StatCard = ( { label, value, subvalue, href } ) => {
 	};
 
 	// Value, optional subvalue, and label stack vertically — three
-	// rows in card order. Pre-0.5.1 we tried inline-baseline for
-	// value+subvalue (with flex-wrap as a fallback) to keep the big
-	// numbers visually composed. That broke on the Top Agent card
-	// when the subvalue grew long enough that the flex child shrank
-	// to ~1ch and every word landed on its own line. Per ui-designer
-	// review: at 24px green numerics the value already dominates
-	// regardless of subvalue placement, and the cross-card baseline
-	// alignment goal is preserved by virtue of the value being row 1
-	// of every card. Stacking eliminates an entire class of
-	// per-card-height-variance bugs.
+	// rows in card order. The big number's row-1 position is what
+	// preserves cross-card baseline alignment across the strip;
+	// inline-baseline value+subvalue would buy a tighter visual
+	// composition but breaks when subvalues are long enough that
+	// the flex child shrinks to ~1ch and each word lands on its
+	// own line. Stacking is the more robust default — at 24px
+	// green numerics the value already dominates the eye
+	// regardless of subvalue placement.
 	const inner = (
 		<>
 			<div
@@ -741,16 +739,24 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				  (48px = 3 gaps × 16px gap)
 				- `max(240px, ...)` = each card is at least 240px
 				- On wide containers (≥1008px), the calc value wins
-				  and caps column count at 4
-				- On narrow containers (<1008px), 240px wins and
-				  cards reflow to fewer per row (3 ≤ ~1024px,
-				  2 ≤ ~544px, 1 ≤ ~304px)
+				  and caps column count at 4 (because 4 cards at the
+				  240px floor + 3 gaps = 1008px exactly)
+				- On narrow containers (<1008px), the 240px floor
+				  wins and `auto-fit` packs as many ≥240px columns
+				  as fit. Breakpoints, derived from
+				  `N * 240 + (N-1) * 16`:
+				    - 3 columns at 752–1007px
+				    - 2 columns at 496–751px
+				    - 1 column   at 240–495px
 				- `auto-fit` collapses empty trailing slots so the
-				  4+2 case left-aligns the partial row
+				  4+2 case left-aligns the partial row.
 
-				`min-width: 0` defends against sub-250px viewport
-				horizontal scroll (rare but reachable on phone in
-				narrow drawers / zoom).
+				`min-width: 0` overrides the default `min-width: auto`
+				on this grid container so it can shrink below its
+				own min-content size when wedged into a narrow
+				flex/grid parent (e.g. very narrow viewports in a
+				drawer or zoom). Per-card overflow defense lives on
+				the value div via `overflow-wrap: anywhere`.
 			*/ }
 			<div
 				style={ {
@@ -836,7 +842,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					subvalue={
 						stats && stats.top_agent
 							? sprintf(
-									/* translators: %1$s: percent share of AI orders attributed to the top agent. */
+									/* translators: %1$s: percent share of AI orders attributed to the top agent. Ordered (`%1$s` rather than bare `%s`) to satisfy `@wordpress/valid-sprintf` — other sprintf calls in this file use ordered placeholders, and the rule fires on a mix. */
 									__(
 										'%1$s%% of AI orders',
 										'woocommerce-ai-storefront'
