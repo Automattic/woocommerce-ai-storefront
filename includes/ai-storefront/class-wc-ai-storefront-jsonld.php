@@ -446,7 +446,9 @@ class WC_AI_Storefront_JsonLd {
 	 *     (only when a published page is configured), and `returnMethod`
 	 *     (scalar string when one method is selected, array when
 	 *     multiple — Schema.org accepts both forms; cleaner JSON for
-	 *     the common single-method case).
+	 *     the common single-method case). Returns `null` when `$country`
+	 *     is empty: a return-window declaration without a target region
+	 *     is not useful to validators or agents.
 	 *
 	 *   - `final_sale` → emits `MerchantReturnPolicy` with
 	 *     `returnPolicyCategory: NotPermitted`. `merchantReturnLink`
@@ -471,7 +473,9 @@ class WC_AI_Storefront_JsonLd {
 	 *                             tests that exercise the store-wide
 	 *                             logic in isolation).
 	 * @return array<string, mixed>|null Structured-data block, or null when the
-	 *                                   policy is `unconfigured` (caller skips emission).
+	 *                                   policy is `unconfigured`, or when mode is
+	 *                                   `returns_accepted` and `$country` is empty
+	 *                                   (caller skips emission in all null cases).
 	 */
 	private function build_return_policy_block( array $policy, string $country, ?int $product_id = null ): ?array {
 		// Per-product final-sale override (highest-priority gate). A
