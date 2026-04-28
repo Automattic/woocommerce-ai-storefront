@@ -128,4 +128,106 @@ class UpdaterTest extends \PHPUnit\Framework\TestCase {
 			. 'skip registering updates.'
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// configure_github_api() contract
+	// ------------------------------------------------------------------
+
+	public function test_configure_github_api_pins_release_asset_and_version_filter(): void {
+		// Happy path: a faithful stub of the PUC GitHubApi shape — has
+		// both methods and the RELEASE_FILTER_ALL constant inherited
+		// from its parent Api class. Configuration should call both
+		// methods with the documented args.
+		$api = new class() {
+			const RELEASE_FILTER_ALL = 3;
+
+			public $enable_release_assets_calls       = array();
+			public $set_release_version_filter_calls  = array();
+
+			// phpcs:ignore WordPress.NamingConventions.ValidFunctionName
+			public function enableReleaseAssets( $pattern ) {
+				$this->enable_release_assets_calls[] = $pattern;
+			}
+
+			// phpcs:ignore WordPress.NamingConventions.ValidFunctionName
+			public function setReleaseVersionFilter( $regex, $filter, $max_releases_to_examine = 50 ) {
+				$this->set_release_version_filter_calls[] = array( $regex, $filter, $max_releases_to_examine );
+			}
+		};
+
+		WC_AI_Storefront_Updater::configure_github_api( $api );
+
+		$this->assertSame(
+			array( WC_AI_Storefront_Updater::RELEASE_ASSET_PATTERN ),
+			$api->enable_release_assets_calls,
+			'enableReleaseAssets() should be called once with the canonical release-asset pattern.'
+		);
+
+		$this->assertCount(
+			1,
+			$api->set_release_version_filter_calls,
+			'setReleaseVersionFilter() should be called exactly once.'
+		);
+
+		[ $regex, $filter, $max ] = $api->set_release_version_filter_calls[0];
+		$this->assertSame(
+			'/^\d+\.\d+\.\d+$/',
+			$regex,
+			'The semver regex must match X.Y.Z (PUC strips the v prefix before matching).'
+		);
+		$this->assertSame(
+			3,
+			$filter,
+			'Filter must resolve to RELEASE_FILTER_ALL (= 3) so pre-releases are included.'
+		);
+		$this->assertSame(
+			50,
+			$max,
+			'max-releases-to-examine should be the documented bound of 50.'
+		);
+	}
+
+	public function test_configure_github_api_falls_back_when_filter_constant_missing(): void {
+		// Defensive-fallback path: a future PUC bundle that removed or
+		// renamed RELEASE_FILTER_ALL. The helper must still pass `3` —
+		// the v5p6+ documented value — so pre-release inclusion keeps
+		// working through the bundle bump until we update the literal.
+		$api = new class() {
+			public $set_release_version_filter_calls = array();
+
+			// phpcs:ignore WordPress.NamingConventions.ValidFunctionName
+			public function enableReleaseAssets( $pattern ) {
+				// No-op; not the focus of this test.
+			}
+
+			// phpcs:ignore WordPress.NamingConventions.ValidFunctionName
+			public function setReleaseVersionFilter( $regex, $filter, $max_releases_to_examine = 50 ) {
+				$this->set_release_version_filter_calls[] = array( $regex, $filter, $max_releases_to_examine );
+			}
+		};
+
+		WC_AI_Storefront_Updater::configure_github_api( $api );
+
+		$this->assertCount( 1, $api->set_release_version_filter_calls );
+		$this->assertSame(
+			3,
+			$api->set_release_version_filter_calls[0][1],
+			'When RELEASE_FILTER_ALL is undefined on the api class, the helper must fall back to the documented literal 3.'
+		);
+	}
+
+	public function test_configure_github_api_no_ops_when_methods_missing(): void {
+		// Forward-compat: a future PUC API surface that drops one or
+		// both of the configuration methods entirely. The helper must
+		// no-op cleanly rather than fatal.
+		$api = new \stdClass();
+
+		// Should not throw.
+		WC_AI_Storefront_Updater::configure_github_api( $api );
+
+		// And null api (factory boot failed) is also a no-op.
+		WC_AI_Storefront_Updater::configure_github_api( null );
+
+		$this->assertTrue( true, 'configure_github_api should tolerate api objects without the optional methods.' );
+	}
 }
