@@ -237,6 +237,22 @@ class WC_AI_Storefront_Attribution {
 			? $source_host
 			: WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
 
+		// Strip `#fragment` first so the appended query lands BEFORE
+		// it on rejoin. WC permalinks shouldn't carry fragments today,
+		// but defensive: a third-party plugin that adds `#reviews` /
+		// `#description` deep-links to product permalinks would
+		// otherwise produce a broken URL like
+		// `/product/widget/#reviews?utm_source=...`, where the `?` is
+		// part of the fragment per RFC 3986 (fragment runs to
+		// end-of-URI). Splitting before append puts the query in the
+		// right structural position: `/product/widget/?utm_source=...#reviews`.
+		$fragment   = '';
+		$hash_index = strpos( $url, '#' );
+		if ( false !== $hash_index ) {
+			$fragment = substr( $url, $hash_index );
+			$url      = substr( $url, 0, $hash_index );
+		}
+
 		// `?` if URL has no query yet; `&` to append onto existing
 		// query. `str_contains()` over the simpler `false === strpos()`
 		// for readability — same semantics, PHP 8.0+.
@@ -251,7 +267,7 @@ class WC_AI_Storefront_Attribution {
 			$url .= '&ai_agent_host_raw=' . rawurlencode( $raw_host );
 		}
 
-		return $url;
+		return $url . $fragment;
 	}
 
 	/**

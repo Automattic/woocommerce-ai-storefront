@@ -600,9 +600,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// inside this handler:
 		//
 		//   - Debug logging (observability of who's hitting the
-		//     endpoint — preserved verbatim from pre-resolve_agent_host
-		//     behavior, just sourcing from the unified resolver
-		//     output now).
+		//     endpoint). Guarded on `UCP-Agent` header presence to
+		//     match pre-resolve_agent_host behavior — non-agent
+		//     traffic (curl probes, browsers, monitoring tools) hits
+		//     the endpoint too and would otherwise log
+		//     "from agent: unknown" once per request, drowning real
+		//     agent activity in the debug log when logging is on.
 		//
 		//   - `utm_source` + `ai_agent_host_raw` stamped on every
 		//     product `url` in the response (via the product
@@ -619,10 +622,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$agent_source_host = $agent_data['source_host'];
 		$agent_raw_host    = $agent_data['raw_host'];
 
-		WC_AI_Storefront_Logger::debug(
-			'UCP catalog/search from agent: '
-			. ( '' !== $agent_source_host ? $agent_source_host : 'unknown' )
-		);
+		$agent_header = $request->get_header( 'ucp-agent' );
+		if ( is_string( $agent_header ) && '' !== $agent_header ) {
+			WC_AI_Storefront_Logger::debug(
+				'UCP catalog/search from agent: '
+				. ( '' !== $agent_source_host ? $agent_source_host : 'unknown' )
+			);
+		}
 
 		// Signals (spec-level field, platform-observed environment data).
 		// Accept and log for observability; do not gate on any signal
@@ -1229,17 +1235,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// `handle_catalog_search` — log for observability AND thread
 		// `source_host` / `raw_host` through to the product translator
 		// so every product `url` in the response carries our canonical
-		// UTM payload. See the corresponding block in
-		// `handle_catalog_search` for full rationale; the contract is
-		// identical.
+		// UTM payload. Debug-log line is gated on UCP-Agent header
+		// presence for the same reason: non-agent traffic shouldn't
+		// produce "from agent: unknown" log noise. See the
+		// corresponding block in `handle_catalog_search` for full
+		// rationale; the contract is identical.
 		$agent_data        = self::resolve_agent_host( $request );
 		$agent_source_host = $agent_data['source_host'];
 		$agent_raw_host    = $agent_data['raw_host'];
 
-		WC_AI_Storefront_Logger::debug(
-			'UCP catalog/lookup from agent: '
-			. ( '' !== $agent_source_host ? $agent_source_host : 'unknown' )
-		);
+		$agent_header = $request->get_header( 'ucp-agent' );
+		if ( is_string( $agent_header ) && '' !== $agent_header ) {
+			WC_AI_Storefront_Logger::debug(
+				'UCP catalog/lookup from agent: '
+				. ( '' !== $agent_source_host ? $agent_source_host : 'unknown' )
+			);
+		}
 
 		// Signals parity with catalog.search — log for observability, no
 		// trust decisions yet. See handle_catalog_search for the

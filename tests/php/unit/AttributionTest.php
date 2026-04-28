@@ -986,11 +986,12 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_with_woo_ucp_utm_preserves_existing_query_string(): void {
-		// The helper uses `add_query_arg()` which merges into existing
-		// query parameters rather than naively appending `?`. This
-		// matters for permalinks carrying language plugin params
-		// (`?lang=fr`), pagination, or custom rewrite rules — naive
-		// concat would produce `permalink?lang=fr?utm_source=...`
+		// The helper detects an existing `?` in the URL and appends
+		// with `&` rather than blindly appending `?` (string concat,
+		// not `add_query_arg()` — the helper's docblock explains why).
+		// This matters for permalinks carrying language plugin params
+		// (`?lang=fr`), pagination, or custom rewrite rules: naive
+		// `?` append would produce `permalink?lang=fr?utm_source=...`
 		// (broken — second `?` is interpreted as part of `lang`'s
 		// value).
 		$result = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
@@ -1005,6 +1006,48 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 			substr_count( $result, '?' ),
 			'Result must contain exactly one `?` — two means the URL is broken.'
 		);
+	}
+
+	public function test_with_woo_ucp_utm_preserves_fragment_after_query(): void {
+		// Per RFC 3986 the `#fragment` runs to end-of-URI, so a query
+		// string MUST come before the fragment. WC permalinks don't
+		// carry fragments today, but third-party plugins can deep-link
+		// product pages to anchors like `#reviews` or `#description`.
+		// Naive append would produce `/product/widget/#reviews?utm_source=...`
+		// where the `?` becomes part of the fragment, defeating
+		// attribution capture entirely (the params never reach the
+		// server). The helper splits the fragment off before appending
+		// query params and rejoins it at the end.
+		$result = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			'https://example.com/product/widget/#reviews',
+			'chatgpt.com'
+		);
+
+		$this->assertEquals(
+			'https://example.com/product/widget/'
+				. '?utm_source=chatgpt.com'
+				. '&utm_medium=referral'
+				. '&utm_id=woo_ucp'
+				. '#reviews',
+			$result
+		);
+	}
+
+	public function test_with_woo_ucp_utm_handles_url_with_query_and_fragment(): void {
+		// Combination case: existing query + fragment. The query
+		// detector must look at the URL's query portion (not the
+		// fragment), and the fragment must land at the end after
+		// query rebuild.
+		$result = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			'https://example.com/product/widget/?lang=fr#reviews',
+			'chatgpt.com'
+		);
+
+		$this->assertStringContainsString( 'lang=fr&utm_source=chatgpt.com', $result );
+		$this->assertStringEndsWith( '#reviews', $result );
+		// Hash count: exactly one `#`. Two would mean we duplicated
+		// the fragment marker.
+		$this->assertEquals( 1, substr_count( $result, '#' ) );
 	}
 
 	public function test_with_woo_ucp_utm_uses_woo_ucp_id_constant(): void {

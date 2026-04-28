@@ -601,8 +601,13 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 			'chatgpt.com'
 		);
 
-		// Order is enforced by add_query_arg's stable iteration: the
-		// helper passes utm_source first, then utm_medium, then utm_id.
+		// Order is enforced by the helper's string-concat append:
+		// utm_source first, then utm_medium, then utm_id (then the
+		// optional ai_agent_host_raw, when raw_host is non-empty).
+		// See `WC_AI_Storefront_Attribution::with_woo_ucp_utm()` for
+		// why this is string concat rather than `add_query_arg()` —
+		// `add_query_arg()`'s `urlencode_deep` would re-encode
+		// existing query params, changing the wire shape.
 		$this->assertEquals(
 			'https://example.com/product/widget/'
 				. '?utm_source=chatgpt.com'
@@ -657,9 +662,10 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	public function test_url_preserves_existing_query_params_on_permalink(): void {
 		// Polylang/WPML language plugins, custom rewrite rules, and
 		// paginated archives can put query strings on permalinks.
-		// The UTM helper uses `add_query_arg()` which merges into the
-		// existing query rather than naively appending `?`, so a
-		// permalink like `/product/widget/?lang=fr` should land as
+		// The UTM helper detects an existing `?` in the URL and uses
+		// `&` as its separator (string concat, not `add_query_arg()` —
+		// see the helper's docblock for why), so a permalink like
+		// `/product/widget/?lang=fr` should land as
 		// `/product/widget/?lang=fr&utm_source=...&utm_medium=...&utm_id=...`
 		// rather than the broken `/product/widget/?lang=fr?utm_source=...`.
 		$fixture              = $this->simple_product_fixture();
