@@ -1224,6 +1224,132 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'invalid_quantity', $codes );
 	}
 
+	// ------------------------------------------------------------------
+	// Duplicate line-item dedup (issue #123)
+	// ------------------------------------------------------------------
+	//
+	// An agent that posts the same product twice (e.g. an incremental
+	// cart-add pattern) would otherwise produce a `continue_url`
+	// carrying `?products=ID:1,ID:2` — and WC's `/checkout-link/`
+	// parser uses each `id` as a key in its add-to-cart loop, so the
+	// second occurrence overwrites the first. Pre-fix: response
+	// echoed both lines summing to qty=3, but the buyer's cart at
+	// checkout contained qty=2. Buyer-trust failure.
+	//
+	// Post-fix: collapse `$processed` by `wc_id` before
+	// `build_continue_url` and the response echo run, sum
+	// quantities, surface a `merged_duplicate_items` info-message.
+
+	public function test_duplicate_line_items_are_merged_with_summed_quantity(): void {
+		$this->seed_simple_product( 42, 1000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_42' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_42' ], 'quantity' => 2 ],
+				],
+			]
+		);
+
+		// Response should carry ONE line item per wc_id with the
+		// summed quantity, not two separate entries.
+		$this->assertCount( 1, $result['data']['line_items'] );
+		$this->assertEquals( 'prod_42', $result['data']['line_items'][0]['item']['id'] );
+		$this->assertEquals( 3, $result['data']['line_items'][0]['quantity'] );
+
+		// `continue_url` must encode the summed quantity since that's
+		// what /checkout-link/ will translate into the buyer's cart —
+		// the whole point of the fix.
+		$this->assertStringContainsString( '?products=42:3', $result['data']['continue_url'] );
+
+		// Surfaced as info-message so agents know the collapse happened.
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'merged_duplicate_items', $codes );
+
+		// Subtotal reflects the merged quantity (3 × 1000 = 3000), not
+		// the post-collapse sum mismatched against pre-collapse echo.
+		$totals_by_type = array_column( $result['data']['totals'], 'amount', 'type' );
+		$this->assertEquals( 3000, $totals_by_type['subtotal'] );
+		$this->assertEquals( 3000, $totals_by_type['total'] );
+	}
+
+	public function test_no_merge_message_when_all_line_items_have_distinct_wc_ids(): void {
+		// Defense against a regression that emits the merge message
+		// every time `$line_items_raw` has more than one entry, even
+		// when no actual collapse happened. The flag should track
+		// observed merges, not request shape.
+		$this->seed_simple_product( 1, 1000 );
+		$this->seed_simple_product( 2, 2000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_2' ], 'quantity' => 1 ],
+				],
+			]
+		);
+
+		$this->assertCount( 2, $result['data']['line_items'] );
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'merged_duplicate_items', $codes );
+	}
+
+	public function test_summed_quantity_exceeding_max_per_line_drops_merged_entry(): void {
+		// Two below-cap entries can sum to over-cap. Drop the merged
+		// entry and emit `invalid_quantity` — same posture as
+		// `process_line_item`'s single-line over-cap path.
+		$this->seed_simple_product( 1, 100 );
+
+		$cap          = WC_AI_Storefront_UCP_REST_Controller::MAX_QUANTITY_PER_LINE_ITEM;
+		$line_qty     = (int) ( $cap / 2 ) + 1;
+		$expected_sum = $line_qty * 2;
+		// Pre-condition: each line is below the cap, but the sum
+		// exceeds it. Derived from `$cap` so the test stays valid if
+		// the cap is later changed to an odd value.
+		$this->assertLessThanOrEqual( $cap, $line_qty );
+		$this->assertGreaterThan( $cap, $expected_sum );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $line_qty ],
+					[ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $line_qty ],
+				],
+			]
+		);
+
+		// Sum is over-cap → entry dropped. With nothing to redirect
+		// to, status is `incomplete`.
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'invalid_quantity', $codes );
+		// `merged_duplicate_items` does NOT fire when the merged
+		// entry got dropped — the agent would otherwise look for a
+		// merged line in the response and find nothing. Truthful
+		// posture: only claim a merge happened when the response
+		// actually shows it. The `invalid_quantity` error's content
+		// carries the agent's ucp_id and summed quantity, so the
+		// affected product is still identifiable without the merge
+		// message.
+		$this->assertNotContains( 'merged_duplicate_items', $codes );
+
+		// Verify the error message content includes the offending
+		// ucp_id + summed quantity so agents can self-diagnose
+		// without the JSONPath being a specific index.
+		$over_cap_msg = null;
+		foreach ( $result['data']['messages'] as $msg ) {
+			if ( 'invalid_quantity' === ( $msg['code'] ?? '' ) ) {
+				$over_cap_msg = $msg;
+				break;
+			}
+		}
+		$this->assertNotNull( $over_cap_msg, 'invalid_quantity message must be present.' );
+		$this->assertStringContainsString( 'prod_1', $over_cap_msg['content'] );
+		$this->assertStringContainsString( (string) ( $cap + 2 ), $over_cap_msg['content'] );
+	}
+
 	public function test_quantity_at_exactly_the_cap_is_accepted(): void {
 		// Off-by-one: exactly MAX_QUANTITY_PER_LINE_ITEM should work.
 		$this->seed_simple_product( 1, 100 );
