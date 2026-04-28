@@ -39,7 +39,7 @@ CI runs all of these on every PR. Builds fail closed.
 - **PHP**: WordPress + Automattic standards. Tabs, Yoda conditions, strict comparisons, `array()` not `[]`. PHPCS enforces.
 - **JS/TS**: ES modules, single quotes, `const` by default, functional React components, `@wordpress/components` for UI.
 - **No em-dashes (`—`) in user-facing copy or docs.** The `Description:` plugin header has rendering edge cases with em-dashes (CSV-split tools, ASCII renderers); the convention extends to all merchant-facing copy.
-- See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for the full architecture and component conventions.
+- See [`docs/engineering/ARCHITECTURE.md`](./docs/engineering/ARCHITECTURE.md) for the full architecture and component conventions. Other engineering docs (API reference, data model, testing strategy) live alongside it in [`docs/engineering/`](./docs/engineering/).
 
 ## Testing
 

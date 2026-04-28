@@ -61,9 +61,15 @@ vendor/bin/phpstan analyse      # PHP static analysis (level 5)
 
 CI runs all of the above on every push to `main` and on pull requests. See `.github/workflows/ci.yml`.
 
+## Documentation
+
+- **For merchants** — [`docs/user-guide/USER-GUIDE.md`](docs/user-guide/USER-GUIDE.md): install, enable, configure, verify endpoints, read attribution stats, troubleshoot.
+- **For developers** — [`docs/engineering/`](docs/engineering/): architecture, UCP buy flow, API reference, data model, testing strategy.
+- **Doc index** — [`docs/README.md`](docs/README.md).
+
 ## Architecture
 
-See [AGENTS.md](AGENTS.md) for a detailed architecture overview, file map, and design decisions.
+See [`docs/engineering/ARCHITECTURE.md`](docs/engineering/ARCHITECTURE.md) for a detailed architecture overview, file map, and design decisions. (`AGENTS.md` at the repo root is a pointer for AI coding agents and links here.)
 
 In brief:
 

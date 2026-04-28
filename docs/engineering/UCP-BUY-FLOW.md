@@ -17,7 +17,7 @@ The agent fetches `/.well-known/ucp` and reads two things:
 - **`capabilities['dev.ucp.shopping.checkout']`** — declares that checkout exists at all.
 - **`payment_handlers: {}`** — empty object. This is the explicit signal for "web-redirect only; no in-chat / delegated payments." If a future store wanted to opt into delegated payments, this object would carry handler entries.
 
-Code: [`includes/ai-storefront/class-wc-ai-storefront-ucp.php`](includes/ai-storefront/class-wc-ai-storefront-ucp.php)
+Code: [`includes/ai-storefront/class-wc-ai-storefront-ucp.php`](../../includes/ai-storefront/class-wc-ai-storefront-ucp.php)
 
 ```php
 'capabilities' => [
@@ -47,7 +47,7 @@ Per-cart eligibility is decided by `POST /wp-json/wc/ucp/v1/checkout-sessions`. 
 | `status: "ready_for_complete"` | (delegated path, not used by this plugin) | n/a |
 | `status: "complete_in_progress"` | (delegated path) | n/a |
 
-Code: [`includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php`](includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php)
+Code: [`includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php`](../../includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php)
 
 ```php
 $continue_url = $should_redirect
