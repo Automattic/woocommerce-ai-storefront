@@ -362,11 +362,6 @@ class WC_AI_Storefront_Attribution {
 		$utm_medium = $order->get_meta( '_wc_order_attribution_utm_medium' );
 		$utm_id     = $order->get_meta( '_wc_order_attribution_utm_id' );
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params, not processing form.
-		$request_medium = isset( $_GET['utm_medium'] ) ? sanitize_text_field( wp_unslash( $_GET['utm_medium'] ) ) : '';
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params, not processing form.
-		$request_id = isset( $_GET['utm_id'] ) ? sanitize_text_field( wp_unslash( $_GET['utm_id'] ) ) : '';
-
 		// Resolve utm_source up front — both STRICT and LENIENT gates need it.
 		$utm_source = $order->get_meta( '_wc_order_attribution_utm_source' );
 		if ( ! $utm_source ) {
@@ -433,10 +428,15 @@ class WC_AI_Storefront_Attribution {
 		$is_known_ai_host = '' !== $lenient_canonical;
 
 		// STRICT: 0.5.0+ utm_id flag OR legacy utm_medium=ai_agent.
+		// Only the order's stored _wc_order_attribution_utm_* meta is
+		// authoritative here. WC core writes those fields from the
+		// landing-page session, which is the correct attribution
+		// moment. Reading $_GET at order-creation time is a different
+		// navigation context — stale UTM params from a forwarded link
+		// or a previous checkout attempt would fire false-positives and
+		// inflate "Other AI" stats with non-AI orders.
 		$is_strict = self::WOO_UCP_ID === $utm_id
-			|| self::WOO_UCP_ID === $request_id
-			|| self::AI_AGENT_MEDIUM === $utm_medium
-			|| self::AI_AGENT_MEDIUM === $request_medium;
+			|| self::AI_AGENT_MEDIUM === $utm_medium;
 
 		if ( ! $is_strict && ! $is_known_ai_host ) {
 			return;

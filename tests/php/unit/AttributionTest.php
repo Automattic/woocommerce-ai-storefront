@@ -118,38 +118,33 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_capture_strict_gate_fires_on_woo_ucp_utm_id_get_fallback(): void {
-		// Canonical 0.5.0 shape via $_GET: utm_id=woo_ucp triggers
-		// STRICT before WC core has finished writing meta (the
-		// `wc_order_attribution_install_metadata` race the legacy gate
-		// also covers via the $_GET fallback).
-		//
-		// Same self-fulfilling guard as the meta variant above:
-		// `utm_source=mysteryagent.example` is NOT in
-		// `KNOWN_AGENT_HOSTS`, so the only way this test passes is
-		// the STRICT path matching utm_id.
+	public function test_capture_strict_gate_ignores_get_utm_id_without_stored_meta(): void {
+		// Regression guard for issue #126: a non-AI order whose
+		// checkout URL carries utm_id=woo_ucp (e.g. a forwarded
+		// ChatGPT link pasted into a different browser tab) must NOT
+		// receive AI attribution. The STRICT gate now reads only the
+		// order's stored _wc_order_attribution_utm_* meta, which WC
+		// core wrote from the landing-page session. $_GET at order-
+		// creation time is a different navigation context and not a
+		// reliable signal.
 		$order = new WC_Order();
+		// No stored meta — WC core saw a regular landing page.
 		$_GET['utm_id']        = 'woo_ucp';
 		$_GET['utm_medium']    = 'referral';
-		$_GET['utm_source']    = 'mysteryagent.example';
+		$_GET['utm_source']    = 'mysteryagent.example'; // not in KNOWN_AGENT_HOSTS.
 		$_GET['ai_session_id'] = 'session-xyz';
 
 		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
 		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
-		Functions\expect( 'do_action' )->once();
+		// Gate must not fire → do_action must never be called.
+		Functions\expect( 'do_action' )->never();
 
 		$this->attribution->capture_ai_attribution( $order );
 
-		$this->assertTrue( $order->was_saved() );
-		// `mysteryagent.example` is NOT in KNOWN_AGENT_HOSTS → STRICT
-		// fires but LENIENT doesn't → 0.5.2 buckets to "Other AI"
-		// (was: stored the raw value, which fragmented Top Agent
-		// stats for unknown agents).
-		$this->assertEquals(
-			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
-			$order->get_meta( '_wc_ai_storefront_agent' )
-		);
-		$this->assertEquals( 'session-xyz', $order->get_meta( '_wc_ai_storefront_session_id' ) );
+		$this->assertFalse( $order->was_saved() );
+		// No AI attribution meta should be written.
+		$this->assertSame( '', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		$this->assertSame( '', $order->get_meta( '_wc_ai_storefront_session_id' ) );
 	}
 
 	public function test_capture_strict_gate_fires_when_both_signals_present(): void {
@@ -218,27 +213,28 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_capture_detects_ai_medium_from_get_fallback(): void {
+	public function test_capture_strict_gate_ignores_get_utm_medium_without_stored_meta(): void {
+		// Companion regression guard for issue #126: utm_medium=ai_agent
+		// only in $_GET (not in stored meta) must NOT trigger AI
+		// attribution. Pre-fix, this was the legacy-gate false-positive
+		// path: an order-creation request URL carrying ai_agent could
+		// fire STRICT via $_GET even with no stored attribution meta.
 		$order = new WC_Order();
-		// No meta, but $_GET has the params.
+		// No stored meta — WC core saw a regular landing page.
 		$_GET['utm_medium']    = 'ai_agent';
-		$_GET['utm_source']    = 'gemini';
+		$_GET['utm_source']    = 'gemini'; // not in KNOWN_AGENT_HOSTS (key is gemini.google.com).
 		$_GET['ai_session_id'] = 'session-abc';
 
 		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
 		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
-		Functions\expect( 'do_action' )->once();
+		// Gate must not fire → do_action must never be called.
+		Functions\expect( 'do_action' )->never();
 
 		$this->attribution->capture_ai_attribution( $order );
 
-		$this->assertTrue( $order->was_saved() );
-		// `gemini` is NOT a KNOWN_AGENT_HOSTS key (the key is
-		// `gemini.google.com`) → 0.5.2 buckets to "Other AI".
-		$this->assertEquals(
-			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
-			$order->get_meta( '_wc_ai_storefront_agent' )
-		);
-		$this->assertEquals( 'session-abc', $order->get_meta( '_wc_ai_storefront_session_id' ) );
+		$this->assertFalse( $order->was_saved() );
+		$this->assertSame( '', $order->get_meta( '_wc_ai_storefront_agent' ) );
+		$this->assertSame( '', $order->get_meta( '_wc_ai_storefront_session_id' ) );
 	}
 
 	public function test_capture_stores_session_id_when_present(): void {
