@@ -237,6 +237,150 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'utm_medium=ai_agent', $url );
 	}
 
+	public function test_store_jsonld_hex_escapes_script_close_tag_in_taxonomy_names(): void {
+		// Regression guard for the script-tag-breakout class: any
+		// string field flowing into the JSON-LD body that contains
+		// `</script>` would, under the previous `JSON_UNESCAPED_SLASHES`
+		// flag, survive verbatim and break out of the
+		// `<script type="application/ld+json">` CDATA context. A
+		// taxonomy name like `</script><script>alert(1)</script>`
+		// (creatable by any role with `manage_categories`, typically
+		// Editor) becomes a stored XSS on the homepage and shop page.
+		//
+		// Fix uses `JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT`
+		// so `<` and `>` serialize as `\u003C` and `\u003E` (and
+		// the other flagged characters likewise serialize as escaped
+		// code points). The script tag's CDATA is preserved; Schema.org
+		// parsers handle these escapes per the JSON spec.
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'home_url' )->alias(
+			static fn( $path = '' ) => 'https://example.com' . $path
+		);
+		// Site name carries the malicious payload — the most reachable
+		// path: an admin types it into Settings → General → Site Title.
+		Functions\when( 'get_bloginfo' )->alias(
+			static function ( $key ) {
+				if ( 'name' === $key ) {
+					return '</script><script>alert("xss")</script>';
+				}
+				if ( 'description' === $key ) {
+					return 'normal description';
+				}
+				return '';
+			}
+		);
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// Add a taxonomy with the same payload — covers the Editor-role
+		// `manage_categories` reach as well.
+		$category       = new stdClass();
+		$category->name = '</script><script>document.cookie</script>';
+		$category->slug = 'malicious-category';
+		$category->count = 1;
+		Functions\when( 'get_terms' )->justReturn( [ $category ] );
+		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/category/malicious-category/' );
+		// Real `wp_json_encode` stand-in via PHP's encoder so we
+		// exercise the actual flag handling rather than the
+		// string-builder alias used elsewhere in this file. Aliasing
+		// directly to `json_encode` (per Copilot review on PR #131)
+		// is consistent with surrounding tests and forwards all
+		// arguments correctly.
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
+		Functions\when( '__' )->returnArg( 1 );
+
+		ob_start();
+		$this->jsonld->output_store_jsonld();
+		$output = ob_get_clean();
+
+		// Positive proof the emission ran: presence of the wrapping
+		// opening tag. Without this, a regression that returned early
+		// before echoing anything would leave `$output` empty — and
+		// the rest of the assertions below would all trivially pass.
+		$this->assertStringContainsString(
+			'<script type="application/ld+json">',
+			$output,
+			'output_store_jsonld() must emit the wrapping script tag.'
+		);
+
+		// Critical assertion: the literal `</script>` byte sequence
+		// MUST NOT appear inside the JSON body, only as the closing
+		// of our own intended wrapper. The fixture injects two payloads
+		// (in site name AND in category name) each containing two
+		// `</script>` occurrences, so a complete fix produces exactly
+		// 1 occurrence (the wrapper close); a complete regression
+		// produces 5 (1 wrapper + 2 fields × 2 occurrences). Anything
+		// in between is a partial regression and also fails the
+		// `=== 1` check, so this single assertion catches every
+		// regression class.
+		$this->assertSame(
+			1,
+			substr_count( $output, '</script>' ),
+			'JSON body must contain ZERO literal </script> sequences (only our wrapper close is permitted).'
+		);
+
+		// Same defense for the OPENING-tag-injection variant. Sneaky
+		// regressions that hex-escape `</script>` but leave `<script`
+		// raw would still allow injection of NEW script blocks into
+		// the page. The fixture payloads each contain one literal
+		// `<script` (the second tag in `</script><script>...`); a
+		// complete fix produces exactly 1 (our wrapper open).
+		$this->assertSame(
+			1,
+			substr_count( $output, '<script' ),
+			'JSON body must not contain a literal <script (only our wrapper open is permitted).'
+		);
+
+		// Same defense for HTML-comment injection. The flag set
+		// hex-escapes `<` so `<!--` becomes `<!--` — the
+		// canonical comment-injection vector should be blocked too.
+		// Fixture doesn't inject this, but a future test extension
+		// adding a `<!--` payload would land here without a code
+		// change.
+		$this->assertStringNotContainsString(
+			'<!--',
+			$output,
+			'JSON body must not contain HTML-comment open sequence.'
+		);
+
+		// Extract the JSON between the script tags and confirm it
+		// parses — the hex-escaped output is still valid JSON-LD.
+		// `preg_match_all` over `preg_match` (per Copilot review on
+		// PR #131): `preg_match` returns the FIRST match only, so a
+		// regression that emitted TWO `<script type=...>` blocks
+		// would slip past `preg_match`'s result-shape check entirely.
+		// `preg_match_all` with PREG_SET_ORDER groups each match's
+		// captures together so we can assert exactly one block.
+		$matches = [];
+		preg_match_all(
+			'/<script type="application\/ld\+json">(.*?)<\/script>/s',
+			$output,
+			$matches,
+			PREG_SET_ORDER
+		);
+		$this->assertCount( 1, $matches, 'Expected exactly one <script type="application/ld+json"> block in output.' );
+		$decoded = json_decode( $matches[0][1], true );
+		$this->assertIsArray( $decoded, 'JSON inside the script tag must parse to an array.' );
+
+		// Cross-field round-trip: BOTH the site name AND the category
+		// name should be preserved as data. A regression that fixed
+		// only one path (e.g., site-name encoding fixed but
+		// `get_catalog_summary()`'s category-name path still raw)
+		// would fail one of these.
+		$this->assertEquals(
+			'</script><script>document.cookie</script>',
+			$decoded['hasOfferCatalog']['itemListElement'][0]['name'],
+			'Malicious category name must round-trip through hex-escape and JSON-decode.'
+		);
+		// Round-trip through decode confirms the malicious string is
+		// preserved as data (not as breakout markup): the decoded
+		// `name` equals the original input.
+		$this->assertEquals(
+			'</script><script>alert("xss")</script>',
+			$decoded['name'],
+			'Malicious site-name must round-trip cleanly through hex-escape and JSON-decode.'
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// Inventory (only when managing stock)
 	// ------------------------------------------------------------------

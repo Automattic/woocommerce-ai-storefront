@@ -145,7 +145,17 @@ class WC_AI_Storefront_Ucp {
 		$cached = get_transient( self::CACHE_KEY );
 		if ( false === $cached ) {
 			WC_AI_Storefront_Logger::debug( 'UCP manifest cache miss — regenerating' );
-			$cached = wp_json_encode( $this->generate_manifest( $settings ), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
+			// HEX flags hex-escape `<`, `>`, `&`, `'`, `"` in any
+			// manifest string (site name, agent_guide translation,
+			// service endpoint URLs). The manifest is served as
+			// `application/json` so HTML script-tag breakout doesn't
+			// apply to the wire response, but applying the same flag
+			// set the JSON-LD emission uses keeps defense uniform —
+			// any future code that re-emits the cached manifest into
+			// HTML inherits the safe encoding automatically. Pretty-
+			// print retained because the manifest is a developer-facing
+			// surface and readability outweighs the byte cost.
+			$cached = wp_json_encode( $this->generate_manifest( $settings ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT );
 			set_transient( self::CACHE_KEY, $cached, HOUR_IN_SECONDS );
 		} else {
 			WC_AI_Storefront_Logger::debug( 'UCP manifest cache hit' );

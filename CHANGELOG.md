@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixes
+- **JSON-LD output now hex-escapes `<`, `>`, `&`, `'`, `"` to prevent script-tag breakout via taxonomy / site name strings.** Pre-fix, `wp_json_encode( $data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE )` let `</script>` survive literal in the homepage/shop JSON-LD body. A category name like `</script><script>alert(1)</script>` (creatable by any user with `manage_categories`, typically Editor role) escaped the script-tag CDATA context — stored XSS reachable on every page emitting JSON-LD. Replaced with `JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE` across the three encode sites: `output_store_jsonld()` (the actual XSS vector), `WC_AI_Storefront_Ucp::serve_manifest()` and `WC_AI_Storefront_Admin_Controller::update_settings()` (defense-in-depth — manifest cache served as application/json so HTML breakout doesn't apply, but uniform encoding eliminates any future re-emission risk). Schema.org parsers and Google's structured-data validator handle hex-escaped characters correctly per the JSON spec; international (non-ASCII) text is unaffected because `JSON_UNESCAPED_UNICODE` is retained. Closes #122.
+
 ---
 
 ## [0.6.5] – 2026-04-28
