@@ -86,6 +86,13 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 0 );
 
+		// host_cache_key() sanitizes $_SERVER['HTTP_HOST'] via these
+		// helpers. Stub them as pass-throughs so every test that calls
+		// get_cached_content() (and therefore host_cache_key()) works
+		// without re-declaring them.
+		Functions\when( 'wp_unslash' )->returnArg();
+		Functions\when( 'sanitize_text_field' )->returnArg();
+
 		// Single-flight sentinel for concurrent cache regeneration
 		// uses `delete_transient()` on completion. Stub it as a
 		// no-op for tests that don't care about the guard behavior.
@@ -920,9 +927,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// healed with real content" assertion below if we captured
 		// indiscriminately.
 		$set_transient_called_with = null;
+		$expected_cache_key        = WC_AI_Storefront_Llms_Txt::host_cache_key();
 		Functions\when( 'set_transient' )->alias(
-			static function ( $key, $value ) use ( &$set_transient_called_with ) {
-				if ( WC_AI_Storefront_Llms_Txt::CACHE_KEY === $key ) {
+			static function ( $key, $value ) use ( &$set_transient_called_with, $expected_cache_key ) {
+				if ( $expected_cache_key === $key ) {
 					$set_transient_called_with = [
 						'key'   => $key,
 						'value' => $value,
@@ -965,10 +973,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// poisoning concern. The invariant this test pins is "empty
 		// generated content must not land in the main cache", not
 		// "no transients are set anywhere during regeneration."
-		$main_cache_writes = 0;
+		$main_cache_writes  = 0;
+		$expected_cache_key = WC_AI_Storefront_Llms_Txt::host_cache_key();
 		Functions\when( 'set_transient' )->alias(
-			static function ( $key ) use ( &$main_cache_writes ) {
-				if ( WC_AI_Storefront_Llms_Txt::CACHE_KEY === $key ) {
+			static function ( $key ) use ( &$main_cache_writes, $expected_cache_key ) {
+				if ( $expected_cache_key === $key ) {
 					++$main_cache_writes;
 				}
 				return true;
@@ -1257,6 +1266,43 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotFalse( $brand_pos );
 		$this->assertLessThan( $tag_pos, $cat_pos, 'Categories section must precede Tags section.' );
 		$this->assertLessThan( $brand_pos, $tag_pos, 'Tags section must precede Brands section.' );
+	}
+
+	// ------------------------------------------------------------------
+	// host_cache_key()
+	// ------------------------------------------------------------------
+
+	public function test_host_cache_key_begins_with_base_cache_key(): void {
+		$_SERVER['HTTP_HOST'] = 'shop.example.com';
+		$key                  = WC_AI_Storefront_Llms_Txt::host_cache_key();
+
+		$this->assertStringStartsWith( WC_AI_Storefront_Llms_Txt::CACHE_KEY . '_', $key );
+	}
+
+	public function test_host_cache_key_differs_for_different_hosts(): void {
+		$_SERVER['HTTP_HOST'] = 'host-a.example.com';
+		$key_a                = WC_AI_Storefront_Llms_Txt::host_cache_key();
+
+		$_SERVER['HTTP_HOST'] = 'host-b.example.com';
+		$key_b                = WC_AI_Storefront_Llms_Txt::host_cache_key();
+
+		$this->assertNotEquals( $key_a, $key_b );
+	}
+
+	public function test_host_cache_key_is_stable_for_same_host(): void {
+		$_SERVER['HTTP_HOST'] = 'stable.example.com';
+		$key1                 = WC_AI_Storefront_Llms_Txt::host_cache_key();
+		$key2                 = WC_AI_Storefront_Llms_Txt::host_cache_key();
+
+		$this->assertSame( $key1, $key2 );
+	}
+
+	public function test_host_cache_key_uses_md5_of_host(): void {
+		$host                 = 'verify.example.com';
+		$_SERVER['HTTP_HOST'] = $host;
+		$key                  = WC_AI_Storefront_Llms_Txt::host_cache_key();
+
+		$this->assertSame( WC_AI_Storefront_Llms_Txt::CACHE_KEY . '_' . md5( $host ), $key );
 	}
 
 	/**

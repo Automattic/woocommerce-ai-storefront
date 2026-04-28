@@ -247,7 +247,10 @@ class WC_AI_Storefront {
 
 			// Bust content caches on code updates so fixes to generation
 			// logic (e.g., entity encoding) take effect immediately.
-			delete_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY );
+			// Uses host_cache_key() so the currently-serving Host gets
+			// fresh content immediately; other virtual-host entries
+			// expire at their natural 1-hour TTL.
+			delete_transient( WC_AI_Storefront_Llms_Txt::host_cache_key() );
 			delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
 		}
 	}

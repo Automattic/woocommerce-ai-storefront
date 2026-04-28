@@ -129,6 +129,15 @@ class WC_AI_Storefront_Ucp {
 
 		header( 'Content-Type: application/json; charset=utf-8' );
 		header( 'Cache-Control: public, max-age=3600' );
+		// `Vary: Host` is required because the manifest body is derived
+		// from `home_url()` / `rest_url()`, which are themselves derived
+		// from the HTTP Host header on loose-vhost / multisite installs.
+		// Without this header, a shared cache (CDN, reverse proxy) keyed
+		// on URL alone would store one body and serve it across Host
+		// values — a cache-poisoning vector if an attacker can issue a
+		// request with a forged Host header. `Vary: Host` forces the
+		// cache to maintain a separate entry per Host value.
+		header( 'Vary: Host' );
 		header( 'Access-Control-Allow-Origin: *' );
 		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
 		// Note: no `Access-Control-Allow-Headers` entry. The UCP
@@ -142,25 +151,22 @@ class WC_AI_Storefront_Ucp {
 			exit;
 		}
 
-		$cached = get_transient( self::CACHE_KEY );
-		if ( false === $cached ) {
-			WC_AI_Storefront_Logger::debug( 'UCP manifest cache miss — regenerating' );
-			// HEX flags hex-escape `<`, `>`, `&`, `'`, `"` in any
-			// manifest string (site name, agent_guide translation,
-			// service endpoint URLs). The manifest is served as
-			// `application/json` so HTML script-tag breakout doesn't
-			// apply to the wire response, but applying the same flag
-			// set the JSON-LD emission uses keeps defense uniform —
-			// any future code that re-emits the cached manifest into
-			// HTML inherits the safe encoding automatically. Pretty-
-			// print retained because the manifest is a developer-facing
-			// surface and readability outweighs the byte cost.
-			$cached = wp_json_encode( $this->generate_manifest( $settings ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT );
-			set_transient( self::CACHE_KEY, $cached, HOUR_IN_SECONDS );
-		} else {
-			WC_AI_Storefront_Logger::debug( 'UCP manifest cache hit' );
-		}
-		echo $cached; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON content.
+		// Manifest is computed per-request (no transient). The generation
+		// path is cheap — `home_url()`, `rest_url()`, a settings read, and
+		// a JSON encode; no external HTTP calls, no unbounded DB queries.
+		// Per-request computation also eliminates the Host-keying problem:
+		// two requests from different Host values can never share a
+		// poisoned cached body through the PHP layer. The HTTP layer
+		// cache is segmented by the `Vary: Host` header above.
+		//
+		// The old `CACHE_KEY` constant is retained for backward
+		// compatibility — it is still referenced by the cache invalidator
+		// (harmless no-op delete) and any third-party code that reads it.
+		// HEX flags hex-escape `<`, `>`, `&`, `'`, `"` — defense-in-depth
+		// even though the manifest is served as `application/json`.
+		WC_AI_Storefront_Logger::debug( 'UCP manifest — generating per-request' );
+		$body = wp_json_encode( $this->generate_manifest( $settings ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT );
+		echo $body; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON content.
 		exit;
 	}
 
