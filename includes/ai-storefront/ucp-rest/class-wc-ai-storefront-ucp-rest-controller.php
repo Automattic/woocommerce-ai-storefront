@@ -3825,7 +3825,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$meta_source = isset( $meta['source'] ) && is_string( $meta['source'] )
 			? trim( $meta['source'] )
 			: '';
-		if ( '' !== $meta_source ) {
+		// Validate meta_source as a plausible product-name token —
+		// the same token style that Path 2 (Product/Version header)
+		// accepts — before storing it in order meta or the raw_host
+		// attribution field. Product tokens may contain underscores
+		// (e.g. `my_agent`), so the charset is wider than pure
+		// hostname characters. Length cap: RFC 1035 FQDN max (253)
+		// keeps the stored value bounded without rejecting any
+		// realistic agent identifier.
+		if ( '' !== $meta_source
+			&& strlen( $meta_source ) <= 253
+			&& (bool) preg_match( '/^[A-Za-z0-9._\-]+$/', $meta_source )
+		) {
 			$normalized = strtolower( $meta_source );
 			return [
 				'name'        => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $normalized ),

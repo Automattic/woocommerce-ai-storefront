@@ -574,10 +574,12 @@ class WC_AI_Storefront_Llms_Txt {
 					'timeout'     => 1,
 					'redirection' => 1,
 					'blocking'    => true,
-					// Skip SSL verify on self-origin probes — some
-					// local/dev environments have self-signed certs
-					// that would otherwise reject the probe.
-					'sslverify'   => false,
+					// SSL verification: disabled only in dev/debug
+					// environments (WP_DEBUG on) where self-signed certs
+					// are common. In production, verify the cert so these
+					// self-origin probes don't silently accept MITM
+					// responses.
+					'sslverify'   => ! ( defined( 'WP_DEBUG' ) && WP_DEBUG ),
 				]
 			);
 			if ( is_wp_error( $response ) ) {
