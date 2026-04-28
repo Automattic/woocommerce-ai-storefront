@@ -909,4 +909,107 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertSame( 30, $result['merchantReturnDays'] );
 	}
+
+	// ------------------------------------------------------------------
+	// Emission-time allow-list validation (audit H-1)
+	// ------------------------------------------------------------------
+
+	public function test_unknown_fees_value_defaults_to_free_return_at_emission(): void {
+		// The save-time sanitizer rejects unknown fee values, but a
+		// direct DB write or import could bypass it. The emission-time
+		// allow-list must catch it and fall back to FreeReturn rather
+		// than concatenating an arbitrary string onto the schema.org URL.
+		$markup = [
+			'offers' => [
+				[
+					'@type' => 'Offer',
+				],
+			],
+		];
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'return_policy' => [
+				'mode' => 'returns_accepted',
+				'days' => 30,
+				'fees' => 'EvilReturn',  // Not in allow-list.
+			],
+		];
+
+		$product = $this->make_product();
+		$result  = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$block = $result['offers'][0]['hasMerchantReturnPolicy'];
+		$this->assertSame(
+			'https://schema.org/FreeReturn',
+			$block['returnFees'],
+			'Unknown fees value must be sanitized to FreeReturn at emission time.'
+		);
+	}
+
+	public function test_unknown_method_values_are_filtered_out_at_emission(): void {
+		// Non-allow-listed method strings must be silently dropped at
+		// emission time. If the only stored methods are invalid, the
+		// returnMethod property must be omitted entirely rather than
+		// emitting an empty array or an invalid schema.org URL.
+		$markup = [
+			'offers' => [
+				[
+					'@type' => 'Offer',
+				],
+			],
+		];
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'return_policy' => [
+				'mode'    => 'returns_accepted',
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+				'methods' => [ 'ReturnByMail', 'NotAValidMethod', 'ReturnInStore' ],
+			],
+		];
+
+		$product = $this->make_product();
+		$result  = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$block   = $result['offers'][0]['hasMerchantReturnPolicy'];
+		$methods = $block['returnMethod'];
+		$this->assertIsArray( $methods );
+		$this->assertCount( 2, $methods, 'Only the two valid methods should survive.' );
+		$this->assertContains( 'https://schema.org/ReturnByMail', $methods );
+		$this->assertContains( 'https://schema.org/ReturnInStore', $methods );
+		$this->assertNotContains( 'https://schema.org/NotAValidMethod', $methods );
+	}
+
+	public function test_duplicate_methods_are_deduped_at_emission(): void {
+		// A tampered or imported settings value could contain duplicate
+		// method entries. `array_unique()` at emission time must remove
+		// them so the JSON-LD doesn't emit repeated schema.org URLs.
+		$markup = [
+			'offers' => [
+				[
+					'@type' => 'Offer',
+				],
+			],
+		];
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'return_policy' => [
+				'mode'    => 'returns_accepted',
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+				'methods' => [ 'ReturnByMail', 'ReturnByMail', 'ReturnInStore' ],
+			],
+		];
+
+		$product = $this->make_product();
+		$result  = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$methods = $result['offers'][0]['hasMerchantReturnPolicy']['returnMethod'];
+		$this->assertIsArray( $methods );
+		$this->assertCount( 2, $methods, 'Duplicate methods must be deduped at emission.' );
+		$this->assertSame( array_unique( $methods ), $methods );
+	}
 }

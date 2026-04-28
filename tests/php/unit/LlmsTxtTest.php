@@ -1062,6 +1062,44 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( '/news-sitemap.xml', $output );
 	}
 
+	public function test_sitemap_probe_uses_sslverify_true_by_default(): void {
+		// L-2: sitemap HEAD probes must use sslverify => true in
+		// production (i.e. when WP_DEBUG is not true). Pin this so a
+		// future change that re-introduces unconditional sslverify=false
+		// is caught. WP_DEBUG is a compile-time constant that can't be
+		// redefined at test time, so we capture the args passed to
+		// wp_remote_head and assert on the sslverify value.
+		//
+		// In the test environment WP_DEBUG is undefined or false, so
+		// the expression `! ( defined('WP_DEBUG') && WP_DEBUG )` must
+		// resolve to true. We confirm the captured arg matches.
+		$captured_args = null;
+		Functions\when( 'wp_remote_head' )->alias(
+			static function ( string $url, array $args ) use ( &$captured_args ): array {
+				$captured_args = $args;
+				// Return a 200 so the probe succeeds and the llms.txt
+				// output includes a sitemap section we can assert on.
+				return [ 'response' => [ 'code' => 200 ] ];
+			}
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->alias(
+			static fn( $response ) => (int) $response['response']['code']
+		);
+
+		$this->llms->generate();
+
+		$this->assertIsArray( $captured_args, 'wp_remote_head must have been called.' );
+
+		// In this test environment WP_DEBUG is not true, so sslverify
+		// must be true. This is the production-path assertion.
+		$expected_sslverify = ! ( defined( 'WP_DEBUG' ) && WP_DEBUG );
+		$this->assertSame(
+			$expected_sslverify,
+			$captured_args['sslverify'],
+			'sslverify must be true in production (WP_DEBUG off) and false only when WP_DEBUG is on.'
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// UCP extension docs
 	// ------------------------------------------------------------------

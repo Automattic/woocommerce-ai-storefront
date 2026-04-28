@@ -811,4 +811,91 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals( 'extension_value', $result['custom_field'] );
 	}
+
+	public function test_jsonld_product_filter_receives_safe_settings_subset(): void {
+		// M-4: the wc_ai_storefront_jsonld_product filter must pass a
+		// minimal settings subset — not the full settings array —
+		// so third-party callbacks cannot read security-sensitive fields
+		// like rate_limit_rpm, allowed_crawlers, or allow_unknown_ucp_agents.
+		// Pin the exact key set so a regression that passes the full
+		// array is caught immediately.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => [ 'mode' => 'unconfigured' ],
+			'rate_limit_rpm'         => 99,          // Must NOT reach the filter.
+			'allowed_crawlers'       => [ 'ChatGPT-User' ],  // Must NOT reach the filter.
+			'allow_unknown_ucp_agents' => 'yes',     // Must NOT reach the filter.
+		];
+
+		$captured_subset = null;
+		Functions\when( 'apply_filters' )->alias(
+			static function ( string $hook, $markup, $product, $subset ) use ( &$captured_subset ) {
+				if ( 'wc_ai_storefront_jsonld_product' === $hook ) {
+					$captured_subset = $subset;
+				}
+				return $markup;
+			}
+		);
+
+		$this->jsonld->enhance_product_data( [], $this->make_product() );
+
+		$this->assertIsArray( $captured_subset, 'Filter must fire and pass a settings subset.' );
+
+		// Keys that MUST be present.
+		$this->assertArrayHasKey( 'enabled', $captured_subset );
+		$this->assertArrayHasKey( 'product_selection_mode', $captured_subset );
+		$this->assertArrayHasKey( 'return_policy', $captured_subset );
+
+		// Security-sensitive keys that MUST NOT be present.
+		$this->assertArrayNotHasKey( 'rate_limit_rpm', $captured_subset );
+		$this->assertArrayNotHasKey( 'allowed_crawlers', $captured_subset );
+		$this->assertArrayNotHasKey( 'allow_unknown_ucp_agents', $captured_subset );
+		$this->assertArrayNotHasKey( 'selected_products', $captured_subset );
+	}
+
+	public function test_jsonld_store_filter_receives_safe_settings_subset(): void {
+		// Mirror of the above for the wc_ai_storefront_jsonld_store filter.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => [ 'mode' => 'unconfigured' ],
+			'rate_limit_rpm'         => 99,
+			'allowed_crawlers'       => [ 'ChatGPT-User' ],
+			'allow_unknown_ucp_agents' => 'yes',
+		];
+
+		$captured_subset = null;
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'home_url' )->alias( static fn( $p = '' ) => 'https://example.com' . $p );
+		Functions\when( 'get_bloginfo' )->returnArg();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
+		Functions\when( '__' )->returnArg( 1 );
+		Functions\when( 'apply_filters' )->alias(
+			static function ( string $tag, $value, ...$rest ) use ( &$captured_subset ) {
+				if ( 'wc_ai_storefront_jsonld_store' === $tag ) {
+					$captured_subset = $rest[0] ?? null;
+				}
+				return $value;
+			}
+		);
+
+		ob_start();
+		try {
+			$this->jsonld->output_store_jsonld();
+		} finally {
+			ob_end_clean();
+		}
+
+		$this->assertIsArray( $captured_subset, 'Store filter must fire and pass a settings subset.' );
+		$this->assertArrayHasKey( 'enabled', $captured_subset );
+		$this->assertArrayHasKey( 'product_selection_mode', $captured_subset );
+		$this->assertArrayHasKey( 'return_policy', $captured_subset );
+		$this->assertArrayNotHasKey( 'rate_limit_rpm', $captured_subset );
+		$this->assertArrayNotHasKey( 'allowed_crawlers', $captured_subset );
+		$this->assertArrayNotHasKey( 'allow_unknown_ucp_agents', $captured_subset );
+	}
 }

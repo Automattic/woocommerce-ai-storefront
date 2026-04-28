@@ -1015,6 +1015,79 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_meta_source_over_253_chars_falls_back_to_sentinel(): void {
+		// Values longer than 253 characters (RFC 1035 FQDN max) are
+		// rejected at the charset/length gate in `resolve_agent_host()`
+		// and fall through to Path 4 (FALLBACK_SOURCE). This pins the
+		// length cap so a future refactor that raises or removes it
+		// doesn't silently start storing oversized strings in order meta.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				'meta'       => [ 'source' => str_repeat( 'a', 254 ) ],
+			]
+		);
+
+		$this->assertStringContainsString(
+			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['data']['continue_url'],
+			'meta.source value exceeding 253 chars must fall through to FALLBACK_SOURCE.'
+		);
+		// No raw_host param for rejected values (same contract as
+		// whitespace-only / non-string paths).
+		$this->assertStringNotContainsString( 'ai_agent_host_raw=', $result['data']['continue_url'] );
+	}
+
+	public function test_meta_source_invalid_charset_falls_back_to_sentinel(): void {
+		// Values containing characters outside [A-Za-z0-9._-] (e.g.
+		// angle brackets, spaces, percent signs) fail the charset gate
+		// and fall through to Path 4. Pins the validation so a future
+		// regex change that accidentally widens the allowed set doesn't
+		// start storing attacker-controlled strings in order meta.
+		$this->seed_simple_product( 1 );
+
+		foreach ( [ '<script>', 'agent name', 'agent%2Fsource', 'agent/source' ] as $bad_source ) {
+			$result = $this->call_handler(
+				[
+					'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+					'meta'       => [ 'source' => $bad_source ],
+				]
+			);
+
+			$this->assertStringContainsString(
+				'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+				$result['data']['continue_url'],
+				"meta.source value '{$bad_source}' contains disallowed characters and must fall through to FALLBACK_SOURCE."
+			);
+			$this->assertStringNotContainsString( 'ai_agent_host_raw=', $result['data']['continue_url'] );
+		}
+	}
+
+	public function test_meta_source_with_underscore_is_accepted(): void {
+		// Underscores are valid in product-name tokens (Path 2 accepts
+		// them via `extract_agent_product()`). The body fallback path
+		// (Path 3) must be equally permissive — a token like
+		// `my_agent` must not be silently rejected.
+		$this->seed_simple_product( 1 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				'meta'       => [ 'source' => 'my_agent' ],
+			]
+		);
+
+		// Should NOT fall back to FALLBACK_SOURCE — the token is valid.
+		$this->assertStringNotContainsString(
+			'utm_source=' . WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['data']['continue_url'],
+			'Underscore tokens must be accepted by the meta.source charset gate.'
+		);
+		$this->assertStringContainsString( 'ai_agent_host_raw=my_agent', $result['data']['continue_url'] );
+	}
+
 	public function test_malformed_ucp_agent_falls_back_to_sentinel_utm_source(): void {
 		// Header present but malformed (no profile= value). Treat as missing.
 		$this->seed_simple_product( 1 );
