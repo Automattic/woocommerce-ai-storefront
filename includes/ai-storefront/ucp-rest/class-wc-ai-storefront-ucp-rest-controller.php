@@ -353,7 +353,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *
 	 * @param WP_REST_Request $request The current request.
 	 * @return bool|WP_Error  True when allowed; WP_Error 403 when
-	 *                        explicitly blocked by the merchant.
+	 *                        explicitly blocked by the merchant;
+	 *                        WP_Error 429 when the outer-request
+	 *                        rate-limit budget is exhausted.
 	 */
 	public function check_agent_access( WP_REST_Request $request ) {
 		// phpcs:ignore Squiz.PHP.CommentedOutCode.Found -- Prose explanation, not commented-out code; the heuristic flags any block that mentions code-shaped tokens like 503/403.
