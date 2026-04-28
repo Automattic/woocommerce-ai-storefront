@@ -16,6 +16,7 @@ Core principle: AI agents discover and recommend. The merchant owns the transact
 |-----|------|
 | What each component does | [`docs/engineering/ARCHITECTURE.md`](./docs/engineering/ARCHITECTURE.md) |
 | How an agent decides to render a Buy CTA | [`docs/engineering/UCP-BUY-FLOW.md`](./docs/engineering/UCP-BUY-FLOW.md) |
+| Cart and checkout flow models (and roadmap for `dev.ucp.cart`) | [`docs/engineering/CART-MODELS.md`](./docs/engineering/CART-MODELS.md) |
 | REST endpoint shapes (UCP and admin) | [`docs/engineering/API-REFERENCE.md`](./docs/engineering/API-REFERENCE.md) |
 | Options, transients, meta keys, cron | [`docs/engineering/DATA-MODEL.md`](./docs/engineering/DATA-MODEL.md) |
 | Filters and actions exposed | [`docs/engineering/HOOKS.md`](./docs/engineering/HOOKS.md) |
@@ -123,10 +124,10 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 
 | Code path | Update these docs |
 |-----------|-------------------|
-| `includes/ai-storefront/ucp-rest/**` | API-REFERENCE.md, UCP-BUY-FLOW.md, ARCHITECTURE.md |
+| `includes/ai-storefront/ucp-rest/**` | API-REFERENCE.md, UCP-BUY-FLOW.md, CART-MODELS.md, ARCHITECTURE.md |
 | `includes/admin/class-wc-ai-storefront-admin-controller.php` | API-REFERENCE.md, ARCHITECTURE.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-attribution.php` | DATA-MODEL.md, UCP-BUY-FLOW.md, USER-GUIDE.md |
-| `includes/ai-storefront/class-wc-ai-storefront-ucp.php` | API-REFERENCE.md, UCP-BUY-FLOW.md |
+| `includes/ai-storefront/class-wc-ai-storefront-ucp.php` | API-REFERENCE.md, UCP-BUY-FLOW.md, CART-MODELS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-llms-txt.php` | ARCHITECTURE.md, HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-jsonld.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-robots.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md |
