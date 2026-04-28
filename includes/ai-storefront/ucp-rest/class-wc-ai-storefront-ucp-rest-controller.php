@@ -3952,11 +3952,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * value is appended as `ai_agent_host_raw`:
 	 *   &ai_agent_host_raw={raw_host}
 	 *
-	 * The raw-host param is for "Other AI" bucketed orders so merchants
-	 * can drill in and see the actual identifier behind the bucket.
-	 * Empty raw-host (no UCP-Agent header AND no body fallback) means
-	 * the param is omitted entirely — no spurious
-	 * `&ai_agent_host_raw=` in the URL.
+	 * The raw-host param is a general diagnostic / graduation-review
+	 * field — it's stamped for any resolved identifier whether the
+	 * agent is in `KNOWN_AGENT_HOSTS` (helpful provenance) or not
+	 * (the load-bearing case for "Other AI" drill-in). Empty raw-host
+	 * (no UCP-Agent header AND no body fallback) means the param is
+	 * omitted entirely — no spurious `&ai_agent_host_raw=` in the URL.
 	 *
 	 * WC's own Order Attribution system captures `utm_source` /
 	 * `utm_medium` / `utm_id` on the resulting order. The

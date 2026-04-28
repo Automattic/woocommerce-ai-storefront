@@ -204,8 +204,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// intercept here for the specific tag we care about and
 		// pass-through for others.
 		$captured = null;
+		// Variadic third+ params: `output_store_jsonld()` invokes
+		// `apply_filters( 'wc_ai_storefront_jsonld_store', $store_data, $settings )`
+		// with three args. A 2-arg alias would throw `ArgumentCountError`
+		// on PHP 8 strict-mode internals. Variadic capture forwards
+		// any extras without inspecting them.
 		Functions\when( 'apply_filters' )->alias(
-			static function ( string $tag, $value ) use ( &$captured ) {
+			static function ( string $tag, $value, ...$extras ) use ( &$captured ) {
 				if ( $tag === 'wc_ai_storefront_jsonld_store' ) {
 					$captured = $value;
 				}
