@@ -1,4 +1,4 @@
-import { useEffect, useState } from '@wordpress/element';
+import { Fragment, useEffect, useState } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
 import {
 	Card,
@@ -109,39 +109,60 @@ const getActivePreset = ( rpm ) => {
  */
 
 const KNOWN_CRAWLERS = [
+	// ----------------------------------------------------------------
 	// Live browsing — user-initiated fetches + live-answer indexing.
-	// Recommended on; these route revenue.
-	{ id: 'ChatGPT-User', label: 'ChatGPT-User (OpenAI)', category: 'live' },
-	{
-		id: 'OAI-SearchBot',
-		label: 'OAI-SearchBot (OpenAI SearchGPT)',
-		category: 'live',
-	},
-	{ id: 'Claude-User', label: 'Claude-User (Anthropic)', category: 'live' },
-	{
-		id: 'Claude-SearchBot',
-		label: 'Claude-SearchBot (Anthropic)',
-		category: 'live',
-	},
-	{
-		id: 'PerplexityBot',
-		label: 'PerplexityBot (Perplexity)',
-		category: 'live',
-	},
-	{
-		id: 'Perplexity-User',
-		label: 'Perplexity-User (Perplexity)',
-		category: 'live',
-	},
+	// Recommended on; these route revenue. Sub-grouped for scannability;
+	// alphabetical within each sub-group.
+	// ----------------------------------------------------------------
+
+	// General-purpose AI assistants.
 	{
 		id: 'Applebot',
 		label: 'Applebot (Apple Siri / Spotlight)',
 		category: 'live',
+		subgroup: 'general',
+	},
+	{
+		id: 'ChatGPT-User',
+		label: 'ChatGPT-User (OpenAI)',
+		category: 'live',
+		subgroup: 'general',
+	},
+	{
+		id: 'Claude-SearchBot',
+		label: 'Claude-SearchBot (Anthropic)',
+		category: 'live',
+		subgroup: 'general',
+	},
+	{
+		id: 'Claude-User',
+		label: 'Claude-User (Anthropic)',
+		category: 'live',
+		subgroup: 'general',
 	},
 	{
 		id: 'DuckAssistBot',
 		label: 'DuckAssistBot (DuckDuckGo)',
 		category: 'live',
+		subgroup: 'general',
+	},
+	{
+		id: 'OAI-SearchBot',
+		label: 'OAI-SearchBot (OpenAI SearchGPT)',
+		category: 'live',
+		subgroup: 'general',
+	},
+	{
+		id: 'Perplexity-User',
+		label: 'Perplexity-User (Perplexity)',
+		category: 'live',
+		subgroup: 'general',
+	},
+	{
+		id: 'PerplexityBot',
+		label: 'PerplexityBot (Perplexity)',
+		category: 'live',
+		subgroup: 'general',
 	},
 
 	// Agentic shopping — AI that places orders, not just reads.
@@ -149,56 +170,73 @@ const KNOWN_CRAWLERS = [
 		id: 'AmazonBuyForMe',
 		label: 'AmazonBuyForMe (Amazon Rufus)',
 		category: 'live',
+		subgroup: 'agentic_shopping',
 	},
-	{ id: 'KlarnaBot', label: 'KlarnaBot (Klarna AI)', category: 'live' },
-
-	// Google Shopping AI — distinct from Googlebot + Google-Extended.
 	{
-		id: 'Storebot-Google',
-		label: 'Storebot-Google (Google Shopping AI)',
+		id: 'KlarnaBot',
+		label: 'KlarnaBot (Klarna AI)',
 		category: 'live',
+		subgroup: 'agentic_shopping',
 	},
 
-	// Microsoft Shopping / Bing Ads — parallel to Storebot-Google.
-	// Feeds Copilot's shopping answers, so keeping this on is the
-	// commerce prerequisite for Copilot discoverability.
+	// Commerce search engines.
 	{
 		id: 'AdIdxBot',
 		label: 'AdIdxBot (Microsoft Shopping / Copilot)',
 		category: 'live',
+		subgroup: 'commerce_search',
+	},
+	{
+		id: 'Storebot-Google',
+		label: 'Storebot-Google (Google Shopping AI)',
+		category: 'live',
+		subgroup: 'commerce_search',
 	},
 
-	// Regional search + AI — Asia.
-	{ id: 'ERNIEBot', label: 'ERNIEBot (Baidu / China)', category: 'live' },
+	// Regional — Asia.
+	{
+		id: 'ERNIEBot',
+		label: 'ERNIEBot (Baidu / China)',
+		category: 'live',
+		subgroup: 'regional_asia',
+	},
+	{
+		id: 'NaverBot',
+		label: 'NaverBot (Naver / Korea)',
+		category: 'live',
+		subgroup: 'regional_asia',
+	},
+	{
+		id: 'PetalBot',
+		label: 'PetalBot (Huawei / Global)',
+		category: 'live',
+		subgroup: 'regional_asia',
+	},
+	{
+		id: 'WRTNBot',
+		label: 'WRTNBot (Wrtn / Korea)',
+		category: 'live',
+		subgroup: 'regional_asia',
+	},
 	{
 		id: 'YiyanBot',
 		label: 'YiyanBot (Baidu Conversational / China)',
 		category: 'live',
+		subgroup: 'regional_asia',
 	},
-	{ id: 'WRTNBot', label: 'WRTNBot (Wrtn / Korea)', category: 'live' },
-	{ id: 'NaverBot', label: 'NaverBot (Naver / Korea)', category: 'live' },
-	{ id: 'PetalBot', label: 'PetalBot (Huawei / Global)', category: 'live' },
 
-	// Regional search + AI — Europe.
+	// Regional — Europe.
 	{
 		id: 'YandexBot',
 		label: 'YandexBot (Yandex / Russia + E. Europe)',
 		category: 'live',
+		subgroup: 'regional_europe',
 	},
 
-	// Training crawlers — brand-strategy decision.
-	{ id: 'GPTBot', label: 'GPTBot (OpenAI)', category: 'training' },
-	{
-		id: 'Google-Extended',
-		label: 'Google-Extended (Gemini training)',
-		category: 'training',
-	},
-	{ id: 'ClaudeBot', label: 'ClaudeBot (Anthropic)', category: 'training' },
-	{
-		id: 'Meta-ExternalAgent',
-		label: 'Meta-ExternalAgent (Meta AI)',
-		category: 'training',
-	},
+	// ----------------------------------------------------------------
+	// Training crawlers — alphabetical (case-insensitive). Brand-
+	// strategy decision; default off.
+	// ----------------------------------------------------------------
 	{
 		id: 'Amazonbot',
 		label: 'Amazonbot (Amazon / Alexa)',
@@ -210,25 +248,36 @@ const KNOWN_CRAWLERS = [
 		category: 'training',
 	},
 	{
-		id: 'Microsoft-BingBot-Extended',
-		label: 'Microsoft-BingBot-Extended (Copilot training)',
-		category: 'training',
-	},
-	{
 		id: 'Bytespider',
 		label: 'Bytespider (ByteDance / TikTok)',
 		category: 'training',
 	},
 	{ id: 'CCBot', label: 'CCBot (CommonCrawl)', category: 'training' },
+	{ id: 'ClaudeBot', label: 'ClaudeBot (Anthropic)', category: 'training' },
 	{ id: 'cohere-ai', label: 'cohere-ai (Cohere)', category: 'training' },
+	{
+		id: 'Google-Extended',
+		label: 'Google-Extended (Gemini training)',
+		category: 'training',
+	},
+	{ id: 'GPTBot', label: 'GPTBot (OpenAI)', category: 'training' },
+	{
+		id: 'Meta-ExternalAgent',
+		label: 'Meta-ExternalAgent (Meta AI)',
+		category: 'training',
+	},
+	{
+		id: 'Microsoft-BingBot-Extended',
+		label: 'Microsoft-BingBot-Extended (Copilot training)',
+		category: 'training',
+	},
 
-	// Test / validation crawlers — third-party UCP validation tools
-	// merchants run against their own store. Functionally distinct
-	// from training (no model corpus contribution) and from live
-	// (no real revenue route), so they get their own category that
-	// shares the same default-off, merchant-discretion semantic as
-	// training. Visually grouped with training under the "Training
-	// and Test Crawlers" heading in the UI.
+	// ----------------------------------------------------------------
+	// Test / validation crawlers — alphabetical for forward-compat.
+	// Third-party UCP validation tools merchants run against their
+	// own store. Visually grouped with training under "Training and
+	// Test Crawlers" in the UI.
+	// ----------------------------------------------------------------
 	{
 		id: 'UCPPlayground',
 		label: 'UCPPlayground (ucpplayground.com — UCP validation tool)',
@@ -770,6 +819,50 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								'User-initiated fetches during an active query. These agents see fresh inventory and route revenue — recommended on.',
 								'woocommerce-ai-storefront'
 							),
+							// Sub-group headings that break the live list
+							// into scannable clusters. The `key` matches
+							// the `subgroup` field on each KNOWN_CRAWLERS
+							// entry; sub-groups render in this declared
+							// order; entries within a sub-group render in
+							// KNOWN_CRAWLERS declaration order
+							// (alphabetical, by convention).
+							subgroups: [
+								{
+									key: 'general',
+									title: __(
+										'General-purpose AI assistants',
+										'woocommerce-ai-storefront'
+									),
+								},
+								{
+									key: 'agentic_shopping',
+									title: __(
+										'Agentic shopping',
+										'woocommerce-ai-storefront'
+									),
+								},
+								{
+									key: 'commerce_search',
+									title: __(
+										'Commerce search engines',
+										'woocommerce-ai-storefront'
+									),
+								},
+								{
+									key: 'regional_asia',
+									title: __(
+										'Regional — Asia',
+										'woocommerce-ai-storefront'
+									),
+								},
+								{
+									key: 'regional_europe',
+									title: __(
+										'Regional — Europe',
+										'woocommerce-ai-storefront'
+									),
+								},
+							],
 						},
 						{
 							key: 'training_and_test',
@@ -787,7 +880,11 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							// AI bot, default off" semantic and benefit
 							// from being stacked in one section. If a
 							// future category needs separate treatment,
-							// split into another group entry above.
+							// split into another group entry above. No
+							// `subgroups` — the combined list is short
+							// enough (10 + 1 = 11 entries) that a flat
+							// alphabetical render is more scannable than
+							// adding visual hierarchy.
 							categories: [ 'training', 'test' ],
 						},
 					].map( ( group, groupIndex ) => {
@@ -807,6 +904,44 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						const crawlers = KNOWN_CRAWLERS.filter( ( c ) =>
 							groupCategories.includes( c.category )
 						);
+
+						// Sub-group rendering: when a group declares
+						// `subgroups`, render a small heading + the
+						// crawlers that match each subgroup `key`. Empty
+						// sub-groups are skipped so the renderer's robust
+						// to a `KNOWN_CRAWLERS` reshape that drops the
+						// last entry in a sub-group. Entries without a
+						// matching `subgroup` field fall through under a
+						// generic "Other" heading — safety net only;
+						// production data should always assign every
+						// live entry a sub-group.
+						const hasSubgroups =
+							Array.isArray( group.subgroups ) &&
+							group.subgroups.length > 0;
+
+						const renderCrawlerRow = ( crawler, isLast ) => (
+							<div
+								key={ crawler.id }
+								style={ {
+									padding: '6px 0',
+									borderBottom: ! isLast
+										? `1px solid ${ colors.borderSubtle }`
+										: 'none',
+								} }
+							>
+								<CheckboxControl
+									label={ crawler.label }
+									checked={ allowedCrawlers.includes(
+										crawler.id
+									) }
+									onChange={ () =>
+										toggleCrawler( crawler.id )
+									}
+									__nextHasNoMarginBottom
+								/>
+							</div>
+						);
+
 						return (
 							<div
 								key={ group.key }
@@ -840,29 +975,69 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										padding: '4px 16px',
 									} }
 								>
-									{ crawlers.map( ( crawler, index ) => (
-										<div
-											key={ crawler.id }
-											style={ {
-												padding: '6px 0',
-												borderBottom:
-													index < crawlers.length - 1
-														? `1px solid ${ colors.borderSubtle }`
-														: 'none',
-											} }
-										>
-											<CheckboxControl
-												label={ crawler.label }
-												checked={ allowedCrawlers.includes(
-													crawler.id
-												) }
-												onChange={ () =>
-													toggleCrawler( crawler.id )
+									{ hasSubgroups
+										? group.subgroups.map(
+												( sg, sgIndex ) => {
+													const sgCrawlers =
+														crawlers.filter(
+															( c ) =>
+																c.subgroup ===
+																sg.key
+														);
+													if (
+														sgCrawlers.length === 0
+													) {
+														return null;
+													}
+													return (
+														<Fragment
+															key={ sg.key }
+														>
+															<div
+																style={ {
+																	color: colors.textSecondary,
+																	marginTop:
+																		sgIndex ===
+																		0
+																			? '6px'
+																			: '14px',
+																	marginBottom:
+																		'4px',
+																	fontSize:
+																		'10px',
+																	letterSpacing:
+																		'0.04em',
+																	textTransform:
+																		'uppercase',
+																	fontWeight:
+																		'600',
+																} }
+															>
+																{ sg.title }
+															</div>
+															{ sgCrawlers.map(
+																(
+																	crawler,
+																	idx
+																) =>
+																	renderCrawlerRow(
+																		crawler,
+																		idx ===
+																			sgCrawlers.length -
+																				1
+																	)
+															) }
+														</Fragment>
+													);
 												}
-												__nextHasNoMarginBottom
-											/>
-										</div>
-									) ) }
+										  )
+										: crawlers.map( ( crawler, index ) =>
+												renderCrawlerRow(
+													crawler,
+													index ===
+														crawlers.length - 1
+												)
+										  ) }
 								</div>
 							</div>
 						);

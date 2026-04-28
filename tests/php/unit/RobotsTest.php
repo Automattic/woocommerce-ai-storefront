@@ -339,23 +339,28 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// bots predate the modern AI-agent taxonomy.
 		$this->assertSame(
 			[
-				'ChatGPT-User',
-				'OAI-SearchBot',
-				'Claude-User',
-				'Claude-SearchBot',
-				'PerplexityBot',
-				'Perplexity-User',
+				// General-purpose AI assistants (alphabetical).
 				'Applebot',
+				'ChatGPT-User',
+				'Claude-SearchBot',
+				'Claude-User',
 				'DuckAssistBot',
+				'OAI-SearchBot',
+				'Perplexity-User',
+				'PerplexityBot',
+				// Agentic shopping (alphabetical).
 				'AmazonBuyForMe',
 				'KlarnaBot',
-				'Storebot-Google',
+				// Commerce search engines (alphabetical).
 				'AdIdxBot',
+				'Storebot-Google',
+				// Regional — Asia (alphabetical).
 				'ERNIEBot',
-				'YiyanBot',
-				'WRTNBot',
 				'NaverBot',
 				'PetalBot',
+				'WRTNBot',
+				'YiyanBot',
+				// Regional — Europe.
 				'YandexBot',
 			],
 			WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
@@ -377,16 +382,18 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// crawlers merchants need to consciously allow or block.
 		$this->assertSame(
 			[
-				'GPTBot',
-				'Google-Extended',
-				'ClaudeBot',
-				'Meta-ExternalAgent',
+				// Alphabetical (case-insensitive). Reordered in 0.6.1
+				// for scannability.
 				'Amazonbot',
 				'Applebot-Extended',
-				'Microsoft-BingBot-Extended',
 				'Bytespider',
 				'CCBot',
+				'ClaudeBot',
 				'cohere-ai',
+				'Google-Extended',
+				'GPTBot',
+				'Meta-ExternalAgent',
+				'Microsoft-BingBot-Extended',
 			],
 			WC_AI_Storefront_Robots::TRAINING_CRAWLERS
 		);
