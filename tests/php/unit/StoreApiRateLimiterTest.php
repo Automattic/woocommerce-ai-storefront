@@ -17,6 +17,7 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		Functions\when( '__' )->returnArg();
 		$this->limiter = new WC_AI_Storefront_Store_Api_Rate_Limiter();
 	}
 
@@ -112,6 +113,161 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 		$claude_result = $this->limiter->fingerprint_ai_bots( 'x' );
 
 		$this->assertNotEquals( $gpt_result, $claude_result );
+
+		unset( $_SERVER['HTTP_USER_AGENT'] );
+	}
+
+	// ------------------------------------------------------------------
+	// configure_rate_limits — inner-dispatch suppression
+	// ------------------------------------------------------------------
+
+	public function test_configure_rate_limits_suppresses_inner_dispatch(): void {
+		// When inside a UCP-controller dispatch (depth > 0), inner
+		// Store API calls must NOT count against the rate-limit budget.
+		// The outer request already consumed one slot via
+		// check_outer_rate_limit(); counting inner calls as well would
+		// drain 50 slots for a single /catalog/lookup with 50 IDs.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+
+		WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
+		try {
+			$result = $this->limiter->configure_rate_limits( [] );
+		} finally {
+			WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
+		}
+
+		$this->assertFalse(
+			$result['enabled'],
+			'Rate limiting must be disabled for inner Store API dispatches inside a UCP handler.'
+		);
+	}
+
+	public function test_configure_rate_limits_enables_outside_ucp_dispatch(): void {
+		// Outside a UCP dispatch (depth = 0), direct Store API requests
+		// from AI bots are rate-limited as usual.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+
+		// Confirm depth is 0 (default state).
+		$this->assertFalse( WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch() );
+
+		$result = $this->limiter->configure_rate_limits( [] );
+
+		$this->assertTrue( $result['enabled'] );
+	}
+
+	// ------------------------------------------------------------------
+	// check_outer_rate_limit
+	// ------------------------------------------------------------------
+
+	public function test_outer_rate_limit_returns_true_when_plugin_disabled(): void {
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+
+		$result = WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
+
+		$this->assertTrue( $result );
+	}
+
+	public function test_outer_rate_limit_returns_true_for_non_ai_bot_ua(): void {
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 5 ];
+		$_SERVER['HTTP_USER_AGENT']      = 'Mozilla/5.0 Chrome/120.0.0.0';
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
+
+		$result = WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
+
+		$this->assertTrue( $result );
+		unset( $_SERVER['HTTP_USER_AGENT'] );
+	}
+
+	public function test_outer_rate_limit_allows_first_request_under_limit(): void {
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+		$_SERVER['HTTP_USER_AGENT']      = 'GPTBot/1.0';
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
+		// No existing transient (first request in window).
+		Functions\expect( 'get_transient' )->once()->andReturn( false );
+		Functions\expect( 'set_transient' )->once()->with(
+			\Mockery::type( 'string' ),
+			1,
+			60
+		);
+
+		$result = WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
+
+		$this->assertTrue( $result );
+		unset( $_SERVER['HTTP_USER_AGENT'] );
+	}
+
+	public function test_outer_rate_limit_increments_counter_on_subsequent_requests(): void {
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+		$_SERVER['HTTP_USER_AGENT']      = 'GPTBot/1.0';
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
+		// Existing count of 10 — well under the limit of 25.
+		Functions\expect( 'get_transient' )->once()->andReturn( '10' );
+		Functions\expect( 'set_transient' )->once()->with(
+			\Mockery::type( 'string' ),
+			11,
+			60
+		);
+
+		$result = WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
+
+		$this->assertTrue( $result );
+		unset( $_SERVER['HTTP_USER_AGENT'] );
+	}
+
+	public function test_outer_rate_limit_blocks_when_limit_reached(): void {
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+		$_SERVER['HTTP_USER_AGENT']      = 'GPTBot/1.0';
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
+		// Count is already at the limit — next request should be blocked.
+		Functions\expect( 'get_transient' )->once()->andReturn( '25' );
+		// set_transient must NOT be called when the request is blocked.
+		Functions\expect( 'set_transient' )->never();
+
+		$result = WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertEquals( 'ucp_rate_limit_exceeded', $result->get_error_code() );
+		$this->assertEquals( 429, $result->get_error_data()['status'] );
+		unset( $_SERVER['HTTP_USER_AGENT'] );
+	}
+
+	public function test_outer_rate_limit_transient_key_is_fingerprint_based(): void {
+		// Two different AI bots must get different transient keys so
+		// their budgets are tracked independently. Confirms the key is
+		// `OUTER_TRANSIENT_PREFIX + 'ai_bot_' + md5(ua)`.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+
+		$recorded_keys = [];
+
+		Functions\expect( 'sanitize_text_field' )->andReturnFirstArg();
+		Functions\expect( 'wp_unslash' )->andReturnFirstArg();
+		Functions\expect( 'get_transient' )->andReturn( false );
+		Functions\expect( 'set_transient' )->andReturnUsing(
+			static function ( $key ) use ( &$recorded_keys ) {
+				$recorded_keys[] = $key;
+			}
+		);
+
+		$_SERVER['HTTP_USER_AGENT'] = 'GPTBot/1.0';
+		WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
+
+		$_SERVER['HTTP_USER_AGENT'] = 'ClaudeBot/1.0';
+		WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
+
+		$this->assertCount( 2, $recorded_keys );
+		$this->assertNotEquals( $recorded_keys[0], $recorded_keys[1] );
+		$this->assertStringStartsWith(
+			WC_AI_Storefront_Store_Api_Rate_Limiter::OUTER_TRANSIENT_PREFIX,
+			$recorded_keys[0]
+		);
 
 		unset( $_SERVER['HTTP_USER_AGENT'] );
 	}
