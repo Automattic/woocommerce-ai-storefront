@@ -213,15 +213,17 @@ class WC_AI_Storefront_Ucp {
 		// UTM parameter conventions off the manifest. Removed: the
 		// attribution contract is entirely server-side — the
 		// `POST /checkout-sessions` endpoint constructs a
-		// `continue_url` with `utm_source` + `utm_medium=ai_agent`
-		// pre-attached from the `UCP-Agent` header, so agents don't
-		// need to read or replicate the UTM schema to be correctly
-		// attributed. The human-readable attribution flow (including
-		// the hostname→brand mapping table and the fallback URL
-		// templates for non-UCP flows) still lives in llms.txt.
-		// Duplicating it under a machine-readable key encouraged
-		// agents to construct URLs client-side — the exact path the
-		// UCP spec's `continue_url` directive steers away from.
+		// `continue_url` with the canonical UTM shape pre-attached
+		// (`utm_source={hostname}&utm_medium=referral&utm_id=woo_ucp`
+		// as of 0.5.0; pre-0.5.0 used `utm_medium=ai_agent`). Agents
+		// don't need to read or replicate the UTM schema to be
+		// correctly attributed. The human-readable attribution flow
+		// (including the hostname→brand mapping table and the
+		// fallback URL templates for non-UCP flows) still lives in
+		// llms.txt. Duplicating it under a machine-readable key
+		// encouraged agents to construct URLs client-side — the exact
+		// path the UCP spec's `continue_url` directive steers away
+		// from.
 
 		// Base docs URL for the version-pinned ucp.dev spec site.
 		// All `spec` and `schema` URLs route through the same

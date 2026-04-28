@@ -151,13 +151,14 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 * namespace means stats roll up the same regardless of which
 	 * header format the agent used.
 	 *
-	 * Add new entries when an agent's UCP-Agent header is observed in
-	 * Product/Version form on enough requests to warrant a canonical
-	 * name — same graduation bar as `KNOWN_AGENT_HOSTS` (see that
-	 * map's docblock for the broader "feeds aggregate review" framing).
-	 * Single one-off appearances bucket as "Other AI" via the
-	 * fallback in `canonicalize_product()`; promote into this map only
-	 * when distinct-merchant volume warrants it.
+	 * Graduation: promote into this map when the same product token
+	 * has been observed across enough distinct merchants' orders to
+	 * warrant a stable canonical name. There's no hard threshold —
+	 * `KNOWN_AGENT_HOSTS` doesn't have one either, both maps are
+	 * curated by-hand from observed traffic. Single one-off
+	 * appearances bucket as "Other AI" via the fallback in
+	 * `canonicalize_product()`; the cohort hint is `_wc_ai_storefront_agent_host_raw`
+	 * meta which preserves the raw token for graduation review.
 	 */
 	const KNOWN_AGENT_PRODUCT_NAMES = [
 		// UCP Playground — sends `UCP-Playground/1.0` on every REST
@@ -165,6 +166,43 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// `ucpplayground.com` host entry so attribution converges on
 		// the same canonical brand whichever header format is sent.
 		'ucp-playground' => 'UCPPlayground',
+	];
+
+	/**
+	 * Map: UCP-Agent product-name token → canonical hostname.
+	 *
+	 * Parallel to `KNOWN_AGENT_PRODUCT_NAMES`. Used by the canonical
+	 * UTM shape (added 0.5.0) where `utm_source` is a lowercase
+	 * hostname rather than a canonical brand name.
+	 *
+	 * Why a separate map rather than extending `KNOWN_AGENT_PRODUCT_NAMES`'s
+	 * value shape: the existing constant maps `product → brand_name`
+	 * and is consumed by display-layer code (admin Recent Orders,
+	 * stats breakdown). Changing its values to an associative array
+	 * would ripple through every consumer. A sibling map keeps each
+	 * lookup direction independently tunable and avoids that churn.
+	 *
+	 * Why hostnames rather than canonical names for `utm_source`:
+	 * lowercase hostnames match the GA4 / Google Analytics
+	 * `utm_source` convention (where examples are `google`,
+	 * `facebook`, etc.) that WC's Origin column surfaces verbatim.
+	 * They also converge with what bypass-path agents naturally
+	 * stamp — UCPPlayground's playground harness sends
+	 * `utm_source=ucpplayground.com` on orders that don't go
+	 * through our `/checkout-sessions`. Stamping the hostname even
+	 * for product-form requests means the same agent attributes to
+	 * one consistent source string regardless of which path the
+	 * order took.
+	 *
+	 * Add an entry here ALONGSIDE every `KNOWN_AGENT_PRODUCT_NAMES`
+	 * entry. The product token must canonicalize to a brand AND to a
+	 * stable hostname — gaps in this map mean the new utm_source
+	 * shape falls back to the product token itself (e.g.
+	 * `utm_source=ucp-playground`), which fragments stats against the
+	 * profile-URL path (`utm_source=ucpplayground.com`).
+	 */
+	const PRODUCT_TO_HOSTNAME = [
+		'ucp-playground' => 'ucpplayground.com',
 	];
 
 	/**
@@ -186,7 +224,10 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 *     (`agent.foo-startup.com`, `bot.experiment.dev`) that crowd
 	 *     out the named brands the merchant cares about.
 	 *   - Attribution still works. The order is correctly tagged as
-	 *     "AI traffic" (utm_medium=ai_agent) just with a generic label.
+	 *     AI traffic via the `utm_id=woo_ucp` flag (or legacy
+	 *     `utm_medium=ai_agent` for pre-0.5.0 orders) — the bucket
+	 *     just means the canonical brand is "Other AI", not that
+	 *     the AI signal itself is missing.
 	 *   - Provenance preserved. The raw hostname is stamped on the
 	 *     order's `_wc_ai_storefront_agent_host_raw` meta whenever the
 	 *     UCP-Agent header was parseable, AND a dedicated debug-log

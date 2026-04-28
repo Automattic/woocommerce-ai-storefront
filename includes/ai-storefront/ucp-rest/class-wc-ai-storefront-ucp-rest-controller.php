@@ -1424,10 +1424,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		$agent_data     = self::resolve_agent_host( $request );
-		$agent_name     = $agent_data['name'];
-		$agent_raw_host = $agent_data['raw_host'];
-		$currency       = function_exists( 'get_woocommerce_currency' )
+		$agent_data        = self::resolve_agent_host( $request );
+		$agent_name        = $agent_data['name'];
+		$agent_raw_host    = $agent_data['raw_host'];
+		$agent_source_host = $agent_data['source_host'];
+		$currency          = function_exists( 'get_woocommerce_currency' )
 			? (string) get_woocommerce_currency()
 			: 'USD';
 
@@ -1571,7 +1572,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		$continue_url = $should_redirect
-			? self::build_continue_url( $processed, $agent_name, $agent_raw_host )
+			? self::build_continue_url( $processed, $agent_source_host, $agent_raw_host )
 			: '';
 
 		if ( $should_redirect ) {
@@ -3526,25 +3527,37 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * identification paths in priority order.
 	 *
 	 * Returns BOTH the canonical merchant-facing name AND a raw identifier
-	 * (hostname OR product token) because each lands in a different
-	 * downstream sink:
+	 * (hostname, product token, or body-field value) because each
+	 * lands in a different downstream sink:
 	 *
-	 *   - `name` (canonical) → `utm_source` on the continue_url, captured
-	 *     by WooCommerce Order Attribution into
-	 *     `_wc_order_attribution_utm_source`, displayed as `Source: {name}`
-	 *     in the Origin column. Canonicalization at this layer (not at
-	 *     display time) keeps the WC-captured value clean and queryable
-	 *     for stats breakdowns. Unknown identifiers bucket to "Other AI"
-	 *     (per `WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET`)
-	 *     rather than scattering one Origin row per novel identifier.
+	 *   - `name` (canonical brand) → internal `_wc_ai_storefront_agent`
+	 *     order meta when the lenient gate fires (`utm_source`
+	 *     matches a `KNOWN_AGENT_HOSTS` key), otherwise falls back
+	 *     to the raw utm_source value. Used by our own admin AI
+	 *     Orders display + Top Agent stats to show friendly brand
+	 *     names ("ChatGPT", "UCPPlayground", "Other AI"). NOT
+	 *     emitted as `utm_source` on the URL — see `source_host`
+	 *     below for that.
 	 *
-	 *   - `raw_host` (untransformed) → `ai_agent_host_raw` URL param on
-	 *     the continue_url, captured into
-	 *     `_wc_ai_storefront_agent_host_raw` order meta. Preserves the
-	 *     raw identifier so merchants can drill into an "Other AI" order
-	 *     and see who actually sent it; also feeds aggregate review for
-	 *     graduating frequent unknowns into `KNOWN_AGENT_HOSTS` /
-	 *     `KNOWN_AGENT_PRODUCT_NAMES`.
+	 *   - `source_host` (lowercase hostname) → `utm_source` on the
+	 *     continue_url, captured by WooCommerce Order Attribution
+	 *     into `_wc_order_attribution_utm_source` and rendered in
+	 *     WC's Origin column. For profile-URL form requests this is
+	 *     the same as `raw_host`. For Product/Version-form requests
+	 *     this is `PRODUCT_TO_HOSTNAME` lookup output (e.g.
+	 *     `ucp-playground` → `ucpplayground.com`); for unknown
+	 *     products it falls back to the product token. For
+	 *     meta.source-fallback requests, same product-name lookup
+	 *     applies. Empty when no signal at all — `build_continue_url`
+	 *     substitutes the `FALLBACK_SOURCE` sentinel.
+	 *
+	 *   - `raw_host` (untransformed identifier) → `ai_agent_host_raw`
+	 *     URL param on the continue_url, captured into
+	 *     `_wc_ai_storefront_agent_host_raw` order meta. Preserves
+	 *     the raw signal value (hostname, product token, or body
+	 *     field as the agent sent it) for diagnostic purposes and
+	 *     for graduation review of frequent unknowns into
+	 *     `KNOWN_AGENT_HOSTS` / `KNOWN_AGENT_PRODUCT_NAMES`.
 	 *
 	 * Identification priority (first non-empty wins):
 	 *   1. `UCP-Agent: profile="https://example.com/..."` — the RFC 8941
@@ -3575,7 +3588,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * for the rationale.
 	 *
 	 * @param WP_REST_Request $request The incoming UCP request.
-	 * @return array{name: string, raw_host: string}
+	 * @return array{name: string, raw_host: string, source_host: string}
 	 *
 	 * @see WC_AI_Storefront_UCP_Agent_Header::canonicalize_host() for
 	 *      the hostname → brand-name mapping rationale.
@@ -3591,9 +3604,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			? WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header_str )
 			: '';
 		if ( '' !== $raw_host ) {
+			// Profile-URL form: raw_host IS a hostname. Lowercase it
+			// for utm_source consistency (DNS hostnames are case-
+			// insensitive but agents may send mixed-case in profile
+			// URLs — observed: `Gemini.Google.COM`).
 			return [
-				'name'     => WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_host ),
-				'raw_host' => $raw_host,
+				'name'        => WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_host ),
+				'raw_host'    => $raw_host,
+				'source_host' => strtolower( $raw_host ),
 			];
 		}
 
@@ -3603,8 +3621,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			: '';
 		if ( '' !== $product ) {
 			return [
-				'name'     => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $product ),
-				'raw_host' => $product,
+				'name'        => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $product ),
+				'raw_host'    => $product,
+				// Resolve product token → canonical hostname so
+				// `utm_source` converges across paths (a UCPPlayground
+				// request via Product/Version stamps the same
+				// `ucpplayground.com` as one via profile-URL OR via
+				// bypass-path lenient attribution). For unknown products
+				// we fall back to the product token itself — better
+				// than empty utm_source, accepts that unknowns
+				// fragment until a hostname is mapped in.
+				'source_host' => WC_AI_Storefront_UCP_Agent_Header::PRODUCT_TO_HOSTNAME[ $product ] ?? $product,
 			];
 		}
 
@@ -3626,15 +3653,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( '' !== $meta_source ) {
 			$normalized = strtolower( $meta_source );
 			return [
-				'name'     => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $normalized ),
-				'raw_host' => $meta_source,
+				'name'        => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $normalized ),
+				'raw_host'    => $meta_source,
+				// Same product → hostname resolution as Path 2.
+				'source_host' => WC_AI_Storefront_UCP_Agent_Header::PRODUCT_TO_HOSTNAME[ $normalized ] ?? $normalized,
 			];
 		}
 
-		// Path 4: nothing identified the agent.
+		// Path 4: nothing identified the agent. Empty source_host —
+		// `build_continue_url()` substitutes the FALLBACK_SOURCE
+		// sentinel so the cohort stays observable in stats.
 		return [
-			'name'     => WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
-			'raw_host' => '',
+			'name'        => WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			'raw_host'    => '',
+			'source_host' => '',
 		];
 	}
 
@@ -3889,38 +3921,78 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * Format per WooCommerce's native /checkout-link/ feature:
 	 *   /checkout-link/?products=ID:QTY,ID:QTY
 	 *
-	 * UTM parameters append for attribution:
-	 *   &utm_source={agent_name}&utm_medium=ai_agent
+	 * UTM parameters append for attribution (canonical shape, 0.5.0+):
+	 *   &utm_source={hostname}&utm_medium=referral&utm_id=woo_ucp
 	 *
-	 * Plus, when the agent's hostname was extracted from a UCP-Agent
-	 * header, the raw hostname is appended as `ai_agent_host_raw`:
+	 * Three coordinated changes from the pre-0.5.0 shape:
+	 *
+	 *   - `utm_source` is now a lowercase hostname (e.g.
+	 *     `chatgpt.com`) rather than a canonical brand name (e.g.
+	 *     `ChatGPT`). Hostnames match the GA4 / Google Analytics
+	 *     `utm_source` convention (`google`, `facebook`, etc.) that
+	 *     WC's Origin column surfaces verbatim, and they converge
+	 *     with what bypass-path agents naturally stamp on Shareable
+	 *     Checkout links. Fragmenting attribution across our
+	 *     continue_url and bypass paths was the dominant pre-0.5.0
+	 *     problem — the same agent showed up in WC Origin as both
+	 *     `ChatGPT` and `chatgpt.com` for different orders.
+	 *
+	 *   - `utm_medium` is now `referral` (Google-canonical) rather
+	 *     than `ai_agent`. AI agent traffic IS referral traffic by
+	 *     Google's analytics taxonomy; `referral` lets GA4 auto-bucket
+	 *     under the Referral default channel grouping rather than
+	 *     "Unassigned". Merchants who want AI-specific reports add a
+	 *     custom GA4 channel grouping rule (`Source matches AI
+	 *     hostnames`).
+	 *
+	 *   - New `utm_id=woo_ucp` flag identifies "we routed this
+	 *     through our /checkout-sessions endpoint." Carries the
+	 *     "we routed this" signal that `utm_medium=ai_agent`
+	 *     previously carried. Decouples WHO sent the user (utm_source)
+	 *     from HOW it was routed (utm_id), so changing one doesn't
+	 *     fragment the other. The `woo_` prefix scopes the value to
+	 *     our ecosystem.
+	 *
+	 * Migration: the STRICT attribution gate dual-checks
+	 * `utm_id === 'woo_ucp'` OR legacy `utm_medium === 'ai_agent'` to
+	 * keep already-placed orders attributing correctly through the
+	 * upgrade window. See `WC_AI_Storefront_Attribution::AI_AGENT_MEDIUM`
+	 * docblock for the legacy-branch removal horizon (tied to WC
+	 * Analytics' default reporting windows).
+	 *
+	 * Plus, when an agent identifier was resolved (any path), the raw
+	 * value is appended as `ai_agent_host_raw`:
 	 *   &ai_agent_host_raw={raw_host}
 	 *
-	 * The raw-host param is for "Other AI" bucketed orders so merchants
-	 * can drill in and see the actual hostname behind the bucket. Empty
-	 * raw-host (no UCP-Agent header) means the param is omitted entirely
-	 * — no spurious `&ai_agent_host_raw=` in the URL.
+	 * The raw-host param is a general diagnostic / graduation-review
+	 * field — it's stamped for any resolved identifier whether the
+	 * agent is in `KNOWN_AGENT_HOSTS` (helpful provenance) or not
+	 * (the load-bearing case for "Other AI" drill-in). Empty raw-host
+	 * (no UCP-Agent header AND no body fallback) means the param is
+	 * omitted entirely — no spurious `&ai_agent_host_raw=` in the URL.
 	 *
 	 * WC's own Order Attribution system captures `utm_source` /
-	 * `utm_medium` on the resulting order. The `ai_agent_host_raw` param
-	 * is captured by `WC_AI_Storefront_Attribution::capture_ai_attribution()`
-	 * into `_wc_ai_storefront_agent_host_raw` meta.
+	 * `utm_medium` / `utm_id` on the resulting order. The
+	 * `ai_agent_host_raw` param is captured by
+	 * `WC_AI_Storefront_Attribution::capture_ai_attribution()` into
+	 * `_wc_ai_storefront_agent_host_raw` meta.
 	 *
-	 * @param array<int, array<string, mixed>> $processed  Successfully-processed line items.
-	 * @param string                           $agent_name Canonical brand name for `utm_source`
-	 *                                                     (e.g. "Gemini", "ChatGPT", "Other AI"),
-	 *                                                     as produced by `resolve_agent_host()`.
-	 *                                                     Shows up in WC's Origin column as
-	 *                                                     `Source: {name}`.
-	 * @param string                           $raw_host   Untransformed hostname from the
-	 *                                                     UCP-Agent profile URL (e.g.
-	 *                                                     "ucpplayground.com"). Empty when no
-	 *                                                     UCP-Agent header was present. Stored
-	 *                                                     on the order as
-	 *                                                     `_wc_ai_storefront_agent_host_raw`
-	 *                                                     for diagnostic / graduation purposes.
+	 * @param array<int, array<string, mixed>> $processed   Successfully-processed line items.
+	 * @param string                           $source_host Lowercase hostname for `utm_source`
+	 *                                                      (e.g. "chatgpt.com",
+	 *                                                      "ucpplayground.com"). Empty when no
+	 *                                                      agent could be identified — falls
+	 *                                                      back to the FALLBACK_SOURCE sentinel
+	 *                                                      ("ucp_unknown") so the cohort stays
+	 *                                                      observable.
+	 * @param string                           $raw_host    Untransformed identifier from the
+	 *                                                      UCP-Agent header or body field.
+	 *                                                      Empty when no agent was identified.
+	 *                                                      Stored on the order as
+	 *                                                      `_wc_ai_storefront_agent_host_raw`
+	 *                                                      for diagnostic / graduation purposes.
 	 */
-	private static function build_continue_url( array $processed, string $agent_name, string $raw_host ): string {
+	private static function build_continue_url( array $processed, string $source_host, string $raw_host ): string {
 		$segments = [];
 		foreach ( $processed as $p ) {
 			$segments[] = $p['wc_id'] . ':' . $p['quantity'];
@@ -3930,10 +4002,24 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			? home_url( '/checkout-link/' )
 			: '/checkout-link/';
 
+		// utm_source: hostname when available, sentinel when not.
+		// Keeping the sentinel preserves the "agent didn't identify"
+		// cohort as a distinct row in WC Origin breakdowns.
+		$utm_source = '' !== $source_host
+			? $source_host
+			: WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
+
+		// Use the `WOO_UCP_ID` constant from the attribution class
+		// rather than a literal string here. The STRICT gate's matcher
+		// in `WC_AI_Storefront_Attribution::capture_ai_attribution()`
+		// reads the same constant — keeping both sides on the constant
+		// means a future rename can't silently break round-trip
+		// recognition of orders we routed.
 		$url = $base
 			. '?products=' . implode( ',', $segments )
-			. '&utm_source=' . rawurlencode( $agent_name )
-			. '&utm_medium=ai_agent';
+			. '&utm_source=' . rawurlencode( $utm_source )
+			. '&utm_medium=referral'
+			. '&utm_id=' . WC_AI_Storefront_Attribution::WOO_UCP_ID;
 
 		if ( '' !== $raw_host ) {
 			$url .= '&ai_agent_host_raw=' . rawurlencode( $raw_host );

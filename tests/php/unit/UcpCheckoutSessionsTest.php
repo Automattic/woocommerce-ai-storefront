@@ -701,14 +701,20 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	// UTM attribution
 	// ------------------------------------------------------------------
 
-	public function test_unknown_agent_hostname_buckets_to_other_ai_in_utm_source(): void {
-		// Novel / unregistered agent hostname — not in KNOWN_AGENT_HOSTS.
-		// Canonicalization buckets unknown hostnames into the "Other AI"
-		// label rather than scattering one Origin row per novel hostname.
-		// The raw hostname is preserved separately as `ai_agent_host_raw`
-		// in the continue_url (and on the order's
-		// `_wc_ai_storefront_agent_host_raw` meta) for diagnostic /
-		// graduation purposes — see resolve_agent_host() docblock.
+	public function test_unknown_agent_hostname_lands_in_utm_source_verbatim(): void {
+		// Canonical-UTM shape (0.5.0+): utm_source carries the raw
+		// (lowercased) hostname for unknown agents — NOT the "Other AI"
+		// bucket label. This converges with what bypass-path agents
+		// stamp on Shareable Checkout links (the same hostname on both
+		// our continue_url AND a merchant-direct link). Pre-0.5.0 the
+		// canonical-name bucket "Other AI" landed in utm_source, which
+		// fragmented stats against bypass paths.
+		//
+		// Internally we still recognize the order as bucketed via
+		// `_wc_ai_storefront_agent` meta (set to "Other AI" by the
+		// attribution layer); the WC-captured `_wc_order_attribution_utm_source`
+		// just shows the raw hostname so merchants drilling into the
+		// Origin column see who actually sent it.
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
@@ -716,32 +722,38 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			'profile="https://agent.example.com/profile.json"'
 		);
 
-		// Canonical "Other AI" lands in utm_source — what the merchant
-		// sees in the Origin column. URL-encoded space → "%20".
 		$this->assertStringContainsString(
-			'utm_source=Other%20AI',
+			'utm_source=agent.example.com',
+			$result['data']['continue_url']
+		);
+		// New canonical UTM shape: medium=referral (Google-canonical),
+		// utm_id=woo_ucp flags "we routed this".
+		$this->assertStringContainsString(
+			'utm_medium=referral',
 			$result['data']['continue_url']
 		);
 		$this->assertStringContainsString(
-			'utm_medium=ai_agent',
+			'utm_id=woo_ucp',
 			$result['data']['continue_url']
 		);
-		// Raw hostname is preserved in the new ai_agent_host_raw param
-		// so merchants who drill into an "Other AI" order can see who
-		// actually sent it.
+		// Raw hostname is preserved in the legacy ai_agent_host_raw
+		// param too — diagnostic-only since utm_source now carries
+		// the same value, but kept for backward-compat with consumers
+		// that read this meta directly.
 		$this->assertStringContainsString(
 			'ai_agent_host_raw=agent.example.com',
 			$result['data']['continue_url']
 		);
 	}
 
-	public function test_known_agent_hostname_is_canonicalized_in_utm_source(): void {
-		// Integration check: a hostname in KNOWN_AGENT_HOSTS must be
-		// mapped to its brand name BEFORE landing in utm_source, so
-		// WC's Origin column reads "Source: Gemini" (not
-		// "Source: gemini.google.com") once the order is captured.
-		// The unit-level mapping is exhaustively covered in
-		// UcpAgentHeaderTest; this test pins the end-to-end wiring.
+	public function test_known_agent_hostname_lands_in_utm_source_lowercased(): void {
+		// Canonical-UTM shape (0.5.0+): utm_source IS the lowercase
+		// hostname — not the canonical brand name. Pre-0.5.0 we
+		// stamped "Gemini" (canonical); now we stamp
+		// "gemini.google.com" (raw). The brand-name canonicalization
+		// still happens for the `_wc_ai_storefront_agent` meta so the
+		// merchant's AI Orders display reads "Source: Gemini", but
+		// utm_source carries the hostname for cross-path consistency.
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
@@ -750,28 +762,20 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertStringContainsString(
-			'utm_source=Gemini',
+			'utm_source=gemini.google.com',
 			$result['data']['continue_url']
 		);
-		// Raw hostname is also preserved for known hosts (parallel with
-		// the unknown-host case); guards against a regression that
-		// would drop ai_agent_host_raw emission only when the host is
-		// known. The merchant-facing `Origin` column shows the canonical
-		// "Gemini" but the order's `_wc_ai_storefront_agent_host_raw`
-		// meta still reflects the actual hostname for completeness.
 		$this->assertStringContainsString(
 			'ai_agent_host_raw=gemini.google.com',
 			$result['data']['continue_url']
 		);
 	}
 
-	public function test_ucpplayground_hostname_canonicalizes_to_ucpplayground(): void {
-		// UCP Playground is a test crawler — merchants flip it on
-		// during validation sessions. When it hits the UCP endpoint
-		// the order should attribute as "UCPPlayground" (clean canonical
-		// name), not "Other AI" (which would defeat the purpose of
-		// having it in KNOWN_AGENT_HOSTS) and not the raw hostname
-		// (pre-this-change behavior).
+	public function test_ucpplayground_hostname_lands_in_utm_source(): void {
+		// Canonical-UTM shape (0.5.0+): same hostname-not-brand
+		// treatment as the Gemini case above. Confirms the rule
+		// holds for UCP Playground specifically since it's the
+		// agent whose feedback drove the canonicalization.
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
@@ -780,7 +784,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertStringContainsString(
-			'utm_source=UCPPlayground',
+			'utm_source=ucpplayground.com',
 			$result['data']['continue_url']
 		);
 		$this->assertStringContainsString(
@@ -813,13 +817,13 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_product_version_ucp_agent_canonicalizes_known_product(): void {
-		// UCPPlayground sends `UCP-Agent: UCP-Playground/1.0` rather
-		// than `profile="..."`. Pre-0.4.0 the controller fell back
-		// to ucp_unknown for these requests; the parser only handled
-		// the structured-field form. The Product/Version path now
-		// canonicalizes via KNOWN_AGENT_PRODUCT_NAMES so the order
-		// attributes correctly to the agent's brand.
+	public function test_product_version_ucp_agent_resolves_to_canonical_hostname(): void {
+		// UCPPlayground sends `UCP-Agent: UCP-Playground/1.0`.
+		// Canonical-UTM shape (0.5.0+): utm_source is the canonical
+		// hostname for the product (resolved via PRODUCT_TO_HOSTNAME),
+		// converging with profile-URL form so the same agent stamps
+		// the same utm_source value regardless of which header shape
+		// it uses.
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
@@ -827,27 +831,27 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			'UCP-Playground/1.0'
 		);
 
+		// Resolves through PRODUCT_TO_HOSTNAME['ucp-playground'] →
+		// 'ucpplayground.com'. Same value the profile-URL form stamps.
 		$this->assertStringContainsString(
-			'utm_source=UCPPlayground',
+			'utm_source=ucpplayground.com',
 			$result['data']['continue_url']
 		);
-		// raw_host is the lowercased product token (not a hostname),
-		// so the diagnostic field is non-empty but reflects what was
-		// actually sent. A merchant drilling into the order meta
-		// sees `_wc_ai_storefront_agent_host_raw=ucp-playground`,
-		// which is the right diagnostic signal.
+		// raw_host preserves the original signal value (lowercased
+		// product token) for diagnostic / graduation purposes —
+		// distinct from utm_source's canonical-hostname value.
 		$this->assertStringContainsString(
 			'ai_agent_host_raw=ucp-playground',
 			$result['data']['continue_url']
 		);
 	}
 
-	public function test_product_version_ucp_agent_buckets_unknown_product(): void {
-		// A Product/Version-shaped header that doesn't appear in
-		// KNOWN_AGENT_PRODUCT_NAMES still yields an "Other AI" attribution
-		// (not ucp_unknown) because we DID identify *something* — just
-		// not a brand we recognize. Distinct cohort from "agent didn't
-		// identify itself at all" (which keeps ucp_unknown).
+	public function test_product_version_ucp_agent_unknown_product_falls_back_to_token(): void {
+		// Unknown product (no PRODUCT_TO_HOSTNAME entry) → utm_source
+		// falls back to the lowercased product token. Better than
+		// empty utm_source; accepts that unknowns fragment until a
+		// hostname is mapped in. Distinct cohort from "agent didn't
+		// identify at all" (which gets the ucp_unknown sentinel).
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
@@ -856,7 +860,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertStringContainsString(
-			'utm_source=Other%20AI',
+			'utm_source=novelagent',
 			$result['data']['continue_url']
 		);
 		$this->assertStringContainsString(
@@ -865,7 +869,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_meta_source_body_fallback_when_no_ucp_agent_header(): void {
+	public function test_meta_source_body_fallback_resolves_to_canonical_hostname(): void {
 		// Some clients identify themselves via `meta.source` in the
 		// request body rather than the UCP-Agent header. UCPPlayground
 		// flagged this as their secondary identification path. When
@@ -881,8 +885,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			// No UCP-Agent header set — falls through to meta.source.
 		);
 
+		// Same PRODUCT_TO_HOSTNAME resolution as the Product/Version
+		// header path — utm_source converges across both paths.
 		$this->assertStringContainsString(
-			'utm_source=UCPPlayground',
+			'utm_source=ucpplayground.com',
 			$result['data']['continue_url']
 		);
 		$this->assertStringContainsString(
@@ -894,7 +900,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	public function test_header_takes_priority_over_meta_source_body(): void {
 		// Priority gate: when both signals are present, the UCP-Agent
 		// header wins. Header semantics are part of the UCP spec; body
-		// `meta.source` is a community convention. A header-trusted
+		// `meta.source` is a body-field convention. A header-trusted
 		// agent that ALSO sends a divergent body field shouldn't have
 		// its identification overridden by the weaker signal.
 		$this->seed_simple_product( 1 );
@@ -910,17 +916,16 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertStringContainsString(
-			'utm_source=Gemini',
+			'utm_source=gemini.google.com',
 			$result['data']['continue_url']
 		);
 	}
 
-	public function test_meta_source_buckets_unknown_value_to_other_ai(): void {
+	public function test_meta_source_unknown_value_falls_back_to_token(): void {
 		// Body-fallback equivalent of the unknown-product test:
 		// meta.source provided a signal but it isn't in
-		// KNOWN_AGENT_PRODUCT_NAMES → bucket to Other AI rather than
-		// fall through to ucp_unknown. The raw value is preserved
-		// for diagnostics.
+		// PRODUCT_TO_HOSTNAME → utm_source falls back to the
+		// lowercased value rather than the ucp_unknown sentinel.
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
@@ -931,12 +936,12 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertStringContainsString(
-			'utm_source=Other%20AI',
+			'utm_source=mysteryagent',
 			$result['data']['continue_url']
 		);
-		// raw_host preserves the case the agent sent, since the
-		// downstream meta is for diagnostics only and the canonical
-		// has already been computed.
+		// raw_host preserves the case the agent sent (capital A in
+		// `mysteryAgent`) for diagnostic purposes; only utm_source
+		// gets lowercased.
 		$this->assertStringContainsString(
 			'ai_agent_host_raw=mysteryAgent',
 			$result['data']['continue_url']
@@ -1957,5 +1962,94 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 				return $hook === $target_hook ? $return_value : $default;
 			}
 		);
+	}
+
+	// ------------------------------------------------------------------
+	// Cross-path convergence (added 0.5.0)
+	// ------------------------------------------------------------------
+	//
+	// The whole point of the canonical UTM shape + PRODUCT_TO_HOSTNAME
+	// resolution is "all three identification paths for the same agent
+	// stamp the same utm_source value." The three independent path
+	// tests above each assert a literal string ("ucpplayground.com")
+	// — that locks the literal but not the convergence invariant.
+	// A refactor that changes one path to emit "ucp-playground.com"
+	// would break only that path's test. This test compares the three
+	// paths' utm_source extractions directly, so any divergence is
+	// caught regardless of which side moved.
+
+	public function test_all_three_identification_paths_for_ucpplayground_emit_identical_utm_source(): void {
+		$this->seed_simple_product( 1 );
+
+		$line_items = [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ];
+
+		// Path 1: profile-URL form (RFC 8941 Dictionary).
+		$profile_url_result = $this->call_handler(
+			[ 'line_items' => $line_items ],
+			'profile="https://ucpplayground.com/profile.json"'
+		);
+
+		// Path 2: Product/Version form (RFC 7231 §5.5.3 User-Agent).
+		$product_version_result = $this->call_handler(
+			[ 'line_items' => $line_items ],
+			'UCP-Playground/1.0'
+		);
+
+		// Path 3: meta.source body fallback.
+		$meta_source_result = $this->call_handler(
+			[
+				'line_items' => $line_items,
+				'meta'       => [ 'source' => 'ucp-playground' ],
+			]
+			// No UCP-Agent header.
+		);
+
+		$path1_source = $this->extract_utm_source( $profile_url_result['data']['continue_url'] );
+		$path2_source = $this->extract_utm_source( $product_version_result['data']['continue_url'] );
+		$path3_source = $this->extract_utm_source( $meta_source_result['data']['continue_url'] );
+
+		// The convergence invariant: all three paths produce the same
+		// utm_source value. Asserting equality directly (rather than
+		// a literal substring per path) means a future refactor that
+		// changes the canonical hostname for UCPPlayground only needs
+		// to update PRODUCT_TO_HOSTNAME — this test still passes
+		// because the three paths converge, regardless of value.
+		$this->assertSame(
+			$path1_source,
+			$path2_source,
+			'Profile-URL and Product/Version paths must emit identical utm_source for the same agent.'
+		);
+		$this->assertSame(
+			$path2_source,
+			$path3_source,
+			'Product/Version and meta.source body paths must emit identical utm_source for the same agent.'
+		);
+
+		// Also pin the actual value at this snapshot so that a
+		// refactor which broke convergence by setting all three to
+		// the wrong but-equal value (e.g. all three return the empty
+		// sentinel) still fails. Belt + suspenders.
+		$this->assertSame( 'ucpplayground.com', $path1_source );
+	}
+
+	/**
+	 * Parse the utm_source query parameter out of a continue_url.
+	 *
+	 * Tighter than `assertStringContainsString( 'utm_source=...', $url )`
+	 * because it round-trips through `parse_url` + `parse_str` so a
+	 * URL like `?products=foo&utm_source=foo.com.evil&...` doesn't
+	 * accidentally match a substring assertion against `utm_source=foo.com`.
+	 *
+	 * @param string $url The continue_url to parse.
+	 * @return string The decoded utm_source value, or empty string when absent.
+	 */
+	private function extract_utm_source( string $url ): string {
+		$query = wp_parse_url( $url, PHP_URL_QUERY );
+		if ( ! is_string( $query ) ) {
+			return '';
+		}
+		$params = [];
+		parse_str( $query, $params );
+		return is_string( $params['utm_source'] ?? null ) ? $params['utm_source'] : '';
 	}
 }

@@ -138,7 +138,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		$this->assertStringContainsString( 'add-to-cart=42', $url );
 		$this->assertStringContainsString( 'utm_source=%7Bagent_id%7D', $url );
-		$this->assertStringContainsString( 'utm_medium=ai_agent', $url );
+		// Canonical UTM shape (0.5.0+): medium=referral (Google-canonical),
+		// utm_id=woo_ucp flags "we routed this".
+		$this->assertStringContainsString( 'utm_medium=referral', $url );
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
 		$this->assertStringContainsString( 'ai_session_id=%7Bsession_id%7D', $url );
 	}
 
@@ -149,6 +152,89 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$platforms = $result['potentialAction']['target']['actionPlatform'];
 		$this->assertContains( 'https://schema.org/DesktopWebPlatform', $platforms );
 		$this->assertContains( 'https://schema.org/MobileWebPlatform', $platforms );
+	}
+
+	// ------------------------------------------------------------------
+	// SearchAction urlTemplate (Store-level JSON-LD)
+	// ------------------------------------------------------------------
+	//
+	// The Store-level `output_store_jsonld()` emits a SearchAction
+	// urlTemplate that ALSO carries the canonical UTM shape (0.5.0+).
+	// Pre-this-test, only BuyAction's urlTemplate was pinned by tests
+	// — a refactor that reverted SearchAction to the legacy
+	// `utm_medium=ai_agent` shape would pass CI silently. This test
+	// captures stdout and asserts the canonical shape substrings on
+	// the SearchAction emission.
+	//
+	// We assert substrings rather than parse the full JSON because
+	// `output_store_jsonld()` echoes a complete `<script type=...>`
+	// wrapper plus the JSON body; a substring check avoids brittle
+	// JSON-shape-decoding for what is effectively a regression guard.
+
+	public function test_searchaction_url_template_emits_canonical_utm_shape(): void {
+		// Capture the SearchAction urlTemplate by intercepting the
+		// `wc_ai_storefront_jsonld_store` filter that `output_store_jsonld()`
+		// applies to its `$store_data` array right before echoing.
+		// Using filter capture rather than buffered-output capture
+		// avoids the get_terms / wc_get_products stubbing rabbit hole
+		// in `get_catalog_summary()` — we just want to verify what
+		// utm shape lands on the SearchAction urlTemplate.
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'home_url' )->alias(
+			static fn( $path = '' ) => 'https://example.com' . $path
+		);
+		Functions\when( 'get_bloginfo' )->returnArg();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_terms' )->justReturn( [] );
+		// `is_wp_error` is defined globally by Brain Monkey's WP
+		// preset before Patchwork can redefine it, so we don't stub
+		// it here — `get_terms()` returns `[]` (a plain array, not a
+		// WP_Error), so the natural `is_wp_error([])` returns false
+		// and execution falls through.
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
+		// `__()` is invoked on the OfferCatalog name; not relevant
+		// to this test but Brain Monkey errors without it.
+		Functions\when( '__' )->returnArg( 1 );
+
+		// Capture the array passed through the filter so we can
+		// assert on its structure directly. The filter signature is
+		// `apply_filters( $tag, $value, ...$args )`; the existing
+		// setUp stub returns `$args[2]` (i.e. the value) — we
+		// intercept here for the specific tag we care about and
+		// pass-through for others.
+		$captured = null;
+		// Variadic third+ params: `output_store_jsonld()` invokes
+		// `apply_filters( 'wc_ai_storefront_jsonld_store', $store_data, $settings )`
+		// with three args. A 2-arg alias would throw `ArgumentCountError`
+		// on PHP 8 strict-mode internals. Variadic capture forwards
+		// any extras without inspecting them.
+		Functions\when( 'apply_filters' )->alias(
+			static function ( string $tag, $value, ...$extras ) use ( &$captured ) {
+				if ( $tag === 'wc_ai_storefront_jsonld_store' ) {
+					$captured = $value;
+				}
+				return $value;
+			}
+		);
+
+		// Suppress the actual echo so PHPUnit's risky-test detector
+		// doesn't flag stray output. Wrapping in ob_* keeps the
+		// buffer balanced even if the function throws.
+		ob_start();
+		try {
+			$this->jsonld->output_store_jsonld();
+		} finally {
+			ob_end_clean();
+		}
+
+		$this->assertIsArray( $captured, 'wc_ai_storefront_jsonld_store filter should fire' );
+		$url = $captured['potentialAction']['target']['urlTemplate'];
+
+		$this->assertStringContainsString( 'utm_medium=referral', $url );
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+		// Regression guard against the legacy shape leaking back in.
+		$this->assertStringNotContainsString( 'utm_medium=ai_agent', $url );
 	}
 
 	// ------------------------------------------------------------------
