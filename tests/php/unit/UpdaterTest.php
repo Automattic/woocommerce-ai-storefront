@@ -230,4 +230,22 @@ class UpdaterTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertTrue( true, 'configure_github_api should tolerate api objects without the optional methods.' );
 	}
+
+	public function test_configure_github_api_rejects_non_object_inputs(): void {
+		// Defensive type guard: the factory contract returns
+		// `object|null`, but a future refactor that accidentally
+		// returns an array or scalar would otherwise hit a TypeError
+		// inside method_exists() / get_class(). The helper must treat
+		// any non-object the same as null and no-op cleanly.
+		//
+		// We can't directly observe "no method calls" without an
+		// object stub, so the assertion here is "no exception thrown" —
+		// which is the exact failure mode we're guarding against.
+		WC_AI_Storefront_Updater::configure_github_api( array( 'not', 'an', 'object' ) );
+		WC_AI_Storefront_Updater::configure_github_api( 42 );
+		WC_AI_Storefront_Updater::configure_github_api( 'arbitrary string' );
+		WC_AI_Storefront_Updater::configure_github_api( false );
+
+		$this->assertTrue( true, 'configure_github_api must no-op on non-object inputs without raising.' );
+	}
 }

@@ -187,7 +187,12 @@ class WC_AI_Storefront_Updater {
 	 * @return void
 	 */
 	public static function configure_github_api( $api ) {
-		if ( ! $api ) {
+		// Defensive type guard. The factory contract returns
+		// `object|null`, but a future refactor that accidentally
+		// returns an array or scalar would otherwise hit a TypeError
+		// inside method_exists() / get_class(). Treat any non-object
+		// the same as null and no-op.
+		if ( ! is_object( $api ) ) {
 			return;
 		}
 
