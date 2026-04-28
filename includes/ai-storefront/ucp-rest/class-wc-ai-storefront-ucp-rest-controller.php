@@ -1517,6 +1517,78 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
+		// Dedup pass: an agent that posts the same product/variation
+		// twice (e.g. an incremental cart-add pattern that re-sends an
+		// item already in the cart, or a cart-merge across sessions
+		// that didn't pre-collapse on the agent side) would otherwise
+		// produce a `continue_url` carrying two `wc_id:qty` pairs that
+		// share the same `wc_id`. WooCommerce's `/checkout-link/`
+		// parser uses each `id` as a KEY in its add-to-cart loop, so
+		// the second occurrence overwrites the first — buyer's cart
+		// contains the second entry's quantity, NOT the sum, while
+		// our response echoed both lines with their original
+		// quantities. Result: the totals our agent caller saw
+		// disagree with the price the buyer is charged at checkout.
+		// Buyer-trust failure, blamed on the merchant.
+		//
+		// Collapse `$processed` by `wc_id` so the response echo, the
+		// `totals` computation, and `build_continue_url` all see one
+		// entry per `wc_id` carrying the summed quantity. Preserve
+		// the FIRST occurrence's `ucp_id` and `unit_price_minor` as
+		// the canonical values for the merged line — `ucp_id`
+		// round-trip stays predictable (agents see the ID form they
+		// sent first); `unit_price_minor` is identical across
+		// duplicates by definition (same product = same price at
+		// fetch time).
+		$dedup_keyed    = [];
+		$merge_happened = false;
+		foreach ( $processed as $p ) {
+			$key = $p['wc_id'];
+			if ( isset( $dedup_keyed[ $key ] ) ) {
+				$dedup_keyed[ $key ]['quantity'] += $p['quantity'];
+				$merge_happened                   = true;
+			} else {
+				$dedup_keyed[ $key ] = $p;
+			}
+		}
+
+		// Re-validate summed quantities. Two below-cap entries CAN
+		// sum to over-cap (e.g. 6000 + 5000 = 11000 > MAX 10000).
+		// Drop the merged entry and emit `invalid_quantity` — same
+		// posture as `process_line_item`'s single-line over-cap path
+		// at line ~3819: drop the line, surface the error. The
+		// JSONPath on the message is the line_items collection
+		// rather than a specific index because the merged entry no
+		// longer maps 1:1 to a request-side index.
+		$processed_dedup = [];
+		foreach ( $dedup_keyed as $entry ) {
+			if ( $entry['quantity'] > self::MAX_QUANTITY_PER_LINE_ITEM ) {
+				$messages[] = self::checkout_error_message(
+					'invalid_quantity',
+					'$.line_items'
+				);
+				continue;
+			}
+			$processed_dedup[] = $entry;
+		}
+		$processed = $processed_dedup;
+
+		// Surface the collapse to the agent so their model of the
+		// response shape (one line per `wc_id`) is explicit. Without
+		// this info-message, an agent comparing its sent payload
+		// (multiple lines for the same product) against our response
+		// (one line) would see a discrepancy without explanation —
+		// risk of double-billing logic on the agent side, or worse,
+		// silent assumptions that one of the duplicates was rejected.
+		if ( $merge_happened ) {
+			$messages[] = [
+				'type'     => 'info',
+				'code'     => 'merged_duplicate_items',
+				'severity' => 'advisory',
+				'content'  => __( 'Duplicate line items targeting the same product were merged. Quantities have been summed; the response shows one line per product.', 'woocommerce-ai-storefront' ),
+			];
+		}
+
 		// Legal links + warnings for any gaps.
 		[ $links, $legal_warnings ] = self::collect_legal_links();
 		foreach ( $legal_warnings as $warning ) {
