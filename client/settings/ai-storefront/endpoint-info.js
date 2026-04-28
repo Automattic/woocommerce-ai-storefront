@@ -908,16 +908,51 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						// Sub-group rendering: when a group declares
 						// `subgroups`, render a small heading + the
 						// crawlers that match each subgroup `key`. Empty
-						// sub-groups are skipped so the renderer's robust
-						// to a `KNOWN_CRAWLERS` reshape that drops the
-						// last entry in a sub-group. Entries without a
-						// matching `subgroup` field fall through under a
-						// generic "Other" heading — safety net only;
-						// production data should always assign every
+						// sub-groups are skipped so the renderer is
+						// robust to a `KNOWN_CRAWLERS` reshape that
+						// drops the last entry in a sub-group. Crawlers
+						// whose `subgroup` field doesn't match any
+						// declared sub-group `key` (or is missing
+						// entirely) fall through under a final "Other"
+						// heading — safety net so an orphan is *visible*
+						// rather than silently dropped from the admin
+						// UI; production data should always assign every
 						// live entry a sub-group.
 						const hasSubgroups =
 							Array.isArray( group.subgroups ) &&
 							group.subgroups.length > 0;
+
+						// Pre-compute orphans (live entries whose
+						// `subgroup` doesn't match any declared key) so
+						// the renderer can append an "Other" sub-group
+						// at the end without re-walking the list.
+						const declaredSubgroupKeys = hasSubgroups
+							? group.subgroups.map( ( sg ) => sg.key )
+							: [];
+						const orphanCrawlers = hasSubgroups
+							? crawlers.filter(
+									( c ) =>
+										! declaredSubgroupKeys.includes(
+											c.subgroup
+										)
+							  )
+							: [];
+
+						// Sub-group heading style: spreads the shared
+						// `eyebrowLabel` token (uppercase + 0.04em
+						// tracking + 600 weight) and overrides only the
+						// font-size so sub-headings sit visually
+						// subordinate to the main group heading. Per
+						// `tokens.js` doc, `fontSize` is the documented
+						// override key — other axes (tracking, casing)
+						// must come from the token to keep the project
+						// consistent.
+						const subgroupHeadingStyle = {
+							...typography.eyebrowLabel,
+							fontSize: '10px',
+							color: colors.textSecondary,
+							marginBottom: '4px',
+						};
 
 						const renderCrawlerRow = ( crawler, isLast ) => (
 							<div
@@ -975,8 +1010,9 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										padding: '4px 16px',
 									} }
 								>
-									{ hasSubgroups
-										? group.subgroups.map(
+									{ hasSubgroups ? (
+										<>
+											{ group.subgroups.map(
 												( sg, sgIndex ) => {
 													const sgCrawlers =
 														crawlers.filter(
@@ -995,22 +1031,12 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 														>
 															<div
 																style={ {
-																	color: colors.textSecondary,
+																	...subgroupHeadingStyle,
 																	marginTop:
 																		sgIndex ===
 																		0
 																			? '6px'
 																			: '14px',
-																	marginBottom:
-																		'4px',
-																	fontSize:
-																		'10px',
-																	letterSpacing:
-																		'0.04em',
-																	textTransform:
-																		'uppercase',
-																	fontWeight:
-																		'600',
 																} }
 															>
 																{ sg.title }
@@ -1030,14 +1056,40 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 														</Fragment>
 													);
 												}
-										  )
-										: crawlers.map( ( crawler, index ) =>
-												renderCrawlerRow(
-													crawler,
-													index ===
-														crawlers.length - 1
-												)
-										  ) }
+											) }
+											{ orphanCrawlers.length > 0 && (
+												<Fragment key="__orphan_other__">
+													<div
+														style={ {
+															...subgroupHeadingStyle,
+															marginTop: '14px',
+														} }
+													>
+														{ __(
+															'Other',
+															'woocommerce-ai-storefront'
+														) }
+													</div>
+													{ orphanCrawlers.map(
+														( crawler, idx ) =>
+															renderCrawlerRow(
+																crawler,
+																idx ===
+																	orphanCrawlers.length -
+																		1
+															)
+													) }
+												</Fragment>
+											) }
+										</>
+									) : (
+										crawlers.map( ( crawler, index ) =>
+											renderCrawlerRow(
+												crawler,
+												index === crawlers.length - 1
+											)
+										)
+									) }
 								</div>
 							</div>
 						);
