@@ -3527,25 +3527,37 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * identification paths in priority order.
 	 *
 	 * Returns BOTH the canonical merchant-facing name AND a raw identifier
-	 * (hostname OR product token) because each lands in a different
-	 * downstream sink:
+	 * (hostname, product token, or body-field value) because each
+	 * lands in a different downstream sink:
 	 *
-	 *   - `name` (canonical) → `utm_source` on the continue_url, captured
-	 *     by WooCommerce Order Attribution into
-	 *     `_wc_order_attribution_utm_source`, displayed as `Source: {name}`
-	 *     in the Origin column. Canonicalization at this layer (not at
-	 *     display time) keeps the WC-captured value clean and queryable
-	 *     for stats breakdowns. Unknown identifiers bucket to "Other AI"
-	 *     (per `WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET`)
-	 *     rather than scattering one Origin row per novel identifier.
+	 *   - `name` (canonical brand) → internal `_wc_ai_storefront_agent`
+	 *     order meta when the lenient gate fires (`utm_source`
+	 *     matches a `KNOWN_AGENT_HOSTS` key), otherwise falls back
+	 *     to the raw utm_source value. Used by our own admin AI
+	 *     Orders display + Top Agent stats to show friendly brand
+	 *     names ("ChatGPT", "UCPPlayground", "Other AI"). NOT
+	 *     emitted as `utm_source` on the URL — see `source_host`
+	 *     below for that.
 	 *
-	 *   - `raw_host` (untransformed) → `ai_agent_host_raw` URL param on
-	 *     the continue_url, captured into
-	 *     `_wc_ai_storefront_agent_host_raw` order meta. Preserves the
-	 *     raw identifier so merchants can drill into an "Other AI" order
-	 *     and see who actually sent it; also feeds aggregate review for
-	 *     graduating frequent unknowns into `KNOWN_AGENT_HOSTS` /
-	 *     `KNOWN_AGENT_PRODUCT_NAMES`.
+	 *   - `source_host` (lowercase hostname) → `utm_source` on the
+	 *     continue_url, captured by WooCommerce Order Attribution
+	 *     into `_wc_order_attribution_utm_source` and rendered in
+	 *     WC's Origin column. For profile-URL form requests this is
+	 *     the same as `raw_host`. For Product/Version-form requests
+	 *     this is `PRODUCT_TO_HOSTNAME` lookup output (e.g.
+	 *     `ucp-playground` → `ucpplayground.com`); for unknown
+	 *     products it falls back to the product token. For
+	 *     meta.source-fallback requests, same product-name lookup
+	 *     applies. Empty when no signal at all — `build_continue_url`
+	 *     substitutes the `FALLBACK_SOURCE` sentinel.
+	 *
+	 *   - `raw_host` (untransformed identifier) → `ai_agent_host_raw`
+	 *     URL param on the continue_url, captured into
+	 *     `_wc_ai_storefront_agent_host_raw` order meta. Preserves
+	 *     the raw signal value (hostname, product token, or body
+	 *     field as the agent sent it) for diagnostic purposes and
+	 *     for graduation review of frequent unknowns into
+	 *     `KNOWN_AGENT_HOSTS` / `KNOWN_AGENT_PRODUCT_NAMES`.
 	 *
 	 * Identification priority (first non-empty wins):
 	 *   1. `UCP-Agent: profile="https://example.com/..."` — the RFC 8941

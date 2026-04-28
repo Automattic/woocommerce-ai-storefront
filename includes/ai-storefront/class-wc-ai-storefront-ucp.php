@@ -224,11 +224,6 @@ class WC_AI_Storefront_Ucp {
 		// encouraged agents to construct URLs client-side — the exact
 		// path the UCP spec's `continue_url` directive steers away
 		// from.
-		// the hostname→brand mapping table and the fallback URL
-		// templates for non-UCP flows) still lives in llms.txt.
-		// Duplicating it under a machine-readable key encouraged
-		// agents to construct URLs client-side — the exact path the
-		// UCP spec's `continue_url` directive steers away from.
 
 		// Base docs URL for the version-pinned ucp.dev spec site.
 		// All `spec` and `schema` URLs route through the same
