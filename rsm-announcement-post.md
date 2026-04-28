@@ -14,7 +14,7 @@
 
 > When consumers use AI assistants to search for products, I want my catalog to be perfectly structured and compliant with agentic standards for seamless discovery, while dictating that the final transaction routes to my own environment, so I can win the AI-driven sale without surrendering my first-party data, brand experience, or long-term customer relationship to the AI platform.
 
-The job has three layers: **discovery, transaction routing, retention**. The rest of this post takes them one at a time.
+The job has three layers: **discovery, transaction routing, merchant ownership**. The rest of this post takes them one at a time.
 
 1. **Discoverable, in a way the AI can use.** A structured catalog and agentic-standards compliance (manifest, structured product data on every product page, search and lookup APIs), so any AI assistant that adopts the open spec can read the catalog reliably, without per-platform feed work or aggregator middlemen.
 
@@ -44,7 +44,7 @@ Three agentic-commerce protocols competed for the merchant surface; in the last 
 |---|---|---|---|
 | **Governance** | Multi-vendor open spec | OpenAI + Stripe co-maintained | Klarna-controlled; now feeds UCP |
 | **Catalog** | Live store via `/.well-known/ucp` manifest | Feed shared with OpenAI | Feed shared with Klarna; aggregated and normalized |
-| **Checkout** | In-chat, embedded, or redirect to merchant | Merchant redirect (after Mar 2026 walkback) | Klarna, or via Stripe Shared Payment Tokens |
+| **Checkout** | In-chat, embedded, or redirect to merchant | In-chat or merchant redirect | Klarna, or via Stripe Shared Payment Tokens |
 | **Brand experience** | Merchant brand surfaces directly | ChatGPT renders product cards from feed | Normalized into cross-merchant comparison rows |
 | **Customer data** | Stays with merchant | OpenAI captures conversation | Klarna captures discovery |
 | **Reach** | Any UCP-compliant agent | ChatGPT only | Klarna-integrated agents |
