@@ -3825,7 +3825,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$meta_source = isset( $meta['source'] ) && is_string( $meta['source'] )
 			? trim( $meta['source'] )
 			: '';
-		if ( '' !== $meta_source ) {
+		// Enforce the same constraints that the UCP-Agent header path
+		// enforces via `canonicalize_host()`: length <= 253 chars
+		// (RFC 1035 max FQDN) and only hostname-safe characters
+		// (letters, digits, hyphens, dots). This prevents an attacker
+		// who can craft arbitrary JSON bodies from injecting arbitrary
+		// strings into order meta or the `raw_host` attribution field.
+		if ( '' !== $meta_source
+			&& strlen( $meta_source ) <= 253
+			&& (bool) preg_match( '/^[A-Za-z0-9.\-]+$/', $meta_source )
+		) {
 			$normalized = strtolower( $meta_source );
 			return [
 				'name'        => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $normalized ),
