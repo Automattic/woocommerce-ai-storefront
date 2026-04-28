@@ -4,6 +4,8 @@ Make your WooCommerce catalog discoverable by AI assistants (ChatGPT, Gemini, Cl
 
 **Core principle: AI agents discover and recommend. The merchant owns the transaction.**
 
+> **Status: active prototype-phase development.** Iterating fast; expect frequent releases. Every release ships with full test coverage and a detailed CHANGELOG entry. Cadence will slow as the plugin enters the hardening phase. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for development setup and conventions.
+
 ## What it does
 
 Publishes three discovery surfaces that AI crawlers consume:
