@@ -126,5 +126,9 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
+= 0.6.5 - 2026-04-28 =
+**Fixed**
+* Checkout-session buyer-handoff message renders as informational, not an error, so AI agents present a primary Buy Now CTA instead of a plain hyperlink.
+
 = 0.1.0 =
 * Initial pre-release under the AI Storefront name, developed in the Automattic organization.
