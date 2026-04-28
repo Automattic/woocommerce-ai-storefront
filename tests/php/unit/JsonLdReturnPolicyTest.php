@@ -576,6 +576,112 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
 	}
 
+	// ------------------------------------------------------------------
+	// Per-product override: empty base country (issue #124)
+	//
+	// WC's setup wizard sets the store country, but installs that skip
+	// or disable the wizard (custom onboarding, headless storefronts,
+	// B2B sites) can have an empty `wc_get_base_location()['country']`.
+	// Pre-fix: the entire return-policy block was inside the
+	// `if ($country &&...)` gate, so a per-product final-sale flag
+	// was silently dropped when the merchant hadn't configured a
+	// store country.
+	//
+	// Fix: move return-policy emission outside the country gate. For
+	// MerchantReturnNotPermitted paths (per-product flag AND store-wide
+	// final_sale mode), omit `applicableCountry` when empty — Schema.org
+	// marks the field as recommended, not required, for no-return
+	// policies. For returns_accepted mode, keep the null return (a
+	// return window without a target region is not useful).
+	// ------------------------------------------------------------------
+
+	public function test_per_product_final_sale_emits_without_country(): void {
+		// Core acceptance criterion for issue #124: a merchant who
+		// flags a product final-sale should see the structured claim
+		// in the JSON-LD regardless of whether the store address is
+		// configured. applicableCountry must be absent (not set to a
+		// fallback like 'US'), and the block must be structurally valid.
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			[ 'country' => '' ]
+		);
+		$this->flag_product_as_final_sale();
+		$this->set_settings( [ 'mode' => 'unconfigured' ] );
+
+		$result = $this->run_with_offer();
+
+		// Block must be present despite empty country.
+		$this->assertArrayHasKey(
+			'hasMerchantReturnPolicy',
+			$result['offers'][0],
+			'Per-product final-sale flag must emit the policy block even when store country is unset.'
+		);
+		$block = $result['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory']
+		);
+		// applicableCountry must be omitted — not defaulted to a
+		// fallback value. Schema.org accepts the omission for
+		// MerchantReturnNotPermitted; emitting a wrong country would
+		// be worse than omitting it.
+		$this->assertArrayNotHasKey(
+			'applicableCountry',
+			$block,
+			'applicableCountry must be omitted, not defaulted, when the store country is unset.'
+		);
+		// shippingDetails must still be absent — a DefinedRegion
+		// without addressCountry is meaningless.
+		$this->assertArrayNotHasKey( 'shippingDetails', $result['offers'][0] );
+	}
+
+	public function test_store_wide_final_sale_emits_without_country(): void {
+		// Store-wide final_sale mode must also emit without
+		// applicableCountry when the base country is unset, for
+		// the same Schema.org rationale as the per-product override.
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			[ 'country' => '' ]
+		);
+		$this->set_settings( [ 'mode' => 'final_sale', 'page_id' => 0 ] );
+
+		$result = $this->run_with_offer();
+
+		$this->assertArrayHasKey( 'hasMerchantReturnPolicy', $result['offers'][0] );
+		$block = $result['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory']
+		);
+		$this->assertArrayNotHasKey( 'applicableCountry', $block );
+	}
+
+	public function test_returns_accepted_still_omitted_when_country_unset(): void {
+		// Regression guard: returns_accepted mode must still produce
+		// no policy block when country is unset (same behavior as
+		// before the issue #124 fix). A return-window declaration
+		// without a target region is not useful to validators.
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			[ 'country' => '' ]
+		);
+		$this->set_settings(
+			[
+				'mode' => 'returns_accepted',
+				'days' => 30,
+				'fees' => 'FreeReturn',
+			]
+		);
+
+		$result = $this->run_with_offer();
+
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$result['offers'][0],
+			'returns_accepted mode must NOT emit a policy block when the store country is unset.'
+		);
+	}
+
 	public function test_unflagged_product_uses_store_wide_setting(): void {
 		// Regression guard: the override gate must not fire when the
 		// product is NOT flagged. Without the meta read returning ''
