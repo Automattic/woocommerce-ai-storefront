@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.6] – 2026-04-28
 
 ### Fixes
 - **`/llms.txt` and UCP manifest responses now emit `Vary: Host`; the llms.txt PHP-layer cache is keyed by `md5(HTTP_HOST)` rather than a bare constant.** Pre-fix, a reverse proxy or CDN keyed only on the request URL could serve a cached `/llms.txt` body from host A to a subsequent request from host B — injecting endpoint URLs that point at a foreign virtual host into the AI crawler's grounding document. The two-layer fix: (1) `Vary: Host` instructs every HTTP cache to maintain separate entries per `Host` header value; (2) the PHP-layer transient for llms.txt is now segmented by host using `CACHE_KEY . '_' . md5(HTTP_HOST)` so two concurrent WordPress instances sharing the same object-cache (e.g., a WP multisite with a Redis backend) cannot serve each other's bodies through the PHP layer. The UCP manifest computation is cheap (no HTTP probes), so its transient is dropped entirely in favor of per-request generation, removing the PHP-layer race without a keying change. Existing stale transients under the old bare key are harmless — they expire at their natural 1-hour TTL and are never read by the new code paths. Closes #125.
