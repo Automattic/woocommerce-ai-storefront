@@ -371,7 +371,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		$header = $request->get_header( 'ucp-agent' );
 		if ( ! is_string( $header ) || '' === $header ) {
-			return true;
+			return WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
 		}
 
 		// Try both UCP-Agent header formats: profile-URL (RFC 8941
@@ -412,7 +412,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// agents — truly malformed headers are noise and dropping
 			// them at the gate would risk false-positive blocks of
 			// edge-case but legitimate clients.
-			return true;
+			return WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
 		}
 
 		$settings = WC_AI_Storefront::get_settings();
@@ -426,7 +426,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$allow_unknown = isset( $settings['allow_unknown_ucp_agents'] )
 				&& 'yes' === $settings['allow_unknown_ucp_agents'];
 			if ( $allow_unknown ) {
-				return true;
+				return WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
 			}
 			WC_AI_Storefront_Logger::debug(
 				'UCP access denied — agent=%s raw_id=%s route=%s',
@@ -512,7 +512,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$allowed_crawlers = WC_AI_Storefront_Robots::resolve_allowed_crawlers( $settings );
 
 		if ( WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( $canonical, $allowed_crawlers ) ) {
-			return true;
+			return WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
 		}
 
 		WC_AI_Storefront_Logger::debug(
