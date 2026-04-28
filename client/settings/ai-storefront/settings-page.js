@@ -817,13 +817,20 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				{ /* Top agent's share of AI orders — promoted from a
 				     subvalue on the Top Agent card to its own card in
 				     0.6.1. Sits adjacent so the two cards read as a
-				     pair: "UCPPlayground / 100%". Promoting it preserves
-				     cross-card baseline alignment (the subvalue created
-				     per-card height variance) and gives the percent its
-				     own visual weight at 24px green numerics. */ }
+				     pair (e.g. "Top agent / UCPPlayground" + "Top
+				     agent share / 100%"). The shared "Top agent"
+				     label prefix is what does the visual linking now
+				     that the subvalue is gone — earlier the label
+				     was "% of AI orders" but that read as a
+				     standalone metric and lost the connection to the
+				     adjacent card. Promoting the percent to a full
+				     card preserves cross-card baseline alignment
+				     (the subvalue created per-card height variance)
+				     and gives the figure its own visual weight at
+				     24px green numerics. */ }
 				<StatCard
 					label={ __(
-						'% of AI orders',
+						'Top agent share',
 						'woocommerce-ai-storefront'
 					) }
 					value={

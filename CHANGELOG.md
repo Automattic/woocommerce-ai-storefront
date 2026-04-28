@@ -4,6 +4,13 @@
 
 ---
 
+## [0.6.2] – 2026-04-28
+
+### Fixes
+- **Top agent share-of-AI-orders card relabeled "Top agent share" (was "% of AI orders").** Pre-fix, after promoting the percent from a subvalue on the Top Agent card to its own adjacent card in 0.6.1, the connection between the two cards became unclear — "Top agent / UCPPlayground" and "% of AI orders / 100%" read as two unrelated metrics rather than a pair. The shared "Top agent" label prefix now does the visual linking work the subvalue used to do implicitly: the strip reads as "Top agent / UCPPlayground" + "Top agent share / 100%". Two-character JSX change; no layout regression, no schema change.
+
+---
+
 ## [0.6.1] – 2026-04-28
 
 ### Features
