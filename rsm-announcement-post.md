@@ -16,7 +16,7 @@
 
 The job has three layers: **discovery, transaction routing, retention**. The rest of this post takes them one at a time.
 
-1. **Discoverable, in a way the AI can use.** A structured catalog and agentic-standards compliance (manifest, JSON-LD on product pages, structured search and lookup APIs), so any AI assistant that adopts the open spec can read the catalog reliably, without per-platform feed work or aggregator middlemen.
+1. **Discoverable, in a way the AI can use.** A structured catalog and agentic-standards compliance (manifest, structured product data on every product page, search and lookup APIs), so any AI assistant that adopts the open spec can read the catalog reliably, without per-platform feed work or aggregator middlemen.
 
 2. **The transaction routes back to the merchant.** Discovery in chat; checkout on the merchant's domain. The signal section below is what happens when this layer breaks: when the AI tries to do the transaction itself.
 
@@ -75,7 +75,7 @@ The plugin's settings live across four tabs (Overview / Product Visibility / Pol
 
 ![Product Visibility tab: choose which catalog slices to expose to AI agents (all products, selected products, or by category/tag/brand).](./prototypes/product-visibility-tab.png)
 
-![JSON-LD on a product page: BuyAction with UCP attribution placeholders, hasMerchantReturnPolicy, inventoryLevel, brand. What AI agents read when they hit a single-product surface.](./prototypes/jsonld-inspector.png)
+![Structured product data on a product page (JSON-LD format): BuyAction with UCP attribution placeholders, return policy, inventory, brand. What AI agents read when they hit a single-product page.](./prototypes/jsonld-inspector.png)
 
 ## Why pull, when push exists
 
