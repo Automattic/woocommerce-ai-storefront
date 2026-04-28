@@ -596,14 +596,37 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		// Attribution: note the calling agent (unblocking; logging only).
+		// Attribution: resolve calling agent. Used for two purposes
+		// inside this handler:
+		//
+		//   - Debug logging (observability of who's hitting the
+		//     endpoint). Guarded on `UCP-Agent` header presence to
+		//     match pre-resolve_agent_host behavior — non-agent
+		//     traffic (curl probes, browsers, monitoring tools) hits
+		//     the endpoint too and would otherwise log
+		//     "from agent: unknown" once per request, drowning real
+		//     agent activity in the debug log when logging is on.
+		//
+		//   - `utm_source` + `ai_agent_host_raw` stamped on every
+		//     product `url` in the response (via the product
+		//     translator). Buyers who follow a bare product link
+		//     from chat — rather than going through the agent's
+		//     checkout-session integration — need attribution to
+		//     land. Without these params on the search-response URL,
+		//     those orders bucket as "direct" in WC Order
+		//     Attribution or get attributed to the agent's HTTP
+		//     referrer header, invisible to the AI-orders dashboard.
+		//     See `WC_AI_Storefront_Attribution::with_woo_ucp_utm()`
+		//     for the wire-shape contract.
+		$agent_data        = self::resolve_agent_host( $request );
+		$agent_source_host = $agent_data['source_host'];
+		$agent_raw_host    = $agent_data['raw_host'];
+
 		$agent_header = $request->get_header( 'ucp-agent' );
 		if ( is_string( $agent_header ) && '' !== $agent_header ) {
-			$host = WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname(
-				$agent_header
-			);
 			WC_AI_Storefront_Logger::debug(
-				'UCP catalog/search from agent: ' . ( '' !== $host ? $host : 'unknown' )
+				'UCP catalog/search from agent: '
+				. ( '' !== $agent_source_host ? $agent_source_host : 'unknown' )
 			);
 		}
 
@@ -836,7 +859,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$products[] = WC_AI_Storefront_UCP_Product_Translator::translate(
 				$wc_product,
 				$variation_fetch['variations'],
-				$seller
+				$seller,
+				$agent_source_host,
+				$agent_raw_host
 			);
 		}
 
@@ -1206,6 +1231,27 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
+		// Attribution: resolve calling agent. Same role as in
+		// `handle_catalog_search` — log for observability AND thread
+		// `source_host` / `raw_host` through to the product translator
+		// so every product `url` in the response carries our canonical
+		// UTM payload. Debug-log line is gated on UCP-Agent header
+		// presence for the same reason: non-agent traffic shouldn't
+		// produce "from agent: unknown" log noise. See the
+		// corresponding block in `handle_catalog_search` for full
+		// rationale; the contract is identical.
+		$agent_data        = self::resolve_agent_host( $request );
+		$agent_source_host = $agent_data['source_host'];
+		$agent_raw_host    = $agent_data['raw_host'];
+
+		$agent_header = $request->get_header( 'ucp-agent' );
+		if ( is_string( $agent_header ) && '' !== $agent_header ) {
+			WC_AI_Storefront_Logger::debug(
+				'UCP catalog/lookup from agent: '
+				. ( '' !== $agent_source_host ? $agent_source_host : 'unknown' )
+			);
+		}
+
 		// Signals parity with catalog.search — log for observability, no
 		// trust decisions yet. See handle_catalog_search for the
 		// rationale on deferring trust-model work until there's a
@@ -1308,7 +1354,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$products[] = WC_AI_Storefront_UCP_Product_Translator::translate(
 				$wc_product,
 				$variation_fetch['variations'],
-				$seller
+				$seller,
+				$agent_source_host,
+				$agent_raw_host
 			);
 		}
 
@@ -4016,30 +4064,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			? home_url( '/checkout-link/' )
 			: '/checkout-link/';
 
-		// utm_source: hostname when available, sentinel when not.
-		// Keeping the sentinel preserves the "agent didn't identify"
-		// cohort as a distinct row in WC Origin breakdowns.
-		$utm_source = '' !== $source_host
-			? $source_host
-			: WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
+		// `?products=` is the checkout-link-specific payload —
+		// stamped here, not in the attribution helper. The shared
+		// helper handles the `utm_source` / `utm_medium` / `utm_id` /
+		// `ai_agent_host_raw` shape so search-result product URLs
+		// and continue_urls stay byte-identical on the attribution
+		// portion. See `WC_AI_Storefront_Attribution::with_woo_ucp_utm()`
+		// for the canonical UTM contract.
+		$url_with_products = $base . '?products=' . implode( ',', $segments );
 
-		// Use the `WOO_UCP_ID` constant from the attribution class
-		// rather than a literal string here. The STRICT gate's matcher
-		// in `WC_AI_Storefront_Attribution::capture_ai_attribution()`
-		// reads the same constant — keeping both sides on the constant
-		// means a future rename can't silently break round-trip
-		// recognition of orders we routed.
-		$url = $base
-			. '?products=' . implode( ',', $segments )
-			. '&utm_source=' . rawurlencode( $utm_source )
-			. '&utm_medium=referral'
-			. '&utm_id=' . WC_AI_Storefront_Attribution::WOO_UCP_ID;
-
-		if ( '' !== $raw_host ) {
-			$url .= '&ai_agent_host_raw=' . rawurlencode( $raw_host );
-		}
-
-		return $url;
+		return WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			$url_with_products,
+			$source_host,
+			$raw_host
+		);
 	}
 
 	/**

@@ -921,4 +921,148 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 			$order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY )
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// with_woo_ucp_utm — emission-side helper that stamps our canonical
+	// UTM payload onto a URL. Shared between `build_continue_url` (the
+	// /checkout-sessions redirect URL) and the product translator (the
+	// /catalog/search and /catalog/lookup product `url` field). The
+	// identical wire shape is the contract that lets WC Order
+	// Attribution + `capture_ai_attribution()` recognize orders from
+	// either entry path.
+	// ------------------------------------------------------------------
+
+	public function test_with_woo_ucp_utm_stamps_canonical_shape(): void {
+		$result = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			'https://example.com/product/widget/',
+			'chatgpt.com'
+		);
+
+		$this->assertEquals(
+			'https://example.com/product/widget/'
+				. '?utm_source=chatgpt.com'
+				. '&utm_medium=referral'
+				. '&utm_id=woo_ucp',
+			$result
+		);
+	}
+
+	public function test_with_woo_ucp_utm_substitutes_fallback_source_when_empty(): void {
+		// Empty source_host = "agent context exists, agent didn't
+		// identify itself". The helper substitutes FALLBACK_SOURCE
+		// (`ucp_unknown`) so the cohort stays observable in WC Origin
+		// breakdowns rather than collapsing into "direct".
+		$result = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			'https://example.com/product/widget/',
+			''
+		);
+
+		$this->assertStringContainsString( 'utm_source=ucp_unknown', $result );
+		$this->assertStringContainsString( 'utm_medium=referral', $result );
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $result );
+	}
+
+	public function test_with_woo_ucp_utm_appends_ai_agent_host_raw_when_provided(): void {
+		$result = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			'https://example.com/product/widget/',
+			'chatgpt.com',
+			'chatgpt.com'
+		);
+
+		$this->assertStringContainsString( 'ai_agent_host_raw=chatgpt.com', $result );
+	}
+
+	public function test_with_woo_ucp_utm_omits_ai_agent_host_raw_when_empty(): void {
+		// Default `$raw_host = ''` — no `ai_agent_host_raw` param at
+		// all (not just an empty value). A spurious
+		// `&ai_agent_host_raw=` would mislead the capture path into
+		// stamping empty meta.
+		$result = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			'https://example.com/product/widget/',
+			'chatgpt.com'
+		);
+
+		$this->assertStringNotContainsString( 'ai_agent_host_raw', $result );
+	}
+
+	public function test_with_woo_ucp_utm_preserves_existing_query_string(): void {
+		// The helper detects an existing `?` in the URL and appends
+		// with `&` rather than blindly appending `?` (string concat,
+		// not `add_query_arg()` — the helper's docblock explains why).
+		// This matters for permalinks carrying language plugin params
+		// (`?lang=fr`), pagination, or custom rewrite rules: naive
+		// `?` append would produce `permalink?lang=fr?utm_source=...`
+		// (broken — second `?` is interpreted as part of `lang`'s
+		// value).
+		$result = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			'https://example.com/product/widget/?lang=fr',
+			'chatgpt.com'
+		);
+
+		$this->assertStringContainsString( 'lang=fr', $result );
+		$this->assertStringContainsString( 'utm_source=chatgpt.com', $result );
+		$this->assertEquals(
+			1,
+			substr_count( $result, '?' ),
+			'Result must contain exactly one `?` — two means the URL is broken.'
+		);
+	}
+
+	public function test_with_woo_ucp_utm_preserves_fragment_after_query(): void {
+		// Per RFC 3986 the `#fragment` runs to end-of-URI, so a query
+		// string MUST come before the fragment. WC permalinks don't
+		// carry fragments today, but third-party plugins can deep-link
+		// product pages to anchors like `#reviews` or `#description`.
+		// Naive append would produce `/product/widget/#reviews?utm_source=...`
+		// where the `?` becomes part of the fragment, defeating
+		// attribution capture entirely (the params never reach the
+		// server). The helper splits the fragment off before appending
+		// query params and rejoins it at the end.
+		$result = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			'https://example.com/product/widget/#reviews',
+			'chatgpt.com'
+		);
+
+		$this->assertEquals(
+			'https://example.com/product/widget/'
+				. '?utm_source=chatgpt.com'
+				. '&utm_medium=referral'
+				. '&utm_id=woo_ucp'
+				. '#reviews',
+			$result
+		);
+	}
+
+	public function test_with_woo_ucp_utm_handles_url_with_query_and_fragment(): void {
+		// Combination case: existing query + fragment. The query
+		// detector must look at the URL's query portion (not the
+		// fragment), and the fragment must land at the end after
+		// query rebuild.
+		$result = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			'https://example.com/product/widget/?lang=fr#reviews',
+			'chatgpt.com'
+		);
+
+		$this->assertStringContainsString( 'lang=fr&utm_source=chatgpt.com', $result );
+		$this->assertStringEndsWith( '#reviews', $result );
+		// Hash count: exactly one `#`. Two would mean we duplicated
+		// the fragment marker.
+		$this->assertEquals( 1, substr_count( $result, '#' ) );
+	}
+
+	public function test_with_woo_ucp_utm_uses_woo_ucp_id_constant(): void {
+		// Defense against a future rename drifting the constant on
+		// either side of the round-trip. The STRICT capture gate
+		// reads the same constant; both surfaces tied to the constant
+		// means a rename touches both atomically.
+		$result = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			'https://example.com/',
+			'chatgpt.com'
+		);
+
+		$this->assertStringContainsString(
+			'utm_id=' . WC_AI_Storefront_Attribution::WOO_UCP_ID,
+			$result
+		);
+	}
 }

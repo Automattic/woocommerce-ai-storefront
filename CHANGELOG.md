@@ -4,6 +4,14 @@
 
 ---
 
+## [0.6.4] – 2026-04-28
+
+### Fixes
+- **`/catalog/search` and `/catalog/lookup` now stamp UTM attribution on every product `url`.** Pre-fix, the bare permalink was returned. That's correct for buyers who follow the agent's `/checkout-sessions` integration end-to-end (the continue_url carries UTMs), but it loses attribution for the common path where the agent surfaces the product card with the bare URL as the click-through link, the buyer follows that link directly, and checks out on the merchant's site. Without UTMs on the product URL, those orders bucket as "direct" in WC Order Attribution (or get attributed to the agent's HTTP referrer header), invisible to the AI-orders dashboard. The fix stamps the same `utm_source` / `utm_medium=referral` / `utm_id=woo_ucp` / `ai_agent_host_raw` payload that continue_urls carry — same wire shape, captured by the same `WC_AI_Storefront_Attribution::capture_ai_attribution()` machinery, so attribution lands consistently regardless of which URL the buyer follows.
+- **Shared UTM-builder helper unifies the wire shape across both attribution surfaces.** Refactor extracts the UTM-stamping logic out of the REST controller's private `build_continue_url()` into a public `WC_AI_Storefront_Attribution::with_woo_ucp_utm()` static method. The continue_url builder and the product translator now call the same helper, so the stamped param order, the FALLBACK_SOURCE substitution for missing source_host, and the conditional `ai_agent_host_raw` inclusion can't drift between surfaces. Existing wire shape preserved bit-for-bit (string-concat helper, not `add_query_arg()` — `add_query_arg()` re-encodes existing query params via `urlencode_deep`, which would have flipped continue_url's `products=100:2` to `products=100%3A2`, a real byte-level change).
+
+---
+
 ## [0.6.3] – 2026-04-28
 
 ### Fixes
