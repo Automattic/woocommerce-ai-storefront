@@ -23,10 +23,11 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 	/**
 	 * Transient key prefix for outer-UCP-request rate-limit counters.
 	 *
-	 * Each AI-bot fingerprint (`ai_bot_<md5>`) gets its own 60-second
-	 * fixed-window counter stored as a WP transient under this prefix.
-	 * Separate from WC's inner-Store-API rate-limit storage so the two
-	 * layers don't interfere.
+	 * Each AI-bot fingerprint (`ai_bot_<md5>`) gets its own sliding-window
+	 * counter stored as a WP transient under this prefix. The TTL is reset
+	 * to 60 seconds on every increment, so the window slides rather than
+	 * fixing to a clock-aligned boundary. Separate from WC's inner-Store-API
+	 * rate-limit storage so the two layers don't interfere.
 	 */
 	const OUTER_TRANSIENT_PREFIX = 'wc_ai_ucp_rl_';
 
@@ -117,12 +118,11 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 	 * crawler (`AI_CRAWLERS`). Non-AI traffic — regular customers,
 	 * authenticated admin requests — returns `true` immediately.
 	 *
-	 * Rate-limit window: 60 seconds (same as the inner-Store-API
-	 * limiter). Uses WP transients as the counter store; the fixed
-	 * window resets when the transient expires. A race between two
-	 * simultaneous requests at the exact window boundary may let a
-	 * small number of extra requests through — this matches WC's own
-	 * rate-limiter behavior and is acceptable for a per-minute budget.
+	 * Rate-limit window: 60-second sliding window backed by a WP
+	 * transient (TTL is reset to 60 s on every increment). A race
+	 * between two simultaneous requests may let a small number of
+	 * extra requests through — this matches WC's own rate-limiter
+	 * behavior and is acceptable for a per-minute budget.
 	 *
 	 * @return bool|WP_Error True when the request is within budget;
 	 *                       WP_Error(status=429) when exceeded.
@@ -170,9 +170,8 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 			);
 		}
 
-		// Increment. First request in window (false === $count) starts
-		// a fresh 60-second transient. Subsequent requests in the same
-		// window update the count without extending the window.
+		// Increment. First request starts a 60-second transient; each
+		// subsequent call resets the TTL, making this a sliding window.
 		$new_count = ( false === $count ) ? 1 : (int) $count + 1;
 		set_transient( $transient_key, $new_count, 60 );
 
