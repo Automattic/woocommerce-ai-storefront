@@ -46,7 +46,7 @@ Three agentic-commerce protocols competed for the merchant surface; in the last 
 | **Catalog** | Live store via `/.well-known/ucp` manifest | Feed shared with OpenAI | Feed shared with Klarna; aggregated and normalized |
 | **Checkout** | In-chat, embedded, or redirect to merchant | In-chat or merchant redirect | Klarna, or via Stripe Shared Payment Tokens |
 | **Brand experience** | Merchant brand surfaces directly | ChatGPT renders product cards from feed | Normalized into cross-merchant comparison rows |
-| **Customer data** | Stays with merchant | OpenAI captures conversation | Klarna captures discovery |
+| **Customer data** | Discovery captured by agent; checkout merchant-side (redirect) | Discovery + checkout captured by OpenAI | Discovery + checkout captured by Klarna |
 | **Reach** | Any UCP-compliant agent | ChatGPT only | Klarna-integrated agents |
 
 **UCP** is the only protocol that honors all three layers, and the space is consolidating around it. Klarna joined in February 2026 and APP feeds into it; Stripe and Shopify back UCP; even ACP walked back to merchant-redirect in March 2026 after Walmart's conversion data made the case undeniable. Merchant-redirect is one of UCP's three checkout postures (alongside in-chat and embedded checkout) and the one this plugin implements. ACP and APP are still worth running as complements for the reach they bring (ChatGPT discovery, Klarna network), but each trades part of layer 3 for that reach: OpenAI captures the conversation in ACP; Klarna normalizes the catalog into cross-merchant comparison rows in APP.
