@@ -232,18 +232,27 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 	/**
 	 * Resolve the current request's remote IP address.
 	 *
-	 * Uses `REMOTE_ADDR` — the direct TCP connection address — for
-	 * rate-limit fingerprinting. This value cannot be forged by the
-	 * client itself (only by a trusted reverse proxy in front of the
-	 * server), making it reliable against spoofing attacks. Client-
-	 * supplied forwarding headers (X-Forwarded-For, etc.) are
-	 * intentionally not consulted here: they are trivially forgeable
-	 * and would allow a single attacker to generate unbounded unique
-	 * "IPs" to bypass per-IP windows.
+	 * Delegates to WC_Geolocation::get_ip_address() so that the
+	 * proxy_support WooCommerce setting is honoured. On stores behind
+	 * Cloudflare or an ALB, REMOTE_ADDR is the proxy IP, collapsing all
+	 * AI-bot traffic into a single rate-limit bucket. WC_Geolocation
+	 * reads CF-Connecting-IP / X-Real-IP / X-Forwarded-For when the
+	 * merchant has enabled proxy support, giving each real client IP its
+	 * own bucket as intended.
+	 *
+	 * Falls back to REMOTE_ADDR when WC_Geolocation is not yet loaded or
+	 * returns an empty string (e.g., CLI context). The empty-string case
+	 * is handled in the caller (fingerprint will use the bot name only).
 	 *
 	 * @return string IP address, or empty string if not available.
 	 */
 	private static function current_request_ip(): string {
+		if ( class_exists( 'WC_Geolocation' ) ) {
+			$ip = WC_Geolocation::get_ip_address();
+			if ( '' !== $ip ) {
+				return $ip;
+			}
+		}
 		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Sanitized below.
 		return isset( $_SERVER['REMOTE_ADDR'] )
 			? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) )
