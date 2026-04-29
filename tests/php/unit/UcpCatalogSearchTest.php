@@ -178,6 +178,20 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 				$route = $request->get_route();
 
 				if ( '/wc/store/v1/products' === $route ) {
+					// Batch variation fetch: include param means this is a
+					// batch_fetch_variations() call — serve from fake_store_api.
+					$include = $request->get_param( 'include' );
+					if ( is_array( $include ) && ! empty( $include ) ) {
+						$results = [];
+						foreach ( $include as $id ) {
+							$id = (int) $id;
+							if ( array_key_exists( $id, $api ) && null !== $api[ $id ] ) {
+								$results[] = $api[ $id ];
+							}
+						}
+						return new WP_REST_Response( $results, 200 );
+					}
+
 					// List dispatch — capture the params so tests can
 					// assert on the UCP→Store-API mapping, then return
 					// the canned product list. 1.6.0 added `page` +

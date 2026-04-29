@@ -2558,26 +2558,21 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * For variable products, fetch each variation's full Store API
-	 * response so the product translator can emit per-variation
-	 * variants. Simple products return an empty `variations` list.
+	 * For variable products, fetch all variations in a single Store API
+	 * collection dispatch rather than one per variation, then reassemble
+	 * in the source order WC declared. Simple products return empty.
 	 *
-	 * Variations that fail to fetch are skipped rather than aborting
-	 * the whole translation — partial variant lists are better than
-	 * synthesized-default fallbacks for agents trying to surface the
-	 * real price range to users. The `skipped` count is exposed in
-	 * the return value so callers can emit a `partial_variants`
-	 * warning to the agent (otherwise the variants list would silently
-	 * disagree with the product's price_range, giving agents bad data
-	 * with no signal to distrust it).
+	 * Uses the collection endpoint (`/wc/store/v1/products?include=[ids]`)
+	 * which fires the scope filter automatically — no per-variation
+	 * is_product_syndicated() check is required. Results not returned by
+	 * the endpoint (out of scope, 404, or cap-truncated) are silently
+	 * skipped. The `skipped` count lets callers emit a `partial_variants`
+	 * warning so agents are never silently misled about product completeness.
 	 *
-	 * Capped at MAX_VARIATIONS_PER_PRODUCT to bound the N+1 fan-out.
-	 * `array_slice` preserves source order so variations come back in
-	 * the same sequence WC emitted — important because the product's
-	 * `options` (attribute order) is derived from the variations list.
-	 * Slice overage counts toward the skipped total so agents see a
-	 * single consistent signal regardless of whether variations were
-	 * lost to the cap or to fetch failures.
+	 * Capped at MAX_VARIATIONS_PER_PRODUCT before the batch dispatch to
+	 * bound both fan-out and response payload size. Source order is
+	 * preserved by reassembling from the original pointer list after the
+	 * cache is fully populated.
 	 *
 	 * @param array<string, mixed> $wc_product Store API response for the parent product.
 	 * @return array{variations: array<int, array<string, mixed>>, skipped: int}
@@ -2604,29 +2599,54 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$variation_refs = array_slice( $variation_refs, 0, self::MAX_VARIATIONS_PER_PRODUCT );
 		}
 
-		$variations      = [];
-		$fetch_attempted = 0;
+		// Collect all valid variation IDs in source order; discard
+		// malformed refs (zero or non-integer) early.
+		$ordered_ids = [];
 		foreach ( $variation_refs as $ref ) {
 			// WC Store API emits `variations` as `[{id, attributes}, ...]`
-			// — just the pointer. Fetch the full variation record.
+			// — just the pointer. We only need the ID at this stage.
 			$variation_id = is_array( $ref )
 				? (int) ( $ref['id'] ?? 0 )
 				: (int) $ref;
-
-			if ( $variation_id <= 0 ) {
-				continue;
+			if ( $variation_id > 0 ) {
+				$ordered_ids[] = $variation_id;
 			}
+		}
 
-			++$fetch_attempted;
-			$data = self::fetch_store_api_product( $variation_id );
+		if ( empty( $ordered_ids ) ) {
+			return [
+				'variations' => [],
+				'skipped'    => $total_declared,
+			];
+		}
+
+		// Skip IDs already in the per-request memoization cache (e.g.
+		// two lookups in the same request share the same variation).
+		$uncached_ids = [];
+		foreach ( $ordered_ids as $id ) {
+			if ( ! isset( self::$request_product_cache_has_key[ $id ] ) ) {
+				$uncached_ids[] = $id;
+			}
+		}
+
+		// One batch dispatch covers all uncached variation IDs.
+		if ( ! empty( $uncached_ids ) ) {
+			self::batch_fetch_variations( $uncached_ids );
+		}
+
+		// Reassemble in the original source order using the now-fully-
+		// populated cache. Skipped entries (null cache value) are omitted.
+		$variations = [];
+		foreach ( $ordered_ids as $id ) {
+			$data = self::$request_product_cache[ $id ] ?? null;
 			if ( null !== $data ) {
 				$variations[] = $data;
 			}
 		}
 
 		// Skipped = everything the product declared that didn't make it
-		// into $variations. Includes cap-truncated + fetch-failed +
-		// malformed-ref entries.
+		// into $variations. Includes cap-truncated + scope-filtered +
+		// fetch-failed + malformed-ref entries.
 		$skipped = $total_declared - count( $variations );
 
 		if ( $skipped > 0 ) {
@@ -2644,6 +2664,73 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'variations' => $variations,
 			'skipped'    => $skipped,
 		];
+	}
+
+	/**
+	 * Fetch multiple variation IDs via a single Store API collection request
+	 * and populate the per-request memoization cache for each ID.
+	 *
+	 * Uses `/wc/store/v1/products?include=[ids]` so the Store API scope
+	 * filter runs automatically — no per-ID is_product_syndicated() gate
+	 * is needed. IDs absent from the response (out of scope, not found, or
+	 * API error) are cached as null to prevent retry dispatches.
+	 *
+	 * Extracted from fetch_variations_for() to isolate dispatch mechanics
+	 * from the ordering / cap / skip-count logic in the caller.
+	 *
+	 * @param int[] $ids Variation IDs to fetch. All must be > 0 and not
+	 *                   yet present in $request_product_cache_has_key.
+	 */
+	private static function batch_fetch_variations( array $ids ): void {
+		$request = new WP_REST_Request( 'GET', '/wc/store/v1/products' );
+		$request->set_query_params(
+			array(
+				'include'  => $ids,
+				'per_page' => count( $ids ),
+			)
+		);
+		$response = rest_do_request( $request );
+
+		// On any failure, cache every requested ID as null to prevent
+		// retry storms. The caller's skipped count surfaces the gap.
+		if ( $response instanceof WP_Error || $response->get_status() >= 400 ) {
+			foreach ( $ids as $id ) {
+				if ( ! isset( self::$request_product_cache_has_key[ $id ] ) ) {
+					self::$request_product_cache[ $id ]         = null;
+					self::$request_product_cache_has_key[ $id ] = true;
+				}
+			}
+			return;
+		}
+
+		$body = $response->get_data();
+		if ( ! is_array( $body ) ) {
+			foreach ( $ids as $id ) {
+				if ( ! isset( self::$request_product_cache_has_key[ $id ] ) ) {
+					self::$request_product_cache[ $id ]         = null;
+					self::$request_product_cache_has_key[ $id ] = true;
+				}
+			}
+			return;
+		}
+
+		// Index returned products by their WC ID for O(1) lookup.
+		$returned = [];
+		foreach ( $body as $item ) {
+			$item_arr = self::normalize_store_api_data( $item );
+			if ( is_array( $item_arr ) && isset( $item_arr['id'] ) ) {
+				$returned[ (int) $item_arr['id'] ] = $item_arr;
+			}
+		}
+
+		// Cache found items; missing ones (scope-filtered or 404) get null.
+		foreach ( $ids as $id ) {
+			if ( isset( self::$request_product_cache_has_key[ $id ] ) ) {
+				continue; // Guard against duplicate IDs in caller list.
+			}
+			self::$request_product_cache[ $id ]         = $returned[ $id ] ?? null;
+			self::$request_product_cache_has_key[ $id ] = true;
+		}
 	}
 
 	/**
