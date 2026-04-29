@@ -178,18 +178,18 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 				$route = $request->get_route();
 
 				if ( '/wc/store/v1/products' === $route ) {
-					// Batch variation fetch: include param means this is a
-					// batch_fetch_variations() call — serve from fake_store_api.
+					// Regression guard: the controller must NEVER use the
+					// collection endpoint to fetch variation IDs. Variations
+					// have post_type='product_variation'; the collection
+					// endpoint filters to post_type='product' and silently
+					// drops them. Variation fetches must use the single-item
+					// route (/wc/store/v1/products/{id}) instead.
 					$include = $request->get_param( 'include' );
 					if ( is_array( $include ) && ! empty( $include ) ) {
-						$results = [];
-						foreach ( $include as $id ) {
-							$id = (int) $id;
-							if ( array_key_exists( $id, $api ) && null !== $api[ $id ] ) {
-								$results[] = $api[ $id ];
-							}
-						}
-						return new WP_REST_Response( $results, 200 );
+						throw new \LogicException(
+							'Controller must not use the collection endpoint with ?include for variations. ' .
+							'Use the single-item route /wc/store/v1/products/{id} instead.'
+						);
 					}
 
 					// List dispatch — capture the params so tests can
