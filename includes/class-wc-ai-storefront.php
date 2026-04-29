@@ -26,6 +26,55 @@ class WC_AI_Storefront {
 	const SETTINGS_OPTION = 'wc_ai_storefront_settings';
 
 	/**
+	 * Single source of truth for default values of every plugin setting.
+	 *
+	 * Used by get_settings() via wp_parse_args so any new key added here
+	 * is automatically surfaced without touching the merge call. Note:
+	 * wp_parse_args is shallow — it does not recurse into nested arrays,
+	 * so the `return_policy` default array is only applied as a whole
+	 * unit if the stored value omits that key entirely. The
+	 * REST arg schema in the admin controller and the sanitization logic
+	 * in update_settings() are separate concerns and are NOT collapsed
+	 * here — they carry their own shape rules.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function settings_defaults(): array {
+		return array(
+			'enabled'                  => 'no',
+			'product_selection_mode'   => 'all',
+			'selected_categories'      => array(),
+			'selected_tags'            => array(),
+			'selected_brands'          => array(),
+			'selected_products'        => array(),
+			'rate_limit_rpm'           => 25,
+			// UCP REST gate for unknown AI agents (hostnames not in
+			// `KNOWN_AGENT_HOSTS`). Default `'no'` is secure-by-default
+			// for both new installs and upgrades — `wp_parse_args`
+			// merges this default into stored options on read, so
+			// existing stores get `'no'` without a migration step.
+			//
+			// Scope: this flag is UCP-REST-only. The merchant's
+			// `robots.txt` (`WC_AI_Storefront_Robots`) and the per-brand
+			// `allowed_crawlers` list are independent mechanisms; do
+			// NOT extend this flag to those surfaces — add siblings.
+			//
+			// See `WC_AI_Storefront_UCP_REST_Controller::check_agent_access()`
+			// for the gate's full rationale + trade-off.
+			'allow_unknown_ucp_agents' => 'no',
+			// Return/refund policy exposed to AI agents at the
+			// Offer level via `hasMerchantReturnPolicy`. Default
+			// `unconfigured` mode emits NO policy block — until a
+			// merchant opts into one of the explicit modes
+			// (`returns_accepted` / `final_sale`) we never publish
+			// a structurally invalid claim. See
+			// `WC_AI_Storefront_JsonLd::build_return_policy_block()`
+			// for the per-mode emission logic.
+			'return_policy'            => array( 'mode' => 'unconfigured' ),
+		);
+	}
+
+	/**
 	 * Singleton instance.
 	 *
 	 * @var WC_AI_Storefront|null
@@ -219,7 +268,8 @@ class WC_AI_Storefront {
 			// fresh content immediately; other virtual-host entries
 			// expire at their natural 1-hour TTL.
 			delete_transient( WC_AI_Storefront_Llms_Txt::host_cache_key() );
-			delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
+			// Legacy key — retained here for clean uninstall of pre-1.0 installs.
+			delete_transient( 'wc_ai_storefront_ucp' );
 		}
 	}
 
@@ -398,40 +448,9 @@ class WC_AI_Storefront {
 			return self::$settings_cache;
 		}
 
-		$defaults = [
-			'enabled'                  => 'no',
-			'product_selection_mode'   => 'all',
-			'selected_categories'      => [],
-			'selected_tags'            => [],
-			'selected_brands'          => [],
-			'selected_products'        => [],
-			'rate_limit_rpm'           => 25,
-			// UCP REST gate for unknown AI agents (hostnames not in
-			// `KNOWN_AGENT_HOSTS`). Default `'no'` is secure-by-default
-			// for both new installs and upgrades — `wp_parse_args`
-			// merges this default into stored options on read, so
-			// existing stores get `'no'` without a migration step.
-			//
-			// Scope: this flag is UCP-REST-only. The merchant's
-			// `robots.txt` (`WC_AI_Storefront_Robots`) and the per-brand
-			// `allowed_crawlers` list are independent mechanisms; do
-			// NOT extend this flag to those surfaces — add siblings.
-			//
-			// See `WC_AI_Storefront_UCP_REST_Controller::check_agent_access()`
-			// for the gate's full rationale + trade-off.
-			'allow_unknown_ucp_agents' => 'no',
-			// Return/refund policy exposed to AI agents at the
-			// Offer level via `hasMerchantReturnPolicy`. Default
-			// `unconfigured` mode emits NO policy block — until a
-			// merchant opts into one of the explicit modes
-			// (`returns_accepted` / `final_sale`) we never publish
-			// a structurally invalid claim. See
-			// `WC_AI_Storefront_JsonLd::build_return_policy_block()`
-			// for the per-mode emission logic.
-			'return_policy'            => [ 'mode' => 'unconfigured' ],
-		];
+		$defaults = self::settings_defaults();
 
-		$settings = get_option( self::SETTINGS_OPTION, [] );
+		$settings = get_option( self::SETTINGS_OPTION, array() );
 
 		// Silent migration from legacy pre-0.1.5 enum values
 		// (`categories` / `tags` / `brands`) to the consolidated

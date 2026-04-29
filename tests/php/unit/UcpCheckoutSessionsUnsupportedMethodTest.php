@@ -142,7 +142,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 
 		$data = $response->get_data();
 		$this->assertSame( 'incomplete', $data['status'] );
-		$this->assertSame( 'unsupported_operation', $data['messages'][0]['code'] );
+		$this->assertSame( WC_AI_Storefront_UCP_Error_Codes::UNSUPPORTED_OPERATION, $data['messages'][0]['code'] );
 		$this->assertSame( 'unrecoverable', $data['messages'][0]['severity'] );
 
 		// Allow header pinned per-verb too — the ergonomic hint
@@ -258,7 +258,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 
 		$message = $messages[0];
 		$this->assertSame( 'error', $message['type'] );
-		$this->assertSame( 'unsupported_operation', $message['code'] );
+		$this->assertSame( WC_AI_Storefront_UCP_Error_Codes::UNSUPPORTED_OPERATION, $message['code'] );
 		$this->assertSame( 'unrecoverable', $message['severity'] );
 		$this->assertNotEmpty( $message['content'] );
 	}
