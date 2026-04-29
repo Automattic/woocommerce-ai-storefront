@@ -7,6 +7,12 @@
 
 require_once dirname( __DIR__, 2 ) . '/vendor/autoload.php';
 
+// Mark this process as a test environment so production-only guards
+// (e.g. WC_AI_Storefront_Cache_Invalidator::reset_registered_keys) operate.
+if ( ! defined( 'WC_AI_STOREFRONT_TESTING' ) ) {
+	define( 'WC_AI_STOREFRONT_TESTING', true );
+}
+
 // WordPress stubs (WP_Error, WP_REST_Request, etc.).
 require_once __DIR__ . '/stubs.php';
 

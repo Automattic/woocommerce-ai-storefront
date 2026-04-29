@@ -120,6 +120,20 @@ class WC_AI_Storefront {
 	 * Initialize all components.
 	 */
 	public function init_components() {
+		// Register transient keys owned by each component so the cache
+		// invalidator does not need to hardcode class names or key strings.
+		// Registration is unconditional (not gated on the enabled setting)
+		// so cached content is still invalidated while syndication is
+		// temporarily disabled — matching the invalidator's own init() posture.
+		WC_AI_Storefront_Cache_Invalidator::register(
+			array( 'WC_AI_Storefront_Llms_Txt', 'host_cache_key' )
+		);
+		WC_AI_Storefront_Cache_Invalidator::register( 'wc_ai_storefront_catalog_summary' );
+		// UCP manifest is served per-request; the delete cleans up pre-1.0
+		// installs that cached it and the warm-up copy written by the admin
+		// controller when syndication is toggled on.
+		WC_AI_Storefront_Cache_Invalidator::register( 'wc_ai_storefront_ucp' );
+
 		$settings = self::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			// Only load attribution (to track even when syndication is paused)

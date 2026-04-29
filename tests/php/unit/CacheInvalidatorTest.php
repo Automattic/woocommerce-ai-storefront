@@ -19,6 +19,16 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		Monkey\setUp();
 		$this->invalidator = new WC_AI_Storefront_Cache_Invalidator();
 
+		// Reset and pre-register the canonical content-invalidation keys so every
+		// test that calls invalidate() or deactivate() sees the same three keys that
+		// WC_AI_Storefront::init_components() registers in production.
+		WC_AI_Storefront_Cache_Invalidator::reset_registered_keys();
+		WC_AI_Storefront_Cache_Invalidator::register(
+			array( 'WC_AI_Storefront_Llms_Txt', 'host_cache_key' )
+		);
+		WC_AI_Storefront_Cache_Invalidator::register( 'wc_ai_storefront_catalog_summary' );
+		WC_AI_Storefront_Cache_Invalidator::register( 'wc_ai_storefront_ucp' );
+
 		// host_cache_key() sanitizes $_SERVER['HTTP_HOST'] via these two
 		// WP helpers. Stub them globally so every test that calls any method
 		// which internally resolves a host-keyed transient key doesn't need
@@ -51,6 +61,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	protected function tearDown(): void {
 		global $wpdb;
 		$wpdb = null; // Reset so other test classes don't pick up the mock.
+		WC_AI_Storefront_Cache_Invalidator::reset_registered_keys();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
