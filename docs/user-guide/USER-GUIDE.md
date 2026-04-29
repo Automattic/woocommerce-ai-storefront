@@ -147,7 +147,7 @@ Unchecking adds a `Disallow:` directive for that user-agent. This is a cooperati
 
 ### Rate limit
 
-Controls requests per minute the Store API accepts from each AI crawler before serving HTTP 429.
+Controls how many AI commerce requests per minute each AI crawler can make before receiving HTTP 429. One request counts as one slot regardless of how many products are in the request (a catalog lookup for 50 products counts the same as a lookup for 1).
 
 - **Default:** 25 RPM per crawler. Balanced for catalogs of any size.
 - **Lower** (down to 1 RPM) if you've seen spikes on a small hosting plan.
