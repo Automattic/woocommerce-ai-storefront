@@ -690,7 +690,7 @@ class WC_AI_Storefront_JsonLd {
 					array_filter( $policy['methods'], static fn( $m ) => in_array( $m, $allowed_methods, true ) )
 				)
 			)
-			: [];
+			: array();
 		if ( count( $methods ) === 1 ) {
 			$block['returnMethod'] = 'https://schema.org/' . $methods[0];
 		} elseif ( count( $methods ) >= 2 ) {
