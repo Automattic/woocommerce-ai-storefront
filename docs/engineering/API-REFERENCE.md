@@ -85,7 +85,7 @@ The product `url` carries the canonical 0.5.0+ UTM payload (`utm_source=<hostnam
 **Errors:**
 - `503` `ucp_disabled` — syndication paused.
 - `400` `ucp_invalid_request` — body fails JSON Schema validation.
-- `429` — Store API rate limit exceeded for the user-agent.
+- `429` `ucp_rate_limit_exceeded` — outer-UCP-request rate limit exceeded. One slot is consumed per outer request (not per inner Store API call). The limit is the merchant's `rate_limit_rpm` setting; window is 60 seconds. Response includes `retry_after: 60`.
 
 **Curl:**
 
@@ -141,7 +141,7 @@ Validate a cart and return a redirect URL to WooCommerce's native Shareable Chec
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `items` | array | yes | `variant_id` (string), `quantity` (int >=1). Max 100 items. |
+| `items` | array | yes | `variant_id` (string), `quantity` (int >=1). Max 100 items. Duplicate entries targeting the same product ID are collapsed before validation — quantities are summed, and the response echoes one line per product. A `merged_duplicate_items` info message is included when collapsing occurs so agents can reconcile their sent payload. |
 | `shipping_address` | object | no | UCP address block. Used for shipping/tax preview. |
 | `context` | object | no | UCP context block (currency, locale). |
 

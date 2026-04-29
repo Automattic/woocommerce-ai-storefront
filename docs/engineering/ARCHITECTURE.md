@@ -107,7 +107,7 @@ Agent name is surfaced in WC core's "Origin" column (fed by `_wc_order_attributi
 
 | File | Purpose |
 |------|---------|
-| `class-wc-ai-storefront-store-api-rate-limiter.php` | Enables WC Store API rate limiting for AI bot traffic via the `woocommerce_store_api_rate_limit_options` and `woocommerce_store_api_rate_limit_id` filters. Fingerprints by user-agent matched against the robots.txt crawler list. Regular customer traffic is unaffected. UCP REST traffic inherits because the controller dispatches via `rest_do_request()`. |
+| `class-wc-ai-storefront-store-api-rate-limiter.php` | Two-layer rate limiting for AI bot traffic. (1) **Outer layer:** `check_outer_rate_limit()` is called by `check_agent_access()` and counts exactly one slot per logical outer UCP request (e.g. one `/catalog/lookup` with 50 IDs = 1 slot). Uses a per-fingerprint WP transient with a 60-second sliding window. (2) **Inner layer suppression:** `configure_rate_limits()` returns `enabled: false` when `WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch()` is true, so WC's built-in per-Store-API-call counter is disabled for inner `rest_do_request()` dispatches. Fingerprints AI bots by user-agent via `woocommerce_store_api_rate_limit_id`. Regular customer traffic is unaffected; direct `/wc/store/v1/` requests from AI bot UAs outside the UCP bracket remain subject to WC's default counter. The merchant's `rate_limit_rpm` setting reflects outer-request semantics. |
 
 ### Cache invalidation
 
@@ -232,13 +232,13 @@ woocommerce-ai-storefront/
 
 4. **Standard WooCommerce attribution.** Uses the built-in Order Attribution system. The UCP REST adapter auto-stamps `utm_source=<agent hostname>&utm_medium=referral&utm_id=woo_ucp` on every continue_url AND on every product `url` field returned by `/catalog/search` and `/catalog/lookup`, so merchants see agent-sourced traffic regardless of which URL the buyer follows.
 
-5. **Store API rate limiting.** Uses WC's built-in `woocommerce_store_api_rate_limit_options` and `_id` filters. AI bots fingerprinted by user-agent; regular customer traffic unaffected. UCP REST traffic inherits limits because the controller dispatches via `rest_do_request()`.
+5. **Store API rate limiting.** Two-layer design: (a) one slot consumed per outer UCP request via a transient-backed counter in `check_outer_rate_limit()`; (b) WC's per-Store-API-call counter suppressed for inner `rest_do_request()` dispatches inside the UCP bracket. AI bots fingerprinted by user-agent; regular customer traffic unaffected. The merchant's `rate_limit_rpm` setting reflects outer-request semantics — 1 outer UCP call = 1 slot regardless of how many inner Store API calls it fans out to.
 
 6. **Product selection enforced at every layer.** The `product_selection_mode` setting applies to llms.txt, JSON-LD, robots.txt, AND Store API query results dispatched through the UCP controller — enforced via a `pre_get_posts` action gated on UCP dispatch depth + `post_type === 'product'`. A product excluded from syndication won't appear in UCP-mediated responses; direct Store API access (front-end Cart, themes, third-party plugins) is intentionally NOT scoped because Store API doesn't conform to UCP and merchants have legitimate non-AI consumers of it.
 
 7. **Pure translators, caller-orchestrated dispatch.** Product and variant translators are pure functions — they transform data shape, never dispatch. The REST controller orchestrates fetching (detect variable products, pre-fetch variations, assemble) before handing data to translators. Keeps translators hermetically testable without stubbing WP's REST pipeline.
 
-8. **Cache invalidation.** llms.txt and UCP manifest use transient caching with event-driven invalidation. Version-based cache bust on plugin updates. UCP REST responses are not cached — every dispatch computes fresh because per-request attribution and session IDs vary.
+8. **Cache invalidation.** llms.txt uses a host-keyed transient (`CACHE_KEY + '_' + md5(HTTP_HOST)`) with event-driven invalidation and a `Vary: Host` response header so CDN/proxy and PHP-layer caches stay in sync across virtual-host boundaries. The UCP manifest is now **generated per-request** (cheap — no HTTP probes, no unbounded queries); `Vary: Host` handles HTTP-layer caching. UCP REST responses are not cached — every dispatch computes fresh because per-request attribution and session IDs vary.
 
 9. **No MCP (Model Context Protocol) support, intentionally.** MCP requires a server surface reachable by external, non-admin clients — neither WordPress core nor WooCommerce scaffold one. AI Storefront targets UCP, which works with the public HTTP/REST surfaces WP/WC already expose. MCP support will be evaluated if WP or WC grow native MCP-server primitives.
 

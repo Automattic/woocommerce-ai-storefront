@@ -2,7 +2,7 @@
 
 Filters and actions exposed by WooCommerce AI Storefront for extending plugins.
 
-The plugin exposes a deliberately small surface — seven filters and one action. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
+The plugin exposes a deliberately small surface — seven filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
 
 ## Filters
 
@@ -18,7 +18,7 @@ apply_filters( 'wc_ai_storefront_jsonld_product', array $markup, WC_Product $pro
 |-------|------|-------------|
 | `$markup` | `array` | The Schema.org `Product` structure with our enhancements (BuyAction, inventory, attributes, return policy). |
 | `$product` | `WC_Product` | The product being rendered. |
-| `$settings` | `array` | The plugin's resolved settings (see [`DATA-MODEL.md`](DATA-MODEL.md)). |
+| `$settings` | `array` | A minimal 3-key subset of the plugin's settings: `enabled`, `product_selection_mode`, `return_policy`. Security-sensitive fields (`rate_limit_rpm`, `allowed_crawlers`, `allow_unknown_ucp_agents`, per-product selection arrays) are intentionally excluded. |
 
 **Returns:** the (possibly modified) `array` to encode and emit.
 
@@ -47,7 +47,7 @@ apply_filters( 'wc_ai_storefront_jsonld_store', array $store_data, array $settin
 | Param | Type | Description |
 |-------|------|-------------|
 | `$store_data` | `array` | The Schema.org `OnlineStore` structure (name, url, sameAs, etc.). |
-| `$settings` | `array` | The plugin's resolved settings. |
+| `$settings` | `array` | A minimal 3-key subset of the plugin's settings: `enabled`, `product_selection_mode`, `return_policy`. Security-sensitive fields are intentionally excluded (same subset as `wc_ai_storefront_jsonld_product`). |
 
 **Returns:** modified `array`.
 
@@ -194,6 +194,30 @@ add_action( 'wc_ai_storefront_attribution_captured', function( $order, $agent, $
 ```
 
 > **Don't** rely on `$canonical_agent` to switch business logic by gate — the rule is path-independent. A STRICT-gate capture whose `utm_source` happens to be a known hostname gets canonicalized to the brand name same as a LENIENT-gate capture would. Listeners that need the raw host should read `_wc_ai_storefront_agent_host_raw` from the order directly.
+
+### `wc_ai_storefront_ucp_access_denied`
+
+Fires whenever a UCP REST request is rejected by the agent-access gate.
+
+```php
+do_action( 'wc_ai_storefront_ucp_access_denied', string $raw_id, string $reason, WP_REST_Request $request );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$raw_id` | `string` | The raw agent identifier extracted from the `UCP-Agent` header (hostname for profile-URL form, lowercased product token for Product/Version form). Empty string when no header was present. |
+| `$reason` | `string` | Why access was denied: `'unknown_agent'` (host not recognized and `allow_unknown_ucp_agents=no`) or `'brand_blocked'` (agent's brand is absent from the merchant's `allowed_crawlers` list). |
+| `$request` | `WP_REST_Request` | The denied request, for listeners that need route or header data. |
+
+**When to use:** security plugins and analytics pipelines that need to track gate denials without polling logs. Fires on every 403 from the `check_agent_access()` permission callback, regardless of denial reason — subscribe once to cover both the unknown-agent and brand-blocked paths.
+
+**Example — record denied agents to a custom audit log:**
+
+```php
+add_action( 'wc_ai_storefront_ucp_access_denied', function( $raw_id, $reason, $request ) {
+    error_log( sprintf( '[audit] UCP access denied — reason=%s raw_id=%s route=%s', $reason, $raw_id, $request->get_route() ) );
+}, 10, 3 );
+```
 
 ## Hooks we consume (not exposed)
 

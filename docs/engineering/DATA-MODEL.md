@@ -19,8 +19,8 @@ wp_options ──── triggers ────► WC_AI_Storefront_Cache_Invalida
                                          │
                                          │  delete_transient(...)
                                          ▼
-                                    wc_ai_storefront_llms_txt
-                                    wc_ai_storefront_ucp
+                                    wc_ai_storefront_llms_txt_{md5(host)}
+                                    (wc_ai_storefront_ucp — no-op, manifest is per-request)
                                          │
                                          │  schedule cron
                                          ▼
@@ -32,7 +32,7 @@ AI agent fetches /llms.txt
     ▼
 WC_AI_Storefront_Llms_Txt::serve_llms_txt()
     │
-    │  get_transient('wc_ai_storefront_llms_txt')
+    │  get_transient(host_cache_key())  ← 'wc_ai_storefront_llms_txt_{md5(HTTP_HOST)}'
     ▼
 HIT → return cached
 MISS → regenerate, set_transient, return
@@ -121,25 +121,24 @@ The version check runs in the rewrite path (not the activation hook) because Wor
 
 ## Transients (wp_options or persistent object cache)
 
-### `wc_ai_storefront_llms_txt`
+### `wc_ai_storefront_llms_txt` (and host-keyed variant)
 
 Cached `/llms.txt` Markdown body. Avoids regenerating on every crawler hit.
 
 - **TTL:** 1 hour (`HOUR_IN_SECONDS`)
-- **Defined in:** `WC_AI_Storefront_Llms_Txt::CACHE_KEY`
+- **Base key defined in:** `WC_AI_Storefront_Llms_Txt::CACHE_KEY`
+- **Actual storage key:** `CACHE_KEY . '_' . md5(HTTP_HOST)` — per-virtual-host segmentation so two WordPress instances sharing a Redis/Memcached object cache (e.g. multisite) never serve each other's cached bodies. The base constant is kept for backward-compat; all read/write calls use `WC_AI_Storefront_Llms_Txt::host_cache_key()`.
 - **Written by:** `serve_llms_txt()` after generating; eagerly written on settings save when `enabled` flips on
 - **Invalidated by:** `WC_AI_Storefront_Cache_Invalidator` on product/category/settings changes
 - **Uninstall:** deleted by `uninstall.php`
 
 ### `wc_ai_storefront_ucp`
 
-Cached `/.well-known/ucp` JSON manifest body.
+Constant (`WC_AI_Storefront_Ucp::CACHE_KEY`) retained for backward compatibility — referenced by the cache invalidator and any third-party code that reads it. The UCP manifest is now **generated per-request** rather than cached: the generation path is cheap (no external HTTP probes, no unbounded DB queries) and per-request computation eliminates the Host-keying problem entirely. The transient is **never written** by the current code; the `Vary: Host` response header handles HTTP-layer caching separately.
 
-- **TTL:** 1 hour
-- **Defined in:** `WC_AI_Storefront_Ucp::CACHE_KEY`
-- **Written by:** `serve_manifest()`; eagerly written on settings save when `enabled` flips on
-- **Invalidated by:** `WC_AI_Storefront_Cache_Invalidator` on product/category/settings changes; version-based bust on plugin update
-- **Uninstall:** deleted by `uninstall.php`
+- **Previously:** cached `/.well-known/ucp` JSON body with 1-hour TTL.
+- **Currently:** not used. `delete_transient( CACHE_KEY )` calls in the cache invalidator are harmless no-ops.
+- **Uninstall:** `uninstall.php` still deletes it (defensive, covers any stale value from a pre-0.6.6 install).
 
 ### `wc_ai_storefront_flush_rewrite`
 
