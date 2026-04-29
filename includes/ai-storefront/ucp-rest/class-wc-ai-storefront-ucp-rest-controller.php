@@ -1884,17 +1884,19 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function handle_extension_schema(): WP_REST_Response {
-		// Use get_option('siteurl') instead of rest_url() to avoid host-header
-		// injection: rest_url() derives its base from home_url(), which respects
-		// X-Forwarded-Host on misconfigured proxy setups. The stored siteurl
-		// option is always the canonical domain set by the site admin (FIND-S07).
-		// Cast to string: get_option() returns false when the option is missing
-		// (e.g. unit-test or unusual multisite configuration), which would
-		// cause trailingslashit() to receive false and produce "/" only.
-		// Fall back to home_url() in that edge case.
-		$raw_siteurl = get_option( 'siteurl' );
-		$siteurl     = ( '' !== (string) $raw_siteurl ) ? (string) $raw_siteurl : home_url();
-		$self_id     = trailingslashit( $siteurl ) . rest_get_url_prefix() . '/' . self::NAMESPACE . '/extension/schema';
+		// Use get_option('home') as the REST API base to avoid host-header
+		// injection (FIND-S07): rest_url() / home_url() respect the
+		// X-Forwarded-Host header on misconfigured proxy setups, while
+		// get_option('home') always returns the canonical URL stored by the
+		// site admin. On subdirectory installs (siteurl=example.com/wp,
+		// home=example.com) the REST API is mounted at home + wp-json/,
+		// not at siteurl + wp-json/, so 'home' is the correct base option.
+		// Cast to string: get_option() returns false when the option is
+		// missing (e.g. unit-test context), which would cause trailingslashit()
+		// to receive false and produce "/" only.
+		$raw_home = get_option( 'home' );
+		$home     = ( '' !== (string) $raw_home ) ? (string) $raw_home : home_url();
+		$self_id  = trailingslashit( $home ) . rest_get_url_prefix() . '/' . self::NAMESPACE . '/extension/schema';
 
 		$schema = [
 			'$schema'     => 'https://json-schema.org/draft/2020-12/schema',

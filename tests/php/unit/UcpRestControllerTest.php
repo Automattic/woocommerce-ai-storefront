@@ -81,11 +81,12 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( '__' )->returnArg();
 
 		// FIND-S07: handle_extension_schema() builds the JSON Schema $id
-		// from get_option('siteurl') + rest_get_url_prefix() rather than
-		// rest_url() to avoid Host-header injection. Provide sane defaults
-		// so every schema test works without individual per-test stubs.
+		// from get_option('home') + rest_get_url_prefix() rather than
+		// rest_url() to avoid Host-header injection. 'home' (not 'siteurl')
+		// is the public-facing URL where the REST API is mounted. Provide
+		// sane defaults so every schema test works without per-test stubs.
 		Functions\when( 'get_option' )->alias(
-			static fn( $option, $default = '' ) => 'siteurl' === $option ? 'https://example.com' : $default
+			static fn( $option, $default = '' ) => 'home' === $option ? 'https://example.com' : $default
 		);
 		Functions\when( 'rest_get_url_prefix' )->justReturn( 'wp-json' );
 		Functions\when( 'trailingslashit' )->alias(
