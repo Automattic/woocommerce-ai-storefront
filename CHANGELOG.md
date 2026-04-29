@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Features
+
+### Fixes
+
+### Refactors
+
+### Tests
+
+### Docs
+
+---
+
+## [0.7.0] – 2026-04-29
+
 ### Performance
 
 - **`resolve_taxonomy_term_ids()` now issues 2 batch `get_terms()` calls per taxonomy instead of 2 × N individual `get_term_by()` calls.** Pre-fix, the category/tag/brand filter resolver called `get_term_by('slug', ...)` then `get_term_by('name', ...)` in a per-value `foreach` loop. With 3 taxonomies and 50 filter values each, a single `/catalog/search` request could issue up to 300 DB queries before fetching any product data. The fix issues one `get_terms(['slug' => ...])` batch query for all values in a taxonomy, then a second `get_terms(['name' => ...])` only for the subset that did not match a slug. Worst case is now 6 queries total (2 per taxonomy) regardless of how many filter values the agent sends. Closes #196.
@@ -46,6 +60,19 @@
 - **`uninstall.php` now purges all host-keyed `llms.txt` transient variants on plugin deletion.** Pre-fix, only the bare `wc_ai_storefront_llms_txt` transient was removed. Since 0.6.6 the actual cache uses host-keyed transients (`wc_ai_storefront_llms_txt_<md5(HTTP_HOST)>`); those rows were never deleted on uninstall, leaving orphaned option rows in the database. Fixed with a `$wpdb->query()` wildcard delete (`LIKE '_transient_wc_ai_storefront_llms_txt_%'`) in both the single-site block and the multisite loop. The same fix is applied to `deactivate()` in the cache invalidator so lingering rows are also swept on plugin deactivation. Closes #152.
 - **Cache invalidation now purges all host-keyed `llms.txt` transient variants, not just the current-request host.** Pre-fix, `WC_AI_Storefront_Cache_Invalidator::invalidate()` called `delete_transient( host_cache_key() )`, which only removed the cache entry for the `HTTP_HOST` active at the time the invalidating request fired (typically a wp-admin request on the primary domain). A site reachable via both `example.com` and `www.example.com` would retain a stale cache on the alias domain for up to one hour after a product update. Fixed with the same wildcard `$wpdb->query()` pattern used in `uninstall.php`. Sites using a persistent object cache (Redis/Memcached) will still expire the alias-domain entry at its natural `HOUR_IN_SECONDS` TTL -- that is a documented limitation, not a regression. Closes #153.
 - **`get_catalog_summary()` now purged by `invalidate()`.** The catalog summary transient (`wc_ai_storefront_catalog_summary`, introduced in this release for fix #167 below) is deleted on every product/category/settings change so the store-level JSON-LD reflects the latest data on the next homepage or shop page request.
+
+### Features
+
+- **Three new extension filters added for third-party plugins and themes.** `wc_ai_storefront_ucp_product_data` filters the normalized product array before it is added to the UCP payload (signature: `apply_filters( 'wc_ai_storefront_ucp_product_data', array $product, WC_Product $wc_product )`). `wc_ai_storefront_ucp_variant_data` filters the normalized variant array (signature: `apply_filters( 'wc_ai_storefront_ucp_variant_data', array $variant, WC_Product_Variation $variation, WC_Product $parent )`). `wc_ai_storefront_ucp_store_api_args` filters the Store API query args before the internal products fetch (signature: `apply_filters( 'wc_ai_storefront_ucp_store_api_args', array $args, string $route )`). All three filters are documented in `docs/engineering/HOOKS.md`. Closes #203.
+
+### Refactors
+
+- **UCP error codes centralized as typed constants on `WC_AI_Storefront_UCP_Error_Codes`.** Added `AGENT_UNKNOWN_BLOCKED = 'ucp_unknown_agent_blocked'` and `AGENT_BLOCKED = 'ucp_agent_blocked'` constants. The two bare string literals previously used in `check_agent_access()` in the UCP REST controller are replaced with the typed constants. No behavior change. Closes #200.
+- **Settings defaults centralized in a private static `settings_defaults()` helper; dead `CACHE_KEY` constant removed from `WC_AI_Storefront_Ucp`.** Previously, the defaults array was duplicated between `get_settings()` and `register_settings()`, creating a drift hazard. The extracted helper is now the single source of truth. Separately, the `CACHE_KEY` class constant on `WC_AI_Storefront_Ucp` was removed because the UCP manifest is generated per-request: `serve_manifest()` writes no transient, so the constant was unreachable dead code. The one remaining caller (cleanup on plugin deactivation) now uses the literal string `'wc_ai_storefront_ucp'` directly. Closes #201.
+- **Cache-invalidator dependency inverted: components now register their own cache keys.** Previously, `WC_AI_Storefront_Cache_Invalidator` hardcoded the list of known cache key strings. Components now call `WC_AI_Storefront_Cache_Invalidator::register( $key_or_callable )` to own their key registration; `init_components()` calls `register()` once per component. Two additional fixes land in the same PR: callable entries are now resolved inside `switch_to_blog()` context so the returned key reflects the active blog (fixing a multisite callable-skip bug where the guard never ran correctly), and `register()` now silently ignores non-string, non-callable values rather than storing them. Closes #202.
+- **`WC_AI_Storefront_UCP_Product_Translator` made stateless: errors accepted by reference and reset before each call.** Pre-fix, the translator accumulated `$errors` across calls when reused as a singleton, causing false validation errors on re-use. The translator now accepts the errors array by reference and clears it at the top of each translation call. Closes #203.
+- **Per-request static properties on the UCP REST controller replaced with scoped context objects.** Two new lightweight value objects, `WC_AI_Storefront_UCP_Request_Context` (product lookup cache, keyed by product ID) and `WC_AI_Storefront_UCP_Dispatch_Context` (dispatch flag, isolates `enter_ucp_dispatch()` / `exit_ucp_dispatch()` marker state), replace all per-request static properties. The controller holds a single `$this->request_context` instance reset via `$this->request_context->reset()` at the top of each REST handler. Static state is eliminated, making the controller safe under persistent-worker runtimes (Swoole, RoadRunner, FrankenPHP) where static properties survive across requests. Closes #204.
+- **Manual `require_once` chain replaced with Composer classmap autoload.** The 16-statement `load_dependencies()` private method is removed from the main plugin class. `composer.json` now declares `"classmap"` entries covering `includes/class-wc-ai-storefront.php`, `includes/class-wc-ai-storefront-updater.php`, `includes/admin/`, and `includes/ai-storefront/`; Composer's generated `vendor/autoload.php` loads all plugin classes on demand. The existing admin notice for a missing `vendor/autoload.php` remains the sole bootstrap safeguard. Closes #205.
 
 ---
 

@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.6.6
+Stable tag: 0.7.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,18 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.7.0 - 2026-04-29 =
+**New**
+* Three extension filters for third-party plugins and themes: `wc_ai_storefront_ucp_product_data`, `wc_ai_storefront_ucp_variant_data`, and `wc_ai_storefront_ucp_store_api_args`.
+
+**Improved**
+* UCP error codes centralized as typed constants on `WC_AI_Storefront_UCP_Error_Codes`; bare string literals removed from the REST controller.
+* Settings defaults centralized in a single `settings_defaults()` helper; dead `CACHE_KEY` constant removed from `WC_AI_Storefront_Ucp`.
+* Cache-invalidator dependency inverted: components now register their own cache keys via `WC_AI_Storefront_Cache_Invalidator::register()`; multisite callable resolution fixed.
+* `WC_AI_Storefront_UCP_Product_Translator` made stateless: errors accepted by reference and reset before each call.
+* Per-request static state on the UCP REST controller replaced with scoped context objects, safe under persistent-worker runtimes (Swoole, RoadRunner, FrankenPHP).
+* Manual `require_once` chain replaced with Composer classmap autoload; `load_dependencies()` method removed.
 
 = 0.6.6 - 2026-04-28 =
 **Fixed**
