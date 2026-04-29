@@ -290,6 +290,13 @@ class WC_AI_Storefront_Attribution {
 
 		// Display AI attribution data in admin order view.
 		add_action( 'woocommerce_admin_order_data_after_billing_address', [ $this, 'display_attribution_in_admin' ], 20, 1 );
+
+		// Bust stats transient cache when order status changes or an order is
+		// removed so the admin dashboard stays accurate within one TTL cycle.
+		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'bust_stats_cache' ) );
+		add_action( 'woocommerce_order_status_processing', array( __CLASS__, 'bust_stats_cache' ) );
+		add_action( 'woocommerce_delete_order', array( __CLASS__, 'bust_stats_cache' ), 10, 0 );
+		add_action( 'woocommerce_trash_order', array( __CLASS__, 'bust_stats_cache' ), 10, 0 );
 	}
 
 	/**
@@ -662,6 +669,16 @@ class WC_AI_Storefront_Attribution {
 	 * @return array
 	 */
 	public static function get_stats( $period = 'month' ) {
+		// Normalize period first so the transient key is consistent.
+		$valid_periods = array( 'day', 'week', 'month', 'year' );
+		$period        = in_array( $period, $valid_periods, true ) ? $period : 'month';
+
+		$transient_key = 'wc_ai_storefront_stats_' . $period;
+		$cached        = get_transient( $transient_key );
+		if ( false !== $cached && is_array( $cached ) ) {
+			return $cached;
+		}
+
 		global $wpdb;
 
 		$date_map = [
@@ -671,7 +688,8 @@ class WC_AI_Storefront_Attribution {
 			'year'  => '1 year ago',
 		];
 
-		$after    = $date_map[ $period ] ?? $date_map['month'];
+		// $period is already validated to one of the four keys above.
+		$after    = $date_map[ $period ];
 		$after_ts = strtotime( $after );
 		if ( false === $after_ts ) {
 			$after_ts = strtotime( '1 month ago' );
@@ -796,7 +814,7 @@ class WC_AI_Storefront_Attribution {
 		// separator.
 		$currency_code = get_woocommerce_currency();
 
-		return [
+		$result_array = array(
 			'period'           => $period,
 			'ai_orders'        => $total_orders,
 			'ai_revenue'       => $total_revenue,
@@ -811,7 +829,20 @@ class WC_AI_Storefront_Attribution {
 				: '',
 			'by_agent'         => $by_agent,
 			'top_agent'        => $derived['top_agent'],
-		];
+		);
+
+		set_transient( $transient_key, $result_array, 5 * MINUTE_IN_SECONDS );
+		return $result_array;
+	}
+
+	/**
+	 * Invalidate all cached stats transients. Called when order attribution
+	 * data changes (e.g., after a new order is attributed or via admin reset).
+	 */
+	public static function bust_stats_cache(): void {
+		foreach ( array( 'day', 'week', 'month', 'year' ) as $period ) {
+			delete_transient( 'wc_ai_storefront_stats_' . $period );
+		}
 	}
 
 	/**

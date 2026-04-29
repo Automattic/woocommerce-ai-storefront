@@ -1098,4 +1098,173 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 			$result
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// get_stats() transient caching
+	// ------------------------------------------------------------------
+	//
+	// These tests verify: (a) the second call to get_stats('month') returns
+	// the cached result without running DB queries (get_transient returns the
+	// cached value, so the DB code is never reached); (b) bust_stats_cache()
+	// deletes all four period transients.
+
+	public function test_get_stats_returns_cached_result_on_second_call(): void {
+		// The cached value returned by get_transient simulates a warm cache.
+		// When the transient is present, get_stats() must return it directly
+		// without touching $wpdb. We verify this by expecting get_transient
+		// to return a valid array and asserting set_transient is never called
+		// (which would only happen if the DB path ran and re-cached).
+		$cached_stats = array(
+			'period'           => 'month',
+			'ai_orders'        => 5,
+			'ai_revenue'       => 250.0,
+			'ai_aov'           => 50.0,
+			'all_orders'       => 20,
+			'ai_share_percent' => 25.0,
+			'currency'         => 'USD',
+			'currency_symbol'  => '$',
+			'by_agent'         => array(),
+			'top_agent'        => null,
+		);
+
+		Functions\expect( 'get_transient' )
+			->once()
+			->with( 'wc_ai_storefront_stats_month' )
+			->andReturn( $cached_stats );
+
+		// set_transient must NOT fire — the DB path (which would re-cache)
+		// must be skipped entirely on a cache hit.
+		Functions\expect( 'set_transient' )->never();
+
+		$result = WC_AI_Storefront_Attribution::get_stats( 'month' );
+
+		$this->assertSame( $cached_stats, $result );
+	}
+
+	public function test_get_stats_stores_result_in_transient_on_cache_miss(): void {
+		// On a cache miss get_transient returns false, the DB path runs,
+		// and set_transient is called with the 5-minute TTL.
+		// We stub all WP/WC functions the DB path calls so the test
+		// doesn't require a real database.
+		global $wpdb;
+		$wpdb = \Mockery::mock( 'wpdb' );
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
+		$wpdb->shouldReceive( 'get_results' )->once()->andReturn( array() );
+		$wpdb->shouldReceive( 'get_var' )->once()->andReturn( '0' );
+		$wpdb->posts    = 'wp_posts';
+		$wpdb->postmeta = 'wp_postmeta';
+		$wpdb->prefix   = 'wp_';
+
+		Functions\expect( 'get_transient' )
+			->once()
+			->with( 'wc_ai_storefront_stats_month' )
+			->andReturn( false );
+
+		Functions\expect( 'set_transient' )
+			->once()
+			->with(
+				'wc_ai_storefront_stats_month',
+				\Mockery::type( 'array' ),
+				5 * MINUTE_IN_SECONDS
+			);
+
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// `Automattic\WooCommerce\Utilities\OrderUtil` is not loaded in the
+		// test environment, so `class_exists()` naturally returns false and
+		// the legacy post-based query path runs. No stubbing needed.
+
+		WC_AI_Storefront_Attribution::get_stats( 'month' );
+
+		// Restore $wpdb to a safe state for subsequent tests.
+		$wpdb = null;
+	}
+
+	public function test_get_stats_normalizes_invalid_period_to_month(): void {
+		// An unrecognized period value must be silently normalized to 'month'
+		// so the transient key is always one of the four valid values. Without
+		// normalization a caller passing 'quarter' would read and write a
+		// transient key that bust_stats_cache() never deletes.
+		Functions\expect( 'get_transient' )
+			->once()
+			->with( 'wc_ai_storefront_stats_month' )
+			->andReturn( false );
+
+		global $wpdb;
+		$wpdb = \Mockery::mock( 'wpdb' );
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
+		$wpdb->shouldReceive( 'get_results' )->once()->andReturn( array() );
+		$wpdb->shouldReceive( 'get_var' )->once()->andReturn( '0' );
+		$wpdb->posts    = 'wp_posts';
+		$wpdb->postmeta = 'wp_postmeta';
+		$wpdb->prefix   = 'wp_';
+
+		Functions\expect( 'set_transient' )
+			->once()
+			->with( 'wc_ai_storefront_stats_month', \Mockery::type( 'array' ), \Mockery::type( 'int' ) );
+
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// `Automattic\WooCommerce\Utilities\OrderUtil` is not loaded in the
+		// test environment, so `class_exists()` naturally returns false and
+		// the legacy post-based query path runs. No stubbing needed.
+
+		$result = WC_AI_Storefront_Attribution::get_stats( 'quarter' );
+
+		$this->assertSame( 'month', $result['period'] );
+
+		$wpdb = null;
+	}
+
+	// ------------------------------------------------------------------
+	// bust_stats_cache()
+	// ------------------------------------------------------------------
+
+	public function test_init_hooks_bust_stats_cache_on_delete_and_trash(): void {
+		$hooks = array();
+		Functions\when( 'add_action' )->alias(
+			static function ( $hook, $callback, $priority = 10, $accepted_args = 1 ) use ( &$hooks ) {
+				$hooks[] = array( $hook, $callback, $accepted_args );
+			}
+		);
+		Functions\when( 'add_filter' )->alias( static function () {} );
+
+		$this->attribution->init();
+
+		$bust_hooks = array_filter(
+			$hooks,
+			static function ( $entry ) {
+				return is_array( $entry[1] ) && 'bust_stats_cache' === $entry[1][1];
+			}
+		);
+		$registered = array_column( $bust_hooks, 0 );
+
+		$this->assertContains( 'woocommerce_delete_order', $registered, 'woocommerce_delete_order should bust stats cache' );
+		$this->assertContains( 'woocommerce_trash_order', $registered, 'woocommerce_trash_order should bust stats cache' );
+
+		// All delete/trash hook entries must pass 0 accepted args so the
+		// order-ID parameter WC passes is not forwarded to bust_stats_cache().
+		foreach ( $bust_hooks as $entry ) {
+			if ( in_array( $entry[0], array( 'woocommerce_delete_order', 'woocommerce_trash_order' ), true ) ) {
+				$this->assertSame( 0, $entry[2], "{$entry[0]} bust_stats_cache binding must use accepted_args=0" );
+			}
+		}
+	}
+
+	public function test_bust_stats_cache_deletes_all_four_period_transients(): void {
+		$deleted = array();
+		Functions\expect( 'delete_transient' )
+			->times( 4 )
+			->andReturnUsing(
+				static function ( $key ) use ( &$deleted ) {
+					$deleted[] = $key;
+					return true;
+				}
+			);
+
+		WC_AI_Storefront_Attribution::bust_stats_cache();
+
+		$this->assertContains( 'wc_ai_storefront_stats_day', $deleted );
+		$this->assertContains( 'wc_ai_storefront_stats_week', $deleted );
+		$this->assertContains( 'wc_ai_storefront_stats_month', $deleted );
+		$this->assertContains( 'wc_ai_storefront_stats_year', $deleted );
+	}
 }
