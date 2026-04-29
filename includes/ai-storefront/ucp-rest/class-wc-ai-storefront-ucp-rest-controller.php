@@ -654,93 +654,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		// Log unrecognized top-level params at debug level so client
-		// integrators can self-diagnose. The UCP catalog/search spec
-		// defines these top-level fields: `query`, `filters`,
-		// `pagination`, `sort`, `context`, `signals`. Anything else
-		// is silently ignored (we treat the body as if those fields
-		// weren't there). Most common real-world mistake we've seen:
-		// clients sending `search` instead of `query`, resulting in
-		// an empty-body "browse all" path that returns the full
-		// catalog — visually indistinguishable from "search matched
-		// nothing". A debug line surfaces the misnaming without us
-		// breaking conformance by 400-ing on unknown keys (the spec
-		// permits vendor extensions, so silent-ignore is the right
-		// default behavior; the log is purely observability).
-		// Detect unrecognized params unconditionally (the diff is cheap)
-		// so we can surface them via BOTH the debug log AND a response
-		// header. Debug-only would be invisible on production installs
-		// where logging is off — exactly the silent-failure shape we
-		// want to avoid surfacing in this very controller. The header
-		// is non-PII (just enum keys), bounded by the request body,
-		// and a no-op for spec-compliant clients (they ignore unknown
-		// response headers).
-		$body           = $request->get_json_params();
-		$unknown_params = [];
-		// Only inspect associative-array bodies. A list-style payload
-		// (e.g. `[1,2,3]`) decodes to an array with integer keys 0,1,2;
-		// running the unknown-params detection would report
-		// `0, 1, 2` in the response header — meaningless noise that
-		// looks like real misnaming. The spec body shape for
-		// catalog/search is always a JSON object; rejecting list
-		// shapes downstream is a separate validation concern, but
-		// this diagnostic should silently skip non-objects.
-		if ( is_array( $body ) && ! empty( $body ) && ! array_is_list( $body ) ) {
-			$known        = [ 'query', 'filters', 'pagination', 'sort', 'context', 'signals' ];
-			$unknown_keys = array_values( array_diff( array_keys( $body ), $known ) );
-			// Sanitize, drop empty results, then bound the count and
-			// total length so a malicious or buggy client sending a
-			// large JSON object can't push us past common proxy/CDN
-			// header limits (~8 KiB total per header on most stacks).
-			// 8 keys + 256 chars is well under any plausible limit
-			// while still surfacing useful diagnostic signal — most
-			// real misnaming bugs are 1–3 stray keys.
-			$sanitized = function_exists( 'sanitize_key' )
-				? array_map( 'sanitize_key', $unknown_keys )
-				: $unknown_keys;
-			// Drop the `string` type-hint on the closure: in the
-			// `sanitize_key`-unavailable branch above, `$sanitized`
-			// can carry integer keys if the JSON body is a list
-			// rather than an object (e.g. body `[1,2,3]` →
-			// array_keys returns `[0,1,2]`). PHP would TypeError
-			// before we got to the request-shape rejection later.
-			// Cast each value through `(string)` for the comparison
-			// so empty strings AND `'0'` both register correctly.
-			$sanitized = array_values(
-				array_filter(
-					$sanitized,
-					static fn( $s ): bool => '' !== (string) $s
-				)
-			);
-			// Use ASCII `...` (not the Unicode ellipsis `…`) so the
-			// joined string stays ASCII-safe end-to-end. Header values
-			// are nominally ISO-8859-1 / opaque-byte per RFC 9110;
-			// many proxies/CDNs (older nginx with strict header
-			// validation, mod_security, some AWS ALB configs) reject
-			// or strip non-ASCII bytes in header values, which would
-			// drop the diagnostic header silently. Logs would tolerate
-			// `…` but consistency beats prettier punctuation here —
-			// the truncation marker is the same in both paths.
-			if ( count( $sanitized ) > 8 ) {
-				$sanitized   = array_slice( $sanitized, 0, 8 );
-				$sanitized[] = '...';
-			}
-			$joined = implode( ', ', $sanitized );
-			if ( strlen( $joined ) > 256 ) {
-				$joined = substr( $joined, 0, 253 ) . '...';
-			}
-			// Single string representation reused by both the header
-			// emission below and the debug log here. A previous
-			// iteration carried both an array and the joined string;
-			// the array form was never read so it was removed.
-			$unknown_params = [ 'header' => $joined ];
-			if ( '' !== $joined && WC_AI_Storefront_Logger::is_enabled() ) {
-				WC_AI_Storefront_Logger::debug(
-					'UCP catalog/search: received unrecognized params (ignored): '
-					. $joined
-				);
-			}
-		}
+		// Detect unrecognized top-level params for observability. Returns a
+		// sanitized, header-safe string (or '' if none). See
+		// detect_unknown_search_params() for the sanitization contract.
+		$unknown_params_header = self::detect_unknown_search_params( $request->get_json_params() );
 
 		// Note: spec has a MUST clause about validating that a request
 		// "contains at least one recognized input" and a SHOULD about
@@ -753,17 +670,141 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		[ $store_params, $mapping_messages ] = self::map_ucp_search_to_store_api( $request );
 
+		// Dispatch to Store API, handle WP_Error, branch on status class, and
+		// normalize. Returns ['error', 'wc_products', 'store_response']; see
+		// fetch_wc_products_for_search() for the full contract.
+		$fetched = self::fetch_wc_products_for_search( $store_params, $capability );
+		if ( null !== $fetched['error'] ) {
+			return $fetched['error'];
+		}
+
+		// Translate each product to UCP shape, fetching variations where needed.
+		// Returns ['products', 'variant_messages']; see translate_products_for_search().
+		$seller     = self::build_seller();
+		$translated = self::translate_products_for_search(
+			$fetched['wc_products'],
+			$seller,
+			$agent_source_host,
+			$agent_raw_host
+		);
+
+		$body = array(
+			'ucp'        => WC_AI_Storefront_UCP_Envelope::catalog_envelope( $capability ),
+			'products'   => $translated['products'],
+			'pagination' => self::build_pagination_response(
+				$fetched['store_response'],
+				(int) ( $store_params['page'] ?? 1 )
+			),
+		);
+
+		$messages = array_merge( $mapping_messages, $translated['variant_messages'] );
+		if ( ! empty( $messages ) ) {
+			$body['messages'] = $messages;
+		}
+
+		$response = new WP_REST_Response( $body, 200 );
+
+		// Surface unrecognized param names back to the caller via a response
+		// header so integrators can self-diagnose misnaming (e.g. `search`
+		// instead of `query`) without us returning 400 on unknown keys.
+		// Value is pre-bounded in detect_unknown_search_params().
+		if ( '' !== $unknown_params_header ) {
+			$response->header(
+				'X-WC-AI-Storefront-Unknown-Params',
+				$unknown_params_header
+			);
+		}
+
+		return $response;
+	}
+
+	/**
+	 * Detects unrecognized top-level request params in a catalog/search body.
+	 *
+	 * Sanitizes, bounds, and joins any keys not in the UCP catalog/search spec.
+	 * Returns an ASCII string safe for HTTP response headers (max 8 keys /
+	 * 256 chars). Returns '' when no unknown params are present.
+	 *
+	 * Side-effect: logs detected params via WC_AI_Storefront_Logger::debug()
+	 * when logging is enabled, so integrators can self-diagnose misnaming
+	 * (e.g. `search` instead of `query`) without needing server-log access.
+	 *
+	 * @param mixed $body Decoded JSON body from WP_REST_Request::get_json_params().
+	 * @return string Bounded, joined unknown-param names; '' if none.
+	 */
+	private static function detect_unknown_search_params( $body ): string {
+		// Only inspect associative-array bodies. A list-style payload
+		// (e.g. `[1,2,3]`) has integer keys 0,1,2 — reporting those
+		// as unknown params would produce meaningless noise.
+		if ( ! is_array( $body ) || empty( $body ) || array_is_list( $body ) ) {
+			return '';
+		}
+
+		$known        = array( 'query', 'filters', 'pagination', 'sort', 'context', 'signals' );
+		$unknown_keys = array_values( array_diff( array_keys( $body ), $known ) );
+
+		$sanitized = function_exists( 'sanitize_key' )
+			? array_map( 'sanitize_key', $unknown_keys )
+			: $unknown_keys;
+		// Cast through (string) so empty strings AND '0' both filter correctly.
+		$sanitized = array_values(
+			array_filter(
+				$sanitized,
+				static fn( $s ): bool => '' !== (string) $s
+			)
+		);
+
+		if ( empty( $sanitized ) ) {
+			return '';
+		}
+
+		// Use ASCII `...` (not Unicode `…`) — header values are nominally
+		// ISO-8859-1 and many proxies/CDNs reject non-ASCII bytes.
+		if ( count( $sanitized ) > 8 ) {
+			$sanitized   = array_slice( $sanitized, 0, 8 );
+			$sanitized[] = '...';
+		}
+
+		$joined = implode( ', ', $sanitized );
+		if ( strlen( $joined ) > 256 ) {
+			$joined = substr( $joined, 0, 253 ) . '...';
+		}
+
+		if ( WC_AI_Storefront_Logger::is_enabled() ) {
+			WC_AI_Storefront_Logger::debug(
+				'UCP catalog/search: received unrecognized params (ignored): ' . $joined
+			);
+		}
+
+		return $joined;
+	}
+
+	/**
+	 * Dispatches a catalog/search request to WC Store API and normalizes the result.
+	 *
+	 * Combines the Store API round-trip (with UCP dispatch guard), WP_Error
+	 * handling, HTTP status branching, and response normalization into one
+	 * place so handle_catalog_search() stays linear.
+	 *
+	 * Return shape:
+	 *   On error:   [ 'error' => WP_REST_Response, 'wc_products' => [], 'store_response' => null ]
+	 *   On success: [ 'error' => null, 'wc_products' => array, 'store_response' => WP_REST_Response ]
+	 *
+	 * `store_response` is preserved on success so the caller can derive
+	 * pagination state from Store API's X-WP-Total / X-WP-TotalPages headers.
+	 *
+	 * @param array  $store_params Params produced by map_ucp_search_to_store_api().
+	 * @param string $capability   UCP capability string for the error envelope.
+	 * @return array{error: WP_REST_Response|null, wc_products: array, store_response: WP_REST_Response|null}
+	 */
+	private static function fetch_wc_products_for_search( array $store_params, string $capability ): array {
 		$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products' );
 		foreach ( $store_params as $k => $v ) {
 			$store_request->set_param( $k, $v );
 		}
 
-		// Mark this dispatch as UCP-initiated so the Store API
-		// query-args filter fires (the filter is otherwise
-		// self-gated to no-op outside UCP scope — see
-		// `WC_AI_Storefront_UCP_Store_API_Filter` class docblock).
-		// `try/finally` ensures the depth is decremented even if
-		// `rest_do_request()` throws.
+		// try/finally ensures the UCP dispatch depth counter is decremented
+		// even when rest_do_request() throws. See WC_AI_Storefront_UCP_Store_API_Filter.
 		WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
 			$store_response = rest_do_request( $store_request );
@@ -771,30 +812,32 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		}
 
+		$error_template = array(
+			'error'          => null,
+			'wc_products'    => array(),
+			'store_response' => null,
+		);
+
 		if ( $store_response instanceof WP_Error ) {
 			WC_AI_Storefront_Logger::debug(
 				'UCP catalog/search: Store API dispatch returned WP_Error: '
 				. $store_response->get_error_message()
 			);
-			return self::ucp_catalog_error_response(
+			$error_template['error'] = self::ucp_catalog_error_response(
 				$capability,
 				__( 'Unable to fetch products from the store.', 'woocommerce-ai-storefront' ),
 				'ucp_internal_error',
 				null,
 				500
 			);
+			return $error_template;
 		}
 
 		$store_status = $store_response->get_status();
 
 		// Branch by status class:
-		//   - 5xx + 400/403: our translation layer or WC itself is broken;
-		//     surface as internal_error so the merchant notices (not as
-		//     "agent's query didn't match anything").
-		//   - 404: genuinely no products matching the filters — empty
-		//     results, 200 response with products: [].
-		//   - Other 4xx: same as 404 (e.g., WC quirks on rare filter
-		//     combinations); log and return empty.
+		//   - 5xx + 400/403: translation layer or WC is broken → 500 error.
+		//   - 404 / other 4xx: no matching products → empty result set.
 		//   - 2xx: happy path.
 		if ( $store_status >= 500 || 400 === $store_status || 403 === $store_status ) {
 			WC_AI_Storefront_Logger::debug(
@@ -803,25 +846,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$store_status
 				)
 			);
-			return self::ucp_catalog_error_response(
+			$error_template['error'] = self::ucp_catalog_error_response(
 				$capability,
 				__( 'Unable to fetch products from the store.', 'woocommerce-ai-storefront' ),
 				'ucp_internal_error',
 				null,
 				500
 			);
+			return $error_template;
 		}
 
-		$wc_products = [];
+		$wc_products = array();
 		if ( $store_status < 400 ) {
-			$data = $store_response->get_data();
-			// Normalize the entire list payload in one pass. See the
-			// docblock on `normalize_store_api_data()` for why this is
-			// needed — WC Store API's internal responses use stdClass
-			// for nested structures, which the translator can't
-			// array-access. json round-trip forces everything to
-			// associative arrays recursively.
-			$normalized = self::normalize_store_api_data( $data );
+			// json round-trip normalizes stdClass → associative array recursively.
+			// Store API's internal responses use stdClass for nested structures
+			// which the translator cannot array-access.
+			$normalized = self::normalize_store_api_data( $store_response->get_data() );
 			if ( is_array( $normalized ) ) {
 				$wc_products = $normalized;
 			} else {
@@ -838,15 +878,35 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		// Compute the seller block once per request — it's identical
-		// for every product in a single-merchant store, and we don't
-		// want to re-read get_bloginfo() / WC()->countries on every
-		// product. Built here (not the translator) to keep the
-		// translator WP-unaware and testable without WP globals.
-		$seller = self::build_seller();
+		return array(
+			'error'          => null,
+			'wc_products'    => $wc_products,
+			'store_response' => $store_response,
+		);
+	}
 
-		$products         = [];
-		$variant_messages = [];
+	/**
+	 * Translates a list of Store API product arrays into UCP product shapes.
+	 *
+	 * Fetches variation data for each variable product, emits
+	 * `partial_variants` warnings for any skipped variations, and returns
+	 * the translated list alongside any warning messages.
+	 *
+	 * @param array  $wc_products       Normalized Store API product arrays.
+	 * @param array  $seller            Seller block from build_seller().
+	 * @param string $agent_source_host Attribution host; forwarded to the translator.
+	 * @param string $agent_raw_host    Raw host header; forwarded to the translator.
+	 * @return array{products: array, variant_messages: array}
+	 */
+	private static function translate_products_for_search(
+		array $wc_products,
+		array $seller,
+		string $agent_source_host,
+		string $agent_raw_host
+	): array {
+		$products         = array();
+		$variant_messages = array();
+
 		foreach ( $wc_products as $wc_product ) {
 			if ( ! is_array( $wc_product ) ) {
 				continue;
@@ -867,52 +927,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		$body = [
-			'ucp'      => WC_AI_Storefront_UCP_Envelope::catalog_envelope( $capability ),
-			'products' => $products,
-		];
-
-		// Pagination state derived from Store API's response headers.
-		// The WC Store API emits `X-WP-Total` (matching row count
-		// across all pages) and `X-WP-TotalPages` (total page count
-		// at the requested per_page size). We translate into the
-		// UCP pagination response shape (`cursor`, `has_next_page`,
-		// `total_count`) so agents can iterate the catalog without
-		// ever seeing the WC-internal page indexing. See
-		// `encode_cursor()` for the cursor format contract.
-		$body['pagination'] = self::build_pagination_response(
-			$store_response,
-			(int) ( $store_params['page'] ?? 1 )
+		return array(
+			'products'         => $products,
+			'variant_messages' => $variant_messages,
 		);
-
-		$messages = array_merge( $mapping_messages, $variant_messages );
-		if ( ! empty( $messages ) ) {
-			$body['messages'] = $messages;
-		}
-
-		$response = new WP_REST_Response( $body, 200 );
-
-		// Surface unrecognized request params back to the client via a
-		// response header. Captured at the top of the handler; this is
-		// the only place we emit them on the success path. Clients
-		// integrating UCP can read this header to self-diagnose
-		// misnamed keys (the canonical example: `search` instead of
-		// `query`) without us breaking conformance by returning 400 —
-		// the spec permits vendor extensions, so silent-ignore is the
-		// right default. The log line above gates on debug; the header
-		// is unconditional so production installs surface the signal
-		// too. Header value is pre-bounded to ≤8 keys and ≤256 chars
-		// at capture time (see the sanitization block at the top of
-		// the handler) so a malicious client can't push us past common
-		// proxy/CDN per-header size limits.
-		if ( ! empty( $unknown_params ) && ! empty( $unknown_params['header'] ) ) {
-			$response->header(
-				'X-WC-AI-Storefront-Unknown-Params',
-				$unknown_params['header']
-			);
-		}
-
-		return $response;
 	}
 
 	/**
@@ -1270,48 +1288,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		$ids = $request->get_param( 'ids' );
 
-		if ( ! is_array( $ids ) ) {
-			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: "ids" is not an array' );
-			return self::ucp_catalog_error_response(
-				$capability,
-				__( 'Request body must include an "ids" array.', 'woocommerce-ai-storefront' ),
-				'invalid_input',
-				'$.ids'
-			);
+		$ids_error = self::validate_lookup_ids_param( $ids, $capability );
+		if ( null !== $ids_error ) {
+			return $ids_error;
 		}
 
-		if ( empty( $ids ) ) {
-			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: empty "ids" array' );
-			return self::ucp_catalog_error_response(
-				$capability,
-				__( 'The "ids" array must contain at least one ID.', 'woocommerce-ai-storefront' ),
-				'invalid_input',
-				'$.ids'
-			);
-		}
-
-		if ( count( $ids ) > self::MAX_IDS_PER_LOOKUP ) {
-			WC_AI_Storefront_Logger::debug(
-				sprintf(
-					'UCP catalog/lookup rejected: "ids" array size %d exceeds MAX_IDS_PER_LOOKUP %d',
-					count( $ids ),
-					self::MAX_IDS_PER_LOOKUP
-				)
-			);
-			return self::ucp_catalog_error_response(
-				$capability,
-				sprintf(
-					/* translators: %d is the maximum number of IDs per request. */
-					__( 'The "ids" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-storefront' ),
-					self::MAX_IDS_PER_LOOKUP
-				),
-				'invalid_input',
-				'$.ids'
-			);
-		}
-
-		$products = [];
-		$messages = [];
+		$products = array();
+		$messages = array();
 
 		// Deduplicate + normalize before fetching. `wc_ids` is the
 		// work list (one per unique input, aligned positionally
@@ -1362,17 +1345,72 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		$response_body = [
+		$response_body = array(
 			'ucp'      => WC_AI_Storefront_UCP_Envelope::catalog_envelope( $capability ),
 			'inputs'   => $inputs,
 			'products' => $products,
-		];
+		);
 
 		if ( ! empty( $messages ) ) {
 			$response_body['messages'] = $messages;
 		}
 
 		return new WP_REST_Response( $response_body, 200 );
+	}
+
+	/**
+	 * Validates the `ids` request parameter for catalog/lookup.
+	 *
+	 * Extracts the three sequential guards from handle_catalog_lookup() so
+	 * the handler body stays linear. Returns a ready-to-send error response
+	 * when validation fails, or null when the parameter is acceptable.
+	 *
+	 * @param mixed  $ids        Raw value of the `ids` request parameter.
+	 * @param string $capability UCP capability string for the error envelope.
+	 * @return WP_REST_Response|null Null on success; error response on failure.
+	 */
+	private static function validate_lookup_ids_param( $ids, string $capability ): ?WP_REST_Response {
+		if ( ! is_array( $ids ) ) {
+			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: "ids" is not an array' );
+			return self::ucp_catalog_error_response(
+				$capability,
+				__( 'Request body must include an "ids" array.', 'woocommerce-ai-storefront' ),
+				'invalid_input',
+				'$.ids'
+			);
+		}
+
+		if ( empty( $ids ) ) {
+			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: empty "ids" array' );
+			return self::ucp_catalog_error_response(
+				$capability,
+				__( 'The "ids" array must contain at least one ID.', 'woocommerce-ai-storefront' ),
+				'invalid_input',
+				'$.ids'
+			);
+		}
+
+		if ( count( $ids ) > self::MAX_IDS_PER_LOOKUP ) {
+			WC_AI_Storefront_Logger::debug(
+				sprintf(
+					'UCP catalog/lookup rejected: "ids" array size %d exceeds MAX_IDS_PER_LOOKUP %d',
+					count( $ids ),
+					self::MAX_IDS_PER_LOOKUP
+				)
+			);
+			return self::ucp_catalog_error_response(
+				$capability,
+				sprintf(
+					/* translators: %d is the maximum number of IDs per request. */
+					__( 'The "ids" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-storefront' ),
+					self::MAX_IDS_PER_LOOKUP
+				),
+				'invalid_input',
+				'$.ids'
+			);
+		}
+
+		return null;
 	}
 
 	/**
@@ -3934,45 +3972,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return array{processed: ?array<string, mixed>, messages: array<int, array<string, mixed>>}
 	 */
 	private static function process_line_item( $line_item, int $index, string $store_currency ): array {
-		$messages = [];
+		$messages = array();
 		$path     = '$.line_items[' . $index . ']';
 
-		if ( ! is_array( $line_item ) ) {
-			$messages[] = self::checkout_error_message( 'invalid_line_item', $path );
-			return [
+		// --- Shape validation (array, item-is-array, id-is-string) ---
+		$shape_error = self::validate_line_item_shape( $line_item, $path );
+		if ( null !== $shape_error ) {
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( $shape_error ),
+			);
 		}
 
-		// `$line_item['item']` must itself be an array before we drill in.
-		// Under PHP 8, accessing `['id']` on a string (e.g. an agent
-		// sending `{"item": "prod_123"}`) throws a fatal "cannot access
-		// offset" error BEFORE any error-response path runs — so the
-		// shape check has to happen at this layer, not inside
-		// `parse_ucp_id_to_wc_int`.
-		if ( ! isset( $line_item['item'] ) || ! is_array( $line_item['item'] ) ) {
-			$messages[] = self::checkout_error_message( 'invalid_line_item', $path . '.item' );
-			return [
-				'processed' => null,
-				'messages'  => $messages,
-			];
-		}
-
-		$raw_id = $line_item['item']['id'] ?? null;
-
-		// `item.id` must be a non-empty string. Non-string input would
-		// eventually surface via `parse_ucp_id_to_wc_int` returning 0 →
-		// `not_found`, but that conflates "shape wrong" with "ID not in
-		// the catalog." Emit `invalid_line_item` here to give agents a
-		// clearer signal about malformed request shape.
-		if ( ! is_string( $raw_id ) || '' === trim( $raw_id ) ) {
-			$messages[] = self::checkout_error_message( 'invalid_line_item', $path . '.item.id' );
-			return [
-				'processed' => null,
-				'messages'  => $messages,
-			];
-		}
+		/** @var array $line_item Confirmed array by validate_line_item_shape(). */
+		$raw_id = $line_item['item']['id']; // Non-empty string guaranteed by shape check.
 
 		$quantity = isset( $line_item['quantity'] ) ? (int) $line_item['quantity'] : 1;
 
@@ -3982,67 +3995,36 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// JSON-serialize as scientific notation and violate UCP's
 		// integer schema constraint on `line_total.amount`).
 		if ( $quantity <= 0 || $quantity > self::MAX_QUANTITY_PER_LINE_ITEM ) {
-			$messages[] = self::checkout_error_message( 'invalid_quantity', $path . '.quantity' );
-			return [
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( self::checkout_error_message( 'invalid_quantity', $path . '.quantity' ) ),
+			);
 		}
 
 		$wc_id = self::parse_ucp_id_to_wc_int( $raw_id );
 		if ( $wc_id <= 0 ) {
-			$messages[] = self::checkout_error_message( 'not_found', $path . '.item.id' );
-			return [
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( self::checkout_error_message( 'not_found', $path . '.item.id' ) ),
+			);
 		}
 
 		$wc_product = self::fetch_store_api_product( $wc_id );
 		if ( null === $wc_product ) {
-			$messages[] = self::checkout_error_message( 'not_found', $path . '.item.id' );
-			return [
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( self::checkout_error_message( 'not_found', $path . '.item.id' ) ),
+			);
 		}
 
-		$type = $wc_product['type'] ?? 'simple';
-
-		// Variable product PARENT sent where a specific variation is
-		// required. Shareable Checkout URLs can't add a parent to cart
-		// — they need a concrete variation ID. `variable-subscription`
-		// is the subscription-extension variant of the same kind.
-		if ( 'variable' === $type || 'variable-subscription' === $type ) {
-			// `checkout_error_message` supplies the default
-			// variation-required wording via `default_error_content`
-			// — no override needed here.
-			$messages[] = self::checkout_error_message( 'variation_required', $path . '.item.id' );
-			return [
+		// --- Product-type gate ---
+		$type       = $wc_product['type'] ?? 'simple';
+		$type_error = self::validate_product_type( $type, $path );
+		if ( null !== $type_error ) {
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
-		}
-
-		// Types incompatible with Shareable Checkout URLs:
-		//   - grouped: multiple sub-products with per-child quantities
-		//   - external: redirect to a third-party seller's site
-		//   - subscription / subscription_variation: recurring billing;
-		//     the Shareable Checkout URL treats every item as a one-off
-		//     purchase, which mis-routes subscription sign-ups
-		//
-		// The UCP manifest's purchase_urls.checkout_link.unsupported
-		// list already advertises this; the handler enforces the
-		// contract. Agents should link directly to the product
-		// permalink for these types.
-		if ( 'grouped' === $type || 'external' === $type
-			|| 'subscription' === $type || 'subscription_variation' === $type
-		) {
-			$messages[] = self::checkout_error_message( 'product_type_unsupported', $path . '.item.id' );
-			return [
-				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( $type_error ),
+			);
 		}
 
 		// Out-of-stock rejected outright. WC's `is_in_stock` already
@@ -4055,91 +4037,27 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// setting makes `is_in_stock` return true.
 		$in_stock = (bool) ( $wc_product['is_in_stock'] ?? true );
 		if ( ! $in_stock ) {
-			$messages[] = self::checkout_error_message( 'out_of_stock', $path . '.item.id' );
-			return [
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( self::checkout_error_message( 'out_of_stock', $path . '.item.id' ) ),
+			);
 		}
 
 		$unit_price_minor = (int) ( $wc_product['prices']['price'] ?? 0 );
 
-		// Price-stability warning. Agents typically scrape the catalog
-		// at T, present to the user at T+N, then POST /checkout-sessions
-		// at T+M. Merchant prices can drift in the interval. If the
-		// agent sends `expected_unit_price` (the amount they showed
-		// the user), compare to current; mismatch → `price_changed`
-		// warning with both values so the agent can confirm with the
-		// user before redirecting. Agent-opt-in: agents that don't
-		// send `expected_unit_price` get no warning (our legacy
-		// behavior unchanged).
-		//
-		// Currency guard: minor-unit amounts aren't comparable across
-		// currencies (50 JPY ≠ 50 USD), so we only run the comparison
-		// when the agent's declared currency matches the store's.
-		// Empty/omitted currency is treated as "matches store" (the
-		// lenient path — agents pre-negotiated the currency via the
-		// manifest's store_context). A non-matching currency causes
-		// us to silently skip the check rather than emit a confusing
-		// warning; agents can verify the store currency from the
-		// manifest before calling.
-		// Extract + shape-guard `expected_unit_price` before nested
-		// array access. PHP 8 `isset($str['x']['y'])` on a string-
-		// typed `$line_item['expected_unit_price']` can emit
-		// "Trying to access array offset on value of type string"
-		// warnings; pulling the value into a local and checking
-		// `is_array` is the clean defensive pattern (mirrors the
-		// guard on `$line_item['item']` earlier in the function).
-		//
-		// Amount type-strictness: UCP amounts are integer minor units.
-		// `is_numeric()` accepts decimal strings and floats, which
-		// `(int)` would silently truncate — `"25.00"` → 25,
-		// potentially firing a bogus `price_changed` for a client
-		// using the wrong encoding. Require `is_int()` OR a
-		// digit-only string (`ctype_digit`). Decimals, floats,
-		// negatives, and scientific notation all skip the comparison
-		// without emitting a warning.
-		$expected_unit_price    = $line_item['expected_unit_price'] ?? null;
-		$expected_amount_raw    = is_array( $expected_unit_price )
-			? ( $expected_unit_price['amount'] ?? null )
-			: null;
-		$amount_is_integer_like = is_int( $expected_amount_raw )
-			|| ( is_string( $expected_amount_raw ) && ctype_digit( $expected_amount_raw ) );
-		if ( is_array( $expected_unit_price ) && $amount_is_integer_like ) {
-			// Currency must be a string. A non-string value (array,
-			// object, etc.) cast via `(string)` would emit "Array to
-			// string conversion" notices; treat non-string as
-			// missing (empty-string lenient path) so the comparison
-			// runs against the store currency without polluting
-			// logs. Same defensive pattern as the handoff filter's
-			// non-string fallback.
-			$expected_currency = isset( $expected_unit_price['currency'] ) && is_string( $expected_unit_price['currency'] )
-				? $expected_unit_price['currency']
-				: '';
-			$currency_matches  = '' === $expected_currency
-				|| 0 === strcasecmp( $expected_currency, $store_currency );
-
-			if ( $currency_matches ) {
-				$expected = (int) $expected_amount_raw;
-				if ( $expected !== $unit_price_minor ) {
-					$messages[] = [
-						'type'     => 'warning',
-						'code'     => 'price_changed',
-						'severity' => 'advisory',
-						'path'     => $path,
-						'content'  => sprintf(
-							/* translators: 1: expected amount (minor units), 2: current amount (minor units). */
-							__( 'Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched.', 'woocommerce-ai-storefront' ),
-							$expected,
-							$unit_price_minor
-						),
-					];
-				}
-			}
+		// --- Price-drift warning (agent opt-in) ---
+		$drift_warning = self::check_price_drift(
+			$line_item['expected_unit_price'] ?? null,
+			$unit_price_minor,
+			$store_currency,
+			$path
+		);
+		if ( null !== $drift_warning ) {
+			$messages[] = $drift_warning;
 		}
 
-		return [
-			'processed' => [
+		return array(
+			'processed' => array(
 				'wc_id'            => $wc_id,
 				// Preserve the agent's original ID for round-tripping —
 				// if they sent `var_456`, echo `var_456` back even though
@@ -4149,9 +4067,179 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'ucp_id'           => $raw_id,
 				'quantity'         => $quantity,
 				'unit_price_minor' => $unit_price_minor,
-			],
+			),
 			'messages'  => $messages,
-		];
+		);
+	}
+
+	/**
+	 * Validate the top-level shape of a raw line-item payload.
+	 *
+	 * Checks three things in order:
+	 * 1. The line item itself is an array.
+	 * 2. `item` key exists and is also an array (required before PHP 8
+	 *    can safely dereference `['item']['id']` without a fatal).
+	 * 3. `item.id` is a non-empty string (distinct from a valid ID that
+	 *    simply isn't in the catalog — that would surface as `not_found`
+	 *    and conflate shape errors with catalog-miss errors).
+	 *
+	 * Returns null on success (all checks pass) or the first error message
+	 * array on failure.
+	 *
+	 * @param  mixed  $line_item Raw value from the request payload.
+	 * @param  string $path      JSON path for error attribution (e.g. `$.line_items[0]`).
+	 * @return array|null        Error message array, or null if shape is valid.
+	 */
+	private static function validate_line_item_shape( $line_item, string $path ): ?array {
+		if ( ! is_array( $line_item ) ) {
+			return self::checkout_error_message( 'invalid_line_item', $path );
+		}
+
+		// `$line_item['item']` must itself be an array before we drill in.
+		// Under PHP 8, accessing `['id']` on a string (e.g. an agent
+		// sending `{"item": "prod_123"}`) throws a fatal "cannot access
+		// offset" error BEFORE any error-response path runs — so the
+		// shape check has to happen at this layer, not inside
+		// `parse_ucp_id_to_wc_int`.
+		if ( ! isset( $line_item['item'] ) || ! is_array( $line_item['item'] ) ) {
+			return self::checkout_error_message( 'invalid_line_item', $path . '.item' );
+		}
+
+		$raw_id = $line_item['item']['id'] ?? null;
+
+		// `item.id` must be a non-empty string. Non-string input would
+		// eventually surface via `parse_ucp_id_to_wc_int` returning 0 →
+		// `not_found`, but that conflates "shape wrong" with "ID not in
+		// the catalog." Emit `invalid_line_item` here to give agents a
+		// clearer signal about malformed request shape.
+		if ( ! is_string( $raw_id ) || '' === trim( $raw_id ) ) {
+			return self::checkout_error_message( 'invalid_line_item', $path . '.item.id' );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Return an error message if a WC product type is incompatible with
+	 * Shareable Checkout URLs, or null if the type is supported.
+	 *
+	 * Incompatible types:
+	 * - `variable` / `variable-subscription`: parent sent where a concrete
+	 *   variation is required (Shareable Checkout URLs need a specific ID).
+	 * - `grouped`: multiple sub-products with independent per-child quantities.
+	 * - `external`: redirects to a third-party seller's site.
+	 * - `subscription` / `subscription_variation`: recurring billing; the
+	 *   Shareable Checkout URL treats every item as a one-off purchase, which
+	 *   mis-routes subscription sign-ups.
+	 *
+	 * The UCP manifest's `purchase_urls.checkout_link.unsupported` list
+	 * advertises these types; this method enforces the contract at request time.
+	 *
+	 * @param  string $type WC product type string (e.g. 'simple', 'variable').
+	 * @param  string $path JSON path for error attribution.
+	 * @return array|null   Error message array, or null if the type is supported.
+	 */
+	private static function validate_product_type( string $type, string $path ): ?array {
+		// Variable product PARENT sent where a specific variation is
+		// required. `variable-subscription` is the subscription-extension
+		// variant of the same kind.
+		if ( 'variable' === $type || 'variable-subscription' === $type ) {
+			// `checkout_error_message` supplies the default
+			// variation-required wording via `default_error_content`
+			// — no override needed here.
+			return self::checkout_error_message( 'variation_required', $path . '.item.id' );
+		}
+
+		if ( 'grouped' === $type || 'external' === $type
+			|| 'subscription' === $type || 'subscription_variation' === $type
+		) {
+			return self::checkout_error_message( 'product_type_unsupported', $path . '.item.id' );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Check whether an agent-declared expected price matches the current price.
+	 *
+	 * Returns a `price_changed` advisory warning when all of the following hold:
+	 * - `$expected_unit_price` is an array with an integer-like `amount` key.
+	 * - The declared currency matches the store currency (or is omitted).
+	 * - The declared amount differs from `$current_price_minor`.
+	 *
+	 * Returns null when no warning should be emitted (price matches, currency
+	 * mismatch, or `$expected_unit_price` was not supplied by the agent).
+	 *
+	 * Price-stability rationale: agents typically scrape the catalog at T,
+	 * present to the user at T+N, then POST /checkout-sessions at T+M. Merchant
+	 * prices can drift in the interval. This check is agent opt-in: agents that
+	 * don't send `expected_unit_price` get no warning (legacy behavior preserved).
+	 *
+	 * Currency guard: minor-unit amounts are not comparable across currencies
+	 * (50 JPY != 50 USD). Empty/omitted currency is treated as "matches store"
+	 * (lenient path). A non-matching currency silently skips the check.
+	 *
+	 * Amount type-strictness: UCP amounts are integer minor units.
+	 * `is_numeric()` accepts decimal strings and floats, which `(int)` would
+	 * silently truncate — `"25.00"` to 25, potentially firing a bogus warning.
+	 * Only `is_int()` or a digit-only string (`ctype_digit`) qualifies.
+	 *
+	 * @param  mixed  $expected_unit_price Raw `expected_unit_price` from the request.
+	 * @param  int    $current_price_minor Current product price in minor units.
+	 * @param  string $store_currency      ISO 4217 currency code of the store.
+	 * @param  string $path                JSON path for the warning attribution.
+	 * @return array|null                  Warning message array, or null if no drift.
+	 */
+	private static function check_price_drift(
+		$expected_unit_price,
+		int $current_price_minor,
+		string $store_currency,
+		string $path
+	): ?array {
+		if ( ! is_array( $expected_unit_price ) ) {
+			return null;
+		}
+
+		$expected_amount_raw    = $expected_unit_price['amount'] ?? null;
+		$amount_is_integer_like = is_int( $expected_amount_raw )
+			|| ( is_string( $expected_amount_raw ) && ctype_digit( $expected_amount_raw ) );
+
+		if ( ! $amount_is_integer_like ) {
+			return null;
+		}
+
+		// Currency must be a string. A non-string value (array, object,
+		// etc.) cast via `(string)` would emit "Array to string conversion"
+		// notices; treat non-string as missing (empty-string lenient path)
+		// so the comparison runs against the store currency without
+		// polluting logs.
+		$expected_currency = isset( $expected_unit_price['currency'] ) && is_string( $expected_unit_price['currency'] )
+			? $expected_unit_price['currency']
+			: '';
+		$currency_matches  = '' === $expected_currency
+			|| 0 === strcasecmp( $expected_currency, $store_currency );
+
+		if ( ! $currency_matches ) {
+			return null;
+		}
+
+		$expected = (int) $expected_amount_raw;
+		if ( $expected === $current_price_minor ) {
+			return null;
+		}
+
+		return array(
+			'type'     => 'warning',
+			'code'     => 'price_changed',
+			'severity' => 'advisory',
+			'path'     => $path,
+			'content'  => sprintf(
+				/* translators: 1: expected amount (minor units), 2: current amount (minor units). */
+				__( 'Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched.', 'woocommerce-ai-storefront' ),
+				$expected,
+				$current_price_minor
+			),
+		);
 	}
 
 	/**
