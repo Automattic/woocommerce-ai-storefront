@@ -18,9 +18,13 @@ jest.mock( '@wordpress/i18n', () => ( {
 import {
 	saveSettings,
 	fetchStats,
+	fetchEndpoints,
 	fetchRecentOrders,
 	updateSettings,
 	setStats,
+	setStatsError,
+	setEndpoints,
+	setEndpointsError,
 	setIsSaving,
 	setEndpointStatus,
 	resetEndpointStatus,
@@ -54,7 +58,9 @@ describe( 'AI Syndication actions', () => {
 			setIsSaving: jest.fn(),
 			updateSettings: jest.fn(),
 			setStats: jest.fn(),
+			setStatsError: jest.fn(),
 			setEndpoints: jest.fn(),
+			setEndpointsError: jest.fn(),
 			setEndpointStatus: jest.fn(),
 			resetEndpointStatus: jest.fn(),
 			checkEndpoints: jest.fn(),
@@ -85,6 +91,27 @@ describe( 'AI Syndication actions', () => {
 		it( 'setStats returns SET_STATS action', () => {
 			const action = setStats( { total_orders: 5 } );
 			expect( action.type ).toBe( 'SET_AI_SYNDICATION_STATS' );
+		} );
+
+		it( 'setStatsError returns SET_STATS_ERROR action with the error', () => {
+			const error = new Error( 'stats fetch failed' );
+			const action = setStatsError( error );
+			expect( action.type ).toBe( 'SET_AI_SYNDICATION_STATS_ERROR' );
+			expect( action.error ).toBe( error );
+		} );
+
+		it( 'setEndpoints returns SET_ENDPOINTS action', () => {
+			const data = { llms_txt: 'https://example.com/llms.txt' };
+			const action = setEndpoints( data );
+			expect( action.type ).toBe( 'SET_AI_SYNDICATION_ENDPOINTS' );
+			expect( action.data ).toEqual( data );
+		} );
+
+		it( 'setEndpointsError returns SET_ENDPOINTS_ERROR action with the error', () => {
+			const error = new Error( 'endpoints fetch failed' );
+			const action = setEndpointsError( error );
+			expect( action.type ).toBe( 'SET_AI_SYNDICATION_ENDPOINTS_ERROR' );
+			expect( action.error ).toBe( error );
 		} );
 
 		it( 'setIsSaving returns SET_IS_SAVING action', () => {
@@ -529,7 +556,7 @@ describe( 'AI Syndication actions', () => {
 	} );
 
 	describe( 'fetchStats', () => {
-		it( 'loads stats from API', async () => {
+		it( 'loads stats from API and dispatches setStats on success', async () => {
 			const stats = { total_orders: 10, total_revenue: 500 };
 			apiFetch.mockResolvedValue( stats );
 
@@ -537,15 +564,68 @@ describe( 'AI Syndication actions', () => {
 			await thunk( { dispatch: mockDispatch } );
 
 			expect( mockDispatch.setStats ).toHaveBeenCalledWith( stats );
+			expect( mockDispatch.setStatsError ).not.toHaveBeenCalled();
 		} );
 
-		it( 'silently fails on error', async () => {
-			apiFetch.mockRejectedValue( new Error( 'fail' ) );
+		it( 'dispatches setStatsError on failure', async () => {
+			// Regression for issue #161: the catch block was empty,
+			// so the error was swallowed silently. Now setStatsError
+			// is called so the store carries an observable error state.
+			const error = new Error( 'stats API failed' );
+			apiFetch.mockRejectedValue( error );
 
 			const thunk = fetchStats( 'month' );
 			await thunk( { dispatch: mockDispatch } );
 
 			expect( mockDispatch.setStats ).not.toHaveBeenCalled();
+			expect( mockDispatch.setStatsError ).toHaveBeenCalledWith( error );
+		} );
+
+		it( 'uses "month" as the default period', async () => {
+			apiFetch.mockResolvedValue( {} );
+
+			const thunk = fetchStats();
+			await thunk( { dispatch: mockDispatch } );
+
+			expect( apiFetch ).toHaveBeenCalledWith( {
+				path: expect.stringContaining( 'period=month' ),
+			} );
+		} );
+	} );
+
+	describe( 'fetchEndpoints', () => {
+		it( 'loads endpoints from API and dispatches setEndpoints on success', async () => {
+			const endpoints = {
+				llms_txt: 'https://example.com/llms.txt',
+				ucp: 'https://example.com/.well-known/ucp',
+			};
+			apiFetch.mockResolvedValue( endpoints );
+
+			const thunk = fetchEndpoints();
+			await thunk( { dispatch: mockDispatch } );
+
+			expect( mockDispatch.setEndpoints ).toHaveBeenCalledWith(
+				endpoints
+			);
+			expect( mockDispatch.setEndpointsError ).not.toHaveBeenCalled();
+		} );
+
+		it( 'dispatches setEndpointsError on failure', async () => {
+			// Regression for issue #161: the catch block was empty,
+			// so endpoint fetch failures were unobservable. Now
+			// setEndpointsError is called so consumers can surface
+			// the error state rather than staying stuck on an empty
+			// endpoints object.
+			const error = new Error( 'endpoints API failed' );
+			apiFetch.mockRejectedValue( error );
+
+			const thunk = fetchEndpoints();
+			await thunk( { dispatch: mockDispatch } );
+
+			expect( mockDispatch.setEndpoints ).not.toHaveBeenCalled();
+			expect( mockDispatch.setEndpointsError ).toHaveBeenCalledWith(
+				error
+			);
 		} );
 	} );
 

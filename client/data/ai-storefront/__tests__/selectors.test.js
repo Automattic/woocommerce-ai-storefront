@@ -4,18 +4,24 @@ import {
 	isSaving,
 	getSavingError,
 	getStats,
+	getStatsError,
 	getEndpoints,
+	getEndpointsError,
 	getEndpointStatus,
 	isDirty,
 } from '../selectors';
 
 describe( 'AI Syndication selectors', () => {
+	const statsError = new Error( 'stats fetch failed' );
+	const endpointsError = new Error( 'endpoints fetch failed' );
 	const fullState = {
 		settings: { enabled: 'yes', rate_limit_rpm: 25 },
 		isSaving: true,
 		savingError: new Error( 'test' ),
 		stats: { total_orders: 5 },
+		statsError,
 		endpoints: { llms_txt: '/llms.txt' },
+		endpointsError,
 		endpointStatus: { llms_txt: 'reachable', ucp: 'unreachable' },
 	};
 
@@ -36,8 +42,16 @@ describe( 'AI Syndication selectors', () => {
 			expect( getStats( fullState ) ).toEqual( fullState.stats );
 		} );
 
+		it( 'getStatsError returns the error', () => {
+			expect( getStatsError( fullState ) ).toBe( statsError );
+		} );
+
 		it( 'getEndpoints returns endpoints', () => {
 			expect( getEndpoints( fullState ) ).toEqual( fullState.endpoints );
+		} );
+
+		it( 'getEndpointsError returns the error', () => {
+			expect( getEndpointsError( fullState ) ).toBe( endpointsError );
 		} );
 
 		it( 'getEndpointStatus returns status map', () => {
@@ -64,8 +78,16 @@ describe( 'AI Syndication selectors', () => {
 			expect( getStats( undefined ) ).toBeNull();
 		} );
 
+		it( 'getStatsError returns null', () => {
+			expect( getStatsError( undefined ) ).toBeNull();
+		} );
+
 		it( 'getEndpoints returns empty object', () => {
 			expect( getEndpoints( undefined ) ).toEqual( {} );
+		} );
+
+		it( 'getEndpointsError returns null', () => {
+			expect( getEndpointsError( undefined ) ).toBeNull();
 		} );
 
 		it( 'getEndpointStatus returns empty object', () => {

@@ -16,8 +16,16 @@ export function setStats( data ) {
 	return { type: ACTION_TYPES.SET_STATS, data };
 }
 
+export function setStatsError( error ) {
+	return { type: ACTION_TYPES.SET_STATS_ERROR, error };
+}
+
 export function setEndpoints( data ) {
 	return { type: ACTION_TYPES.SET_ENDPOINTS, data };
+}
+
+export function setEndpointsError( error ) {
+	return { type: ACTION_TYPES.SET_ENDPOINTS_ERROR, error };
 }
 
 export function setRecentOrders( data ) {
@@ -123,7 +131,7 @@ export function fetchStats( period ) {
 			} );
 			dispatch.setStats( stats );
 		} catch ( error ) {
-			// Silent failure for stats.
+			dispatch.setStatsError( error );
 		}
 	};
 }
@@ -136,7 +144,7 @@ export function fetchEndpoints() {
 			} );
 			dispatch.setEndpoints( endpoints );
 		} catch ( error ) {
-			// Silent failure.
+			dispatch.setEndpointsError( error );
 		}
 	};
 }

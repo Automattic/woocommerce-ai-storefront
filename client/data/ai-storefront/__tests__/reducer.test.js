@@ -15,7 +15,9 @@ describe( 'AI Syndication reducer', () => {
 		isSaving: false,
 		savingError: null,
 		stats: null,
+		statsError: null,
 		endpoints: {},
+		endpointsError: null,
 		endpointStatus: {},
 		recentOrders: null,
 	};
@@ -147,6 +149,41 @@ describe( 'AI Syndication reducer', () => {
 			} );
 			expect( state.stats ).toEqual( stats );
 		} );
+
+		it( 'clears statsError on successful fetch', () => {
+			// A successful fetch after a prior failure must clear the
+			// error so the UI can transition from error back to data.
+			const initial = {
+				...defaultState,
+				statsError: new Error( 'previous failure' ),
+			};
+			const state = reducer( initial, {
+				type: ACTION_TYPES.SET_STATS,
+				data: { total_orders: 0 },
+			} );
+			expect( state.statsError ).toBeNull();
+		} );
+	} );
+
+	describe( 'SET_STATS_ERROR', () => {
+		it( 'stores the error in statsError', () => {
+			const error = new Error( 'stats API failed' );
+			const state = reducer( defaultState, {
+				type: ACTION_TYPES.SET_STATS_ERROR,
+				error,
+			} );
+			expect( state.statsError ).toBe( error );
+		} );
+
+		it( 'leaves other state slices unchanged', () => {
+			const error = new Error( 'stats API failed' );
+			const state = reducer( defaultState, {
+				type: ACTION_TYPES.SET_STATS_ERROR,
+				error,
+			} );
+			expect( state.stats ).toBeNull();
+			expect( state.endpoints ).toEqual( {} );
+		} );
 	} );
 
 	describe( 'SET_ENDPOINTS', () => {
@@ -160,6 +197,41 @@ describe( 'AI Syndication reducer', () => {
 				data: endpoints,
 			} );
 			expect( state.endpoints ).toEqual( endpoints );
+		} );
+
+		it( 'clears endpointsError on successful fetch', () => {
+			// A successful fetch after a prior failure must clear the
+			// error so the UI can transition from error back to data.
+			const initial = {
+				...defaultState,
+				endpointsError: new Error( 'previous failure' ),
+			};
+			const state = reducer( initial, {
+				type: ACTION_TYPES.SET_ENDPOINTS,
+				data: { llms_txt: '/llms.txt' },
+			} );
+			expect( state.endpointsError ).toBeNull();
+		} );
+	} );
+
+	describe( 'SET_ENDPOINTS_ERROR', () => {
+		it( 'stores the error in endpointsError', () => {
+			const error = new Error( 'endpoints API failed' );
+			const state = reducer( defaultState, {
+				type: ACTION_TYPES.SET_ENDPOINTS_ERROR,
+				error,
+			} );
+			expect( state.endpointsError ).toBe( error );
+		} );
+
+		it( 'leaves other state slices unchanged', () => {
+			const error = new Error( 'endpoints API failed' );
+			const state = reducer( defaultState, {
+				type: ACTION_TYPES.SET_ENDPOINTS_ERROR,
+				error,
+			} );
+			expect( state.endpoints ).toEqual( {} );
+			expect( state.stats ).toBeNull();
 		} );
 	} );
 
