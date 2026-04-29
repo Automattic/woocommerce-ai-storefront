@@ -560,7 +560,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'messages', $body );
 		$not_found = array_filter(
 			$body['messages'],
-			static fn( array $m ): bool => 'category_not_found' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $not_found );
 
@@ -584,7 +584,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$warnings = array_filter(
 			$body['messages'],
-			static fn( array $m ): bool => 'category_not_found' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 2, $warnings );
 	}
@@ -640,7 +640,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$not_found = array_filter(
 			$body['messages'] ?? [],
-			static fn( array $m ): bool => 'tag_not_found' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::TAG_NOT_FOUND === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $not_found );
 	}
@@ -1045,7 +1045,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Unknown taxonomy surfaces as a warning.
 		$warnings = array_filter(
 			$body['messages'] ?? [],
-			static fn( array $m ): bool => 'attribute_not_found' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $warnings );
 		$warning = array_values( $warnings )[0];
@@ -1075,7 +1075,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$warnings = array_values(
 			array_filter(
 				$body['messages'] ?? [],
-				static fn( array $m ): bool => 'attribute_not_found' === ( $m['code'] ?? '' )
+				static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND === ( $m['code'] ?? '' )
 			)
 		);
 		$this->assertCount( 1, $warnings );
@@ -1102,7 +1102,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$warnings = array_values(
 			array_filter(
 				$body['messages'] ?? [],
-				static fn( array $m ): bool => 'attribute_not_found' === ( $m['code'] ?? '' )
+				static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND === ( $m['code'] ?? '' )
 			)
 		);
 		$this->assertCount( 1, $warnings );
@@ -1148,7 +1148,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$not_found = array_filter(
 			$body['messages'] ?? [],
-			static fn( array $m ): bool => 'brand_not_found' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::BRAND_NOT_FOUND === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $not_found );
 	}
@@ -1194,7 +1194,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
 		$warnings = array_filter(
 			$body['messages'] ?? [],
-			static fn( array $m ): bool => 'invalid_sort_field' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $warnings );
 	}
@@ -1221,8 +1221,8 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
 		$codes = array_column( $body['messages'] ?? [], 'code' );
-		$this->assertNotContains( 'invalid_sort_field', $codes );
-		$this->assertNotContains( 'invalid_sort_shape', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD, $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE, $codes );
 	}
 
 	public function test_combined_filters_and_sort_all_forward(): void {
@@ -1263,7 +1263,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
 		$warnings = array_filter(
 			$body['messages'] ?? [],
-			static fn( array $m ): bool => 'invalid_sort_shape' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $warnings );
 	}
@@ -1276,7 +1276,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
 		$warnings = array_filter(
 			$body['messages'] ?? [],
-			static fn( array $m ): bool => 'invalid_sort_shape' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $warnings );
 	}
@@ -1294,7 +1294,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$warnings = array_filter(
 			$body['messages'] ?? [],
-			static fn( array $m ): bool => 'invalid_sort_field' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $warnings );
 		$warning = array_values( $warnings )[0];
@@ -1463,7 +1463,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		// Warning emitted with spec-conformant code + path.
 		$codes = array_column( $body['messages'] ?? [], 'code' );
-		$this->assertContains( 'currency_conversion_unsupported', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED, $codes );
 	}
 
 	public function test_currency_comparison_is_case_insensitive(): void {
@@ -1528,7 +1528,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 			$codes = array_column( $body['messages'] ?? [], 'code' );
 			$this->assertNotContains(
-				'currency_conversion_unsupported',
+				WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
 				$codes,
 				'No-op price filter ' . json_encode( $price ) . ' should not produce a currency warning'
 			);
@@ -1667,7 +1667,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'messages', $body );
 		$partial = array_filter(
 			$body['messages'],
-			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::PARTIAL_VARIANTS === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $partial );
 	}
@@ -1705,7 +1705,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// regardless of the underlying failure mode.
 		$this->fake_list_status = 500;
 
-		$this->assert_search_error( [], 500, 'ucp_internal_error' );
+		$this->assert_search_error( [], 500, WC_AI_Storefront_UCP_Error_Codes::UCP_INTERNAL_ERROR );
 	}
 
 	public function test_store_api_400_returns_ucp_internal_error(): void {
@@ -1716,7 +1716,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// silently returning empty results.
 		$this->fake_list_status = 400;
 
-		$this->assert_search_error( [], 500, 'ucp_internal_error' );
+		$this->assert_search_error( [], 500, WC_AI_Storefront_UCP_Error_Codes::UCP_INTERNAL_ERROR );
 	}
 
 	public function test_store_api_404_treated_as_empty_result(): void {
@@ -1743,7 +1743,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assert_search_error(
 			[ 'query' => 'anything' ],
 			503,
-			'ucp_disabled'
+			WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED
 		);
 
 		// Critical: must short-circuit BEFORE dispatching anything to
@@ -1922,7 +1922,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( 1, $this->captured_store_params['per_page'] );
-		$this->assertWarning( $response->get_data(), 'pagination_limit_clamped' );
+		$this->assertWarning( $response->get_data(), WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED );
 	}
 
 	public function test_limit_non_integer_shape_falls_back_to_default_and_warns(): void {
@@ -1955,7 +1955,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 				$this->captured_store_params['per_page'],
 				'Invalid limit ' . var_export( $bad_limit, true ) . ' should fall back to default'
 			);
-			$this->assertWarning( $response->get_data(), 'pagination_limit_clamped' );
+			$this->assertWarning( $response->get_data(), WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED );
 		}
 	}
 
@@ -1975,7 +1975,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( 10, $this->captured_store_params['per_page'] );
-		$this->assertWarning( $response->get_data(), 'pagination_limit_clamped' );
+		$this->assertWarning( $response->get_data(), WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED );
 	}
 
 	public function test_limit_over_max_clamps_and_emits_warning(): void {
@@ -1991,7 +1991,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			] )
 		);
 
-		$this->assertWarning( $response->get_data(), 'pagination_limit_clamped' );
+		$this->assertWarning( $response->get_data(), WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED );
 	}
 
 	public function test_limit_numeric_string_accepted(): void {
@@ -2027,7 +2027,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$clamped_codes = array_column( $messages, 'code' );
 		$this->assertNotContains(
-			'pagination_limit_clamped',
+			WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
 			$clamped_codes,
 			'No clamping warning should fire when limit is in range'
 		);
@@ -2048,7 +2048,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( 1, $this->captured_store_params['page'] );
-		$this->assertWarning( $response->get_data(), 'invalid_cursor' );
+		$this->assertWarning( $response->get_data(), WC_AI_Storefront_UCP_Error_Codes::INVALID_CURSOR );
 	}
 
 	public function test_forged_cursor_zero_page_rejected_as_malformed(): void {
@@ -2065,7 +2065,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( 1, $this->captured_store_params['page'] );
-		$this->assertWarning( $response->get_data(), 'invalid_cursor' );
+		$this->assertWarning( $response->get_data(), WC_AI_Storefront_UCP_Error_Codes::INVALID_CURSOR );
 	}
 
 	public function test_forged_cursor_huge_page_rejected(): void {
@@ -2085,7 +2085,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( 1, $this->captured_store_params['page'] );
-		$this->assertWarning( $response->get_data(), 'invalid_cursor' );
+		$this->assertWarning( $response->get_data(), WC_AI_Storefront_UCP_Error_Codes::INVALID_CURSOR );
 	}
 
 	public function test_non_array_pagination_emits_warning_and_uses_defaults(): void {
@@ -2101,7 +2101,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 10, $this->captured_store_params['per_page'] );
 		$this->assertSame( 1, $this->captured_store_params['page'] );
-		$this->assertWarning( $response->get_data(), 'invalid_pagination_shape' );
+		$this->assertWarning( $response->get_data(), WC_AI_Storefront_UCP_Error_Codes::INVALID_PAGINATION_SHAPE );
 	}
 
 	public function test_total_count_absent_when_store_api_header_missing(): void {
@@ -2201,13 +2201,13 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			[ 'filters' => [ 'categories' => $many ] ]
 		);
 
-		$this->assertWarning( $body, 'filter_truncated' );
+		$this->assertWarning( $body, WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED );
 
 		// The tail (entries 50-59) must not appear in `unresolved`
 		// warnings — truncation happens before resolution, so we
 		// don't even attempt to resolve past the cap.
 		$codes        = array_column( $body['messages'] ?? [], 'code' );
-		$not_found_ct = count( array_filter( $codes, static fn( $c ) => 'category_not_found' === $c ) );
+		$not_found_ct = count( array_filter( $codes, static fn( $c ) => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND === $c ) );
 		$this->assertLessThanOrEqual(
 			50,
 			$not_found_ct,
@@ -2218,13 +2218,13 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	public function test_oversized_tags_filter_is_capped_with_warning(): void {
 		$many = array_fill( 0, 60, 'tag-x' );
 		$body = $this->successful_search( [ 'filters' => [ 'tags' => $many ] ] );
-		$this->assertWarning( $body, 'filter_truncated' );
+		$this->assertWarning( $body, WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED );
 	}
 
 	public function test_oversized_brand_filter_is_capped_with_warning(): void {
 		$many = array_fill( 0, 60, 'brand-x' );
 		$body = $this->successful_search( [ 'filters' => [ 'brand' => $many ] ] );
-		$this->assertWarning( $body, 'filter_truncated' );
+		$this->assertWarning( $body, WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED );
 	}
 
 	public function test_oversized_attributes_map_is_capped_with_warning(): void {
@@ -2237,7 +2237,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$body = $this->successful_search(
 			[ 'filters' => [ 'attributes' => $many ] ]
 		);
-		$this->assertWarning( $body, 'filter_truncated' );
+		$this->assertWarning( $body, WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED );
 	}
 
 	public function test_reflected_category_name_is_stripped_of_html_in_response(): void {
@@ -2254,7 +2254,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$messages = $body['messages'] ?? [];
 		$not_founds = array_filter(
 			$messages,
-			static fn( $m ) => 'category_not_found' === ( $m['code'] ?? null )
+			static fn( $m ) => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND === ( $m['code'] ?? null )
 		);
 		$this->assertCount( 2, $not_founds );
 		foreach ( $not_founds as $m ) {
@@ -2275,7 +2275,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$messages               = $body['messages'] ?? [];
 		$found_category_not_found = false;
 		foreach ( $messages as $m ) {
-			if ( 'category_not_found' === ( $m['code'] ?? null ) ) {
+			if ( WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND === ( $m['code'] ?? null ) ) {
 				$found_category_not_found = true;
 				$content                  = $m['content'] ?? '';
 				$this->assertSame(

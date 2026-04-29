@@ -266,7 +266,7 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 		$result = WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
 
 		$this->assertInstanceOf( WP_Error::class, $result );
-		$this->assertEquals( 'ucp_rate_limit_exceeded', $result->get_error_code() );
+		$this->assertEquals( WC_AI_Storefront_UCP_Error_Codes::UCP_RATE_LIMIT_EXCEEDED, $result->get_error_code() );
 		$this->assertEquals( 429, $result->get_error_data()['status'] );
 		unset( $_SERVER['HTTP_USER_AGENT'] );
 	}
