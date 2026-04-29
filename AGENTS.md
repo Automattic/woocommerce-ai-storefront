@@ -93,9 +93,12 @@ PHP suite uses PHPUnit + Brain Monkey + Mockery. **No real WordPress install req
 
 JS suite (Jest) covers the `@wordpress/data` store only — reducers, selectors, async thunks. React components are validated manually in PR review.
 
+**First-time setup:** after a fresh clone run `composer install` before anything else. The plugin entry point requires `vendor/autoload.php` (the Composer classmap autoloader), and all PHP tooling (`vendor/bin/phpunit`, `vendor/bin/phpcs`, `vendor/bin/phpstan`) lives under `vendor/`. The directory is gitignored (standard Composer practice); CI runs `composer install` automatically on every job.
+
 Pre-PR quality gate (CI runs all of these):
 
 ```bash
+composer install                       # required once after fresh clone
 composer test                          # PHPUnit
 vendor/bin/phpcs                       # WP coding standards
 vendor/bin/phpstan analyse --memory-limit=512M  # static analysis
