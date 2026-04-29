@@ -1310,6 +1310,27 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// computed once, stamped on every product (see handle_catalog_search).
 		$seller = self::build_seller();
 
+		// Prime the WP object-cache with term relationships and post-meta for
+		// every requested product ID in a single bulk query before entering the
+		// loop. Without this, is_product_syndicated() in `by_taxonomy` mode
+		// issues three per-product DB queries (wc_get_product_cat_ids,
+		// wp_get_post_terms × 2 for tags and brands) — 300 queries for a
+		// MAX_IDS_PER_LOOKUP request. After priming, every get_the_terms() /
+		// wc_get_product_cat_ids() call inside the loop reads from the object
+		// cache with zero additional DB round-trips.
+		$prime_ids = array_values(
+			array_filter(
+				array_map( 'intval', array_values( $wc_ids ) ),
+				static function ( $id ) {
+					return $id > 0;
+				}
+			)
+		);
+		if ( ! empty( $prime_ids ) ) {
+			update_object_term_cache( $prime_ids, 'product' );
+			update_postmeta_cache( $prime_ids );
+		}
+
 		foreach ( $wc_ids as $index => $wc_id ) {
 			if ( $wc_id <= 0 ) {
 				$messages[] = self::not_found_message( (int) $index );
@@ -3677,32 +3698,103 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return array{ids: array<int, int>, unresolved: array<int, string>}
 	 */
 	private static function resolve_taxonomy_term_ids( array $inputs, string $taxonomy ): array {
-		$ids        = [];
-		$unresolved = [];
-
+		// Index valid string inputs by their original position, dropping
+		// non-string / empty values silently — same rule as the former
+		// per-value loop (malformed inputs don't deserve a not-found warning).
+		$string_inputs = array();
 		foreach ( $inputs as $index => $input ) {
-			if ( ! is_string( $input ) || '' === $input ) {
-				// Skip non-string/empty inputs silently — they're
-				// malformed enough that a not-found warning would be
-				// misleading (the agent didn't even spell a term).
-				continue;
-			}
-
-			$term = get_term_by( 'slug', $input, $taxonomy );
-			if ( ! $term || is_wp_error( $term ) ) {
-				$term = get_term_by( 'name', $input, $taxonomy );
-			}
-			if ( $term && ! is_wp_error( $term ) ) {
-				$ids[] = (int) $term->term_id;
-			} else {
-				$unresolved[ (int) $index ] = $input;
+			if ( is_string( $input ) && '' !== $input ) {
+				$string_inputs[ (int) $index ] = $input;
 			}
 		}
 
-		return [
+		if ( empty( $string_inputs ) ) {
+			return array(
+				'ids'        => array(),
+				'unresolved' => array(),
+			);
+		}
+
+		// --- Pass 1: single batch query by slug --------------------------------
+		//
+		// The former code called get_term_by('slug', ...) + get_term_by('name', ...)
+		// for every input value — 2 DB queries × N values = up to 300 queries
+		// for a MAX_FILTER_VALUES request with 3 taxonomies. Replacing both
+		// passes with one get_terms() call each reduces the worst case to
+		// 2 queries per taxonomy (6 total) regardless of filter depth.
+		//
+		// WP_Term_Query applies sanitize_title() to every element of the
+		// `slug` array internally before the WHERE IN clause, matching the
+		// per-value get_term_by('slug') behaviour exactly.
+		$slug_inputs   = array_values( $string_inputs );
+		$terms_by_slug = get_terms(
+			array(
+				'taxonomy'   => $taxonomy,
+				'hide_empty' => false,
+				'fields'     => 'all',
+				'slug'       => $slug_inputs,
+				'number'     => count( $slug_inputs ),
+			)
+		);
+
+		$slug_to_id = array();
+		if ( ! is_wp_error( $terms_by_slug ) ) {
+			foreach ( $terms_by_slug as $term ) {
+				$slug_to_id[ $term->slug ] = (int) $term->term_id;
+			}
+		}
+
+		// Identify inputs that didn't match by slug so we can try them
+		// by name. Agents often echo back category display names from a
+		// previous search response rather than machine-readable slugs.
+		$unmatched_by_slug = array();
+		foreach ( $string_inputs as $index => $input ) {
+			// sanitize_title() is what WP uses to produce slugs; we use
+			// the same transform to look up in the slug→ID map.
+			$slug = sanitize_title( $input );
+			if ( ! isset( $slug_to_id[ $slug ] ) ) {
+				$unmatched_by_slug[ $index ] = $input;
+			}
+		}
+
+		// --- Pass 2: second batch query by name (slug-miss inputs only) --------
+		$name_to_id = array();
+		if ( ! empty( $unmatched_by_slug ) ) {
+			$name_inputs   = array_values( $unmatched_by_slug );
+			$terms_by_name = get_terms(
+				array(
+					'taxonomy'   => $taxonomy,
+					'hide_empty' => false,
+					'fields'     => 'all',
+					'name'       => $name_inputs,
+					'number'     => count( $name_inputs ),
+				)
+			);
+			if ( ! is_wp_error( $terms_by_name ) ) {
+				foreach ( $terms_by_name as $term ) {
+					$name_to_id[ $term->name ] = (int) $term->term_id;
+				}
+			}
+		}
+
+		// Build output arrays in original input order.
+		$ids        = array();
+		$unresolved = array();
+		foreach ( $string_inputs as $index => $input ) {
+			$slug = sanitize_title( $input );
+			if ( isset( $slug_to_id[ $slug ] ) ) {
+				$ids[] = $slug_to_id[ $slug ];
+			} elseif ( isset( $name_to_id[ $input ] ) ) {
+				$ids[] = $name_to_id[ $input ];
+			} else {
+				$unresolved[ $index ] = $input;
+			}
+		}
+
+		return array(
 			'ids'        => array_values( array_unique( $ids ) ),
 			'unresolved' => $unresolved,
-		];
+		);
 	}
 
 	/**

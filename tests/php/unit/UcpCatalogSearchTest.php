@@ -7,7 +7,7 @@
  *
  *   - rest_do_request       — captures the dispatched Store API
  *                             request + returns canned product lists
- *   - get_term_by           — resolves category slug/name → ID
+ *   - get_terms             — batch resolves category/tag/brand slug/name → IDs
  *   - wc_get_price_decimals — drives minor→presentment conversion
  *
  * @package WooCommerce_AI_Storefront
@@ -64,8 +64,9 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	private array $fake_store_api = [];
 
 	/**
-	 * Fake get_term_by store. Key = 'field:value' (e.g. 'slug:tops'),
-	 * value = fake term object with term_id property.
+	 * Fake get_terms store. Key = 'field:value' (e.g. 'slug:tops') or
+	 * 'taxonomy:field:value' (e.g. 'product_tag:slug:summer').
+	 * Value = fake term object with term_id, slug, and name properties.
 	 *
 	 * @var array<string, object>
 	 */
@@ -138,26 +139,70 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$terms = &$this->fake_terms;
-		Functions\when( 'get_term_by' )->alias(
-			static function ( string $field, string $value, string $taxonomy ) use ( &$terms ) {
-				// Both product_cat and product_tag go through the
-				// same stubbed lookup — `seed_term` keys by
-				// `taxonomy:field:value` so the tag filter tests
-				// can seed independently from the category ones.
-				if ( ! in_array( $taxonomy, [ 'product_cat', 'product_tag', 'product_brand' ], true ) ) {
-					return false;
+		Functions\when( 'get_terms' )->alias(
+			static function ( array $args ) use ( &$terms ): array {
+				// Simulates WP's batch term lookup. The production code
+				// issues two calls per taxonomy: one for slugs (Pass 1)
+				// and one for the slug-miss names (Pass 2). We look up
+				// from $this->fake_terms using the same key scheme that
+				// seed_term / seed_tag_term populate.
+				$taxonomy = isset( $args['taxonomy'] ) ? (string) $args['taxonomy'] : '';
+				$results  = array();
+				$seen_ids = array();
+
+				if ( ! empty( $args['slug'] ) && is_array( $args['slug'] ) ) {
+					foreach ( $args['slug'] as $raw ) {
+						// WP applies sanitize_title() to slug args internally.
+						$slug = sanitize_title( (string) $raw );
+						// Taxonomy-namespaced key (product_tag, product_brand).
+						$key = "{$taxonomy}:slug:{$slug}";
+						if ( isset( $terms[ $key ] ) ) {
+							$term = $terms[ $key ];
+							if ( ! in_array( $term->term_id, $seen_ids, true ) ) {
+								$results[]  = $term;
+								$seen_ids[] = $term->term_id;
+							}
+							continue;
+						}
+						// Back-compat: product_cat terms stored un-namespaced
+						// by seed_term().
+						$key = "slug:{$slug}";
+						if ( isset( $terms[ $key ] ) ) {
+							$term = $terms[ $key ];
+							if ( ! in_array( $term->term_id, $seen_ids, true ) ) {
+								$results[]  = $term;
+								$seen_ids[] = $term->term_id;
+							}
+						}
+					}
 				}
-				$key = "{$taxonomy}:{$field}:{$value}";
-				if ( isset( $terms[ $key ] ) ) {
-					return $terms[ $key ];
+
+				if ( ! empty( $args['name'] ) && is_array( $args['name'] ) ) {
+					foreach ( $args['name'] as $name ) {
+						// Taxonomy-namespaced key (product_tag, product_brand).
+						$key = "{$taxonomy}:name:{$name}";
+						if ( isset( $terms[ $key ] ) ) {
+							$term = $terms[ $key ];
+							if ( ! in_array( $term->term_id, $seen_ids, true ) ) {
+								$results[]  = $term;
+								$seen_ids[] = $term->term_id;
+							}
+							continue;
+						}
+						// Back-compat: product_cat terms stored un-namespaced
+						// by seed_term().
+						$key = "name:{$name}";
+						if ( isset( $terms[ $key ] ) ) {
+							$term = $terms[ $key ];
+							if ( ! in_array( $term->term_id, $seen_ids, true ) ) {
+								$results[]  = $term;
+								$seen_ids[] = $term->term_id;
+							}
+						}
+					}
 				}
-				// Back-compat with earlier tests that seeded under
-				// the un-namespaced `field:value` key — those are
-				// implicitly product_cat.
-				if ( 'product_cat' === $taxonomy ) {
-					return $terms[ "{$field}:{$value}" ] ?? false;
-				}
-				return false;
+
+				return $results;
 			}
 		);
 
@@ -280,9 +325,9 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Register a fake product_cat term that `get_term_by` lookups
-	 * will resolve. Historical un-namespaced keys preserved for
-	 * back-compat with the original pre-1.8 tests.
+	 * Register a fake product_cat term that `get_terms` batch lookups
+	 * will resolve. Un-namespaced keys preserved for back-compat with
+	 * the original pre-1.8 tests.
 	 */
 	private function seed_term( int $term_id, string $slug, string $name ): void {
 		$term                              = (object) [
@@ -295,7 +340,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Register a fake product_tag term that `get_term_by` lookups
+	 * Register a fake product_tag term that `get_terms` batch lookups
 	 * against the `product_tag` taxonomy will resolve. Namespaced
 	 * by taxonomy so cat and tag lookups don't collide when the
 	 * same slug is used in both taxonomies (merchants do this).
@@ -2100,7 +2145,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Agent sends 60 categories; MAX_FILTER_VALUES = 50.
 		// Handler should truncate to the first 50 and emit a
 		// `filter_truncated` advisory with `$.filters.categories`
-		// path. Mitigates DoS via unbounded `get_term_by` fan-out.
+		// path. Mitigates DoS via unbounded term-query fan-out.
 		$many = [];
 		for ( $i = 0; $i < 60; $i++ ) {
 			$many[] = 'cat-' . $i;
