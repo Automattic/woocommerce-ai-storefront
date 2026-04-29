@@ -132,7 +132,7 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 	 *   single attacker from depleting another bot's budget by spoofing
 	 *   its user-agent, and prevents UA rotation (minor version variants)
 	 *   from opening a fresh window for the same IP.
-	 * - Unknown or unrecognized UA: keyed by `md5( 'unknown_' . $ip )`.
+	 * - Unknown or unrecognized UA: keyed by `'unknown_' . md5( $ip )`.
 	 *   Requests reaching this method from `check_agent_access()` are
 	 *   already gated (they need a valid UCP-Agent header or the
 	 *   `allow_unknown_ucp_agents=yes` setting), so applying the budget

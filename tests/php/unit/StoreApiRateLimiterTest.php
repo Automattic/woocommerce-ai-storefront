@@ -332,7 +332,7 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		unset( $_SERVER['HTTP_USER_AGENT'] );
-		// REMOTE_ADDR is reset to 127.0.0.1 in tearDown.
+		// REMOTE_ADDR is unset in tearDown; setUp re-sets it to 127.0.0.1 for the next test.
 	}
 
 	public function test_outer_rate_limit_ua_rotation_uses_same_bucket(): void {
