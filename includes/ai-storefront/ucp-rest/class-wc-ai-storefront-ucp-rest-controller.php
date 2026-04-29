@@ -1888,7 +1888,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// injection: rest_url() derives its base from home_url(), which respects
 		// X-Forwarded-Host on misconfigured proxy setups. The stored siteurl
 		// option is always the canonical domain set by the site admin (FIND-S07).
-		$self_id = trailingslashit( get_option( 'siteurl' ) ) . rest_get_url_prefix() . '/' . self::NAMESPACE . '/extension/schema';
+		// Cast to string: get_option() returns false when the option is missing
+		// (e.g. unit-test or unusual multisite configuration), which would
+		// cause trailingslashit() to receive false and produce "/" only.
+		// Fall back to home_url() in that edge case.
+		$raw_siteurl = get_option( 'siteurl' );
+		$siteurl     = ( '' !== (string) $raw_siteurl ) ? (string) $raw_siteurl : home_url();
+		$self_id     = trailingslashit( $siteurl ) . rest_get_url_prefix() . '/' . self::NAMESPACE . '/extension/schema';
 
 		$schema = [
 			'$schema'     => 'https://json-schema.org/draft/2020-12/schema',
