@@ -84,7 +84,7 @@ The product `url` carries the canonical 0.5.0+ UTM payload (`utm_source=<hostnam
 
 **Errors:**
 - `503` `ucp_disabled` — syndication paused.
-- `400` `ucp_invalid_request` — body fails JSON Schema validation.
+- `400` `invalid_input` — body fails JSON Schema validation.
 - `429` `ucp_rate_limit_exceeded` — outer-UCP-request rate limit exceeded. One slot is consumed per outer request (not per inner Store API call). The limit is the merchant's `rate_limit_rpm` setting; window is 60 seconds. Response includes `retry_after: 60`.
 
 **Curl:**
@@ -118,7 +118,7 @@ Look up specific products by ID.
 
 **Response:** same envelope as `/catalog/search` but with `products` matching requested IDs in order. Missing or excluded products are omitted (no per-ID error — agents diff against their request). Same UTM stamping on the product `url` field.
 
-**Errors:** `503` `ucp_disabled`; `400` `ucp_invalid_request` when `products` is missing, empty, or > 100 items.
+**Errors:** `503` `ucp_disabled`; `400` `invalid_input` when `products` is missing, empty, or > 100 items.
 
 ### `POST /checkout-sessions`
 
@@ -192,7 +192,7 @@ The `buyer_handoff_required` message uses `type: info` + `severity: advisory` (p
 }
 ```
 
-**Errors:** `503` `ucp_disabled`; `400` `ucp_invalid_request` for missing/empty `items` or malformed variant IDs.
+**Errors:** `503` `ucp_disabled`; `400` `invalid_input` for missing/empty `items` or malformed variant IDs.
 
 **Note on session IDs.** `chk_<16 hex chars>` is a correlation token for logging and attribution. There is no GET/PUT/PATCH/DELETE endpoint that operates on it — see the next section.
 

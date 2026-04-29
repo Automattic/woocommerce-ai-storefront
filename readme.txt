@@ -133,7 +133,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 = 0.7.0 - 2026-04-29 =
 **New**
-* Three extension filters for third-party plugins and themes: `wc_ai_storefront_ucp_product_data`, `wc_ai_storefront_ucp_variant_data`, and `wc_ai_storefront_ucp_store_api_args`.
+* Three extension filters for third-party plugins and themes: `wc_ai_storefront_ucp_product`, `wc_ai_storefront_ucp_variant`, and `wc_ai_storefront_ucp_store_api_args`.
 
 **Improved**
 * UCP error codes centralized as typed constants on `WC_AI_Storefront_UCP_Error_Codes`; bare string literals removed from the REST controller.

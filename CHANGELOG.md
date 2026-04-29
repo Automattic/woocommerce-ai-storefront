@@ -71,7 +71,7 @@
 
 ### Features
 
-- **Three new extension filters added for third-party plugins and themes.** `wc_ai_storefront_ucp_product_data` filters the normalized product array before it is added to the UCP payload (signature: `apply_filters( 'wc_ai_storefront_ucp_product_data', array $product, WC_Product $wc_product )`). `wc_ai_storefront_ucp_variant_data` filters the normalized variant array (signature: `apply_filters( 'wc_ai_storefront_ucp_variant_data', array $variant, WC_Product_Variation $variation, WC_Product $parent )`). `wc_ai_storefront_ucp_store_api_args` filters the Store API query args before the internal products fetch (signature: `apply_filters( 'wc_ai_storefront_ucp_store_api_args', array $args, string $route )`). All three filters are documented in `docs/engineering/HOOKS.md`. Closes #203.
+- **Three new extension filters added for third-party plugins and themes.** `wc_ai_storefront_ucp_product` filters the translated UCP product array before it is added to the response payload (signature: `apply_filters( 'wc_ai_storefront_ucp_product', array $product, array $wc_product )` — `$wc_product` is the raw decoded Store API product response). `wc_ai_storefront_ucp_variant` filters the translated UCP variant array (signature: `apply_filters( 'wc_ai_storefront_ucp_variant', array $variant, array $wc_variation )` — `$wc_variation` is the raw Store API variation or parent product response). `wc_ai_storefront_ucp_store_api_args` filters the Store API query args before the internal products fetch (signature: `apply_filters( 'wc_ai_storefront_ucp_store_api_args', array $store_params, string $endpoint )`). All three filters are documented in `docs/engineering/HOOKS.md`. Closes #203.
 
 ### Refactors
 
