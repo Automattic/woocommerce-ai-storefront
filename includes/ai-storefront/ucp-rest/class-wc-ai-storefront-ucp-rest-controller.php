@@ -1270,48 +1270,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		$ids = $request->get_param( 'ids' );
 
-		if ( ! is_array( $ids ) ) {
-			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: "ids" is not an array' );
-			return self::ucp_catalog_error_response(
-				$capability,
-				__( 'Request body must include an "ids" array.', 'woocommerce-ai-storefront' ),
-				'invalid_input',
-				'$.ids'
-			);
+		$ids_error = self::validate_lookup_ids_param( $ids, $capability );
+		if ( null !== $ids_error ) {
+			return $ids_error;
 		}
 
-		if ( empty( $ids ) ) {
-			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: empty "ids" array' );
-			return self::ucp_catalog_error_response(
-				$capability,
-				__( 'The "ids" array must contain at least one ID.', 'woocommerce-ai-storefront' ),
-				'invalid_input',
-				'$.ids'
-			);
-		}
-
-		if ( count( $ids ) > self::MAX_IDS_PER_LOOKUP ) {
-			WC_AI_Storefront_Logger::debug(
-				sprintf(
-					'UCP catalog/lookup rejected: "ids" array size %d exceeds MAX_IDS_PER_LOOKUP %d',
-					count( $ids ),
-					self::MAX_IDS_PER_LOOKUP
-				)
-			);
-			return self::ucp_catalog_error_response(
-				$capability,
-				sprintf(
-					/* translators: %d is the maximum number of IDs per request. */
-					__( 'The "ids" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-storefront' ),
-					self::MAX_IDS_PER_LOOKUP
-				),
-				'invalid_input',
-				'$.ids'
-			);
-		}
-
-		$products = [];
-		$messages = [];
+		$products = array();
+		$messages = array();
 
 		// Deduplicate + normalize before fetching. `wc_ids` is the
 		// work list (one per unique input, aligned positionally
@@ -1362,17 +1327,72 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		$response_body = [
+		$response_body = array(
 			'ucp'      => WC_AI_Storefront_UCP_Envelope::catalog_envelope( $capability ),
 			'inputs'   => $inputs,
 			'products' => $products,
-		];
+		);
 
 		if ( ! empty( $messages ) ) {
 			$response_body['messages'] = $messages;
 		}
 
 		return new WP_REST_Response( $response_body, 200 );
+	}
+
+	/**
+	 * Validates the `ids` request parameter for catalog/lookup.
+	 *
+	 * Extracts the three sequential guards from handle_catalog_lookup() so
+	 * the handler body stays linear. Returns a ready-to-send error response
+	 * when validation fails, or null when the parameter is acceptable.
+	 *
+	 * @param mixed  $ids        Raw value of the `ids` request parameter.
+	 * @param string $capability UCP capability string for the error envelope.
+	 * @return WP_REST_Response|null Null on success; error response on failure.
+	 */
+	private static function validate_lookup_ids_param( $ids, string $capability ): ?WP_REST_Response {
+		if ( ! is_array( $ids ) ) {
+			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: "ids" is not an array' );
+			return self::ucp_catalog_error_response(
+				$capability,
+				__( 'Request body must include an "ids" array.', 'woocommerce-ai-storefront' ),
+				'invalid_input',
+				'$.ids'
+			);
+		}
+
+		if ( empty( $ids ) ) {
+			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: empty "ids" array' );
+			return self::ucp_catalog_error_response(
+				$capability,
+				__( 'The "ids" array must contain at least one ID.', 'woocommerce-ai-storefront' ),
+				'invalid_input',
+				'$.ids'
+			);
+		}
+
+		if ( count( $ids ) > self::MAX_IDS_PER_LOOKUP ) {
+			WC_AI_Storefront_Logger::debug(
+				sprintf(
+					'UCP catalog/lookup rejected: "ids" array size %d exceeds MAX_IDS_PER_LOOKUP %d',
+					count( $ids ),
+					self::MAX_IDS_PER_LOOKUP
+				)
+			);
+			return self::ucp_catalog_error_response(
+				$capability,
+				sprintf(
+					/* translators: %d is the maximum number of IDs per request. */
+					__( 'The "ids" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-storefront' ),
+					self::MAX_IDS_PER_LOOKUP
+				),
+				'invalid_input',
+				'$.ids'
+			);
+		}
+
+		return null;
 	}
 
 	/**
