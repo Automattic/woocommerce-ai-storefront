@@ -238,58 +238,13 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		if ( ! empty( $wc_variations ) ) {
 			$variants = array();
 			foreach ( $wc_variations as $wc_variation ) {
-				$variant = WC_AI_Storefront_UCP_Variant_Translator::translate( $wc_variation );
-
-				/**
-				 * Filter a translated UCP variant before it is added to a product.
-				 *
-				 * Allows third-party plugins to augment or override any field of a
-				 * UCP variant shape produced from a WooCommerce Store API variation
-				 * response. Fires once per variation, in the order they appear in the
-				 * parent product's `variations[]` pointer list.
-				 *
-				 * @since 1.0.0
-				 *
-				 * @param array<string, mixed> $variant      The translated UCP variant shape.
-				 *                                           Required keys: `id`, `title`,
-				 *                                           `description`, `list_price`,
-				 *                                           `availability`. Optional: `options`,
-				 *                                           `compare_at_price`, `sku`,
-				 *                                           `barcodes`, `media`, `metadata`.
-				 * @param array<string, mixed> $wc_variation The raw decoded Store API variation
-				 *                                           response that was translated. Use this
-				 *                                           to read WC-native fields (e.g. custom
-				 *                                           meta surfaced via a Store API
-				 *                                           extension) that the translator did
-				 *                                           not map.
-				 *
-				 * @return array<string, mixed> The (possibly modified) UCP variant shape.
-				 */
-				$variants[] = apply_filters( 'wc_ai_storefront_ucp_variant', $variant, $wc_variation );
+				$variants[] = WC_AI_Storefront_UCP_Variant_Translator::translate( $wc_variation );
 			}
 			return $variants;
 		}
 
-		$default_variant = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product );
-
-		/**
-		 * Filter the synthesized default UCP variant for a simple product.
-		 *
-		 * Simple WooCommerce products emit one synthesized variant (id suffix
-		 * `_default`) to satisfy the UCP schema `variants` minItems:1 constraint.
-		 * This filter fires on that synthesized variant, giving third-party plugins
-		 * the same mutation point they have for real variations.
-		 *
-		 * @since 1.0.0
-		 *
-		 * @param array<string, mixed> $default_variant The synthesized UCP variant shape.
-		 * @param array<string, mixed> $wc_product      The raw decoded Store API product
-		 *                                              response for the simple product.
-		 *
-		 * @return array<string, mixed> The (possibly modified) UCP variant shape.
-		 */
 		return array(
-			apply_filters( 'wc_ai_storefront_ucp_variant', $default_variant, $wc_product ),
+			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product ),
 		);
 	}
 

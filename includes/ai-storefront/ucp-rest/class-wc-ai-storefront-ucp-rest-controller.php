@@ -978,6 +978,59 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				);
 			}
 
+			// Apply the per-variant filter now that translation is complete.
+			// Moved here from UCP_Product_Translator::extract_variants() so
+			// the translator stays a pure function (no WP API calls). Fires
+			// once per variant in document order.
+			//
+			// Two sources feed this loop:
+			//   - Variable products: one real WC variation per entry; the
+			//     second arg ($wc_variation_or_product) is the decoded
+			//     Store API variation response.
+			//   - Simple products: one synthesized default variant; no
+			//     per-variation object is available, so the second arg is
+			//     the parent WC Store API product response. Hooks can
+			//     distinguish these via the variant id suffix: real
+			//     variations use `var_{id}`, synthesized defaults use
+			//     `var_{id}_default`.
+			if ( isset( $product['variants'] ) && is_array( $product['variants'] ) ) {
+				$has_real_variations = ! empty( $variation_fetch['variations'] );
+				foreach ( $product['variants'] as $idx => $variant ) {
+					// For variable products pass the matching variation
+					// response; for simple products pass the parent product.
+					$second_arg = $has_real_variations
+						? ( $variation_fetch['variations'][ $idx ] ?? $wc_product )
+						: $wc_product;
+
+					/**
+					 * Filter a translated UCP variant before it is added to a product.
+					 *
+					 * Fires once per variant after translation, in document order.
+					 * For variable products the second arg is the decoded Store API
+					 * variation response. For simple products (synthesized default
+					 * variant, id suffix `_default`) the second arg is the parent
+					 * product response — no per-variation object is available.
+					 *
+					 * @since 1.0.0
+					 *
+					 * @param array<string, mixed> $variant                    The translated UCP variant shape.
+					 *                                                          Required keys: `id`, `title`,
+					 *                                                          `description`, `list_price`,
+					 *                                                          `availability`. Optional: `options`,
+					 *                                                          `compare_at_price`, `sku`,
+					 *                                                          `barcodes`, `media`, `metadata`.
+					 * @param array<string, mixed> $second_arg                 For variable products: the raw
+					 *                                                          decoded Store API variation
+					 *                                                          response. For simple products:
+					 *                                                          the parent product response.
+					 *
+					 * @return array<string, mixed> The (possibly modified) UCP variant shape.
+					 */
+					$filtered                    = apply_filters( 'wc_ai_storefront_ucp_variant', $variant, $second_arg );
+					$product['variants'][ $idx ] = is_array( $filtered ) ? $filtered : $variant;
+				}
+			}
+
 			/**
 			 * Filter a translated UCP product before it is added to the catalog
 			 * search response.
@@ -1005,7 +1058,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 *
 			 * @return array<string, mixed> The (possibly modified) UCP product shape.
 			 */
-			$products[] = apply_filters( 'wc_ai_storefront_ucp_product', $product, $wc_product );
+			$filtered_product = apply_filters( 'wc_ai_storefront_ucp_product', $product, $wc_product );
+			$products[]       = is_array( $filtered_product ) ? $filtered_product : $product;
 		}
 
 		return array(
@@ -1464,6 +1518,59 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				);
 			}
 
+			// Apply the per-variant filter now that translation is complete.
+			// Moved here from UCP_Product_Translator::extract_variants() so
+			// the translator stays a pure function (no WP API calls). Fires
+			// once per variant in document order.
+			//
+			// Two sources feed this loop:
+			//   - Variable products: one real WC variation per entry; the
+			//     second arg ($second_arg) is the decoded Store API variation
+			//     response.
+			//   - Simple products: one synthesized default variant; no
+			//     per-variation object is available, so the second arg is
+			//     the parent WC Store API product response. Hooks can
+			//     distinguish these via the variant id suffix: real
+			//     variations use `var_{id}`, synthesized defaults use
+			//     `var_{id}_default`.
+			if ( isset( $product['variants'] ) && is_array( $product['variants'] ) ) {
+				$has_real_variations = ! empty( $variation_fetch['variations'] );
+				foreach ( $product['variants'] as $idx => $variant ) {
+					// For variable products pass the matching variation
+					// response; for simple products pass the parent product.
+					$second_arg = $has_real_variations
+						? ( $variation_fetch['variations'][ $idx ] ?? $wc_product )
+						: $wc_product;
+
+					/**
+					 * Filter a translated UCP variant before it is added to a product.
+					 *
+					 * Fires once per variant after translation, in document order.
+					 * For variable products the second arg is the decoded Store API
+					 * variation response. For simple products (synthesized default
+					 * variant, id suffix `_default`) the second arg is the parent
+					 * product response — no per-variation object is available.
+					 *
+					 * @since 1.0.0
+					 *
+					 * @param array<string, mixed> $variant    The translated UCP variant shape.
+					 *                                         Required keys: `id`, `title`,
+					 *                                         `description`, `list_price`,
+					 *                                         `availability`. Optional: `options`,
+					 *                                         `compare_at_price`, `sku`,
+					 *                                         `barcodes`, `media`, `metadata`.
+					 * @param array<string, mixed> $second_arg For variable products: the raw
+					 *                                         decoded Store API variation
+					 *                                         response. For simple products:
+					 *                                         the parent product response.
+					 *
+					 * @return array<string, mixed> The (possibly modified) UCP variant shape.
+					 */
+					$filtered                    = apply_filters( 'wc_ai_storefront_ucp_variant', $variant, $second_arg );
+					$product['variants'][ $idx ] = is_array( $filtered ) ? $filtered : $variant;
+				}
+			}
+
 			/**
 			 * Filter a translated UCP product before it is added to the catalog
 			 * lookup response.
@@ -1491,7 +1598,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 *
 			 * @return array<string, mixed> The (possibly modified) UCP product shape.
 			 */
-			$products[] = apply_filters( 'wc_ai_storefront_ucp_product', $product, $wc_product );
+			$filtered_product = apply_filters( 'wc_ai_storefront_ucp_product', $product, $wc_product );
+			$products[]       = is_array( $filtered_product ) ? $filtered_product : $product;
 		}
 
 		$response_body = array(
