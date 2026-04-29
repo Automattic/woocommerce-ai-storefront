@@ -27,7 +27,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 			array( 'WC_AI_Storefront_Llms_Txt', 'host_cache_key' )
 		);
 		WC_AI_Storefront_Cache_Invalidator::register( 'wc_ai_storefront_catalog_summary' );
-		WC_AI_Storefront_Cache_Invalidator::register( WC_AI_Storefront_Ucp::CACHE_KEY );
+		WC_AI_Storefront_Cache_Invalidator::register( 'wc_ai_storefront_ucp' );
 
 		// host_cache_key() sanitizes $_SERVER['HTTP_HOST'] via these two
 		// WP helpers. Stub them globally so every test that calls any method
