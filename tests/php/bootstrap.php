@@ -7,6 +7,8 @@
 
 require_once dirname( __DIR__, 2 ) . '/vendor/autoload.php';
 
+define( 'WC_AI_STOREFRONT_TESTING', true );
+
 // WordPress stubs (WP_Error, WP_REST_Request, etc.).
 require_once __DIR__ . '/stubs.php';
 

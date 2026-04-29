@@ -95,6 +95,9 @@ final class WC_AI_Storefront_UCP_Dispatch_Context {
 	 * @internal
 	 */
 	public static function reset_for_test(): void {
+		if ( ! defined( 'WC_AI_STOREFRONT_TESTING' ) ) {
+			return;
+		}
 		self::$depth = 0;
 	}
 }

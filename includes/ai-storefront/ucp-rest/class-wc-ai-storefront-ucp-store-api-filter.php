@@ -63,18 +63,6 @@ defined( 'ABSPATH' ) || exit;
 class WC_AI_Storefront_UCP_Store_API_Filter {
 
 	/**
-	 * Depth counter for UCP-initiated dispatches.
-	 *
-	 * Delegated to `WC_AI_Storefront_UCP_Dispatch_Context` since
-	 * 0.7.0. The forwarding methods `enter_ucp_dispatch()`,
-	 * `exit_ucp_dispatch()`, and `is_in_ucp_dispatch()` are kept
-	 * as public shims so existing call-sites (tests and other
-	 * controllers) continue to work without changes.
-	 *
-	 * @deprecated Use WC_AI_Storefront_UCP_Dispatch_Context directly.
-	 */
-
-	/**
 	 * Per-request sentinel preventing duplicate hook registration.
 	 *
 	 * `add_action` doesn't deduplicate by callback shape — it
