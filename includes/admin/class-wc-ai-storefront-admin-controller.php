@@ -306,7 +306,7 @@ class WC_AI_Storefront_Admin_Controller {
 	 * @param mixed $value Raw input, expected to be an array of IDs.
 	 * @return array<int> Array of absint-sanitized IDs.
 	 */
-	private static function sanitize_id_array( $value ): array {
+	public static function sanitize_id_array( $value ): array {
 		return array_map( 'absint', (array) $value );
 	}
 
