@@ -20,7 +20,7 @@ wp_options ──── triggers ────► WC_AI_Storefront_Cache_Invalida
                                          │  delete_transient(...)
                                          ▼
                                     wc_ai_storefront_llms_txt_{md5(host)}
-                                    (wc_ai_storefront_ucp — no-op, manifest is per-request)
+                                    (wc_ai_storefront_ucp — manifest per-request, delete cleans up warm-up copy)
                                          │
                                          │  schedule cron
                                          ▼
@@ -134,10 +134,10 @@ Cached `/llms.txt` Markdown body. Avoids regenerating on every crawler hit.
 
 ### `wc_ai_storefront_ucp`
 
-Constant (`WC_AI_Storefront_Ucp::CACHE_KEY`) retained for backward compatibility — referenced by the cache invalidator and any third-party code that reads it. The UCP manifest is now **generated per-request** rather than cached: the generation path is cheap (no external HTTP probes, no unbounded DB queries) and per-request computation eliminates the Host-keying problem entirely. The transient is **never written** by the current code; the `Vary: Host` response header handles HTTP-layer caching separately.
+The `WC_AI_Storefront_Ucp::CACHE_KEY` constant has been removed (closes #177). The UCP manifest is now **generated per-request** rather than cached: the generation path is cheap (no external HTTP probes, no unbounded DB queries) and per-request computation eliminates the Host-keying problem entirely. The `Vary: Host` response header handles HTTP-layer caching separately.
 
-- **Previously:** cached `/.well-known/ucp` JSON body with 1-hour TTL.
-- **Currently:** not used. `delete_transient( CACHE_KEY )` calls in the cache invalidator are harmless no-ops.
+- **Currently written by:** `WC_AI_Storefront_Admin_Controller::update_settings()` on enable (warm-up hint, labeled legacy in-code). `serve_manifest()` does **not** read this key — the manifest is generated per-request.
+- **Currently deleted by:** cache invalidator and `deactivate()`, to clean up both pre-1.0 installs and the admin warm-up copy.
 - **Uninstall:** `uninstall.php` still deletes it (defensive, covers any stale value from a pre-0.6.6 install).
 
 ### `wc_ai_storefront_flush_rewrite`
