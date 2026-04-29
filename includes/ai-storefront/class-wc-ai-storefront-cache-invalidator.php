@@ -46,11 +46,14 @@ class WC_AI_Storefront_Cache_Invalidator {
 	 * to hardcode class names or key strings.
 	 *
 	 * @param string|callable $key_or_callable A string transient key, or a callable
-	 *                                         (e.g. array( 'ClassName', 'method' ))
-	 *                                         that returns a string key at call time.
+	 *                                         in array form (e.g. array( ClassName::class, 'method' ))
+	 *                                         that returns the key string.
 	 */
-	public static function register( $key_or_callable ) {
-		self::$registered_keys[] = $key_or_callable;
+	public static function register( $key_or_callable ): void {
+		// Deduplicate so double-init (activation path) does not double-register.
+		if ( ! in_array( $key_or_callable, self::$registered_keys, true ) ) {
+			self::$registered_keys[] = $key_or_callable;
+		}
 	}
 
 	/**
@@ -59,18 +62,21 @@ class WC_AI_Storefront_Cache_Invalidator {
 	 * Intended for use in tests to restore a clean state between test runs.
 	 * Not part of the public API for production code.
 	 */
-	public static function reset_registered_keys() {
+	public static function reset_registered_keys(): void {
+		if ( ! ( defined( 'WC_AI_STOREFRONT_TESTING' ) || defined( 'WP_TESTS_DOMAIN' ) ) ) {
+			return;
+		}
 		self::$registered_keys = array();
 	}
 
 	/**
 	 * Resolve a registered key entry to a string transient key.
 	 *
-	 * @param string|callable $entry A string key or a callable that returns one.
+	 * @param string|array $entry A string key or an array callable that returns one.
 	 * @return string
 	 */
-	private static function resolve_key( $entry ) {
-		if ( is_callable( $entry ) ) {
+	private static function resolve_key( $entry ): string {
+		if ( is_array( $entry ) && is_callable( $entry ) ) {
 			return (string) call_user_func( $entry );
 		}
 		return (string) $entry;
@@ -204,7 +210,7 @@ class WC_AI_Storefront_Cache_Invalidator {
 							// the callable would return the same key for every
 							// blog. The wildcard DB delete above already covers
 							// all host variants for this blog.
-							if ( ! is_callable( $entry ) ) {
+							if ( ! ( is_array( $entry ) && is_callable( $entry ) ) ) {
 								delete_transient( self::resolve_key( $entry ) );
 							}
 						}
@@ -354,7 +360,7 @@ class WC_AI_Storefront_Cache_Invalidator {
 							// Skip callables in the multisite loop (same reason
 							// as in invalidate(): host-keyed keys are request-
 							// scoped, not blog-scoped).
-							if ( ! is_callable( $entry ) ) {
+							if ( ! ( is_array( $entry ) && is_callable( $entry ) ) ) {
 								delete_transient( self::resolve_key( $entry ) );
 							}
 						}
