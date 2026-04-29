@@ -56,6 +56,8 @@ require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-agent-header.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-envelope.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-product-translator.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-variant-translator.php';
+require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-request-context.php';
+require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-dispatch-context.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-store-api-filter.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-store-api-extension.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-rest-controller.php';
