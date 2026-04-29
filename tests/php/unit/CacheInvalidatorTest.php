@@ -56,9 +56,11 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_invalidate_deletes_transients(): void {
-		// llms.txt (host-keyed) + catalog_summary + sitemap_urls + UCP (no-op).
+		// llms.txt (host-keyed) + catalog_summary + UCP (no-op).
+		// Note: SITEMAP_CACHE_KEY is NOT deleted by invalidate() — sitemap
+		// location depends on settings, not product data.
 		Functions\expect( 'delete_transient' )
-			->times( 4 );
+			->times( 3 );
 
 		Functions\expect( 'wp_next_scheduled' )->andReturn( false );
 		Functions\expect( 'wp_schedule_single_event' )->andReturn( true );
@@ -80,10 +82,6 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( true );
 		Functions\expect( 'delete_transient' )
 			->once()
-			->with( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY )
-			->andReturn( true );
-		Functions\expect( 'delete_transient' )
-			->once()
 			->with( WC_AI_Storefront_Ucp::CACHE_KEY )
 			->andReturn( true );
 
@@ -94,7 +92,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_invalidate_schedules_warmup_when_none_pending(): void {
-		Functions\expect( 'delete_transient' )->times( 4 )->andReturn( true );
+		Functions\expect( 'delete_transient' )->times( 3 )->andReturn( true );
 
 		Functions\expect( 'wp_next_scheduled' )
 			->once()
@@ -113,7 +111,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_invalidate_skips_scheduling_when_event_already_pending(): void {
-		Functions\expect( 'delete_transient' )->times( 4 )->andReturn( true );
+		Functions\expect( 'delete_transient' )->times( 3 )->andReturn( true );
 
 		Functions\expect( 'wp_next_scheduled' )
 			->once()
@@ -124,6 +122,50 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		Functions\expect( 'wp_schedule_single_event' )->never();
 
 		$this->invalidator->invalidate();
+	}
+
+	// ------------------------------------------------------------------
+	// invalidate_sitemap_cache()
+	// ------------------------------------------------------------------
+
+	public function test_invalidate_sitemap_cache_deletes_sitemap_key_only(): void {
+		// Should delete SITEMAP_CACHE_KEY and nothing else (no llms.txt,
+		// no catalog_summary, no UCP).
+		Functions\expect( 'delete_transient' )
+			->once()
+			->with( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY )
+			->andReturn( true );
+
+		Functions\expect( 'is_multisite' )->andReturn( false );
+
+		$this->invalidator->invalidate_sitemap_cache();
+	}
+
+	public function test_invalidate_does_not_delete_sitemap_cache_on_product_edit(): void {
+		// Regression guard: invalidate() must NOT touch SITEMAP_CACHE_KEY.
+		// Sitemap location depends on settings, not product data.
+		$sitemap_key_deleted = false;
+
+		Functions\expect( 'delete_transient' )
+			->times( 3 )
+			->andReturnUsing(
+				static function ( $key ) use ( &$sitemap_key_deleted ) {
+					if ( $key === WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY ) {
+						$sitemap_key_deleted = true;
+					}
+					return true;
+				}
+			);
+
+		Functions\expect( 'wp_next_scheduled' )->andReturn( false );
+		Functions\expect( 'wp_schedule_single_event' )->andReturn( true );
+
+		$this->invalidator->invalidate();
+
+		$this->assertFalse(
+			$sitemap_key_deleted,
+			'invalidate() must not delete SITEMAP_CACHE_KEY — sitemap location is not affected by product/category edits'
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -258,7 +300,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		// refreshed on the next page load after a product/category update.
 		$deleted = array();
 		Functions\expect( 'delete_transient' )
-			->times( 4 )
+			->times( 3 )
 			->andReturnUsing(
 				static function ( $key ) use ( &$deleted ) {
 					$deleted[] = $key;
@@ -284,7 +326,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_init_registers_all_expected_hooks(): void {
 		Functions\expect( 'add_action' )
-			->times( 10 ); // 4 product + 1 stock + 3 category + 1 settings + 1 cron = 10.
+			->times( 11 ); // 4 product + 1 stock + 3 category + 1 settings + 1 sitemap-settings + 1 cron = 11.
 
 		$this->invalidator->init();
 	}

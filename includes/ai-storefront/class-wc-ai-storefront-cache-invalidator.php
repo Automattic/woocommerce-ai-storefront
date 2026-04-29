@@ -60,6 +60,15 @@ class WC_AI_Storefront_Cache_Invalidator {
 		// Syndication settings changed (catches any code path that writes the option).
 		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, [ $this, 'invalidate' ] );
 
+		// Sitemap discovery cache: only bust on settings changes that could
+		// affect sitemap *location* (e.g. WooCommerce Sitemaps toggled on/off,
+		// site URL changed). Product and category edits do NOT affect which
+		// sitemap URLs exist, so we don't hook into the product/category
+		// lifecycle above — busting on every product save would collapse the
+		// 24h TTL and force a synchronous HTTP HEAD probe on every llms.txt
+		// regeneration.
+		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, [ $this, 'invalidate_sitemap_cache' ] );
+
 		// Cron handler for background warm-up.
 		add_action( self::WARMUP_CRON_HOOK, [ $this, 'warm_cache' ] );
 	}
@@ -97,10 +106,11 @@ class WC_AI_Storefront_Cache_Invalidator {
 		// Catalog summary cache (store-level JSON-LD).
 		delete_transient( 'wc_ai_storefront_catalog_summary' );
 
-		// Sitemap URL discovery cache (24h TTL, independent of llms.txt content).
-		// Intentionally busted on product/settings changes that could add or
-		// remove sitemap paths (e.g. WooCommerce sitemap toggled in settings).
-		delete_transient( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY );
+		// Note: SITEMAP_CACHE_KEY is intentionally NOT busted here. The 24h
+		// TTL on sitemap URL discovery exists to decouple expensive HTTP HEAD
+		// probes from content changes. Sitemap location is determined by site
+		// settings, not product data. See invalidate_sitemap_cache(), which is
+		// hooked to settings changes only.
 
 		// UCP manifest is computed per-request (no transient) — the
 		// delete below is a harmless no-op kept for backward compat.
@@ -109,6 +119,50 @@ class WC_AI_Storefront_Cache_Invalidator {
 		// Schedule a one-shot warm-up, unless one is already pending.
 		if ( ! wp_next_scheduled( self::WARMUP_CRON_HOOK ) ) {
 			wp_schedule_single_event( time() + self::WARMUP_DELAY, self::WARMUP_CRON_HOOK );
+		}
+	}
+
+	/**
+	 * Invalidate the sitemap URL discovery cache on settings changes.
+	 *
+	 * Called only on `update_option_<SETTINGS_OPTION>`, NOT on product or
+	 * category edits. Sitemap *location* (which URLs to probe) depends on
+	 * plugin settings (e.g. the WooCommerce Sitemaps toggle), not on
+	 * individual product data changes. Busting on every product save would
+	 * collapse the 24h TTL and force a synchronous HTTP HEAD probe on every
+	 * subsequent llms.txt regeneration, defeating the P-18 performance goal.
+	 *
+	 * On multisite, replicate the purge for every other site exactly as
+	 * invalidate() does for the llms.txt transients.
+	 */
+	public function invalidate_sitemap_cache() {
+		delete_transient( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY );
+
+		if ( is_multisite() ) {
+			$current_blog_id = get_current_blog_id();
+			$offset          = 0;
+			$batch           = 500;
+			do {
+				$blog_ids = get_sites(
+					array(
+						'fields' => 'ids',
+						'number' => $batch,
+						'offset' => $offset,
+					)
+				);
+				foreach ( $blog_ids as $blog_id ) {
+					if ( (int) $blog_id === $current_blog_id ) {
+						continue;
+					}
+					switch_to_blog( $blog_id );
+					try {
+						delete_transient( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY );
+					} finally {
+						restore_current_blog();
+					}
+				}
+				$offset += $batch;
+			} while ( count( $blog_ids ) === $batch );
 		}
 	}
 
