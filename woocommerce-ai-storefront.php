@@ -23,20 +23,10 @@
 
 defined( 'ABSPATH' ) || exit;
 
-// Composer autoloader — required for non-namespaced class autoloading.
-// In source checkouts this file won't exist until `composer install` is run.
-// The release ZIP always ships with vendor/ pre-built; see AGENTS.md.
-if ( ! file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
-	add_action(
-		'admin_notices',
-		static function () {
-			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Static string, no user input.
-			echo '<div class="notice notice-error"><p><strong>WooCommerce AI Storefront:</strong> Composer dependencies are missing. Run <code>composer install</code> in the plugin directory.</p></div>';
-		}
-	);
-	return;
-}
-require_once __DIR__ . '/vendor/autoload.php';
+// Classmap autoloader for all plugin classes. This file is committed
+// to the repo so no `composer install` is required to activate the plugin.
+// Update includes/autoload.php when adding or removing plugin classes.
+require_once __DIR__ . '/includes/autoload.php';
 
 define( 'WC_AI_STOREFRONT_VERSION', '0.7.0' );
 define( 'WC_AI_STOREFRONT_PLUGIN_FILE', __FILE__ );
