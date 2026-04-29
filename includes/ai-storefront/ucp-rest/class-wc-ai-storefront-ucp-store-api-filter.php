@@ -161,7 +161,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 *      passes through unchanged when the merchant hasn't opted
 	 *      into scoping.
 	 *
-	 * Only `tax_query` and `post__in` round-trip through `$query` --
+	 * Only `tax_query` and `post__in` round-trip through `$query`;
 	 * those are the two fields the underlying mutation function may
 	 * touch. Other args (orderby, posts_per_page, etc.) stay on the
 	 * query object untouched.

@@ -7,7 +7,7 @@
  *
  * Replacing the previous static arrays in the controller with an
  * instance of this class eliminates the data-leak risk present in
- * long-lived PHP worker processes (PHP-FPM, Swoole, RoadRunner):
+ * long-lived PHP worker processes (Swoole, RoadRunner, FrankenPHP):
  * a static property lives for the lifetime of the worker process,
  * meaning a product fetched for Request A can be seen by Request B
  * unless the handler remembers to call `reset()`. With an instance
@@ -58,7 +58,7 @@ final class WC_AI_Storefront_UCP_Request_Context {
 	 * @return array<string, mixed>|null Cached product data, or null for a
 	 *                                   cached "not found / out of scope".
 	 */
-	public function get_product( int $id ) {
+	public function get_product( int $id ): ?array {
 		return isset( $this->product_cache[ $id ] ) ? $this->product_cache[ $id ] : null;
 	}
 
@@ -80,10 +80,10 @@ final class WC_AI_Storefront_UCP_Request_Context {
 	 * Pass `null` to record a "not found / out of scope" result so
 	 * the next lookup short-circuits without re-dispatching.
 	 *
-	 * @param int                          $id      WC product ID.
-	 * @param array<string, mixed>|null    $product Product data or null.
+	 * @param int                       $id      WC product ID.
+	 * @param ?array<string, mixed>     $product Product data or null.
 	 */
-	public function set_product( int $id, $product ): void {
+	public function set_product( int $id, ?array $product ): void {
 		$this->product_cache[ $id ]         = $product;
 		$this->product_cache_has_key[ $id ] = true;
 	}

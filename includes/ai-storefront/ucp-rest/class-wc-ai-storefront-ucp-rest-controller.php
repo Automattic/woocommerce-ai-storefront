@@ -149,7 +149,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * for the lifetime of the PHP worker process, meaning a product
 	 * fetched for one request can leak into a subsequent request when
 	 * the reset at handler entry is missed or the worker is re-used
-	 * (PHP-FPM, Swoole, RoadRunner). An instance property's lifetime
+	 * (Swoole, RoadRunner, FrankenPHP). An instance property's lifetime
 	 * is bounded by the controller object; `reset()` is still called at
 	 * each handler entry for defence-in-depth, but the data-leak risk
 	 * is eliminated by construction.
@@ -181,7 +181,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *
 	 *   2. One DOCS route (GET): extension/schema. Serves a static JSON
 	 *      Schema document describing our merchant-extension capability.
-	 *      NOT gated on `is_syndication_disabled()` -- same availability
+	 *      NOT gated on `is_syndication_disabled()`. Same availability
 	 *      as the UCP manifest itself at `/.well-known/ucp` (both are
 	 *      discovery surfaces; the manifest continues to be served even
 	 *      when syndication is paused, and the schema it points at must
@@ -600,7 +600,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *
 	 * Performance note: variable products fan out to N+1 dispatches
 	 * (1 list call + 1 per variation per product). Per-request
-	 * memoization is implemented via reset_request_cache() and
+	 * memoization is implemented via $this->request_context->reset() and
 	 * fetch_store_api_product() to bound fan-out on duplicate IDs.
 	 *
 	 * @param WP_REST_Request $request UCP search request.
@@ -2437,14 +2437,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 	/**
 	 * Dispatch `GET /wc/store/v1/products/{id}` internally via
-	 * `rest_do_request` and return the decoded payload -- or null if
+	 * `rest_do_request` and return the decoded payload (or null if
 	 * the product doesn't exist, the dispatcher errored, or the
-	 * response didn't carry a usable array.
+	 * response didn't carry a usable array).
 	 *
 	 * Using `rest_do_request` rather than a direct WC_Data_Store call
 	 * matters: it threads the request through the Store API's full
 	 * pipeline (variation expansion, image URL resolution, embedded
-	 * pricing, etc.) -- so the resulting array is the exact same
+	 * pricing, etc.), so the resulting array is the exact same
 	 * shape an external Store API consumer would see.
 	 *
 	 * Scope enforcement note: the Store API's
@@ -2456,7 +2456,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * `WC_AI_Storefront::is_product_syndicated()` BEFORE the
 	 * dispatch and returns null (treated as "not found" by callers)
 	 * when the gate fails. This mirrors what llms.txt and JSON-LD
-	 * emit for the same product -- all three gates stay in
+	 * emit for the same product: all three gates stay in
 	 * lockstep.
 	 *
 	 * Results are memoized in `$this->request_context` so duplicate
@@ -2669,7 +2669,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$variations = array();
 		foreach ( $variation_refs as $ref ) {
 			// WC Store API emits `variations` as `[{id, attributes}, ...]`
-			// -- just the pointer. Fetch the full variation record.
+			// (just the pointer). Fetch the full variation record.
 			$variation_id = is_array( $ref )
 				? (int) ( $ref['id'] ?? 0 )
 				: (int) $ref;
