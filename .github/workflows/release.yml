@@ -59,17 +59,11 @@ jobs:
             exit 1
           fi
 
-      # Install *production* composer deps only — dev-only packages
-      # (PHPUnit, PHPStan, PHPCS, Brain Monkey) don't ship to merchants.
-      # --optimize-autoloader builds the classmap so the autoloader does
-      # a single file-stat lookup per class rather than walking PSR-4
-      # prefixes at runtime. The resulting vendor/ contains only
-      # autoload.php and vendor/composer/*.php (11 small files, no
-      # production package source), and is included in the release zip
-      # so that require_once vendor/autoload.php in the plugin entry
-      # point works on merchant installs.
-      - name: Install production Composer dependencies
-        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+      # The plugin's runtime autoloader is includes/autoload.php (committed
+      # to the repo). No production Composer packages ship to merchants.
+      # This step installs dev tools only, specifically for make-pot below.
+      - name: Install Composer dependencies (dev tools only, for make-pot)
+        run: composer install --no-interaction --prefer-dist
 
       - name: Install Node dependencies
         run: npm ci
@@ -88,13 +82,10 @@ jobs:
       # extract into wp-content/plugins/<dir-name>/), so this must
       # match the slug merchants see in their Plugins screen.
       #
-      # vendor/ is intentionally included: the previous step ran
-      # composer install --no-dev --optimize-autoloader, which leaves
-      # only vendor/autoload.php and vendor/composer/*.php (the
-      # classmap autoloader, ~11 small files). The plugin entry point
-      # requires vendor/autoload.php, so it must be present in the zip.
-      # Dev packages (PHPUnit, PHPStan, PHPCS, Brain Monkey) are not
-      # installed by --no-dev and therefore do not appear in the zip.
+      # vendor/ is excluded from the zip: the plugin's runtime autoloader
+      # is includes/autoload.php (committed, no Composer required at runtime).
+      # Dev tools installed above are excluded by the node_modules/vendor/
+      # patterns below and never ship to merchants.
       - name: Stage release files
         run: |
           mkdir -p release-staging
@@ -104,6 +95,7 @@ jobs:
             --exclude='.claude/' \
             --exclude='.tools/' \
             --exclude='node_modules/' \
+            --exclude='vendor/' \
             --exclude='client/' \
             --exclude='tests/' \
             --exclude='bin/' \
