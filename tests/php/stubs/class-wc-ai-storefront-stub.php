@@ -226,11 +226,17 @@ class WC_AI_Storefront {
 		$current = self::get_settings();
 		$merged  = array_merge( $current, $settings );
 
-		$sanitized_mode = in_array(
-			$merged['product_selection_mode'],
-			[ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ],
-			true
-		) ? $merged['product_selection_mode'] : 'all';
+		// Normalize legacy mode aliases to canonical form at write time.
+		// Mirrors the production normalization in update_settings().
+		$legacy_mode_map = [
+			'categories' => 'by_taxonomy',
+			'tags'       => 'by_taxonomy',
+			'brands'     => 'by_taxonomy',
+		];
+		$raw_mode        = $merged['product_selection_mode'] ?? 'all';
+		$normalized_mode = isset( $legacy_mode_map[ $raw_mode ] ) ? $legacy_mode_map[ $raw_mode ] : $raw_mode;
+
+		$sanitized_mode = in_array( $normalized_mode, [ 'all', 'by_taxonomy', 'selected' ], true ) ? $normalized_mode : 'all';
 
 		// Mirror production: strict yes/no enum, anything else falls
 		// back to `'no'`. Documented at

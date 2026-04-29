@@ -46,28 +46,43 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Legacy modes — sanitization accepts them (does NOT coerce to
-	// 'all'). The stub's update_settings() does not run the silent
-	// migration that production's get_settings() performs on the next
-	// read, so these tests pin only the ACCEPTANCE behavior — not the
-	// post-migration storage. In production the value gets rewritten
-	// to `by_taxonomy` on the next get_settings() call (see
-	// SettingsMigrationTest).
+	// Legacy modes — normalized to `by_taxonomy` at write time (Fix #156).
+	// update_settings() now maps 'categories', 'tags', and 'brands' to
+	// 'by_taxonomy' before saving, so the DB always stores a canonical
+	// value. These tests pin that normalization contract.
 	// ------------------------------------------------------------------
 
-	public function test_legacy_categories_mode_is_accepted_by_sanitization(): void {
+	public function test_legacy_categories_mode_is_normalized_to_by_taxonomy_on_write(): void {
 		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'categories' ] );
-		$this->assertNotSame( 'all', WC_AI_Storefront::get_settings()['product_selection_mode'] );
+		$this->assertSame( 'by_taxonomy', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
-	public function test_legacy_tags_mode_is_accepted_by_sanitization(): void {
+	public function test_legacy_tags_mode_is_normalized_to_by_taxonomy_on_write(): void {
 		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'tags' ] );
-		$this->assertNotSame( 'all', WC_AI_Storefront::get_settings()['product_selection_mode'] );
+		$this->assertSame( 'by_taxonomy', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
-	public function test_legacy_brands_mode_is_accepted_by_sanitization(): void {
+	public function test_legacy_brands_mode_is_normalized_to_by_taxonomy_on_write(): void {
 		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'brands' ] );
-		$this->assertNotSame( 'all', WC_AI_Storefront::get_settings()['product_selection_mode'] );
+		$this->assertSame( 'by_taxonomy', WC_AI_Storefront::get_settings()['product_selection_mode'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Fix #156 regression: selected_* arrays must be preserved when a
+	// legacy mode is normalized. The merchant's selections should survive
+	// the rewrite so taxonomy enforcement still works after normalization.
+	// ------------------------------------------------------------------
+
+	public function test_legacy_mode_normalization_preserves_selected_categories(): void {
+		WC_AI_Storefront::update_settings(
+			[
+				'product_selection_mode' => 'categories',
+				'selected_categories'    => [ 3, 7 ],
+			]
+		);
+		$result = WC_AI_Storefront::get_settings();
+		$this->assertSame( 'by_taxonomy', $result['product_selection_mode'] );
+		$this->assertSame( [ 3, 7 ], $result['selected_categories'] );
 	}
 
 	// ------------------------------------------------------------------
