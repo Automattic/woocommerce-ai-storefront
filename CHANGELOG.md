@@ -14,6 +14,14 @@
 
 ---
 
+## [0.7.2] – 2026-04-29
+
+### Docs
+
+- **Corrected two documentation errors introduced by 0.7.0.** The extension filters were misnamed in `CHANGELOG.md` and `readme.txt`: the correct names are `wc_ai_storefront_ucp_product` and `wc_ai_storefront_ucp_variant` (no `_data` suffix). The wrong type signatures (`WC_Product`, `WC_Product_Variation`) and wrong parameter count (3 instead of 2 for the variant filter) were also corrected — the second argument to both filters is the raw Store API response array. Additionally, the 400 error code in `docs/engineering/API-REFERENCE.md` was documented as `ucp_invalid_request` instead of the correct `invalid_input` across all three UCP REST endpoints. No behavior changes.
+
+---
+
 ## [0.7.1] – 2026-04-29
 
 ### Fixes

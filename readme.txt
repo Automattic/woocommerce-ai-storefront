@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.7.1
+Stable tag: 0.7.2
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.7.2 - 2026-04-29 =
+**Fixed**
+* Corrected two documentation errors introduced by 0.7.0: the extension filters `wc_ai_storefront_ucp_product` and `wc_ai_storefront_ucp_variant` were misnamed with a `_data` suffix in the changelog, and the 400 error code for invalid UCP requests was documented as `ucp_invalid_request` instead of the correct `invalid_input`.
 
 = 0.7.1 - 2026-04-29 =
 **Fixed**
