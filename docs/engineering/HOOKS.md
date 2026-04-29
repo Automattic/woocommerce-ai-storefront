@@ -2,7 +2,7 @@
 
 Filters and actions exposed by WooCommerce AI Storefront for extending plugins.
 
-The plugin exposes a deliberately small surface — seven filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
+The plugin exposes a deliberately small surface — eleven filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
 
 ## Filters
 
@@ -160,6 +160,139 @@ add_filter( 'wc_ai_storefront_github_token', function() {
     return defined( 'GITHUB_PAT' ) ? GITHUB_PAT : '';
 } );
 ```
+
+### `wc_ai_storefront_ucp_product`
+
+Filter a translated UCP product shape before it is added to a catalog/search or catalog/lookup response.
+
+```php
+apply_filters( 'wc_ai_storefront_ucp_product', array $product, array $wc_product );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$product` | `array` | The translated UCP product shape. Required keys: `id`, `title`, `description`, `price_range`, `variants`. Optional: `url` (UTM-stamped permalink), `handle`, `status`, `seller`, `categories`, `tags`, `media`, `options`, `metadata`, `rating`, `published_at`, `updated_at`. |
+| `$wc_product` | `array` | The raw decoded Store API product response. Use this to read WC-native fields (e.g. custom meta surfaced via a Store API extension) that the translator did not map. |
+
+**Returns:** the (possibly modified) `array` UCP product shape.
+
+**When to use:** add custom product fields from a Store API extension (e.g. subscription billing period, pre-order date, rental availability), override price display for multi-currency setups, or inject an additional `categories` entry from a custom taxonomy.
+
+Fires in both `catalog/search` and `catalog/lookup` responses, once per product, after UTM attribution params have been stamped onto `$product['url']`. The translator is upstream of this filter and runs first; modifications made here are not visible to the translator.
+
+**Example — surface a subscription billing period:**
+
+```php
+add_filter( 'wc_ai_storefront_ucp_product', function( $product, $wc_product ) {
+    $ext = $wc_product['extensions']['com-woocommerce-subscriptions'] ?? array();
+    if ( ! empty( $ext['billing_period'] ) ) {
+        $product['metadata']['subscription'] = array(
+            'billing_period'    => $ext['billing_period'],
+            'billing_interval'  => (int) ( $ext['billing_interval'] ?? 1 ),
+        );
+    }
+    return $product;
+}, 10, 2 );
+```
+
+---
+
+### `wc_ai_storefront_ucp_variant`
+
+Filter a translated UCP variant shape before it is added to a product's `variants` array.
+
+```php
+apply_filters( 'wc_ai_storefront_ucp_variant', array $variant, array $wc_variation );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$variant` | `array` | The translated UCP variant shape. Required keys: `id`, `title`, `description`, `list_price`, `availability`. Optional: `options`, `compare_at_price`, `sku`, `barcodes`, `media`, `metadata`. |
+| `$wc_variation` | `array` | The raw decoded Store API variation response (or, for a synthesized default variant on a simple product, the product response). Use this to read WC-native fields that the translator did not map. |
+
+**Returns:** the (possibly modified) `array` UCP variant shape.
+
+**When to use:** add a custom availability signal (e.g. a pre-order date), surface a per-variation custom attribute, or override `list_price` with a subscription-adjusted amount.
+
+Fires once per variation for variable products, and once on the synthesized default variant for simple products.
+
+**Example — add a pre-order release date from a custom Store API extension:**
+
+```php
+add_filter( 'wc_ai_storefront_ucp_variant', function( $variant, $wc_variation ) {
+    $ext = $wc_variation['extensions']['com-acme-preorder'] ?? array();
+    if ( ! empty( $ext['release_date'] ) ) {
+        $variant['metadata']['preorder_release_date'] = $ext['release_date'];
+    }
+    return $variant;
+}, 10, 2 );
+```
+
+---
+
+### `wc_ai_storefront_ucp_continue_url`
+
+Filter the continue_url returned in a `POST /checkout-sessions` response before it is sent to the agent.
+
+```php
+apply_filters( 'wc_ai_storefront_ucp_continue_url', string $url, array $processed );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$url` | `string` | The fully-constructed continue URL including the `?products={id:qty,...}` payload and UTM attribution params (`utm_source`, `utm_medium`, `utm_id`, `ai_agent_host_raw`). |
+| `$processed` | `array` | The successfully-processed line items. Each entry contains at least `wc_id` (int), `ucp_id` (string), `quantity` (int), and `unit_price_minor` (int). Useful for conditionally redirecting based on cart contents. |
+
+**Returns:** the (possibly modified) continue URL string. Non-string returns are silently ignored and the pre-filter URL is used.
+
+**When to use:** redirect buyers to an alternative checkout entry point (e.g. a subscription sign-up page, a gift-purchase flow, a custom membership checkout) based on the cart contents, without changing the checkout-sessions handler itself.
+
+**Example — redirect subscription products to a dedicated checkout:**
+
+```php
+add_filter( 'wc_ai_storefront_ucp_continue_url', function( $url, $processed ) {
+    $wc_ids = array_column( $processed, 'wc_id' );
+    foreach ( $wc_ids as $id ) {
+        $product = wc_get_product( $id );
+        if ( $product && 'subscription' === $product->get_type() ) {
+            return home_url( '/subscribe-checkout/?products=' . implode( ',', $wc_ids ) );
+        }
+    }
+    return $url;
+}, 10, 2 );
+```
+
+---
+
+### `wc_ai_storefront_ucp_store_api_args`
+
+Filter the Store API query parameters before a `catalog/search` dispatch.
+
+```php
+apply_filters( 'wc_ai_storefront_ucp_store_api_args', array $store_params, string $endpoint );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$store_params` | `array` | Associative array of Store API query parameters mapped from the UCP request. Keys include `search`, `per_page`, `page`, `category`, `on_sale`, `min_price`, `max_price`, `orderby`, `order`, and any others produced by `map_ucp_search_to_store_api()`. |
+| `$endpoint` | `string` | The Store API endpoint being dispatched (e.g. `'/wc/store/v1/products'`). Included for future-proofing so a single callback can branch by endpoint if new dispatch paths are added. |
+
+**Returns:** the (possibly modified) `array` of Store API params. Non-array returns are silently discarded and treated as an empty params array.
+
+**When to use:** inject a hidden catalog constraint (e.g. `category` filter for members-only products), add a custom `orderby` value registered by another Store API extension, or suppress a UCP-mapped parameter your plugin handles through a different filter.
+
+**Example — restrict catalog to a members-only category:**
+
+```php
+add_filter( 'wc_ai_storefront_ucp_store_api_args', function( $store_params, $endpoint ) {
+    if ( '/wc/store/v1/products' === $endpoint && current_user_can( 'member' ) ) {
+        $store_params['category'] = 'members-only';
+    }
+    return $store_params;
+}, 10, 2 );
+```
+
+---
 
 ## Actions
 
