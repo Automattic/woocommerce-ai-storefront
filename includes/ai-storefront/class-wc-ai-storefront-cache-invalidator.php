@@ -29,6 +29,54 @@ class WC_AI_Storefront_Cache_Invalidator {
 	const WARMUP_DELAY = 30;
 
 	/**
+	 * Keys (or callables that return keys) registered for content invalidation.
+	 *
+	 * Populated by components via register(). Each entry is either a string
+	 * transient key or a callable that returns a string key at invalidation time.
+	 *
+	 * @var array
+	 */
+	private static $registered_keys = array();
+
+	/**
+	 * Register a transient key (or callable) for content invalidation.
+	 *
+	 * Called by components (e.g. WC_AI_Storefront_Llms_Txt, WC_AI_Storefront_JsonLd)
+	 * to declare which transient keys they own, so the invalidator does not need
+	 * to hardcode class names or key strings.
+	 *
+	 * @param string|callable $key_or_callable A string transient key, or a callable
+	 *                                         (e.g. array( 'ClassName', 'method' ))
+	 *                                         that returns a string key at call time.
+	 */
+	public static function register( $key_or_callable ) {
+		self::$registered_keys[] = $key_or_callable;
+	}
+
+	/**
+	 * Reset all registered keys.
+	 *
+	 * Intended for use in tests to restore a clean state between test runs.
+	 * Not part of the public API for production code.
+	 */
+	public static function reset_registered_keys() {
+		self::$registered_keys = array();
+	}
+
+	/**
+	 * Resolve a registered key entry to a string transient key.
+	 *
+	 * @param string|callable $entry A string key or a callable that returns one.
+	 * @return string
+	 */
+	private static function resolve_key( $entry ) {
+		if ( is_callable( $entry ) ) {
+			return (string) call_user_func( $entry );
+		}
+		return (string) $entry;
+	}
+
+	/**
 	 * Register invalidation hooks.
 	 *
 	 * Called unconditionally (not behind the syndication-enabled check)
@@ -85,14 +133,21 @@ class WC_AI_Storefront_Cache_Invalidator {
 	public function invalidate() {
 		global $wpdb;
 
-		// Delete the host-keyed llms.txt transient for the current request's
-		// host (fast path — covers the common case).
-		delete_transient( WC_AI_Storefront_Llms_Txt::host_cache_key() );
+		// Iterate all registered keys and delete each transient.
+		// Each entry is either a string key or a callable that returns one at
+		// invalidation time (e.g. WC_AI_Storefront_Llms_Txt::host_cache_key()
+		// is host-scoped and must be resolved fresh on every call).
+		foreach ( self::$registered_keys as $entry ) {
+			delete_transient( self::resolve_key( $entry ) );
+		}
 
 		// Also purge any other host-keyed variants (e.g. www vs non-www
 		// alias domains). DB-backed transients are cleaned up here; sites
 		// using a persistent object cache (Redis/Memcached) will expire
 		// naturally within HOUR_IN_SECONDS — documented limitation.
+		// This wildcard delete is an implementation detail specific to how
+		// llms.txt host keys are stored; it is not generalised through the
+		// registration API.
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query(
 			$wpdb->prepare(
@@ -103,18 +158,11 @@ class WC_AI_Storefront_Cache_Invalidator {
 		);
 		// phpcs:enable
 
-		// Catalog summary cache (store-level JSON-LD).
-		delete_transient( 'wc_ai_storefront_catalog_summary' );
-
 		// Note: SITEMAP_CACHE_KEY is intentionally NOT busted here. The 24h
 		// TTL on sitemap URL discovery exists to decouple expensive HTTP HEAD
 		// probes from content changes. Sitemap location is determined by site
 		// settings, not product data. See invalidate_sitemap_cache(), which is
 		// hooked to settings changes only.
-
-		// UCP manifest is computed per-request (no transient) — the
-		// delete below is a harmless no-op kept for backward compat.
-		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
 
 		// On multisite, replicate the purge for every other site in the
 		// network. After switch_to_blog() $wpdb->options points to the
@@ -150,8 +198,16 @@ class WC_AI_Storefront_Cache_Invalidator {
 							)
 						);
 						// phpcs:enable
-						delete_transient( 'wc_ai_storefront_catalog_summary' );
-						delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
+						foreach ( self::$registered_keys as $entry ) {
+							// Skip host-keyed callables in the multisite loop:
+							// the host is request-scoped, not blog-scoped, so
+							// the callable would return the same key for every
+							// blog. The wildcard DB delete above already covers
+							// all host variants for this blog.
+							if ( ! is_callable( $entry ) ) {
+								delete_transient( self::resolve_key( $entry ) );
+							}
+						}
 					} finally {
 						restore_current_blog();
 					}
@@ -240,8 +296,10 @@ class WC_AI_Storefront_Cache_Invalidator {
 	public static function deactivate() {
 		global $wpdb;
 
-		// Delete the current-host key (fast path).
-		delete_transient( WC_AI_Storefront_Llms_Txt::host_cache_key() );
+		// Delete all registered content-invalidation transients.
+		foreach ( self::$registered_keys as $entry ) {
+			delete_transient( self::resolve_key( $entry ) );
+		}
 
 		// Also purge any other host-keyed variants (same rationale as invalidate()).
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -254,9 +312,10 @@ class WC_AI_Storefront_Cache_Invalidator {
 		);
 		// phpcs:enable
 
-		delete_transient( 'wc_ai_storefront_catalog_summary' );
+		// SITEMAP_CACHE_KEY is not in the registered list because it has
+		// different trigger semantics (settings-only, not content-changes).
+		// On deactivation we must still clear it explicitly.
 		delete_transient( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY );
-		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
 
 		// On multisite, replicate the purge for every other site. Same
 		// rationale as invalidate() — wildcard query covers all host-keyed
@@ -291,8 +350,14 @@ class WC_AI_Storefront_Cache_Invalidator {
 							)
 						);
 						// phpcs:enable
-						delete_transient( 'wc_ai_storefront_catalog_summary' );
-						delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
+						foreach ( self::$registered_keys as $entry ) {
+							// Skip callables in the multisite loop (same reason
+							// as in invalidate(): host-keyed keys are request-
+							// scoped, not blog-scoped).
+							if ( ! is_callable( $entry ) ) {
+								delete_transient( self::resolve_key( $entry ) );
+							}
+						}
 						wp_clear_scheduled_hook( self::WARMUP_CRON_HOOK );
 					} finally {
 						restore_current_blog();
