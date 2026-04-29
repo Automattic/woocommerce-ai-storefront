@@ -50,6 +50,11 @@ class WC_AI_Storefront_Cache_Invalidator {
 	 *                                         that returns the key string.
 	 */
 	public static function register( $key_or_callable ): void {
+		// Only accept strings or array-callables.  Anything else is a
+		// caller bug; ignore it rather than storing garbage in the key list.
+		if ( ! is_string( $key_or_callable ) && ! ( is_array( $key_or_callable ) && is_callable( $key_or_callable ) ) ) {
+			return;
+		}
 		// Deduplicate so double-init (activation path) does not double-register.
 		if ( ! in_array( $key_or_callable, self::$registered_keys, true ) ) {
 			self::$registered_keys[] = $key_or_callable;
@@ -175,6 +180,8 @@ class WC_AI_Storefront_Cache_Invalidator {
 		// subsite's table so the wildcard query deletes the right rows.
 		// host_cache_key() is request-scoped (not blog-scoped) so we
 		// skip the fast-path delete here and rely on the wildcard query.
+		// Registered callable keys are resolved and deleted inside each
+		// blog context in the loop below.
 		// Paginated in batches of 500 so a single invalidate() on a very
 		// large network doesn't build a 10 000-element ID array in memory.
 		if ( is_multisite() ) {
@@ -205,14 +212,8 @@ class WC_AI_Storefront_Cache_Invalidator {
 						);
 						// phpcs:enable
 						foreach ( self::$registered_keys as $entry ) {
-							// Skip host-keyed callables in the multisite loop:
-							// the host is request-scoped, not blog-scoped, so
-							// the callable would return the same key for every
-							// blog. The wildcard DB delete above already covers
-							// all host variants for this blog.
-							if ( ! ( is_array( $entry ) && is_callable( $entry ) ) ) {
-								delete_transient( self::resolve_key( $entry ) );
-							}
+							$key = self::resolve_key( $entry );
+							delete_transient( $key );
 						}
 					} finally {
 						restore_current_blog();
@@ -357,12 +358,8 @@ class WC_AI_Storefront_Cache_Invalidator {
 						);
 						// phpcs:enable
 						foreach ( self::$registered_keys as $entry ) {
-							// Skip callables in the multisite loop (same reason
-							// as in invalidate(): host-keyed keys are request-
-							// scoped, not blog-scoped).
-							if ( ! ( is_array( $entry ) && is_callable( $entry ) ) ) {
-								delete_transient( self::resolve_key( $entry ) );
-							}
+							$key = self::resolve_key( $entry );
+							delete_transient( $key );
 						}
 						wp_clear_scheduled_hook( self::WARMUP_CRON_HOOK );
 					} finally {
