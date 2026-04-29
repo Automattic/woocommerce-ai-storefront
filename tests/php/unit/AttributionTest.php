@@ -1218,6 +1218,37 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 	// bust_stats_cache()
 	// ------------------------------------------------------------------
 
+	public function test_init_hooks_bust_stats_cache_on_delete_and_trash(): void {
+		$hooks = array();
+		Functions\when( 'add_action' )->alias(
+			static function ( $hook, $callback, $priority = 10, $accepted_args = 1 ) use ( &$hooks ) {
+				$hooks[] = array( $hook, $callback, $accepted_args );
+			}
+		);
+		Functions\when( 'add_filter' )->alias( static function () {} );
+
+		$this->attribution->init();
+
+		$bust_hooks = array_filter(
+			$hooks,
+			static function ( $entry ) {
+				return is_array( $entry[1] ) && 'bust_stats_cache' === $entry[1][1];
+			}
+		);
+		$registered = array_column( $bust_hooks, 0 );
+
+		$this->assertContains( 'woocommerce_delete_order', $registered, 'woocommerce_delete_order should bust stats cache' );
+		$this->assertContains( 'woocommerce_trash_order', $registered, 'woocommerce_trash_order should bust stats cache' );
+
+		// All delete/trash hook entries must pass 0 accepted args so the
+		// order-ID parameter WC passes is not forwarded to bust_stats_cache().
+		foreach ( $bust_hooks as $entry ) {
+			if ( in_array( $entry[0], array( 'woocommerce_delete_order', 'woocommerce_trash_order' ), true ) ) {
+				$this->assertSame( 0, $entry[2], "{$entry[0]} bust_stats_cache binding must use accepted_args=0" );
+			}
+		}
+	}
+
 	public function test_bust_stats_cache_deletes_all_four_period_transients(): void {
 		$deleted = array();
 		Functions\expect( 'delete_transient' )

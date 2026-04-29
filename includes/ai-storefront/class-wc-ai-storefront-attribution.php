@@ -291,10 +291,12 @@ class WC_AI_Storefront_Attribution {
 		// Display AI attribution data in admin order view.
 		add_action( 'woocommerce_admin_order_data_after_billing_address', [ $this, 'display_attribution_in_admin' ], 20, 1 );
 
-		// Bust stats transient cache when order status changes so the admin
-		// dashboard reflects new completions within one cache TTL cycle.
+		// Bust stats transient cache when order status changes or an order is
+		// removed so the admin dashboard stays accurate within one TTL cycle.
 		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'bust_stats_cache' ) );
 		add_action( 'woocommerce_order_status_processing', array( __CLASS__, 'bust_stats_cache' ) );
+		add_action( 'woocommerce_delete_order', array( __CLASS__, 'bust_stats_cache' ), 10, 0 );
+		add_action( 'woocommerce_trash_order', array( __CLASS__, 'bust_stats_cache' ), 10, 0 );
 	}
 
 	/**
