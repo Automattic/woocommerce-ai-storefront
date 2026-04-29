@@ -126,6 +126,21 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
+= 0.6.6 - 2026-04-28 =
+**Fixed**
+* `Vary: Host` header added to `/llms.txt` and UCP manifest; llms.txt PHP-layer cache segmented by host to prevent cache-poisoning on shared CDNs and multisite installs.
+* JSON-LD hex-escapes `<`, `>`, `&`, `'`, `"` to block script-tag breakout via category names (stored XSS via `manage_categories`).
+* `/checkout-sessions` collapses duplicate line items so `continue_url` quantities match the response totals.
+* Attribution STRICT gate no longer fires false-positive when `utm_id=woo_ucp` is only in `$_GET` at order-create time (non-AI orders no longer misattributed).
+* Rate limiter counts 1 slot per outer UCP request instead of 1 slot per inner Store API dispatch, preventing unexpected 429s on large catalog lookups.
+* Per-product final-sale JSON-LD override now emits even when the WC base country is unset.
+* `_wc_ai_storefront_agent_host_raw` double-write fixed: lenient-gate normalized value wins over untrusted URL param when both paths fire.
+* `allow_unknown_ucp_agents` setting now saves correctly via the REST settings endpoint (was silently dropped).
+* Return policy `returnFees` and `returnMethod` values validated against Schema.org allow-lists at JSON-LD emit time (defense-in-depth).
+* `wc_ai_storefront_jsonld_product` and `wc_ai_storefront_jsonld_store` filters now receive a minimal 3-key settings subset instead of the full internal array.
+* `meta.source` in `/checkout-sessions` POST body validated to 253-char max and hostname-safe charset before attribution storage.
+* llms.txt sitemap probe enables SSL certificate verification in production (was unconditionally disabled).
+
 = 0.6.5 - 2026-04-28 =
 **Fixed**
 * Checkout-session buyer-handoff message renders as informational, not an error, so AI agents present a primary Buy Now CTA instead of a plain hyperlink.
