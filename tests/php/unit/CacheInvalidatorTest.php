@@ -42,6 +42,10 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		$wpdb->shouldReceive( 'esc_like' )->andReturnUsing(
 			static fn( $text ) => addcslashes( (string) $text, '_%\\' )
 		);
+
+		// Default: single-site. Tests that exercise multisite paths will
+		// override this stub with Functions\expect('is_multisite')->...
+		Functions\when( 'is_multisite' )->justReturn( false );
 	}
 
 	protected function tearDown(): void {
@@ -329,5 +333,138 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 			->times( 11 ); // 4 product + 1 stock + 3 category + 1 settings + 1 sitemap-settings + 1 cron = 11.
 
 		$this->invalidator->init();
+	}
+
+	// ------------------------------------------------------------------
+	// Multisite: invalidate() purges every subsite (#P-12)
+	// ------------------------------------------------------------------
+
+	public function test_invalidate_skips_multisite_loop_on_single_site(): void {
+		// On a single-site install is_multisite() returns false, so
+		// get_sites() / switch_to_blog() must never be called.
+		Functions\when( 'delete_transient' )->justReturn( true );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+
+		Functions\expect( 'get_sites' )->never();
+		Functions\expect( 'switch_to_blog' )->never();
+		Functions\expect( 'restore_current_blog' )->never();
+
+		$this->invalidator->invalidate();
+	}
+
+	public function test_invalidate_purges_sibling_sites_on_multisite(): void {
+		// Two subsites beyond the current one: blog 2 and blog 3.
+		Functions\when( 'is_multisite' )->justReturn( true );
+		Functions\when( 'get_current_blog_id' )->justReturn( 1 );
+		Functions\when( 'get_sites' )->justReturn( array( 1, 2, 3 ) );
+
+		// switch_to_blog / restore_current_blog called once each for blogs 2 and 3.
+		Functions\expect( 'switch_to_blog' )->times( 2 );
+		Functions\expect( 'restore_current_blog' )->times( 2 );
+
+		// delete_transient: 3 on current blog (llms_txt, catalog_summary, UCP)
+		// + 2 x 2 for blogs 2 and 3 (catalog_summary, UCP per site).
+		Functions\when( 'delete_transient' )->justReturn( true );
+
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+
+		$this->invalidator->invalidate();
+	}
+
+	public function test_invalidate_skips_current_blog_in_multisite_loop(): void {
+		// Blog 1 is both current and in the get_sites() result — it must
+		// NOT trigger switch_to_blog / restore_current_blog.
+		Functions\when( 'is_multisite' )->justReturn( true );
+		Functions\when( 'get_current_blog_id' )->justReturn( 1 );
+		Functions\when( 'get_sites' )->justReturn( array( 1 ) ); // Only the current blog.
+
+		Functions\expect( 'switch_to_blog' )->never();
+		Functions\expect( 'restore_current_blog' )->never();
+
+		Functions\when( 'delete_transient' )->justReturn( true );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+
+		$this->invalidator->invalidate();
+	}
+
+	public function test_invalidate_multisite_runs_wildcard_query_per_site(): void {
+		// Two sibling sites; each must trigger one $wpdb->query() in addition
+		// to the main site's query. Total = 3 wildcard queries.
+		global $wpdb;
+		$wpdb          = Mockery::mock( 'wpdb' );
+		$wpdb->options = 'wp_options';
+		$wpdb->shouldReceive( 'prepare' )->andReturnUsing( static fn( $q ) => $q );
+		$wpdb->shouldReceive( 'esc_like' )->andReturnUsing(
+			static fn( $t ) => addcslashes( (string) $t, '_%\\' )
+		);
+		$wpdb->shouldReceive( 'query' )
+			->times( 3 ) // 1 current + 2 siblings.
+			->andReturn( 0 );
+
+		Functions\when( 'is_multisite' )->justReturn( true );
+		Functions\when( 'get_current_blog_id' )->justReturn( 1 );
+		Functions\when( 'get_sites' )->justReturn( array( 1, 2, 3 ) );
+		Functions\when( 'switch_to_blog' )->justReturn( true );
+		Functions\when( 'restore_current_blog' )->justReturn( true );
+		Functions\when( 'delete_transient' )->justReturn( true );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+
+		$this->invalidator->invalidate();
+	}
+
+	// ------------------------------------------------------------------
+	// Multisite: deactivate() purges every subsite (#P-12)
+	// ------------------------------------------------------------------
+
+	public function test_deactivate_skips_multisite_loop_on_single_site(): void {
+		Functions\expect( 'get_sites' )->never();
+		Functions\expect( 'switch_to_blog' )->never();
+		Functions\expect( 'restore_current_blog' )->never();
+
+		Functions\when( 'delete_transient' )->justReturn( true );
+		Functions\when( 'wp_clear_scheduled_hook' )->justReturn( true );
+
+		WC_AI_Storefront_Cache_Invalidator::deactivate();
+	}
+
+	public function test_deactivate_purges_sibling_sites_on_multisite(): void {
+		Functions\when( 'is_multisite' )->justReturn( true );
+		Functions\when( 'get_current_blog_id' )->justReturn( 1 );
+		Functions\when( 'get_sites' )->justReturn( array( 1, 2, 3 ) );
+
+		Functions\expect( 'switch_to_blog' )->times( 2 );
+		Functions\expect( 'restore_current_blog' )->times( 2 );
+
+		Functions\when( 'delete_transient' )->justReturn( true );
+		Functions\when( 'wp_clear_scheduled_hook' )->justReturn( true );
+
+		WC_AI_Storefront_Cache_Invalidator::deactivate();
+	}
+
+	public function test_deactivate_multisite_runs_wildcard_query_per_site(): void {
+		global $wpdb;
+		$wpdb          = Mockery::mock( 'wpdb' );
+		$wpdb->options = 'wp_options';
+		$wpdb->shouldReceive( 'prepare' )->andReturnUsing( static fn( $q ) => $q );
+		$wpdb->shouldReceive( 'esc_like' )->andReturnUsing(
+			static fn( $t ) => addcslashes( (string) $t, '_%\\' )
+		);
+		$wpdb->shouldReceive( 'query' )
+			->times( 3 ) // 1 current + 2 siblings.
+			->andReturn( 0 );
+
+		Functions\when( 'is_multisite' )->justReturn( true );
+		Functions\when( 'get_current_blog_id' )->justReturn( 1 );
+		Functions\when( 'get_sites' )->justReturn( array( 1, 2, 3 ) );
+		Functions\when( 'switch_to_blog' )->justReturn( true );
+		Functions\when( 'restore_current_blog' )->justReturn( true );
+		Functions\when( 'delete_transient' )->justReturn( true );
+		Functions\when( 'wp_clear_scheduled_hook' )->justReturn( true );
+
+		WC_AI_Storefront_Cache_Invalidator::deactivate();
 	}
 }
