@@ -111,7 +111,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_tools: "Read,Edit,Write,Grep,Glob,Bash"
           prompt: |
             Audit the documentation for staleness against the most recent commit on main.
