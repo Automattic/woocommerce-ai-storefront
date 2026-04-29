@@ -140,6 +140,32 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	const MAX_FILTER_VALUES = 50;
 
 	/**
+	 * Per-request product cache. Holds memoized results for
+	 * `fetch_store_api_product()` so duplicate product or variation IDs
+	 * within a single UCP request do not re-dispatch inner
+	 * `rest_do_request` calls.
+	 *
+	 * Instance property (not static) since 0.7.0. Static caches persist
+	 * for the lifetime of the PHP worker process, meaning a product
+	 * fetched for one request can leak into a subsequent request when
+	 * the reset at handler entry is missed or the worker is re-used
+	 * (PHP-FPM, Swoole, RoadRunner). An instance property's lifetime
+	 * is bounded by the controller object; `reset()` is still called at
+	 * each handler entry for defence-in-depth, but the data-leak risk
+	 * is eliminated by construction.
+	 *
+	 * @var WC_AI_Storefront_UCP_Request_Context
+	 */
+	private WC_AI_Storefront_UCP_Request_Context $request_context;
+
+	/**
+	 * Constructor. Initialises the per-request product cache.
+	 */
+	public function __construct() {
+		$this->request_context = new WC_AI_Storefront_UCP_Request_Context();
+	}
+
+	/**
 	 * Register all UCP REST routes.
 	 *
 	 * Two shapes of routes:
@@ -155,7 +181,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *
 	 *   2. One DOCS route (GET): extension/schema. Serves a static JSON
 	 *      Schema document describing our merchant-extension capability.
-	 *      NOT gated on `is_syndication_disabled()` — same availability
+	 *      NOT gated on `is_syndication_disabled()` -- same availability
 	 *      as the UCP manifest itself at `/.well-known/ucp` (both are
 	 *      discovery surfaces; the manifest continues to be served even
 	 *      when syndication is paused, and the schema it points at must
@@ -584,8 +610,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$capability = 'dev.ucp.shopping.catalog.search';
 
 		// Clear per-request memoization so a product fetched in a
-		// prior request can't leak here (static class-state safety).
-		self::reset_request_cache();
+		// prior request can't leak here (defence-in-depth reset).
+		$this->request_context->reset();
 
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Storefront_Logger::debug( 'UCP catalog/search rejected: syndication disabled' );
@@ -681,7 +707,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Translate each product to UCP shape, fetching variations where needed.
 		// Returns ['products', 'variant_messages']; see translate_products_for_search().
 		$seller     = self::build_seller();
-		$translated = self::translate_products_for_search(
+		$translated = $this->translate_products_for_search(
 			$fetched['wc_products'],
 			$seller,
 			$agent_source_host,
@@ -898,7 +924,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @param string $agent_raw_host    Raw host header; forwarded to the translator.
 	 * @return array{products: array, variant_messages: array}
 	 */
-	private static function translate_products_for_search(
+	private function translate_products_for_search(
 		array $wc_products,
 		array $seller,
 		string $agent_source_host,
@@ -911,7 +937,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			if ( ! is_array( $wc_product ) ) {
 				continue;
 			}
-			$variation_fetch = self::fetch_variations_for( $wc_product );
+			$variation_fetch = $this->fetch_variations_for( $wc_product );
 			if ( $variation_fetch['skipped'] > 0 ) {
 				$variant_messages[] = self::partial_variants_message(
 					(int) ( $wc_product['id'] ?? 0 ),
@@ -1238,7 +1264,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$capability = 'dev.ucp.shopping.catalog.lookup';
 
 		// Clear per-request memoization; see handle_catalog_search.
-		self::reset_request_cache();
+		$this->request_context->reset();
 
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: syndication disabled' );
@@ -1345,7 +1371,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				continue;
 			}
 
-			$wc_product = self::fetch_store_api_product( $wc_id );
+			$wc_product = $this->fetch_store_api_product( $wc_id );
 			if ( null === $wc_product ) {
 				$messages[] = self::not_found_message( (int) $index );
 				continue;
@@ -1357,7 +1383,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// variations fail to fetch, we still render the product (partial
 			// set beats synthesized fallback) but emit a `partial_variants`
 			// warning so agents know the variant list is incomplete.
-			$variation_fetch = self::fetch_variations_for( $wc_product );
+			$variation_fetch = $this->fetch_variations_for( $wc_product );
 			if ( $variation_fetch['skipped'] > 0 ) {
 				$messages[] = self::partial_variants_message(
 					(int) ( $wc_product['id'] ?? 0 ),
@@ -1507,7 +1533,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 */
 	public function handle_checkout_sessions_create( WP_REST_Request $request ) {
 		// Clear per-request memoization; see handle_catalog_search.
-		self::reset_request_cache();
+		$this->request_context->reset();
 
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Storefront_Logger::debug( 'UCP checkout-sessions rejected: syndication disabled' );
@@ -1576,7 +1602,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$messages  = [];
 
 		foreach ( $line_items_raw as $index => $line_item ) {
-			$outcome = self::process_line_item( $line_item, (int) $index, $currency );
+			$outcome = $this->process_line_item( $line_item, (int) $index, $currency );
 
 			foreach ( $outcome['messages'] as $message ) {
 				$messages[] = $message;
@@ -2405,59 +2431,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		return (int) $stripped;
 	}
 
-	/**
-	 * Per-request memoization cache for fetch_store_api_product.
-	 *
-	 * Same WC product ID can be requested multiple times within
-	 * one UCP request — e.g. `catalog/lookup` with duplicate IDs
-	 * pre-dedup, or a parent + its variations where the Store API
-	 * index fetches the parent separately from fetch_variations_for.
-	 * Each call dispatches an internal `rest_do_request` that runs
-	 * the Store API filter chain, so without memoization a hostile
-	 * `ids: ["prod_1" × 100]` payload becomes 100 full dispatches.
-	 *
-	 * Scope is per-request: reset by `reset_request_cache()` on
-	 * each handler entry. Keyed on int WC id. Null result for
-	 * "not found" is also cached (via the distinct
-	 * `$request_cache_has_key`) so repeated 404 lookups don't
-	 * re-dispatch.
-	 *
-	 * @var array<int, ?array<string, mixed>>
-	 */
-	private static array $request_product_cache = [];
-
-	/**
-	 * Tracks which keys have been resolved this request (including
-	 * null-resolving ones). Separates "cache hit with null" from
-	 * "cache miss" — plain `isset($cache[$id])` would false-negative
-	 * on cached 404s and bypass the memoization.
-	 *
-	 * @var array<int, bool>
-	 */
-	private static array $request_product_cache_has_key = [];
-
-	/**
-	 * Clear the per-request product cache. Invoked at the top of
-	 * each public handler so caches don't leak between requests
-	 * (WordPress REST framework may or may not spin a fresh class
-	 * instance; the static-state model requires explicit reset to
-	 * be safe under either dispatch model).
-	 */
-	private static function reset_request_cache(): void {
-		self::$request_product_cache         = [];
-		self::$request_product_cache_has_key = [];
-	}
+	// Per-request memoization is managed by $this->request_context
+	// (WC_AI_Storefront_UCP_Request_Context). See the property
+	// declaration and constructor near the top of the class.
 
 	/**
 	 * Dispatch `GET /wc/store/v1/products/{id}` internally via
-	 * `rest_do_request` and return the decoded payload — or null if
+	 * `rest_do_request` and return the decoded payload -- or null if
 	 * the product doesn't exist, the dispatcher errored, or the
 	 * response didn't carry a usable array.
 	 *
 	 * Using `rest_do_request` rather than a direct WC_Data_Store call
 	 * matters: it threads the request through the Store API's full
 	 * pipeline (variation expansion, image URL resolution, embedded
-	 * pricing, etc.) — so the resulting array is the exact same
+	 * pricing, etc.) -- so the resulting array is the exact same
 	 * shape an external Store API consumer would see.
 	 *
 	 * Scope enforcement note: the Store API's
@@ -2469,14 +2456,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * `WC_AI_Storefront::is_product_syndicated()` BEFORE the
 	 * dispatch and returns null (treated as "not found" by callers)
 	 * when the gate fails. This mirrors what llms.txt and JSON-LD
-	 * emit for the same product — all three gates stay in
+	 * emit for the same product -- all three gates stay in
 	 * lockstep.
+	 *
+	 * Results are memoized in `$this->request_context` so duplicate
+	 * lookups within the same request do not re-dispatch.
 	 *
 	 * @return ?array<string, mixed>
 	 */
-	private static function fetch_store_api_product( int $id ): ?array {
-		if ( isset( self::$request_product_cache_has_key[ $id ] ) ) {
-			return self::$request_product_cache[ $id ];
+	private function fetch_store_api_product( int $id ): ?array {
+		if ( $this->request_context->has_product( $id ) ) {
+			return $this->request_context->get_product( $id );
 		}
 
 		// Scope-enforcement gate. The Store API filter only fires
@@ -2495,8 +2485,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			WC_AI_Storefront_Logger::debug(
 				sprintf( 'UCP fetch_store_api_product(%d): out of merchant scope, returning null', $id )
 			);
-			self::$request_product_cache[ $id ]         = null;
-			self::$request_product_cache_has_key[ $id ] = true;
+			$this->request_context->set_product( $id, null );
 			return null;
 		}
 
@@ -2517,9 +2506,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		//   - Non-array body: plugin-conflict smell (some other plugin
 		//     hooking rest_post_dispatch returned a string/object).
 		//     Logged so this doesn't become a mystery empty catalog.
-		$result                                     = self::fetch_store_api_product_inner( $id, $response );
-		self::$request_product_cache[ $id ]         = $result;
-		self::$request_product_cache_has_key[ $id ] = true;
+		$result = self::fetch_store_api_product_inner( $id, $response );
+		$this->request_context->set_product( $id, $result );
 		return $result;
 	}
 
@@ -2651,20 +2639,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @param array<string, mixed> $wc_product Store API response for the parent product.
 	 * @return array{variations: array<int, array<string, mixed>>, skipped: int}
 	 */
-	private static function fetch_variations_for( array $wc_product ): array {
+	private function fetch_variations_for( array $wc_product ): array {
 		if ( 'variable' !== ( $wc_product['type'] ?? '' ) ) {
-			return [
-				'variations' => [],
+			return array(
+				'variations' => array(),
 				'skipped'    => 0,
-			];
+			);
 		}
 
-		$variation_refs = $wc_product['variations'] ?? [];
+		$variation_refs = $wc_product['variations'] ?? array();
 		if ( ! is_array( $variation_refs ) || empty( $variation_refs ) ) {
-			return [
-				'variations' => [],
+			return array(
+				'variations' => array(),
 				'skipped'    => 0,
-			];
+			);
 		}
 
 		$total_declared = count( $variation_refs );
@@ -2678,10 +2666,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// memoization (cached IDs return immediately), scope enforcement via
 		// is_product_syndicated(), and null-caching of missing/out-of-scope
 		// entries so no variation is dispatched twice in a request.
-		$variations = [];
+		$variations = array();
 		foreach ( $variation_refs as $ref ) {
 			// WC Store API emits `variations` as `[{id, attributes}, ...]`
-			// — just the pointer. Fetch the full variation record.
+			// -- just the pointer. Fetch the full variation record.
 			$variation_id = is_array( $ref )
 				? (int) ( $ref['id'] ?? 0 )
 				: (int) $ref;
@@ -2690,7 +2678,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				continue;
 			}
 
-			$data = self::fetch_store_api_product( $variation_id );
+			$data = $this->fetch_store_api_product( $variation_id );
 			if ( null !== $data ) {
 				$variations[] = $data;
 			}
@@ -2712,10 +2700,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		return [
+		return array(
 			'variations' => $variations,
 			'skipped'    => $skipped,
-		];
+		);
 	}
 
 	/**
@@ -4083,7 +4071,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                               call per line item.
 	 * @return array{processed: ?array<string, mixed>, messages: array<int, array<string, mixed>>}
 	 */
-	private static function process_line_item( $line_item, int $index, string $store_currency ): array {
+	private function process_line_item( $line_item, int $index, string $store_currency ): array {
 		$messages = array();
 		$path     = '$.line_items[' . $index . ']';
 
@@ -4121,7 +4109,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		$wc_product = self::fetch_store_api_product( $wc_id );
+		$wc_product = $this->fetch_store_api_product( $wc_id );
 		if ( null === $wc_product ) {
 			return array(
 				'processed' => null,

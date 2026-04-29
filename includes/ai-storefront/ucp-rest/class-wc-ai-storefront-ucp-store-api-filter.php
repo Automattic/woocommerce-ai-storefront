@@ -65,23 +65,14 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	/**
 	 * Depth counter for UCP-initiated dispatches.
 	 *
-	 * Incremented by `enter_ucp_dispatch()` before every UCP
-	 * controller call to `rest_do_request()`, decremented by
-	 * `exit_ucp_dispatch()` immediately after (in a `finally`
-	 * block so exceptions don't leak the depth). The query-args
-	 * filter checks this counter and short-circuits when zero,
-	 * meaning Store API requests OUTSIDE UCP-controller dispatch
-	 * (front-end cart, block-theme Checkout, third-party Store
-	 * API consumers) are unaffected by the merchant's AI-scoping
-	 * settings.
+	 * Delegated to `WC_AI_Storefront_UCP_Dispatch_Context` since
+	 * 0.7.0. The forwarding methods `enter_ucp_dispatch()`,
+	 * `exit_ucp_dispatch()`, and `is_in_ucp_dispatch()` are kept
+	 * as public shims so existing call-sites (tests and other
+	 * controllers) continue to work without changes.
 	 *
-	 * Counter (not boolean) so nested dispatches still terminate
-	 * correctly — current code doesn't nest, but future
-	 * controllers might compose UCP requests internally.
-	 *
-	 * @var int
+	 * @deprecated Use WC_AI_Storefront_UCP_Dispatch_Context directly.
 	 */
-	private static int $ucp_dispatch_depth = 0;
 
 	/**
 	 * Per-request sentinel preventing duplicate hook registration.
@@ -182,7 +173,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 *      passes through unchanged when the merchant hasn't opted
 	 *      into scoping.
 	 *
-	 * Only `tax_query` and `post__in` round-trip through `$query` —
+	 * Only `tax_query` and `post__in` round-trip through `$query` --
 	 * those are the two fields the underlying mutation function may
 	 * touch. Other args (orderby, posts_per_page, etc.) stay on the
 	 * query object untouched.
@@ -235,10 +226,12 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * calls. Enables the query-args filter for the duration of the
 	 * inner dispatch.
 	 *
+	 * Forwards to `WC_AI_Storefront_UCP_Dispatch_Context::enter()`.
+	 *
 	 * @since 0.1.7
 	 */
 	public static function enter_ucp_dispatch(): void {
-		++self::$ucp_dispatch_depth;
+		WC_AI_Storefront_UCP_Dispatch_Context::enter();
 	}
 
 	/**
@@ -247,31 +240,24 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * accidental double-call from a `finally` block can't leak
 	 * negative depth.
 	 *
+	 * Forwards to `WC_AI_Storefront_UCP_Dispatch_Context::exit()`.
+	 *
 	 * @since 0.1.7
 	 */
 	public static function exit_ucp_dispatch(): void {
-		if ( self::$ucp_dispatch_depth <= 0 ) {
-			// Unbalanced exit. Either a controller called
-			// exit without a matching enter, or a finally
-			// block fired twice. The clamp below keeps the
-			// depth non-negative (safe-fail: filter no-ops
-			// outside scope), but log so a developer can
-			// catch the invariant violation in dev/staging.
-			WC_AI_Storefront_Logger::debug(
-				'WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch called with depth=0 (unbalanced enter/exit)'
-			);
-		}
-		self::$ucp_dispatch_depth = max( 0, self::$ucp_dispatch_depth - 1 );
+		WC_AI_Storefront_UCP_Dispatch_Context::exit();
 	}
 
 	/**
 	 * Whether the current Store API request is inside a
 	 * UCP-controller dispatch. Public so tests can introspect.
 	 *
+	 * Forwards to `WC_AI_Storefront_UCP_Dispatch_Context::is_active()`.
+	 *
 	 * @since 0.1.7
 	 */
 	public static function is_in_ucp_dispatch(): bool {
-		return self::$ucp_dispatch_depth > 0;
+		return WC_AI_Storefront_UCP_Dispatch_Context::is_active();
 	}
 
 	/**
