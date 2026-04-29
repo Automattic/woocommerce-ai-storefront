@@ -161,8 +161,9 @@ class WC_AI_Storefront_Cache_Invalidator {
 						restore_current_blog();
 					}
 				}
-				$offset += $batch;
-			} while ( count( $blog_ids ) === $batch );
+				$offset       += $batch;
+				$fetched_count = count( $blog_ids );
+			} while ( $fetched_count === $batch );
 		}
 	}
 
