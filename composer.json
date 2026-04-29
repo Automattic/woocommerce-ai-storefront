@@ -23,10 +23,10 @@
     },
     "autoload": {
         "classmap": [
-            "includes/",
+            "includes/class-wc-ai-storefront.php",
+            "includes/class-wc-ai-storefront-updater.php",
             "includes/admin/",
-            "includes/ai-storefront/",
-            "includes/ai-storefront/ucp-rest/"
+            "includes/ai-storefront/"
         ]
     },
     "config": {
