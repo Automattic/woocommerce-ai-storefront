@@ -146,7 +146,7 @@ class WC_AI_Storefront_Ucp {
 		// A prior version of this file advertised `X-AI-Agent-Key`
 		// here, left over from the authenticated-catalog-API era.
 
-		if ( 'OPTIONS' === $_SERVER['REQUEST_METHOD'] ) {
+		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- REQUEST_METHOD is validated against a constant, no sanitization required.
 			status_header( 204 );
 			exit;
 		}

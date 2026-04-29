@@ -120,11 +120,9 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		// configured. See the `$hook_registered` docblock above for
 		// why a static sentinel beats `has_action()` for this case.
 		if ( self::$hook_registered ) {
-			if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
-				WC_AI_Storefront_Logger::debug(
-					'WC_AI_Storefront_UCP_Store_API_Filter::init() called when pre_get_posts callback was already registered; skipping duplicate registration'
-				);
-			}
+			WC_AI_Storefront_Logger::debug(
+				'WC_AI_Storefront_UCP_Store_API_Filter::init() called when pre_get_posts callback was already registered; skipping duplicate registration'
+			);
 			return;
 		}
 		// Priority `PHP_INT_MAX` so the UCP merchant-scope mutations
@@ -259,11 +257,9 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			// depth non-negative (safe-fail: filter no-ops
 			// outside scope), but log so a developer can
 			// catch the invariant violation in dev/staging.
-			if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
-				WC_AI_Storefront_Logger::debug(
-					'WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch called with depth=0 (unbalanced enter/exit)'
-				);
-			}
+			WC_AI_Storefront_Logger::debug(
+				'WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch called with depth=0 (unbalanced enter/exit)'
+			);
 		}
 		self::$ucp_dispatch_depth = max( 0, self::$ucp_dispatch_depth - 1 );
 	}

@@ -152,7 +152,7 @@ class WC_AI_Storefront_Llms_Txt {
 		// Respond to CORS preflights without a body. Some browsing
 		// tools fire OPTIONS first and treat a non-2xx preflight as
 		// "resource unreachable" even if the GET would have succeeded.
-		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === $_SERVER['REQUEST_METHOD'] ) {
+		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- REQUEST_METHOD is validated against a constant, no sanitization required.
 			status_header( 204 );
 			exit;
 		}
@@ -613,8 +613,7 @@ class WC_AI_Storefront_Llms_Txt {
 			// brands plugin deactivation) that orphans the
 			// stored selection. Logging makes the silent
 			// "section disappeared" symptom diagnosable.
-			if ( ! empty( $settings['selected_brands'] ?? [] )
-				&& class_exists( 'WC_AI_Storefront_Logger' ) ) {
+			if ( ! empty( $settings['selected_brands'] ?? array() ) ) {
 				WC_AI_Storefront_Logger::debug(
 					'llms.txt: selected_brands non-empty but product_brand taxonomy is not registered; brand section omitted'
 				);
