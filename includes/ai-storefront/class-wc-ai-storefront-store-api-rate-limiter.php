@@ -184,7 +184,7 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 				$limit
 			);
 			return new WP_Error(
-				'ucp_rate_limit_exceeded',
+				WC_AI_Storefront_UCP_Error_Codes::UCP_RATE_LIMIT_EXCEEDED,
 				__( 'Too many requests. Please try again later.', 'woocommerce-ai-storefront' ),
 				[
 					'status'      => 429,
