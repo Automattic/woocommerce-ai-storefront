@@ -178,6 +178,20 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 				$route = $request->get_route();
 
 				if ( '/wc/store/v1/products' === $route ) {
+					// Regression guard: the controller must NEVER use the
+					// collection endpoint to fetch variation IDs. Variations
+					// have post_type='product_variation'; the collection
+					// endpoint filters to post_type='product' and silently
+					// drops them. Variation fetches must use the single-item
+					// route (/wc/store/v1/products/{id}) instead.
+					$include = $request->get_param( 'include' );
+					if ( is_array( $include ) && ! empty( $include ) ) {
+						throw new \LogicException(
+							'Controller must not use the collection endpoint with ?include for variations. ' .
+							'Use the single-item route /wc/store/v1/products/{id} instead.'
+						);
+					}
+
 					// List dispatch — capture the params so tests can
 					// assert on the UCP→Store-API mapping, then return
 					// the canned product list. 1.6.0 added `page` +

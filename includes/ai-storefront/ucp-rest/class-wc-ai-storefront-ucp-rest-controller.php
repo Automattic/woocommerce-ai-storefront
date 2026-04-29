@@ -2558,26 +2558,28 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * For variable products, fetch each variation's full Store API
-	 * response so the product translator can emit per-variation
-	 * variants. Simple products return an empty `variations` list.
+	 * For variable products, fetch all variations via per-ID Store API
+	 * requests and reassemble in the source order WC declared. Simple
+	 * products return empty.
 	 *
-	 * Variations that fail to fetch are skipped rather than aborting
-	 * the whole translation — partial variant lists are better than
-	 * synthesized-default fallbacks for agents trying to surface the
-	 * real price range to users. The `skipped` count is exposed in
-	 * the return value so callers can emit a `partial_variants`
-	 * warning to the agent (otherwise the variants list would silently
-	 * disagree with the product's price_range, giving agents bad data
-	 * with no signal to distrust it).
+	 * IMPORTANT: the collection endpoint (`/wc/store/v1/products?include=
+	 * [ids]`) cannot be used here. WC Store API's collection route filters
+	 * by `post_type='product'`, which excludes product variations (those
+	 * have `post_type='product_variation'`). Only the single-item route
+	 * (`/wc/store/v1/products/{id}`) performs a direct object lookup that
+	 * handles both post types. Per-ID fetches are handled by
+	 * fetch_store_api_product(), which also enforces the
+	 * is_product_syndicated() scope gate and memoizes results so repeated
+	 * lookups of the same variation within a request are free.
 	 *
-	 * Capped at MAX_VARIATIONS_PER_PRODUCT to bound the N+1 fan-out.
-	 * `array_slice` preserves source order so variations come back in
-	 * the same sequence WC emitted — important because the product's
-	 * `options` (attribute order) is derived from the variations list.
-	 * Slice overage counts toward the skipped total so agents see a
-	 * single consistent signal regardless of whether variations were
-	 * lost to the cap or to fetch failures.
+	 * Results not returned by the endpoint (out of scope, 404, or
+	 * cap-truncated) are silently skipped. The `skipped` count lets
+	 * callers emit a `partial_variants` warning so agents are never
+	 * silently misled about product completeness.
+	 *
+	 * Capped at MAX_VARIATIONS_PER_PRODUCT to bound fan-out and response
+	 * payload size. Source order is preserved by building $variations in
+	 * the original pointer-list order.
 	 *
 	 * @param array<string, mixed> $wc_product Store API response for the parent product.
 	 * @return array{variations: array<int, array<string, mixed>>, skipped: int}
@@ -2604,8 +2606,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$variation_refs = array_slice( $variation_refs, 0, self::MAX_VARIATIONS_PER_PRODUCT );
 		}
 
-		$variations      = [];
-		$fetch_attempted = 0;
+		// Fetch each variation via the single-item Store API endpoint and
+		// collect results in source order. fetch_store_api_product() handles
+		// memoization (cached IDs return immediately), scope enforcement via
+		// is_product_syndicated(), and null-caching of missing/out-of-scope
+		// entries so no variation is dispatched twice in a request.
+		$variations = [];
 		foreach ( $variation_refs as $ref ) {
 			// WC Store API emits `variations` as `[{id, attributes}, ...]`
 			// — just the pointer. Fetch the full variation record.
@@ -2617,7 +2623,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				continue;
 			}
 
-			++$fetch_attempted;
 			$data = self::fetch_store_api_product( $variation_id );
 			if ( null !== $data ) {
 				$variations[] = $data;
@@ -2625,8 +2630,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		// Skipped = everything the product declared that didn't make it
-		// into $variations. Includes cap-truncated + fetch-failed +
-		// malformed-ref entries.
+		// into $variations. Includes cap-truncated + scope-filtered +
+		// fetch-failed + malformed-ref entries.
 		$skipped = $total_declared - count( $variations );
 
 		if ( $skipped > 0 ) {

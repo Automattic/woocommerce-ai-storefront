@@ -75,31 +75,37 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// which is a const defined on the class and resolves fine at test
 		// time since that class is loaded by the bootstrap.
 
-		// Route rest_do_request through our fake_store_api map. The
-		// controller only calls this for `GET /wc/store/v1/products/{id}`,
-		// so parsing the route for the trailing int is sufficient.
+		// Route rest_do_request through our fake_store_api map.
+		// The controller only dispatches single-product requests:
+		//   - GET /wc/store/v1/products/{id}
+		//     Used for both parent products and variation IDs. The
+		//     collection endpoint cannot be used for variations because
+		//     WC Store API filters the collection to post_type='product',
+		//     which excludes post_type='product_variation'. Per-ID fetches
+		//     work for both types.
 		$api    = &$this->fake_store_api;
 		$counts = &$this->store_api_dispatch_counts;
 		Functions\when( 'rest_do_request' )->alias(
 			static function ( WP_REST_Request $request ) use ( &$api, &$counts ) {
 				$route = $request->get_route();
-				if ( ! preg_match( '#/wc/store/v1/products/(\d+)$#', $route, $m ) ) {
-					// Unexpected route — return a 500-ish response so the
-					// test fails loudly rather than silently mis-reporting.
-					return new WP_REST_Response( null, 500 );
+
+				// Single-product route — handles both products and variations.
+				if ( preg_match( '#/wc/store/v1/products/(\d+)$#', $route, $m ) ) {
+					$id            = (int) $m[1];
+					$counts[ $id ] = ( $counts[ $id ] ?? 0 ) + 1;
+
+					if ( ! array_key_exists( $id, $api ) || null === $api[ $id ] ) {
+						return new WP_REST_Response(
+							[ 'code' => 'woocommerce_rest_product_invalid_id' ],
+							404
+						);
+					}
+
+					return new WP_REST_Response( $api[ $id ], 200 );
 				}
 
-				$id              = (int) $m[1];
-				$counts[ $id ]   = ( $counts[ $id ] ?? 0 ) + 1;
-
-				if ( ! array_key_exists( $id, $api ) || null === $api[ $id ] ) {
-					return new WP_REST_Response(
-						[ 'code' => 'woocommerce_rest_product_invalid_id' ],
-						404
-					);
-				}
-
-				return new WP_REST_Response( $api[ $id ], 200 );
+				// Unexpected route — fail loudly.
+				return new WP_REST_Response( null, 500 );
 			}
 		);
 	}
@@ -893,5 +899,109 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			$this->store_api_dispatch_counts[99] ?? 0,
 			'Out-of-scope product (id=99) must NOT be dispatched — gate runs before rest_do_request.'
 		);
+	}
+
+	// ------------------------------------------------------------------
+	// Variation fetch dispatch contract
+	// ------------------------------------------------------------------
+
+	public function test_variations_each_dispatched_once_via_single_product_route(): void {
+		// Each variation must use the single-product route
+		// (/wc/store/v1/products/{id}), not the collection endpoint.
+		// The collection endpoint filters by post_type='product' and
+		// silently excludes post_type='product_variation'.
+		$this->seed_variable_product(
+			100,
+			'Shirt',
+			[
+				[ 'id' => 101, 'price' => '1000', 'size' => 'S' ],
+				[ 'id' => 102, 'price' => '1500', 'size' => 'M' ],
+				[ 'id' => 103, 'price' => '2000', 'size' => 'L' ],
+			]
+		);
+
+		$body = $this->successful_lookup( [ 'ids' => [ 'prod_100' ] ] );
+
+		$this->assertCount( 3, $body['products'][0]['variants'] );
+
+		// Parent and each variation each dispatched exactly once.
+		$this->assertSame(
+			1,
+			$this->store_api_dispatch_counts[100] ?? 0,
+			'Parent product must use the single-product route.'
+		);
+		$this->assertSame( 1, $this->store_api_dispatch_counts[101] ?? 0 );
+		$this->assertSame( 1, $this->store_api_dispatch_counts[102] ?? 0 );
+		$this->assertSame( 1, $this->store_api_dispatch_counts[103] ?? 0 );
+	}
+
+	public function test_variation_source_order_preserved_after_batch(): void {
+		// The batch response may return items in any order; the
+		// assembler must re-sort to match the parent's variations list.
+		$this->seed_variable_product(
+			200,
+			'Shoes',
+			[
+				[ 'id' => 201, 'price' => '5000', 'size' => 'S' ],
+				[ 'id' => 202, 'price' => '5500', 'size' => 'M' ],
+				[ 'id' => 203, 'price' => '6000', 'size' => 'L' ],
+			]
+		);
+
+		$body     = $this->successful_lookup( [ 'ids' => [ 'prod_200' ] ] );
+		$variants = $body['products'][0]['variants'];
+
+		$this->assertCount( 3, $variants );
+		$this->assertEquals( 'var_201', $variants[0]['id'] );
+		$this->assertEquals( 'var_202', $variants[1]['id'] );
+		$this->assertEquals( 'var_203', $variants[2]['id'] );
+	}
+
+	public function test_all_capped_variations_returned_via_single_product_route(): void {
+		// MAX_VARIATIONS_PER_PRODUCT variations must all be fetched via
+		// per-ID single-product requests and all appear in the response.
+		$cap = WC_AI_Storefront_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
+		$this->seed_variable_with_n_variations( 300, $cap );
+
+		$body = $this->successful_lookup( [ 'ids' => [ 'prod_300' ] ] );
+
+		$this->assertCount( $cap, $body['products'][0]['variants'] );
+
+		// Parent dispatched once; all variation IDs dispatched exactly once
+		// each (no duplicates, no batching via the collection route).
+		// Total dispatch count = 1 parent + $cap variations.
+		$this->assertSame(
+			$cap + 1,
+			array_sum( $this->store_api_dispatch_counts ),
+			"Expected exactly $cap + 1 total dispatches (1 parent + $cap variations)."
+		);
+	}
+
+	public function test_memo_cache_prevents_redundant_variation_dispatch_on_second_lookup(): void {
+		// Two sequential lookup requests for the same variable product in the
+		// same PHP request (reset_request_cache() clears the cache each time)
+		// must each dispatch exactly once per variation — not accumulate.
+		$this->seed_variable_product(
+			400,
+			'Hat',
+			[
+				[ 'id' => 401, 'price' => '800', 'size' => 'S' ],
+				[ 'id' => 402, 'price' => '900', 'size' => 'M' ],
+			]
+		);
+
+		// First lookup.
+		$body1 = $this->successful_lookup( [ 'ids' => [ 'prod_400' ] ] );
+		$this->assertCount( 2, $body1['products'][0]['variants'] );
+		$this->assertSame( 1, $this->store_api_dispatch_counts[401] ?? 0 );
+		$this->assertSame( 1, $this->store_api_dispatch_counts[402] ?? 0 );
+
+		// Second lookup — reset_request_cache() runs at the top of
+		// handle_catalog_lookup(), so variations are re-fetched.
+		// Each variation must be dispatched once more (total = 2), not N*2.
+		$body2 = $this->successful_lookup( [ 'ids' => [ 'prod_400' ] ] );
+		$this->assertCount( 2, $body2['products'][0]['variants'] );
+		$this->assertSame( 2, $this->store_api_dispatch_counts[401] ?? 0 );
+		$this->assertSame( 2, $this->store_api_dispatch_counts[402] ?? 0 );
 	}
 }

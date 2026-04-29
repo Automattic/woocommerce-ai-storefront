@@ -117,6 +117,15 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 			$this->params[ $key ] = $value;
 		}
 
+		/**
+		 * @param array<string, mixed> $params
+		 */
+		public function set_query_params( array $params ): void {
+			foreach ( $params as $key => $value ) {
+				$this->params[ $key ] = $value;
+			}
+		}
+
 		public function get_param( string $key ) {
 			// Match WP behavior: get_param checks JSON body, then regular
 			// params, returning the first match. Handlers that call

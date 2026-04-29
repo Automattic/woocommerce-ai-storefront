@@ -116,6 +116,51 @@ class WC_AI_Storefront_Cache_Invalidator {
 		// delete below is a harmless no-op kept for backward compat.
 		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
 
+		// On multisite, replicate the purge for every other site in the
+		// network. After switch_to_blog() $wpdb->options points to the
+		// subsite's table so the wildcard query deletes the right rows.
+		// host_cache_key() is request-scoped (not blog-scoped) so we
+		// skip the fast-path delete here and rely on the wildcard query.
+		// Paginated in batches of 500 so a single invalidate() on a very
+		// large network doesn't build a 10 000-element ID array in memory.
+		if ( is_multisite() ) {
+			$current_blog_id = get_current_blog_id();
+			$offset          = 0;
+			$batch           = 500;
+			do {
+				$blog_ids = get_sites(
+					array(
+						'fields' => 'ids',
+						'number' => $batch,
+						'offset' => $offset,
+					)
+				);
+				foreach ( $blog_ids as $blog_id ) {
+					if ( (int) $blog_id === $current_blog_id ) {
+						continue; // Already handled above.
+					}
+					switch_to_blog( $blog_id );
+					try {
+						// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+						$wpdb->query(
+							$wpdb->prepare(
+								"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+								$wpdb->esc_like( '_transient_wc_ai_storefront_llms_txt_' ) . '%',
+								$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
+							)
+						);
+						// phpcs:enable
+						delete_transient( 'wc_ai_storefront_catalog_summary' );
+						delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
+					} finally {
+						restore_current_blog();
+					}
+				}
+				$offset       += $batch;
+				$fetched_count = count( $blog_ids );
+			} while ( $fetched_count === $batch );
+		}
+
 		// Schedule a one-shot warm-up, unless one is already pending.
 		if ( ! wp_next_scheduled( self::WARMUP_CRON_HOOK ) ) {
 			wp_schedule_single_event( time() + self::WARMUP_DELAY, self::WARMUP_CRON_HOOK );
@@ -212,6 +257,52 @@ class WC_AI_Storefront_Cache_Invalidator {
 		delete_transient( 'wc_ai_storefront_catalog_summary' );
 		delete_transient( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY );
 		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
+
+		// On multisite, replicate the purge for every other site. Same
+		// rationale as invalidate() — wildcard query covers all host-keyed
+		// variants once $wpdb->options is redirected by switch_to_blog().
+		// Paginated in batches of 500; see invalidate() for rationale.
+		// Also clears the warmup cron hook on each subsite since cron
+		// events are stored per-blog (wp_options table of each site).
+		if ( is_multisite() ) {
+			$current_blog_id = get_current_blog_id();
+			$offset          = 0;
+			$batch           = 500;
+			do {
+				$blog_ids = get_sites(
+					array(
+						'fields' => 'ids',
+						'number' => $batch,
+						'offset' => $offset,
+					)
+				);
+				foreach ( $blog_ids as $blog_id ) {
+					if ( (int) $blog_id === $current_blog_id ) {
+						continue; // Already handled above.
+					}
+					switch_to_blog( $blog_id );
+					try {
+						// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+						$wpdb->query(
+							$wpdb->prepare(
+								"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+								$wpdb->esc_like( '_transient_wc_ai_storefront_llms_txt_' ) . '%',
+								$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
+							)
+						);
+						// phpcs:enable
+						delete_transient( 'wc_ai_storefront_catalog_summary' );
+						delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
+						wp_clear_scheduled_hook( self::WARMUP_CRON_HOOK );
+					} finally {
+						restore_current_blog();
+					}
+				}
+				$offset       += $batch;
+				$fetched_count = count( $blog_ids );
+			} while ( $fetched_count === $batch );
+		}
+
 		wp_clear_scheduled_hook( self::WARMUP_CRON_HOOK );
 	}
 }
