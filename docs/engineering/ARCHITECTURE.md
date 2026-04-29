@@ -162,7 +162,7 @@ woocommerce-ai-storefront/
 ├── AGENTS.md                                # Pointer for AI coding agents → docs/engineering/
 ├── CONTRIBUTING.md                          # Branch naming, code review, PR conventions
 ├── package.json                             # Node dependencies
-├── composer.json                            # PHP deps (PHPUnit, Brain Monkey, PHPStan, PHPCS)
+├── composer.json                            # PHP dev deps only (PHPUnit, Brain Monkey, PHPStan, PHPCS)
 ├── webpack.config.js                        # Build config (Woo dependency extraction)
 ├── phpunit.xml.dist                         # PHPUnit config
 ├── phpcs.xml.dist                           # PHPCS config (WordPress-Extra standard)
@@ -184,6 +184,7 @@ woocommerce-ai-storefront/
 │   └── woocommerce-ai-storefront.pot        # Gettext template
 │
 ├── includes/
+│   ├── autoload.php                          # Committed classmap autoloader (no Composer needed at runtime)
 │   ├── class-wc-ai-storefront.php           # Main orchestrator
 │   ├── class-wc-ai-storefront-updater.php   # Self-updater wrapper around the PUC library
 │   ├── admin/
