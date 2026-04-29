@@ -21,6 +21,14 @@
     "scripts": {
         "test": "phpunit"
     },
+    "autoload": {
+        "classmap": [
+            "includes/",
+            "includes/admin/",
+            "includes/ai-storefront/",
+            "includes/ai-storefront/ucp-rest/"
+        ]
+    },
     "config": {
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true
