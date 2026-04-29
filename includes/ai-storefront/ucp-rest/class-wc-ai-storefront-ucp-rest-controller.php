@@ -832,12 +832,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		 *
 		 * @return array<string, mixed> The (possibly modified) Store API params array.
 		 */
-		$store_params = apply_filters( 'wc_ai_storefront_ucp_store_api_args', $store_params, '/wc/store/v1/products' );
+		$store_params_before_filter = $store_params;
+		$store_params               = apply_filters( 'wc_ai_storefront_ucp_store_api_args', $store_params, '/wc/store/v1/products' );
 		// Guard: the filter must return an array. A misbehaving callback
-		// returning null/false would cause set_param() to loop over a
-		// non-iterable. Fall back to an empty array rather than fataling.
+		// returning a non-array would silently discard all search constraints.
+		// Fall back to the pre-filter value to preserve query semantics.
 		if ( ! is_array( $store_params ) ) {
-			$store_params = array();
+			$store_params = $store_params_before_filter;
 		}
 
 		$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products' );
@@ -970,7 +971,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// is complete. Hoisted out of the translator to preserve its
 			// pure-function contract (see issue #176). The translator emits the
 			// bare permalink; the controller owns agent-context side-effects.
-			if ( ! empty( $product['url'] ) && null !== $agent_source_host ) {
+			if ( ! empty( $product['url'] ) ) {
 				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
 					$product['url'],
 					$agent_source_host,
@@ -1510,7 +1511,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// is complete. Hoisted out of the translator to preserve its
 			// pure-function contract (see issue #176). The translator emits the
 			// bare permalink; the controller owns agent-context side-effects.
-			if ( ! empty( $product['url'] ) && null !== $agent_source_host ) {
+			if ( ! empty( $product['url'] ) ) {
 				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
 					$product['url'],
 					$agent_source_host,
