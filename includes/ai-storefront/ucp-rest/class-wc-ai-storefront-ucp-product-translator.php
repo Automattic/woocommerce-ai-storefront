@@ -51,6 +51,13 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * infrastructure. Orchestration (detect type, fetch variations)
 	 * lives in the REST controller's search/lookup handlers.
 	 *
+	 * UTM attribution stamping is intentionally NOT done here. Callers
+	 * that operate in an agent context apply
+	 * `WC_AI_Storefront_Attribution::with_woo_ucp_utm()` to `$product['url']`
+	 * after calling this method. Keeping stamping out of the translator
+	 * preserves the pure-function contract — the output is fully
+	 * determined by the inputs, with no side-effectful URL rewriting.
+	 *
 	 * @param array<string, mixed>             $wc_product    Decoded Store API product response.
 	 * @param array<int, array<string, mixed>> $wc_variations Optional pre-fetched Store API
 	 *                                                        variation responses. Empty = fall
@@ -60,41 +67,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *                                                        in a request, so the controller
 	 *                                                        computes it once and passes it in —
 	 *                                                        keeps the translator WP-unaware.
-	 * @param string|null                      $source_host   Optional UTM source host for
-	 *                                                        stamping attribution params on the
-	 *                                                        product `url`. When non-null, the
-	 *                                                        permalink is rewritten through
-	 *                                                        `WC_AI_Storefront_Attribution::with_woo_ucp_utm()`
-	 *                                                        so a buyer who follows the link
-	 *                                                        directly (instead of going through
-	 *                                                        the agent's checkout-session
-	 *                                                        integration) still produces an
-	 *                                                        AI-attributed order. Empty string
-	 *                                                        is treated as "agent didn't
-	 *                                                        identify" — the helper substitutes
-	 *                                                        the FALLBACK_SOURCE sentinel.
-	 *                                                        `null` skips UTM stamping entirely
-	 *                                                        (preserves bare permalink); useful
-	 *                                                        for direct-call test contexts and
-	 *                                                        future internal callers that don't
-	 *                                                        have an agent context.
-	 * @param string                           $raw_host      Producer-side raw identifier from
-	 *                                                        the UCP-Agent header or body
-	 *                                                        fallback. Threaded through to the
-	 *                                                        UTM helper so the same
-	 *                                                        `ai_agent_host_raw` param continue_url
-	 *                                                        carries also lands on the
-	 *                                                        product-link path. Empty skips the
-	 *                                                        param entirely. Ignored when
-	 *                                                        `$source_host` is null.
 	 * @return array<string, mixed>                           UCP product shape.
 	 */
 	public static function translate(
 		array $wc_product,
-		array $wc_variations = [],
-		?array $seller = null,
-		?string $source_host = null,
-		string $raw_host = ''
+		array $wc_variations = array(),
+		?array $seller = null
 	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
@@ -153,34 +131,13 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		}
 
 		if ( ! empty( $wc_product['permalink'] ) ) {
-			// Stamp our canonical UTM payload onto the permalink when
-			// the controller threaded an agent context through. Buyers
-			// who click the product link in chat — instead of going
-			// through the agent's `/checkout-sessions` integration —
-			// otherwise land on the product page with no attribution
-			// markers, and WC Order Attribution buckets the resulting
-			// order as "direct" (or attributes it to the agent's HTTP
-			// referrer header, fragmenting AI-orders stats by referrer
-			// rather than rolling them up under the agent). See
-			// `WC_AI_Storefront_Attribution::with_woo_ucp_utm()` for
-			// the canonical UTM contract; the same helper feeds
-			// `build_continue_url()` so the search-link and
-			// continue-url surfaces stay byte-identical on the
-			// attribution portion.
-			//
-			// `null` source_host is the "translator called outside an
-			// agent context" path — leave the permalink bare. Empty
-			// string source_host is "agent context exists, but agent
-			// didn't identify itself" — the helper substitutes the
-			// FALLBACK_SOURCE sentinel so the cohort stays observable
-			// in WC Origin breakdowns.
-			$product['url'] = null !== $source_host
-				? WC_AI_Storefront_Attribution::with_woo_ucp_utm(
-					$wc_product['permalink'],
-					$source_host,
-					$raw_host
-				)
-				: $wc_product['permalink'];
+			// Emit the bare permalink. UTM attribution is stamped by the
+			// controller after translation via
+			// `WC_AI_Storefront_Attribution::with_woo_ucp_utm()`, keeping
+			// this translator a pure function whose output depends only
+			// on its inputs. See the controller's `translate_products_for_search`
+			// and the catalog/lookup handler for the stamping call sites.
+			$product['url'] = $wc_product['permalink'];
 		}
 
 		// Taxonomies split (2.0.0+):
@@ -279,16 +236,16 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 */
 	private static function extract_variants( array $wc_product, array $wc_variations ): array {
 		if ( ! empty( $wc_variations ) ) {
-			$variants = [];
+			$variants = array();
 			foreach ( $wc_variations as $wc_variation ) {
 				$variants[] = WC_AI_Storefront_UCP_Variant_Translator::translate( $wc_variation );
 			}
 			return $variants;
 		}
 
-		return [
+		return array(
 			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product ),
-		];
+		);
 	}
 
 	/**

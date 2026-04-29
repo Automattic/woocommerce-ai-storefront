@@ -824,6 +824,49 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return array{error: WP_REST_Response|null, wc_products: array, store_response: WP_REST_Response|null}
 	 */
 	private static function fetch_wc_products_for_search( array $store_params, string $capability ): array {
+		/**
+		 * Filter the Store API query arguments before a catalog/search dispatch.
+		 *
+		 * The UCP catalog/search handler maps the incoming UCP search payload
+		 * (query, filters, pagination) to WooCommerce Store API parameters
+		 * (`search`, `per_page`, `page`, `category`, etc.) and then dispatches
+		 * an internal `GET /wc/store/v1/products` request. This filter fires
+		 * immediately before that dispatch, giving third-party plugins a chance
+		 * to add, override, or remove any parameter before the Store API
+		 * processes it.
+		 *
+		 * Common use-cases: inject a hidden `category` constraint for
+		 * subscription-only catalogs, add a custom `orderby` that a Store API
+		 * extension registers, or strip a parameter your plugin handles
+		 * differently via a separate `woocommerce_product_query` hook.
+		 *
+		 * @since 1.0.0
+		 *
+		 * @param array<string, mixed> $store_params The associative array of Store API
+		 *                                           query parameters. Keys are Store API
+		 *                                           param names (e.g. `search`, `per_page`,
+		 *                                           `page`, `category`, `on_sale`,
+		 *                                           `min_price`, `max_price`, `orderby`,
+		 *                                           `order`). Values are the mapped values
+		 *                                           from the UCP request.
+		 * @param string               $endpoint     The Store API endpoint being dispatched:
+		 *                                           always `'/wc/store/v1/products'` for
+		 *                                           catalog/search. Included so future
+		 *                                           multi-endpoint dispatch paths share one
+		 *                                           filter hook and callbacks can branch by
+		 *                                           endpoint.
+		 *
+		 * @return array<string, mixed> The (possibly modified) Store API params array.
+		 */
+		$store_params_before_filter = $store_params;
+		$store_params               = apply_filters( 'wc_ai_storefront_ucp_store_api_args', $store_params, '/wc/store/v1/products' );
+		// Guard: the filter must return an array. A misbehaving callback
+		// returning a non-array would silently discard all search constraints.
+		// Fall back to the pre-filter value to preserve query semantics.
+		if ( ! is_array( $store_params ) ) {
+			$store_params = $store_params_before_filter;
+		}
+
 		$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products' );
 		foreach ( $store_params as $k => $v ) {
 			$store_request->set_param( $k, $v );
@@ -944,13 +987,106 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$variation_fetch['skipped']
 				);
 			}
-			$products[] = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$product = WC_AI_Storefront_UCP_Product_Translator::translate(
 				$wc_product,
 				$variation_fetch['variations'],
-				$seller,
-				$agent_source_host,
-				$agent_raw_host
+				$seller
 			);
+
+			// Stamp UTM attribution onto the product URL now that translation
+			// is complete. Hoisted out of the translator to preserve its
+			// pure-function contract (see issue #176). The translator emits the
+			// bare permalink; the controller owns agent-context side-effects.
+			if ( ! empty( $product['url'] ) ) {
+				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+					$product['url'],
+					$agent_source_host,
+					$agent_raw_host
+				);
+			}
+
+			// Apply the per-variant filter now that translation is complete.
+			// Moved here from UCP_Product_Translator::extract_variants() so
+			// the translator stays a pure function (no WP API calls). Fires
+			// once per variant in document order.
+			//
+			// Two sources feed this loop:
+			//   - Variable products: one real WC variation per entry; the
+			//     second arg ($wc_variation_or_product) is the decoded
+			//     Store API variation response.
+			//   - Simple products: one synthesized default variant; no
+			//     per-variation object is available, so the second arg is
+			//     the parent WC Store API product response. Hooks can
+			//     distinguish these via the variant id suffix: real
+			//     variations use `var_{id}`, synthesized defaults use
+			//     `var_{id}_default`.
+			if ( isset( $product['variants'] ) && is_array( $product['variants'] ) ) {
+				$has_real_variations = ! empty( $variation_fetch['variations'] );
+				foreach ( $product['variants'] as $idx => $variant ) {
+					// For variable products pass the matching variation
+					// response; for simple products pass the parent product.
+					$second_arg = $has_real_variations
+						? ( $variation_fetch['variations'][ $idx ] ?? $wc_product )
+						: $wc_product;
+
+					/**
+					 * Filter a translated UCP variant before it is added to a product.
+					 *
+					 * Fires once per variant after translation, in document order.
+					 * For variable products the second arg is the decoded Store API
+					 * variation response. For simple products (synthesized default
+					 * variant, id suffix `_default`) the second arg is the parent
+					 * product response — no per-variation object is available.
+					 *
+					 * @since 1.0.0
+					 *
+					 * @param array<string, mixed> $variant                    The translated UCP variant shape.
+					 *                                                          Required keys: `id`, `title`,
+					 *                                                          `description`, `list_price`,
+					 *                                                          `availability`. Optional: `options`,
+					 *                                                          `compare_at_price`, `sku`,
+					 *                                                          `barcodes`, `media`, `metadata`.
+					 * @param array<string, mixed> $second_arg                 For variable products: the raw
+					 *                                                          decoded Store API variation
+					 *                                                          response. For simple products:
+					 *                                                          the parent product response.
+					 *
+					 * @return array<string, mixed> The (possibly modified) UCP variant shape.
+					 */
+					$filtered                    = apply_filters( 'wc_ai_storefront_ucp_variant', $variant, $second_arg );
+					$product['variants'][ $idx ] = is_array( $filtered ) ? $filtered : $variant;
+				}
+			}
+
+			/**
+			 * Filter a translated UCP product before it is added to the catalog
+			 * search response.
+			 *
+			 * Fires once per product after UTM attribution has been stamped onto
+			 * `$product['url']`. Third-party plugins can augment, override, or
+			 * strip any field of the UCP product shape without subclassing the
+			 * translator.
+			 *
+			 * @since 1.0.0
+			 *
+			 * @param array<string, mixed> $product    The translated UCP product shape.
+			 *                                         Required keys: `id`, `title`,
+			 *                                         `description`, `price_range`,
+			 *                                         `variants`. Optional: `url`,
+			 *                                         `handle`, `status`, `seller`,
+			 *                                         `categories`, `tags`, `media`,
+			 *                                         `options`, `metadata`, `rating`,
+			 *                                         `published_at`, `updated_at`.
+			 * @param array<string, mixed> $wc_product The raw decoded Store API product
+			 *                                         response. Use this to read WC-native
+			 *                                         fields (e.g. custom meta surfaced via
+			 *                                         a Store API extension) that the
+			 *                                         translator did not map.
+			 *
+			 * @return array<string, mixed> The (possibly modified) UCP product shape.
+			 */
+			$filtered_product = apply_filters( 'wc_ai_storefront_ucp_product', $product, $wc_product );
+			$products[]       = is_array( $filtered_product ) ? $filtered_product : $product;
 		}
 
 		return array(
@@ -1391,13 +1527,106 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				);
 			}
 
-			$products[] = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$product = WC_AI_Storefront_UCP_Product_Translator::translate(
 				$wc_product,
 				$variation_fetch['variations'],
-				$seller,
-				$agent_source_host,
-				$agent_raw_host
+				$seller
 			);
+
+			// Stamp UTM attribution onto the product URL now that translation
+			// is complete. Hoisted out of the translator to preserve its
+			// pure-function contract (see issue #176). The translator emits the
+			// bare permalink; the controller owns agent-context side-effects.
+			if ( ! empty( $product['url'] ) ) {
+				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+					$product['url'],
+					$agent_source_host,
+					$agent_raw_host
+				);
+			}
+
+			// Apply the per-variant filter now that translation is complete.
+			// Moved here from UCP_Product_Translator::extract_variants() so
+			// the translator stays a pure function (no WP API calls). Fires
+			// once per variant in document order.
+			//
+			// Two sources feed this loop:
+			//   - Variable products: one real WC variation per entry; the
+			//     second arg ($second_arg) is the decoded Store API variation
+			//     response.
+			//   - Simple products: one synthesized default variant; no
+			//     per-variation object is available, so the second arg is
+			//     the parent WC Store API product response. Hooks can
+			//     distinguish these via the variant id suffix: real
+			//     variations use `var_{id}`, synthesized defaults use
+			//     `var_{id}_default`.
+			if ( isset( $product['variants'] ) && is_array( $product['variants'] ) ) {
+				$has_real_variations = ! empty( $variation_fetch['variations'] );
+				foreach ( $product['variants'] as $idx => $variant ) {
+					// For variable products pass the matching variation
+					// response; for simple products pass the parent product.
+					$second_arg = $has_real_variations
+						? ( $variation_fetch['variations'][ $idx ] ?? $wc_product )
+						: $wc_product;
+
+					/**
+					 * Filter a translated UCP variant before it is added to a product.
+					 *
+					 * Fires once per variant after translation, in document order.
+					 * For variable products the second arg is the decoded Store API
+					 * variation response. For simple products (synthesized default
+					 * variant, id suffix `_default`) the second arg is the parent
+					 * product response — no per-variation object is available.
+					 *
+					 * @since 1.0.0
+					 *
+					 * @param array<string, mixed> $variant    The translated UCP variant shape.
+					 *                                         Required keys: `id`, `title`,
+					 *                                         `description`, `list_price`,
+					 *                                         `availability`. Optional: `options`,
+					 *                                         `compare_at_price`, `sku`,
+					 *                                         `barcodes`, `media`, `metadata`.
+					 * @param array<string, mixed> $second_arg For variable products: the raw
+					 *                                         decoded Store API variation
+					 *                                         response. For simple products:
+					 *                                         the parent product response.
+					 *
+					 * @return array<string, mixed> The (possibly modified) UCP variant shape.
+					 */
+					$filtered                    = apply_filters( 'wc_ai_storefront_ucp_variant', $variant, $second_arg );
+					$product['variants'][ $idx ] = is_array( $filtered ) ? $filtered : $variant;
+				}
+			}
+
+			/**
+			 * Filter a translated UCP product before it is added to the catalog
+			 * lookup response.
+			 *
+			 * Fires once per product after UTM attribution has been stamped onto
+			 * `$product['url']`. Third-party plugins can augment, override, or
+			 * strip any field of the UCP product shape without subclassing the
+			 * translator.
+			 *
+			 * @since 1.0.0
+			 *
+			 * @param array<string, mixed> $product    The translated UCP product shape.
+			 *                                         Required keys: `id`, `title`,
+			 *                                         `description`, `price_range`,
+			 *                                         `variants`. Optional: `url`,
+			 *                                         `handle`, `status`, `seller`,
+			 *                                         `categories`, `tags`, `media`,
+			 *                                         `options`, `metadata`, `rating`,
+			 *                                         `published_at`, `updated_at`.
+			 * @param array<string, mixed> $wc_product The raw decoded Store API product
+			 *                                         response. Use this to read WC-native
+			 *                                         fields (e.g. custom meta surfaced via
+			 *                                         a Store API extension) that the
+			 *                                         translator did not map.
+			 *
+			 * @return array<string, mixed> The (possibly modified) UCP product shape.
+			 */
+			$filtered_product = apply_filters( 'wc_ai_storefront_ucp_product', $product, $wc_product );
+			$products[]       = is_array( $filtered_product ) ? $filtered_product : $product;
 		}
 
 		$response_body = array(
@@ -4428,7 +4657,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                                                      for diagnostic / graduation purposes.
 	 */
 	private static function build_continue_url( array $processed, string $source_host, string $raw_host ): string {
-		$segments = [];
+		$segments = array();
 		foreach ( $processed as $p ) {
 			$segments[] = $p['wc_id'] . ':' . $p['quantity'];
 		}
@@ -4446,11 +4675,43 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// for the canonical UTM contract.
 		$url_with_products = $base . '?products=' . implode( ',', $segments );
 
-		return WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+		$url = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
 			$url_with_products,
 			$source_host,
 			$raw_host
 		);
+
+		/**
+		 * Filter the continue_url returned in a checkout-sessions response.
+		 *
+		 * The continue_url is the Shareable Checkout Link the agent redirects
+		 * the buyer to after a successful `POST /checkout-sessions` call. By
+		 * default it points at `{home_url}/checkout-link/?products={id:qty,...}`
+		 * with UTM attribution params appended. Plugins can rewrite the URL to
+		 * an alternative checkout entry point (e.g. a subscription upsell page,
+		 * a custom checkout flow) while preserving the attribution query string.
+		 *
+		 * @since 1.0.0
+		 *
+		 * @param string                           $url       The fully-constructed continue URL
+		 *                                                    including the `?products=` payload
+		 *                                                    and UTM attribution params.
+		 * @param array<int, array<string, mixed>> $processed The successfully-processed line
+		 *                                                    items. Each entry contains at least
+		 *                                                    `wc_id` (int), `ucp_id` (string),
+		 *                                                    `quantity` (int), and
+		 *                                                    `unit_price_minor` (int). Useful
+		 *                                                    for conditionally redirecting based
+		 *                                                    on the cart contents.
+		 *
+		 * @return string The (possibly modified) continue URL.
+		 */
+		$filtered = apply_filters( 'wc_ai_storefront_ucp_continue_url', $url, $processed );
+
+		// Guard against misbehaving callbacks that return a non-string.
+		// Only accept string returns; fall back to the pre-filter URL for
+		// anything else to avoid a fatal on the redirect path.
+		return is_string( $filtered ) ? $filtered : $url;
 	}
 
 	/**

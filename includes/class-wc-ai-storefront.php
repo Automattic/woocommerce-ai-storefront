@@ -98,8 +98,6 @@ class WC_AI_Storefront {
 	 * Constructor.
 	 */
 	private function __construct() {
-		$this->load_dependencies();
-
 		// Rewrite rules, query vars, and cache invalidation register
 		// unconditionally so they exist before syndication is enabled.
 		// The serve callbacks check the enabled setting and return 404 if off.
@@ -116,42 +114,6 @@ class WC_AI_Storefront {
 			add_action( 'admin_menu', [ $this, 'add_admin_menu' ] );
 			add_action( 'admin_enqueue_scripts', [ $this, 'admin_scripts' ] );
 		}
-	}
-
-	/**
-	 * Load class files.
-	 */
-	private function load_dependencies() {
-		$path = WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-storefront/';
-
-		require_once $path . 'class-wc-ai-storefront-logger.php';
-		require_once $path . 'class-wc-ai-storefront-return-policy.php';
-		require_once $path . 'class-wc-ai-storefront-llms-txt.php';
-		require_once $path . 'class-wc-ai-storefront-jsonld.php';
-		require_once $path . 'class-wc-ai-storefront-robots.php';
-		require_once $path . 'class-wc-ai-storefront-ucp.php';
-
-		// UCP REST adapter module (1.3.0+). See PLAN-ucp-adapter.md.
-		// Error codes must be loaded before the rate limiter (which references
-		// WC_AI_Storefront_UCP_Error_Codes::UCP_RATE_LIMIT_EXCEEDED).
-		$ucp_path = $path . 'ucp-rest/';
-		require_once $ucp_path . 'class-wc-ai-storefront-ucp-error-codes.php';
-
-		require_once $path . 'class-wc-ai-storefront-store-api-rate-limiter.php';
-		require_once $path . 'class-wc-ai-storefront-attribution.php';
-		require_once $path . 'class-wc-ai-storefront-cache-invalidator.php';
-		require_once $ucp_path . 'class-wc-ai-storefront-ucp-agent-header.php';
-		require_once $ucp_path . 'class-wc-ai-storefront-ucp-envelope.php';
-		require_once $ucp_path . 'class-wc-ai-storefront-ucp-product-translator.php';
-		require_once $ucp_path . 'class-wc-ai-storefront-ucp-variant-translator.php';
-		require_once $ucp_path . 'class-wc-ai-storefront-ucp-request-context.php';
-		require_once $ucp_path . 'class-wc-ai-storefront-ucp-dispatch-context.php';
-		require_once $ucp_path . 'class-wc-ai-storefront-ucp-store-api-filter.php';
-		require_once $ucp_path . 'class-wc-ai-storefront-store-api-extension.php';
-		require_once $ucp_path . 'class-wc-ai-storefront-ucp-rest-controller.php';
-
-		require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/admin/class-wc-ai-storefront-admin-controller.php';
-		require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/admin/class-wc-ai-storefront-product-meta-box.php';
 	}
 
 	/**
