@@ -70,6 +70,15 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// but tests assert on the literal string content.
 		Functions\when( '__' )->returnArg();
 
+		// check_outer_rate_limit() now runs for all allowed-path
+		// outcomes, including unknown-UA requests. Stub the transient
+		// helpers so tests that focus on allow/deny logic don't need
+		// to care about rate-limit accounting.
+		Functions\when( 'sanitize_text_field' )->returnArg();
+		Functions\when( 'wp_unslash' )->returnArg();
+		Functions\when( 'get_transient' )->justReturn( false );
+		Functions\when( 'set_transient' )->justReturn( true );
+
 		// Reset between tests so leakage from earlier cases doesn't
 		// influence the gate's reading of `allowed_crawlers`.
 		WC_AI_Storefront::$test_settings = [];

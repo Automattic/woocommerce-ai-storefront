@@ -81,17 +81,28 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 	}
 
 	/**
-	 * Fingerprint AI bot requests by user-agent.
+	 * Fingerprint AI bot requests by bot name and IP.
 	 *
-	 * Known AI bot user-agents get a unique rate limit bucket based
-	 * on their user-agent string. Regular customer traffic keeps the
-	 * default fingerprint (IP-based), so it is unaffected.
+	 * Known AI bot user-agents get a unique rate limit bucket keyed on
+	 * the matched bot name (normalized from `AI_CRAWLERS`) and the
+	 * client IP address. Using bot-name+IP rather than the raw UA string
+	 * prevents two problems:
+	 *
+	 * 1. UA spoofing — a different IP claiming another bot's UA would
+	 *    share (and exhaust) that bot's rate-limit window.
+	 * 2. UA rotation — a single IP sending minor UA variants (different
+	 *    version numbers, extra tokens) would create a new bucket for
+	 *    each variant, bypassing the sliding window entirely.
+	 *
+	 * Regular customer traffic keeps the default fingerprint (IP-based),
+	 * so it is unaffected.
 	 *
 	 * @param string $id Default rate limit identifier.
 	 * @return string Modified identifier for AI bots, unchanged for others.
 	 */
 	public function fingerprint_ai_bots( $id ) {
 		$ua = $this->get_user_agent();
+		$ip = self::current_request_ip();
 
 		foreach ( WC_AI_Storefront_Robots::AI_CRAWLERS as $bot ) {
 			if ( stripos( $ua, $bot ) !== false ) {
@@ -99,7 +110,7 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 					'rate-limit fingerprint matched AI bot: %s',
 					$bot
 				);
-				return 'ai_bot_' . md5( $ua );
+				return 'ai_bot_' . md5( $bot . '_' . $ip );
 			}
 		}
 
@@ -114,15 +125,25 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 	 * one slot is consumed per logical outer request. Returns a
 	 * `WP_Error` with HTTP 429 when the per-minute budget is exhausted.
 	 *
-	 * Only applies to requests whose user-agent matches a known AI
-	 * crawler (`AI_CRAWLERS`). Non-AI traffic — regular customers,
-	 * authenticated admin requests — returns `true` immediately.
+	 * Rate-limit fingerprint strategy (see also `fingerprint_ai_bots()`):
+	 *
+	 * - Known AI bot UA: keyed by `md5( $bot_name . '_' . $ip )` so
+	 *   each origin IP gets its own per-minute window. This prevents a
+	 *   single attacker from depleting another bot's budget by spoofing
+	 *   its user-agent, and prevents UA rotation (minor version variants)
+	 *   from opening a fresh window for the same IP.
+	 * - Unknown or unrecognized UA: keyed by `'unknown_' . md5( $ip )`.
+	 *   Requests reaching this method from `check_agent_access()` are
+	 *   already gated (they need a valid UCP-Agent header or the
+	 *   `allow_unknown_ucp_agents=yes` setting), so applying the budget
+	 *   here closes the gap where an unknown agent with that setting
+	 *   enabled could make unlimited requests.
 	 *
 	 * Rate-limit window: 60-second sliding window backed by a WP
 	 * transient (TTL is reset to 60 s on every increment). A race
-	 * between two simultaneous requests may let a small number of
-	 * extra requests through — this matches WC's own rate-limiter
-	 * behavior and is acceptable for a per-minute budget.
+	 * between two simultaneous requests may let a small number of extra
+	 * requests through — this matches WC's own rate-limiter behavior and
+	 * is acceptable for a per-minute budget.
 	 *
 	 * @return bool|WP_Error True when the request is within budget;
 	 *                       WP_Error(status=429) when exceeded.
@@ -134,9 +155,11 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 		}
 
 		$ua = self::current_user_agent();
+		$ip = self::current_request_ip();
 
-		// Only rate-limit known AI bot user-agents; regular customer
-		// traffic is unaffected.
+		// Determine the rate-limit fingerprint.
+		// Known bot: bot-name + IP (UA-version-agnostic, IP-scoped).
+		// Unknown UA: IP only under 'unknown_' prefix.
 		$matched_bot = '';
 		foreach ( WC_AI_Storefront_Robots::AI_CRAWLERS as $bot ) {
 			if ( stripos( $ua, $bot ) !== false ) {
@@ -144,19 +167,19 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 				break;
 			}
 		}
-		if ( '' === $matched_bot ) {
-			return true;
-		}
+
+		$fingerprint = '' !== $matched_bot
+			? 'ai_bot_' . md5( $matched_bot . '_' . $ip )
+			: 'unknown_' . md5( $ip );
 
 		$limit         = max( 1, absint( $settings['rate_limit_rpm'] ?? 25 ) );
-		$fingerprint   = 'ai_bot_' . md5( $ua );
 		$transient_key = self::OUTER_TRANSIENT_PREFIX . $fingerprint;
 		$count         = get_transient( $transient_key );
 
 		if ( false !== $count && (int) $count >= $limit ) {
 			WC_AI_Storefront_Logger::debug(
 				'outer UCP rate limit exceeded — bot=%s count=%d limit=%d',
-				$matched_bot,
+				'' !== $matched_bot ? $matched_bot : 'unknown',
 				(int) $count,
 				$limit
 			);
@@ -203,6 +226,36 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Sanitized below.
 		return isset( $_SERVER['HTTP_USER_AGENT'] )
 			? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) )
+			: '';
+	}
+
+	/**
+	 * Resolve the current request's remote IP address.
+	 *
+	 * Delegates to WC_Geolocation::get_ip_address() so that the
+	 * proxy_support WooCommerce setting is honoured. On stores behind
+	 * Cloudflare or an ALB, REMOTE_ADDR is the proxy IP, collapsing all
+	 * AI-bot traffic into a single rate-limit bucket. WC_Geolocation
+	 * reads CF-Connecting-IP / X-Real-IP / X-Forwarded-For when the
+	 * merchant has enabled proxy support, giving each real client IP its
+	 * own bucket as intended.
+	 *
+	 * Falls back to REMOTE_ADDR when WC_Geolocation is not yet loaded or
+	 * returns an empty string (e.g., CLI context). The empty-string case
+	 * is handled in the caller (fingerprint will use the bot name only).
+	 *
+	 * @return string IP address, or empty string if not available.
+	 */
+	private static function current_request_ip(): string {
+		if ( class_exists( 'WC_Geolocation' ) ) {
+			$ip = WC_Geolocation::get_ip_address();
+			if ( '' !== $ip ) {
+				return $ip;
+			}
+		}
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Sanitized below.
+		return isset( $_SERVER['REMOTE_ADDR'] )
+			? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) )
 			: '';
 	}
 }
