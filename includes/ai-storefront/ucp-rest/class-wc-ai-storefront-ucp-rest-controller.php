@@ -2276,13 +2276,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * Parse a UCP ID string (`prod_N`, `var_N`, `var_N_default`) into
 	 * the underlying WC post/variation ID.
 	 *
-	 * The prefix strip + `(int)` cast is deliberately lenient: PHP's
-	 * int cast truncates at the first non-numeric character, so
-	 * `var_123_default` → `123` cleanly, and malformed input like
-	 * `"abc"` or `"prod_"` → 0 (which the caller treats as not-found).
+	 * After stripping the known prefix and the `_default` suffix, the
+	 * remaining string must consist entirely of decimal digits (`ctype_digit`).
+	 * Malformed suffixes like `123abc` return 0 (not-found) instead of
+	 * silently truncating to 123. Pure decimal suffixes like `prod_123`
+	 * and `var_456` are unaffected.
 	 *
-	 * Non-string input returns 0 too, so callers don't have to type-
-	 * check before calling.
+	 * Non-string input and an empty post-strip string both return 0 too,
+	 * so callers don't have to type-check before calling.
 	 *
 	 * @param mixed $raw_id
 	 */
@@ -2303,6 +2304,23 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		);
 
 		$stripped = preg_replace( $prefix_re, '', $raw_id );
+
+		// Strip the optional `_default` suffix that the variant translator
+		// appends to synthesized default-variant IDs (e.g. `var_123_default`
+		// is a valid UCP ID for WC product 123). The suffix is the only
+		// non-digit trailer that is part of the legitimate ID format.
+		$default_suffix = WC_AI_Storefront_UCP_Variant_Translator::DEFAULT_VARIANT_SUFFIX;
+		if ( str_ends_with( $stripped, $default_suffix ) ) {
+			$stripped = substr( $stripped, 0, -strlen( $default_suffix ) );
+		}
+
+		// Reject strings like '123abc' that would otherwise cast to 123.
+		// After removing the known `_default` suffix, a valid UCP
+		// product/variant ID suffix is always a plain decimal integer.
+		// Anything else indicates a malformed or spoofed ID.
+		if ( '' === $stripped || ! ctype_digit( $stripped ) ) {
+			return 0;
+		}
 		return (int) $stripped;
 	}
 
@@ -2507,12 +2525,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( ! is_array( $data ) && ! is_object( $data ) ) {
 			return null;
 		}
-		$json = wp_json_encode( $data );
-		if ( false === $json ) {
-			return null;
-		}
-		$decoded = json_decode( $json, true );
-		return is_array( $decoded ) ? $decoded : null;
+		// Recursively cast all stdClass objects to arrays. The WC Store API's
+		// internal REST dispatcher returns stdClass for nested structures; the
+		// UCP translator expects plain array access. Previously this used a
+		// JSON round-trip (encode + decode) which allocated a large string
+		// for no benefit. The recursive cast is O(N) with no string allocation.
+		$cast   = static function ( $value ) use ( &$cast ) {
+			if ( is_object( $value ) ) {
+				$value = (array) $value;
+			}
+			if ( is_array( $value ) ) {
+				return array_map( $cast, $value );
+			}
+			return $value;
+		};
+		$result = $cast( $data );
+		return is_array( $result ) ? $result : null;
 	}
 
 	/**
