@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Performance
+
+- **`get_stats()` now caches its result in a transient for 5 minutes, keyed by period.** Pre-fix, every admin settings page load ran two `$wpdb` queries (one joining across orders and meta tables, one counting all-store orders) regardless of how recently the data had been computed. On stores with large order volumes the joins were visibly slow. Post-fix, the first call populates a `wc_ai_storefront_stats_{period}` transient; subsequent calls within the 5-minute window read directly from cache with zero DB queries. The cache is busted automatically on `woocommerce_order_status_completed` and `woocommerce_order_status_processing` events, so the dashboard reflects new order completions within one TTL cycle (at most 5 minutes). All four period transients are also deleted on plugin uninstall, including in multisite network uninstalls. Closes #160.
+
 ### Fixed
 
 - **`parse_ucp_id_to_wc_int()` now rejects malformed IDs with trailing non-digit characters.** Pre-fix, the `(int)` cast silently truncated `prod_123abc` to `123`, potentially resolving a spoofed or corrupted ID to a real product. A `ctype_digit()` guard now rejects any suffix that contains non-decimal characters, returning 0 (not-found) instead. The known `_default` suffix on synthesized default-variant IDs (e.g. `var_123_default`) is stripped before the check so legitimate round-trips continue to work. Closes #154.

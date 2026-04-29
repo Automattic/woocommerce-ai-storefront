@@ -53,6 +53,11 @@ delete_transient( 'wc_ai_storefront_llms_txt' );
 delete_transient( 'wc_ai_storefront_ucp' );
 delete_transient( 'wc_ai_storefront_flush_rewrite' );
 
+foreach ( array( 'day', 'week', 'month', 'year' ) as $wc_ai_storefront_period ) {
+	delete_transient( 'wc_ai_storefront_stats_' . $wc_ai_storefront_period );
+}
+unset( $wc_ai_storefront_period );
+
 /*
  * --------------------------------------------------------------------------
  * Scheduled events
@@ -89,6 +94,10 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 			delete_transient( 'wc_ai_storefront_llms_txt' );
 			delete_transient( 'wc_ai_storefront_ucp' );
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );
+			foreach ( array( 'day', 'week', 'month', 'year' ) as $_period ) {
+				delete_transient( 'wc_ai_storefront_stats_' . $_period );
+			}
+			unset( $_period );
 			wp_clear_scheduled_hook( 'wc_ai_storefront_warm_llms_txt_cache' );
 
 			restore_current_blog();
