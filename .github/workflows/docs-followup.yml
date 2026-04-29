@@ -107,7 +107,7 @@ jobs:
         with:
           fetch-depth: 2
 
-      - uses: anthropic/claude-code-action@v1
+      - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           allowed_tools: "Read,Edit,Write,Grep,Glob,Bash"
