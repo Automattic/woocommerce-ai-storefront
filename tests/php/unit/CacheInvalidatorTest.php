@@ -86,7 +86,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( true );
 		Functions\expect( 'delete_transient' )
 			->once()
-			->with( WC_AI_Storefront_Ucp::CACHE_KEY )
+			->with( 'wc_ai_storefront_ucp' )
 			->andReturn( true );
 
 		Functions\expect( 'wp_next_scheduled' )->andReturn( false );
@@ -235,7 +235,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( true );
 		Functions\expect( 'delete_transient' )
 			->once()
-			->with( WC_AI_Storefront_Ucp::CACHE_KEY )
+			->with( 'wc_ai_storefront_ucp' )
 			->andReturn( true );
 
 		Functions\expect( 'wp_clear_scheduled_hook' )->once();

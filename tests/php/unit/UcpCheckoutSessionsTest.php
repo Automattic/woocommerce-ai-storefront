@@ -252,18 +252,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_missing_line_items_returns_400(): void {
-		$this->assert_checkout_error( [], 400, 'invalid_input' );
+		$this->assert_checkout_error( [], 400, WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT );
 	}
 
 	public function test_empty_line_items_array_returns_400(): void {
-		$this->assert_checkout_error( [ 'line_items' => [] ], 400, 'invalid_input' );
+		$this->assert_checkout_error( [ 'line_items' => [] ], 400, WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT );
 	}
 
 	public function test_non_array_line_items_returns_400(): void {
 		$this->assert_checkout_error(
 			[ 'line_items' => 'not-an-array' ],
 			400,
-			'invalid_input'
+			WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT
 		);
 	}
 
@@ -375,7 +375,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$messages = $result['data']['messages'];
 		$codes    = array_column( $messages, 'code' );
-		$this->assertContains( 'variation_required', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $codes );
 	}
 
 	public function test_grouped_product_rejected_with_unsupported_type(): void {
@@ -458,7 +458,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'variation_required', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $codes );
 	}
 
 	// ------------------------------------------------------------------
@@ -487,7 +487,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// The error message identifies the offending line item.
 		$errors = array_filter(
 			$result['data']['messages'],
-			static fn( array $m ): bool => 'out_of_stock' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::OUT_OF_STOCK === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $errors );
 		$msg = array_values( $errors )[0];
@@ -539,7 +539,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// response body positionally.
 		$oos_messages = array_filter(
 			$result['data']['messages'],
-			static fn( array $m ): bool => 'out_of_stock' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::OUT_OF_STOCK === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $oos_messages );
 		$msg = array_values( $oos_messages )[0];
@@ -559,7 +559,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 0, $result['data']['line_items'] );
 
 		$messages = $result['data']['messages'];
-		$this->assertEquals( 'not_found', $messages[0]['code'] );
+		$this->assertEquals( WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND, $messages[0]['code'] );
 		$this->assertEquals( '$.line_items[0].item.id', $messages[0]['path'] );
 	}
 
@@ -571,7 +571,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'invalid_quantity', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::INVALID_QUANTITY, $codes );
 	}
 
 	public function test_negative_quantity_produces_invalid_quantity(): void {
@@ -582,7 +582,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'invalid_quantity', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::INVALID_QUANTITY, $codes );
 	}
 
 	public function test_non_array_line_item_produces_invalid_line_item(): void {
@@ -690,7 +690,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// Failure message localized at the second line item index.
 		$not_found = array_filter(
 			$result['data']['messages'],
-			static fn( array $m ): bool => 'not_found' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $not_found );
 		$first = array_values( $not_found )[0];
@@ -1244,7 +1244,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$handoff = array_filter(
 			$result['data']['messages'],
-			static fn( array $m ): bool => 'buyer_handoff_required' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $handoff );
 		$msg = array_values( $handoff )[0];
@@ -1272,7 +1272,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( 'buyer_handoff_required', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED, $codes );
 	}
 
 	// ------------------------------------------------------------------
@@ -1294,7 +1294,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals( 'incomplete', $result['data']['status'] );
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'invalid_quantity', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::INVALID_QUANTITY, $codes );
 	}
 
 	// ------------------------------------------------------------------
@@ -1338,7 +1338,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		// Surfaced as info-message so agents know the collapse happened.
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'merged_duplicate_items', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::MERGED_DUPLICATE_ITEMS, $codes );
 
 		// Subtotal reflects the merged quantity (3 × 1000 = 3000), not
 		// the post-collapse sum mismatched against pre-collapse echo.
@@ -1366,7 +1366,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertCount( 2, $result['data']['line_items'] );
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( 'merged_duplicate_items', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::MERGED_DUPLICATE_ITEMS, $codes );
 	}
 
 	public function test_summed_quantity_exceeding_max_per_line_drops_merged_entry(): void {
@@ -1397,7 +1397,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// to, status is `incomplete`.
 		$this->assertEquals( 'incomplete', $result['data']['status'] );
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'invalid_quantity', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::INVALID_QUANTITY, $codes );
 		// `merged_duplicate_items` does NOT fire when the merged
 		// entry got dropped — the agent would otherwise look for a
 		// merged line in the response and find nothing. Truthful
@@ -1406,14 +1406,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// carries the agent's ucp_id and summed quantity, so the
 		// affected product is still identifiable without the merge
 		// message.
-		$this->assertNotContains( 'merged_duplicate_items', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::MERGED_DUPLICATE_ITEMS, $codes );
 
 		// Verify the error message content includes the offending
 		// ucp_id + summed quantity so agents can self-diagnose
 		// without the JSONPath being a specific index.
 		$over_cap_msg = null;
 		foreach ( $result['data']['messages'] as $msg ) {
-			if ( 'invalid_quantity' === ( $msg['code'] ?? '' ) ) {
+			if ( WC_AI_Storefront_UCP_Error_Codes::INVALID_QUANTITY === ( $msg['code'] ?? '' ) ) {
 				$over_cap_msg = $msg;
 				break;
 			}
@@ -1448,7 +1448,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			$items[] = [ 'item' => [ 'id' => 'prod_' . $i ], 'quantity' => 1 ];
 		}
 
-		$this->assert_checkout_error( [ 'line_items' => $items ], 400, 'invalid_input' );
+		$this->assert_checkout_error( [ 'line_items' => $items ], 400, WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT );
 	}
 
 	public function test_disabled_syndication_returns_503_ucp_disabled(): void {
@@ -1459,7 +1459,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assert_checkout_error(
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
 			503,
-			'ucp_disabled'
+			WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED
 		);
 	}
 
@@ -1503,11 +1503,11 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'total_is_provisional', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL, $codes );
 
 		$provisional = array_filter(
 			$result['data']['messages'],
-			static fn( array $m ): bool => 'total_is_provisional' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL === ( $m['code'] ?? '' )
 		);
 		$msg = array_values( $provisional )[0];
 		$this->assertSame( 'info', $msg['type'] );
@@ -1525,7 +1525,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( 'total_is_provisional', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL, $codes );
 	}
 
 	public function test_price_changed_warning_when_expected_differs_from_current(): void {
@@ -1548,7 +1548,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$warnings = array_filter(
 			$result['data']['messages'],
-			static fn( array $m ): bool => 'price_changed' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $warnings );
 		$warning = array_values( $warnings )[0];
@@ -1572,7 +1572,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( 'price_changed', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED, $codes );
 	}
 
 	public function test_price_changed_not_emitted_when_expected_omitted(): void {
@@ -1589,7 +1589,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( 'price_changed', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED, $codes );
 	}
 
 	public function test_price_changed_skipped_when_expected_currency_mismatches_store(): void {
@@ -1612,7 +1612,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( 'price_changed', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED, $codes );
 	}
 
 	public function test_price_changed_case_insensitive_currency_match(): void {
@@ -1634,7 +1634,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'price_changed', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED, $codes );
 	}
 
 	public function test_price_changed_runs_when_expected_currency_is_omitted(): void {
@@ -1656,7 +1656,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'price_changed', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED, $codes );
 	}
 
 	public function test_malformed_expected_unit_price_does_not_fatal(): void {
@@ -1688,7 +1688,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 201, $result['status'] );
 		$this->assertCount( 1, $result['data']['line_items'] );
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( 'price_changed', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED, $codes );
 	}
 
 	public function test_price_changed_skipped_for_decimal_string_amount(): void {
@@ -1715,7 +1715,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( 'price_changed', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED, $codes );
 	}
 
 	public function test_non_string_currency_treated_as_missing_no_notices(): void {
@@ -1748,7 +1748,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// Comparison ran (empty-currency lenient path) and fired the
 		// price_changed warning, and no PHP notice was surfaced.
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'price_changed', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED, $codes );
 	}
 
 	public function test_price_changed_accepts_digit_only_string_amount(): void {
@@ -1771,7 +1771,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'price_changed', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED, $codes );
 	}
 
 	public function test_line_item_includes_price_includes_tax_flag(): void {
@@ -1826,7 +1826,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'minimum_not_met', $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::MINIMUM_NOT_MET, $codes );
 		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
 		$this->assertSame( 'incomplete', $result['data']['status'] );
 	}
@@ -1874,7 +1874,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( 'minimum_not_met', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::MINIMUM_NOT_MET, $codes );
 		$this->assertArrayHasKey( 'continue_url', $result['data'] );
 	}
 
@@ -1888,7 +1888,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( 'minimum_not_met', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::MINIMUM_NOT_MET, $codes );
 		$this->assertArrayHasKey( 'continue_url', $result['data'] );
 		$this->assertSame( 'requires_escalation', $result['data']['status'] );
 	}
@@ -1903,7 +1903,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( 'minimum_not_met', $codes );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::MINIMUM_NOT_MET, $codes );
 		$this->assertArrayHasKey( 'continue_url', $result['data'] );
 	}
 
@@ -1921,7 +1921,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$handoff = array_filter(
 			$result['data']['messages'],
-			static fn( array $m ): bool => 'buyer_handoff_required' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED === ( $m['code'] ?? '' )
 		);
 		$msg = array_values( $handoff )[0];
 		$this->assertSame( 'Review & secure payment at Acme Store.', $msg['content'] );
@@ -2032,7 +2032,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$handoff = array_filter(
 			$result['data']['messages'],
-			static fn( array $m ): bool => 'buyer_handoff_required' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $handoff );
 		$msg = array_values( $handoff )[0];
@@ -2061,7 +2061,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 201, $result['status'] );
 		$handoff = array_filter(
 			$result['data']['messages'],
-			static fn( array $m ): bool => 'buyer_handoff_required' === ( $m['code'] ?? '' )
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED === ( $m['code'] ?? '' )
 		);
 		$msg = array_values( $handoff )[0];
 		$this->assertIsString( $msg['content'] );
