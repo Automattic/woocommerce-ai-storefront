@@ -220,8 +220,8 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		if ( $product->has_dimensions() ) {
-			$dimensions     = $product->get_dimensions( false );
-			$dimension_unit = $this->get_dimension_unit_code();
+			$dimensions       = $product->get_dimensions( false );
+			$dimension_unit   = $this->get_dimension_unit_code();
 			$markup['depth']  = array(
 				'@type'    => 'QuantitativeValue',
 				'value'    => $dimensions['length'],
