@@ -1,10 +1,17 @@
 node_modules/
-# Anchor `/vendor/` to the repo root so composer's top-level vendor
-# dir is ignored but vendored library subdirectories (like PUC's own
-# `includes/lib/plugin-update-checker/vendor/` that ships Parsedown
-# for changelog rendering) are preserved. An unanchored pattern
-# would silently strip those from commits.
-/vendor/
+# Ignore dev-only vendor packages but track the generated Composer
+# autoloader. This plugin has no production `require` dependencies, so
+# `composer install --no-dev` produces only 12 small autoloader files
+# (~72K) — no third-party source. Committing them lets the plugin work
+# on a fresh clone without requiring `composer install`.
+#
+# The `/vendor/*` + negation pattern keeps the root vendor/ dir
+# trackable while excluding packages (antecedent/, brain/, phpunit/,
+# etc.) added by dev installs. Subdirectory vendor/ dirs (e.g.
+# includes/lib/*/vendor/) are at different paths and unaffected.
+/vendor/*
+!/vendor/autoload.php
+!/vendor/composer/
 .phpunit.cache/
 .phpunit.result.cache
 .claude/
