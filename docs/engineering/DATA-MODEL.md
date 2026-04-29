@@ -2,7 +2,7 @@
 
 Inventory of every persisted artifact this plugin writes — options, transients, post meta, order meta, scheduled events. For each: where it's defined, who reads/writes it, lifetime, and behavior on uninstall.
 
-The surface is deliberately small: two options, three transients, one scheduled event, one post-meta key, four order-meta keys. No custom tables. No custom post types.
+The surface is deliberately small: two options, five transients, one scheduled event, one post-meta key, four order-meta keys. No custom tables. No custom post types.
 
 ## Data flow
 
@@ -151,6 +151,24 @@ Marker that a rewrite-rule flush is pending. Set by `update_settings()` when the
 
 A transient (instead of a direct `flush_rewrite_rules()` call) defers the 100ms+ flush latency to the next page load.
 
+### `wc_ai_storefront_catalog_summary`
+
+Cached top-category list used by the store/home-page JSON-LD `ItemList` block in `WC_AI_Storefront_JsonLd`. Avoids a `get_terms()` query on every page load.
+
+- **TTL:** 1 hour (`HOUR_IN_SECONDS`)
+- **Written by:** `WC_AI_Storefront_JsonLd::get_catalog_summary()` after building the category list
+- **Invalidated by:** `WC_AI_Storefront_Cache_Invalidator` (registered via `WC_AI_Storefront_Cache_Invalidator::register()` in the main plugin class)
+- **Uninstall:** deleted by `uninstall.php`
+
+### `wc_ai_storefront_stats_{period}`
+
+Cached AI-attributed order aggregates served by `GET /admin/stats`. Four variants: `wc_ai_storefront_stats_day`, `wc_ai_storefront_stats_week`, `wc_ai_storefront_stats_month`, `wc_ai_storefront_stats_year`.
+
+- **TTL:** 5 minutes (`5 * MINUTE_IN_SECONDS`)
+- **Written by:** `WC_AI_Storefront_Attribution::get_stats()` after computing the SQL aggregates
+- **Invalidated by:** `WC_AI_Storefront_Attribution::bust_stats_cache()` on order status transitions (`woocommerce_order_status_completed`, `woocommerce_order_status_processing`) and order deletion/trash hooks. All four period variants are deleted together on each bust.
+- **Uninstall:** deleted by `uninstall.php` (all four variants)
+
 ### Note on UCP REST responses
 
 UCP REST endpoint responses (`/catalog/search`, `/catalog/lookup`, `/checkout-sessions`) are **not** cached. Every dispatch computes fresh because per-request attribution (UTM stamping) and `chk_…` session IDs must vary per agent and per request.
@@ -259,7 +277,7 @@ The debounce coalesces invalidations so a bulk product import doesn't fire dozen
 When activated network-wide, options and transients are per-site (each site has its own `wp_options` row). `uninstall.php` loops through `get_sites()` and deletes from each:
 
 - `wc_ai_storefront_settings`, `wc_ai_storefront_version`
-- `wc_ai_storefront_llms_txt`, `wc_ai_storefront_ucp`, `wc_ai_storefront_flush_rewrite` (transients)
+- `wc_ai_storefront_llms_txt`, `wc_ai_storefront_ucp`, `wc_ai_storefront_flush_rewrite`, `wc_ai_storefront_catalog_summary`, `wc_ai_storefront_stats_{day,week,month,year}` (transients)
 - `wc_ai_storefront_warm_llms_txt_cache` (cron)
 
 The cleanup loop is wrapped in a function-existence guard so re-running uninstall by mistake doesn't redefine the function and warn.

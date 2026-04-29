@@ -75,6 +75,9 @@ Module location: `includes/ai-storefront/ucp-rest/`
 | `class-wc-ai-storefront-ucp-agent-header.php` | Parses the `UCP-Agent` header (RFC 8941 Dictionary or RFC 7231 Product/Version), normalizes hostnames, canonicalizes brand names, and falls back to `ucp_unknown` when missing/malformed. Used as `utm_source` and for the per-brand allow-list gate. |
 | `class-wc-ai-storefront-ucp-store-api-filter.php` | Hooks `pre_get_posts` (gated by an internal UCP-dispatch depth counter + `post_type === 'product'`) to enforce `product_selection_mode` on UCP-controller-initiated Store API queries. Front-end Cart, themes, and third-party Store API consumers are untouched. Intersects with incoming `post__in` and merges (outer AND) with incoming `tax_query`, so the merchant's allow-list can't be bypassed AND the caller's filters stay in effect. |
 | `class-wc-ai-storefront-store-api-extension.php` | Adds an `extensions.com_woocommerce_ai_storefront` block to Store API product responses with `barcodes` (GTIN/UPC/EAN/MPN) sourced from WC core's `global_unique_id`. Removable once core surfaces the field directly. |
+| `class-wc-ai-storefront-ucp-error-codes.php` | Typed string constants for every UCP error code used across the REST controller. Eliminates bare string literals in handler logic and enables static-analysis exhaustiveness checks. |
+| `class-wc-ai-storefront-ucp-request-context.php` | Per-request product memoization cache. Holds already-fetched `WC_Product` objects by ID so a single outer UCP request never dispatches to the Store API for the same product twice. A fresh context is created for each outer UCP request, making the controller safe under persistent-worker runtimes (Swoole, RoadRunner, FrankenPHP) where static properties survive across requests. |
+| `class-wc-ai-storefront-ucp-dispatch-context.php` | Named API around the dispatch-depth counter used by `WC_AI_Storefront_UCP_Store_API_Filter` to gate the product-selection filter. `enter()` / `exit()` / `is_active()` methods replace the former anonymous static variable; `is_in_ucp_dispatch()` on the filter class is now a thin forwarding wrapper. |
 
 **Stateless checkout pattern.** `/checkout-sessions` never persists anything. Successful responses return `status: requires_escalation` with a `continue_url` pointing at WooCommerce's native Shareable Checkout URL (`/checkout-link/?products=ID:QTY`). The `chk_…` session ID is a correlation token — no GET/PUT/PATCH/DELETE endpoints. Once the agent redirects, WooCommerce owns the rest.
 
@@ -83,7 +86,7 @@ Module location: `includes/ai-storefront/ucp-rest/`
 - `POST /catalog/lookup` → `GET /wc/store/v1/products/{id}` per requested ID.
 - `POST /checkout-sessions` → `GET /wc/store/v1/products/{id}` per line item for validation → assembles Shareable Checkout URL.
 
-**Variable product expansion.** When search or lookup hits a variable product, the controller pre-fetches each variation's Store API record via additional `rest_do_request` calls and passes them to the translator. Per-request memoization is a follow-up for high-variation catalogs (a page of 20 products with 5 variables × 5 variations each = 26 dispatches).
+**Variable product expansion.** When search or lookup hits a variable product, the controller pre-fetches each variation's Store API record via additional `rest_do_request` calls and passes them to the translator. `WC_AI_Storefront_UCP_Request_Context` memoizes translated products within a single outer request, so a high-variation catalog (e.g. 20 products × 5 variations each = 100 inner dispatches) never fetches the same product twice.
 
 ### Attribution
 
@@ -113,7 +116,7 @@ Agent name is surfaced in WC core's "Origin" column (fed by `_wc_order_attributi
 
 | File | Purpose |
 |------|---------|
-| `class-wc-ai-storefront-cache-invalidator.php` | Event-driven cache invalidation for the llms.txt and UCP-manifest transients. Hooks product/category CRUD, stock changes, and settings updates. Debounced WP-Cron warm-up. |
+| `class-wc-ai-storefront-cache-invalidator.php` | Event-driven cache invalidation. Components register their own transient keys via `WC_AI_Storefront_Cache_Invalidator::register()` rather than the key list being hardcoded here. Hooks product/category CRUD, stock changes, and settings updates. Debounced WP-Cron warm-up. |
 
 ### Debug logging
 
@@ -207,6 +210,9 @@ woocommerce-ai-storefront/
 │           ├── class-wc-ai-storefront-ucp-envelope.php
 │           ├── class-wc-ai-storefront-ucp-agent-header.php
 │           ├── class-wc-ai-storefront-ucp-store-api-filter.php
+│           ├── class-wc-ai-storefront-ucp-error-codes.php
+│           ├── class-wc-ai-storefront-ucp-request-context.php
+│           ├── class-wc-ai-storefront-ucp-dispatch-context.php
 │           └── class-wc-ai-storefront-store-api-extension.php
 │
 ├── client/

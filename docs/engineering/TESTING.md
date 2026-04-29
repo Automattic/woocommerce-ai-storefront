@@ -4,7 +4,7 @@ How we test WooCommerce AI Storefront — what we test, where it lives, and how 
 
 ## TL;DR
 
-- **PHP** — PHPUnit 10 + Brain Monkey + Mockery. No WordPress install required (Brain Monkey mocks WP/WC functions). ~38 test files, 920+ test methods. Run via `composer test`.
+- **PHP** — PHPUnit 10 + Brain Monkey + Mockery. No WordPress install required (Brain Monkey mocks WP/WC functions). ~39 test files, 920+ test methods. Run via `composer test`.
 - **JS** — `@wordpress/scripts test-unit-js` (Jest). Covers the `@wordpress/data` store (reducer, selectors, async thunks). React components are validated manually in PR review.
 - **Static analysis** — PHPStan level 5, PHPCS WordPress-Extra.
 - **CI** — GitHub Actions matrix on PHP 8.1/8.2/8.3/8.4. All gates fail closed.
@@ -55,6 +55,7 @@ tests/php/
     ├── UcpTest.php
     ├── UcpVariantTranslatorTest.php
     ├── UpdateSettingsSanitizationTest.php
+    ├── UpdateSettingsStaticCacheTest.php
     └── UpdaterTest.php
 
 client/data/ai-storefront/__tests__/    # Jest tests for the @wordpress/data store
