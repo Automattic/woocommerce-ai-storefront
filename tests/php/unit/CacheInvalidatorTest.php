@@ -56,9 +56,9 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_invalidate_deletes_transients(): void {
-		// llms.txt (host-keyed) + catalog_summary + UCP (no-op).
+		// llms.txt (host-keyed) + catalog_summary + sitemap_urls + UCP (no-op).
 		Functions\expect( 'delete_transient' )
-			->times( 3 );
+			->times( 4 );
 
 		Functions\expect( 'wp_next_scheduled' )->andReturn( false );
 		Functions\expect( 'wp_schedule_single_event' )->andReturn( true );
@@ -80,6 +80,10 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( true );
 		Functions\expect( 'delete_transient' )
 			->once()
+			->with( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY )
+			->andReturn( true );
+		Functions\expect( 'delete_transient' )
+			->once()
 			->with( WC_AI_Storefront_Ucp::CACHE_KEY )
 			->andReturn( true );
 
@@ -90,7 +94,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_invalidate_schedules_warmup_when_none_pending(): void {
-		Functions\expect( 'delete_transient' )->times( 3 )->andReturn( true );
+		Functions\expect( 'delete_transient' )->times( 4 )->andReturn( true );
 
 		Functions\expect( 'wp_next_scheduled' )
 			->once()
@@ -109,7 +113,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_invalidate_skips_scheduling_when_event_already_pending(): void {
-		Functions\expect( 'delete_transient' )->times( 3 )->andReturn( true );
+		Functions\expect( 'delete_transient' )->times( 4 )->andReturn( true );
 
 		Functions\expect( 'wp_next_scheduled' )
 			->once()
@@ -156,9 +160,9 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_deactivate_cleans_up_transient_and_cron(): void {
-		// llms.txt (host-keyed) + catalog_summary + UCP (bare, no-op).
+		// llms.txt (host-keyed) + catalog_summary + sitemap_urls + UCP (bare, no-op).
 		Functions\expect( 'delete_transient' )
-			->times( 3 );
+			->times( 4 );
 
 		Functions\expect( 'wp_clear_scheduled_hook' )
 			->once()
@@ -178,6 +182,10 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		Functions\expect( 'delete_transient' )
 			->once()
 			->with( 'wc_ai_storefront_catalog_summary' )
+			->andReturn( true );
+		Functions\expect( 'delete_transient' )
+			->once()
+			->with( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY )
 			->andReturn( true );
 		Functions\expect( 'delete_transient' )
 			->once()
@@ -250,7 +258,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		// refreshed on the next page load after a product/category update.
 		$deleted = array();
 		Functions\expect( 'delete_transient' )
-			->times( 3 )
+			->times( 4 )
 			->andReturnUsing(
 				static function ( $key ) use ( &$deleted ) {
 					$deleted[] = $key;

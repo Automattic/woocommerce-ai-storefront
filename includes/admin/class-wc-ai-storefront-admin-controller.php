@@ -579,15 +579,21 @@ class WC_AI_Storefront_Admin_Controller {
 	public function get_recent_orders( $request ) {
 		$per_page = (int) $request->get_param( 'per_page' );
 
+		// Restrict to commercially relevant statuses only, not all 12+ WC order
+		// statuses. Passing every status via `wc_get_order_statuses()` forces the
+		// DB to scan rows with statuses like `wc-cancelled`, `wc-failed`, and
+		// `wc-trash` that never appear in the AI-orders overview table and inflate
+		// the IN clause with no benefit. On stores with 100k+ orders the
+		// over-broad IN can prevent index use (P-16).
 		$orders = wc_get_orders(
-			[
+			array(
 				'limit'    => $per_page,
 				'orderby'  => 'date',
 				'order'    => 'DESC',
 				'meta_key' => WC_AI_Storefront_Attribution::AGENT_META_KEY, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
-				'status'   => array_keys( wc_get_order_statuses() ),
+				'status'   => array( 'pending', 'processing', 'on-hold', 'completed', 'refunded' ),
 				'return'   => 'objects',
-			]
+			)
 		);
 
 		// DB error — return an empty result set so the admin UI shows

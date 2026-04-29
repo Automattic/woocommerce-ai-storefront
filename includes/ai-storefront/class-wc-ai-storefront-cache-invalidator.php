@@ -36,6 +36,13 @@ class WC_AI_Storefront_Cache_Invalidator {
 	 * disabled, avoiding stale content after it is re-enabled.
 	 */
 	public function init() {
+		// These hooks are intentionally scoped to events that change the
+		// content of llms.txt (product data, categories, plugin settings).
+		// Order-lifecycle hooks (woocommerce_order_status_*, woocommerce_new_order)
+		// are deliberately NOT registered here — orders affect stats/attribution
+		// but not the publicly-advertised product catalogue, so there is no
+		// reason to bust the llms.txt cache on every order completion.
+
 		// Product lifecycle.
 		add_action( 'woocommerce_update_product', [ $this, 'invalidate' ] );
 		add_action( 'woocommerce_new_product', [ $this, 'invalidate' ] );
@@ -90,6 +97,11 @@ class WC_AI_Storefront_Cache_Invalidator {
 		// Catalog summary cache (store-level JSON-LD).
 		delete_transient( 'wc_ai_storefront_catalog_summary' );
 
+		// Sitemap URL discovery cache (24h TTL, independent of llms.txt content).
+		// Intentionally busted on product/settings changes that could add or
+		// remove sitemap paths (e.g. WooCommerce sitemap toggled in settings).
+		delete_transient( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY );
+
 		// UCP manifest is computed per-request (no transient) — the
 		// delete below is a harmless no-op kept for backward compat.
 		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
@@ -143,6 +155,7 @@ class WC_AI_Storefront_Cache_Invalidator {
 		// phpcs:enable
 
 		delete_transient( 'wc_ai_storefront_catalog_summary' );
+		delete_transient( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY );
 		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
 		wp_clear_scheduled_hook( self::WARMUP_CRON_HOOK );
 	}

@@ -1876,13 +1876,19 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * the plugin the merchant is running (no risk of schema/runtime
 	 * drift from a third-party registry), and honors whatever access
 	 * controls the site has on the REST API (same permissions as the
-	 * catalog/checkout endpoints). `$id` is computed from the current
-	 * URL so a static mirror of the schema keeps the right self-reference.
+	 * catalog/checkout endpoints). `$id` is derived from the stored
+	 * `siteurl` option rather than `rest_url()` so a spoofed or
+	 * proxy-injected `Host` header cannot redirect `$id` to a
+	 * third-party domain (FIND-S07).
 	 *
 	 * @return WP_REST_Response
 	 */
 	public function handle_extension_schema(): WP_REST_Response {
-		$self_id = rest_url( self::NAMESPACE . '/extension/schema' );
+		// Use get_option('siteurl') instead of rest_url() to avoid host-header
+		// injection: rest_url() derives its base from home_url(), which respects
+		// X-Forwarded-Host on misconfigured proxy setups. The stored siteurl
+		// option is always the canonical domain set by the site admin (FIND-S07).
+		$self_id = trailingslashit( get_option( 'siteurl' ) ) . rest_get_url_prefix() . '/' . self::NAMESPACE . '/extension/schema';
 
 		$schema = [
 			'$schema'     => 'https://json-schema.org/draft/2020-12/schema',

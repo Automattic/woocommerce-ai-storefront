@@ -104,6 +104,22 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// handler treats as "no lock held" — skipping the usleep
 		// branch entirely.)
 		Functions\when( 'delete_transient' )->justReturn( true );
+
+		// Sitemap URL discovery (P-18) reads a 24h transient before
+		// running HTTP probes. Default to a cold cache (false = miss)
+		// so probes still run in tests that care about sitemap output,
+		// and stub set_transient as a no-op so the write path doesn't
+		// error. Individual tests that test caching behaviour override
+		// these via their own Functions\when() calls.
+		Functions\when( 'get_transient' )->justReturn( false );
+		Functions\when( 'set_transient' )->justReturn( true );
+
+		// get_option() is called by the FIND-S07 fix to build a
+		// canonical self-link ID from siteurl rather than rest_url().
+		// Default to the same origin used by the rest_url stub above.
+		Functions\when( 'get_option' )->alias(
+			static fn( $option, $default = '' ) => 'siteurl' === $option ? 'https://example.com' : $default
+		);
 	}
 
 	protected function tearDown(): void {
