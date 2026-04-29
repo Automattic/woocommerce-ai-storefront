@@ -53,6 +53,7 @@ Every piece of this is designed around one principle: **the merchant owns the tr
 * You control which products are exposed (all / by category / individually selected).
 * You control which crawlers can access the store (12 allow-list checkboxes in the Discovery tab).
 * You can disable the plugin at any time; removing it is clean (no orphaned options or database rows).
+* AI-referred orders store the agent name (e.g. `ChatGPT`) and an opaque AI session token in order meta for your reference. This data never leaves your server and is not personal data under GDPR.
 
 == Installation ==
 

@@ -1643,6 +1643,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// agree. Items that failed validation are NOT in line_items
 		// — they appear only via messages pointing at their original
 		// request index.
+		//
+		// Overflow note: `$subtotal_amount` accumulates integer
+		// minor-unit values. Per-line overflow is bounded by
+		// MAX_QUANTITY_PER_LINE_ITEM (see its docblock); the cross-line
+		// accumulation carries the same 64-bit PHP assumption — safe on
+		// any production host running WC 9.9+ / PHP 8.0+.
 		$response_line_items = [];
 		$subtotal_amount     = 0;
 		foreach ( $processed as $p ) {

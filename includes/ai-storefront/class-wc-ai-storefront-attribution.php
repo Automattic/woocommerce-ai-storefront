@@ -522,6 +522,13 @@ class WC_AI_Storefront_Attribution {
 		//       carrying `<script>` or shell metachars) fail. Reject
 		//       silently with a debug log so the rejection is auditable
 		//       without poisoning the order.
+		//
+		// Spoofing blast radius: a buyer who tampers `ai_agent_host_raw`
+		// can only affect the "Agent host:" line in the admin order
+		// detail panel — a cosmetic, informational field. It cannot
+		// influence stats or routing: `get_stats()` groups exclusively
+		// by `AGENT_META_KEY` (the canonical name written from
+		// KNOWN_AGENT_HOSTS or the strict gate), never by this field.
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params.
 		$raw_host_input = isset( $_GET['ai_agent_host_raw'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_agent_host_raw'] ) ) : '';
 		$raw_host       = '';
