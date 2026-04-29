@@ -45,6 +45,12 @@ class ProductMetaBoxTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_unslash' )->returnArg();
 		Functions\when( 'sanitize_text_field' )->returnArg();
 		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		// FIND-S03 fix: save_meta() now verifies the WC product-save
+		// nonce before reading $_POST. Tests simulate a valid form submit
+		// by seeding the nonce field and stubbing wp_verify_nonce to pass.
+		$_POST['woocommerce_meta_nonce'] = 'test_nonce';
+		Functions\when( 'wp_verify_nonce' )->justReturn( true );
 	}
 
 	protected function tearDown(): void {
@@ -225,6 +231,31 @@ class ProductMetaBoxTest extends \PHPUnit\Framework\TestCase {
 			->once()
 			->with( 100, WC_AI_Storefront_Product_Meta_Box::META_KEY, 'yes' )
 			->andReturn( false );
+
+		$this->meta_box->save_meta( 100 );
+	}
+
+	public function test_save_aborts_when_nonce_missing(): void {
+		// FIND-S03 regression: save_meta() must NOT write meta when the
+		// WC nonce field is absent — guards against a plugin calling
+		// do_action('woocommerce_process_product_meta', $id) directly
+		// without going through WC's nonce-verified save flow.
+		unset( $_POST['woocommerce_meta_nonce'] );
+		$_POST[ WC_AI_Storefront_Product_Meta_Box::META_KEY ] = 'yes';
+
+		Functions\expect( 'update_post_meta' )->never();
+
+		$this->meta_box->save_meta( 100 );
+	}
+
+	public function test_save_aborts_when_nonce_invalid(): void {
+		// Counterpart to the missing-nonce test: an invalid nonce token
+		// (e.g., expired or forged) must also abort the save.
+		$_POST['woocommerce_meta_nonce']                      = 'bad_nonce';
+		$_POST[ WC_AI_Storefront_Product_Meta_Box::META_KEY ] = 'yes';
+
+		Functions\when( 'wp_verify_nonce' )->justReturn( false );
+		Functions\expect( 'update_post_meta' )->never();
 
 		$this->meta_box->save_meta( 100 );
 	}

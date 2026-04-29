@@ -697,11 +697,19 @@ class WC_AI_Storefront_Admin_Controller {
 		// almost certainly not the merchant's refund-policy page.
 		// Both `my-account` (the WP-hyphenated default WC slug) and
 		// `myaccount` (the legacy unhyphenated form) are checked.
-		foreach ( [ 'cart', 'checkout', 'my-account', 'myaccount', 'shop' ] as $slug ) {
-			$page = get_page_by_path( $slug );
-			if ( $page && (int) $page->ID > 0 ) {
-				$excluded[] = (int) $page->ID;
-			}
+		// Batch with get_posts() — 5 serial get_page_by_path() calls
+		// were replaced by one query (P-15).
+		$system_pages = get_posts(
+			array(
+				'post_type'      => 'page',
+				'post_status'    => 'any',
+				'post_name__in'  => array( 'cart', 'checkout', 'my-account', 'myaccount', 'shop' ),
+				'posts_per_page' => 10,
+				'fields'         => 'ids',
+			)
+		);
+		foreach ( $system_pages as $system_page_id ) {
+			$excluded[] = (int) $system_page_id;
 		}
 
 		$excluded = array_values( array_unique( $excluded ) );
@@ -754,7 +762,10 @@ class WC_AI_Storefront_Admin_Controller {
 				'id'    => (int) $page->ID,
 				'title' => [
 					// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's `the_title` filter to mirror the `/wp/v2/pages` REST endpoint's `title.rendered` field shape (entity decoding, shortcode stripping, third-party title-tweaking plugins). The drop-in-replacement contract requires identical filtering, not a plugin-prefixed parallel hook.
-					'rendered' => apply_filters( 'the_title', $page->post_title, $page->ID ),
+					// wp_strip_all_tags() prevents a third-party plugin that injects
+					// unescaped HTML into `the_title` from surfacing raw markup in the
+					// admin REST response (FIND-S05). The dropdown only needs plain text.
+					'rendered' => wp_strip_all_tags( (string) apply_filters( 'the_title', $page->post_title, $page->ID ) ),
 				],
 				'link'  => get_permalink( $page->ID ),
 			];

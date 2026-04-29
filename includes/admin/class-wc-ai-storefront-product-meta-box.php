@@ -168,15 +168,19 @@ class WC_AI_Storefront_Product_Meta_Box {
 			return;
 		}
 
+		// Verify our own nonce even though WC core fires this hook only after
+		// checking `woocommerce_meta_nonce` in its save_post handler. The hook
+		// is a public WordPress action that any plugin or CLI call can fire
+		// directly, bypassing WC's auth gate (CWE-352 / FIND-S03).
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized,WordPress.Security.ValidatedSanitizedInput.MissingUnslash -- wp_verify_nonce handles both.
+		if ( ! isset( $_POST['woocommerce_meta_nonce'] ) || ! wp_verify_nonce( $_POST['woocommerce_meta_nonce'], 'woocommerce_save_data' ) ) {
+			return;
+		}
+
 		// HTML checkboxes that are unchecked send NO key in the POST
 		// payload; checked sends the input's value (literally `'yes'`
-		// per WC's `woocommerce_wp_checkbox()` helper). WC's nonce +
-		// capability check ran before this hook fired
-		// (`woocommerce_process_product_meta` is downstream of
-		// `save_post`'s auth gate per
-		// `WC_Admin_Meta_Boxes::save_meta_boxes()` in WC core), so we
-		// read $_POST directly with a PHPCS suppression.
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- WC core verified the nonce before firing woocommerce_process_product_meta.
+		// per WC's `woocommerce_wp_checkbox()` helper).
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified above.
 		$posted_value = isset( $_POST[ self::META_KEY ] ) ? sanitize_text_field( wp_unslash( $_POST[ self::META_KEY ] ) ) : '';
 		$value        = 'yes' === $posted_value ? 'yes' : 'no';
 
