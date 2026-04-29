@@ -67,12 +67,29 @@ class WC_AI_Storefront_Cache_Invalidator {
 	 * since warm_cache() is itself idempotent (skips if cache already exists).
 	 */
 	public function invalidate() {
-		// llms.txt transient is Host-keyed — delete the key for the
-		// current Host (the Host active when the invalidation fires,
-		// typically the main site host). Each virtual host maintains
-		// its own cache slot and expires independently on the next
-		// request under that host.
+		global $wpdb;
+
+		// Delete the host-keyed llms.txt transient for the current request's
+		// host (fast path — covers the common case).
 		delete_transient( WC_AI_Storefront_Llms_Txt::host_cache_key() );
+
+		// Also purge any other host-keyed variants (e.g. www vs non-www
+		// alias domains). DB-backed transients are cleaned up here; sites
+		// using a persistent object cache (Redis/Memcached) will expire
+		// naturally within HOUR_IN_SECONDS — documented limitation.
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+				$wpdb->esc_like( '_transient_wc_ai_storefront_llms_txt_' ) . '%',
+				$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
+			)
+		);
+		// phpcs:enable
+
+		// Catalog summary cache (store-level JSON-LD).
+		delete_transient( 'wc_ai_storefront_catalog_summary' );
+
 		// UCP manifest is computed per-request (no transient) — the
 		// delete below is a harmless no-op kept for backward compat.
 		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
@@ -109,7 +126,23 @@ class WC_AI_Storefront_Cache_Invalidator {
 	 * Clean up on plugin deactivation.
 	 */
 	public static function deactivate() {
+		global $wpdb;
+
+		// Delete the current-host key (fast path).
 		delete_transient( WC_AI_Storefront_Llms_Txt::host_cache_key() );
+
+		// Also purge any other host-keyed variants (same rationale as invalidate()).
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+				$wpdb->esc_like( '_transient_wc_ai_storefront_llms_txt_' ) . '%',
+				$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
+			)
+		);
+		// phpcs:enable
+
+		delete_transient( 'wc_ai_storefront_catalog_summary' );
 		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
 		wp_clear_scheduled_hook( self::WARMUP_CRON_HOOK );
 	}

@@ -52,6 +52,22 @@ delete_option( 'wc_ai_storefront_version' );
 delete_transient( 'wc_ai_storefront_llms_txt' );
 delete_transient( 'wc_ai_storefront_ucp' );
 delete_transient( 'wc_ai_storefront_flush_rewrite' );
+delete_transient( 'wc_ai_storefront_catalog_summary' );
+
+// Also purge all host-keyed llms.txt transient variants
+// (wc_ai_storefront_llms_txt_<md5(host)>) introduced in 0.6.6.
+// The plugin classes are not loaded during uninstall, so we can't
+// call host_cache_key() — a direct $wpdb delete is the only option.
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
+global $wpdb;
+$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+	$wpdb->prepare(
+		"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+		$wpdb->esc_like( '_transient_wc_ai_storefront_llms_txt_' ) . '%',
+		$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
+	)
+);
+// phpcs:enable
 
 foreach ( array( 'day', 'week', 'month', 'year' ) as $wc_ai_storefront_period ) {
 	delete_transient( 'wc_ai_storefront_stats_' . $wc_ai_storefront_period );
@@ -94,11 +110,25 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 			delete_transient( 'wc_ai_storefront_llms_txt' );
 			delete_transient( 'wc_ai_storefront_ucp' );
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );
+			delete_transient( 'wc_ai_storefront_catalog_summary' );
 			foreach ( array( 'day', 'week', 'month', 'year' ) as $_period ) {
 				delete_transient( 'wc_ai_storefront_stats_' . $_period );
 			}
 			unset( $_period );
 			wp_clear_scheduled_hook( 'wc_ai_storefront_warm_llms_txt_cache' );
+
+			// Also purge all host-keyed llms.txt transient variants for
+			// this site's table. Same rationale as the single-site block above.
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
+			global $wpdb;
+			$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+				$wpdb->prepare(
+					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+					$wpdb->esc_like( '_transient_wc_ai_storefront_llms_txt_' ) . '%',
+					$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
+				)
+			);
+			// phpcs:enable
 
 			restore_current_blog();
 		}
