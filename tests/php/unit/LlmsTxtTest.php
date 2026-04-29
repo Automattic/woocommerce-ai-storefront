@@ -104,6 +104,22 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// handler treats as "no lock held" — skipping the usleep
 		// branch entirely.)
 		Functions\when( 'delete_transient' )->justReturn( true );
+
+		// Sitemap URL discovery (P-18) reads a 24h transient before
+		// running HTTP probes. Default to a cold cache (false = miss)
+		// so probes still run in tests that care about sitemap output,
+		// and stub set_transient as a no-op so the write path doesn't
+		// error. Individual tests that test caching behaviour override
+		// these via their own Functions\when() calls.
+		Functions\when( 'get_transient' )->justReturn( false );
+		Functions\when( 'set_transient' )->justReturn( true );
+
+		// get_option() is called by the FIND-S07 fix to build a
+		// canonical self-link ID from siteurl rather than rest_url().
+		// Default to the same origin used by the rest_url stub above.
+		Functions\when( 'get_option' )->alias(
+			static fn( $option, $default = '' ) => 'siteurl' === $option ? 'https://example.com' : $default
+		);
 	}
 
 	protected function tearDown(): void {
@@ -1354,5 +1370,53 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$m          = $reflection->getMethod( $method );
 		$m->setAccessible( true );
 		return $m->invoke( $this->llms );
+	}
+
+	/**
+	 * Call the private static sanitize_markdown_inline() via reflection.
+	 *
+	 * @param string $value        Raw input.
+	 * @param bool   $is_link_text Whether bracket-escaping is applied.
+	 * @return string Sanitized value.
+	 */
+	private static function sanitize_inline( string $value, bool $is_link_text = false ): string {
+		$m = new ReflectionMethod( WC_AI_Storefront_Llms_Txt::class, 'sanitize_markdown_inline' );
+		$m->setAccessible( true );
+		return (string) $m->invoke( null, $value, $is_link_text );
+	}
+
+	// sanitize_markdown_inline() unit tests
+	// ------------------------------------------------------------------
+
+	public function test_sanitize_markdown_inline_strips_control_characters(): void {
+		// CR, LF, TAB, and other C0 control chars must be removed.
+		$this->assertSame( 'HelloWorld', self::sanitize_inline( "Hello\nWorld" ) );
+		$this->assertSame( 'HelloWorld', self::sanitize_inline( "Hello\rWorld" ) );
+		$this->assertSame( 'HelloWorld', self::sanitize_inline( "Hello\tWorld" ) );
+		$this->assertSame( 'HelloWorld', self::sanitize_inline( "Hello\x00World" ) );
+		$this->assertSame( 'HelloWorld', self::sanitize_inline( "Hello\x1FWorld" ) );
+		$this->assertSame( 'HelloWorld', self::sanitize_inline( "Hello\x7FWorld" ) );
+	}
+
+	public function test_sanitize_markdown_inline_passes_normal_text_unchanged(): void {
+		$normal = 'Outdoor Gear & Sports — Summer 2025';
+		$this->assertSame( $normal, self::sanitize_inline( $normal ) );
+	}
+
+	public function test_sanitize_markdown_inline_link_text_escapes_brackets(): void {
+		// In link-text context, [ and ] must be backslash-escaped so they
+		// cannot break out of the Markdown [text](url) structure.
+		$this->assertSame( '\\[click here\\]', self::sanitize_inline( '[click here]', true ) );
+	}
+
+	public function test_sanitize_markdown_inline_link_text_escapes_backslash_first(): void {
+		// Backslash must be escaped before brackets to avoid double-escaping:
+		// "a\[b]" → "a\\[b]" not "a\\\\[b]".
+		$this->assertSame( 'a\\\\\\[b\\]', self::sanitize_inline( 'a\\[b]', true ) );
+	}
+
+	public function test_sanitize_markdown_inline_non_link_text_does_not_escape_brackets(): void {
+		// When not in link-text mode, brackets are preserved verbatim.
+		$this->assertSame( '[click here]', self::sanitize_inline( '[click here]', false ) );
 	}
 }

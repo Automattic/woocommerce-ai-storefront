@@ -45,10 +45,10 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		// the literal English string the WP_Error payload carries.
 		Functions\when( '__' )->returnArg();
 
-		// `get_page_by_path()` default: no system-slug page exists.
+		// `get_posts()` default: no system-slug pages exist.
 		// Tests that exercise the slug-based fallback override this
-		// alias with a per-slug match.
-		Functions\when( 'get_page_by_path' )->justReturn( null );
+		// with a per-test alias returning specific IDs.
+		Functions\when( 'get_posts' )->justReturn( [] );
 	}
 
 	protected function tearDown(): void {
@@ -174,23 +174,14 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		// is what surfaced as a bug report.
 		Functions\when( 'wc_get_page_id' )->justReturn( -1 );
 
-		Functions\when( 'get_page_by_path' )->alias(
-			static function ( $slug ) {
-				$slug_to_id = [
-					'cart'       => 11,
-					'checkout'   => 22,
-					'my-account' => 33,
-					'myaccount'  => 33, // Same page; both slug forms hit
-					                    // it. `array_unique()` collapses
-					                    // the duplicate.
-					'shop'       => 44,
-				];
-				if ( ! isset( $slug_to_id[ $slug ] ) ) {
-					return null;
-				}
-				$page     = new \stdClass();
-				$page->ID = $slug_to_id[ $slug ];
-				return $page;
+		// `get_posts( ['post_name__in' => [...], 'fields' => 'ids'] )` returns
+		// a flat array of integer IDs (one per matching page). The two slug
+		// aliases for My Account ('my-account' / 'myaccount') resolve to the
+		// same database page, so WP returns ID 33 once — no manual dedup
+		// needed on the mock side.
+		Functions\when( 'get_posts' )->alias(
+			static function ( $args ) {
+				return array( 11, 22, 33, 44 );
 			}
 		);
 
@@ -226,21 +217,13 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		Functions\when( 'get_page_by_path' )->alias(
-			static function ( $slug ) {
-				$slug_to_id = [
-					'cart'       => 10,
-					'checkout'   => 20,
-					'my-account' => 30,
-					'myaccount'  => 30,
-					'shop'       => 40,
-				];
-				if ( ! isset( $slug_to_id[ $slug ] ) ) {
-					return null;
-				}
-				$page     = new \stdClass();
-				$page->ID = $slug_to_id[ $slug ];
-				return $page;
+		// `get_posts( ['post_name__in' => [...], 'fields' => 'ids'] )` returns
+		// the same IDs that `wc_get_page_id()` already resolved to. The
+		// production code merges both ID sources then runs `array_unique()`,
+		// so the combined list collapses to [ 10, 20, 30, 40 ].
+		Functions\when( 'get_posts' )->alias(
+			static function ( $args ) {
+				return array( 10, 20, 30, 40 );
 			}
 		);
 

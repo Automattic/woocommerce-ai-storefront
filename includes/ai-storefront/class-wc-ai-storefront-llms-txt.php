@@ -29,6 +29,17 @@ class WC_AI_Storefront_Llms_Txt {
 	const CACHE_KEY = 'wc_ai_storefront_llms_txt';
 
 	/**
+	 * Transient key for the discovered sitemap URL list.
+	 *
+	 * Cached independently from CACHE_KEY so a product/settings change
+	 * that busts the llms.txt content cache does NOT re-run the 4
+	 * synchronous HTTP HEAD probes — sitemaps are far more stable than
+	 * product data. TTL: 24h (DAY_IN_SECONDS). Invalidated on plugin
+	 * deactivation and uninstall alongside CACHE_KEY.
+	 */
+	const SITEMAP_CACHE_KEY = 'wc_ai_storefront_sitemap_urls';
+
+	/**
 	 * Return a Host-specific transient key for the llms.txt cache.
 	 *
 	 * llms.txt body contains URLs derived from `home_url()` and
@@ -270,9 +281,13 @@ class WC_AI_Storefront_Llms_Txt {
 	 * @return string Markdown content.
 	 */
 	public function generate() {
-		$site_name   = html_entity_decode( wp_strip_all_tags( get_bloginfo( 'name' ) ), ENT_QUOTES, 'UTF-8' );
+		// Sanitize through sanitize_markdown_inline() to strip control
+		// characters (including newlines) that would break the surrounding
+		// Markdown line structure (FIND-S06). html_entity_decode() +
+		// wp_strip_all_tags() run first so the sanitizer sees plain text.
+		$site_name   = self::sanitize_markdown_inline( html_entity_decode( wp_strip_all_tags( get_bloginfo( 'name' ) ), ENT_QUOTES, 'UTF-8' ) );
 		$site_url    = home_url( '/' );
-		$description = html_entity_decode( wp_strip_all_tags( get_bloginfo( 'description' ) ), ENT_QUOTES, 'UTF-8' );
+		$description = self::sanitize_markdown_inline( html_entity_decode( wp_strip_all_tags( get_bloginfo( 'description' ) ), ENT_QUOTES, 'UTF-8' ) );
 		$currency    = get_woocommerce_currency();
 		$settings    = WC_AI_Storefront::get_settings();
 
@@ -380,7 +395,13 @@ class WC_AI_Storefront_Llms_Txt {
 			foreach ( $section['terms'] as $term ) {
 				$link = get_term_link( $term );
 				if ( ! is_wp_error( $link ) ) {
-					$term_name   = html_entity_decode( wp_strip_all_tags( $term->name ), ENT_QUOTES, 'UTF-8' );
+					// is_link_text: true — the name is inside `[...]` in
+					// "- [{$term_name}]({$link})". A `]` in the raw name
+					// would close the link bracket early (FIND-S06).
+					$term_name   = self::sanitize_markdown_inline(
+						html_entity_decode( wp_strip_all_tags( $term->name ), ENT_QUOTES, 'UTF-8' ),
+						true
+					);
 					$count_label = 1 === (int) $term->count ? 'product' : 'products';
 					$lines[]     = "- [{$term_name}]({$link}) ({$term->count} {$count_label})";
 				}
@@ -535,11 +556,13 @@ class WC_AI_Storefront_Llms_Txt {
 	 *     to site URL
 	 *
 	 * Synchronous HEAD requests with a 1-second timeout, made on
-	 * the same origin. Amortized by the 1-hour transient cache in
-	 * `get_cached_content()` — probes run once per cache miss, not
-	 * per request. Worst case (all 4 paths time out): 4 seconds of
-	 * generation latency once per hour. Typical case (paths exist
-	 * or fast 404): <500ms.
+	 * the same origin. The discovered URL list is cached in
+	 * SITEMAP_CACHE_KEY for 24 hours (independent of the 1-hour
+	 * llms.txt content cache) so sitemap probe I/O does not
+	 * re-run every time a product update busts the content cache
+	 * (P-18). Worst case (cold sitemap cache, all 4 paths time out):
+	 * 4 seconds of latency once per 24 hours. Typical case (paths
+	 * exist or fast 404): <500ms; near-zero on warm cache.
 	 *
 	 * @param string $site_url Home URL with trailing slash.
 	 * @return string[]        Sitemap URLs that returned 2xx/3xx to
@@ -547,7 +570,17 @@ class WC_AI_Storefront_Llms_Txt {
 	 *                         sitemap at any common path.
 	 */
 	private static function discover_sitemap_urls( string $site_url ): array {
-		$candidates = [];
+		// Check the sitemap-specific cache first. Sitemaps rarely change
+		// (new plugin installs, domain moves) while product content changes
+		// constantly — decoupling the TTLs means the expensive HEAD probes
+		// run at most once per 24 hours regardless of how often llms.txt
+		// content is regenerated.
+		$cached = get_transient( self::SITEMAP_CACHE_KEY );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		$candidates = array();
 
 		// WP core canonical (returns full URL when core sitemap is
 		// enabled; returns empty string if disabled via filter).
@@ -566,11 +599,11 @@ class WC_AI_Storefront_Llms_Txt {
 		$candidates = array_values( array_unique( $candidates ) );
 
 		// HEAD-probe each. Only URLs returning 2xx/3xx make it in.
-		$existent = [];
+		$existent = array();
 		foreach ( $candidates as $candidate ) {
 			$response = wp_remote_head(
 				$candidate,
-				[
+				array(
 					'timeout'     => 1,
 					'redirection' => 1,
 					'blocking'    => true,
@@ -580,7 +613,7 @@ class WC_AI_Storefront_Llms_Txt {
 					// self-origin probes don't silently accept MITM
 					// responses.
 					'sslverify'   => ! ( defined( 'WP_DEBUG' ) && WP_DEBUG ),
-				]
+				)
 			);
 			if ( is_wp_error( $response ) ) {
 				continue;
@@ -591,7 +624,47 @@ class WC_AI_Storefront_Llms_Txt {
 			}
 		}
 
+		// Cache the probed result for 24 hours. An empty array is a valid
+		// cached result ("no sitemap found") — caching it prevents re-probing
+		// every hour on sites that have no sitemap.
+		set_transient( self::SITEMAP_CACHE_KEY, $existent, DAY_IN_SECONDS );
+
 		return $existent;
+	}
+
+	/**
+	 * Sanitize a plain-text value for safe embedding in Markdown inline contexts.
+	 *
+	 * Two sanitization passes are applied (FIND-S06):
+	 *
+	 *   1. Control-character stripping: newlines inside `# {$site_name}` end the
+	 *      heading; inside `> {$description}` they end the blockquote. All control
+	 *      characters (U+0000-U+001F, U+007F) including CR and LF are removed.
+	 *
+	 *   2. Markdown link-text escaping (only when `$is_link_text` is true): a `]`
+	 *      character inside `[{$text}]({$url})` closes the link-text segment early,
+	 *      allowing a value like `Photos]( https://evil.example)` to inject a
+	 *      second link target. Backslashes are escaped first to prevent double-
+	 *      processing; then `[` and `]` are backslash-escaped per the CommonMark
+	 *      spec. This escaping must NOT be applied to heading or blockquote contexts
+	 *      where literal backslashes would be visible to the reader.
+	 *
+	 * @param string $value        Raw value (post-entity-decode, post-tag-strip).
+	 * @param bool   $is_link_text True when embedding inside `[...]` link text.
+	 * @return string              Sanitized value safe for the target Markdown context.
+	 */
+	private static function sanitize_markdown_inline( string $value, bool $is_link_text = false ): string {
+		// Remove control characters including CR, LF, and TAB.
+		$value = (string) preg_replace( '/[\x00-\x1F\x7F]/u', '', $value );
+
+		if ( $is_link_text ) {
+			// Escape backslash first so subsequent escapes are not double-processed.
+			$value = str_replace( '\\', '\\\\', $value );
+			// Escape brackets that delimit the Markdown link-text segment.
+			$value = str_replace( array( '[', ']' ), array( '\\[', '\\]' ), $value );
+		}
+
+		return $value;
 	}
 
 	private function get_syndicated_categories( $settings ) {

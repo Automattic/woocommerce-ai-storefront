@@ -1876,13 +1876,27 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * the plugin the merchant is running (no risk of schema/runtime
 	 * drift from a third-party registry), and honors whatever access
 	 * controls the site has on the REST API (same permissions as the
-	 * catalog/checkout endpoints). `$id` is computed from the current
-	 * URL so a static mirror of the schema keeps the right self-reference.
+	 * catalog/checkout endpoints). `$id` is derived from the stored
+	 * `siteurl` option rather than `rest_url()` so a spoofed or
+	 * proxy-injected `Host` header cannot redirect `$id` to a
+	 * third-party domain (FIND-S07).
 	 *
 	 * @return WP_REST_Response
 	 */
 	public function handle_extension_schema(): WP_REST_Response {
-		$self_id = rest_url( self::NAMESPACE . '/extension/schema' );
+		// Use get_option('home') as the REST API base to avoid host-header
+		// injection (FIND-S07): rest_url() / home_url() respect the
+		// X-Forwarded-Host header on misconfigured proxy setups, while
+		// get_option('home') always returns the canonical URL stored by the
+		// site admin. On subdirectory installs (siteurl=example.com/wp,
+		// home=example.com) the REST API is mounted at home + wp-json/,
+		// not at siteurl + wp-json/, so 'home' is the correct base option.
+		// Cast to string: get_option() returns false when the option is
+		// missing (e.g. unit-test context), which would cause trailingslashit()
+		// to receive false and produce "/" only.
+		$raw_home = get_option( 'home' );
+		$home     = ( '' !== (string) $raw_home ) ? (string) $raw_home : home_url();
+		$self_id  = trailingslashit( $home ) . rest_get_url_prefix() . '/' . self::NAMESPACE . '/extension/schema';
 
 		$schema = [
 			'$schema'     => 'https://json-schema.org/draft/2020-12/schema',

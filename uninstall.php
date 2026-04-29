@@ -53,6 +53,7 @@ delete_transient( 'wc_ai_storefront_llms_txt' );
 delete_transient( 'wc_ai_storefront_ucp' );
 delete_transient( 'wc_ai_storefront_flush_rewrite' );
 delete_transient( 'wc_ai_storefront_catalog_summary' );
+delete_transient( 'wc_ai_storefront_sitemap_urls' );
 
 // Also purge all host-keyed llms.txt transient variants
 // (wc_ai_storefront_llms_txt_<md5(host)>) introduced in 0.6.6.
@@ -111,6 +112,7 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 			delete_transient( 'wc_ai_storefront_ucp' );
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );
 			delete_transient( 'wc_ai_storefront_catalog_summary' );
+			delete_transient( 'wc_ai_storefront_sitemap_urls' );
 			foreach ( array( 'day', 'week', 'month', 'year' ) as $_period ) {
 				delete_transient( 'wc_ai_storefront_stats_' . $_period );
 			}

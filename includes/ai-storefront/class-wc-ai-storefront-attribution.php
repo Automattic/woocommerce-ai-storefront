@@ -293,6 +293,10 @@ class WC_AI_Storefront_Attribution {
 
 		// Bust stats transient cache when order status changes or an order is
 		// removed so the admin dashboard stays accurate within one TTL cycle.
+		// Status-change hooks pass $order_id; bust_stats_cache() uses it to skip
+		// the bust for non-AI orders (P-11 — see method docblock).
+		// Delete/trash hooks are hooked with 0 accepted args (bust unconditionally)
+		// because the order may already be gone at hook-fire time.
 		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'bust_stats_cache' ) );
 		add_action( 'woocommerce_order_status_processing', array( __CLASS__, 'bust_stats_cache' ) );
 		add_action( 'woocommerce_delete_order', array( __CLASS__, 'bust_stats_cache' ), 10, 0 );
@@ -449,9 +453,12 @@ class WC_AI_Storefront_Attribution {
 			return;
 		}
 
-		// Capture AI session ID from request.
+		// Capture AI session ID from request. Cap at 128 chars before writing to
+		// order meta: sanitize_text_field() strips tags but does not limit length,
+		// so an uncapped value could write up to 65,535 bytes (longtext column
+		// limit) to the meta table per order (CWE-20 / FIND-S04).
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading attribution params.
-		$session_id = isset( $_GET['ai_session_id'] ) ? sanitize_text_field( wp_unslash( $_GET['ai_session_id'] ) ) : '';
+		$session_id = isset( $_GET['ai_session_id'] ) ? substr( sanitize_text_field( wp_unslash( $_GET['ai_session_id'] ) ), 0, 128 ) : '';
 		if ( $session_id ) {
 			$order->update_meta_data( self::SESSION_META_KEY, $session_id );
 		}
@@ -838,8 +845,26 @@ class WC_AI_Storefront_Attribution {
 	/**
 	 * Invalidate all cached stats transients. Called when order attribution
 	 * data changes (e.g., after a new order is attributed or via admin reset).
+	 *
+	 * When $order_id > 0 (status-change hooks), skip the bust unless the order
+	 * carries `_wc_ai_storefront_agent` meta. On busy stores, every order status
+	 * change would otherwise invalidate the 5-minute stats cache; at 1,000
+	 * orders/hr the cache hit rate approaches 0 even though AI-attributed orders
+	 * may represent a small fraction. Delete/trash hooks pass no order_id
+	 * ($order_id = 0) and always bust — those are rare events and the order
+	 * may already be removed from the DB when the hook fires.
+	 *
+	 * @param int $order_id WC order ID from status-change hooks, or 0 for delete/trash.
 	 */
-	public static function bust_stats_cache(): void {
+	public static function bust_stats_cache( int $order_id = 0 ): void {
+		if ( $order_id > 0 ) {
+			$order = wc_get_order( $order_id );
+			// HPOS-compatible check: get_meta() works on both HPOS and legacy orders.
+			if ( $order instanceof WC_Order && ! $order->get_meta( self::AGENT_META_KEY ) ) {
+				return; // Non-AI order status change — preserve the stats cache.
+			}
+		}
+
 		foreach ( array( 'day', 'week', 'month', 'year' ) as $period ) {
 			delete_transient( 'wc_ai_storefront_stats_' . $period );
 		}

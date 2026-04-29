@@ -579,15 +579,21 @@ class WC_AI_Storefront_Admin_Controller {
 	public function get_recent_orders( $request ) {
 		$per_page = (int) $request->get_param( 'per_page' );
 
+		// Restrict to commercially relevant statuses only, not all 12+ WC order
+		// statuses. Passing every status via `wc_get_order_statuses()` forces the
+		// DB to scan rows with statuses like `wc-cancelled`, `wc-failed`, and
+		// `wc-trash` that never appear in the AI-orders overview table and inflate
+		// the IN clause with no benefit. On stores with 100k+ orders the
+		// over-broad IN can prevent index use (P-16).
 		$orders = wc_get_orders(
-			[
+			array(
 				'limit'    => $per_page,
 				'orderby'  => 'date',
 				'order'    => 'DESC',
 				'meta_key' => WC_AI_Storefront_Attribution::AGENT_META_KEY, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
-				'status'   => array_keys( wc_get_order_statuses() ),
+				'status'   => array( 'pending', 'processing', 'on-hold', 'completed', 'refunded' ),
 				'return'   => 'objects',
-			]
+			)
 		);
 
 		// DB error — return an empty result set so the admin UI shows
@@ -697,11 +703,19 @@ class WC_AI_Storefront_Admin_Controller {
 		// almost certainly not the merchant's refund-policy page.
 		// Both `my-account` (the WP-hyphenated default WC slug) and
 		// `myaccount` (the legacy unhyphenated form) are checked.
-		foreach ( [ 'cart', 'checkout', 'my-account', 'myaccount', 'shop' ] as $slug ) {
-			$page = get_page_by_path( $slug );
-			if ( $page && (int) $page->ID > 0 ) {
-				$excluded[] = (int) $page->ID;
-			}
+		// Batch with get_posts() — 5 serial get_page_by_path() calls
+		// were replaced by one query (P-15).
+		$system_pages = get_posts(
+			array(
+				'post_type'      => 'page',
+				'post_status'    => 'any',
+				'post_name__in'  => array( 'cart', 'checkout', 'my-account', 'myaccount', 'shop' ),
+				'posts_per_page' => 10,
+				'fields'         => 'ids',
+			)
+		);
+		foreach ( $system_pages as $system_page_id ) {
+			$excluded[] = (int) $system_page_id;
 		}
 
 		$excluded = array_values( array_unique( $excluded ) );
@@ -753,8 +767,11 @@ class WC_AI_Storefront_Admin_Controller {
 			$result[] = [
 				'id'    => (int) $page->ID,
 				'title' => [
+					// wp_strip_all_tags() prevents a third-party plugin that injects
+					// unescaped HTML into `the_title` from surfacing raw markup in the
+					// admin REST response (FIND-S05). The dropdown only needs plain text.
 					// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's `the_title` filter to mirror the `/wp/v2/pages` REST endpoint's `title.rendered` field shape (entity decoding, shortcode stripping, third-party title-tweaking plugins). The drop-in-replacement contract requires identical filtering, not a plugin-prefixed parallel hook.
-					'rendered' => apply_filters( 'the_title', $page->post_title, $page->ID ),
+					'rendered' => wp_strip_all_tags( (string) apply_filters( 'the_title', $page->post_title, $page->ID ) ),
 				],
 				'link'  => get_permalink( $page->ID ),
 			];

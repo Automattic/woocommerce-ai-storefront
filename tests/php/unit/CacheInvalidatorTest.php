@@ -57,6 +57,8 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_invalidate_deletes_transients(): void {
 		// llms.txt (host-keyed) + catalog_summary + UCP (no-op).
+		// Note: SITEMAP_CACHE_KEY is NOT deleted by invalidate() — sitemap
+		// location depends on settings, not product data.
 		Functions\expect( 'delete_transient' )
 			->times( 3 );
 
@@ -123,6 +125,50 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// invalidate_sitemap_cache()
+	// ------------------------------------------------------------------
+
+	public function test_invalidate_sitemap_cache_deletes_sitemap_key_only(): void {
+		// Should delete SITEMAP_CACHE_KEY and nothing else (no llms.txt,
+		// no catalog_summary, no UCP).
+		Functions\expect( 'delete_transient' )
+			->once()
+			->with( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY )
+			->andReturn( true );
+
+		Functions\expect( 'is_multisite' )->andReturn( false );
+
+		$this->invalidator->invalidate_sitemap_cache();
+	}
+
+	public function test_invalidate_does_not_delete_sitemap_cache_on_product_edit(): void {
+		// Regression guard: invalidate() must NOT touch SITEMAP_CACHE_KEY.
+		// Sitemap location depends on settings, not product data.
+		$sitemap_key_deleted = false;
+
+		Functions\expect( 'delete_transient' )
+			->times( 3 )
+			->andReturnUsing(
+				static function ( $key ) use ( &$sitemap_key_deleted ) {
+					if ( $key === WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY ) {
+						$sitemap_key_deleted = true;
+					}
+					return true;
+				}
+			);
+
+		Functions\expect( 'wp_next_scheduled' )->andReturn( false );
+		Functions\expect( 'wp_schedule_single_event' )->andReturn( true );
+
+		$this->invalidator->invalidate();
+
+		$this->assertFalse(
+			$sitemap_key_deleted,
+			'invalidate() must not delete SITEMAP_CACHE_KEY — sitemap location is not affected by product/category edits'
+		);
+	}
+
+	// ------------------------------------------------------------------
 	// warm_cache()
 	// ------------------------------------------------------------------
 
@@ -156,9 +202,9 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_deactivate_cleans_up_transient_and_cron(): void {
-		// llms.txt (host-keyed) + catalog_summary + UCP (bare, no-op).
+		// llms.txt (host-keyed) + catalog_summary + sitemap_urls + UCP (bare, no-op).
 		Functions\expect( 'delete_transient' )
-			->times( 3 );
+			->times( 4 );
 
 		Functions\expect( 'wp_clear_scheduled_hook' )
 			->once()
@@ -178,6 +224,10 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		Functions\expect( 'delete_transient' )
 			->once()
 			->with( 'wc_ai_storefront_catalog_summary' )
+			->andReturn( true );
+		Functions\expect( 'delete_transient' )
+			->once()
+			->with( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY )
 			->andReturn( true );
 		Functions\expect( 'delete_transient' )
 			->once()
@@ -276,7 +326,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_init_registers_all_expected_hooks(): void {
 		Functions\expect( 'add_action' )
-			->times( 10 ); // 4 product + 1 stock + 3 category + 1 settings + 1 cron = 10.
+			->times( 11 ); // 4 product + 1 stock + 3 category + 1 settings + 1 sitemap-settings + 1 cron = 11.
 
 		$this->invalidator->init();
 	}
