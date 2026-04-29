@@ -511,7 +511,7 @@ class WC_AI_Storefront {
 				// to sibling PHP workers off `alloptions`.
 				wp_cache_delete( self::SETTINGS_OPTION, 'options' );
 				wp_cache_delete( 'alloptions', 'options' );
-			} elseif ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+			} else {
 				WC_AI_Storefront_Logger::debug(
 					'silent migration: update_option returned false for %s',
 					self::SETTINGS_OPTION
@@ -529,7 +529,11 @@ class WC_AI_Storefront {
 	 * @return bool
 	 */
 	public static function update_settings( $settings ) {
-		// Read directly from DB, bypassing any object cache.
+		// Reset both the static cache and the WP object cache so get_settings()
+		// reads the current persisted value from DB. Without resetting
+		// $settings_cache first, get_settings() returns the stale static value
+		// and the wp_cache_delete below has no practical effect.
+		self::$settings_cache = null;
 		wp_cache_delete( self::SETTINGS_OPTION, 'options' );
 		$current = self::get_settings();
 		$merged  = wp_parse_args( $settings, $current );
@@ -560,12 +564,22 @@ class WC_AI_Storefront {
 			$allow_unknown = 'no';
 		}
 
+		// Map legacy mode aliases to their canonical form. Old stores may
+		// have 'categories', 'tags', or 'brands' saved before the unified
+		// by_taxonomy mode was introduced; this normalizes them at write
+		// time so the DB stays clean.
+		$legacy_mode_map = [
+			'categories' => 'by_taxonomy',
+			'tags'       => 'by_taxonomy',
+			'brands'     => 'by_taxonomy',
+		];
+		$raw_mode        = $merged['product_selection_mode'] ?? 'all';
+		$normalized_mode = isset( $legacy_mode_map[ $raw_mode ] ) ? $legacy_mode_map[ $raw_mode ] : $raw_mode;
+
 		// Sanitize — only store known keys to keep the option clean.
 		$clean = [
 			'enabled'                  => in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no',
-			'product_selection_mode'   => in_array( $merged['product_selection_mode'], [ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ], true )
-				? $merged['product_selection_mode']
-				: 'all',
+			'product_selection_mode'   => in_array( $normalized_mode, [ 'all', 'by_taxonomy', 'selected' ], true ) ? $normalized_mode : 'all',
 			'selected_categories'      => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
 			'selected_tags'            => array_map( 'absint', (array) ( $merged['selected_tags'] ?? [] ) ),
 			'selected_brands'          => array_map( 'absint', (array) ( $merged['selected_brands'] ?? [] ) ),
@@ -623,6 +637,35 @@ class WC_AI_Storefront {
 	}
 
 	/**
+	 * Prime the WordPress term relationship and term object caches for a
+	 * batch of product IDs before calling is_product_syndicated() in a loop.
+	 *
+	 * Without priming, each is_product_syndicated() call in by_taxonomy mode
+	 * issues 1-2 DB queries (one per taxonomy). With priming, the whole batch
+	 * is loaded in a fixed number of queries regardless of batch size.
+	 *
+	 * Callers in the UCP REST controller should call this once before
+	 * iterating over a set of product IDs for catalog/search filtering.
+	 * The complete N+1 elimination requires calling prime_syndication_cache()
+	 * from the UCP REST controller before the product loop (tracked in
+	 * issue #168). This method provides the priming infrastructure.
+	 *
+	 * @param int[]  $product_ids WC product IDs to prime.
+	 * @param array  $settings    Plugin settings (to determine which taxonomies are needed).
+	 */
+	public static function prime_syndication_cache( array $product_ids, array $settings ): void {
+		if ( empty( $product_ids ) ) {
+			return;
+		}
+		$mode = $settings['product_selection_mode'] ?? 'all';
+		if ( 'by_taxonomy' !== $mode ) {
+			return;
+		}
+		// Prime term relationship objects so wp_get_post_terms() is a cache hit.
+		update_object_term_cache( $product_ids, 'product' );
+	}
+
+	/**
 	 * Check if a product is included in syndication.
 	 *
 	 * Gating semantics by mode:
@@ -667,6 +710,10 @@ class WC_AI_Storefront {
 	 * doesn't see their catalog silently vanish. The stored
 	 * `selected_brands` array stays on disk; re-registration of
 	 * the taxonomy restores enforcement.
+	 *
+	 * Bulk usage: when calling this method in a loop over many products,
+	 * call prime_syndication_cache() first to batch-load term relationships
+	 * and avoid N+1 DB queries in by_taxonomy mode.
 	 *
 	 * @param WC_Product|int $product  WC_Product object OR an int product ID.
 	 *                                 The int form is what UCP REST callers
