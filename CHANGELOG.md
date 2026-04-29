@@ -14,6 +14,14 @@
 
 ---
 
+## [0.7.1] – 2026-04-29
+
+### Fixes
+
+- **Plugin now activates on a fresh clone without running `composer install`.** 0.7.0 introduced Composer classmap autoloading but the generated `vendor/` files were not committed, causing an immediate "Composer dependencies are missing" fatal on any installation that had not run `composer install`. Replaced with a committed standalone `includes/autoload.php` that registers the same 23-class classmap via `spl_autoload_register`. No Composer install is required at runtime; `composer install` is only needed for dev tooling (PHPUnit, PHPStan, PHPCS).
+
+---
+
 ## [0.7.0] – 2026-04-29
 
 ### Performance

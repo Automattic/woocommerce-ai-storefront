@@ -1,6 +1,6 @@
 {
 	"name": "woocommerce-ai-storefront",
-	"version": "0.7.0",
+	"version": "0.7.1",
 	"description": "Make your WooCommerce store ready for AI shopping assistants (ChatGPT, Gemini, Perplexity, Claude).",
 	"author": "WooCommerce",
 	"license": "GPL-3.0-or-later",

@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce AI Storefront
  * Plugin URI: https://woocommerce.com/
  * Description: Make your WooCommerce store ready for AI shopping assistants (ChatGPT, Gemini, Perplexity, Claude). Full merchant control with store-only checkout and standard WooCommerce attribution.
- * Version: 0.7.0
+ * Version: 0.7.1
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
  * Text Domain: woocommerce-ai-storefront
@@ -28,7 +28,7 @@ defined( 'ABSPATH' ) || exit;
 // Update includes/autoload.php when adding or removing plugin classes.
 require_once __DIR__ . '/includes/autoload.php';
 
-define( 'WC_AI_STOREFRONT_VERSION', '0.7.0' );
+define( 'WC_AI_STOREFRONT_VERSION', '0.7.1' );
 define( 'WC_AI_STOREFRONT_PLUGIN_FILE', __FILE__ );
 define( 'WC_AI_STOREFRONT_PLUGIN_PATH', untrailingslashit( plugin_dir_path( __FILE__ ) ) );
 define( 'WC_AI_STOREFRONT_PLUGIN_URL', untrailingslashit( plugin_dir_url( __FILE__ ) ) );
