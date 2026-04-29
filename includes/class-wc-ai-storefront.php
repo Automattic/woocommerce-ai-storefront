@@ -81,12 +81,16 @@ class WC_AI_Storefront {
 		require_once $path . 'class-wc-ai-storefront-jsonld.php';
 		require_once $path . 'class-wc-ai-storefront-robots.php';
 		require_once $path . 'class-wc-ai-storefront-ucp.php';
+
+		// UCP REST adapter module (1.3.0+). See PLAN-ucp-adapter.md.
+		// Error codes must be loaded before the rate limiter (which references
+		// WC_AI_Storefront_UCP_Error_Codes::UCP_RATE_LIMIT_EXCEEDED).
+		$ucp_path = $path . 'ucp-rest/';
+		require_once $ucp_path . 'class-wc-ai-storefront-ucp-error-codes.php';
+
 		require_once $path . 'class-wc-ai-storefront-store-api-rate-limiter.php';
 		require_once $path . 'class-wc-ai-storefront-attribution.php';
 		require_once $path . 'class-wc-ai-storefront-cache-invalidator.php';
-
-		// UCP REST adapter module (1.3.0+). See PLAN-ucp-adapter.md.
-		$ucp_path = $path . 'ucp-rest/';
 		require_once $ucp_path . 'class-wc-ai-storefront-ucp-agent-header.php';
 		require_once $ucp_path . 'class-wc-ai-storefront-ucp-envelope.php';
 		require_once $ucp_path . 'class-wc-ai-storefront-ucp-product-translator.php';
