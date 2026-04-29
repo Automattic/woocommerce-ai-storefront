@@ -77,11 +77,6 @@ class WC_AI_Storefront_Ucp {
 	];
 
 	/**
-	 * Transient key for cached UCP manifest.
-	 */
-	const CACHE_KEY = 'wc_ai_storefront_ucp';
-
-	/**
 	 * Short-circuit canonical-URL redirects for the manifest endpoint.
 	 *
 	 * @param string|false $redirect_url WP's candidate canonical URL.
@@ -159,9 +154,9 @@ class WC_AI_Storefront_Ucp {
 		// poisoned cached body through the PHP layer. The HTTP layer
 		// cache is segmented by the `Vary: Host` header above.
 		//
-		// The old `CACHE_KEY` constant is retained for backward
-		// compatibility — it is still referenced by the cache invalidator
-		// (harmless no-op delete) and any third-party code that reads it.
+		// The old `CACHE_KEY` constant has been removed (closes #177).
+		// The cache invalidator still calls delete_transient on the literal
+		// string for pre-1.0 clean-uninstall coverage — harmless no-op.
 		// HEX flags hex-escape `<`, `>`, `&`, `'`, `"` — defense-in-depth
 		// even though the manifest is served as `application/json`.
 		WC_AI_Storefront_Logger::debug( 'UCP manifest — generating per-request' );

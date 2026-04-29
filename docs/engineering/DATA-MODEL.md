@@ -134,10 +134,10 @@ Cached `/llms.txt` Markdown body. Avoids regenerating on every crawler hit.
 
 ### `wc_ai_storefront_ucp`
 
-Constant (`WC_AI_Storefront_Ucp::CACHE_KEY`) retained for backward compatibility — referenced by the cache invalidator and any third-party code that reads it. The UCP manifest is now **generated per-request** rather than cached: the generation path is cheap (no external HTTP probes, no unbounded DB queries) and per-request computation eliminates the Host-keying problem entirely. The transient is **never written** by the current code; the `Vary: Host` response header handles HTTP-layer caching separately.
+The `WC_AI_Storefront_Ucp::CACHE_KEY` constant has been removed (closes #177). The UCP manifest is now **generated per-request** rather than cached: the generation path is cheap (no external HTTP probes, no unbounded DB queries) and per-request computation eliminates the Host-keying problem entirely. The transient is **never written** by the current code; the `Vary: Host` response header handles HTTP-layer caching separately.
 
 - **Previously:** cached `/.well-known/ucp` JSON body with 1-hour TTL.
-- **Currently:** not used. `delete_transient( CACHE_KEY )` calls in the cache invalidator are harmless no-ops.
+- **Currently:** not used. `delete_transient( 'wc_ai_storefront_ucp' )` calls in the cache invalidator and main class are harmless no-ops kept for pre-1.0 clean-uninstall coverage.
 - **Uninstall:** `uninstall.php` still deletes it (defensive, covers any stale value from a pre-0.6.6 install).
 
 ### `wc_ai_storefront_flush_rewrite`

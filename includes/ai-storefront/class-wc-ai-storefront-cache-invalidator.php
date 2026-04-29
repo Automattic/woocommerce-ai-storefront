@@ -114,7 +114,8 @@ class WC_AI_Storefront_Cache_Invalidator {
 
 		// UCP manifest is computed per-request (no transient) — the
 		// delete below is a harmless no-op kept for backward compat.
-		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
+		// Legacy key — retained here for clean uninstall of pre-1.0 installs.
+		delete_transient( 'wc_ai_storefront_ucp' );
 
 		// On multisite, replicate the purge for every other site in the
 		// network. After switch_to_blog() $wpdb->options points to the
@@ -151,7 +152,8 @@ class WC_AI_Storefront_Cache_Invalidator {
 						);
 						// phpcs:enable
 						delete_transient( 'wc_ai_storefront_catalog_summary' );
-						delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
+						// Legacy key — retained here for clean uninstall of pre-1.0 installs.
+						delete_transient( 'wc_ai_storefront_ucp' );
 					} finally {
 						restore_current_blog();
 					}
@@ -256,7 +258,8 @@ class WC_AI_Storefront_Cache_Invalidator {
 
 		delete_transient( 'wc_ai_storefront_catalog_summary' );
 		delete_transient( WC_AI_Storefront_Llms_Txt::SITEMAP_CACHE_KEY );
-		delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
+		// Legacy key — retained here for clean uninstall of pre-1.0 installs.
+		delete_transient( 'wc_ai_storefront_ucp' );
 
 		// On multisite, replicate the purge for every other site. Same
 		// rationale as invalidate() — wildcard query covers all host-keyed
@@ -292,7 +295,8 @@ class WC_AI_Storefront_Cache_Invalidator {
 						);
 						// phpcs:enable
 						delete_transient( 'wc_ai_storefront_catalog_summary' );
-						delete_transient( WC_AI_Storefront_Ucp::CACHE_KEY );
+						// Legacy key — retained here for clean uninstall of pre-1.0 installs.
+						delete_transient( 'wc_ai_storefront_ucp' );
 						wp_clear_scheduled_hook( self::WARMUP_CRON_HOOK );
 					} finally {
 						restore_current_blog();

@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-29T06:14:34+00:00\n"
+"POT-Creation-Date: 2026-04-29T13:01:55+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -36,12 +36,12 @@ msgid "WooCommerce"
 msgstr ""
 
 #. translators: %s: the unrecognized product_selection_mode enum value
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:544
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:540
 #, php-format
 msgid "Unrecognized product_selection_mode: %s"
 msgstr ""
 
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:750
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:746
 msgid "Could not load pages."
 msgstr ""
 
@@ -80,7 +80,7 @@ msgid "Too many requests. Please try again later."
 msgstr ""
 
 #. translators: This string is injected verbatim into LLM system prompts via the UCP manifest. Translate the natural-language prose, but DO NOT translate the technical identifiers (`requires_escalation`, `continue_url`, `/checkout-sessions`, `unsupported_operation`, `UCP-Agent`, `Product/Version`, `Other AI`) or HTTP methods (POST, GET, PUT, PATCH, DELETE) — agents must see these tokens exactly.
-#: includes/ai-storefront/class-wc-ai-storefront-ucp.php:581
+#: includes/ai-storefront/class-wc-ai-storefront-ucp.php:576
 msgid "This store uses requires_escalation checkout: agents do not place orders directly. POST /checkout-sessions returns a continue_url with attribution UTMs already attached; redirect the user to that URL to complete the purchase on the merchant site. The /checkout-sessions/{id} URL is stateless — GET, PUT, PATCH, and DELETE all return HTTP 405 with code \"unsupported_operation\" because there is no persistent session to act on. Send your agent identity via the UCP-Agent header (profile URL form preferred, Product/Version form also accepted) so attribution canonicalizes to your brand rather than bucketing as \"Other AI\"."
 msgstr ""
 
@@ -295,9 +295,9 @@ msgstr ""
 msgid "Line item could not be processed."
 msgstr ""
 
-#: includes/class-wc-ai-storefront.php:280
-#: includes/class-wc-ai-storefront.php:281
-#: includes/class-wc-ai-storefront.php:293
+#: includes/class-wc-ai-storefront.php:327
+#: includes/class-wc-ai-storefront.php:328
+#: includes/class-wc-ai-storefront.php:340
 msgid "AI Storefront"
 msgstr ""
 
