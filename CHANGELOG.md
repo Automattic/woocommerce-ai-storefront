@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`parse_ucp_id_to_wc_int()` now rejects malformed IDs with trailing non-digit characters.** Pre-fix, the `(int)` cast silently truncated `prod_123abc` to `123`, potentially resolving a spoofed or corrupted ID to a real product. A `ctype_digit()` guard now rejects any suffix that contains non-decimal characters, returning 0 (not-found) instead. The known `_default` suffix on synthesized default-variant IDs (e.g. `var_123_default`) is stripped before the check so legitimate round-trips continue to work. Closes #154.
+- **`normalize_store_api_data()` now uses a recursive cast instead of a JSON round-trip.** Pre-fix, the method encoded the Store API response to JSON then decoded it, allocating a large intermediate string for no semantic benefit. Replaced with an O(N) recursive closure that casts `stdClass` objects to arrays in place. Output is identical; allocations are lower on large product payloads. Closes #171.
+
 ---
 
 ## [0.6.6] – 2026-04-28

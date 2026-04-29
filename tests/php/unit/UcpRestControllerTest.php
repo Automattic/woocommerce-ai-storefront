@@ -494,4 +494,151 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 	// UcpCatalogLookupTest, and UcpCheckoutSessionsTest respectively.
 	// This file retains only the route-registration contract tests +
 	// the extension-schema handler tests.
+
+	// ------------------------------------------------------------------
+	// parse_ucp_id_to_wc_int — regression tests for #154
+	// ------------------------------------------------------------------
+
+	/**
+	 * Helper to invoke the private static parse_ucp_id_to_wc_int() method
+	 * via reflection, matching the pattern used for format_signal_keys_for_log.
+	 *
+	 * @param mixed $raw_id
+	 */
+	private function parse_ucp_id( $raw_id ): int {
+		$reflection = new \ReflectionClass( WC_AI_Storefront_UCP_REST_Controller::class );
+		$method     = $reflection->getMethod( 'parse_ucp_id_to_wc_int' );
+		$method->setAccessible( true );
+		return $method->invoke( null, $raw_id );
+	}
+
+	public function test_parse_ucp_id_valid_prod_prefix_returns_int(): void {
+		// Happy path: prod_123 should yield 123.
+		$this->assertSame( 123, $this->parse_ucp_id( 'prod_123' ) );
+	}
+
+	public function test_parse_ucp_id_valid_var_prefix_returns_int(): void {
+		// Happy path: var_456 should yield 456.
+		$this->assertSame( 456, $this->parse_ucp_id( 'var_456' ) );
+	}
+
+	public function test_parse_ucp_id_malformed_trailing_alpha_returns_zero(): void {
+		// Regression for #154: before the fix, (int)'123abc' = 123, silently
+		// resolving a garbage ID to a real product. Now returns 0.
+		$this->assertSame( 0, $this->parse_ucp_id( 'prod_123abc' ) );
+	}
+
+	public function test_parse_ucp_id_malformed_var_trailing_alpha_returns_zero(): void {
+		// Same regression guard for the var_ prefix.
+		$this->assertSame( 0, $this->parse_ucp_id( 'var_456xyz' ) );
+	}
+
+	public function test_parse_ucp_id_non_string_returns_zero(): void {
+		// Non-string input should return 0.
+		$this->assertSame( 0, $this->parse_ucp_id( 42 ) );
+		$this->assertSame( 0, $this->parse_ucp_id( null ) );
+		$this->assertSame( 0, $this->parse_ucp_id( array() ) );
+	}
+
+	public function test_parse_ucp_id_empty_string_returns_zero(): void {
+		// Empty string has no prefix and no digit suffix.
+		$this->assertSame( 0, $this->parse_ucp_id( '' ) );
+	}
+
+	public function test_parse_ucp_id_prefix_only_returns_zero(): void {
+		// 'prod_' after stripping the prefix leaves '', which is not a
+		// valid integer — must return 0 rather than (int)'' = 0 via
+		// the old cast path (coincidentally the same, but now explicit).
+		$this->assertSame( 0, $this->parse_ucp_id( 'prod_' ) );
+	}
+
+	public function test_parse_ucp_id_default_suffix_variant_returns_parent_int(): void {
+		// var_123_default is the synthesized default-variant ID emitted
+		// by the variant translator. It must resolve to WC product 123
+		// so catalog/lookup can round-trip it correctly.
+		$this->assertSame( 123, $this->parse_ucp_id( 'var_123_default' ) );
+	}
+
+	public function test_parse_ucp_id_bare_numeric_string_returns_int(): void {
+		// Bare numeric strings without a prefix are accepted (lenient v1
+		// behavior): the prefix regex is a no-op for '123', leaving the
+		// full string for ctype_digit() to pass through.
+		$this->assertSame( 123, $this->parse_ucp_id( '123' ) );
+	}
+
+	// ------------------------------------------------------------------
+	// normalize_store_api_data — regression tests for #171
+	// ------------------------------------------------------------------
+
+	/**
+	 * Helper to invoke the private static normalize_store_api_data() method
+	 * via reflection.
+	 *
+	 * @param mixed $data
+	 * @return mixed
+	 */
+	private function normalize_store_api( $data ) {
+		$reflection = new \ReflectionClass( WC_AI_Storefront_UCP_REST_Controller::class );
+		$method     = $reflection->getMethod( 'normalize_store_api_data' );
+		$method->setAccessible( true );
+		return $method->invoke( null, $data );
+	}
+
+	public function test_normalize_store_api_data_converts_nested_stdclass_to_array(): void {
+		// Regression for #171: previously used a JSON round-trip; now uses
+		// a recursive cast. Both must produce identical output. This test
+		// pins the output contract so a future refactor that changes the
+		// mechanism can't silently alter the returned structure.
+		$inner        = new \stdClass();
+		$inner->price = '19.99';
+		$inner->name  = 'Widget';
+
+		$outer         = new \stdClass();
+		$outer->id     = 42;
+		$outer->nested = $inner;
+
+		$result = $this->normalize_store_api( $outer );
+
+		$this->assertIsArray( $result );
+		$this->assertSame( 42, $result['id'] );
+		$this->assertIsArray( $result['nested'] );
+		$this->assertSame( '19.99', $result['nested']['price'] );
+		$this->assertSame( 'Widget', $result['nested']['name'] );
+	}
+
+	public function test_normalize_store_api_data_plain_array_passthrough(): void {
+		// Arrays should be returned as-is (with their nested stdClass
+		// children also cast). A plain PHP array coming in must survive
+		// the function unchanged at the top level.
+		$data = array(
+			'id'   => 1,
+			'meta' => array( 'key' => 'value' ),
+		);
+
+		$result = $this->normalize_store_api( $data );
+
+		$this->assertSame( $data, $result );
+	}
+
+	public function test_normalize_store_api_data_scalar_returns_null(): void {
+		// Scalars are not array or object, so the function should return null.
+		$this->assertNull( $this->normalize_store_api( 'string' ) );
+		$this->assertNull( $this->normalize_store_api( 42 ) );
+		$this->assertNull( $this->normalize_store_api( null ) );
+	}
+
+	public function test_normalize_store_api_data_array_of_stdclass_items(): void {
+		// Arrays whose values are stdClass objects (e.g. a Store API
+		// products list) must have each item cast to an array.
+		$item        = new \stdClass();
+		$item->sku   = 'WIDGET-1';
+		$item->stock = 10;
+
+		$result = $this->normalize_store_api( array( $item ) );
+
+		$this->assertIsArray( $result );
+		$this->assertIsArray( $result[0] );
+		$this->assertSame( 'WIDGET-1', $result[0]['sku'] );
+		$this->assertSame( 10, $result[0]['stock'] );
+	}
 }
