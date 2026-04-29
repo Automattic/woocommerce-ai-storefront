@@ -449,6 +449,44 @@ if ( ! class_exists( 'WP_Query' ) ) {
 	}
 }
 
+if ( ! class_exists( 'wpdb' ) ) {
+	/**
+	 * Minimal wpdb stub for unit tests.
+	 *
+	 * The production plugin calls $wpdb->query() and $wpdb->prepare()
+	 * for wildcard transient deletion. Tests that exercise those code
+	 * paths must set the global $wpdb to a Mockery mock; this stub
+	 * exists so PHPStan can resolve the class name and so test files
+	 * can type-hint against it without a real database connection.
+	 */
+	class wpdb {
+		public string $options = 'wp_options';
+
+		public function query( string $sql ): int|bool {
+			return false;
+		}
+
+		public function prepare( string $query, ...$args ): string {
+			// Minimal implementation: substitute %s placeholders with
+			// sprintf-style escaping so the returned string is a valid
+			// SQL fragment in tests that assert on the prepared query.
+			$i = 0;
+			return (string) preg_replace_callback(
+				'/%s/',
+				static function () use ( &$i, $args ) {
+					$val = $args[ $i++ ] ?? '';
+					return "'" . addslashes( (string) $val ) . "'";
+				},
+				$query
+			);
+		}
+
+		public function esc_like( string $text ): string {
+			return addcslashes( $text, '_%\\' );
+		}
+	}
+}
+
 if ( ! class_exists( 'WC_DateTime_Stub' ) ) {
 	/**
 	 * Minimal stub for WC_DateTime — just the two methods the admin

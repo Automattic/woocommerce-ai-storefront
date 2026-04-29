@@ -17,6 +17,20 @@ defined( 'ABSPATH' ) || exit;
 class WC_AI_Storefront_JsonLd {
 
 	/**
+	 * Cached WooCommerce weight unit code for this request.
+	 *
+	 * @var string|null
+	 */
+	private $weight_unit_code_cache = null;
+
+	/**
+	 * Cached WooCommerce dimension unit code for this request.
+	 *
+	 * @var string|null
+	 */
+	private $dimension_unit_code_cache = null;
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function init() {
@@ -100,10 +114,25 @@ class WC_AI_Storefront_JsonLd {
 		// Add category breadcrumb path.
 		$categories = wc_get_product_cat_ids( $product->get_id() );
 		if ( ! empty( $categories ) ) {
-			$cat_paths = [];
+			// Prime the term object cache for all category IDs and their ancestors
+			// so the get_ancestors() + get_term() calls inside the loop hit the
+			// cache instead of issuing one DB query per term.
+			$all_term_ids = array();
+			foreach ( $categories as $cat_id ) {
+				$all_term_ids[] = $cat_id;
+				$ancestors      = get_ancestors( $cat_id, 'product_cat', 'taxonomy' );
+				foreach ( $ancestors as $ancestor_id ) {
+					$all_term_ids[] = $ancestor_id;
+				}
+			}
+			if ( ! empty( $all_term_ids ) ) {
+				_prime_term_caches( array_unique( $all_term_ids ) );
+			}
+
+			$cat_paths = array();
 			foreach ( $categories as $cat_id ) {
 				$ancestors = get_ancestors( $cat_id, 'product_cat', 'taxonomy' );
-				$path      = [];
+				$path      = array();
 				foreach ( array_reverse( $ancestors ) as $ancestor_id ) {
 					$ancestor = get_term( $ancestor_id, 'product_cat' );
 					if ( $ancestor && ! is_wp_error( $ancestor ) ) {
@@ -410,38 +439,49 @@ class WC_AI_Storefront_JsonLd {
 	/**
 	 * Get a catalog summary for JSON-LD.
 	 *
+	 * Result is cached in a transient for one hour so repeated homepage/shop
+	 * page loads don't issue a get_terms() DB query on every request.
+	 * Invalidated by WC_AI_Storefront_Cache_Invalidator::invalidate().
+	 *
 	 * @return array
 	 */
 	private function get_catalog_summary() {
+		$transient_key = 'wc_ai_storefront_catalog_summary';
+		$cached        = get_transient( $transient_key );
+		if ( false !== $cached ) {
+			return $cached;
+		}
+
 		$categories = get_terms(
-			[
+			array(
 				'taxonomy'   => 'product_cat',
 				'hide_empty' => true,
 				'parent'     => 0,
 				'number'     => 10,
 				'orderby'    => 'count',
 				'order'      => 'DESC',
-			]
+			)
 		);
 
 		if ( is_wp_error( $categories ) ) {
-			return [];
+			return array();
 		}
 
-		$items = [];
+		$items = array();
 		foreach ( $categories as $category ) {
 			$link = get_term_link( $category );
 			if ( is_wp_error( $link ) ) {
 				continue;
 			}
-			$items[] = [
+			$items[] = array(
 				'@type'         => 'OfferCatalog',
 				'name'          => $category->name,
 				'numberOfItems' => $category->count,
 				'url'           => $link,
-			];
+			);
 		}
 
+		set_transient( $transient_key, $items, HOUR_IN_SECONDS );
 		return $items;
 	}
 
@@ -701,33 +741,45 @@ class WC_AI_Storefront_JsonLd {
 	/**
 	 * Map WooCommerce weight unit to UN/CEFACT unit code.
 	 *
+	 * Result is instance-cached so get_option() is called at most once
+	 * per request even when multiple products are output on the same page.
+	 *
 	 * @return string
 	 */
 	private function get_weight_unit_code() {
-		$unit_map = [
-			'kg'  => 'KGM',
-			'g'   => 'GRM',
-			'lbs' => 'LBR',
-			'oz'  => 'ONZ',
-		];
-		$wc_unit  = get_option( 'woocommerce_weight_unit', 'kg' );
-		return $unit_map[ $wc_unit ] ?? 'KGM';
+		if ( null === $this->weight_unit_code_cache ) {
+			$unit_map                     = array(
+				'kg'  => 'KGM',
+				'g'   => 'GRM',
+				'lbs' => 'LBR',
+				'oz'  => 'ONZ',
+			);
+			$wc_unit                      = get_option( 'woocommerce_weight_unit', 'kg' );
+			$this->weight_unit_code_cache = isset( $unit_map[ $wc_unit ] ) ? $unit_map[ $wc_unit ] : 'KGM';
+		}
+		return $this->weight_unit_code_cache;
 	}
 
 	/**
 	 * Map WooCommerce dimension unit to UN/CEFACT unit code.
 	 *
+	 * Result is instance-cached so get_option() is called at most once
+	 * per request even when multiple products are output on the same page.
+	 *
 	 * @return string
 	 */
 	private function get_dimension_unit_code() {
-		$unit_map = [
-			'cm' => 'CMT',
-			'm'  => 'MTR',
-			'mm' => 'MMT',
-			'in' => 'INH',
-			'yd' => 'YRD',
-		];
-		$wc_unit  = get_option( 'woocommerce_dimension_unit', 'cm' );
-		return $unit_map[ $wc_unit ] ?? 'CMT';
+		if ( null === $this->dimension_unit_code_cache ) {
+			$unit_map                        = array(
+				'cm' => 'CMT',
+				'm'  => 'MTR',
+				'mm' => 'MMT',
+				'in' => 'INH',
+				'yd' => 'YRD',
+			);
+			$wc_unit                         = get_option( 'woocommerce_dimension_unit', 'cm' );
+			$this->dimension_unit_code_cache = isset( $unit_map[ $wc_unit ] ) ? $unit_map[ $wc_unit ] : 'CMT';
+		}
+		return $this->dimension_unit_code_cache;
 	}
 }

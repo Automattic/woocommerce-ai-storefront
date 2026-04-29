@@ -61,6 +61,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			[ 'country' => 'US', 'state' => 'CA' ]
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
+
+		// get_catalog_summary() now uses a transient cache. Stub both
+		// functions globally so all tests that invoke output_store_jsonld()
+		// work without individual setup. Tests that want to verify caching
+		// behaviour specifically may override these via Functions\expect().
+		Functions\when( 'get_transient' )->justReturn( false );
+		Functions\when( 'set_transient' )->justReturn( true );
 		// Stub the per-product final-sale meta read to "not flagged"
 		// across all tests in this file. Per-product override coverage
 		// lives in JsonLdReturnPolicyTest's dedicated branch.
@@ -897,5 +904,149 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'rate_limit_rpm', $captured_subset );
 		$this->assertArrayNotHasKey( 'allowed_crawlers', $captured_subset );
 		$this->assertArrayNotHasKey( 'allow_unknown_ucp_agents', $captured_subset );
+	}
+
+	// ------------------------------------------------------------------
+	// Unit code instance caching (#170)
+	// ------------------------------------------------------------------
+
+	public function test_weight_unit_code_calls_get_option_only_once_across_multiple_products(): void {
+		// Regression guard for issue #170: get_option() must be called at
+		// most once per instance regardless of how many products are processed.
+		$call_count = 0;
+		Functions\when( 'get_option' )->alias(
+			static function ( $key, $default = '' ) use ( &$call_count ) {
+				if ( 'woocommerce_weight_unit' === $key ) {
+					++$call_count;
+					return 'kg';
+				}
+				if ( 'woocommerce_dimension_unit' === $key ) {
+					return 'cm';
+				}
+				return $default;
+			}
+		);
+
+		$product = $this->make_product( [ 'has_weight' => true, 'weight' => '1' ] );
+
+		// Call enhance_product_data three times on the same instance
+		// — as would happen on a shop archive page with multiple products.
+		$this->jsonld->enhance_product_data( array(), $product );
+		$this->jsonld->enhance_product_data( array(), $product );
+		$this->jsonld->enhance_product_data( array(), $product );
+
+		$this->assertSame(
+			1,
+			$call_count,
+			'get_option(woocommerce_weight_unit) must be called exactly once per instance (instance cache)'
+		);
+	}
+
+	public function test_dimension_unit_code_calls_get_option_only_once_across_multiple_products(): void {
+		// Mirror of the weight test for dimension unit.
+		$call_count = 0;
+		Functions\when( 'get_option' )->alias(
+			static function ( $key, $default = '' ) use ( &$call_count ) {
+				if ( 'woocommerce_weight_unit' === $key ) {
+					return 'kg';
+				}
+				if ( 'woocommerce_dimension_unit' === $key ) {
+					++$call_count;
+					return 'cm';
+				}
+				return $default;
+			}
+		);
+
+		$product = $this->make_product(
+			array(
+				'has_dimensions' => true,
+				'dimensions'     => array( 'length' => '10', 'width' => '5', 'height' => '3' ),
+			)
+		);
+
+		$this->jsonld->enhance_product_data( array(), $product );
+		$this->jsonld->enhance_product_data( array(), $product );
+		$this->jsonld->enhance_product_data( array(), $product );
+
+		$this->assertSame(
+			1,
+			$call_count,
+			'get_option(woocommerce_dimension_unit) must be called exactly once per instance (instance cache)'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// Catalog summary transient caching (#167)
+	// ------------------------------------------------------------------
+
+	public function test_catalog_summary_is_served_from_transient_cache_on_second_call(): void {
+		// Regression guard for issue #167: get_catalog_summary() must
+		// return the cached value on a second invocation without calling
+		// get_terms() again.
+		$get_terms_call_count = 0;
+
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'home_url' )->alias( static fn( $p = '' ) => 'https://example.com' . $p );
+		Functions\when( 'get_bloginfo' )->returnArg();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( '__' )->returnArg( 1 );
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+
+		// First call: cache miss, runs get_terms().
+		Functions\when( 'get_transient' )->justReturn( false );
+		Functions\when( 'set_transient' )->justReturn( true );
+		Functions\when( 'get_terms' )->alias(
+			static function () use ( &$get_terms_call_count ) {
+				++$get_terms_call_count;
+				return array(); // Empty catalog for simplicity.
+			}
+		);
+
+		ob_start();
+		try {
+			$this->jsonld->output_store_jsonld();
+		} finally {
+			ob_end_clean();
+		}
+
+		$this->assertSame( 1, $get_terms_call_count, 'get_terms() must be called on cache miss' );
+	}
+
+	public function test_catalog_summary_stores_result_in_transient(): void {
+		// Verify that after a cache miss the result is written via
+		// set_transient() so the next request gets a cache hit.
+		$set_transient_called = false;
+		$set_key              = null;
+
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'home_url' )->alias( static fn( $p = '' ) => 'https://example.com' . $p );
+		Functions\when( 'get_bloginfo' )->returnArg();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( '__' )->returnArg( 1 );
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'get_terms' )->justReturn( array() );
+		Functions\when( 'get_transient' )->justReturn( false ); // Cache miss.
+		Functions\when( 'set_transient' )->alias(
+			static function ( $key, $value, $ttl ) use ( &$set_transient_called, &$set_key ) {
+				$set_transient_called = true;
+				$set_key              = $key;
+				return true;
+			}
+		);
+
+		ob_start();
+		try {
+			$this->jsonld->output_store_jsonld();
+		} finally {
+			ob_end_clean();
+		}
+
+		$this->assertTrue( $set_transient_called, 'set_transient() must be called after a cache miss' );
+		$this->assertSame( 'wc_ai_storefront_catalog_summary', $set_key );
 	}
 }
