@@ -155,8 +155,10 @@ class WC_AI_Storefront_Ucp {
 		// cache is segmented by the `Vary: Host` header above.
 		//
 		// The old `CACHE_KEY` constant has been removed (closes #177).
-		// The cache invalidator still calls delete_transient on the literal
-		// string for pre-1.0 clean-uninstall coverage — harmless no-op.
+		// The cache invalidator deletes the literal string 'wc_ai_storefront_ucp'
+		// to clean up both pre-1.0 installs and the admin warm-up copy written
+		// when syndication is enabled. serve_manifest() never reads this key;
+		// the delete ensures stale warm-up data doesn't linger.
 		// HEX flags hex-escape `<`, `>`, `&`, `'`, `"` — defense-in-depth
 		// even though the manifest is served as `application/json`.
 		WC_AI_Storefront_Logger::debug( 'UCP manifest — generating per-request' );

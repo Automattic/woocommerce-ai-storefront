@@ -112,9 +112,10 @@ class WC_AI_Storefront_Cache_Invalidator {
 		// settings, not product data. See invalidate_sitemap_cache(), which is
 		// hooked to settings changes only.
 
-		// UCP manifest is computed per-request (no transient) — the
-		// delete below is a harmless no-op kept for backward compat.
-		// Legacy key — retained here for clean uninstall of pre-1.0 installs.
+		// UCP manifest is served per-request; serve_manifest() does not
+		// read this transient. The delete cleans up (a) pre-1.0 installs
+		// that cached the manifest and (b) the warm-up copy written by
+		// the admin controller when syndication is toggled on.
 		delete_transient( 'wc_ai_storefront_ucp' );
 
 		// On multisite, replicate the purge for every other site in the
