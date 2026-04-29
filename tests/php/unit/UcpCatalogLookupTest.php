@@ -62,6 +62,12 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			static fn( string $single, string $plural, int $number ): string => $number === 1 ? $single : $plural
 		);
 
+		// Stubs for the P-10 term/meta cache priming added in handle_catalog_lookup.
+		// The priming calls fire before the product loop for any non-empty
+		// validated ID list; they're no-ops in unit tests (no real WP DB).
+		Functions\when( 'update_object_term_cache' )->justReturn( true );
+		Functions\when( 'update_postmeta_cache' )->justReturn( true );
+
 		// Default stub for `seller.name` in the seller block every
 		// product emits (see build_seller()). `wp_strip_all_tags` is
 		// covered by the bootstrap polyfill; `html_entity_decode` is
