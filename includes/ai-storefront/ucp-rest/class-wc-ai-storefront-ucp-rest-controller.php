@@ -2276,13 +2276,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * Parse a UCP ID string (`prod_N`, `var_N`, `var_N_default`) into
 	 * the underlying WC post/variation ID.
 	 *
-	 * The prefix strip + `(int)` cast is deliberately lenient: PHP's
-	 * int cast truncates at the first non-numeric character, so
-	 * `var_123_default` → `123` cleanly, and malformed input like
-	 * `"abc"` or `"prod_"` → 0 (which the caller treats as not-found).
+	 * After stripping the known prefix and the `_default` suffix, the
+	 * remaining string must consist entirely of decimal digits (`ctype_digit`).
+	 * Malformed suffixes like `123abc` return 0 (not-found) instead of
+	 * silently truncating to 123. Pure decimal suffixes like `prod_123`
+	 * and `var_456` are unaffected.
 	 *
-	 * Non-string input returns 0 too, so callers don't have to type-
-	 * check before calling.
+	 * Non-string input and an empty post-strip string both return 0 too,
+	 * so callers don't have to type-check before calling.
 	 *
 	 * @param mixed $raw_id
 	 */
