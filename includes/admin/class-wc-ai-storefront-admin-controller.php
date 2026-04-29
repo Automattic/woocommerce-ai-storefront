@@ -767,10 +767,10 @@ class WC_AI_Storefront_Admin_Controller {
 			$result[] = [
 				'id'    => (int) $page->ID,
 				'title' => [
-					// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's `the_title` filter to mirror the `/wp/v2/pages` REST endpoint's `title.rendered` field shape (entity decoding, shortcode stripping, third-party title-tweaking plugins). The drop-in-replacement contract requires identical filtering, not a plugin-prefixed parallel hook.
 					// wp_strip_all_tags() prevents a third-party plugin that injects
 					// unescaped HTML into `the_title` from surfacing raw markup in the
 					// admin REST response (FIND-S05). The dropdown only needs plain text.
+					// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's `the_title` filter to mirror the `/wp/v2/pages` REST endpoint's `title.rendered` field shape (entity decoding, shortcode stripping, third-party title-tweaking plugins). The drop-in-replacement contract requires identical filtering, not a plugin-prefixed parallel hook.
 					'rendered' => wp_strip_all_tags( (string) apply_filters( 'the_title', $page->post_title, $page->ID ) ),
 				],
 				'link'  => get_permalink( $page->ID ),

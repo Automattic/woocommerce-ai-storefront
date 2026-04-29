@@ -860,7 +860,7 @@ class WC_AI_Storefront_Attribution {
 		if ( $order_id > 0 ) {
 			$order = wc_get_order( $order_id );
 			// HPOS-compatible check: get_meta() works on both HPOS and legacy orders.
-			if ( $order instanceof WC_Abstract_Order && ! $order->get_meta( self::AGENT_META_KEY ) ) {
+			if ( $order instanceof WC_Order && ! $order->get_meta( self::AGENT_META_KEY ) ) {
 				return; // Non-AI order status change — preserve the stats cache.
 			}
 		}
