@@ -28,8 +28,11 @@ class WC_AI_Storefront {
 	/**
 	 * Single source of truth for default values of every plugin setting.
 	 *
-	 * Used by get_settings() via array_merge so any new key added here
-	 * is automatically surfaced without touching the merge call. The
+	 * Used by get_settings() via wp_parse_args so any new key added here
+	 * is automatically surfaced without touching the merge call. Note:
+	 * wp_parse_args is shallow — it does not recurse into nested arrays,
+	 * so the `return_policy` default array is only applied as a whole
+	 * unit if the stored value omits that key entirely. The
 	 * REST arg schema in the admin controller and the sanitization logic
 	 * in update_settings() are separate concerns and are NOT collapsed
 	 * here — they carry their own shape rules.
