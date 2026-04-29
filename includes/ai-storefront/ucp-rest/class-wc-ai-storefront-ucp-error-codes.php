@@ -12,7 +12,7 @@
  *   WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT
  *
  * @package WooCommerce_AI_Storefront
- * @since   1.0.0
+ * @since   0.6.7
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -26,7 +26,7 @@ defined( 'ABSPATH' ) || exit;
  *     inside the checkout-sessions response body.
  *   - Catalog codes: errors returned inside catalog search/lookup responses.
  *
- * @since 1.0.0
+ * @since 0.6.7
  */
 final class WC_AI_Storefront_UCP_Error_Codes {
 

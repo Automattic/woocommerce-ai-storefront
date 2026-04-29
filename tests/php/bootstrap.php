@@ -45,6 +45,7 @@ require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-jsonld.php';
 
 // UCP REST adapter module (1.3.0+).
 $ucp_rest_path = $plugin_path . 'ai-storefront/ucp-rest/';
+require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-error-codes.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-agent-header.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-envelope.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-product-translator.php';

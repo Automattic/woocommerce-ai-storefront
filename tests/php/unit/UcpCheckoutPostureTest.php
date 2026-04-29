@@ -292,7 +292,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 
 		$messages = $response->get_data()['messages'];
 		$this->assertNotEmpty( $messages );
-		$this->assertSame( 'unsupported_operation', $messages[0]['code'] );
+		$this->assertSame( WC_AI_Storefront_UCP_Error_Codes::UNSUPPORTED_OPERATION, $messages[0]['code'] );
 		$this->assertSame( 'unrecoverable', $messages[0]['severity'] );
 	}
 
