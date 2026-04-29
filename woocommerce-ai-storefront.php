@@ -23,6 +23,21 @@
 
 defined( 'ABSPATH' ) || exit;
 
+// Composer autoloader — required for non-namespaced class autoloading.
+// In source checkouts this file won't exist until `composer install` is run.
+// The release ZIP always ships with vendor/ pre-built; see AGENTS.md.
+if ( ! file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
+	add_action(
+		'admin_notices',
+		static function () {
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Static string, no user input.
+			echo '<div class="notice notice-error"><p><strong>WooCommerce AI Storefront:</strong> Composer dependencies are missing. Run <code>composer install</code> in the plugin directory.</p></div>';
+		}
+	);
+	return;
+}
+require_once __DIR__ . '/vendor/autoload.php';
+
 define( 'WC_AI_STOREFRONT_VERSION', '0.6.6' );
 define( 'WC_AI_STOREFRONT_PLUGIN_FILE', __FILE__ );
 define( 'WC_AI_STOREFRONT_PLUGIN_PATH', untrailingslashit( plugin_dir_path( __FILE__ ) ) );
@@ -54,7 +69,6 @@ function wc_ai_storefront_init() {
 		return;
 	}
 
-	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/class-wc-ai-storefront.php';
 	WC_AI_Storefront::get_instance();
 }
 add_action( 'plugins_loaded', 'wc_ai_storefront_init' );
@@ -74,7 +88,6 @@ function wc_ai_storefront_init_updater() {
 	if ( ! is_admin() && ! ( defined( 'WP_CLI' ) && WP_CLI ) && ! wp_doing_cron() ) {
 		return;
 	}
-	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/class-wc-ai-storefront-updater.php';
 	WC_AI_Storefront_Updater::init();
 }
 add_action( 'init', 'wc_ai_storefront_init_updater' );
@@ -110,7 +123,6 @@ function wc_ai_storefront_activate() {
 		return;
 	}
 
-	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/class-wc-ai-storefront.php';
 	$instance = WC_AI_Storefront::get_instance();
 	$instance->init_components();
 
@@ -125,8 +137,6 @@ function wc_ai_storefront_deactivate() {
 	flush_rewrite_rules();
 
 	// Clean up cache and scheduled events.
-	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-storefront/class-wc-ai-storefront-llms-txt.php';
-	require_once WC_AI_STOREFRONT_PLUGIN_PATH . '/includes/ai-storefront/class-wc-ai-storefront-cache-invalidator.php';
 	WC_AI_Storefront_Cache_Invalidator::deactivate();
 }
 register_deactivation_hook( __FILE__, 'wc_ai_storefront_deactivate' );

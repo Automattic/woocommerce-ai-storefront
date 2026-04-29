@@ -61,10 +61,13 @@ jobs:
 
       # Install *production* composer deps only — dev-only packages
       # (PHPUnit, PHPStan, PHPCS, Brain Monkey) don't ship to merchants.
-      # The plugin currently has no production PHP deps, so this
-      # produces an empty vendor/ directory that we then drop from the
-      # zip via the exclude list. Keeping the step in place for when
-      # production deps are added.
+      # --optimize-autoloader builds the classmap so the autoloader does
+      # a single file-stat lookup per class rather than walking PSR-4
+      # prefixes at runtime. The resulting vendor/ contains only
+      # autoload.php and vendor/composer/*.php (11 small files, no
+      # production package source), and is included in the release zip
+      # so that require_once vendor/autoload.php in the plugin entry
+      # point works on merchant installs.
       - name: Install production Composer dependencies
         run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
@@ -85,13 +88,13 @@ jobs:
       # extract into wp-content/plugins/<dir-name>/), so this must
       # match the slug merchants see in their Plugins screen.
       #
-      # Note on `/vendor/` (anchored): this strips the project's
-      # composer vendor/ dir without touching the vendored Plugin
-      # Update Checker library's own vendor/ subdirectory at
-      # includes/lib/plugin-update-checker/vendor/ (which ships
-      # Parsedown for changelog rendering). An unanchored `vendor/`
-      # pattern would match every dir named "vendor" in the tree
-      # and silently break in-place updates.
+      # vendor/ is intentionally included: the previous step ran
+      # composer install --no-dev --optimize-autoloader, which leaves
+      # only vendor/autoload.php and vendor/composer/*.php (the
+      # classmap autoloader, ~11 small files). The plugin entry point
+      # requires vendor/autoload.php, so it must be present in the zip.
+      # Dev packages (PHPUnit, PHPStan, PHPCS, Brain Monkey) are not
+      # installed by --no-dev and therefore do not appear in the zip.
       - name: Stage release files
         run: |
           mkdir -p release-staging
@@ -103,7 +106,6 @@ jobs:
             --exclude='node_modules/' \
             --exclude='client/' \
             --exclude='tests/' \
-            --exclude='/vendor/' \
             --exclude='bin/' \
             --exclude='scripts/' \
             --exclude='release-staging/' \
