@@ -1318,17 +1318,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// MAX_IDS_PER_LOOKUP request. After priming, every get_the_terms() /
 		// wc_get_product_cat_ids() call inside the loop reads from the object
 		// cache with zero additional DB round-trips.
-		$prime_ids = array_values(
-			array_filter(
-				array_map( 'intval', array_values( $wc_ids ) ),
-				static function ( $id ) {
-					return $id > 0;
-				}
-			)
-		);
-		if ( ! empty( $prime_ids ) ) {
-			update_object_term_cache( $prime_ids, 'product' );
-			update_postmeta_cache( $prime_ids );
+		//
+		// Gate to `by_taxonomy` mode: in `all` mode products are always
+		// syndicated without any DB check; in `selected` mode the
+		// is_product_syndicated() check is a postmeta lookup whose cost
+		// does not scale with the taxonomy hierarchy.
+		$_lookup_settings = WC_AI_Storefront::get_settings();
+		if ( 'by_taxonomy' === ( $_lookup_settings['product_selection_mode'] ?? 'all' ) ) {
+			$prime_ids = array_values(
+				array_filter(
+					array_map( 'intval', array_values( $wc_ids ) ),
+					static function ( $id ) {
+						return $id > 0;
+					}
+				)
+			);
+			if ( ! empty( $prime_ids ) ) {
+				update_object_term_cache( $prime_ids, 'product' );
+				update_postmeta_cache( $prime_ids );
+			}
 		}
 
 		foreach ( $wc_ids as $index => $wc_id ) {
@@ -3770,7 +3778,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					'hide_empty' => false,
 					'fields'     => 'all',
 					'name'       => $name_inputs,
-					'number'     => count( $name_inputs ),
+					// No 'number' cap: a taxonomy may have multiple terms with
+					// the same name (e.g. child categories with identical names
+					// in different parents). Capping to count($name_inputs)
+					// would silently truncate when any name has more than one
+					// match. WP_Term_Query defaults to no LIMIT when absent.
 				)
 			);
 			if ( ! is_wp_error( $terms_by_name ) ) {
