@@ -107,10 +107,11 @@ jobs:
         with:
           fetch-depth: 2
 
-      - uses: anthropics/claude-code-base-action@v1
+      - uses: anthropics/claude-code-base-action@v0.0.63
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_tools: "Read,Edit,Write,Grep,Glob,Bash"
           prompt: |
             Audit the documentation for staleness against the most recent commit on main.
