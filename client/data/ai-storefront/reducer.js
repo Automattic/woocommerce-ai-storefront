@@ -12,7 +12,9 @@ const defaultState = {
 	isSaving: false,
 	savingError: null,
 	stats: null,
+	statsError: null,
 	endpoints: {},
+	endpointsError: null,
 	// Per-endpoint reachability status. Shape:
 	//   { llms_txt: 'checking' | 'reachable' | 'unreachable' | 'disabled',
 	//     ucp:      'checking' | 'reachable' | 'unreachable' | 'disabled',
@@ -59,10 +61,16 @@ const reducer = ( state = defaultState, action ) => {
 			};
 
 		case ACTION_TYPES.SET_STATS:
-			return { ...state, stats: action.data };
+			return { ...state, stats: action.data, statsError: null };
+
+		case ACTION_TYPES.SET_STATS_ERROR:
+			return { ...state, statsError: action.error };
 
 		case ACTION_TYPES.SET_ENDPOINTS:
-			return { ...state, endpoints: action.data };
+			return { ...state, endpoints: action.data, endpointsError: null };
+
+		case ACTION_TYPES.SET_ENDPOINTS_ERROR:
+			return { ...state, endpointsError: action.error };
 
 		case ACTION_TYPES.SET_ENDPOINT_STATUS:
 			return {
