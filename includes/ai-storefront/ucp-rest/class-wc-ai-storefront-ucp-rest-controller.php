@@ -812,7 +812,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		}
 
-		$error_template = array( 'error' => null, 'wc_products' => array(), 'store_response' => null );
+		$error_template = array(
+			'error'          => null,
+			'wc_products'    => array(),
+			'store_response' => null,
+		);
 
 		if ( $store_response instanceof WP_Error ) {
 			WC_AI_Storefront_Logger::debug(
