@@ -3934,45 +3934,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return array{processed: ?array<string, mixed>, messages: array<int, array<string, mixed>>}
 	 */
 	private static function process_line_item( $line_item, int $index, string $store_currency ): array {
-		$messages = [];
+		$messages = array();
 		$path     = '$.line_items[' . $index . ']';
 
-		if ( ! is_array( $line_item ) ) {
-			$messages[] = self::checkout_error_message( 'invalid_line_item', $path );
-			return [
+		// --- Shape validation (array, item-is-array, id-is-string) ---
+		$shape_error = self::validate_line_item_shape( $line_item, $path );
+		if ( null !== $shape_error ) {
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( $shape_error ),
+			);
 		}
 
-		// `$line_item['item']` must itself be an array before we drill in.
-		// Under PHP 8, accessing `['id']` on a string (e.g. an agent
-		// sending `{"item": "prod_123"}`) throws a fatal "cannot access
-		// offset" error BEFORE any error-response path runs — so the
-		// shape check has to happen at this layer, not inside
-		// `parse_ucp_id_to_wc_int`.
-		if ( ! isset( $line_item['item'] ) || ! is_array( $line_item['item'] ) ) {
-			$messages[] = self::checkout_error_message( 'invalid_line_item', $path . '.item' );
-			return [
-				'processed' => null,
-				'messages'  => $messages,
-			];
-		}
-
-		$raw_id = $line_item['item']['id'] ?? null;
-
-		// `item.id` must be a non-empty string. Non-string input would
-		// eventually surface via `parse_ucp_id_to_wc_int` returning 0 →
-		// `not_found`, but that conflates "shape wrong" with "ID not in
-		// the catalog." Emit `invalid_line_item` here to give agents a
-		// clearer signal about malformed request shape.
-		if ( ! is_string( $raw_id ) || '' === trim( $raw_id ) ) {
-			$messages[] = self::checkout_error_message( 'invalid_line_item', $path . '.item.id' );
-			return [
-				'processed' => null,
-				'messages'  => $messages,
-			];
-		}
+		/** @var array $line_item Confirmed array by validate_line_item_shape(). */
+		$raw_id = $line_item['item']['id']; // Non-empty string guaranteed by shape check.
 
 		$quantity = isset( $line_item['quantity'] ) ? (int) $line_item['quantity'] : 1;
 
@@ -3982,67 +3957,36 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// JSON-serialize as scientific notation and violate UCP's
 		// integer schema constraint on `line_total.amount`).
 		if ( $quantity <= 0 || $quantity > self::MAX_QUANTITY_PER_LINE_ITEM ) {
-			$messages[] = self::checkout_error_message( 'invalid_quantity', $path . '.quantity' );
-			return [
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( self::checkout_error_message( 'invalid_quantity', $path . '.quantity' ) ),
+			);
 		}
 
 		$wc_id = self::parse_ucp_id_to_wc_int( $raw_id );
 		if ( $wc_id <= 0 ) {
-			$messages[] = self::checkout_error_message( 'not_found', $path . '.item.id' );
-			return [
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( self::checkout_error_message( 'not_found', $path . '.item.id' ) ),
+			);
 		}
 
 		$wc_product = self::fetch_store_api_product( $wc_id );
 		if ( null === $wc_product ) {
-			$messages[] = self::checkout_error_message( 'not_found', $path . '.item.id' );
-			return [
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( self::checkout_error_message( 'not_found', $path . '.item.id' ) ),
+			);
 		}
 
-		$type = $wc_product['type'] ?? 'simple';
-
-		// Variable product PARENT sent where a specific variation is
-		// required. Shareable Checkout URLs can't add a parent to cart
-		// — they need a concrete variation ID. `variable-subscription`
-		// is the subscription-extension variant of the same kind.
-		if ( 'variable' === $type || 'variable-subscription' === $type ) {
-			// `checkout_error_message` supplies the default
-			// variation-required wording via `default_error_content`
-			// — no override needed here.
-			$messages[] = self::checkout_error_message( 'variation_required', $path . '.item.id' );
-			return [
+		// --- Product-type gate ---
+		$type       = $wc_product['type'] ?? 'simple';
+		$type_error = self::validate_product_type( $type, $path );
+		if ( null !== $type_error ) {
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
-		}
-
-		// Types incompatible with Shareable Checkout URLs:
-		//   - grouped: multiple sub-products with per-child quantities
-		//   - external: redirect to a third-party seller's site
-		//   - subscription / subscription_variation: recurring billing;
-		//     the Shareable Checkout URL treats every item as a one-off
-		//     purchase, which mis-routes subscription sign-ups
-		//
-		// The UCP manifest's purchase_urls.checkout_link.unsupported
-		// list already advertises this; the handler enforces the
-		// contract. Agents should link directly to the product
-		// permalink for these types.
-		if ( 'grouped' === $type || 'external' === $type
-			|| 'subscription' === $type || 'subscription_variation' === $type
-		) {
-			$messages[] = self::checkout_error_message( 'product_type_unsupported', $path . '.item.id' );
-			return [
-				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( $type_error ),
+			);
 		}
 
 		// Out-of-stock rejected outright. WC's `is_in_stock` already
@@ -4055,91 +3999,27 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// setting makes `is_in_stock` return true.
 		$in_stock = (bool) ( $wc_product['is_in_stock'] ?? true );
 		if ( ! $in_stock ) {
-			$messages[] = self::checkout_error_message( 'out_of_stock', $path . '.item.id' );
-			return [
+			return array(
 				'processed' => null,
-				'messages'  => $messages,
-			];
+				'messages'  => array( self::checkout_error_message( 'out_of_stock', $path . '.item.id' ) ),
+			);
 		}
 
 		$unit_price_minor = (int) ( $wc_product['prices']['price'] ?? 0 );
 
-		// Price-stability warning. Agents typically scrape the catalog
-		// at T, present to the user at T+N, then POST /checkout-sessions
-		// at T+M. Merchant prices can drift in the interval. If the
-		// agent sends `expected_unit_price` (the amount they showed
-		// the user), compare to current; mismatch → `price_changed`
-		// warning with both values so the agent can confirm with the
-		// user before redirecting. Agent-opt-in: agents that don't
-		// send `expected_unit_price` get no warning (our legacy
-		// behavior unchanged).
-		//
-		// Currency guard: minor-unit amounts aren't comparable across
-		// currencies (50 JPY ≠ 50 USD), so we only run the comparison
-		// when the agent's declared currency matches the store's.
-		// Empty/omitted currency is treated as "matches store" (the
-		// lenient path — agents pre-negotiated the currency via the
-		// manifest's store_context). A non-matching currency causes
-		// us to silently skip the check rather than emit a confusing
-		// warning; agents can verify the store currency from the
-		// manifest before calling.
-		// Extract + shape-guard `expected_unit_price` before nested
-		// array access. PHP 8 `isset($str['x']['y'])` on a string-
-		// typed `$line_item['expected_unit_price']` can emit
-		// "Trying to access array offset on value of type string"
-		// warnings; pulling the value into a local and checking
-		// `is_array` is the clean defensive pattern (mirrors the
-		// guard on `$line_item['item']` earlier in the function).
-		//
-		// Amount type-strictness: UCP amounts are integer minor units.
-		// `is_numeric()` accepts decimal strings and floats, which
-		// `(int)` would silently truncate — `"25.00"` → 25,
-		// potentially firing a bogus `price_changed` for a client
-		// using the wrong encoding. Require `is_int()` OR a
-		// digit-only string (`ctype_digit`). Decimals, floats,
-		// negatives, and scientific notation all skip the comparison
-		// without emitting a warning.
-		$expected_unit_price    = $line_item['expected_unit_price'] ?? null;
-		$expected_amount_raw    = is_array( $expected_unit_price )
-			? ( $expected_unit_price['amount'] ?? null )
-			: null;
-		$amount_is_integer_like = is_int( $expected_amount_raw )
-			|| ( is_string( $expected_amount_raw ) && ctype_digit( $expected_amount_raw ) );
-		if ( is_array( $expected_unit_price ) && $amount_is_integer_like ) {
-			// Currency must be a string. A non-string value (array,
-			// object, etc.) cast via `(string)` would emit "Array to
-			// string conversion" notices; treat non-string as
-			// missing (empty-string lenient path) so the comparison
-			// runs against the store currency without polluting
-			// logs. Same defensive pattern as the handoff filter's
-			// non-string fallback.
-			$expected_currency = isset( $expected_unit_price['currency'] ) && is_string( $expected_unit_price['currency'] )
-				? $expected_unit_price['currency']
-				: '';
-			$currency_matches  = '' === $expected_currency
-				|| 0 === strcasecmp( $expected_currency, $store_currency );
-
-			if ( $currency_matches ) {
-				$expected = (int) $expected_amount_raw;
-				if ( $expected !== $unit_price_minor ) {
-					$messages[] = [
-						'type'     => 'warning',
-						'code'     => 'price_changed',
-						'severity' => 'advisory',
-						'path'     => $path,
-						'content'  => sprintf(
-							/* translators: 1: expected amount (minor units), 2: current amount (minor units). */
-							__( 'Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched.', 'woocommerce-ai-storefront' ),
-							$expected,
-							$unit_price_minor
-						),
-					];
-				}
-			}
+		// --- Price-drift warning (agent opt-in) ---
+		$drift_warning = self::check_price_drift(
+			$line_item['expected_unit_price'] ?? null,
+			$unit_price_minor,
+			$store_currency,
+			$path
+		);
+		if ( null !== $drift_warning ) {
+			$messages[] = $drift_warning;
 		}
 
-		return [
-			'processed' => [
+		return array(
+			'processed' => array(
 				'wc_id'            => $wc_id,
 				// Preserve the agent's original ID for round-tripping —
 				// if they sent `var_456`, echo `var_456` back even though
@@ -4149,9 +4029,179 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'ucp_id'           => $raw_id,
 				'quantity'         => $quantity,
 				'unit_price_minor' => $unit_price_minor,
-			],
+			),
 			'messages'  => $messages,
-		];
+		);
+	}
+
+	/**
+	 * Validate the top-level shape of a raw line-item payload.
+	 *
+	 * Checks three things in order:
+	 * 1. The line item itself is an array.
+	 * 2. `item` key exists and is also an array (required before PHP 8
+	 *    can safely dereference `['item']['id']` without a fatal).
+	 * 3. `item.id` is a non-empty string (distinct from a valid ID that
+	 *    simply isn't in the catalog — that would surface as `not_found`
+	 *    and conflate shape errors with catalog-miss errors).
+	 *
+	 * Returns null on success (all checks pass) or the first error message
+	 * array on failure.
+	 *
+	 * @param  mixed  $line_item Raw value from the request payload.
+	 * @param  string $path      JSON path for error attribution (e.g. `$.line_items[0]`).
+	 * @return array|null        Error message array, or null if shape is valid.
+	 */
+	private static function validate_line_item_shape( $line_item, string $path ): ?array {
+		if ( ! is_array( $line_item ) ) {
+			return self::checkout_error_message( 'invalid_line_item', $path );
+		}
+
+		// `$line_item['item']` must itself be an array before we drill in.
+		// Under PHP 8, accessing `['id']` on a string (e.g. an agent
+		// sending `{"item": "prod_123"}`) throws a fatal "cannot access
+		// offset" error BEFORE any error-response path runs — so the
+		// shape check has to happen at this layer, not inside
+		// `parse_ucp_id_to_wc_int`.
+		if ( ! isset( $line_item['item'] ) || ! is_array( $line_item['item'] ) ) {
+			return self::checkout_error_message( 'invalid_line_item', $path . '.item' );
+		}
+
+		$raw_id = $line_item['item']['id'] ?? null;
+
+		// `item.id` must be a non-empty string. Non-string input would
+		// eventually surface via `parse_ucp_id_to_wc_int` returning 0 →
+		// `not_found`, but that conflates "shape wrong" with "ID not in
+		// the catalog." Emit `invalid_line_item` here to give agents a
+		// clearer signal about malformed request shape.
+		if ( ! is_string( $raw_id ) || '' === trim( $raw_id ) ) {
+			return self::checkout_error_message( 'invalid_line_item', $path . '.item.id' );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Return an error message if a WC product type is incompatible with
+	 * Shareable Checkout URLs, or null if the type is supported.
+	 *
+	 * Incompatible types:
+	 * - `variable` / `variable-subscription`: parent sent where a concrete
+	 *   variation is required (Shareable Checkout URLs need a specific ID).
+	 * - `grouped`: multiple sub-products with independent per-child quantities.
+	 * - `external`: redirects to a third-party seller's site.
+	 * - `subscription` / `subscription_variation`: recurring billing; the
+	 *   Shareable Checkout URL treats every item as a one-off purchase, which
+	 *   mis-routes subscription sign-ups.
+	 *
+	 * The UCP manifest's `purchase_urls.checkout_link.unsupported` list
+	 * advertises these types; this method enforces the contract at request time.
+	 *
+	 * @param  string $type WC product type string (e.g. 'simple', 'variable').
+	 * @param  string $path JSON path for error attribution.
+	 * @return array|null   Error message array, or null if the type is supported.
+	 */
+	private static function validate_product_type( string $type, string $path ): ?array {
+		// Variable product PARENT sent where a specific variation is
+		// required. `variable-subscription` is the subscription-extension
+		// variant of the same kind.
+		if ( 'variable' === $type || 'variable-subscription' === $type ) {
+			// `checkout_error_message` supplies the default
+			// variation-required wording via `default_error_content`
+			// — no override needed here.
+			return self::checkout_error_message( 'variation_required', $path . '.item.id' );
+		}
+
+		if ( 'grouped' === $type || 'external' === $type
+			|| 'subscription' === $type || 'subscription_variation' === $type
+		) {
+			return self::checkout_error_message( 'product_type_unsupported', $path . '.item.id' );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Check whether an agent-declared expected price matches the current price.
+	 *
+	 * Returns a `price_changed` advisory warning when all of the following hold:
+	 * - `$expected_unit_price` is an array with an integer-like `amount` key.
+	 * - The declared currency matches the store currency (or is omitted).
+	 * - The declared amount differs from `$current_price_minor`.
+	 *
+	 * Returns null when no warning should be emitted (price matches, currency
+	 * mismatch, or `$expected_unit_price` was not supplied by the agent).
+	 *
+	 * Price-stability rationale: agents typically scrape the catalog at T,
+	 * present to the user at T+N, then POST /checkout-sessions at T+M. Merchant
+	 * prices can drift in the interval. This check is agent opt-in: agents that
+	 * don't send `expected_unit_price` get no warning (legacy behavior preserved).
+	 *
+	 * Currency guard: minor-unit amounts are not comparable across currencies
+	 * (50 JPY != 50 USD). Empty/omitted currency is treated as "matches store"
+	 * (lenient path). A non-matching currency silently skips the check.
+	 *
+	 * Amount type-strictness: UCP amounts are integer minor units.
+	 * `is_numeric()` accepts decimal strings and floats, which `(int)` would
+	 * silently truncate — `"25.00"` to 25, potentially firing a bogus warning.
+	 * Only `is_int()` or a digit-only string (`ctype_digit`) qualifies.
+	 *
+	 * @param  mixed  $expected_unit_price Raw `expected_unit_price` from the request.
+	 * @param  int    $current_price_minor Current product price in minor units.
+	 * @param  string $store_currency      ISO 4217 currency code of the store.
+	 * @param  string $path                JSON path for the warning attribution.
+	 * @return array|null                  Warning message array, or null if no drift.
+	 */
+	private static function check_price_drift(
+		$expected_unit_price,
+		int $current_price_minor,
+		string $store_currency,
+		string $path
+	): ?array {
+		if ( ! is_array( $expected_unit_price ) ) {
+			return null;
+		}
+
+		$expected_amount_raw    = $expected_unit_price['amount'] ?? null;
+		$amount_is_integer_like = is_int( $expected_amount_raw )
+			|| ( is_string( $expected_amount_raw ) && ctype_digit( $expected_amount_raw ) );
+
+		if ( ! $amount_is_integer_like ) {
+			return null;
+		}
+
+		// Currency must be a string. A non-string value (array, object,
+		// etc.) cast via `(string)` would emit "Array to string conversion"
+		// notices; treat non-string as missing (empty-string lenient path)
+		// so the comparison runs against the store currency without
+		// polluting logs.
+		$expected_currency = isset( $expected_unit_price['currency'] ) && is_string( $expected_unit_price['currency'] )
+			? $expected_unit_price['currency']
+			: '';
+		$currency_matches  = '' === $expected_currency
+			|| 0 === strcasecmp( $expected_currency, $store_currency );
+
+		if ( ! $currency_matches ) {
+			return null;
+		}
+
+		$expected = (int) $expected_amount_raw;
+		if ( $expected === $current_price_minor ) {
+			return null;
+		}
+
+		return array(
+			'type'     => 'warning',
+			'code'     => 'price_changed',
+			'severity' => 'advisory',
+			'path'     => $path,
+			'content'  => sprintf(
+				/* translators: 1: expected amount (minor units), 2: current amount (minor units). */
+				__( 'Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched.', 'woocommerce-ai-storefront' ),
+				$expected,
+				$current_price_minor
+			),
+		);
 	}
 
 	/**
