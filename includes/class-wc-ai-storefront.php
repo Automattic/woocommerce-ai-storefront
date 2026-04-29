@@ -727,83 +727,9 @@ class WC_AI_Storefront {
 			$settings = self::get_settings();
 		}
 
-		// Accept either a `WC_Product`-like object (with `get_id()`)
-		// or a raw int product ID. The int form is what UCP REST
-		// callers (catalog/lookup, checkout line-item resolution)
-		// have at hand without paying the cost of `wc_get_product()`
-		// just to satisfy the type. The method only consults the
-		// product's ID and its term memberships — both addressable
-		// via the int directly.
-		$product_id = is_int( $product )
-			? $product
-			: ( is_object( $product ) && method_exists( $product, 'get_id' )
-				? (int) $product->get_id()
-				: 0 );
-
+		$product_id = self::resolve_product_id_for_syndication( $product );
 		if ( $product_id <= 0 ) {
 			return false;
-		}
-
-		// Variations inherit their parent's syndication status. The
-		// merchant's selection mechanisms — `selected_products`,
-		// `selected_categories`, `selected_tags`, `selected_brands` —
-		// all attach to PARENT product posts. Variation posts carry no
-		// term memberships of their own, and `selected_products` only
-		// stores parent IDs. Without this redirect, a child variation
-		// always reads as "out of merchant scope" even when its parent
-		// is syndicated — breaking UCP catalog/lookup's per-variation
-		// fetch path (every fetch returns null, the response falls
-		// through to a synthesized `var_{parent_id}_default` placeholder,
-		// and agents never see Small / Medium / Large).
-		//
-		// Cost shape: every call to `is_product_syndicated()` now
-		// invokes `get_post_type()` once. WP's object cache makes that
-		// a memory lookup after the first hit per request — no extra
-		// DB round-trip for repeated checks of the same product within
-		// one request. The `wp_get_post_parent_id()` call is gated on
-		// the post type being `product_variation`, so non-variation
-		// products skip it entirely. The catalog-loop hot path
-		// (`/catalog/lookup` fetching N products) does pay one
-		// post-type lookup per product on a cold worker; if profiling
-		// ever flags it, the right fix is a `_prime_post_caches()`
-		// batch in the catalog/lookup REST handler before iterating,
-		// not here.
-		//
-		// Single redirect, NOT recursive. WC enforces in admin that a
-		// variation's parent is a top-level product — so one hop
-		// reaches the parent in every well-formed store. A raw
-		// `wp_insert_post` could theoretically create a
-		// `product_variation` whose parent is itself a variation; the
-		// consequence here is a benign false negative (the misformed
-		// parent ID gets checked against `selected_products`, fails,
-		// and the variation reads as out-of-scope). Recursing would
-		// hide the data corruption rather than expose it.
-		//
-		// `function_exists` guard is defense-in-depth for non-WP
-		// loading contexts (static analyzers, scaffolding scripts,
-		// hypothetical CLI tooling that includes this file outside
-		// a full WP bootstrap). WP core always provides both
-		// functions in production, and the unit-test harness loads
-		// the stub class at `tests/php/stubs/class-wc-ai-storefront-stub.php`
-		// rather than this file — so the guard is genuinely never
-		// false in either production or the current test suite. It
-		// exists purely so the file remains include-safe in any
-		// environment where WP isn't loaded, which is cheap insurance
-		// against future tooling that does so.
-		if (
-			function_exists( 'get_post_type' )
-			&& function_exists( 'wp_get_post_parent_id' )
-			&& 'product_variation' === get_post_type( $product_id )
-		) {
-			$parent_id = (int) wp_get_post_parent_id( $product_id );
-			if ( $parent_id <= 0 ) {
-				// Orphaned variation (parent deleted but variation
-				// row still exists). Treat as out-of-scope rather
-				// than silently leaking — this is the only path
-				// where there's no parent to inherit from.
-				return false;
-			}
-			$product_id = $parent_id;
 		}
 
 		$mode = $settings['product_selection_mode'] ?? 'all';
@@ -838,54 +764,131 @@ class WC_AI_Storefront {
 		}
 
 		if ( 'by_taxonomy' === $mode ) {
-			$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? [] );
-			$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? [] );
-			$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? [] );
+			return self::is_in_taxonomy_scope( $product_id, $settings );
+		}
 
-			$brands_supported = taxonomy_exists( 'product_brand' );
+		return false;
+	}
 
-			$has_cats   = ! empty( $selected_categories );
-			$has_tags   = ! empty( $selected_tags );
-			$has_brands = ! empty( $selected_brands ) && $brands_supported;
+	/**
+	 * Normalise a product argument to a resolved, parent-redirected product ID.
+	 *
+	 * Accepts either a raw int product ID or a WC_Product-like object (anything
+	 * with a `get_id()` method). Returns 0 for invalid inputs and for orphaned
+	 * variations whose parent post no longer exists.
+	 *
+	 * Variations inherit their parent's syndication status. The merchant's
+	 * selection mechanisms (`selected_products`, `selected_categories`, etc.)
+	 * all attach to PARENT product posts. Without this redirect a child
+	 * variation always reads as out-of-scope — breaking per-variation catalog
+	 * lookups. See the inline comments in `is_product_syndicated()` for the
+	 * full cost and edge-case analysis.
+	 *
+	 * @param  int|object $product Raw int ID or WC_Product-like object.
+	 * @return int                 Resolved parent ID (>=1) or 0 on failure.
+	 */
+	private static function resolve_product_id_for_syndication( $product ): int {
+		// Accept either a `WC_Product`-like object (with `get_id()`)
+		// or a raw int product ID. The int form is what UCP REST
+		// callers (catalog/lookup, checkout line-item resolution)
+		// have at hand without paying the cost of `wc_get_product()`
+		// just to satisfy the type. The method only consults the
+		// product's ID and its term memberships — both addressable
+		// via the int directly.
+		$product_id = is_int( $product )
+			? $product
+			: ( is_object( $product ) && method_exists( $product, 'get_id' )
+				? (int) $product->get_id()
+				: 0 );
 
-			// Brand-downgrade exception: only brands configured and
-			// the taxonomy is now missing → show all. Preserves the
-			// pre-0.1.5 `brands` mode's degradation behavior so an
-			// environment change doesn't silently hide the catalog.
-			if ( ! $has_cats && ! $has_tags && ! $brands_supported && ! empty( $selected_brands ) ) {
+		if ( $product_id <= 0 ) {
+			return 0;
+		}
+
+		// `function_exists` guard is defense-in-depth for non-WP
+		// loading contexts (static analyzers, scaffolding scripts,
+		// hypothetical CLI tooling that includes this file outside
+		// a full WP bootstrap). WP core always provides both
+		// functions in production, and the unit-test harness loads
+		// the stub class rather than this file — so the guard is
+		// genuinely never false in either production or the current
+		// test suite. It exists purely so the file remains
+		// include-safe in any environment where WP isn't loaded.
+		if (
+			function_exists( 'get_post_type' )
+			&& function_exists( 'wp_get_post_parent_id' )
+			&& 'product_variation' === get_post_type( $product_id )
+		) {
+			$parent_id = (int) wp_get_post_parent_id( $product_id );
+			if ( $parent_id <= 0 ) {
+				// Orphaned variation (parent deleted but variation
+				// row still exists). Return 0 so the caller treats
+				// the product as out-of-scope rather than leaking.
+				return 0;
+			}
+			return $parent_id;
+		}
+
+		return $product_id;
+	}
+
+	/**
+	 * Return true if `$product_id` falls within the `by_taxonomy` scope.
+	 *
+	 * Checks product categories, tags, and (when the taxonomy exists) brands
+	 * against the merchant-configured term lists. Any matching term returns
+	 * true immediately (UNION / OR semantics). An entirely empty selection
+	 * returns false ("hide all"). A brands-only selection where the taxonomy
+	 * is missing degrades gracefully to true ("show all") so an environment
+	 * change doesn't silently hide the catalog.
+	 *
+	 * @param  int   $product_id Resolved, parent-redirected product ID.
+	 * @param  array $settings   Plugin settings array (from `get_settings()`).
+	 * @return bool
+	 */
+	private static function is_in_taxonomy_scope( int $product_id, array $settings ): bool {
+		$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? array() );
+		$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? array() );
+		$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? array() );
+
+		$brands_supported = taxonomy_exists( 'product_brand' );
+
+		$has_cats   = ! empty( $selected_categories );
+		$has_tags   = ! empty( $selected_tags );
+		$has_brands = ! empty( $selected_brands ) && $brands_supported;
+
+		// Brand-downgrade exception: only brands configured and
+		// the taxonomy is now missing → show all. Preserves the
+		// pre-0.1.5 `brands` mode's degradation behavior so an
+		// environment change doesn't silently hide the catalog.
+		if ( ! $has_cats && ! $has_tags && ! $brands_supported && ! empty( $selected_brands ) ) {
+			return true;
+		}
+
+		// Empty-selection policy: nothing enforceable → hide all.
+		if ( ! $has_cats && ! $has_tags && ! $has_brands ) {
+			return false;
+		}
+
+		if ( $has_cats ) {
+			$product_cats = wc_get_product_cat_ids( $product_id );
+			if ( ! empty( array_intersect( $product_cats, $selected_categories ) ) ) {
 				return true;
 			}
+		}
 
-			// Empty-selection policy: nothing enforceable → hide all.
-			if ( ! $has_cats && ! $has_tags && ! $has_brands ) {
-				return false;
+		if ( $has_tags ) {
+			$product_tags = wp_get_post_terms( $product_id, 'product_tag', array( 'fields' => 'ids' ) );
+			if ( ! is_wp_error( $product_tags ) && ! empty( array_intersect( $product_tags, $selected_tags ) ) ) {
+				return true;
 			}
+		}
 
-			// `$product_id` is already resolved at the top of this
-			// method from either the int or the WC_Product input.
-
-			if ( $has_cats ) {
-				$product_cats = wc_get_product_cat_ids( $product_id );
-				if ( ! empty( array_intersect( $product_cats, $selected_categories ) ) ) {
-					return true;
-				}
+		if ( $has_brands ) {
+			$product_brands = wp_get_post_terms( $product_id, 'product_brand', array( 'fields' => 'ids' ) );
+			if ( ! is_wp_error( $product_brands ) && ! empty( array_intersect( $product_brands, $selected_brands ) ) ) {
+				return true;
 			}
-
-			if ( $has_tags ) {
-				$product_tags = wp_get_post_terms( $product_id, 'product_tag', [ 'fields' => 'ids' ] );
-				if ( ! is_wp_error( $product_tags ) && ! empty( array_intersect( $product_tags, $selected_tags ) ) ) {
-					return true;
-				}
-			}
-
-			if ( $has_brands ) {
-				$product_brands = wp_get_post_terms( $product_id, 'product_brand', [ 'fields' => 'ids' ] );
-				if ( ! is_wp_error( $product_brands ) && ! empty( array_intersect( $product_brands, $selected_brands ) ) ) {
-					return true;
-				}
-			}
-
-			return false;
 		}
 
 		return false;
