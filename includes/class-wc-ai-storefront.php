@@ -87,6 +87,7 @@ class WC_AI_Storefront {
 
 		// UCP REST adapter module (1.3.0+). See PLAN-ucp-adapter.md.
 		$ucp_path = $path . 'ucp-rest/';
+		require_once $ucp_path . 'class-wc-ai-storefront-ucp-error-codes.php';
 		require_once $ucp_path . 'class-wc-ai-storefront-ucp-agent-header.php';
 		require_once $ucp_path . 'class-wc-ai-storefront-ucp-envelope.php';
 		require_once $ucp_path . 'class-wc-ai-storefront-ucp-product-translator.php';

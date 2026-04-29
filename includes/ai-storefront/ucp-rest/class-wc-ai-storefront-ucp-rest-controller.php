@@ -592,7 +592,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return self::ucp_catalog_error_response(
 				$capability,
 				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
-				'ucp_disabled',
+				WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED,
 				null,
 				503
 			);
@@ -826,7 +826,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$error_template['error'] = self::ucp_catalog_error_response(
 				$capability,
 				__( 'Unable to fetch products from the store.', 'woocommerce-ai-storefront' ),
-				'ucp_internal_error',
+				WC_AI_Storefront_UCP_Error_Codes::UCP_INTERNAL_ERROR,
 				null,
 				500
 			);
@@ -849,7 +849,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$error_template['error'] = self::ucp_catalog_error_response(
 				$capability,
 				__( 'Unable to fetch products from the store.', 'woocommerce-ai-storefront' ),
-				'ucp_internal_error',
+				WC_AI_Storefront_UCP_Error_Codes::UCP_INTERNAL_ERROR,
 				null,
 				500
 			);
@@ -1245,7 +1245,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return self::ucp_catalog_error_response(
 				$capability,
 				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
-				'ucp_disabled',
+				WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED,
 				null,
 				503
 			);
@@ -1404,7 +1404,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return self::ucp_catalog_error_response(
 				$capability,
 				__( 'Request body must include an "ids" array.', 'woocommerce-ai-storefront' ),
-				'invalid_input',
+				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 				'$.ids'
 			);
 		}
@@ -1414,7 +1414,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return self::ucp_catalog_error_response(
 				$capability,
 				__( 'The "ids" array must contain at least one ID.', 'woocommerce-ai-storefront' ),
-				'invalid_input',
+				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 				'$.ids'
 			);
 		}
@@ -1434,7 +1434,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					__( 'The "ids" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-storefront' ),
 					self::MAX_IDS_PER_LOOKUP
 				),
-				'invalid_input',
+				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 				'$.ids'
 			);
 		}
@@ -1513,7 +1513,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			WC_AI_Storefront_Logger::debug( 'UCP checkout-sessions rejected: syndication disabled' );
 			return self::ucp_checkout_error_response(
 				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
-				'ucp_disabled',
+				WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED,
 				null,
 				503
 			);
@@ -1524,7 +1524,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( ! is_array( $line_items_raw ) || empty( $line_items_raw ) ) {
 			return self::ucp_checkout_error_response(
 				__( 'Request must include a non-empty "line_items" array.', 'woocommerce-ai-storefront' ),
-				'invalid_input',
+				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 				'$.line_items'
 			);
 		}
@@ -1536,7 +1536,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					__( 'The "line_items" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-storefront' ),
 					self::MAX_LINE_ITEMS_PER_CHECKOUT
 				),
-				'invalid_input',
+				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 				'$.line_items'
 			);
 		}
@@ -1643,7 +1643,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		foreach ( $dedup_keyed as $entry ) {
 			if ( $entry['quantity'] > self::MAX_QUANTITY_PER_LINE_ITEM ) {
 				$messages[] = self::checkout_error_message(
-					'invalid_quantity',
+					WC_AI_Storefront_UCP_Error_Codes::INVALID_QUANTITY,
 					'$.line_items',
 					sprintf(
 						/* translators: 1: agent's UCP product ID, 2: summed quantity after merging duplicates, 3: maximum quantity per line item. */
@@ -1679,7 +1679,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( $surviving_merges ) {
 			$messages[] = [
 				'type'     => 'info',
-				'code'     => 'merged_duplicate_items',
+				'code'     => WC_AI_Storefront_UCP_Error_Codes::MERGED_DUPLICATE_ITEMS,
 				'severity' => 'advisory',
 				'content'  => __( 'Duplicate line items targeting the same product were merged. Quantities have been summed; the response shows one line per product.', 'woocommerce-ai-storefront' ),
 			];
@@ -1774,7 +1774,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( $has_valid_items && $minimum_order_amount > 0 && $subtotal_amount < $minimum_order_amount ) {
 			$messages[]      = [
 				'type'     => 'error',
-				'code'     => 'minimum_not_met',
+				'code'     => WC_AI_Storefront_UCP_Error_Codes::MINIMUM_NOT_MET,
 				// `requires_buyer_input`, not `unrecoverable`: the
 				// message instructs the buyer to "add more items to
 				// proceed" — a fixable condition that requires buyer
@@ -1846,7 +1846,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// staying consistent with that.
 			$messages[] = [
 				'type'     => 'info',
-				'code'     => 'buyer_handoff_required',
+				'code'     => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED,
 				'severity' => 'advisory',
 				'content'  => $handoff_content,
 			];
@@ -1860,7 +1860,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// can disclose the caveat to the user before the redirect.
 			$messages[] = [
 				'type'     => 'info',
-				'code'     => 'total_is_provisional',
+				'code'     => WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL,
 				'severity' => 'advisory',
 				'content'  => __( 'Total excludes tax and shipping, which are calculated at the merchant checkout.', 'woocommerce-ai-storefront' ),
 			];
@@ -2129,14 +2129,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *
 	 * @param string  $capability_key e.g. 'dev.ucp.shopping.catalog.search'
 	 * @param string  $content        Human-readable error detail.
-	 * @param string  $code           UCP error code (default: 'invalid_input').
+	 * @param string  $code           UCP error code (default: WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT).
 	 * @param ?string $path           Optional JSONPath locator into the request body.
 	 * @param int     $status         HTTP status code (default: 400).
 	 */
 	private static function ucp_catalog_error_response(
 		string $capability_key,
 		string $content,
-		string $code = 'invalid_input',
+		string $code = WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 		?string $path = null,
 		int $status = 400
 	): WP_REST_Response {
@@ -2183,7 +2183,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 */
 	private static function ucp_checkout_error_response(
 		string $content,
-		string $code = 'invalid_input',
+		string $code = WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 		?string $path = null,
 		int $status = 400
 	): WP_REST_Response {
@@ -2310,7 +2310,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		$message = [
 			'type'     => 'error',
-			'code'     => 'unsupported_operation',
+			'code'     => WC_AI_Storefront_UCP_Error_Codes::UNSUPPORTED_OPERATION,
 			'severity' => 'unrecoverable',
 			'content'  => __(
 				'This /checkout-sessions/{id} URL is stateless and supports no operations: there is no persistent session to read, replace, modify, or cancel. To start or continue a checkout, POST /checkout-sessions with the desired line_items array. The continue_url returned by that POST redirects the buyer to the merchant\'s native checkout, replacing any prior session.',
@@ -2735,7 +2735,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	private static function not_found_message( int $index ): array {
 		return [
 			'type'     => 'error',
-			'code'     => 'not_found',
+			'code'     => WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND,
 			'path'     => '$.inputs[' . $index . ']',
 			'severity' => 'unrecoverable',
 		];
@@ -2877,7 +2877,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	private static function partial_variants_message( int $product_id, int $skipped ): array {
 		return [
 			'type'     => 'warning',
-			'code'     => 'partial_variants',
+			'code'     => WC_AI_Storefront_UCP_Error_Codes::PARTIAL_VARIANTS,
 			'severity' => 'advisory',
 			'content'  => sprintf(
 				/* translators: 1: number of variations missing, 2: WC product ID. */
@@ -2949,7 +2949,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( null !== $pagination && ! is_array( $pagination ) ) {
 			$messages[] = [
 				'type'     => 'warning',
-				'code'     => 'invalid_pagination_shape',
+				'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_PAGINATION_SHAPE,
 				'severity' => 'advisory',
 				'path'     => '$.pagination',
 				'content'  => __( 'pagination must be an object; using defaults.', 'woocommerce-ai-storefront' ),
@@ -2978,7 +2978,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					if ( $limit !== $requested ) {
 						$messages[] = [
 							'type'     => 'warning',
-							'code'     => 'pagination_limit_clamped',
+							'code'     => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
 							'severity' => 'advisory',
 							'path'     => '$.pagination.limit',
 							'content'  => sprintf(
@@ -2998,7 +2998,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// unusable, not clamped-from-a-number.
 					$messages[] = [
 						'type'     => 'warning',
-						'code'     => 'pagination_limit_clamped',
+						'code'     => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
 						'severity' => 'advisory',
 						'path'     => '$.pagination.limit',
 						'content'  => sprintf(
@@ -3025,7 +3025,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// empty result set — no warning needed there.
 					$messages[] = [
 						'type'     => 'warning',
-						'code'     => 'invalid_cursor',
+						'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_CURSOR,
 						'severity' => 'advisory',
 						'path'     => '$.pagination.cursor',
 						'content'  => __( 'Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug.', 'woocommerce-ai-storefront' ),
@@ -3058,7 +3058,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			if ( ! is_string( $raw_field ) || ! is_string( $raw_direction ) ) {
 				$messages[] = [
 					'type'     => 'warning',
-					'code'     => 'invalid_sort_shape',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE,
 					'severity' => 'advisory',
 					'path'     => '$.sort',
 					'content'  => __( 'sort.field and sort.direction must be strings; using default ordering.', 'woocommerce-ai-storefront' ),
@@ -3092,7 +3092,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				} elseif ( '' !== $field ) {
 					$messages[] = [
 						'type'     => 'warning',
-						'code'     => 'invalid_sort_field',
+						'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD,
 						'severity' => 'advisory',
 						'path'     => '$.sort.field',
 						'content'  => sprintf(
@@ -3123,7 +3123,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			foreach ( $category_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
 					'type'     => 'warning',
-					'code'     => 'category_not_found',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND,
 					'severity' => 'advisory',
 					'path'     => '$.filters.categories[' . $index . ']',
 					'content'  => sprintf(
@@ -3195,7 +3195,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$apply_price_filter = false;
 					$messages[]         = [
 						'type'     => 'warning',
-						'code'     => 'currency_conversion_unsupported',
+						'code'     => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
 						'severity' => 'advisory',
 						'path'     => '$.filters.price',
 						'content'  => sprintf(
@@ -3246,7 +3246,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			foreach ( $tag_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
 					'type'     => 'warning',
-					'code'     => 'tag_not_found',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::TAG_NOT_FOUND,
 					'severity' => 'advisory',
 					'path'     => '$.filters.tags[' . $index . ']',
 					'content'  => sprintf(
@@ -3276,7 +3276,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			foreach ( $brand_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
 					'type'     => 'warning',
-					'code'     => 'brand_not_found',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::BRAND_NOT_FOUND,
 					'severity' => 'advisory',
 					'path'     => '$.filters.brand[' . $index . ']',
 					'content'  => sprintf(
@@ -3366,7 +3366,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				);
 				$messages[]    = [
 					'type'     => 'warning',
-					'code'     => 'attribute_not_found',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND,
 					'severity' => 'advisory',
 					'path'     => sprintf( "\$.filters.attributes['%s']", $escaped_key ),
 					'content'  => sprintf(
@@ -3605,7 +3605,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$capped         = array_slice( $values, 0, self::MAX_FILTER_VALUES );
 		$messages[]     = [
 			'type'     => 'warning',
-			'code'     => 'filter_truncated',
+			'code'     => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
 			'severity' => 'advisory',
 			'path'     => $path,
 			'content'  => sprintf(
@@ -3640,7 +3640,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$capped         = array_slice( $map, 0, self::MAX_FILTER_VALUES, true );
 		$messages[]     = [
 			'type'     => 'warning',
-			'code'     => 'filter_truncated',
+			'code'     => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
 			'severity' => 'advisory',
 			'path'     => $path,
 			'content'  => sprintf(
@@ -4109,7 +4109,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( $quantity <= 0 || $quantity > self::MAX_QUANTITY_PER_LINE_ITEM ) {
 			return array(
 				'processed' => null,
-				'messages'  => array( self::checkout_error_message( 'invalid_quantity', $path . '.quantity' ) ),
+				'messages'  => array( self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::INVALID_QUANTITY, $path . '.quantity' ) ),
 			);
 		}
 
@@ -4117,7 +4117,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( $wc_id <= 0 ) {
 			return array(
 				'processed' => null,
-				'messages'  => array( self::checkout_error_message( 'not_found', $path . '.item.id' ) ),
+				'messages'  => array( self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND, $path . '.item.id' ) ),
 			);
 		}
 
@@ -4125,7 +4125,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( null === $wc_product ) {
 			return array(
 				'processed' => null,
-				'messages'  => array( self::checkout_error_message( 'not_found', $path . '.item.id' ) ),
+				'messages'  => array( self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND, $path . '.item.id' ) ),
 			);
 		}
 
@@ -4151,7 +4151,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( ! $in_stock ) {
 			return array(
 				'processed' => null,
-				'messages'  => array( self::checkout_error_message( 'out_of_stock', $path . '.item.id' ) ),
+				'messages'  => array( self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::OUT_OF_STOCK, $path . '.item.id' ) ),
 			);
 		}
 
@@ -4204,7 +4204,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 */
 	private static function validate_line_item_shape( $line_item, string $path ): ?array {
 		if ( ! is_array( $line_item ) ) {
-			return self::checkout_error_message( 'invalid_line_item', $path );
+			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::INVALID_LINE_ITEM, $path );
 		}
 
 		// `$line_item['item']` must itself be an array before we drill in.
@@ -4214,7 +4214,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// shape check has to happen at this layer, not inside
 		// `parse_ucp_id_to_wc_int`.
 		if ( ! isset( $line_item['item'] ) || ! is_array( $line_item['item'] ) ) {
-			return self::checkout_error_message( 'invalid_line_item', $path . '.item' );
+			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::INVALID_LINE_ITEM, $path . '.item' );
 		}
 
 		$raw_id = $line_item['item']['id'] ?? null;
@@ -4225,7 +4225,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// the catalog." Emit `invalid_line_item` here to give agents a
 		// clearer signal about malformed request shape.
 		if ( ! is_string( $raw_id ) || '' === trim( $raw_id ) ) {
-			return self::checkout_error_message( 'invalid_line_item', $path . '.item.id' );
+			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::INVALID_LINE_ITEM, $path . '.item.id' );
 		}
 
 		return null;
@@ -4259,13 +4259,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// `checkout_error_message` supplies the default
 			// variation-required wording via `default_error_content`
 			// — no override needed here.
-			return self::checkout_error_message( 'variation_required', $path . '.item.id' );
+			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $path . '.item.id' );
 		}
 
 		if ( 'grouped' === $type || 'external' === $type
 			|| 'subscription' === $type || 'subscription_variation' === $type
 		) {
-			return self::checkout_error_message( 'product_type_unsupported', $path . '.item.id' );
+			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::PRODUCT_TYPE_UNSUPPORTED, $path . '.item.id' );
 		}
 
 		return null;
@@ -4342,7 +4342,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		return array(
 			'type'     => 'warning',
-			'code'     => 'price_changed',
+			'code'     => WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED,
 			'severity' => 'advisory',
 			'path'     => $path,
 			'content'  => sprintf(
@@ -4491,7 +4491,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		} else {
 			$warnings[] = [
 				'type'     => 'warning',
-				'code'     => 'privacy_policy_unconfigured',
+				'code'     => WC_AI_Storefront_UCP_Error_Codes::PRIVACY_POLICY_UNCONFIGURED,
 				'severity' => 'advisory',
 			];
 		}
@@ -4507,7 +4507,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		} else {
 			$warnings[] = [
 				'type'     => 'warning',
-				'code'     => 'terms_unconfigured',
+				'code'     => WC_AI_Storefront_UCP_Error_Codes::TERMS_UNCONFIGURED,
 				'severity' => 'advisory',
 			];
 		}
@@ -4555,21 +4555,21 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 */
 	private static function default_error_content( string $code ): string {
 		switch ( $code ) {
-			case 'invalid_line_item':
+			case WC_AI_Storefront_UCP_Error_Codes::INVALID_LINE_ITEM:
 				return __( 'Line item must be an object with "item.id" and "quantity".', 'woocommerce-ai-storefront' );
-			case 'invalid_quantity':
+			case WC_AI_Storefront_UCP_Error_Codes::INVALID_QUANTITY:
 				return sprintf(
 					/* translators: %d is the maximum quantity per line item. */
 					__( 'Quantity must be a positive integer up to %d.', 'woocommerce-ai-storefront' ),
 					self::MAX_QUANTITY_PER_LINE_ITEM
 				);
-			case 'not_found':
+			case WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND:
 				return __( 'Product not found.', 'woocommerce-ai-storefront' );
-			case 'product_type_unsupported':
+			case WC_AI_Storefront_UCP_Error_Codes::PRODUCT_TYPE_UNSUPPORTED:
 				return __( 'Product type cannot be added via the Shareable Checkout URL; link to the product page directly.', 'woocommerce-ai-storefront' );
-			case 'out_of_stock':
+			case WC_AI_Storefront_UCP_Error_Codes::OUT_OF_STOCK:
 				return __( 'Product is out of stock.', 'woocommerce-ai-storefront' );
-			case 'variation_required':
+			case WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED:
 				// Caller overrides with the more specific message; default
 				// here matches in case the override is ever dropped.
 				return __( 'Product is variable — specify a variation ID instead of the parent product ID.', 'woocommerce-ai-storefront' );
