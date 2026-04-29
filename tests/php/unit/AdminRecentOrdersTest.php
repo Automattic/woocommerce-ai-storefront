@@ -290,4 +290,30 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 0, $data['orders'] );
 		$this->assertSame( 0, $data['total'] );
 	}
+
+	// ------------------------------------------------------------------
+	// Regression guard: WP_Error from wc_get_orders() returns 200 +
+	// empty payload instead of a PHP fatal (TypeError: not iterable)
+	// ------------------------------------------------------------------
+
+	public function test_wc_get_orders_wp_error_returns_empty_orders_payload(): void {
+		// wc_get_orders() can return WP_Error on DB failure. Without the
+		// is_wp_error() guard, iterating the WP_Error object would throw a
+		// TypeError in PHP 8 ("WP_Error is not iterable"), producing a
+		// 500 / fatal in the admin panel. With the guard, the endpoint
+		// returns status 200 with an empty orders array so the admin UI
+		// shows "no orders" instead of a stack trace.
+		Functions\when( 'wc_get_orders' )->justReturn(
+			new WP_Error( 'db_query_error', 'DB connection lost.' )
+		);
+
+		$response = $this->controller->get_recent_orders( $this->request() );
+		$data     = $response->get_data();
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertIsArray( $data['orders'] );
+		$this->assertCount( 0, $data['orders'] );
+		$this->assertSame( 0, $data['total'] );
+		$this->assertArrayHasKey( 'currency', $data );
+	}
 }

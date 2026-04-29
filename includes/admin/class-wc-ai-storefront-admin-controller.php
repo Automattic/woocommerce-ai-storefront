@@ -203,22 +203,22 @@ class WC_AI_Storefront_Admin_Controller {
 					'selected_categories' => [
 						'type'              => 'array',
 						'items'             => [ 'type' => 'integer' ],
-						'sanitize_callback' => static fn( $v ) => array_map( 'absint', (array) $v ),
+						'sanitize_callback' => array( __CLASS__, 'sanitize_id_array' ),
 					],
 					'selected_tags'       => [
 						'type'              => 'array',
 						'items'             => [ 'type' => 'integer' ],
-						'sanitize_callback' => static fn( $v ) => array_map( 'absint', (array) $v ),
+						'sanitize_callback' => array( __CLASS__, 'sanitize_id_array' ),
 					],
 					'selected_brands'     => [
 						'type'              => 'array',
 						'items'             => [ 'type' => 'integer' ],
-						'sanitize_callback' => static fn( $v ) => array_map( 'absint', (array) $v ),
+						'sanitize_callback' => array( __CLASS__, 'sanitize_id_array' ),
 					],
 					'selected_products'   => [
 						'type'              => 'array',
 						'items'             => [ 'type' => 'integer' ],
-						'sanitize_callback' => static fn( $v ) => array_map( 'absint', (array) $v ),
+						'sanitize_callback' => array( __CLASS__, 'sanitize_id_array' ),
 					],
 				],
 			]
@@ -301,6 +301,16 @@ class WC_AI_Storefront_Admin_Controller {
 	}
 
 	/**
+	 * Sanitize an ID array input — cast each element to a non-negative integer.
+	 *
+	 * @param mixed $value Raw input, expected to be an array of IDs.
+	 * @return array<int> Array of absint-sanitized IDs.
+	 */
+	private static function sanitize_id_array( $value ): array {
+		return array_map( 'absint', (array) $value );
+	}
+
+	/**
 	 * Check admin permission.
 	 *
 	 * @return bool
@@ -346,7 +356,7 @@ class WC_AI_Storefront_Admin_Controller {
 			if ( 'yes' === $data['enabled'] ) {
 				$llms_txt = new WC_AI_Storefront_Llms_Txt();
 				$content  = $llms_txt->generate();
-				set_transient( WC_AI_Storefront_Llms_Txt::CACHE_KEY, $content, HOUR_IN_SECONDS );
+				set_transient( WC_AI_Storefront_Llms_Txt::host_cache_key(), $content, HOUR_IN_SECONDS );
 
 				$ucp = new WC_AI_Storefront_Ucp();
 				// Safe-encoding flag set matches `WC_AI_Storefront_Ucp::serve_manifest()`
@@ -580,6 +590,20 @@ class WC_AI_Storefront_Admin_Controller {
 			]
 		);
 
+		// DB error — return an empty result set so the admin UI shows
+		// "no orders" rather than a fatal. The error is surfaced via the
+		// HTTP response code if the caller checks it; an empty array is
+		// less confusing than a stack trace in the admin panel.
+		if ( is_wp_error( $orders ) ) {
+			return new WP_REST_Response(
+				array(
+					'orders'   => array(),
+					'total'    => 0,
+					'currency' => get_woocommerce_currency(),
+				)
+			);
+		}
+
 		$statuses = wc_get_order_statuses();
 		$rows     = [];
 
@@ -745,13 +769,18 @@ class WC_AI_Storefront_Admin_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function search_categories() {
+		// The admin selection UI does client-side filtering on the full
+		// list returned here; 500 covers all realistic stores. If more
+		// are needed, the merchant can use search-as-you-type (which
+		// already has its own pagination).
 		$categories = get_terms(
-			[
+			array(
 				'taxonomy'   => 'product_cat',
 				'hide_empty' => false,
 				'orderby'    => 'name',
 				'order'      => 'ASC',
-			]
+				'number'     => 500,
+			)
 		);
 
 		if ( is_wp_error( $categories ) ) {
@@ -826,13 +855,18 @@ class WC_AI_Storefront_Admin_Controller {
 	 * @return WP_REST_Response
 	 */
 	private static function fetch_flat_taxonomy_terms( string $taxonomy ): WP_REST_Response {
+		// The admin selection UI does client-side filtering on the full
+		// list returned here; 500 covers all realistic stores. If more
+		// are needed, the merchant can use search-as-you-type (which
+		// already has its own pagination).
 		$terms = get_terms(
-			[
+			array(
 				'taxonomy'   => $taxonomy,
 				'hide_empty' => false,
 				'orderby'    => 'name',
 				'order'      => 'ASC',
-			]
+				'number'     => 500,
+			)
 		);
 
 		if ( is_wp_error( $terms ) ) {
