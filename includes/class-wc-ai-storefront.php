@@ -112,9 +112,10 @@ class WC_AI_Storefront {
 			array( 'WC_AI_Storefront_Llms_Txt', 'host_cache_key' )
 		);
 		WC_AI_Storefront_Cache_Invalidator::register( 'wc_ai_storefront_catalog_summary' );
-		// UCP manifest is computed per-request (no transient); this delete
-		// is a harmless no-op kept for backward compatibility.
-		WC_AI_Storefront_Cache_Invalidator::register( WC_AI_Storefront_Ucp::CACHE_KEY );
+		// UCP manifest is served per-request; the delete cleans up pre-1.0
+		// installs that cached it and the warm-up copy written by the admin
+		// controller when syndication is toggled on.
+		WC_AI_Storefront_Cache_Invalidator::register( 'wc_ai_storefront_ucp' );
 
 		$settings = self::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
