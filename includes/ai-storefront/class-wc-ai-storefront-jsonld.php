@@ -55,284 +55,23 @@ class WC_AI_Storefront_JsonLd {
 			return $markup;
 		}
 
-		// Add purchase action pointing to store checkout with attribution placeholders.
-		// Canonical UTM shape (0.5.0+): `utm_medium=referral` is
-		// Google-canonical, `utm_id=woo_ucp` flags "we routed this"
-		// without overloading the medium field. See
-		// `WC_AI_Storefront_UCP_REST_Controller::build_continue_url()`
-		// for the full rationale; the JSON-LD potentialAction emits
-		// the same shape so an agent that constructs the URL from
-		// the schema (rather than calling /checkout-sessions) lands
-		// on STRICT attribution via the same `utm_id` path.
-		$markup['potentialAction'] = [
-			'@type'  => 'BuyAction',
-			'target' => [
-				'@type'          => 'EntryPoint',
-				'urlTemplate'    => add_query_arg(
-					[
-						'add-to-cart'   => $product->get_id(),
-						'utm_source'    => '{agent_id}',
-						'utm_medium'    => 'referral',
-						// Reference the constant rather than the literal
-						// `'woo_ucp'` so a future rename can't silently
-						// drift between this emit site and the matcher
-						// in `WC_AI_Storefront_Attribution::capture_ai_attribution()`.
-						'utm_id'        => WC_AI_Storefront_Attribution::WOO_UCP_ID,
-						'ai_session_id' => '{session_id}',
-					],
-					$product->get_permalink()
-				),
-				'actionPlatform' => [
-					'https://schema.org/DesktopWebPlatform',
-					'https://schema.org/MobileWebPlatform',
-				],
-			],
-		];
+		$this->add_buy_action( $markup, $product );
 
-		// Inventory detail at Offer level. In the markup filtered by
-		// `woocommerce_structured_data_product`, `offers` is emitted
-		// as a list, so the assignment targets `offers[0]`, not
-		// `offers` directly. Mirrors the `isset() && is_array()`
-		// guard the priceCurrency + hasMerchantReturnPolicy +
-		// shippingDetails emissions later in this method use;
-		// consider consolidating into one Offer-level block in a
-		// future cleanup. Regression locked by JsonLdTest.
-		if ( $product->managing_stock() ) {
-			$stock_qty = $product->get_stock_quantity();
-			if (
-				null !== $stock_qty
-				&& isset( $markup['offers'][0] )
-				&& is_array( $markup['offers'][0] )
-			) {
-				$markup['offers'][0]['inventoryLevel'] = [
-					'@type' => 'QuantitativeValue',
-					'value' => $stock_qty,
-				];
-			}
-		}
+		$this->add_inventory_level( $markup, $product );
 
-		// Add category breadcrumb path.
-		$categories = wc_get_product_cat_ids( $product->get_id() );
-		if ( ! empty( $categories ) ) {
-			// Prime the term object cache for all category IDs and their ancestors
-			// so the get_ancestors() + get_term() calls inside the loop hit the
-			// cache instead of issuing one DB query per term.
-			$all_term_ids = array();
-			foreach ( $categories as $cat_id ) {
-				$all_term_ids[] = $cat_id;
-				$ancestors      = get_ancestors( $cat_id, 'product_cat', 'taxonomy' );
-				foreach ( $ancestors as $ancestor_id ) {
-					$all_term_ids[] = $ancestor_id;
-				}
-			}
-			if ( ! empty( $all_term_ids ) ) {
-				_prime_term_caches( array_unique( $all_term_ids ) );
-			}
+		$this->add_category_path( $markup, $product );
 
-			$cat_paths = array();
-			foreach ( $categories as $cat_id ) {
-				$ancestors = get_ancestors( $cat_id, 'product_cat', 'taxonomy' );
-				$path      = array();
-				foreach ( array_reverse( $ancestors ) as $ancestor_id ) {
-					$ancestor = get_term( $ancestor_id, 'product_cat' );
-					if ( $ancestor && ! is_wp_error( $ancestor ) ) {
-						$path[] = $ancestor->name;
-					}
-				}
-				$term = get_term( $cat_id, 'product_cat' );
-				if ( $term && ! is_wp_error( $term ) ) {
-					$path[]      = $term->name;
-					$cat_paths[] = implode( ' > ', $path );
-				}
-			}
-			if ( ! empty( $cat_paths ) ) {
-				$markup['category'] = $cat_paths[0];
-			}
-		}
+		$this->add_dimensions( $markup, $product );
 
-		// Weight and dimensions using store-configured units.
-		if ( $product->has_weight() ) {
-			// Normalize the WC-stored weight to a numeric form. WC
-			// persists weight as a free-form string (often a leading-
-			// dot value like `.5` saved by the product editor without
-			// the leading zero). Casting through `(float)` produces a
-			// canonical `0.5` numeric so consumers parsing JSON-LD with
-			// strict number deserializers (Google's Rich Results test,
-			// AI agents JSON-parsing the markup) see a well-formed
-			// number instead of a string that round-trips to a quoted
-			// `".5"` literal. Audit bug #4.
-			$markup['weight'] = [
-				'@type'    => 'QuantitativeValue',
-				'value'    => (float) $product->get_weight(),
-				'unitCode' => $this->get_weight_unit_code(),
-			];
-		}
+		$this->add_attributes( $markup, $product );
 
-		if ( $product->has_dimensions() ) {
-			$dimensions       = $product->get_dimensions( false );
-			$dimension_unit   = $this->get_dimension_unit_code();
-			$markup['depth']  = [
-				'@type'    => 'QuantitativeValue',
-				'value'    => $dimensions['length'],
-				'unitCode' => $dimension_unit,
-			];
-			$markup['width']  = [
-				'@type'    => 'QuantitativeValue',
-				'value'    => $dimensions['width'],
-				'unitCode' => $dimension_unit,
-			];
-			$markup['height'] = [
-				'@type'    => 'QuantitativeValue',
-				'value'    => $dimensions['height'],
-				'unitCode' => $dimension_unit,
-			];
-		}
-
-		// Product attributes as additionalProperty for semantic matching.
-		$attributes = $product->get_attributes();
-		if ( ! empty( $attributes ) ) {
-			$additional_properties = [];
-			foreach ( $attributes as $attribute ) {
-				if ( ! $attribute->get_visible() ) {
-					continue;
-				}
-
-				$name  = wc_attribute_label( $attribute->get_name(), $product );
-				$value = $product->get_attribute( $attribute->get_name() );
-
-				if ( $value ) {
-					$additional_properties[] = [
-						'@type' => 'PropertyValue',
-						'name'  => $name,
-						'value' => $value,
-					];
-				}
-			}
-			if ( ! empty( $additional_properties ) ) {
-				$markup['additionalProperty'] = $additional_properties;
-			}
-		}
-
-		// Shipping + return policy live at the Offer level (Schema.org/
-		// Google preferred placement). Before the policies-tab refactor
-		// these blocks were written at the Product level; that placement
-		// was historically tolerated but is no longer the documented
-		// best location. Moved here as part of the same refactor that
-		// made the return-policy emission settings-driven and
-		// structurally valid.
 		$base_location = wc_get_base_location();
 		$country       = $base_location['country'] ?? '';
 
-		// `priceCurrency` at Offer level — Google's preferred top-level
-		// placement. WC core writes the currency under the nested
-		// `priceSpecification[0].priceCurrency`; copy it up to the
-		// outer Offer dict so consumers reading from either location
-		// resolve a value. We never overwrite an existing top-level
-		// `priceCurrency` (defensive against a future WC core change
-		// or a third-party filter that already populated it). Audit
-		// bug #5.
-		if ( isset( $markup['offers'][0] ) && is_array( $markup['offers'][0] ) ) {
-			// Drill into priceSpecification with explicit is_array
-			// guards at every level. PHP 8's null-coalescing on a
-			// chained subscript would short-circuit safely on missing
-			// keys, but a third-party filter or future WC core change
-			// could plausibly produce a non-list scalar / object at
-			// any level — `is_array` narrows that down to "list of
-			// arrays, with index 0" before we read the leaf.
-			$nested_currency = null;
-			if (
-				isset( $markup['offers'][0]['priceSpecification'] ) &&
-				is_array( $markup['offers'][0]['priceSpecification'] ) &&
-				isset( $markup['offers'][0]['priceSpecification'][0] ) &&
-				is_array( $markup['offers'][0]['priceSpecification'][0] )
-			) {
-				$nested_currency = $markup['offers'][0]['priceSpecification'][0]['priceCurrency'] ?? null;
-			}
-			if ( null !== $nested_currency && ! isset( $markup['offers'][0]['priceCurrency'] ) ) {
-				$markup['offers'][0]['priceCurrency'] = $nested_currency;
-			}
-
-			// `seller.name` double-encoding fix. WC core writes the
-			// store name through esc_html() into the structured-data
-			// markup, but the call site sometimes feeds an already-
-			// encoded value (e.g. `Piero&amp;#039;s` for a name
-			// containing an apostrophe), producing visible literal
-			// `&amp;` and `&#039;` in JSON-LD that AI agents parse
-			// verbatim. We decode twice to handle this double-encoded
-			// case in one pass: first decode peels the outer `&amp;`,
-			// second decode resolves the now-visible `&#039;` (or
-			// other inner entities). Idempotent for already-clean
-			// input — `html_entity_decode` of a string with no
-			// entities is the identity function. Audit bug #3.
-			if ( isset( $markup['offers'][0]['seller']['name'] ) && is_string( $markup['offers'][0]['seller']['name'] ) ) {
-				$decoded                               = html_entity_decode(
-					$markup['offers'][0]['seller']['name'],
-					ENT_QUOTES | ENT_HTML5,
-					'UTF-8'
-				);
-				$markup['offers'][0]['seller']['name'] = html_entity_decode(
-					$decoded,
-					ENT_QUOTES | ENT_HTML5,
-					'UTF-8'
-				);
-			}
-		}
-
-		// shippingDetails requires a known store country — a
-		// DefinedRegion without addressCountry is meaningless.
-		if ( $country && isset( $markup['offers'][0] ) && is_array( $markup['offers'][0] ) ) {
-			$markup['offers'][0]['shippingDetails'] = [
-				'@type'               => 'OfferShippingDetails',
-				'shippingDestination' => [
-					'@type'          => 'DefinedRegion',
-					'addressCountry' => $country,
-				],
-			];
-		}
-
-		// Return policy runs independently of shippingDetails.
-		// MerchantReturnNotPermitted (per-product final-sale override
-		// and store-wide final_sale mode) is valid without
-		// applicableCountry — Schema.org marks the field as
-		// recommended, not required, for no-return policies.
-		// build_return_policy_block omits applicableCountry when
-		// $country is empty for those paths. Returns-accepted mode
-		// still returns null when country is absent (a return window
-		// is meaningless without a target region).
-		if ( isset( $markup['offers'][0] ) && is_array( $markup['offers'][0] ) ) {
-			$policy = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
-				? $settings['return_policy']
-				: [ 'mode' => 'unconfigured' ];
-			// Resolve the per-product override-flag scope. Variations
-			// inherit from their parent — a merchant flagging a parent
-			// "Final sale" expects every color/size variant to inherit
-			// that posture without re-flagging each one. WC stores
-			// variations as posts whose `post_parent` is the parent
-			// product's ID; `wp_get_post_parent_id()` returns 0 for
-			// non-variation products (simple, grouped, external), so
-			// the same call works uniformly. Use the parent ID when
-			// present so the flag is read off the parent's meta;
-			// fall back to the product's own ID otherwise.
-			//
-			// `wp_get_post_parent_id` (rather than
-			// `WC_Product::get_parent_id`) so PHPStan's WC stubs don't
-			// flag the call — `get_parent_id` exists on WC_Product but
-			// isn't in `php-stubs/woocommerce-stubs` at the version we
-			// pin. Same wire-level result either way.
-			$policy_product_id = null;
-			if ( $product instanceof WC_Product ) {
-				$parent_id         = wp_get_post_parent_id( $product->get_id() );
-				$policy_product_id = $parent_id > 0 ? $parent_id : $product->get_id();
-			}
-			$policy_block = $this->build_return_policy_block(
-				$policy,
-				$country,
-				$policy_product_id
-			);
-			if ( null !== $policy_block ) {
-				$markup['offers'][0]['hasMerchantReturnPolicy'] = $policy_block;
-			}
-		}
+		$this->add_currency( $markup );
+		$this->decode_seller_name( $markup );
+		$this->add_shipping_details( $markup, $country );
+		$this->add_return_policy( $markup, $product, $settings, $country );
 
 		/**
 		 * Filter the enhanced JSON-LD product data.
@@ -347,12 +86,292 @@ class WC_AI_Storefront_JsonLd {
 		 *                                    flags, crawler allow-lists) are
 		 *                                    intentionally excluded.
 		 */
-		$settings_subset = [
+		$settings_subset = array(
 			'enabled'                => $settings['enabled'] ?? 'no',
 			'product_selection_mode' => $settings['product_selection_mode'] ?? 'all',
-			'return_policy'          => $settings['return_policy'] ?? [],
-		];
+			'return_policy'          => $settings['return_policy'] ?? array(),
+		);
 		return apply_filters( 'wc_ai_storefront_jsonld_product', $markup, $product, $settings_subset );
+	}
+
+	/**
+	 * Adds a BuyAction potentialAction pointing at the store checkout with
+	 * attribution placeholders.
+	 *
+	 * Canonical UTM shape (0.5.0+): utm_medium=referral is Google-canonical;
+	 * utm_id=woo_ucp flags AI-routed traffic via the constant so a future
+	 * rename stays consistent with the attribution matcher.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product object.
+	 */
+	private function add_buy_action( array &$markup, $product ): void {
+		$markup['potentialAction'] = array(
+			'@type'  => 'BuyAction',
+			'target' => array(
+				'@type'          => 'EntryPoint',
+				'urlTemplate'    => add_query_arg(
+					array(
+						'add-to-cart'   => $product->get_id(),
+						'utm_source'    => '{agent_id}',
+						'utm_medium'    => 'referral',
+						'utm_id'        => WC_AI_Storefront_Attribution::WOO_UCP_ID,
+						'ai_session_id' => '{session_id}',
+					),
+					$product->get_permalink()
+				),
+				'actionPlatform' => array(
+					'https://schema.org/DesktopWebPlatform',
+					'https://schema.org/MobileWebPlatform',
+				),
+			),
+		);
+	}
+
+	/**
+	 * Adds inventoryLevel to offers[0] when the product manages stock.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product object.
+	 */
+	private function add_inventory_level( array &$markup, $product ): void {
+		if ( ! $product->managing_stock() ) {
+			return;
+		}
+		$stock_qty = $product->get_stock_quantity();
+		if (
+			null !== $stock_qty
+			&& isset( $markup['offers'][0] )
+			&& is_array( $markup['offers'][0] )
+		) {
+			$markup['offers'][0]['inventoryLevel'] = array(
+				'@type' => 'QuantitativeValue',
+				'value' => $stock_qty,
+			);
+		}
+	}
+
+	/**
+	 * Adds the primary category breadcrumb path to $markup['category'].
+	 *
+	 * Primes the term object cache for all category IDs and their ancestors
+	 * before the path-building loop so each get_term() call is a cache hit
+	 * rather than a separate DB query.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product object.
+	 */
+	private function add_category_path( array &$markup, $product ): void {
+		$categories = wc_get_product_cat_ids( $product->get_id() );
+		if ( empty( $categories ) ) {
+			return;
+		}
+
+		$all_term_ids = array();
+		foreach ( $categories as $cat_id ) {
+			$all_term_ids[] = $cat_id;
+			$ancestors      = get_ancestors( $cat_id, 'product_cat', 'taxonomy' );
+			foreach ( $ancestors as $ancestor_id ) {
+				$all_term_ids[] = $ancestor_id;
+			}
+		}
+		if ( ! empty( $all_term_ids ) ) {
+			_prime_term_caches( array_unique( $all_term_ids ) );
+		}
+
+		$cat_paths = array();
+		foreach ( $categories as $cat_id ) {
+			$ancestors = get_ancestors( $cat_id, 'product_cat', 'taxonomy' );
+			$path      = array();
+			foreach ( array_reverse( $ancestors ) as $ancestor_id ) {
+				$ancestor = get_term( $ancestor_id, 'product_cat' );
+				if ( $ancestor && ! is_wp_error( $ancestor ) ) {
+					$path[] = $ancestor->name;
+				}
+			}
+			$term = get_term( $cat_id, 'product_cat' );
+			if ( $term && ! is_wp_error( $term ) ) {
+				$path[]      = $term->name;
+				$cat_paths[] = implode( ' > ', $path );
+			}
+		}
+		if ( ! empty( $cat_paths ) ) {
+			$markup['category'] = $cat_paths[0];
+		}
+	}
+
+	/**
+	 * Adds weight and depth/width/height QuantitativeValue blocks.
+	 *
+	 * Casts weight through (float) to produce a canonical numeric value —
+	 * WC persists weight as a free-form string (e.g. `.5`) that strict
+	 * JSON-LD parsers would see as a quoted string literal. Audit bug #4.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product object.
+	 */
+	private function add_dimensions( array &$markup, $product ): void {
+		if ( $product->has_weight() ) {
+			$markup['weight'] = array(
+				'@type'    => 'QuantitativeValue',
+				'value'    => (float) $product->get_weight(),
+				'unitCode' => $this->get_weight_unit_code(),
+			);
+		}
+
+		if ( $product->has_dimensions() ) {
+			$dimensions     = $product->get_dimensions( false );
+			$dimension_unit = $this->get_dimension_unit_code();
+			$markup['depth']  = array(
+				'@type'    => 'QuantitativeValue',
+				'value'    => $dimensions['length'],
+				'unitCode' => $dimension_unit,
+			);
+			$markup['width']  = array(
+				'@type'    => 'QuantitativeValue',
+				'value'    => $dimensions['width'],
+				'unitCode' => $dimension_unit,
+			);
+			$markup['height'] = array(
+				'@type'    => 'QuantitativeValue',
+				'value'    => $dimensions['height'],
+				'unitCode' => $dimension_unit,
+			);
+		}
+	}
+
+	/**
+	 * Adds visible product attributes as additionalProperty PropertyValues.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product object.
+	 */
+	private function add_attributes( array &$markup, $product ): void {
+		$attributes = $product->get_attributes();
+		if ( empty( $attributes ) ) {
+			return;
+		}
+		$additional_properties = array();
+		foreach ( $attributes as $attribute ) {
+			if ( ! $attribute->get_visible() ) {
+				continue;
+			}
+			$name  = wc_attribute_label( $attribute->get_name(), $product );
+			$value = $product->get_attribute( $attribute->get_name() );
+			if ( $value ) {
+				$additional_properties[] = array(
+					'@type' => 'PropertyValue',
+					'name'  => $name,
+					'value' => $value,
+				);
+			}
+		}
+		if ( ! empty( $additional_properties ) ) {
+			$markup['additionalProperty'] = $additional_properties;
+		}
+	}
+
+	/**
+	 * Hoists priceCurrency from priceSpecification[0] to the outer Offer level.
+	 *
+	 * WC core writes priceCurrency under priceSpecification[0]. Google and
+	 * Schema.org consumers prefer it at the outer Offer level. We copy it up
+	 * without overwriting an existing top-level value. Audit bug #5.
+	 *
+	 * @param array $markup Markup array, modified by reference.
+	 */
+	private function add_currency( array &$markup ): void {
+		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
+			return;
+		}
+		$nested_currency = null;
+		if (
+			isset( $markup['offers'][0]['priceSpecification'] ) &&
+			is_array( $markup['offers'][0]['priceSpecification'] ) &&
+			isset( $markup['offers'][0]['priceSpecification'][0] ) &&
+			is_array( $markup['offers'][0]['priceSpecification'][0] )
+		) {
+			$nested_currency = $markup['offers'][0]['priceSpecification'][0]['priceCurrency'] ?? null;
+		}
+		if ( null !== $nested_currency && ! isset( $markup['offers'][0]['priceCurrency'] ) ) {
+			$markup['offers'][0]['priceCurrency'] = $nested_currency;
+		}
+	}
+
+	/**
+	 * Fixes double-encoded HTML entities in the seller name field.
+	 *
+	 * WC core runs esc_html() on the store name, but the value sometimes
+	 * arrives already encoded, producing `&amp;#039;` for an apostrophe.
+	 * Two html_entity_decode() passes resolve the nesting. Idempotent for
+	 * clean input. Audit bug #3.
+	 *
+	 * @param array $markup Markup array, modified by reference.
+	 */
+	private function decode_seller_name( array &$markup ): void {
+		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
+			return;
+		}
+		if ( ! isset( $markup['offers'][0]['seller']['name'] ) || ! is_string( $markup['offers'][0]['seller']['name'] ) ) {
+			return;
+		}
+		$decoded                               = html_entity_decode( $markup['offers'][0]['seller']['name'], ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$markup['offers'][0]['seller']['name'] = html_entity_decode( $decoded, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+	}
+
+	/**
+	 * Adds shippingDetails to offers[0] when a store country is known.
+	 *
+	 * A DefinedRegion without addressCountry is meaningless — no emission
+	 * when $country is empty.
+	 *
+	 * @param array  $markup  Markup array, modified by reference.
+	 * @param string $country ISO country code from the WC store base location.
+	 */
+	private function add_shipping_details( array &$markup, string $country ): void {
+		if ( ! $country || ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
+			return;
+		}
+		$markup['offers'][0]['shippingDetails'] = array(
+			'@type'               => 'OfferShippingDetails',
+			'shippingDestination' => array(
+				'@type'          => 'DefinedRegion',
+				'addressCountry' => $country,
+			),
+		);
+	}
+
+	/**
+	 * Adds hasMerchantReturnPolicy to offers[0] from the saved policy settings.
+	 *
+	 * Resolves the per-product final-sale override product ID (variations
+	 * inherit from their parent) and delegates block construction to
+	 * build_return_policy_block(). Emits nothing when that method returns null.
+	 *
+	 * @param array      $markup   Markup array, modified by reference.
+	 * @param WC_Product $product  The product object.
+	 * @param array      $settings Full plugin settings array.
+	 * @param string     $country  ISO country code from the WC store base location.
+	 */
+	private function add_return_policy( array &$markup, $product, array $settings, string $country ): void {
+		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
+			return;
+		}
+		$policy = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
+			? $settings['return_policy']
+			: array( 'mode' => 'unconfigured' );
+		// Resolve per-product override scope. Variations inherit from their
+		// parent — use wp_get_post_parent_id() (vs WC_Product::get_parent_id)
+		// to avoid a PHPStan stubs gap in the pinned woocommerce-stubs version.
+		$policy_product_id = null;
+		if ( $product instanceof WC_Product ) {
+			$parent_id         = wp_get_post_parent_id( $product->get_id() );
+			$policy_product_id = $parent_id > 0 ? $parent_id : $product->get_id();
+		}
+		$policy_block = $this->build_return_policy_block( $policy, $country, $policy_product_id );
+		if ( null !== $policy_block ) {
+			$markup['offers'][0]['hasMerchantReturnPolicy'] = $policy_block;
+		}
 	}
 
 	/**
@@ -368,16 +387,16 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
-		$store_data = [
+		$store_data = array(
 			'@context'           => 'https://schema.org',
 			'@type'              => 'Store',
 			'name'               => get_bloginfo( 'name' ),
 			'description'        => get_bloginfo( 'description' ),
 			'url'                => home_url( '/' ),
 			'currenciesAccepted' => get_woocommerce_currency(),
-			'potentialAction'    => [
+			'potentialAction'    => array(
 				'@type'       => 'SearchAction',
-				'target'      => [
+				'target'      => array(
 					'@type'       => 'EntryPoint',
 					// Canonical UTM shape (0.5.0+) — see BuyAction
 					// urlTemplate above for rationale. The `utm_id`
@@ -387,15 +406,15 @@ class WC_AI_Storefront_JsonLd {
 					'urlTemplate' => home_url(
 						'/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=' . WC_AI_Storefront_Attribution::WOO_UCP_ID
 					),
-				],
+				),
 				'query-input' => 'required name=search_term',
-			],
-			'hasOfferCatalog'    => [
+			),
+			'hasOfferCatalog'    => array(
 				'@type'           => 'OfferCatalog',
 				'name'            => __( 'Products', 'woocommerce-ai-storefront' ),
 				'itemListElement' => $this->get_catalog_summary(),
-			],
-		];
+			),
+		);
 
 		/**
 		 * Filter the store-level JSON-LD data.
@@ -409,11 +428,11 @@ class WC_AI_Storefront_JsonLd {
 		 *                               flags, crawler allow-lists) are
 		 *                               intentionally excluded.
 		 */
-		$settings_subset = [
+		$settings_subset = array(
 			'enabled'                => $settings['enabled'] ?? 'no',
 			'product_selection_mode' => $settings['product_selection_mode'] ?? 'all',
-			'return_policy'          => $settings['return_policy'] ?? [],
-		];
+			'return_policy'          => $settings['return_policy'] ?? array(),
+		);
 		$store_data      = apply_filters( 'wc_ai_storefront_jsonld_store', $store_data, $settings_subset );
 
 		// `JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT`
@@ -567,10 +586,10 @@ class WC_AI_Storefront_JsonLd {
 			// flag a product final-sale are expressing a clear
 			// structured intent; losing the entire block because the
 			// store address is missing would silently discard it.
-			$block = [
+			$block = array(
 				'@type'                => 'MerchantReturnPolicy',
 				'returnPolicyCategory' => 'https://schema.org/MerchantReturnNotPermitted',
-			];
+			);
 			if ( '' !== $country ) {
 				$block['applicableCountry'] = $country;
 			}
@@ -591,10 +610,10 @@ class WC_AI_Storefront_JsonLd {
 		if ( 'final_sale' === $mode ) {
 			// Same applicableCountry omission rationale as the
 			// per-product override above.
-			$block = [
+			$block = array(
 				'@type'                => 'MerchantReturnPolicy',
 				'returnPolicyCategory' => 'https://schema.org/MerchantReturnNotPermitted',
-			];
+			);
 			if ( '' !== $country ) {
 				$block['applicableCountry'] = $country;
 			}
@@ -629,20 +648,20 @@ class WC_AI_Storefront_JsonLd {
 		// Mode: returns_accepted.
 		$days = isset( $policy['days'] ) ? (int) $policy['days'] : 0;
 		if ( $days > 0 ) {
-			$block = [
+			$block = array(
 				'@type'                => 'MerchantReturnPolicy',
 				'applicableCountry'    => $country,
 				'returnPolicyCategory' => 'https://schema.org/MerchantReturnFiniteReturnWindow',
 				'merchantReturnDays'   => $days,
-			];
+			);
 		} else {
 			// Smart-degrade: no days configured → declare Unspecified
 			// rather than emit a FiniteReturnWindow without days.
-			$block = [
+			$block = array(
 				'@type'                => 'MerchantReturnPolicy',
 				'applicableCountry'    => $country,
 				'returnPolicyCategory' => 'https://schema.org/MerchantReturnUnspecified',
-			];
+			);
 		}
 
 		$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
@@ -655,7 +674,7 @@ class WC_AI_Storefront_JsonLd {
 		// when unset). Allow-list validated here at emission time as a
 		// second gate — save-time sanitization is the primary defence,
 		// but a future DB import or direct option write could bypass it.
-		$allowed_fees        = [ 'FreeReturn', 'ReturnFeesCustomerResponsibility', 'OriginalShippingFees', 'RestockingFees' ];
+		$allowed_fees        = array( 'FreeReturn', 'ReturnFeesCustomerResponsibility', 'OriginalShippingFees', 'RestockingFees' );
 		$fees                = isset( $policy['fees'] ) && is_string( $policy['fees'] ) && in_array( $policy['fees'], $allowed_fees, true )
 			? $policy['fees']
 			: 'FreeReturn';
@@ -664,7 +683,7 @@ class WC_AI_Storefront_JsonLd {
 		// returnMethod: scalar string when 1 method selected, array
 		// when 2+, omitted when none. Methods are also allow-list
 		// validated at emission time for the same reason as fees above.
-		$allowed_methods = [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ];
+		$allowed_methods = array( 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' );
 		$methods         = isset( $policy['methods'] ) && is_array( $policy['methods'] )
 			? array_values(
 				array_unique(
