@@ -18,7 +18,7 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * String constants for every UCP error code emitted by the plugin.
+ * String constants for UCP error codes emitted by the plugin.
  *
  * Constants are grouped by origin:
  *   - UCP-level codes (ucp_*): top-level protocol rejections.
@@ -53,6 +53,16 @@ final class WC_AI_Storefront_UCP_Error_Codes {
 	 * An internal Store API error prevented the catalog from being fetched.
 	 */
 	const UCP_INTERNAL_ERROR = 'ucp_internal_error';
+
+	/**
+	 * An unknown agent was blocked because this store has not enabled access for unknown agents.
+	 */
+	const AGENT_UNKNOWN_BLOCKED = 'ucp_unknown_agent_blocked';
+
+	/**
+	 * A known agent brand was blocked because this store has not added it to the allow-list.
+	 */
+	const AGENT_BLOCKED = 'ucp_agent_blocked';
 
 	// -----------------------------------------------------------------------
 	// Checkout session codes

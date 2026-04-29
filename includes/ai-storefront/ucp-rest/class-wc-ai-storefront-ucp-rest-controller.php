@@ -494,7 +494,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 
 			return new WP_Error(
-				'ucp_unknown_agent_blocked',
+				WC_AI_Storefront_UCP_Error_Codes::AGENT_UNKNOWN_BLOCKED,
 				sprintf(
 					/* translators: 1: raw agent identifier extracted from the UCP-Agent header (hostname or product token) */
 					__( 'Access to this UCP endpoint is not enabled for unknown AI agents on this store. Agent: %1$s', 'woocommerce-ai-storefront' ),
@@ -532,7 +532,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		);
 
 		return new WP_Error(
-			'ucp_agent_blocked',
+			WC_AI_Storefront_UCP_Error_Codes::AGENT_BLOCKED,
 			sprintf(
 				/* translators: 1: canonical agent brand name */
 				__( 'Access to this UCP endpoint is not enabled for %1$s on this store.', 'woocommerce-ai-storefront' ),
