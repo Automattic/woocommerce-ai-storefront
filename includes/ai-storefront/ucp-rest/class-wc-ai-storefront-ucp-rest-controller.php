@@ -3723,10 +3723,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// passes with one get_terms() call each reduces the worst case to
 		// 2 queries per taxonomy (6 total) regardless of filter depth.
 		//
-		// WP_Term_Query applies sanitize_title() to every element of the
-		// `slug` array internally before the WHERE IN clause, matching the
-		// per-value get_term_by('slug') behaviour exactly.
-		$slug_inputs   = array_values( $string_inputs );
+		// Pre-sanitize with sanitize_title() before the DB query so that
+		// inputs like "Women's Clothing" resolve to slug "womens-clothing"
+		// exactly as get_term_by('slug') did. WP_Term_Query builds a
+		// WHERE t.slug IN (...) clause with the raw values and does NOT
+		// apply sanitize_title() internally, so skipping this step would
+		// cause unsanitized inputs to silently miss their term.
+		$slug_inputs   = array_values( array_map( 'sanitize_title', $string_inputs ) );
 		$terms_by_slug = get_terms(
 			array(
 				'taxonomy'   => $taxonomy,
@@ -3772,7 +3775,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 			if ( ! is_wp_error( $terms_by_name ) ) {
 				foreach ( $terms_by_name as $term ) {
-					$name_to_id[ $term->name ] = (int) $term->term_id;
+					// Key by lowercase name so the PHP isset() lookup (which
+					// is always case-sensitive) matches the case-insensitive
+					// DB comparison in get_terms(). Without this, an agent
+					// sending "shoes" would miss the term whose stored name
+					// is "Shoes" even though the DB query returned it.
+					$name_to_id[ mb_strtolower( $term->name ) ] = (int) $term->term_id;
 				}
 			}
 		}
@@ -3784,8 +3792,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$slug = sanitize_title( $input );
 			if ( isset( $slug_to_id[ $slug ] ) ) {
 				$ids[] = $slug_to_id[ $slug ];
-			} elseif ( isset( $name_to_id[ $input ] ) ) {
-				$ids[] = $name_to_id[ $input ];
+			} elseif ( isset( $name_to_id[ mb_strtolower( $input ) ] ) ) {
+				$ids[] = $name_to_id[ mb_strtolower( $input ) ];
 			} else {
 				$unresolved[ $index ] = $input;
 			}

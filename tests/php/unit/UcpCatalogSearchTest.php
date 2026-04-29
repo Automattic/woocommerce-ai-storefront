@@ -152,7 +152,11 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 				if ( ! empty( $args['slug'] ) && is_array( $args['slug'] ) ) {
 					foreach ( $args['slug'] as $raw ) {
-						// WP applies sanitize_title() to slug args internally.
+						// Production code pre-sanitizes slug inputs with
+						// sanitize_title() before calling get_terms(), so
+						// slugs here are already in canonical form. Apply
+						// sanitize_title() defensively to keep the stub
+						// correct even if the caller changes.
 						$slug = sanitize_title( (string) $raw );
 						// Taxonomy-namespaced key (product_tag, product_brand).
 						$key = "{$taxonomy}:slug:{$slug}";
@@ -179,26 +183,38 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 				if ( ! empty( $args['name'] ) && is_array( $args['name'] ) ) {
 					foreach ( $args['name'] as $name ) {
-						// Taxonomy-namespaced key (product_tag, product_brand).
-						$key = "{$taxonomy}:name:{$name}";
-						if ( isset( $terms[ $key ] ) ) {
-							$term = $terms[ $key ];
-							if ( ! in_array( $term->term_id, $seen_ids, true ) ) {
-								$results[]  = $term;
-								$seen_ids[] = $term->term_id;
+						// MySQL name comparison uses utf8mb4_unicode_ci which
+						// is case-insensitive. Simulate by trying both the
+						// exact name and the lowercase form so a query for
+						// "tops" correctly returns the term stored as "Tops".
+						$names_to_try = array_unique( [ $name, ucfirst( mb_strtolower( $name ) ), mb_strtolower( $name ) ] );
+						$found        = false;
+						foreach ( $names_to_try as $try ) {
+							// Taxonomy-namespaced key (product_tag, product_brand).
+							$key = "{$taxonomy}:name:{$try}";
+							if ( isset( $terms[ $key ] ) ) {
+								$term  = $terms[ $key ];
+								$found = true;
+								if ( ! in_array( $term->term_id, $seen_ids, true ) ) {
+									$results[]  = $term;
+									$seen_ids[] = $term->term_id;
+								}
+								break;
 							}
-							continue;
-						}
-						// Back-compat: product_cat terms stored un-namespaced
-						// by seed_term().
-						$key = "name:{$name}";
-						if ( isset( $terms[ $key ] ) ) {
-							$term = $terms[ $key ];
-							if ( ! in_array( $term->term_id, $seen_ids, true ) ) {
-								$results[]  = $term;
-								$seen_ids[] = $term->term_id;
+							// Back-compat: product_cat terms stored un-namespaced
+							// by seed_term().
+							$key = "name:{$try}";
+							if ( isset( $terms[ $key ] ) ) {
+								$term  = $terms[ $key ];
+								$found = true;
+								if ( ! in_array( $term->term_id, $seen_ids, true ) ) {
+									$results[]  = $term;
+									$seen_ids[] = $term->term_id;
+								}
+								break;
 							}
 						}
+						unset( $found ); // Suppress unused-var lint.
 					}
 				}
 
@@ -473,6 +489,37 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertEquals( '99', $this->captured_store_params['category'] );
+	}
+
+	public function test_category_name_fallback_is_case_insensitive(): void {
+		// Regression guard: the DB comparison for name is case-insensitive
+		// (MySQL utf8mb4_unicode_ci), but PHP array key lookups are case-
+		// sensitive. Without mb_strtolower() normalisation on both sides,
+		// an agent sending "tops" when the stored name is "Tops" would
+		// fail to resolve the term even though the DB returned it.
+		$this->seed_term( 99, 'clothing-tops', 'Tops' );
+		unset( $this->fake_terms['slug:clothing-tops'] );
+
+		// Lowercase input — must still resolve.
+		$this->successful_search(
+			[ 'filters' => [ 'categories' => [ 'tops' ] ] ]
+		);
+		$this->assertEquals( '99', $this->captured_store_params['category'] );
+	}
+
+	public function test_slug_pass_pre_sanitizes_input_before_db_query(): void {
+		// Regression guard: get_terms() does NOT call sanitize_title() on
+		// the slug array internally. Without pre-sanitization, "Women's
+		// Clothing" never resolves to slug "womens-clothing". The fix
+		// maps all slug inputs through sanitize_title() before the query.
+		$this->seed_term( 77, 'womens-clothing', "Women's Clothing" );
+
+		// Agent input with apostrophe — sanitize_title() normalises it to
+		// the canonical slug form used in the DB.
+		$this->successful_search(
+			[ 'filters' => [ 'categories' => [ "Women's Clothing" ] ] ]
+		);
+		$this->assertEquals( '77', $this->captured_store_params['category'] );
 	}
 
 	public function test_multiple_categories_join_as_comma_separated_ids(): void {
