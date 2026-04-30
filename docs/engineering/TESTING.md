@@ -223,7 +223,7 @@ PHPStan won't see WooCommerce internals — when it complains about a WC functio
 
 PHPCS uses `WordPress-Extra` + plugin-specific prefix declarations. When `$wpdb` interpolation triggers a sniff (e.g. `{$table}` for a hardcoded table name), wrap that specific query in `phpcs:disable` / `phpcs:enable` — not the whole method.
 
-JS lint is `@wordpress/scripts` defaults.
+JS lint is `@wordpress/scripts` defaults under ESLint 9 flat config. The project's [`eslint.config.cjs`](../../eslint.config.cjs) extends `@wordpress/scripts/config/eslint.config.cjs` with two narrow overrides: `jsdoc/no-undefined-types` registers `JSX` as a known type so existing `@type {JSX.Element}` JSDoc keeps validating without rewriting every site, and `no-unused-vars` honors the `^_` prefix convention for intentionally-unused catch bindings and function args. Add new project-level rule overrides there, not by re-declaring the upstream config.
 
 ## CI
 
