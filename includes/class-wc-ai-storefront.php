@@ -309,8 +309,12 @@ class WC_AI_Storefront {
 	public function add_admin_menu() {
 		add_submenu_page(
 			'woocommerce',
-			__( 'AI Storefront', 'woocommerce-ai-storefront' ),
-			__( 'AI Storefront', 'woocommerce-ai-storefront' ),
+			// Page title: "Woo AI Storefront" — branded prefix so the
+			// feature is identifiable in screenshots and support
+			// tickets where the wp-admin chrome isn't visible.
+			// Match this exactly in render_admin_page() below.
+			__( 'Woo AI Storefront', 'woocommerce-ai-storefront' ),
+			__( 'Woo AI Storefront', 'woocommerce-ai-storefront' ),
 			'manage_woocommerce',
 			'wc-ai-storefront',
 			[ $this, 'render_admin_page' ]
@@ -322,7 +326,7 @@ class WC_AI_Storefront {
 	 */
 	public function render_admin_page() {
 		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'AI Storefront', 'woocommerce-ai-storefront' ) . '</h1>';
+		echo '<h1>' . esc_html__( 'Woo AI Storefront', 'woocommerce-ai-storefront' ) . '</h1>';
 		echo '<div id="wc-ai-storefront-settings"></div>';
 		echo '</div>';
 	}
