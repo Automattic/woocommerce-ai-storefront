@@ -639,18 +639,15 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 	return (
 		<div>
 			{ /*
-			   Status banner removed. A populated dashboard (chip-row,
-			   stat cards, recent orders) is the active-state signal;
-			   an explicit "AI Storefront is active" banner was
-			   redundant chrome and put a positive status callout at
-			   the top of the page in tension with the destructive
-			   Disable affordance at the bottom. The Disable lever now
-			   sits exclusively in the .disable-row footer at the
-			   bottom of this view (see below).
+			   Enabled-state UI is communicated by the populated
+			   dashboard itself (period selector, stat cards, and
+			   recent orders). There is no separate positive-status
+			   banner at the top of this view.
 
-			   The .notice CSS pattern stays in the codebase (other
-			   spots still use it for warning / error notices); only
-			   this one positive-status occurrence is removed.
+			   The Disable control remains in the .disable-row footer.
+			   The .notice CSS pattern still exists for warning/error
+			   notices elsewhere; only the positive-status usage was
+			   removed from this view.
 			*/ }
 
 			{ /* Period selector + stat cards */ }
