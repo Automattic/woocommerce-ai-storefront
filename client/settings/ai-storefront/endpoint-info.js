@@ -435,11 +435,44 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 
 	return (
 		<div>
+			{ /*
+			   Section-head block: section h2 names the operator's
+			   job at a higher altitude than the cards below. "AI
+			   agent access" is intentionally umbrella-level —
+			   "Endpoints" is too technical and "Crawlers" is too
+			   narrow (the cards inside still use the precise terms
+			   where they apply, e.g. the "Training and test
+			   crawlers" subgroup name).
+			*/ }
+			<header style={ { marginBottom: '20px' } }>
+				<h2
+					style={ {
+						margin: '0 0 4px',
+						...typography.sectionHeading,
+						color: colors.textPrimary,
+					} }
+				>
+					{ __( 'AI agent access', 'woocommerce-ai-storefront' ) }
+				</h2>
+				<p
+					style={ {
+						margin: 0,
+						color: colors.textSecondary,
+						fontSize: '13px',
+					} }
+				>
+					{ __(
+						'How AI agents find and interact with your site.',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+			</header>
+
 			<Card>
 				<CardBody>
 					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
 						{ __(
-							'Discovery Endpoints',
+							'Discovery endpoints',
 							'woocommerce-ai-storefront'
 						) }
 					</h3>
@@ -452,6 +485,27 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 					>
 						{ __(
 							'These endpoints are automatically available when AI Storefront is enabled.',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
+					<p
+						style={ {
+							color: colors.textMuted,
+							fontSize: '12px',
+							margin: '-8px 0 16px',
+						} }
+					>
+						{ /*
+						   Moved up from the toolbar at the bottom of
+						   this card per the redesign editorial pass:
+						   the reachability scope ("from your
+						   browser") is meta-context about the table
+						   below, so it reads better when paired with
+						   the table's intro than when buried in the
+						   re-check toolbar.
+						*/ }
+						{ __(
+							'Reachability is checked from your browser.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>
@@ -520,7 +574,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								</td>
 								<td>
 									{ __(
-										'Machine-readable store guide for AI crawlers',
+										'Machine-readable store guide for AI agents',
 										'woocommerce-ai-storefront'
 									) }
 								</td>
@@ -634,17 +688,14 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							alignItems: 'center',
 						} }
 					>
-						<span
-							style={ {
-								fontSize: '12px',
-								color: colors.textMuted,
-							} }
-						>
-							{ __(
-								'Reachability is checked from your browser.',
-								'woocommerce-ai-storefront'
-							) }
-						</span>
+						{ /*
+						   Reachability note moved to the card intro
+						   (paired with "These endpoints are
+						   automatically available..."). The toolbar
+						   now hosts only the Re-check button,
+						   right-aligned via flex.
+						*/ }
+						<div />
 						<Button
 							variant="secondary"
 							size="compact"
@@ -656,12 +707,12 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 				</CardBody>
 			</Card>
 
-			{ /* AI Crawler Allowlist */ }
+			{ /* Allowed AI agents */ }
 			<Card style={ { marginTop: '32px' } }>
 				<CardBody>
 					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
 						{ __(
-							'AI Crawler Access',
+							'Allowed AI agents',
 							'woocommerce-ai-storefront'
 						) }
 					</h3>
@@ -673,7 +724,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						} }
 					>
 						{ __(
-							'Control which AI crawlers are allowed to discover your store via robots.txt. Unchecked crawlers will be blocked from crawling your product pages.',
+							'Control which AI agents are allowed to discover your store via robots.txt. Unchecked agents will be blocked from crawling your product pages.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>
@@ -816,7 +867,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								'woocommerce-ai-storefront'
 							),
 							subtitle: __(
-								'User-initiated fetches during an active query. These agents see fresh inventory and route revenue — recommended on.',
+								'User-initiated fetches during an active query. These agents see fresh inventory and route revenue: recommended on.',
 								'woocommerce-ai-storefront'
 							),
 							// Sub-group headings that break the live list
@@ -851,14 +902,14 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								{
 									key: 'regional_asia',
 									title: __(
-										'Regional — Asia',
+										'Regional Asia',
 										'woocommerce-ai-storefront'
 									),
 								},
 								{
 									key: 'regional_europe',
 									title: __(
-										'Regional — Europe',
+										'Regional Europe',
 										'woocommerce-ai-storefront'
 									),
 								},
@@ -867,11 +918,11 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						{
 							key: 'training_and_test',
 							title: __(
-								'Training and Test Crawlers',
+								'Training and test crawlers',
 								'woocommerce-ai-storefront'
 							),
 							subtitle: __(
-								'Non-revenue bots. Training crawlers feed AI training data — today’s crawl may surface as an answer months later with stale prices. Test crawlers are validation tools. Default off.',
+								'Non-revenue bots. Training crawlers feed AI training data: today’s crawl may surface as an answer months later with stale prices. Test crawlers are validation tools. Default off.',
 								'woocommerce-ai-storefront'
 							),
 							// This group covers two backend categories
@@ -1095,50 +1146,6 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						);
 					} ) }
 
-					<p
-						style={ {
-							color: colors.textMuted,
-							fontSize: '12px',
-							marginTop: '12px',
-							marginBottom: '6px',
-						} }
-					>
-						{ __(
-							'These rules are added to your robots.txt. Well-behaved AI crawlers respect robots.txt directives.',
-							'woocommerce-ai-storefront'
-						) }
-					</p>
-					{ /*
-						Bridge the two naming conventions: the list above
-						uses crawler User-Agent IDs (ChatGPT-User, etc.)
-						because that's what robots.txt directives target,
-						while WooCommerce's built-in "Origin" column on
-						the Orders list displays short brand names
-						(ChatGPT, Gemini, Claude) sourced from the
-						continue_url's utm_source. Without this note a
-						merchant may wonder why the Orders list names
-						don't match the checkboxes. Single sentence,
-						same muted-footer style as the robots.txt note
-						above so it reads as "one more thing to know"
-						not a headline. See
-						WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS
-						for the hostname→brand-name map driving the
-						display names.
-					*/ }
-					<p
-						style={ {
-							color: colors.textMuted,
-							fontSize: '12px',
-							marginTop: 0,
-							marginBottom: 0,
-						} }
-					>
-						{ __(
-							'AI-attributed orders show under WooCommerce\u2019s built-in Origin column on the Orders list (the agent hostname, e.g. \u201cSource: Chatgpt.com\u201d) and in this plugin\u2019s Overview tab (the friendly brand name, e.g. \u201cChatGPT\u201d) \u2014 not the technical crawler IDs above.',
-							'woocommerce-ai-storefront'
-						) }
-					</p>
-
 					{ /*
 						Unknown-agent toggle. Lives inside the same Card
 						as the per-brand crawler list because both
@@ -1183,7 +1190,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							} }
 						>
 							{ __(
-								'When off, only the AI brands above can use the UCP API. When on, agents whose brand isn\u2019t in the list can use it too.',
+								'When checked, AI agents whose brand isn\u2019t in the list can access your store.',
 								'woocommerce-ai-storefront'
 							) }
 						</p>
@@ -1228,7 +1235,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 			<Card style={ { marginTop: '32px' } }>
 				<CardBody>
 					<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
-						{ __( 'Rate Limits', 'woocommerce-ai-storefront' ) }
+						{ __( 'Rate limits', 'woocommerce-ai-storefront' ) }
 					</h3>
 					<p
 						style={ {
@@ -1247,22 +1254,28 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						selected={ activePreset }
 						options={ [
 							{
+								// Em-dash separator replaced with " · "
+								// per the cross-cutting "no em-dashes"
+								// rule. The middle dot reads as a
+								// compact label/sublabel divider and
+								// matches the assistant-chip rhythm
+								// used elsewhere on the redesign.
 								label: __(
-									'Recommended — 25/min (works well for most stores)',
+									'Recommended · 25/min (works well for most stores)',
 									'woocommerce-ai-storefront'
 								),
 								value: 'recommended',
 							},
 							{
 								label: __(
-									'Conservative — 10/min (shared hosting or low-traffic stores)',
+									'Conservative · 10/min (shared hosting or low-traffic stores)',
 									'woocommerce-ai-storefront'
 								),
 								value: 'conservative',
 							},
 							{
 								label: __(
-									'Generous — 100/min (high-traffic stores on dedicated hosting)',
+									'Generous · 100/min (high-traffic stores on dedicated hosting)',
 									'woocommerce-ai-storefront'
 								),
 								value: 'generous',
@@ -1317,19 +1330,23 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						</div>
 					) }
 
-					<p
-						style={ {
-							color: colors.textMuted,
-							fontSize: '12px',
-							marginTop: '12px',
-							marginBottom: 0,
-						} }
-					>
-						{ __(
-							'Limits are applied per AI crawler (identified by user-agent string). Your regular store traffic is not affected.',
-							'woocommerce-ai-storefront'
-						) }
-					</p>
+					{ /*
+					   Pre-emptive footer "Limits are applied per AI
+					   crawler (identified by user-agent string). Your
+					   regular store traffic is not affected." dropped
+					   in the redesign:
+					   - The card intro already establishes this is
+					     about AI agents, so non-AI traffic exclusion
+					     is implicit.
+					   - The per-crawler-vs-aggregate detail is
+					     engineering-level (most merchants don't ask).
+					   - The user-agent-string parenthetical is
+					     jargon.
+					   If support tickets surface confusion about
+					   per-bot limits, address it via a "?" tooltip
+					   on the rate-limit cards or a USER-GUIDE.md
+					   entry.
+					*/ }
 				</CardBody>
 			</Card>
 
