@@ -5,6 +5,10 @@
 	"author": "WooCommerce",
 	"license": "GPL-3.0-or-later",
 	"private": true,
+	"engines": {
+		"node": ">=18.12.0",
+		"npm": ">=8.19.2"
+	},
 	"scripts": {
 		"build": "wp-scripts build",
 		"postbuild": "node scripts/copy-dataviews-css.js",
