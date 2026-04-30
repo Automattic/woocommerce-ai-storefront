@@ -1,0 +1,1684 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Storefront — settings redesign (implementation handoff)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* Woo Purple */
+  --woo-purple-10: #D1C1FF;
+  --woo-purple-40: #873EFF;
+  --woo-purple-50: #720EEC;
+  --woo-purple-70: #5007AA;
+  --woo-purple-90: #2C045D;
+
+  /* WordPress admin */
+  --wp-admin-blue:        #2271b1;
+  --wp-admin-blue-hover:  #135e96;
+  --wp-admin-blue-active: #0a4b78;
+
+  /* Neutrals */
+  --gray-0:   #ffffff;
+  --gray-50:  #f6f7f7;
+  --gray-100: #f0f0f1;
+  --gray-200: #dcdcde;
+  --gray-300: #c3c4c7;
+  --gray-400: #a7aaad;
+  --gray-500: #8c8f94;
+  --gray-600: #646970;
+  --gray-700: #3c434a;
+  --gray-800: #2c3338;
+  --gray-900: #1d2327;
+
+  /* Semantic */
+  --fg-1: var(--gray-900);
+  --fg-2: var(--gray-700);
+  --fg-3: var(--gray-600);
+  --fg-4: var(--gray-500);
+  --fg-on-purple: #ffffff;
+
+  --bg-1: var(--gray-0);
+  --bg-2: var(--gray-50);
+  --bg-3: var(--gray-100);
+  --bg-4: var(--gray-200);
+
+  --border-1: var(--gray-200);
+  --border-2: var(--gray-300);
+  --border-strong: var(--gray-700);
+
+  /* Status */
+  --status-success:    #008a20;
+  --status-success-bg: #edfaef;
+  --status-warning:    #dba617;
+  --status-warning-bg: #fcf9e8;
+  --status-error:      #d63638;
+  --status-error-bg:   #fcf0f1;
+  --status-info:       var(--wp-admin-blue);
+  --status-info-bg:    #f0f6fc;
+  --status-success-banner: #00a32a;
+
+  /* Order pill colors */
+  --order-processing-bg: #c6e1c6; --order-processing-fg: #5b841b;
+  --order-completed-bg:  #c8d7e1; --order-completed-fg:  #2e4453;
+  --order-on-hold-bg:    #f8dda7; --order-on-hold-fg:    #94660c;
+
+  /* Radii */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+
+  /* Spacing */
+  --s-0: 0;
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-7: 32px;
+  --s-8: 40px;
+  --s-9: 48px;
+  --s-10: 64px;
+  --s-11: 80px;
+  --s-12: 96px;
+
+  /* Shadows */
+  --shadow-1: 0 0 0 1px rgba(0,0,0,.06);
+  --shadow-2: 0 1px 1px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-3: 0 2px 4px rgba(0,0,0,.05), 0 6px 12px rgba(0,0,0,.08);
+  --shadow-4: 0 4px 8px rgba(0,0,0,.08), 0 16px 32px rgba(0,0,0,.12);
+  --shadow-focus-admin: 0 0 0 1px #fff, 0 0 0 3px var(--wp-admin-blue);
+
+  /* Type families */
+  --font-system: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  --font-display: var(--font-system);
+  --font-body:    var(--font-system);
+  --font-admin:   var(--font-system);
+  --font-marketing-display: "Proxima Nova", var(--font-system);
+  --font-marketing-body:    "Inter", var(--font-system);
+  --font-mono:    "JetBrains Mono", Menlo, Consolas, Monaco, monospace;
+
+  /* Type scale (admin) */
+  --t-admin-title: 400 23px/1.3 var(--font-admin);
+  --t-admin-h2:    600 14px/1.4 var(--font-admin);
+  --t-admin-body:  400 13px/1.5 var(--font-admin);
+  --t-admin-sm:    400 12px/1.5 var(--font-admin);
+
+  /* Type scale (display) */
+  --t-display-3: 700 40px/1.15 var(--font-display);
+  --t-h2:        700 24px/1.25 var(--font-display);
+  --t-h3:        600 20px/1.3  var(--font-display);
+  --t-eyebrow:   600 12px/1.2  var(--font-body);
+  --t-mono:      400 13px/1.5  var(--font-mono);
+}
+
+/* ==== Reset / base ==== */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font: var(--t-admin-body);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--wp-admin-blue); text-decoration: none; }
+a:hover { color: var(--wp-admin-blue-hover); text-decoration: underline; }
+
+/* ==== Page shell ==== */
+.page-shell {
+  max-width: 1024px;
+  margin: 0 auto;
+  padding: var(--s-7) var(--s-5) var(--s-9);
+}
+.page-head {
+  margin-bottom: var(--s-9);
+}
+.page-head h1 {
+  margin: 0 0 var(--s-2);
+  font: 700 28px/1.2 var(--font-display);
+  letter-spacing: -0.02em;
+  color: var(--fg-1);
+}
+.page-head .lede {
+  margin: 0 0 var(--s-4);
+  font: 400 15px/1.55 var(--font-body);
+  color: var(--fg-2);
+  max-width: 70ch;
+}
+.page-head .caveats {
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-left: 3px solid var(--wp-admin-blue);
+  border-radius: var(--radius-sm);
+  padding: var(--s-3) var(--s-4);
+  font: var(--t-admin-sm);
+  color: var(--fg-2);
+  max-width: 80ch;
+}
+.page-head .caveats b {
+  color: var(--fg-1);
+}
+
+/* ==== Tab section dividers ==== */
+.tab-section {
+  margin-top: var(--s-10);
+}
+.tab-section > h2 {
+  margin: 0 0 var(--s-2);
+  font: 600 16px/1.3 var(--font-admin);
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.tab-section > .rationale {
+  margin: 0 0 var(--s-5);
+  font: 400 14px/1.55 var(--font-body);
+  color: var(--fg-2);
+  max-width: 75ch;
+}
+
+/* ==== Panel ==== */
+.panel {
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  max-width: 980px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+.wrap-head {
+  padding: var(--s-5) var(--s-5) 0;
+  margin-bottom: var(--s-4);
+}
+.wrap-head h1 {
+  margin: 0;
+  font: var(--t-admin-title);
+  color: var(--fg-1);
+}
+
+/* ==== Tabs ==== */
+.tabs-after {
+  display: flex;
+  gap: var(--s-5);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-1);
+  padding: 0 var(--s-4);
+}
+.tabs-after a {
+  display: inline-block;
+  padding: 14px 0;
+  font: 400 14px/1 var(--font-admin);
+  color: var(--wp-admin-blue);
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
+}
+.tabs-after a.current {
+  color: var(--gray-900);
+  font-weight: 600;
+  border-bottom-color: var(--gray-900);
+}
+
+.panel-body {
+  padding: var(--s-6) var(--s-5) var(--s-7);
+}
+
+/* ==== Section head ==== */
+.section-head {
+  margin-bottom: var(--s-5);
+}
+.section-head h2 {
+  font: 600 18px/1.3 var(--font-admin);
+  margin: 0 0 var(--s-1);
+  color: var(--fg-1);
+}
+.section-head .description {
+  font: var(--t-admin-sm);
+  color: var(--fg-3);
+  font-style: italic;
+  margin: 0;
+  max-width: 75ch;
+}
+
+/* ==== Card admin ==== */
+.card-admin {
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+}
+.card-admin + .card-admin {
+  margin-top: var(--s-6);
+}
+.card-head {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-1);
+  font: 600 14px/1.4 var(--font-admin);
+  color: var(--fg-1);
+}
+.card-body {
+  padding: var(--s-4);
+}
+
+/* ==== Buttons ==== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--bg-1);
+  border: 1px solid var(--wp-admin-blue);
+  color: var(--wp-admin-blue);
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  min-height: 30px;
+  font: 400 13px/1 var(--font-admin);
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn:hover {
+  background: var(--status-info-bg);
+  border-color: var(--wp-admin-blue-hover);
+  color: var(--wp-admin-blue-hover);
+}
+.btn-primary {
+  background: var(--wp-admin-blue);
+  border-color: var(--wp-admin-blue);
+  color: var(--fg-on-purple);
+}
+.btn-primary:hover {
+  background: var(--wp-admin-blue-hover);
+  border-color: var(--wp-admin-blue-hover);
+  color: var(--fg-on-purple);
+}
+.btn-brand {
+  background: var(--woo-purple-50);
+  border: 1px solid var(--woo-purple-50);
+  color: var(--fg-on-purple);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font: 600 14px/1 var(--font-admin);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-brand:hover {
+  background: var(--woo-purple-70);
+  border-color: var(--woo-purple-70);
+  color: var(--fg-on-purple);
+}
+.btn-link {
+  background: transparent;
+  border: 0;
+  color: var(--wp-admin-blue);
+  font: 400 12px/1 var(--font-admin);
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn-link:hover {
+  color: var(--wp-admin-blue-hover);
+  text-decoration: underline;
+}
+
+/* ==== Disable footer (post-enable) ==== */
+.btn-danger-outline {
+  background: var(--bg-1);
+  border: 1px solid var(--status-error);
+  color: var(--status-error);
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  font: 400 13px/1 var(--font-admin);
+  cursor: pointer;
+  flex-shrink: 0;
+  min-height: 30px;
+}
+.btn-danger-outline:hover {
+  background: var(--status-error-bg);
+  color: var(--status-error);
+  border-color: var(--status-error);
+}
+.disable-row {
+  margin-top: var(--s-7);
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--border-1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-5);
+}
+.disable-text strong {
+  display: block;
+  font: 600 13px/1.4 var(--font-admin);
+  color: var(--fg-1);
+}
+.disable-text p {
+  margin: 4px 0 0;
+  font: var(--t-admin-sm);
+  color: var(--fg-3);
+  max-width: 60ch;
+}
+
+/* ==== Chips (filtering) ==== */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  color: var(--fg-1);
+  padding: 4px 12px;
+  font: 400 13px/1.3 var(--font-admin);
+  cursor: pointer;
+}
+.chip:hover { background: var(--bg-2); }
+.chip.active {
+  background: var(--status-info-bg);
+  border-color: var(--wp-admin-blue);
+  color: var(--wp-admin-blue);
+  font-weight: 600;
+}
+
+/* ==== Segmented control (configuration) ==== */
+.seg-control {
+  display: inline-flex;
+  background: var(--bg-3);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+.seg-option {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 6px 14px;
+  border-radius: calc(var(--radius-md) - 2px);
+  font: 400 13px/1 var(--font-admin);
+  color: var(--fg-2);
+  cursor: pointer;
+}
+.seg-option:hover { color: var(--fg-1); }
+.seg-option.active {
+  background: var(--bg-1);
+  color: var(--fg-1);
+  font-weight: 600;
+  box-shadow: var(--shadow-2);
+}
+
+/* ==== Stat grid ==== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, calc((100% - 48px) / 4)), 1fr));
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+.stat-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+.stat-card .stat-label {
+  font: 600 12px/1.2 var(--font-body);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+  margin-bottom: 6px;
+}
+.stat-card .stat-value {
+  font: 700 20px/1.2 var(--font-display);
+  color: var(--fg-1);
+  letter-spacing: -0.005em;
+  overflow-wrap: anywhere;
+}
+.stat-card.is-ai .stat-value { color: var(--status-success); }
+
+/* ==== Status banner notice ==== */
+.notice {
+  background: var(--bg-1);
+  border-left: 4px solid var(--status-success-banner);
+  border-radius: var(--radius-xs);
+  padding: var(--s-3) var(--s-4);
+  box-shadow: 0 1px 1px rgba(0,0,0,.04);
+  margin-bottom: var(--s-5);
+}
+.notice strong {
+  color: var(--status-success);
+  font: 600 14px/1.4 var(--font-admin);
+}
+.notice p {
+  margin: 4px 0 0;
+  font: var(--t-admin-sm);
+  color: var(--fg-2);
+}
+
+/* ==== Number input (return window) ==== */
+.num-input {
+  display: inline-flex;
+  align-items: stretch;
+  width: 120px;
+  height: 32px;
+  border: 1px solid var(--gray-500);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.num-input input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  padding: 0 6px;
+  font: 400 13px/1 var(--font-admin);
+  text-align: center;
+  background: transparent;
+  -moz-appearance: textfield;
+  color: var(--fg-1);
+}
+.num-input input:focus { outline: none; }
+.num-input input::-webkit-outer-spin-button,
+.num-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.num-step {
+  width: 28px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  border: 0;
+  font: 600 16px/1 var(--font-admin);
+  cursor: pointer;
+}
+.num-step:first-child { border-right: 1px solid var(--border-1); }
+.num-step:last-child  { border-left:  1px solid var(--border-1); }
+
+/* ==== Pre-enable hero ==== */
+.hero {
+  background: linear-gradient(135deg, #faf6ff, var(--bg-1) 60%);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  padding: var(--s-7) var(--s-6);
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--s-5);
+  align-items: center;
+}
+.hero h2 {
+  margin: 0 0 var(--s-2);
+  font: 700 28px/1.2 var(--font-display);
+  letter-spacing: -0.02em;
+  color: var(--fg-1);
+}
+.hero .lede {
+  margin: 0 0 var(--s-5);
+  font: 400 15px/1.5 var(--font-body);
+  color: var(--fg-2);
+}
+.hero .reassure {
+  margin: 12px 0 0;
+  font: var(--t-admin-sm);
+  color: var(--fg-3);
+}
+.hero-chips {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s-2);
+}
+.assistant-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--woo-purple-10);
+  color: var(--woo-purple-90);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  font: 600 12px/1.4 var(--font-body);
+}
+
+/* ==== Value-prop cards ==== */
+.value-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s-4);
+  margin-top: var(--s-7);
+}
+.value-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  padding: 20px;
+}
+.value-card .icon {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 12px;
+  color: var(--woo-purple-50);
+}
+.value-card h3 {
+  margin: 0 0 var(--s-2);
+  font: 600 15px/1.3 var(--font-admin);
+  color: var(--fg-1);
+}
+.value-card p {
+  margin: 0;
+  font: 400 13px/1.6 var(--font-body);
+  color: var(--fg-2);
+}
+
+/* ==== Mode cards (product visibility, rate limit presets) ==== */
+.mode-card {
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  padding: var(--s-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  cursor: pointer;
+}
+.mode-card + .mode-card { margin-top: var(--s-3); }
+.mode-card.selected {
+  background: var(--status-info-bg);
+  border-color: var(--wp-admin-blue);
+}
+.mode-radio {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-2);
+  background: var(--bg-1);
+  flex-shrink: 0;
+  margin-top: 2px;
+  position: relative;
+}
+.mode-card.selected .mode-radio {
+  border-color: var(--wp-admin-blue);
+  border-width: 5px;
+}
+.mode-card-body {
+  flex: 1;
+  min-width: 0;
+}
+.mode-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-3);
+  font: 600 14px/1.3 var(--font-admin);
+  color: var(--fg-1);
+  margin-bottom: 4px;
+}
+.mode-count {
+  font: 400 12px/1 var(--font-admin);
+  color: var(--fg-3);
+  font-weight: 400;
+}
+.mode-desc {
+  margin: 0;
+  font: var(--t-admin-sm);
+  color: var(--fg-3);
+}
+.mode-detail {
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border-1);
+}
+
+/* ==== Form labels ==== */
+.field-label {
+  display: block;
+  font: 600 12px/1.2 var(--font-admin);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+  margin-bottom: 6px;
+}
+.field-help {
+  margin: 6px 0 0;
+  font: var(--t-admin-sm);
+  color: var(--fg-3);
+}
+.field-row + .field-row {
+  margin-top: var(--s-5);
+}
+.input,
+.select {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: 32px;
+  border: 1px solid var(--gray-500);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  padding: 0 8px;
+  font: 400 13px/1 var(--font-admin);
+  color: var(--fg-1);
+}
+.select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%231d2327' d='M1.41.59L6 5.17 10.59.59 12 2 6 8 0 2z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font: 400 13px/1.4 var(--font-admin);
+  color: var(--fg-1);
+  padding: 4px 0;
+}
+.checkbox-row input[type=checkbox] {
+  width: 16px; height: 16px; margin: 0;
+  accent-color: var(--wp-admin-blue);
+}
+
+/* ==== Token chips (selected items) ==== */
+.token-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-3);
+  color: var(--fg-1);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font: 400 12px/1.3 var(--font-admin);
+}
+.token-chip .x {
+  color: var(--fg-3);
+  cursor: pointer;
+}
+
+/* ==== Save footer ==== */
+.save-footer {
+  margin-top: var(--s-6);
+  text-align: end;
+}
+
+/* ==== Order pill ==== */
+.order-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  padding: 0 12px;
+  line-height: 22px;
+  font: 400 12px/22px var(--font-admin);
+}
+.order-pill.processing { background: var(--order-processing-bg); color: var(--order-processing-fg); }
+.order-pill.completed  { background: var(--order-completed-bg);  color: var(--order-completed-fg); }
+.order-pill.on-hold    { background: var(--order-on-hold-bg);    color: var(--order-on-hold-fg); }
+
+/* ==== Tables ==== */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--t-admin-body);
+  background: var(--bg-1);
+}
+.table thead th {
+  text-align: left;
+  background: var(--bg-2);
+  font: 600 12px/1.2 var(--font-admin);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-1);
+}
+.table tbody td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-1);
+  vertical-align: middle;
+}
+.table tbody tr:last-child td { border-bottom: 0; }
+.table .url {
+  font: var(--t-mono);
+  color: var(--fg-2);
+  word-break: break-all;
+}
+.table .order-num {
+  font: 500 13px/1 var(--font-mono);
+  color: var(--wp-admin-blue);
+}
+
+/* ==== Status badge (pill) ==== */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 500 12px/1 var(--font-admin);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+}
+.status-badge.reachable   { background: var(--status-success-bg); color: var(--status-success); }
+.status-badge.unreachable { background: var(--status-error-bg);   color: var(--status-error); }
+.status-badge.muted       { background: var(--bg-3);              color: var(--fg-3); }
+.status-badge.checking    { background: var(--status-info-bg);    color: var(--wp-admin-blue); }
+.status-badge .dot {
+  width: 6px; height: 6px; border-radius: 999px; background: currentColor;
+  display: inline-block;
+}
+
+/* ==== Crawler details ==== */
+details.crawler-group {
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  margin-top: var(--s-3);
+}
+details.crawler-group summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  justify-content: space-between;
+  font: 600 13px/1.3 var(--font-admin);
+  color: var(--fg-1);
+}
+details.crawler-group summary::-webkit-details-marker { display: none; }
+details.crawler-group summary::before {
+  content: "";
+  display: inline-block;
+  width: 0; height: 0;
+  margin-right: 6px;
+  border-left: 5px solid var(--fg-3);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform .15s;
+}
+details.crawler-group[open] summary::before {
+  transform: rotate(90deg);
+}
+.summary-left { display: inline-flex; align-items: center; gap: 6px; flex: 1; }
+.summary-meta { font-weight: 400; color: var(--fg-3); font-size: 12px; }
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  background: var(--status-success-bg);
+  color: var(--status-success);
+  font: 600 11px/1 var(--font-admin);
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+}
+.count-badge.zero {
+  background: var(--bg-3);
+  color: var(--fg-3);
+  font-weight: 400;
+}
+details.crawler-group .group-body {
+  padding: 6px 14px 12px;
+  border-top: 1px solid var(--border-1);
+}
+.crawler-row {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-1);
+}
+.crawler-row:last-child { border-bottom: 0; }
+
+/* ==== Toolbar ==== */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: var(--s-3) 0;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.toolbar .actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.toolbar .pill {
+  display: inline-flex;
+  align-items: center;
+  background: var(--status-success-bg);
+  color: var(--status-success);
+  font: 600 12px/1 var(--font-admin);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+}
+.toolbar .sep { color: var(--fg-3); font-size: 12px; }
+.toolbar .right { display: inline-flex; align-items: center; gap: var(--s-2); }
+
+/* ==== Rate limit grid ==== */
+.rate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+.rate-card {
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  padding: var(--s-4);
+  cursor: pointer;
+}
+.rate-card.selected {
+  background: var(--status-info-bg);
+  border-color: var(--wp-admin-blue);
+}
+.rate-card .rate-title {
+  font: 600 13px/1.2 var(--font-admin);
+  color: var(--fg-1);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rate-card .rate-rpm {
+  font: 700 20px/1.2 var(--font-display);
+  letter-spacing: -0.005em;
+  color: var(--fg-1);
+  margin-bottom: 6px;
+}
+.rate-card .rate-desc {
+  margin: 0;
+  font: var(--t-admin-sm);
+  color: var(--fg-3);
+}
+.divider-row {
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border-1);
+}
+
+/* ==== Implementation handoff ==== */
+.file-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  padding: 20px;
+  margin-bottom: var(--s-4);
+}
+.file-card h3 {
+  margin: 0 0 var(--s-3);
+  font: 600 15px/1.3 var(--font-admin);
+  color: var(--fg-1);
+}
+.file-card h3 code {
+  font: 500 13px/1.3 var(--font-mono);
+  background: var(--bg-3);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  color: var(--fg-1);
+}
+.file-card ul {
+  margin: 0;
+  padding-left: 20px;
+  font: 400 13px/1.6 var(--font-body);
+  color: var(--fg-2);
+}
+.file-card li { margin-bottom: 6px; }
+.file-card li strong { color: var(--fg-1); }
+.file-card code {
+  font: 400 12px/1.3 var(--font-mono);
+  background: var(--bg-3);
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+}
+
+/* ==== Helper ==== */
+.intro-p {
+  margin: 0 0 var(--s-4);
+  font: var(--t-admin-body);
+  color: var(--fg-2);
+}
+.muted-note {
+  margin: var(--s-3) 0 0;
+  font: var(--t-admin-sm);
+  color: var(--fg-3);
+}
+.flex { display: flex; }
+.flex.between { justify-content: space-between; align-items: center; }
+.flex.end { justify-content: flex-end; }
+.flex.gap-3 { gap: var(--s-3); }
+.mt-3 { margin-top: var(--s-3); }
+.mt-4 { margin-top: var(--s-4); }
+.mt-5 { margin-top: var(--s-5); }
+.mt-6 { margin-top: var(--s-6); }
+
+</style>
+</head>
+<body>
+<div class="page-shell">
+
+  <header class="page-head">
+    <h1>Settings redesign — implementation handoff</h1>
+    <p class="lede">This is the final design after iteration. Below: each tab in its final form (no Before panels — Claude Code can reference the live source files for the Before state). After the visuals: an implementation handoff section mapping every change to a specific source file.</p>
+    <div class="caveats">
+      <b>Notes on the design system applied.</b> Typography uses the system-UI font stack matching woocommerce.com itself (no separate licensed display face). Visual hierarchy comes from size, weight, color, and tracking. Admin glyphs are inline SVG modelled after Dashicons (close, not pixel-identical). WP Admin Blue (#2271b1) is the primary interactive color for every tab; Woo Purple appears only on the Overview pre-enable hero.
+    </div>
+  </header>
+
+  <!-- ============================================================== -->
+  <!-- Tab 1: Overview (pre-enable)                                    -->
+  <!-- ============================================================== -->
+  <section class="tab-section">
+    <h2>Tab 1 — Overview (pre-enable state)</h2>
+    <p class="rationale">A hero-style headline at display weight (28px / 700 / -0.02em) replaces the small h2 + redundant eyebrow ("Status: Not enabled"). Five assistant chips on the right carry the visual weight; three icon-led value-prop cards land below the hero with concrete benefits.</p>
+
+    <div class="panel">
+      <div class="wrap-head"><h1>AI Storefront</h1></div>
+      <nav class="tabs-after" aria-label="Settings sections">
+        <a href="#" class="current">Overview</a>
+        <a href="#">Product visibility</a>
+        <a href="#">Policies</a>
+        <a href="#">Discovery</a>
+      </nav>
+      <div class="panel-body">
+
+        <div class="hero">
+          <div>
+            <h2>Make your store ready for AI shopping assistants</h2>
+            <p class="lede">Go live in one click. Checkout stays on your store.</p>
+            <button class="btn-brand">Enable AI Storefront</button>
+            <p class="reassure">Read-only · Reversible anytime · No frontend changes</p>
+          </div>
+          <div class="hero-chips">
+            <span class="assistant-badge">ChatGPT</span>
+            <span class="assistant-badge">Gemini</span>
+            <span class="assistant-badge">Claude</span>
+            <span class="assistant-badge">Perplexity</span>
+            <span class="assistant-badge">Copilot</span>
+          </div>
+        </div>
+
+        <div class="value-grid">
+          <div class="value-card">
+            <span class="icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+              </svg>
+            </span>
+            <h3>One setup, every AI assistant</h3>
+            <p>Your catalog becomes visible to ChatGPT, Gemini, Claude, Perplexity, and Copilot, with no per-platform work when new agents launch.</p>
+          </div>
+          <div class="value-card">
+            <span class="icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M12 3l8 3v6c0 4.5-3.4 8.4-8 9-4.6-.6-8-4.5-8-9V6l8-3z"/>
+                <path d="M9 12l2 2 4-4"/>
+              </svg>
+            </span>
+            <h3>Checkout stays on your store</h3>
+            <p>No AI-platform checkout fees. No delegated payments. You keep the customer, the checkout, and the data.</p>
+          </div>
+          <div class="value-card">
+            <span class="icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M3 21h18"/>
+                <rect x="5" y="13" width="3" height="6"/>
+                <rect x="10.5" y="9" width="3" height="10"/>
+                <rect x="16" y="5" width="3" height="14"/>
+              </svg>
+            </span>
+            <h3>See which AI drove each sale</h3>
+            <p>Every AI-referred order is tagged with its source agent and revenue, using standard WooCommerce Order Attribution.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================== -->
+  <!-- Tab 1: Overview (post-enable)                                   -->
+  <!-- ============================================================== -->
+  <section class="tab-section">
+    <h2>Tab 1 — Overview (post-enable state)</h2>
+    <p class="rationale">Chip-style date range replaces the SelectControl. Six stat cards at 20px display weight with green reserved for AI-attributed metrics only. Order numbers in the recent-orders table render in JetBrains Mono. The Disable affordance moves out of the success banner and into a quiet footer at the bottom of the panel.</p>
+
+    <div class="panel">
+      <div class="wrap-head"><h1>AI Storefront</h1></div>
+      <nav class="tabs-after" aria-label="Settings sections">
+        <a href="#" class="current">Overview</a>
+        <a href="#">Product visibility</a>
+        <a href="#">Policies</a>
+        <a href="#">Discovery</a>
+      </nav>
+      <div class="panel-body">
+
+        <div class="section-head">
+          <h2>AI traffic and orders</h2>
+          <p class="description">Live dashboard of your AI-attributed traffic and orders.</p>
+        </div>
+
+        <div class="notice">
+          <strong>AI Storefront is active</strong>
+          <p>Your store is ready for AI shopping assistants. Checkout and customer data stay on your store.</p>
+        </div>
+
+        <div class="flex end">
+          <div class="chip-row" role="tablist" aria-label="Date range">
+            <button class="chip">Today</button>
+            <button class="chip active">Last 7 days</button>
+            <button class="chip">Month to date</button>
+            <button class="chip">Last 30 days</button>
+            <button class="chip">Last year</button>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-label">Products exposed</div>
+            <div class="stat-value">39 products</div>
+          </div>
+          <a class="stat-card is-ai" href="#">
+            <div class="stat-label">AI orders</div>
+            <div class="stat-value">14</div>
+          </a>
+          <div class="stat-card">
+            <div class="stat-label">Total orders</div>
+            <div class="stat-value">128</div>
+          </div>
+          <div class="stat-card is-ai">
+            <div class="stat-label">AI revenue</div>
+            <div class="stat-value">$1,842.50</div>
+          </div>
+          <div class="stat-card is-ai">
+            <div class="stat-label">AI AOV</div>
+            <div class="stat-value">$131.61</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Top agent</div>
+            <div class="stat-value">ChatGPT</div>
+          </div>
+          <div class="stat-card is-ai">
+            <div class="stat-label">Top agent share</div>
+            <div class="stat-value">57%</div>
+          </div>
+        </div>
+
+        <div class="card-admin mt-6">
+          <div class="card-head">Recent AI orders</div>
+          <div style="overflow-x:auto">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Agent</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><a class="order-num" href="#">#10428</a></td>
+                  <td>Apr 28, 2026</td>
+                  <td><span class="order-pill processing">Processing</span></td>
+                  <td><strong>ChatGPT</strong></td>
+                  <td>$184.20</td>
+                </tr>
+                <tr>
+                  <td><a class="order-num" href="#">#10425</a></td>
+                  <td>Apr 27, 2026</td>
+                  <td><span class="order-pill completed">Completed</span></td>
+                  <td><strong>Perplexity</strong></td>
+                  <td>$96.00</td>
+                </tr>
+                <tr>
+                  <td><a class="order-num" href="#">#10422</a></td>
+                  <td>Apr 26, 2026</td>
+                  <td><span class="order-pill completed">Completed</span></td>
+                  <td><strong>Claude</strong></td>
+                  <td>$219.50</td>
+                </tr>
+                <tr>
+                  <td><a class="order-num" href="#">#10417</a></td>
+                  <td>Apr 25, 2026</td>
+                  <td><span class="order-pill on-hold">On hold</span></td>
+                  <td><strong>ChatGPT</strong></td>
+                  <td>$54.00</td>
+                </tr>
+                <tr>
+                  <td><a class="order-num" href="#">#10412</a></td>
+                  <td>Apr 24, 2026</td>
+                  <td><span class="order-pill completed">Completed</span></td>
+                  <td><strong>Gemini</strong></td>
+                  <td>$311.80</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="disable-row">
+          <div class="disable-text">
+            <strong>Disable AI Storefront</strong>
+            <p>Stops AI agents from accessing your store. Endpoints return 404 within minutes; settings are preserved.</p>
+          </div>
+          <button class="btn-danger-outline">Disable</button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================== -->
+  <!-- Tab 2: Product visibility                                       -->
+  <!-- ============================================================== -->
+  <section class="tab-section">
+    <h2>Tab 2 — Product visibility</h2>
+    <p class="rationale">Three radio mode-cards replace the tighter toggle row. The selected card carries blue-tinted bg + blue border and reveals its detail panel inside the same surface (taxonomy switcher, search, selected token chips), instead of competing as a stacked block below.</p>
+
+    <div class="panel">
+      <div class="wrap-head"><h1>AI Storefront</h1></div>
+      <nav class="tabs-after" aria-label="Settings sections">
+        <a href="#">Overview</a>
+        <a href="#" class="current">Product visibility</a>
+        <a href="#">Policies</a>
+        <a href="#">Discovery</a>
+      </nav>
+      <div class="panel-body">
+
+        <div class="section-head">
+          <h2>Products available to AI agents</h2>
+          <p class="description">Choose which of your products appear in your AI Storefront endpoints.</p>
+        </div>
+
+        <div class="card-admin">
+          <div class="card-head">Products available to AI crawlers</div>
+          <div class="card-body">
+            <p class="intro-p">Choose how products are selected for inclusion in the AI Storefront. The count updates as you change filters so you can see how many products will be exposed.</p>
+
+            <div class="mode-card">
+              <span class="mode-radio" aria-hidden="true"></span>
+              <div class="mode-card-body">
+                <div class="mode-title">All published products <span class="mode-count">39 products</span></div>
+                <p class="mode-desc">Every published product in your store is discoverable by AI crawlers.</p>
+              </div>
+            </div>
+
+            <div class="mode-card selected">
+              <span class="mode-radio" aria-hidden="true"></span>
+              <div class="mode-card-body">
+                <div class="mode-title">Products by category, tag, or brand <span class="mode-count">22 products</span></div>
+                <p class="mode-desc">Filter your catalog by taxonomy. Pick the categories, tags, or brands you want AI agents to see.</p>
+
+                <div class="mode-detail">
+                  <div class="chip-row" style="margin-bottom: var(--s-4)">
+                    <button class="chip">All</button>
+                    <button class="chip active">By category</button>
+                    <button class="chip">By tag</button>
+                    <button class="chip">By brand</button>
+                  </div>
+
+                  <label class="field-label" for="cat-search">Add categories</label>
+                  <input id="cat-search" class="input" type="text" placeholder="Search categories…" style="max-width:100%" />
+                  <p class="field-help">Start typing to filter your category list.</p>
+
+                  <div class="flex gap-3 mt-4" style="flex-wrap:wrap">
+                    <span class="token-chip">Apparel <span class="x" aria-hidden="true">×</span></span>
+                    <span class="token-chip">Accessories <span class="x" aria-hidden="true">×</span></span>
+                    <span class="token-chip">Footwear <span class="x" aria-hidden="true">×</span></span>
+                    <span class="token-chip">Outdoor &amp; sport <span class="x" aria-hidden="true">×</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mode-card">
+              <span class="mode-radio" aria-hidden="true"></span>
+              <div class="mode-card-body">
+                <div class="mode-title">Selected products <span class="mode-count">0 products</span></div>
+                <p class="mode-desc">Pick specific products by name.</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="save-footer">
+          <button class="btn btn-primary">Save changes</button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================== -->
+  <!-- Tab 3: Policies                                                 -->
+  <!-- ============================================================== -->
+  <section class="tab-section">
+    <h2>Tab 3 — Policies</h2>
+    <p class="rationale">A WP-style segmented control (light fill, raised active option) replaces the existing __experimentalToggleGroupControl. It reads as configuration, not a filter. Below it, conditional fields use uppercase tracked labels; the return-window numeric input ditches its wrapper width cap so the label spans freely while only the input is constrained to 120px.</p>
+
+    <div class="panel">
+      <div class="wrap-head"><h1>AI Storefront</h1></div>
+      <nav class="tabs-after" aria-label="Settings sections">
+        <a href="#">Overview</a>
+        <a href="#">Product visibility</a>
+        <a href="#" class="current">Policies</a>
+        <a href="#">Discovery</a>
+      </nav>
+      <div class="panel-body">
+
+        <div class="section-head">
+          <h2>Policies exposed to AI agents</h2>
+          <p class="description">WooCommerce doesn't have a built-in setting for your return policy, but AI agents need it to confidently recommend your products. Set it once here.</p>
+        </div>
+
+        <div class="card-admin">
+          <div class="card-head">Return &amp; refund policy</div>
+          <div class="card-body">
+            <p class="intro-p">AI agents read this to decide whether to recommend your products and place buy actions. Without a clear return policy, they typically downgrade or skip your products in favour of competitors who publish one.</p>
+
+            <div class="seg-control" role="tablist" aria-label="Policy mode">
+              <button class="seg-option active">Returns accepted</button>
+              <button class="seg-option">No returns</button>
+              <button class="seg-option">Don't expose</button>
+            </div>
+
+            <div class="mt-5">
+
+              <div class="field-row">
+                <label class="field-label" for="policy-page">Policy page (optional)</label>
+                <select id="policy-page" class="select">
+                  <option>No policy page selected</option>
+                  <option selected>Return policy</option>
+                  <option>Shipping &amp; returns</option>
+                </select>
+                <p class="field-help">Link AI agents to a full-text policy page on your store.</p>
+              </div>
+
+              <div class="field-row">
+                <label class="field-label" for="return-fees">Return fees</label>
+                <select id="return-fees" class="select">
+                  <option selected>Free returns</option>
+                  <option>Customer pays return fees</option>
+                  <option>Original shipping fees</option>
+                  <option>Restocking fees</option>
+                </select>
+                <p class="field-help">Applied as the default for all returns. You can override this per product on the Product edit screen.</p>
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">Return window (days)</span>
+                <div class="num-input">
+                  <button class="num-step" aria-label="Decrease">−</button>
+                  <input type="number" value="30" min="0" max="365" />
+                  <button class="num-step" aria-label="Increase">+</button>
+                </div>
+                <p class="field-help">Leave at 0 to publish "Unspecified" instead of a finite window.</p>
+              </div>
+
+              <div class="field-row">
+                <span class="field-label" id="return-methods-label">Return methods</span>
+                <div role="group" aria-labelledby="return-methods-label" style="display:flex;flex-direction:column;gap:6px">
+                  <label class="checkbox-row"><input type="checkbox" checked /> Return by mail</label>
+                  <label class="checkbox-row"><input type="checkbox" /> Return in store</label>
+                  <label class="checkbox-row"><input type="checkbox" /> Return at kiosk</label>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <div class="save-footer">
+          <button class="btn btn-primary">Save changes</button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================== -->
+  <!-- Tab 4: Discovery                                                -->
+  <!-- ============================================================== -->
+  <section class="tab-section">
+    <h2>Tab 4 — Discovery</h2>
+    <p class="rationale">Endpoint URLs render in JetBrains Mono. Status uses pill-shaped badges (green / red / muted gray / blue checking). Crawler subgroups become collapsible details with count badges in their summary; rate-limit presets become a 2x2 grid of selectable cards (configuration, not chips).</p>
+
+    <div class="panel">
+      <div class="wrap-head"><h1>AI Storefront</h1></div>
+      <nav class="tabs-after" aria-label="Settings sections">
+        <a href="#">Overview</a>
+        <a href="#">Product visibility</a>
+        <a href="#">Policies</a>
+        <a href="#" class="current">Discovery</a>
+      </nav>
+      <div class="panel-body">
+
+        <div class="section-head">
+          <h2>Endpoints and crawler access</h2>
+          <p class="description">Endpoints AI agents use to find your store, plus the crawlers and rate limits applied to them.</p>
+        </div>
+
+        <div class="card-admin">
+          <div class="card-head">Discovery endpoints</div>
+          <div class="card-body">
+            <p class="intro-p">These endpoints are automatically available when AI Storefront is enabled.</p>
+
+            <div style="overflow-x:auto">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Endpoint</th>
+                    <th>URL</th>
+                    <th>Status</th>
+                    <th>Purpose</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>llms.txt</strong></td>
+                    <td><span class="url">https://shop.example.com/llms.txt</span></td>
+                    <td><span class="status-badge reachable"><span class="dot"></span>Reachable</span></td>
+                    <td>Machine-readable store guide for AI crawlers</td>
+                  </tr>
+                  <tr>
+                    <td><strong>UCP Manifest</strong></td>
+                    <td><span class="url">https://shop.example.com/.well-known/ucp.json</span></td>
+                    <td><span class="status-badge reachable"><span class="dot"></span>Reachable</span></td>
+                    <td>Universal Commerce Protocol, declares capabilities</td>
+                  </tr>
+                  <tr>
+                    <td><strong>robots.txt</strong></td>
+                    <td><span class="url">https://shop.example.com/robots.txt</span></td>
+                    <td><span class="status-badge reachable"><span class="dot"></span>Reachable</span></td>
+                    <td>AI-crawler allow-list (Allow/Disallow directives appended to your site's robots.txt)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>UCP API</strong></td>
+                    <td><span class="url">https://shop.example.com/wp-json/wc/v3/ai-storefront/ucp</span></td>
+                    <td><span class="status-badge reachable"><span class="dot"></span>Reachable</span></td>
+                    <td>Structured commerce API for AI agents, catalog search, lookup, and checkout sessions</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="flex between mt-3">
+              <span class="muted-note" style="margin-top:0">Reachability is checked from your browser.</span>
+              <button class="btn">Re-check</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-admin mt-6">
+          <div class="card-head">AI crawler access</div>
+          <div class="card-body">
+            <p class="intro-p">Control which AI crawlers are allowed to discover your store via robots.txt. Unchecked crawlers will be blocked from crawling your product pages.</p>
+
+            <div class="toolbar">
+              <span class="muted-note" style="margin:0">Allowed crawlers</span>
+              <div class="right">
+                <span class="pill">12 of 12 allowed</span>
+                <button class="btn-link">Select all</button>
+                <span class="sep">|</span>
+                <button class="btn-link">Clear</button>
+              </div>
+            </div>
+
+            <details class="crawler-group" open>
+              <summary>
+                <span class="summary-left">Live browsing<span class="summary-meta"> · General-purpose AI assistants</span></span>
+                <span class="count-badge">8/8 allowed</span>
+              </summary>
+              <div class="group-body">
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> Applebot (Apple Siri / Spotlight)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> ChatGPT-User (OpenAI)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> Claude-SearchBot (Anthropic)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> Claude-User (Anthropic)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> DuckAssistBot (DuckDuckGo)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> OAI-SearchBot (OpenAI SearchGPT)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> Perplexity-User (Perplexity)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> PerplexityBot (Perplexity)</label></div>
+              </div>
+            </details>
+
+            <details class="crawler-group" open>
+              <summary>
+                <span class="summary-left">Live browsing<span class="summary-meta"> · Agentic shopping</span></span>
+                <span class="count-badge">2/2 allowed</span>
+              </summary>
+              <div class="group-body">
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> AmazonBuyForMe (Amazon Rufus)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> KlarnaBot (Klarna AI)</label></div>
+              </div>
+            </details>
+
+            <details class="crawler-group" open>
+              <summary>
+                <span class="summary-left">Live browsing<span class="summary-meta"> · Commerce search engines</span></span>
+                <span class="count-badge">2/2 allowed</span>
+              </summary>
+              <div class="group-body">
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> AdIdxBot (Microsoft Shopping / Copilot)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> Storebot-Google (Google Shopping AI)</label></div>
+              </div>
+            </details>
+
+            <details class="crawler-group" open>
+              <summary>
+                <span class="summary-left">Live browsing<span class="summary-meta"> · Regional Asia</span></span>
+                <span class="count-badge">5/5 allowed</span>
+              </summary>
+              <div class="group-body">
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> ERNIEBot (Baidu / China)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> NaverBot (Naver / Korea)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> PetalBot (Huawei / Global)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> WRTNBot (Wrtn / Korea)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> YiyanBot (Baidu Conversational / China)</label></div>
+              </div>
+            </details>
+
+            <details class="crawler-group" open>
+              <summary>
+                <span class="summary-left">Live browsing<span class="summary-meta"> · Regional Europe</span></span>
+                <span class="count-badge">1/1 allowed</span>
+              </summary>
+              <div class="group-body">
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" checked /> YandexBot (Yandex / Russia + E. Europe)</label></div>
+              </div>
+            </details>
+
+            <details class="crawler-group">
+              <summary>
+                <span class="summary-left">Training and Test Crawlers</span>
+                <span class="count-badge zero">0/11 allowed</span>
+              </summary>
+              <div class="group-body">
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" /> Amazonbot (Amazon / Alexa)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" /> Applebot-Extended (Apple Intelligence)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" /> Bytespider (ByteDance / TikTok)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" /> CCBot (CommonCrawl)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" /> ClaudeBot (Anthropic)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" /> cohere-ai (Cohere)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" /> Google-Extended (Gemini training)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" /> GPTBot (OpenAI)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" /> Meta-ExternalAgent (Meta AI)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" /> Microsoft-BingBot-Extended (Copilot training)</label></div>
+                <div class="crawler-row"><label class="checkbox-row"><input type="checkbox" /> UCPPlayground (ucpplayground.com, UCP validation tool)</label></div>
+              </div>
+            </details>
+
+            <p class="muted-note">These rules are added to your robots.txt. Well-behaved AI crawlers respect robots.txt directives.</p>
+            <p class="muted-note">AI-attributed orders show under WooCommerce's built-in Origin column on the Orders list (the agent hostname, e.g. "Source: Chatgpt.com") and in this plugin's Overview tab (the friendly brand name, e.g. "ChatGPT"), not the technical crawler IDs above.</p>
+
+            <div class="divider-row">
+              <span class="field-label">Other AI agents</span>
+              <p class="muted-note" style="margin-top:0;margin-bottom:8px">When off, only the AI brands above can use the UCP API. When on, agents whose brand isn't in the list can use it too.</p>
+              <label class="checkbox-row"><input type="checkbox" /> Allow agents not on the list</label>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="card-admin mt-6">
+          <div class="card-head">Rate limits</div>
+          <div class="card-body">
+            <p class="intro-p">Control how frequently AI agents can query your store. Higher limits allow faster product discovery but use more server resources.</p>
+
+            <div class="rate-grid">
+              <div class="rate-card">
+                <div class="rate-title">Conservative</div>
+                <div class="rate-rpm">10/min</div>
+                <p class="rate-desc">Shared hosting or low-traffic stores.</p>
+              </div>
+              <div class="rate-card selected">
+                <div class="rate-title">Recommended</div>
+                <div class="rate-rpm">25/min</div>
+                <p class="rate-desc">Works well for most stores.</p>
+              </div>
+              <div class="rate-card">
+                <div class="rate-title">Generous</div>
+                <div class="rate-rpm">100/min</div>
+                <p class="rate-desc">High-traffic stores on dedicated hosting.</p>
+              </div>
+              <div class="rate-card">
+                <div class="rate-title">Custom</div>
+                <div class="rate-rpm">Custom RPM</div>
+                <p class="rate-desc">Set your own requests-per-minute cap.</p>
+              </div>
+            </div>
+
+            <p class="muted-note">Limits are applied per AI crawler (identified by user-agent string). Your regular store traffic is not affected.</p>
+          </div>
+        </div>
+
+        <div class="save-footer">
+          <button class="btn btn-primary">Save changes</button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================== -->
+  <!-- Implementation handoff                                          -->
+  <!-- ============================================================== -->
+  <section class="tab-section">
+    <h2>Implementation handoff</h2>
+    <p class="rationale">Mapping each design decision to the production source files. Read the bullets file-by-file; cross-cutting rules apply across all of them; pattern decisions are intentional design semantics that should not be homogenized away during implementation.</p>
+
+    <div class="file-card">
+      <h3><code>client/settings/ai-storefront/tokens.js</code></h3>
+      <ul>
+        <li>New tokens are additive, extend the existing <code>colors</code> and <code>typography</code> objects, don't replace them.</li>
+        <li>Add <code>spacing</code> scale: <code>s1: '4px', s2: '8px', s3: '12px', s4: '16px', s5: '20px', s6: '24px', s7: '32px', s8: '40px', s9: '48px', s10: '64px'</code> (skip 11/12 unless used).</li>
+        <li>Add <code>radii</code>: <code>xs: '2px', sm: '3px', md: '4px', lg: '8px', pill: '999px'</code>.</li>
+        <li>Add <code>shadows</code>: <code>sm: '0 1px 1px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.06)'</code>, <code>lg: '0 2px 4px rgba(0,0,0,.05), 0 6px 12px rgba(0,0,0,.08)'</code>.</li>
+        <li>Add <code>typography.adminTitle</code>: <code>{ fontSize: '23px', fontWeight: 400, lineHeight: 1.3 }</code> (page h1).</li>
+        <li>Add <code>typography.sectionHeading</code>: <code>{ fontSize: '18px', fontWeight: 600, lineHeight: 1.3 }</code> (per-tab h2).</li>
+        <li>Add <code>typography.statValue</code>: <code>{ fontSize: '20px', fontWeight: 700, letterSpacing: '-0.005em' }</code>.</li>
+        <li>Add <code>typography.heroHeadline</code>: <code>{ fontSize: '28px', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2 }</code>.</li>
+      </ul>
+    </div>
+
+    <div class="file-card">
+      <h3><code>client/settings/ai-storefront/settings-page.js</code></h3>
+      <ul>
+        <li>Add a screen-level <code>&lt;h1&gt;AI Storefront&lt;/h1&gt;</code> rendered ABOVE the <code>&lt;TabPanel&gt;</code> inside <code>.wc-ai-storefront-settings</code>. Style with <code>typography.adminTitle</code>.</li>
+        <li>TabPanel: replace WP default tab styling with the analytics-tabs pattern (active tab: 2px <code>#1d2327</code> underline + 600 weight; inactive: WP blue). CSS-only.</li>
+        <li>DROP the <code>&lt;p&gt;</code> eyebrow "Status: Not enabled" from <code>PreEnableView</code> (the Enable verb signals state).</li>
+        <li>Hero headline in <code>PreEnableView</code> uses 28px / 700 / -0.02em letter-spacing on system stack.</li>
+        <li>Stat cards in <code>PostEnableView</code>: change values from 24px green to 20px / 700 / -0.005em. <strong>Green ONLY on AI-attributed cards</strong> (AI orders, AI revenue, AI AOV, Top agent share). Total orders / Products exposed / Top agent become neutral <code>--fg-1</code>. Add <code>overflow-wrap: anywhere</code> for long agent names.</li>
+        <li><strong>Note: this is an intentional deviation from the strict design-system rule that all stat values are neutral.</strong> Document the reasoning in a comment near the stat-card render.</li>
+        <li>Date-range selector: replace <code>&lt;SelectControl&gt;</code> with chip-style segmented control (this IS filtering, chip pattern is correct).</li>
+        <li>Status banner: 4px green left-border + tiny shadow + 2px radius. Drop the redundant 1px outer border.</li>
+        <li><strong>Disable affordance</strong>:
+          <ul>
+            <li>Strip the <code>&lt;Button&gt;</code> from the <code>PostEnableView</code> status banner, banner becomes purely informational.</li>
+            <li>After <code>&lt;AIOrdersTable /&gt;</code>, append <code>.disable-row</code> footer block (hairline divider top, two-column flex, label/description on the left, <code>.btn-danger-outline</code> Disable button on the right).</li>
+            <li>Single click disables, keep the existing <code>onChange({ enabled: 'no' }); onSave();</code> chain unchanged. <strong>No confirmation modal</strong>, disabling is reversible (re-enable restores all settings). Confirmation friction would just train users to dismiss dialogs.</li>
+            <li>Button uses standalone <code>class="btn-danger-outline"</code> (NOT composed with <code>class="btn"</code>, the <code>.btn</code> class hard-codes blue overrides that fight the red).</li>
+            <li>Copy: <code>&lt;strong&gt;Disable AI Storefront&lt;/strong&gt;</code> + <code>&lt;p&gt;Stops AI agents from accessing your store. Endpoints return 404 within minutes; settings are preserved.&lt;/p&gt;</code>.</li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+
+    <div class="file-card">
+      <h3><code>client/settings/ai-storefront/product-selection.js</code></h3>
+      <ul>
+        <li>Add a <code>&lt;header&gt;</code> block at the top: <code>&lt;h2&gt;Products available to AI agents&lt;/h2&gt;</code> + description matching the existing copy.</li>
+        <li>Replace mode toggles with selectable mode-cards (radio cards), one per mode option.</li>
+        <li>Selected mode-card: blue-tinted bg (<code>--status-info-bg</code>) + blue border (<code>--wp-admin-blue</code>).</li>
+        <li>Detail panel for the active mode renders inside the selected card OR docked beneath, not as a stacked competing block.</li>
+        <li>Form labels gain uppercase tracked treatment (12px / 600 / 0.04em / uppercase / <code>--fg-2</code>).</li>
+        <li>Save changes footer is already correct.</li>
+      </ul>
+    </div>
+
+    <div class="file-card">
+      <h3><code>client/settings/ai-storefront/policies-tab.js</code></h3>
+      <ul>
+        <li>Existing <code>&lt;header&gt;</code> at line 811 is the canonical reference for the section-head pattern. Verify it matches the redesign h2 ("Policies exposed to AI agents") and description.</li>
+        <li>Replace <code>&lt;__experimentalToggleGroupControl&gt;</code> with the new <code>.seg-control</code> + <code>.seg-option</code> pattern. <strong>WHY</strong>: this is CONFIGURATION (the choice drives conditional fields below), distinct from chips which filter data. Don't homogenize back to chips.</li>
+        <li>Visual: light-fill container (<code>--bg-3</code>), 4px radius, 2px padding; option buttons transparent by default with <code>--fg-2</code> text; active option gets <code>--bg-1</code> white + <code>--shadow-2</code> lift + <code>--fg-1</code> text + 600 weight + <code>(radius-md - 2px)</code> corner.</li>
+        <li>Return-window field: drop the wrapper-level max-width constraint (was 160px). Only the input itself constrained to 120px. Label and help text span the section.</li>
+        <li>Number input: keep <code>&lt;NumberControl spinControls="custom"&gt;</code> since it already renders +/- buttons. Custom CSS removes the native browser spinners and styles the +/- buttons to match the design system (28px wide, --bg-2 background, --fg-1 color, +/- glyphs at 16px / 600).</li>
+        <li>Other form labels: uppercase tracked treatment.</li>
+      </ul>
+    </div>
+
+    <div class="file-card">
+      <h3><code>client/settings/ai-storefront/endpoint-info.js</code></h3>
+      <ul>
+        <li>Add a <code>&lt;header&gt;</code> block at the top: <code>&lt;h2&gt;Endpoints and crawler access&lt;/h2&gt;</code> + description.</li>
+        <li>Endpoint table: keep <code>.widefat</code> shape, but render URLs in <code>--font-mono</code> (JetBrains Mono fallback to Menlo/Consolas). Replace inline status icons with consistent <code>.status-badge</code> pill components (green/red/gray semantic backgrounds, <code>--radius-pill</code>).</li>
+        <li>Crawler allow-list: convert each subgroup into a <code>&lt;details&gt;</code> element with a count badge in the <code>&lt;summary&gt;</code> line (e.g. "8/8 allowed"). Default-open the live-browsing subgroups; default-collapsed for training/test.</li>
+        <li>Rate-limit presets: replace <code>&lt;RadioControl&gt;</code> with a 2x2 grid of selectable cards. Each card: title (Conservative/Recommended/Generous/Custom) + RPM value in display weight (20px) + one-line description. Selected card: blue-tinted bg + blue border. <strong>NOT chips, these are configuration cards.</strong></li>
+        <li>Other AI agents toggle: keep current placement (after the crawler list, with a top divider).</li>
+        <li>Save changes footer is already correct.</li>
+      </ul>
+    </div>
+
+    <div class="file-card">
+      <h3>Cross-cutting changes</h3>
+      <ul>
+        <li><strong>Sentence case throughout.</strong> Audit every heading, button, label, tab name. Today's source has Title Case in several places ("Product Visibility", "Discovery Endpoints", "AI Crawler Access", "Rate Limits", "Products Exposed", "Total Orders"), switch to sentence case in the redesign.</li>
+        <li><strong>No em-dashes.</strong> Switch any em-dashes to parens, colons, commas, or periods. Hyphens and en-dashes are fine.</li>
+        <li><strong>Eyebrow drop.</strong> <code>PreEnableView</code>'s "Status: Not enabled" eyebrow goes away.</li>
+        <li><strong>Tab name "Product Visibility" -&gt; "Product visibility"</strong> (sentence case).</li>
+      </ul>
+    </div>
+
+    <div class="file-card">
+      <h3>Pattern decisions to preserve</h3>
+      <ul>
+        <li><strong>Chips vs segmented control.</strong> Chips = FILTER data (Overview's date range; Product visibility's taxonomy switcher). Segmented control = CONFIGURE a setting (Policies' mode toggle). Use <code>.chip</code> for filters, <code>.seg-control</code> for config. They are not interchangeable.</li>
+        <li><strong>Stat-value color semantic.</strong> Green = AI-attributed metrics ONLY. Neutral = baseline. Don't make all values green (regression to today's code) or all values neutral (loses the AI signal).</li>
+        <li><strong>Per-tab description sentence (italic gray).</strong> Below the tab strip, paired with the h2 in the section-head. Carries WHY the tab exists.</li>
+        <li><strong>Three-level hierarchy.</strong> Page h1 ("AI Storefront") above tab strip. Tab strip is section navigation. h2 + description below tab strip is content identity. Don't conflate them, the tab name is navigation; the h2 names the content.</li>
+        <li><strong>Pre-enable hero is the exception</strong>, the hero's own h2 ("Make your store ready...") serves as the section heading, no separate section-head block above it.</li>
+        <li><strong>Reversible destructive actions are single-click with context, not modal-confirmed.</strong> The Disable footer makes consequences visible BEFORE the click via the inline description; it does not gate the click behind an "Are you sure?" modal. Reversibility (re-enable restores everything) makes the modal noise rather than safety. Reserve modal confirmations for irreversible actions only.</li>
+      </ul>
+    </div>
+
+    <div class="file-card">
+      <h3>Out-of-scope for this redesign</h3>
+      <ul>
+        <li>Tab names themselves (Overview / Product visibility / Policies / Discovery), kept from existing source.</li>
+        <li>Pre-enable value-prop card content, design refined but copy unchanged.</li>
+        <li>Save button copy ("Save changes"), unchanged.</li>
+        <li><code>@wordpress/components</code> library choices for inputs (BaseControl, NumberControl, etc.), keep using them; redesign is visual treatment, not a component-library swap.</li>
+        <li>WordPress notice/error message patterns, unchanged, design system already aligns with WP core.</li>
+      </ul>
+    </div>
+
+  </section>
+
+</div>
+</body>
+</html>
