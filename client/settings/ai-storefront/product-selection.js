@@ -407,19 +407,42 @@ const ModeRow = ( {
 	isLast,
 } ) => {
 	const isSelected = selected === value;
-	// Selected-state accent: 3px WP-blue left border on both the
-	// label row and the detail panel, stitched together by a shared
-	// background tint so they read as one element. We paint the
-	// border by overriding `paddingLeft` to keep total horizontal
-	// dimensions identical to the unselected state (no layout shift
-	// on selection change).
-	const selectedAccentWidth = 3;
-	const labelPaddingLeft = isSelected
-		? `${ 20 - selectedAccentWidth }px`
-		: '20px';
+
+	// Compute three-way bottom border before JSX to avoid nested ternary.
+	let borderBottomValue;
+	if ( isSelected ) {
+		borderBottomValue = `2px solid ${ colors.accent }`;
+	} else if ( isLast ) {
+		borderBottomValue = 'none';
+	} else {
+		borderBottomValue = `1px solid ${ colors.borderSubtle }`;
+	}
 
 	return (
-		<>
+		// Wrapper div unifies the label row and the detail panel into a
+		// single card unit when selected. Using a wrapper (rather than
+		// stitching border fragments across two sibling elements) lets
+		// one `border` declaration on the outer element produce a
+		// continuous outline that encloses both sections — no padding
+		// tricks to compensate for border-width differences between
+		// selected and unselected states.
+		//
+		// Selected: blue-tinted bg (infoBg) + 2px WP-admin-blue border
+		// on all sides, 3px radius. Unselected: transparent, no border
+		// of its own — the bottom divider comes from borderBottom.
+		<div
+			style={ {
+				background: isSelected ? colors.infoBg : 'transparent',
+				border: isSelected ? `2px solid ${ colors.accent }` : 'none',
+				borderBottom: borderBottomValue,
+				borderRadius: isSelected ? '3px' : 0,
+				// Small gap below a selected card so the next row's
+				// divider doesn't visually merge with the card's bottom
+				// border. Zero on the last row — no row below it.
+				marginBottom: isSelected && ! isLast ? '4px' : 0,
+				overflow: 'hidden',
+			} }
+		>
 			{ /*
 			   `jsx-a11y/label-has-associated-control` rule is stricter
 			   than the HTML spec — it requires either an explicit
@@ -437,22 +460,7 @@ const ModeRow = ( {
 					display: 'flex',
 					alignItems: 'center',
 					gap: '12px',
-					padding: `14px 20px 14px ${ labelPaddingLeft }`,
-					// The label's bottom border separates collapsed rows from
-					// each other. When this row is `isLast` we always drop
-					// the border — whether selected or not — because the
-					// enclosing Card already draws the outer border, and an
-					// extra line between the last row and the card edge
-					// produces a visible double-border on collapsed last,
-					// or a floating divider above the Save button on
-					// selected last.
-					borderBottom: isLast
-						? 'none'
-						: `1px solid ${ colors.borderSubtle }`,
-					borderLeft: isSelected
-						? `${ selectedAccentWidth }px solid ${ colors.link }`
-						: 'none',
-					background: isSelected ? '#f6fbfd' : 'transparent',
+					padding: '14px 20px',
 					cursor: 'pointer',
 				} }
 			>
@@ -492,26 +500,19 @@ const ModeRow = ( {
 			   Detail panel only renders when the row is selected AND
 			   has content to show. A selected row with no children
 			   (e.g. the "All published products" row — nothing to
-			   configure) collapses cleanly rather than opening an
-			   empty blue-tinted strip with a floating horizontal rule.
-			   The count pill + header description already convey the
-			   full state for zero-config modes.
+			   configure) collapses cleanly with no empty blue strip.
 			*/ }
 			{ isSelected && children && (
 				<div
 					style={ {
-						padding: `0 20px 18px ${ 50 - selectedAccentWidth }px`,
-						background: '#f6fbfd',
-						borderLeft: `${ selectedAccentWidth }px solid ${ colors.link }`,
-						borderBottom: isLast
-							? 'none'
-							: `1px solid ${ colors.borderSubtle }`,
+						padding: '0 20px 18px',
+						borderTop: `1px solid ${ colors.accent }33`,
 					} }
 				>
 					{ children }
 				</div>
 			) }
-		</>
+		</div>
 	);
 };
 
@@ -678,8 +679,16 @@ const ProductSelection = ( {
 
 	// Product search only runs when the merchant is actively in the
 	// 'selected' mode — no point loading a product list they won't see.
+	// Skip when the search string is empty: the dropdown is hidden then,
+	// so there's nothing to populate. Clearing `products` on empty string
+	// ensures the dropdown doesn't ghost stale results when the merchant
+	// deletes their query.
 	useEffect( () => {
 		if ( serverMode !== MODES.SELECTED ) {
+			return;
+		}
+		if ( ! productSearch.trim() ) {
+			setProducts( [] );
 			return;
 		}
 		setIsLoadingProducts( true );
@@ -808,22 +817,6 @@ const ProductSelection = ( {
 		);
 	}, [ brands, brandSearch ] );
 
-	const selectedCategoryTokens = useMemo( () => {
-		return categories.filter( ( cat ) =>
-			selectedCategories.includes( cat.id )
-		);
-	}, [ categories, selectedCategories ] );
-
-	const selectedTagTokens = useMemo( () => {
-		return tags.filter( ( tag ) => selectedTags.includes( tag.id ) );
-	}, [ tags, selectedTags ] );
-
-	const selectedBrandTokens = useMemo( () => {
-		return brands.filter( ( brand ) =>
-			selectedBrands.includes( brand.id )
-		);
-	}, [ brands, selectedBrands ] );
-
 	// Products carry a visibility problem: the merchant's selection
 	// may reference products that aren't in the current (search-
 	// filtered) result set, so the token list would go empty on every
@@ -845,7 +838,21 @@ const ProductSelection = ( {
 
 	const selectedProductTokens = useMemo( () => {
 		return selectedProducts
-			.map( ( id ) => selectedProductCache[ id ] )
+			.map( ( id ) => {
+				const p = selectedProductCache[ id ];
+				if ( ! p ) {
+					return null;
+				}
+				// Append SKU to the chip label so merchants can
+				// disambiguate products with similar names (e.g. same
+				// item in different sizes). Mirrors the typeahead
+				// dropdown's per-result display. HTML entities in
+				// name/sku are decoded by SelectedTokens' own
+				// decodeEntities call, so concatenating raw strings here
+				// is safe — the combined string is decoded in one pass.
+				const name = p.sku ? `${ p.name } (${ p.sku })` : p.name;
+				return { id: p.id, name };
+			} )
 			.filter( Boolean );
 	}, [ selectedProducts, selectedProductCache ] );
 
@@ -1537,7 +1544,6 @@ const ProductSelection = ( {
 								items={ categories }
 								filtered={ filteredCategories }
 								selectedIds={ selectedCategories }
-								selectedTokens={ selectedCategoryTokens }
 								search={ categorySearch }
 								onSearch={ setCategorySearch }
 								onToggle={ toggleCategory }
@@ -1598,8 +1604,6 @@ const ProductSelection = ( {
 								items={ tags }
 								filtered={ filteredTags }
 								selectedIds={ selectedTags }
-								selectedTokens={ selectedTagTokens }
-								tokenVariant="tag"
 								search={ tagSearch }
 								onSearch={ setTagSearch }
 								onToggle={ toggleTag }
@@ -1653,7 +1657,6 @@ const ProductSelection = ( {
 									items={ brands }
 									filtered={ filteredBrands }
 									selectedIds={ selectedBrands }
-									selectedTokens={ selectedBrandTokens }
 									search={ brandSearch }
 									onSearch={ setBrandSearch }
 									onToggle={ toggleBrand }
@@ -1724,15 +1727,151 @@ const ProductSelection = ( {
 								items={ selectedProductTokens }
 								onRemove={ toggleProduct }
 							/>
-							<SearchControl
-								__nextHasNoMarginBottom
-								value={ productSearch }
-								onChange={ setProductSearch }
-								placeholder={ __(
-									'Search products\u2026',
-									'woocommerce-ai-storefront'
+							{ /*
+							   Typeahead search + dropdown. Products are
+							   a recall task (thousands of items, names
+							   not always unique) so a typeahead is more
+							   appropriate than a scrollable checkbox
+							   list. The dropdown appears below the input
+							   while there is a non-empty query and
+							   dismisses when the merchant clears the
+							   field. Clicking a result adds the product
+							   as a chip and clears the query so the
+							   merchant can immediately search for the
+							   next one. Already-added results are
+							   disabled with a checkmark to prevent
+							   accidental double-adds.
+							*/ }
+							<div style={ { position: 'relative' } }>
+								<SearchControl
+									__nextHasNoMarginBottom
+									value={ productSearch }
+									onChange={ setProductSearch }
+									placeholder={ __(
+										'Search products\u2026',
+										'woocommerce-ai-storefront'
+									) }
+								/>
+								{ productSearch.trim() && (
+									<div
+										style={ {
+											position: 'absolute',
+											top: '100%',
+											left: 0,
+											right: 0,
+											zIndex: 100,
+											background: colors.surface,
+											border: `1px solid ${ colors.borderSubtle }`,
+											borderRadius: '3px',
+											maxHeight: '200px',
+											overflowY: 'auto',
+											boxShadow:
+												'0 2px 8px rgba(0,0,0,0.12)',
+										} }
+									>
+										{ isLoadingProducts && (
+											<div
+												style={ {
+													padding: '12px',
+													textAlign: 'center',
+												} }
+											>
+												<Spinner />
+											</div>
+										) }
+										{ ! isLoadingProducts &&
+											products.length === 0 && (
+												<p
+													style={ {
+														padding: '10px 12px',
+														margin: 0,
+														fontSize: '13px',
+														color: colors.textMuted,
+													} }
+												>
+													{ __(
+														'No products found. Try a different search.',
+														'woocommerce-ai-storefront'
+													) }
+												</p>
+											) }
+										{ ! isLoadingProducts &&
+											products.map( ( product, idx ) => {
+												const isAdded =
+													selectedProducts.includes(
+														product.id
+													);
+												return (
+													<button
+														key={ product.id }
+														type="button"
+														disabled={ isAdded }
+														onClick={ () => {
+															if ( ! isAdded ) {
+																toggleProduct(
+																	product.id
+																);
+																setProductSearch(
+																	''
+																);
+															}
+														} }
+														style={ {
+															display: 'block',
+															width: '100%',
+															padding: '8px 12px',
+															background: isAdded
+																? colors.infoBg
+																: 'transparent',
+															border: 'none',
+															borderBottom:
+																idx <
+																products.length -
+																	1
+																	? `1px solid ${ colors.borderSubtle }`
+																	: 'none',
+															cursor: isAdded
+																? 'default'
+																: 'pointer',
+															textAlign: 'left',
+															fontSize: '13px',
+															color: isAdded
+																? colors.textMuted
+																: colors.textPrimary,
+														} }
+													>
+														{ decodeEntities(
+															product.name
+														) }
+														{ product.sku && (
+															<span
+																style={ {
+																	marginLeft:
+																		'6px',
+																	color: colors.textMuted,
+																} }
+															>
+																{ `(${ product.sku })` }
+															</span>
+														) }
+														{ isAdded && (
+															<span
+																aria-hidden="true"
+																style={ {
+																	marginLeft:
+																		'6px',
+																	color: colors.link,
+																} }
+															>
+																{ '\u2713' }
+															</span>
+														) }
+													</button>
+												);
+											} ) }
+									</div>
 								) }
-							/>
+							</div>
 							{ selectedProducts.length > 0 && (
 								<div
 									style={ {
@@ -1761,100 +1900,6 @@ const ProductSelection = ( {
 									</Button>
 								</div>
 							) }
-							{ isLoadingProducts ? (
-								<div
-									style={ {
-										padding: '24px',
-										textAlign: 'center',
-									} }
-								>
-									<Spinner />
-								</div>
-							) : (
-								<div
-									style={ {
-										maxHeight: '260px',
-										overflow: 'auto',
-										background: colors.surface,
-										border: `1px solid ${ colors.borderSubtle }`,
-										borderRadius: '3px',
-										padding: '4px 16px',
-									} }
-								>
-									{ products.length === 0 && (
-										<p
-											style={ {
-												color: colors.textMuted,
-												fontSize: '13px',
-												textAlign: 'center',
-												padding: '16px 0',
-												margin: 0,
-											} }
-										>
-											{ productSearch
-												? __(
-														'No products found. Try a different search.',
-														'woocommerce-ai-storefront'
-												  )
-												: __(
-														'Start typing to search your products.',
-														'woocommerce-ai-storefront'
-												  ) }
-										</p>
-									) }
-									{ products.map( ( product, index ) => (
-										<div
-											key={ product.id }
-											style={ {
-												padding: '6px 0',
-												borderBottom:
-													index < products.length - 1
-														? `1px solid ${ colors.borderSubtle }`
-														: 'none',
-											} }
-										>
-											<CheckboxControl
-												label={ sprintf(
-													/* translators: %1$s: product name, %2$s: price */
-													__(
-														'%1$s \u2014 %2$s',
-														'woocommerce-ai-storefront'
-													),
-													decodeEntities(
-														product.name
-													),
-													decodeEntities(
-														product.price
-													)
-												) }
-												checked={ selectedProducts.includes(
-													product.id
-												) }
-												onChange={ () =>
-													toggleProduct( product.id )
-												}
-												__nextHasNoMarginBottom
-											/>
-										</div>
-									) ) }
-								</div>
-							) }
-							{ /*
-							   No warning Notice here. Prior versions
-							   rendered a yellow "New products are not
-							   auto-included" banner at the bottom of
-							   this panel, but the behavior IS the mode:
-							   "hand-pick individual products" means
-							   hand-picking — auto-inclusion would
-							   defeat the semantic. The mode's header
-							   description already says "New products
-							   are not auto-included" as part of its
-							   explanation, so a yellow warning
-							   repeated the same information at higher
-							   severity than warranted. Removed to
-							   reduce visual noise in a section whose
-							   purpose is already clear from the label.
-							*/ }
 						</div>
 					</ModeRow>
 				</CardBody>
@@ -1962,10 +2007,11 @@ const ProductSelection = ( {
 /**
  * Shared selection UI for one taxonomy (categories, tags, or brands).
  *
- * Presents: a `SelectedTokens` chip list at the top (when a selection
- * exists), a SearchControl when the vocabulary is large enough to
- * warrant filtering (> 8 terms), Select-all / Clear action links, and
- * a scrollable CheckboxControl list of terms.
+ * Presents: a SearchControl when the vocabulary is large enough to
+ * warrant filtering (> 20 terms), Select-all / Clear action links, and
+ * a two-column scrollable CheckboxControl grid of terms. Checked state
+ * in the grid is the selection indicator — there is no separate chip
+ * strip above the list.
  *
  * Pulled out into its own component because the three taxonomy modes
  * render the same UI with different data + labels; inlining three
@@ -1975,8 +2021,6 @@ const ProductSelection = ( {
  * @param {Array}                                              root0.items             All terms for this taxonomy.
  * @param {Array}                                              root0.filtered          Terms matching the current search filter.
  * @param {number[]}                                           root0.selectedIds       Currently-selected term IDs.
- * @param {Array}                                              root0.selectedTokens    Term objects for chips.
- * @param {string}                                             [root0.tokenVariant]    Passed to SelectedTokens ('tag' for pill shape).
  * @param {string}                                             root0.search            Current search string.
  * @param {Function}                                           root0.onSearch          Updates the search string.
  * @param {Function}                                           root0.onToggle          Toggles one term's selection.
@@ -1996,8 +2040,6 @@ const TaxonomyPicker = ( {
 	items,
 	filtered,
 	selectedIds,
-	selectedTokens,
-	tokenVariant,
 	search,
 	onSearch,
 	onToggle,
@@ -2021,16 +2063,13 @@ const TaxonomyPicker = ( {
 		items.length > 0 &&
 		items.every( ( item ) => selectedIds.includes( item.id ) );
 	const noneSelected = selectedIds.length === 0;
-	const showSearch = ! isLoading && ! hasError && items.length > 8;
+	// Threshold raised from 8 → 20: the two-column grid already makes
+	// the list scannable at moderate sizes, so a search box adds clutter
+	// until there are genuinely many terms to disambiguate.
+	const showSearch = ! isLoading && ! hasError && items.length > 20;
 
 	return (
 		<>
-			<SelectedTokens
-				items={ selectedTokens }
-				onRemove={ onToggle }
-				variant={ tokenVariant }
-			/>
-
 			{ showSearch && (
 				<SearchControl
 					__nextHasNoMarginBottom
@@ -2110,6 +2149,14 @@ const TaxonomyPicker = ( {
 					{ errorLabel }
 				</Notice>
 			) }
+			{ /*
+			   Scrollable container. Items render in a two-column CSS
+			   grid so even a 20-term list fits in the fixed height
+			   without requiring as much vertical scrolling.
+			   `auto-fill` + `minmax` lets narrower panels collapse
+			   to one column gracefully. Per-item bottom borders are
+			   dropped — grid spacing provides sufficient separation.
+			*/ }
 			{ ! isLoading && ! hasError && (
 				<div
 					style={ {
@@ -2118,7 +2165,6 @@ const TaxonomyPicker = ( {
 						background: colors.surface,
 						border: `1px solid ${ colors.borderSubtle }`,
 						borderRadius: '3px',
-						padding: '4px 16px',
 					} }
 				>
 					{ items.length === 0 && (
@@ -2127,7 +2173,7 @@ const TaxonomyPicker = ( {
 								color: colors.textMuted,
 								fontSize: '13px',
 								textAlign: 'center',
-								padding: '16px 0',
+								padding: '16px',
 								margin: 0,
 							} }
 						>
@@ -2140,40 +2186,47 @@ const TaxonomyPicker = ( {
 								color: colors.textMuted,
 								fontSize: '13px',
 								textAlign: 'center',
-								padding: '16px 0',
+								padding: '16px',
 								margin: 0,
 							} }
 						>
 							{ emptyMatchLabel }
 						</p>
 					) }
-					{ filtered.map( ( item, index ) => (
+					{ filtered.length > 0 && (
 						<div
-							key={ item.id }
 							style={ {
-								padding: '6px 0',
-								borderBottom:
-									index < filtered.length - 1
-										? `1px solid ${ colors.borderSubtle }`
-										: 'none',
+								display: 'grid',
+								gridTemplateColumns:
+									'repeat(auto-fill, minmax(180px, 1fr))',
+								padding: '8px 12px',
 							} }
 						>
-							<CheckboxControl
-								label={ sprintf(
-									/* translators: %1$s: term name, %2$d: product count */
-									__(
-										'%1$s (%2$d)',
-										'woocommerce-ai-storefront'
-									),
-									decodeEntities( item.name ),
-									item.count
-								) }
-								checked={ selectedIds.includes( item.id ) }
-								onChange={ () => onToggle( item.id ) }
-								__nextHasNoMarginBottom
-							/>
+							{ filtered.map( ( item ) => (
+								<div
+									key={ item.id }
+									style={ { padding: '4px 0' } }
+								>
+									<CheckboxControl
+										label={ sprintf(
+											/* translators: %1$s: term name, %2$d: product count */
+											__(
+												'%1$s (%2$d)',
+												'woocommerce-ai-storefront'
+											),
+											decodeEntities( item.name ),
+											item.count
+										) }
+										checked={ selectedIds.includes(
+											item.id
+										) }
+										onChange={ () => onToggle( item.id ) }
+										__nextHasNoMarginBottom
+									/>
+								</div>
+							) ) }
 						</div>
-					) ) }
+					) }
 				</div>
 			) }
 
