@@ -315,7 +315,7 @@ const StatCard = ( { label, value, reference, href } ) => {
 				} }
 			>
 				{ value }
-				{ reference && (
+				{ reference !== null && reference !== undefined && (
 					<span
 						style={ {
 							marginLeft: spacing.s2,
@@ -367,10 +367,10 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 		{ /* shouldn't have to scroll to find "what does this do and   */ }
 		{ /* how do I turn it on."                                     */ }
 		{ /*                                                           */ }
-		{ /* NO green accent here — green is reserved for the enabled  */ }
-		{ /* state's status banner, so the two states read as visually */ }
-		{ /* distinct at a glance. Using green on both would signal    */ }
-		{ /* "already active" in both modes and confuse the merchant.  */ }
+		{ /* NO green accent here — per design-system convention, green  */ }
+		{ /* is reserved for `.stat-delta` rows showing positive trend  */ }
+		{ /* changes. Using it for category signals (pre-enable vs      */ }
+		{ /* enabled) would conflict once delta rows are added later.   */ }
 		{ /* --------------------------------------------------------- */ }
 		<Card>
 			<CardBody>

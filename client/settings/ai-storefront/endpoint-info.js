@@ -751,17 +751,15 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						} }
 					>
 						{ /*
-							Sighted users see "X of Y" beside the "AI
-							Crawler Access" card heading and the eyebrow
-							group titles below — the context is visually
-							obvious. Screen-reader users hear the pill
-							in isolation when scanning the toolbar, so
-							`aria-label` adds the missing context
-							("Allowed crawlers: X of Y") that the
-							surrounding visual hierarchy carries for
-							sighted users. Mirrors WP core's pattern
-							for status pills with unit-implicit
-							numerals.
+							Sighted users see "X of Y" beside the "Allowed
+							AI agents" card heading and the eyebrow group
+							titles below — the context is visually obvious.
+							Screen-reader users hear the pill in isolation
+							when scanning the toolbar, so `aria-label` adds
+							the missing context ("Allowed AI agents: X of Y")
+							that the surrounding visual hierarchy carries for
+							sighted users. Mirrors WP core's pattern for
+							status pills with unit-implicit numerals.
 						*/ }
 						<span
 							style={ {
@@ -781,9 +779,9 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								marginRight: '8px',
 							} }
 							aria-label={ sprintf(
-								/* translators: %1$d: allowed crawler count, %2$d: total crawler count */
+								/* translators: %1$d: number of allowed AI agents, %2$d: total AI agents */
 								__(
-									'Allowed crawlers: %1$d of %2$d',
+									'Allowed AI agents: %1$d of %2$d',
 									'woocommerce-ai-storefront'
 								),
 								checkedCount,
