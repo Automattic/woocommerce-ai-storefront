@@ -314,7 +314,11 @@ class WC_AI_Storefront {
 			// tickets where the wp-admin chrome isn't visible.
 			// Match this exactly in render_admin_page() below.
 			__( 'Woo AI Storefront', 'woocommerce-ai-storefront' ),
-			__( 'Woo AI Storefront', 'woocommerce-ai-storefront' ),
+			// Menu title: shorter "AI Storefront" — the WooCommerce
+			// section already provides the "Woo" context in the
+			// sidebar, and the shorter form fits the cramped admin
+			// menu width without truncation.
+			__( 'AI Storefront', 'woocommerce-ai-storefront' ),
 			'manage_woocommerce',
 			'wc-ai-storefront',
 			[ $this, 'render_admin_page' ]
