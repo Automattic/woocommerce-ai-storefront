@@ -12,11 +12,18 @@
 		"lint:js": "wp-scripts lint-js client/",
 		"lint:js-fix": "wp-scripts lint-js --fix client/",
 		"lint:css": "wp-scripts lint-style 'client/**/*.{css,scss}'",
-		"test:js": "wp-scripts test-unit-js"
+		"test:js": "wp-scripts test-unit-js",
+		"env:start": "wp-env start",
+		"env:stop": "wp-env stop",
+		"env:destroy": "wp-env destroy",
+		"env:clean": "wp-env clean all",
+		"env:logs": "wp-env logs",
+		"env:cli": "wp-env run cli wp"
 	},
 	"devDependencies": {
 		"@woocommerce/dependency-extraction-webpack-plugin": "^4.0.0",
 		"@wordpress/dataviews": "^14.1.0",
+		"@wordpress/env": "^11.5.0",
 		"@wordpress/scripts": "^28.0.0"
 	},
 	"dependencies": {
