@@ -23,25 +23,14 @@ import {
 	Button,
 	Card,
 	CardBody,
-	CheckboxControl,
 	Notice,
 	SelectControl,
 	Spinner,
-	// eslint-disable-next-line @wordpress/no-unsafe-wp-apis
-	__experimentalNumberControl as NumberControl,
-	// eslint-disable-next-line @wordpress/no-unsafe-wp-apis
-	__experimentalToggleGroupControl as ToggleGroupControl,
-	// eslint-disable-next-line @wordpress/no-unsafe-wp-apis
-	__experimentalToggleGroupControlOption as ToggleGroupControlOption,
 } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
-import { colors, typography } from './tokens';
-import {
-	ToggleGroupStyles,
-	TOGGLE_GROUP_CLASSNAME,
-} from './toggle-group-styles';
+import { colors, radii, shadows, spacing, typography } from './tokens';
 
 const POLICY_MODES = {
 	UNCONFIGURED: 'unconfigured',
@@ -90,6 +79,89 @@ const DEFAULT_POLICY = {
 	fees: 'FreeReturn',
 	methods: [],
 };
+
+/**
+ * Segmented control for policy mode selection.
+ *
+ * Plain buttons styled to match the spec's `.seg-control` / `.seg-option`
+ * pattern: light-fill track, white elevated pill on the active option.
+ * This is CONFIGURATION (the choice drives conditional fields), not a
+ * data filter — hence segmented control, not chips.
+ */
+const SEG_CONTROL_CLASS = 'ai-storefront-seg-control';
+
+function SegmentedControlStyles() {
+	return (
+		<style>{ `
+			.${ SEG_CONTROL_CLASS } {
+				display: inline-flex;
+				background: ${ colors.surfaceMuted };
+				border-radius: ${ radii.md };
+				padding: 2px;
+				gap: 0;
+			}
+			.${ SEG_CONTROL_CLASS } button {
+				background: transparent;
+				border: 1px solid transparent;
+				padding: 6px 14px;
+				border-radius: calc(${ radii.md } - 2px);
+				font-size: 13px;
+				font-weight: 400;
+				line-height: 1;
+				color: ${ colors.textSecondary };
+				cursor: pointer;
+				white-space: nowrap;
+			}
+			.${ SEG_CONTROL_CLASS } button:hover {
+				color: ${ colors.textPrimary };
+			}
+			.${ SEG_CONTROL_CLASS } button[aria-pressed="true"] {
+				background: ${ colors.surface };
+				color: ${ colors.textPrimary };
+				font-weight: 600;
+				box-shadow: ${ shadows.sm };
+			}
+			.${ SEG_CONTROL_CLASS } button:focus-visible {
+				outline: 2px solid var(--wp-admin-theme-color, #2271b1);
+				outline-offset: 2px;
+			}
+			@media (forced-colors: active) {
+				.${ SEG_CONTROL_CLASS } button[aria-pressed="true"] {
+					outline: 1px solid CanvasText;
+				}
+			}
+			.ai-storefront-policies-tab .components-text-control__input,
+			.ai-storefront-policies-tab .components-select-control__input {
+				height: 32px;
+				min-height: 32px;
+			}
+			#wc-ai-storefront-return-window::-webkit-outer-spin-button,
+			#wc-ai-storefront-return-window::-webkit-inner-spin-button {
+				-webkit-appearance: none;
+				margin: 0;
+			}
+		` }</style>
+	);
+}
+
+const SegmentedControl = ( { value, onChange: onChangeProp, options, label } ) => (
+	<div
+		className={ SEG_CONTROL_CLASS }
+		role="group"
+		aria-label={ label }
+	>
+		{ options.map( ( opt ) => (
+			<button
+				key={ opt.value }
+				type="button"
+				aria-pressed={ value === opt.value }
+				onClick={ () => onChangeProp( opt.value ) }
+			>
+				{ opt.label }
+			</button>
+		) ) }
+	</div>
+);
 
 /**
  * Pure helper: derive the JSON-LD `hasMerchantReturnPolicy` block from
@@ -280,38 +352,26 @@ const ReturnRefundPolicySection = ( {
 					) }
 				</p>
 
-				<ToggleGroupStyles />
-				<ToggleGroupControl
-					__nextHasNoMarginBottom
-					__next40pxDefaultSize
-					className={ TOGGLE_GROUP_CLASSNAME }
+				<SegmentedControlStyles />
+				<SegmentedControl
+					label={ __( 'Policy mode', 'woocommerce-ai-storefront' ) }
 					value={ policy.mode }
 					onChange={ ( val ) => handleField( 'mode', val ) }
-					label={ __( 'Policy mode', 'woocommerce-ai-storefront' ) }
-					hideLabelFromVision
-				>
-					<ToggleGroupControlOption
-						value={ POLICY_MODES.RETURNS_ACCEPTED }
-						label={ __(
-							'Returns accepted',
-							'woocommerce-ai-storefront'
-						) }
-					/>
-					<ToggleGroupControlOption
-						value={ POLICY_MODES.FINAL_SALE }
-						label={ __(
-							'No returns',
-							'woocommerce-ai-storefront'
-						) }
-					/>
-					<ToggleGroupControlOption
-						value={ POLICY_MODES.UNCONFIGURED }
-						label={ __(
-							'Don’t expose',
-							'woocommerce-ai-storefront'
-						) }
-					/>
-				</ToggleGroupControl>
+					options={ [
+						{
+							value: POLICY_MODES.RETURNS_ACCEPTED,
+							label: __( 'Returns accepted', 'woocommerce-ai-storefront' ),
+						},
+						{
+							value: POLICY_MODES.FINAL_SALE,
+							label: __( 'No returns', 'woocommerce-ai-storefront' ),
+						},
+						{
+							value: POLICY_MODES.UNCONFIGURED,
+							label: __( "Don't expose", 'woocommerce-ai-storefront' ),
+						},
+					] }
+				/>
 
 				<div style={ { marginTop: '20px' } }>
 					{ policy.mode === POLICY_MODES.UNCONFIGURED && (
@@ -358,129 +418,207 @@ const ReturnRefundPolicySection = ( {
 							*/ }
 							<div
 								style={ {
-									marginBottom: '16px',
+									marginBottom: spacing.s4,
 									maxWidth: '320px',
 								} }
 							>
-								{ pagesLoading ? (
-									<Spinner />
-								) : (
-									<SelectControl
-										__nextHasNoMarginBottom
-										__next40pxDefaultSize
-										label={ __(
+								<BaseControl
+									__nextHasNoMarginBottom
+									id="wc-ai-storefront-policy-page"
+									help={ __(
+										'Link AI agents to a full-text policy page on your store.',
+										'woocommerce-ai-storefront'
+									) }
+								>
+									<BaseControl.VisualLabel
+										style={ {
+											...typography.eyebrowLabel,
+											color: colors.textSecondary,
+										} }
+									>
+										{ __(
 											'Policy page (optional)',
 											'woocommerce-ai-storefront'
 										) }
-										help={ __(
-											'Link AI agents to a full-text policy page on your store.',
-											'woocommerce-ai-storefront'
-										) }
-										value={ String( policy.page_id ) }
-										options={ pageOptions.map( ( o ) => ( {
-											...o,
-											value: String( o.value ),
-										} ) ) }
-										onChange={ ( val ) =>
-											handleField(
-												'page_id',
-												parseInt( val, 10 ) || 0
-											)
-										}
-									/>
-								) }
+									</BaseControl.VisualLabel>
+									{ pagesLoading ? (
+										<Spinner />
+									) : (
+										<SelectControl
+											__nextHasNoMarginBottom
+											id="wc-ai-storefront-policy-page"
+											hideLabelFromVision
+											label={ __(
+												'Policy page (optional)',
+												'woocommerce-ai-storefront'
+											) }
+											value={ String( policy.page_id ) }
+											options={ pageOptions.map( ( o ) => ( {
+												...o,
+												value: String( o.value ),
+											} ) ) }
+											onChange={ ( val ) =>
+												handleField(
+													'page_id',
+													parseInt( val, 10 ) || 0
+												)
+											}
+										/>
+									) }
+								</BaseControl>
 							</div>
 
 							<div
 								style={ {
-									marginBottom: '16px',
+									marginBottom: spacing.s4,
 									maxWidth: '320px',
 								} }
 							>
-								<SelectControl
+								<BaseControl
 									__nextHasNoMarginBottom
-									__next40pxDefaultSize
-									label={ __(
-										'Return fees',
-										'woocommerce-ai-storefront'
-									) }
+									id="wc-ai-storefront-return-fees"
 									help={ __(
 										'Applied as the default for all returns. You can override this per product on the Product edit screen.',
 										'woocommerce-ai-storefront'
 									) }
-									value={ policy.fees }
-									options={ FEE_OPTIONS }
-									onChange={ ( val ) =>
-										handleField( 'fees', val )
-									}
-								/>
+								>
+									<BaseControl.VisualLabel
+										style={ {
+											...typography.eyebrowLabel,
+											color: colors.textSecondary,
+										} }
+									>
+										{ __(
+											'Return fees',
+											'woocommerce-ai-storefront'
+										) }
+									</BaseControl.VisualLabel>
+									<SelectControl
+										__nextHasNoMarginBottom
+										id="wc-ai-storefront-return-fees"
+										hideLabelFromVision
+										label={ __(
+											'Return fees',
+											'woocommerce-ai-storefront'
+										) }
+										value={ policy.fees }
+										options={ FEE_OPTIONS }
+										onChange={ ( val ) =>
+											handleField( 'fees', val )
+										}
+									/>
+								</BaseControl>
 							</div>
 
-							<div style={ { marginBottom: '16px' } }>
-								<BaseControl
-									__nextHasNoMarginBottom
-									id="wc-ai-storefront-return-window"
-									label={ __(
+							<div style={ { marginBottom: spacing.s4 } }>
+								<label
+									htmlFor="wc-ai-storefront-return-window"
+									style={ {
+										display: 'block',
+										marginBottom: spacing.s1,
+										...typography.eyebrowLabel,
+										color: colors.textSecondary,
+									} }
+								>
+									{ __(
 										'Return window (days)',
 										'woocommerce-ai-storefront'
 									) }
-									help={ __(
+								</label>
+								<div
+									style={ {
+										display: 'inline-flex',
+										alignItems: 'stretch',
+										width: '120px',
+										height: '32px',
+										border: `1px solid ${ colors.borderStrong }`,
+										borderRadius: radii.sm,
+										background: colors.surface,
+										overflow: 'hidden',
+									} }
+								>
+									<button
+										type="button"
+										aria-label={ __( 'Decrease', 'woocommerce-ai-storefront' ) }
+										onClick={ () => handleField( 'days', Math.max( 0, ( policy.days || 0 ) - 1 ) ) }
+										style={ {
+											width: '28px',
+											flexShrink: 0,
+											background: colors.surfaceSubtle,
+											border: 'none',
+											borderRight: `1px solid ${ colors.borderSubtle }`,
+											color: colors.textPrimary,
+											fontSize: '16px',
+											fontWeight: 600,
+											lineHeight: 1,
+											cursor: 'pointer',
+											display: 'flex',
+											alignItems: 'center',
+											justifyContent: 'center',
+										} }
+									>
+										{ '−' }
+									</button>
+									<input
+										type="number"
+										id="wc-ai-storefront-return-window"
+										min={ 0 }
+										max={ 365 }
+										value={ policy.days ?? 0 }
+										onChange={ ( e ) => {
+											const parsed = parseInt( e.target.value, 10 );
+											const normalized = Number.isNaN( parsed )
+												? 0
+												: Math.min( 365, Math.max( 0, parsed ) );
+											handleField( 'days', normalized );
+										} }
+										style={ {
+											flex: 1,
+											minWidth: 0,
+											border: 'none',
+											padding: '0 4px',
+											fontSize: '13px',
+											textAlign: 'center',
+											background: 'transparent',
+											color: colors.textPrimary,
+											MozAppearance: 'textfield',
+										} }
+									/>
+									<button
+										type="button"
+										aria-label={ __( 'Increase', 'woocommerce-ai-storefront' ) }
+										onClick={ () => handleField( 'days', Math.min( 365, ( policy.days || 0 ) + 1 ) ) }
+										style={ {
+											width: '28px',
+											flexShrink: 0,
+											background: colors.surfaceSubtle,
+											border: 'none',
+											borderLeft: `1px solid ${ colors.borderSubtle }`,
+											color: colors.textPrimary,
+											fontSize: '16px',
+											fontWeight: 600,
+											lineHeight: 1,
+											cursor: 'pointer',
+											display: 'flex',
+											alignItems: 'center',
+											justifyContent: 'center',
+										} }
+									>
+										{ '+' }
+									</button>
+								</div>
+								<p
+									style={ {
+										margin: `${ spacing.s1 } 0 0`,
+										fontSize: '12px',
+										color: colors.textMuted,
+									} }
+								>
+									{ __(
 										'Leave at 0 to publish "Unspecified" instead of a finite window.',
 										'woocommerce-ai-storefront'
 									) }
-								>
-									<div style={ { maxWidth: '120px' } }>
-										<NumberControl
-											__next40pxDefaultSize
-											/* `spinControls="custom"` swaps the
-											   browser-native HTML spinners (tiny
-											   arrows browsers render by default
-											   for input[type=number] — barely
-											   targetable, especially on touch)
-											   for WP-styled +/- buttons sized to
-											   match the input's 40px height.
-											   Wrapper widened from 96px to 120px
-											   so the suffixed buttons get
-											   breathing room without crowding
-											   the 3-digit input. */
-											spinControls="custom"
-											id="wc-ai-storefront-return-window"
-											min={ 0 }
-											max={ 365 }
-											value={ policy.days }
-											onChange={ ( val ) => {
-												// Clamp to [0, 365] explicitly. The
-												// `min`/`max` props on NumberControl
-												// are advisory in browsers — users
-												// can still type values outside the
-												// range, and `parseInt(val, 10) || 0`
-												// preserves negatives (e.g. `-5` is
-												// truthy). Clamp here so the UI
-												// state, preview, and save payload
-												// all agree on a valid value.
-												const parsed = parseInt(
-													val,
-													10
-												);
-												const normalized = Number.isNaN(
-													parsed
-												)
-													? 0
-													: Math.min(
-															365,
-															Math.max(
-																0,
-																parsed
-															)
-													  );
-												handleField(
-													'days',
-													normalized
-												);
-											} }
-										/>
-									</div>
-								</BaseControl>
+								</p>
 							</div>
 
 							{ /*
@@ -523,7 +661,13 @@ const ReturnRefundPolicySection = ( {
 								breathing room.
 							*/ }
 							<BaseControl __nextHasNoMarginBottom>
-								<BaseControl.VisualLabel id="wc-ai-storefront-return-methods-label">
+								<BaseControl.VisualLabel
+									id="wc-ai-storefront-return-methods-label"
+									style={ {
+										...typography.eyebrowLabel,
+										color: colors.textSecondary,
+									} }
+								>
 									{ __(
 										'Return methods',
 										'woocommerce-ai-storefront'
@@ -535,24 +679,42 @@ const ReturnRefundPolicySection = ( {
 									style={ {
 										display: 'flex',
 										flexDirection: 'column',
-										gap: '6px',
+										gap: spacing.s1,
+										marginTop: spacing.s2,
 									} }
 								>
 									{ METHOD_OPTIONS.map( ( opt ) => (
-										<CheckboxControl
-											__nextHasNoMarginBottom
+										<label
 											key={ opt.value }
-											label={ opt.label }
-											checked={ (
-												policy.methods || []
-											).includes( opt.value ) }
-											onChange={ ( checked ) =>
-												handleMethodToggle(
-													opt.value,
-													checked
-												)
-											}
-										/>
+											style={ {
+												display: 'flex',
+												alignItems: 'center',
+												gap: spacing.s2,
+												paddingTop: '4px',
+												paddingBottom: '4px',
+												minHeight: '24px',
+												fontSize: '13px',
+												color: colors.textPrimary,
+												cursor: 'pointer',
+											} }
+										>
+											<input
+												type="checkbox"
+												checked={ ( policy.methods || [] ).includes( opt.value ) }
+												onChange={ ( e ) =>
+													handleMethodToggle( opt.value, e.target.checked )
+												}
+												style={ {
+													width: '16px',
+													height: '16px',
+													margin: 0,
+													flexShrink: 0,
+													cursor: 'pointer',
+													accentColor: colors.accent,
+												} }
+											/>
+											{ opt.label }
+										</label>
 									) ) }
 								</div>
 							</BaseControl>
@@ -562,37 +724,54 @@ const ReturnRefundPolicySection = ( {
 					{ policy.mode === POLICY_MODES.FINAL_SALE && (
 						<div
 							style={ {
-								marginBottom: '16px',
+								marginBottom: spacing.s4,
 								maxWidth: '320px',
 							} }
 						>
-							{ pagesLoading ? (
-								<Spinner />
-							) : (
-								<SelectControl
-									__nextHasNoMarginBottom
-									__next40pxDefaultSize
-									label={ __(
+							<BaseControl
+								__nextHasNoMarginBottom
+								id="wc-ai-storefront-policy-page-final"
+								help={ __(
+									'Link AI agents to a "no returns" explainer on your store.',
+									'woocommerce-ai-storefront'
+								) }
+							>
+								<BaseControl.VisualLabel
+									style={ {
+										...typography.eyebrowLabel,
+										color: colors.textSecondary,
+									} }
+								>
+									{ __(
 										'Policy page (optional)',
 										'woocommerce-ai-storefront'
 									) }
-									help={ __(
-										'Link AI agents to a "no returns" explainer on your store.',
-										'woocommerce-ai-storefront'
-									) }
-									value={ String( policy.page_id ) }
-									options={ pageOptions.map( ( o ) => ( {
-										...o,
-										value: String( o.value ),
-									} ) ) }
-									onChange={ ( val ) =>
-										handleField(
-											'page_id',
-											parseInt( val, 10 ) || 0
-										)
-									}
-								/>
-							) }
+								</BaseControl.VisualLabel>
+								{ pagesLoading ? (
+									<Spinner />
+								) : (
+									<SelectControl
+										__nextHasNoMarginBottom
+										id="wc-ai-storefront-policy-page-final"
+										hideLabelFromVision
+										label={ __(
+											'Policy page (optional)',
+											'woocommerce-ai-storefront'
+										) }
+										value={ String( policy.page_id ) }
+										options={ pageOptions.map( ( o ) => ( {
+											...o,
+											value: String( o.value ),
+										} ) ) }
+										onChange={ ( val ) =>
+											handleField(
+												'page_id',
+												parseInt( val, 10 ) || 0
+											)
+										}
+									/>
+								) }
+							</BaseControl>
 						</div>
 					) }
 				</div>
@@ -814,7 +993,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	};
 
 	return (
-		<div>
+		<div className="ai-storefront-policies-tab">
 			<header style={ { marginBottom: '20px' } }>
 				{ /*
 				   Section h2 names the operator's job at a higher
@@ -851,7 +1030,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 			{ pagesError && (
 				<Notice status="warning" isDismissible={ false }>
 					{ __(
-						'Could not load your pages. Page links won’t be available.',
+						"Could not load your pages. Page links won't be available.",
 						'woocommerce-ai-storefront'
 					) }
 				</Notice>

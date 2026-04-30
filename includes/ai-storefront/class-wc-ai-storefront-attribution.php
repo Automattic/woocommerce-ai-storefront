@@ -677,7 +677,7 @@ class WC_AI_Storefront_Attribution {
 	 */
 	public static function get_stats( $period = 'month' ) {
 		// Normalize period first so the transient key is consistent.
-		$valid_periods = array( 'day', 'week', 'month', 'year' );
+		$valid_periods = array( 'day', 'week', 'month', 'month30', 'year' );
 		$period        = in_array( $period, $valid_periods, true ) ? $period : 'month';
 
 		$transient_key = 'wc_ai_storefront_stats_' . $period;
@@ -689,10 +689,11 @@ class WC_AI_Storefront_Attribution {
 		global $wpdb;
 
 		$date_map = [
-			'day'   => '1 day ago',
-			'week'  => '1 week ago',
-			'month' => '1 month ago',
-			'year'  => '1 year ago',
+			'day'     => '1 day ago',
+			'week'    => '1 week ago',
+			'month'   => '1 month ago',
+			'month30' => '30 days ago',
+			'year'    => '1 year ago',
 		];
 
 		// $period is already validated to one of the four keys above.
@@ -865,7 +866,7 @@ class WC_AI_Storefront_Attribution {
 			}
 		}
 
-		foreach ( array( 'day', 'week', 'month', 'year' ) as $period ) {
+		foreach ( array( 'day', 'week', 'month', 'month30', 'year' ) as $period ) {
 			delete_transient( 'wc_ai_storefront_stats_' . $period );
 		}
 	}

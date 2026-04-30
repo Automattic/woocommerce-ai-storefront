@@ -145,7 +145,7 @@ class WC_AI_Storefront_Admin_Controller {
 					'period' => [
 						'type'    => 'string',
 						'default' => 'month',
-						'enum'    => [ 'day', 'week', 'month', 'year' ],
+						'enum'    => [ 'day', 'week', 'month', 'month30', 'year' ],
 					],
 				],
 			]

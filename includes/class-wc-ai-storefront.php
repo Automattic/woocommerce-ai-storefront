@@ -438,6 +438,17 @@ class WC_AI_Storefront {
 		}
 		wp_enqueue_style( 'wp-components' );
 
+		// Match WooCommerce Payments' white-background pattern for modern
+		// settings pages: override the WP admin grey (#f0f0f1) on body,
+		// #wpcontent, and #wpbody-content, scoped to our page's body class
+		// so it doesn't bleed onto other admin screens.
+		wp_add_inline_style(
+			'wp-components',
+			'body.woocommerce_page_wc-ai-storefront,
+			 body.woocommerce_page_wc-ai-storefront #wpcontent,
+			 body.woocommerce_page_wc-ai-storefront #wpbody-content { background: #fff; }'
+		);
+
 		// Woo component style handles (wc-components, wc-admin-layout,
 		// wc-experimental) were previously enqueued here to support
 		// `@woocommerce/components`' TableCard adoption. That adoption

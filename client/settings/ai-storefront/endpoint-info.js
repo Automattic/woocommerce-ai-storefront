@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from '@wordpress/element';
+import { useEffect, useState } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
 import {
 	Card,
@@ -6,13 +6,73 @@ import {
 	Button,
 	CheckboxControl,
 	ExternalLink,
-	RadioControl,
 	Spinner,
 	TextControl,
 } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-storefront/constants';
-import { colors, typography } from './tokens';
+import { colors, typography, radii, spacing } from './tokens';
+
+const ENDPOINT_TAB_CLASS = 'ai-storefront-endpoint-tab';
+
+const CRAWLER_GROUP_CLASS = 'ai-storefront-crawler-group';
+
+function EndpointTabStyles() {
+	return (
+		<style>{ `
+			.${ ENDPOINT_TAB_CLASS } .components-text-control__input,
+			.${ ENDPOINT_TAB_CLASS } .components-select-control__input {
+				height: 32px;
+				min-height: 32px;
+			}
+			.${ ENDPOINT_TAB_CLASS } .endpoint-url-cell a {
+				font-family: "JetBrains Mono", Menlo, Consolas, Monaco, monospace;
+				font-size: 13px;
+				font-weight: 500;
+			}
+			details.${ CRAWLER_GROUP_CLASS } {
+				border: 1px solid ${ colors.borderSubtle };
+				border-radius: ${ radii.sm };
+				background: ${ colors.surface };
+				margin-top: ${ spacing.s3 };
+			}
+			details.${ CRAWLER_GROUP_CLASS } summary {
+				list-style: none;
+				cursor: pointer;
+				padding: 10px 12px;
+				display: flex;
+				align-items: center;
+				gap: ${ spacing.s2 };
+				justify-content: space-between;
+				font: 600 13px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+				color: ${ colors.textPrimary };
+				user-select: none;
+			}
+			details.${ CRAWLER_GROUP_CLASS } summary::-webkit-details-marker { display: none; }
+			details.${ CRAWLER_GROUP_CLASS } summary::before {
+				content: "";
+				display: inline-block;
+				width: 0; height: 0;
+				margin-right: 6px;
+				flex-shrink: 0;
+				border-left: 5px solid ${ colors.textMuted };
+				border-top: 4px solid transparent;
+				border-bottom: 4px solid transparent;
+				transition: transform .15s;
+			}
+			details.${ CRAWLER_GROUP_CLASS }[open] summary::before {
+				transform: rotate(90deg);
+			}
+			details.${ CRAWLER_GROUP_CLASS } .crawler-group-body {
+				padding: 6px 14px 12px;
+				border-top: 1px solid ${ colors.borderSubtle };
+			}
+			details.${ CRAWLER_GROUP_CLASS } .crawler-row {
+				padding: 8px 0;
+			}
+		` }</style>
+	);
+}
 
 /**
  * Rate-limit presets for the AI-agent request-throttling control.
@@ -301,6 +361,8 @@ const KNOWN_CRAWLERS = [
 const StatusBadge = ( { status } ) => {
 	const effective = status || 'checking';
 
+	// Checking state: spinner inline — no pill background yet since
+	// we don't have a resolved state to color-code.
 	if ( effective === 'checking' ) {
 		return (
 			<span
@@ -308,36 +370,46 @@ const StatusBadge = ( { status } ) => {
 					display: 'inline-flex',
 					alignItems: 'center',
 					gap: '6px',
-					color: colors.textMuted,
+					background: colors.infoBg,
+					color: colors.accent,
 					fontSize: '12px',
+					fontWeight: '500',
+					padding: '3px 10px',
+					borderRadius: radii.pill,
 				} }
 			>
-				<Spinner />
+				<Spinner style={ { width: '12px', height: '12px' } } />
 				{ __( 'Checking…', 'woocommerce-ai-storefront' ) }
 			</span>
 		);
 	}
 
+	// Pill config: bg + fg + dot color per state. Matches the design's
+	// `.status-badge` pill pattern (background fill + 6px dot + label).
 	const config = {
 		reachable: {
-			icon: '✓',
+			bg: colors.successBg,
+			fg: colors.success,
+			dot: colors.success,
 			label: __( 'Reachable', 'woocommerce-ai-storefront' ),
-			color: colors.success,
 		},
 		unreachable: {
-			icon: '✗',
+			bg: '#fce8e8',
+			fg: colors.error,
+			dot: colors.error,
 			label: __( 'Not reachable', 'woocommerce-ai-storefront' ),
-			color: colors.error,
 		},
 		disabled: {
-			icon: '—',
+			bg: colors.surfaceMuted,
+			fg: colors.textMuted,
+			dot: colors.textMuted,
 			label: __( 'Not published', 'woocommerce-ai-storefront' ),
-			color: colors.textMuted,
 		},
 	}[ effective ] || {
-		icon: '?',
+		bg: colors.surfaceMuted,
+		fg: colors.textMuted,
+		dot: colors.textMuted,
 		label: effective,
-		color: colors.textMuted,
 	};
 
 	return (
@@ -345,18 +417,26 @@ const StatusBadge = ( { status } ) => {
 			style={ {
 				display: 'inline-flex',
 				alignItems: 'center',
-				gap: '6px',
-				color: config.color,
-				fontSize: '13px',
+				gap: '4px',
+				background: config.bg,
+				color: config.fg,
+				fontSize: '12px',
 				fontWeight: '500',
+				padding: '3px 10px',
+				borderRadius: radii.pill,
+				lineHeight: 1,
 			} }
 		>
 			<span
 				aria-hidden="true"
-				style={ { fontSize: '14px', lineHeight: '1' } }
-			>
-				{ config.icon }
-			</span>
+				style={ {
+					width: '6px',
+					height: '6px',
+					borderRadius: '50%',
+					background: config.dot,
+					flexShrink: 0,
+				} }
+			/>
 			{ config.label }
 		</span>
 	);
@@ -434,7 +514,8 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	};
 
 	return (
-		<div>
+		<div className={ ENDPOINT_TAB_CLASS }>
+			<EndpointTabStyles />
 			{ /*
 			   Section-head block: section h2 names the operator's
 			   job at a higher altitude than the cards below. "AI
@@ -556,7 +637,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								<td>
 									<strong>llms.txt</strong>
 								</td>
-								<td>
+								<td className="endpoint-url-cell">
 									{ endpoints.llms_txt ? (
 										<ExternalLink
 											href={ endpoints.llms_txt }
@@ -583,7 +664,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								<td>
 									<strong>UCP Manifest</strong>
 								</td>
-								<td>
+								<td className="endpoint-url-cell">
 									{ endpoints.ucp ? (
 										<ExternalLink href={ endpoints.ucp }>
 											{ endpoints.ucp }
@@ -608,7 +689,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								<td>
 									<strong>robots.txt</strong>
 								</td>
-								<td>
+								<td className="endpoint-url-cell">
 									{ endpoints.robots ? (
 										<ExternalLink href={ endpoints.robots }>
 											{ endpoints.robots }
@@ -633,7 +714,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								<td>
 									<strong>UCP API</strong>
 								</td>
-								<td>
+								<td className="endpoint-url-cell">
 									{ endpoints.ucp_api ? (
 										<ExternalLink
 											href={ endpoints.ucp_api }
@@ -859,59 +940,54 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 					*/ }
 					{ [
 						{
-							key: 'live',
+							key: 'general',
 							title: __(
-								'Live browsing',
+								'General-purpose AI assistants',
 								'woocommerce-ai-storefront'
 							),
-							subtitle: __(
-								'User-initiated fetches during an active query. These agents see fresh inventory and route revenue: recommended on.',
+							categories: [ 'live' ],
+							subgroup: 'general',
+							defaultOpen: true,
+						},
+						{
+							key: 'agentic_shopping',
+							title: __(
+								'Agentic shopping',
 								'woocommerce-ai-storefront'
 							),
-							// Sub-group headings that break the live list
-							// into scannable clusters. The `key` matches
-							// the `subgroup` field on each KNOWN_CRAWLERS
-							// entry; sub-groups render in this declared
-							// order; entries within a sub-group render in
-							// KNOWN_CRAWLERS declaration order
-							// (alphabetical, by convention).
-							subgroups: [
-								{
-									key: 'general',
-									title: __(
-										'General-purpose AI assistants',
-										'woocommerce-ai-storefront'
-									),
-								},
-								{
-									key: 'agentic_shopping',
-									title: __(
-										'Agentic shopping',
-										'woocommerce-ai-storefront'
-									),
-								},
-								{
-									key: 'commerce_search',
-									title: __(
-										'Commerce search engines',
-										'woocommerce-ai-storefront'
-									),
-								},
-								{
-									key: 'regional_asia',
-									title: __(
-										'Regional Asia',
-										'woocommerce-ai-storefront'
-									),
-								},
-								{
-									key: 'regional_europe',
-									title: __(
-										'Regional Europe',
-										'woocommerce-ai-storefront'
-									),
-								},
-							],
+							categories: [ 'live' ],
+							subgroup: 'agentic_shopping',
+							defaultOpen: true,
+						},
+						{
+							key: 'commerce_search',
+							title: __(
+								'Commerce search engines',
+								'woocommerce-ai-storefront'
+							),
+							categories: [ 'live' ],
+							subgroup: 'commerce_search',
+							defaultOpen: true,
+						},
+						{
+							key: 'regional_asia',
+							title: __(
+								'Regional Asia',
+								'woocommerce-ai-storefront'
+							),
+							categories: [ 'live' ],
+							subgroup: 'regional_asia',
+							defaultOpen: true,
+						},
+						{
+							key: 'regional_europe',
+							title: __(
+								'Regional Europe',
+								'woocommerce-ai-storefront'
+							),
+							categories: [ 'live' ],
+							subgroup: 'regional_europe',
+							defaultOpen: true,
 						},
 						{
 							key: 'training_and_test',
@@ -919,228 +995,65 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								'Training and test crawlers',
 								'woocommerce-ai-storefront'
 							),
-							subtitle: __(
-								'Non-revenue bots. Training crawlers feed AI training data: today’s crawl may surface as an answer months later with stale prices. Test crawlers are validation tools. Default off.',
-								'woocommerce-ai-storefront'
-							),
-							// This group covers two backend categories
-							// (training + test) under one merchant-facing
-							// heading. They share the same "non-revenue
-							// AI bot, default off" semantic and benefit
-							// from being stacked in one section. If a
-							// future category needs separate treatment,
-							// split into another group entry above. No
-							// `subgroups` — the combined list is short
-							// enough (10 + 1 = 11 entries) that a flat
-							// alphabetical render is more scannable than
-							// adding visual hierarchy.
 							categories: [ 'training', 'test' ],
+							subgroup: null,
+							defaultOpen: false,
 						},
-					].map( ( group, groupIndex ) => {
-						// Robust fallback: only treat `categories` as a
-						// valid override when it's a non-empty array.
-						// `group.categories || [group.key]` would still
-						// fall back on `null`/`undefined` but NOT on `[]`,
-						// which would silently filter to zero crawlers
-						// (heading + subtitle render, body is empty).
-						// Explicit guard converts the silent-empty failure
-						// mode into "act like a single-category group."
-						const groupCategories =
-							Array.isArray( group.categories ) &&
-							group.categories.length > 0
-								? group.categories
-								: [ group.key ];
+					].map( ( group ) => {
 						const crawlers = KNOWN_CRAWLERS.filter( ( c ) =>
-							groupCategories.includes( c.category )
+							group.categories.includes( c.category ) &&
+							( group.subgroup === null || c.subgroup === group.subgroup )
 						);
-
-						// Sub-group rendering: when a group declares
-						// `subgroups`, render a small heading + the
-						// crawlers that match each subgroup `key`. Empty
-						// sub-groups are skipped so the renderer is
-						// robust to a `KNOWN_CRAWLERS` reshape that
-						// drops the last entry in a sub-group. Crawlers
-						// whose `subgroup` field doesn't match any
-						// declared sub-group `key` (or is missing
-						// entirely) fall through under a final "Other"
-						// heading — safety net so an orphan is *visible*
-						// rather than silently dropped from the admin
-						// UI; production data should always assign every
-						// live entry a sub-group.
-						const hasSubgroups =
-							Array.isArray( group.subgroups ) &&
-							group.subgroups.length > 0;
-
-						// Pre-compute orphans (live entries whose
-						// `subgroup` doesn't match any declared key) so
-						// the renderer can append an "Other" sub-group
-						// at the end without re-walking the list.
-						const declaredSubgroupKeys = hasSubgroups
-							? group.subgroups.map( ( sg ) => sg.key )
-							: [];
-						const orphanCrawlers = hasSubgroups
-							? crawlers.filter(
-									( c ) =>
-										! declaredSubgroupKeys.includes(
-											c.subgroup
-										)
-							  )
-							: [];
-
-						// Sub-group heading style: spreads the shared
-						// `eyebrowLabel` token (uppercase + 0.04em
-						// tracking + 600 weight) and overrides only the
-						// font-size so sub-headings sit visually
-						// subordinate to the main group heading. Per
-						// `tokens.js` doc, `fontSize` is the documented
-						// override key — other axes (tracking, casing)
-						// must come from the token to keep the project
-						// consistent.
-						const subgroupHeadingStyle = {
-							...typography.eyebrowLabel,
-							fontSize: '10px',
-							color: colors.textSecondary,
-							marginBottom: '4px',
-						};
-
-						const renderCrawlerRow = ( crawler, isLast ) => (
-							<div
-								key={ crawler.id }
-								style={ {
-									padding: '6px 0',
-									borderBottom: ! isLast
-										? `1px solid ${ colors.borderSubtle }`
-										: 'none',
-								} }
-							>
-								<CheckboxControl
-									label={ crawler.label }
-									checked={ allowedCrawlers.includes(
-										crawler.id
-									) }
-									onChange={ () =>
-										toggleCrawler( crawler.id )
-									}
-									__nextHasNoMarginBottom
-								/>
-							</div>
-						);
-
+						if ( crawlers.length === 0 ) return null;
+						const allowedCount = crawlers.filter( ( c ) =>
+							allowedCrawlers.includes( c.id )
+						).length;
+						const isZero = allowedCount === 0;
 						return (
-							<div
+							<details
 								key={ group.key }
-								style={ {
-									marginTop: groupIndex === 0 ? 0 : '16px',
-								} }
+								className={ CRAWLER_GROUP_CLASS }
+								open={ group.defaultOpen || undefined }
 							>
-								<div
-									style={ {
-										color: colors.textPrimary,
-										marginBottom: '2px',
-										...typography.eyebrowLabel,
-									} }
-								>
-									{ group.title }
+								<summary>
+									<span style={ { flex: 1 } }>
+										{ group.title }
+									</span>
+									<span
+										style={ {
+											display: 'inline-flex',
+											alignItems: 'center',
+											background: isZero ? colors.surfaceMuted : colors.successBg,
+											color: isZero ? colors.textMuted : colors.success,
+											fontWeight: isZero ? '400' : '600',
+											fontSize: '11px',
+											lineHeight: 1,
+											padding: '3px 8px',
+											borderRadius: radii.pill,
+											flexShrink: 0,
+										} }
+									>
+										{ sprintf(
+											/* translators: %1$d allowed, %2$d total */
+											__( '%1$d/%2$d allowed', 'woocommerce-ai-storefront' ),
+											allowedCount,
+											crawlers.length
+										) }
+									</span>
+								</summary>
+								<div className="crawler-group-body">
+									{ crawlers.map( ( crawler ) => (
+										<div key={ crawler.id } className="crawler-row">
+											<CheckboxControl
+												label={ crawler.label }
+												checked={ allowedCrawlers.includes( crawler.id ) }
+												onChange={ () => toggleCrawler( crawler.id ) }
+												__nextHasNoMarginBottom
+											/>
+										</div>
+									) ) }
 								</div>
-								<p
-									style={ {
-										color: colors.textMuted,
-										fontSize: '12px',
-										marginTop: 0,
-										marginBottom: '8px',
-									} }
-								>
-									{ group.subtitle }
-								</p>
-								<div
-									style={ {
-										background: colors.surfaceSubtle,
-										borderRadius: '4px',
-										padding: '4px 16px',
-									} }
-								>
-									{ hasSubgroups ? (
-										<>
-											{ group.subgroups.map(
-												( sg, sgIndex ) => {
-													const sgCrawlers =
-														crawlers.filter(
-															( c ) =>
-																c.subgroup ===
-																sg.key
-														);
-													if (
-														sgCrawlers.length === 0
-													) {
-														return null;
-													}
-													return (
-														<Fragment
-															key={ sg.key }
-														>
-															<div
-																style={ {
-																	...subgroupHeadingStyle,
-																	marginTop:
-																		sgIndex ===
-																		0
-																			? '6px'
-																			: '14px',
-																} }
-															>
-																{ sg.title }
-															</div>
-															{ sgCrawlers.map(
-																(
-																	crawler,
-																	idx
-																) =>
-																	renderCrawlerRow(
-																		crawler,
-																		idx ===
-																			sgCrawlers.length -
-																				1
-																	)
-															) }
-														</Fragment>
-													);
-												}
-											) }
-											{ orphanCrawlers.length > 0 && (
-												<Fragment key="__orphan_other__">
-													<div
-														style={ {
-															...subgroupHeadingStyle,
-															marginTop: '14px',
-														} }
-													>
-														{ __(
-															'Other',
-															'woocommerce-ai-storefront'
-														) }
-													</div>
-													{ orphanCrawlers.map(
-														( crawler, idx ) =>
-															renderCrawlerRow(
-																crawler,
-																idx ===
-																	orphanCrawlers.length -
-																		1
-															)
-													) }
-												</Fragment>
-											) }
-										</>
-									) : (
-										crawlers.map( ( crawler, index ) =>
-											renderCrawlerRow(
-												crawler,
-												index === crawlers.length - 1
-											)
-										)
-									) }
-								</div>
-							</div>
+							</details>
 						);
 					} ) }
 
@@ -1167,18 +1080,20 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							borderTop: `1px solid ${ colors.borderSubtle }`,
 						} }
 					>
-						<div
+						<h4
 							style={ {
+								margin: '0 0 4px',
+								fontSize: '13px',
+								fontWeight: 600,
+								lineHeight: 1.4,
 								color: colors.textPrimary,
-								marginBottom: '2px',
-								...typography.eyebrowLabel,
 							} }
 						>
 							{ __(
 								'Other AI agents',
 								'woocommerce-ai-storefront'
 							) }
-						</div>
+						</h4>
 						<p
 							style={ {
 								color: colors.textMuted,
@@ -1248,85 +1163,179 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						) }
 					</p>
 
-					<RadioControl
-						selected={ activePreset }
-						options={ [
+					{ /* 2×2 selectable card grid. Each card shows a title,
+					     the RPM value at display weight, and a short
+					     description — matching the rate-card spec. Selected
+					     card: blue-tint bg + blue border (same treatment as
+					     ModeRow in product-selection.js). */ }
+					<div
+						style={ {
+							display: 'grid',
+							gridTemplateColumns: 'repeat(2, 1fr)',
+							gap: '12px',
+						} }
+					>
+						{ [
 							{
-								// Em-dash separator replaced with " · "
-								// per the cross-cutting "no em-dashes"
-								// rule. The middle dot reads as a
-								// compact label/sublabel divider and
-								// matches the assistant-chip rhythm
-								// used elsewhere on the redesign.
-								label: __(
-									'Recommended · 25/min (works well for most stores)',
-									'woocommerce-ai-storefront'
-								),
 								value: 'recommended',
-							},
-							{
 								label: __(
-									'Conservative · 10/min (shared hosting or low-traffic stores)',
+									'Recommended',
 									'woocommerce-ai-storefront'
 								),
+								rpm: '25/min',
+								desc: __(
+									'Works well for most stores.',
+									'woocommerce-ai-storefront'
+								),
+							},
+							{
 								value: 'conservative',
-							},
-							{
 								label: __(
-									'Generous · 100/min (high-traffic stores on dedicated hosting)',
+									'Conservative',
 									'woocommerce-ai-storefront'
 								),
-								value: 'generous',
+								rpm: '10/min',
+								desc: __(
+									'Shared hosting or low-traffic stores.',
+									'woocommerce-ai-storefront'
+								),
 							},
 							{
+								value: 'generous',
+								label: __(
+									'Generous',
+									'woocommerce-ai-storefront'
+								),
+								rpm: '100/min',
+								desc: __(
+									'High-traffic stores on dedicated hosting.',
+									'woocommerce-ai-storefront'
+								),
+							},
+							{
+								value: 'custom',
 								label: __(
 									'Custom',
 									'woocommerce-ai-storefront'
 								),
-								value: 'custom',
-							},
-						] }
-						onChange={ ( value ) => {
-							if ( RATE_LIMIT_PRESETS[ value ] ) {
-								setCustomOverride( false );
-								onChange( {
-									rate_limit_rpm:
-										RATE_LIMIT_PRESETS[ value ].rpm,
-								} );
-							} else {
-								setCustomOverride( true );
-							}
-						} }
-					/>
-
-					{ activePreset === 'custom' && (
-						<div
-							style={ {
-								display: 'flex',
-								gap: '16px',
-								marginTop: '12px',
-								maxWidth: '400px',
-							} }
-						>
-							<TextControl
-								__next40pxDefaultSize
-								__nextHasNoMarginBottom
-								label={ __(
-									'Requests per minute',
+								rpm: 'x/min',
+								desc: __(
+									'Set your own requests-per-minute cap.',
 									'woocommerce-ai-storefront'
-								) }
-								type="number"
-								value={ rpm }
-								onChange={ ( value ) =>
-									onChange( {
-										rate_limit_rpm: parseInt( value ) || 60,
-									} )
-								}
-								min={ 1 }
-								max={ 1000 }
-							/>
-						</div>
-					) }
+								),
+							},
+						].map( ( card ) => {
+							const isSelected = activePreset === card.value;
+							return (
+								<button
+									key={ card.value }
+									type="button"
+									onClick={ () => {
+										if ( RATE_LIMIT_PRESETS[ card.value ] ) {
+											setCustomOverride( false );
+											onChange( {
+												rate_limit_rpm:
+													RATE_LIMIT_PRESETS[
+														card.value
+													].rpm,
+											} );
+										} else {
+											setCustomOverride( true );
+										}
+									} }
+									style={ {
+										textAlign: 'left',
+										cursor: 'pointer',
+										border: `1px solid ${ isSelected ? colors.accent : colors.borderSubtle }`,
+										borderRadius: radii.sm,
+										background: isSelected
+											? colors.infoBg
+											: colors.surface,
+										padding: '16px',
+									} }
+								>
+									<div
+										style={ {
+											fontSize: '13px',
+											fontWeight: '600',
+											color: colors.textPrimary,
+											marginBottom: '4px',
+										} }
+									>
+										{ card.label }
+									</div>
+									<div
+										style={ {
+											...typography.statValue,
+											color: colors.textPrimary,
+											marginBottom: '6px',
+										} }
+									>
+										{ card.rpm }
+									</div>
+									<p
+										style={ {
+											margin: 0,
+											fontSize: '13px',
+											color: colors.textMuted,
+										} }
+									>
+										{ card.desc }
+									</p>
+								</button>
+							);
+						} ) }
+						{ /* Spacer occupies col 1; input anchors to col 2 —
+						     directly below the Custom card. */ }
+						{ activePreset === 'custom' && (
+							<div aria-hidden="true" />
+						) }
+						{ activePreset === 'custom' && (
+							<div
+								style={ {
+									paddingTop: spacing.s3,
+									borderTop: `1px solid ${ colors.borderSubtle }`,
+									display: 'flex',
+									alignItems: 'center',
+									gap: spacing.s2,
+								} }
+							>
+								<TextControl
+									__nextHasNoMarginBottom
+									id="wc-ai-storefront-rpm"
+									hideLabelFromVision
+									label={ __(
+										'Requests per minute',
+										'woocommerce-ai-storefront'
+									) }
+									type="number"
+									value={ rpm }
+									onChange={ ( value ) =>
+										onChange( {
+											rate_limit_rpm:
+												parseInt( value ) || 60,
+										} )
+									}
+									min={ 1 }
+									max={ 1000 }
+									style={ { width: '120px' } }
+								/>
+								<span
+									style={ {
+										fontSize: '13px',
+										color: colors.textMuted,
+										whiteSpace: 'nowrap',
+									} }
+									aria-hidden="true"
+								>
+									{ __(
+										'requests / min',
+										'woocommerce-ai-storefront'
+									) }
+								</span>
+							</div>
+						) }
+					</div>
 
 					{ /*
 					   Pre-emptive footer "Limits are applied per AI

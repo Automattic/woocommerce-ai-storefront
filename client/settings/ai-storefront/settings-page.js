@@ -1,16 +1,33 @@
 import { useEffect, useState } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
 import {
-	Card,
-	CardBody,
 	Button,
-	SelectControl,
 	TabPanel,
 	Spinner,
-	Flex,
-	FlexItem,
 } from '@wordpress/components';
-import { Icon, globe, shield, chartBar } from '@wordpress/icons';
+// Inline SVGs for the pre-enable value cards. Using stroke-based icons
+// from the design spec instead of @wordpress/icons — WP admin CSS can
+// force SVG fill to inherit from dark text, fighting the purple intent.
+const IconGlobe = () => (
+	<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+		<circle cx="12" cy="12" r="9"/>
+		<path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+	</svg>
+);
+const IconShield = () => (
+	<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+		<path d="M12 3l8 3v6c0 4.5-3.4 8.4-8 9-4.6-.6-8-4.5-8-9V6l8-3z"/>
+		<path d="M9 12l2 2 4-4"/>
+	</svg>
+);
+const IconChartBar = () => (
+	<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+		<path d="M3 21h18"/>
+		<rect x="5" y="13" width="3" height="6"/>
+		<rect x="10.5" y="9" width="3" height="10"/>
+		<rect x="16" y="5" width="3" height="14"/>
+	</svg>
+);
 import { __, _n, sprintf } from '@wordpress/i18n';
 import apiFetch from '@wordpress/api-fetch';
 import { STORE_NAME } from '../../data/ai-storefront/constants';
@@ -18,7 +35,7 @@ import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
 import AIOrdersTable from './ai-orders-table';
 import PoliciesTab from './policies-tab';
-import { colors, typography, spacing } from './tokens';
+import { colors, typography, spacing, radii } from './tokens';
 
 // Rate-limit UI (card + presets + RPM state) lives in the Discovery
 // tab now — see `endpoint-info.js`. Rationale: rate limiting is a
@@ -104,9 +121,19 @@ const AISyndicationSettings = () => {
 		},
 	];
 
+	const tabNames = tabs.map( ( t ) => t.name );
+	const hashTab = window.location.hash.replace( '#', '' );
+	const initialTab = tabNames.includes( hashTab ) ? hashTab : tabs[ 0 ].name;
+
 	return (
 		<div className="wc-ai-storefront-settings">
-			<TabPanel tabs={ tabs }>
+			<TabPanel
+				tabs={ tabs }
+				initialTabName={ initialTab }
+				onSelect={ ( tabName ) => {
+					window.location.hash = tabName;
+				} }
+			>
 				{ ( tab ) => (
 					<div style={ { marginTop: '16px' } }>
 						{ tab.name === 'overview' && (
@@ -162,31 +189,24 @@ const AISyndicationSettings = () => {
 // recommendation documented in the PR that introduced this rewrite),
 // titles are benefit-first and bodies are capped at ~22 words.
 //
-// The Icon component comes from @wordpress/icons which is in the WP
-// extractor's BUNDLED_PACKAGES list, so it ships inside our build
-// just like @wordpress/dataviews — no runtime dep on wc-admin.
-const ValueCard = ( { icon, title, children } ) => (
+const ValueCard = ( { Icon: IconComponent, title, children } ) => (
 	<div
 		style={ {
 			height: '100%',
 			padding: '20px',
-			background: colors.surface,
+			background: colors.surfaceSubtle,
 			border: `1px solid ${ colors.borderSubtle }`,
-			borderRadius: '4px',
+			borderRadius: radii.sm,
 		} }
 	>
 		<div
 			style={ {
-				color: colors.success,
+				color: colors.wooPurple50,
 				marginBottom: '12px',
-				// Inline-block so the icon doesn't stretch to the full
-				// width of its flex parent in cards where the text is
-				// shorter than the icon's computed width.
 				display: 'inline-block',
 			} }
-			aria-hidden="true"
 		>
-			<Icon icon={ icon } size={ 32 } />
+			<IconComponent />
 		</div>
 		<h3
 			style={ {
@@ -214,18 +234,22 @@ const ValueCard = ( { icon, title, children } ) => (
 // AssistantChip renders one of the five AI-assistant name chips in the
 // hero block's right-hand column. Text-only (no logos) to avoid
 // trademark entanglement and keep the dep graph clean — the name
-// IS the visual signal.
-const AssistantChip = ( { children } ) => (
+// IS the visual signal. Purple tint bg + dark purple text matches
+// the `.assistant-badge` spec in the design file.
+const AssistantChip = ( { children, style } ) => (
 	<span
 		style={ {
 			display: 'inline-flex',
 			alignItems: 'center',
-			padding: '8px 12px',
-			background: colors.surfaceSubtle,
-			borderRadius: '6px',
-			fontSize: '13px',
-			fontWeight: '500',
-			color: colors.textPrimary,
+			justifyContent: 'center',
+			padding: '4px 12px',
+			background: colors.wooPurple10,
+			borderRadius: radii.pill,
+			fontSize: '12px',
+			fontWeight: '600',
+			lineHeight: 1.4,
+			color: colors.wooPurple90,
+			...style,
 		} }
 	>
 		{ children }
@@ -274,13 +298,13 @@ const StatCard = ( { label, value, reference, href } ) => {
 		// `grid-template-columns: repeat(auto-fit, minmax(...))`.
 		// See OverviewTab's stat-card grid for the formula and the
 		// 4-column-cap rationale.
-		padding: '16px',
-		background: colors.surfaceSubtle,
-		border: 'none',
-		borderRadius: '4px',
-		textAlign: 'center',
+		padding: '14px 16px',
+		background: colors.surface,
+		border: `1px solid ${ colors.borderSubtle }`,
+		borderRadius: radii.sm,
 		textDecoration: 'none',
 		display: 'block',
+		color: 'inherit',
 	};
 
 	// Value above label, two rows. Cards previously supported an
@@ -304,13 +328,17 @@ const StatCard = ( { label, value, reference, href } ) => {
 		<>
 			<div
 				style={ {
+					...typography.eyebrowLabel,
+					color: colors.textMuted,
+					marginBottom: '6px',
+				} }
+			>
+				{ label }
+			</div>
+			<div
+				style={ {
 					...typography.statValue,
 					color: colors.textPrimary,
-					// Defense against ultra-long agent brand names
-					// (e.g. "PerplexityShopping") overflowing the
-					// card's grid track. Without this, a 20-char
-					// value pushes the card wider than its track and
-					// breaks the row layout for adjacent cards.
 					overflowWrap: 'anywhere',
 				} }
 			>
@@ -318,7 +346,7 @@ const StatCard = ( { label, value, reference, href } ) => {
 				{ reference !== null && reference !== undefined && (
 					<span
 						style={ {
-							marginLeft: spacing.s2,
+							marginLeft: '6px',
 							fontSize: '14px',
 							fontWeight: 400,
 							color: colors.textMuted,
@@ -328,15 +356,6 @@ const StatCard = ( { label, value, reference, href } ) => {
 						/ { reference }
 					</span>
 				) }
-			</div>
-			<div
-				style={ {
-					color: colors.textMuted,
-					marginTop: spacing.s1,
-					...typography.eyebrowLabel,
-				} }
-			>
-				{ label }
 			</div>
 		</>
 	);
@@ -356,179 +375,173 @@ const StatCard = ( { label, value, reference, href } ) => {
 // Pre-enable view (value pitch)
 // ---------------------------------------------------------------------------
 
-const PreEnableView = ( { onChange, onSave, isSaving } ) => (
+const PreEnableView = ( { onChange, onSave, isSaving } ) => {
+	const [ ctaHovered, setCtaHovered ] = useState( false );
+	return (
 	<div>
-		{ /* --------------------------------------------------------- */ }
-		{ /* --------------------------------------------------------- */ }
-		{ /* Block 1: Hero — benefit-led headline + single primary CTA */ }
-		{ /* + assistant-name chips carrying the visual weight on the */ }
-		{ /* right. Replaces the prior "status banner" + redundant     */ }
-		{ /* bottom card. Single source of conversion intent; the user */ }
-		{ /* shouldn't have to scroll to find "what does this do and   */ }
-		{ /* how do I turn it on."                                     */ }
-		{ /*                                                           */ }
-		{ /* NO green accent here — per design-system convention, green  */ }
-		{ /* is reserved for `.stat-delta` rows showing positive trend  */ }
-		{ /* changes. Using it for category signals (pre-enable vs      */ }
-		{ /* enabled) would conflict once delta rows are added later.   */ }
-		{ /* --------------------------------------------------------- */ }
-		<Card>
-			<CardBody>
-				<Flex align="center" gap={ 4 } wrap>
-					<FlexItem isBlock>
-						{ /* "Status: Not enabled" eyebrow removed: the
-						   Enable verb on the CTA below already signals
-						   state, and the eyebrow read as scaffolding
-						   once the hero headline absorbed the visual
-						   weight (28px / 700 / -0.02em). */ }
-						<h2
-							style={ {
-								margin: '0 0 8px',
-								...typography.heroHeadline,
-								color: colors.textPrimary,
-							} }
-						>
-							{ __(
-								'Make your store ready for AI shopping assistants',
+		{ /* Hero block: purple-tinted gradient bg, 1.4fr / 1fr grid.
+		   The gradient signals "brand moment" and disappears once
+		   the merchant enables — the post-enable dashboard is
+		   neutral. WP `<Card>/<Flex>` removed because their blue-
+		   accent base styles fight the purple intent at every node. */ }
+		<div
+			style={ {
+				background: 'linear-gradient(135deg, #faf6ff, #fff 60%)',
+				border: `1px solid ${ colors.borderSubtle }`,
+				borderRadius: radii.sm,
+				padding: `${ spacing.s7 } ${ spacing.s6 }`,
+				display: 'grid',
+				gridTemplateColumns: '1.4fr 1fr',
+				gap: spacing.s5,
+				alignItems: 'center',
+			} }
+		>
+			{ /* Left column: headline + CTA + reassurance */ }
+			<div>
+				<h2
+					style={ {
+						margin: `0 0 ${ spacing.s2 }`,
+						...typography.heroHeadline,
+						color: colors.textPrimary,
+					} }
+				>
+					{ __(
+						'Make your store ready for AI shopping assistants',
+						'woocommerce-ai-storefront'
+					) }
+				</h2>
+				<p
+					style={ {
+						margin: `0 0 ${ spacing.s5 }`,
+						fontSize: '15px',
+						lineHeight: '1.5',
+						color: colors.textSecondary,
+					} }
+				>
+					{ __(
+						'Go live in one click. Checkout stays on your store.',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+				{ /* btn-brand: Woo purple. Not using WP `<Button variant="primary">` —
+				     WP's primary button is wp-admin-blue and there's no variant for
+				     purple. Hover darkens to wooPurple70 per `.btn-brand:hover`
+				     in the design spec. */ }
+				<button
+					type="button"
+					disabled={ isSaving }
+					onMouseEnter={ () => setCtaHovered( true ) }
+					onMouseLeave={ () => setCtaHovered( false ) }
+					onClick={ () => {
+						onChange( { enabled: 'yes' } );
+						onSave();
+					} }
+					style={ {
+						background: isSaving || ctaHovered ? colors.wooPurple70 : colors.wooPurple50,
+						border: `1px solid ${ isSaving || ctaHovered ? colors.wooPurple70 : colors.wooPurple50 }`,
+						color: '#fff',
+						padding: '8px 16px',
+						borderRadius: radii.sm,
+						font: `600 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`,
+						cursor: isSaving ? 'not-allowed' : 'pointer',
+						display: 'inline-flex',
+						alignItems: 'center',
+						opacity: isSaving ? 0.8 : 1,
+					} }
+				>
+					{ isSaving
+						? __( 'Enabling…', 'woocommerce-ai-storefront' )
+						: __(
+								'Enable AI Storefront',
 								'woocommerce-ai-storefront'
-							) }
-						</h2>
-						<p
-							style={ {
-								margin: '0 0 20px',
-								fontSize: '14px',
-								lineHeight: '1.5',
-								color: colors.textSecondary,
-							} }
-						>
-							{ __(
-								'Go live in one click. Checkout stays on your store.',
-								'woocommerce-ai-storefront'
-							) }
-						</p>
-						<Button
-							variant="primary"
-							isBusy={ isSaving }
-							disabled={ isSaving }
-							onClick={ () => {
-								onChange( { enabled: 'yes' } );
-								onSave();
-							} }
-						>
-							{ isSaving
-								? __( 'Enabling…', 'woocommerce-ai-storefront' )
-								: __(
-										'Enable AI Storefront',
-										'woocommerce-ai-storefront'
-								  ) }
-						</Button>
-						{ /* Inline reassurance — the de-risking text
-						    belongs next to the CTA that carries the
-						    risk, not in a separate strip elsewhere
-						    on the page. Three concise points,
-						    dot-separated, gray body weight.
-						    Merchants glance at it for a second and
-						    either click through or keep reading the
-						    value cards below. */ }
-						<p
-							style={ {
-								margin: '10px 0 0',
-								fontSize: '12px',
-								color: colors.textMuted,
-								lineHeight: '1.5',
-							} }
-						>
-							{ __(
-								'Read-only · Reversible anytime · No frontend changes',
-								'woocommerce-ai-storefront'
-							) }
-						</p>
-					</FlexItem>
-					<FlexItem isBlock>
-						{ /* Right column: assistant-name chips in a
-						    2-column grid. Concrete names (not an
-						    abstract "all AI agents") convert better
-						    per the marketing review. Text-only chips
-						    sidestep trademark / logo licensing and
-						    stay design-system-native. */ }
-						<div
-							style={ {
-								display: 'grid',
-								gridTemplateColumns: 'repeat(2, 1fr)',
-								gap: '8px',
-							} }
-						>
-							<AssistantChip>ChatGPT</AssistantChip>
-							<AssistantChip>Gemini</AssistantChip>
-							<AssistantChip>Claude</AssistantChip>
-							<AssistantChip>Perplexity</AssistantChip>
-							<AssistantChip>Copilot</AssistantChip>
-						</div>
-					</FlexItem>
-				</Flex>
-			</CardBody>
-		</Card>
+						  ) }
+				</button>
+				{ /* Reassurance line sits directly under the CTA — de-risking
+				    text belongs next to the action that carries the risk. */ }
+				<p
+					style={ {
+						margin: '12px 0 0',
+						fontSize: '12px',
+						color: colors.textMuted,
+						lineHeight: '1.5',
+					} }
+				>
+					{ __(
+						'Read-only · Reversible anytime · No frontend changes',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+			</div>
 
-		{ /* --------------------------------------------------------- */ }
-		{ /* Block 2: Three icon-led value-prop cards. Per design      */ }
-		{ /* review: icons replace the prior gray top-border accent —  */ }
-		{ /* the icon IS the accent. Titles are benefit-first and      */ }
-		{ /* bodies capped near 22 words each.                          */ }
-		{ /* --------------------------------------------------------- */ }
-		<Flex gap={ 4 } wrap align="stretch" style={ { marginTop: '32px' } }>
-			<FlexItem isBlock>
-				<ValueCard
-					icon={ globe }
-					title={ __(
-						'One setup, every AI assistant',
-						'woocommerce-ai-storefront'
-					) }
-				>
-					{ __(
-						'Your catalog becomes visible to ChatGPT, Gemini, Claude, Perplexity, and Copilot, with no per-platform work when new agents launch.',
-						'woocommerce-ai-storefront'
-					) }
-				</ValueCard>
-			</FlexItem>
-			<FlexItem isBlock>
-				<ValueCard
-					icon={ shield }
-					title={ __(
-						'Checkout stays on your store',
-						'woocommerce-ai-storefront'
-					) }
-				>
-					{ __(
-						'No AI-platform checkout fees. No delegated payments. You keep the customer, the checkout, and the data.',
-						'woocommerce-ai-storefront'
-					) }
-				</ValueCard>
-			</FlexItem>
-			<FlexItem isBlock>
-				<ValueCard
-					icon={ chartBar }
-					title={ __(
-						'See which AI drove each sale',
-						'woocommerce-ai-storefront'
-					) }
-				>
-					{ __(
-						'Every AI-referred order is tagged with its source agent and revenue, using standard WooCommerce Order Attribution.',
-						'woocommerce-ai-storefront'
-					) }
-				</ValueCard>
-			</FlexItem>
-		</Flex>
+			{ /* Right column: assistant-name chips, 2-column grid.
+			    Purple tint bg + dark purple text = Woo brand chips.
+			    Concrete names convert better than "all AI agents". */ }
+			<div
+				style={ {
+					display: 'grid',
+					gridTemplateColumns: 'repeat(2, 1fr)',
+					gap: spacing.s2,
+				} }
+			>
+				<AssistantChip>ChatGPT</AssistantChip>
+				<AssistantChip>Gemini</AssistantChip>
+				<AssistantChip>Claude</AssistantChip>
+				<AssistantChip>Perplexity</AssistantChip>
+				<AssistantChip>Copilot</AssistantChip>
+			</div>
+		</div>
 
-		{ /*
-		    The compact trust strip that sat here in the first-pass
-		    redesign was removed — the check-list items read as
-		    out-of-place when divorced from the CTA they de-risk.
-		    The concise three-point reassurance line under the hero's
-		    Enable button does that job where it's actionable.
-		*/ }
+		{ /* Value-prop grid: 3-column CSS grid matching `.value-grid`
+		    in the design spec. Icon color is Woo purple to match the
+		    hero above (both disappear on enable). */ }
+		<div
+			style={ {
+				display: 'grid',
+				gridTemplateColumns: 'repeat(3, 1fr)',
+				gap: spacing.s4,
+				marginTop: spacing.s7,
+			} }
+		>
+			<ValueCard
+				Icon={ IconGlobe }
+				title={ __(
+					'One setup, every AI assistant',
+					'woocommerce-ai-storefront'
+				) }
+			>
+				{ __(
+					'Your catalog becomes visible to ChatGPT, Gemini, Claude, Perplexity, and Copilot, with no per-platform work when new agents launch.',
+					'woocommerce-ai-storefront'
+				) }
+			</ValueCard>
+			<ValueCard
+				Icon={ IconShield }
+				title={ __(
+					'Checkout stays on your store',
+					'woocommerce-ai-storefront'
+				) }
+			>
+				{ __(
+					'No AI-platform checkout fees. No delegated payments. You keep the customer, the checkout, and the data.',
+					'woocommerce-ai-storefront'
+				) }
+			</ValueCard>
+			<ValueCard
+				Icon={ IconChartBar }
+				title={ __(
+					'See which AI drove each sale',
+					'woocommerce-ai-storefront'
+				) }
+			>
+				{ __(
+					'Every AI-referred order is tagged with its source agent and revenue, using standard WooCommerce Order Attribution.',
+					'woocommerce-ai-storefront'
+				) }
+			</ValueCard>
+		</div>
 	</div>
-);
+	);
+};
 
 // ---------------------------------------------------------------------------
 // Post-enable view (dashboard)
@@ -650,48 +663,100 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 			   removed from this view.
 			*/ }
 
-			{ /* Period selector + stat cards */ }
-			<Flex justify="flex-end">
-				{ /* Top-of-tab spacing is handled by the page-level
-				    rhythm; no marginTop here so the period chip-row
-				    sits flush with the section-head sentence. */ }
-				<SelectControl
-					__next40pxDefaultSize
-					value={ period }
-					options={ [
-						{
-							label: __(
-								'Last 24 hours',
-								'woocommerce-ai-storefront'
-							),
-							value: 'day',
-						},
-						{
-							label: __(
-								'Last 7 days',
-								'woocommerce-ai-storefront'
-							),
-							value: 'week',
-						},
-						{
-							label: __(
-								'Last 30 days',
-								'woocommerce-ai-storefront'
-							),
-							value: 'month',
-						},
-						{
-							label: __(
-								'Last year',
-								'woocommerce-ai-storefront'
-							),
-							value: 'year',
-						},
-					] }
-					onChange={ setPeriod }
-					__nextHasNoMarginBottom
-				/>
-			</Flex>
+			{ /* Section-head block: mirrors the pattern used on the other
+			    three tabs (Catalog access, Store policies, AI agent
+			    access). The h2 names the merchant's job on this tab;
+			    the italic description gives one-line context. */ }
+			<header style={ { marginBottom: spacing.s5 } }>
+				<h2
+					style={ {
+						margin: `0 0 ${ spacing.s1 }`,
+						...typography.sectionHeading,
+						color: colors.textPrimary,
+					} }
+				>
+					{ __( 'AI traffic and orders', 'woocommerce-ai-storefront' ) }
+				</h2>
+				<p
+					style={ {
+						margin: 0,
+						color: colors.textSecondary,
+						fontSize: '13px',
+						fontStyle: 'italic',
+					} }
+				>
+					{ __(
+						'Live dashboard of your AI-attributed traffic and orders.',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+			</header>
+
+			{ /* Period chip-row — filter pattern (browse without committing),
+			    distinct from the .seg-control configuration pattern used
+			    on Policies + Product Visibility. Active chip: blue tint
+			    bg + blue border + blue 600-weight text. Inactive chip:
+			    white bg + subtle border + neutral text. Matches the
+			    `.chip` / `.chip.active` spec in the design file.
+			    Labels match the design spec exactly. */ }
+			<div
+				style={ { display: 'flex', justifyContent: 'flex-end', marginBottom: spacing.s3 } }
+			>
+			<div
+				role="tablist"
+				aria-label={ __( 'Date range', 'woocommerce-ai-storefront' ) }
+				style={ { display: 'flex', flexWrap: 'wrap', gap: spacing.s1 } }
+			>
+				{ [
+					{
+						label: __( 'Today', 'woocommerce-ai-storefront' ),
+						value: 'day',
+					},
+					{
+						label: __( 'Last 7 days', 'woocommerce-ai-storefront' ),
+						value: 'week',
+					},
+					{
+						label: __( 'Month to date', 'woocommerce-ai-storefront' ),
+						value: 'month',
+					},
+					{
+						label: __( 'Last 30 days', 'woocommerce-ai-storefront' ),
+						value: 'month30',
+					},
+					{
+						label: __( 'Last year', 'woocommerce-ai-storefront' ),
+						value: 'year',
+					},
+				].map( ( option ) => {
+					const isActive = period === option.value;
+					return (
+						<button
+							key={ option.value }
+							role="tab"
+							aria-selected={ isActive }
+							type="button"
+							onClick={ () => setPeriod( option.value ) }
+							style={ {
+								display: 'inline-flex',
+								alignItems: 'center',
+								border: `1px solid ${ isActive ? colors.accent : colors.borderSubtle }`,
+								borderRadius: radii.sm,
+								background: isActive ? colors.infoBg : colors.surface,
+								color: isActive ? colors.accent : colors.textPrimary,
+								padding: '4px 12px',
+								fontSize: '13px',
+								fontWeight: isActive ? '600' : '400',
+								lineHeight: '1.3',
+								cursor: 'pointer',
+							} }
+						>
+							{ option.label }
+						</button>
+					);
+				} ) }
+			</div>
+			</div>
 			{ /*
 				Stat-card grid: max 4 cards per row, with cards
 				expanding to fill horizontal space until they hit
@@ -701,20 +766,14 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				  left-aligned, columns 3-4 of row 2 stay empty)
 				- 8 cards (RSM goal): 4 + 4 (clean 4×2 grid)
 
-				The `max(240px, calc((100% - 48px) / 4))` formula:
-				- `(100% - 48px) / 4` = card width if 4 columns fit
-				  (48px = 3 gaps × 16px gap)
-				- `max(240px, ...)` = each card is at least 240px
-				- On wide containers (≥1008px), the calc value wins
-				  and caps column count at 4 (because 4 cards at the
-				  240px floor + 3 gaps = 1008px exactly)
-				- On narrow containers (<1008px), the 240px floor
-				  wins and `auto-fit` packs as many ≥240px columns
-				  as fit. Breakpoints, derived from
-				  `N * 240 + (N-1) * 16`:
-				    - 3 columns at 752–1007px
-				    - 2 columns at 496–751px
-				    - 1 column   at 240–495px
+				The `max(180px, calc((100% - 36px) / 4))` formula:
+				- `(100% - 36px) / 4` = card width if 4 columns fit
+				  (36px = 3 gaps × 12px gap)
+				- `max(180px, ...)` = each card is at least 180px
+				- On wide containers (≥756px), the calc value wins
+				  and caps column count at 4
+				- On narrow containers, the 180px floor wins and
+				  `auto-fit` packs as many ≥180px columns as fit
 				- `auto-fit` collapses empty trailing slots so the
 				  4+2 case left-aligns the partial row.
 
@@ -729,9 +788,8 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				style={ {
 					display: 'grid',
 					gridTemplateColumns:
-						'repeat(auto-fit, minmax(max(240px, calc((100% - 48px) / 4)), 1fr))',
-					gap: '16px',
-					marginTop: '12px',
+						'repeat(auto-fit, minmax(max(180px, calc((100% - 36px) / 4)), 1fr))',
+					gap: spacing.s3,
 					minWidth: 0,
 				} }
 			>
@@ -868,7 +926,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					borderTop: `1px solid ${ colors.borderSubtle }`,
 					display: 'flex',
 					justifyContent: 'space-between',
-					alignItems: 'flex-start',
+					alignItems: 'center',
 					gap: spacing.s4,
 					flexWrap: 'wrap',
 				} }
@@ -894,20 +952,34 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						) }
 					</p>
 				</div>
-				<Button
-					variant="secondary"
-					isDestructive
-					isBusy={ isSaving }
+				{ /* btn-danger-outline: white bg + red border + red text.
+				     NOT using WP `<Button isDestructive>` — WP's base
+				     button styles override the red intent on secondary
+				     variant. Inline styles win reliably here. */ }
+				<button
+					type="button"
 					disabled={ isSaving }
 					onClick={ () => {
 						onChange( { enabled: 'no' } );
 						onSave();
 					} }
+					style={ {
+						background: colors.surface,
+						border: `1px solid ${ colors.error }`,
+						color: colors.error,
+						padding: '4px 12px',
+						borderRadius: radii.sm,
+						font: `400 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`,
+						cursor: isSaving ? 'not-allowed' : 'pointer',
+						flexShrink: 0,
+						minHeight: '30px',
+						opacity: isSaving ? 0.6 : 1,
+					} }
 				>
 					{ isSaving
 						? __( 'Disabling…', 'woocommerce-ai-storefront' )
 						: __( 'Disable', 'woocommerce-ai-storefront' ) }
-				</Button>
+				</button>
 			</div>
 		</div>
 	);

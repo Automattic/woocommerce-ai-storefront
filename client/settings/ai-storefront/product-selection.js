@@ -2,39 +2,37 @@ import {
 	useState,
 	useEffect,
 	useMemo,
-	createInterpolateElement,
+	useRef,
 } from '@wordpress/element';
 import {
 	Card,
 	CardBody,
-	CardFooter,
 	Button,
 	SearchControl,
 	CheckboxControl,
 	Spinner,
 	Notice,
-	// ToggleGroupControl and its Option are still exported under the
-	// `__experimental` prefix as of @wordpress/components 28.x, but
-	// they've been stable in practice for multiple years and are
-	// used widely across Gutenberg + wc-admin. Keep the aliased
-	// import so a future graduation to stable surface is a one-line
-	// rename here. Suppressing `no-unsafe-wp-apis` at the specific
-	// lines rather than file-wide so any OTHER experimental usage
-	// added later still gets flagged.
-	// eslint-disable-next-line @wordpress/no-unsafe-wp-apis
-	__experimentalToggleGroupControl as ToggleGroupControl,
-	// eslint-disable-next-line @wordpress/no-unsafe-wp-apis
-	__experimentalToggleGroupControlOption as ToggleGroupControlOption,
 } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 import { addQueryArgs } from '@wordpress/url';
-import { colors, typography } from './tokens';
-import {
-	ToggleGroupStyles,
-	TOGGLE_GROUP_CLASSNAME,
-} from './toggle-group-styles';
+import { colors, spacing, radii, typography } from './tokens';
+
+const PRODUCT_TAB_CLASS = 'ai-storefront-product-tab';
+
+function ProductTabStyles() {
+	return (
+		<style>{ `
+			.${ PRODUCT_TAB_CLASS } .components-search-control .components-input-control__input,
+			.${ PRODUCT_TAB_CLASS } .components-text-control__input,
+			.${ PRODUCT_TAB_CLASS } .components-select-control__input {
+				height: 32px;
+				min-height: 32px;
+			}
+		` }</style>
+	);
+}
 
 // Server-side enum for `product_selection_mode` (0.1.5+):
 //
@@ -125,35 +123,6 @@ const MODE_DESCRIPTIONS = {
 	),
 };
 
-// Spec-aligned list of fields our endpoints serialize per product.
-// Surfaced in the shared footer as "Included fields" chips so merchants
-// see at a glance what each AI agent receives. Keep this list aligned
-// with the UCP core product/variant payload definition and the PHP
-// product + variant translators that emit those on-the-wire fields
-// (class-wc-ai-storefront-ucp-product-translator.php and
-// class-wc-ai-storefront-ucp-variant-translator.php).
-// `handle_extension_schema()` documents the merchant extension contract
-// (config + accepted_request_inputs) — NOT the core serialized product
-// fields, so it's not the source of truth for this list.
-// `key` is a stable React-key identifier; `label` is the translated
-// user-visible string. Built inside the component rather than at
-// module scope so `__()` picks up runtime locale changes.
-const getIncludedFields = () => [
-	{ key: 'name', label: __( 'name', 'woocommerce-ai-storefront' ) },
-	{
-		key: 'description',
-		label: __( 'description', 'woocommerce-ai-storefront' ),
-	},
-	{ key: 'price', label: __( 'price', 'woocommerce-ai-storefront' ) },
-	{ key: 'stock', label: __( 'stock', 'woocommerce-ai-storefront' ) },
-	{ key: 'images', label: __( 'images', 'woocommerce-ai-storefront' ) },
-	{
-		key: 'categories',
-		label: __( 'categories', 'woocommerce-ai-storefront' ),
-	},
-	{ key: 'sku', label: __( 'SKU', 'woocommerce-ai-storefront' ) },
-];
-
 /**
  * Count pill used next to radio-row labels.
  *
@@ -173,19 +142,16 @@ const getIncludedFields = () => [
  * @param {string}  root0.label    Text content (pre-formatted).
  * @param {boolean} root0.selected Whether the parent row is selected.
  */
-const ModeBadge = ( { label, selected } ) => {
+const ModeBadge = ( { label } ) => {
 	if ( ! label ) {
 		return null;
 	}
 	return (
 		<span
 			style={ {
-				background: selected ? colors.link : colors.surfaceMuted,
-				color: selected ? '#fff' : colors.textSecondary,
-				padding: '2px 10px',
-				borderRadius: '10px',
 				fontSize: '12px',
-				fontWeight: '600',
+				fontWeight: '400',
+				color: colors.textMuted,
 				flexShrink: 0,
 				whiteSpace: 'nowrap',
 			} }
@@ -222,11 +188,9 @@ const ModeBadge = ( { label, selected } ) => {
  * @param {boolean}                                    root0.selected Whether the parent row is
  *                                                                    selected (controls pill color).
  */
-const ModeBadgeGroup = ( { labels, selected } ) => {
+const ModeBadgeGroup = ( { labels } ) => {
 	if ( typeof labels === 'string' ) {
-		return labels ? (
-			<ModeBadge label={ labels } selected={ selected } />
-		) : null;
+		return labels ? <ModeBadge label={ labels } /> : null;
 	}
 	if ( ! Array.isArray( labels ) ) {
 		return null;
@@ -235,13 +199,6 @@ const ModeBadgeGroup = ( { labels, selected } ) => {
 	if ( list.length === 0 ) {
 		return null;
 	}
-	// Always render the wrapper + map() form, even for a single-entry
-	// array, so the stable {key, label} contract holds across length
-	// transitions. A length-1 fast path that returned a bare <ModeBadge>
-	// would change the parent element type when an array transitions
-	// [a, b] → [a] (one entry filtered), forcing React to remount the
-	// surviving pill — exactly the flash the explicit-key contract is
-	// designed to prevent.
 	return (
 		<span
 			style={ {
@@ -252,7 +209,7 @@ const ModeBadgeGroup = ( { labels, selected } ) => {
 			} }
 		>
 			{ list.map( ( { key, label } ) => (
-				<ModeBadge key={ key } label={ label } selected={ selected } />
+				<ModeBadge key={ key } label={ label } />
 			) ) }
 		</span>
 	);
@@ -272,12 +229,10 @@ const ModeBadgeGroup = ( { labels, selected } ) => {
  * @param {Function} root0.onRemove  Callback when an item is removed.
  * @param {string}   [root0.variant] 'tag' renders pill + `#` prefix.
  */
-const SelectedTokens = ( { items, onRemove, variant } ) => {
+const SelectedTokens = ( { items, onRemove } ) => {
 	if ( items.length === 0 ) {
 		return null;
 	}
-
-	const isTag = variant === 'tag';
 
 	return (
 		<div
@@ -285,11 +240,7 @@ const SelectedTokens = ( { items, onRemove, variant } ) => {
 				display: 'flex',
 				flexWrap: 'wrap',
 				gap: '6px',
-				marginBottom: '12px',
-				padding: '10px 12px',
-				background: colors.surface,
-				border: `1px solid ${ colors.borderSubtle }`,
-				borderRadius: '3px',
+				marginBottom: spacing.s3,
 			} }
 		>
 			{ items.map( ( item ) => (
@@ -298,30 +249,15 @@ const SelectedTokens = ( { items, onRemove, variant } ) => {
 					style={ {
 						display: 'inline-flex',
 						alignItems: 'center',
-						gap: '4px',
+						gap: '6px',
 						background: colors.surfaceMuted,
-						// Tags get a fully-rounded pill; categories +
-						// brands keep the existing 3px rectangular
-						// radius so the three taxonomies are visually
-						// distinct in the UI.
-						borderRadius: isTag ? '12px' : '3px',
-						padding: '3px 6px 3px 10px',
+						borderRadius: radii.md,
+						padding: '3px 8px',
 						fontSize: '12px',
 						color: colors.textPrimary,
-						lineHeight: '1.4',
+						lineHeight: '1.3',
 					} }
 				>
-					{ isTag && (
-						<span
-							aria-hidden="true"
-							style={ {
-								color: colors.textMuted,
-								fontWeight: '500',
-							} }
-						>
-							#
-						</span>
-					) }
 					{ decodeEntities( item.name ) }
 					<button
 						type="button"
@@ -365,15 +301,10 @@ const SelectedTokens = ( { items, onRemove, variant } ) => {
  * no external stylesheet in this plugin (all styling is inline
  * style props, which can't hold `:focus-within` pseudo-class rules).
  *
- * Selected state: a 3px solid WP-blue left border runs down the row
- * AND its detail panel, matching the WP-native Notice focus-ring
- * pattern. Tested against a background-tint-only treatment at real
- * admin dimensions; the left border is substantially more scannable
- * for a merchant sweeping three rows to find the selected one.
- *
- * Selected state renders the children (detail panel) below the label
- * row; unselected state hides them entirely (not just visually) so
- * the DOM stays small and assistive tech doesn't read hidden content.
+ * Each row is its own bordered card. Selected: blue-tinted bg +
+ * blue border. Unselected: white bg + subtle border. Cards are
+ * separated by `spacing.s3` margin-top on the container — no
+ * internal dividers that span the full card width.
  *
  * @param {Object}                                             root0             Component props.
  * @param {string}                                             root0.value       This option's value.
@@ -381,19 +312,9 @@ const SelectedTokens = ( { items, onRemove, variant } ) => {
  * @param {string}                                             root0.name        Radio group name.
  * @param {string}                                             root0.label       Option label (bold).
  * @param {string}                                             root0.description Option description (muted).
- * @param {string|Array<{key: string, label: string}>}         root0.badgeLabel
- *                                                                               Right-aligned badge content. Pass a single
- *                                                                               string for one pill, or an array of
- *                                                                               `{key, label}` objects for multiple adjacent
- *                                                                               pills with stable React identity (each entry's
- *                                                                               `key` decouples reconciliation from display
- *                                                                               content — see `ModeBadgeGroup` JSDoc).
- * @param {Function}                                           root0.onSelect
- *                                                                               Called with this option's value.
- * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children
- *                                                                               Detail panel content (rendered when selected).
- * @param {boolean}                                            root0.isLast
- *                                                                               Suppresses the label's bottom border regardless of selection state.
+ * @param {string|Array<{key: string, label: string}>}         root0.badgeLabel  Right-aligned badge content.
+ * @param {Function}                                           root0.onSelect    Called with this option's value.
+ * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children   Detail panel content (rendered when selected).
  */
 const ModeRow = ( {
 	value,
@@ -404,73 +325,58 @@ const ModeRow = ( {
 	badgeLabel,
 	onSelect,
 	children,
-	isLast,
 } ) => {
 	const isSelected = selected === value;
 
-	// Compute three-way bottom border before JSX to avoid nested ternary.
-	let borderBottomValue;
-	if ( isSelected ) {
-		borderBottomValue = `2px solid ${ colors.accent }`;
-	} else if ( isLast ) {
-		borderBottomValue = 'none';
-	} else {
-		borderBottomValue = `1px solid ${ colors.borderSubtle }`;
-	}
-
 	return (
-		// Wrapper div unifies the label row and the detail panel into a
-		// single card unit when selected. Using a wrapper (rather than
-		// stitching border fragments across two sibling elements) lets
-		// one `border` declaration on the outer element produce a
-		// continuous outline that encloses both sections — no padding
-		// tricks to compensate for border-width differences between
-		// selected and unselected states.
-		//
-		// Selected: blue-tinted bg (infoBg) + 2px WP-admin-blue border
-		// on all sides, 3px radius. Unselected: transparent, no border
-		// of its own — the bottom divider comes from borderBottom.
 		<div
 			style={ {
-				background: isSelected ? colors.infoBg : 'transparent',
-				border: isSelected ? `2px solid ${ colors.accent }` : 'none',
-				borderBottom: borderBottomValue,
-				borderRadius: isSelected ? '3px' : 0,
-				// Small gap below a selected card so the next row's
-				// divider doesn't visually merge with the card's bottom
-				// border. Zero on the last row — no row below it.
-				marginBottom: isSelected && ! isLast ? '4px' : 0,
-				overflow: 'hidden',
+				background: isSelected ? colors.infoBg : colors.surface,
+				border: `1px solid ${ isSelected ? colors.accent : colors.borderSubtle }`,
+				borderRadius: radii.md,
 			} }
 		>
-			{ /*
-			   `jsx-a11y/label-has-associated-control` rule is stricter
-			   than the HTML spec — it requires either an explicit
-			   `htmlFor`/`id` pair or declares the association
-			   heuristically. Here the label implicitly associates via
-			   the nested <input type="radio"> child (valid HTML since
-			   HTML4), which AT announces correctly. Explicit
-			   `htmlFor` + nested input is an HTML conformance error
-			   per Copilot's review, so we keep the nesting-only form
-			   and disable the linter for this specific case.
-			*/ }
 			{ /* eslint-disable-next-line jsx-a11y/label-has-associated-control */ }
 			<label
 				style={ {
 					display: 'flex',
 					alignItems: 'center',
-					gap: '12px',
-					padding: '14px 20px',
+					gap: spacing.s3,
+					padding: `${ spacing.s4 }`,
 					cursor: 'pointer',
 				} }
 			>
+				{ /* Visually hidden native radio keeps keyboard/AT semantics */ }
 				<input
 					type="radio"
 					name={ name }
 					value={ value }
 					checked={ isSelected }
 					onChange={ () => onSelect( value ) }
-					style={ { margin: 0, accentColor: colors.link } }
+					style={ {
+						position: 'absolute',
+						opacity: 0,
+						width: 0,
+						height: 0,
+						margin: 0,
+						pointerEvents: 'none',
+					} }
+				/>
+				{ /* Custom radio dot — 16px ring, 5px filled when selected */ }
+				<span
+					aria-hidden="true"
+					style={ {
+						flexShrink: 0,
+						width: '16px',
+						height: '16px',
+						borderRadius: '50%',
+						border: isSelected
+							? `5px solid ${ colors.accent }`
+							: `1.5px solid ${ colors.borderStrong }`,
+						background: colors.surface,
+						boxSizing: 'border-box',
+						marginTop: '2px',
+					} }
 				/>
 				<span style={ { flex: 1, minWidth: 0 } }>
 					<span
@@ -479,6 +385,7 @@ const ModeRow = ( {
 							fontSize: '14px',
 							fontWeight: '600',
 							color: colors.textPrimary,
+							marginBottom: '4px',
 						} }
 					>
 						{ label }
@@ -488,28 +395,23 @@ const ModeRow = ( {
 							display: 'block',
 							fontSize: '13px',
 							color: colors.textSecondary,
-							marginTop: '2px',
 						} }
 					>
 						{ description }
 					</span>
 				</span>
-				<ModeBadgeGroup labels={ badgeLabel } selected={ isSelected } />
+				<ModeBadgeGroup labels={ badgeLabel } />
 			</label>
-			{ /*
-			   Detail panel only renders when the row is selected AND
-			   has content to show. A selected row with no children
-			   (e.g. the "All published products" row — nothing to
-			   configure) collapses cleanly with no empty blue strip.
-			*/ }
 			{ isSelected && children && (
-				<div
-					style={ {
-						padding: '0 20px 18px',
-						borderTop: `1px solid ${ colors.accent }33`,
-					} }
-				>
-					{ children }
+				<div style={ { padding: `0 ${ spacing.s4 } 18px` } }>
+					<div
+						style={ {
+							borderTop: `1px solid ${ colors.borderSubtle }`,
+							paddingTop: spacing.s4,
+						} }
+					>
+						{ children }
+					</div>
 				</div>
 			) }
 		</div>
@@ -539,6 +441,8 @@ const ProductSelection = ( {
 	const [ brands, setBrands ] = useState( [] );
 	const [ products, setProducts ] = useState( [] );
 	const [ productSearch, setProductSearch ] = useState( '' );
+	const [ dropdownFlipped, setDropdownFlipped ] = useState( false );
+	const searchWrapperRef = useRef( null );
 	const [ categorySearch, setCategorySearch ] = useState( '' );
 	const [ tagSearch, setTagSearch ] = useState( '' );
 	const [ brandSearch, setBrandSearch ] = useState( '' );
@@ -707,6 +611,15 @@ const ProductSelection = ( {
 			.finally( () => setIsLoadingProducts( false ) );
 	}, [ productSearch, serverMode ] );
 
+	useEffect( () => {
+		if ( ! productSearch.trim() || ! searchWrapperRef.current ) {
+			return;
+		}
+		const rect = searchWrapperRef.current.getBoundingClientRect();
+		const spaceBelow = window.innerHeight - rect.bottom;
+		setDropdownFlipped( spaceBelow < 220 );
+	}, [ productSearch ] );
+
 	const selectedCategories = useMemo(
 		() => settings.selected_categories || [],
 		[ settings.selected_categories ]
@@ -784,7 +697,11 @@ const ProductSelection = ( {
 		const updated = selectedProducts.includes( productId )
 			? selectedProducts.filter( ( id ) => id !== productId )
 			: [ ...selectedProducts, productId ];
-		onChange( { selected_products: updated } );
+		const changes = { selected_products: updated };
+		if ( updated.length > 0 ) {
+			changes.product_selection_mode = MODES.SELECTED;
+		}
+		onChange( changes );
 	};
 
 	const filteredCategories = useMemo( () => {
@@ -823,6 +740,32 @@ const ProductSelection = ( {
 	// search that doesn't match the selection. Cache product objects
 	// as we see them so tokens survive searches.
 	const [ selectedProductCache, setSelectedProductCache ] = useState( {} );
+
+	// Pre-warm the cache on mount for already-saved product IDs so chips
+	// render immediately on page load without requiring a search first.
+	useEffect( () => {
+		if ( selectedProducts.length === 0 ) {
+			return;
+		}
+		apiFetch( {
+			path: addQueryArgs( '/wc/v3/products', {
+				include: selectedProducts,
+				per_page: selectedProducts.length,
+				status: 'publish',
+				_fields: 'id,name,sku',
+			} ),
+		} ).then( ( fetched ) => {
+			setSelectedProductCache( ( prev ) => {
+				const next = { ...prev };
+				fetched.forEach( ( p ) => {
+					next[ p.id ] = p;
+				} );
+				return next;
+			} );
+		} );
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [] );
+
 	useEffect( () => {
 		if ( products.length === 0 ) {
 			return;
@@ -1164,12 +1107,16 @@ const ProductSelection = ( {
 	// own count or with the Selected-mode display. Suppressing keeps
 	// the row's badges semantically anchored to the by_taxonomy
 	// scoping the pill describes.
-	const taxonomyRowBadges = taxonomyBadge
-		? [
-				{ key: 'taxonomy', label: taxonomyBadge },
-				{ key: 'count', label: scopedCountBadge },
-		  ]
-		: [];
+	const taxonomyRowBadges =
+		taxonomyBadge && scopedCountBadge
+			? [
+					{ key: 'taxonomy', label: taxonomyBadge },
+					{ key: 'sep', label: '·' },
+					{ key: 'count', label: scopedCountBadge },
+			  ]
+			: taxonomyBadge
+			? [ { key: 'taxonomy', label: taxonomyBadge } ]
+			: [];
 
 	// No plural-form distinction for this copy ('%d selected' reads
 	// the same for singular + plural in English), so use a single
@@ -1302,7 +1249,8 @@ const ProductSelection = ( {
 	};
 
 	return (
-		<div>
+		<div className={ PRODUCT_TAB_CLASS }>
+			<ProductTabStyles />
 			{ /*
 			   Section-head block: section h2 names the operator's
 			   job at a higher altitude than the card title below.
@@ -1327,6 +1275,7 @@ const ProductSelection = ( {
 						margin: 0,
 						color: colors.textSecondary,
 						fontSize: '13px',
+						fontStyle: 'italic',
 					} }
 				>
 					{ __(
@@ -1345,55 +1294,40 @@ const ProductSelection = ( {
 				   divider between them. The h3 ("card-title")
 				   lives inside CardBody.
 				*/ }
-				<CardBody style={ { padding: 0 } }>
-					<div style={ { padding: '20px 20px 0' } }>
-						<h3
-							style={ {
-								margin: '0 0 4px',
-								// 14px to match every other Card section
-								// h3 in the plugin (Discovery, Policies,
-								// AI Orders, Endpoint groups). Sized one
-								// step below the section h2 so the
-								// two-altitude rule reads visually:
-								// section h2 (18px / 600) > card h3
-								// (14px / 600).
-								fontSize: '14px',
-								fontWeight: '600',
-								color: colors.textPrimary,
-							} }
-						>
-							{ __(
-								'Products available to AI agents',
-								'woocommerce-ai-storefront'
-							) }
-						</h3>
-						<p
-							style={ {
-								margin: '0 0 16px',
-								fontSize: '13px',
-								color: colors.textSecondary,
-							} }
-						>
-							{ __(
-								'Choose which products are exposed to AI agents.',
-								'woocommerce-ai-storefront'
-							) }
-						</p>
-					</div>
-					{ /*
-					   All-row has no detail panel — the mode needs zero
-					   configuration (it IS the default, "every product"),
-					   so expanding into a panel with a single gray note
-					   just added a floating horizontal rule with
-					   whitespace above and below it. The count pill +
-					   header description already carry the full state
-					   (Label: "All published products" / Description:
-					   "Every published product… discoverable by AI
-					   crawlers" / Pill: "39 products"). Auto-include
-					   semantics are inherent in "all" — no merchant
-					   needs a separate line to explain it. ModeRow
-					   skips its panel render when children is falsy.
-					*/ }
+				<CardBody style={ { padding: spacing.s5 } }>
+					<h3
+						style={ {
+							margin: '0 0 4px',
+							fontSize: '14px',
+							fontWeight: '600',
+							color: colors.textPrimary,
+						} }
+					>
+						{ __(
+							'Products available to AI agents',
+							'woocommerce-ai-storefront'
+						) }
+					</h3>
+					<p
+						style={ {
+							margin: `0 0 ${ spacing.s4 }`,
+							fontSize: '13px',
+							color: colors.textSecondary,
+							fontStyle: 'italic',
+						} }
+					>
+						{ __(
+							'Choose which products are exposed to AI agents.',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
+					<div
+						style={ {
+							display: 'flex',
+							flexDirection: 'column',
+							gap: spacing.s3,
+						} }
+					>
 					<ModeRow
 						value={ UI_ROWS.ALL }
 						selected={ uiRow }
@@ -1419,67 +1353,47 @@ const ProductSelection = ( {
 						badgeLabel={ taxonomyRowBadges }
 						onSelect={ setRow }
 					>
+						{ /* Taxonomy filter chips — local navigation only, not a saved setting */ }
 						<div
+							role="group"
+							aria-label={ __( 'Taxonomy', 'woocommerce-ai-storefront' ) }
 							style={ {
-								padding: '12px 0',
+								display: 'flex',
+								flexWrap: 'wrap',
+								gap: spacing.s1,
+								marginBottom: spacing.s4,
 							} }
 						>
-							{ /*
-							   Content-sized (no `isBlock`) so the three
-							   segments read as a compact "pick one of N"
-							   strip rather than stretched form fields.
-							   `isBlock` was tried in an earlier revision
-							   but made the control look like row headers
-							   spanning the panel width, weakening the
-							   segmented-pill affordance. Matches how
-							   Gutenberg uses the same component (e.g.
-							   alignment toolbar).
-
-							   Visual treatment (elevated white pill on a
-							   recessed neutral track) lives in
-							   ./toggle-group-styles.js — the same
-							   component is rendered on the Policies tab so
-							   both surfaces inherit the styling without
-							   duplication. See that file for the per-rule
-							   rationale + Emotion-class-name history.
-							*/ }
-							<ToggleGroupStyles />
-							<ToggleGroupControl
-								__next40pxDefaultSize
-								__nextHasNoMarginBottom
-								hideLabelFromVision
-								className={ TOGGLE_GROUP_CLASSNAME }
-								label={ __(
-									'Taxonomy',
-									'woocommerce-ai-storefront'
-								) }
-								value={ activeTaxonomy }
-								onChange={ setTaxonomy }
-							>
-								<ToggleGroupControlOption
-									value={ TAXONOMY_TABS.CATEGORIES }
-									label={ __(
-										'Categories',
-										'woocommerce-ai-storefront'
-									) }
-								/>
-								<ToggleGroupControlOption
-									value={ TAXONOMY_TABS.TAGS }
-									label={ __(
-										'Tags',
-										'woocommerce-ai-storefront'
-									) }
-								/>
-								{ supportsBrands && (
-									<ToggleGroupControlOption
-										value={ TAXONOMY_TABS.BRANDS }
-										label={ __(
-											'Brands',
-											'woocommerce-ai-storefront'
-										) }
-									/>
-								) }
-							</ToggleGroupControl>
+							{ [
+								{ value: TAXONOMY_TABS.CATEGORIES, label: __( 'Categories', 'woocommerce-ai-storefront' ) },
+								{ value: TAXONOMY_TABS.TAGS, label: __( 'Tags', 'woocommerce-ai-storefront' ) },
+								...( supportsBrands ? [ { value: TAXONOMY_TABS.BRANDS, label: __( 'Brands', 'woocommerce-ai-storefront' ) } ] : [] ),
+							].map( ( tab ) => {
+								const isActive = activeTaxonomy === tab.value;
+								return (
+									<button
+										key={ tab.value }
+										type="button"
+										onClick={ () => setTaxonomy( tab.value ) }
+										aria-pressed={ isActive }
+										style={ {
+											display: 'inline-flex',
+											alignItems: 'center',
+											border: `1px solid ${ isActive ? colors.accent : colors.borderSubtle }`,
+											borderRadius: radii.md,
+											background: isActive ? colors.infoBg : colors.surface,
+											color: isActive ? colors.accent : colors.textPrimary,
+											fontWeight: isActive ? '600' : '400',
+											padding: '4px 12px',
+											fontSize: '13px',
+											lineHeight: '1.3',
+											cursor: 'pointer',
+										} }
+									>
+										{ tab.label }
+									</button>
+								);
+							} ) }
 						</div>
 
 						{ /*
@@ -1593,10 +1507,6 @@ const ProductSelection = ( {
 									"Couldn't load your categories right now. If you have categories configured, refresh this page to retry.",
 									'woocommerce-ai-storefront'
 								) }
-								disclosure={ __(
-									'Auto-includes future products added to these categories.',
-									'woocommerce-ai-storefront'
-								) }
 							/>
 						) }
 
@@ -1641,13 +1551,6 @@ const ProductSelection = ( {
 								errorLabel={ __(
 									"Couldn't load your tags right now. If you have tags configured, refresh this page to retry.",
 									'woocommerce-ai-storefront'
-								) }
-								disclosure={ createInterpolateElement(
-									__(
-										'Products are included when they have <strong>any</strong> of the selected tags. Auto-includes future products that match.',
-										'woocommerce-ai-storefront'
-									),
-									{ strong: <strong /> }
 								) }
 							/>
 						) }
@@ -1699,13 +1602,6 @@ const ProductSelection = ( {
 										"Couldn't load your brands right now. If you have brands configured, refresh this page to retry.",
 										'woocommerce-ai-storefront'
 									) }
-									disclosure={ createInterpolateElement(
-										__(
-											'Products are included when they belong to <strong>any</strong> of the selected brands. Auto-includes future products that match.',
-											'woocommerce-ai-storefront'
-										),
-										{ strong: <strong /> }
-									) }
 								/>
 							) }
 					</ModeRow>
@@ -1721,13 +1617,8 @@ const ProductSelection = ( {
 						description={ MODE_DESCRIPTIONS[ UI_ROWS.SELECTED ] }
 						badgeLabel={ selectedBadge }
 						onSelect={ setRow }
-						isLast
 					>
-						<div style={ { paddingTop: '14px' } }>
-							<SelectedTokens
-								items={ selectedProductTokens }
-								onRemove={ toggleProduct }
-							/>
+						<div>
 							{ /*
 							   Typeahead search + dropdown. Products are
 							   a recall task (thousands of items, names
@@ -1743,7 +1634,7 @@ const ProductSelection = ( {
 							   disabled with a checkmark to prevent
 							   accidental double-adds.
 							*/ }
-							<div style={ { position: 'relative' } }>
+							<div style={ { position: 'relative', maxWidth: '480px' } } ref={ searchWrapperRef }>
 								<SearchControl
 									__nextHasNoMarginBottom
 									value={ productSearch }
@@ -1757,17 +1648,18 @@ const ProductSelection = ( {
 									<div
 										style={ {
 											position: 'absolute',
-											top: '100%',
+											...( dropdownFlipped
+												? { bottom: '100%', marginBottom: '2px' }
+												: { top: '100%', marginTop: '2px' } ),
 											left: 0,
 											right: 0,
 											zIndex: 100,
 											background: colors.surface,
 											border: `1px solid ${ colors.borderSubtle }`,
-											borderRadius: '3px',
+											borderRadius: radii.sm,
 											maxHeight: '200px',
 											overflowY: 'auto',
-											boxShadow:
-												'0 2px 8px rgba(0,0,0,0.12)',
+											boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
 										} }
 									>
 										{ isLoadingProducts && (
@@ -1797,90 +1689,54 @@ const ProductSelection = ( {
 												</p>
 											) }
 										{ ! isLoadingProducts &&
-											products.map( ( product, idx ) => {
-												const isAdded =
-													selectedProducts.includes(
-														product.id
-													);
-												return (
+											products
+												.filter( ( p ) => ! selectedProducts.includes( p.id ) )
+												.map( ( product, idx, arr ) => (
 													<button
 														key={ product.id }
 														type="button"
-														disabled={ isAdded }
+														onMouseDown={ ( e ) => e.preventDefault() }
 														onClick={ () => {
-															if ( ! isAdded ) {
-																toggleProduct(
-																	product.id
-																);
-																setProductSearch(
-																	''
-																);
-															}
+															toggleProduct( product.id );
+															setProductSearch( '' );
 														} }
 														style={ {
 															display: 'block',
 															width: '100%',
 															padding: '8px 12px',
-															background: isAdded
-																? colors.infoBg
-																: 'transparent',
+															background: 'transparent',
 															border: 'none',
-															borderBottom:
-																idx <
-																products.length -
-																	1
-																	? `1px solid ${ colors.borderSubtle }`
-																	: 'none',
-															cursor: isAdded
-																? 'default'
-																: 'pointer',
+															borderBottom: idx < arr.length - 1
+																? `1px solid ${ colors.borderSubtle }`
+																: 'none',
+															cursor: 'pointer',
 															textAlign: 'left',
 															fontSize: '13px',
-															color: isAdded
-																? colors.textMuted
-																: colors.textPrimary,
+															color: colors.textPrimary,
 														} }
 													>
-														{ decodeEntities(
-															product.name
-														) }
+														{ decodeEntities( product.name ) }
 														{ product.sku && (
 															<span
 																style={ {
-																	marginLeft:
-																		'6px',
+																	marginLeft: '6px',
 																	color: colors.textMuted,
 																} }
 															>
 																{ `(${ product.sku })` }
 															</span>
 														) }
-														{ isAdded && (
-															<span
-																aria-hidden="true"
-																style={ {
-																	marginLeft:
-																		'6px',
-																	color: colors.link,
-																} }
-															>
-																{ '\u2713' }
-															</span>
-														) }
 													</button>
-												);
-											} ) }
+												) ) }
 									</div>
 								) }
 							</div>
 							{ selectedProducts.length > 0 && (
-								<div
-									style={ {
-										display: 'flex',
-										gap: '12px',
-										margin: '8px 0',
-									} }
-								>
+								<div style={ { marginTop: spacing.s3 } }>
+									<SelectedTokens
+										items={ selectedProductTokens }
+										onRemove={ toggleProduct }
+									/>
 									<Button
 										variant="link"
 										onClick={ () =>
@@ -1903,67 +1759,8 @@ const ProductSelection = ( {
 							) }
 						</div>
 					</ModeRow>
-				</CardBody>
-				<CardFooter>
-					<div
-						style={ {
-							display: 'flex',
-							justifyContent: 'space-between',
-							alignItems: 'center',
-							gap: '16px',
-							flexWrap: 'wrap',
-							width: '100%',
-						} }
-					>
-						<div>
-							<span
-								style={ {
-									color: colors.textSecondary,
-									marginRight: '8px',
-									...typography.eyebrowLabel,
-								} }
-							>
-								{ __(
-									'Included fields',
-									'woocommerce-ai-storefront'
-								) }
-							</span>
-							<span
-								style={ {
-									display: 'inline-flex',
-									flexWrap: 'wrap',
-									gap: '6px',
-								} }
-							>
-								{ getIncludedFields().map( ( field ) => (
-									<span
-										key={ field.key }
-										style={ {
-											fontSize: '12px',
-											background: colors.surface,
-											border: `1px solid ${ colors.borderSubtle }`,
-											padding: '2px 10px',
-											borderRadius: '12px',
-											color: colors.textPrimary,
-										} }
-									>
-										{ field.label }
-									</span>
-								) ) }
-							</span>
-						</div>
-						{ /*
-						   No right-side deep-link in this footer. The
-						   Discovery tab is the canonical surface for
-						   endpoint URLs + per-endpoint testing info,
-						   so a second entry point here would just
-						   duplicate that tab's job. The footer now
-						   carries the one fact it uniquely conveys —
-						   the set of fields agents receive — and
-						   nothing else.
-						*/ }
 					</div>
-				</CardFooter>
+				</CardBody>
 			</Card>
 
 			{ /*
@@ -2058,7 +1855,6 @@ const TaxonomyPicker = ( {
 	// taxonomy-specific errorLabel, so this default only fires in
 	// a coding-slip scenario where having ANY text beats silence.
 	errorLabel = __( 'Unable to load items.', 'woocommerce-ai-storefront' ),
-	disclosure,
 } ) => {
 	const allSelected =
 		items.length > 0 &&
@@ -2231,38 +2027,8 @@ const TaxonomyPicker = ( {
 				</div>
 			) }
 
-			<Disclosure>{ disclosure }</Disclosure>
 		</>
 	);
 };
-
-/**
- * Footer-of-panel disclosure line — used by 'all' and taxonomy modes
- * for their auto-inclusion + ANY-match explanations. The 'selected'
- * mode uses a `<Notice status="warning">` instead because its
- * disclosure is an actual behavioral surprise, not a neutral fact.
- *
- * Accepts rich children (not just strings) so taxonomy disclosures
- * built via createInterpolateElement can inline <strong> around the
- * "any" semantics without dropping out of the styled paragraph.
- *
- * @param {Object}                                             root0
- *                                                                            Component props.
- * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children
- *                                                                            Disclosure text or interpolated React node.
- */
-const Disclosure = ( { children } ) => (
-	<p
-		style={ {
-			margin: '14px 0 0',
-			paddingTop: '12px',
-			borderTop: `1px solid ${ colors.borderSubtle }`,
-			color: colors.textMuted,
-			fontSize: '12px',
-		} }
-	>
-		{ children }
-	</p>
-);
 
 export default ProductSelection;
