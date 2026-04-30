@@ -695,12 +695,24 @@ class WC_AI_Storefront_Attribution {
 
 		global $wpdb;
 
+		// All periods are trailing windows so the labels in the UI
+		// chip strip ("Last 7 days", "Last 30 days", ..., "Last 12
+		// months") read literally. Note 'year' uses '12 months ago'
+		// rather than '365 days ago' so the window survives leap
+		// years cleanly: a buyer comparing "Apr 30 2026 vs the
+		// 12-months-ago window" expects Apr 30 2025, not the
+		// 365-days-prior date that would land on Apr 29 2025
+		// in a leap year. Same reasoning for 'month' / 'quarter':
+		// '30 days ago' / '90 days ago' are the merchant's mental
+		// model. Each `strtotime` call resolves against the request
+		// time so daylight-savings transitions don't skew the
+		// boundary either.
 		$date_map = [
 			'day'     => '1 day ago',
 			'week'    => '7 days ago',
 			'month'   => '30 days ago',
 			'quarter' => '90 days ago',
-			'year'    => '365 days ago',
+			'year'    => '12 months ago',
 		];
 
 		// $period is already validated to one of the five keys above.
