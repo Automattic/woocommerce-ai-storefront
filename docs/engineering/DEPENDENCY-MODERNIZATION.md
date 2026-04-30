@@ -18,13 +18,13 @@ Pinned within-major patches via [`overrides`](../../package.json) for transitive
 - `postcss ^8.5.10`
 - `ws ^8.17.1`
 - `markdownlint-cli → minimatch ^3.1.5` (path-conditional; `markdownlint-cli@0.31.1` ships `minimatch@3.0.8` directly, override forces the patched 3.1.5)
-- `puppeteer-core → tar-fs ^2.1.4` (path-conditional; bumps `puppeteer-core`'s direct `tar-fs` dep from the vulnerable 2.1.1 to the patched 2.1.4)
 - `@wp-playground/{blueprints,cli,tools} → ajv ^8.17.1` (path-conditional; avoids the global `ajv` cascade that crashes `babel-loader`'s embedded `schema-utils`)
 
 Initially-included overrides that were dropped after the modernization made them moot:
 
 - `@typescript-eslint/typescript-estree → minimatch` — Strategy B's `@wordpress/scripts` bump pulled `typescript-estree v8`, which depends on `minimatch ^10.2.2` (already patched).
 - `@wordpress/env → minimatch` — `@wordpress/env`'s rimraf/glob chain landed on patched `minimatch@9.0.9` naturally.
+- `tar-fs ^2.1.4` (initially flat, briefly path-conditional under `puppeteer-core`) — both forms turned out to be misguided after Strategy B. The post-modernization chain is `puppeteer-core@23/24 → @puppeteer/browsers@2.x → tar-fs ^3.x` (`@puppeteer/browsers` declares `tar-fs ^3.1.1` / `^3.0.6` directly), so any `^2.x` override forces an incompatible major-version downgrade against the declared peer. The natural resolution lands on `tar-fs@3.1.2`, which is above the patched floors for all known advisories (the 2.x advisories were patched in 2.1.2/2.1.3/2.1.4 but those same vulns are also patched in 3.x at 3.0.7/3.0.9/3.1.0+, well below 3.1.2). Removed entirely; no override needed. Caught by Copilot review on PR #220.
 
 ## Strategy B: parent-package major bumps
 

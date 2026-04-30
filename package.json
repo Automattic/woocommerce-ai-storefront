@@ -58,9 +58,6 @@
 		"basic-ftp": "^6.0.0",
 		"cross-spawn": "^7.0.6",
 		"postcss": "^8.5.10",
-		"puppeteer-core": {
-			"tar-fs": "^2.1.4"
-		},
 		"ws": "^8.17.1"
 	}
 }
