@@ -163,6 +163,21 @@ If you're editing this repo as an autonomous agent (e.g. via the `docs-followup`
 - **Label the PR** `documentation` and `automated` so reviewers can filter.
 - **Don't push directly to `main`.** Always branch (`docs/auto-followup-<short-sha>`), commit, push, open a PR. Reviewers approve and merge.
 
+## Persistent artifacts
+
+If you produce something that should survive a worktree cleanup, a `/tmp` clearing, or a reboot, put it in the right tier. Three failure modes have different fixes:
+
+| What | Where | Why |
+|------|-------|-----|
+| Long-lived design docs, mockups, multi-session reference material | `docs/<category>/` (e.g. `docs/design/`, `docs/engineering/`) and committed to a branch | Tracked in git, survives any local loss, shareable via PR |
+| Session scratch (interim notes, ephemeral mockups still being iterated) | `<origin-repo>/.claude/tmp/artifacts/` | Survives worktree cleanup but gitignored, so no git bloat |
+| External cache (extracted bundles, fetched references) | `<origin-repo>/.claude/cache/<resource-name>/` (created on demand) | Survives reboots, gitignored (rebuildable on cache miss) |
+| Worktree-local working copy | `<worktree>/.claude/tmp/` | OK for in-progress work that dies with the worktree by design |
+
+The anti-pattern is putting durable artifacts inside a worktree. Worktrees are *intentionally* disposable; anything inside dies when the worktree is removed. Same for `/tmp`: macOS clears it on reboot or under disk pressure.
+
+Rule of thumb: if an artifact took meaningful time to produce (more than ~30 minutes), commit it to a branch as soon as it stabilizes. The five-second discipline of `git add` + `git commit` saves hours of regeneration.
+
 ## Reporting
 
 - Bugs and feature requests: <https://github.com/Automattic/woocommerce-ai-storefront/issues>.
