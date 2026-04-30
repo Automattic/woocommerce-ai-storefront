@@ -4,6 +4,8 @@ Thanks for your interest. This plugin is in **active prototype-phase iteration**
 
 ## Quick start
 
+Node 18.12+ and npm 8.19.2+ required (declared in `package.json` `engines`; matches `@wordpress/scripts@32`'s own floor). PHP 8.1+ for the test suite.
+
 ```bash
 git clone https://github.com/Automattic/woocommerce-ai-storefront.git
 cd woocommerce-ai-storefront
@@ -27,7 +29,7 @@ npm run env:start    # pulls images, installs WP + WooCommerce (~2-3 min first r
 Site: <http://localhost:8030> | Admin: <http://localhost:8030/wp-admin>
 Credentials: `admin` / `password`
 
-The plugin is activated automatically. Go to **WooCommerce > Woo AI Storefront** to open the settings.
+The plugin is activated automatically. Go to **WooCommerce > AI Storefront** in the sidebar to open the settings (the page heading inside reads "Woo AI Storefront").
 
 **Testing an in-flight PR:**
 
