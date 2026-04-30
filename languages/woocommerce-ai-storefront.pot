@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-30T07:58:54+00:00\n"
+"POT-Creation-Date: 2026-04-30T08:01:22+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -978,64 +978,64 @@ msgid_plural "%d products"
 msgstr[0] ""
 msgstr[1] ""
 
-#: client/settings/ai-storefront/settings-page.js:666
+#: client/settings/ai-storefront/settings-page.js:663
 msgid "Last 24 hours"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:673
+#: client/settings/ai-storefront/settings-page.js:670
 msgid "Last 7 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:680
+#: client/settings/ai-storefront/settings-page.js:677
 msgid "Last 30 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:687
+#: client/settings/ai-storefront/settings-page.js:684
 msgid "Last year"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:742
+#: client/settings/ai-storefront/settings-page.js:739
 msgid "Products exposed"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:767
+#: client/settings/ai-storefront/settings-page.js:764
 msgid "AI orders"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:778
+#: client/settings/ai-storefront/settings-page.js:775
 msgid "AI revenue"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:786
+#: client/settings/ai-storefront/settings-page.js:783
 msgid "AI AOV"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:794
+#: client/settings/ai-storefront/settings-page.js:791
 msgid "Top agent"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:816
+#: client/settings/ai-storefront/settings-page.js:813
 msgid "Top agent share"
 msgstr ""
 
 #. translators: %1$s: percent share of AI orders attributed to the top agent. The literal trailing percent sign comes from `%%` in the format string. Ordered placeholder (`%1$s`) keeps the file consistent with @wordpress/valid-sprintf rules.
-#: client/settings/ai-storefront/settings-page.js:835
+#: client/settings/ai-storefront/settings-page.js:832
 #, js-format
 msgid "%1$s%%"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:881
+#: client/settings/ai-storefront/settings-page.js:878
 msgid "Disable AI Storefront"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:894
+#: client/settings/ai-storefront/settings-page.js:891
 msgid "Stops AI agents from accessing your store. Settings are preserved."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:911
+#: client/settings/ai-storefront/settings-page.js:908
 msgid "Disabling…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:912
+#: client/settings/ai-storefront/settings-page.js:909
 msgid "Disable"
 msgstr ""
