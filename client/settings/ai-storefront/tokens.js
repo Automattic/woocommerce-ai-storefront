@@ -41,9 +41,69 @@ export const colors = {
 	success: '#00a32a', // WP alert-green — active accents, stat values
 	successBg: '#edfaef', // success tint — pill background when populated
 	error: '#d63638', // WP alert-red — warning copy
+	infoBg: '#f0f6fc', // light blue-tint background — selected mode-card bg
 
-	// Links
+	// Links / interactive accents
 	link: '#2271b1', // WP admin-blue — default link color (matches wp-admin anchors)
+	accent: '#2271b1', // alias of `link` for selected-card border / active tab underline
+};
+
+/**
+ * Spacing scale (4-based). Use these in place of raw px in JSX
+ * `style` props so vertical/horizontal rhythm stays consistent across
+ * the settings UI.
+ *
+ * Step semantics (mostly stable across the design system):
+ *   s1=4   hairline gap
+ *   s2=8   tight cluster
+ *   s3=12  inline form gap
+ *   s4=16  card padding / row gap
+ *   s5=20  card padding (large)
+ *   s6=24  section gap
+ *   s7=32  block separation
+ *   s8=40  hero padding
+ *   s9=48  page-top margin
+ *   s10=64 reserved for vertical hero rhythm
+ */
+export const spacing = {
+	s1: '4px',
+	s2: '8px',
+	s3: '12px',
+	s4: '16px',
+	s5: '20px',
+	s6: '24px',
+	s7: '32px',
+	s8: '40px',
+	s9: '48px',
+	s10: '64px',
+};
+
+/**
+ * Border-radius scale.
+ *
+ *   xs=2  status-badge corners, subtle pill chrome
+ *   sm=3  inputs / segmented inner button
+ *   md=4  card / standard corner (matches WP base)
+ *   lg=8  hero / elevated surfaces
+ *   pill=999 stadium pill (status badges, count chips)
+ */
+export const radii = {
+	xs: '2px',
+	sm: '3px',
+	md: '4px',
+	lg: '8px',
+	pill: '999px',
+};
+
+/**
+ * Box-shadow scale, hand-tuned to match the design-system bundle.
+ *
+ *   sm  for small lifted surfaces (segmented active option)
+ *   lg  for elevated cards (selected mode-card)
+ */
+export const shadows = {
+	sm: '0 1px 1px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.06)',
+	lg: '0 2px 4px rgba(0,0,0,.05), 0 6px 12px rgba(0,0,0,.08)',
 };
 
 /**
@@ -74,6 +134,45 @@ export const typography = {
 		fontWeight: '600',
 		textTransform: 'uppercase',
 		letterSpacing: '0.04em',
+	},
+
+	// Page-level h1 sitting above the TabPanel. Matches wp-admin's
+	// own `.wrap > h1` rhythm (23px / 400) so the in-page title
+	// reads at the same altitude as Settings, Plugins, Tools, etc.
+	adminTitle: {
+		fontSize: '23px',
+		fontWeight: 400,
+		lineHeight: 1.3,
+	},
+
+	// Section h2 used at the top of each tab. One step below the
+	// page-level h1, names the operator's job for the tab. Pairs
+	// with a 13px italic gray description sentence below it.
+	sectionHeading: {
+		fontSize: '18px',
+		fontWeight: 600,
+		lineHeight: 1.3,
+	},
+
+	// Stat-card display value. Tighter letter-spacing pulls the
+	// digits together so a 6-card strip reads as a peer set rather
+	// than as six separate panels. Color is always neutral
+	// (`textPrimary`) — see "Stat-value color is always neutral"
+	// in docs/design/settings-redesign-final.html.
+	statValue: {
+		fontSize: '20px',
+		fontWeight: 700,
+		letterSpacing: '-0.005em',
+	},
+
+	// Pre-enable hero headline. Bigger / tighter than sectionHeading
+	// because the hero IS the section header on the pre-enable view
+	// (no separate section-head block sits above it).
+	heroHeadline: {
+		fontSize: '28px',
+		fontWeight: 700,
+		letterSpacing: '-0.02em',
+		lineHeight: 1.2,
 	},
 };
 
