@@ -6,7 +6,6 @@ import {
 } from '@wordpress/element';
 import {
 	Card,
-	CardHeader,
 	CardBody,
 	CardFooter,
 	Button,
@@ -113,7 +112,7 @@ const modeToUiRow = ( mode ) => {
 // line at the bottom of each detail panel.
 const MODE_DESCRIPTIONS = {
 	[ UI_ROWS.ALL ]: __(
-		'Every published product in your store is discoverable by AI crawlers.',
+		'Every published product in your store is discoverable by AI agents.',
 		'woocommerce-ai-storefront'
 	),
 	[ UI_ROWS.BY_TAXONOMY ]: __(
@@ -1296,44 +1295,83 @@ const ProductSelection = ( {
 
 	return (
 		<div>
+			{ /*
+			   Section-head block: section h2 names the operator's
+			   job at a higher altitude than the card title below.
+			   "Catalog access" pairs thematically with the Discovery
+			   tab's "AI agent access" — both read as merchant-side
+			   gatekeeping. The card-level title ("Products available
+			   to AI agents") names the specific control inside this
+			   section, NOT a paraphrase of the section title.
+			*/ }
+			<header style={ { marginBottom: '20px' } }>
+				<h2
+					style={ {
+						margin: '0 0 4px',
+						...typography.sectionHeading,
+						color: colors.textPrimary,
+					} }
+				>
+					{ __( 'Catalog access', 'woocommerce-ai-storefront' ) }
+				</h2>
+				<p
+					style={ {
+						margin: 0,
+						color: colors.textSecondary,
+						fontSize: '13px',
+					} }
+				>
+					{ __(
+						'Control which products AI agents can see and recommend.',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+			</header>
+
 			<Card>
-				<CardHeader>
-					<div>
+				{ /*
+				   Card-head divider reserved for cards that carry
+				   action chrome. This card has only a title +
+				   describing paragraph, so the title and its
+				   paragraph read as one continuous unit with no
+				   divider between them. The h3 ("card-title")
+				   lives inside CardBody.
+				*/ }
+				<CardBody style={ { padding: 0 } }>
+					<div style={ { padding: '20px 20px 0' } }>
 						<h3
 							style={ {
-								margin: 0,
+								margin: '0 0 4px',
 								// 14px to match every other Card section
 								// h3 in the plugin (Discovery, Policies,
-								// AI Orders, Endpoint groups). Was 16px
-								// — the only outlier — which read as a
-								// higher hierarchy level than its peers
-								// when the merchant scrolled past
-								// adjacent Cards.
+								// AI Orders, Endpoint groups). Sized one
+								// step below the section h2 so the
+								// two-altitude rule reads visually:
+								// section h2 (18px / 600) > card h3
+								// (14px / 600).
 								fontSize: '14px',
 								fontWeight: '600',
 								color: colors.textPrimary,
 							} }
 						>
 							{ __(
-								'Products available to AI crawlers',
+								'Products available to AI agents',
 								'woocommerce-ai-storefront'
 							) }
 						</h3>
 						<p
 							style={ {
-								margin: '4px 0 0',
+								margin: '0 0 16px',
 								fontSize: '13px',
 								color: colors.textSecondary,
 							} }
 						>
 							{ __(
-								'Choose which of your products appear in your AI Storefront endpoints.',
+								'Choose which products are exposed to AI agents.',
 								'woocommerce-ai-storefront'
 							) }
 						</p>
 					</div>
-				</CardHeader>
-				<CardBody style={ { padding: 0 } }>
 					{ /*
 					   All-row has no detail panel — the mode needs zero
 					   configuration (it IS the default, "every product"),
