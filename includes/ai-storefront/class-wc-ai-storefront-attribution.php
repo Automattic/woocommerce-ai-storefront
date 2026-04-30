@@ -672,12 +672,19 @@ class WC_AI_Storefront_Attribution {
 	/**
 	 * Get AI-attributed order statistics.
 	 *
-	 * @param string $period Period: 'day', 'week', 'month', 'month30', 'year'.
+	 * Periods are all trailing windows (no calendar-aligned ranges):
+	 *   - 'day'     → trailing 24 hours
+	 *   - 'week'    → trailing 7 days
+	 *   - 'month'   → trailing 30 days
+	 *   - 'quarter' → trailing 90 days
+	 *   - 'year'    → trailing 12 months
+	 *
+	 * @param string $period Period: 'day', 'week', 'month', 'quarter', 'year'.
 	 * @return array
 	 */
 	public static function get_stats( $period = 'month' ) {
 		// Normalize period first so the transient key is consistent.
-		$valid_periods = array( 'day', 'week', 'month', 'month30', 'year' );
+		$valid_periods = array( 'day', 'week', 'month', 'quarter', 'year' );
 		$period        = in_array( $period, $valid_periods, true ) ? $period : 'month';
 
 		$transient_key = 'wc_ai_storefront_stats_' . $period;
@@ -690,10 +697,10 @@ class WC_AI_Storefront_Attribution {
 
 		$date_map = [
 			'day'     => '1 day ago',
-			'week'    => '1 week ago',
-			'month'   => '1 month ago',
-			'month30' => '30 days ago',
-			'year'    => '1 year ago',
+			'week'    => '7 days ago',
+			'month'   => '30 days ago',
+			'quarter' => '90 days ago',
+			'year'    => '365 days ago',
 		];
 
 		// $period is already validated to one of the five keys above.
@@ -866,7 +873,7 @@ class WC_AI_Storefront_Attribution {
 			}
 		}
 
-		foreach ( array( 'day', 'week', 'month', 'month30', 'year' ) as $period ) {
+		foreach ( array( 'day', 'week', 'month', 'quarter', 'year' ) as $period ) {
 			delete_transient( 'wc_ai_storefront_stats_' . $period );
 		}
 	}

@@ -761,21 +761,21 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						},
 						{
 							label: __(
-								'Month to date',
+								'Last 30 days',
 								'woocommerce-ai-storefront'
 							),
 							value: 'month',
 						},
 						{
 							label: __(
-								'Last 30 days',
+								'Last 90 days',
 								'woocommerce-ai-storefront'
 							),
-							value: 'month30',
+							value: 'quarter',
 						},
 						{
 							label: __(
-								'Last year',
+								'Last 12 months',
 								'woocommerce-ai-storefront'
 							),
 							value: 'year',

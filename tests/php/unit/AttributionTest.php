@@ -1265,7 +1265,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'wc_ai_storefront_stats_day', $deleted );
 		$this->assertContains( 'wc_ai_storefront_stats_week', $deleted );
 		$this->assertContains( 'wc_ai_storefront_stats_month', $deleted );
-		$this->assertContains( 'wc_ai_storefront_stats_month30', $deleted );
+		$this->assertContains( 'wc_ai_storefront_stats_quarter', $deleted );
 		$this->assertContains( 'wc_ai_storefront_stats_year', $deleted );
 	}
 }
