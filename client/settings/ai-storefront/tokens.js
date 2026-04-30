@@ -41,11 +41,21 @@ export const colors = {
 	success: '#00a32a', // WP alert-green — active accents, stat values
 	successBg: '#edfaef', // success tint — pill background when populated
 	error: '#d63638', // WP alert-red — warning copy
+	errorBg: '#fce8e8', // error tint — status-badge background for unreachable endpoints
 	infoBg: '#f0f6fc', // light blue-tint background — selected mode-card bg
 
 	// Links / interactive accents
 	link: '#2271b1', // WP admin-blue — default link color (matches wp-admin anchors)
 	accent: '#2271b1', // alias of `link` for selected-card border / active tab underline
+
+	// Woo purple — pre-enable hero ONLY. Do not use elsewhere; this
+	// is a brand signal that disappears once the merchant enables the
+	// plugin (the post-enable dashboard uses neutral blue accent).
+	wooPurple10: '#D1C1FF', // chip / badge tint background
+	wooPurple50: '#720EEC', // primary button, icon accent
+	wooPurple70: '#5007AA', // button hover
+	wooPurple90: '#2C045D', // chip / badge text
+	heroBg: '#faf6ff', // pre-enable hero gradient start (very-soft purple wash)
 };
 
 /**

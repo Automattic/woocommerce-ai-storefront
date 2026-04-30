@@ -294,7 +294,7 @@ const GhostTable = () => (
  * Shared Card+header wrapper for both the populated AI Orders
  * table and the empty-state preview. The two render branches
  * deliberately share the same Card shell + section heading
- * ("Recent AI Orders") so the before-first-order and after-first-
+ * ("Recent AI orders") so the before-first-order and after-first-
  * order states read as the same surface. Without this wrapper,
  * the header markup + styling lived in two places and a future
  * tweak (margin, font-weight, color) applied to one path would
@@ -313,7 +313,7 @@ const RecentAIOrdersCard = ( { children } ) => (
 	<Card style={ { marginTop: '16px' } }>
 		<CardBody>
 			<h3 style={ { margin: '0 0 12px', fontSize: '14px' } }>
-				{ __( 'Recent AI Orders', 'woocommerce-ai-storefront' ) }
+				{ __( 'Recent AI orders', 'woocommerce-ai-storefront' ) }
 			</h3>
 			{ children }
 		</CardBody>
@@ -330,7 +330,7 @@ const RecentAIOrdersCard = ( { children } ) => (
  * uses on the loaded-with-data path, so the "before first order"
  * and "after first order" states read as the same surface:
  *
- *  1. Header ("Recent AI Orders" — same as the populated card).
+ *  1. Header ("Recent AI orders" — same heading as the populated card).
  *  2. `GhostTable` — column header strip + single dimmed ghost
  *     body row (aria-hidden, purely visual).
  *  3. Primary copy ("Ready for your first AI order") + supporting

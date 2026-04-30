@@ -1106,7 +1106,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 	// These tests verify: (a) the second call to get_stats('month') returns
 	// the cached result without running DB queries (get_transient returns the
 	// cached value, so the DB code is never reached); (b) bust_stats_cache()
-	// deletes all four period transients.
+	// deletes all five period transients.
 
 	public function test_get_stats_returns_cached_result_on_second_call(): void {
 		// The cached value returned by get_transient simulates a warm cache.
@@ -1249,10 +1249,10 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
-	public function test_bust_stats_cache_deletes_all_four_period_transients(): void {
+	public function test_bust_stats_cache_deletes_all_five_period_transients(): void {
 		$deleted = array();
 		Functions\expect( 'delete_transient' )
-			->times( 4 )
+			->times( 5 )
 			->andReturnUsing(
 				static function ( $key ) use ( &$deleted ) {
 					$deleted[] = $key;
@@ -1265,6 +1265,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'wc_ai_storefront_stats_day', $deleted );
 		$this->assertContains( 'wc_ai_storefront_stats_week', $deleted );
 		$this->assertContains( 'wc_ai_storefront_stats_month', $deleted );
+		$this->assertContains( 'wc_ai_storefront_stats_month30', $deleted );
 		$this->assertContains( 'wc_ai_storefront_stats_year', $deleted );
 	}
 }
