@@ -18,7 +18,7 @@ import ProductSelection from './product-selection';
 import EndpointInfo from './endpoint-info';
 import AIOrdersTable from './ai-orders-table';
 import PoliciesTab from './policies-tab';
-import { colors, typography } from './tokens';
+import { colors, typography, spacing } from './tokens';
 
 // Rate-limit UI (card + presets + RPM state) lives in the Discovery
 // tab now — see `endpoint-info.js`. Rationale: rate limiting is a
@@ -88,7 +88,11 @@ const AISyndicationSettings = () => {
 		},
 		{
 			name: 'products',
-			title: __( 'Product Visibility', 'woocommerce-ai-storefront' ),
+			// Sentence case ("Product visibility" not "Product Visibility")
+			// per the cross-cutting copy rule. Audited together with
+			// other Title Case strings on this surface in the
+			// settings-redesign editorial pass.
+			title: __( 'Product visibility', 'woocommerce-ai-storefront' ),
 		},
 		{
 			name: 'policies',
@@ -257,7 +261,13 @@ const formatMoney = ( stats, amount ) => {
 // and the handle names drift between WC versions. Until wc-admin
 // provides a reliable way to opt into its stylesheet from a custom
 // submenu page, hand-rolled cards are lower-maintenance.
-const StatCard = ( { label, value, href } ) => {
+// `reference`, when passed, renders inline after `value` as a
+// denominator (e.g. "14 / 128"). Used to fold a baseline metric onto
+// its primary numerator card (AI orders / total orders) instead of
+// parking the baseline as a peer card. Source pattern: Stripe
+// Dashboard, GitHub Insights, GA4 channel cards. Color and weight
+// keep the denominator subordinate so the AI metric reads first.
+const StatCard = ( { label, value, reference, href } ) => {
 	const cardStyle = {
 		// `flex: 1 1 0; min-width: 140px` removed — the parent grid
 		// container now controls card width via
@@ -279,14 +289,23 @@ const StatCard = ( { label, value, href } ) => {
 	// taller than cards without, breaking the cross-card baseline
 	// alignment merchants rely on to scan the strip. Removed in
 	// 0.6.1; if a stat needs companion data, it goes in its own
-	// adjacent card.
+	// adjacent card OR is inlined as a denominator (see the AI
+	// orders card's `reference` prop in PostEnableView).
+	//
+	// Color is always `textPrimary` (neutral) — see "Stat-value
+	// color is always neutral" in
+	// docs/design/settings-redesign-final.html. Earlier revisions
+	// rendered AI metrics in green; that mixed sentiment-channel
+	// (green = good) with category-channel (green = AI), and made
+	// future delta rows (e.g. "+12%") ambiguous. Reference values
+	// are now inlined as denominators (e.g. "14 / 128") rather
+	// than sitting as sibling cards.
 	const inner = (
 		<>
 			<div
 				style={ {
-					fontSize: '24px',
-					fontWeight: '600',
-					color: colors.success,
+					...typography.statValue,
+					color: colors.textPrimary,
 					// Defense against ultra-long agent brand names
 					// (e.g. "PerplexityShopping") overflowing the
 					// card's grid track. Without this, a 20-char
@@ -296,11 +315,24 @@ const StatCard = ( { label, value, href } ) => {
 				} }
 			>
 				{ value }
+				{ reference && (
+					<span
+						style={ {
+							marginLeft: spacing.s2,
+							fontSize: '14px',
+							fontWeight: 400,
+							color: colors.textMuted,
+							letterSpacing: 'normal',
+						} }
+					>
+						/ { reference }
+					</span>
+				) }
 			</div>
 			<div
 				style={ {
 					color: colors.textMuted,
-					marginTop: '4px',
+					marginTop: spacing.s1,
 					...typography.eyebrowLabel,
 				} }
 			>
@@ -344,31 +376,15 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 			<CardBody>
 				<Flex align="center" gap={ 4 } wrap>
 					<FlexItem isBlock>
-						<p
-							style={ {
-								margin: '0 0 8px',
-								...typography.eyebrowLabel,
-								// Smaller variant: this eyebrow lives
-								// inside the pre-enable hero, paired
-								// with a 22px h2 right below — 11px
-								// keeps it visually subordinate while
-								// the rest of the eyebrow stack uses
-								// the token's default 12px.
-								fontSize: '11px',
-								color: colors.textMuted,
-							} }
-						>
-							{ __(
-								'Status: Not enabled',
-								'woocommerce-ai-storefront'
-							) }
-						</p>
+						{ /* "Status: Not enabled" eyebrow removed: the
+						   Enable verb on the CTA below already signals
+						   state, and the eyebrow read as scaffolding
+						   once the hero headline absorbed the visual
+						   weight (28px / 700 / -0.02em). */ }
 						<h2
 							style={ {
 								margin: '0 0 8px',
-								fontSize: '22px',
-								lineHeight: '1.3',
-								fontWeight: '600',
+								...typography.heroHeadline,
 								color: colors.textPrimary,
 							} }
 						>
@@ -469,7 +485,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 					) }
 				>
 					{ __(
-						'Your catalog becomes visible to ChatGPT, Gemini, Claude, Perplexity, and Copilot — with no per-platform work when new agents launch.',
+						'Your catalog becomes visible to ChatGPT, Gemini, Claude, Perplexity, and Copilot, with no per-platform work when new agents launch.',
 						'woocommerce-ai-storefront'
 					) }
 				</ValueCard>
@@ -497,7 +513,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => (
 					) }
 				>
 					{ __(
-						'Every AI-referred order is tagged with its source agent and revenue — using standard WooCommerce Order Attribution.',
+						'Every AI-referred order is tagged with its source agent and revenue, using standard WooCommerce Order Attribution.',
 						'woocommerce-ai-storefront'
 					) }
 				</ValueCard>
@@ -622,58 +638,26 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 
 	return (
 		<div>
-			{ /* Status banner */ }
-			<div
-				style={ {
-					background: colors.surface,
-					border: `1px solid ${ colors.borderSubtle }`,
-					borderLeft: `4px solid ${ colors.success }`,
-					borderRadius: '4px',
-					padding: '16px 20px',
-					display: 'flex',
-					justifyContent: 'space-between',
-					alignItems: 'center',
-				} }
-			>
-				<div>
-					<strong style={ { color: colors.success } }>
-						{ __(
-							'AI Storefront is active',
-							'woocommerce-ai-storefront'
-						) }
-					</strong>
-					<p
-						style={ {
-							margin: '4px 0 0',
-							color: colors.textSecondary,
-							fontSize: '13px',
-						} }
-					>
-						{ __(
-							'Your store is ready for AI shopping assistants. Checkout and customer data stay on your store.',
-							'woocommerce-ai-storefront'
-						) }
-					</p>
-				</div>
-				<Button
-					variant="secondary"
-					isDestructive
-					size="compact"
-					isBusy={ isSaving }
-					disabled={ isSaving }
-					onClick={ () => {
-						onChange( { enabled: 'no' } );
-						onSave();
-					} }
-				>
-					{ isSaving
-						? __( 'Disabling…', 'woocommerce-ai-storefront' )
-						: __( 'Disable', 'woocommerce-ai-storefront' ) }
-				</Button>
-			</div>
+			{ /*
+			   Status banner removed. A populated dashboard (chip-row,
+			   stat cards, recent orders) is the active-state signal;
+			   an explicit "AI Storefront is active" banner was
+			   redundant chrome and put a positive status callout at
+			   the top of the page in tension with the destructive
+			   Disable affordance at the bottom. The Disable lever now
+			   sits exclusively in the .disable-row footer at the
+			   bottom of this view (see below).
+
+			   The .notice CSS pattern stays in the codebase (other
+			   spots still use it for warning / error notices); only
+			   this one positive-status occurrence is removed.
+			*/ }
 
 			{ /* Period selector + stat cards */ }
-			<Flex justify="flex-end" style={ { marginTop: '24px' } }>
+			<Flex justify="flex-end">
+				{ /* Top-of-tab spacing is handled by the page-level
+				    rhythm; no marginTop here so the period chip-row
+				    sits flush with the section-head sentence. */ }
 				<SelectControl
 					__next40pxDefaultSize
 					value={ period }
@@ -756,29 +740,33 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 			>
 				<StatCard
 					label={ __(
-						'Products Exposed',
+						'Products exposed',
 						'woocommerce-ai-storefront'
 					) }
 					value={ productCountDisplay }
 				/>
-				{ /* Card labels intentionally omit the time-period
-				     suffix (e.g. "Total Orders (7d)"). The period
-				     dropdown above the cards already conveys the
-				     time scope; repeating it on every card was
-				     redundant noise. The dropdown is the single
-				     source of truth \u2014 change it once and every
-				     period-scoped card refetches with the new period.
+				{ /* Card labels omit the time-period suffix
+				     (e.g. "AI orders (7d)"); the period chip-row
+				     above already conveys time scope and is the
+				     single source of truth.
 
-				     Card order: AI Orders intentionally precedes Total
-				     Orders. Merchants land on this tab to scan AI
-				     signal first; AI Orders is the headline metric and
-				     Total Orders is context. The earlier order
-				     (Total Orders \u2192 AI Orders) read as "look at all
-				     your orders, then a small carve-out is AI" \u2014
-				     which buries the signal we're surfacing. */ }
+				     Card order: AI orders precedes the rest of the
+				     volume metrics. Merchants land on this tab to
+				     scan AI signal first; AI orders is the headline
+				     metric.
+
+				     Total orders is folded onto the AI orders card as
+				     a denominator (e.g. "14 / 128") via the
+				     `reference` prop, instead of sitting as a peer
+				     card. Total orders is a baseline, not a peer
+				     metric; pairing it with its numerator is more
+				     honest than parking it as an AI-prefixed sibling.
+				     Source pattern: Stripe Dashboard, GitHub
+				     Insights, GA4 channel cards. */ }
 				<StatCard
-					label={ __( 'AI Orders', 'woocommerce-ai-storefront' ) }
+					label={ __( 'AI orders', 'woocommerce-ai-storefront' ) }
 					value={ stats?.ai_orders ?? '\u2014' }
+					reference={ stats?.all_orders ?? null }
 					href={
 						/* global wcAiSyndicationParams */
 						typeof wcAiSyndicationParams !== 'undefined'
@@ -787,11 +775,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					}
 				/>
 				<StatCard
-					label={ __( 'Total Orders', 'woocommerce-ai-storefront' ) }
-					value={ stats?.all_orders ?? '\u2014' }
-				/>
-				<StatCard
-					label={ __( 'AI Revenue', 'woocommerce-ai-storefront' ) }
+					label={ __( 'AI revenue', 'woocommerce-ai-storefront' ) }
 					value={
 						stats
 							? formatMoney( stats, stats.ai_revenue )
@@ -864,6 +848,70 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				@wordpress/dataviews rather than @woocommerce/components.
 			*/ }
 			<AIOrdersTable />
+
+			{ /*
+			   Disable affordance — sits at the bottom of the panel,
+			   below the recent-orders table. Hairline-divider top
+			   separates it from the data above. Two-column flex
+			   (label/description on the left, button on the right).
+
+			   Single click disables — `onChange({ enabled: 'no' })`
+			   then `onSave()`. No confirmation modal: disabling is
+			   reversible (re-enabling restores all settings), and
+			   the inline description above the button already makes
+			   consequences visible BEFORE the click. Modal dialogs
+			   for reversible actions just train users to dismiss
+			   them; reserve modal confirmations for irreversible
+			   destructive actions only.
+			*/ }
+			<div
+				style={ {
+					marginTop: spacing.s7,
+					paddingTop: spacing.s5,
+					borderTop: `1px solid ${ colors.borderSubtle }`,
+					display: 'flex',
+					justifyContent: 'space-between',
+					alignItems: 'flex-start',
+					gap: spacing.s4,
+					flexWrap: 'wrap',
+				} }
+			>
+				<div>
+					<strong style={ { color: colors.textPrimary } }>
+						{ __(
+							'Disable AI Storefront',
+							'woocommerce-ai-storefront'
+						) }
+					</strong>
+					<p
+						style={ {
+							margin: '4px 0 0',
+							color: colors.textSecondary,
+							fontSize: '13px',
+							lineHeight: 1.5,
+						} }
+					>
+						{ __(
+							'Stops AI agents from accessing your store. Settings are preserved.',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
+				</div>
+				<Button
+					variant="secondary"
+					isDestructive
+					isBusy={ isSaving }
+					disabled={ isSaving }
+					onClick={ () => {
+						onChange( { enabled: 'no' } );
+						onSave();
+					} }
+				>
+					{ isSaving
+						? __( 'Disabling…', 'woocommerce-ai-storefront' )
+						: __( 'Disable', 'woocommerce-ai-storefront' ) }
+				</Button>
+			</div>
 		</div>
 	);
 };
