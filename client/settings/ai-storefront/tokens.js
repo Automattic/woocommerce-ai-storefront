@@ -41,6 +41,7 @@ export const colors = {
 	success: '#00a32a', // WP alert-green — active accents, stat values
 	successBg: '#edfaef', // success tint — pill background when populated
 	error: '#d63638', // WP alert-red — warning copy
+	errorBg: '#fce8e8', // error tint — status-badge background for unreachable endpoints
 	infoBg: '#f0f6fc', // light blue-tint background — selected mode-card bg
 
 	// Links / interactive accents
@@ -54,6 +55,7 @@ export const colors = {
 	wooPurple50: '#720EEC', // primary button, icon accent
 	wooPurple70: '#5007AA', // button hover
 	wooPurple90: '#2C045D', // chip / badge text
+	heroBg: '#faf6ff', // pre-enable hero gradient start (very-soft purple wash)
 };
 
 /**

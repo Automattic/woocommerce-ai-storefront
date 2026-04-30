@@ -31,6 +31,7 @@ import { __ } from '@wordpress/i18n';
 import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 import { colors, radii, shadows, spacing, typography } from './tokens';
+import { TabInputStyles } from './tab-input-styles';
 
 const POLICY_MODES = {
 	UNCONFIGURED: 'unconfigured',
@@ -89,8 +90,14 @@ const DEFAULT_POLICY = {
  * data filter — hence segmented control, not chips.
  */
 const SEG_CONTROL_CLASS = 'ai-storefront-seg-control';
+const POLICIES_TAB_CLASS = 'ai-storefront-policies-tab';
 
-function SegmentedControlStyles() {
+/**
+ * Policies-tab-specific styles. The shared 32px input-height override
+ * is provided by `TabInputStyles`; this component owns the segmented-
+ * control chrome and the return-window webkit spin-button suppression.
+ */
+function PoliciesTabStyles() {
 	return (
 		<style>{ `
 			.${ SEG_CONTROL_CLASS } {
@@ -129,11 +136,6 @@ function SegmentedControlStyles() {
 				.${ SEG_CONTROL_CLASS } button[aria-pressed="true"] {
 					outline: 1px solid CanvasText;
 				}
-			}
-			.ai-storefront-policies-tab .components-text-control__input,
-			.ai-storefront-policies-tab .components-select-control__input {
-				height: 32px;
-				min-height: 32px;
 			}
 			#wc-ai-storefront-return-window::-webkit-outer-spin-button,
 			#wc-ai-storefront-return-window::-webkit-inner-spin-button {
@@ -353,7 +355,6 @@ const ReturnRefundPolicySection = ( {
 					) }
 				</p>
 
-				<SegmentedControlStyles />
 				<SegmentedControl
 					label={ __( 'Policy mode', 'woocommerce-ai-storefront' ) }
 					value={ policy.mode }
@@ -1041,7 +1042,9 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	};
 
 	return (
-		<div className="ai-storefront-policies-tab">
+		<div className={ POLICIES_TAB_CLASS }>
+			<TabInputStyles tabClass={ POLICIES_TAB_CLASS } />
+			<PoliciesTabStyles />
 			<header style={ { marginBottom: '20px' } }>
 				{ /*
 				   Section h2 names the operator's job at a higher

@@ -672,7 +672,7 @@ class WC_AI_Storefront_Attribution {
 	/**
 	 * Get AI-attributed order statistics.
 	 *
-	 * @param string $period Period: 'day', 'week', 'month', 'year'.
+	 * @param string $period Period: 'day', 'week', 'month', 'month30', 'year'.
 	 * @return array
 	 */
 	public static function get_stats( $period = 'month' ) {

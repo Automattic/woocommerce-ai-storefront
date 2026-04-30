@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-30T21:25:38+00:00\n"
+"POT-Creation-Date: 2026-04-30T21:36:58+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -70,8 +70,8 @@ msgid "Session ID:"
 msgstr ""
 
 #: includes/ai-storefront/class-wc-ai-storefront-jsonld.php:414
-#: client/settings/ai-storefront/product-selection.js:858
-#: client/settings/ai-storefront/product-selection.js:1065
+#: client/settings/ai-storefront/product-selection.js:894
+#: client/settings/ai-storefront/product-selection.js:1108
 msgid "Products"
 msgstr ""
 
@@ -314,28 +314,28 @@ msgid "Error saving settings."
 msgstr ""
 
 #: client/settings/ai-storefront/ai-orders-table.js:269
-#: client/settings/ai-storefront/ai-orders-table.js:425
+#: client/settings/ai-storefront/ai-orders-table.js:428
 msgid "Order"
 msgstr ""
 
 #: client/settings/ai-storefront/ai-orders-table.js:270
-#: client/settings/ai-storefront/ai-orders-table.js:454
+#: client/settings/ai-storefront/ai-orders-table.js:459
 msgid "Date"
 msgstr ""
 
 #: client/settings/ai-storefront/ai-orders-table.js:271
-#: client/settings/ai-storefront/ai-orders-table.js:465
-#: client/settings/ai-storefront/endpoint-info.js:611
+#: client/settings/ai-storefront/ai-orders-table.js:470
+#: client/settings/ai-storefront/endpoint-info.js:624
 msgid "Status"
 msgstr ""
 
 #: client/settings/ai-storefront/ai-orders-table.js:272
-#: client/settings/ai-storefront/ai-orders-table.js:533
+#: client/settings/ai-storefront/ai-orders-table.js:541
 msgid "Agent"
 msgstr ""
 
 #: client/settings/ai-storefront/ai-orders-table.js:273
-#: client/settings/ai-storefront/ai-orders-table.js:540
+#: client/settings/ai-storefront/ai-orders-table.js:548
 msgid "Total"
 msgstr ""
 
@@ -347,360 +347,360 @@ msgstr ""
 msgid "Ready for your first AI order"
 msgstr ""
 
-#: client/settings/ai-storefront/ai-orders-table.js:393
+#: client/settings/ai-storefront/ai-orders-table.js:396
 msgid "Your store is discoverable by AI shopping assistants. When one refers a shopper who buys, the order will appear here with the referring agent."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:382
+#: client/settings/ai-storefront/endpoint-info.js:383
 msgid "Checking…"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:394
+#: client/settings/ai-storefront/endpoint-info.js:395
 msgid "Reachable"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:400
+#: client/settings/ai-storefront/endpoint-info.js:401
 msgid "Not reachable"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:406
+#: client/settings/ai-storefront/endpoint-info.js:407
 msgid "Not published"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:536
+#: client/settings/ai-storefront/endpoint-info.js:538
 msgid "AI agent access"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:545
+#: client/settings/ai-storefront/endpoint-info.js:547
 msgid "How AI agents find and interact with your site."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:555
+#: client/settings/ai-storefront/endpoint-info.js:557
 msgid "Discovery endpoints"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:564
+#: client/settings/ai-storefront/endpoint-info.js:569
 msgid "These endpoints are automatically available when AI Storefront is enabled."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:585
+#: client/settings/ai-storefront/endpoint-info.js:590
 msgid "Reachability is checked from your browser."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:599
+#: client/settings/ai-storefront/endpoint-info.js:604
 msgid "AI Storefront is currently disabled. Enable it in the Overview tab to activate these endpoints."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:609
+#: client/settings/ai-storefront/endpoint-info.js:615
 msgid "Endpoint"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:610
+#: client/settings/ai-storefront/endpoint-info.js:621
 msgid "URL"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:612
+#: client/settings/ai-storefront/endpoint-info.js:630
 msgid "Purpose"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:633
+#: client/settings/ai-storefront/endpoint-info.js:659
 msgid "Machine-readable store guide for AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:656
+#: client/settings/ai-storefront/endpoint-info.js:684
 msgid "Universal Commerce Protocol — declares capabilities"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:679
+#: client/settings/ai-storefront/endpoint-info.js:709
 msgid "AI-crawler allow-list (Allow/Disallow directives appended to your site’s robots.txt)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:702
+#: client/settings/ai-storefront/endpoint-info.js:736
 msgid "Structured commerce API for AI agents — catalog search, lookup, and checkout sessions"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:725
+#: client/settings/ai-storefront/endpoint-info.js:759
 msgid "One or more endpoints are not reachable. If you just upgraded the plugin, try Settings → Permalinks → Save Changes to flush rewrite rules, then click Re-check."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:753
+#: client/settings/ai-storefront/endpoint-info.js:787
 msgid "Re-check"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:763
+#: client/settings/ai-storefront/endpoint-info.js:797
 msgid "Allowed AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:772
+#: client/settings/ai-storefront/endpoint-info.js:809
 msgid "Control which AI agents are allowed to discover your store via robots.txt. Unchecked agents will be blocked from crawling your product pages."
 msgstr ""
 
 #. translators: %1$d: number of allowed AI agents, %2$d: total AI agents
-#: client/settings/ai-storefront/endpoint-info.js:824
+#: client/settings/ai-storefront/endpoint-info.js:866
 #, js-format
 msgid "Allowed AI agents: %1$d of %2$d"
 msgstr ""
 
 #. translators: %1$d: allowed count, %2$d: total count
-#: client/settings/ai-storefront/endpoint-info.js:834
+#: client/settings/ai-storefront/endpoint-info.js:876
 #, js-format
 msgid "%1$d of %2$d"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:848
-#: client/settings/ai-storefront/product-selection.js:1862
+#: client/settings/ai-storefront/endpoint-info.js:893
+#: client/settings/ai-storefront/product-selection.js:2009
 msgid "Select all"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:880
+#: client/settings/ai-storefront/endpoint-info.js:925
 msgid "Clear"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:901
+#: client/settings/ai-storefront/endpoint-info.js:946
 msgid "General-purpose AI assistants"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:911
+#: client/settings/ai-storefront/endpoint-info.js:956
 msgid "Agentic shopping"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:918
+#: client/settings/ai-storefront/endpoint-info.js:966
 msgid "Commerce search engines"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:925
+#: client/settings/ai-storefront/endpoint-info.js:976
 msgid "Regional Asia"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:932
+#: client/settings/ai-storefront/endpoint-info.js:986
 msgid "Regional Europe"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:939
+#: client/settings/ai-storefront/endpoint-info.js:996
 msgid "Training and test crawlers"
 msgstr ""
 
 #. translators: %1$d allowed, %2$d total
-#: client/settings/ai-storefront/endpoint-info.js:984
+#: client/settings/ai-storefront/endpoint-info.js:1075
 #, js-format
 msgid "%1$d/%2$d allowed"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1038
+#: client/settings/ai-storefront/endpoint-info.js:1139
 msgid "Other AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1048
+#: client/settings/ai-storefront/endpoint-info.js:1152
 msgid "When checked, AI agents whose brand isn’t in the list can access your store."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1054
+#: client/settings/ai-storefront/endpoint-info.js:1158
 msgid "Allow agents not on the list"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1090
+#: client/settings/ai-storefront/endpoint-info.js:1198
 msgid "Rate limits"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1099
+#: client/settings/ai-storefront/endpoint-info.js:1207
 msgid "Control how frequently AI agents can query your store. Higher limits allow faster product discovery but use more server resources."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1120
+#: client/settings/ai-storefront/endpoint-info.js:1228
 msgid "Recommended"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1122
+#: client/settings/ai-storefront/endpoint-info.js:1233
 msgid "Works well for most stores."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1129
+#: client/settings/ai-storefront/endpoint-info.js:1240
 msgid "Conservative"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1131
+#: client/settings/ai-storefront/endpoint-info.js:1245
 msgid "Shared hosting or low-traffic stores."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1138
+#: client/settings/ai-storefront/endpoint-info.js:1252
 msgid "Generous"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1140
+#: client/settings/ai-storefront/endpoint-info.js:1257
 msgid "High-traffic stores on dedicated hosting."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1147
+#: client/settings/ai-storefront/endpoint-info.js:1264
 msgid "Custom"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1149
+#: client/settings/ai-storefront/endpoint-info.js:1269
 msgid "Set your own requests-per-minute cap."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1229
+#: client/settings/ai-storefront/endpoint-info.js:1360
 msgid "Requests per minute"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1249
+#: client/settings/ai-storefront/endpoint-info.js:1384
 msgid "requests / min"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1308
-#: client/settings/ai-storefront/policies-tab.js:1048
-#: client/settings/ai-storefront/product-selection.js:1763
+#: client/settings/ai-storefront/endpoint-info.js:1446
+#: client/settings/ai-storefront/policies-tab.js:1130
+#: client/settings/ai-storefront/product-selection.js:1912
 msgid "Saving…"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1309
-#: client/settings/ai-storefront/policies-tab.js:1049
-#: client/settings/ai-storefront/product-selection.js:1764
+#: client/settings/ai-storefront/endpoint-info.js:1447
+#: client/settings/ai-storefront/policies-tab.js:1131
+#: client/settings/ai-storefront/product-selection.js:1913
 msgid "Save changes"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:44
+#: client/settings/ai-storefront/policies-tab.js:45
 msgid "Free returns"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:48
+#: client/settings/ai-storefront/policies-tab.js:49
 msgid "Customer pays return fees"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:52
+#: client/settings/ai-storefront/policies-tab.js:53
 msgid "Original shipping fees"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:56
+#: client/settings/ai-storefront/policies-tab.js:57
 msgid "Restocking fees"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:63
+#: client/settings/ai-storefront/policies-tab.js:64
 msgid "Return by mail"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:67
+#: client/settings/ai-storefront/policies-tab.js:68
 msgid "Return in store"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:71
+#: client/settings/ai-storefront/policies-tab.js:72
 msgid "Return at kiosk"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:297
+#: client/settings/ai-storefront/policies-tab.js:301
 msgid "— No policy page selected —"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:333
+#: client/settings/ai-storefront/policies-tab.js:340
 msgid "Return & refund policy"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:342
+#: client/settings/ai-storefront/policies-tab.js:352
 msgid "AI agents read this to decide whether to recommend your products and place buy actions. Without a clear return policy, they typically downgrade or skip your products in favour of competitors who publish one."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:350
+#: client/settings/ai-storefront/policies-tab.js:359
 msgid "Policy mode"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:356
+#: client/settings/ai-storefront/policies-tab.js:365
 msgid "Returns accepted"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:360
+#: client/settings/ai-storefront/policies-tab.js:372
 msgid "No returns"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:364
+#: client/settings/ai-storefront/policies-tab.js:379
 msgid "Don't expose"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:372
+#: client/settings/ai-storefront/policies-tab.js:390
 msgid "AI agents may downgrade your products in recommendations, or skip them entirely. Pick \"Returns accepted\" or \"No returns\" to publish a policy."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:421
+#: client/settings/ai-storefront/policies-tab.js:439
 msgid "Link AI agents to a full-text policy page on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:432
-#: client/settings/ai-storefront/policies-tab.js:441
-#: client/settings/ai-storefront/policies-tab.js:722
-#: client/settings/ai-storefront/policies-tab.js:731
+#: client/settings/ai-storefront/policies-tab.js:450
+#: client/settings/ai-storefront/policies-tab.js:462
+#: client/settings/ai-storefront/policies-tab.js:794
+#: client/settings/ai-storefront/policies-tab.js:806
 msgid "Policy page (optional)"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:467
+#: client/settings/ai-storefront/policies-tab.js:493
 msgid "Applied as the default for all returns. You can override this per product on the Product edit screen."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:478
-#: client/settings/ai-storefront/policies-tab.js:484
+#: client/settings/ai-storefront/policies-tab.js:504
+#: client/settings/ai-storefront/policies-tab.js:513
 msgid "Return fees"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:502
+#: client/settings/ai-storefront/policies-tab.js:536
 msgid "Return window (days)"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:518
+#: client/settings/ai-storefront/policies-tab.js:555
 msgid "Decrease"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:567
+#: client/settings/ai-storefront/policies-tab.js:621
 msgid "Increase"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:597
+#: client/settings/ai-storefront/policies-tab.js:660
 msgid "Leave at 0 to publish \"Unspecified\" instead of a finite window."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:651
+#: client/settings/ai-storefront/policies-tab.js:714
 msgid "Return methods"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:711
+#: client/settings/ai-storefront/policies-tab.js:783
 msgid "Link AI agents to a \"no returns\" explainer on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:983
+#: client/settings/ai-storefront/policies-tab.js:1065
 msgid "Store policies"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:992
+#: client/settings/ai-storefront/policies-tab.js:1074
 msgid "Policies AI agents can quote to shoppers before checkout."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1001
+#: client/settings/ai-storefront/policies-tab.js:1083
 msgid "Could not load your pages. Page links won't be available."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:107
+#: client/settings/ai-storefront/product-selection.js:111
 msgid "Every published product in your store is discoverable by AI agents."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:111
+#: client/settings/ai-storefront/product-selection.js:115
 msgid "Share only products that match selected categories, tags, or brands."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:115
+#: client/settings/ai-storefront/product-selection.js:119
 msgid "Hand-pick individual products. New products are not auto-included."
 msgstr ""
 
 #. translators: %s: item name
-#: client/settings/ai-storefront/product-selection.js:268
+#: client/settings/ai-storefront/product-selection.js:271
 #, js-format
 msgid "Remove %s"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:853
-#: client/settings/ai-storefront/product-selection.js:1063
+#: client/settings/ai-storefront/product-selection.js:889
+#: client/settings/ai-storefront/product-selection.js:1106
 msgid "Loading…"
 msgstr ""
 
 #. translators: %s: total published product count, formatted via toLocaleString using the browser locale.
 #. translators: %s: scoped product count after applying selected categories/tags/brands.
-#: client/settings/ai-storefront/product-selection.js:862
-#: client/settings/ai-storefront/product-selection.js:1069
+#: client/settings/ai-storefront/product-selection.js:898
+#: client/settings/ai-storefront/product-selection.js:1112
 #, js-format
 msgid "%s product"
 msgid_plural "%s products"
@@ -708,7 +708,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of selected categories.
-#: client/settings/ai-storefront/product-selection.js:891
+#: client/settings/ai-storefront/product-selection.js:927
 #, js-format
 msgid "%d category"
 msgid_plural "%d categories"
@@ -716,7 +716,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of selected tags.
-#: client/settings/ai-storefront/product-selection.js:905
+#: client/settings/ai-storefront/product-selection.js:941
 #, js-format
 msgid "%d tag"
 msgid_plural "%d tags"
@@ -724,7 +724,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of selected brands.
-#: client/settings/ai-storefront/product-selection.js:928
+#: client/settings/ai-storefront/product-selection.js:964
 #, js-format
 msgid "%d brand"
 msgid_plural "%d brands"
@@ -732,293 +732,293 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: separator between taxonomy count segments in the By-taxonomy row badge, e.g. "3 categories · 1 brand". Surrounding spaces are intentional and locale-sensitive (RTL languages may prefer none).
-#: client/settings/ai-storefront/product-selection.js:945
+#: client/settings/ai-storefront/product-selection.js:981
 msgid " · "
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:962
+#: client/settings/ai-storefront/product-selection.js:998
 msgid "Nothing selected"
 msgstr ""
 
 #. translators: %d: number of selected products.
-#: client/settings/ai-storefront/product-selection.js:1107
+#: client/settings/ai-storefront/product-selection.js:1150
 #, js-format
 msgid "%d selected"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1148
+#: client/settings/ai-storefront/product-selection.js:1191
 msgid "No categories, tags, or brands selected. Your products are currently hidden from AI agents — pick at least one to resume sharing."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1152
+#: client/settings/ai-storefront/product-selection.js:1195
 msgid "No categories or tags selected. Your products are currently hidden from AI agents — pick at least one to resume sharing."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1245
+#: client/settings/ai-storefront/product-selection.js:1295
 msgid "Catalog access"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1255
+#: client/settings/ai-storefront/product-selection.js:1305
 msgid "Control which products AI agents can see and recommend."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1280
+#: client/settings/ai-storefront/product-selection.js:1330
 msgid "Products available to AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1290
+#: client/settings/ai-storefront/product-selection.js:1343
 msgid "Choose which products are exposed to AI agents."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1306
+#: client/settings/ai-storefront/product-selection.js:1359
 msgid "All published products"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1316
+#: client/settings/ai-storefront/product-selection.js:1372
 msgid "Products by category, tag, or brand"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1327
+#: client/settings/ai-storefront/product-selection.js:1385
 msgid "Taxonomy"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1338
+#: client/settings/ai-storefront/product-selection.js:1399
 msgid "Categories"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1342
+#: client/settings/ai-storefront/product-selection.js:1406
 msgid "Tags"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1348
+#: client/settings/ai-storefront/product-selection.js:1415
 msgid "Brands"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1472
+#: client/settings/ai-storefront/product-selection.js:1559
 msgid "Filter categories…"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1476
+#: client/settings/ai-storefront/product-selection.js:1563
 msgid "No categories match your filter."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1480
+#: client/settings/ai-storefront/product-selection.js:1567
 msgid "You haven't created any categories yet. Create them in Products → Categories."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1484
+#: client/settings/ai-storefront/product-selection.js:1571
 msgid "Couldn't load your categories right now. If you have categories configured, refresh this page to retry."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1514
+#: client/settings/ai-storefront/product-selection.js:1606
 msgid "Filter tags (e.g. summer, sale)…"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1518
+#: client/settings/ai-storefront/product-selection.js:1610
 msgid "No tags match your filter."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1522
+#: client/settings/ai-storefront/product-selection.js:1614
 msgid "You haven't created any tags yet. Add tags on a product's edit screen."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1526
+#: client/settings/ai-storefront/product-selection.js:1618
 msgid "Couldn't load your tags right now. If you have tags configured, refresh this page to retry."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1558
+#: client/settings/ai-storefront/product-selection.js:1656
 msgid "Filter brands (e.g. Adidas, Nike)…"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1562
+#: client/settings/ai-storefront/product-selection.js:1660
 msgid "No brands match your filter."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1566
+#: client/settings/ai-storefront/product-selection.js:1664
 msgid "You haven't created any brands yet. Add brands in Products → Brands."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1570
+#: client/settings/ai-storefront/product-selection.js:1668
 msgid "Couldn't load your brands right now. If you have brands configured, refresh this page to retry."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1582
+#: client/settings/ai-storefront/product-selection.js:1680
 msgid "Specific products only"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1611
+#: client/settings/ai-storefront/product-selection.js:1717
 msgid "Search products…"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1653
+#: client/settings/ai-storefront/product-selection.js:1768
 msgid "No products found. Try a different search."
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1722
-#: client/settings/ai-storefront/product-selection.js:1874
+#: client/settings/ai-storefront/product-selection.js:1868
+#: client/settings/ai-storefront/product-selection.js:2021
 msgid "Clear selection"
 msgstr ""
 
-#: client/settings/ai-storefront/product-selection.js:1823
+#: client/settings/ai-storefront/product-selection.js:1969
 msgid "Unable to load items."
 msgstr ""
 
 #. translators: %1$s: term name, %2$d: product count
-#: client/settings/ai-storefront/product-selection.js:1971
+#: client/settings/ai-storefront/product-selection.js:2122
 #, js-format
 msgid "%1$s (%2$d)"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:95
+#: client/settings/ai-storefront/settings-page.js:108
 msgid "Loading settings…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:110
+#: client/settings/ai-storefront/settings-page.js:124
 msgid "Overview"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:118
+#: client/settings/ai-storefront/settings-page.js:132
 msgid "Product visibility"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:122
+#: client/settings/ai-storefront/settings-page.js:136
 msgid "Policies"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:126
+#: client/settings/ai-storefront/settings-page.js:140
 msgid "Discovery"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:414
+#: client/settings/ai-storefront/settings-page.js:427
 msgid "Make your store ready for AI shopping assistants"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:427
+#: client/settings/ai-storefront/settings-page.js:440
 msgid "Go live in one click. Checkout stays on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:464
+#: client/settings/ai-storefront/settings-page.js:479
 msgid "Enabling…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:465
+#: client/settings/ai-storefront/settings-page.js:480
 msgid "Enable AI Storefront"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:477
+#: client/settings/ai-storefront/settings-page.js:495
 msgid "Read-only · Reversible anytime · No frontend changes"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:515
+#: client/settings/ai-storefront/settings-page.js:533
 msgid "One setup, every AI assistant"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:520
+#: client/settings/ai-storefront/settings-page.js:538
 msgid "Your catalog becomes visible to ChatGPT, Gemini, Claude, Perplexity, and Copilot, with no per-platform work when new agents launch."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:527
+#: client/settings/ai-storefront/settings-page.js:545
 msgid "Checkout stays on your store"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:532
+#: client/settings/ai-storefront/settings-page.js:550
 msgid "No AI-platform checkout fees. No delegated payments. You keep the customer, the checkout, and the data."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:539
+#: client/settings/ai-storefront/settings-page.js:557
 msgid "See which AI drove each sale"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:544
+#: client/settings/ai-storefront/settings-page.js:562
 msgid "Every AI-referred order is tagged with its source agent and revenue, using standard WooCommerce Order Attribution."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:634
+#: client/settings/ai-storefront/settings-page.js:659
 msgid "Couldn’t load"
 msgstr ""
 
 #. translators: %d: number of products exposed to AI
-#: client/settings/ai-storefront/settings-page.js:640
+#: client/settings/ai-storefront/settings-page.js:668
 #, js-format
 msgid "%d product"
 msgid_plural "%d products"
 msgstr[0] ""
 msgstr[1] ""
 
-#: client/settings/ai-storefront/settings-page.js:676
+#: client/settings/ai-storefront/settings-page.js:704
 msgid "AI traffic and orders"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:686
+#: client/settings/ai-storefront/settings-page.js:717
 msgid "Live dashboard of your AI-attributed traffic and orders."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:709
+#: client/settings/ai-storefront/settings-page.js:740
 msgid "Date range"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:714
+#: client/settings/ai-storefront/settings-page.js:752
 msgid "Today"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:718
+#: client/settings/ai-storefront/settings-page.js:756
 msgid "Last 7 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:722
+#: client/settings/ai-storefront/settings-page.js:763
 msgid "Month to date"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:726
+#: client/settings/ai-storefront/settings-page.js:770
 msgid "Last 30 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:730
+#: client/settings/ai-storefront/settings-page.js:777
 msgid "Last year"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:801
+#: client/settings/ai-storefront/settings-page.js:857
 msgid "Products exposed"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:823
+#: client/settings/ai-storefront/settings-page.js:882
 msgid "AI orders"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:834
+#: client/settings/ai-storefront/settings-page.js:893
 msgid "AI revenue"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:838
+#: client/settings/ai-storefront/settings-page.js:901
 msgid "AI AOV"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:846
+#: client/settings/ai-storefront/settings-page.js:909
 msgid "Top agent"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:868
+#: client/settings/ai-storefront/settings-page.js:931
 msgid "Top agent share"
 msgstr ""
 
 #. translators: %1$s: percent share of AI orders attributed to the top agent. The literal trailing percent sign comes from `%%` in the format string. Ordered placeholder (`%1$s`) keeps the file consistent with @wordpress/valid-sprintf rules.
-#: client/settings/ai-storefront/settings-page.js:884
+#: client/settings/ai-storefront/settings-page.js:950
 #, js-format
 msgid "%1$s%%"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:930
+#: client/settings/ai-storefront/settings-page.js:996
 msgid "Disable AI Storefront"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:940
+#: client/settings/ai-storefront/settings-page.js:1009
 msgid "Stops AI agents from accessing your store. Settings are preserved."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:971
+#: client/settings/ai-storefront/settings-page.js:1040
 msgid "Disabling…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:972
+#: client/settings/ai-storefront/settings-page.js:1041
 msgid "Disable"
 msgstr ""

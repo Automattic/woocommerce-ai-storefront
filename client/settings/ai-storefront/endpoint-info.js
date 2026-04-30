@@ -12,19 +12,20 @@ import {
 import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-storefront/constants';
 import { colors, typography, radii, spacing } from './tokens';
+import { TabInputStyles } from './tab-input-styles';
 
 const ENDPOINT_TAB_CLASS = 'ai-storefront-endpoint-tab';
 
 const CRAWLER_GROUP_CLASS = 'ai-storefront-crawler-group';
 
+/**
+ * Endpoint-tab-specific styles. The shared 32px input-height override
+ * is provided by `TabInputStyles`; this component owns the URL-cell
+ * monospace font and the collapsible-crawler-group chrome.
+ */
 function EndpointTabStyles() {
 	return (
 		<style>{ `
-			.${ ENDPOINT_TAB_CLASS } .components-text-control__input,
-			.${ ENDPOINT_TAB_CLASS } .components-select-control__input {
-				height: 32px;
-				min-height: 32px;
-			}
 			.${ ENDPOINT_TAB_CLASS } .endpoint-url-cell a {
 				font-family: "JetBrains Mono", Menlo, Consolas, Monaco, monospace;
 				font-size: 13px;
@@ -394,7 +395,7 @@ const StatusBadge = ( { status } ) => {
 			label: __( 'Reachable', 'woocommerce-ai-storefront' ),
 		},
 		unreachable: {
-			bg: '#fce8e8',
+			bg: colors.errorBg,
 			fg: colors.error,
 			dot: colors.error,
 			label: __( 'Not reachable', 'woocommerce-ai-storefront' ),
@@ -515,6 +516,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 
 	return (
 		<div className={ ENDPOINT_TAB_CLASS }>
+			<TabInputStyles tabClass={ ENDPOINT_TAB_CLASS } />
 			<EndpointTabStyles />
 			{ /*
 			   Section-head block: section h2 names the operator's
@@ -999,13 +1001,40 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							subgroup: null,
 							defaultOpen: false,
 						},
-					].map( ( group ) => {
+					].map( ( group, _idx, allGroups ) => {
 						const crawlers = KNOWN_CRAWLERS.filter(
 							( c ) =>
 								group.categories.includes( c.category ) &&
 								( group.subgroup === null ||
 									c.subgroup === group.subgroup )
 						);
+						// Dev-mode safeguard: if a `live` crawler is added
+						// with a subgroup that no rendered group claims,
+						// it would silently vanish from the merchant UI.
+						// Surface it during development so the missing
+						// group/subgroup mismatch can be fixed at source.
+						if (
+							process.env.NODE_ENV !== 'production' &&
+							group.key === allGroups[ 0 ].key
+						) {
+							const knownSubgroups = new Set(
+								allGroups
+									.filter( ( g ) => g.subgroup !== null )
+									.map( ( g ) => g.subgroup )
+							);
+							const orphans = KNOWN_CRAWLERS.filter(
+								( c ) =>
+									c.category === 'live' &&
+									! knownSubgroups.has( c.subgroup )
+							);
+							if ( orphans.length > 0 ) {
+								// eslint-disable-next-line no-console -- Dev-only orphan warning.
+								console.warn(
+									'[ai-storefront] Live crawlers with no matching group:',
+									orphans.map( ( o ) => o.id )
+								);
+							}
+						}
 						if ( crawlers.length === 0 ) {
 							return null;
 						}

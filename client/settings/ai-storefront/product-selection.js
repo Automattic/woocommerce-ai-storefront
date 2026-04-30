@@ -13,17 +13,39 @@ import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 import { addQueryArgs } from '@wordpress/url';
 import { colors, spacing, radii, typography } from './tokens';
+import { TabInputStyles } from './tab-input-styles';
 
 const PRODUCT_TAB_CLASS = 'ai-storefront-product-tab';
 
+/**
+ * Per-tab focus-ring rule for ModeRow's visually-hidden radio. The
+ * shared 32px input-height override is provided by `TabInputStyles`;
+ * this component adds product-tab-specific styles only.
+ */
 function ProductTabStyles() {
 	return (
 		<style>{ `
-			.${ PRODUCT_TAB_CLASS } .components-search-control .components-input-control__input,
-			.${ PRODUCT_TAB_CLASS } .components-text-control__input,
-			.${ PRODUCT_TAB_CLASS } .components-select-control__input {
-				height: 32px;
-				min-height: 32px;
+			/* Visually-hide ModeRow's native radio while keeping it
+			   in the keyboard tab order and AT tree. Inline styles
+			   wouldn't override the WP user-agent stylesheet's input
+			   width, so this lives in a scoped CSS rule. */
+			.${ PRODUCT_TAB_CLASS } input[type="radio"].mode-row-radio {
+				position: absolute;
+				width: 1px;
+				height: 1px;
+				margin: 0;
+				padding: 0;
+				border: 0;
+				overflow: hidden;
+				clip: rect(0 0 0 0);
+				white-space: nowrap;
+			}
+			/* Focus ring for the visually-hidden radio: lights up the
+			   visible .mode-row-dot sibling when the radio has
+			   keyboard focus. */
+			.${ PRODUCT_TAB_CLASS } .mode-row-radio:focus-visible + .mode-row-dot {
+				box-shadow: 0 0 0 2px ${ colors.accent };
+				outline: 2px solid transparent; /* Windows high-contrast */
 			}
 		` }</style>
 	);
@@ -339,25 +361,24 @@ const ModeRow = ( {
 					cursor: 'pointer',
 				} }
 			>
-				{ /* Visually hidden native radio keeps keyboard/AT semantics */ }
+				{ /* Visually hidden native radio: remains in tab order
+				     and reachable to AT, but rendered off-screen. The
+				     visible `.mode-row-dot` sibling shows selection
+				     state, and a scoped :focus-visible rule in
+				     ProductTabStyles draws a focus ring on the dot
+				     when the radio has keyboard focus. */ }
 				<input
 					type="radio"
 					name={ name }
 					value={ value }
 					checked={ isSelected }
 					onChange={ () => onSelect( value ) }
-					style={ {
-						position: 'absolute',
-						opacity: 0,
-						width: 0,
-						height: 0,
-						margin: 0,
-						pointerEvents: 'none',
-					} }
+					className="mode-row-radio"
 				/>
 				{ /* Custom radio dot — 16px ring, 5px filled when selected */ }
 				<span
 					aria-hidden="true"
+					className="mode-row-dot"
 					style={ {
 						flexShrink: 0,
 						width: '16px',
@@ -736,26 +757,42 @@ const ProductSelection = ( {
 
 	// Pre-warm the cache on mount for already-saved product IDs so chips
 	// render immediately on page load without requiring a search first.
+	// WC REST `/wc/v3/products` enforces `per_page <= 100` (silently
+	// clamps higher values). For merchants with > 100 hand-picked
+	// products we'd lose chip labels for the tail; the workaround is to
+	// page through `include` in chunks of 100. Most merchants stay well
+	// under 100, so a single pre-warm covers the common case and the
+	// remaining tail will hydrate on first search.
 	useEffect( () => {
 		if ( selectedProducts.length === 0 ) {
 			return;
 		}
+		const PER_PAGE_MAX = 100;
+		const firstChunk = selectedProducts.slice( 0, PER_PAGE_MAX );
 		apiFetch( {
 			path: addQueryArgs( '/wc/v3/products', {
-				include: selectedProducts,
-				per_page: selectedProducts.length,
+				include: firstChunk,
+				per_page: firstChunk.length,
 				status: 'publish',
 				_fields: 'id,name,sku',
 			} ),
-		} ).then( ( fetched ) => {
-			setSelectedProductCache( ( prev ) => {
-				const next = { ...prev };
-				fetched.forEach( ( p ) => {
-					next[ p.id ] = p;
+		} )
+			.then( ( fetched ) => {
+				setSelectedProductCache( ( prev ) => {
+					const next = { ...prev };
+					fetched.forEach( ( p ) => {
+						next[ p.id ] = p;
+					} );
+					return next;
 				} );
-				return next;
+			} )
+			.catch( () => {
+				// Cache pre-warm is best-effort. If the request fails
+				// (network error, 5xx, auth blip), chips will hydrate
+				// lazily once the merchant performs a search. Silent
+				// failure is the right behavior here — there is no
+				// merchant-actionable error to surface.
 			} );
-		} );
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [] );
 
@@ -1243,6 +1280,7 @@ const ProductSelection = ( {
 
 	return (
 		<div className={ PRODUCT_TAB_CLASS }>
+			<TabInputStyles tabClass={ PRODUCT_TAB_CLASS } />
 			<ProductTabStyles />
 			{ /*
 			   Section-head block: section h2 names the operator's
@@ -1350,7 +1388,7 @@ const ProductSelection = ( {
 						>
 							{ /* Taxonomy filter chips — local navigation only, not a saved setting */ }
 							<div
-								role="group"
+								role="radiogroup"
 								aria-label={ __(
 									'Taxonomy',
 									'woocommerce-ai-storefront'
@@ -1395,10 +1433,11 @@ const ProductSelection = ( {
 										<button
 											key={ tab.value }
 											type="button"
+											role="radio"
+											aria-checked={ isActive }
 											onClick={ () =>
 												setTaxonomy( tab.value )
 											}
-											aria-pressed={ isActive }
 											style={ {
 												display: 'inline-flex',
 												alignItems: 'center',

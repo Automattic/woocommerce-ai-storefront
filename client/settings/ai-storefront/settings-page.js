@@ -256,7 +256,7 @@ const ValueCard = ( { Icon: IconComponent, title, children } ) => (
 // trademark entanglement and keep the dep graph clean — the name
 // IS the visual signal. Purple tint bg + dark purple text matches
 // the `.assistant-badge` spec in the design file.
-const AssistantChip = ( { children, style } ) => (
+const AssistantChip = ( { children } ) => (
 	<span
 		style={ {
 			display: 'inline-flex',
@@ -269,7 +269,6 @@ const AssistantChip = ( { children, style } ) => (
 			fontWeight: '600',
 			lineHeight: 1.4,
 			color: colors.wooPurple90,
-			...style,
 		} }
 	>
 		{ children }
@@ -406,7 +405,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 		   accent base styles fight the purple intent at every node. */ }
 			<div
 				style={ {
-					background: 'linear-gradient(135deg, #faf6ff, #fff 60%)',
+					background: `linear-gradient(135deg, ${ colors.heroBg }, ${ colors.surface } 60%)`,
 					border: `1px solid ${ colors.borderSubtle }`,
 					borderRadius: radii.sm,
 					padding: `${ spacing.s7 } ${ spacing.s6 }`,
@@ -466,7 +465,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 									? colors.wooPurple70
 									: colors.wooPurple50
 							}`,
-							color: '#fff',
+							color: colors.surface,
 							padding: '8px 16px',
 							borderRadius: radii.sm,
 							font: `600 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`,
@@ -737,7 +736,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				} }
 			>
 				<div
-					role="tablist"
+					role="radiogroup"
 					aria-label={ __(
 						'Date range',
 						'woocommerce-ai-storefront'
@@ -786,8 +785,8 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						return (
 							<button
 								key={ option.value }
-								role="tab"
-								aria-selected={ isActive }
+								role="radio"
+								aria-checked={ isActive }
 								type="button"
 								onClick={ () => setPeriod( option.value ) }
 								style={ {
