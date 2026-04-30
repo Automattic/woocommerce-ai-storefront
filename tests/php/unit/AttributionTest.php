@@ -1181,9 +1181,11 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_get_stats_normalizes_invalid_period_to_month(): void {
 		// An unrecognized period value must be silently normalized to 'month'
-		// so the transient key is always one of the four valid values. Without
-		// normalization a caller passing 'quarter' would read and write a
-		// transient key that bust_stats_cache() never deletes.
+		// so the transient key is always one of the five valid values. Without
+		// normalization a caller passing 'gibberish' would read and write a
+		// transient key that bust_stats_cache() never deletes. Use a clearly-
+		// nonsense sentinel rather than a real-looking period name so this
+		// test doesn't break the next time the valid-period set grows.
 		Functions\expect( 'get_transient' )
 			->once()
 			->with( 'wc_ai_storefront_stats_month' )
@@ -1207,7 +1209,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		// test environment, so `class_exists()` naturally returns false and
 		// the legacy post-based query path runs. No stubbing needed.
 
-		$result = WC_AI_Storefront_Attribution::get_stats( 'quarter' );
+		$result = WC_AI_Storefront_Attribution::get_stats( 'gibberish' );
 
 		$this->assertSame( 'month', $result['period'] );
 
