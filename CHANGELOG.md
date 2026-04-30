@@ -6,6 +6,7 @@
 
 ### Fixes
 
+- **Pinned vulnerable transitive dev dependencies via `npm overrides`.** Added an `overrides` block to `package.json` to force patched versions of `@babel/runtime`, `basic-ftp`, `cross-spawn`, `postcss`, `tar-fs`, and `ws` (within-major patch bumps), plus targeted `minimatch` and `ajv` overrides for specific chains. Closes most open Dependabot alerts. Build, lint, and tests all pass with the new lockfile. Remaining alerts (uuid, webpack-dev-server, serialize-javascript, @tootallnate/once) require semver-major bumps that break the build and are deferred to a follow-up `@wordpress/scripts` modernization PR. No production behavior change — these packages are dev/build-time only and do not ship in the plugin.
 - **Removed PHP 8.3 deprecation notice from the autoloader.** The standalone `includes/autoload.php` was passing the now-no-op `$do_throw = false` argument to `spl_autoload_register()`, which PHP 8.3 surfaces as a deprecation notice on every CLI invocation. PHP 8.0 already made registration failure always throw regardless of this argument, so dropping it (along with the trailing default `$prepend = false`) is purely cosmetic. No behavior change.
 
 ### Refactors
