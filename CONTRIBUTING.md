@@ -13,6 +13,50 @@ npm run build
 composer test
 ```
 
+## Local development environment
+
+The repo ships a [`@wordpress/env`](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-env/) config (`.wp-env.json`) that spins up WordPress + WooCommerce in Docker with the plugin bind-mounted. No database setup required.
+
+**First time:**
+
+```bash
+npm install          # installs @wordpress/env
+npm run env:start    # pulls images, installs WP + WooCommerce (~2-3 min first run)
+```
+
+Site: <http://localhost:8030> | Admin: <http://localhost:8030/wp-admin>
+Credentials: `admin` / `password`
+
+The plugin is activated automatically. Go to **WooCommerce > Woo AI Storefront** to open the settings.
+
+**Testing an in-flight PR:**
+
+```bash
+gh pr checkout NNN   # switch to the PR branch
+npm run build        # rebuild JS if the PR touches client/
+# refresh browser -- changes are live immediately (bind-mount)
+```
+
+No container restart needed between branch switches. `npm run build` is only required when `client/` changes; PHP changes are live immediately.
+
+**Day-to-day commands:**
+
+| Command | What it does |
+|---------|-------------|
+| `npm run env:start` | Start (or resume) the environment |
+| `npm run env:stop` | Stop containers, keep data |
+| `npm run env:destroy` | Stop and delete all data (fresh start) |
+| `npm run env:clean` | Reset WordPress to a clean install (keeps containers) |
+| `npm run env:logs` | Tail container logs |
+| `npm run env:cli -- post list` | Run any WP-CLI command inside the container |
+
+**Switching back to your branch:**
+
+```bash
+git checkout your-branch
+npm run build        # if your branch has JS changes
+```
+
 ## Required checks before a PR
 
 - `composer test` — PHPUnit (920+ tests).

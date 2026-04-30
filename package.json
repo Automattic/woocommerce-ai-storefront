@@ -12,12 +12,20 @@
 		"lint:js": "wp-scripts lint-js client/",
 		"lint:js-fix": "wp-scripts lint-js --fix client/",
 		"lint:css": "wp-scripts lint-style 'client/**/*.{css,scss}'",
-		"test:js": "wp-scripts test-unit-js"
+		"test:js": "wp-scripts test-unit-js",
+		"env:start": "cross-env COMPOSE_PROJECT_NAME=woocommerce-ai-storefront wp-env start",
+		"env:stop": "cross-env COMPOSE_PROJECT_NAME=woocommerce-ai-storefront wp-env stop",
+		"env:destroy": "cross-env COMPOSE_PROJECT_NAME=woocommerce-ai-storefront wp-env destroy",
+		"env:clean": "cross-env COMPOSE_PROJECT_NAME=woocommerce-ai-storefront wp-env clean all",
+		"env:logs": "cross-env COMPOSE_PROJECT_NAME=woocommerce-ai-storefront wp-env logs",
+		"env:cli": "cross-env COMPOSE_PROJECT_NAME=woocommerce-ai-storefront wp-env run cli wp"
 	},
 	"devDependencies": {
 		"@woocommerce/dependency-extraction-webpack-plugin": "^4.0.0",
 		"@wordpress/dataviews": "^14.1.0",
-		"@wordpress/scripts": "^28.0.0"
+		"@wordpress/env": "^11.5.0",
+		"@wordpress/scripts": "^28.0.0",
+		"cross-env": "^7.0.3"
 	},
 	"dependencies": {
 		"@wordpress/api-fetch": "^7.0.0",
