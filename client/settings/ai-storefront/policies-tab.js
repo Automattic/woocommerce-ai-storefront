@@ -23,7 +23,6 @@ import {
 	Button,
 	Card,
 	CardBody,
-	CardHeader,
 	CheckboxControl,
 	Notice,
 	SelectControl,
@@ -38,7 +37,7 @@ import {
 import { __ } from '@wordpress/i18n';
 import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
-import { colors } from './tokens';
+import { colors, typography } from './tokens';
 import {
 	ToggleGroupStyles,
 	TOGGLE_GROUP_CLASSNAME,
@@ -243,10 +242,21 @@ const ReturnRefundPolicySection = ( {
 
 	return (
 		<Card>
-			<CardHeader>
+			{ /*
+			   Card-head divider is reserved for cards that carry
+			   action chrome (toolbar affordances, filter dropdowns).
+			   This card has only a title + describing paragraph, so
+			   the title and its paragraph read as one continuous unit
+			   with no divider between them. The h3 ("card-title")
+			   lives inside CardBody.
+
+			   See: "Card-head divider is for action chrome only"
+			   in docs/design/settings-redesign-final.html.
+			*/ }
+			<CardBody>
 				<h3
 					style={ {
-						margin: 0,
+						margin: '0 0 8px',
 						fontSize: '14px',
 						fontWeight: 600,
 						color: colors.textPrimary,
@@ -257,8 +267,6 @@ const ReturnRefundPolicySection = ( {
 						'woocommerce-ai-storefront'
 					) }
 				</h3>
-			</CardHeader>
-			<CardBody>
 				<p
 					style={ {
 						margin: '0 0 16px',
@@ -808,18 +816,23 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	return (
 		<div>
 			<header style={ { marginBottom: '20px' } }>
+				{ /*
+				   Section h2 names the operator's job at a higher
+				   altitude than the card title below ("Return &
+				   refund policy"). They do not paraphrase each other.
+				   "Store policies" pairs thematically with the
+				   Discovery tab's "AI agent access" section h2 — both
+				   read as merchant-side responsibilities, not agent
+				   behaviors.
+				*/ }
 				<h2
 					style={ {
 						margin: '0 0 4px',
-						fontSize: '18px',
-						fontWeight: 600,
+						...typography.sectionHeading,
 						color: colors.textPrimary,
 					} }
 				>
-					{ __(
-						'Policies exposed to AI agents',
-						'woocommerce-ai-storefront'
-					) }
+					{ __( 'Store policies', 'woocommerce-ai-storefront' ) }
 				</h2>
 				<p
 					style={ {
@@ -829,7 +842,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 					} }
 				>
 					{ __(
-						"WooCommerce doesn't have a built-in setting for your return policy, but AI agents need it to confidently recommend your products. Set it once here.",
+						'Policies AI agents can quote to shoppers before checkout.',
 						'woocommerce-ai-storefront'
 					) }
 				</p>
