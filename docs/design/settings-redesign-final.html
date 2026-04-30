@@ -1043,7 +1043,7 @@ details.crawler-group .group-body {
   <!-- ============================================================== -->
   <section class="tab-section">
     <h2>Tab 1 — Overview (post-enable state)</h2>
-    <p class="rationale">Chip-style date range replaces the SelectControl. Six stat cards at 20px display weight with green reserved for AI-attributed metrics only. Order numbers in the recent-orders table render in JetBrains Mono. The Disable affordance moves out of the success banner and into a quiet footer at the bottom of the panel.</p>
+    <p class="rationale">No success banner: a populated dashboard (chip-row, stat cards, AI orders table) is the active-state signal, so an explicit "AI Storefront is active" notice is redundant chrome. Chip-style date range replaces the SelectControl. Six stat cards at 20px display weight with green reserved for AI-attributed metrics only. Order numbers in the recent-orders table render in JetBrains Mono. The Disable affordance lives as a quiet footer at the bottom of the panel.</p>
 
     <div class="panel">
       <div class="wrap-head"><h1>AI Storefront</h1></div>
@@ -1058,11 +1058,6 @@ details.crawler-group .group-body {
         <div class="section-head">
           <h2>AI traffic and orders</h2>
           <p class="description">Live dashboard of your AI-attributed traffic and orders.</p>
-        </div>
-
-        <div class="notice">
-          <strong>AI Storefront is active</strong>
-          <p>Your store is ready for AI shopping assistants. Checkout and customer data stay on your store.</p>
         </div>
 
         <div class="flex end">
@@ -1595,10 +1590,10 @@ details.crawler-group .group-body {
         <li>Stat cards in <code>PostEnableView</code>: change values from 24px green to 20px / 700 / -0.005em. <strong>Green ONLY on AI-attributed cards</strong> (AI orders, AI revenue, AI AOV, Top agent share). Total orders / Products exposed / Top agent become neutral <code>--fg-1</code>. Add <code>overflow-wrap: anywhere</code> for long agent names.</li>
         <li><strong>Note: this is an intentional deviation from the strict design-system rule that all stat values are neutral.</strong> Document the reasoning in a comment near the stat-card render.</li>
         <li>Date-range selector: replace <code>&lt;SelectControl&gt;</code> with chip-style segmented control (this IS filtering, chip pattern is correct).</li>
-        <li>Status banner: 4px green left-border + tiny shadow + 2px radius. Drop the redundant 1px outer border.</li>
+        <li><strong>Drop the success status banner entirely.</strong> A populated dashboard (chip-row, stat cards, recent orders) is the active-state signal; an explicit "AI Storefront is active" banner is redundant chrome and creates a visual conflict between a positive status signal at the top of the page and the destructive Disable affordance at the bottom. Remove the banner markup from <code>PostEnableView</code>; keep the <code>.notice</code> CSS pattern in case future warning/error notices use it.</li>
         <li><strong>Disable affordance</strong>:
           <ul>
-            <li>Strip the <code>&lt;Button&gt;</code> from the <code>PostEnableView</code> status banner, banner becomes purely informational.</li>
+            <li>With the success banner removed (see above), there is no banner button to relocate; the Disable lever sits exclusively at the bottom of the panel.</li>
             <li>After <code>&lt;AIOrdersTable /&gt;</code>, append <code>.disable-row</code> footer block (hairline divider top, two-column flex, label/description on the left, <code>.btn-danger-outline</code> Disable button on the right).</li>
             <li>Single click disables, keep the existing <code>onChange({ enabled: 'no' }); onSave();</code> chain unchanged. <strong>No confirmation modal</strong>, disabling is reversible (re-enable restores all settings). Confirmation friction would just train users to dismiss dialogs.</li>
             <li>Button uses standalone <code>class="btn-danger-outline"</code> (NOT composed with <code>class="btn"</code>, the <code>.btn</code> class hard-codes blue overrides that fight the red).</li>
