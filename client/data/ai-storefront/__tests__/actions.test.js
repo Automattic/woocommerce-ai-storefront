@@ -48,7 +48,6 @@ describe( 'AI Syndication actions', () => {
 		// the implementation to the default factory here so every test
 		// starts with the same `dispatch()` return shape regardless of
 		// describe-block ordering.
-		// eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
 		const { dispatch } = require( '@wordpress/data' );
 		dispatch.mockImplementation( () => ( {
 			createSuccessNotice: jest.fn(),

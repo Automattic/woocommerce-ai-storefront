@@ -1011,9 +1011,10 @@ const ProductSelection = ( {
 	// (e.g. Arabic/Hebrew might prefer ' ، ' or omit the spaces).
 	// Middle-dot + hair spaces happen to work in most LTR languages
 	// but aren't universally appropriate.
+	// eslint-disable-next-line @wordpress/i18n-no-flanking-whitespace -- the spaces are intentionally inside the translatable string so RTL locales can replace or omit them.
 	const badgeSeparator = __(
-		/* translators: separator between taxonomy count segments in the By-taxonomy row badge, e.g. "3 categories · 1 brand" */
-		' \u00B7 ',
+		/* translators: separator between taxonomy count segments in the By-taxonomy row badge, e.g. "3 categories · 1 brand". Surrounding spaces are intentional and locale-sensitive (RTL languages may prefer none). */
+		' · ',
 		'woocommerce-ai-storefront'
 	);
 	// "Nothing selected" only appears when the merchant has actually

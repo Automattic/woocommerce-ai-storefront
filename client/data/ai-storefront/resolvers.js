@@ -23,7 +23,7 @@ export const getEndpoints =
 				path: `${ ADMIN_NAMESPACE }/endpoints`,
 			} );
 			dispatch.setEndpoints( result );
-		} catch ( error ) {
+		} catch ( _error ) {
 			// Endpoints will remain empty.
 		}
 	};

@@ -164,7 +164,7 @@ export function fetchRecentOrders( perPage = 10 ) {
 				path: `${ ADMIN_NAMESPACE }/recent-orders?per_page=${ perPage }`,
 			} );
 			dispatch.setRecentOrders( result );
-		} catch ( error ) {
+		} catch ( _error ) {
 			// On error, dispatch an empty-orders payload so the
 			// selector returns a non-null value and the UI can
 			// render its empty-state treatment. Without this,
@@ -287,7 +287,7 @@ export function checkEndpoints() {
 					key,
 					response.ok ? 'reachable' : 'unreachable'
 				);
-			} catch ( error ) {
+			} catch ( _error ) {
 				// Network error, CORS rejection, DNS failure -> unreachable.
 				dispatch.setEndpointStatus( key, 'unreachable' );
 			}
