@@ -47,7 +47,5 @@ spl_autoload_register(
 		if ( isset( $classmap[ $class_name ] ) ) {
 			require_once __DIR__ . $classmap[ $class_name ];
 		}
-	},
-	false, // do not throw on registration failure
-	false  // append, not prepend
+	}
 );

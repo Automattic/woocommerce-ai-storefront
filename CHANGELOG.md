@@ -6,6 +6,8 @@
 
 ### Fixes
 
+- **Removed PHP 8.3 deprecation notice from the autoloader.** The standalone `includes/autoload.php` was passing the now-no-op `$do_throw = false` argument to `spl_autoload_register()`, which PHP 8.3 surfaces as a deprecation notice on every CLI invocation. PHP 8.0 already made registration failure always throw regardless of this argument, so dropping it (along with the trailing default `$prepend = false`) is purely cosmetic. No behavior change.
+
 ### Refactors
 
 ### Tests
