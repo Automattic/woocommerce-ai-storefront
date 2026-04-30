@@ -1,100 +1,101 @@
-# Dependency Modernization Plan (Strategy B)
+# Dependency Modernization (Retrospective)
 
-Status: planned, not started.
-Owner: TBD.
-Estimated effort: 0.5 to 1 dev-day, plus PR-review time.
-Tracking: see PR #215 for the Strategy A pre-work and remaining advisories.
+Status: complete. PRs landed: #215 (overrides), #217 (`@wordpress/scripts` 28→32), #219 (`@wordpress/components` 28→33). Tracking issue: #216.
 
-## Goal
+This doc started as a forward-looking plan and is now a retrospective of what actually shipped. It documents both what the modernization accomplished and what it could not, so future contributors don't relitigate the same investigations.
 
-Resolve the residual security advisories that PR #215 could not address without breaking the build, by bumping the project's two largest direct dev dependencies to their latest majors:
+## Outcome
 
-- `@wordpress/scripts`: `^28.0.0` → `^32.x` (4 majors)
-- `@wordpress/components`: `^28.0.0` → `^33.x` (5 majors)
+Starting state: 14 open Dependabot alerts (plus 3 npm-audit-only entries). Ending state: 9 audit entries collapsing to 3 unique remaining advisories. Net change is most of the surface cleared, with a clear story for what's left.
 
-Both have accumulated multiple years of upstream improvements. Bumping them naturally pulls patched versions of the transitive deps that are stuck on vulnerable majors today.
+## Strategy A: `npm overrides` (PR #215)
 
-## Why a separate PR
+Pinned within-major patches via [`overrides`](../../package.json) for transitive deps that had a patched version in their existing major. Kept after cleanup:
 
-PR #215 (Strategy A) used `npm overrides` to pin every transitive dep we could pin without breaking compatibility. The overrides we tried but rolled back, and the ESM/CJS interop reasons they failed, are listed in the PR body.
+- `@babel/runtime ^7.26.10`
+- `basic-ftp ^6.0.0`
+- `cross-spawn ^7.0.6`
+- `postcss ^8.5.10`
+- `ws ^8.17.1`
+- `markdownlint-cli → minimatch ^3.1.5` (path-conditional; `markdownlint-cli@0.31.1` ships `minimatch@3.0.8` directly, override forces the patched 3.1.5)
+- `puppeteer-core → tar-fs ^2.1.4` (path-conditional; bumps `puppeteer-core`'s direct `tar-fs` dep from the vulnerable 2.1.1 to the patched 2.1.4)
+- `@wp-playground/{blueprints,cli,tools} → ajv ^8.17.1` (path-conditional; avoids the global `ajv` cascade that crashes `babel-loader`'s embedded `schema-utils`)
 
-The remaining advisories all share one root cause: the patched version is a semver-major that the surrounding `@wordpress/scripts 28.x` ecosystem cannot accommodate. Bumping these one-by-one via overrides cascades into either (a) the wp-scripts build pipeline (`copy-webpack-plugin`, `babel-loader`, `webpack-dev-server`) or (b) jest's jsdom test environment, both of which break on a global override. The only clean path is to bump the parent.
+Initially-included overrides that were dropped after the modernization made them moot:
 
-## Advisories cleared by Strategy B
+- `@typescript-eslint/typescript-estree → minimatch` — Strategy B's `@wordpress/scripts` bump pulled `typescript-estree v8`, which depends on `minimatch ^10.2.2` (already patched).
+- `@wordpress/env → minimatch` — `@wordpress/env`'s rimraf/glob chain landed on patched `minimatch@9.0.9` naturally.
 
-| Package | Current | Patched at | Reach |
-|---------|---------|------------|-------|
-| `uuid` | 9.0.1 | 14.0.0 | `@wordpress/components`, `webpack-dev-server` (via sockjs) |
-| `webpack-dev-server` | 4.15.2 | 5.2.1 | `@wordpress/scripts`, `@pmmmwh/react-refresh-webpack-plugin` |
-| `serialize-javascript` | 6.0.2 | 7.0.5 | `copy-webpack-plugin` 10 (in `@wordpress/scripts`) |
-| `@tootallnate/once` | 2.0.0 | 3.0.1 | `http-proxy-agent` → `jsdom` → jest test env |
-| `minimatch` 9.0.3 (strict-pinned in `@typescript-eslint/typescript-estree` 6.21) | 9.0.3 | 9.0.7 | TypeScript ESLint chain; bumped naturally when `@wordpress/eslint-plugin` updates |
+## Strategy B: parent-package major bumps
 
-## Approach
+Two PRs, sequenced because the React UI `@wordpress/components` deps cleanly stack on top of the `@wordpress/scripts` build/lint/test toolchain.
 
-Two-PR sequencing recommended:
+### B1: `@wordpress/scripts` 28→32 (PR #217)
 
-### PR B1: bump `@wordpress/scripts` to ^32.x
+Resolved 32.1.0. Required adaptations:
 
-This is the larger of the two — `@wordpress/scripts` controls webpack, jest, eslint, prettier, and the build/lint/test commands. Expected breaking changes between 28 and 32:
+- **ESLint 9 flat config.** `.eslintrc.*` is no longer auto-loaded. Added [`eslint.config.cjs`](../../eslint.config.cjs) extending `@wordpress/scripts/config/eslint.config.cjs`. Two project rule overrides:
+  - `jsdoc/no-undefined-types`: `definedTypes: ['JSX']` so `@type {JSX.Element}` JSDoc keeps validating without rewriting every site to `import('react').JSX.Element`.
+  - `no-unused-vars`: `argsIgnorePattern`, `caughtErrorsIgnorePattern`, `varsIgnorePattern` all `^_` so the `_`-prefix unused-binding convention is honored.
+- **`engines` floor.** `@wordpress/scripts@32` requires `node >=18.12.0`, `npm >=8.19.2`. Declared in [`package.json`](../../package.json) so contributors on older runtimes hit a clear error rather than confusing install failures.
+- **Newly-declared runtime deps.** Stricter `import/no-extraneous-dependencies` revealed `@wordpress/html-entities` and `@wordpress/url` were imported in `client/` without being listed in `package.json`. Added.
+- **`catch ( _error )` renames.** Three intentionally-unused `catch ( error )` bindings renamed to satisfy the new `no-unused-vars` strictness.
 
-- **Webpack 5 dev-server** API changes (`onBeforeSetupMiddleware`/`onAfterSetupMiddleware` → `setupMiddlewares`).
-- **ESLint 9 flat config** — `@wordpress/scripts` 30+ may default to flat config, requiring renaming `.eslintrc.js` → `eslint.config.js` or similar.
-- **Jest 30** — minor config changes, mostly `transformIgnorePatterns` updates for ESM packages.
-- **Babel 8** transitives — usually invisible.
-- **Prettier 3** — quote/trailing-comma defaults shifted (likely small lint diff after running `lint:js-fix`).
+### B2: `@wordpress/components` 28→33 (PR #219, replacing the auto-closed #218)
 
-Sequence:
-1. Branch off main: `chore/bump-wp-scripts-32`.
-2. `npm install --save-dev @wordpress/scripts@^32`.
-3. `npm install` and inspect lockfile — many transitives will shift.
-4. `npm run build` and fix any webpack-config errors.
-5. `npm run lint:js -- --fix` and review the diff.
-6. `npm run test:js` and fix jest config drift.
-7. `npm audit` — should be near zero remaining.
-8. Smoke-test `npm run env:start` and the plugin in wp-admin.
-9. Update CHANGELOG.
+Resolved 33.0.0. Plus floor bumps on `@wordpress/dataviews` (^14.2), `@wordpress/i18n` (^6.18), `@wordpress/icons` (^13) to match what the bumped packages require internally and drop duplicate installs.
 
-Exit criteria: all CI checks green, `npm audit` reports 0 high or critical vulns.
+**No `client/` source changes.** None of the `@wordpress/components` API the plugin uses (DataViews, ToggleControl, etc.) had breaking changes between 28 and 33 that affected the plugin.
 
-### PR B2: bump `@wordpress/components` to ^33.x (and `@wordpress/dataviews` minor)
+## Advisories that didn't clear
 
-Smaller scope — `@wordpress/components` is a runtime UI dep. Breaking changes between 28 and 33:
+These three remain after the full modernization. None are actionable from this repo:
 
-- API surface area: a few components renamed or moved (e.g., `__experimental*` promoted or removed).
-- `uuid` major bump from 9 to 14 — should not affect callers since this plugin only uses uuid transitively.
-- Style tokens: minor visual diff possible if any inline `@emotion` styles changed default theme keys.
+| Package | Patched at | Why we can't clear it |
+|---------|------------|-----------------------|
+| `uuid` 9.0.1 | 14.0.0 | `@wordpress/components@33` still ships `uuid@9.0.1` internally. The @wordpress team hasn't migrated. The plan assumed B2 would clear this; it didn't. |
+| `webpack-dev-server` 4.15.2 | 5.2.1 | `@wordpress/scripts@32` still pins `webpack-dev-server@4.15.2`. Needs a future wp-scripts major. |
+| `serialize-javascript` 6.0.2 | 7.0.5 | Pulled in by `copy-webpack-plugin@10` which `@wordpress/scripts@32` still pins. Same upstream dependency. |
 
-Sequence:
-1. Branch off main (or off PR B1 if not yet merged): `chore/bump-wp-components-33`.
-2. `npm install --save-dev @wordpress/components@^33 @wordpress/dataviews@latest`.
-3. `npm run build` and fix any TS/import errors.
-4. Inspect any `__experimental*` references in `client/` and update.
-5. Smoke-test the settings UI; visual diff against current screenshots.
-6. Update CHANGELOG.
+A global `uuid: ^14.0.0` override was tried during Strategy A and rolled back because uuid 14.x is ESM-only and broke `@wordpress/components`'s CJS imports. Same shape of breakage for `webpack-dev-server 5.x` (different dev-server API) and `serialize-javascript 7.x` (when forced through `copy-webpack-plugin@10`'s expectations).
 
-Exit criteria: settings UI renders identically, no console errors, all tests pass.
+The honest read: all three need upstream maintenance, not local action.
 
-## Risks and mitigations
+## Lessons learned
 
-| Risk | Mitigation |
-|------|------------|
-| Eslint flat-config migration breaks `lint:js` non-trivially | Run `lint:js -- --fix`, accept the cosmetic diff in the PR; review for any rule-level regressions. |
-| Webpack 5 dev-server config differs enough to break `npm start` | Document the new config in `CONTRIBUTING.md`; webpack-dev-server 5 is well-documented. |
-| `@wordpress/components` 33 deprecates a component we use | Audit `client/` imports against the [33 changelog](https://github.com/WordPress/gutenberg/blob/trunk/packages/components/CHANGELOG.md) before starting. |
-| Jest 30 transformIgnorePatterns regression | Compare with the [@wordpress/scripts 32 jest preset](https://github.com/WordPress/gutenberg/tree/trunk/packages/scripts/config); copy any new patterns. |
+### npm `overrides` cannot violate exact pins in deeply-nested `package.json`s
 
-## Rollback plan
+The targeted `@typescript-eslint/typescript-estree → minimatch ^9.0.7` override in Strategy A *silently failed*. ts-estree 6.21.0 (the version present at that time) had `"minimatch": "9.0.3"` as an *exact pin* in its own published `package.json`. npm's overrides system can rewrite *semver ranges* but cannot violate a deeper-nested package's exact pin — so it satisfied the override by creating a new nested `9.0.3` rather than upgrading. The advisory remained open in the lockfile. We didn't catch it until the retrospective review.
 
-Both PRs revert cleanly via `git revert <merge-commit>` because the changes are confined to `package.json`, `package-lock.json`, and any generated config diffs. No PHP or runtime code touched.
+**Practice:** after writing an override, run `npm install` then check `node_modules/<parent>/node_modules/<target>/package.json` to confirm the resolved version actually matches the floor. If it doesn't, the override is silently ineffective and the advisory is still live.
 
-## Out of scope
+This is also why most overrides should be **path-conditional** rather than flat — the path-conditional form `"<parent>": { "<child>": "<version>" }` makes the targeting explicit, narrows blast radius, and makes "did this override do anything?" easier to answer by checking only the named parent's `node_modules`.
 
-- Bumping non-WordPress deps (`cross-env`, `@woocommerce/dependency-extraction-webpack-plugin`) — already current or close enough.
-- Refactoring `client/` for new component APIs beyond what the bump strictly requires — keep the PR focused on dep updates; visual changes go in a separate UI PR.
+### Forced ESM-only majors break CJS-importing parents
+
+Several attempted overrides cascaded into build/lint/test failures during Strategy A. Common shape: the patched version is ESM-only, but a transitive parent imports it via CJS `require()`. Examples we hit:
+
+- Global `minimatch ^9.0.7`: `eslint-plugin-jsx-a11y` does `require('minimatch').default`; minimatch 9.x dropped the `.default` export.
+- `@tootallnate/once 3.x`: ESM-only; `http-proxy-agent` (jest's jsdom env) requires it via CJS.
+- Global `ajv ^8.17.1`: cascaded into `babel-loader`'s embedded `schema-utils` whose pinned `ajv-keywords` crashed against ajv 8 internals.
+
+**Practice:** when a major bump introduces ESM-only or a renamed export shape, it's almost always going to cascade. Either keep it scoped to the chains where you've verified compatibility (path-conditional override) or wait for the parent to bump.
+
+### GitHub stack-merge gotcha: `--delete-branch` auto-closes child PRs
+
+When PR #217 merged with `--delete-branch`, GitHub auto-closed PR #218 because its base branch (`chore/bump-wp-scripts-32`) was the one being deleted. **Closed PRs cannot be reopened.** PR #218 was lost; #219 was opened fresh with the same content rebased onto current main.
+
+**Practice:** for stacked PRs, either retarget the child to `main` *before* merging the parent, or enable "Auto-delete head branches" in repo settings so GitHub auto-retargets children before deleting the parent's branch. Don't merge with `--delete-branch` until the children are retargeted.
+
+### Cherry-pick is cleaner than rebase for stacks once the parent has merged
+
+After PR #217 squash-merged, rebasing PR #218 onto main hit conflicts on every file the squash had touched. The clean pattern was `git reset --hard origin/main && git cherry-pick <feature-commit>` — pulls just the actual feature change forward, avoids the squash-vs-original-history conflict dance, and produces a single-commit branch that's ready for squash merge.
 
 ## Reference
 
-- Strategy A: [PR #215](https://github.com/Automattic/woocommerce-ai-storefront/pull/215)
+- PR #215: `npm overrides` for within-major patches
+- PR #217: `@wordpress/scripts` 28→32
+- PR #219: `@wordpress/components` 28→33 (replaces auto-closed #218)
+- Issue #216: tracking issue for the whole modernization
 - `@wordpress/scripts` upgrade guide: https://developer.wordpress.org/block-editor/reference-guides/packages/packages-scripts/
 - `@wordpress/components` changelog: https://github.com/WordPress/gutenberg/blob/trunk/packages/components/CHANGELOG.md
