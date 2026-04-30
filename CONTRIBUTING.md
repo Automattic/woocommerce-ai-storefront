@@ -24,7 +24,7 @@ npm install          # installs @wordpress/env
 npm run env:start    # pulls images, installs WP + WooCommerce (~2-3 min first run)
 ```
 
-Site: <http://localhost:8889> | Admin: <http://localhost:8889/wp-admin>
+Site: <http://localhost:8030> | Admin: <http://localhost:8030/wp-admin>
 Credentials: `admin` / `password`
 
 The plugin is activated automatically. Go to **WooCommerce > Woo AI Storefront** to open the settings.

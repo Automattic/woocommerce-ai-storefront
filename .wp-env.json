@@ -2,8 +2,8 @@
 	"core": null,
 	"phpVersion": "8.3",
 	"plugins": [
-		".",
-		"https://downloads.wordpress.org/plugin/woocommerce.latest-stable.zip"
+		"https://downloads.wordpress.org/plugin/woocommerce.latest-stable.zip",
+		"."
 	],
 	"themes": [],
 	"config": {
@@ -13,5 +13,6 @@
 		"SCRIPT_DEBUG": true,
 		"WP_ENVIRONMENT_TYPE": "local"
 	},
-	"port": 8889
+	"port": 8030,
+	"testsEnvironment": false
 }
