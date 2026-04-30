@@ -254,6 +254,19 @@ a:hover { color: var(--wp-admin-blue-hover); text-decoration: underline; }
 .card-admin + .card-admin {
   margin-top: var(--s-6);
 }
+/* `.card-title` is the default card heading: an inline h3 inside the
+   card body. No visual divider between heading and content. Heading
+   and its describing paragraph read as one continuous unit. */
+.card-title {
+  margin: 0 0 var(--s-2);
+  font: 600 14px/1.4 var(--font-admin);
+  color: var(--fg-1);
+}
+/* `.card-head` is reserved for cards whose head carries action chrome
+   (filter dropdowns, refresh button, count pills, export controls).
+   The bottom border separates a toolbar surface from a content
+   surface — earned only when there is a real toolbar. None of the
+   current cards use it; rule remains for future use. */
 .card-head {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-1);
@@ -442,7 +455,17 @@ a:hover { color: var(--wp-admin-blue-hover); text-decoration: underline; }
   letter-spacing: -0.005em;
   overflow-wrap: anywhere;
 }
-.stat-card.is-ai .stat-value { color: var(--status-success); }
+/* Inline reference / denominator on a stat value (e.g., "14 / 128"
+   on AI orders, where "/ 128" is the total-orders reference). The
+   reference is visually subordinate to the primary number — smaller,
+   muted, regular weight. Pattern source: Stripe Dashboard, GitHub
+   Insights, Google Analytics 4 channel cards. */
+.stat-ref {
+  margin-left: 6px;
+  font: 400 14px/1.2 var(--font-admin);
+  color: var(--fg-3);
+  letter-spacing: 0;
+}
 
 /* ==== Status banner notice ==== */
 .notice {
@@ -683,6 +706,23 @@ a:hover { color: var(--wp-admin-blue-hover); text-decoration: underline; }
 .checkbox-row input[type=checkbox] {
   width: 16px; height: 16px; margin: 0;
   accent-color: var(--wp-admin-blue);
+}
+/* Scrollable list of checkboxes — "browse + select" pattern.
+   Used for the Categories/Tags/Brands picker on Product visibility:
+   the merchant sees the full list at a glance and clicks to toggle,
+   instead of having to remember names and type to find them. The
+   search input above filters this list in place. Two-column layout
+   on wide containers; collapses to one column on narrow. */
+.checkbox-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 6px var(--s-3);
+  max-height: 200px;
+  overflow-y: auto;
+  padding: var(--s-3);
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
 }
 
 /* ==== Token chips (selected items) ==== */
@@ -974,7 +1014,7 @@ details.crawler-group .group-body {
     <p class="rationale">A hero-style headline at display weight (28px / 700 / -0.02em) replaces the small h2 + redundant eyebrow ("Status: Not enabled"). Five assistant chips on the right carry the visual weight; three icon-led value-prop cards land below the hero with concrete benefits.</p>
 
     <div class="panel">
-      <div class="wrap-head"><h1>AI Storefront</h1></div>
+      <div class="wrap-head"><h1>Woo AI Storefront</h1></div>
       <nav class="tabs-after" aria-label="Settings sections">
         <a href="#" class="current">Overview</a>
         <a href="#">Product visibility</a>
@@ -1046,7 +1086,7 @@ details.crawler-group .group-body {
     <p class="rationale">No success banner: a populated dashboard (chip-row, stat cards, AI orders table) is the active-state signal, so an explicit "AI Storefront is active" notice is redundant chrome. Chip-style date range replaces the SelectControl. Six stat cards at 20px display weight with green reserved for AI-attributed metrics only. Order numbers in the recent-orders table render in JetBrains Mono. The Disable affordance lives as a quiet footer at the bottom of the panel.</p>
 
     <div class="panel">
-      <div class="wrap-head"><h1>AI Storefront</h1></div>
+      <div class="wrap-head"><h1>Woo AI Storefront</h1></div>
       <nav class="tabs-after" aria-label="Settings sections">
         <a href="#" class="current">Overview</a>
         <a href="#">Product visibility</a>
@@ -1075,19 +1115,15 @@ details.crawler-group .group-body {
             <div class="stat-label">Products exposed</div>
             <div class="stat-value">39 products</div>
           </div>
-          <a class="stat-card is-ai" href="#">
+          <a class="stat-card" href="#">
             <div class="stat-label">AI orders</div>
-            <div class="stat-value">14</div>
+            <div class="stat-value">14<span class="stat-ref">/ 128</span></div>
           </a>
           <div class="stat-card">
-            <div class="stat-label">Total orders</div>
-            <div class="stat-value">128</div>
-          </div>
-          <div class="stat-card is-ai">
             <div class="stat-label">AI revenue</div>
             <div class="stat-value">$1,842.50</div>
           </div>
-          <div class="stat-card is-ai">
+          <div class="stat-card">
             <div class="stat-label">AI AOV</div>
             <div class="stat-value">$131.61</div>
           </div>
@@ -1095,14 +1131,16 @@ details.crawler-group .group-body {
             <div class="stat-label">Top agent</div>
             <div class="stat-value">ChatGPT</div>
           </div>
-          <div class="stat-card is-ai">
+          <div class="stat-card">
             <div class="stat-label">Top agent share</div>
             <div class="stat-value">57%</div>
           </div>
         </div>
 
         <div class="card-admin mt-6">
-          <div class="card-head">Recent AI orders</div>
+          <div class="card-body" style="padding-bottom: 0">
+            <h3 class="card-title">Recent AI orders</h3>
+          </div>
           <div style="overflow-x:auto">
             <table class="table">
               <thead>
@@ -1158,7 +1196,7 @@ details.crawler-group .group-body {
         <div class="disable-row">
           <div class="disable-text">
             <strong>Disable AI Storefront</strong>
-            <p>Stops AI agents from accessing your store. Endpoints return 404 within minutes; settings are preserved.</p>
+            <p>Stops AI agents from accessing your store. Settings are preserved.</p>
           </div>
           <button class="btn-danger-outline">Disable</button>
         </div>
@@ -1172,10 +1210,10 @@ details.crawler-group .group-body {
   <!-- ============================================================== -->
   <section class="tab-section">
     <h2>Tab 2 — Product visibility</h2>
-    <p class="rationale">Three radio mode-cards replace the tighter toggle row. The selected card carries blue-tinted bg + blue border and reveals its detail panel inside the same surface (taxonomy switcher, search, selected token chips), instead of competing as a stacked block below.</p>
+    <p class="rationale">Section h2 names the operator's job ("Catalog access") at a higher altitude than the card head ("Products available to AI agents") — different altitude, no paraphrase. The h2 also avoids repeating "visibility" with the tab name and pairs thematically with Tab 4's "AI agent access". Three radio mode-cards replace the tighter toggle row. The selected card carries blue-tinted bg + blue border and reveals its detail panel inside the same surface (taxonomy switcher, search, selected token chips), instead of competing as a stacked block below.</p>
 
     <div class="panel">
-      <div class="wrap-head"><h1>AI Storefront</h1></div>
+      <div class="wrap-head"><h1>Woo AI Storefront</h1></div>
       <nav class="tabs-after" aria-label="Settings sections">
         <a href="#">Overview</a>
         <a href="#" class="current">Product visibility</a>
@@ -1185,20 +1223,20 @@ details.crawler-group .group-body {
       <div class="panel-body">
 
         <div class="section-head">
-          <h2>Products available to AI agents</h2>
-          <p class="description">Choose which of your products appear in your AI Storefront endpoints.</p>
+          <h2>Catalog access</h2>
+          <p class="description">Control which products AI agents can see and recommend.</p>
         </div>
 
         <div class="card-admin">
-          <div class="card-head">Products available to AI crawlers</div>
           <div class="card-body">
-            <p class="intro-p">Choose how products are selected for inclusion in the AI Storefront. The count updates as you change filters so you can see how many products will be exposed.</p>
+            <h3 class="card-title">Products available to AI agents</h3>
+            <p class="intro-p">Choose which products are exposed to AI agents.</p>
 
             <div class="mode-card">
               <span class="mode-radio" aria-hidden="true"></span>
               <div class="mode-card-body">
                 <div class="mode-title">All published products <span class="mode-count">39 products</span></div>
-                <p class="mode-desc">Every published product in your store is discoverable by AI crawlers.</p>
+                <p class="mode-desc">Every published product in your store is discoverable by AI agents.</p>
               </div>
             </div>
 
@@ -1216,15 +1254,21 @@ details.crawler-group .group-body {
                     <button class="chip">By brand</button>
                   </div>
 
-                  <label class="field-label" for="cat-search">Add categories</label>
-                  <input id="cat-search" class="input" type="text" placeholder="Search categories…" style="max-width:100%" />
-                  <p class="field-help">Start typing to filter your category list.</p>
+                  <span class="field-label">Categories</span>
 
-                  <div class="flex gap-3 mt-4" style="flex-wrap:wrap">
-                    <span class="token-chip">Apparel <span class="x" aria-hidden="true">×</span></span>
-                    <span class="token-chip">Accessories <span class="x" aria-hidden="true">×</span></span>
-                    <span class="token-chip">Footwear <span class="x" aria-hidden="true">×</span></span>
-                    <span class="token-chip">Outdoor &amp; sport <span class="x" aria-hidden="true">×</span></span>
+                  <div class="checkbox-list">
+                    <label class="checkbox-row"><input type="checkbox" checked /> Apparel</label>
+                    <label class="checkbox-row"><input type="checkbox" checked /> Accessories</label>
+                    <label class="checkbox-row"><input type="checkbox" /> Bags</label>
+                    <label class="checkbox-row"><input type="checkbox" /> Books</label>
+                    <label class="checkbox-row"><input type="checkbox" /> Electronics</label>
+                    <label class="checkbox-row"><input type="checkbox" checked /> Footwear</label>
+                    <label class="checkbox-row"><input type="checkbox" /> Home &amp; garden</label>
+                    <label class="checkbox-row"><input type="checkbox" /> Jewelry</label>
+                    <label class="checkbox-row"><input type="checkbox" checked /> Outdoor &amp; sport</label>
+                    <label class="checkbox-row"><input type="checkbox" /> Stationery</label>
+                    <label class="checkbox-row"><input type="checkbox" /> Tools</label>
+                    <label class="checkbox-row"><input type="checkbox" /> Toys</label>
                   </div>
                 </div>
               </div>
@@ -1257,7 +1301,7 @@ details.crawler-group .group-body {
     <p class="rationale">A WP-style segmented control (light fill, raised active option) replaces the existing __experimentalToggleGroupControl. It reads as configuration, not a filter. Below it, conditional fields use uppercase tracked labels; the return-window numeric input ditches its wrapper width cap so the label spans freely while only the input is constrained to 120px.</p>
 
     <div class="panel">
-      <div class="wrap-head"><h1>AI Storefront</h1></div>
+      <div class="wrap-head"><h1>Woo AI Storefront</h1></div>
       <nav class="tabs-after" aria-label="Settings sections">
         <a href="#">Overview</a>
         <a href="#">Product visibility</a>
@@ -1267,13 +1311,13 @@ details.crawler-group .group-body {
       <div class="panel-body">
 
         <div class="section-head">
-          <h2>Policies exposed to AI agents</h2>
-          <p class="description">WooCommerce doesn't have a built-in setting for your return policy, but AI agents need it to confidently recommend your products. Set it once here.</p>
+          <h2>Store policies</h2>
+          <p class="description">Policies AI agents can quote to shoppers before checkout.</p>
         </div>
 
         <div class="card-admin">
-          <div class="card-head">Return &amp; refund policy</div>
           <div class="card-body">
+            <h3 class="card-title">Return &amp; refund policy</h3>
             <p class="intro-p">AI agents read this to decide whether to recommend your products and place buy actions. Without a clear return policy, they typically downgrade or skip your products in favour of competitors who publish one.</p>
 
             <div class="seg-control" role="tablist" aria-label="Policy mode">
@@ -1344,7 +1388,7 @@ details.crawler-group .group-body {
     <p class="rationale">Endpoint URLs render in JetBrains Mono. Status uses pill-shaped badges (green / red / muted gray / blue checking). Crawler subgroups become collapsible details with count badges in their summary; rate-limit presets become a 2x2 grid of selectable cards (configuration, not chips).</p>
 
     <div class="panel">
-      <div class="wrap-head"><h1>AI Storefront</h1></div>
+      <div class="wrap-head"><h1>Woo AI Storefront</h1></div>
       <nav class="tabs-after" aria-label="Settings sections">
         <a href="#">Overview</a>
         <a href="#">Product visibility</a>
@@ -1354,14 +1398,14 @@ details.crawler-group .group-body {
       <div class="panel-body">
 
         <div class="section-head">
-          <h2>Endpoints and crawler access</h2>
-          <p class="description">Endpoints AI agents use to find your store, plus the crawlers and rate limits applied to them.</p>
+          <h2>AI agent access</h2>
+          <p class="description">How AI agents find and interact with your site.</p>
         </div>
 
         <div class="card-admin">
-          <div class="card-head">Discovery endpoints</div>
           <div class="card-body">
-            <p class="intro-p">These endpoints are automatically available when AI Storefront is enabled.</p>
+            <h3 class="card-title">Discovery endpoints</h3>
+            <p class="intro-p">These endpoints are automatically available when AI Storefront is enabled. Reachability is checked from your browser.</p>
 
             <div style="overflow-x:auto">
               <table class="table">
@@ -1378,7 +1422,7 @@ details.crawler-group .group-body {
                     <td><strong>llms.txt</strong></td>
                     <td><span class="url">https://shop.example.com/llms.txt</span></td>
                     <td><span class="status-badge reachable"><span class="dot"></span>Reachable</span></td>
-                    <td>Machine-readable store guide for AI crawlers</td>
+                    <td>Machine-readable store guide for AI agents</td>
                   </tr>
                   <tr>
                     <td><strong>UCP Manifest</strong></td>
@@ -1390,7 +1434,7 @@ details.crawler-group .group-body {
                     <td><strong>robots.txt</strong></td>
                     <td><span class="url">https://shop.example.com/robots.txt</span></td>
                     <td><span class="status-badge reachable"><span class="dot"></span>Reachable</span></td>
-                    <td>AI-crawler allow-list (Allow/Disallow directives appended to your site's robots.txt)</td>
+                    <td>AI-agent allow-list (Allow/Disallow directives appended to your site's robots.txt)</td>
                   </tr>
                   <tr>
                     <td><strong>UCP API</strong></td>
@@ -1402,20 +1446,18 @@ details.crawler-group .group-body {
               </table>
             </div>
 
-            <div class="flex between mt-3">
-              <span class="muted-note" style="margin-top:0">Reachability is checked from your browser.</span>
+            <div class="flex end mt-3">
               <button class="btn">Re-check</button>
             </div>
           </div>
         </div>
 
         <div class="card-admin mt-6">
-          <div class="card-head">AI crawler access</div>
           <div class="card-body">
-            <p class="intro-p">Control which AI crawlers are allowed to discover your store via robots.txt. Unchecked crawlers will be blocked from crawling your product pages.</p>
+            <h3 class="card-title">Allowed AI agents</h3>
+            <p class="intro-p">Control which AI agents are allowed to discover your store via robots.txt. Well-behaved AI agents respect robots.txt directives.</p>
 
             <div class="toolbar">
-              <span class="muted-note" style="margin:0">Allowed crawlers</span>
               <div class="right">
                 <span class="pill">12 of 12 allowed</span>
                 <button class="btn-link">Select all</button>
@@ -1426,7 +1468,7 @@ details.crawler-group .group-body {
 
             <details class="crawler-group" open>
               <summary>
-                <span class="summary-left">Live browsing<span class="summary-meta"> · General-purpose AI assistants</span></span>
+                <span class="summary-left">General-purpose AI assistants</span>
                 <span class="count-badge">8/8 allowed</span>
               </summary>
               <div class="group-body">
@@ -1443,7 +1485,7 @@ details.crawler-group .group-body {
 
             <details class="crawler-group" open>
               <summary>
-                <span class="summary-left">Live browsing<span class="summary-meta"> · Agentic shopping</span></span>
+                <span class="summary-left">Agentic shopping</span>
                 <span class="count-badge">2/2 allowed</span>
               </summary>
               <div class="group-body">
@@ -1454,7 +1496,7 @@ details.crawler-group .group-body {
 
             <details class="crawler-group" open>
               <summary>
-                <span class="summary-left">Live browsing<span class="summary-meta"> · Commerce search engines</span></span>
+                <span class="summary-left">Commerce search engines</span>
                 <span class="count-badge">2/2 allowed</span>
               </summary>
               <div class="group-body">
@@ -1465,7 +1507,7 @@ details.crawler-group .group-body {
 
             <details class="crawler-group" open>
               <summary>
-                <span class="summary-left">Live browsing<span class="summary-meta"> · Regional Asia</span></span>
+                <span class="summary-left">Regional Asia</span>
                 <span class="count-badge">5/5 allowed</span>
               </summary>
               <div class="group-body">
@@ -1479,7 +1521,7 @@ details.crawler-group .group-body {
 
             <details class="crawler-group" open>
               <summary>
-                <span class="summary-left">Live browsing<span class="summary-meta"> · Regional Europe</span></span>
+                <span class="summary-left">Regional Europe</span>
                 <span class="count-badge">1/1 allowed</span>
               </summary>
               <div class="group-body">
@@ -1489,7 +1531,7 @@ details.crawler-group .group-body {
 
             <details class="crawler-group">
               <summary>
-                <span class="summary-left">Training and Test Crawlers</span>
+                <span class="summary-left">Training and test crawlers</span>
                 <span class="count-badge zero">0/11 allowed</span>
               </summary>
               <div class="group-body">
@@ -1507,12 +1549,9 @@ details.crawler-group .group-body {
               </div>
             </details>
 
-            <p class="muted-note">These rules are added to your robots.txt. Well-behaved AI crawlers respect robots.txt directives.</p>
-            <p class="muted-note">AI-attributed orders show under WooCommerce's built-in Origin column on the Orders list (the agent hostname, e.g. "Source: Chatgpt.com") and in this plugin's Overview tab (the friendly brand name, e.g. "ChatGPT"), not the technical crawler IDs above.</p>
-
             <div class="divider-row">
-              <span class="field-label">Other AI agents</span>
-              <p class="muted-note" style="margin-top:0;margin-bottom:8px">When off, only the AI brands above can use the UCP API. When on, agents whose brand isn't in the list can use it too.</p>
+              <h4 style="margin: 0 0 4px; font: 600 13px/1.4 var(--font-admin); color: var(--fg-1);">Other AI agents</h4>
+              <p class="muted-note" style="margin-top:0;margin-bottom:8px">When checked, AI agents whose brand isn't in the list can access your store.</p>
               <label class="checkbox-row"><input type="checkbox" /> Allow agents not on the list</label>
             </div>
 
@@ -1520,8 +1559,8 @@ details.crawler-group .group-body {
         </div>
 
         <div class="card-admin mt-6">
-          <div class="card-head">Rate limits</div>
           <div class="card-body">
+            <h3 class="card-title">Rate limits</h3>
             <p class="intro-p">Control how frequently AI agents can query your store. Higher limits allow faster product discovery but use more server resources.</p>
 
             <div class="rate-grid">
@@ -1542,12 +1581,11 @@ details.crawler-group .group-body {
               </div>
               <div class="rate-card">
                 <div class="rate-title">Custom</div>
-                <div class="rate-rpm">Custom RPM</div>
+                <div class="rate-rpm">x/min</div>
                 <p class="rate-desc">Set your own requests-per-minute cap.</p>
               </div>
             </div>
 
-            <p class="muted-note">Limits are applied per AI crawler (identified by user-agent string). Your regular store traffic is not affected.</p>
           </div>
         </div>
 
@@ -1583,13 +1621,15 @@ details.crawler-group .group-body {
     <div class="file-card">
       <h3><code>client/settings/ai-storefront/settings-page.js</code></h3>
       <ul>
-        <li>Add a screen-level <code>&lt;h1&gt;AI Storefront&lt;/h1&gt;</code> rendered ABOVE the <code>&lt;TabPanel&gt;</code> inside <code>.wc-ai-storefront-settings</code>. Style with <code>typography.adminTitle</code>.</li>
+        <li>Add a screen-level <code>&lt;h1&gt;Woo AI Storefront&lt;/h1&gt;</code> rendered ABOVE the <code>&lt;TabPanel&gt;</code> inside <code>.wc-ai-storefront-settings</code>. Style with <code>typography.adminTitle</code>. (The page-level brand prefix disambiguates the feature in screenshots and support tickets where the wp-admin chrome isn't visible. Match the menu label too — see <code>class-wc-ai-storefront.php</code> note below.)</li>
+        <li>Update <code>add_submenu_page()</code> in <code>includes/class-wc-ai-storefront.php</code>: change the menu label from <code>__( 'AI Storefront' )</code> to <code>__( 'Woo AI Storefront' )</code> on both the page title and menu title args, so the WC submenu and the in-page h1 match. (Plugin file name and PHP class names stay as-is — internal identifiers don't need rebranding.)</li>
         <li>TabPanel: replace WP default tab styling with the analytics-tabs pattern (active tab: 2px <code>#1d2327</code> underline + 600 weight; inactive: WP blue). CSS-only.</li>
         <li>DROP the <code>&lt;p&gt;</code> eyebrow "Status: Not enabled" from <code>PreEnableView</code> (the Enable verb signals state).</li>
         <li>Hero headline in <code>PreEnableView</code> uses 28px / 700 / -0.02em letter-spacing on system stack.</li>
-        <li>Stat cards in <code>PostEnableView</code>: change values from 24px green to 20px / 700 / -0.005em. <strong>Green ONLY on AI-attributed cards</strong> (AI orders, AI revenue, AI AOV, Top agent share). Total orders / Products exposed / Top agent become neutral <code>--fg-1</code>. Add <code>overflow-wrap: anywhere</code> for long agent names.</li>
-        <li><strong>Note: this is an intentional deviation from the strict design-system rule that all stat values are neutral.</strong> Document the reasoning in a comment near the stat-card render.</li>
+        <li>Stat cards in <code>PostEnableView</code>: change values from 24px green to 20px / 700 / -0.005em on the system stack. <strong>All values render in <code>--fg-1</code> neutral</strong> (per design-system convention). Add <code>overflow-wrap: anywhere</code> for long agent names.</li>
+        <li>Stat strip composition: 6 cards in a single neutral grid (no clusters, no eyebrow labels). <strong>Drop the standalone "Total orders" card</strong>; inline its value as a denominator on the AI orders card: "14 / 128" where "14" is the primary value and "/ 128" is muted secondary text (<code>.stat-ref</code> class, 14px / 400 / <code>--fg-3</code>). Reasoning: Total orders was a reference for "AI orders out of how many?", not a peer metric. Putting it next to its numerator (denominator pattern) is more honest than parking it as a sibling card. Source pattern: Stripe Dashboard, GitHub Insights ("1.2k / 8.4k views"), Google Analytics 4 channel cards. Final 6 cards: Products exposed, AI orders ("14 / 128"), AI revenue, AI AOV, Top agent, Top agent share.</li>
         <li>Date-range selector: replace <code>&lt;SelectControl&gt;</code> with chip-style segmented control (this IS filtering, chip pattern is correct).</li>
+        <li>Recent AI orders card: drop the bordered <code>&lt;div class="card-head"&gt;</code>; render the title as <code>&lt;h3 class="card-title"&gt;Recent AI orders&lt;/h3&gt;</code> inside the card body, table flows below at full width.</li>
         <li><strong>Drop the success status banner entirely.</strong> A populated dashboard (chip-row, stat cards, recent orders) is the active-state signal; an explicit "AI Storefront is active" banner is redundant chrome and creates a visual conflict between a positive status signal at the top of the page and the destructive Disable affordance at the bottom. Remove the banner markup from <code>PostEnableView</code>; keep the <code>.notice</code> CSS pattern in case future warning/error notices use it.</li>
         <li><strong>Disable affordance</strong>:
           <ul>
@@ -1597,7 +1637,7 @@ details.crawler-group .group-body {
             <li>After <code>&lt;AIOrdersTable /&gt;</code>, append <code>.disable-row</code> footer block (hairline divider top, two-column flex, label/description on the left, <code>.btn-danger-outline</code> Disable button on the right).</li>
             <li>Single click disables, keep the existing <code>onChange({ enabled: 'no' }); onSave();</code> chain unchanged. <strong>No confirmation modal</strong>, disabling is reversible (re-enable restores all settings). Confirmation friction would just train users to dismiss dialogs.</li>
             <li>Button uses standalone <code>class="btn-danger-outline"</code> (NOT composed with <code>class="btn"</code>, the <code>.btn</code> class hard-codes blue overrides that fight the red).</li>
-            <li>Copy: <code>&lt;strong&gt;Disable AI Storefront&lt;/strong&gt;</code> + <code>&lt;p&gt;Stops AI agents from accessing your store. Endpoints return 404 within minutes; settings are preserved.&lt;/p&gt;</code>.</li>
+            <li>Copy: <code>&lt;strong&gt;Disable AI Storefront&lt;/strong&gt;</code> + <code>&lt;p&gt;Stops AI agents from accessing your store. Settings are preserved.&lt;/p&gt;</code>. (The 404 detail is engineer's language; merchants think in terms of agent access, not HTTP status codes.)</li>
           </ul>
         </li>
       </ul>
@@ -1606,11 +1646,18 @@ details.crawler-group .group-body {
     <div class="file-card">
       <h3><code>client/settings/ai-storefront/product-selection.js</code></h3>
       <ul>
-        <li>Add a <code>&lt;header&gt;</code> block at the top: <code>&lt;h2&gt;Products available to AI agents&lt;/h2&gt;</code> + description matching the existing copy.</li>
+        <li>Add a section-head block at the top of the tab: <code>&lt;h2&gt;Catalog access&lt;/h2&gt;</code> + description "Control which products AI agents can see and recommend." The section h2 sits at a higher altitude than the card title — it names the operator's job (catalog-level access), the card title names the specific control. They do not paraphrase each other. The h2 also avoids repeating "visibility" with the tab name and pairs thematically with Tab 4's "AI agent access".</li>
+        <li>Card title: rename "Products available to AI crawlers" to "Products available to AI agents" — match the plugin name and the rest of the redesign's terminology. Drop the "crawlers" vocabulary from this surface.</li>
+        <li>Card structure: drop the bordered <code>&lt;div class="card-head"&gt;</code> pattern; render the title as <code>&lt;h3 class="card-title"&gt;</code> inside <code>&lt;div class="card-body"&gt;</code> so the title and its describing paragraph read as one continuous unit. (See Pattern decisions to preserve.)</li>
+        <li>Card body intro: "Choose which products are exposed to AI agents." One short sentence. (The previous wording about count-updates-as-you-change-filters was wordier than the merchant needs; reactivity is self-evident when the merchant sees the count change while toggling.)</li>
+        <li>Mode-card descriptions: switch any "AI crawlers" references to "AI agents" — match the rest of the tab's vocabulary. (The Discovery tab keeps "crawlers" because robots.txt directives target crawlers specifically; on Product visibility the user-facing noun is "agents".)</li>
         <li>Replace mode toggles with selectable mode-cards (radio cards), one per mode option.</li>
         <li>Selected mode-card: blue-tinted bg (<code>--status-info-bg</code>) + blue border (<code>--wp-admin-blue</code>).</li>
         <li>Detail panel for the active mode renders inside the selected card OR docked beneath, not as a stacked competing block.</li>
         <li>Form labels gain uppercase tracked treatment (12px / 600 / 0.04em / uppercase / <code>--fg-2</code>).</li>
+        <li><strong>"By category, tag, or brand" mode — picker pattern</strong>: render a scrollable checkbox list (<code>.checkbox-list</code>) showing every taxonomy term, two-column grid on wide containers, single column on narrow. The merchant clicks checkboxes to toggle inclusion — recognition over recall. <strong>Conditional search</strong>: only render a search input above the list when <code>terms.length &gt; 20</code>. Below that threshold, scanning is faster than typing; above it, the list becomes unwieldy and search becomes essential. The mockup shows the no-search state (12 categories) since that's the common case. (Replaces the previous "search-only with chips below" pattern, which forced the merchant to remember category names.)</li>
+        <li><strong>"Selected products" mode — picker pattern</strong>: this mode CANNOT use the same checkbox-list approach because product counts (typically 30-1000+) make a static list unscannable. Use a search-with-typeahead instead: search input that, on type, shows a live dropdown of matching products with name + SKU. Click a result to add as a chip below; click × on chip to remove. Chips include name + parenthesized SKU (e.g., "Acme T-shirt (1234) ×") so the merchant can disambiguate similar product names. The mockup leaves "Selected products" as an unselected mode-card; the detail panel design lives in this bullet rather than rendered, since it would require either swapping the active mode or showing two detail panels.</li>
+        <li><strong>Why two different picker patterns</strong>: data shape forces it. Categories are 5-30 items with memorable names — a list is scannable. Products are 30-1000+ items with non-memorable names that need SKU disambiguation — typeahead is the only honest pattern. One picker pattern for both modes would fail one of them.</li>
         <li>Save changes footer is already correct.</li>
       </ul>
     </div>
@@ -1618,7 +1665,8 @@ details.crawler-group .group-body {
     <div class="file-card">
       <h3><code>client/settings/ai-storefront/policies-tab.js</code></h3>
       <ul>
-        <li>Existing <code>&lt;header&gt;</code> at line 811 is the canonical reference for the section-head pattern. Verify it matches the redesign h2 ("Policies exposed to AI agents") and description.</li>
+        <li>Update the existing section-head <code>&lt;header&gt;</code> at line 811: change the h2 from "Policies exposed to AI agents" to <strong>"Store policies"</strong> and the description to "Policies AI agents can quote to shoppers before checkout." (The new h2 names the operator's job at a higher altitude than the card title.)</li>
+        <li>Card structure: drop the bordered <code>&lt;div class="card-head"&gt;</code> pattern; render the card title as <code>&lt;h3 class="card-title"&gt;Return &amp; refund policy&lt;/h3&gt;</code> inside <code>&lt;div class="card-body"&gt;</code>.</li>
         <li>Replace <code>&lt;__experimentalToggleGroupControl&gt;</code> with the new <code>.seg-control</code> + <code>.seg-option</code> pattern. <strong>WHY</strong>: this is CONFIGURATION (the choice drives conditional fields below), distinct from chips which filter data. Don't homogenize back to chips.</li>
         <li>Visual: light-fill container (<code>--bg-3</code>), 4px radius, 2px padding; option buttons transparent by default with <code>--fg-2</code> text; active option gets <code>--bg-1</code> white + <code>--shadow-2</code> lift + <code>--fg-1</code> text + 600 weight + <code>(radius-md - 2px)</code> corner.</li>
         <li>Return-window field: drop the wrapper-level max-width constraint (was 160px). Only the input itself constrained to 120px. Label and help text span the section.</li>
@@ -1630,10 +1678,18 @@ details.crawler-group .group-body {
     <div class="file-card">
       <h3><code>client/settings/ai-storefront/endpoint-info.js</code></h3>
       <ul>
-        <li>Add a <code>&lt;header&gt;</code> block at the top: <code>&lt;h2&gt;Endpoints and crawler access&lt;/h2&gt;</code> + description.</li>
+        <li>Add a section-head <code>&lt;header&gt;</code> block at the top: <code>&lt;h2&gt;AI agent access&lt;/h2&gt;</code> + description "How AI agents find and interact with your site." (Names the operator's job at a higher altitude than the cards. "Endpoints" is too technical for the section h2, and "crawler" is too narrow — the cards inside still use the precise terms where they apply.)</li>
+        <li>Card structure: drop the bordered <code>&lt;div class="card-head"&gt;</code> pattern on all three cards (Discovery endpoints, AI crawler access, Rate limits); render each title as <code>&lt;h3 class="card-title"&gt;</code> inside <code>&lt;div class="card-body"&gt;</code>. (See Pattern decisions to preserve.)</li>
         <li>Endpoint table: keep <code>.widefat</code> shape, but render URLs in <code>--font-mono</code> (JetBrains Mono fallback to Menlo/Consolas). Replace inline status icons with consistent <code>.status-badge</code> pill components (green/red/gray semantic backgrounds, <code>--radius-pill</code>).</li>
         <li>Crawler allow-list: convert each subgroup into a <code>&lt;details&gt;</code> element with a count badge in the <code>&lt;summary&gt;</code> line (e.g. "8/8 allowed"). Default-open the live-browsing subgroups; default-collapsed for training/test.</li>
+        <li>Drop the "Live browsing ·" prefix on each live subgroup heading. The subgroup names ("General-purpose AI assistants", "Agentic shopping", "Commerce search engines", "Regional Asia", "Regional Europe") are descriptive enough on their own; the live-vs-training distinction is conveyed by default-open vs default-collapsed plus the literal "Training and test crawlers" name on the other group. (The source has a two-level structure with a "Live browsing" group title; the redesign flattens to one level by drop-and-rely-on-default.)</li>
+        <li>Sentence case fix: "Training and Test Crawlers" → "Training and test crawlers" (per the cross-cutting sentence-case rule).</li>
+        <li>Drop the "AI-attributed orders show under WooCommerce's built-in Origin column..." cross-reference paragraph (currently in the source at <code>endpoint-info.js</code> ~line 1129). The 47-word footnote pre-empts a question that arises only when a merchant cross-references the allowlist with the orders list — a small fraction of sessions. If support tickets surface the confusion, address it at the orders-list surface (a "?" tooltip on the Origin column header) rather than pre-emptively here.</li>
+        <li>Custom rate-limit card: the unselected placeholder reads "x/min" (typographic placeholder matching the "10/min, 25/min, 100/min" rhythm of the other cards). Interaction model: when Custom is selected, render the existing <code>&lt;TextControl&gt;</code> from the source code <strong>below the 2x2 grid</strong> (matches existing source pattern at <code>endpoint-info.js:1291-1316</code>). The card itself just shows it's selected (blue bg + blue border); the input lives separately. Avoid embedding an editable input inside the card — clicking input vs clicking card has ambiguous selection semantics.</li>
+        <li>Terminology: switch user-facing copy from "AI crawler" to "AI agents" — card title becomes "Allowed AI agents", intro and the robots.txt footer note also use "AI agents". The umbrella term "AI agents" includes both live-browsing agents AND training/test crawlers, matching the merchant's mental model. The "Training and test crawlers" subgroup name keeps "crawlers" because those bots ARE technically crawlers (offline indexing only) — that's a precise sub-category, not the umbrella term.</li>
+        <li>Drop the rate-limit footer note "Limits are applied per AI crawler (identified by user-agent string). Your regular store traffic is not affected." The intro already establishes this is about AI agents (so non-AI traffic exclusion is implicit), the per-crawler-vs-aggregate detail is engineering-level (most merchants don't ask), and the user-agent-string parenthetical is jargon. If support tickets surface confusion about per-bot limits, address it via a "?" tooltip on the rate-limit cards or a USER-GUIDE.md entry rather than this 18-word pre-emptive footnote.</li>
         <li>Rate-limit presets: replace <code>&lt;RadioControl&gt;</code> with a 2x2 grid of selectable cards. Each card: title (Conservative/Recommended/Generous/Custom) + RPM value in display weight (20px) + one-line description. Selected card: blue-tinted bg + blue border. <strong>NOT chips, these are configuration cards.</strong></li>
+        <li>Action toolbar above the agent list: drop the redundant "Allowed crawlers" eyebrow label on the left side. The card title ("Allowed AI agents"), card intro, and the count pill on the right ("12 of 12 allowed") already convey it; a fourth label is scaffolding. Right-side cluster (count pill + Select all + Clear) stands alone, naturally right-aligned.</li>
         <li>Other AI agents toggle: keep current placement (after the crawler list, with a top divider).</li>
         <li>Save changes footer is already correct.</li>
       </ul>
@@ -1653,9 +1709,10 @@ details.crawler-group .group-body {
       <h3>Pattern decisions to preserve</h3>
       <ul>
         <li><strong>Chips vs segmented control.</strong> Chips = FILTER data (Overview's date range; Product visibility's taxonomy switcher). Segmented control = CONFIGURE a setting (Policies' mode toggle). Use <code>.chip</code> for filters, <code>.seg-control</code> for config. They are not interchangeable.</li>
-        <li><strong>Stat-value color semantic.</strong> Green = AI-attributed metrics ONLY. Neutral = baseline. Don't make all values green (regression to today's code) or all values neutral (loses the AI signal).</li>
+        <li><strong>Stat-value color is always neutral.</strong> The AI-vs-reference distinction is encoded by inlining the reference value (Total orders) as a denominator on the AI orders card ("14 / 128"), not by recoloring values or by parking the reference as a sibling card. This matches design-system convention where green is reserved for <code>.stat-delta</code> rows showing positive trend changes — when delta rows are added later, green carries trend unambiguously instead of competing with category encoding. The previous green-on-AI alternation was rejected because color is a sentiment channel, not a category channel; the previous two-cluster split was rejected because Total orders is a reference (denominator), not a peer category.</li>
         <li><strong>Per-tab description sentence (italic gray).</strong> Below the tab strip, paired with the h2 in the section-head. Carries WHY the tab exists.</li>
-        <li><strong>Three-level hierarchy.</strong> Page h1 ("AI Storefront") above tab strip. Tab strip is section navigation. h2 + description below tab strip is content identity. Don't conflate them, the tab name is navigation; the h2 names the content.</li>
+        <li><strong>Two-altitude headings.</strong> Section h2 names the operator's job (the tab's purpose at a high altitude); card-title h3 names the specific configuration surface. They do not paraphrase each other. Examples: section "Catalog access" / card "Products available to AI agents"; section "Store policies" / card "Return &amp; refund policy"; section "AI agent access" / cards "Discovery endpoints" / "Allowed AI agents" / "Rate limits". This rule replaces the older "section h2 only when 2+ sibling cards" trigger — section h2 always names the tab's role, regardless of card count. The pre-enable hero is the only exception (its own h2 serves as the anchor).</li>
+        <li><strong>Card-head divider is for action chrome only.</strong> When a card head carries toolbar affordances (filter dropdowns, refresh button, count pills, export controls), use the bordered <code>.card-head</code> pattern — the divider separates a toolbar surface from the content surface below it. When the card head is just a title, use <code>&lt;h3 class="card-title"&gt;</code> inside <code>.card-body</code> instead — no divider, so the title and its describing paragraph read as one continuous unit. None of the current cards have action chrome; all use the inline title pattern. The bordered <code>.card-head</code> is reserved for future action-bearing cards.</li>
         <li><strong>Pre-enable hero is the exception</strong>, the hero's own h2 ("Make your store ready...") serves as the section heading, no separate section-head block above it.</li>
         <li><strong>Reversible destructive actions are single-click with context, not modal-confirmed.</strong> The Disable footer makes consequences visible BEFORE the click via the inline description; it does not gate the click behind an "Are you sure?" modal. Reversibility (re-enable restores everything) makes the modal noise rather than safety. Reserve modal confirmations for irreversible actions only.</li>
       </ul>
