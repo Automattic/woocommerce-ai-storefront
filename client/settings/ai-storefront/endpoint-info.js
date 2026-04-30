@@ -1000,11 +1000,15 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							defaultOpen: false,
 						},
 					].map( ( group ) => {
-						const crawlers = KNOWN_CRAWLERS.filter( ( c ) =>
-							group.categories.includes( c.category ) &&
-							( group.subgroup === null || c.subgroup === group.subgroup )
+						const crawlers = KNOWN_CRAWLERS.filter(
+							( c ) =>
+								group.categories.includes( c.category ) &&
+								( group.subgroup === null ||
+									c.subgroup === group.subgroup )
 						);
-						if ( crawlers.length === 0 ) return null;
+						if ( crawlers.length === 0 ) {
+							return null;
+						}
 						const allowedCount = crawlers.filter( ( c ) =>
 							allowedCrawlers.includes( c.id )
 						).length;
@@ -1023,8 +1027,12 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										style={ {
 											display: 'inline-flex',
 											alignItems: 'center',
-											background: isZero ? colors.surfaceMuted : colors.successBg,
-											color: isZero ? colors.textMuted : colors.success,
+											background: isZero
+												? colors.surfaceMuted
+												: colors.successBg,
+											color: isZero
+												? colors.textMuted
+												: colors.success,
 											fontWeight: isZero ? '400' : '600',
 											fontSize: '11px',
 											lineHeight: 1,
@@ -1035,7 +1043,10 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 									>
 										{ sprintf(
 											/* translators: %1$d allowed, %2$d total */
-											__( '%1$d/%2$d allowed', 'woocommerce-ai-storefront' ),
+											__(
+												'%1$d/%2$d allowed',
+												'woocommerce-ai-storefront'
+											),
 											allowedCount,
 											crawlers.length
 										) }
@@ -1043,11 +1054,18 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								</summary>
 								<div className="crawler-group-body">
 									{ crawlers.map( ( crawler ) => (
-										<div key={ crawler.id } className="crawler-row">
+										<div
+											key={ crawler.id }
+											className="crawler-row"
+										>
 											<CheckboxControl
 												label={ crawler.label }
-												checked={ allowedCrawlers.includes( crawler.id ) }
-												onChange={ () => toggleCrawler( crawler.id ) }
+												checked={ allowedCrawlers.includes(
+													crawler.id
+												) }
+												onChange={ () =>
+													toggleCrawler( crawler.id )
+												}
 												__nextHasNoMarginBottom
 											/>
 										</div>
@@ -1231,7 +1249,9 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 									key={ card.value }
 									type="button"
 									onClick={ () => {
-										if ( RATE_LIMIT_PRESETS[ card.value ] ) {
+										if (
+											RATE_LIMIT_PRESETS[ card.value ]
+										) {
 											setCustomOverride( false );
 											onChange( {
 												rate_limit_rpm:
@@ -1246,7 +1266,11 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 									style={ {
 										textAlign: 'left',
 										cursor: 'pointer',
-										border: `1px solid ${ isSelected ? colors.accent : colors.borderSubtle }`,
+										border: `1px solid ${
+											isSelected
+												? colors.accent
+												: colors.borderSubtle
+										}`,
 										borderRadius: radii.sm,
 										background: isSelected
 											? colors.infoBg

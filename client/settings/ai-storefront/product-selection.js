@@ -1,9 +1,4 @@
-import {
-	useState,
-	useEffect,
-	useMemo,
-	useRef,
-} from '@wordpress/element';
+import { useState, useEffect, useMemo, useRef } from '@wordpress/element';
 import {
 	Card,
 	CardBody,
@@ -221,10 +216,9 @@ const ModeBadgeGroup = ( { labels } ) => {
  * confirm "am I looking at the tag list or the category list" without
  * re-reading the heading.
  *
- * @param {Object}   root0           Component props.
- * @param {Array}    root0.items     Selected items with { id, name }.
- * @param {Function} root0.onRemove  Callback when an item is removed.
- * @param {string}   [root0.variant] 'tag' renders pill + `#` prefix.
+ * @param {Object}   root0          Component props.
+ * @param {Array}    root0.items    Selected items with { id, name }.
+ * @param {Function} root0.onRemove Callback when an item is removed.
  */
 const SelectedTokens = ( { items, onRemove } ) => {
 	if ( items.length === 0 ) {
@@ -311,7 +305,7 @@ const SelectedTokens = ( { items, onRemove } ) => {
  * @param {string}                                             root0.description Option description (muted).
  * @param {string|Array<{key: string, label: string}>}         root0.badgeLabel  Right-aligned badge content.
  * @param {Function}                                           root0.onSelect    Called with this option's value.
- * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children   Detail panel content (rendered when selected).
+ * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.children    Detail panel content (rendered when selected).
  */
 const ModeRow = ( {
 	value,
@@ -329,7 +323,9 @@ const ModeRow = ( {
 		<div
 			style={ {
 				background: isSelected ? colors.infoBg : colors.surface,
-				border: `1px solid ${ isSelected ? colors.accent : colors.borderSubtle }`,
+				border: `1px solid ${
+					isSelected ? colors.accent : colors.borderSubtle
+				}`,
 				borderRadius: radii.md,
 			} }
 		>
@@ -1104,16 +1100,16 @@ const ProductSelection = ( {
 	// own count or with the Selected-mode display. Suppressing keeps
 	// the row's badges semantically anchored to the by_taxonomy
 	// scoping the pill describes.
-	const taxonomyRowBadges =
-		taxonomyBadge && scopedCountBadge
-			? [
-					{ key: 'taxonomy', label: taxonomyBadge },
-					{ key: 'sep', label: '·' },
-					{ key: 'count', label: scopedCountBadge },
-			  ]
-			: taxonomyBadge
-			? [ { key: 'taxonomy', label: taxonomyBadge } ]
-			: [];
+	let taxonomyRowBadges = [];
+	if ( taxonomyBadge && scopedCountBadge ) {
+		taxonomyRowBadges = [
+			{ key: 'taxonomy', label: taxonomyBadge },
+			{ key: 'sep', label: '·' },
+			{ key: 'count', label: scopedCountBadge },
+		];
+	} else if ( taxonomyBadge ) {
+		taxonomyRowBadges = [ { key: 'taxonomy', label: taxonomyBadge } ];
+	}
 
 	// No plural-form distinction for this copy ('%d selected' reads
 	// the same for singular + plural in English), so use a single
@@ -1325,75 +1321,115 @@ const ProductSelection = ( {
 							gap: spacing.s3,
 						} }
 					>
-					<ModeRow
-						value={ UI_ROWS.ALL }
-						selected={ uiRow }
-						name="ai_syndication_mode"
-						label={ __(
-							'All published products',
-							'woocommerce-ai-storefront'
-						) }
-						description={ MODE_DESCRIPTIONS[ UI_ROWS.ALL ] }
-						badgeLabel={ allBadge }
-						onSelect={ setRow }
-					/>
+						<ModeRow
+							value={ UI_ROWS.ALL }
+							selected={ uiRow }
+							name="ai_syndication_mode"
+							label={ __(
+								'All published products',
+								'woocommerce-ai-storefront'
+							) }
+							description={ MODE_DESCRIPTIONS[ UI_ROWS.ALL ] }
+							badgeLabel={ allBadge }
+							onSelect={ setRow }
+						/>
 
-					<ModeRow
-						value={ UI_ROWS.BY_TAXONOMY }
-						selected={ uiRow }
-						name="ai_syndication_mode"
-						label={ __(
-							'Products by category, tag, or brand',
-							'woocommerce-ai-storefront'
-						) }
-						description={ MODE_DESCRIPTIONS[ UI_ROWS.BY_TAXONOMY ] }
-						badgeLabel={ taxonomyRowBadges }
-						onSelect={ setRow }
-					>
-						{ /* Taxonomy filter chips — local navigation only, not a saved setting */ }
-						<div
-							role="group"
-							aria-label={ __( 'Taxonomy', 'woocommerce-ai-storefront' ) }
-							style={ {
-								display: 'flex',
-								flexWrap: 'wrap',
-								gap: spacing.s1,
-								marginBottom: spacing.s4,
-							} }
+						<ModeRow
+							value={ UI_ROWS.BY_TAXONOMY }
+							selected={ uiRow }
+							name="ai_syndication_mode"
+							label={ __(
+								'Products by category, tag, or brand',
+								'woocommerce-ai-storefront'
+							) }
+							description={
+								MODE_DESCRIPTIONS[ UI_ROWS.BY_TAXONOMY ]
+							}
+							badgeLabel={ taxonomyRowBadges }
+							onSelect={ setRow }
 						>
-							{ [
-								{ value: TAXONOMY_TABS.CATEGORIES, label: __( 'Categories', 'woocommerce-ai-storefront' ) },
-								{ value: TAXONOMY_TABS.TAGS, label: __( 'Tags', 'woocommerce-ai-storefront' ) },
-								...( supportsBrands ? [ { value: TAXONOMY_TABS.BRANDS, label: __( 'Brands', 'woocommerce-ai-storefront' ) } ] : [] ),
-							].map( ( tab ) => {
-								const isActive = activeTaxonomy === tab.value;
-								return (
-									<button
-										key={ tab.value }
-										type="button"
-										onClick={ () => setTaxonomy( tab.value ) }
-										aria-pressed={ isActive }
-										style={ {
-											display: 'inline-flex',
-											alignItems: 'center',
-											border: `1px solid ${ isActive ? colors.accent : colors.borderSubtle }`,
-											borderRadius: radii.md,
-											background: isActive ? colors.infoBg : colors.surface,
-											color: isActive ? colors.accent : colors.textPrimary,
-											fontWeight: isActive ? '600' : '400',
-											padding: '4px 12px',
-											fontSize: '13px',
-											lineHeight: '1.3',
-											cursor: 'pointer',
-										} }
-									>
-										{ tab.label }
-									</button>
-								);
-							} ) }
-						</div>
+							{ /* Taxonomy filter chips — local navigation only, not a saved setting */ }
+							<div
+								role="group"
+								aria-label={ __(
+									'Taxonomy',
+									'woocommerce-ai-storefront'
+								) }
+								style={ {
+									display: 'flex',
+									flexWrap: 'wrap',
+									gap: spacing.s1,
+									marginBottom: spacing.s4,
+								} }
+							>
+								{ [
+									{
+										value: TAXONOMY_TABS.CATEGORIES,
+										label: __(
+											'Categories',
+											'woocommerce-ai-storefront'
+										),
+									},
+									{
+										value: TAXONOMY_TABS.TAGS,
+										label: __(
+											'Tags',
+											'woocommerce-ai-storefront'
+										),
+									},
+									...( supportsBrands
+										? [
+												{
+													value: TAXONOMY_TABS.BRANDS,
+													label: __(
+														'Brands',
+														'woocommerce-ai-storefront'
+													),
+												},
+										  ]
+										: [] ),
+								].map( ( tab ) => {
+									const isActive =
+										activeTaxonomy === tab.value;
+									return (
+										<button
+											key={ tab.value }
+											type="button"
+											onClick={ () =>
+												setTaxonomy( tab.value )
+											}
+											aria-pressed={ isActive }
+											style={ {
+												display: 'inline-flex',
+												alignItems: 'center',
+												border: `1px solid ${
+													isActive
+														? colors.accent
+														: colors.borderSubtle
+												}`,
+												borderRadius: radii.md,
+												background: isActive
+													? colors.infoBg
+													: colors.surface,
+												color: isActive
+													? colors.accent
+													: colors.textPrimary,
+												fontWeight: isActive
+													? '600'
+													: '400',
+												padding: '4px 12px',
+												fontSize: '13px',
+												lineHeight: '1.3',
+												cursor: 'pointer',
+											} }
+										>
+											{ tab.label }
+										</button>
+									);
+								} ) }
+							</div>
 
-						{ /*
+							{ /*
 						   Empty-selection warning. Fires when the
 						   ENFORCING taxonomy (the one matching
 						   `effectiveMode`, not whichever tab the
@@ -1429,148 +1465,53 @@ const ProductSelection = ( {
 						   two modes whose empty/misconfigured states
 						   have merchant-visible consequences.
 						*/ }
-						{ emptyEnforcingSelection && (
-							<Notice
-								status="warning"
-								isDismissible={ false }
-								className="ai-syndication-empty-taxonomy-warning"
-								// WP's default Notice styling targets
-								// admin-banner placement (edge-to-edge at
-								// the top of a page). Embedded inside a
-								// detail panel, the defaults read as
-								// cramped (text hugs the yellow left
-								// accent, no separation from content
-								// above). Override with internal padding
-								// and top margin for card-embedded use.
-								style={ {
-									margin: '12px 0 0',
-									padding: '8px 12px',
-								} }
-							>
-								{ emptyTaxonomyWarning }
-							</Notice>
-						) }
+							{ emptyEnforcingSelection && (
+								<Notice
+									status="warning"
+									isDismissible={ false }
+									className="ai-syndication-empty-taxonomy-warning"
+									// WP's default Notice styling targets
+									// admin-banner placement (edge-to-edge at
+									// the top of a page). Embedded inside a
+									// detail panel, the defaults read as
+									// cramped (text hugs the yellow left
+									// accent, no separation from content
+									// above). Override with internal padding
+									// and top margin for card-embedded use.
+									style={ {
+										margin: '12px 0 0',
+										padding: '8px 12px',
+									} }
+								>
+									{ emptyTaxonomyWarning }
+								</Notice>
+							) }
 
-						{ activeTaxonomy === TAXONOMY_TABS.CATEGORIES && (
-							<TaxonomyPicker
-								items={ categories }
-								filtered={ filteredCategories }
-								selectedIds={ selectedCategories }
-								search={ categorySearch }
-								onSearch={ setCategorySearch }
-								onToggle={ toggleCategory }
-								onSelectAll={ () => {
-									// Bulk-select mirrors the per-term
-									// toggle's commit semantics: populating
-									// the array is a deliberate act of
-									// scoping to this taxonomy, so write
-									// both the selection AND the mode
-									// atomically. Without this, a merchant
-									// could "Select all" from an unrelated
-									// mode (e.g. `all`) and walk away
-									// thinking they'd scoped to categories
-									// — but the server would still enforce
-									// `all`.
-									const ids = categories.map(
-										( cat ) => cat.id
-									);
-									const changes = {
-										selected_categories: ids,
-									};
-									if ( ids.length > 0 ) {
-										changes.product_selection_mode =
-											MODES.BY_TAXONOMY;
-									}
-									onChange( changes );
-								} }
-								onClear={ () =>
-									onChange( { selected_categories: [] } )
-								}
-								isLoading={ isLoadingCategories }
-								hasError={ hasCategoriesError }
-								searchPlaceholder={ __(
-									'Filter categories\u2026',
-									'woocommerce-ai-storefront'
-								) }
-								emptyMatchLabel={ __(
-									'No categories match your filter.',
-									'woocommerce-ai-storefront'
-								) }
-								emptyLabel={ __(
-									"You haven't created any categories yet. Create them in Products \u2192 Categories.",
-									'woocommerce-ai-storefront'
-								) }
-								errorLabel={ __(
-									"Couldn't load your categories right now. If you have categories configured, refresh this page to retry.",
-									'woocommerce-ai-storefront'
-								) }
-							/>
-						) }
-
-						{ activeTaxonomy === TAXONOMY_TABS.TAGS && (
-							<TaxonomyPicker
-								items={ tags }
-								filtered={ filteredTags }
-								selectedIds={ selectedTags }
-								search={ tagSearch }
-								onSearch={ setTagSearch }
-								onToggle={ toggleTag }
-								onSelectAll={ () => {
-									// Bulk-select mirrors the toggle's
-									// mode-commit semantics; see
-									// toggleCategory's `onSelectAll` for
-									// full rationale.
-									const ids = tags.map( ( tag ) => tag.id );
-									const changes = { selected_tags: ids };
-									if ( ids.length > 0 ) {
-										changes.product_selection_mode =
-											MODES.BY_TAXONOMY;
-									}
-									onChange( changes );
-								} }
-								onClear={ () =>
-									onChange( { selected_tags: [] } )
-								}
-								isLoading={ isLoadingTags }
-								hasError={ hasTagsError }
-								searchPlaceholder={ __(
-									'Filter tags (e.g. summer, sale)\u2026',
-									'woocommerce-ai-storefront'
-								) }
-								emptyMatchLabel={ __(
-									'No tags match your filter.',
-									'woocommerce-ai-storefront'
-								) }
-								emptyLabel={ __(
-									"You haven't created any tags yet. Add tags on a product's edit screen.",
-									'woocommerce-ai-storefront'
-								) }
-								errorLabel={ __(
-									"Couldn't load your tags right now. If you have tags configured, refresh this page to retry.",
-									'woocommerce-ai-storefront'
-								) }
-							/>
-						) }
-
-						{ activeTaxonomy === TAXONOMY_TABS.BRANDS &&
-							supportsBrands && (
+							{ activeTaxonomy === TAXONOMY_TABS.CATEGORIES && (
 								<TaxonomyPicker
-									items={ brands }
-									filtered={ filteredBrands }
-									selectedIds={ selectedBrands }
-									search={ brandSearch }
-									onSearch={ setBrandSearch }
-									onToggle={ toggleBrand }
+									items={ categories }
+									filtered={ filteredCategories }
+									selectedIds={ selectedCategories }
+									search={ categorySearch }
+									onSearch={ setCategorySearch }
+									onToggle={ toggleCategory }
 									onSelectAll={ () => {
-										// Bulk-select mirrors the toggle's
-										// mode-commit semantics; see
-										// toggleCategory's `onSelectAll` for
-										// full rationale.
-										const ids = brands.map(
-											( brand ) => brand.id
+										// Bulk-select mirrors the per-term
+										// toggle's commit semantics: populating
+										// the array is a deliberate act of
+										// scoping to this taxonomy, so write
+										// both the selection AND the mode
+										// atomically. Without this, a merchant
+										// could "Select all" from an unrelated
+										// mode (e.g. `all`) and walk away
+										// thinking they'd scoped to categories
+										// — but the server would still enforce
+										// `all`.
+										const ids = categories.map(
+											( cat ) => cat.id
 										);
 										const changes = {
-											selected_brands: ids,
+											selected_categories: ids,
 										};
 										if ( ids.length > 0 ) {
 											changes.product_selection_mode =
@@ -1579,44 +1520,143 @@ const ProductSelection = ( {
 										onChange( changes );
 									} }
 									onClear={ () =>
-										onChange( { selected_brands: [] } )
+										onChange( { selected_categories: [] } )
 									}
-									isLoading={ isLoadingBrands }
-									hasError={ hasBrandsError }
+									isLoading={ isLoadingCategories }
+									hasError={ hasCategoriesError }
 									searchPlaceholder={ __(
-										'Filter brands (e.g. Adidas, Nike)\u2026',
+										'Filter categories\u2026',
 										'woocommerce-ai-storefront'
 									) }
 									emptyMatchLabel={ __(
-										'No brands match your filter.',
+										'No categories match your filter.',
 										'woocommerce-ai-storefront'
 									) }
 									emptyLabel={ __(
-										"You haven't created any brands yet. Add brands in Products \u2192 Brands.",
+										"You haven't created any categories yet. Create them in Products \u2192 Categories.",
 										'woocommerce-ai-storefront'
 									) }
 									errorLabel={ __(
-										"Couldn't load your brands right now. If you have brands configured, refresh this page to retry.",
+										"Couldn't load your categories right now. If you have categories configured, refresh this page to retry.",
 										'woocommerce-ai-storefront'
 									) }
 								/>
 							) }
-					</ModeRow>
 
-					<ModeRow
-						value={ UI_ROWS.SELECTED }
-						selected={ uiRow }
-						name="ai_syndication_mode"
-						label={ __(
-							'Specific products only',
-							'woocommerce-ai-storefront'
-						) }
-						description={ MODE_DESCRIPTIONS[ UI_ROWS.SELECTED ] }
-						badgeLabel={ selectedBadge }
-						onSelect={ setRow }
-					>
-						<div>
-							{ /*
+							{ activeTaxonomy === TAXONOMY_TABS.TAGS && (
+								<TaxonomyPicker
+									items={ tags }
+									filtered={ filteredTags }
+									selectedIds={ selectedTags }
+									search={ tagSearch }
+									onSearch={ setTagSearch }
+									onToggle={ toggleTag }
+									onSelectAll={ () => {
+										// Bulk-select mirrors the toggle's
+										// mode-commit semantics; see
+										// toggleCategory's `onSelectAll` for
+										// full rationale.
+										const ids = tags.map(
+											( tag ) => tag.id
+										);
+										const changes = { selected_tags: ids };
+										if ( ids.length > 0 ) {
+											changes.product_selection_mode =
+												MODES.BY_TAXONOMY;
+										}
+										onChange( changes );
+									} }
+									onClear={ () =>
+										onChange( { selected_tags: [] } )
+									}
+									isLoading={ isLoadingTags }
+									hasError={ hasTagsError }
+									searchPlaceholder={ __(
+										'Filter tags (e.g. summer, sale)\u2026',
+										'woocommerce-ai-storefront'
+									) }
+									emptyMatchLabel={ __(
+										'No tags match your filter.',
+										'woocommerce-ai-storefront'
+									) }
+									emptyLabel={ __(
+										"You haven't created any tags yet. Add tags on a product's edit screen.",
+										'woocommerce-ai-storefront'
+									) }
+									errorLabel={ __(
+										"Couldn't load your tags right now. If you have tags configured, refresh this page to retry.",
+										'woocommerce-ai-storefront'
+									) }
+								/>
+							) }
+
+							{ activeTaxonomy === TAXONOMY_TABS.BRANDS &&
+								supportsBrands && (
+									<TaxonomyPicker
+										items={ brands }
+										filtered={ filteredBrands }
+										selectedIds={ selectedBrands }
+										search={ brandSearch }
+										onSearch={ setBrandSearch }
+										onToggle={ toggleBrand }
+										onSelectAll={ () => {
+											// Bulk-select mirrors the toggle's
+											// mode-commit semantics; see
+											// toggleCategory's `onSelectAll` for
+											// full rationale.
+											const ids = brands.map(
+												( brand ) => brand.id
+											);
+											const changes = {
+												selected_brands: ids,
+											};
+											if ( ids.length > 0 ) {
+												changes.product_selection_mode =
+													MODES.BY_TAXONOMY;
+											}
+											onChange( changes );
+										} }
+										onClear={ () =>
+											onChange( { selected_brands: [] } )
+										}
+										isLoading={ isLoadingBrands }
+										hasError={ hasBrandsError }
+										searchPlaceholder={ __(
+											'Filter brands (e.g. Adidas, Nike)\u2026',
+											'woocommerce-ai-storefront'
+										) }
+										emptyMatchLabel={ __(
+											'No brands match your filter.',
+											'woocommerce-ai-storefront'
+										) }
+										emptyLabel={ __(
+											"You haven't created any brands yet. Add brands in Products \u2192 Brands.",
+											'woocommerce-ai-storefront'
+										) }
+										errorLabel={ __(
+											"Couldn't load your brands right now. If you have brands configured, refresh this page to retry.",
+											'woocommerce-ai-storefront'
+										) }
+									/>
+								) }
+						</ModeRow>
+
+						<ModeRow
+							value={ UI_ROWS.SELECTED }
+							selected={ uiRow }
+							name="ai_syndication_mode"
+							label={ __(
+								'Specific products only',
+								'woocommerce-ai-storefront'
+							) }
+							description={
+								MODE_DESCRIPTIONS[ UI_ROWS.SELECTED ]
+							}
+							badgeLabel={ selectedBadge }
+							onSelect={ setRow }
+						>
+							<div>
+								{ /*
 							   Typeahead search + dropdown. Products are
 							   a recall task (thousands of items, names
 							   not always unique) so a typeahead is more
@@ -1631,131 +1671,177 @@ const ProductSelection = ( {
 							   disabled with a checkmark to prevent
 							   accidental double-adds.
 							*/ }
-							<div style={ { position: 'relative', maxWidth: '480px' } } ref={ searchWrapperRef }>
-								<SearchControl
-									__nextHasNoMarginBottom
-									value={ productSearch }
-									onChange={ setProductSearch }
-									placeholder={ __(
-										'Search products\u2026',
-										'woocommerce-ai-storefront'
-									) }
-								/>
-								{ productSearch.trim() && (
-									<div
-										style={ {
-											position: 'absolute',
-											...( dropdownFlipped
-												? { bottom: '100%', marginBottom: '2px' }
-												: { top: '100%', marginTop: '2px' } ),
-											left: 0,
-											right: 0,
-											zIndex: 100,
-											background: colors.surface,
-											border: `1px solid ${ colors.borderSubtle }`,
-											borderRadius: radii.sm,
-											maxHeight: '200px',
-											overflowY: 'auto',
-											boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-										} }
-									>
-										{ isLoadingProducts && (
-											<div
-												style={ {
-													padding: '12px',
-													textAlign: 'center',
-												} }
-											>
-												<Spinner />
-											</div>
+								<div
+									style={ {
+										position: 'relative',
+										maxWidth: '480px',
+									} }
+									ref={ searchWrapperRef }
+								>
+									<SearchControl
+										__nextHasNoMarginBottom
+										value={ productSearch }
+										onChange={ setProductSearch }
+										placeholder={ __(
+											'Search products\u2026',
+											'woocommerce-ai-storefront'
 										) }
-										{ ! isLoadingProducts &&
-											products.length === 0 && (
-												<p
+									/>
+									{ productSearch.trim() && (
+										<div
+											style={ {
+												position: 'absolute',
+												...( dropdownFlipped
+													? {
+															bottom: '100%',
+															marginBottom: '2px',
+													  }
+													: {
+															top: '100%',
+															marginTop: '2px',
+													  } ),
+												left: 0,
+												right: 0,
+												zIndex: 100,
+												background: colors.surface,
+												border: `1px solid ${ colors.borderSubtle }`,
+												borderRadius: radii.sm,
+												maxHeight: '200px',
+												overflowY: 'auto',
+												boxShadow:
+													'0 2px 8px rgba(0,0,0,0.12)',
+											} }
+										>
+											{ isLoadingProducts && (
+												<div
 													style={ {
-														padding: '10px 12px',
-														margin: 0,
-														fontSize: '13px',
-														color: colors.textMuted,
+														padding: '12px',
+														textAlign: 'center',
 													} }
 												>
-													{ __(
-														'No products found. Try a different search.',
-														'woocommerce-ai-storefront'
-													) }
-												</p>
+													<Spinner />
+												</div>
 											) }
-										{ ! isLoadingProducts &&
-											products
-												.filter( ( p ) => ! selectedProducts.includes( p.id ) )
-												.map( ( product, idx, arr ) => (
-													<button
-														key={ product.id }
-														type="button"
-														onMouseDown={ ( e ) => e.preventDefault() }
-														onClick={ () => {
-															toggleProduct( product.id );
-															setProductSearch( '' );
-														} }
+											{ ! isLoadingProducts &&
+												products.length === 0 && (
+													<p
 														style={ {
-															display: 'block',
-															width: '100%',
-															padding: '8px 12px',
-															background: 'transparent',
-															border: 'none',
-															borderBottom: idx < arr.length - 1
-																? `1px solid ${ colors.borderSubtle }`
-																: 'none',
-															cursor: 'pointer',
-															textAlign: 'left',
+															padding:
+																'10px 12px',
+															margin: 0,
 															fontSize: '13px',
-															color: colors.textPrimary,
+															color: colors.textMuted,
 														} }
 													>
-														{ decodeEntities( product.name ) }
-														{ product.sku && (
-															<span
+														{ __(
+															'No products found. Try a different search.',
+															'woocommerce-ai-storefront'
+														) }
+													</p>
+												) }
+											{ ! isLoadingProducts &&
+												products
+													.filter(
+														( p ) =>
+															! selectedProducts.includes(
+																p.id
+															)
+													)
+													.map(
+														(
+															product,
+															idx,
+															arr
+														) => (
+															<button
+																key={
+																	product.id
+																}
+																type="button"
+																onMouseDown={ (
+																	e
+																) =>
+																	e.preventDefault()
+																}
+																onClick={ () => {
+																	toggleProduct(
+																		product.id
+																	);
+																	setProductSearch(
+																		''
+																	);
+																} }
 																style={ {
-																	marginLeft: '6px',
-																	color: colors.textMuted,
+																	display:
+																		'block',
+																	width: '100%',
+																	padding:
+																		'8px 12px',
+																	background:
+																		'transparent',
+																	border: 'none',
+																	borderBottom:
+																		idx <
+																		arr.length -
+																			1
+																			? `1px solid ${ colors.borderSubtle }`
+																			: 'none',
+																	cursor: 'pointer',
+																	textAlign:
+																		'left',
+																	fontSize:
+																		'13px',
+																	color: colors.textPrimary,
 																} }
 															>
-																{ `(${ product.sku })` }
-															</span>
-														) }
-													</button>
-												) ) }
+																{ decodeEntities(
+																	product.name
+																) }
+																{ product.sku && (
+																	<span
+																		style={ {
+																			marginLeft:
+																				'6px',
+																			color: colors.textMuted,
+																		} }
+																	>
+																		{ `(${ product.sku })` }
+																	</span>
+																) }
+															</button>
+														)
+													) }
+										</div>
+									) }
+								</div>
+								{ selectedProducts.length > 0 && (
+									<div style={ { marginTop: spacing.s3 } }>
+										<SelectedTokens
+											items={ selectedProductTokens }
+											onRemove={ toggleProduct }
+										/>
+										<Button
+											variant="link"
+											onClick={ () =>
+												onChange( {
+													selected_products: [],
+												} )
+											}
+											style={ {
+												fontSize: '12px',
+												padding: 0,
+												minHeight: 'auto',
+											} }
+										>
+											{ __(
+												'Clear selection',
+												'woocommerce-ai-storefront'
+											) }
+										</Button>
 									</div>
 								) }
 							</div>
-							{ selectedProducts.length > 0 && (
-								<div style={ { marginTop: spacing.s3 } }>
-									<SelectedTokens
-										items={ selectedProductTokens }
-										onRemove={ toggleProduct }
-									/>
-									<Button
-										variant="link"
-										onClick={ () =>
-											onChange( {
-												selected_products: [],
-											} )
-										}
-										style={ {
-											fontSize: '12px',
-											padding: 0,
-											minHeight: 'auto',
-										} }
-									>
-										{ __(
-											'Clear selection',
-											'woocommerce-ai-storefront'
-										) }
-									</Button>
-								</div>
-							) }
-						</div>
-					</ModeRow>
+						</ModeRow>
 					</div>
 				</CardBody>
 			</Card>
@@ -1812,24 +1898,21 @@ const ProductSelection = ( {
  * render the same UI with different data + labels; inlining three
  * copies in the parent would obscure the shared structure.
  *
- * @param {Object}                                             root0                   Component props.
- * @param {Array}                                              root0.items             All terms for this taxonomy.
- * @param {Array}                                              root0.filtered          Terms matching the current search filter.
- * @param {number[]}                                           root0.selectedIds       Currently-selected term IDs.
- * @param {string}                                             root0.search            Current search string.
- * @param {Function}                                           root0.onSearch          Updates the search string.
- * @param {Function}                                           root0.onToggle          Toggles one term's selection.
- * @param {Function}                                           root0.onSelectAll       Selects every term.
- * @param {Function}                                           root0.onClear           Clears the selection.
- * @param {boolean}                                            root0.isLoading         Pending fetch spinner.
- * @param {boolean}                                            [root0.hasError]        True when the last fetch failed — renders `errorLabel` in a yellow Notice instead of `emptyLabel`.
- * @param {string}                                             root0.searchPlaceholder Placeholder for the SearchControl.
- * @param {string}                                             root0.emptyMatchLabel   Shown when the filter returns no results.
- * @param {string}                                             root0.emptyLabel        Shown when the fetch succeeded but no terms exist for this taxonomy.
- * @param {string}                                             [root0.errorLabel]      Shown when `hasError` is true; distinct from `emptyLabel` so "merchant has none" and "we couldn't fetch" read differently.
- * @param {JSX.Element|JSX.Element[]|string|number|null|false} root0.disclosure
- *                                                                                     Footer disclosure text (accepts inline strong via
- *                                                                                     createInterpolateElement).
+ * @param {Object}   root0                   Component props.
+ * @param {Array}    root0.items             All terms for this taxonomy.
+ * @param {Array}    root0.filtered          Terms matching the current search filter.
+ * @param {number[]} root0.selectedIds       Currently-selected term IDs.
+ * @param {string}   root0.search            Current search string.
+ * @param {Function} root0.onSearch          Updates the search string.
+ * @param {Function} root0.onToggle          Toggles one term's selection.
+ * @param {Function} root0.onSelectAll       Selects every term.
+ * @param {Function} root0.onClear           Clears the selection.
+ * @param {boolean}  root0.isLoading         Pending fetch spinner.
+ * @param {boolean}  [root0.hasError]        True when the last fetch failed — renders `errorLabel` in a yellow Notice instead of `emptyLabel`.
+ * @param {string}   root0.searchPlaceholder Placeholder for the SearchControl.
+ * @param {string}   root0.emptyMatchLabel   Shown when the filter returns no results.
+ * @param {string}   root0.emptyLabel        Shown when the fetch succeeded but no terms exist for this taxonomy.
+ * @param {string}   [root0.errorLabel]      Shown when `hasError` is true; distinct from `emptyLabel` so "merchant has none" and "we couldn't fetch" read differently.
  */
 const TaxonomyPicker = ( {
 	items,
@@ -2023,7 +2106,6 @@ const TaxonomyPicker = ( {
 					) }
 				</div>
 			) }
-
 		</>
 	);
 };

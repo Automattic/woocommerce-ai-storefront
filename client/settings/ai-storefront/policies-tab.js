@@ -144,12 +144,13 @@ function SegmentedControlStyles() {
 	);
 }
 
-const SegmentedControl = ( { value, onChange: onChangeProp, options, label } ) => (
-	<div
-		className={ SEG_CONTROL_CLASS }
-		role="group"
-		aria-label={ label }
-	>
+const SegmentedControl = ( {
+	value,
+	onChange: onChangeProp,
+	options,
+	label,
+} ) => (
+	<div className={ SEG_CONTROL_CLASS } role="group" aria-label={ label }>
 		{ options.map( ( opt ) => (
 			<button
 				key={ opt.value }
@@ -360,15 +361,24 @@ const ReturnRefundPolicySection = ( {
 					options={ [
 						{
 							value: POLICY_MODES.RETURNS_ACCEPTED,
-							label: __( 'Returns accepted', 'woocommerce-ai-storefront' ),
+							label: __(
+								'Returns accepted',
+								'woocommerce-ai-storefront'
+							),
 						},
 						{
 							value: POLICY_MODES.FINAL_SALE,
-							label: __( 'No returns', 'woocommerce-ai-storefront' ),
+							label: __(
+								'No returns',
+								'woocommerce-ai-storefront'
+							),
 						},
 						{
 							value: POLICY_MODES.UNCONFIGURED,
-							label: __( "Don't expose", 'woocommerce-ai-storefront' ),
+							label: __(
+								"Don't expose",
+								'woocommerce-ai-storefront'
+							),
 						},
 					] }
 				/>
@@ -453,10 +463,12 @@ const ReturnRefundPolicySection = ( {
 												'woocommerce-ai-storefront'
 											) }
 											value={ String( policy.page_id ) }
-											options={ pageOptions.map( ( o ) => ( {
-												...o,
-												value: String( o.value ),
-											} ) ) }
+											options={ pageOptions.map(
+												( o ) => ( {
+													...o,
+													value: String( o.value ),
+												} )
+											) }
 											onChange={ ( val ) =>
 												handleField(
 													'page_id',
@@ -539,8 +551,19 @@ const ReturnRefundPolicySection = ( {
 								>
 									<button
 										type="button"
-										aria-label={ __( 'Decrease', 'woocommerce-ai-storefront' ) }
-										onClick={ () => handleField( 'days', Math.max( 0, ( policy.days || 0 ) - 1 ) ) }
+										aria-label={ __(
+											'Decrease',
+											'woocommerce-ai-storefront'
+										) }
+										onClick={ () =>
+											handleField(
+												'days',
+												Math.max(
+													0,
+													( policy.days || 0 ) - 1
+												)
+											)
+										}
 										style={ {
 											width: '28px',
 											flexShrink: 0,
@@ -566,10 +589,18 @@ const ReturnRefundPolicySection = ( {
 										max={ 365 }
 										value={ policy.days ?? 0 }
 										onChange={ ( e ) => {
-											const parsed = parseInt( e.target.value, 10 );
-											const normalized = Number.isNaN( parsed )
+											const parsed = parseInt(
+												e.target.value,
+												10
+											);
+											const normalized = Number.isNaN(
+												parsed
+											)
 												? 0
-												: Math.min( 365, Math.max( 0, parsed ) );
+												: Math.min(
+														365,
+														Math.max( 0, parsed )
+												  );
 											handleField( 'days', normalized );
 										} }
 										style={ {
@@ -586,8 +617,19 @@ const ReturnRefundPolicySection = ( {
 									/>
 									<button
 										type="button"
-										aria-label={ __( 'Increase', 'woocommerce-ai-storefront' ) }
-										onClick={ () => handleField( 'days', Math.min( 365, ( policy.days || 0 ) + 1 ) ) }
+										aria-label={ __(
+											'Increase',
+											'woocommerce-ai-storefront'
+										) }
+										onClick={ () =>
+											handleField(
+												'days',
+												Math.min(
+													365,
+													( policy.days || 0 ) + 1
+												)
+											)
+										}
 										style={ {
 											width: '28px',
 											flexShrink: 0,
@@ -684,6 +726,7 @@ const ReturnRefundPolicySection = ( {
 									} }
 								>
 									{ METHOD_OPTIONS.map( ( opt ) => (
+										// eslint-disable-next-line jsx-a11y/label-has-associated-control -- Input is nested inside the label.
 										<label
 											key={ opt.value }
 											style={ {
@@ -700,9 +743,14 @@ const ReturnRefundPolicySection = ( {
 										>
 											<input
 												type="checkbox"
-												checked={ ( policy.methods || [] ).includes( opt.value ) }
+												checked={ (
+													policy.methods || []
+												).includes( opt.value ) }
 												onChange={ ( e ) =>
-													handleMethodToggle( opt.value, e.target.checked )
+													handleMethodToggle(
+														opt.value,
+														e.target.checked
+													)
 												}
 												style={ {
 													width: '16px',
