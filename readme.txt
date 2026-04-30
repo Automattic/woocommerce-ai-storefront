@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.7.2
+Stable tag: 0.8.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,24 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.8.0 - 2026-04-30 =
+**New**
+* Settings page editorial pass: visual treatment refresh, 6-card stat strip with `N / M` denominator on AI orders, single-click Disable footer, plugin-wide `AI crawlers` -> `AI agents` copy shift, corrected `Other AI agents` toggle help text, new typography token scale.
+* Product visibility tab UX rewrite: typeahead search-and-dropdown for SELECTED mode (chips show `name (SKU)`); taxonomy pickers raise search threshold to 20 terms and render as 2-column grid.
+* Discovery tab spec implementation: 32px form fields across all tabs, monospace endpoint URLs, collapsible crawler groups with count badges, 2x2 rate-limit card grid with Custom 120px input.
+
+**Fixed**
+* Date-range labels aligned with trailing-window behavior; new "Last 90 days" preset; period enum is now `day, week, month, quarter, year`.
+* Bumped `@wordpress/components` to ^33; aligned `dataviews`/`icons`/`i18n` floors and dedup the install tree. Does NOT clear the `uuid` Dependabot alert -- @wordpress/components 33 still ships uuid 9.
+* Bumped `@wordpress/scripts` to ^32: webpack 5 dev-server, ESLint 9 flat config (`eslint.config.cjs`), Node 18.12+/npm 8.19.2+ engines floor declared. Adds `@wordpress/html-entities` and `@wordpress/url` as proper dependencies.
+* Pinned vulnerable transitive dev dependencies via `npm overrides`. Cleaned up redundant overrides after the modernization.
+* Removed PHP 8.3 deprecation notice from the autoloader.
+
+**Improved**
+* Sidebar menu label shortened to "AI Storefront" (page heading remains "Woo AI Storefront").
+* Added `@wordpress/env` local development environment with six npm scripts; port 8030.
+* User guide and engineering docs (CONTRIBUTING.md, TESTING.md, UI-CONVENTIONS.md) refreshed for unreleased UI changes.
 
 = 0.7.2 - 2026-04-29 =
 **Fixed**
