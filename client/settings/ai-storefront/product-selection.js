@@ -138,9 +138,8 @@ const MODE_DESCRIPTIONS = {
  * with no configured taxonomy terms, the taxonomyBadge is `''` and
  * the row renders badge-less rather than as a blank pill.
  *
- * @param {Object}  root0          Component props.
- * @param {string}  root0.label    Text content (pre-formatted).
- * @param {boolean} root0.selected Whether the parent row is selected.
+ * @param {Object} root0       Component props.
+ * @param {string} root0.label Text content (pre-formatted).
  */
 const ModeBadge = ( { label } ) => {
 	if ( ! label ) {
@@ -180,13 +179,11 @@ const ModeBadge = ( { label } ) => {
  * a caller can pass `[{ key: 'a', label: maybe }, { key: 'b', label: ok }]`
  * and let `a` drop out without changing `b`'s identity.
  *
- * @param {Object}                                     root0          Component props.
- * @param {string|Array<{key: string, label: string}>} root0.labels   One badge label string, or an
- *                                                                    array of `{key, label}` objects
- *                                                                    for adjacent pills with stable
- *                                                                    reconciliation identity.
- * @param {boolean}                                    root0.selected Whether the parent row is
- *                                                                    selected (controls pill color).
+ * @param {Object}                                     root0        Component props.
+ * @param {string|Array<{key: string, label: string}>} root0.labels One badge label string, or an
+ *                                                                  array of `{key, label}` objects
+ *                                                                  for adjacent pills with stable
+ *                                                                  reconciliation identity.
  */
 const ModeBadgeGroup = ( { labels } ) => {
 	if ( typeof labels === 'string' ) {

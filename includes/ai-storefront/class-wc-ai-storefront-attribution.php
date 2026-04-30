@@ -696,7 +696,7 @@ class WC_AI_Storefront_Attribution {
 			'year'    => '1 year ago',
 		];
 
-		// $period is already validated to one of the four keys above.
+		// $period is already validated to one of the five keys above.
 		$after    = $date_map[ $period ];
 		$after_ts = strtotime( $after );
 		if ( false === $after_ts ) {
