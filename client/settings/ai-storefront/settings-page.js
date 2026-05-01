@@ -120,34 +120,40 @@ const AISyndicationSettings = () => {
 	// what's shown first, verify it's discoverable second.
 	const isEnabled = settings?.enabled === 'yes';
 
+	if ( ! isEnabled ) {
+		return (
+			<div className="wc-ai-storefront-settings">
+				<OverviewTab
+					settings={ settings }
+					onChange={ updateSettingsValues }
+					onSave={ saveSettings }
+					isSaving={ isSaving }
+				/>
+			</div>
+		);
+	}
+
 	const tabs = [
 		{
 			name: 'overview',
 			title: __( 'Overview', 'woocommerce-ai-storefront' ),
 		},
-		...( isEnabled
-			? [
-					{
-						name: 'products',
-						// Sentence case ("Product visibility" not "Product Visibility")
-						// per the cross-cutting copy rule. Audited together with
-						// other Title Case strings on this surface in the
-						// settings-redesign editorial pass.
-						title: __(
-							'Product visibility',
-							'woocommerce-ai-storefront'
-						),
-					},
-					{
-						name: 'policies',
-						title: __( 'Policies', 'woocommerce-ai-storefront' ),
-					},
-					{
-						name: 'endpoints',
-						title: __( 'Discovery', 'woocommerce-ai-storefront' ),
-					},
-			  ]
-			: [] ),
+		{
+			name: 'products',
+			// Sentence case ("Product visibility" not "Product Visibility")
+			// per the cross-cutting copy rule. Audited together with
+			// other Title Case strings on this surface in the
+			// settings-redesign editorial pass.
+			title: __( 'Product visibility', 'woocommerce-ai-storefront' ),
+		},
+		{
+			name: 'policies',
+			title: __( 'Policies', 'woocommerce-ai-storefront' ),
+		},
+		{
+			name: 'endpoints',
+			title: __( 'Discovery', 'woocommerce-ai-storefront' ),
+		},
 	];
 
 	const tabNames = tabs.map( ( t ) => t.name );
