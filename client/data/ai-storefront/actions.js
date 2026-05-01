@@ -157,11 +157,29 @@ export function fetchEndpoints() {
  *
  * @param {number} perPage How many orders to request (1-50, default 10).
  */
-export function fetchRecentOrders( perPage = 10 ) {
+export function fetchRecentOrders( params = {} ) {
 	return async ( { dispatch } ) => {
+		const {
+			perPage = 10,
+			page = 1,
+			orderby = 'date',
+			order = 'DESC',
+			search = '',
+			agent = '',
+			status = '',
+		} = params;
+		const query = new URLSearchParams( {
+			per_page: perPage,
+			page,
+			orderby,
+			order,
+			...( search && { search } ),
+			...( agent && { agent } ),
+			...( status && { status } ),
+		} ).toString();
 		try {
 			const result = await apiFetch( {
-				path: `${ ADMIN_NAMESPACE }/recent-orders?per_page=${ perPage }`,
+				path: `${ ADMIN_NAMESPACE }/recent-orders?${ query }`,
 			} );
 			dispatch.setRecentOrders( result );
 		} catch ( _error ) {

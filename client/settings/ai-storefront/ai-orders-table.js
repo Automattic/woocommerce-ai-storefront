@@ -44,7 +44,7 @@
 import { useEffect, useMemo, useState } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { Card, CardBody } from '@wordpress/components';
-import { DataViews, filterSortAndPaginate } from '@wordpress/dataviews';
+import { DataViews } from '@wordpress/dataviews';
 import { __ } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-storefront/constants';
 import { colors, statusColors, typography } from './tokens';
@@ -175,7 +175,7 @@ const DEFAULT_VIEW = {
 	type: 'table',
 	page: 1,
 	perPage: 10,
-	fields: [ 'order', 'date', 'status', 'agent', 'total' ],
+	fields: [ 'order', 'customer', 'date', 'status', 'items', 'agent', 'total' ],
 };
 
 /**
@@ -310,7 +310,7 @@ const GhostTable = () => (
  *                                                                            state, `<DataViews />` for the populated state.
  */
 const RecentAIOrdersCard = ( { children } ) => (
-	<Card style={ { marginTop: '16px' } }>
+	<Card style={ { marginTop: '16px', overflow: 'hidden' } }>
 		<CardBody>
 			<h3 style={ { margin: '0 0 12px', fontSize: '14px' } }>
 				{ __( 'Recent AI orders', 'woocommerce-ai-storefront' ) }
@@ -410,23 +410,51 @@ const AIOrdersTable = () => {
 		[]
 	);
 
-	useEffect( () => {
-		fetchRecentOrders( 10 );
-	}, [] ); // eslint-disable-line react-hooks/exhaustive-deps -- Fetch once on mount; settings-change triggers refetch elsewhere.
-
 	const [ view, setView ] = useState( DEFAULT_VIEW );
 
-	// Field definitions — the `id` strings must match keys on the
-	// row objects (`order`, `date`, etc.). DataViews uses `render`
-	// for the cell's React output and `getValue` (when present) for
-	// sorting/filtering. Keeping both in lockstep lets us sort the
-	// table on display values without divergence.
+	// Derive server-side query params from the current DataViews view state.
+	// Filters: DataViews stores them as [{ field, value }]; we pick out the
+	// agent and status filters by field ID. Search maps directly to `search`.
+	const serverParams = useMemo( () => {
+		const agentFilter = view.filters?.find( ( f ) => f.field === 'agent' );
+		const statusFilter = view.filters?.find( ( f ) => f.field === 'status' );
+		return {
+			perPage: view.perPage,
+			page: view.page,
+			orderby: view.sort?.field || 'date',
+			order: view.sort?.direction?.toUpperCase() || 'DESC',
+			search: view.search || '',
+			agent: agentFilter?.value || '',
+			status: statusFilter?.value || '',
+		};
+	}, [ view ] );
+
+	// Re-fetch whenever the server params change (page, sort, search, filters).
+	useEffect( () => {
+		fetchRecentOrders( serverParams );
+	}, [ serverParams ] ); // eslint-disable-line react-hooks/exhaustive-deps
+
+	const data = useMemo( () => recentOrders?.orders || [], [ recentOrders ] );
+
+	// Agent filter elements: since we're paginating server-side, the current
+	// page may not contain every agent. Derive from whatever has been seen so
+	// far — the list grows as the user pages/searches, which is acceptable for
+	// a filter picker. Stable across re-renders via useMemo on data identity.
+	const agentElements = useMemo(
+		() =>
+			[ ...new Set( data.map( ( o ) => o.agent ).filter( Boolean ) ) ]
+				.sort()
+				.map( ( name ) => ( { value: name, label: name } ) ),
+		[ data ]
+	);
+
 	const fields = useMemo(
 		() => [
 			{
 				id: 'order',
 				label: __( 'Order', 'woocommerce-ai-storefront' ),
 				enableSorting: true,
+				enableGlobalSearch: true,
 				render: ( { item } ) => {
 					const href = safeHref( item.edit_url );
 					// If the URL failed scheme validation fall back
@@ -452,7 +480,43 @@ const AIOrdersTable = () => {
 						</a>
 					);
 				},
-				getValue: ( { item } ) => item.id,
+				getValue: ( { item } ) => String( item.number ),
+			},
+			{
+				id: 'customer',
+				label: __( 'Customer', 'woocommerce-ai-storefront' ),
+				enableSorting: true,
+				enableGlobalSearch: true,
+				render: ( { item } ) => {
+					const href = safeHref( item.customer_url );
+					if ( ! href || ! item.customer ) {
+						return item.customer || '—';
+					}
+					return (
+						<a href={ href } style={ { color: colors.link, textDecoration: 'none' } }>
+							{ item.customer }
+						</a>
+					);
+				},
+				getValue: ( { item } ) => item.customer,
+			},
+			{
+				id: 'items',
+				label: __( 'Items', 'woocommerce-ai-storefront' ),
+				enableSorting: false,
+				render: ( { item } ) => {
+					const items = item.items || [];
+					if ( ! items.length ) return '—';
+					const visible = items.slice( 0, 2 ).join( ', ' );
+					const overflow = items.length - 2;
+					return overflow > 0 ? (
+						<span title={ items.join( ', ' ) }>
+							{ visible }{ ' ' }
+							<span style={ { color: colors.textMuted } }>+{ overflow } more</span>
+						</span>
+					) : visible;
+				},
+				getValue: ( { item } ) => ( item.items || [] ).join( ', ' ),
 			},
 			{
 				id: 'date',
@@ -469,59 +533,15 @@ const AIOrdersTable = () => {
 				id: 'status',
 				label: __( 'Status', 'woocommerce-ai-storefront' ),
 				enableSorting: true,
-				// `elements` declares the closed enum of valid values
-				// for the field. DataViews treats element-typed fields
-				// specially — future filter UI would auto-populate a
-				// dropdown from this list, and internal sort / display
-				// code can do value → label lookups without us
-				// repeating the map at every render. Shipping the
-				// declaration now is cheap hygiene; activating the
-				// filter UI later becomes a 1-line prop change on
-				// this field.
-				//
-				// Labels use the 'woocommerce' text domain so they
-				// inherit WC core's translations — a merchant running
-				// a French or Japanese store sees the same "En cours"
-				// / "処理中" that appears on the native Orders list,
-				// not a separately-translated copy we'd have to
-				// maintain. This is the standard pattern for plugins
-				// integrating with WC's own data model.
+				enableGlobalSearch: true,
 				elements: [
-					{
-						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-						value: 'processing',
-						label: __( 'Processing', 'woocommerce' ),
-					},
-					{
-						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-						value: 'completed',
-						label: __( 'Completed', 'woocommerce' ),
-					},
-					{
-						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-						value: 'on-hold',
-						label: __( 'On hold', 'woocommerce' ),
-					},
-					{
-						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-						value: 'pending',
-						label: __( 'Pending payment', 'woocommerce' ),
-					},
-					{
-						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-						value: 'cancelled',
-						label: __( 'Cancelled', 'woocommerce' ),
-					},
-					{
-						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-						value: 'refunded',
-						label: __( 'Refunded', 'woocommerce' ),
-					},
-					{
-						// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-						value: 'failed',
-						label: __( 'Failed', 'woocommerce' ),
-					},
+					{ value: 'processing', label: __( 'Processing', 'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{ value: 'completed',  label: __( 'Completed',  'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{ value: 'on-hold',    label: __( 'On hold',    'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{ value: 'pending',    label: __( 'Pending payment', 'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{ value: 'cancelled',  label: __( 'Cancelled',  'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{ value: 'refunded',   label: __( 'Refunded',   'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{ value: 'failed',     label: __( 'Failed',     'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
 				],
 				render: ( { item } ) => (
 					<StatusPill
@@ -529,17 +549,14 @@ const AIOrdersTable = () => {
 						label={ item.status_label }
 					/>
 				),
-				// Sort on the status key (not the label) so the order
-				// is stable across locales — an English merchant and
-				// a French merchant get the same sort sequence when
-				// clicking the Status header. Labels remain the
-				// display text.
 				getValue: ( { item } ) => item.status,
 			},
 			{
 				id: 'agent',
 				label: __( 'Agent', 'woocommerce-ai-storefront' ),
 				enableSorting: true,
+				enableGlobalSearch: true,
+				elements: agentElements,
 				render: ( { item } ) => <strong>{ item.agent || '—' }</strong>,
 				getValue: ( { item } ) => item.agent,
 			},
@@ -554,24 +571,18 @@ const AIOrdersTable = () => {
 				getValue: ( { item } ) => item.total,
 			},
 		],
-		[]
+		[ agentElements ]
 	);
 
-	// Wrap the array-or-fallback expression in a memo so its
-	// referential identity is stable when the underlying orders
-	// haven't changed. Without this, the `|| []` creates a fresh
-	// empty array each render, invalidating every downstream useMemo
-	// that depends on `data` (below) on every parent re-render.
-	const data = useMemo( () => recentOrders?.orders || [], [ recentOrders ] );
-
-	// DataViews expects the data already filtered/sorted/paginated.
-	// The `filterSortAndPaginate` helper applies the current view
-	// config against the raw rows and returns the slice to render
-	// plus pagination metadata.
-	const { data: processedData, paginationInfo } = useMemo(
-		() => filterSortAndPaginate( data, view, fields ),
-		[ data, view, fields ]
-	);
+	// Server-side pagination: the REST endpoint returns only the current page
+	// slice, already sorted and filtered. Pass it directly to DataViews and
+	// construct paginationInfo from the server's total count.
+	// DataViews requires both totalItems AND totalPages to render pagination.
+	const paginationInfo = useMemo( () => {
+		const totalItems = recentOrders?.total ?? 0;
+		const totalPages = Math.max( 1, Math.ceil( totalItems / view.perPage ) );
+		return { totalItems, totalPages };
+	}, [ recentOrders, view.perPage ] );
 
 	// Not-fetched state: the data store initializes `recentOrders`
 	// to `null`; the fetch kicked off in the useEffect above will
@@ -598,25 +609,64 @@ const AIOrdersTable = () => {
 	}
 
 	return (
-		<RecentAIOrdersCard>
-			<DataViews
-				data={ processedData }
-				fields={ fields }
-				view={ view }
-				onChangeView={ setView }
-				paginationInfo={ paginationInfo }
-				defaultLayouts={ { table: {} } }
-				// Row ID maps each row for React keys + selection
-				// tracking. Our rows use the WC order ID, which
-				// is stable and unique.
-				getItemId={ ( item ) => String( item.id ) }
-				// We don't wire selection/bulk-actions for this
-				// read-only dashboard view, so pass an empty
-				// actions array. Keeping the prop avoids a
-				// console warning from DataViews.
-				actions={ [] }
-			/>
-		</RecentAIOrdersCard>
+		<Card style={ { marginTop: '16px', overflow: 'hidden' } }>
+			<CardBody>
+				<h3 style={ { margin: 0, fontSize: '14px' } }>
+					{ __( 'Recent AI orders', 'woocommerce-ai-storefront' ) }
+				</h3>
+			</CardBody>
+			<CardBody style={ { padding: 0 } }>
+				<style>{ `
+					.dataviews-view-table thead th {
+						background-color: ${ colors.surfaceSubtle } !important;
+						font-size: 12px !important;
+						font-weight: 600 !important;
+						text-transform: uppercase !important;
+						letter-spacing: 0.04em !important;
+						color: ${ colors.textSecondary } !important;
+						padding-top: 6px !important;
+						padding-bottom: 6px !important;
+					}
+					.dataviews-view-table thead .dataviews-view-table-header-button {
+						color: ${ colors.textSecondary } !important;
+						font-size: 12px !important;
+						font-weight: 600 !important;
+						text-transform: uppercase !important;
+						letter-spacing: 0.04em !important;
+					}
+					.dataviews-view-table thead .dataviews-view-table-header-button:hover {
+						color: ${ colors.textPrimary } !important;
+						background: transparent !important;
+					}
+					.dataviews-view-table:not(.has-compact-density):not(.has-comfortable-density) td {
+						padding-top: 8px !important;
+						padding-bottom: 8px !important;
+					}
+					.dataviews-view-table-wrapper {
+						overflow: hidden !important;
+					}
+					.dataviews-pagination__page-select .components-base-control,
+					.dataviews-pagination__page-select .components-base-control__field,
+					.dataviews-pagination__page-select .components-input-base {
+						margin-bottom: 0 !important;
+						line-height: 1 !important;
+					}
+					.dataviews-pagination__page-select .components-input-control__container {
+						height: auto !important;
+					}
+				` }</style>
+				<DataViews
+					data={ data }
+					fields={ fields }
+					view={ view }
+					onChangeView={ setView }
+					paginationInfo={ paginationInfo }
+					defaultLayouts={ { table: {} } }
+					getItemId={ ( item ) => String( item.id ) }
+					actions={ [] }
+				/>
+			</CardBody>
+		</Card>
 	);
 };
 

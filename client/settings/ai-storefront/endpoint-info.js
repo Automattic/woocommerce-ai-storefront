@@ -485,6 +485,12 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	const rpm = settings.rate_limit_rpm || 25;
 	const [ customOverride, setCustomOverride ] = useState( false );
 	const activePreset = customOverride ? 'custom' : getActivePreset( rpm );
+	// Tracks the value shown in the Custom card badge independently of which
+	// preset is active. Initialised once from settings; only updated when the
+	// merchant types in the custom RPM input — not when clicking preset cards.
+	const [ customRpm, setCustomRpm ] = useState(
+		() => getActivePreset( rpm ) === null ? rpm : 25
+	);
 
 	// Count only crawlers that are actually rendered as checkboxes. Right
 	// after a plugin upgrade that rotated AI_CRAWLERS, the stored array
@@ -1265,7 +1271,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 									'Custom',
 									'woocommerce-ai-storefront'
 								),
-								rpm: 'x/min',
+								rpm: activePreset === 'custom' ? `${ customRpm }/min` : 'x/min',
 								desc: __(
 									'Set your own requests-per-minute cap.',
 									'woocommerce-ai-storefront'
@@ -1362,13 +1368,14 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										'woocommerce-ai-storefront'
 									) }
 									type="number"
-									value={ rpm }
-									onChange={ ( value ) =>
-										onChange( {
-											rate_limit_rpm:
-												parseInt( value ) || 60,
-										} )
-									}
+									value={ customRpm }
+									onChange={ ( value ) => {
+										const parsed = parseInt( value, 10 );
+										setCustomRpm( isNaN( parsed ) ? '' : parsed );
+										if ( ! isNaN( parsed ) && parsed >= 1 ) {
+											onChange( { rate_limit_rpm: parsed } );
+										}
+									} }
 									min={ 1 }
 									max={ 1000 }
 									style={ { width: '120px' } }

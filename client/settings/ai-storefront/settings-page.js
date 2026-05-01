@@ -310,7 +310,7 @@ const formatMoney = ( stats, amount ) => {
 // parking the baseline as a peer card. Source pattern: Stripe
 // Dashboard, GitHub Insights, GA4 channel cards. Color and weight
 // keep the denominator subordinate so the AI metric reads first.
-const StatCard = ( { label, value, reference, href } ) => {
+const StatCard = ( { label, value, reference, href, background } ) => {
 	const cardStyle = {
 		// `flex: 1 1 0; min-width: 140px` removed — the parent grid
 		// container now controls card width via
@@ -318,7 +318,7 @@ const StatCard = ( { label, value, reference, href } ) => {
 		// See OverviewTab's stat-card grid for the formula and the
 		// 4-column-cap rationale.
 		padding: '14px 16px',
-		background: colors.surface,
+		background: background ?? colors.surface,
 		border: `1px solid ${ colors.borderSubtle }`,
 		borderRadius: radii.sm,
 		textDecoration: 'none',
@@ -859,6 +859,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						'woocommerce-ai-storefront'
 					) }
 					value={ productCountDisplay }
+					background={ colors.surfaceSubtle }
 				/>
 				{ /* Card labels omit the time-period suffix
 				     (e.g. "AI orders (7d)"); the period chip-row
@@ -887,6 +888,14 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						typeof wcAiSyndicationParams !== 'undefined'
 							? wcAiSyndicationParams.ordersUrl
 							: undefined
+					}
+				/>
+				<StatCard
+					label={ __( 'AI order rate', 'woocommerce-ai-storefront' ) }
+					value={
+						stats?.ai_orders > 0 && stats?.all_orders > 0
+							? `${ ( ( stats.ai_orders / stats.all_orders ) * 100 ).toFixed( 1 ) }%`
+							: '\u2014'
 					}
 				/>
 				<StatCard
