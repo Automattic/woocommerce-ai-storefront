@@ -589,7 +589,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 				<div>
 					<h2
 						style={ {
-							margin: `0 0 ${ spacing.s2 }`,
+							margin: `0 0 ${ spacing.s1 }`,
 							...typography.heroHeadline,
 							color: colors.textPrimary,
 						} }
@@ -601,14 +601,14 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 					</h2>
 					<p
 						style={ {
-							margin: `0 0 ${ spacing.s5 }`,
+							margin: `0 0 ${ spacing.s7 }`,
 							fontSize: '15px',
 							lineHeight: '1.5',
 							color: colors.textSecondary,
 						} }
 					>
 						{ __(
-							'Checkout stays on your store. Go live in one click.',
+							'Checkout stays on your store. One click.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>
