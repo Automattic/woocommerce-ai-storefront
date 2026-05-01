@@ -806,9 +806,10 @@ class WC_AI_Storefront_Admin_Controller {
 
 			if ( $search ) {
 				// billing_first_name and billing_last_name live in wc_order_addresses
-				// (not on wc_orders directly). Join once with address_type='billing'
-				// and reference a.first_name / a.last_name; billing_email IS a direct
-				// column on wc_orders so no join needed for that field.
+				// (not on wc_orders directly), so this query checks them via correlated
+				// EXISTS subqueries filtered to address_type='billing'. billing_email
+				// IS a direct column on wc_orders, so no address-table join is needed
+				// for that field.
 				$sql     .= " AND (
 				    EXISTS (
 				        SELECT 1 FROM {$addresses_table} a_fn
@@ -822,14 +823,16 @@ class WC_AI_Storefront_Admin_Controller {
 				          AND a_ln.address_type = 'billing'
 				          AND a_ln.last_name LIKE %s
 				    )
-				    OR o.billing_email LIKE %s
-				    OR o.id = %d
-				)";
+				    OR o.billing_email LIKE %s";
 				$like     = '%' . $wpdb->esc_like( $search ) . '%';
 				$params[] = $like;
 				$params[] = $like;
 				$params[] = $like;
-				$params[] = (int) $search;
+				if ( ctype_digit( $search ) ) {
+					$sql     .= ' OR o.id = %d';
+					$params[] = (int) $search;
+				}
+				$sql .= ')';
 			}
 		} else {
 			// Legacy path — wp_posts + wp_postmeta.
@@ -868,14 +871,16 @@ class WC_AI_Storefront_Admin_Controller {
 				        WHERE pm_em.post_id = p.ID
 				          AND pm_em.meta_key = '_billing_email'
 				          AND pm_em.meta_value LIKE %s
-				    )
-				    OR p.ID = %d
-				)";
+				    )";
 				$like     = '%' . $wpdb->esc_like( $search ) . '%';
 				$params[] = $like;
 				$params[] = $like;
 				$params[] = $like;
-				$params[] = (int) $search;
+				if ( ctype_digit( $search ) ) {
+					$sql     .= ' OR p.ID = %d';
+					$params[] = (int) $search;
+				}
+				$sql .= ')';
 			}
 		}
 

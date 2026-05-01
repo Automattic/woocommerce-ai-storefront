@@ -381,9 +381,10 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_count_ai_orders_returns_zero_when_db_returns_null(): void {
-		// $wpdb->get_var() returns null on SQL error or when no rows match.
-		// count_ai_orders() must cast null → 0 (int) so the JSON response
-		// has a valid integer in the `total` field.
+		// For this COUNT(*) query, "no matches" should still produce a row
+		// with 0. A null from $wpdb->get_var() therefore represents an
+		// error/failed query, and count_ai_orders() must cast null → 0
+		// so the JSON response has a valid integer in the `total` field.
 		$this->make_wpdb_mock( null );
 
 		Functions\when( 'wc_get_orders' )->justReturn( [] );
