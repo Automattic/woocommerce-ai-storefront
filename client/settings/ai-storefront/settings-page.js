@@ -423,8 +423,22 @@ const StatCard = ( { label, value, reference, href, background } ) => {
 // Pre-enable view (value pitch)
 // ---------------------------------------------------------------------------
 
+const useIsMobile = () => {
+	const [ isMobile, setIsMobile ] = useState(
+		() => window.innerWidth < 782
+	);
+	useEffect( () => {
+		const mq = window.matchMedia( '(max-width: 781px)' );
+		const handler = ( e ) => setIsMobile( e.matches );
+		mq.addEventListener( 'change', handler );
+		return () => mq.removeEventListener( 'change', handler );
+	}, [] );
+	return isMobile;
+};
+
 const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 	const [ ctaHovered, setCtaHovered ] = useState( false );
+	const isMobile = useIsMobile();
 	return (
 		<div>
 			{ /* Hero block: purple-tinted gradient bg, 1.4fr / 1fr grid.
@@ -439,7 +453,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 					borderRadius: radii.sm,
 					padding: `${ spacing.s7 } ${ spacing.s6 }`,
 					display: 'grid',
-					gridTemplateColumns: '1.4fr 1fr',
+					gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr',
 					gap: spacing.s5,
 					alignItems: 'center',
 				} }
@@ -552,7 +566,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 			<div
 				style={ {
 					display: 'grid',
-					gridTemplateColumns: 'repeat(3, 1fr)',
+					gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
 					gap: spacing.s4,
 					marginTop: spacing.s7,
 				} }
