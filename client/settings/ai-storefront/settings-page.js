@@ -579,120 +579,127 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 					border: `1px solid ${ colors.borderSubtle }`,
 					borderRadius: radii.sm,
 					padding: `${ spacing.s7 } ${ spacing.s6 }`,
-					display: 'grid',
-					gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr',
-					gap: spacing.s5,
-					alignItems: 'center',
 				} }
 			>
-				{ /* Left column: headline + CTA + reassurance */ }
-				<div>
-					<h2
-						style={ {
-							margin: `0 0 ${ spacing.s1 }`,
-							...typography.heroHeadline,
-							color: colors.textPrimary,
-						} }
-					>
-						{ __(
-							'List once. Sell everywhere AI shops.',
-							'woocommerce-ai-storefront'
-						) }
-					</h2>
-					<p
-						style={ {
-							margin: `0 0 ${ spacing.s7 }`,
-							fontSize: '15px',
-							lineHeight: '1.5',
-							color: colors.textSecondary,
-						} }
-					>
-						{ __(
-							'Checkout stays on your store. One click.',
-							'woocommerce-ai-storefront'
-						) }
-					</p>
-					{ /* btn-brand: Woo purple. Not using WP `<Button variant="primary">` —
-				     WP's primary button is wp-admin-blue and there's no variant for
-				     purple. Hover darkens to wooPurple70 per `.btn-brand:hover`
-				     in the design spec. */ }
-					<button
-						type="button"
-						disabled={ isSaving }
-						onMouseEnter={ () => setCtaHovered( true ) }
-						onMouseLeave={ () => setCtaHovered( false ) }
-						onClick={ () => {
-							onChange( { enabled: 'yes' } );
-							onSave();
-						} }
-						style={ {
-							background:
-								isSaving || ctaHovered
-									? colors.wooPurple70
-									: colors.wooPurple50,
-							border: `1px solid ${
-								isSaving || ctaHovered
-									? colors.wooPurple70
-									: colors.wooPurple50
-							}`,
-							color: colors.surface,
-							padding: '8px 16px',
-							borderRadius: radii.sm,
-							font: `600 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`,
-							cursor: isSaving ? 'not-allowed' : 'pointer',
-							display: 'inline-flex',
-							alignItems: 'center',
-							opacity: isSaving ? 0.8 : 1,
-						} }
-					>
-						{ isSaving
-							? __( 'Enabling…', 'woocommerce-ai-storefront' )
-							: __(
-									'Enable AI Storefront',
-									'woocommerce-ai-storefront'
-							  ) }
-					</button>
-					{ /* Reassurance row sits directly under the CTA — distinct
-				    fears from "Checkout stays on your store" in the subcopy:
-				    "Read-only" answers "will it touch my catalog?" and
-				    "Reversible anytime" answers "can I undo this?". A merchant
-				    arriving at this CTA is already in doubt (they just clicked
-				    Activate on a plugin that talks to five external AI
-				    platforms); resolving the doubt before the CTA — not after
-				    — is the conversion call. "No frontend changes" was dropped
-				    from the previous three-token form; the value-prop strip
-				    below already carries that signal indirectly. */ }
-					<p
-						style={ {
-							margin: `${ spacing.s3 } 0 0`,
-							fontSize: '12px',
-							color: colors.textMuted,
-							lineHeight: '1.5',
-						} }
-					>
-						{ __(
-							'Read-only · Reversible anytime',
-							'woocommerce-ai-storefront'
-						) }
-					</p>
-				</div>
-
-				{ /* Right column: assistant-name chips, 2-column grid.
-			    Purple tint bg + dark purple text = Woo brand chips.
-			    Concrete names convert better than "all AI agents". */ }
-				<div
+				<h2
 					style={ {
-						display: 'grid',
-						gridTemplateColumns: 'repeat(2, 1fr)',
-						gap: spacing.s2,
+						margin: `0 0 ${ spacing.s1 }`,
+						...typography.heroHeadline,
+						color: colors.textPrimary,
 					} }
 				>
+					{ __(
+						'List once. Sell everywhere AI shops.',
+						'woocommerce-ai-storefront'
+					) }
+				</h2>
+				<p
+					style={ {
+						margin: `0 0 ${ spacing.s5 }`,
+						fontSize: '15px',
+						lineHeight: '1.5',
+						color: colors.textSecondary,
+					} }
+				>
+					{ __(
+						'Checkout stays on your store. One click.',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+				{ /* Assistant-name chips: 4 consumer-shopping-oriented agents
+			    in a responsive grid. Single row of 4 at desktop;
+			    2x2 below the 520px breakpoint. Claude is omitted from
+			    the chip strip because it's not a consumer-shopping
+			    agent (it's coding/research-oriented); it remains in
+			    the value-prop card body text below where the
+			    "machine-readable catalog access" framing applies to
+			    Claude as well. Chips keep intrinsic widths — the
+			    irregularity IS the legitimacy signal that these are
+			    distinct brand tokens, not interchangeable options. */ }
+				<style>{ `
+					.wc-ai-storefront-chip-strip {
+						display: grid;
+						grid-template-columns: repeat(4, max-content);
+						gap: ${ spacing.s2 };
+						margin: 0 0 ${ spacing.s7 };
+					}
+					@media (max-width: 520px) {
+						.wc-ai-storefront-chip-strip {
+							grid-template-columns: repeat(2, max-content);
+							row-gap: 10px;
+							column-gap: ${ spacing.s2 };
+						}
+					}
+				` }</style>
+				<div className="wc-ai-storefront-chip-strip">
 					<AssistantChip>ChatGPT</AssistantChip>
 					<AssistantChip>Gemini</AssistantChip>
-					<AssistantChip>Claude</AssistantChip>
 					<AssistantChip>Perplexity</AssistantChip>
 					<AssistantChip>Copilot</AssistantChip>
 				</div>
+				{ /* btn-brand: Woo purple. Not using WP `<Button variant="primary">` —
+			     WP's primary button is wp-admin-blue and there's no variant for
+			     purple. Hover darkens to wooPurple70 per `.btn-brand:hover`
+			     in the design spec. */ }
+				<button
+					type="button"
+					disabled={ isSaving }
+					onMouseEnter={ () => setCtaHovered( true ) }
+					onMouseLeave={ () => setCtaHovered( false ) }
+					onClick={ () => {
+						onChange( { enabled: 'yes' } );
+						onSave();
+					} }
+					style={ {
+						background:
+							isSaving || ctaHovered
+								? colors.wooPurple70
+								: colors.wooPurple50,
+						border: `1px solid ${
+							isSaving || ctaHovered
+								? colors.wooPurple70
+								: colors.wooPurple50
+						}`,
+						color: colors.surface,
+						padding: '8px 16px',
+						borderRadius: radii.sm,
+						font: `600 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`,
+						cursor: isSaving ? 'not-allowed' : 'pointer',
+						display: 'inline-flex',
+						alignItems: 'center',
+						opacity: isSaving ? 0.8 : 1,
+					} }
+				>
+					{ isSaving
+						? __( 'Enabling…', 'woocommerce-ai-storefront' )
+						: __(
+								'Enable AI Storefront',
+								'woocommerce-ai-storefront'
+						  ) }
+				</button>
+				{ /* Reassurance row sits directly under the CTA — distinct
+			    fears from "Checkout stays on your store" in the subcopy:
+			    "Read-only" answers "will it touch my catalog?" and
+			    "Reversible anytime" answers "can I undo this?". A merchant
+			    arriving at this CTA is already in doubt (they just clicked
+			    Activate on a plugin that talks to five external AI
+			    platforms); resolving the doubt before the CTA — not after
+			    — is the conversion call. "No frontend changes" was dropped
+			    from the previous three-token form; the value-prop strip
+			    below already carries that signal indirectly. */ }
+				<p
+					style={ {
+						margin: `${ spacing.s3 } 0 0`,
+						fontSize: '12px',
+						color: colors.textMuted,
+						lineHeight: '1.5',
+					} }
+				>
+					{ __(
+						'Read-only · Reversible anytime',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
 			</div>
 
 			{ /* Value-prop grid: 3-column CSS grid matching `.value-grid`
