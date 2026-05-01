@@ -672,9 +672,9 @@ class WC_AI_Storefront_Admin_Controller {
 			);
 		}
 
-		// Get the true total for pagination via a direct COUNT(*) — far cheaper
+		// Get the true total for pagination via a direct COUNT(DISTINCT id) — far cheaper
 		// than fetching all matching IDs with wc_get_orders( limit=-1 ).
-		$total_orders = $this->count_ai_orders( $status_arg, $meta_query, $search );
+		$total_orders = $this->count_ai_orders( $status_arg, $agent_filter, $search );
 
 		$statuses = wc_get_order_statuses();
 		$rows     = [];
@@ -742,32 +742,33 @@ class WC_AI_Storefront_Admin_Controller {
 
 	/**
 	 * Count AI-attributed orders matching the given filters via a direct
-	 * COUNT(*) query — HPOS or legacy, whichever the store uses.
+	 * COUNT(DISTINCT id) query — HPOS or legacy, whichever the store uses.
 	 *
 	 * This is the efficient counterpart to the main `wc_get_orders()` call
 	 * in `get_recent_orders()`. Fetching all matching IDs with
 	 * `wc_get_orders( limit=-1, return='ids' )` loads potentially thousands
 	 * of integers into PHP memory just to call `count()` on the array. A
-	 * single `SELECT COUNT(*)` returns one integer from the DB and costs
-	 * almost nothing at any order volume.
+	 * single `SELECT COUNT(DISTINCT id)` returns one integer from the DB
+	 * and costs almost nothing at any order volume. `DISTINCT` is required
+	 * because the INNER JOIN on the meta table can produce multiple rows
+	 * per order when an order has more than one matching meta row.
 	 *
-	 * The method duplicates the same WHERE conditions as the main query so
+	 * The method mirrors the same WHERE conditions as the main query so
 	 * the count is always in sync with the result set:
 	 *   - AGENT_META_KEY must exist (inner join guarantees it)
 	 *   - status IN ( $status_arg ) — prefixed with `wc-` for DB storage
-	 *   - optional agent value equality filter
-	 *   - optional full-text search via LIKE on billing name + email + ID
+	 *   - optional agent value equality filter (passed directly from caller)
+	 *   - optional search via LIKE on billing name + email, or order ID
 	 *
-	 * HPOS path: `wc_orders` JOIN `wc_orders_meta`
-	 * Legacy path: `wp_posts` JOIN `wp_postmeta`
+	 * HPOS path:   `wc_orders` JOIN `wc_orders_meta` JOIN `wc_order_addresses`
+	 * Legacy path: `wp_posts`  JOIN `wp_postmeta` (correlated EXISTS per field)
 	 *
-	 * @param array  $status_arg  Bare status slugs (e.g. ['processing','completed']).
-	 * @param array  $meta_query  The meta_query array from wc_get_orders; we read
-	 *                            the optional agent-value element from it.
-	 * @param string $search      Optional search term (same as the 's' arg above).
+	 * @param array  $status_arg   Bare status slugs (e.g. ['processing','completed']).
+	 * @param string $agent_filter Optional agent equality filter value ('' = all agents).
+	 * @param string $search       Optional search term.
 	 * @return int Total count of matching orders.
 	 */
-	private function count_ai_orders( array $status_arg, array $meta_query, string $search ): int {
+	private function count_ai_orders( array $status_arg, string $agent_filter, string $search ): int {
 		global $wpdb;
 
 		// Prefix bare status slugs for DB storage (both HPOS and legacy store
@@ -777,26 +778,19 @@ class WC_AI_Storefront_Admin_Controller {
 		// Build a safe IN-clause placeholder string (one %s per status).
 		$status_placeholders = implode( ', ', array_fill( 0, count( $db_statuses ), '%s' ) );
 
-		// Pull the optional agent-equality value out of $meta_query.
-		// Element 0 is the EXISTS check (always present); element 1, when set,
-		// is the value-equality filter added by the agent dropdown.
-		$agent_filter = '';
-		if ( isset( $meta_query[1]['value'] ) && '' !== $meta_query[1]['value'] ) {
-			$agent_filter = (string) $meta_query[1]['value'];
-		}
-
 		$agent_key = WC_AI_Storefront_Attribution::AGENT_META_KEY;
 
 		if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
 			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
 
-			// HPOS path — wc_orders + wc_orders_meta.
+			// HPOS path — wc_orders + wc_orders_meta + wc_order_addresses.
 			// Table names are derived from $wpdb->prefix (admin-controlled, not
 			// user input) and hard-coded WC HPOS suffixes. Interpolation is the
 			// canonical WordPress pattern — $wpdb->prepare() cannot parameterize
 			// table names.
-			$orders_table = $wpdb->prefix . 'wc_orders';
-			$meta_table   = $wpdb->prefix . 'wc_orders_meta';
+			$orders_table    = $wpdb->prefix . 'wc_orders';
+			$meta_table      = $wpdb->prefix . 'wc_orders_meta';
+			$addresses_table = $wpdb->prefix . 'wc_order_addresses';
 
 			$sql    = "SELECT COUNT(DISTINCT o.id)
 			           FROM {$orders_table} o
@@ -811,22 +805,31 @@ class WC_AI_Storefront_Admin_Controller {
 			}
 
 			if ( $search ) {
-				$search_meta_table = $wpdb->prefix . 'wc_orders_meta';
-				$sql              .= ' AND (
-				    o.billing_first_name LIKE %s
-				    OR o.billing_last_name LIKE %s
+				// billing_first_name and billing_last_name live in wc_order_addresses
+				// (not on wc_orders directly). Join once with address_type='billing'
+				// and reference a.first_name / a.last_name; billing_email IS a direct
+				// column on wc_orders so no join needed for that field.
+				$sql     .= " AND (
+				    EXISTS (
+				        SELECT 1 FROM {$addresses_table} a_fn
+				        WHERE a_fn.order_id = o.id
+				          AND a_fn.address_type = 'billing'
+				          AND a_fn.first_name LIKE %s
+				    )
+				    OR EXISTS (
+				        SELECT 1 FROM {$addresses_table} a_ln
+				        WHERE a_ln.order_id = o.id
+				          AND a_ln.address_type = 'billing'
+				          AND a_ln.last_name LIKE %s
+				    )
 				    OR o.billing_email LIKE %s
 				    OR o.id = %d
-				)';
-				$like              = '%' . $wpdb->esc_like( $search ) . '%';
-				$params[]          = $like;
-				$params[]          = $like;
-				$params[]          = $like;
-				$params[]          = (int) $search;
-				// suppress unused variable warning — $search_meta_table was only
-				// declared for readability; the HPOS orders table has billing
-				// columns directly on it, unlike legacy where they live in postmeta.
-				unset( $search_meta_table );
+				)";
+				$like     = '%' . $wpdb->esc_like( $search ) . '%';
+				$params[] = $like;
+				$params[] = $like;
+				$params[] = $like;
+				$params[] = (int) $search;
 			}
 		} else {
 			// Legacy path — wp_posts + wp_postmeta.
@@ -844,9 +847,9 @@ class WC_AI_Storefront_Admin_Controller {
 			}
 
 			if ( $search ) {
-				// Search on legacy requires joins to billing postmeta fields.
-				// We join wp_postmeta twice more (first_name, last_name, email)
-				// via LEFT JOINs so that orders missing one field still appear.
+				// Billing name/email live in wp_postmeta. Use correlated EXISTS
+				// subqueries so that orders missing one meta field still match
+				// via the other fields (unlike a JOIN which would drop the row).
 				$sql     .= " AND (
 				    EXISTS (
 				        SELECT 1 FROM {$wpdb->postmeta} pm_fn
@@ -876,11 +879,18 @@ class WC_AI_Storefront_Admin_Controller {
 			}
 		}
 
-		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
-		$count = (int) $wpdb->get_var( $wpdb->prepare( $sql, $params ) );
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$count = $wpdb->get_var( $wpdb->prepare( $sql, $params ) );
 		// phpcs:enable
 
-		return $count;
+		if ( $wpdb->last_error ) {
+			wc_get_logger()->warning(
+				'count_ai_orders DB error: ' . $wpdb->last_error,
+				[ 'source' => 'wc-ai-storefront' ]
+			);
+		}
+
+		return (int) $count;
 	}
 
 	/**

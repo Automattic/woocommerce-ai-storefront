@@ -32,17 +32,9 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		Monkey\setUp();
 
 		// count_ai_orders() calls $wpdb->prepare() + $wpdb->get_var() for
-		// the pagination COUNT(*). Default to returning '0' so existing tests
-		// that don't care about the total field don't need to set up $wpdb
-		// themselves. Tests that assert on the total override $wpdb directly.
-		global $wpdb;
-		$wpdb           = \Mockery::mock( 'wpdb' );
-		$wpdb->prefix   = 'wp_';
-		$wpdb->posts    = 'wp_posts';
-		$wpdb->postmeta = 'wp_postmeta';
-		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
-		$wpdb->shouldReceive( 'esc_like' )->andReturn( '' );
-		$wpdb->shouldReceive( 'get_var' )->andReturn( '0' );
+		// the pagination COUNT(DISTINCT id). Default to '0' so existing tests
+		// that don't care about the total field don't need to set up $wpdb.
+		$this->make_wpdb_mock();
 
 		$this->controller = new WC_AI_Storefront_Admin_Controller();
 
@@ -97,6 +89,23 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		$req = new WP_REST_Request();
 		$req->set_param( 'per_page', $per_page );
 		return $req;
+	}
+
+	/**
+	 * Set up a global $wpdb Mockery mock for count_ai_orders() callers.
+	 *
+	 * @param string|null $get_var_return Value returned by get_var(). Defaults to '0' (DB string).
+	 */
+	private function make_wpdb_mock( ?string $get_var_return = '0' ): void {
+		global $wpdb;
+		$wpdb           = \Mockery::mock( 'wpdb' );
+		$wpdb->prefix   = 'wp_';
+		$wpdb->posts    = 'wp_posts';
+		$wpdb->postmeta = 'wp_postmeta';
+		$wpdb->last_error = '';
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
+		$wpdb->shouldReceive( 'esc_like' )->andReturn( '' );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( $get_var_return );
 	}
 
 	/**
@@ -360,14 +369,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// COUNT(*) SQL path, not the length of the orders array. Override
 		// $wpdb so get_var returns 42 while wc_get_orders returns 1 order:
 		// the two values are independent.
-		global $wpdb;
-		$wpdb           = \Mockery::mock( 'wpdb' );
-		$wpdb->prefix   = 'wp_';
-		$wpdb->posts    = 'wp_posts';
-		$wpdb->postmeta = 'wp_postmeta';
-		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
-		$wpdb->shouldReceive( 'esc_like' )->andReturn( '' );
-		$wpdb->shouldReceive( 'get_var' )->andReturn( '42' );
+		$this->make_wpdb_mock( '42' );
 
 		Functions\when( 'wc_get_orders' )->justReturn( [ $this->make_order() ] );
 
@@ -382,14 +384,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// $wpdb->get_var() returns null on SQL error or when no rows match.
 		// count_ai_orders() must cast null → 0 (int) so the JSON response
 		// has a valid integer in the `total` field.
-		global $wpdb;
-		$wpdb           = \Mockery::mock( 'wpdb' );
-		$wpdb->prefix   = 'wp_';
-		$wpdb->posts    = 'wp_posts';
-		$wpdb->postmeta = 'wp_postmeta';
-		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
-		$wpdb->shouldReceive( 'esc_like' )->andReturn( '' );
-		$wpdb->shouldReceive( 'get_var' )->andReturn( null );
+		$this->make_wpdb_mock( null );
 
 		Functions\when( 'wc_get_orders' )->justReturn( [] );
 
