@@ -65,9 +65,10 @@ To pause, click **Disable AI Storefront** at the bottom of the page. Discovery e
 
 The Overview tab populates with stat cards once data flows in:
 
-- **Products exposed**: products AI agents can currently see (matches your visibility settings).
+- **Products exposed**: products AI agents can currently see (matches your visibility settings). Shown on a tinted background to distinguish a configuration value from the performance stats below.
 - **AI orders**: AI-attributed volume in the period, shown as `N / M` where M is the total orders denominator.
-- **AI revenue**: gross revenue from AI-referred orders.
+- **AI Order Rate**: percentage of all orders in the period that came from AI agents (`AI orders / all orders`). Shows `0.0%` when orders exist but none are AI-attributed.
+- **AI revenue**: gross revenue from AI-referred orders, shown as `$X / $Y` where Y is total store revenue in the period (no decimals on the denominator).
 - **AI AOV**: average order value from AI-referred orders.
 - **Top agent**: which agent drives the most AI volume.
 - **Top agent share**: what share of AI revenue the top agent represents.
@@ -214,7 +215,7 @@ The Discovery tab shows a reachability indicator in the card intro. The note "Re
 
 ![Overview tab per-agent stat cards](screenshots/11-per-agent-stats.png)
 
-**Recent AI Orders table** (Overview tab). The most recent AI-attributed orders with order number, date, status, agent, and total. Clicking the order number opens the WC order edit screen. Search, column-sort, and pagination controls are included.
+**Recent AI Orders table** (Overview tab). The most recent AI-attributed orders with order number, date, status, agent, and total. Clicking the order number opens the WC order edit screen. Search, column-sort, and pagination work server-side -- the table fetches only the current page, so large order volumes don't slow the Overview tab. Filters by **agent** and by **status** narrow the result set without leaving the table.
 
 ![Recent AI Orders table](screenshots/12-recent-ai-orders.png)
 
