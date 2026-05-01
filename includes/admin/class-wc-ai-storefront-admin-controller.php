@@ -628,8 +628,7 @@ class WC_AI_Storefront_Admin_Controller {
 			? array( $status_filter )
 			: $allowed_statuses;
 
-		// meta_key alone is unreliable with HPOS — use meta_query existence
-		// check instead so new orders stored in wp_wc_orders_meta are found.
+		// Restrict to AI-attributed orders via meta_query existence check.
 		$meta_query = array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 			array(
 				'key'     => WC_AI_Storefront_Attribution::AGENT_META_KEY,
