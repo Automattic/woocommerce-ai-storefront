@@ -30,6 +30,20 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+
+		// count_ai_orders() calls $wpdb->prepare() + $wpdb->get_var() for
+		// the pagination COUNT(*). Default to returning '0' so existing tests
+		// that don't care about the total field don't need to set up $wpdb
+		// themselves. Tests that assert on the total override $wpdb directly.
+		global $wpdb;
+		$wpdb           = \Mockery::mock( 'wpdb' );
+		$wpdb->prefix   = 'wp_';
+		$wpdb->posts    = 'wp_posts';
+		$wpdb->postmeta = 'wp_postmeta';
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
+		$wpdb->shouldReceive( 'esc_like' )->andReturn( '' );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( '0' );
+
 		$this->controller = new WC_AI_Storefront_Admin_Controller();
 
 		Functions\when( 'sanitize_key' )->alias(
@@ -70,6 +84,8 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
+		global $wpdb;
+		$wpdb = null;
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -333,5 +349,53 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 0, $data['orders'] );
 		$this->assertSame( 0, $data['total'] );
 		$this->assertArrayHasKey( 'currency', $data );
+	}
+
+	// ------------------------------------------------------------------
+	// count_ai_orders() — the COUNT(*) path used for pagination totals
+	// ------------------------------------------------------------------
+
+	public function test_total_in_response_comes_from_count_ai_orders_not_full_id_fetch(): void {
+		// Verifies that `total` in the REST response is the integer from the
+		// COUNT(*) SQL path, not the length of the orders array. Override
+		// $wpdb so get_var returns 42 while wc_get_orders returns 1 order:
+		// the two values are independent.
+		global $wpdb;
+		$wpdb           = \Mockery::mock( 'wpdb' );
+		$wpdb->prefix   = 'wp_';
+		$wpdb->posts    = 'wp_posts';
+		$wpdb->postmeta = 'wp_postmeta';
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
+		$wpdb->shouldReceive( 'esc_like' )->andReturn( '' );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( '42' );
+
+		Functions\when( 'wc_get_orders' )->justReturn( [ $this->make_order() ] );
+
+		$response = $this->controller->get_recent_orders( $this->request() );
+		$data     = $response->get_data();
+
+		$this->assertSame( 42, $data['total'] );
+		$this->assertCount( 1, $data['orders'] );
+	}
+
+	public function test_count_ai_orders_returns_zero_when_db_returns_null(): void {
+		// $wpdb->get_var() returns null on SQL error or when no rows match.
+		// count_ai_orders() must cast null → 0 (int) so the JSON response
+		// has a valid integer in the `total` field.
+		global $wpdb;
+		$wpdb           = \Mockery::mock( 'wpdb' );
+		$wpdb->prefix   = 'wp_';
+		$wpdb->posts    = 'wp_posts';
+		$wpdb->postmeta = 'wp_postmeta';
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
+		$wpdb->shouldReceive( 'esc_like' )->andReturn( '' );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( null );
+
+		Functions\when( 'wc_get_orders' )->justReturn( [] );
+
+		$response = $this->controller->get_recent_orders( $this->request() );
+		$data     = $response->get_data();
+
+		$this->assertSame( 0, $data['total'] );
 	}
 }
