@@ -14,6 +14,14 @@
 
 ---
 
+## [0.8.3] – 2026-05-01
+
+### Fixes
+
+- **Restored bundled `PucReadmeParser` to the release zip.** The release workflow's `rsync --exclude='vendor/'` pattern matched any directory named `vendor` at any depth (rsync's gitignore-style globbing), not just the project-root `vendor/` holding Composer dev tools. This silently stripped `includes/lib/plugin-update-checker/vendor/PucReadmeParser.php`, `Parsedown.php`, and `ParsedownModern.php` from the shipped zip. PUC v5p6's `Vcs/Api::getRemoteReadme()` constructs `new PucReadmeParser()` to parse incoming release readmes, fataling with `Class "PucReadmeParser" not found in Vcs/Api.php:139` on every site that visited `wp-admin/plugins.php` or `wp-admin/update-core.php` after a newer release became available. Latent across v0.8.0, v0.8.1, and v0.8.2 — only triggered once a downstream site checked for an update and PUC tried to parse the new release's readme. **Fix:** anchor the rsync exclude patterns with a leading slash (`/vendor/` instead of `vendor/`) so they match only the project-root copy. Verified locally: the bundled `vendor/` and the project-root `vendor/` are independently scoped — the parser ships, the dev tools don't. v0.8.3 is a packaging-only patch on top of v0.8.2; no source code change. Affected sites running v0.8.0 / v0.8.1 / v0.8.2 should upgrade to v0.8.3 to clear the fatal.
+
+---
+
 ## [0.8.2] – 2026-05-01
 
 ### Refactors

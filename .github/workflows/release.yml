@@ -82,27 +82,40 @@ jobs:
       # extract into wp-content/plugins/<dir-name>/), so this must
       # match the slug merchants see in their Plugins screen.
       #
-      # vendor/ is excluded from the zip: the plugin's runtime autoloader
-      # is includes/autoload.php (committed, no Composer required at runtime).
-      # Dev tools installed above are excluded by the node_modules/vendor/
-      # patterns below and never ship to merchants.
+      # All directory excludes are anchored with a leading slash so
+      # they match ONLY the project-root copy, not any nested directory
+      # of the same name. The `vendor/` anchor is load-bearing:
+      # without it, rsync's gitignore-style pattern stripped the
+      # bundled `includes/lib/plugin-update-checker/vendor/` directory,
+      # which ships `PucReadmeParser.php`. Missing that file fataled
+      # at update-check time:
+      #   Class "PucReadmeParser" not found in Vcs/Api.php:139
+      # PUC fetches the new release's readme.txt and constructs a
+      # parser, which fails when the parser class never loaded.
+      # v0.8.0–v0.8.2 shipped with the broken exclude; v0.8.3+
+      # reinstates the bundled parser.
+      #
+      # The plugin's runtime autoloader is includes/autoload.php
+      # (committed, no Composer required at runtime). Dev tools
+      # installed above are still excluded — they live in the
+      # project-root vendor/ which the anchored pattern catches.
       - name: Stage release files
         run: |
           mkdir -p release-staging
           rsync -a \
-            --exclude='.git/' \
-            --exclude='.github/' \
-            --exclude='.claude/' \
-            --exclude='.tools/' \
-            --exclude='node_modules/' \
-            --exclude='vendor/' \
-            --exclude='client/' \
-            --exclude='tests/' \
-            --exclude='bin/' \
-            --exclude='scripts/' \
-            --exclude='release-staging/' \
+            --exclude='/.git/' \
+            --exclude='/.github/' \
+            --exclude='/.claude/' \
+            --exclude='/.tools/' \
+            --exclude='/node_modules/' \
+            --exclude='/vendor/' \
+            --exclude='/client/' \
+            --exclude='/tests/' \
+            --exclude='/bin/' \
+            --exclude='/scripts/' \
+            --exclude='/release-staging/' \
             --exclude='*.log' \
-            --exclude='.phpunit.cache/' \
+            --exclude='/.phpunit.cache/' \
             --exclude='.phpunit.result.cache' \
             --exclude='composer.json' \
             --exclude='composer.lock' \

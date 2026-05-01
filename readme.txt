@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.8.2
+Stable tag: 0.8.3
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.8.3 - 2026-05-01 =
+**Fixed**
+* Restored the bundled `PucReadmeParser` (and Parsedown) to the release zip. The release workflow's overly-broad `vendor/` rsync exclude was stripping `includes/lib/plugin-update-checker/vendor/` along with the project-root Composer vendor dir, fataling at `wp-admin/plugins.php` / `update-core.php` once a newer release was available. Sites on v0.8.0–v0.8.2 should upgrade to clear the fatal. No source code change.
 
 = 0.8.2 - 2026-05-01 =
 **Improved**
