@@ -793,23 +793,29 @@ class WC_AI_Storefront_Attribution {
 			}
 		}
 
-		// Get total store orders for the same period (for AI share calculation).
+		// Get total store orders + revenue for the same period (for AI share calculation).
 		$all_orders_count = 0;
+		$all_revenue      = 0.0;
 		if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
 			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
 			$orders_table = $wpdb->prefix . 'wc_orders';
 			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			$all_orders_count = (int) $wpdb->get_var(
+			$row = $wpdb->get_row(
 				$wpdb->prepare(
-					"SELECT COUNT(*) FROM {$orders_table}
+					"SELECT COUNT(*) AS order_count, COALESCE(SUM(total_amount), 0) AS revenue
+					 FROM {$orders_table}
 					 WHERE status IN ( 'wc-completed', 'wc-processing' )
 					   AND date_created_gmt >= %s",
 					$after_date
 				)
 			);
 			// phpcs:enable
+			if ( $row ) {
+				$all_orders_count = (int) $row->order_count;
+				$all_revenue      = (float) $row->revenue;
+			}
 		} else {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$all_orders_count = (int) $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT COUNT(*) FROM {$wpdb->posts}
@@ -819,6 +825,18 @@ class WC_AI_Storefront_Attribution {
 					$after_date
 				)
 			);
+			$all_revenue      = (float) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COALESCE(SUM(pm.meta_value), 0)
+					 FROM {$wpdb->posts} p
+					 JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = '_order_total'
+					 WHERE p.post_type = 'shop_order'
+					   AND p.post_status IN ( 'wc-completed', 'wc-processing' )
+					   AND p.post_date_gmt >= %s",
+					$after_date
+				)
+			);
+			// phpcs:enable
 		}
 
 		$derived = self::derive_stats( $total_orders, $total_revenue, $by_agent );
@@ -847,6 +865,7 @@ class WC_AI_Storefront_Attribution {
 			'ai_revenue'       => $total_revenue,
 			'ai_aov'           => $derived['ai_aov'],
 			'all_orders'       => $all_orders_count,
+			'all_revenue'      => $all_revenue,
 			'ai_share_percent' => $all_orders_count > 0
 				? round( ( $total_orders / $all_orders_count ) * 100, 1 )
 				: 0,

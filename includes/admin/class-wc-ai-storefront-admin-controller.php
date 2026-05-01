@@ -169,7 +169,34 @@ class WC_AI_Storefront_Admin_Controller {
 						'type'    => 'integer',
 						'default' => 10,
 						'minimum' => 1,
-						'maximum' => 50,
+						'maximum' => 100,
+					],
+					'page'     => [
+						'type'    => 'integer',
+						'default' => 1,
+						'minimum' => 1,
+					],
+					'orderby'  => [
+						'type'    => 'string',
+						'default' => 'date',
+						'enum'    => [ 'date', 'total', 'status', 'id' ],
+					],
+					'order'    => [
+						'type'    => 'string',
+						'default' => 'DESC',
+						'enum'    => [ 'ASC', 'DESC' ],
+					],
+					'search'   => [
+						'type'    => 'string',
+						'default' => '',
+					],
+					'agent'    => [
+						'type'    => 'string',
+						'default' => '',
+					],
+					'status'   => [
+						'type'    => 'string',
+						'default' => '',
 					],
 				],
 			]
@@ -573,7 +600,22 @@ class WC_AI_Storefront_Admin_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function get_recent_orders( $request ) {
-		$per_page = (int) $request->get_param( 'per_page' );
+		$per_page      = (int) $request->get_param( 'per_page' );
+		$page          = max( 1, (int) $request->get_param( 'page' ) );
+		$orderby_raw   = sanitize_key( $request->get_param( 'orderby' ) );
+		$order_dir     = strtoupper( sanitize_key( $request->get_param( 'order' ) ) ) === 'ASC' ? 'ASC' : 'DESC';
+		$search        = sanitize_text_field( $request->get_param( 'search' ) );
+		$agent_filter  = sanitize_text_field( $request->get_param( 'agent' ) );
+		$status_filter = sanitize_text_field( $request->get_param( 'status' ) );
+
+		// Map DataViews field IDs to wc_get_orders orderby keys.
+		$orderby_map = [
+			'date'   => 'date',
+			'total'  => 'total',
+			'status' => 'status',
+			'id'     => 'ID',
+		];
+		$orderby     = $orderby_map[ $orderby_raw ] ?? 'date';
 
 		// Restrict to commercially relevant statuses only, not all 12+ WC order
 		// statuses. Passing every status via `wc_get_order_statuses()` forces the
@@ -581,21 +623,45 @@ class WC_AI_Storefront_Admin_Controller {
 		// `wc-trash` that never appear in the AI-orders overview table and inflate
 		// the IN clause with no benefit. On stores with 100k+ orders the
 		// over-broad IN can prevent index use (P-16).
-		$orders = wc_get_orders(
+		$allowed_statuses = array( 'pending', 'processing', 'on-hold', 'completed', 'refunded' );
+		$status_arg       = $status_filter && in_array( $status_filter, $allowed_statuses, true )
+			? array( $status_filter )
+			: $allowed_statuses;
+
+		// Restrict to AI-attributed orders via meta_query existence check.
+		$meta_query = array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 			array(
-				'limit'    => $per_page,
-				'orderby'  => 'date',
-				'order'    => 'DESC',
-				'meta_key' => WC_AI_Storefront_Attribution::AGENT_META_KEY, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
-				'status'   => array( 'pending', 'processing', 'on-hold', 'completed', 'refunded' ),
-				'return'   => 'objects',
-			)
+				'key'     => WC_AI_Storefront_Attribution::AGENT_META_KEY,
+				'compare' => 'EXISTS',
+			),
 		);
 
+		if ( $agent_filter ) {
+			$meta_query[] = array(
+				'key'     => WC_AI_Storefront_Attribution::AGENT_META_KEY,
+				'value'   => $agent_filter,
+				'compare' => '=',
+			);
+		}
+
+		$query_args = array(
+			'limit'      => $per_page,
+			'paged'      => $page,
+			'orderby'    => $orderby,
+			'order'      => $order_dir,
+			'status'     => $status_arg,
+			'return'     => 'objects',
+			'meta_query' => $meta_query,
+		);
+
+		if ( $search ) {
+			$query_args['s'] = $search;
+		}
+
+		$orders = wc_get_orders( $query_args );
+
 		// DB error — return an empty result set so the admin UI shows
-		// "no orders" rather than a fatal. The error is surfaced via the
-		// HTTP response code if the caller checks it; an empty array is
-		// less confusing than a stack trace in the admin panel.
+		// "no orders" rather than a fatal.
 		if ( is_wp_error( $orders ) ) {
 			return new WP_REST_Response(
 				array(
@@ -605,6 +671,15 @@ class WC_AI_Storefront_Admin_Controller {
 				)
 			);
 		}
+
+		// Get the true total for pagination — run a count-only query with the
+		// same filters but no limit/offset so DataViews knows how many pages exist.
+		$count_args             = $query_args;
+		$count_args['limit']    = -1;
+		$count_args['paged']    = 1;
+		$count_args['return']   = 'ids';
+		$count_args['paginate'] = false;
+		$total_orders           = count( wc_get_orders( $count_args ) );
 
 		$statuses = wc_get_order_statuses();
 		$rows     = [];
@@ -625,11 +700,33 @@ class WC_AI_Storefront_Admin_Controller {
 			$date_created = $order->get_date_created();
 			$status_key   = 'wc-' . $order->get_status();
 
+			$first_name   = $order->get_billing_first_name();
+			$last_name    = $order->get_billing_last_name();
+			$customer     = trim( "$first_name $last_name" );
+			$customer_id  = $order->get_customer_id();
+			$customer_url = $customer_id
+				? add_query_arg( [ 'user_id' => $customer_id ], admin_url( 'user-edit.php' ) )
+				: '';
+
+			$item_names = array_map(
+				fn( $item ) => $item->get_name(),
+				array_values( $order->get_items() )
+			);
+
 			$rows[] = [
 				'id'           => $order->get_id(),
 				'number'       => $order->get_order_number(),
+				'customer'     => $customer,
+				'customer_url' => $customer_url,
+				'items'        => $item_names,
 				'date'         => $date_created ? $date_created->format( 'c' ) : '',
-				'date_display' => $date_created ? wc_format_datetime( $date_created ) : '',
+				'date_display' => $date_created
+				? sprintf(
+				/* translators: %s: human-readable time difference, e.g. "5 minutes" */
+					__( '%s ago', 'woocommerce-ai-storefront' ),
+					human_time_diff( $date_created->getTimestamp(), time() )
+				)
+				: '',
 				'status'       => $order->get_status(),
 				'status_label' => $statuses[ $status_key ] ?? ucfirst( $order->get_status() ),
 				'agent'        => $agent,
@@ -642,7 +739,7 @@ class WC_AI_Storefront_Admin_Controller {
 		return new WP_REST_Response(
 			[
 				'orders'   => $rows,
-				'total'    => count( $rows ),
+				'total'    => $total_orders,
 				'currency' => get_woocommerce_currency(),
 			]
 		);

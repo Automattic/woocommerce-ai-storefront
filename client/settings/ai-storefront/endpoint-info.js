@@ -71,6 +71,52 @@ function EndpointTabStyles() {
 			details.${ CRAWLER_GROUP_CLASS } .crawler-row {
 				padding: 8px 0;
 			}
+			@media (max-width: 600px) {
+				.${ ENDPOINT_TAB_CLASS } table.widefat thead {
+					position: absolute;
+					width: 1px;
+					height: 1px;
+					padding: 0;
+					margin: -1px;
+					overflow: hidden;
+					clip: rect(0, 0, 0, 0);
+					white-space: nowrap;
+					border: 0;
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat tbody tr {
+					display: grid;
+					grid-template-columns: 1fr auto;
+					grid-template-rows: auto auto;
+					gap: 4px 8px;
+					padding: 10px 12px;
+					border-bottom: 1px solid ${ colors.borderSubtle };
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td {
+					display: block;
+					padding: 0;
+					border: none;
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(1) {
+					grid-column: 1; grid-row: 1;
+					align-self: center;
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(2) {
+					grid-column: 1 / -1; grid-row: 2;
+					overflow: hidden;
+					text-overflow: ellipsis;
+					white-space: nowrap;
+					max-width: 100%;
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(2) a {
+					font-size: 12px !important;
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(3) {
+					grid-column: 2; grid-row: 1;
+					align-self: center;
+					justify-self: end;
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(4) { display: none; }
+			}
 		` }</style>
 	);
 }
@@ -93,6 +139,21 @@ const RATE_LIMIT_PRESETS = {
 	conservative: { rpm: 10 },
 	recommended: { rpm: 25 },
 	generous: { rpm: 100 },
+};
+
+/**
+ * Strip hostname from a URL, returning only the path and query string.
+ *
+ * @param {string} url Full URL to shorten.
+ * @return {string}    Path + query string, or the original string if not a valid URL.
+ */
+const urlPath = ( url ) => {
+	try {
+		const { pathname, search } = new URL( url );
+		return pathname + search;
+	} catch ( _e ) {
+		return url;
+	}
 };
 
 /**
@@ -485,6 +546,12 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	const rpm = settings.rate_limit_rpm || 25;
 	const [ customOverride, setCustomOverride ] = useState( false );
 	const activePreset = customOverride ? 'custom' : getActivePreset( rpm );
+	// Tracks the value shown in the Custom card badge independently of which
+	// preset is active. Initialised once from settings; only updated when the
+	// merchant types in the custom RPM input — not when clicking preset cards.
+	const [ customRpm, setCustomRpm ] = useState( () =>
+		getActivePreset( rpm ) === 'custom' ? rpm : 25
+	);
 
 	// Count only crawlers that are actually rendered as checkboxes. Right
 	// after a plugin upgrade that rotated AI_CRAWLERS, the stored array
@@ -644,7 +711,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										<ExternalLink
 											href={ endpoints.llms_txt }
 										>
-											{ endpoints.llms_txt }
+											{ urlPath( endpoints.llms_txt ) }
 										</ExternalLink>
 									) : (
 										<Spinner />
@@ -669,7 +736,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								<td className="endpoint-url-cell">
 									{ endpoints.ucp ? (
 										<ExternalLink href={ endpoints.ucp }>
-											{ endpoints.ucp }
+											{ urlPath( endpoints.ucp ) }
 										</ExternalLink>
 									) : (
 										<Spinner />
@@ -694,7 +761,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								<td className="endpoint-url-cell">
 									{ endpoints.robots ? (
 										<ExternalLink href={ endpoints.robots }>
-											{ endpoints.robots }
+											{ urlPath( endpoints.robots ) }
 										</ExternalLink>
 									) : (
 										<Spinner />
@@ -721,7 +788,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										<ExternalLink
 											href={ endpoints.ucp_api }
 										>
-											{ endpoints.ucp_api }
+											{ urlPath( endpoints.ucp_api ) }
 										</ExternalLink>
 									) : (
 										<Spinner />
@@ -807,7 +874,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						} }
 					>
 						{ __(
-							'Control which AI agents are allowed to discover your store via robots.txt. Unchecked agents will be blocked from crawling your product pages.',
+							'Control which AI agents are allowed to discover your store via robots.txt.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>
@@ -1265,7 +1332,10 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 									'Custom',
 									'woocommerce-ai-storefront'
 								),
-								rpm: 'x/min',
+								rpm:
+									activePreset === 'custom'
+										? `${ customRpm || 'x' }/min`
+										: 'x/min',
 								desc: __(
 									'Set your own requests-per-minute cap.',
 									'woocommerce-ai-storefront'
@@ -1362,16 +1432,24 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										'woocommerce-ai-storefront'
 									) }
 									type="number"
-									value={ rpm }
-									onChange={ ( value ) =>
-										onChange( {
-											rate_limit_rpm:
-												parseInt( value ) || 60,
-										} )
-									}
+									value={ customRpm }
+									onChange={ ( value ) => {
+										const parsed = parseInt( value, 10 );
+										setCustomRpm(
+											isNaN( parsed ) ? '' : parsed
+										);
+										if (
+											! isNaN( parsed ) &&
+											parsed >= 1
+										) {
+											onChange( {
+												rate_limit_rpm: parsed,
+											} );
+										}
+									} }
 									min={ 1 }
 									max={ 1000 }
-									style={ { width: '120px' } }
+									style={ { width: '96px' } }
 								/>
 								<span
 									style={ {
@@ -1382,7 +1460,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 									aria-hidden="true"
 								>
 									{ __(
-										'requests / min',
+										'/ min',
 										'woocommerce-ai-storefront'
 									) }
 								</span>

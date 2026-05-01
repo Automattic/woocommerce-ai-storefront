@@ -155,13 +155,35 @@ export function fetchEndpoints() {
  * through KNOWN_AGENT_HOSTS so legacy hostnames display as brand names
  * (see /admin/recent-orders endpoint).
  *
- * @param {number} perPage How many orders to request (1-50, default 10).
+ * @param {Object} params Query parameters for the REST endpoint.
  */
-export function fetchRecentOrders( perPage = 10 ) {
+export function fetchRecentOrders( params = {} ) {
+	// Accept legacy numeric signature: fetchRecentOrders(10) → { perPage: 10 }.
+	if ( typeof params === 'number' ) {
+		params = { perPage: params };
+	}
 	return async ( { dispatch } ) => {
+		const {
+			perPage = 10,
+			page = 1,
+			orderby = 'date',
+			order = 'DESC',
+			search = '',
+			agent = '',
+			status = '',
+		} = params;
+		const query = new URLSearchParams( {
+			per_page: perPage,
+			page,
+			orderby,
+			order,
+			...( search && { search } ),
+			...( agent && { agent } ),
+			...( status && { status } ),
+		} ).toString();
 		try {
 			const result = await apiFetch( {
-				path: `${ ADMIN_NAMESPACE }/recent-orders?per_page=${ perPage }`,
+				path: `${ ADMIN_NAMESPACE }/recent-orders?${ query }`,
 			} );
 			dispatch.setRecentOrders( result );
 		} catch ( _error ) {

@@ -1150,7 +1150,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$wpdb = \Mockery::mock( 'wpdb' );
 		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
 		$wpdb->shouldReceive( 'get_results' )->once()->andReturn( array() );
-		$wpdb->shouldReceive( 'get_var' )->once()->andReturn( '0' );
+		$wpdb->shouldReceive( 'get_var' )->twice()->andReturn( '0' );
 		$wpdb->posts    = 'wp_posts';
 		$wpdb->postmeta = 'wp_postmeta';
 		$wpdb->prefix   = 'wp_';
@@ -1195,7 +1195,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$wpdb = \Mockery::mock( 'wpdb' );
 		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
 		$wpdb->shouldReceive( 'get_results' )->once()->andReturn( array() );
-		$wpdb->shouldReceive( 'get_var' )->once()->andReturn( '0' );
+		$wpdb->shouldReceive( 'get_var' )->twice()->andReturn( '0' );
 		$wpdb->posts    = 'wp_posts';
 		$wpdb->postmeta = 'wp_postmeta';
 		$wpdb->prefix   = 'wp_';
