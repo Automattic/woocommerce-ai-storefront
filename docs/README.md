@@ -15,10 +15,11 @@ Two audiences, two folders.
 3. [`CART-MODELS.md`](engineering/CART-MODELS.md) — the four cart/checkout models (three shipped today, one roadmap), with a decision matrix and trigger conditions for adding the canonical UCP `dev.ucp.cart` capability.
 4. [`API-REFERENCE.md`](engineering/API-REFERENCE.md) — UCP REST and admin REST endpoint reference. Request/response shapes, auth, errors, curl examples.
 5. [`DATA-MODEL.md`](engineering/DATA-MODEL.md) — every persisted artifact (options, transients, order meta, post meta, scheduled events). Lifetime, who writes/reads, uninstall behavior.
-6. [`HOOKS.md`](engineering/HOOKS.md) — filters and actions exposed for extending plugins.
-7. [`UI-CONVENTIONS.md`](engineering/UI-CONVENTIONS.md) — React component-library precedence, styling rules, design tokens.
-8. [`TESTING.md`](engineering/TESTING.md) — PHP and JS test stacks, conventions, anti-patterns, what CI runs.
-9. [`RELEASE.md`](engineering/RELEASE.md) — versioning, CHANGELOG format, release checklist.
+6. [`JSON-LD-SCHEMA.md`](engineering/JSON-LD-SCHEMA.md) — Schema.org structured-data shapes the plugin emits on product pages and the homepage, with per-field semantics, full example output, and validation guidance.
+7. [`HOOKS.md`](engineering/HOOKS.md) — filters and actions exposed for extending plugins.
+8. [`UI-CONVENTIONS.md`](engineering/UI-CONVENTIONS.md) — React component-library precedence, styling rules, design tokens.
+9. [`TESTING.md`](engineering/TESTING.md) — PHP and JS test stacks, conventions, anti-patterns, what CI runs.
+10. [`RELEASE.md`](engineering/RELEASE.md) — versioning, CHANGELOG format, release checklist.
 
 ## Contributing
 
