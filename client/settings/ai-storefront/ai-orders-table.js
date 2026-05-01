@@ -412,22 +412,28 @@ const AIOrdersTable = () => {
 
 	const [ view, setView ] = useState( DEFAULT_VIEW );
 
+	// Fields the REST endpoint can sort by. Any other sort field (customer,
+	// agent, items) is dropped — the endpoint would 400 on an unknown enum
+	// value. Unsupported sorts fall back to date DESC.
+	const SORTABLE_BY_SERVER = new Set( [ 'date', 'total', 'status', 'id' ] );
+
 	// Derive server-side query params from the current DataViews view state.
 	// Filters: DataViews stores them as [{ field, value }]; we pick out the
 	// agent and status filters by field ID. Search maps directly to `search`.
 	const serverParams = useMemo( () => {
 		const agentFilter = view.filters?.find( ( f ) => f.field === 'agent' );
 		const statusFilter = view.filters?.find( ( f ) => f.field === 'status' );
+		const sortField = view.sort?.field;
 		return {
 			perPage: view.perPage,
 			page: view.page,
-			orderby: view.sort?.field || 'date',
+			orderby: sortField && SORTABLE_BY_SERVER.has( sortField ) ? sortField : 'date',
 			order: view.sort?.direction?.toUpperCase() || 'DESC',
 			search: view.search || '',
 			agent: agentFilter?.value || '',
 			status: statusFilter?.value || '',
 		};
-	}, [ view ] );
+	}, [ view ] ); // eslint-disable-line react-hooks/exhaustive-deps -- SORTABLE_BY_SERVER is module-level constant
 
 	// Re-fetch whenever the server params change (page, sort, search, filters).
 	useEffect( () => {

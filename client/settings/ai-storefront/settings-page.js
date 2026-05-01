@@ -296,6 +296,20 @@ const formatMoney = ( stats, amount ) => {
 	return `$${ numeric }`;
 };
 
+// Like formatMoney but rounds to nearest integer and adds locale digit
+// grouping — used for the AI Revenue primary value and all_revenue reference
+// where decimals add noise rather than precision.
+const formatMoneyRounded = ( stats, amount ) => {
+	const rounded = Math.round( parseFloat( amount || 0 ) ).toLocaleString();
+	if ( stats?.currency_symbol ) {
+		return `${ stats.currency_symbol }${ rounded }`;
+	}
+	if ( stats?.currency ) {
+		return `${ stats.currency } ${ rounded }`;
+	}
+	return `$${ rounded }`;
+};
+
 // Hand-rolled stat card for the Overview stats row. We evaluated Woo's
 // `SummaryNumber` from `@woocommerce/components` and deferred adoption —
 // see AGENTS.md "Styling" section for the rationale. In short: Woo
@@ -902,16 +916,12 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					label={ __( 'AI revenue', 'woocommerce-ai-storefront' ) }
 					value={
 						stats
-							? formatMoney( stats, stats.ai_revenue )
+							? formatMoneyRounded( stats, stats.ai_revenue )
 							: '\u2014'
 					}
 					reference={
 						stats?.all_revenue != null
-							? ( () => {
-								const sym = stats.currency_symbol || stats.currency || '$';
-								const sep = stats.currency_symbol ? '' : ' ';
-								return `${ sym }${ sep }${ Math.round( stats.all_revenue ).toLocaleString() }`;
-							} )()
+							? formatMoneyRounded( stats, stats.all_revenue )
 							: null
 					}
 				/>
