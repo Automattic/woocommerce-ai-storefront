@@ -72,7 +72,17 @@ function EndpointTabStyles() {
 				padding: 8px 0;
 			}
 			@media (max-width: 600px) {
-				.${ ENDPOINT_TAB_CLASS } table.widefat thead { display: none; }
+				.${ ENDPOINT_TAB_CLASS } table.widefat thead {
+					position: absolute;
+					width: 1px;
+					height: 1px;
+					padding: 0;
+					margin: -1px;
+					overflow: hidden;
+					clip: rect(0, 0, 0, 0);
+					white-space: nowrap;
+					border: 0;
+				}
 				.${ ENDPOINT_TAB_CLASS } table.widefat tbody tr {
 					display: grid;
 					grid-template-columns: 1fr auto;
@@ -1324,7 +1334,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								),
 								rpm:
 									activePreset === 'custom'
-										? `${ customRpm }/min`
+										? `${ customRpm || 'x' }/min`
 										: 'x/min',
 								desc: __(
 									'Set your own requests-per-minute cap.',

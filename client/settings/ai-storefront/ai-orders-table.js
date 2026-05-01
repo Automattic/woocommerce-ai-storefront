@@ -45,7 +45,7 @@ import { useEffect, useMemo, useState } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { Card, CardBody } from '@wordpress/components';
 import { DataViews } from '@wordpress/dataviews';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-storefront/constants';
 import { colors, statusColors, typography } from './tokens';
 
@@ -540,7 +540,14 @@ const AIOrdersTable = () => {
 						<span title={ items.join( ', ' ) }>
 							{ visible }{ ' ' }
 							<span style={ { color: colors.textMuted } }>
-								+{ overflow } more
+								{ sprintf(
+									/* translators: %d: number of additional items not shown */
+									__(
+										'+%d more',
+										'woocommerce-ai-storefront'
+									),
+									overflow
+								) }
 							</span>
 						</span>
 					) : (
@@ -663,20 +670,20 @@ const AIOrdersTable = () => {
 				<style>{ `
 					.dataviews-view-table thead th {
 						background-color: ${ colors.surfaceSubtle } !important;
-						font-size: 12px !important;
-						font-weight: 600 !important;
-						text-transform: uppercase !important;
-						letter-spacing: 0.04em !important;
+						font-size: ${ typography.eyebrowLabel.fontSize } !important;
+						font-weight: ${ typography.eyebrowLabel.fontWeight } !important;
+						text-transform: ${ typography.eyebrowLabel.textTransform } !important;
+						letter-spacing: ${ typography.eyebrowLabel.letterSpacing } !important;
 						color: ${ colors.textSecondary } !important;
 						padding-top: 6px !important;
 						padding-bottom: 6px !important;
 					}
 					.dataviews-view-table thead .dataviews-view-table-header-button {
 						color: ${ colors.textSecondary } !important;
-						font-size: 12px !important;
-						font-weight: 600 !important;
-						text-transform: uppercase !important;
-						letter-spacing: 0.04em !important;
+						font-size: ${ typography.eyebrowLabel.fontSize } !important;
+						font-weight: ${ typography.eyebrowLabel.fontWeight } !important;
+						text-transform: ${ typography.eyebrowLabel.textTransform } !important;
+						letter-spacing: ${ typography.eyebrowLabel.letterSpacing } !important;
 					}
 					.dataviews-view-table thead .dataviews-view-table-header-button:hover {
 						color: ${ colors.textPrimary } !important;

@@ -158,6 +158,10 @@ export function fetchEndpoints() {
  * @param {Object} params Query parameters for the REST endpoint.
  */
 export function fetchRecentOrders( params = {} ) {
+	// Accept legacy numeric signature: fetchRecentOrders(10) → { perPage: 10 }.
+	if ( typeof params === 'number' ) {
+		params = { perPage: params };
+	}
 	return async ( { dispatch } ) => {
 		const {
 			perPage = 10,
