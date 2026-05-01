@@ -56,7 +56,7 @@ AI agents are a fast-growing product-discovery channel. The plugin lets merchant
 | File | Endpoint | Purpose |
 |------|----------|---------|
 | `class-wc-ai-storefront-llms-txt.php` | `/llms.txt` | Machine-readable store guide: name, categories, products, attribution instructions. |
-| `class-wc-ai-storefront-jsonld.php` | Product pages | Enhanced Schema.org Product markup: BuyAction, inventory, attributes, return policy. |
+| `class-wc-ai-storefront-jsonld.php` | Product pages | Enhanced Schema.org Product markup: BuyAction, inventory, attributes, return policy. See [`JSON-LD-SCHEMA.md`](JSON-LD-SCHEMA.md) for the full field reference and example output. |
 | `class-wc-ai-storefront-robots.php` | `/robots.txt` | Allow-lists known AI crawlers, allows discovery endpoints, blocks checkout/account. |
 | `class-wc-ai-storefront-ucp.php` | `/.well-known/ucp` | JSON manifest declaring implemented capabilities (catalog, checkout), pointing at the UCP REST adapter, advertising empty `payment_handlers` for the redirect-only posture. |
 
