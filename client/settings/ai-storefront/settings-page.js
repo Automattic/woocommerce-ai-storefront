@@ -513,9 +513,7 @@ const StatCard = ( { label, value, reference, href, background } ) => {
 // ---------------------------------------------------------------------------
 
 const useIsMobile = () => {
-	const [ isMobile, setIsMobile ] = useState(
-		() => window.innerWidth < 782
-	);
+	const [ isMobile, setIsMobile ] = useState( () => window.innerWidth < 782 );
 	useEffect( () => {
 		const mq = window.matchMedia( '(max-width: 781px)' );
 		const handler = ( e ) => setIsMobile( e.matches );
