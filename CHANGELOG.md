@@ -6,6 +6,8 @@
 
 ### Fixes
 
+- **Overview tab fixes: pagination, new stat cards, mobile UX, Discovery tab responsiveness.** Recent AI Orders table moved to true server-side pagination -- the table now fetches only the current page rather than the full result set, with `page`, `orderby`, `order`, `search`, `agent`, and `status` params forwarded to the REST endpoint and real `totalItems`/`totalPages` returned. Two new stat cards: **AI Order Rate** (derived `ai_orders / all_orders` percentage; shows `0.0%` when orders exist but none are AI-attributed) and **AI Revenue** now shows a `$X / $Y` reference (revenue / total store revenue, no decimals on the denominator). The Products Exposed card now renders on a `surfaceSubtle` background to distinguish a configuration value from the performance stats below. Custom rate card: separate `customRpm` state prevents preset clicks from bleeding into the badge/input value. DataViews pagination row's `SelectControl` vertical alignment fixed via scoped CSS overrides. Discovery tab endpoints table is responsive at ≤600px (stacked grid layout, path-only URLs, redundant copy removed). Product visibility tab: badges wrap correctly at narrow widths; warning notice spacing fixed. Defensive fixes from review: `sanitize_text_field` on the status filter (preserves hyphens in `on-hold`); `enableSorting: false` on unsupported columns; status filter aligned with the PHP `$allowed_statuses` allow-list; `customRpm` initializer condition corrected. Closes #227. Refs #228, #229.
+
 ### Refactors
 
 ### Tests
