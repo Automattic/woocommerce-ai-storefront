@@ -600,12 +600,12 @@ class WC_AI_Storefront_Admin_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function get_recent_orders( $request ) {
-		$per_page     = (int) $request->get_param( 'per_page' );
-		$page         = max( 1, (int) $request->get_param( 'page' ) );
-		$orderby_raw  = sanitize_key( $request->get_param( 'orderby' ) );
-		$order_dir    = strtoupper( sanitize_key( $request->get_param( 'order' ) ) ) === 'ASC' ? 'ASC' : 'DESC';
-		$search       = sanitize_text_field( $request->get_param( 'search' ) );
-		$agent_filter = sanitize_text_field( $request->get_param( 'agent' ) );
+		$per_page      = (int) $request->get_param( 'per_page' );
+		$page          = max( 1, (int) $request->get_param( 'page' ) );
+		$orderby_raw   = sanitize_key( $request->get_param( 'orderby' ) );
+		$order_dir     = strtoupper( sanitize_key( $request->get_param( 'order' ) ) ) === 'ASC' ? 'ASC' : 'DESC';
+		$search        = sanitize_text_field( $request->get_param( 'search' ) );
+		$agent_filter  = sanitize_text_field( $request->get_param( 'agent' ) );
 		$status_filter = sanitize_key( $request->get_param( 'status' ) );
 
 		// Map DataViews field IDs to wc_get_orders orderby keys.
@@ -615,7 +615,7 @@ class WC_AI_Storefront_Admin_Controller {
 			'status' => 'status',
 			'id'     => 'ID',
 		];
-		$orderby = $orderby_map[ $orderby_raw ] ?? 'date';
+		$orderby     = $orderby_map[ $orderby_raw ] ?? 'date';
 
 		// Restrict to commercially relevant statuses only, not all 12+ WC order
 		// statuses. Passing every status via `wc_get_order_statuses()` forces the
@@ -624,7 +624,7 @@ class WC_AI_Storefront_Admin_Controller {
 		// the IN clause with no benefit. On stores with 100k+ orders the
 		// over-broad IN can prevent index use (P-16).
 		$allowed_statuses = array( 'pending', 'processing', 'on-hold', 'completed', 'refunded' );
-		$status_arg = $status_filter && in_array( $status_filter, $allowed_statuses, true )
+		$status_arg       = $status_filter && in_array( $status_filter, $allowed_statuses, true )
 			? array( $status_filter )
 			: $allowed_statuses;
 
@@ -663,12 +663,12 @@ class WC_AI_Storefront_Admin_Controller {
 
 		// Get the true total for pagination — run a count-only query with the
 		// same filters but no limit/offset so DataViews knows how many pages exist.
-		$count_args              = $query_args;
-		$count_args['limit']     = -1;
-		$count_args['paged']     = 1;
-		$count_args['return']    = 'ids';
-		$count_args['paginate']  = false;
-		$total_orders            = count( wc_get_orders( $count_args ) );
+		$count_args             = $query_args;
+		$count_args['limit']    = -1;
+		$count_args['paged']    = 1;
+		$count_args['return']   = 'ids';
+		$count_args['paginate'] = false;
+		$total_orders           = count( wc_get_orders( $count_args ) );
 
 		// DB error — return an empty result set so the admin UI shows
 		// "no orders" rather than a fatal. The error is surfaced via the
@@ -724,12 +724,12 @@ class WC_AI_Storefront_Admin_Controller {
 				'items'        => $item_names,
 				'date'         => $date_created ? $date_created->format( 'c' ) : '',
 				'date_display' => $date_created
-	? sprintf(
-		/* translators: %s: human-readable time difference, e.g. "5 minutes" */
-		__( '%s ago', 'woocommerce-ai-storefront' ),
-		human_time_diff( $date_created->getTimestamp(), current_time( 'timestamp' ) )
-	)
-	: '',
+				? sprintf(
+				/* translators: %s: human-readable time difference, e.g. "5 minutes" */
+					__( '%s ago', 'woocommerce-ai-storefront' ),
+					human_time_diff( $date_created->getTimestamp(), time() )
+				)
+				: '',
 				'status'       => $order->get_status(),
 				'status_label' => $statuses[ $status_key ] ?? ucfirst( $order->get_status() ),
 				'agent'        => $agent,

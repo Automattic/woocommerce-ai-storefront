@@ -9,6 +9,20 @@
  * @package WooCommerce_AI_Storefront
  */
 
+if ( ! function_exists( 'sanitize_key' ) ) {
+	function sanitize_key( $key ): string {
+		$key = strtolower( (string) $key );
+		return preg_replace( '/[^a-z0-9_\-]/', '', $key );
+	}
+}
+
+if ( ! function_exists( 'sanitize_text_field' ) ) {
+	function sanitize_text_field( $str ): string {
+		$str = strip_tags( (string) $str );
+		return trim( preg_replace( '/[\r\n\t ]+/', ' ', $str ) );
+	}
+}
+
 if ( ! class_exists( 'WP_Error' ) ) {
 	/**
 	 * Minimal WP_Error stub.

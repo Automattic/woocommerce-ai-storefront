@@ -488,8 +488,8 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	// Tracks the value shown in the Custom card badge independently of which
 	// preset is active. Initialised once from settings; only updated when the
 	// merchant types in the custom RPM input — not when clicking preset cards.
-	const [ customRpm, setCustomRpm ] = useState(
-		() => getActivePreset( rpm ) === null ? rpm : 25
+	const [ customRpm, setCustomRpm ] = useState( () =>
+		getActivePreset( rpm ) === null ? rpm : 25
 	);
 
 	// Count only crawlers that are actually rendered as checkboxes. Right
@@ -1271,7 +1271,10 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 									'Custom',
 									'woocommerce-ai-storefront'
 								),
-								rpm: activePreset === 'custom' ? `${ customRpm }/min` : 'x/min',
+								rpm:
+									activePreset === 'custom'
+										? `${ customRpm }/min`
+										: 'x/min',
 								desc: __(
 									'Set your own requests-per-minute cap.',
 									'woocommerce-ai-storefront'
@@ -1371,9 +1374,16 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 									value={ customRpm }
 									onChange={ ( value ) => {
 										const parsed = parseInt( value, 10 );
-										setCustomRpm( isNaN( parsed ) ? '' : parsed );
-										if ( ! isNaN( parsed ) && parsed >= 1 ) {
-											onChange( { rate_limit_rpm: parsed } );
+										setCustomRpm(
+											isNaN( parsed ) ? '' : parsed
+										);
+										if (
+											! isNaN( parsed ) &&
+											parsed >= 1
+										) {
+											onChange( {
+												rate_limit_rpm: parsed,
+											} );
 										}
 									} }
 									min={ 1 }

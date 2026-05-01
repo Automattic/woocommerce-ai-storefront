@@ -825,7 +825,7 @@ class WC_AI_Storefront_Attribution {
 					$after_date
 				)
 			);
-			$all_revenue = (float) $wpdb->get_var(
+			$all_revenue      = (float) $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT COALESCE(SUM(pm.meta_value), 0)
 					 FROM {$wpdb->posts} p

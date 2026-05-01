@@ -155,7 +155,7 @@ export function fetchEndpoints() {
  * through KNOWN_AGENT_HOSTS so legacy hostnames display as brand names
  * (see /admin/recent-orders endpoint).
  *
- * @param {number} perPage How many orders to request (1-50, default 10).
+ * @param {Object} params Query parameters for the REST endpoint.
  */
 export function fetchRecentOrders( params = {} ) {
 	return async ( { dispatch } ) => {

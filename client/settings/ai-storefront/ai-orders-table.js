@@ -175,7 +175,15 @@ const DEFAULT_VIEW = {
 	type: 'table',
 	page: 1,
 	perPage: 10,
-	fields: [ 'order', 'customer', 'date', 'status', 'items', 'agent', 'total' ],
+	fields: [
+		'order',
+		'customer',
+		'date',
+		'status',
+		'items',
+		'agent',
+		'total',
+	],
 };
 
 /**
@@ -422,12 +430,17 @@ const AIOrdersTable = () => {
 	// agent and status filters by field ID. Search maps directly to `search`.
 	const serverParams = useMemo( () => {
 		const agentFilter = view.filters?.find( ( f ) => f.field === 'agent' );
-		const statusFilter = view.filters?.find( ( f ) => f.field === 'status' );
+		const statusFilter = view.filters?.find(
+			( f ) => f.field === 'status'
+		);
 		const sortField = view.sort?.field;
 		return {
 			perPage: view.perPage,
 			page: view.page,
-			orderby: sortField && SORTABLE_BY_SERVER.has( sortField ) ? sortField : 'date',
+			orderby:
+				sortField && SORTABLE_BY_SERVER.has( sortField )
+					? sortField
+					: 'date',
 			order: view.sort?.direction?.toUpperCase() || 'DESC',
 			search: view.search || '',
 			agent: agentFilter?.value || '',
@@ -499,7 +512,13 @@ const AIOrdersTable = () => {
 						return item.customer || '—';
 					}
 					return (
-						<a href={ href } style={ { color: colors.link, textDecoration: 'none' } }>
+						<a
+							href={ href }
+							style={ {
+								color: colors.link,
+								textDecoration: 'none',
+							} }
+						>
 							{ item.customer }
 						</a>
 					);
@@ -512,15 +531,21 @@ const AIOrdersTable = () => {
 				enableSorting: false,
 				render: ( { item } ) => {
 					const items = item.items || [];
-					if ( ! items.length ) return '—';
+					if ( ! items.length ) {
+						return '—';
+					}
 					const visible = items.slice( 0, 2 ).join( ', ' );
 					const overflow = items.length - 2;
 					return overflow > 0 ? (
 						<span title={ items.join( ', ' ) }>
 							{ visible }{ ' ' }
-							<span style={ { color: colors.textMuted } }>+{ overflow } more</span>
+							<span style={ { color: colors.textMuted } }>
+								+{ overflow } more
+							</span>
 						</span>
-					) : visible;
+					) : (
+						visible
+					);
 				},
 				getValue: ( { item } ) => ( item.items || [] ).join( ', ' ),
 			},
@@ -541,13 +566,28 @@ const AIOrdersTable = () => {
 				enableSorting: true,
 				enableGlobalSearch: true,
 				elements: [
-					{ value: 'processing', label: __( 'Processing', 'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-					{ value: 'completed',  label: __( 'Completed',  'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-					{ value: 'on-hold',    label: __( 'On hold',    'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-					{ value: 'pending',    label: __( 'Pending payment', 'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-					{ value: 'cancelled',  label: __( 'Cancelled',  'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-					{ value: 'refunded',   label: __( 'Refunded',   'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-					{ value: 'failed',     label: __( 'Failed',     'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{
+						value: 'processing',
+						label: __( 'Processing', 'woocommerce' ),
+					}, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{
+						value: 'completed',
+						label: __( 'Completed', 'woocommerce' ),
+					}, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{ value: 'on-hold', label: __( 'On hold', 'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{
+						value: 'pending',
+						label: __( 'Pending payment', 'woocommerce' ),
+					}, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{
+						value: 'cancelled',
+						label: __( 'Cancelled', 'woocommerce' ),
+					}, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{
+						value: 'refunded',
+						label: __( 'Refunded', 'woocommerce' ),
+					}, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+					{ value: 'failed', label: __( 'Failed', 'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
 				],
 				render: ( { item } ) => (
 					<StatusPill
@@ -586,7 +626,10 @@ const AIOrdersTable = () => {
 	// DataViews requires both totalItems AND totalPages to render pagination.
 	const paginationInfo = useMemo( () => {
 		const totalItems = recentOrders?.total ?? 0;
-		const totalPages = Math.max( 1, Math.ceil( totalItems / view.perPage ) );
+		const totalPages = Math.max(
+			1,
+			Math.ceil( totalItems / view.perPage )
+		);
 		return { totalItems, totalPages };
 	}, [ recentOrders, view.perPage ] );
 
