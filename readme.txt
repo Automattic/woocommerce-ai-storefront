@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.8.0
+Stable tag: 0.8.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,15 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.8.1 - 2026-05-01 =
+**Fixed**
+* Recent AI orders count uses a single `SELECT COUNT(DISTINCT id)` query instead of loading every matching order ID into PHP memory. HPOS-aware.
+* Overview tab fixes: server-side pagination on the Recent AI orders table, two new stat cards (AI Order Rate, AI Revenue with $X/$Y reference), Discovery tab responsive at narrow widths, Product visibility mobile badge wrap, custom rate card state isolation, DataViews pagination alignment.
+
+**Improved**
+* Added `docs/engineering/JSON-LD-SCHEMA.md`: full reference for the structured-data shapes the plugin emits, with annotated example output, per-field semantics, public filter signatures, and validation guidance.
+* Refreshed 11 of 12 USER-GUIDE.md screenshots to match the v0.8.1 UI.
 
 = 0.8.0 - 2026-04-30 =
 **New**
