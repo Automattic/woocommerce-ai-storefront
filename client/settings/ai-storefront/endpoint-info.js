@@ -1388,7 +1388,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 									} }
 									min={ 1 }
 									max={ 1000 }
-									style={ { width: '120px' } }
+									style={ { width: '96px' } }
 								/>
 								<span
 									style={ {
@@ -1398,10 +1398,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 									} }
 									aria-hidden="true"
 								>
-									{ __(
-										'requests / min',
-										'woocommerce-ai-storefront'
-									) }
+									{ __( '/ min', 'woocommerce-ai-storefront' ) }
 								</span>
 							</div>
 						) }

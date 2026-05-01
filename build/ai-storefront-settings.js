@@ -2486,7 +2486,7 @@ const EndpointInfo = ({
               min: 1,
               max: 1000,
               style: {
-                width: '120px'
+                width: '96px'
               }
             }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("span", {
               style: {
@@ -2495,7 +2495,7 @@ const EndpointInfo = ({
                 whiteSpace: 'nowrap'
               },
               "aria-hidden": "true",
-              children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('requests / min', 'woocommerce-ai-storefront')
+              children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('/ min', 'woocommerce-ai-storefront')
             })]
           })]
         })]
