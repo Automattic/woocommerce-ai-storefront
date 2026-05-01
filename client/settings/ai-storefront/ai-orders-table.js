@@ -472,7 +472,7 @@ const AIOrdersTable = () => {
 			{
 				id: 'order',
 				label: __( 'Order', 'woocommerce-ai-storefront' ),
-				enableSorting: true,
+				enableSorting: false,
 				enableGlobalSearch: true,
 				render: ( { item } ) => {
 					const href = safeHref( item.edit_url );
@@ -504,7 +504,7 @@ const AIOrdersTable = () => {
 			{
 				id: 'customer',
 				label: __( 'Customer', 'woocommerce-ai-storefront' ),
-				enableSorting: true,
+				enableSorting: false,
 				enableGlobalSearch: true,
 				render: ( { item } ) => {
 					const href = safeHref( item.customer_url );
@@ -580,14 +580,9 @@ const AIOrdersTable = () => {
 						label: __( 'Pending payment', 'woocommerce' ),
 					}, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
 					{
-						value: 'cancelled',
-						label: __( 'Cancelled', 'woocommerce' ),
-					}, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-					{
 						value: 'refunded',
 						label: __( 'Refunded', 'woocommerce' ),
 					}, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-					{ value: 'failed', label: __( 'Failed', 'woocommerce' ) }, // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
 				],
 				render: ( { item } ) => (
 					<StatusPill
@@ -600,7 +595,7 @@ const AIOrdersTable = () => {
 			{
 				id: 'agent',
 				label: __( 'Agent', 'woocommerce-ai-storefront' ),
-				enableSorting: true,
+				enableSorting: false,
 				enableGlobalSearch: true,
 				elements: agentElements,
 				render: ( { item } ) => <strong>{ item.agent || '—' }</strong>,

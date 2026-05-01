@@ -606,7 +606,7 @@ class WC_AI_Storefront_Admin_Controller {
 		$order_dir     = strtoupper( sanitize_key( $request->get_param( 'order' ) ) ) === 'ASC' ? 'ASC' : 'DESC';
 		$search        = sanitize_text_field( $request->get_param( 'search' ) );
 		$agent_filter  = sanitize_text_field( $request->get_param( 'agent' ) );
-		$status_filter = sanitize_key( $request->get_param( 'status' ) );
+		$status_filter = sanitize_text_field( $request->get_param( 'status' ) );
 
 		// Map DataViews field IDs to wc_get_orders orderby keys.
 		$orderby_map = [

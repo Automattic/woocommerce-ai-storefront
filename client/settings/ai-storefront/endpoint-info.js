@@ -534,7 +534,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	// preset is active. Initialised once from settings; only updated when the
 	// merchant types in the custom RPM input — not when clicking preset cards.
 	const [ customRpm, setCustomRpm ] = useState( () =>
-		getActivePreset( rpm ) === null ? rpm : 25
+		getActivePreset( rpm ) === 'custom' ? rpm : 25
 	);
 
 	// Count only crawlers that are actually rendered as checkboxes. Right
