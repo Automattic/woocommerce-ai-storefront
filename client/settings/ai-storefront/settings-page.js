@@ -167,10 +167,10 @@ const AISyndicationSettings = () => {
 		<div className="wc-ai-storefront-settings">
 			<style>{ `
 				.wc-ai-storefront-settings .components-tab-panel__tabs {
-					padding: 0 32px;
-					background: #fff;
+					padding: 0 ${ spacing.s7 };
+					background: ${ colors.surface };
 					margin: 0 -20px;
-					border-bottom: 1px solid #f0f0f0;
+					border-bottom: 1px solid ${ colors.surfaceMuted };
 				}
 				.wc-ai-storefront-settings .components-tab-panel__tabs-item {
 					padding-top: 0;
@@ -243,21 +243,39 @@ const AISyndicationSettings = () => {
 // header keeps the visible logo + heading + tagline out of the
 // accessibility tree so screen-reader users don't hear the page name
 // twice.
+//
+// The off-scale literals below are intentional and documented:
+// - 8px top padding (vs s2=8px for symmetry with other elements):
+//   compensates for the line-box overhead above the title's cap
+//   height so the header reads visually centered. See PR #238.
+// - 19px bottom padding: paired with 8px top so the title block
+//   sits at the optical center of the strip — not an arithmetic
+//   center, which would look top-heavy due to ascender whitespace.
+// - 6px row-gap: tighter than s2 (8px) because the title and tagline
+//   share a visual unit; s2 reads as separation.
+// - 20px logo size and -20px negative margin: the negative margin
+//   matches WP's `.wrap` 20px horizontal padding so the header
+//   bleeds edge-to-edge; the 20px logo is the visual size, not a
+//   spacing token.
+// - #873EFF brand fill: official Woo logo color. Distinct from
+//   colors.wooPurple50 (`#720EEC`) which is the interactive accent.
 const PageHeader = ( { withNavSlot = false } ) => (
 	<header
 		aria-hidden="true"
 		style={ {
-			padding: '8px 32px 19px',
-			background: '#fff',
-			borderBottom: withNavSlot ? 'none' : '1px solid #f0f0f0',
-			margin: `0 -20px ${ withNavSlot ? '0' : '24px' }`,
+			padding: `8px ${ spacing.s7 } 19px`,
+			background: colors.surface,
+			borderBottom: withNavSlot
+				? 'none'
+				: `1px solid ${ colors.surfaceMuted }`,
+			margin: `0 -20px ${ withNavSlot ? '0' : spacing.s6 }`,
 		} }
 	>
 		<div
 			style={ {
 				display: 'grid',
 				gridTemplateColumns: '20px 1fr',
-				columnGap: '8px',
+				columnGap: spacing.s2,
 				rowGap: '6px',
 			} }
 		>
@@ -280,14 +298,12 @@ const PageHeader = ( { withNavSlot = false } ) => (
 			</svg>
 			<h2
 				style={ {
+					...typography.brandHeading,
 					gridColumn: 2,
 					gridRow: 1,
 					margin: 0,
 					padding: 0,
-					fontSize: '15px',
-					fontWeight: 500,
-					color: '#1d2327',
-					lineHeight: 1.2,
+					color: colors.textPrimary,
 				} }
 			>
 				{ __( 'AI Storefront', 'woocommerce-ai-storefront' ) }
@@ -295,13 +311,12 @@ const PageHeader = ( { withNavSlot = false } ) => (
 			{ ! withNavSlot && (
 				<p
 					style={ {
+						...typography.brandTagline,
 						gridColumn: '1 / 3',
 						gridRow: 2,
 						margin: 0,
 						padding: 0,
-						fontSize: '13px',
-						color: '#646970',
-						lineHeight: 1.4,
+						color: colors.textMuted,
 					} }
 				>
 					{ __(

@@ -184,6 +184,26 @@ export const typography = {
 		letterSpacing: '-0.02em',
 		lineHeight: 1.2,
 	},
+
+	// Visible brand-chrome heading at the top of the admin page header
+	// (logo + plugin name strip). One step below sectionHeading
+	// because the chrome is decorative — the canonical page title is
+	// the screen-reader-text <h1> that lives in PHP. Same 15px/500
+	// rhythm wp-admin uses for its own page headers (Settings,
+	// Plugins, etc.) so this surface reads as a peer admin page.
+	brandHeading: {
+		fontSize: '15px',
+		fontWeight: 500,
+		lineHeight: 1.2,
+	},
+
+	// Tagline sitting beneath brandHeading on the disabled/PreEnable
+	// state. Hidden once nav is present (the tabs replace the
+	// tagline as page-context cue).
+	brandTagline: {
+		fontSize: '13px',
+		lineHeight: 1.4,
+	},
 };
 
 /**
