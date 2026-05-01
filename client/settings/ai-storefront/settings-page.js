@@ -123,12 +123,15 @@ const AISyndicationSettings = () => {
 	if ( ! isEnabled ) {
 		return (
 			<div className="wc-ai-storefront-settings">
-				<OverviewTab
-					settings={ settings }
-					onChange={ updateSettingsValues }
-					onSave={ saveSettings }
-					isSaving={ isSaving }
-				/>
+				<PageHeader />
+				<div style={ { padding: '0 12px' } }>
+					<OverviewTab
+						settings={ settings }
+						onChange={ updateSettingsValues }
+						onSave={ saveSettings }
+						isSaving={ isSaving }
+					/>
+				</div>
 			</div>
 		);
 	}
@@ -144,7 +147,7 @@ const AISyndicationSettings = () => {
 			// per the cross-cutting copy rule. Audited together with
 			// other Title Case strings on this surface in the
 			// settings-redesign editorial pass.
-			title: __( 'Product visibility', 'woocommerce-ai-storefront' ),
+			title: __( 'Visibility', 'woocommerce-ai-storefront' ),
 		},
 		{
 			name: 'policies',
@@ -162,6 +165,18 @@ const AISyndicationSettings = () => {
 
 	return (
 		<div className="wc-ai-storefront-settings">
+			<style>{ `
+				.wc-ai-storefront-settings .components-tab-panel__tabs {
+					padding: 0 32px;
+					background: #fff;
+					margin: 0 -20px;
+					border-bottom: 1px solid #f0f0f0;
+				}
+				.wc-ai-storefront-settings .components-tab-panel__tabs-item {
+					padding-top: 0;
+				}
+			` }</style>
+			<PageHeader withNavSlot />
 			<TabPanel
 				tabs={ tabs }
 				initialTabName={ initialTab }
@@ -170,7 +185,7 @@ const AISyndicationSettings = () => {
 				} }
 			>
 				{ ( tab ) => (
-					<div style={ { marginTop: '16px' } }>
+					<div style={ { padding: '16px 12px 0' } }>
 						{ tab.name === 'overview' && (
 							<OverviewTab
 								settings={ settings }
@@ -217,6 +232,81 @@ const AISyndicationSettings = () => {
 // Shared components
 // ---------------------------------------------------------------------------
 
+// PageHeader renders the Jetpack-style admin page header: logo + title on
+// row 1, tagline on row 2, and (when `withNavSlot` is true) reserves the
+// space below where TabPanel's nav strip will sit. The bottom border lives
+// at the bottom of the entire shell so the active tab underline aligns
+// with the header's lower edge — matching wp-admin/Jetpack patterns.
+const PageHeader = ( { withNavSlot = false } ) => (
+	<header
+		style={ {
+			padding: '8px 32px 19px',
+			background: '#fff',
+			borderBottom: withNavSlot ? 'none' : '1px solid #f0f0f0',
+			margin: '0 -20px ' + ( withNavSlot ? '0' : '24px' ),
+		} }
+	>
+		<div
+			style={ {
+				display: 'grid',
+				gridTemplateColumns: '20px 1fr',
+				columnGap: '8px',
+				rowGap: '6px',
+			} }
+		>
+			<svg
+				width="20"
+				height="20"
+				viewBox="0 0 375 375"
+				fill="none"
+				xmlns="http://www.w3.org/2000/svg"
+				aria-hidden="true"
+				focusable="false"
+				style={ { gridColumn: 1, gridRow: 1, flexShrink: 0 } }
+			>
+				<path
+					fillRule="evenodd"
+					clipRule="evenodd"
+					d="M187.5 375C291.053 375 375 291.053 375 187.5C375 83.9466 291.053 0 187.5 0C83.9466 0 0 83.9466 0 187.5C0 291.053 83.9466 375 187.5 375ZM165.409 242.53C155.31 261.493 141.913 269.737 125.217 269.737C104.4 269.737 90.1786 257.164 90.1786 235.935V160.704H74.308C60.0863 160.704 52.2541 153.49 52.2541 140.917C52.2541 128.345 59.6741 121.543 74.308 121.543H113.057C132.019 121.543 139.851 129.581 139.851 148.544V207.491L173.448 141.742C181.074 126.902 190.967 121.543 203.334 121.543C218.998 121.543 227.449 130.2 227.449 147.925V207.491L263.106 140.505C270.938 125.871 279.595 121.543 292.992 121.543C317.932 121.543 325.97 135.971 314.634 155.139L262.9 242.53C251.152 262.523 238.991 269.737 222.502 269.737C201.479 269.737 187.875 257.164 187.875 236.141V200.484L165.409 242.53Z"
+					fill="#873EFF"
+				/>
+			</svg>
+			<h2
+				style={ {
+					gridColumn: 2,
+					gridRow: 1,
+					margin: 0,
+					padding: 0,
+					fontSize: '15px',
+					fontWeight: 500,
+					color: '#1d2327',
+					lineHeight: 1.2,
+				} }
+			>
+				{ __( 'AI Storefront', 'woocommerce-ai-storefront' ) }
+			</h2>
+			{ ! withNavSlot && (
+				<p
+					style={ {
+						gridColumn: '1 / 3',
+						gridRow: 2,
+						margin: 0,
+						padding: 0,
+						fontSize: '13px',
+						color: '#646970',
+						lineHeight: 1.4,
+					} }
+				>
+					{ __(
+						'List once. Sell everywhere AI shops.',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+			) }
+		</div>
+	</header>
+);
+
 // ValueCard renders one of the three icon-led value-proposition cards
 // on the pre-enable landing. A 32px @wordpress/icons glyph at the top
 // replaces the gray top-border accent the earlier version used — the
@@ -227,7 +317,6 @@ const AISyndicationSettings = () => {
 const ValueCard = ( { Icon: IconComponent, title, children } ) => (
 	<div
 		style={ {
-			height: '100%',
 			padding: '20px',
 			background: colors.surfaceSubtle,
 			border: `1px solid ${ colors.borderSubtle }`,
@@ -567,7 +656,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 				style={ {
 					display: 'grid',
 					gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-					gap: spacing.s4,
+					gap: spacing.s6,
 					marginTop: spacing.s7,
 				} }
 			>
