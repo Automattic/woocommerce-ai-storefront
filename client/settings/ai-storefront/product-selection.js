@@ -1518,25 +1518,19 @@ const ProductSelection = ( {
 						   have merchant-visible consequences.
 						*/ }
 							{ emptyEnforcingSelection && (
-								<Notice
-									status="warning"
-									isDismissible={ false }
-									className="ai-syndication-empty-taxonomy-warning"
-									// WP's default Notice styling targets
-									// admin-banner placement (edge-to-edge at
-									// the top of a page). Embedded inside a
-									// detail panel, the defaults read as
-									// cramped (text hugs the yellow left
-									// accent, no separation from content
-									// above). Override with internal padding
-									// and top margin for card-embedded use.
-									style={ {
-										margin: '12px 0 12px',
-										padding: '8px 12px',
-									} }
-								>
-									{ emptyTaxonomyWarning }
-								</Notice>
+								<div style={ { margin: '12px 0 16px' } }>
+									<Notice
+										status="warning"
+										isDismissible={ false }
+										className="ai-syndication-empty-taxonomy-warning"
+										style={ {
+											margin: 0,
+											padding: '8px 12px',
+										} }
+									>
+										{ emptyTaxonomyWarning }
+									</Notice>
+								</div>
 							) }
 
 							{ activeTaxonomy === TAXONOMY_TABS.CATEGORIES && (

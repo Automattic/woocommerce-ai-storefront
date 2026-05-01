@@ -703,6 +703,17 @@ const AIOrdersTable = () => {
 					.dataviews-pagination__page-select .components-input-control__container {
 						height: auto !important;
 					}
+					.dataviews-pagination__page-select select,
+					.dataviews-pagination__page-select input {
+						font-size: 13px !important;
+						height: auto !important;
+						min-height: 0 !important;
+						min-width: 48px !important;
+						padding: 2px 4px !important;
+					}
+					.dataviews-pagination {
+						font-size: 13px !important;
+					}
 				` }</style>
 				<DataViews
 					data={ data }

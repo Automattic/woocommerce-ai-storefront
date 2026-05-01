@@ -1466,6 +1466,17 @@ const AIOrdersTable = () => {
 					.dataviews-pagination__page-select .components-input-control__container {
 						height: auto !important;
 					}
+					.dataviews-pagination__page-select select,
+					.dataviews-pagination__page-select input {
+						font-size: 13px !important;
+						height: auto !important;
+						min-height: 0 !important;
+						min-width: 48px !important;
+						padding: 2px 4px !important;
+					}
+					.dataviews-pagination {
+						font-size: 13px !important;
+					}
 				`
       }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_dataviews__WEBPACK_IMPORTED_MODULE_3__["default"], {
         data: data,
@@ -4653,24 +4664,20 @@ const ProductSelection = ({
                   children: tab.label
                 }, tab.value);
               })
-            }), emptyEnforcingSelection && /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_8__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_1__.Notice, {
-              status: "warning",
-              isDismissible: false,
-              className: "ai-syndication-empty-taxonomy-warning"
-              // WP's default Notice styling targets
-              // admin-banner placement (edge-to-edge at
-              // the top of a page). Embedded inside a
-              // detail panel, the defaults read as
-              // cramped (text hugs the yellow left
-              // accent, no separation from content
-              // above). Override with internal padding
-              // and top margin for card-embedded use.
-              ,
+            }), emptyEnforcingSelection && /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_8__.jsx)("div", {
               style: {
-                margin: '12px 0 12px',
-                padding: '8px 12px'
+                margin: '12px 0 16px'
               },
-              children: emptyTaxonomyWarning
+              children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_8__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_1__.Notice, {
+                status: "warning",
+                isDismissible: false,
+                className: "ai-syndication-empty-taxonomy-warning",
+                style: {
+                  margin: 0,
+                  padding: '8px 12px'
+                },
+                children: emptyTaxonomyWarning
+              })
             }), activeTaxonomy === TAXONOMY_TABS.CATEGORIES && /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_8__.jsx)(TaxonomyPicker, {
               items: categories,
               filtered: filteredCategories,
