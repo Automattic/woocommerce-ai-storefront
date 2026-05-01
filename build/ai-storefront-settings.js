@@ -1574,6 +1574,42 @@ function EndpointTabStyles() {
 			details.${CRAWLER_GROUP_CLASS} .crawler-row {
 				padding: 8px 0;
 			}
+			@media (max-width: 600px) {
+				.${ENDPOINT_TAB_CLASS} table.widefat thead { display: none; }
+				.${ENDPOINT_TAB_CLASS} table.widefat tbody tr {
+					display: grid;
+					grid-template-columns: 1fr auto;
+					grid-template-rows: auto auto;
+					gap: 4px 8px;
+					padding: 10px 12px;
+					border-bottom: 1px solid ${_tokens__WEBPACK_IMPORTED_MODULE_5__.colors.borderSubtle};
+				}
+				.${ENDPOINT_TAB_CLASS} table.widefat td {
+					display: block;
+					padding: 0;
+					border: none;
+				}
+				.${ENDPOINT_TAB_CLASS} table.widefat td:nth-child(1) {
+					grid-column: 1; grid-row: 1;
+					align-self: center;
+				}
+				.${ENDPOINT_TAB_CLASS} table.widefat td:nth-child(2) {
+					grid-column: 1 / -1; grid-row: 2;
+					overflow: hidden;
+					text-overflow: ellipsis;
+					white-space: nowrap;
+					max-width: 100%;
+				}
+				.${ENDPOINT_TAB_CLASS} table.widefat td:nth-child(2) a {
+					font-size: 12px !important;
+				}
+				.${ENDPOINT_TAB_CLASS} table.widefat td:nth-child(3) {
+					grid-column: 2; grid-row: 1;
+					align-self: center;
+					justify-self: end;
+				}
+				.${ENDPOINT_TAB_CLASS} table.widefat td:nth-child(4) { display: none; }
+			}
 		`
   });
 }
@@ -1615,6 +1651,17 @@ const RATE_LIMIT_PRESETS = {
  * @param {number} rpm Requests-per-minute from the stored settings.
  * @return {string}    Preset key ('conservative'/'recommended'/'generous') or 'custom'.
  */
+const urlPath = url => {
+  try {
+    const {
+      pathname,
+      search
+    } = new URL(url);
+    return pathname + search;
+  } catch (_e) {
+    return url;
+  }
+};
 const getActivePreset = rpm => {
   for (const [key, preset] of Object.entries(RATE_LIMIT_PRESETS)) {
     if (preset.rpm === rpm) {
@@ -2081,7 +2128,7 @@ const EndpointInfo = ({
                 className: "endpoint-url-cell",
                 children: endpoints.llms_txt ? /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.ExternalLink, {
                   href: endpoints.llms_txt,
-                  children: endpoints.llms_txt
+                  children: urlPath(endpoints.llms_txt)
                 }) : /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.Spinner, {})
               }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("td", {
                 children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(StatusBadge, {
@@ -2099,7 +2146,7 @@ const EndpointInfo = ({
                 className: "endpoint-url-cell",
                 children: endpoints.ucp ? /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.ExternalLink, {
                   href: endpoints.ucp,
-                  children: endpoints.ucp
+                  children: urlPath(endpoints.ucp)
                 }) : /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.Spinner, {})
               }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("td", {
                 children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(StatusBadge, {
@@ -2117,7 +2164,7 @@ const EndpointInfo = ({
                 className: "endpoint-url-cell",
                 children: endpoints.robots ? /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.ExternalLink, {
                   href: endpoints.robots,
-                  children: endpoints.robots
+                  children: urlPath(endpoints.robots)
                 }) : /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.Spinner, {})
               }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("td", {
                 children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(StatusBadge, {
@@ -2135,7 +2182,7 @@ const EndpointInfo = ({
                 className: "endpoint-url-cell",
                 children: endpoints.ucp_api ? /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.ExternalLink, {
                   href: endpoints.ucp_api,
-                  children: endpoints.ucp_api
+                  children: urlPath(endpoints.ucp_api)
                 }) : /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.Spinner, {})
               }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("td", {
                 children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(StatusBadge, {
@@ -2190,7 +2237,7 @@ const EndpointInfo = ({
             fontSize: '13px',
             margin: '0 0 8px'
           },
-          children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Control which AI agents are allowed to discover your store via robots.txt. Unchecked agents will be blocked from crawling your product pages.', 'woocommerce-ai-storefront')
+          children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Control which AI agents are allowed to discover your store via robots.txt.', 'woocommerce-ai-storefront')
         }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("div", {
           style: {
             display: 'flex',

@@ -71,6 +71,42 @@ function EndpointTabStyles() {
 			details.${ CRAWLER_GROUP_CLASS } .crawler-row {
 				padding: 8px 0;
 			}
+			@media (max-width: 600px) {
+				.${ ENDPOINT_TAB_CLASS } table.widefat thead { display: none; }
+				.${ ENDPOINT_TAB_CLASS } table.widefat tbody tr {
+					display: grid;
+					grid-template-columns: 1fr auto;
+					grid-template-rows: auto auto;
+					gap: 4px 8px;
+					padding: 10px 12px;
+					border-bottom: 1px solid ${ colors.borderSubtle };
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td {
+					display: block;
+					padding: 0;
+					border: none;
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(1) {
+					grid-column: 1; grid-row: 1;
+					align-self: center;
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(2) {
+					grid-column: 1 / -1; grid-row: 2;
+					overflow: hidden;
+					text-overflow: ellipsis;
+					white-space: nowrap;
+					max-width: 100%;
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(2) a {
+					font-size: 12px !important;
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(3) {
+					grid-column: 2; grid-row: 1;
+					align-self: center;
+					justify-self: end;
+				}
+				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(4) { display: none; }
+			}
 		` }</style>
 	);
 }
@@ -106,6 +142,15 @@ const RATE_LIMIT_PRESETS = {
  * @param {number} rpm Requests-per-minute from the stored settings.
  * @return {string}    Preset key ('conservative'/'recommended'/'generous') or 'custom'.
  */
+const urlPath = ( url ) => {
+	try {
+		const { pathname, search } = new URL( url );
+		return pathname + search;
+	} catch ( _e ) {
+		return url;
+	}
+};
+
 const getActivePreset = ( rpm ) => {
 	for ( const [ key, preset ] of Object.entries( RATE_LIMIT_PRESETS ) ) {
 		if ( preset.rpm === rpm ) {
@@ -650,7 +695,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										<ExternalLink
 											href={ endpoints.llms_txt }
 										>
-											{ endpoints.llms_txt }
+											{ urlPath( endpoints.llms_txt ) }
 										</ExternalLink>
 									) : (
 										<Spinner />
@@ -675,7 +720,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								<td className="endpoint-url-cell">
 									{ endpoints.ucp ? (
 										<ExternalLink href={ endpoints.ucp }>
-											{ endpoints.ucp }
+											{ urlPath( endpoints.ucp ) }
 										</ExternalLink>
 									) : (
 										<Spinner />
@@ -700,7 +745,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								<td className="endpoint-url-cell">
 									{ endpoints.robots ? (
 										<ExternalLink href={ endpoints.robots }>
-											{ endpoints.robots }
+											{ urlPath( endpoints.robots ) }
 										</ExternalLink>
 									) : (
 										<Spinner />
@@ -727,7 +772,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										<ExternalLink
 											href={ endpoints.ucp_api }
 										>
-											{ endpoints.ucp_api }
+											{ urlPath( endpoints.ucp_api ) }
 										</ExternalLink>
 									) : (
 										<Spinner />
@@ -813,7 +858,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						} }
 					>
 						{ __(
-							'Control which AI agents are allowed to discover your store via robots.txt. Unchecked agents will be blocked from crawling your product pages.',
+							'Control which AI agents are allowed to discover your store via robots.txt.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>
