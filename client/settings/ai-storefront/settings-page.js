@@ -621,7 +621,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 						display: grid;
 						grid-template-columns: repeat(4, max-content);
 						gap: ${ spacing.s2 };
-						margin: 0 0 ${ spacing.s7 };
+						margin: 0 0 ${ spacing.s6 };
 					}
 					@media (max-width: 520px) {
 						.wc-ai-storefront-chip-strip {
