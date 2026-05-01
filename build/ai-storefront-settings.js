@@ -3470,6 +3470,16 @@ function ProductTabStyles() {
 				box-shadow: 0 0 0 2px ${_tokens__WEBPACK_IMPORTED_MODULE_6__.colors.accent};
 				outline: 2px solid transparent; /* Windows high-contrast */
 			}
+			@media (max-width: 600px) {
+				.${PRODUCT_TAB_CLASS} .mode-row-label {
+					flex-wrap: wrap;
+				}
+				.${PRODUCT_TAB_CLASS} .mode-row-badge-group {
+					width: 100%;
+					padding-left: calc(16px + ${_tokens__WEBPACK_IMPORTED_MODULE_6__.spacing.s3});
+					margin-top: 4px;
+				}
+			}
 		`
   });
 }
@@ -3749,6 +3759,7 @@ const ModeRow = ({
       borderRadius: _tokens__WEBPACK_IMPORTED_MODULE_6__.radii.md
     },
     children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_8__.jsxs)("label", {
+      className: "mode-row-label",
       style: {
         display: 'flex',
         alignItems: 'center',
@@ -3798,8 +3809,11 @@ const ModeRow = ({
           },
           children: description
         })]
-      }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_8__.jsx)(ModeBadgeGroup, {
-        labels: badgeLabel
+      }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_8__.jsx)("span", {
+        className: "mode-row-badge-group",
+        children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_8__.jsx)(ModeBadgeGroup, {
+          labels: badgeLabel
+        })
       })]
     }), isSelected && children && /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_8__.jsx)("div", {
       style: {
@@ -4653,7 +4667,7 @@ const ProductSelection = ({
               // and top margin for card-embedded use.
               ,
               style: {
-                margin: '12px 0 0',
+                margin: '12px 0 12px',
                 padding: '8px 12px'
               },
               children: emptyTaxonomyWarning

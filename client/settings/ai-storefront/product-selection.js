@@ -47,6 +47,16 @@ function ProductTabStyles() {
 				box-shadow: 0 0 0 2px ${ colors.accent };
 				outline: 2px solid transparent; /* Windows high-contrast */
 			}
+			@media (max-width: 600px) {
+				.${ PRODUCT_TAB_CLASS } .mode-row-label {
+					flex-wrap: wrap;
+				}
+				.${ PRODUCT_TAB_CLASS } .mode-row-badge-group {
+					width: 100%;
+					padding-left: calc(16px + ${ spacing.s3 });
+					margin-top: 4px;
+				}
+			}
 		` }</style>
 	);
 }
@@ -353,6 +363,7 @@ const ModeRow = ( {
 		>
 			{ /* eslint-disable-next-line jsx-a11y/label-has-associated-control */ }
 			<label
+				className="mode-row-label"
 				style={ {
 					display: 'flex',
 					alignItems: 'center',
@@ -414,7 +425,9 @@ const ModeRow = ( {
 						{ description }
 					</span>
 				</span>
-				<ModeBadgeGroup labels={ badgeLabel } />
+				<span className="mode-row-badge-group">
+					<ModeBadgeGroup labels={ badgeLabel } />
+				</span>
 			</label>
 			{ isSelected && children && (
 				<div style={ { padding: `0 ${ spacing.s4 } 18px` } }>
@@ -1518,7 +1531,7 @@ const ProductSelection = ( {
 									// above). Override with internal padding
 									// and top margin for card-embedded use.
 									style={ {
-										margin: '12px 0 0',
+										margin: '12px 0 12px',
 										padding: '8px 12px',
 									} }
 								>
