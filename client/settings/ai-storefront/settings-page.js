@@ -124,7 +124,7 @@ const AISyndicationSettings = () => {
 		return (
 			<div className="wc-ai-storefront-settings">
 				<PageHeader />
-				<div style={ { padding: '0 12px' } }>
+				<div style={ { padding: `0 ${ spacing.s3 }` } }>
 					<OverviewTab
 						settings={ settings }
 						onChange={ updateSettingsValues }
@@ -185,7 +185,11 @@ const AISyndicationSettings = () => {
 				} }
 			>
 				{ ( tab ) => (
-					<div style={ { padding: '16px 12px 0' } }>
+					<div
+						style={ {
+							padding: `${ spacing.s4 } ${ spacing.s3 } 0`,
+						} }
+					>
 						{ tab.name === 'overview' && (
 							<OverviewTab
 								settings={ settings }
@@ -247,7 +251,8 @@ const AISyndicationSettings = () => {
 // The off-scale literals below are intentional and documented:
 // - 8px top padding (vs s2=8px for symmetry with other elements):
 //   compensates for the line-box overhead above the title's cap
-//   height so the header reads visually centered. See PR #238.
+//   height so the header reads visually centered rather than
+//   mathematically centered within the strip.
 // - 19px bottom padding: paired with 8px top so the title block
 //   sits at the optical center of the strip — not an arithmetic
 //   center, which would look top-heavy due to ascender whitespace.
