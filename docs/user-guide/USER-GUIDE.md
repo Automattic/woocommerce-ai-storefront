@@ -40,7 +40,7 @@ You **don't** need an AI account, an API key, or a developer.
 
 ![Plugins screen with WooCommerce AI Storefront activated](screenshots/01-plugins-screen.png)
 
-A new menu item appears under **WooCommerce → AI Storefront**. If you don't see it, confirm WooCommerce itself is active. AI Storefront depends on it.
+A new menu item appears under **WooCommerce → AI Storefront** in the sidebar. (The page heading inside reads "Woo AI Storefront" -- the longer form is what you'll see on screenshots and in support tickets.) If you don't see it, confirm WooCommerce itself is active. AI Storefront depends on it.
 
 ---
 
@@ -51,26 +51,30 @@ The plugin installs in **paused** mode. Nothing publishes until you turn it on.
 1. Go to **WooCommerce → AI Storefront**. You'll land on the **Overview** tab.
 2. Click **Enable AI Storefront** at the top of the page.
 
-![Overview tab with the AI Storefront active banner](screenshots/02-enable-toggle.png)
+![Overview tab with the enable button](screenshots/02-enable-toggle.png)
 
 Enabling does five things:
 
-- Adds AI-crawler `Allow:` directives to `robots.txt`.
+- Adds AI agent `Allow:` directives to `robots.txt`.
 - Publishes the Markdown store guide at `/llms.txt`.
 - Publishes the JSON manifest at `/.well-known/ucp`.
 - Enables enhanced JSON-LD on product pages.
 - Starts capturing AI-attributed orders into WooCommerce Order Attribution.
 
-To pause, click **Disable** in the same banner. Discovery endpoints return 404, JSON-LD additions are removed, `robots.txt` reverts to the WordPress default. Captured order attribution stays in place.
+To pause, click **Disable AI Storefront** at the bottom of the page. Discovery endpoints return 404, JSON-LD additions are removed, `robots.txt` reverts to the WordPress default. Captured order attribution stays in place.
 
 The Overview tab populates with stat cards once data flows in:
 
 - **Products exposed**: products AI agents can currently see (matches your visibility settings).
-- **AI orders / Total orders**: AI-attributed volume against the period total.
-- **AI revenue / AI AOV**: gross revenue and average order value from AI-referred orders.
-- **Top agent / Top agent share**: which agent drives the most volume, and what share of AI revenue it represents.
+- **AI orders**: AI-attributed volume in the period, shown as `N / M` where M is the total orders denominator.
+- **AI revenue**: gross revenue from AI-referred orders.
+- **AI AOV**: average order value from AI-referred orders.
+- **Top agent**: which agent drives the most AI volume.
+- **Top agent share**: what share of AI revenue the top agent represents.
 
 ![Overview tab stat cards](screenshots/03-overview-cards.png)
+
+A date-range strip above the stat cards lets you pick the window: **Today**, **Last 7 days**, **Last 30 days**, **Last 90 days**, **Last 12 months**. Each is a trailing window from the moment you click; the labels match the underlying behavior (a "Last 12 months" click means the last 365 days, not the previous calendar year).
 
 > Stats are blank on day one. First AI traffic typically lands within a few days; meaningful aggregate volume takes weeks.
 
@@ -83,11 +87,11 @@ Before configuring anything else, take 30 seconds to confirm the endpoints are l
 | URL | What you should see |
 |-----|---------------------|
 | `https://your-store.com/llms.txt` | A plain-text Markdown document starting with `# Your Store Name`, with a category list and "How AI agents should link to products" section. |
-| `https://your-store.com/.well-known/ucp` | A pretty-printed JSON document. Top-level keys: `name`, `version`, `capabilities`, `payment_handlers`, `services`. |
+| `https://your-store.com/.well-known/ucp` | A pretty-printed JSON document in monospace. Top-level keys: `name`, `version`, `capabilities`, `payment_handlers`, `services`. |
 | `https://your-store.com/robots.txt` | The standard WordPress `robots.txt` plus a block of `User-agent: GPTBot` / `User-agent: ChatGPT-User` / etc. each with `Allow:` lines. |
 | Any product page → "View page source" | Search for `"@type":"Product"`. Look for a `BuyAction` block, an `offers` array with prices, and (once you set one in [section 7](#7-set-your-return-policy)) `hasMerchantReturnPolicy`. |
 
-The Discovery tab shows the same URLs as clickable links with reachability dots:
+The Discovery tab shows the same URLs as clickable links with reachability dots. URLs render in monospace font:
 
 ![Discovery tab Discovery Endpoints card](screenshots/09-endpoints-info.png)
 
@@ -103,27 +107,31 @@ A working setup returns real product names with prices and links to your store w
 
 ## 5. Choose which products to expose
 
-The **Product Visibility** tab controls what AI agents can see. Three modes:
+The **Product visibility** tab controls what AI agents can see. Three modes:
 
 | Mode | What AI agents see | Use when |
 |------|--------------------|----------|
 | **All published products** | Everything currently published | Default. Use unless you have a reason to scope. |
 | **Products by category, tag, or brand** | Only products in the selected taxonomies | You want to expose evergreen lines but exclude clearance, NSFW, or out-of-region products. |
-| **Specific products only** | Only products you pick individually | Curated launches, B2B-restricted SKUs, limited drops. |
+| **Specific products only** | Only products you pick individually (with typeahead search) | Curated launches, B2B-restricted SKUs, limited drops. |
 
 **Steps:**
 
-1. Open the **Product Visibility** tab.
+1. Open the **Product visibility** tab.
 2. Pick the mode.
-3. For **Products by category, tag, or brand**, switch between the **Categories**, **Tags**, and **Brands** sub-tabs and check what you want included. The product-count pill updates live.
-4. For **Specific products only**, search by name or SKU and click each product to add it.
+3. For **Products by category, tag, or brand**, switch between the **Categories**, **Tags**, and **Brands** sub-tabs and check what you want included. The **Brands** sub-tab only appears if your store has a `product_brand` taxonomy registered (typically via WooCommerce Brands or a similar plugin); without one, you'll see only Categories and Tags. Taxonomies with 20+ terms have a search bar. Checkboxes render in a 2-column grid. The product-count pill updates live.
+4. For **Specific products only**, use the typeahead search box to find products by name or SKU. Click a match to add a chip; already-added items appear disabled with a checkmark. Chips show the product name and SKU.
 5. Click **Save changes** at the bottom-right.
 
-![Product Visibility tab, by-taxonomy mode](screenshots/04-products-by-taxonomy.png)
+![Product visibility tab, by-taxonomy mode](screenshots/04-products-by-taxonomy.png)
 
-![Product Visibility tab, specific products mode](screenshots/05-products-selected.png)
+![Product visibility tab, specific products mode](screenshots/05-products-selected.png)
 
 Visibility applies consistently across `/llms.txt`, the UCP catalog endpoints, and JSON-LD on product pages. Excluded products cannot be returned by an AI agent's catalog query; exclusion is enforced at the data layer, not by hiding links.
+
+### Catalog access
+
+The **Catalog access** card shows the total product count and the count exposed to AI agents. Visibility settings are enforced on the selection mode you choose.
 
 > **Note.** Visibility settings only affect AI-agent-facing surfaces. The Shop page, search, and category archives keep working exactly as before for regular shoppers.
 
@@ -131,13 +139,13 @@ Visibility applies consistently across `/llms.txt`, the UCP catalog endpoints, a
 
 ## 6. Configure crawlers and rate limits
 
-The **Discovery** tab controls which AI crawlers can read your endpoints and how aggressively.
+The **Discovery** tab controls which AI crawlers can read your endpoints and how aggressively. All form input fields on this tab are 32px tall.
 
 ![Discovery tab](screenshots/06-discovery-tab.png)
 
-### Crawlers
+### AI agent access
 
-The list groups 18+ AI bots into three buckets:
+The crawler list groups 18+ AI bots into three collapsible sections, each with a count badge and chevron:
 
 - **Live browsing agents**: fetch pages in real time when a user asks. Default: **on**. These drive shopping clicks.
 - **Training crawlers**: feed AI providers' training corpora. Default: **on**. Letting your catalog inform model updates is generally good for long-tail product discovery.
@@ -145,13 +153,13 @@ The list groups 18+ AI bots into three buckets:
 
 Unchecking adds a `Disallow:` directive for that user-agent. This is a cooperative protocol; well-behaved crawlers respect it; malicious bots ignore robots.txt entirely (and don't make purchase recommendations either).
 
-### Rate limit
+A toggle labeled **Other AI agents** controls whether unlisted crawlers can access your store. When checked, AI agents whose brand isn't in the list can access your store.
 
-Controls how many AI commerce requests per minute each AI crawler can make before receiving HTTP 429. One request counts as one slot regardless of how many products are in the request (a catalog lookup for 50 products counts the same as a lookup for 1).
+### Rate limits
 
-- **Default:** 25 RPM per crawler. Balanced for catalogs of any size.
-- **Lower** (down to 1 RPM) if you've seen spikes on a small hosting plan.
-- **Raise** (up to 1000 RPM) if you have 10,000+ products and notice agents pagination-stalling.
+A 2 × 2 card grid shows four preset options: Free, Light, Standard, and Custom. Select one to set how many AI commerce requests per minute each AI crawler can make before receiving HTTP 429. One request counts as one slot regardless of how many products are in the request (a catalog lookup for 50 products counts the same as a lookup for 1).
+
+Selecting **Custom** reveals a 120px input with `requests / min` suffix directly below the Custom card.
 
 Rate limiting only affects AI crawlers (matched by user-agent). Regular customers, your storefront, and admin REST traffic are unaffected.
 
@@ -164,9 +172,9 @@ Rate limiting only affects AI crawlers (matched by user-agent). Regular customer
 
 ## 7. Set your return policy
 
-AI agents that surface your products often try to display return windows inline ("Free returns for 30 days"). The **Policies** tab publishes a structured policy agents can read.
+AI agents that surface your products often try to display return windows inline ("Free returns for 30 days"). The **Store policies** tab publishes a structured policy agents can read.
 
-![Policies tab](screenshots/07-policies-tab.png)
+![Store policies tab](screenshots/07-policies-tab.png)
 
 Three modes:
 
@@ -192,6 +200,10 @@ When a shopper completes a purchase via an AI-agent link, WooCommerce captures t
 - `utm_medium=referral` and `utm_id=woo_ucp`: the signals AI Storefront uses to identify the order as AI-referred.
 - A session correlation ID (`ai_session_id`): useful for debugging; not personally identifying.
 
+### Reachability check
+
+The Discovery tab shows a reachability indicator in the card intro. The note "Reachability is checked from your browser" confirms the endpoints are accessible to AI agents.
+
 ### Where to see it
 
 **WooCommerce Orders list.** Open **WooCommerce → Orders**. The built-in **Origin** column shows the agent hostname (`Source: Chatgpt.com`, `Source: Gemini.google.com`, `Source: Ucpplayground.com`) for AI-referred orders. Non-AI orders show `Direct`, `Unknown`, or the standard referring source.
@@ -202,7 +214,7 @@ When a shopper completes a purchase via an AI-agent link, WooCommerce captures t
 
 ![Overview tab per-agent stat cards](screenshots/11-per-agent-stats.png)
 
-**Recent AI Orders table** (Overview tab). The most recent AI-attributed orders with order number, date, status, agent, and total. Clicking the order number opens the WC order edit screen. Search and column-filter controls included.
+**Recent AI Orders table** (Overview tab). The most recent AI-attributed orders with order number, date, status, agent, and total. Clicking the order number opens the WC order edit screen. Search, column-sort, and pagination controls are included.
 
 ![Recent AI Orders table](screenshots/12-recent-ai-orders.png)
 

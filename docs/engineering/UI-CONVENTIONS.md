@@ -95,19 +95,30 @@ Today: order numbers in the AI Orders table link directly to the WC order edit s
 
 ## Inline styles + design tokens
 
-The admin UI uses React components with inline `style={ ... }` props (no stylesheet). **Colors MUST come from `client/settings/ai-storefront/tokens.js`.** Raw hex literals in JSX are a lint-review red flag.
+The admin UI uses React components with inline `style={ ... }` props (no stylesheet). **All design values MUST come from `client/settings/ai-storefront/tokens.js`.** Raw hex literals, magic pixel values, and ad-hoc font-size/weight pairs in JSX are a lint-review red flag.
+
+`tokens.js` exports five scales:
+
+- **`colors`** — semantic color tokens (`textPrimary`, `borderSubtle`, `infoBg`, `accent`, etc.). Mapped to WordPress admin palette values where possible.
+- **`typography`** — typed text variants (`eyebrowLabel`, `adminTitle`, `sectionHeading`, `statValue`, `heroHeadline`). Each entry bundles `fontSize`, `fontWeight`, `lineHeight`, and (where relevant) `letterSpacing` or `textTransform`. Spread directly into `style`.
+- **`spacing`** — `s1` through `s10`, a modular scale.
+- **`radii`** — `xs`, `sm`, `md`, `lg`, `pill`.
+- **`shadows`** — `sm`, `lg`.
 
 ```js
-import { colors } from './tokens';
+import { colors, typography, spacing } from './tokens';
 
-// Standalone — reference the token directly.
+// Color: standalone — reference the token directly.
 <p style={ { color: colors.textSecondary } }>…</p>
 
-// Embedded in a multi-value string — use a template literal.
+// Color: embedded in a multi-value string — use a template literal.
 <div style={ { border: `1px solid ${ colors.borderSubtle }` } } />
+
+// Typography: spread the variant.
+<h2 style={ { ...typography.sectionHeading, marginBottom: spacing.s2 } }>Catalog access</h2>
 ```
 
-**Adding a new color:** define a semantic token in `tokens.js` first (e.g. `warningBg`, not `yellow100`). Map it to the nearest value in the WordPress admin palette (`@wordpress/base-styles/_colors.scss`). Choosing an existing palette value is almost always preferable to inventing a new one.
+**Adding a new token:** define a semantic name in `tokens.js` first (e.g. `colors.warningBg`, not `colors.yellow100`; `typography.tableHeader`, not bespoke `{ fontSize: 13, fontWeight: 600 }`). Map colors to the nearest value in the WordPress admin palette (`@wordpress/base-styles/_colors.scss`). Choosing an existing palette value is almost always preferable to inventing a new one.
 
 **Why:** a future migration to CSS custom properties (e.g. `var( --wp-components-color-gray-700, #50575e )`) — or a palette shift in WP core — becomes a single-file change instead of hunt-and-replace across every component.
 
