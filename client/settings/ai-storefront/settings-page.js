@@ -118,6 +118,24 @@ const AISyndicationSettings = () => {
 	// is the "plumbing" tab (how they get to it). Pairing the content
 	// tabs makes the merchant journey conceptually cleaner: configure
 	// what's shown first, verify it's discoverable second.
+	const isEnabled = settings?.enabled === 'yes';
+
+	if ( ! isEnabled ) {
+		return (
+			<div className="wc-ai-storefront-settings">
+				<PageHeader />
+				<div style={ { padding: `0 ${ spacing.s3 }` } }>
+					<OverviewTab
+						settings={ settings }
+						onChange={ updateSettingsValues }
+						onSave={ saveSettings }
+						isSaving={ isSaving }
+					/>
+				</div>
+			</div>
+		);
+	}
+
 	const tabs = [
 		{
 			name: 'overview',
@@ -129,7 +147,7 @@ const AISyndicationSettings = () => {
 			// per the cross-cutting copy rule. Audited together with
 			// other Title Case strings on this surface in the
 			// settings-redesign editorial pass.
-			title: __( 'Product visibility', 'woocommerce-ai-storefront' ),
+			title: __( 'Visibility', 'woocommerce-ai-storefront' ),
 		},
 		{
 			name: 'policies',
@@ -147,6 +165,18 @@ const AISyndicationSettings = () => {
 
 	return (
 		<div className="wc-ai-storefront-settings">
+			<style>{ `
+				.wc-ai-storefront-settings .components-tab-panel__tabs {
+					padding: 0 ${ spacing.s7 };
+					background: ${ colors.surface };
+					margin: 0 -20px;
+					border-bottom: 1px solid ${ colors.surfaceMuted };
+				}
+				.wc-ai-storefront-settings .components-tab-panel__tabs-item {
+					padding-top: 0;
+				}
+			` }</style>
+			<PageHeader withNavSlot />
 			<TabPanel
 				tabs={ tabs }
 				initialTabName={ initialTab }
@@ -155,7 +185,11 @@ const AISyndicationSettings = () => {
 				} }
 			>
 				{ ( tab ) => (
-					<div style={ { marginTop: '16px' } }>
+					<div
+						style={ {
+							padding: `${ spacing.s4 } ${ spacing.s3 } 0`,
+						} }
+					>
 						{ tab.name === 'overview' && (
 							<OverviewTab
 								settings={ settings }
@@ -202,6 +236,104 @@ const AISyndicationSettings = () => {
 // Shared components
 // ---------------------------------------------------------------------------
 
+// PageHeader renders the Jetpack-style admin page header: logo + title on
+// row 1, tagline on row 2, and (when `withNavSlot` is true) reserves the
+// space below where TabPanel's nav strip will sit. The bottom border lives
+// at the bottom of the entire shell so the active tab underline aligns
+// with the header's lower edge — matching wp-admin/Jetpack patterns.
+// PageHeader is decorative brand chrome. The semantic page title lives
+// in the server-rendered screen-reader-text <h1> inside .wrap (see
+// render_admin_page() in class-wc-ai-storefront.php). aria-hidden on the
+// header keeps the visible logo + heading + tagline out of the
+// accessibility tree so screen-reader users don't hear the page name
+// twice.
+//
+// The off-scale literals below are intentional and documented:
+// - 8px top padding (vs s2=8px for symmetry with other elements):
+//   compensates for the line-box overhead above the title's cap
+//   height so the header reads visually centered rather than
+//   mathematically centered within the strip.
+// - 19px bottom padding: paired with 8px top so the title block
+//   sits at the optical center of the strip — not an arithmetic
+//   center, which would look top-heavy due to ascender whitespace.
+// - 6px row-gap: tighter than s2 (8px) because the title and tagline
+//   share a visual unit; s2 reads as separation.
+// - 20px logo size and -20px negative margin: the negative margin
+//   matches WP's `.wrap` 20px horizontal padding so the header
+//   bleeds edge-to-edge; the 20px logo is the visual size, not a
+//   spacing token.
+// - #873EFF brand fill: official Woo logo color. Distinct from
+//   colors.wooPurple50 (`#720EEC`) which is the interactive accent.
+const PageHeader = ( { withNavSlot = false } ) => (
+	<header
+		aria-hidden="true"
+		style={ {
+			padding: `8px ${ spacing.s7 } 19px`,
+			background: colors.surface,
+			borderBottom: withNavSlot
+				? 'none'
+				: `1px solid ${ colors.surfaceMuted }`,
+			margin: `0 -20px ${ withNavSlot ? '0' : spacing.s6 }`,
+		} }
+	>
+		<div
+			style={ {
+				display: 'grid',
+				gridTemplateColumns: '20px 1fr',
+				columnGap: spacing.s2,
+				rowGap: '6px',
+			} }
+		>
+			<svg
+				width="20"
+				height="20"
+				viewBox="0 0 375 375"
+				fill="none"
+				xmlns="http://www.w3.org/2000/svg"
+				aria-hidden="true"
+				focusable="false"
+				style={ { gridColumn: 1, gridRow: 1, flexShrink: 0 } }
+			>
+				<path
+					fillRule="evenodd"
+					clipRule="evenodd"
+					d="M187.5 375C291.053 375 375 291.053 375 187.5C375 83.9466 291.053 0 187.5 0C83.9466 0 0 83.9466 0 187.5C0 291.053 83.9466 375 187.5 375ZM165.409 242.53C155.31 261.493 141.913 269.737 125.217 269.737C104.4 269.737 90.1786 257.164 90.1786 235.935V160.704H74.308C60.0863 160.704 52.2541 153.49 52.2541 140.917C52.2541 128.345 59.6741 121.543 74.308 121.543H113.057C132.019 121.543 139.851 129.581 139.851 148.544V207.491L173.448 141.742C181.074 126.902 190.967 121.543 203.334 121.543C218.998 121.543 227.449 130.2 227.449 147.925V207.491L263.106 140.505C270.938 125.871 279.595 121.543 292.992 121.543C317.932 121.543 325.97 135.971 314.634 155.139L262.9 242.53C251.152 262.523 238.991 269.737 222.502 269.737C201.479 269.737 187.875 257.164 187.875 236.141V200.484L165.409 242.53Z"
+					fill="#873EFF"
+				/>
+			</svg>
+			<h2
+				style={ {
+					...typography.brandHeading,
+					gridColumn: 2,
+					gridRow: 1,
+					margin: 0,
+					padding: 0,
+					color: colors.textPrimary,
+				} }
+			>
+				{ __( 'AI Storefront', 'woocommerce-ai-storefront' ) }
+			</h2>
+			{ ! withNavSlot && (
+				<p
+					style={ {
+						...typography.brandTagline,
+						gridColumn: '1 / 3',
+						gridRow: 2,
+						margin: 0,
+						padding: 0,
+						color: colors.textMuted,
+					} }
+				>
+					{ __(
+						'List once. Sell everywhere AI shops.',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+			) }
+		</div>
+	</header>
+);
+
 // ValueCard renders one of the three icon-led value-proposition cards
 // on the pre-enable landing. A 32px @wordpress/icons glyph at the top
 // replaces the gray top-border accent the earlier version used — the
@@ -212,7 +344,6 @@ const AISyndicationSettings = () => {
 const ValueCard = ( { Icon: IconComponent, title, children } ) => (
 	<div
 		style={ {
-			height: '100%',
 			padding: '20px',
 			background: colors.surfaceSubtle,
 			border: `1px solid ${ colors.borderSubtle }`,
@@ -408,8 +539,55 @@ const StatCard = ( { label, value, reference, href, background } ) => {
 // Pre-enable view (value pitch)
 // ---------------------------------------------------------------------------
 
+// useIsMobile feature-detects matchMedia and its listener API at runtime.
+// Modern browsers expose addEventListener/removeEventListener on
+// MediaQueryList; older Safari (≤13) only exposes the legacy
+// addListener/removeListener; SSR/JSDOM may lack matchMedia entirely.
+// Fall back through those tiers to a plain resize listener so the hook
+// never throws.
+const useIsMobile = () => {
+	const [ isMobile, setIsMobile ] = useState( () => {
+		if ( typeof window === 'undefined' ) {
+			return false;
+		}
+		if ( typeof window.matchMedia === 'function' ) {
+			return window.matchMedia( '(max-width: 781px)' ).matches;
+		}
+		return window.innerWidth < 782;
+	} );
+
+	useEffect( () => {
+		if ( typeof window === 'undefined' ) {
+			return undefined;
+		}
+
+		if ( typeof window.matchMedia === 'function' ) {
+			const mq = window.matchMedia( '(max-width: 781px)' );
+			const handler = ( e ) => setIsMobile( e.matches );
+			setIsMobile( mq.matches );
+
+			if ( typeof mq.addEventListener === 'function' ) {
+				mq.addEventListener( 'change', handler );
+				return () => mq.removeEventListener( 'change', handler );
+			}
+			if ( typeof mq.addListener === 'function' ) {
+				mq.addListener( handler );
+				return () => mq.removeListener( handler );
+			}
+		}
+
+		const handleResize = () => setIsMobile( window.innerWidth < 782 );
+		window.addEventListener( 'resize', handleResize );
+		handleResize();
+		return () => window.removeEventListener( 'resize', handleResize );
+	}, [] );
+
+	return isMobile;
+};
+
 const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 	const [ ctaHovered, setCtaHovered ] = useState( false );
+	const isMobile = useIsMobile();
 	return (
 		<div>
 			{ /* Hero block: purple-tinted gradient bg, 1.4fr / 1fr grid.
@@ -424,7 +602,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 					borderRadius: radii.sm,
 					padding: `${ spacing.s7 } ${ spacing.s6 }`,
 					display: 'grid',
-					gridTemplateColumns: '1.4fr 1fr',
+					gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr',
 					gap: spacing.s5,
 					alignItems: 'center',
 				} }
@@ -537,8 +715,8 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 			<div
 				style={ {
 					display: 'grid',
-					gridTemplateColumns: 'repeat(3, 1fr)',
-					gap: spacing.s4,
+					gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+					gap: spacing.s6,
 					marginTop: spacing.s7,
 				} }
 			>
