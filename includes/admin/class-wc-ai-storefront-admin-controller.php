@@ -672,14 +672,9 @@ class WC_AI_Storefront_Admin_Controller {
 			);
 		}
 
-		// Get the true total for pagination — run a count-only query with the
-		// same filters but no limit/offset so DataViews knows how many pages exist.
-		$count_args             = $query_args;
-		$count_args['limit']    = -1;
-		$count_args['paged']    = 1;
-		$count_args['return']   = 'ids';
-		$count_args['paginate'] = false;
-		$total_orders           = count( wc_get_orders( $count_args ) );
+		// Get the true total for pagination via a direct COUNT(DISTINCT id) — far cheaper
+		// than fetching all matching IDs with wc_get_orders( limit=-1 ).
+		$total_orders = $this->count_ai_orders( $status_arg, $agent_filter, $search );
 
 		$statuses = wc_get_order_statuses();
 		$rows     = [];
@@ -743,6 +738,164 @@ class WC_AI_Storefront_Admin_Controller {
 				'currency' => get_woocommerce_currency(),
 			]
 		);
+	}
+
+	/**
+	 * Count AI-attributed orders matching the given filters via a direct
+	 * COUNT(DISTINCT id) query — HPOS or legacy, whichever the store uses.
+	 *
+	 * This is the efficient counterpart to the main `wc_get_orders()` call
+	 * in `get_recent_orders()`. Fetching all matching IDs with
+	 * `wc_get_orders( limit=-1, return='ids' )` loads potentially thousands
+	 * of integers into PHP memory just to call `count()` on the array. A
+	 * single `SELECT COUNT(DISTINCT id)` returns one integer from the DB
+	 * and costs almost nothing at any order volume. `DISTINCT` is required
+	 * because the INNER JOIN on the meta table can produce multiple rows
+	 * per order when an order has more than one matching meta row.
+	 *
+	 * The method mirrors the same WHERE conditions as the main query so
+	 * the count is always in sync with the result set:
+	 *   - AGENT_META_KEY must exist (inner join guarantees it)
+	 *   - status IN ( $status_arg ) — prefixed with `wc-` for DB storage
+	 *   - optional agent value equality filter (passed directly from caller)
+	 *   - optional search via LIKE on billing name + email, or order ID
+	 *
+	 * HPOS path:   `wc_orders` JOIN `wc_orders_meta` JOIN `wc_order_addresses`
+	 * Legacy path: `wp_posts`  JOIN `wp_postmeta` (correlated EXISTS per field)
+	 *
+	 * @param array  $status_arg   Bare status slugs (e.g. ['processing','completed']).
+	 * @param string $agent_filter Optional agent equality filter value ('' = all agents).
+	 * @param string $search       Optional search term.
+	 * @return int Total count of matching orders.
+	 */
+	private function count_ai_orders( array $status_arg, string $agent_filter, string $search ): int {
+		global $wpdb;
+
+		// Prefix bare status slugs for DB storage (both HPOS and legacy store
+		// order statuses as `wc-{slug}` — e.g. `wc-processing`, `wc-on-hold`).
+		$db_statuses = array_map( fn( $s ) => 'wc-' . $s, $status_arg );
+
+		// Build a safe IN-clause placeholder string (one %s per status).
+		$status_placeholders = implode( ', ', array_fill( 0, count( $db_statuses ), '%s' ) );
+
+		$agent_key = WC_AI_Storefront_Attribution::AGENT_META_KEY;
+
+		if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
+			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+
+			// HPOS path — wc_orders + wc_orders_meta + wc_order_addresses.
+			// Table names are derived from $wpdb->prefix (admin-controlled, not
+			// user input) and hard-coded WC HPOS suffixes. Interpolation is the
+			// canonical WordPress pattern — $wpdb->prepare() cannot parameterize
+			// table names.
+			$orders_table    = $wpdb->prefix . 'wc_orders';
+			$meta_table      = $wpdb->prefix . 'wc_orders_meta';
+			$addresses_table = $wpdb->prefix . 'wc_order_addresses';
+
+			$sql    = "SELECT COUNT(DISTINCT o.id)
+			           FROM {$orders_table} o
+			           INNER JOIN {$meta_table} m
+			               ON o.id = m.order_id AND m.meta_key = %s
+			           WHERE o.status IN ( {$status_placeholders} )";
+			$params = array_merge( [ $agent_key ], $db_statuses );
+
+			if ( $agent_filter ) {
+				$sql     .= ' AND m.meta_value = %s';
+				$params[] = $agent_filter;
+			}
+
+			if ( $search ) {
+				// billing_first_name and billing_last_name live in wc_order_addresses
+				// (not on wc_orders directly), so this query checks them via correlated
+				// EXISTS subqueries filtered to address_type='billing'. billing_email
+				// IS a direct column on wc_orders, so no address-table join is needed
+				// for that field.
+				$sql     .= " AND (
+				    EXISTS (
+				        SELECT 1 FROM {$addresses_table} a_fn
+				        WHERE a_fn.order_id = o.id
+				          AND a_fn.address_type = 'billing'
+				          AND a_fn.first_name LIKE %s
+				    )
+				    OR EXISTS (
+				        SELECT 1 FROM {$addresses_table} a_ln
+				        WHERE a_ln.order_id = o.id
+				          AND a_ln.address_type = 'billing'
+				          AND a_ln.last_name LIKE %s
+				    )
+				    OR o.billing_email LIKE %s";
+				$like     = '%' . $wpdb->esc_like( $search ) . '%';
+				$params[] = $like;
+				$params[] = $like;
+				$params[] = $like;
+				if ( ctype_digit( $search ) ) {
+					$sql     .= ' OR o.id = %d';
+					$params[] = (int) $search;
+				}
+				$sql .= ')';
+			}
+		} else {
+			// Legacy path — wp_posts + wp_postmeta.
+			$sql    = "SELECT COUNT(DISTINCT p.ID)
+			           FROM {$wpdb->posts} p
+			           INNER JOIN {$wpdb->postmeta} pm
+			               ON p.ID = pm.post_id AND pm.meta_key = %s
+			           WHERE p.post_type = 'shop_order'
+			             AND p.post_status IN ( {$status_placeholders} )";
+			$params = array_merge( [ $agent_key ], $db_statuses );
+
+			if ( $agent_filter ) {
+				$sql     .= ' AND pm.meta_value = %s';
+				$params[] = $agent_filter;
+			}
+
+			if ( $search ) {
+				// Billing name/email live in wp_postmeta. Use correlated EXISTS
+				// subqueries so that orders missing one meta field still match
+				// via the other fields (unlike a JOIN which would drop the row).
+				$sql     .= " AND (
+				    EXISTS (
+				        SELECT 1 FROM {$wpdb->postmeta} pm_fn
+				        WHERE pm_fn.post_id = p.ID
+				          AND pm_fn.meta_key = '_billing_first_name'
+				          AND pm_fn.meta_value LIKE %s
+				    )
+				    OR EXISTS (
+				        SELECT 1 FROM {$wpdb->postmeta} pm_ln
+				        WHERE pm_ln.post_id = p.ID
+				          AND pm_ln.meta_key = '_billing_last_name'
+				          AND pm_ln.meta_value LIKE %s
+				    )
+				    OR EXISTS (
+				        SELECT 1 FROM {$wpdb->postmeta} pm_em
+				        WHERE pm_em.post_id = p.ID
+				          AND pm_em.meta_key = '_billing_email'
+				          AND pm_em.meta_value LIKE %s
+				    )";
+				$like     = '%' . $wpdb->esc_like( $search ) . '%';
+				$params[] = $like;
+				$params[] = $like;
+				$params[] = $like;
+				if ( ctype_digit( $search ) ) {
+					$sql     .= ' OR p.ID = %d';
+					$params[] = (int) $search;
+				}
+				$sql .= ')';
+			}
+		}
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$count = $wpdb->get_var( $wpdb->prepare( $sql, $params ) );
+		// phpcs:enable
+
+		if ( $wpdb->last_error ) {
+			wc_get_logger()->warning(
+				'count_ai_orders DB error: ' . $wpdb->last_error,
+				[ 'source' => 'wc-ai-storefront' ]
+			);
+		}
+
+		return (int) $count;
 	}
 
 	/**
