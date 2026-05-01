@@ -608,7 +608,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 						} }
 					>
 						{ __(
-							'Go live in one click. Checkout stays on your store.',
+							'Checkout stays on your store. Go live in one click.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>
@@ -652,6 +652,29 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 									'woocommerce-ai-storefront'
 							  ) }
 					</button>
+					{ /* Reassurance row sits directly under the CTA — distinct
+				    fears from "Checkout stays on your store" in the subcopy:
+				    "Read-only" answers "will it touch my catalog?" and
+				    "Reversible anytime" answers "can I undo this?". A merchant
+				    arriving at this CTA is already in doubt (they just clicked
+				    Activate on a plugin that talks to five external AI
+				    platforms); resolving the doubt before the CTA — not after
+				    — is the conversion call. "No frontend changes" was dropped
+				    from the previous three-token form; the value-prop strip
+				    below already carries that signal indirectly. */ }
+					<p
+						style={ {
+							margin: `${ spacing.s3 } 0 0`,
+							fontSize: '12px',
+							color: colors.textMuted,
+							lineHeight: '1.5',
+						} }
+					>
+						{ __(
+							'Read-only · Reversible anytime',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
 				</div>
 
 				{ /* Right column: assistant-name chips, 2-column grid.
