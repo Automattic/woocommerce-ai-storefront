@@ -237,8 +237,15 @@ const AISyndicationSettings = () => {
 // space below where TabPanel's nav strip will sit. The bottom border lives
 // at the bottom of the entire shell so the active tab underline aligns
 // with the header's lower edge — matching wp-admin/Jetpack patterns.
+// PageHeader is decorative brand chrome. The semantic page title lives
+// in the server-rendered screen-reader-text <h1> inside .wrap (see
+// render_admin_page() in class-wc-ai-storefront.php). aria-hidden on the
+// header keeps the visible logo + heading + tagline out of the
+// accessibility tree so screen-reader users don't hear the page name
+// twice.
 const PageHeader = ( { withNavSlot = false } ) => (
 	<header
+		aria-hidden="true"
 		style={ {
 			padding: '8px 32px 19px',
 			background: '#fff',
@@ -271,7 +278,7 @@ const PageHeader = ( { withNavSlot = false } ) => (
 					fill="#873EFF"
 				/>
 			</svg>
-			<h1
+			<h2
 				style={ {
 					gridColumn: 2,
 					gridRow: 1,
@@ -284,7 +291,7 @@ const PageHeader = ( { withNavSlot = false } ) => (
 				} }
 			>
 				{ __( 'AI Storefront', 'woocommerce-ai-storefront' ) }
-			</h1>
+			</h2>
 			{ ! withNavSlot && (
 				<p
 					style={ {
@@ -512,14 +519,49 @@ const StatCard = ( { label, value, reference, href, background } ) => {
 // Pre-enable view (value pitch)
 // ---------------------------------------------------------------------------
 
+// useIsMobile feature-detects matchMedia and its listener API at runtime.
+// Modern browsers expose addEventListener/removeEventListener on
+// MediaQueryList; older Safari (≤13) only exposes the legacy
+// addListener/removeListener; SSR/JSDOM may lack matchMedia entirely.
+// Fall back through those tiers to a plain resize listener so the hook
+// never throws.
 const useIsMobile = () => {
-	const [ isMobile, setIsMobile ] = useState( () => window.innerWidth < 782 );
+	const [ isMobile, setIsMobile ] = useState( () => {
+		if ( typeof window === 'undefined' ) {
+			return false;
+		}
+		if ( typeof window.matchMedia === 'function' ) {
+			return window.matchMedia( '(max-width: 781px)' ).matches;
+		}
+		return window.innerWidth < 782;
+	} );
+
 	useEffect( () => {
-		const mq = window.matchMedia( '(max-width: 781px)' );
-		const handler = ( e ) => setIsMobile( e.matches );
-		mq.addEventListener( 'change', handler );
-		return () => mq.removeEventListener( 'change', handler );
+		if ( typeof window === 'undefined' ) {
+			return undefined;
+		}
+
+		if ( typeof window.matchMedia === 'function' ) {
+			const mq = window.matchMedia( '(max-width: 781px)' );
+			const handler = ( e ) => setIsMobile( e.matches );
+			setIsMobile( mq.matches );
+
+			if ( typeof mq.addEventListener === 'function' ) {
+				mq.addEventListener( 'change', handler );
+				return () => mq.removeEventListener( 'change', handler );
+			}
+			if ( typeof mq.addListener === 'function' ) {
+				mq.addListener( handler );
+				return () => mq.removeListener( handler );
+			}
+		}
+
+		const handleResize = () => setIsMobile( window.innerWidth < 782 );
+		window.addEventListener( 'resize', handleResize );
+		handleResize();
+		return () => window.removeEventListener( 'resize', handleResize );
 	}, [] );
+
 	return isMobile;
 };
 
