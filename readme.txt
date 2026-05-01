@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.8.1
+Stable tag: 0.8.2
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,12 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.8.2 - 2026-05-01 =
+**Improved**
+* Unified admin page header with inline section nav (logo + title row, tabs row, shared bottom border). Tagline shown only on the disabled state. Tab label "Product visibility" renamed to "Visibility". Two new typography tokens (`brandHeading`, `brandTagline`). No merchant behavior change — UI refactor.
+* Mobile fixes on the disabled-state value-prop cards (explicit 24px gap, single-column hero) and body horizontal padding for inset against the content area.
+* Updated USER-GUIDE.md (header description + tab rename) and UI-CONVENTIONS.md (new typography tokens). Nine screenshots flagged for human recapture.
 
 = 0.8.1 - 2026-05-01 =
 **Fixed**

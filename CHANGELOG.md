@@ -14,6 +14,18 @@
 
 ---
 
+## [0.8.2] – 2026-05-01
+
+### Refactors
+
+- **Unified admin page header with inline section nav.** The settings page now uses a single bordered strip for the page title and tab nav, modeled on the wp-admin / Jetpack section-page convention. Logo + "AI Storefront" title sit on row 1; the tab nav (Overview, Visibility, Policies, Discovery) sits inline directly below in the same strip with its own bottom border. On the disabled / pre-enable state a tagline ("List once. Sell everywhere AI shops.") replaces the nav. The previous separate header-then-content layout is gone. New `PageHeader` React component in `client/settings/ai-storefront/settings-page.js` is purely decorative and `aria-hidden="true"` so screen readers don't double-announce the page name; the canonical `<h1 class="screen-reader-text">` remains server-rendered inside `.wrap` so WP core admin-notice JS still has a stable anchor on initial page load. New `useIsMobile` hook with tiered feature detection (matchMedia + addEventListener / addListener fallback / resize fallback / SSR guard). Two new typography tokens: `typography.brandHeading` (15px / 500 / lh 1.2) and `typography.brandTagline` (13px / lh 1.4). Tab `name` strings are unchanged; bookmarked URLs (`#products`, `#policies`, etc.) still resolve. Tab label rename: **"Product visibility" → "Visibility"** to avoid wrap on narrow viewports. Mobile fixes folded in: the value-prop card grid on the disabled state now has an explicit 24px gap (no overlap from the previous `height: 100%`-induced row collapse), the disabled-state hero collapses to single-column, and body content uses 12px horizontal padding to inset against the gray content-area background. No merchant behavior changed; this is a UI refactor. Closes #237.
+
+### Docs
+
+- **Updated merchant + engineering docs for the unified admin header.** `docs/user-guide/USER-GUIDE.md` rewrites the page-heading description to reflect the unified header pattern and renames "Product visibility" → "Visibility" in tab references, step instructions, and screenshot alt text. `docs/engineering/UI-CONVENTIONS.md` adds the two new typography tokens (`brandHeading`, `brandTagline`) to the typography enumeration with rationale on where each is used. Surgical edits only — no new sections, no rewrites of unaffected prose. Nine USER-GUIDE screenshots flagged for human recapture (they still depict the old tab label and previous header treatment); alt text is now correct, only the PNGs need re-shooting. Closes via #239.
+
+---
+
 ## [0.8.1] – 2026-05-01
 
 ### Fixes
