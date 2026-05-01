@@ -923,7 +923,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 							: '\u2014'
 					}
 					reference={
-						stats?.all_revenue !== null
+						stats !== null && stats?.all_revenue !== undefined
 							? formatMoneyRounded( stats, stats.all_revenue )
 							: null
 					}

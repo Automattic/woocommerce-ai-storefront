@@ -5700,7 +5700,7 @@ const PostEnableView = ({
       }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_11__.jsx)(StatCard, {
         label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('AI revenue', 'woocommerce-ai-storefront'),
         value: stats ? formatMoneyRounded(stats, stats.ai_revenue) : '\u2014',
-        reference: stats?.all_revenue !== null ? formatMoneyRounded(stats, stats.all_revenue) : null
+        reference: stats !== null && stats?.all_revenue !== undefined ? formatMoneyRounded(stats, stats.all_revenue) : null
       }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_11__.jsx)(StatCard, {
         label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('AI AOV', 'woocommerce-ai-storefront'),
         value: stats && stats.ai_orders > 0 ? formatMoney(stats, stats.ai_aov) : '\u2014'
