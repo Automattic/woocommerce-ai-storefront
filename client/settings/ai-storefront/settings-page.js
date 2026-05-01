@@ -905,6 +905,15 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 							? formatMoney( stats, stats.ai_revenue )
 							: '\u2014'
 					}
+					reference={
+						stats?.all_revenue != null
+							? ( () => {
+								const sym = stats.currency_symbol || stats.currency || '$';
+								const sep = stats.currency_symbol ? '' : ' ';
+								return `${ sym }${ sep }${ Math.round( stats.all_revenue ).toLocaleString() }`;
+							} )()
+							: null
+					}
 				/>
 				<StatCard
 					label={ __( 'AI AOV', 'woocommerce-ai-storefront' ) }
