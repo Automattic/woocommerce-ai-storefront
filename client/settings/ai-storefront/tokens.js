@@ -196,14 +196,6 @@ export const typography = {
 		fontWeight: 500,
 		lineHeight: 1.2,
 	},
-
-	// Tagline sitting beneath brandHeading on the disabled/PreEnable
-	// state. Hidden once nav is present (the tabs replace the
-	// tagline as page-context cue).
-	brandTagline: {
-		fontSize: '13px',
-		lineHeight: 1.4,
-	},
 };
 
 /**
