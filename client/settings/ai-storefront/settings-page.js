@@ -236,28 +236,26 @@ const AISyndicationSettings = () => {
 // Shared components
 // ---------------------------------------------------------------------------
 
-// PageHeader renders the Jetpack-style admin page header: logo + title on
-// row 1, tagline on row 2, and (when `withNavSlot` is true) reserves the
-// space below where TabPanel's nav strip will sit. The bottom border lives
-// at the bottom of the entire shell so the active tab underline aligns
-// with the header's lower edge — matching wp-admin/Jetpack patterns.
-// PageHeader is decorative brand chrome. The semantic page title lives
-// in the server-rendered screen-reader-text <h1> inside .wrap (see
-// render_admin_page() in class-wc-ai-storefront.php). aria-hidden on the
-// header keeps the visible logo + heading + tagline out of the
-// accessibility tree so screen-reader users don't hear the page name
-// twice.
+// PageHeader is decorative brand chrome: a single bordered strip with
+// the Woo logo and "AI Storefront" title. The semantic page title is
+// the server-rendered screen-reader-text <h1> inside .wrap (see
+// render_admin_page() in class-wc-ai-storefront.php). aria-hidden on
+// the header keeps the visible logo + heading out of the accessibility
+// tree so screen-reader users don't hear the page name twice.
+//
+// `withNavSlot` controls how the strip joins the body below it:
+//   - false: own bottom border + 24px clearance to the next block.
+//   - true:  no border, no clearance — TabPanel's tab strip below
+//            owns the divider and the body spacing.
 //
 // The off-scale literals below are intentional and documented:
 // - 8px top padding (vs s2=8px for symmetry with other elements):
 //   compensates for the line-box overhead above the title's cap
 //   height so the header reads visually centered rather than
 //   mathematically centered within the strip.
-// - 19px bottom padding: paired with 8px top so the title block
-//   sits at the optical center of the strip — not an arithmetic
-//   center, which would look top-heavy due to ascender whitespace.
-// - 6px row-gap: tighter than s2 (8px) because the title and tagline
-//   share a visual unit; s2 reads as separation.
+// - 19px bottom padding: paired with 8px top so the title sits at
+//   the optical center of the strip — not an arithmetic center,
+//   which would look top-heavy due to ascender whitespace.
 // - 20px logo size and -20px negative margin: the negative margin
 //   matches WP's `.wrap` 20px horizontal padding so the header
 //   bleeds edge-to-edge; the 20px logo is the visual size, not a
@@ -278,10 +276,9 @@ const PageHeader = ( { withNavSlot = false } ) => (
 	>
 		<div
 			style={ {
-				display: 'grid',
-				gridTemplateColumns: '20px 1fr',
-				columnGap: spacing.s2,
-				rowGap: '6px',
+				display: 'flex',
+				alignItems: 'center',
+				gap: spacing.s2,
 			} }
 		>
 			<svg
@@ -292,7 +289,7 @@ const PageHeader = ( { withNavSlot = false } ) => (
 				xmlns="http://www.w3.org/2000/svg"
 				aria-hidden="true"
 				focusable="false"
-				style={ { gridColumn: 1, gridRow: 1, flexShrink: 0 } }
+				style={ { flexShrink: 0 } }
 			>
 				<path
 					fillRule="evenodd"
@@ -304,8 +301,6 @@ const PageHeader = ( { withNavSlot = false } ) => (
 			<h2
 				style={ {
 					...typography.brandHeading,
-					gridColumn: 2,
-					gridRow: 1,
 					margin: 0,
 					padding: 0,
 					color: colors.textPrimary,
@@ -313,23 +308,6 @@ const PageHeader = ( { withNavSlot = false } ) => (
 			>
 				{ __( 'AI Storefront', 'woocommerce-ai-storefront' ) }
 			</h2>
-			{ ! withNavSlot && (
-				<p
-					style={ {
-						...typography.brandTagline,
-						gridColumn: '1 / 3',
-						gridRow: 2,
-						margin: 0,
-						padding: 0,
-						color: colors.textMuted,
-					} }
-				>
-					{ __(
-						'List once. Sell everywhere AI shops.',
-						'woocommerce-ai-storefront'
-					) }
-				</p>
-			) }
 		</div>
 	</header>
 );
@@ -617,7 +595,7 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 						} }
 					>
 						{ __(
-							'Make your store ready for AI shopping assistants',
+							'List once. Sell everywhere AI shops.',
 							'woocommerce-ai-storefront'
 						) }
 					</h2>
@@ -674,21 +652,6 @@ const PreEnableView = ( { onChange, onSave, isSaving } ) => {
 									'woocommerce-ai-storefront'
 							  ) }
 					</button>
-					{ /* Reassurance line sits directly under the CTA — de-risking
-				    text belongs next to the action that carries the risk. */ }
-					<p
-						style={ {
-							margin: '12px 0 0',
-							fontSize: '12px',
-							color: colors.textMuted,
-							lineHeight: '1.5',
-						} }
-					>
-						{ __(
-							'Read-only · Reversible anytime · No frontend changes',
-							'woocommerce-ai-storefront'
-						) }
-					</p>
 				</div>
 
 				{ /* Right column: assistant-name chips, 2-column grid.

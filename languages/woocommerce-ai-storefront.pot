@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-01T20:30:43+00:00\n"
+"POT-Creation-Date: 2026-05-01T22:49:41+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -307,7 +307,7 @@ msgid "Woo AI Storefront"
 msgstr ""
 
 #: includes/class-wc-ai-storefront.php:321
-#: client/settings/ai-storefront/settings-page.js:314
+#: client/settings/ai-storefront/settings-page.js:309
 msgid "AI Storefront"
 msgstr ""
 
@@ -914,144 +914,136 @@ msgstr ""
 msgid "Discovery"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:327
+#: client/settings/ai-storefront/settings-page.js:597
 msgid "List once. Sell everywhere AI shops."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:619
-msgid "Make your store ready for AI shopping assistants"
-msgstr ""
-
-#: client/settings/ai-storefront/settings-page.js:632
+#: client/settings/ai-storefront/settings-page.js:610
 msgid "Go live in one click. Checkout stays on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:671
+#: client/settings/ai-storefront/settings-page.js:649
 msgid "Enabling…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:672
+#: client/settings/ai-storefront/settings-page.js:650
 msgid "Enable AI Storefront"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:687
-msgid "Read-only · Reversible anytime · No frontend changes"
-msgstr ""
-
-#: client/settings/ai-storefront/settings-page.js:725
+#: client/settings/ai-storefront/settings-page.js:688
 msgid "One setup, every AI assistant"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:730
+#: client/settings/ai-storefront/settings-page.js:693
 msgid "Your catalog becomes visible to ChatGPT, Gemini, Claude, Perplexity, and Copilot, with no per-platform work when new agents launch."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:737
+#: client/settings/ai-storefront/settings-page.js:700
 msgid "Checkout stays on your store"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:742
+#: client/settings/ai-storefront/settings-page.js:705
 msgid "No AI-platform checkout fees. No delegated payments. You keep the customer, the checkout, and the data."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:749
+#: client/settings/ai-storefront/settings-page.js:712
 msgid "See which AI drove each sale"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:754
+#: client/settings/ai-storefront/settings-page.js:717
 msgid "Every AI-referred order is tagged with its source agent and revenue, using standard WooCommerce Order Attribution."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:851
+#: client/settings/ai-storefront/settings-page.js:814
 msgid "Couldn’t load"
 msgstr ""
 
 #. translators: %d: number of products exposed to AI
-#: client/settings/ai-storefront/settings-page.js:860
+#: client/settings/ai-storefront/settings-page.js:823
 #, js-format
 msgid "%d product"
 msgid_plural "%d products"
 msgstr[0] ""
 msgstr[1] ""
 
-#: client/settings/ai-storefront/settings-page.js:896
+#: client/settings/ai-storefront/settings-page.js:859
 msgid "AI traffic and orders"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:909
+#: client/settings/ai-storefront/settings-page.js:872
 msgid "Live dashboard of your AI-attributed traffic and orders."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:932
+#: client/settings/ai-storefront/settings-page.js:895
 msgid "Date range"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:944
+#: client/settings/ai-storefront/settings-page.js:907
 msgid "Today"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:948
+#: client/settings/ai-storefront/settings-page.js:911
 msgid "Last 7 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:955
+#: client/settings/ai-storefront/settings-page.js:918
 msgid "Last 30 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:962
+#: client/settings/ai-storefront/settings-page.js:925
 msgid "Last 90 days"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:969
+#: client/settings/ai-storefront/settings-page.js:932
 msgid "Last 12 months"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1049
+#: client/settings/ai-storefront/settings-page.js:1012
 msgid "Products exposed"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1075
+#: client/settings/ai-storefront/settings-page.js:1038
 msgid "AI orders"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1086
+#: client/settings/ai-storefront/settings-page.js:1049
 msgid "AI order rate"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1098
+#: client/settings/ai-storefront/settings-page.js:1061
 msgid "AI revenue"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1111
+#: client/settings/ai-storefront/settings-page.js:1074
 msgid "AI AOV"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1119
+#: client/settings/ai-storefront/settings-page.js:1082
 msgid "Top agent"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1141
+#: client/settings/ai-storefront/settings-page.js:1104
 msgid "Top agent share"
 msgstr ""
 
 #. translators: %1$s: percent share of AI orders attributed to the top agent. The literal trailing percent sign comes from `%%` in the format string. Ordered placeholder (`%1$s`) keeps the file consistent with @wordpress/valid-sprintf rules.
-#: client/settings/ai-storefront/settings-page.js:1160
+#: client/settings/ai-storefront/settings-page.js:1123
 #, js-format
 msgid "%1$s%%"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1206
+#: client/settings/ai-storefront/settings-page.js:1169
 msgid "Disable AI Storefront"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1219
+#: client/settings/ai-storefront/settings-page.js:1182
 msgid "Stops AI agents from accessing your store. Settings are preserved."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1250
+#: client/settings/ai-storefront/settings-page.js:1213
 msgid "Disabling…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1251
+#: client/settings/ai-storefront/settings-page.js:1214
 msgid "Disable"
 msgstr ""
