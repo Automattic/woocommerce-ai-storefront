@@ -329,9 +329,10 @@ class WC_AI_Storefront {
 	 * Render the admin settings page container.
 	 */
 	public function render_admin_page() {
+		// The React app renders a real <h1> inside .wrap (PageHeader),
+		// which doubles as the anchor WP core uses to position admin
+		// notices. No hidden screen-reader h1 needed.
 		echo '<div class="wrap">';
-		// Hidden h1 required by WP core so admin notices render in the correct DOM position.
-		echo '<h1 class="screen-reader-text">' . esc_html__( 'Woo AI Storefront', 'woocommerce-ai-storefront' ) . '</h1>';
 		echo '<div id="wc-ai-storefront-settings"></div>';
 		echo '</div>';
 	}

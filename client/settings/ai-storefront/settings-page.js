@@ -243,7 +243,7 @@ const PageHeader = ( { withNavSlot = false } ) => (
 			padding: '8px 32px 19px',
 			background: '#fff',
 			borderBottom: withNavSlot ? 'none' : '1px solid #f0f0f0',
-			margin: '0 -20px ' + ( withNavSlot ? '0' : '24px' ),
+			margin: `0 -20px ${ withNavSlot ? '0' : '24px' }`,
 		} }
 	>
 		<div
@@ -271,7 +271,7 @@ const PageHeader = ( { withNavSlot = false } ) => (
 					fill="#873EFF"
 				/>
 			</svg>
-			<h2
+			<h1
 				style={ {
 					gridColumn: 2,
 					gridRow: 1,
@@ -284,7 +284,7 @@ const PageHeader = ( { withNavSlot = false } ) => (
 				} }
 			>
 				{ __( 'AI Storefront', 'woocommerce-ai-storefront' ) }
-			</h2>
+			</h1>
 			{ ! withNavSlot && (
 				<p
 					style={ {
