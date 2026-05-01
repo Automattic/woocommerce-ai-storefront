@@ -40,7 +40,7 @@ You **don't** need an AI account, an API key, or a developer.
 
 ![Plugins screen with WooCommerce AI Storefront activated](screenshots/01-plugins-screen.png)
 
-A new menu item appears under **WooCommerce → AI Storefront** in the sidebar. (The page heading inside reads "Woo AI Storefront" -- the longer form is what you'll see on screenshots and in support tickets.) If you don't see it, confirm WooCommerce itself is active. AI Storefront depends on it.
+A new menu item appears under **WooCommerce → AI Storefront** in the sidebar. The page opens with a unified header strip — small Woo logo + the title "AI Storefront" — and the section nav (Overview, Visibility, Policies, Discovery) inline directly below in the same bordered strip. On the disabled state, a tagline ("List once. Sell everywhere AI shops.") sits beneath the title; once you enable the plugin, the nav takes the tagline's place. If you don't see the menu item, confirm WooCommerce itself is active. AI Storefront depends on it.
 
 ---
 
@@ -108,7 +108,7 @@ A working setup returns real product names with prices and links to your store w
 
 ## 5. Choose which products to expose
 
-The **Product visibility** tab controls what AI agents can see. Three modes:
+The **Visibility** tab controls what AI agents can see. Three modes:
 
 | Mode | What AI agents see | Use when |
 |------|--------------------|----------|
@@ -118,15 +118,15 @@ The **Product visibility** tab controls what AI agents can see. Three modes:
 
 **Steps:**
 
-1. Open the **Product visibility** tab.
+1. Open the **Visibility** tab.
 2. Pick the mode.
 3. For **Products by category, tag, or brand**, switch between the **Categories**, **Tags**, and **Brands** sub-tabs and check what you want included. The **Brands** sub-tab only appears if your store has a `product_brand` taxonomy registered (typically via WooCommerce Brands or a similar plugin); without one, you'll see only Categories and Tags. Taxonomies with 20+ terms have a search bar. Checkboxes render in a 2-column grid. The product-count pill updates live.
 4. For **Specific products only**, use the typeahead search box to find products by name or SKU. Click a match to add a chip; already-added items appear disabled with a checkmark. Chips show the product name and SKU.
 5. Click **Save changes** at the bottom-right.
 
-![Product visibility tab, by-taxonomy mode](screenshots/04-products-by-taxonomy.png)
+![Visibility tab, by-taxonomy mode](screenshots/04-products-by-taxonomy.png)
 
-![Product visibility tab, specific products mode](screenshots/05-products-selected.png)
+![Visibility tab, specific products mode](screenshots/05-products-selected.png)
 
 Visibility applies consistently across `/llms.txt`, the UCP catalog endpoints, and JSON-LD on product pages. Excluded products cannot be returned by an AI agent's catalog query; exclusion is enforced at the data layer, not by hiding links.
 
