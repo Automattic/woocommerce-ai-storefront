@@ -32,6 +32,13 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		Monkey\setUp();
 		$this->controller = new WC_AI_Storefront_Admin_Controller();
 
+		Functions\when( 'sanitize_key' )->alias(
+			static fn( $v ) => preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $v ) )
+		);
+		Functions\when( 'sanitize_text_field' )->alias(
+			static fn( $v ) => trim( preg_replace( '/[\r\n\t ]+/', ' ', strip_tags( (string) $v ) ) )
+		);
+
 		Functions\when( 'wc_get_order_statuses' )->justReturn(
 			[
 				'wc-pending'    => 'Pending payment',
@@ -49,6 +56,17 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( '__' )->alias( static fn( $text ) => $text );
+		Functions\when( 'admin_url' )->alias( static fn( $path = '' ) => 'https://example.com/wp-admin/' . ltrim( $path, '/' ) );
+		Functions\when( 'add_query_arg' )->alias(
+			static function ( $args, $url = '' ) {
+				if ( is_array( $args ) ) {
+					return $url . '?' . http_build_query( $args );
+				}
+				return $url;
+			}
+		);
+		Functions\when( 'human_time_diff' )->justReturn( '5 minutes' );
 	}
 
 	protected function tearDown(): void {

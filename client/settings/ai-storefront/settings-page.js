@@ -909,7 +909,8 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					value={
 						stats?.all_orders > 0
 							? `${ (
-									( ( stats.ai_orders || 0 ) / stats.all_orders ) *
+									( ( stats.ai_orders || 0 ) /
+										stats.all_orders ) *
 									100
 							  ).toFixed( 1 ) }%`
 							: '\u2014'

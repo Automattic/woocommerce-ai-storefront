@@ -9,19 +9,7 @@
  * @package WooCommerce_AI_Storefront
  */
 
-if ( ! function_exists( 'sanitize_key' ) ) {
-	function sanitize_key( $key ): string {
-		$key = strtolower( (string) $key );
-		return preg_replace( '/[^a-z0-9_\-]/', '', $key );
-	}
-}
 
-if ( ! function_exists( 'sanitize_text_field' ) ) {
-	function sanitize_text_field( $str ): string {
-		$str = strip_tags( (string) $str );
-		return trim( preg_replace( '/[\r\n\t ]+/', ' ', $str ) );
-	}
-}
 
 if ( ! class_exists( 'WP_Error' ) ) {
 	/**
@@ -435,6 +423,26 @@ if ( ! class_exists( 'WC_Order' ) ) {
 		public function set_test_date_created( \WC_DateTime_Stub $date ): void {
 			$this->date_created = $date;
 		}
+
+		public function get_billing_first_name(): string {
+			return '';
+		}
+
+		public function get_billing_last_name(): string {
+			return '';
+		}
+
+		public function get_billing_email(): string {
+			return '';
+		}
+
+		public function get_customer_id(): int {
+			return 0;
+		}
+
+		public function get_items( string $type = 'line_item' ): array {
+			return [];
+		}
 	}
 }
 
@@ -525,12 +533,14 @@ if ( ! class_exists( 'WC_DateTime_Stub' ) ) {
 		}
 
 		public function format( string $fmt ): string {
-			// The handler only asks for `c` (ISO-8601). Anything
-			// else returns the ISO string too — tests don't care.
 			if ( 'c' === $fmt ) {
 				return $this->iso;
 			}
 			return $this->iso;
+		}
+
+		public function getTimestamp(): int {
+			return strtotime( $this->iso ) ?: 0;
 		}
 	}
 }

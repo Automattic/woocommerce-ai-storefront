@@ -660,19 +660,8 @@ class WC_AI_Storefront_Admin_Controller {
 
 		$orders = wc_get_orders( $query_args );
 
-		// Get the true total for pagination — run a count-only query with the
-		// same filters but no limit/offset so DataViews knows how many pages exist.
-		$count_args             = $query_args;
-		$count_args['limit']    = -1;
-		$count_args['paged']    = 1;
-		$count_args['return']   = 'ids';
-		$count_args['paginate'] = false;
-		$total_orders           = count( wc_get_orders( $count_args ) );
-
 		// DB error — return an empty result set so the admin UI shows
-		// "no orders" rather than a fatal. The error is surfaced via the
-		// HTTP response code if the caller checks it; an empty array is
-		// less confusing than a stack trace in the admin panel.
+		// "no orders" rather than a fatal.
 		if ( is_wp_error( $orders ) ) {
 			return new WP_REST_Response(
 				array(
@@ -682,6 +671,15 @@ class WC_AI_Storefront_Admin_Controller {
 				)
 			);
 		}
+
+		// Get the true total for pagination — run a count-only query with the
+		// same filters but no limit/offset so DataViews knows how many pages exist.
+		$count_args             = $query_args;
+		$count_args['limit']    = -1;
+		$count_args['paged']    = 1;
+		$count_args['return']   = 'ids';
+		$count_args['paginate'] = false;
+		$total_orders           = count( wc_get_orders( $count_args ) );
 
 		$statuses = wc_get_order_statuses();
 		$rows     = [];

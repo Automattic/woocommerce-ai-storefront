@@ -132,15 +132,10 @@ const RATE_LIMIT_PRESETS = {
 };
 
 /**
- * Map an RPM integer back to its preset key.
+ * Strip hostname from a URL, returning only the path and query string.
  *
- * Used by the radio control to pre-select the right preset when the
- * page first renders. Returns 'custom' when the stored RPM doesn't
- * match any preset — which correctly reveals the custom RPM input
- * for merchants who've tuned the value manually.
- *
- * @param {number} rpm Requests-per-minute from the stored settings.
- * @return {string}    Preset key ('conservative'/'recommended'/'generous') or 'custom'.
+ * @param {string} url Full URL to shorten.
+ * @return {string}    Path + query string, or the original string if not a valid URL.
  */
 const urlPath = ( url ) => {
 	try {
@@ -151,6 +146,17 @@ const urlPath = ( url ) => {
 	}
 };
 
+/**
+ * Map an RPM integer back to its preset key.
+ *
+ * Used by the radio control to pre-select the right preset when the
+ * page first renders. Returns 'custom' when the stored RPM doesn't
+ * match any preset — which correctly reveals the custom RPM input
+ * for merchants who've tuned the value manually.
+ *
+ * @param {number} rpm Requests-per-minute from the stored settings.
+ * @return {string}    Preset key ('conservative'/'recommended'/'generous') or 'custom'.
+ */
 const getActivePreset = ( rpm ) => {
 	for ( const [ key, preset ] of Object.entries( RATE_LIMIT_PRESETS ) ) {
 		if ( preset.rpm === rpm ) {
@@ -1443,7 +1449,10 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 									} }
 									aria-hidden="true"
 								>
-									{ __( '/ min', 'woocommerce-ai-storefront' ) }
+									{ __(
+										'/ min',
+										'woocommerce-ai-storefront'
+									) }
 								</span>
 							</div>
 						) }
