@@ -21,10 +21,10 @@
     "scripts": {
         "test": "phpunit",
         "post-install-cmd": [
-            "@php -r \"if (file_exists('bin/install-hooks.sh')) { passthru('bash bin/install-hooks.sh'); }\""
+            "@php -r \"if (file_exists('bin/install-hooks.js')) { $code = 0; passthru('node bin/install-hooks.js', $code); /* best-effort: don't fail the install if Node is missing or hook activation errors */ }\""
         ],
         "post-update-cmd": [
-            "@php -r \"if (file_exists('bin/install-hooks.sh')) { passthru('bash bin/install-hooks.sh'); }\""
+            "@php -r \"if (file_exists('bin/install-hooks.js')) { $code = 0; passthru('node bin/install-hooks.js', $code); }\""
         ]
     },
     "autoload": {

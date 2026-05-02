@@ -10,7 +10,7 @@
 		"npm": ">=8.19.2"
 	},
 	"scripts": {
-		"prepare": "bin/install-hooks.sh",
+		"prepare": "node bin/install-hooks.js",
 		"build": "wp-scripts build",
 		"postbuild": "node scripts/copy-dataviews-css.js",
 		"start": "wp-scripts start",
