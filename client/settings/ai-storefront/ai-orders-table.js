@@ -194,6 +194,11 @@ export const VIEW_STORAGE_KEY = 'wc_ai_storefront_orders_view';
 // Keys whose values are display preferences worth persisting.
 const PERSISTED_VIEW_KEYS = [ 'type', 'perPage', 'sort', 'fields', 'layout' ];
 
+// The only layout this component registers in defaultLayouts. A stored
+// type outside this set causes DataViews to render null — guard against
+// stale or hand-edited localStorage values by clamping to known-good types.
+const SUPPORTED_LAYOUT_TYPES = new Set( [ 'table' ] );
+
 /**
  * Load the persisted view preferences from localStorage, merged on top
  * of DEFAULT_VIEW. Falls back silently on any parse failure or when
@@ -223,6 +228,12 @@ export const loadPersistedView = () => {
 					( k ) => [ k, parsed[ k ] ]
 				)
 			);
+			// Clamp type to supported layouts. DataViews renders null when
+			// view.type isn't in defaultLayouts — e.g. a stored 'grid' from
+			// a future version or manual localStorage edit would blank the table.
+			if ( safe.type && ! SUPPORTED_LAYOUT_TYPES.has( safe.type ) ) {
+				safe.type = DEFAULT_VIEW.type;
+			}
 			return { ...DEFAULT_VIEW, ...safe, page: 1 };
 		}
 	} catch ( _err ) {

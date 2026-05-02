@@ -82,6 +82,16 @@ describe( 'loadPersistedView', () => {
 		window.localStorage.setItem( VIEW_STORAGE_KEY, JSON.stringify( 42 ) );
 		expect( loadPersistedView().perPage ).toBe( 10 );
 	} );
+
+	it( 'clamps unsupported type to table to prevent DataViews rendering null', () => {
+		window.localStorage.setItem(
+			VIEW_STORAGE_KEY,
+			JSON.stringify( { type: 'grid', perPage: 25 } )
+		);
+		const view = loadPersistedView();
+		expect( view.type ).toBe( 'table' );
+		expect( view.perPage ).toBe( 25 );
+	} );
 } );
 
 describe( 'persistView', () => {
