@@ -173,8 +173,9 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_registered_customer_order_sets_customer_url(): void {
 		// Registered customers (customer_id > 0) must produce a
-		// customer_url pointing to user-edit.php so the DataViews
-		// Customer column can render a clickable link.
+		// customer_url pointing to the WooCommerce Analytics customer
+		// detail page (/wp-admin/admin.php?page=wc-admin&path=/customers/{id})
+		// so the DataViews Customer column can render a clickable link.
 		$order = $this->make_order();
 		$order->set_test_customer_id( 5 );
 		$order->set_test_billing_first_name( 'Jane' );
@@ -185,8 +186,11 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		$row      = $response->get_data()['orders'][0];
 
 		$this->assertSame( 'Jane Doe', $row['customer'] );
-		$this->assertStringContainsString( 'user-edit.php', $row['customer_url'] );
-		$this->assertStringContainsString( 'user_id=5', $row['customer_url'] );
+		// add_query_arg URL-encodes the path value (/customers/5 → %2Fcustomers%2F5);
+		// decode before asserting so the test reads clearly.
+		$decoded_url = urldecode( $row['customer_url'] );
+		$this->assertStringContainsString( 'page=wc-admin', $decoded_url );
+		$this->assertStringContainsString( '/customers/5', $decoded_url );
 	}
 
 	public function test_guest_order_has_empty_customer_url(): void {
