@@ -187,7 +187,7 @@ const DEFAULT_VIEW = {
 };
 
 // localStorage key for persisted view preferences.
-// Only display settings (layout, perPage, sort, fields) are stored;
+// Only display settings (type, layout, perPage, sort, fields) are stored;
 // transient navigation state (page, search, filters) is not.
 export const VIEW_STORAGE_KEY = 'wc_ai_storefront_orders_view';
 

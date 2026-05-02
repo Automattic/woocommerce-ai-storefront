@@ -21,10 +21,8 @@ const plugins = ( defaultConfig.plugins || [] ).filter(
 plugins.push( new WooCommerceDependencyExtractionWebpackPlugin() );
 
 // Copy @wordpress/dataviews' pre-built stylesheet into our output on every
-// webpack compilation (build AND watch). Previously this lived in a
-// `postbuild` npm hook which only fires for `npm run build`, so `npm start`
-// would delete the file on each watch rebuild. Moving it into webpack ensures
-// the CSS is always present regardless of which script runs.
+// webpack compilation (build AND watch). This ensures the CSS is always
+// present regardless of which script runs — `npm run build` or `npm start`.
 plugins.push(
 	new CopyPlugin( {
 		patterns: [
@@ -33,7 +31,7 @@ plugins.push(
 					__dirname,
 					'node_modules/@wordpress/dataviews/build-style/style.css'
 				),
-				to: path.resolve( __dirname, 'build/ai-storefront-settings.css' ),
+				to: 'ai-storefront-settings.css',
 			},
 		],
 	} )

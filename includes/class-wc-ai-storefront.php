@@ -368,13 +368,13 @@ class WC_AI_Storefront {
 
 		// Only register the stylesheet if the build produced one.
 		//
-		// Cache-busting note: the CSS file is produced out-of-band by
-		// `scripts/copy-dataviews-css.js` (a postbuild step), NOT by
-		// webpack — so it doesn't participate in `$asset['version']`'s
-		// JS content hash. A DataViews CSS-only bump without a JS
-		// change would otherwise not invalidate merchants' browser
-		// caches. Hash the file separately via `md5_file()` so the
-		// registered version tracks the file's actual contents.
+		// Cache-busting note: the CSS file is copied by CopyPlugin in
+		// webpack.config.js, NOT emitted through the normal JS pipeline,
+		// so it doesn't participate in `$asset['version']`'s JS content
+		// hash. A DataViews CSS-only bump without a JS change would
+		// otherwise not invalidate merchants' browser caches. Hash the
+		// file separately via `md5_file()` so the registered version
+		// tracks the file's actual contents.
 		$css_path = WC_AI_STOREFRONT_PLUGIN_PATH . '/build/ai-storefront-settings.css';
 		if ( file_exists( $css_path ) ) {
 			// Three-tier fallback chain for the cache-bust version:
