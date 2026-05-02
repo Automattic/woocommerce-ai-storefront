@@ -92,6 +92,17 @@ describe( 'loadPersistedView', () => {
 		expect( view.type ).toBe( 'table' );
 		expect( view.perPage ).toBe( 25 );
 	} );
+
+	it.each( [ '', null ] )(
+		'clamps falsy type %p to table',
+		( badType ) => {
+			window.localStorage.setItem(
+				VIEW_STORAGE_KEY,
+				JSON.stringify( { type: badType, perPage: 25 } )
+			);
+			expect( loadPersistedView().type ).toBe( 'table' );
+		}
+	);
 } );
 
 describe( 'persistView', () => {

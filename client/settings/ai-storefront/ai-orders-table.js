@@ -231,7 +231,7 @@ export const loadPersistedView = () => {
 			// Clamp type to supported layouts. DataViews renders null when
 			// view.type isn't in defaultLayouts — e.g. a stored 'grid' from
 			// a future version or manual localStorage edit would blank the table.
-			if ( safe.type && ! SUPPORTED_LAYOUT_TYPES.has( safe.type ) ) {
+			if ( 'type' in safe && ! SUPPORTED_LAYOUT_TYPES.has( safe.type ) ) {
 				safe.type = DEFAULT_VIEW.type;
 			}
 			return { ...DEFAULT_VIEW, ...safe, page: 1 };
