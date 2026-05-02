@@ -147,6 +147,8 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		$expected_keys = [
 			'id',
 			'number',
+			'customer',
+			'customer_url',
 			'date',
 			'date_display',
 			'status',
@@ -163,6 +165,46 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 				"Recent-orders row missing key `{$key}` — the AI Orders DataViews table will blank its corresponding cell."
 			);
 		}
+	}
+
+	// ------------------------------------------------------------------
+	// Contract: customer field + customer_url
+	// ------------------------------------------------------------------
+
+	public function test_registered_customer_order_sets_customer_url(): void {
+		// Registered customers (customer_id > 0) must produce a
+		// customer_url pointing to user-edit.php so the DataViews
+		// Customer column can render a clickable link.
+		$order = $this->make_order();
+		$order->set_test_customer_id( 5 );
+		$order->set_test_billing_first_name( 'Jane' );
+		$order->set_test_billing_last_name( 'Doe' );
+		Functions\when( 'wc_get_orders' )->justReturn( [ $order ] );
+
+		$response = $this->controller->get_recent_orders( $this->request() );
+		$row      = $response->get_data()['orders'][0];
+
+		$this->assertSame( 'Jane Doe', $row['customer'] );
+		$this->assertStringContainsString( 'user-edit.php', $row['customer_url'] );
+		$this->assertStringContainsString( 'user_id=5', $row['customer_url'] );
+	}
+
+	public function test_guest_order_has_empty_customer_url(): void {
+		// Guest checkouts have no WP user account (customer_id = 0).
+		// The customer_url must be an empty string so the JS
+		// safeHref() guard returns null and the name renders as
+		// plain text rather than a broken link.
+		$order = $this->make_order();
+		// customer_id stays 0 (stub default — no registered account).
+		$order->set_test_billing_first_name( 'John' );
+		$order->set_test_billing_last_name( 'Guest' );
+		Functions\when( 'wc_get_orders' )->justReturn( [ $order ] );
+
+		$response = $this->controller->get_recent_orders( $this->request() );
+		$row      = $response->get_data()['orders'][0];
+
+		$this->assertSame( 'John Guest', $row['customer'] );
+		$this->assertSame( '', $row['customer_url'] );
 	}
 
 	public function test_status_label_comes_from_wc_get_order_statuses(): void {
