@@ -4,6 +4,8 @@
 
 ### Features
 
+- Overview tab: new **AI Revenue %** stat card (positioned after AI Revenue) shows AI-attributed revenue as a share of total store revenue. Shows `—` when no store revenue exists in the period.
+
 ### Fixes
 
 ### Refactors

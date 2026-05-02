@@ -69,6 +69,7 @@ The Overview tab populates with stat cards once data flows in:
 - **AI orders**: AI-attributed volume in the period, shown as `N / M` where M is the total orders denominator.
 - **AI Order Rate**: percentage of all orders in the period that came from AI agents (`AI orders / all orders`). Shows `0.0%` when orders exist but none are AI-attributed.
 - **AI revenue**: gross revenue from AI-referred orders, shown as `$X / $Y` where Y is total store revenue in the period (no decimals on the denominator).
+- **AI revenue %**: AI-attributed revenue as a percentage of total store revenue (`AI revenue / all revenue`). Shows `—` when no store revenue exists in the period.
 - **AI AOV**: average order value from AI-referred orders.
 - **Top agent**: which agent drives the most AI volume.
 - **Top agent share**: what share of AI revenue the top agent represents.
