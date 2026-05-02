@@ -1,0 +1,5 @@
+{
+	"config": {
+		"WC_AI_STOREFRONT_GITHUB_TOKEN": "ghp_your_token_here"
+	}
+}

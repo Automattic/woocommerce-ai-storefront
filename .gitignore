@@ -1,4 +1,5 @@
 node_modules/
+.wp-env.override.json
 # Anchor `/vendor/` to the repo root so composer's top-level vendor
 # dir is ignored but vendored library subdirectories (like PUC's own
 # `includes/lib/plugin-update-checker/vendor/` that ships Parsedown

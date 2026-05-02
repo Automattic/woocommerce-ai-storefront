@@ -59,6 +59,20 @@ git checkout your-branch
 npm run build        # if your branch has JS changes
 ```
 
+**GitHub token (required for the plugin update checker):**
+
+The repo is internal to the Automattic GitHub org, so the in-admin plugin update checker can't make anonymous API calls — GitHub returns 404 for internal repos without auth. Authenticated calls work fine.
+
+Copy the example override file and add your GitHub token (any classic PAT with no special scopes is fine — read-only access to internal org repos is granted by org membership):
+
+```bash
+cp .wp-env.override.json.example .wp-env.override.json
+# edit .wp-env.override.json and replace ghp_your_token_here with your actual token
+npm run env:start    # or env:clean to apply config to a running env
+```
+
+`.wp-env.override.json` is gitignored — it stays local. Without this, the "Could not determine if updates are available" notice appears in wp-admin, but it doesn't affect any other plugin functionality.
+
 ## Required checks before a PR
 
 - `composer test` — PHPUnit (920+ tests).

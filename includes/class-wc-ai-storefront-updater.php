@@ -110,20 +110,32 @@ class WC_AI_Storefront_Updater {
 		/**
 		 * Authenticate the update-check requests against GitHub.
 		 *
-		 * Anonymous GitHub API requests are rate-limited to 60/hour
-		 * per IP. A merchant hitting that limit (shared hosting,
-		 * frequent dashboard refreshes) sees a 403 and an admin
-		 * notice "Could not determine if updates are available."
+		 * The repository is internal to the Automattic GitHub org, so
+		 * every unauthenticated API request returns 404. A GitHub
+		 * personal access token (read-only, no special scopes required
+		 * for org-internal repos) must be supplied for update checks to
+		 * work.
 		 *
-		 * Filter: `wc_ai_storefront_github_token` — return a GitHub
-		 * personal access token (no scopes needed for public repos)
-		 * to authenticate update-checker calls. Authenticated
-		 * requests are 5,000/hour.
+		 * Two ways to supply the token:
+		 *
+		 * 1. PHP constant `WC_AI_STOREFRONT_GITHUB_TOKEN` — define it
+		 *    in `wp-config.php` or (for local wp-env) add it to
+		 *    `.wp-env.override.json` under `"config"`:
+		 *
+		 *        { "config": { "WC_AI_STOREFRONT_GITHUB_TOKEN": "ghp_…" } }
+		 *
+		 * 2. Filter `wc_ai_storefront_github_token` — return a token
+		 *    string from a mu-plugin or theme function. This takes
+		 *    precedence over the constant.
+		 *
+		 * Authenticated requests are 5,000/hour vs 60/hour anonymous.
 		 *
 		 * @param string $token GitHub personal access token.
-		 *                       Default empty (anonymous).
+		 *                       Default: value of WC_AI_STOREFRONT_GITHUB_TOKEN
+		 *                       constant, or empty string (anonymous).
 		 */
-		$github_token = apply_filters( 'wc_ai_storefront_github_token', '' );
+		$constant_token = defined( 'WC_AI_STOREFRONT_GITHUB_TOKEN' ) ? WC_AI_STOREFRONT_GITHUB_TOKEN : '';
+		$github_token   = apply_filters( 'wc_ai_storefront_github_token', $constant_token );
 		if ( $github_token && method_exists( $checker, 'setAuthentication' ) ) {
 			$checker->setAuthentication( $github_token );
 		}
