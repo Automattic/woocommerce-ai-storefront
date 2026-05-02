@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-02T00:53:07+00:00\n"
+"POT-Creation-Date: 2026-05-02T01:30:49+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -335,7 +335,7 @@ msgstr ""
 
 #: client/settings/ai-storefront/ai-orders-table.js:279
 #: client/settings/ai-storefront/ai-orders-table.js:572
-#: client/settings/ai-storefront/endpoint-info.js:691
+#: client/settings/ai-storefront/endpoint-info.js:855
 msgid "Status"
 msgstr ""
 
@@ -376,208 +376,208 @@ msgstr ""
 msgid "+%d more"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:444
+#: client/settings/ai-storefront/endpoint-info.js:543
 msgid "Checking…"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:456
+#: client/settings/ai-storefront/endpoint-info.js:555
 msgid "Reachable"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:462
+#: client/settings/ai-storefront/endpoint-info.js:561
 msgid "Not reachable"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:468
+#: client/settings/ai-storefront/endpoint-info.js:567
 msgid "Not published"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:605
-msgid "AI agent access"
+#: client/settings/ai-storefront/endpoint-info.js:619
+msgid "General-purpose AI assistants"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:614
-msgid "How AI agents find and interact with your site."
-msgstr ""
-
-#: client/settings/ai-storefront/endpoint-info.js:624
-msgid "Discovery endpoints"
+#: client/settings/ai-storefront/endpoint-info.js:629
+msgid "Agentic shopping"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:636
-msgid "These endpoints are automatically available when AI Storefront is enabled."
+msgid "Commerce search engines"
+msgstr ""
+
+#: client/settings/ai-storefront/endpoint-info.js:643
+msgid "Regional Asia"
+msgstr ""
+
+#: client/settings/ai-storefront/endpoint-info.js:650
+msgid "Regional Europe"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:657
+msgid "Training and test crawlers"
+msgstr ""
+
+#: client/settings/ai-storefront/endpoint-info.js:769
+msgid "AI agent access"
+msgstr ""
+
+#: client/settings/ai-storefront/endpoint-info.js:778
+msgid "How AI agents find and interact with your site."
+msgstr ""
+
+#: client/settings/ai-storefront/endpoint-info.js:788
+msgid "Discovery endpoints"
+msgstr ""
+
+#: client/settings/ai-storefront/endpoint-info.js:800
+msgid "These endpoints are automatically available when AI Storefront is enabled."
+msgstr ""
+
+#: client/settings/ai-storefront/endpoint-info.js:821
 msgid "Reachability is checked from your browser."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:671
+#: client/settings/ai-storefront/endpoint-info.js:835
 msgid "AI Storefront is currently disabled. Enable it in the Overview tab to activate these endpoints."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:682
+#: client/settings/ai-storefront/endpoint-info.js:846
 msgid "Endpoint"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:688
+#: client/settings/ai-storefront/endpoint-info.js:852
 msgid "URL"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:697
+#: client/settings/ai-storefront/endpoint-info.js:861
 msgid "Purpose"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:726
+#: client/settings/ai-storefront/endpoint-info.js:890
 msgid "Machine-readable store guide for AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:751
+#: client/settings/ai-storefront/endpoint-info.js:915
 msgid "Universal Commerce Protocol — declares capabilities"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:776
+#: client/settings/ai-storefront/endpoint-info.js:940
 msgid "AI-crawler allow-list (Allow/Disallow directives appended to your site’s robots.txt)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:803
+#: client/settings/ai-storefront/endpoint-info.js:967
 msgid "Structured commerce API for AI agents — catalog search, lookup, and checkout sessions"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:826
+#: client/settings/ai-storefront/endpoint-info.js:990
 msgid "One or more endpoints are not reachable. If you just upgraded the plugin, try Settings → Permalinks → Save Changes to flush rewrite rules, then click Re-check."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:854
+#: client/settings/ai-storefront/endpoint-info.js:1018
 msgid "Re-check"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:864
+#: client/settings/ai-storefront/endpoint-info.js:1028
 msgid "Allowed AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:876
+#: client/settings/ai-storefront/endpoint-info.js:1040
 msgid "Control which AI agents are allowed to discover your store via robots.txt."
 msgstr ""
 
 #. translators: %1$d: number of allowed AI agents, %2$d: total AI agents
-#: client/settings/ai-storefront/endpoint-info.js:933
+#: client/settings/ai-storefront/endpoint-info.js:1097
 #, js-format
 msgid "Allowed AI agents: %1$d of %2$d"
 msgstr ""
 
 #. translators: %1$d: allowed count, %2$d: total count
-#: client/settings/ai-storefront/endpoint-info.js:943
+#: client/settings/ai-storefront/endpoint-info.js:1107
 #, js-format
 msgid "%1$d of %2$d"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:960
+#: client/settings/ai-storefront/endpoint-info.js:1124
 #: client/settings/ai-storefront/product-selection.js:2023
 msgid "Select all"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:992
+#: client/settings/ai-storefront/endpoint-info.js:1156
 msgid "Clear"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1013
-msgid "General-purpose AI assistants"
-msgstr ""
-
-#: client/settings/ai-storefront/endpoint-info.js:1023
-msgid "Agentic shopping"
-msgstr ""
-
-#: client/settings/ai-storefront/endpoint-info.js:1033
-msgid "Commerce search engines"
-msgstr ""
-
-#: client/settings/ai-storefront/endpoint-info.js:1043
-msgid "Regional Asia"
-msgstr ""
-
-#: client/settings/ai-storefront/endpoint-info.js:1053
-msgid "Regional Europe"
-msgstr ""
-
-#: client/settings/ai-storefront/endpoint-info.js:1063
-msgid "Training and test crawlers"
-msgstr ""
-
 #. translators: %1$d allowed, %2$d total
-#: client/settings/ai-storefront/endpoint-info.js:1142
+#: client/settings/ai-storefront/endpoint-info.js:1251
 #, js-format
 msgid "%1$d/%2$d allowed"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1206
+#: client/settings/ai-storefront/endpoint-info.js:1315
 msgid "Other AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1219
+#: client/settings/ai-storefront/endpoint-info.js:1328
 msgid "When checked, AI agents whose brand isn’t in the list can access your store."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1225
+#: client/settings/ai-storefront/endpoint-info.js:1334
 msgid "Allow agents not on the list"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1265
+#: client/settings/ai-storefront/endpoint-info.js:1374
 msgid "Rate limits"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1274
+#: client/settings/ai-storefront/endpoint-info.js:1383
 msgid "Control how frequently AI agents can query your store. Higher limits allow faster product discovery but use more server resources."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1295
+#: client/settings/ai-storefront/endpoint-info.js:1404
 msgid "Recommended"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1300
+#: client/settings/ai-storefront/endpoint-info.js:1409
 msgid "Works well for most stores."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1307
+#: client/settings/ai-storefront/endpoint-info.js:1416
 msgid "Conservative"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1312
+#: client/settings/ai-storefront/endpoint-info.js:1421
 msgid "Shared hosting or low-traffic stores."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1319
+#: client/settings/ai-storefront/endpoint-info.js:1428
 msgid "Generous"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1324
+#: client/settings/ai-storefront/endpoint-info.js:1433
 msgid "High-traffic stores on dedicated hosting."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1331
+#: client/settings/ai-storefront/endpoint-info.js:1440
 msgid "Custom"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1339
+#: client/settings/ai-storefront/endpoint-info.js:1448
 msgid "Set your own requests-per-minute cap."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1430
+#: client/settings/ai-storefront/endpoint-info.js:1539
 msgid "Requests per minute"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1462
+#: client/settings/ai-storefront/endpoint-info.js:1571
 msgid "/ min"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1524
+#: client/settings/ai-storefront/endpoint-info.js:1633
 #: client/settings/ai-storefront/policies-tab.js:1130
 #: client/settings/ai-storefront/product-selection.js:1926
 msgid "Saving…"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1525
+#: client/settings/ai-storefront/endpoint-info.js:1634
 #: client/settings/ai-storefront/policies-tab.js:1131
 #: client/settings/ai-storefront/product-selection.js:1927
 msgid "Save changes"

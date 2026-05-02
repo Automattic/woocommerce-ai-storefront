@@ -49,22 +49,22 @@
 
 'use strict';
 
-const { spawnSync } = require('node:child_process');
-const { existsSync, readdirSync, statSync, chmodSync } = require('node:fs');
-const { join } = require('node:path');
+const { spawnSync } = require( 'node:child_process' );
+const { existsSync, readdirSync, statSync, chmodSync } = require( 'node:fs' );
+const { join } = require( 'node:path' );
 
-const REPO_ROOT = join(__dirname, '..');
-const HOOKS_DIR = join(REPO_ROOT, '.githooks');
+const REPO_ROOT = join( __dirname, '..' );
+const HOOKS_DIR = join( REPO_ROOT, '.githooks' );
 
-function warn(msg) {
-	console.warn(`install-hooks: ${ msg }`);
+function warn( msg ) {
+	console.warn( `install-hooks: ${ msg }` );
 }
 
 // Bail quietly if the hooks directory is missing — happens if the
 // script is run from an export of the repo that excluded `.githooks/`.
-if (!existsSync(HOOKS_DIR)) {
-	warn(`.githooks/ not found at ${ HOOKS_DIR }; skipping activation.`);
-	process.exit(0);
+if ( ! existsSync( HOOKS_DIR ) ) {
+	warn( `.githooks/ not found at ${ HOOKS_DIR }; skipping activation.` );
+	process.exit( 0 );
 }
 
 // Set `core.hooksPath` for the current clone. `git config` exits 0
@@ -72,18 +72,22 @@ if (!existsSync(HOOKS_DIR)) {
 // not shared. Exactly the scope we want.
 const gitResult = spawnSync(
 	'git',
-	['config', 'core.hooksPath', '.githooks'],
+	[ 'config', 'core.hooksPath', '.githooks' ],
 	{ cwd: REPO_ROOT, stdio: 'inherit' }
 );
 
-if (gitResult.error) {
-	warn(`could not run \`git config\`: ${ gitResult.error.message }. Hooks not activated.`);
-	process.exit(0);
+if ( gitResult.error ) {
+	warn(
+		`could not run \`git config\`: ${ gitResult.error.message }. Hooks not activated.`
+	);
+	process.exit( 0 );
 }
 
-if (gitResult.status !== 0) {
-	warn(`\`git config core.hooksPath\` exited ${ gitResult.status }. Hooks may not be active.`);
-	process.exit(0);
+if ( gitResult.status !== 0 ) {
+	warn(
+		`\`git config core.hooksPath\` exited ${ gitResult.status }. Hooks may not be active.`
+	);
+	process.exit( 0 );
 }
 
 // Mark each hook in `.githooks/` as executable. Most filesystems
@@ -91,22 +95,22 @@ if (gitResult.status !== 0) {
 // imports may strip it. Skip on Windows entirely — Windows file modes
 // don't have a Unix execute bit; Git for Windows treats `.githooks/`
 // shell scripts as executable as long as Git's `core.fileMode` allows.
-if (process.platform !== 'win32') {
+if ( process.platform !== 'win32' ) {
 	try {
-		for (const entry of readdirSync(HOOKS_DIR)) {
-			const path = join(HOOKS_DIR, entry);
-			const st = statSync(path);
-			if (st.isFile()) {
+		for ( const entry of readdirSync( HOOKS_DIR ) ) {
+			const path = join( HOOKS_DIR, entry );
+			const st = statSync( path );
+			if ( st.isFile() ) {
 				// 0o755 = rwx for owner, rx for group/others. Standard
 				// shell-script permission set.
-				chmodSync(path, 0o755);
+				chmodSync( path, 0o755 );
 			}
 		}
-	} catch (err) {
-		warn(`chmod failed: ${ err.message }. Hooks may not be executable.`);
+	} catch ( err ) {
+		warn( `chmod failed: ${ err.message }. Hooks may not be executable.` );
 		// Don't exit non-zero — chmod failure isn't fatal; Git might
 		// still execute the hooks depending on filesystem.
 	}
 }
 
-console.log('git hooks activated (core.hooksPath = .githooks)');
+console.log( 'git hooks activated (core.hooksPath = .githooks)' );

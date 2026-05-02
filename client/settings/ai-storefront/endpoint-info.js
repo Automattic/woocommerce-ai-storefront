@@ -18,6 +18,105 @@ const ENDPOINT_TAB_CLASS = 'ai-storefront-endpoint-tab';
 
 const CRAWLER_GROUP_CLASS = 'ai-storefront-crawler-group';
 
+// localStorage key for persisted crawler-group collapse/expand state.
+// Stored value is JSON: `{ [groupKey]: boolean }`. Groups missing from
+// the stored object fall back to their `defaultOpen` flag, so adding a
+// new group doesn't disturb existing merchants' choices.
+const EXPANDED_GROUPS_STORAGE_KEY =
+	'wc_ai_storefront_discovery_expanded_groups';
+
+/**
+ * Persisted open/closed state for the Discovery tab's crawler groups.
+ *
+ * Returns `[expanded, setGroupExpanded]` where `expanded` is a record
+ * keyed on the group's stable `key` and `setGroupExpanded( key, isOpen )`
+ * updates state and writes through to localStorage.
+ *
+ * Why localStorage and not the settings store: collapse/expand of
+ * read-only informational groups is UI memory, not configuration.
+ * Persisting it via the settings POST would write to the database on
+ * every click (or require a debounce + dirty-aware save flow), and it
+ * would entangle UI prefs with the configuration model that translators
+ * and the REST API surface care about. localStorage is the right scope:
+ * survives navigation, page reload, and save-triggered re-renders;
+ * doesn't sync cross-device, which is fine for this kind of state.
+ *
+ * Why lazy `useState` initializer: reading localStorage on first render
+ * means the very first paint already reflects the merchant's prior
+ * choices. A `useEffect` read would render with defaults first, then
+ * flip on hydrate — visible flash on every visit.
+ *
+ * Failure modes: localStorage access can throw in private-browsing
+ * modes on some browsers, and the JSON in storage may be malformed if
+ * something else has tampered with it. Both branches fall through to
+ * "use defaults," so the feature degrades to the pre-fix behavior
+ * rather than throwing into the merchant's UI.
+ *
+ * @param {Array<{ key: string, defaultOpen: boolean }>} groups Group
+ *                                                              definitions; only `key` and `defaultOpen` are read.
+ * @return {[Object<string, boolean>, (key: string, isOpen: boolean) => void]}
+ *     A `[expanded, setGroupExpanded]` pair where `expanded` maps each
+ *     group's `key` to its current open state, and `setGroupExpanded`
+ *     updates the state and persists it to localStorage.
+ */
+const useExpandedGroups = ( groups ) => {
+	const [ expanded, setExpanded ] = useState( () => {
+		const defaults = Object.fromEntries(
+			groups.map( ( g ) => [ g.key, !! g.defaultOpen ] )
+		);
+		if ( typeof window === 'undefined' ) {
+			return defaults;
+		}
+		try {
+			const stored = window.localStorage.getItem(
+				EXPANDED_GROUPS_STORAGE_KEY
+			);
+			if ( ! stored ) {
+				return defaults;
+			}
+			const parsed = JSON.parse( stored );
+			if ( parsed && typeof parsed === 'object' ) {
+				// Merge stored state on top of defaults. Groups absent
+				// from storage keep their `defaultOpen`; groups present
+				// in storage with non-boolean values fall back to default.
+				const merged = { ...defaults };
+				for ( const [ key, value ] of Object.entries( parsed ) ) {
+					if ( typeof value === 'boolean' ) {
+						merged[ key ] = value;
+					}
+				}
+				return merged;
+			}
+			return defaults;
+		} catch ( _err ) {
+			return defaults;
+		}
+	} );
+
+	const setGroupExpanded = ( key, isOpen ) => {
+		setExpanded( ( prev ) => {
+			if ( prev[ key ] === isOpen ) {
+				return prev;
+			}
+			const next = { ...prev, [ key ]: isOpen };
+			if ( typeof window !== 'undefined' ) {
+				try {
+					window.localStorage.setItem(
+						EXPANDED_GROUPS_STORAGE_KEY,
+						JSON.stringify( next )
+					);
+				} catch ( _err ) {
+					// Quota exceeded, private-browsing block, etc.
+					// State still updates in memory for the session.
+				}
+			}
+			return next;
+		} );
+	};
+
+	return [ expanded, setGroupExpanded ];
+};
+
 /**
  * Endpoint-tab-specific styles. The shared 32px input-height override
  * is provided by `TabInputStyles`; this component owns the URL-cell
@@ -504,6 +603,64 @@ const StatusBadge = ( { status } ) => {
 	);
 };
 
+// Crawler-group definitions for the Discovery tab's collapsible chrome.
+// Lifted out of the JSX render block so the same list can feed both
+// the rendered `<details>` elements and the `useExpandedGroups` hook
+// (the hook needs the `key` + `defaultOpen` pairs at the top of the
+// component; constructing a fresh array inside the render and passing
+// it would create a new identity each render, useless as a dependency).
+//
+// Adding a new group: append here and ensure the `subgroup` matches
+// what `KNOWN_CRAWLERS` declares; the dev-mode orphan check below
+// surfaces mismatches.
+const CRAWLER_GROUPS = [
+	{
+		key: 'general',
+		title: __(
+			'General-purpose AI assistants',
+			'woocommerce-ai-storefront'
+		),
+		categories: [ 'live' ],
+		subgroup: 'general',
+		defaultOpen: true,
+	},
+	{
+		key: 'agentic_shopping',
+		title: __( 'Agentic shopping', 'woocommerce-ai-storefront' ),
+		categories: [ 'live' ],
+		subgroup: 'agentic_shopping',
+		defaultOpen: true,
+	},
+	{
+		key: 'commerce_search',
+		title: __( 'Commerce search engines', 'woocommerce-ai-storefront' ),
+		categories: [ 'live' ],
+		subgroup: 'commerce_search',
+		defaultOpen: true,
+	},
+	{
+		key: 'regional_asia',
+		title: __( 'Regional Asia', 'woocommerce-ai-storefront' ),
+		categories: [ 'live' ],
+		subgroup: 'regional_asia',
+		defaultOpen: true,
+	},
+	{
+		key: 'regional_europe',
+		title: __( 'Regional Europe', 'woocommerce-ai-storefront' ),
+		categories: [ 'live' ],
+		subgroup: 'regional_europe',
+		defaultOpen: true,
+	},
+	{
+		key: 'training_and_test',
+		title: __( 'Training and test crawlers', 'woocommerce-ai-storefront' ),
+		categories: [ 'training', 'test' ],
+		subgroup: null,
+		defaultOpen: false,
+	},
+];
+
 const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	const endpoints = useSelect(
 		( select ) => select( STORE_NAME ).getEndpoints(),
@@ -513,6 +670,13 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 		( select ) => select( STORE_NAME ).getEndpointStatus(),
 		[]
 	);
+	// Persisted collapse/expand state for the crawler-group `<details>`
+	// elements rendered below. Reads from localStorage on first render
+	// (lazy initializer in useExpandedGroups) so the very first paint
+	// already reflects the merchant's prior choices — no flash from
+	// defaults to stored state. Writes through on every toggle.
+	const [ expandedGroups, setGroupExpanded ] =
+		useExpandedGroups( CRAWLER_GROUPS );
 
 	const { fetchEndpoints, checkEndpoints } = useDispatch( STORE_NAME );
 
@@ -1007,68 +1171,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						entry conforms to the CrawlerGroup typedef
 						declared above the component.
 					*/ }
-					{ [
-						{
-							key: 'general',
-							title: __(
-								'General-purpose AI assistants',
-								'woocommerce-ai-storefront'
-							),
-							categories: [ 'live' ],
-							subgroup: 'general',
-							defaultOpen: true,
-						},
-						{
-							key: 'agentic_shopping',
-							title: __(
-								'Agentic shopping',
-								'woocommerce-ai-storefront'
-							),
-							categories: [ 'live' ],
-							subgroup: 'agentic_shopping',
-							defaultOpen: true,
-						},
-						{
-							key: 'commerce_search',
-							title: __(
-								'Commerce search engines',
-								'woocommerce-ai-storefront'
-							),
-							categories: [ 'live' ],
-							subgroup: 'commerce_search',
-							defaultOpen: true,
-						},
-						{
-							key: 'regional_asia',
-							title: __(
-								'Regional Asia',
-								'woocommerce-ai-storefront'
-							),
-							categories: [ 'live' ],
-							subgroup: 'regional_asia',
-							defaultOpen: true,
-						},
-						{
-							key: 'regional_europe',
-							title: __(
-								'Regional Europe',
-								'woocommerce-ai-storefront'
-							),
-							categories: [ 'live' ],
-							subgroup: 'regional_europe',
-							defaultOpen: true,
-						},
-						{
-							key: 'training_and_test',
-							title: __(
-								'Training and test crawlers',
-								'woocommerce-ai-storefront'
-							),
-							categories: [ 'training', 'test' ],
-							subgroup: null,
-							defaultOpen: false,
-						},
-					].map( ( group, _idx, allGroups ) => {
+					{ CRAWLER_GROUPS.map( ( group, _idx, allGroups ) => {
 						const crawlers = KNOWN_CRAWLERS.filter(
 							( c ) =>
 								group.categories.includes( c.category ) &&
@@ -1113,7 +1216,13 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							<details
 								key={ group.key }
 								className={ CRAWLER_GROUP_CLASS }
-								open={ group.defaultOpen || undefined }
+								open={ expandedGroups[ group.key ] }
+								onToggle={ ( e ) =>
+									setGroupExpanded(
+										group.key,
+										e.currentTarget.open
+									)
+								}
 							>
 								<summary>
 									<span style={ { flex: 1 } }>
