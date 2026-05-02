@@ -26,6 +26,19 @@ const EXPANDED_GROUPS_STORAGE_KEY =
 	'wc_ai_storefront_discovery_expanded_groups';
 
 /**
+ * Setter for `useExpandedGroups`.
+ *
+ * Updates the in-memory state for one group and writes the merged
+ * record through to localStorage. No-op when the new value matches
+ * the current value for that key.
+ *
+ * @callback SetGroupExpanded
+ * @param {string}  key    Stable group key (matches `CRAWLER_GROUPS[].key`).
+ * @param {boolean} isOpen Whether the group is now expanded.
+ * @return {void}
+ */
+
+/**
  * Persisted open/closed state for the Discovery tab's crawler groups.
  *
  * Returns `[expanded, setGroupExpanded]` where `expanded` is a record
@@ -46,6 +59,12 @@ const EXPANDED_GROUPS_STORAGE_KEY =
  * choices. A `useEffect` read would render with defaults first, then
  * flip on hydrate — visible flash on every visit.
  *
+ * Note: `groups` is captured only by the lazy initializer. The defaults
+ * snapshot is frozen at mount; if the group list is ever swapped to a
+ * dynamic array (feature-flag groups, etc.), new entries won't appear
+ * in `expanded` until remount. Today `CRAWLER_GROUPS` is a
+ * module-level constant so this is theoretical.
+ *
  * Failure modes: localStorage access can throw in private-browsing
  * modes on some browsers, and the JSON in storage may be malformed if
  * something else has tampered with it. Both branches fall through to
@@ -54,10 +73,10 @@ const EXPANDED_GROUPS_STORAGE_KEY =
  *
  * @param {Array<{ key: string, defaultOpen: boolean }>} groups Group
  *                                                              definitions; only `key` and `defaultOpen` are read.
- * @return {[Object<string, boolean>, (key: string, isOpen: boolean) => void]}
- *     A `[expanded, setGroupExpanded]` pair where `expanded` maps each
- *     group's `key` to its current open state, and `setGroupExpanded`
- *     updates the state and persists it to localStorage.
+ * @return {[Object<string, boolean>, SetGroupExpanded]} A pair of
+ *     `[expanded, setGroupExpanded]` — `expanded` maps each group's
+ *     `key` to its current open state; `setGroupExpanded` updates one
+ *     entry and persists the merged record to localStorage.
  */
 const useExpandedGroups = ( groups ) => {
 	const [ expanded, setExpanded ] = useState( () => {
@@ -79,9 +98,17 @@ const useExpandedGroups = ( groups ) => {
 				// Merge stored state on top of defaults. Groups absent
 				// from storage keep their `defaultOpen`; groups present
 				// in storage with non-boolean values fall back to default.
+				// Keys that aren't in `defaults` (i.e. stored from a
+				// prior version that included a group we've since
+				// removed) are ignored — they'll be pruned on the next
+				// setter call when we re-stringify `next`, since `next`
+				// is built from the current defaults.
 				const merged = { ...defaults };
 				for ( const [ key, value ] of Object.entries( parsed ) ) {
-					if ( typeof value === 'boolean' ) {
+					if (
+						typeof value === 'boolean' &&
+						Object.prototype.hasOwnProperty.call( defaults, key )
+					) {
 						merged[ key ] = value;
 					}
 				}
