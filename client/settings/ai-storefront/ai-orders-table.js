@@ -41,7 +41,7 @@
  * @package
  */
 
-import { useEffect, useMemo, useState } from '@wordpress/element';
+import { useCallback, useEffect, useMemo, useState } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { Card, CardBody } from '@wordpress/components';
 import { DataViews } from '@wordpress/dataviews';
@@ -189,7 +189,7 @@ const DEFAULT_VIEW = {
 // localStorage key for persisted view preferences.
 // Only display settings (layout, perPage, sort, fields) are stored;
 // transient navigation state (page, search, filters) is not.
-const VIEW_STORAGE_KEY = 'wc_ai_storefront_orders_view';
+export const VIEW_STORAGE_KEY = 'wc_ai_storefront_orders_view';
 
 // Keys whose values are display preferences worth persisting.
 const PERSISTED_VIEW_KEYS = [ 'type', 'perPage', 'sort', 'fields', 'layout' ];
@@ -211,8 +211,15 @@ export const loadPersistedView = () => {
 			return DEFAULT_VIEW;
 		}
 		const parsed = JSON.parse( stored );
-		if ( parsed && typeof parsed === 'object' ) {
-			return { ...DEFAULT_VIEW, ...parsed, page: 1 };
+		if ( parsed && typeof parsed === 'object' && ! Array.isArray( parsed ) ) {
+			// Only restore whitelisted keys to prevent stale transient state
+			// (search, filters, page) written by older versions from leaking in.
+			const safe = Object.fromEntries(
+				PERSISTED_VIEW_KEYS
+					.filter( ( k ) => k in parsed )
+					.map( ( k ) => [ k, parsed[ k ] ] )
+			);
+			return { ...DEFAULT_VIEW, ...safe, page: 1 };
 		}
 	} catch ( _err ) {
 		// Malformed JSON or quota exceeded — use defaults.
@@ -482,10 +489,10 @@ const AIOrdersTable = () => {
 
 	const [ view, setView ] = useState( loadPersistedView );
 
-	const setViewAndPersist = ( next ) => {
+	const setViewAndPersist = useCallback( ( next ) => {
 		persistView( next );
 		setView( next );
-	};
+	}, [] );
 
 	// Fields the REST endpoint can sort by. Any other sort field (customer,
 	// agent, items) is dropped — the endpoint would 400 on an unknown enum

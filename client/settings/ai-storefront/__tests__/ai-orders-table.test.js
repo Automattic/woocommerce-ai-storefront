@@ -6,7 +6,7 @@
  * persistence helpers (loadPersistedView, persistView) are exercised.
  */
 
-import { loadPersistedView, persistView } from '../ai-orders-table';
+import { loadPersistedView, persistView, VIEW_STORAGE_KEY } from '../ai-orders-table';
 
 const DEFAULT_FIELDS = [
 	'order',
@@ -33,7 +33,7 @@ describe( 'loadPersistedView', () => {
 
 	it( 'restores persisted perPage', () => {
 		window.localStorage.setItem(
-			'wc_ai_storefront_orders_view',
+			VIEW_STORAGE_KEY,
 			JSON.stringify( { perPage: 25 } )
 		);
 		expect( loadPersistedView().perPage ).toBe( 25 );
@@ -42,7 +42,7 @@ describe( 'loadPersistedView', () => {
 	it( 'restores persisted sort', () => {
 		const sort = { field: 'total', direction: 'asc' };
 		window.localStorage.setItem(
-			'wc_ai_storefront_orders_view',
+			VIEW_STORAGE_KEY,
 			JSON.stringify( { sort } )
 		);
 		expect( loadPersistedView().sort ).toEqual( sort );
@@ -51,7 +51,7 @@ describe( 'loadPersistedView', () => {
 	it( 'restores persisted fields subset', () => {
 		const fields = [ 'order', 'date', 'total' ];
 		window.localStorage.setItem(
-			'wc_ai_storefront_orders_view',
+			VIEW_STORAGE_KEY,
 			JSON.stringify( { fields } )
 		);
 		expect( loadPersistedView().fields ).toEqual( fields );
@@ -59,7 +59,7 @@ describe( 'loadPersistedView', () => {
 
 	it( 'always resets page to 1 even when stored value differs', () => {
 		window.localStorage.setItem(
-			'wc_ai_storefront_orders_view',
+			VIEW_STORAGE_KEY,
 			JSON.stringify( { page: 7, perPage: 50 } )
 		);
 		const view = loadPersistedView();
@@ -69,7 +69,7 @@ describe( 'loadPersistedView', () => {
 
 	it( 'falls back to defaults on malformed JSON', () => {
 		window.localStorage.setItem(
-			'wc_ai_storefront_orders_view',
+			VIEW_STORAGE_KEY,
 			'not-valid-json{{'
 		);
 		const view = loadPersistedView();
@@ -79,7 +79,7 @@ describe( 'loadPersistedView', () => {
 
 	it( 'falls back to defaults when stored value is not an object', () => {
 		window.localStorage.setItem(
-			'wc_ai_storefront_orders_view',
+			VIEW_STORAGE_KEY,
 			JSON.stringify( 42 )
 		);
 		expect( loadPersistedView().perPage ).toBe( 10 );
@@ -94,7 +94,7 @@ describe( 'persistView', () => {
 	it( 'writes perPage and type to localStorage', () => {
 		persistView( { type: 'table', perPage: 25, page: 3, search: 'foo' } );
 		const stored = JSON.parse(
-			window.localStorage.getItem( 'wc_ai_storefront_orders_view' )
+			window.localStorage.getItem( VIEW_STORAGE_KEY )
 		);
 		expect( stored.perPage ).toBe( 25 );
 		expect( stored.type ).toBe( 'table' );
@@ -109,7 +109,7 @@ describe( 'persistView', () => {
 			filters: [ { field: 'status', value: 'processing' } ],
 		} );
 		const stored = JSON.parse(
-			window.localStorage.getItem( 'wc_ai_storefront_orders_view' )
+			window.localStorage.getItem( VIEW_STORAGE_KEY )
 		);
 		expect( stored ).not.toHaveProperty( 'page' );
 		expect( stored ).not.toHaveProperty( 'search' );
@@ -120,7 +120,7 @@ describe( 'persistView', () => {
 		const sort = { field: 'date', direction: 'desc' };
 		persistView( { type: 'table', perPage: 10, sort } );
 		const stored = JSON.parse(
-			window.localStorage.getItem( 'wc_ai_storefront_orders_view' )
+			window.localStorage.getItem( VIEW_STORAGE_KEY )
 		);
 		expect( stored.sort ).toEqual( sort );
 	} );
@@ -129,7 +129,7 @@ describe( 'persistView', () => {
 		const fields = [ 'order', 'total' ];
 		persistView( { type: 'table', perPage: 10, fields } );
 		const stored = JSON.parse(
-			window.localStorage.getItem( 'wc_ai_storefront_orders_view' )
+			window.localStorage.getItem( VIEW_STORAGE_KEY )
 		);
 		expect( stored.fields ).toEqual( fields );
 	} );
@@ -138,7 +138,7 @@ describe( 'persistView', () => {
 		const layout = { density: 'compact' };
 		persistView( { type: 'table', perPage: 10, layout } );
 		const stored = JSON.parse(
-			window.localStorage.getItem( 'wc_ai_storefront_orders_view' )
+			window.localStorage.getItem( VIEW_STORAGE_KEY )
 		);
 		expect( stored.layout ).toEqual( layout );
 	} );
