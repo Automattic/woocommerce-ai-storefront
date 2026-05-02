@@ -700,7 +700,14 @@ class WC_AI_Storefront_Admin_Controller {
 			$customer     = trim( "$first_name $last_name" );
 			$customer_id  = $order->get_customer_id();
 			$customer_url = $customer_id
-				? add_query_arg( [ 'user_id' => $customer_id ], admin_url( 'user-edit.php' ) )
+				? add_query_arg(
+					[
+						'page'           => 'wc-orders',
+						'_customer_user' => $customer_id,
+						'status'         => 'all',
+					],
+					admin_url( 'admin.php' )
+				)
 				: '';
 
 			$item_names = array_map(

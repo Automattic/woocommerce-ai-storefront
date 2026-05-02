@@ -347,6 +347,9 @@ if ( ! class_exists( 'WC_Order' ) ) {
 		private string $currency = 'USD';
 		private string $edit_url = 'https://example.com/wp-admin/admin.php?page=wc-orders&action=edit&id=1';
 		private ?\WC_DateTime_Stub $date_created = null;
+		private int $customer_id = 0;
+		private string $billing_first_name = '';
+		private string $billing_last_name = '';
 
 		public function get_meta( string $key ) {
 			return $this->meta[ $key ] ?? '';
@@ -425,11 +428,11 @@ if ( ! class_exists( 'WC_Order' ) ) {
 		}
 
 		public function get_billing_first_name(): string {
-			return '';
+			return $this->billing_first_name;
 		}
 
 		public function get_billing_last_name(): string {
-			return '';
+			return $this->billing_last_name;
 		}
 
 		public function get_billing_email(): string {
@@ -437,7 +440,19 @@ if ( ! class_exists( 'WC_Order' ) ) {
 		}
 
 		public function get_customer_id(): int {
-			return 0;
+			return $this->customer_id;
+		}
+
+		public function set_test_customer_id( int $id ): void {
+			$this->customer_id = $id;
+		}
+
+		public function set_test_billing_first_name( string $name ): void {
+			$this->billing_first_name = $name;
+		}
+
+		public function set_test_billing_last_name( string $name ): void {
+			$this->billing_last_name = $name;
 		}
 
 		public function get_items( string $type = 'line_item' ): array {
