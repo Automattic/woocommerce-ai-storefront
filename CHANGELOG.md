@@ -4,6 +4,20 @@
 
 ### Features
 
+### Fixes
+
+### Refactors
+
+### Tests
+
+### Docs
+
+---
+
+## [0.8.5] – 2026-05-02
+
+### Features
+
 - Overview tab: new **AI Revenue %** stat card (positioned after AI Revenue) shows AI-attributed revenue as a share of total store revenue. Shows `—` when no store revenue exists in the period.
 
 ### Fixes
@@ -11,12 +25,6 @@
 - **Recent AI Orders table — Customer column now links to the customer's order history.** The Customer cell was rendering a plain name with no link. Clicking a registered customer's name now opens the WooCommerce orders list filtered to that customer (`?page=wc-orders&_customer_user={id}&status=all`); guest orders show the name only. Closes #250 via #251.
 - **Recent AI Orders table — view preferences persist across navigation.** Rows per page, column visibility, sort order, table density, and layout type are now saved to `localStorage` and restored on the next visit. Transient state (current page, search text, active filters) is intentionally not persisted. Closes #252 via #253.
 - **`npm start` no longer drops the DataViews stylesheet.** The `@wordpress/dataviews` CSS was previously copied by a `postbuild` npm hook, which only fires for `npm run build` — not for `npm start` (webpack watch). Every watch-mode rebuild silently deleted the file, leaving the Recent AI Orders table unstyled in local development. Moved the copy step into `webpack.config.js` via `CopyPlugin` so it runs on every compilation. Part of #253.
-
-### Refactors
-
-### Tests
-
-### Docs
 
 ---
 
