@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.8.3
+Stable tag: 0.8.4
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,11 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.8.4 - 2026-05-01 =
+**Improved**
+* Admin hero on the disabled state redesigned: rhetorical tagline is now the 28px headline ("List once. Sell everywhere AI shops."), subcopy is "Checkout stays on your store. One click.", reassurance line trimmed to "Read-only · Reversible anytime". Chip strip now in main column flow, 4 chips (ChatGPT, Gemini, Perplexity, Copilot — Claude removed from chip strip; remains in value-prop card body text). Single-column hero with a deterministic responsive chip grid (no more 4+1 orphan at narrow widths). No merchant behavior change — UI refactor.
+* Pre-commit Git hook auto-regenerates `languages/woocommerce-ai-storefront.pot` on commits that touch translatable PHP or JS source — eliminating "fix(ci): refresh .pot for line drift" filler commits. Activated automatically on `npm install` / `composer install`; bypass per-commit with `git commit --no-verify`.
 
 = 0.8.3 - 2026-05-01 =
 **Fixed**

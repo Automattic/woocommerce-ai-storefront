@@ -100,7 +100,7 @@ The admin UI uses React components with inline `style={ ... }` props (no stylesh
 `tokens.js` exports five scales:
 
 - **`colors`** — semantic color tokens (`textPrimary`, `borderSubtle`, `infoBg`, `accent`, etc.). Mapped to WordPress admin palette values where possible.
-- **`typography`** — typed text variants (`eyebrowLabel`, `adminTitle`, `sectionHeading`, `statValue`, `heroHeadline`, `brandHeading`, `brandTagline`). Each entry bundles `fontSize`, `fontWeight`, `lineHeight`, and (where relevant) `letterSpacing` or `textTransform`. Spread directly into `style`. `brandHeading` (15px / 500 / lh 1.2) is the visible h2 in the unified page-header strip — sits one step below `sectionHeading` because the strip is decorative chrome, not the canonical title. `brandTagline` (13px / lh 1.4) is the line beneath it on the disabled/PreEnable state only; the tab nav replaces it once the plugin is enabled.
+- **`typography`** — typed text variants (`eyebrowLabel`, `adminTitle`, `sectionHeading`, `statValue`, `heroHeadline`, `brandHeading`). Each entry bundles `fontSize`, `fontWeight`, `lineHeight`, and (where relevant) `letterSpacing` or `textTransform`. Spread directly into `style`. `brandHeading` (15px / 500 / lh 1.2) is the visible h2 in the unified page-header strip — sits one step below `sectionHeading` because the strip is decorative chrome, not the canonical title. The pre-enable tagline lives inside the hero block as `heroHeadline` (28px / 700) — promoted out of the page-header strip in PR #243; the prior `brandTagline` token was removed when that copy moved.
 - **`spacing`** — `s1` through `s10`, a modular scale.
 - **`radii`** — `xs`, `sm`, `md`, `lg`, `pill`.
 - **`shadows`** — `sm`, `lg`.

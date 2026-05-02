@@ -14,6 +14,22 @@
 
 ---
 
+## [0.8.4] – 2026-05-01
+
+### Refactors
+
+- **Admin hero refactor on the disabled / pre-enable view.** The settings page's hero block was redesigned end-to-end: rhetorical tagline ("List once. Sell everywhere AI shops.") is now the 28px hero title; descriptive subcopy ("Checkout stays on your store. One click.") sits below in 15px supporting weight; assistant-name chip strip moves out of a separate right column into the main column flow between subcopy and CTA, and shrinks from 5 chips to 4 (Claude removed — coding/research-oriented, not consumer-shopping; remains in the value-prop card body text where the machine-readable-feed framing applies). Layout is now single-column with a forced-column responsive grid for chips (`repeat(4, max-content)` desktop, `repeat(2, max-content)` at ≤520px viewport) so wrap behavior is deterministic at every viewport — no more 4+1 orphan in the 440–540px band. Vertical rhythm uses a descending gap sequence (4 → 20 → 24 → 12px) so each gap is equal-or-smaller than the one above it as the eye moves toward the CTA. PageHeader simplified: tagline `<p>` removed; `typography.brandTagline` token removed from `tokens.js`. Reassurance row trimmed to `Read-only · Reversible anytime` ("No frontend changes" implied by "Checkout stays on your store"). No PHP changes, no schema changes, no public-API changes. Refactor only. Closes #242 via #243; doc sync via #239.
+
+### Fixes
+
+- **Pre-commit Git hook auto-regenerates `.pot` on commits that touch translatable source.** The `i18n (.pot freshness)` CI check previously fired on PRs whose code diff contained no string changes — just line-number drift in `.php` or `.js` files containing translatable strings, since the `.pot` embeds source-file line numbers as `#:` comments above each `msgid`. This produced a 2-push cycle on every affected PR. New `.githooks/pre-commit` shell hook runs `./bin/make-pot.sh` automatically when staged files include any `.php` or `.js` outside the `make-pot.sh` exclusion set (`build/`, `node_modules/`, `vendor/`, `tests/`) — mirroring CI's scan surface. Auto-stages the regenerated `.pot` so it lands in the same commit as the code change. Activation via `git config core.hooksPath .githooks` wired to npm's `prepare` lifecycle script (and Composer's `post-install-cmd`/`post-update-cmd`); both invoke a Node-based installer (`bin/install-hooks.js`) for cross-platform compatibility. Hook is best-effort: missing PHP, missing Node, or make-pot errors fall back to safe defaults; CI's freshness check remains the safety net. Bypass per-commit via `git commit --no-verify`. Closes #244 via #245.
+
+### Docs
+
+- **CONTRIBUTING.md documents the new pre-commit hook.** Added a "Git hooks (auto-installed)" section under "Required checks before a PR" describing the matcher, the auto-stage behavior, the rationale for fixing line-number drift at the developer rather than the CI layer, and the `--no-verify` escape hatch.
+
+---
+
 ## [0.8.3] – 2026-05-01
 
 ### Fixes

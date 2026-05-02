@@ -40,7 +40,7 @@ You **don't** need an AI account, an API key, or a developer.
 
 ![Plugins screen with WooCommerce AI Storefront activated](screenshots/01-plugins-screen.png)
 
-A new menu item appears under **WooCommerce → AI Storefront** in the sidebar. The page opens with a unified header strip — small Woo logo + the title "AI Storefront" — and the section nav (Overview, Visibility, Policies, Discovery) inline directly below in the same bordered strip. On the disabled state, a tagline ("List once. Sell everywhere AI shops.") sits beneath the title; once you enable the plugin, the nav takes the tagline's place. If you don't see the menu item, confirm WooCommerce itself is active. AI Storefront depends on it.
+A new menu item appears under **WooCommerce → AI Storefront** in the sidebar. The page opens with a slim header strip — small Woo logo + the title "AI Storefront". On the disabled state, a purple-tinted hero block sits directly below with the headline "List once. Sell everywhere AI shops.", a one-line reassurance ("Checkout stays on your store. One click."), a strip of four assistant chips (ChatGPT, Gemini, Perplexity, Copilot), the **Enable AI Storefront** button, and a "Read-only · Reversible anytime" note beneath the button. Once you enable the plugin, the hero is replaced by the section nav (Overview, Visibility, Policies, Discovery) directly below the header strip. If you don't see the menu item, confirm WooCommerce itself is active. AI Storefront depends on it.
 
 ---
 

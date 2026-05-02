@@ -238,6 +238,8 @@ Defined in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). Every p
 
 All gates fail closed.
 
+The i18n freshness gate is the hardest to trip accidentally locally because the repo ships a `.githooks/pre-commit` hook (auto-installed via `npm install` / `composer install`) that re-runs `bin/make-pot.sh` and auto-stages the regenerated .pot whenever a commit touches translatable `.php` or `.js` source outside `build/`, `node_modules/`, `vendor/`, or `tests/`. See [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md#git-hooks-auto-installed) for the rationale and bypass instructions.
+
 ## Coverage
 
 We don't track coverage as a metric. We track behavior coverage — every shipped behavior has at least one test that fails when it breaks.

@@ -251,7 +251,7 @@ npm run build                    # Frontend bundle
 git status                       # Confirm .pot is unchanged or commit it
 ```
 
-If `.pot` regeneration produces a diff, commit it as part of the release commit.
+If `.pot` regeneration produces a diff, commit it as part of the release commit. In practice the diff is usually empty here because the `.githooks/pre-commit` hook (auto-installed via `npm install` / `composer install`) regenerates the .pot on every commit that touches translatable `.php` or `.js` source. The explicit run in this step is the belt-and-braces backstop in case the hook was bypassed with `--no-verify` or PHP wasn't on PATH at commit time.
 
 ### 6. Commit and tag
 
