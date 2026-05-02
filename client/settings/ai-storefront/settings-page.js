@@ -419,6 +419,25 @@ const formatMoneyRounded = ( stats, amount ) => {
 	return `$${ rounded }`;
 };
 
+/**
+ * Format AI revenue as a percentage of total store revenue.
+ *
+ * Exported so unit tests can cover the two branches (normal and
+ * zero-denominator) without rendering the full settings component.
+ *
+ * @param {Object|null} stats Stats payload from the REST endpoint.
+ * @return {string} e.g. "12.3%" or "—" when all_revenue is 0 / absent.
+ */
+export const formatRevenuePercent = ( stats ) => {
+	if ( ! stats || ! ( stats.all_revenue > 0 ) ) {
+		return '—';
+	}
+	return `${ (
+		( ( stats.ai_revenue || 0 ) / stats.all_revenue ) *
+		100
+	).toFixed( 1 ) }%`;
+};
+
 // Hand-rolled stat card for the Overview stats row. We evaluated Woo's
 // `SummaryNumber` from `@woocommerce/components` and deferred adoption —
 // see AGENTS.md "Styling" section for the rationale. In short: Woo
@@ -1102,15 +1121,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				/>
 				<StatCard
 					label={ __( 'AI revenue %', 'woocommerce-ai-storefront' ) }
-					value={
-						stats?.all_revenue > 0
-							? `${ (
-									( ( stats.ai_revenue || 0 ) /
-										stats.all_revenue ) *
-									100
-							  ).toFixed( 1 ) }%`
-							: '—'
-					}
+					value={ formatRevenuePercent( stats ) }
 				/>
 				<StatCard
 					label={ __( 'AI AOV', 'woocommerce-ai-storefront' ) }
