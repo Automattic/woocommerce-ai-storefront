@@ -216,7 +216,7 @@ The Discovery tab shows a reachability indicator in the card intro. The note "Re
 
 ![Overview tab per-agent stat cards](screenshots/11-per-agent-stats.png)
 
-**Recent AI Orders table** (Overview tab). The most recent AI-attributed orders with order number, date, status, agent, and total. Clicking the order number opens the WC order edit screen. Search, column-sort, and pagination work server-side -- the table fetches only the current page, so large order volumes don't slow the Overview tab. Filters by **agent** and by **status** narrow the result set without leaving the table.
+**Recent AI Orders table** (Overview tab). The most recent AI-attributed orders with order number, customer, date, status, items, agent, and total. Clicking the order number opens the WC order edit screen. Clicking a customer name opens the WooCommerce orders list filtered to that customer. Search, column-sort, and pagination work server-side — the table fetches only the current page, so large order volumes don't slow the Overview tab. Filters by **agent** and by **status** narrow the result set without leaving the table. Table preferences — rows per page, column visibility, sort order, and density — are saved in the browser and restored on your next visit.
 
 ![Recent AI Orders table](screenshots/12-recent-ai-orders.png)
 
