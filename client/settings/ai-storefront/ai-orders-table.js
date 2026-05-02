@@ -192,7 +192,7 @@ const DEFAULT_VIEW = {
 const VIEW_STORAGE_KEY = 'wc_ai_storefront_orders_view';
 
 // Keys whose values are display preferences worth persisting.
-const PERSISTED_VIEW_KEYS = [ 'type', 'perPage', 'sort', 'fields' ];
+const PERSISTED_VIEW_KEYS = [ 'type', 'perPage', 'sort', 'fields', 'layout' ];
 
 /**
  * Load the persisted view preferences from localStorage, merged on top

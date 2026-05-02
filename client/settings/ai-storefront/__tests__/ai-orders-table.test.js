@@ -134,19 +134,31 @@ describe( 'persistView', () => {
 		expect( stored.fields ).toEqual( fields );
 	} );
 
+	it( 'persists layout including density', () => {
+		const layout = { density: 'compact' };
+		persistView( { type: 'table', perPage: 10, layout } );
+		const stored = JSON.parse(
+			window.localStorage.getItem( 'wc_ai_storefront_orders_view' )
+		);
+		expect( stored.layout ).toEqual( layout );
+	} );
+
 	it( 'round-trips: persist then load returns the saved prefs', () => {
 		const sort = { field: 'total', direction: 'asc' };
+		const layout = { density: 'comfortable' };
 		persistView( {
 			type: 'table',
 			perPage: 50,
 			sort,
 			fields: [ 'order', 'date' ],
+			layout,
 			page: 3,
 		} );
 		const view = loadPersistedView();
 		expect( view.perPage ).toBe( 50 );
 		expect( view.sort ).toEqual( sort );
 		expect( view.fields ).toEqual( [ 'order', 'date' ] );
+		expect( view.layout ).toEqual( layout );
 		expect( view.page ).toBe( 1 );
 	} );
 } );
