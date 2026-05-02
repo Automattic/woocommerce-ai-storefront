@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook: keep languages/woocommerce-ai-storefront.pot fresh.
+#
+# Why this hook exists
+# --------------------
+# CI runs `./bin/make-pot.sh` and fails the `i18n (.pot freshness)` check
+# if the regenerated .pot differs from what's committed. The .pot file
+# embeds source-file LINE NUMBERS as `#:` comments above each `msgid` so
+# translators have context — which means any code edit that changes line
+# counts in `.php` or `.js` files containing translatable strings
+# invalidates the .pot, even when no actual translatable string changed.
+#
+# Without this hook, that produces a 2-push cycle on every PR that
+# happens to shift line numbers (i.e. most PRs): push code, CI fails,
+# regen .pot locally, push again. Issue #244 documents the friction
+# pattern in detail.
+#
+# With this hook, the regen happens automatically on commits that touch
+# i18n-relevant source. The regen result is auto-staged so it lands in
+# the same commit as the code change — clean PR history, no "fix(ci):
+# refresh .pot for line drift" filler commits.
+#
+# What it does
+# ------------
+# 1. Detect if any STAGED file is a `.php` under `includes/` or a `.js`
+#    under `client/`. Only those directories contain translatable
+#    strings (translations don't live in `build/`, `tests/`, `docs/`,
+#    etc.). If no i18n-relevant files are staged, exit fast.
+# 2. Run `./bin/make-pot.sh` to regenerate
+#    `languages/woocommerce-ai-storefront.pot`.
+# 3. If the regen modified the .pot, stage the change so it lands in
+#    this commit. Print a one-line note so the developer sees what
+#    happened.
+# 4. If the regen produced no changes, exit silently (this is the
+#    common case for non-string-shifting edits).
+#
+# Failure handling
+# ----------------
+# - If `wp-cli.phar` or PHP isn't available: print a warning and skip
+#   the regen. This lets contributors who haven't run a full
+#   `composer install` still commit (CI will catch the freshness if
+#   it actually drifted).
+# - If `bin/make-pot.sh` itself errors: print the error and ABORT the
+#   commit. A broken make-pot script is a real problem the developer
+#   should see immediately.
+#
+# Activation
+# ----------
+# This hook is checked into the repo at `.githooks/pre-commit` (Git's
+# default `.git/hooks/` is gitignored and per-checkout). Activation
+# happens via `git config core.hooksPath .githooks` — wired to npm's
+# `prepare` lifecycle script in `package.json` so it runs automatically
+# on `npm install` and `npm ci`. See `bin/install-hooks.sh`.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "${REPO_ROOT}"
+
+# Bail early if no i18n-relevant source is staged. We look at the
+# *staged* diff (not the working tree) because the hook should only
+# react to what's about to be committed.
+#
+# Pattern intentionally narrow: `.php` under `includes/` and `.js`
+# under `client/`. We do NOT scan `build/` (compiled output, no source
+# strings), `tests/` (test fixtures, not user-facing), `docs/` (docs),
+# `scripts/` or `bin/` (build tooling). Adding directories here is
+# fine if a future feature lands translatable strings outside the
+# current set.
+staged_relevant=$(
+	git diff --cached --name-only --diff-filter=ACMR \
+		| grep -E '^(includes/.*\.php|client/.*\.js)$' \
+		|| true
+)
+
+if [ -z "${staged_relevant}" ]; then
+	exit 0
+fi
+
+# Confirm prerequisites before invoking make-pot. If WP-CLI's phar
+# isn't downloaded yet (first-run situation), make-pot.sh handles
+# that itself — it'll fetch the phar on demand. We just need PHP
+# available to execute the phar.
+if ! command -v php >/dev/null 2>&1; then
+	echo "pre-commit: PHP not on PATH; skipping .pot freshness check." >&2
+	echo "pre-commit: install PHP, or rely on CI to catch any drift." >&2
+	exit 0
+fi
+
+# Snapshot the .pot's checksum BEFORE the regen so we can detect
+# whether the regen actually changed it. Cheaper than `git diff` on
+# every commit.
+POT="languages/woocommerce-ai-storefront.pot"
+if [ -f "${POT}" ]; then
+	before=$(shasum -a 256 "${POT}" | cut -d' ' -f1)
+else
+	before=""
+fi
+
+# Run the regen. Suppress its stdout (it's a one-line "wrote..."
+# success message) but propagate stderr so real errors surface.
+if ! ./bin/make-pot.sh >/dev/null; then
+	echo "pre-commit: ./bin/make-pot.sh failed — commit aborted." >&2
+	echo "pre-commit: fix the error above and try again, or commit with --no-verify to bypass." >&2
+	exit 1
+fi
+
+# Compare checksums. If unchanged, exit silently — common case for
+# edits that didn't shift any translatable string's line number
+# (e.g. comment-only changes).
+if [ -f "${POT}" ]; then
+	after=$(shasum -a 256 "${POT}" | cut -d' ' -f1)
+else
+	after=""
+fi
+
+if [ "${before}" = "${after}" ]; then
+	exit 0
+fi
+
+# .pot drifted. Auto-stage the regen so it lands in this commit.
+# This pattern matches what `prettier --write` and `eslint --fix`
+# pre-commit hooks do — auto-fix and re-stage rather than abort.
+git add "${POT}"
+echo "pre-commit: regenerated ${POT} (line refs drifted) — staged for this commit." >&2
