@@ -505,8 +505,26 @@ const AIOrdersTable = () => {
 	const [ view, setView ] = useState( loadPersistedView );
 
 	const setViewAndPersist = useCallback( ( next ) => {
-		persistView( next );
-		setView( next );
+		setView( ( prev ) => {
+			// Only write to localStorage when a display-preference key
+			// actually changed. Transient updates (page, search, filters)
+			// fire onChangeView frequently (every keystroke in search),
+			// but persistView would write the same subset each time.
+			// JSON.stringify gives a cheap deep-equality check over the
+			// small persisted subset without adding view to the deps array.
+			const subsetOf = ( v ) =>
+				JSON.stringify(
+					Object.fromEntries(
+						PERSISTED_VIEW_KEYS.filter( ( k ) => k in v ).map(
+							( k ) => [ k, v[ k ] ]
+						)
+					)
+				);
+			if ( subsetOf( prev ) !== subsetOf( next ) ) {
+				persistView( next );
+			}
+			return next;
+		} );
 	}, [] );
 
 	// Fields the REST endpoint can sort by. Any other sort field (customer,
