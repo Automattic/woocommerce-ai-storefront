@@ -1101,6 +1101,18 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					}
 				/>
 				<StatCard
+					label={ __( 'AI revenue %', 'woocommerce-ai-storefront' ) }
+					value={
+						stats?.all_revenue > 0
+							? `${ (
+									( ( stats.ai_revenue || 0 ) /
+										stats.all_revenue ) *
+									100
+							  ).toFixed( 1 ) }%`
+							: '—'
+					}
+				/>
+				<StatCard
 					label={ __( 'AI AOV', 'woocommerce-ai-storefront' ) }
 					value={
 						stats && stats.ai_orders > 0

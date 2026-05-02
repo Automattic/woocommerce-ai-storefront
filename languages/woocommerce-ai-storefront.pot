@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-02T16:06:23+00:00\n"
+"POT-Creation-Date: 2026-05-02T16:24:47+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -1019,35 +1019,39 @@ msgid "AI revenue"
 msgstr ""
 
 #: client/settings/ai-storefront/settings-page.js:1104
+msgid "AI revenue %"
+msgstr ""
+
+#: client/settings/ai-storefront/settings-page.js:1116
 msgid "AI AOV"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1112
+#: client/settings/ai-storefront/settings-page.js:1124
 msgid "Top agent"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1134
+#: client/settings/ai-storefront/settings-page.js:1146
 msgid "Top agent share"
 msgstr ""
 
 #. translators: %1$s: percent share of AI orders attributed to the top agent. The literal trailing percent sign comes from `%%` in the format string. Ordered placeholder (`%1$s`) keeps the file consistent with @wordpress/valid-sprintf rules.
-#: client/settings/ai-storefront/settings-page.js:1153
+#: client/settings/ai-storefront/settings-page.js:1165
 #, js-format
 msgid "%1$s%%"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1199
+#: client/settings/ai-storefront/settings-page.js:1211
 msgid "Disable AI Storefront"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1212
+#: client/settings/ai-storefront/settings-page.js:1224
 msgid "Stops AI agents from accessing your store. Settings are preserved."
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1243
+#: client/settings/ai-storefront/settings-page.js:1255
 msgid "Disabling…"
 msgstr ""
 
-#: client/settings/ai-storefront/settings-page.js:1244
+#: client/settings/ai-storefront/settings-page.js:1256
 msgid "Disable"
 msgstr ""
