@@ -160,6 +160,11 @@ class WC_AI_Storefront {
 		$rate_limiter = new WC_AI_Storefront_Store_Api_Rate_Limiter();
 		$rate_limiter->init();
 
+		// Crawl logger — cron handlers and daily scheduling.
+		WC_AI_Storefront_Crawl_Logger::schedule_crons();
+		add_action( 'wc_ai_storefront_prune_crawl_log', array( 'WC_AI_Storefront_Crawl_Logger', 'prune_raw_log' ) );
+		add_action( 'wc_ai_storefront_rollup_crawl_log', array( 'WC_AI_Storefront_Crawl_Logger', 'rollup' ) );
+
 		// UCP product-scoping hook — enforces the merchant's
 		// `product_selection_mode` on product `WP_Query` instances
 		// only when the UCP REST controller dispatches an inner Store
@@ -248,6 +253,10 @@ class WC_AI_Storefront {
 		if ( $needs_flush || $stored_version !== WC_AI_STOREFRONT_VERSION ) {
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );
 			update_option( 'wc_ai_storefront_version', WC_AI_STOREFRONT_VERSION );
+
+			// Create or upgrade crawl-log tables on every version bump.
+			// dbDelta is idempotent — no-ops when the schema is already current.
+			WC_AI_Storefront_Crawl_Logger::create_tables();
 
 			// Self-healing flush: register the rules IMMEDIATELY (at the
 			// current `plugins_loaded` hook, which is before WordPress

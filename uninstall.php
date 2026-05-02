@@ -82,6 +82,17 @@ unset( $wc_ai_storefront_period );
  */
 
 wp_clear_scheduled_hook( 'wc_ai_storefront_warm_llms_txt_cache' );
+wp_clear_scheduled_hook( 'wc_ai_storefront_prune_crawl_log' );
+wp_clear_scheduled_hook( 'wc_ai_storefront_rollup_crawl_log' );
+
+/*
+ * --------------------------------------------------------------------------
+ * Crawl log tables
+ * --------------------------------------------------------------------------
+ */
+
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}wc_ai_storefront_crawl_summary" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}wc_ai_storefront_crawl_log" );     // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange
 
 /*
  * --------------------------------------------------------------------------
@@ -118,6 +129,8 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 			}
 			unset( $_period );
 			wp_clear_scheduled_hook( 'wc_ai_storefront_warm_llms_txt_cache' );
+			wp_clear_scheduled_hook( 'wc_ai_storefront_prune_crawl_log' );
+			wp_clear_scheduled_hook( 'wc_ai_storefront_rollup_crawl_log' );
 
 			// Also purge all host-keyed llms.txt transient variants for
 			// this site's table. Same rationale as the single-site block above.
@@ -130,6 +143,9 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 					$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
 				)
 			);
+
+			$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}wc_ai_storefront_crawl_summary" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}wc_ai_storefront_crawl_log" );     // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 			// phpcs:enable
 
 			restore_current_blog();

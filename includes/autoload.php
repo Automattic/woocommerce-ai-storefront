@@ -25,6 +25,7 @@ spl_autoload_register(
 			'WC_AI_Storefront_Product_Meta_Box'       => '/admin/class-wc-ai-storefront-product-meta-box.php',
 			'WC_AI_Storefront_Attribution'            => '/ai-storefront/class-wc-ai-storefront-attribution.php',
 			'WC_AI_Storefront_Cache_Invalidator'      => '/ai-storefront/class-wc-ai-storefront-cache-invalidator.php',
+			'WC_AI_Storefront_Crawl_Logger'           => '/ai-storefront/class-wc-ai-storefront-crawl-logger.php',
 			'WC_AI_Storefront_JsonLd'                 => '/ai-storefront/class-wc-ai-storefront-jsonld.php',
 			'WC_AI_Storefront_Llms_Txt'               => '/ai-storefront/class-wc-ai-storefront-llms-txt.php',
 			'WC_AI_Storefront_Logger'                 => '/ai-storefront/class-wc-ai-storefront-logger.php',
