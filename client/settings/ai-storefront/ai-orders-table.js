@@ -211,13 +211,17 @@ export const loadPersistedView = () => {
 			return DEFAULT_VIEW;
 		}
 		const parsed = JSON.parse( stored );
-		if ( parsed && typeof parsed === 'object' && ! Array.isArray( parsed ) ) {
+		if (
+			parsed &&
+			typeof parsed === 'object' &&
+			! Array.isArray( parsed )
+		) {
 			// Only restore whitelisted keys to prevent stale transient state
 			// (search, filters, page) written by older versions from leaking in.
 			const safe = Object.fromEntries(
-				PERSISTED_VIEW_KEYS
-					.filter( ( k ) => k in parsed )
-					.map( ( k ) => [ k, parsed[ k ] ] )
+				PERSISTED_VIEW_KEYS.filter( ( k ) => k in parsed ).map(
+					( k ) => [ k, parsed[ k ] ]
+				)
 			);
 			return { ...DEFAULT_VIEW, ...safe, page: 1 };
 		}

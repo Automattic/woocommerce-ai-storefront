@@ -6,7 +6,11 @@
  * persistence helpers (loadPersistedView, persistView) are exercised.
  */
 
-import { loadPersistedView, persistView, VIEW_STORAGE_KEY } from '../ai-orders-table';
+import {
+	loadPersistedView,
+	persistView,
+	VIEW_STORAGE_KEY,
+} from '../ai-orders-table';
 
 const DEFAULT_FIELDS = [
 	'order',
@@ -68,20 +72,14 @@ describe( 'loadPersistedView', () => {
 	} );
 
 	it( 'falls back to defaults on malformed JSON', () => {
-		window.localStorage.setItem(
-			VIEW_STORAGE_KEY,
-			'not-valid-json{{'
-		);
+		window.localStorage.setItem( VIEW_STORAGE_KEY, 'not-valid-json{{' );
 		const view = loadPersistedView();
 		expect( view.perPage ).toBe( 10 );
 		expect( view.type ).toBe( 'table' );
 	} );
 
 	it( 'falls back to defaults when stored value is not an object', () => {
-		window.localStorage.setItem(
-			VIEW_STORAGE_KEY,
-			JSON.stringify( 42 )
-		);
+		window.localStorage.setItem( VIEW_STORAGE_KEY, JSON.stringify( 42 ) );
 		expect( loadPersistedView().perPage ).toBe( 10 );
 	} );
 } );
