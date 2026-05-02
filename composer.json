@@ -19,7 +19,13 @@
         "dealerdirect/phpcodesniffer-composer-installer": "*"
     },
     "scripts": {
-        "test": "phpunit"
+        "test": "phpunit",
+        "post-install-cmd": [
+            "@php -r \"if (file_exists('bin/install-hooks.js') && preg_match('/^v\\\\d/', trim((string) @shell_exec('node -v 2>&1')))) { @passthru('node bin/install-hooks.js'); }\""
+        ],
+        "post-update-cmd": [
+            "@php -r \"if (file_exists('bin/install-hooks.js') && preg_match('/^v\\\\d/', trim((string) @shell_exec('node -v 2>&1')))) { @passthru('node bin/install-hooks.js'); }\""
+        ]
     },
     "autoload": {
         "classmap": [

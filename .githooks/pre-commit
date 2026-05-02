@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook: keep languages/woocommerce-ai-storefront.pot fresh.
+#
+# Why this hook exists
+# --------------------
+# CI runs `./bin/make-pot.sh` and fails the `i18n (.pot freshness)` check
+# if the regenerated .pot differs from what's committed. The .pot file
+# embeds source-file LINE NUMBERS as `#:` comments above each `msgid` so
+# translators have context — which means any code edit that changes line
+# counts in `.php` or `.js` files containing translatable strings
+# invalidates the .pot, even when no actual translatable string changed.
+#
+# Without this hook, that produces a 2-push cycle on every PR that
+# happens to shift line numbers (i.e. most PRs): push code, CI fails,
+# regen .pot locally, push again. Issue #244 documents the friction
+# pattern in detail.
+#
+# With this hook, the regen happens automatically on commits that touch
+# i18n-relevant source. The regen result is auto-staged so it lands in
+# the same commit as the code change — clean PR history, no "fix(ci):
+# refresh .pot for line drift" filler commits.
+#
+# What it does
+# ------------
+# 1. Detect if any STAGED file is a `.php` or `.js` outside the
+#    make-pot exclusion set (build/, node_modules/, vendor/, tests/).
+#    Translatable strings live throughout the source tree — including
+#    `woocommerce-ai-storefront.php` at the repo root, files under
+#    `includes/`, and JS under `client/`. The matcher mirrors what
+#    `bin/make-pot.sh` itself scans, so the hook fires on every commit
+#    that could plausibly shift .pot line refs.
+#    Includes deletions (D) — removing an i18n-relevant file removes
+#    line refs from the .pot too.
+# 2. Run `./bin/make-pot.sh` to regenerate
+#    `languages/woocommerce-ai-storefront.pot`.
+# 3. If the regen modified the .pot, stage the change so it lands in
+#    this commit. Print a one-line note so the developer sees what
+#    happened.
+# 4. If the regen produced no changes, exit silently (this is the
+#    common case for non-string-shifting edits).
+#
+# Failure handling
+# ----------------
+# - If PHP isn't on PATH: print a warning and skip the regen. The
+#   hook is best-effort productivity tooling, not a correctness gate;
+#   CI's freshness check is the real safety net.
+# - `bin/make-pot.sh` downloads `.tools/wp-cli.phar` on demand if it's
+#   missing — no separate prerequisite check needed for that.
+# - If `bin/make-pot.sh` itself errors: print the error and ABORT the
+#   commit. A broken make-pot script is a real problem the developer
+#   should see immediately. Use `git commit --no-verify` to bypass.
+#
+# Activation
+# ----------
+# This hook is checked into the repo at `.githooks/pre-commit` (Git's
+# default `.git/hooks/` is gitignored and per-checkout). Activation
+# happens via `git config core.hooksPath .githooks` — wired to npm's
+# `prepare` lifecycle script in `package.json` so it runs automatically
+# on `npm install` and `npm ci`. See `bin/install-hooks.js`.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "${REPO_ROOT}"
+
+# Bail early if no i18n-relevant source is staged. We look at the
+# *staged* diff (not the working tree) because the hook should only
+# react to what's about to be committed.
+#
+# Match all `.php` and `.js` files NOT under one of make-pot.sh's
+# exclude paths (build/, node_modules/, vendor/, tests/). This mirrors
+# what `wp i18n make-pot . --exclude=build,node_modules,vendor,tests`
+# scans — staying in lockstep so the hook never under-fires (commit
+# touches an i18n source not covered) or over-fires (commit touches
+# a path make-pot ignores).
+#
+# `--diff-filter=ACMRD` includes Adds, Copies, Modifies, Renames, AND
+# Deletes. A previous version excluded D, which would silently miss
+# line-ref drift caused by deleting i18n-relevant files.
+staged_relevant=$(
+	git diff --cached --name-only --diff-filter=ACMRD \
+		| grep -E '\.(php|js)$' \
+		| grep -vE '^(build|node_modules|vendor|tests)/' \
+		|| true
+)
+
+if [ -z "${staged_relevant}" ]; then
+	exit 0
+fi
+
+# PHP is required to run wp-cli.phar (which make-pot.sh invokes) and
+# to checksum the .pot below. If PHP is missing, skip the hook and
+# rely on CI to catch any drift. The `--no-verify` flag is the
+# documented escape hatch for environments where this matters.
+if ! command -v php >/dev/null 2>&1; then
+	echo "pre-commit: PHP not on PATH; skipping .pot freshness check." >&2
+	echo "pre-commit: install PHP, or rely on CI to catch any drift." >&2
+	exit 0
+fi
+
+# Snapshot the .pot's checksum BEFORE the regen so we can detect
+# whether the regen actually changed it. Using `php -r` instead of
+# `shasum -a 256` because shasum isn't ubiquitous (some Linux distros
+# only ship `sha256sum`); since PHP is already a hard dependency for
+# the make-pot.sh invocation below, leveraging it for the checksum
+# avoids an additional cross-distro portability problem.
+POT="languages/woocommerce-ai-storefront.pot"
+checksum() {
+	local f="$1"
+	if [ -f "${f}" ]; then
+		php -r "echo hash_file('sha256', '${f}');"
+	else
+		echo ""
+	fi
+}
+
+before=$(checksum "${POT}")
+
+# Run the regen. Suppress its stdout (it's a one-line "wrote..."
+# success message) but propagate stderr so real errors surface.
+if ! ./bin/make-pot.sh >/dev/null; then
+	echo "pre-commit: ./bin/make-pot.sh failed — commit aborted." >&2
+	echo "pre-commit: fix the error above and try again, or commit with --no-verify to bypass." >&2
+	exit 1
+fi
+
+after=$(checksum "${POT}")
+
+if [ "${before}" = "${after}" ]; then
+	# No drift — common case for edits that didn't shift any
+	# translatable string's line number (e.g. comment-only changes
+	# inside a function that has no `__()` calls).
+	exit 0
+fi
+
+# .pot drifted. Auto-stage the regen so it lands in this commit.
+# This pattern matches what `prettier --write` and `eslint --fix`
+# pre-commit hooks do — auto-fix and re-stage rather than abort.
+git add "${POT}"
+echo "pre-commit: regenerated ${POT} (line refs drifted) — staged for this commit." >&2

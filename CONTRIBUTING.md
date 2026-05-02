@@ -70,6 +70,12 @@ npm run build        # if your branch has JS changes
 
 CI runs all of these on every PR. Builds fail closed. See [`docs/engineering/TESTING.md`](./docs/engineering/TESTING.md) for the full testing playbook.
 
+### Git hooks (auto-installed)
+
+Running `npm install` or `composer install` activates a pre-commit hook that auto-regenerates `languages/woocommerce-ai-storefront.pot` whenever a commit touches any `.php` or `.js` source file outside the make-pot exclusion set (`build/`, `node_modules/`, `vendor/`, `tests/`). That covers the root-level `woocommerce-ai-storefront.php`, files under `includes/`, JS under `client/`, and any other source location that contributes translatable strings — staying in lockstep with what `bin/make-pot.sh` itself scans. The hook auto-stages the regen so it lands in the same commit. Background: the .pot embeds source-file line numbers as `#:` comments above each `msgid` for translator context, so any code edit that shifts line numbers invalidates the .pot — even when no actual translatable string changed. The hook eliminates the resulting "fix(ci): refresh .pot" commit churn. See [`.githooks/pre-commit`](./.githooks/pre-commit) for the full rationale.
+
+If you need to bypass the hook for a specific commit (e.g. WP-CLI not installed in your environment), use `git commit --no-verify` and rely on CI to catch any drift.
+
 ## Branch naming
 
 - Use a descriptive change-focused name: `fix/policy-dropdown-system-pages`, not `fix/0.6.1-policy-dropdown`.
