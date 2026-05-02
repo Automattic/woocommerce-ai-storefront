@@ -1,6 +1,7 @@
 const path = require( 'path' );
 const defaultConfig = require( '@wordpress/scripts/config/webpack.config' );
 const WooCommerceDependencyExtractionWebpackPlugin = require( '@woocommerce/dependency-extraction-webpack-plugin' );
+const CopyPlugin = require( 'copy-webpack-plugin' );
 
 // The WooCommerce dependency-extraction plugin is a superset of WP's: it
 // handles both `@wordpress/*` AND `@woocommerce/*` imports, replacing them
@@ -18,6 +19,25 @@ const plugins = ( defaultConfig.plugins || [] ).filter(
 		plugin.constructor.name !== 'DependencyExtractionWebpackPlugin'
 );
 plugins.push( new WooCommerceDependencyExtractionWebpackPlugin() );
+
+// Copy @wordpress/dataviews' pre-built stylesheet into our output on every
+// webpack compilation (build AND watch). Previously this lived in a
+// `postbuild` npm hook which only fires for `npm run build`, so `npm start`
+// would delete the file on each watch rebuild. Moving it into webpack ensures
+// the CSS is always present regardless of which script runs.
+plugins.push(
+	new CopyPlugin( {
+		patterns: [
+			{
+				from: path.resolve(
+					__dirname,
+					'node_modules/@wordpress/dataviews/build-style/style.css'
+				),
+				to: path.resolve( __dirname, 'build/ai-storefront-settings.css' ),
+			},
+		],
+	} )
+);
 
 module.exports = {
 	...defaultConfig,

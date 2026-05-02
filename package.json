@@ -12,7 +12,6 @@
 	"scripts": {
 		"prepare": "node bin/install-hooks.js",
 		"build": "wp-scripts build",
-		"postbuild": "node scripts/copy-dataviews-css.js",
 		"start": "wp-scripts start",
 		"lint:js": "wp-scripts lint-js client/",
 		"lint:js-fix": "wp-scripts lint-js --fix client/",
