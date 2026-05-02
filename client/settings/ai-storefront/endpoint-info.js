@@ -9,7 +9,7 @@ import {
 	Spinner,
 	TextControl,
 } from '@wordpress/components';
-import { __, sprintf } from '@wordpress/i18n';
+import { __, sprintf, _n } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-storefront/constants';
 import { colors, typography, radii, spacing } from './tokens';
 import { TabInputStyles } from './tab-input-styles';
@@ -688,6 +688,539 @@ const CRAWLER_GROUPS = [
 	},
 ];
 
+const CRAWL_PERIODS = [
+	{ value: 'day', label: __( 'Day', 'woocommerce-ai-storefront' ) },
+	{ value: 'week', label: __( '7 days', 'woocommerce-ai-storefront' ) },
+	{
+		value: 'month',
+		label: __( '30 days', 'woocommerce-ai-storefront' ),
+	},
+	{
+		value: 'quarter',
+		label: __( '90 days', 'woocommerce-ai-storefront' ),
+	},
+	{ value: 'year', label: __( 'Year', 'woocommerce-ai-storefront' ) },
+];
+
+/**
+ * Single stat tile used inside CrawlerActivityCard.
+ *
+ * @param {Object}        root0
+ * @param {string}        root0.label Descriptive label below the value.
+ * @param {string|number} root0.value Big number / formatted value to display.
+ * @param {string}        [root0.sub] Optional small sub-line (e.g. "updated daily").
+ */
+const StatTile = ( { label, value, sub } ) => (
+	<div
+		style={ {
+			textAlign: 'center',
+			padding: `${ spacing.s3 } ${ spacing.s2 }`,
+		} }
+	>
+		<div
+			style={ {
+				...typography.statValue,
+				color: colors.textPrimary,
+				lineHeight: 1,
+				marginBottom: '4px',
+			} }
+		>
+			{ value }
+		</div>
+		<div
+			style={ {
+				fontSize: '12px',
+				color: colors.textSecondary,
+				lineHeight: 1.3,
+			} }
+		>
+			{ label }
+		</div>
+		{ sub && (
+			<div
+				style={ {
+					fontSize: '11px',
+					color: colors.textMuted,
+					marginTop: '2px',
+				} }
+			>
+				{ sub }
+			</div>
+		) }
+	</div>
+);
+
+/**
+ * AI agent activity stat card for the Discovery tab.
+ *
+ * Shows aggregate visibility stats from the daily crawl summary table.
+ * Data reflects activity up to end of yesterday (nightly cron rollup).
+ * A period selector lets the merchant explore different trailing windows.
+ */
+const CrawlerActivityCard = () => {
+	const crawlStats = useSelect(
+		( select ) => select( STORE_NAME ).getCrawlStats(),
+		[]
+	);
+	const { fetchCrawlStats } = useDispatch( STORE_NAME );
+
+	const [ period, setPeriod ] = useState( 'month' );
+
+	useEffect( () => {
+		fetchCrawlStats( period );
+	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Stable dispatch.
+
+	const isLoading = crawlStats === null || crawlStats.period !== period;
+
+	const fmt = ( n ) => new Intl.NumberFormat().format( n );
+
+	return (
+		<Card style={ { marginTop: '32px' } }>
+			<CardBody>
+				{ /* Card header + period chips */ }
+				<div
+					style={ {
+						display: 'flex',
+						justifyContent: 'space-between',
+						alignItems: 'flex-start',
+						marginBottom: '16px',
+						flexWrap: 'wrap',
+						gap: spacing.s2,
+					} }
+				>
+					<div>
+						<h3 style={ { margin: '0 0 4px', fontSize: '14px' } }>
+							{ __(
+								'AI agent activity',
+								'woocommerce-ai-storefront'
+							) }
+						</h3>
+						<p
+							style={ {
+								margin: 0,
+								fontSize: '12px',
+								color: colors.textMuted,
+							} }
+						>
+							{ __(
+								"Updated daily from yesterday's AI activity log.",
+								'woocommerce-ai-storefront'
+							) }
+						</p>
+					</div>
+					{ /* Period chip strip */ }
+					<div
+						style={ {
+							display: 'flex',
+							gap: '4px',
+							flexWrap: 'wrap',
+						} }
+					>
+						{ CRAWL_PERIODS.map( ( p ) => {
+							const isActive = p.value === period;
+							return (
+								<button
+									key={ p.value }
+									type="button"
+									onClick={ () => setPeriod( p.value ) }
+									style={ {
+										cursor: 'pointer',
+										padding: '3px 10px',
+										fontSize: '12px',
+										fontWeight: isActive ? '600' : '400',
+										borderRadius: radii.pill,
+										border: `1px solid ${
+											isActive
+												? colors.accent
+												: colors.borderSubtle
+										}`,
+										background: isActive
+											? colors.infoBg
+											: colors.surface,
+										color: isActive
+											? colors.accent
+											: colors.textSecondary,
+									} }
+								>
+									{ p.label }
+								</button>
+							);
+						} ) }
+					</div>
+				</div>
+
+				{ /* Stat grid */ }
+				{ isLoading ? (
+					<div
+						style={ {
+							textAlign: 'center',
+							padding: `${ spacing.s4 } 0`,
+						} }
+					>
+						<Spinner />
+					</div>
+				) : (
+					<div
+						style={ {
+							display: 'grid',
+							gridTemplateColumns:
+								'repeat(auto-fit, minmax(100px, 1fr))',
+							gap: '1px',
+							background: colors.borderSubtle,
+							borderRadius: radii.sm,
+							overflow: 'hidden',
+							border: `1px solid ${ colors.borderSubtle }`,
+						} }
+					>
+						<div style={ { background: colors.surface } }>
+							<StatTile
+								label={ __(
+									'Store API queries',
+									'woocommerce-ai-storefront'
+								) }
+								value={ fmt( crawlStats.store_api_queries ) }
+							/>
+						</div>
+						<div style={ { background: colors.surface } }>
+							<StatTile
+								label={ __(
+									'llms.txt hits',
+									'woocommerce-ai-storefront'
+								) }
+								value={ fmt( crawlStats.llms_txt_hits ) }
+							/>
+						</div>
+						<div style={ { background: colors.surface } }>
+							<StatTile
+								label={ __(
+									'UCP hits',
+									'woocommerce-ai-storefront'
+								) }
+								value={ fmt( crawlStats.ucp_hits ) }
+							/>
+						</div>
+						<div style={ { background: colors.surface } }>
+							<StatTile
+								label={ __(
+									'Throttle rate',
+									'woocommerce-ai-storefront'
+								) }
+								value={
+									crawlStats.total_requests > 0
+										? crawlStats.throttle_rate + '%'
+										: '—'
+								}
+								sub={
+									crawlStats.throttle_count > 0
+										? sprintf(
+												/* translators: %d: number of throttled requests */
+												_n(
+													'%d request throttled',
+													'%d requests throttled',
+													crawlStats.throttle_count,
+													'woocommerce-ai-storefront'
+												),
+												crawlStats.throttle_count
+										  )
+										: undefined
+								}
+							/>
+						</div>
+					</div>
+				) }
+
+				{ /* By-agent breakdown — only shown when there's data */ }
+				{ ! isLoading &&
+					crawlStats.by_agent &&
+					crawlStats.by_agent.length > 0 && (
+						<div
+							style={ {
+								marginTop: '16px',
+								paddingTop: '12px',
+								borderTop: `1px solid ${ colors.borderSubtle }`,
+							} }
+						>
+							<p
+								style={ {
+									margin: '0 0 8px',
+									fontSize: '12px',
+									fontWeight: '600',
+									color: colors.textSecondary,
+									textTransform: 'uppercase',
+									letterSpacing: '0.05em',
+								} }
+							>
+								{ __(
+									'By crawler',
+									'woocommerce-ai-storefront'
+								) }
+							</p>
+							<div
+								style={ {
+									display: 'flex',
+									flexWrap: 'wrap',
+									gap: '6px',
+								} }
+							>
+								{ crawlStats.by_agent.map( ( entry ) => (
+									<span
+										key={ entry.agent }
+										style={ {
+											display: 'inline-flex',
+											alignItems: 'center',
+											gap: '4px',
+											fontSize: '12px',
+											background: colors.surfaceMuted,
+											color: colors.textSecondary,
+											borderRadius: radii.pill,
+											padding: '3px 10px',
+										} }
+									>
+										<strong
+											style={ {
+												color: colors.textPrimary,
+											} }
+										>
+											{ entry.agent }
+										</strong>
+										<span
+											style={ {
+												color: colors.textMuted,
+											} }
+										>
+											{ fmt( entry.requests ) }
+										</span>
+									</span>
+								) ) }
+							</div>
+						</div>
+					) }
+
+				{ /* Top search queries — always shown after load so merchants
+				     see the feature before any bot traffic arrives.
+				     Populated: collapsible <details> open by default.
+				     Empty: ghost rows + one-line copy (aria-hidden on
+				     skeleton, same rationale as the orders GhostTable). */ }
+				{ ! isLoading && (
+					<div
+						style={ {
+							marginTop: '16px',
+							paddingTop: '12px',
+							borderTop: `1px solid ${ colors.borderSubtle }`,
+						} }
+					>
+						{ crawlStats.top_queries &&
+						crawlStats.top_queries.length > 0 ? (
+							<details open>
+								<summary
+									style={ {
+										listStyle: 'none',
+										cursor: 'pointer',
+										display: 'flex',
+										alignItems: 'center',
+										gap: '6px',
+										margin: '0 0 8px',
+										fontSize: '12px',
+										fontWeight: '600',
+										color: colors.textSecondary,
+										textTransform: 'uppercase',
+										letterSpacing: '0.05em',
+										userSelect: 'none',
+									} }
+								>
+									{ sprintf(
+										/* translators: %d: number of unique search queries */
+										_n(
+											'Top searches (%d)',
+											'Top searches (%d)',
+											crawlStats.top_queries.length,
+											'woocommerce-ai-storefront'
+										),
+										crawlStats.top_queries.length
+									) }
+								</summary>
+								<div
+									style={ {
+										display: 'flex',
+										flexDirection: 'column',
+										gap: '4px',
+									} }
+								>
+									{ crawlStats.top_queries.map( ( entry ) => (
+										<div
+											key={ entry.query }
+											style={ {
+												display: 'flex',
+												justifyContent: 'space-between',
+												alignItems: 'center',
+												padding: '5px 8px',
+												background:
+													colors.surfaceSubtle,
+												borderRadius: radii.sm,
+												gap: '8px',
+											} }
+										>
+											<span
+												style={ {
+													fontSize: '13px',
+													color: colors.textPrimary,
+													flex: 1,
+													minWidth: 0,
+													overflow: 'hidden',
+													textOverflow: 'ellipsis',
+													whiteSpace: 'nowrap',
+												} }
+											>
+												{ entry.query }
+											</span>
+											<div
+												style={ {
+													display: 'flex',
+													alignItems: 'center',
+													gap: '6px',
+													flexShrink: 0,
+												} }
+											>
+												{ entry.agents.map(
+													( agent ) => (
+														<span
+															key={ agent }
+															style={ {
+																fontSize:
+																	'11px',
+																color: colors.textMuted,
+																background:
+																	colors.surface,
+																border: `1px solid ${ colors.borderSubtle }`,
+																borderRadius:
+																	radii.pill,
+																padding:
+																	'1px 6px',
+															} }
+														>
+															{ agent }
+														</span>
+													)
+												) }
+												<span
+													style={ {
+														fontSize: '12px',
+														fontWeight: '600',
+														color: colors.textSecondary,
+														minWidth: '24px',
+														textAlign: 'right',
+													} }
+												>
+													{ fmt( entry.count ) }
+												</span>
+											</div>
+										</div>
+									) ) }
+								</div>
+							</details>
+						) : (
+							<>
+								<p
+									style={ {
+										margin: '0 0 8px',
+										fontSize: '12px',
+										fontWeight: '600',
+										color: colors.textSecondary,
+										textTransform: 'uppercase',
+										letterSpacing: '0.05em',
+									} }
+								>
+									{ __(
+										'Top searches',
+										'woocommerce-ai-storefront'
+									) }
+								</p>
+								{ /* Ghost rows — aria-hidden, purely visual preview */ }
+								<div
+									aria-hidden="true"
+									style={ {
+										display: 'flex',
+										flexDirection: 'column',
+										gap: '4px',
+										opacity: 0.4,
+									} }
+								>
+									{ [ '75%', '55%', '40%' ].map( ( w ) => (
+										<div
+											key={ w }
+											style={ {
+												display: 'flex',
+												justifyContent: 'space-between',
+												alignItems: 'center',
+												padding: '5px 8px',
+												background:
+													colors.surfaceSubtle,
+												borderRadius: radii.sm,
+												gap: '8px',
+											} }
+										>
+											<div
+												style={ {
+													height: '13px',
+													width: w,
+													background:
+														colors.surfaceMuted,
+													borderRadius: '3px',
+												} }
+											/>
+											<div
+												style={ {
+													height: '13px',
+													width: '32px',
+													background:
+														colors.surfaceMuted,
+													borderRadius: '3px',
+													flexShrink: 0,
+												} }
+											/>
+										</div>
+									) ) }
+								</div>
+								<p
+									style={ {
+										margin: '10px 0 0',
+										fontSize: '12px',
+										color: colors.textMuted,
+										textAlign: 'center',
+									} }
+								>
+									{ __(
+										'Search queries from AI agents will appear here.',
+										'woocommerce-ai-storefront'
+									) }
+								</p>
+							</>
+						) }
+					</div>
+				) }
+
+				{ /* Empty state */ }
+				{ ! isLoading && crawlStats.total_requests === 0 && (
+					<p
+						style={ {
+							marginTop: '16px',
+							marginBottom: 0,
+							fontSize: '13px',
+							color: colors.textMuted,
+							textAlign: 'center',
+						} }
+					>
+						{ __(
+							'No AI agent activity recorded for this period. Stats appear here after the first AI agent visits your store.',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
+				) }
+			</CardBody>
+		</Card>
+	);
+};
+
 const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	const endpoints = useSelect(
 		( select ) => select( STORE_NAME ).getEndpoints(),
@@ -1047,6 +1580,8 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 					</div>
 				</CardBody>
 			</Card>
+
+			<CrawlerActivityCard />
 
 			{ /* Allowed AI agents */ }
 			<Card style={ { marginTop: '32px' } }>

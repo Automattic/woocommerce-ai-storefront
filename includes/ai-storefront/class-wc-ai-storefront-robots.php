@@ -234,6 +234,36 @@ class WC_AI_Storefront_Robots {
 	];
 
 	/**
+	 * Return the first AI_CRAWLERS token found in the current request's
+	 * User-Agent string, or '' if none match.
+	 *
+	 * Used by passive-serve paths (llms.txt, UCP manifest) that don't carry
+	 * a structured UCP-Agent header. Callers that need brand-name bucketing
+	 * should run the result through
+	 * `WC_AI_Storefront_UCP_Agent_Header::canonicalize_host_idempotent()`.
+	 *
+	 * @return string Matched bot token (e.g. 'GPTBot', 'ChatGPT-User') or ''.
+	 */
+	public static function detect_crawler_from_ua(): string {
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$ua = isset( $_SERVER['HTTP_USER_AGENT'] )
+			? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) )
+			: '';
+
+		if ( '' === $ua ) {
+			return '';
+		}
+
+		foreach ( self::AI_CRAWLERS as $bot ) {
+			if ( stripos( $ua, $bot ) !== false ) {
+				return $bot;
+			}
+		}
+
+		return '';
+	}
+
+	/**
 	 * Sanitize an `allowed_crawlers` input against the canonical crawler list.
 	 *
 	 * Strips unknown IDs left over from plugin upgrades that rotated the

@@ -325,6 +325,27 @@ class WC_AI_Storefront_Admin_Controller {
 				'permission_callback' => [ $this, 'check_admin_permission' ],
 			]
 		);
+
+		// Crawler-visibility stats for the Discovery tab.
+		// Aggregated from the daily summary table (wc_ai_storefront_crawl_summary).
+		// Data reflects activity up to the end of yesterday — today's events
+		// are in the raw log and roll into the summary on the nightly cron.
+		register_rest_route(
+			self::NAMESPACE,
+			'/crawl-stats',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'get_crawl_stats' ],
+				'permission_callback' => [ $this, 'check_admin_permission' ],
+				'args'                => [
+					'period' => [
+						'type'    => 'string',
+						'default' => 'month',
+						'enum'    => [ 'day', 'week', 'month', 'quarter', 'year' ],
+					],
+				],
+			]
+		);
 	}
 
 	/**
@@ -1193,6 +1214,157 @@ class WC_AI_Storefront_Admin_Controller {
 		}
 
 		return new WP_REST_Response( $data );
+	}
+
+	/**
+	 * Get crawler-visibility stats for the Discovery tab.
+	 *
+	 * Reads from the daily summary table `wc_ai_storefront_crawl_summary`
+	 * (not the raw log), so data reflects activity up to the end of
+	 * yesterday — today's events land in the summary on the nightly cron.
+	 *
+	 * Returned shape:
+	 *   period             — echoed back for the client's cache key.
+	 *   total_requests     — SUM(request_count) across all endpoints.
+	 *   unique_products    — COUNT(DISTINCT product_id) where product_id > 0.
+	 *   store_api_queries  — requests to store_api_product + store_api_search.
+	 *   llms_txt_hits      — requests to the llms.txt endpoint.
+	 *   ucp_hits           — requests to the UCP manifest endpoint.
+	 *   throttle_count     — SUM(throttle_count) across all endpoints.
+	 *   throttle_rate      — throttle_count / total_requests × 100 (0 when no data).
+	 *   by_agent           — top-10 agents by request count: [{agent, requests}].
+	 *
+	 * @param WP_REST_Request $request The request.
+	 * @return WP_REST_Response
+	 */
+	public function get_crawl_stats( $request ) {
+		global $wpdb;
+
+		$period        = $request->get_param( 'period' );
+		$valid_periods = array( 'day', 'week', 'month', 'quarter', 'year' );
+		$period        = in_array( $period, $valid_periods, true ) ? $period : 'month';
+
+		$date_map = array(
+			'day'     => '1 day ago',
+			'week'    => '7 days ago',
+			'month'   => '30 days ago',
+			'quarter' => '90 days ago',
+			'year'    => '12 months ago',
+		);
+
+		$after_ts = strtotime( $date_map[ $period ] );
+		if ( false === $after_ts ) {
+			$after_ts = strtotime( '30 days ago' );
+		}
+		$after_date     = gmdate( 'Y-m-d', $after_ts );
+		$after_datetime = gmdate( 'Y-m-d H:i:s', $after_ts );
+
+		$table     = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY;
+		$log_table = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_LOG;
+
+		// Per-endpoint aggregates — single query, aggregated in PHP below.
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$endpoint_rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT endpoint,
+				        SUM(request_count)  AS requests,
+				        SUM(throttle_count) AS throttles
+				 FROM {$table}
+				 WHERE crawl_date >= %s
+				 GROUP BY endpoint",
+				$after_date
+			)
+		);
+
+		// Unique products seen across all endpoints in the period.
+		$unique_products = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(DISTINCT product_id)
+				 FROM {$table}
+				 WHERE product_id > 0 AND crawl_date >= %s",
+				$after_date
+			)
+		);
+
+		// Top-10 agents by request count.
+		$agent_rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT agent, SUM(request_count) AS requests
+				 FROM {$table}
+				 WHERE crawl_date >= %s
+				 GROUP BY agent
+				 ORDER BY requests DESC
+				 LIMIT 10",
+				$after_date
+			)
+		);
+
+		// Top-20 search queries from the raw log (query strings are not
+		// aggregated into the summary table, so we go to TABLE_LOG here).
+		$query_rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT query,
+				        COUNT(*)                                          AS count,
+				        GROUP_CONCAT(DISTINCT agent ORDER BY agent SEPARATOR ',') AS agents
+				 FROM {$log_table}
+				 WHERE endpoint = %s
+				   AND query IS NOT NULL
+				   AND crawled_at >= %s
+				 GROUP BY query
+				 ORDER BY count DESC
+				 LIMIT 20",
+				WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH,
+				$after_datetime
+			)
+		);
+		// phpcs:enable
+
+		$total_requests  = 0;
+		$total_throttles = 0;
+		$by_endpoint     = array();
+
+		foreach ( (array) $endpoint_rows as $row ) {
+			$requests                               = (int) $row->requests;
+			$throttles                              = (int) $row->throttles;
+			$total_requests                        += $requests;
+			$total_throttles                       += $throttles;
+			$by_endpoint[ (string) $row->endpoint ] = $requests;
+		}
+
+		$store_api_queries = ( $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH ] ?? 0 )
+			+ ( $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SINGLE ] ?? 0 );
+
+		$by_agent = array();
+		foreach ( (array) $agent_rows as $row ) {
+			$by_agent[] = array(
+				'agent'    => (string) $row->agent,
+				'requests' => (int) $row->requests,
+			);
+		}
+
+		$top_queries = array();
+		foreach ( (array) $query_rows as $row ) {
+			$top_queries[] = array(
+				'query'  => (string) $row->query,
+				'count'  => (int) $row->count,
+				'agents' => array_values( array_filter( explode( ',', (string) $row->agents ) ) ),
+			);
+		}
+
+		return new WP_REST_Response(
+			array(
+				'period'            => $period,
+				'total_requests'    => $total_requests,
+				'unique_products'   => $unique_products,
+				'store_api_queries' => $store_api_queries,
+				'llms_txt_hits'     => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_LLMS_TXT ] ?? 0,
+				'ucp_hits'          => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP ] ?? 0,
+				'throttle_count'    => $total_throttles,
+				'throttle_rate'     => $total_requests > 0 ? round( ( $total_throttles / $total_requests ) * 100, 1 ) : 0.0,
+				'by_agent'          => $by_agent,
+				'top_queries'       => $top_queries,
+			)
+		);
 	}
 
 	/**

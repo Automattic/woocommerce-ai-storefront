@@ -183,6 +183,16 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 				(int) $count,
 				$limit
 			);
+
+			// Record the throttled hit. Infer endpoint from the request URI
+			// since the rate limiter doesn't receive the WP_REST_Request object.
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$uri               = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+			$throttle_endpoint = str_contains( $uri, 'catalog/lookup' )
+				? WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SINGLE
+				: WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH;
+			WC_AI_Storefront_Crawl_Logger::record( $throttle_endpoint, 0, $matched_bot, '', true );
+
 			return new WP_Error(
 				WC_AI_Storefront_UCP_Error_Codes::UCP_RATE_LIMIT_EXCEEDED,
 				__( 'Too many requests. Please try again later.', 'woocommerce-ai-storefront' ),

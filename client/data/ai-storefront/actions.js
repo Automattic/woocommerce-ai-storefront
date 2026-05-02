@@ -32,6 +32,27 @@ export function setRecentOrders( data ) {
 	return { type: ACTION_TYPES.SET_RECENT_ORDERS, data };
 }
 
+export function setCrawlStats( data ) {
+	return { type: ACTION_TYPES.SET_CRAWL_STATS, data };
+}
+
+export function setCrawlStatsError( error ) {
+	return { type: ACTION_TYPES.SET_CRAWL_STATS_ERROR, error };
+}
+
+export function fetchCrawlStats( period = 'month' ) {
+	return async ( { dispatch } ) => {
+		try {
+			const data = await apiFetch( {
+				path: `${ ADMIN_NAMESPACE }/crawl-stats?period=${ period }`,
+			} );
+			dispatch.setCrawlStats( data );
+		} catch ( error ) {
+			dispatch.setCrawlStatsError( error );
+		}
+	};
+}
+
 export function saveSettings() {
 	return async ( { dispatch, select } ) => {
 		const settings = select.getSettings();

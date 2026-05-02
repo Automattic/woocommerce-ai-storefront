@@ -26,6 +26,10 @@ const defaultState = {
 	// table. `null` = "not fetched yet" so the component can render
 	// a skeleton/empty state rather than flashing an empty table.
 	recentOrders: null,
+	// Crawler-visibility stats for the Discovery tab. `null` = not yet
+	// fetched. Shape matches the /crawl-stats REST endpoint response.
+	crawlStats: null,
+	crawlStatsError: null,
 };
 
 const reducer = ( state = defaultState, action ) => {
@@ -86,6 +90,12 @@ const reducer = ( state = defaultState, action ) => {
 
 		case ACTION_TYPES.SET_RECENT_ORDERS:
 			return { ...state, recentOrders: action.data };
+
+		case ACTION_TYPES.SET_CRAWL_STATS:
+			return { ...state, crawlStats: action.data, crawlStatsError: null };
+
+		case ACTION_TYPES.SET_CRAWL_STATS_ERROR:
+			return { ...state, crawlStatsError: action.error };
 
 		default:
 			return state;

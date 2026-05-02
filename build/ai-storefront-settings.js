@@ -22,7 +22,9 @@ __webpack_require__.r(__webpack_exports__);
   SET_ENDPOINTS_ERROR: 'SET_AI_SYNDICATION_ENDPOINTS_ERROR',
   SET_ENDPOINT_STATUS: 'SET_AI_SYNDICATION_ENDPOINT_STATUS',
   RESET_ENDPOINT_STATUS: 'RESET_AI_SYNDICATION_ENDPOINT_STATUS',
-  SET_RECENT_ORDERS: 'SET_AI_SYNDICATION_RECENT_ORDERS'
+  SET_RECENT_ORDERS: 'SET_AI_SYNDICATION_RECENT_ORDERS',
+  SET_CRAWL_STATS: 'SET_AI_SYNDICATION_CRAWL_STATS',
+  SET_CRAWL_STATS_ERROR: 'SET_AI_SYNDICATION_CRAWL_STATS_ERROR'
 });
 
 /***/ },
@@ -37,11 +39,14 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   checkEndpoints: () => (/* binding */ checkEndpoints),
+/* harmony export */   fetchCrawlStats: () => (/* binding */ fetchCrawlStats),
 /* harmony export */   fetchEndpoints: () => (/* binding */ fetchEndpoints),
 /* harmony export */   fetchRecentOrders: () => (/* binding */ fetchRecentOrders),
 /* harmony export */   fetchStats: () => (/* binding */ fetchStats),
 /* harmony export */   resetEndpointStatus: () => (/* binding */ resetEndpointStatus),
 /* harmony export */   saveSettings: () => (/* binding */ saveSettings),
+/* harmony export */   setCrawlStats: () => (/* binding */ setCrawlStats),
+/* harmony export */   setCrawlStatsError: () => (/* binding */ setCrawlStatsError),
 /* harmony export */   setEndpointStatus: () => (/* binding */ setEndpointStatus),
 /* harmony export */   setEndpoints: () => (/* binding */ setEndpoints),
 /* harmony export */   setEndpointsError: () => (/* binding */ setEndpointsError),
@@ -105,6 +110,32 @@ function setRecentOrders(data) {
   return {
     type: _action_types__WEBPACK_IMPORTED_MODULE_0__["default"].SET_RECENT_ORDERS,
     data
+  };
+}
+function setCrawlStats(data) {
+  return {
+    type: _action_types__WEBPACK_IMPORTED_MODULE_0__["default"].SET_CRAWL_STATS,
+    data
+  };
+}
+function setCrawlStatsError(error) {
+  return {
+    type: _action_types__WEBPACK_IMPORTED_MODULE_0__["default"].SET_CRAWL_STATS_ERROR,
+    error
+  };
+}
+function fetchCrawlStats(period = 'month') {
+  return async ({
+    dispatch
+  }) => {
+    try {
+      const data = await _wordpress_api_fetch__WEBPACK_IMPORTED_MODULE_1___default()({
+        path: `${_constants__WEBPACK_IMPORTED_MODULE_4__.ADMIN_NAMESPACE}/crawl-stats?period=${period}`
+      });
+      dispatch.setCrawlStats(data);
+    } catch (error) {
+      dispatch.setCrawlStatsError(error);
+    }
   };
 }
 function saveSettings() {
@@ -495,7 +526,11 @@ const defaultState = {
   // Recent AI-attributed orders for the Overview tab's AI Orders
   // table. `null` = "not fetched yet" so the component can render
   // a skeleton/empty state rather than flashing an empty table.
-  recentOrders: null
+  recentOrders: null,
+  // Crawler-visibility stats for the Discovery tab. `null` = not yet
+  // fetched. Shape matches the /crawl-stats REST endpoint response.
+  crawlStats: null,
+  crawlStatsError: null
 };
 const reducer = (state = defaultState, action) => {
   switch (action.type) {
@@ -569,6 +604,17 @@ const reducer = (state = defaultState, action) => {
         ...state,
         recentOrders: action.data
       };
+    case _action_types__WEBPACK_IMPORTED_MODULE_0__["default"].SET_CRAWL_STATS:
+      return {
+        ...state,
+        crawlStats: action.data,
+        crawlStatsError: null
+      };
+    case _action_types__WEBPACK_IMPORTED_MODULE_0__["default"].SET_CRAWL_STATS_ERROR:
+      return {
+        ...state,
+        crawlStatsError: action.error
+      };
     default:
       return state;
   }
@@ -631,6 +677,8 @@ const getEndpoints = () => async ({
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   getCrawlStats: () => (/* binding */ getCrawlStats),
+/* harmony export */   getCrawlStatsError: () => (/* binding */ getCrawlStatsError),
 /* harmony export */   getEndpointStatus: () => (/* binding */ getEndpointStatus),
 /* harmony export */   getEndpoints: () => (/* binding */ getEndpoints),
 /* harmony export */   getEndpointsError: () => (/* binding */ getEndpointsError),
@@ -654,6 +702,8 @@ const getEndpoints = state => state?.endpoints || EMPTY_OBJ;
 const getEndpointsError = state => state?.endpointsError || null;
 const getEndpointStatus = state => state?.endpointStatus || EMPTY_OBJ;
 const getRecentOrders = state => state?.recentOrders || null;
+const getCrawlStats = state => state?.crawlStats || null;
+const getCrawlStatsError = state => state?.crawlStatsError || null;
 
 /**
  * Whether the merchant has unsaved changes — drives the Save button's
@@ -946,12 +996,16 @@ const DEFAULT_VIEW = {
 };
 
 // localStorage key for persisted view preferences.
-// Only display settings (type, layout, perPage, sort, fields) are stored;
-// transient navigation state (page, search, filters) is not.
+// Only display preferences (type, layout, perPage, sort) are stored;
+// transient navigation state (page, search, filters) and column schema
+// (fields) are not — see PERSISTED_VIEW_KEYS.
 const VIEW_STORAGE_KEY = 'wc_ai_storefront_orders_view';
 
-// Keys whose values are display preferences worth persisting.
-const PERSISTED_VIEW_KEYS = ['type', 'perPage', 'sort', 'fields', 'layout'];
+// Keys whose values are display preferences worth persisting across sessions.
+// `fields` is intentionally excluded — column set and order are owned by
+// DEFAULT_VIEW (developer schema); persisting them causes stale stored orders
+// to override the correct default when columns are added or reordered.
+const PERSISTED_VIEW_KEYS = ['type', 'perPage', 'sort', 'layout'];
 
 // The only layout this component registers in defaultLayouts. A stored
 // type outside this set causes DataViews to render null — guard against
@@ -1353,33 +1407,6 @@ const AIOrdersTable = () => {
       item
     }) => item.customer
   }, {
-    id: 'items',
-    label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.__)('Items', 'woocommerce-ai-storefront'),
-    enableSorting: false,
-    render: ({
-      item
-    }) => {
-      const items = item.items || [];
-      if (!items.length) {
-        return '—';
-      }
-      const visible = items.slice(0, 2).join(', ');
-      const overflow = items.length - 2;
-      return overflow > 0 ? /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("span", {
-        title: items.join(', '),
-        children: [visible, ' ', /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("span", {
-          style: {
-            color: _tokens__WEBPACK_IMPORTED_MODULE_6__.colors.textMuted
-          },
-          children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.sprintf)(/* translators: %d: number of additional items not shown */
-          (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.__)('+%d more', 'woocommerce-ai-storefront'), overflow)
-        })]
-      }) : visible;
-    },
-    getValue: ({
-      item
-    }) => (item.items || []).join(', ')
-  }, {
     id: 'date',
     label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.__)('Date', 'woocommerce-ai-storefront'),
     enableSorting: true,
@@ -1433,6 +1460,33 @@ const AIOrdersTable = () => {
     getValue: ({
       item
     }) => item.status
+  }, {
+    id: 'items',
+    label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.__)('Items', 'woocommerce-ai-storefront'),
+    enableSorting: false,
+    render: ({
+      item
+    }) => {
+      const items = item.items || [];
+      if (!items.length) {
+        return '—';
+      }
+      const visible = items.slice(0, 2).join(', ');
+      const overflow = items.length - 2;
+      return overflow > 0 ? /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("span", {
+        title: items.join(', '),
+        children: [visible, ' ', /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("span", {
+          style: {
+            color: _tokens__WEBPACK_IMPORTED_MODULE_6__.colors.textMuted
+          },
+          children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.sprintf)(/* translators: %d: number of additional items not shown */
+          (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.__)('+%d more', 'woocommerce-ai-storefront'), overflow)
+        })]
+      }) : visible;
+    },
+    getValue: ({
+      item
+    }) => (item.items || []).join(', ')
   }, {
     id: 'agent',
     label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.__)('Agent', 'woocommerce-ai-storefront'),
@@ -2264,6 +2318,386 @@ const CRAWLER_GROUPS = [{
   subgroup: null,
   defaultOpen: false
 }];
+const CRAWL_PERIODS = [{
+  value: 'day',
+  label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Day', 'woocommerce-ai-storefront')
+}, {
+  value: 'week',
+  label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('7 days', 'woocommerce-ai-storefront')
+}, {
+  value: 'month',
+  label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('30 days', 'woocommerce-ai-storefront')
+}, {
+  value: 'quarter',
+  label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('90 days', 'woocommerce-ai-storefront')
+}, {
+  value: 'year',
+  label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Year', 'woocommerce-ai-storefront')
+}];
+
+/**
+ * Single stat tile used inside CrawlerActivityCard.
+ *
+ * @param {Object}        root0
+ * @param {string}        root0.label Descriptive label below the value.
+ * @param {string|number} root0.value Big number / formatted value to display.
+ * @param {string}        [root0.sub] Optional small sub-line (e.g. "updated daily").
+ */
+const StatTile = ({
+  label,
+  value,
+  sub
+}) => /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("div", {
+  style: {
+    textAlign: 'center',
+    padding: `${_tokens__WEBPACK_IMPORTED_MODULE_5__.spacing.s3} ${_tokens__WEBPACK_IMPORTED_MODULE_5__.spacing.s2}`
+  },
+  children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+    style: {
+      ..._tokens__WEBPACK_IMPORTED_MODULE_5__.typography.statValue,
+      color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textPrimary,
+      lineHeight: 1,
+      marginBottom: '4px'
+    },
+    children: value
+  }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+    style: {
+      fontSize: '12px',
+      color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textSecondary,
+      lineHeight: 1.3
+    },
+    children: label
+  }), sub && /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+    style: {
+      fontSize: '11px',
+      color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textMuted,
+      marginTop: '2px'
+    },
+    children: sub
+  })]
+});
+
+/**
+ * AI agent activity stat card for the Discovery tab.
+ *
+ * Shows aggregate visibility stats from the daily crawl summary table.
+ * Data reflects activity up to end of yesterday (nightly cron rollup).
+ * A period selector lets the merchant explore different trailing windows.
+ */
+const CrawlerActivityCard = () => {
+  const crawlStats = (0,_wordpress_data__WEBPACK_IMPORTED_MODULE_1__.useSelect)(select => select(_data_ai_storefront_constants__WEBPACK_IMPORTED_MODULE_4__.STORE_NAME).getCrawlStats(), []);
+  const {
+    fetchCrawlStats
+  } = (0,_wordpress_data__WEBPACK_IMPORTED_MODULE_1__.useDispatch)(_data_ai_storefront_constants__WEBPACK_IMPORTED_MODULE_4__.STORE_NAME);
+  const [period, setPeriod] = (0,_wordpress_element__WEBPACK_IMPORTED_MODULE_0__.useState)('month');
+  (0,_wordpress_element__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    fetchCrawlStats(period);
+  }, [period]); // eslint-disable-line react-hooks/exhaustive-deps -- Stable dispatch.
+
+  const isLoading = crawlStats === null || crawlStats.period !== period;
+  const fmt = n => new Intl.NumberFormat().format(n);
+  return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.Card, {
+    style: {
+      marginTop: '32px'
+    },
+    children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.CardBody, {
+      children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("div", {
+        style: {
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          marginBottom: '16px',
+          flexWrap: 'wrap',
+          gap: _tokens__WEBPACK_IMPORTED_MODULE_5__.spacing.s2
+        },
+        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("div", {
+          children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("h3", {
+            style: {
+              margin: '0 0 4px',
+              fontSize: '14px'
+            },
+            children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('AI agent activity', 'woocommerce-ai-storefront')
+          }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("p", {
+            style: {
+              margin: 0,
+              fontSize: '12px',
+              color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textMuted
+            },
+            children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)("Updated daily from yesterday's AI activity log.", 'woocommerce-ai-storefront')
+          })]
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+          style: {
+            display: 'flex',
+            gap: '4px',
+            flexWrap: 'wrap'
+          },
+          children: CRAWL_PERIODS.map(p => {
+            const isActive = p.value === period;
+            return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("button", {
+              type: "button",
+              onClick: () => setPeriod(p.value),
+              style: {
+                cursor: 'pointer',
+                padding: '3px 10px',
+                fontSize: '12px',
+                fontWeight: isActive ? '600' : '400',
+                borderRadius: _tokens__WEBPACK_IMPORTED_MODULE_5__.radii.pill,
+                border: `1px solid ${isActive ? _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.accent : _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.borderSubtle}`,
+                background: isActive ? _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.infoBg : _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.surface,
+                color: isActive ? _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.accent : _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textSecondary
+              },
+              children: p.label
+            }, p.value);
+          })
+        })]
+      }), isLoading ? /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+        style: {
+          textAlign: 'center',
+          padding: `${_tokens__WEBPACK_IMPORTED_MODULE_5__.spacing.s4} 0`
+        },
+        children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.Spinner, {})
+      }) : /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("div", {
+        style: {
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
+          gap: '1px',
+          background: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.borderSubtle,
+          borderRadius: _tokens__WEBPACK_IMPORTED_MODULE_5__.radii.sm,
+          overflow: 'hidden',
+          border: `1px solid ${_tokens__WEBPACK_IMPORTED_MODULE_5__.colors.borderSubtle}`
+        },
+        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+          style: {
+            background: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.surface
+          },
+          children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(StatTile, {
+            label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Store API queries', 'woocommerce-ai-storefront'),
+            value: fmt(crawlStats.store_api_queries)
+          })
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+          style: {
+            background: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.surface
+          },
+          children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(StatTile, {
+            label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('llms.txt hits', 'woocommerce-ai-storefront'),
+            value: fmt(crawlStats.llms_txt_hits)
+          })
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+          style: {
+            background: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.surface
+          },
+          children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(StatTile, {
+            label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('UCP hits', 'woocommerce-ai-storefront'),
+            value: fmt(crawlStats.ucp_hits)
+          })
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+          style: {
+            background: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.surface
+          },
+          children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(StatTile, {
+            label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Throttle rate', 'woocommerce-ai-storefront'),
+            value: crawlStats.total_requests > 0 ? crawlStats.throttle_rate + '%' : '—',
+            sub: crawlStats.throttle_count > 0 ? (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.sprintf)(/* translators: %d: number of throttled requests */
+            (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__._n)('%d request throttled', '%d requests throttled', crawlStats.throttle_count, 'woocommerce-ai-storefront'), crawlStats.throttle_count) : undefined
+          })
+        })]
+      }), !isLoading && crawlStats.by_agent && crawlStats.by_agent.length > 0 && /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("div", {
+        style: {
+          marginTop: '16px',
+          paddingTop: '12px',
+          borderTop: `1px solid ${_tokens__WEBPACK_IMPORTED_MODULE_5__.colors.borderSubtle}`
+        },
+        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("p", {
+          style: {
+            margin: '0 0 8px',
+            fontSize: '12px',
+            fontWeight: '600',
+            color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textSecondary,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
+          },
+          children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('By crawler', 'woocommerce-ai-storefront')
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+          style: {
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '6px'
+          },
+          children: crawlStats.by_agent.map(entry => /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("span", {
+            style: {
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '12px',
+              background: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.surfaceMuted,
+              color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textSecondary,
+              borderRadius: _tokens__WEBPACK_IMPORTED_MODULE_5__.radii.pill,
+              padding: '3px 10px'
+            },
+            children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("strong", {
+              style: {
+                color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textPrimary
+              },
+              children: entry.agent
+            }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("span", {
+              style: {
+                color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textMuted
+              },
+              children: fmt(entry.requests)
+            })]
+          }, entry.agent))
+        })]
+      }), !isLoading && /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+        style: {
+          marginTop: '16px',
+          paddingTop: '12px',
+          borderTop: `1px solid ${_tokens__WEBPACK_IMPORTED_MODULE_5__.colors.borderSubtle}`
+        },
+        children: crawlStats.top_queries && crawlStats.top_queries.length > 0 ? /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("details", {
+          open: true,
+          children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("summary", {
+            style: {
+              listStyle: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              margin: '0 0 8px',
+              fontSize: '12px',
+              fontWeight: '600',
+              color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textSecondary,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              userSelect: 'none'
+            },
+            children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.sprintf)(/* translators: %d: number of unique search queries */
+            (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__._n)('Top searches (%d)', 'Top searches (%d)', crawlStats.top_queries.length, 'woocommerce-ai-storefront'), crawlStats.top_queries.length)
+          }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px'
+            },
+            children: crawlStats.top_queries.map(entry => /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("div", {
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '5px 8px',
+                background: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.surfaceSubtle,
+                borderRadius: _tokens__WEBPACK_IMPORTED_MODULE_5__.radii.sm,
+                gap: '8px'
+              },
+              children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("span", {
+                style: {
+                  fontSize: '13px',
+                  color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textPrimary,
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                },
+                children: entry.query
+              }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("div", {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  flexShrink: 0
+                },
+                children: [entry.agents.map(agent => /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("span", {
+                  style: {
+                    fontSize: '11px',
+                    color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textMuted,
+                    background: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.surface,
+                    border: `1px solid ${_tokens__WEBPACK_IMPORTED_MODULE_5__.colors.borderSubtle}`,
+                    borderRadius: _tokens__WEBPACK_IMPORTED_MODULE_5__.radii.pill,
+                    padding: '1px 6px'
+                  },
+                  children: agent
+                }, agent)), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("span", {
+                  style: {
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textSecondary,
+                    minWidth: '24px',
+                    textAlign: 'right'
+                  },
+                  children: fmt(entry.count)
+                })]
+              })]
+            }, entry.query))
+          })]
+        }) : /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)(react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.Fragment, {
+          children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("p", {
+            style: {
+              margin: '0 0 8px',
+              fontSize: '12px',
+              fontWeight: '600',
+              color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textSecondary,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em'
+            },
+            children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Top searches', 'woocommerce-ai-storefront')
+          }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+            "aria-hidden": "true",
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              opacity: 0.4
+            },
+            children: ['75%', '55%', '40%'].map(w => /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsxs)("div", {
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '5px 8px',
+                background: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.surfaceSubtle,
+                borderRadius: _tokens__WEBPACK_IMPORTED_MODULE_5__.radii.sm,
+                gap: '8px'
+              },
+              children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+                style: {
+                  height: '13px',
+                  width: w,
+                  background: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.surfaceMuted,
+                  borderRadius: '3px'
+                }
+              }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("div", {
+                style: {
+                  height: '13px',
+                  width: '32px',
+                  background: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.surfaceMuted,
+                  borderRadius: '3px',
+                  flexShrink: 0
+                }
+              })]
+            }, w))
+          }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("p", {
+            style: {
+              margin: '10px 0 0',
+              fontSize: '12px',
+              color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textMuted,
+              textAlign: 'center'
+            },
+            children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Search queries from AI agents will appear here.', 'woocommerce-ai-storefront')
+          })]
+        })
+      }), !isLoading && crawlStats.total_requests === 0 && /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)("p", {
+        style: {
+          marginTop: '16px',
+          marginBottom: 0,
+          fontSize: '13px',
+          color: _tokens__WEBPACK_IMPORTED_MODULE_5__.colors.textMuted,
+          textAlign: 'center'
+        },
+        children: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('No AI agent activity recorded for this period. Stats appear here after the first AI agent visits your store.', 'woocommerce-ai-storefront')
+      })]
+    })
+  });
+};
 const EndpointInfo = ({
   settings,
   onChange,
@@ -2507,7 +2941,7 @@ const EndpointInfo = ({
           })]
         })]
       })
-    }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.Card, {
+    }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(CrawlerActivityCard, {}), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_7__.jsx)(_wordpress_components__WEBPACK_IMPORTED_MODULE_2__.Card, {
       style: {
         marginTop: '32px'
       },
@@ -6006,12 +6440,15 @@ const PostEnableView = ({
   isSaving
 }) => {
   const stats = (0,_wordpress_data__WEBPACK_IMPORTED_MODULE_1__.useSelect)(select => select(_data_ai_storefront_constants__WEBPACK_IMPORTED_MODULE_5__.STORE_NAME).getStats(), []);
+  const crawlStats = (0,_wordpress_data__WEBPACK_IMPORTED_MODULE_1__.useSelect)(select => select(_data_ai_storefront_constants__WEBPACK_IMPORTED_MODULE_5__.STORE_NAME).getCrawlStats(), []);
   const {
-    fetchStats
+    fetchStats,
+    fetchCrawlStats
   } = (0,_wordpress_data__WEBPACK_IMPORTED_MODULE_1__.useDispatch)(_data_ai_storefront_constants__WEBPACK_IMPORTED_MODULE_5__.STORE_NAME);
   const [period, setPeriod] = (0,_wordpress_element__WEBPACK_IMPORTED_MODULE_0__.useState)('month');
   (0,_wordpress_element__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     fetchStats(period);
+    fetchCrawlStats(period);
   }, [period]); // eslint-disable-line react-hooks/exhaustive-deps -- Refetch when period changes.
 
   // Products Exposed card — actual count of products that will
@@ -6159,6 +6596,15 @@ const PostEnableView = ({
       children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_11__.jsx)(StatCard, {
         label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Products exposed', 'woocommerce-ai-storefront'),
         value: productCountDisplay,
+        background: _tokens__WEBPACK_IMPORTED_MODULE_10__.colors.surfaceSubtle
+      }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_11__.jsx)(StatCard, {
+        label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Products seen', 'woocommerce-ai-storefront'),
+        value: crawlStats ? crawlStats.unique_products.toLocaleString() : '—',
+        reference: typeof productCount === 'number' ? productCount.toLocaleString() : null,
+        background: _tokens__WEBPACK_IMPORTED_MODULE_10__.colors.surfaceSubtle
+      }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_11__.jsx)(StatCard, {
+        label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Products seen %', 'woocommerce-ai-storefront'),
+        value: crawlStats && typeof productCount === 'number' && productCount > 0 ? `${(crawlStats.unique_products / productCount * 100).toFixed(1)}%` : '—',
         background: _tokens__WEBPACK_IMPORTED_MODULE_10__.colors.surfaceSubtle
       }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_11__.jsx)(StatCard, {
         label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('AI orders', 'woocommerce-ai-storefront'),
