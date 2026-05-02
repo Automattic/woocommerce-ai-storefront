@@ -7,11 +7,11 @@ import '../../data/ai-storefront';
 // into wp-scripts' CSS-extraction config quirks (the
 // BUNDLED_PACKAGES extractor intercepts `@wordpress/*` CSS paths,
 // and the `splitChunks.cacheGroups.style` test pattern didn't pick
-// up our single CSS import cleanly). Instead, `scripts/copy-dataviews-css.js`
-// copies `node_modules/@wordpress/dataviews/build-style/style.css`
-// verbatim into `build/ai-syndication-settings.css` as a postbuild
-// step. The existing `WC_AI_Storefront::admin_scripts()` handler
-// already detects the file's presence and enqueues it with
+// up our single CSS import cleanly). Instead, webpack.config.js uses
+// CopyPlugin to copy `node_modules/@wordpress/dataviews/build-style/style.css`
+// verbatim into `build/ai-storefront-settings.css` on every compilation
+// (build and watch). The existing `WC_AI_Storefront::admin_scripts()`
+// handler already detects the file's presence and enqueues it with
 // `wp-components` as a dependency — zero new server-side plumbing.
 // Single source of truth: the file we copy IS the file Woo's own
 // DataViews uses, so visual drift is impossible.
