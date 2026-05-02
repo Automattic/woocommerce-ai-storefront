@@ -186,6 +186,64 @@ const DEFAULT_VIEW = {
 	],
 };
 
+// localStorage key for persisted view preferences.
+// Only display settings (layout, perPage, sort, fields) are stored;
+// transient navigation state (page, search, filters) is not.
+const VIEW_STORAGE_KEY = 'wc_ai_storefront_orders_view';
+
+// Keys whose values are display preferences worth persisting.
+const PERSISTED_VIEW_KEYS = [ 'type', 'perPage', 'sort', 'fields' ];
+
+/**
+ * Load the persisted view preferences from localStorage, merged on top
+ * of DEFAULT_VIEW. Falls back silently on any parse failure or when
+ * localStorage is unavailable (e.g. private-browsing restrictions).
+ *
+ * @return {Object} View object safe to pass to DataViews as initial state.
+ */
+export const loadPersistedView = () => {
+	if ( typeof window === 'undefined' ) {
+		return DEFAULT_VIEW;
+	}
+	try {
+		const stored = window.localStorage.getItem( VIEW_STORAGE_KEY );
+		if ( ! stored ) {
+			return DEFAULT_VIEW;
+		}
+		const parsed = JSON.parse( stored );
+		if ( parsed && typeof parsed === 'object' ) {
+			return { ...DEFAULT_VIEW, ...parsed, page: 1 };
+		}
+	} catch ( _err ) {
+		// Malformed JSON or quota exceeded — use defaults.
+	}
+	return DEFAULT_VIEW;
+};
+
+/**
+ * Persist the display-preference subset of a DataViews view object to
+ * localStorage. Transient navigation fields (page, search, filters) are
+ * intentionally excluded — they would restore stale pagination and filter
+ * state on next visit, which is surprising and unhelpful.
+ *
+ * @param {Object} view Current DataViews view object.
+ */
+export const persistView = ( view ) => {
+	if ( typeof window === 'undefined' ) {
+		return;
+	}
+	try {
+		const subset = Object.fromEntries(
+			PERSISTED_VIEW_KEYS
+				.filter( ( k ) => k in view )
+				.map( ( k ) => [ k, view[ k ] ] )
+		);
+		window.localStorage.setItem( VIEW_STORAGE_KEY, JSON.stringify( subset ) );
+	} catch ( _err ) {
+		// Quota exceeded or private-browsing block — state lives only in memory.
+	}
+};
+
 /**
  * A muted bar standing in for a text cell in the ghost row.
  *
@@ -418,7 +476,12 @@ const AIOrdersTable = () => {
 		[]
 	);
 
-	const [ view, setView ] = useState( DEFAULT_VIEW );
+	const [ view, setView ] = useState( loadPersistedView );
+
+	const setViewAndPersist = ( next ) => {
+		persistView( next );
+		setView( next );
+	};
 
 	// Fields the REST endpoint can sort by. Any other sort field (customer,
 	// agent, items) is dropped — the endpoint would 400 on an unknown enum
@@ -721,7 +784,7 @@ const AIOrdersTable = () => {
 					data={ data }
 					fields={ fields }
 					view={ view }
-					onChangeView={ setView }
+					onChangeView={ setViewAndPersist }
 					paginationInfo={ paginationInfo }
 					defaultLayouts={ { table: {} } }
 					getItemId={ ( item ) => String( item.id ) }
