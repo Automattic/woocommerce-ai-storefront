@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-02T17:08:45+00:00\n"
+"POT-Creation-Date: 2026-05-02T17:12:15+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -323,55 +323,55 @@ msgstr ""
 msgid "Error saving settings."
 msgstr ""
 
-#: client/settings/ai-storefront/ai-orders-table.js:335
-#: client/settings/ai-storefront/ai-orders-table.js:537
+#: client/settings/ai-storefront/ai-orders-table.js:339
+#: client/settings/ai-storefront/ai-orders-table.js:541
 msgid "Order"
 msgstr ""
 
-#: client/settings/ai-storefront/ai-orders-table.js:336
-#: client/settings/ai-storefront/ai-orders-table.js:624
+#: client/settings/ai-storefront/ai-orders-table.js:340
+#: client/settings/ai-storefront/ai-orders-table.js:628
 msgid "Date"
 msgstr ""
 
-#: client/settings/ai-storefront/ai-orders-table.js:337
-#: client/settings/ai-storefront/ai-orders-table.js:635
+#: client/settings/ai-storefront/ai-orders-table.js:341
+#: client/settings/ai-storefront/ai-orders-table.js:639
 #: client/settings/ai-storefront/endpoint-info.js:882
 msgid "Status"
 msgstr ""
 
-#: client/settings/ai-storefront/ai-orders-table.js:338
-#: client/settings/ai-storefront/ai-orders-table.js:667
+#: client/settings/ai-storefront/ai-orders-table.js:342
+#: client/settings/ai-storefront/ai-orders-table.js:671
 msgid "Agent"
 msgstr ""
 
-#: client/settings/ai-storefront/ai-orders-table.js:339
-#: client/settings/ai-storefront/ai-orders-table.js:676
+#: client/settings/ai-storefront/ai-orders-table.js:343
+#: client/settings/ai-storefront/ai-orders-table.js:680
 msgid "Total"
 msgstr ""
 
-#: client/settings/ai-storefront/ai-orders-table.js:382
-#: client/settings/ai-storefront/ai-orders-table.js:729
+#: client/settings/ai-storefront/ai-orders-table.js:386
+#: client/settings/ai-storefront/ai-orders-table.js:733
 msgid "Recent AI orders"
 msgstr ""
 
-#: client/settings/ai-storefront/ai-orders-table.js:446
+#: client/settings/ai-storefront/ai-orders-table.js:450
 msgid "Ready for your first AI order"
 msgstr ""
 
-#: client/settings/ai-storefront/ai-orders-table.js:462
+#: client/settings/ai-storefront/ai-orders-table.js:466
 msgid "Your store is discoverable by AI shopping assistants. When one refers a shopper who buys, the order will appear here with the referring agent."
 msgstr ""
 
-#: client/settings/ai-storefront/ai-orders-table.js:569
+#: client/settings/ai-storefront/ai-orders-table.js:573
 msgid "Customer"
 msgstr ""
 
-#: client/settings/ai-storefront/ai-orders-table.js:593
+#: client/settings/ai-storefront/ai-orders-table.js:597
 msgid "Items"
 msgstr ""
 
 #. translators: %d: number of additional items not shown
-#: client/settings/ai-storefront/ai-orders-table.js:608
+#: client/settings/ai-storefront/ai-orders-table.js:612
 #, js-format
 msgid "+%d more"
 msgstr ""

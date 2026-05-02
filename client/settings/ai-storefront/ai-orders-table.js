@@ -234,11 +234,15 @@ export const persistView = ( view ) => {
 	}
 	try {
 		const subset = Object.fromEntries(
-			PERSISTED_VIEW_KEYS
-				.filter( ( k ) => k in view )
-				.map( ( k ) => [ k, view[ k ] ] )
+			PERSISTED_VIEW_KEYS.filter( ( k ) => k in view ).map( ( k ) => [
+				k,
+				view[ k ],
+			] )
 		);
-		window.localStorage.setItem( VIEW_STORAGE_KEY, JSON.stringify( subset ) );
+		window.localStorage.setItem(
+			VIEW_STORAGE_KEY,
+			JSON.stringify( subset )
+		);
 	} catch ( _err ) {
 		// Quota exceeded or private-browsing block — state lives only in memory.
 	}
