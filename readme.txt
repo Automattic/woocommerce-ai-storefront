@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.8.5
+Stable tag: 0.8.6
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -127,7 +127,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
-= 0.8.6 - Unreleased =
+= 0.8.6 - 2026-05-03 =
 **New**
 * Discovery tab: crawler-side visibility stats. The plugin now records every identified AI-agent request (llms.txt, UCP manifest, UCP REST, robots.txt, Store API rate limiter) into a write-buffered log and rolls it up daily. The Discovery tab surfaces total requests, unique products seen, top searches with the agents that issued them, throttle rate, and per-agent breakdowns. Raw events kept 30 days; daily aggregates kept 90 days. Tables removed on uninstall.
 * UCP product search: AI-agent natural-language queries now match across the store's own categories, tags, brands, and attributes — not just the product title. "Hoodie with logo", "Running shoes for men", and "watches" each resolve to relevant products even when the exact phrase isn't in any product title. Plural/singular morphology is handled automatically (hoodies/hoodie, watches/watch, accessories/accessory). Storefront, Cart, and Checkout product searches are unaffected.

@@ -4,6 +4,20 @@
 
 ### Features
 
+### Fixes
+
+### Refactors
+
+### Tests
+
+### Docs
+
+---
+
+## [0.8.6] – 2026-05-03
+
+### Features
+
 - **Discovery tab — crawler-side visibility stats.** Two new tables back a Discovery analytics surface: `wc_ai_storefront_crawl_log` (raw events, 30-day rolling retention) and `wc_ai_storefront_crawl_summary` (daily aggregates, 90-day retention). The plugin now records every identified AI-agent request hitting llms.txt, the UCP manifest, the UCP REST surface, robots.txt, and the Store API rate limiter. Writes are buffered in a static pending array and flushed on `shutdown` so per-request latency is unchanged. Schema is created/upgraded via dbDelta on plugin version bump and dropped on uninstall (single-site and multisite). Two daily WP cron jobs handle pruning and rollup. New admin endpoint `GET /wc/v3/ai-storefront/admin/crawl-stats?period={day|week|month|quarter}` returns aggregated counts (total requests, unique products seen, Store API queries, llms.txt and UCP hits, throttle count and rate, breakdown by agent, top search queries with the agents that issued them); response cached for 5 minutes via transient. The Discovery tab in the admin UI surfaces this data — AI activity log, top searches, and products seen by AI crawlers. Closes #254 via #257.
 - **UCP product search — taxonomy-aware natural-language matching.** The Store API's default search builds a single phrase LIKE on `post_title`, which fails on natural-language AI queries like "Hoodie with logo" or "Running shoes for men" because product titles rarely contain the exact multi-word string. Inside UCP dispatch, the plugin now hooks `posts_clauses` at priority 9 (one tick before WooCommerce's `add_query_clauses` at priority 10) and replaces the phrase LIKE with per-signal-term clauses. Each signal term is resolved against the store's own `product_cat`, `product_tag`, `product_brand`, and `pa_*` attribute taxonomies via two scoped `get_terms()` calls (`name__in` + `slug__in`, merged by term_id) plus a suffix-flip dictionary covering the most common English plural/singular morphology (`ies↔y`, `{ch,sh,x,s,z}es↔base`, `s↔drop`, `y→ies`, `+es`, `+s`). Taxonomy hits emit an EXISTS subquery scoped by `taxonomy IN (...)` to prevent false positives from WordPress sharing `term_id` values across unrelated taxonomies; misses fall through to a title LIKE expanded to both morphological forms (so "hoodies" also searches `%hoodie%`). Clauses combine OR per signal term and AND across all signal terms, preserving the merchant's syndication scope. Punctuation handling: apostrophes stripped in-place (`women's` → `womens`), hyphens and slashes split into separate tokens (`mid-layer` → `mid layer`). Only fires inside UCP dispatch on product queries — storefront, Cart, Checkout, and any non-product `WP_Query` inside dispatch are unaffected. Closes #255 via #256.
 
@@ -11,11 +25,9 @@
 
 - **Updater — `WC_AI_STOREFRONT_GITHUB_TOKEN` PHP constant for internal-repo authentication.** The repo is internal on GitHub, so unauthenticated update-check API calls return 404 from inside `wp-env`. The updater now reads `WC_AI_STOREFRONT_GITHUB_TOKEN` as the filter default; the existing `wc_ai_storefront_github_token` filter still takes precedence so production sites that pass the token through Application Passwords or another secret manager are unchanged. Adds `.wp-env.override.json.example` as a template for local-development token setup; `.wp-env.override.json` is gitignored.
 
-### Refactors
-
-### Tests
-
 ### Docs
+
+- **Engineering and merchant docs synced for 0.8.6.** DATA-MODEL gains a Custom tables section documenting the two crawl-log tables, their retention, and the new daily cron jobs; ARCHITECTURE adds a Crawler analytics section and expands the UCP store-api-filter description with the `posts_clauses` preprocessor; API-REFERENCE documents the new `GET /admin/crawl-stats` endpoint and notes the taxonomy-aware preprocessing on `POST /catalog/search`; UCP-BUY-FLOW updates Layer 2 catalog filtering; USER-GUIDE adds an AI activity log subsection to the Discovery tab section. AGENTS.md path-impact map and the docs-followup workflow YAML both gain a row for the new `crawl-logger.php` file. Closes #258.
 
 ---
 
