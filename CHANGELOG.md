@@ -4,13 +4,19 @@
 
 ### Features
 
+- **Discovery stats — hourly rollup cron with developer interval filter.** The crawl-log rollup cron now runs hourly instead of daily, so today's AI agent activity appears in the Discovery tab within ~1 hour of occurring. A new `wc_ai_storefront_rollup_interval` filter lets developers change the recurrence to any WP-registered schedule (`daily`, `twicedaily`, etc.) — invalid slugs are silently discarded and fall back to `hourly`. The top-searches query no longer excludes today's rows, so the full rolling window is always visible. Closes #260 via #261.
+
 ### Fixes
 
 ### Refactors
 
 ### Tests
 
+- **`schedule_crons()` covered by three Brain Monkey unit tests.** New tests assert the default `hourly` interval, that a valid filter override (`twicedaily`) is respected, and that an invalid filter value (`gibberish`) falls back to `hourly`. Each test uses `@runInSeparateProcess` to avoid the one-shot static guard inside `schedule_crons()`.
+
 ### Docs
+
+- **Engineering and merchant docs synced for #261.** `DATA-MODEL.md` updated: rollup is now hourly, GROUP BY description includes `product_id`. `HOOKS.md` gains a `wc_ai_storefront_rollup_interval` filter entry with usage examples. `ARCHITECTURE.md` updated to reflect the hourly cron and filter. `USER-GUIDE.md` updated: "Stats refresh hourly — today's traffic appears in the dashboard within about an hour."
 
 ---
 
