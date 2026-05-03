@@ -154,19 +154,30 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '## Attribution', $output );
 	}
 
-	public function test_api_access_section_points_to_store_api_and_ucp(): void {
-		// The plugin does NOT expose its own authenticated API. llms.txt
-		// must advertise WooCommerce's public Store API and the UCP
-		// manifest — NOT the removed `wc/v3/ai-storefront/*` endpoints
-		// or the `X-AI-Agent-Key` header (both existed in a pre-1.0
-		// draft of the architecture).
+	public function test_api_access_section_points_to_ucp_api_and_manifest(): void {
+		// The plugin's AI-agent front door is the UCP REST surface at
+		// `/wp-json/wc/ucp/v1/` — a normalized commerce protocol that
+		// wraps the underlying WooCommerce Store API with agent
+		// fingerprinting, rate limiting, and structured shapes. llms.txt
+		// must advertise the UCP API and the Commerce Protocol Manifest
+		// — NOT the raw Store API (which UCP is built on but isn't the
+		// agent-facing surface), NOT the removed `wc/v3/ai-storefront/*`
+		// endpoints, and NOT the `X-AI-Agent-Key` header (both existed
+		// in a pre-1.0 draft of the architecture).
 		$output = $this->llms->generate();
 
 		// Correct endpoints advertised.
-		$this->assertStringContainsString( 'wc/store/v1', $output );
+		$this->assertStringContainsString( 'wc/ucp/v1', $output );
 		$this->assertStringContainsString( '.well-known/ucp', $output );
 
-		// Regression guard: the deleted endpoints must NEVER appear again.
+		// Regression guard: the raw Store API was previously announced
+		// here. Pointing agents at it bypasses the UCP layer's agent
+		// fingerprinting, rate limiting, and access control. Don't
+		// re-announce it.
+		$this->assertStringNotContainsString( 'wc/store/v1', $output );
+
+		// Regression guard: the deleted pre-1.0 endpoints/headers must
+		// NEVER appear again.
 		$this->assertStringNotContainsString( 'X-AI-Agent-Key', $output );
 		$this->assertStringNotContainsString( 'wc/v3/ai-syndication', $output );
 		$this->assertStringNotContainsString( 'Product Catalog', $output );

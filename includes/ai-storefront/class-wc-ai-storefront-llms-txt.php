@@ -330,22 +330,27 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = "- **Currency**: {$currency}";
 		$lines[] = '';
 
-		// API access. This plugin does NOT expose its own authenticated
-		// API — AI agents use WooCommerce's public Store API directly.
-		// The UCP manifest describes capabilities + store_context in
-		// machine-readable form; agents that want structured data
-		// fetch that document.
+		// API access. This plugin's AI-agent front door is the UCP REST
+		// surface at `/wp-json/wc/ucp/v1/` — a normalized commerce
+		// protocol that wraps the underlying WooCommerce Store API with
+		// agent fingerprinting, rate limiting, access control, and the
+		// shapes UCP-aware agents expect. The raw Store API is what
+		// UCP is built on but is not the surface we announce here:
+		// pointing agents at it bypasses the protections and structured
+		// shapes the UCP layer adds.
 		//
-		// Description text kept tight — agents use the Store API +
-		// UCP manifest directly; don't advertise anything the
-		// manifest no longer carries.
-		$lines[]   = '## API Access';
-		$lines[]   = '';
-		$store_api = rest_url( 'wc/store/v1' );
-		$ucp_url   = $site_url . '.well-known/ucp';
-		$lines[]   = "- **Store API**: `{$store_api}` — public WooCommerce Store API for product search and cart operations (no authentication required)";
-		$lines[]   = "- **Commerce Protocol Manifest**: `{$ucp_url}` — declares capabilities, checkout policy, and store_context (currency, locale, country, tax/shipping posture)";
-		$lines[]   = '';
+		// The Commerce Protocol Manifest at `/.well-known/ucp` is the
+		// capability-discovery document agents read first to learn
+		// what the store supports (search, lookup, checkout) and the
+		// store_context (currency, locale, country, tax/shipping
+		// posture).
+		$lines[] = '## API Access';
+		$lines[] = '';
+		$ucp_api = rest_url( 'wc/ucp/v1' );
+		$ucp_url = $site_url . '.well-known/ucp';
+		$lines[] = "- **UCP API**: `{$ucp_api}` — Universal Commerce Protocol endpoints for product search, lookup, and checkout (no authentication required for public catalog reads)";
+		$lines[] = "- **Commerce Protocol Manifest**: `{$ucp_url}` — declares capabilities, checkout policy, and store_context (currency, locale, country, tax/shipping posture)";
+		$lines[] = '';
 
 		// Sitemaps section. Surfaces exhaustive URL enumeration
 		// paths for agents doing deep catalog discovery — parallel
