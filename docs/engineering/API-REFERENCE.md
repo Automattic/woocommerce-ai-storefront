@@ -406,13 +406,16 @@ Aggregated crawler-visibility stats for the Discovery tab. Reads from the summar
     { "query": "running shoes", "count": 47, "agents": ["ChatGPT", "Perplexity"] },
     { "query": "hoodies",       "count": 31, "agents": ["ChatGPT"] }
   ],
-  "top_queries_window_days": 30
+  "top_queries_window_days": 30,
+  "rollup_interval": "hourly"
 }
 ```
 
 `throttle_rate` is `(throttle_count / total_requests) * 100` rounded to one decimal place; returns `0.0` when `total_requests` is zero. `top_queries[].agents` is the deduplicated list of agents that issued each search term in the period.
 
 `top_queries_window_days` is the effective lookback for `top_queries` (always `min(period_days, RAW_RETENTION_DAYS=30)`). Top searches read from the raw log (query strings aren't aggregated into the summary table), and the raw log retains only 30 days, so for `period=quarter` (90d) this value is `30` while every other field reflects the full 90-day period.
+
+`rollup_interval` is the validated cron recurrence slug currently in use: one of `"hourly"` (default), `"twicedaily"`, or `"daily"`. This is the value returned by `WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval()` — the same logic used by `schedule_crons()`. Clients use this to render a specific subtitle ("Updated hourly.", "Updated every 12 hours.", "Updated daily.") rather than a generic fallback.
 
 ---
 

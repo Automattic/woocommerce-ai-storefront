@@ -6,7 +6,10 @@
  * exercised without DOM or store mocks are covered.
  */
 
-import { shouldShowCrawlStatsEmptyState } from '../endpoint-info';
+import {
+	getRollupIntervalLabel,
+	shouldShowCrawlStatsEmptyState,
+} from '../endpoint-info';
 
 describe( 'shouldShowCrawlStatsEmptyState', () => {
 	it( 'returns true when total_requests is 0 and top_queries is empty', () => {
@@ -65,5 +68,30 @@ describe( 'shouldShowCrawlStatsEmptyState', () => {
 				new Error( 'network error' )
 			)
 		).toBe( false );
+	} );
+} );
+
+describe( 'getRollupIntervalLabel', () => {
+	it( 'returns "Updated hourly." for hourly', () => {
+		expect( getRollupIntervalLabel( 'hourly' ) ).toBe( 'Updated hourly.' );
+	} );
+
+	it( 'returns "Updated every 12 hours." for twicedaily', () => {
+		expect( getRollupIntervalLabel( 'twicedaily' ) ).toBe(
+			'Updated every 12 hours.'
+		);
+	} );
+
+	it( 'returns "Updated daily." for daily', () => {
+		expect( getRollupIntervalLabel( 'daily' ) ).toBe( 'Updated daily.' );
+	} );
+
+	it( 'falls back to "Updated periodically." for unknown values', () => {
+		expect( getRollupIntervalLabel( 'weekly' ) ).toBe(
+			'Updated periodically.'
+		);
+		expect( getRollupIntervalLabel( undefined ) ).toBe(
+			'Updated periodically.'
+		);
 	} );
 } );

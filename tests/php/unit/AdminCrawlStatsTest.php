@@ -28,6 +28,16 @@ class AdminCrawlStatsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_transient' )->justReturn( false );
 		Functions\when( 'set_transient' )->justReturn( true );
 		Functions\when( 'wc_get_logger' )->justReturn( null );
+		// Shared schedule registry for get_effective_rollup_interval().
+		// Individual tests mock apply_filters themselves since Brain Monkey
+		// does not allow registering the same function twice per test.
+		Functions\when( 'wp_get_schedules' )->justReturn(
+			array(
+				'hourly'     => array( 'interval' => HOUR_IN_SECONDS ),
+				'twicedaily' => array( 'interval' => 12 * HOUR_IN_SECONDS ),
+				'daily'      => array( 'interval' => DAY_IN_SECONDS ),
+			)
+		);
 	}
 
 	protected function tearDown(): void {
@@ -43,6 +53,8 @@ class AdminCrawlStatsTest extends \PHPUnit\Framework\TestCase {
 	 * would silently exclude today's queries.
 	 */
 	public function test_top_queries_sql_has_no_upper_date_bound(): void {
+		Functions\when( 'apply_filters' )->alias( static fn( string $hook, $default ) => $default );
+
 		$captured_sqls = array();
 
 		global $wpdb;
@@ -97,6 +109,8 @@ class AdminCrawlStatsTest extends \PHPUnit\Framework\TestCase {
 	 * surface top_queries_window_days = 30 so the UI can label it.
 	 */
 	public function test_top_queries_window_clamps_to_raw_retention_for_quarter_period(): void {
+		Functions\when( 'apply_filters' )->alias( static fn( string $hook, $default ) => $default );
+
 		$captured_top_queries_arg = null;
 
 		global $wpdb;
@@ -152,6 +166,47 @@ class AdminCrawlStatsTest extends \PHPUnit\Framework\TestCase {
 			30,
 			$response_data['top_queries_window_days'],
 			'top_queries_window_days must be 30 when the period (quarter=90d) exceeds raw log retention'
+		);
+	}
+
+	/**
+	 * The response must include rollup_interval so the UI can render a
+	 * specific "Updated X." subtitle rather than a generic fallback.
+	 */
+	public function test_get_crawl_stats_includes_rollup_interval(): void {
+		global $wpdb;
+		$wpdb             = Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->last_error = '';
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'PREPARED' );
+		$wpdb->shouldReceive( 'get_results' )->andReturn( array() );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( '0' );
+
+		Functions\expect( 'apply_filters' )
+			->with( 'wc_ai_storefront_rollup_interval', 'hourly' )
+			->andReturn( 'twicedaily' );
+		Functions\when( 'wp_get_schedules' )->justReturn(
+			array(
+				'hourly'     => array( 'interval' => HOUR_IN_SECONDS ),
+				'twicedaily' => array( 'interval' => 12 * HOUR_IN_SECONDS ),
+				'daily'      => array( 'interval' => DAY_IN_SECONDS ),
+			)
+		);
+
+		$req = new WP_REST_Request();
+		$req->set_param( 'period', 'week' );
+
+		$response_data = $this->controller->get_crawl_stats( $req )->get_data();
+
+		$this->assertArrayHasKey(
+			'rollup_interval',
+			$response_data,
+			'Response must include rollup_interval'
+		);
+		$this->assertSame(
+			'twicedaily',
+			$response_data['rollup_interval'],
+			'rollup_interval must reflect the effective filtered value'
 		);
 	}
 }

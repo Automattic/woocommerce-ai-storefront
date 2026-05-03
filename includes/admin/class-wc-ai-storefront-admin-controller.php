@@ -1219,20 +1219,25 @@ class WC_AI_Storefront_Admin_Controller {
 	/**
 	 * Get crawler-visibility stats for the Discovery tab.
 	 *
-	 * Reads from the daily summary table `wc_ai_storefront_crawl_summary`
-	 * (not the raw log), so data reflects activity up to the end of
-	 * yesterday — today's events land in the summary on the nightly cron.
+	 * Reads from the summary table `wc_ai_storefront_crawl_summary` for
+	 * aggregate counts and directly from the raw log for top_queries.
+	 * The summary is refreshed on every rollup run (hourly by default).
 	 *
 	 * Returned shape:
-	 *   period             — echoed back for the client's cache key.
-	 *   total_requests     — SUM(request_count) across all endpoints.
-	 *   unique_products    — COUNT(DISTINCT product_id) where product_id > 0.
-	 *   store_api_queries  — requests to store_api_product + store_api_search.
-	 *   llms_txt_hits      — requests to the llms.txt endpoint.
-	 *   ucp_hits           — requests to the UCP manifest endpoint.
-	 *   throttle_count     — SUM(throttle_count) across all endpoints.
-	 *   throttle_rate      — throttle_count / total_requests × 100 (0 when no data).
-	 *   by_agent           — top-10 agents by request count: [{agent, requests}].
+	 *   period                 — echoed back for the client's cache key.
+	 *   total_requests         — SUM(request_count) across all endpoints.
+	 *   unique_products        — COUNT(DISTINCT product_id) where product_id > 0.
+	 *   store_api_queries      — requests to store_api_product + store_api_search.
+	 *   llms_txt_hits          — requests to the llms.txt endpoint.
+	 *   ucp_hits               — requests to the UCP manifest endpoint.
+	 *   throttle_count         — SUM(throttle_count) across all endpoints.
+	 *   throttle_rate          — throttle_count / total_requests × 100 (0 when no data).
+	 *   by_agent               — top-10 agents by request count: [{agent, requests}].
+	 *   top_queries            — top-10 search queries from the raw log: [{query, count, agents}].
+	 *   top_queries_window_days — effective lookback for top_queries (min(period_days, 30)).
+	 *   rollup_interval        — the validated cron recurrence slug ('hourly', 'twicedaily',
+	 *                            or 'daily'). Matches what schedule_crons() registered.
+	 *                            Clients use this to render a specific "Updated X" subtitle.
 	 *
 	 * @param WP_REST_Request $request The request.
 	 * @return WP_REST_Response|WP_Error
@@ -1416,6 +1421,7 @@ class WC_AI_Storefront_Admin_Controller {
 			'by_agent'                => $by_agent,
 			'top_queries'             => $top_queries,
 			'top_queries_window_days' => $top_queries_days,
+			'rollup_interval'         => WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval(),
 		);
 
 		set_transient( 'wc_ai_storefront_crawl_stats_' . $period, $data, 5 * MINUTE_IN_SECONDS );

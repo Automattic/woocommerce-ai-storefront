@@ -486,6 +486,58 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// get_effective_rollup_interval()
+	// ------------------------------------------------------------------
+
+	public function test_get_effective_rollup_interval_returns_hourly_by_default(): void {
+		Functions\expect( 'apply_filters' )
+			->with( 'wc_ai_storefront_rollup_interval', 'hourly' )
+			->andReturn( 'hourly' );
+		Functions\when( 'wp_get_schedules' )->justReturn(
+			array( 'hourly' => array( 'interval' => HOUR_IN_SECONDS ) )
+		);
+
+		$this->assertSame(
+			'hourly',
+			WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval(),
+			'Default interval must be hourly'
+		);
+	}
+
+	public function test_get_effective_rollup_interval_respects_valid_filter_override(): void {
+		Functions\expect( 'apply_filters' )
+			->with( 'wc_ai_storefront_rollup_interval', 'hourly' )
+			->andReturn( 'daily' );
+		Functions\when( 'wp_get_schedules' )->justReturn(
+			array(
+				'hourly' => array( 'interval' => HOUR_IN_SECONDS ),
+				'daily'  => array( 'interval' => DAY_IN_SECONDS ),
+			)
+		);
+
+		$this->assertSame(
+			'daily',
+			WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval(),
+			'A valid filter value within the allowlist must be honoured'
+		);
+	}
+
+	public function test_get_effective_rollup_interval_falls_back_for_invalid_value(): void {
+		Functions\expect( 'apply_filters' )
+			->with( 'wc_ai_storefront_rollup_interval', 'hourly' )
+			->andReturn( 'gibberish' );
+		Functions\when( 'wp_get_schedules' )->justReturn(
+			array( 'hourly' => array( 'interval' => HOUR_IN_SECONDS ) )
+		);
+
+		$this->assertSame(
+			'hourly',
+			WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval(),
+			'An invalid filter value must fall back to hourly'
+		);
+	}
+
+	// ------------------------------------------------------------------
 	// rollup()
 	// ------------------------------------------------------------------
 

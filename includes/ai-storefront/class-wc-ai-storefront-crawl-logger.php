@@ -139,10 +139,36 @@ class WC_AI_Storefront_Crawl_Logger {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Ensure the prune (daily) and rollup (hourly) crons are scheduled.
+	 * Return the validated rollup cron interval.
+	 *
+	 * Applies the `wc_ai_storefront_rollup_interval` filter and validates
+	 * the result against the safe allowlist `{hourly, twicedaily, daily}`.
+	 * Any value outside the allowlist — or one not registered in
+	 * `wp_get_schedules()` — falls back silently to `'hourly'`.
+	 *
+	 * Called by both `schedule_crons()` (cron registration) and
+	 * `get_crawl_stats()` (API response) so both surfaces reflect the same
+	 * effective interval without duplicating the validation logic.
+	 *
+	 * @return string One of 'hourly', 'twicedaily', or 'daily'.
+	 */
+	public static function get_effective_rollup_interval(): string {
+		$valid_intervals = array( 'hourly', 'twicedaily', 'daily' );
+		$interval        = (string) apply_filters( 'wc_ai_storefront_rollup_interval', 'hourly' );
+		if ( ! in_array( $interval, $valid_intervals, true )
+			|| ! array_key_exists( $interval, wp_get_schedules() ) ) {
+			return 'hourly';
+		}
+		return $interval;
+	}
+
+	/**
+	 * Ensure the prune (daily) and rollup (hourly by default) crons are scheduled.
 	 *
 	 * Called from `WC_AI_Storefront::init_components()` on every request
-	 * so the events are re-registered if accidentally cleared.
+	 * so the events are re-registered if accidentally cleared, and to
+	 * auto-migrate existing events whose recurrence no longer matches the
+	 * effective interval returned by `get_effective_rollup_interval()`.
 	 */
 	public static function schedule_crons(): void {
 		static $scheduled = false;
@@ -158,20 +184,7 @@ class WC_AI_Storefront_Crawl_Logger {
 		if ( ! wp_next_scheduled( 'wc_ai_storefront_prune_crawl_log' ) ) {
 			wp_schedule_event( $utc_midnight, 'daily', 'wc_ai_storefront_prune_crawl_log' );
 		}
-		// Rollup runs hourly by default; override via:
-		// add_filter( 'wc_ai_storefront_rollup_interval', fn() => 'twicedaily' ).
-		//
-		// Allowlist: only intervals up to `daily` are safe because rollup()
-		// always covers a fixed yesterday+today window. Anything slower
-		// (e.g. `weekly`) would leave gaps of unsummarized days. We
-		// intentionally do NOT accept arbitrary `wp_get_schedules()` slugs;
-		// invalid or too-slow values fall back to `hourly`.
-		$valid_intervals = array( 'hourly', 'twicedaily', 'daily' );
-		$rollup_interval = (string) apply_filters( 'wc_ai_storefront_rollup_interval', 'hourly' );
-		if ( ! in_array( $rollup_interval, $valid_intervals, true )
-			|| ! array_key_exists( $rollup_interval, wp_get_schedules() ) ) {
-			$rollup_interval = 'hourly';
-		}
+		$rollup_interval = self::get_effective_rollup_interval();
 		// Migrate upgraded sites: if the event exists with a different recurrence
 		// (e.g. the old daily schedule), clear it and let it re-register below.
 		// Re-read after the clear so a failed wp_clear_scheduled_hook() leaves

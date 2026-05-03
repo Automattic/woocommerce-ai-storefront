@@ -19,6 +19,31 @@ const ENDPOINT_TAB_CLASS = 'ai-storefront-endpoint-tab';
 const CRAWLER_GROUP_CLASS = 'ai-storefront-crawler-group';
 
 /**
+ * Maps a rollup interval slug to a human-readable "Updated X." subtitle.
+ *
+ * Exported for unit testing. The interval comes from the `rollup_interval`
+ * field on the /crawl-stats API response, which reflects the effective value
+ * of the `wc_ai_storefront_rollup_interval` filter on the server.
+ *
+ * @param {string|undefined} interval The interval slug from the API response.
+ * @return {string} Localised subtitle string, always ending with a period.
+ */
+export function getRollupIntervalLabel( interval ) {
+	const labels = {
+		hourly: __( 'Updated hourly.', 'woocommerce-ai-storefront' ),
+		twicedaily: __(
+			'Updated every 12 hours.',
+			'woocommerce-ai-storefront'
+		),
+		daily: __( 'Updated daily.', 'woocommerce-ai-storefront' ),
+	};
+	return (
+		labels[ interval ] ??
+		__( 'Updated periodically.', 'woocommerce-ai-storefront' )
+	);
+}
+
+/**
  * Returns true when the no-activity empty state should render.
  *
  * Exported for unit testing. The two conditions guard against a transient
@@ -850,9 +875,8 @@ const CrawlerActivityCard = () => {
 										color: colors.textMuted,
 									} }
 								>
-									{ __(
-										'Updated periodically.',
-										'woocommerce-ai-storefront'
+									{ getRollupIntervalLabel(
+										crawlStats.rollup_interval
 									) }
 								</p>
 							) }
