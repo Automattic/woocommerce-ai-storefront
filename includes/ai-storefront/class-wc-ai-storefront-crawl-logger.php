@@ -318,9 +318,13 @@ class WC_AI_Storefront_Crawl_Logger {
 			'Meta-ExternalAgent'         => 'Meta',
 			// Mistral, You.com — both training and live retrieval; the
 			// `-User` suffix (Mistralai-User) is the vendor's signal for
-			// live user-triggered fetches.
+			// live user-triggered fetches. YouBot maps to "You" (matching
+			// the canonical brand string for `you.com` in
+			// `WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS`) so
+			// UA-token traffic and UCP-attributed traffic from You.com
+			// roll up under the same brand in Discovery stats.
 			'Mistralai-User'             => 'Mistral',
-			'YouBot'                     => 'You.com',
+			'YouBot'                     => 'You',
 		);
 		$agent       = $brand_names[ $agent ] ?? $agent;
 		// mb_substr is recommended but not required; fall back to substr so

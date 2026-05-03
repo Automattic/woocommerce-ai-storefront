@@ -383,11 +383,12 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// crawlers merchants need to consciously allow or block.
 		$this->assertSame(
 			[
-				// Alphabetical (case-insensitive). Reordered in 0.6.1
-				// for scannability. anthropic-ai (Anthropic legacy
-				// crawler still seen in real logs) and Diffbot
-				// (Knowledge Graph licensed by LLM vendors as training
-				// input) added in 0.8.8.
+				// Alphabetical (case-insensitive) for scannability.
+				// anthropic-ai (Anthropic legacy crawler still seen in
+				// real logs) and Diffbot (Knowledge Graph licensed by
+				// LLM vendors as training input) are recent additions —
+				// see git log for the introducing commit if you need
+				// the version anchor.
 				'Amazonbot',
 				'anthropic-ai',
 				'Applebot-Extended',

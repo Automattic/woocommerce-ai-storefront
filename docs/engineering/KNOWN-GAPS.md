@@ -17,7 +17,13 @@ Each entry follows the same shape:
 
 A growing class of AI shoppers — ChatGPT Operator, ChatGPT Atlas, Perplexity Comet, Brave Leo, Google Project Mariner, Microsoft Copilot Vision, Arc/Dia, Manus, Multion, and the long tail of agents built on Browserbase / Anchor Browser / Steel.dev — drives a real Chromium or Edge browser on the user's behalf. Their HTTP `User-Agent` header is the parent browser's UA. There is no AI-specific token in the string for our [`detect_crawler_from_ua()`](../../includes/ai-storefront/class-wc-ai-storefront-robots.php) or the [`brand_names` map in `class-wc-ai-storefront-crawl-logger.php`](../../includes/ai-storefront/class-wc-ai-storefront-crawl-logger.php) to match.
 
-When one of these agents hits our UCP REST endpoints (`catalog/search`, `catalog/lookup`, checkout) without setting the `UCP-Agent` header, we know an AI is using the UCP surface — but we cannot identify *which* AI. The request is bucketed as **`Other AI`** via the [`OTHER_AI_BUCKET` fallback in `class-wc-ai-storefront-ucp-agent-header.php`](../../includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-agent-header.php) on the order-attribution side. On the crawler-stats side it doesn't show up at all if the UA matches no entry in `AI_CRAWLERS` and no UCP-Agent header is sent.
+When one of these agents hits our UCP REST endpoints (`catalog/search`, `catalog/lookup`, checkout), the attribution path resolves into one of two distinct buckets depending on what the request carries:
+
+1. **No `UCP-Agent` header** (or unparseable header) → the canonical name becomes [`FALLBACK_SOURCE`](../../includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-agent-header.php) (`'ucp_unknown'`). The crawl logger explicitly skips recording rows whose name equals the fallback sentinel (see the `if ( FALLBACK_SOURCE !== $agent_data['name'] )` guards in `class-wc-ai-storefront-ucp-rest-controller.php`), so these requests are **invisible in Discovery stats entirely**. Orders are not stamped with an AI source.
+
+2. **Header parses, but the host isn't in `KNOWN_AGENT_HOSTS`** → the canonical name becomes [`OTHER_AI_BUCKET`](../../includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-agent-header.php) (`'Other AI'`). The crawl logger DOES record these rows; orders DO get stamped. So they appear in Discovery stats under the literal `Other AI` brand, distinguishable from "no AI activity at all" but not from each other.
+
+The two cohorts represent very different states. Cohort 1 is "we know nothing" — the request is indistinguishable from any other anonymous browser visit. Cohort 2 is "we know it's an AI but not which one" — the agent identified itself enough to claim AI status but not enough to claim a vendor.
 
 ### Why it exists
 
@@ -31,19 +37,19 @@ The UCP-Agent header is the protocol's intended attribution channel: a well-beha
 
 ### Impact
 
-| Surface | What you'll see today |
-|---|---|
-| Discovery tab → "AI agent activity" → "By AI Agent" breakdown | Unrecognized Chromium agents do not appear at all (no UA token match, no UCP-Agent header). Recognized ones appear under their canonical brand. Anything that *does* hit UCP REST with no UCP-Agent header rolls up as `Other AI`. |
-| Discovery tab → Top searches | Search queries from unrecognized agents are present in the raw log under whatever endpoint they hit, but the `By AI Agent` column is `Other AI` or empty. |
-| Recent AI Orders → Customer / Source columns | An order placed by an unrecognized agentic browser is captured if the request flows through UCP checkout with any UCP-Agent header (even a partial one). If the agent skips UCP entirely and uses Store API directly with a generic Chromium UA, the order is not flagged as AI-attributed at all — it looks like an organic browser purchase. |
-| Crawler-stats charts | Volume-driven charts under-count AI activity by the share of agents that present as plain Chromium without identifying themselves. |
+| Surface | Cohort 1 (no/unparseable header → `ucp_unknown`) | Cohort 2 (parseable, unknown host → `Other AI`) |
+|---|---|---|
+| Discovery tab → "AI agent activity" → "By AI Agent" breakdown | Not present — crawl logger skips fallback-sentinel rows. | Appears under the literal `Other AI` brand. |
+| Discovery tab → Top searches | Search query is not recorded in the raw log (the same `FALLBACK_SOURCE` guard fires before the record call). | Search query is recorded; `By AI Agent` column shows `Other AI`. |
+| Recent AI Orders → Customer / Source columns | Order is not stamped as AI-attributed — looks like an organic browser purchase. | Order is stamped with `_wc_ai_storefront_agent: Other AI` and appears in Recent AI Orders, distinguishable from organic. |
+| Crawler-stats charts | Volume is invisible — the gap is silent under-counting. | Volume rolls into `Other AI` totals; merchant sees AI activity but can't slice by vendor. |
 
-The most common shape of this gap, in production: a merchant looking at the Discovery tab sees `4 catalog queries, 0 UCP manifest hits, "Other AI: 4"`. The 4 are real AI-driven queries. We just can't say *which* AI without a header.
+The most common shape of this gap, in production: a merchant looking at the Discovery tab sees `4 catalog queries, "Other AI: 4"`. The 4 are real AI-driven queries from agents that sent a parseable but non-canonical `UCP-Agent` header. The harder-to-see version of the gap is the cohort whose absence shows up nowhere — they were never logged.
 
 ### Mitigations available today
 
-- **UCP-Agent header is the intended channel.** Agents that follow the UCP spec send it. We document it in the manifest at `/.well-known/ucp` and in [`API-REFERENCE.md`](API-REFERENCE.md). Each conforming agent gets correctly attributed without a UA-list update.
-- **`Other AI` is a real bucket, not a leak.** Orders placed via UCP with an unrecognized header still get the `_wc_ai_storefront_agent: Other AI` order meta and appear in Recent AI Orders. The `Other AI` bucket distinguishes "AI-driven via UCP" from "human via Store API" — that distinction itself has value, even when the specific vendor is unknown.
+- **UCP-Agent header is the intended channel.** Agents that follow the UCP spec send it. We document it in the manifest at `/.well-known/ucp` and in [`API-REFERENCE.md`](API-REFERENCE.md). Each conforming agent gets correctly attributed without a UA-list update — and even agents that send a partial/unknown header land in cohort 2 (`Other AI`) rather than cohort 1 (silent), which preserves *some* signal.
+- **`Other AI` is a real bucket, not a leak.** Orders placed via UCP with a parseable-but-unknown `UCP-Agent` header still get the `_wc_ai_storefront_agent: Other AI` order meta and appear in Recent AI Orders. The bucket distinguishes "AI-driven via UCP" from "human via Store API" — that distinction itself has value, even when the specific vendor is unknown.
 - **Store API rate-limit logs.** When unidentified agents trigger our Store API rate limiter, the throttled requests are logged with whatever bot token did match (or empty). The throttle counts on the Discovery tab include those events even when the agent is unattributed.
 
 ### Future work

@@ -290,10 +290,10 @@ class WC_AI_Storefront_Robots {
 	 * `AI_CRAWLERS` prevents stale `User-agent:` blocks from leaking into
 	 * `robots.txt` and keeps the admin UI's "X of Y" count honest.
 	 *
-	 * Note: `anthropic-ai` was treated as deprecated pre-0.8.8 and stripped
+	 * Note: `anthropic-ai` was previously treated as deprecated and stripped
 	 * on upgrade, but Anthropic continues to send it in real-world traffic
 	 * alongside the newer `ClaudeBot` / `Claude-User` / `Claude-SearchBot`
-	 * family. As of 0.8.8 it is restored as a kept entry.
+	 * family. It is now restored as a kept entry.
 	 *
 	 * @param mixed $input Raw input from settings save — expected array of strings.
 	 * @return string[]    Re-indexed list of valid crawler IDs.
