@@ -269,6 +269,33 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 9, $result['accessory'] );
 	}
 
+	public function test_resolve_matches_by_slug(): void {
+		// slug "hooded-jacket" → lookup indexes by slug; "hooded-jacket" signal matches.
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_tag' => 'product_tag' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 20, 'Hooded Jacket', 'product_tag' ),
+		) );
+
+		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'hooded-jacket' ) );
+
+		// slug is "hooded-jacket"; signal is "hooded-jacket" — direct slug hit.
+		$this->assertArrayHasKey( 'hooded-jacket', $result );
+		$this->assertContains( 20, $result['hooded-jacket'] );
+	}
+
+	public function test_resolve_includes_pa_attribute_taxonomy(): void {
+		// pa_color is a product attribute taxonomy — should be included in resolution.
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'pa_color' => 'pa_color' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 30, 'Blue', 'pa_color' ),
+		) );
+
+		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'blue' ) );
+
+		$this->assertArrayHasKey( 'blue', $result );
+		$this->assertContains( 30, $result['blue'] );
+	}
+
 	public function test_resolve_returns_empty_on_wp_error(): void {
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
 		// Return a real WP_Error instance; the real is_wp_error() stub detects it.
