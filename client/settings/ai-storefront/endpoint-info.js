@@ -1061,84 +1061,191 @@ const CrawlerActivityCard = () => {
 										crawlStats.top_queries.length
 									) }
 								</summary>
-								<div
-									style={ {
-										display: 'flex',
-										flexDirection: 'column',
-										gap: '4px',
-									} }
-								>
-									{ crawlStats.top_queries.map( ( entry ) => (
+								{ /* 5×2 desktop grid, 10×1 mobile stack.
+								     JS split gives column-major order (ranks 1–5
+								     left, 6–10 right). CSS auto-fit collapses to
+								     one column when the container is < 520px. */ }
+								{ ( () => {
+									const queries = crawlStats.top_queries;
+									const half = Math.ceil(
+										queries.length / 2
+									);
+									const cols = [
+										queries.slice( 0, half ),
+										queries.slice( half ),
+									].filter( ( col ) => col.length > 0 );
+									return (
 										<div
-											key={ entry.query }
 											style={ {
-												display: 'flex',
-												justifyContent: 'space-between',
-												alignItems: 'center',
-												padding: '5px 8px',
-												background:
-													colors.surfaceSubtle,
-												borderRadius: radii.sm,
-												gap: '8px',
+												display: 'grid',
+												gridTemplateColumns:
+													'repeat(auto-fit, minmax(260px, 1fr))',
+												columnGap: '20px',
+												alignItems: 'start',
 											} }
 										>
-											<span
-												style={ {
-													fontSize: '13px',
-													color: colors.textPrimary,
-													flex: 1,
-													minWidth: 0,
-													overflow: 'hidden',
-													textOverflow: 'ellipsis',
-													whiteSpace: 'nowrap',
-												} }
-											>
-												{ entry.query }
-											</span>
-											<div
-												style={ {
-													display: 'flex',
-													alignItems: 'center',
-													gap: '6px',
-													flexShrink: 0,
-												} }
-											>
-												{ entry.agents.map(
-													( agent ) => (
-														<span
-															key={ agent }
-															style={ {
-																fontSize:
-																	'11px',
-																color: colors.textMuted,
-																background:
-																	colors.surface,
-																border: `1px solid ${ colors.borderSubtle }`,
-																borderRadius:
-																	radii.pill,
-																padding:
-																	'1px 6px',
-															} }
-														>
-															{ agent }
-														</span>
-													)
-												) }
-												<span
+											{ cols.map( ( col, colIdx ) => (
+												<div
+													key={ colIdx }
 													style={ {
-														fontSize: '12px',
-														fontWeight: '600',
-														color: colors.textSecondary,
-														minWidth: '24px',
-														textAlign: 'right',
+														display: 'flex',
+														flexDirection: 'column',
+														gap: '4px',
+														...( colIdx === 1 && {
+															borderLeft: `1px solid ${ colors.borderSubtle }`,
+															paddingLeft: '20px',
+														} ),
 													} }
 												>
-													{ fmt( entry.count ) }
-												</span>
-											</div>
+													{ col.map(
+														( entry, rowIdx ) => {
+															const rank =
+																colIdx * half +
+																rowIdx +
+																1;
+															const visibleAgents =
+																entry.agents.slice(
+																	0,
+																	2
+																);
+															const overflowCount =
+																entry.agents
+																	.length - 2;
+															return (
+																<div
+																	key={
+																		entry.query
+																	}
+																	style={ {
+																		display:
+																			'flex',
+																		alignItems:
+																			'center',
+																		padding:
+																			'5px 8px',
+																		background:
+																			colors.surfaceSubtle,
+																		borderRadius:
+																			radii.sm,
+																		gap: '8px',
+																	} }
+																>
+																	<span
+																		style={ {
+																			fontSize:
+																				'11px',
+																			color: colors.textMuted,
+																			fontVariantNumeric:
+																				'tabular-nums',
+																			minWidth:
+																				'16px',
+																			textAlign:
+																				'right',
+																			flexShrink: 0,
+																		} }
+																	>
+																		{ rank }
+																	</span>
+																	<span
+																		style={ {
+																			fontSize:
+																				'13px',
+																			color: colors.textPrimary,
+																			flex: 1,
+																			minWidth: 0,
+																			overflow:
+																				'hidden',
+																			textOverflow:
+																				'ellipsis',
+																			whiteSpace:
+																				'nowrap',
+																		} }
+																		title={
+																			entry.query
+																		}
+																	>
+																		{
+																			entry.query
+																		}
+																	</span>
+																	<div
+																		style={ {
+																			display:
+																				'flex',
+																			alignItems:
+																				'center',
+																			gap: '4px',
+																			flexShrink: 0,
+																		} }
+																	>
+																		{ visibleAgents.map(
+																			(
+																				agent
+																			) => (
+																				<span
+																					key={
+																						agent
+																					}
+																					style={ {
+																						fontSize:
+																							'11px',
+																						color: colors.textMuted,
+																						background:
+																							colors.surface,
+																						border: `1px solid ${ colors.borderSubtle }`,
+																						borderRadius:
+																							radii.pill,
+																						padding:
+																							'1px 6px',
+																					} }
+																				>
+																					{
+																						agent
+																					}
+																				</span>
+																			)
+																		) }
+																		{ overflowCount >
+																			0 && (
+																			<span
+																				style={ {
+																					fontSize:
+																						'11px',
+																					color: colors.textMuted,
+																				} }
+																			>
+																				{ `+${ overflowCount }` }
+																			</span>
+																		) }
+																		<span
+																			style={ {
+																				fontSize:
+																					'12px',
+																				fontWeight:
+																					'600',
+																				color: colors.textSecondary,
+																				minWidth:
+																					'20px',
+																				textAlign:
+																					'right',
+																				fontVariantNumeric:
+																					'tabular-nums',
+																			} }
+																		>
+																			{ fmt(
+																				entry.count
+																			) }
+																		</span>
+																	</div>
+																</div>
+															);
+														}
+													) }
+												</div>
+											) ) }
 										</div>
-									) ) }
-								</div>
+									);
+								} )() }
 							</details>
 						) : (
 							<>
