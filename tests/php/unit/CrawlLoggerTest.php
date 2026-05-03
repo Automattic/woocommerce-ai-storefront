@@ -641,8 +641,6 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 	public function test_schedule_crons_uses_hourly_interval_by_default(): void {
 		$scheduled_interval = null;
 
-		Functions\when( 'gmmktime' )->justReturn( time() + DAY_IN_SECONDS );
-		Functions\when( 'gmdate' )->justReturn( '1' );
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
 		Functions\when( 'wp_get_schedules' )->justReturn(
 			array(
@@ -691,8 +689,6 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 	public function test_schedule_crons_respects_rollup_interval_filter(): void {
 		$scheduled_interval = null;
 
-		Functions\when( 'gmmktime' )->justReturn( time() + DAY_IN_SECONDS );
-		Functions\when( 'gmdate' )->justReturn( '1' );
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
 		Functions\when( 'wp_get_schedules' )->justReturn(
 			array(
@@ -741,8 +737,6 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 	public function test_schedule_crons_falls_back_to_hourly_for_invalid_filter_value(): void {
 		$scheduled_interval = null;
 
-		Functions\when( 'gmmktime' )->justReturn( time() + DAY_IN_SECONDS );
-		Functions\when( 'gmdate' )->justReturn( '1' );
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
 		Functions\when( 'wp_get_schedules' )->justReturn(
 			array(
