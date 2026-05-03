@@ -179,7 +179,7 @@ The period selector at the top (Day / Week / Month / Quarter) drives all three c
 
 There's nothing to configure. Data starts populating from the moment you enable the plugin. Raw events are kept for 30 days; aggregated daily counts are kept for 90 days. There is no option to extend retention; if you need long-term analytics, treat this as a "what changed last quarter" tool, not a permanent dashboard.
 
-Stats refresh on every rollup run (hourly by default) — today's traffic appears in the dashboard within one rollup cycle of occurring.
+Stats refresh on every rollup run (hourly by default) — today's traffic appears in the dashboard within one rollup cycle of occurring. On upgrade the plugin automatically migrates any pre-existing cron event to the new cadence, so no manual steps are needed.
 
 ### Revisit cadence
 

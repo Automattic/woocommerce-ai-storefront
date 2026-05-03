@@ -172,7 +172,14 @@ class WC_AI_Storefront_Crawl_Logger {
 			|| ! array_key_exists( $rollup_interval, wp_get_schedules() ) ) {
 			$rollup_interval = 'hourly';
 		}
-		if ( ! wp_next_scheduled( 'wc_ai_storefront_rollup_crawl_log' ) ) {
+		// Migrate upgraded sites: if the event exists with a different recurrence
+		// (e.g. the old daily schedule), clear it and let it re-register below.
+		$existing_rollup = wp_get_scheduled_event( 'wc_ai_storefront_rollup_crawl_log' );
+		if ( $existing_rollup && $existing_rollup->schedule !== $rollup_interval ) {
+			wp_clear_scheduled_hook( 'wc_ai_storefront_rollup_crawl_log' );
+			$existing_rollup = null;
+		}
+		if ( ! $existing_rollup ) {
 			wp_schedule_event( time(), $rollup_interval, 'wc_ai_storefront_rollup_crawl_log' );
 		}
 	}

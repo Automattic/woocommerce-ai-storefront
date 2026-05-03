@@ -683,6 +683,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		$before              = time();
 
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_get_scheduled_event' )->justReturn( false );
 		Functions\when( 'wp_get_schedules' )->justReturn(
 			array(
 				'hourly'     => array(
@@ -748,6 +749,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		$scheduled_interval = null;
 
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_get_scheduled_event' )->justReturn( false );
 		Functions\when( 'wp_get_schedules' )->justReturn(
 			array(
 				'hourly'     => array(
@@ -800,6 +802,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		$scheduled_interval = null;
 
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_get_scheduled_event' )->justReturn( false );
 		Functions\when( 'wp_get_schedules' )->justReturn(
 			array(
 				'hourly' => array(
@@ -848,6 +851,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		$scheduled_interval = null;
 
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_get_scheduled_event' )->justReturn( false );
 		Functions\when( 'wp_get_schedules' )->justReturn(
 			array(
 				'hourly' => array(
@@ -887,6 +891,74 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 			'hourly',
 			$scheduled_interval,
 			'schedule_crons() must reject intervals slower than daily and fall back to hourly'
+		);
+	}
+
+	/**
+	 * An existing event with the wrong recurrence (e.g. old daily schedule
+	 * on an upgraded site) is cleared and re-registered at the target interval.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_schedule_crons_migrates_existing_event_with_wrong_recurrence(): void {
+		$cleared_hook       = null;
+		$scheduled_interval = null;
+
+		// Simulate an already-scheduled daily event (pre-upgrade state).
+		$fake_existing_event           = new \stdClass();
+		$fake_existing_event->schedule = 'daily';
+
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_get_scheduled_event' )
+			->justReturn( $fake_existing_event );
+		Functions\when( 'wp_get_schedules' )->justReturn(
+			array(
+				'hourly' => array(
+					'interval' => HOUR_IN_SECONDS,
+					'display'  => 'Once Hourly',
+				),
+				'daily'  => array(
+					'interval' => DAY_IN_SECONDS,
+					'display'  => 'Once Daily',
+				),
+			)
+		);
+		Functions\expect( 'apply_filters' )
+			->with( 'wc_ai_storefront_rollup_interval', 'hourly' )
+			->andReturn( 'hourly' );
+		Functions\expect( 'wp_clear_scheduled_hook' )
+			->once()
+			->andReturnUsing(
+				static function ( $hook ) use ( &$cleared_hook ) {
+					$cleared_hook = $hook;
+					return 0;
+				}
+			);
+		// wp_schedule_event is called once for prune (no existing event) and
+		// once for rollup (after migration clears the stale daily event).
+		Functions\expect( 'wp_schedule_event' )
+			->twice()
+			->andReturnUsing(
+				static function ( $_ts, $recurrence, $hook ) use ( &$scheduled_interval ) {
+					if ( 'wc_ai_storefront_rollup_crawl_log' === $hook ) {
+						$scheduled_interval = $recurrence;
+					}
+					return true;
+				}
+			);
+
+		WC_AI_Storefront_Crawl_Logger::schedule_crons();
+
+		$this->assertSame(
+			'wc_ai_storefront_rollup_crawl_log',
+			$cleared_hook,
+			'schedule_crons() must clear the stale event before re-registering'
+		);
+		$this->assertSame(
+			'hourly',
+			$scheduled_interval,
+			'schedule_crons() must re-register with the target interval after migrating'
 		);
 	}
 }

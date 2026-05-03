@@ -1256,8 +1256,12 @@ class WC_AI_Storefront_Admin_Controller {
 			'quarter' => 90,
 		);
 
-		$after_ts       = time() - $days_map[ $period ] * DAY_IN_SECONDS;
-		$after_date     = gmdate( 'Y-m-d', $after_ts );
+		// Anchor to today's midnight so the window spans exactly N calendar
+		// dates (today inclusive). Using time() - N*86400 would floor to a
+		// mid-day timestamp, making the window N+1 calendar dates wide once
+		// today's rows are included via the open-ended upper bound.
+		$today_midnight = gmmktime( 0, 0, 0, (int) gmdate( 'n' ), (int) gmdate( 'j' ), (int) gmdate( 'Y' ) );
+		$after_date     = gmdate( 'Y-m-d', $today_midnight - ( $days_map[ $period ] - 1 ) * DAY_IN_SECONDS );
 		$after_datetime = $after_date . ' 00:00:00';
 
 		// Top searches read from the raw log (query strings aren't aggregated
@@ -1266,12 +1270,11 @@ class WC_AI_Storefront_Admin_Controller {
 		// the lower bound so the timestamp passed to the query reflects what
 		// the table actually contains, and surface the effective window in the
 		// response so the UI can label it accurately.
-		$top_queries_days     = min(
+		$top_queries_days  = min(
 			$days_map[ $period ],
 			WC_AI_Storefront_Crawl_Logger::RAW_RETENTION_DAYS
 		);
-		$top_queries_after_ts = time() - $top_queries_days * DAY_IN_SECONDS;
-		$top_queries_after    = gmdate( 'Y-m-d', $top_queries_after_ts ) . ' 00:00:00';
+		$top_queries_after = gmdate( 'Y-m-d', $today_midnight - ( $top_queries_days - 1 ) * DAY_IN_SECONDS ) . ' 00:00:00';
 
 		$table     = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY;
 		$log_table = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_LOG;
