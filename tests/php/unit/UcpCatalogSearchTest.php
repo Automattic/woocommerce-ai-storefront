@@ -2387,4 +2387,304 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			'finally must decrement dispatch depth even when rest_do_request throws.'
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// Crawl logging — search-impression rows (#273)
+	// ------------------------------------------------------------------
+	//
+	// catalog/search MUST emit two distinct kinds of crawl-log row:
+	//   1. ONE search REQUEST row — endpoint=store_api_search,
+	//      product_id=0, query=<keyword>. Counted as a Catalog query and
+	//      contributes to Top searches.
+	//   2. ONE IMPRESSION row per result product — endpoint=store_api_
+	//      search_hit, product_id=<id>, query=''. Powers "Products seen"
+	//      via COUNT(DISTINCT product_id) and is excluded from request
+	//      aggregates so Catalog queries doesn't inflate by N per search.
+	//
+	// These tests pin the dual-row pattern, the impression cap, and the
+	// `wc_ai_storefront_search_impression_cap` filter contract.
+
+	/**
+	 * Reflect into Crawl_Logger's private static buffer so tests can
+	 * inspect the rows that record() would write to the DB on shutdown.
+	 *
+	 * @return array<int, array{0:int,1:string,2:string,3:string,4:int}>
+	 */
+	private function get_pending_crawl_records(): array {
+		$rp = ( new \ReflectionClass( WC_AI_Storefront_Crawl_Logger::class ) )->getProperty( 'pending' );
+		$rp->setAccessible( true );
+		return (array) $rp->getValue( null );
+	}
+
+	/**
+	 * Reset Crawl_Logger's static state between tests. Mirrors what
+	 * CrawlLoggerTest does — without this, recorded rows leak across
+	 * tests and the dual-row assertions count residue.
+	 */
+	private function reset_crawl_logger_state(): void {
+		$rc          = new \ReflectionClass( WC_AI_Storefront_Crawl_Logger::class );
+		$rp_pending  = $rc->getProperty( 'pending' );
+		$rp_shutdown = $rc->getProperty( 'shutdown_registered' );
+		$rp_pending->setAccessible( true );
+		$rp_shutdown->setAccessible( true );
+		$rp_pending->setValue( null, [] );
+		$rp_shutdown->setValue( null, false );
+	}
+
+	/**
+	 * Build a search request with a UCP-Agent header that resolves
+	 * to a known canonical name (UCPPlayground) — needed to bypass the
+	 * FALLBACK_SOURCE guard in the crawl-logging code path.
+	 *
+	 * @param array<string, mixed> $body
+	 */
+	private function search_request_as_known_agent( array $body = [] ): WP_REST_Request {
+		$request = $this->search_request( $body );
+		// `UCPPlayground/1.0` is in WC_AI_Storefront_UCP_Agent_Header's
+		// PRODUCT_TO_HOSTNAME map and canonicalises to 'UCPPlayground'
+		// — a non-fallback agent that triggers the recording path.
+		$request->set_header( 'UCP-Agent', 'UCPPlayground/1.0' );
+		return $request;
+	}
+
+	/**
+	 * Crawl-log assertions exercise the real record() write path, which
+	 * stamps `current_time()` into each pending row and tries to write
+	 * a single-flight transient on shutdown. Stub both so the path runs
+	 * cleanly without a WP environment.
+	 */
+	private function stub_crawl_logger_dependencies(): void {
+		Functions\when( 'current_time' )->justReturn( '2026-05-04 12:00:00' );
+		Functions\when( 'delete_transient' )->justReturn( true );
+	}
+
+	public function test_catalog_search_records_one_request_row_plus_one_impression_per_result(): void {
+		$this->reset_crawl_logger_state();
+		$this->stub_crawl_logger_dependencies();
+
+		$this->fake_product_list = [
+			$this->make_simple_product( 11, 'Hoodie A' ),
+			$this->make_simple_product( 12, 'Hoodie B' ),
+			$this->make_simple_product( 13, 'Hoodie C' ),
+		];
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search(
+			$this->search_request_as_known_agent( [ 'query' => 'hoodie' ] )
+		);
+
+		$rows = $this->get_pending_crawl_records();
+		// Row layout per CrawlLoggerTest: [product_id, agent, endpoint, query, throttled].
+
+		// One search REQUEST row.
+		$request_rows = array_values(
+			array_filter(
+				$rows,
+				static fn( $r ) => WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH === $r[2]
+			)
+		);
+		$this->assertCount( 1, $request_rows, 'Exactly one search REQUEST row.' );
+		$this->assertSame( 0, $request_rows[0][0], 'Request row product_id is 0.' );
+		$this->assertSame( 'hoodie', $request_rows[0][3], 'Request row query is the keyword.' );
+
+		// One IMPRESSION row per result product, in order.
+		$impression_rows = array_values(
+			array_filter(
+				$rows,
+				static fn( $r ) => WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH_HIT === $r[2]
+			)
+		);
+		$this->assertCount( 3, $impression_rows, 'One impression row per result product.' );
+		$this->assertSame( [ 11, 12, 13 ], array_column( $impression_rows, 0 ) );
+		// Impression rows carry empty query so the Top searches SQL
+		// (WHERE query != '') excludes them naturally.
+		$this->assertSame( [ '', '', '' ], array_column( $impression_rows, 3 ) );
+	}
+
+	public function test_catalog_search_skips_impression_recording_when_agent_is_fallback(): void {
+		$this->reset_crawl_logger_state();
+		$this->stub_crawl_logger_dependencies();
+
+		$this->fake_product_list = [
+			$this->make_simple_product( 11, 'Hoodie A' ),
+			$this->make_simple_product( 12, 'Hoodie B' ),
+		];
+
+		// No UCP-Agent header → resolve_agent_host() returns
+		// FALLBACK_SOURCE → both the request row AND the impression
+		// rows are skipped (single guard in the handler).
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search( $this->search_request( [ 'query' => 'hoodie' ] ) );
+
+		$this->assertSame(
+			[],
+			$this->get_pending_crawl_records(),
+			'Fallback agents must not record any crawl rows (request or impression).'
+		);
+	}
+
+	public function test_catalog_search_impression_cap_filter_clamps_recording(): void {
+		$this->reset_crawl_logger_state();
+		$this->stub_crawl_logger_dependencies();
+
+		// Filter set BEFORE handle_catalog_search() is called. Cap of 2
+		// against a 5-product result set should produce 2 impression rows.
+		Functions\when( 'apply_filters' )->alias(
+			static function ( string $hook, $value ) {
+				if ( 'wc_ai_storefront_search_impression_cap' === $hook ) {
+					return 2;
+				}
+				return $value;
+			}
+		);
+
+		$this->fake_product_list = [
+			$this->make_simple_product( 21, 'Belt A' ),
+			$this->make_simple_product( 22, 'Belt B' ),
+			$this->make_simple_product( 23, 'Belt C' ),
+			$this->make_simple_product( 24, 'Belt D' ),
+			$this->make_simple_product( 25, 'Belt E' ),
+		];
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search(
+			$this->search_request_as_known_agent( [ 'query' => 'belt' ] )
+		);
+
+		$impression_rows = array_values(
+			array_filter(
+				$this->get_pending_crawl_records(),
+				static fn( $r ) => WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH_HIT === $r[2]
+			)
+		);
+		$this->assertCount( 2, $impression_rows, 'Cap of 2 truncates the impression list.' );
+		// First-N order — array_slice preserves source order.
+		$this->assertSame( [ 21, 22 ], array_column( $impression_rows, 0 ) );
+	}
+
+	public function test_catalog_search_impression_cap_filter_returning_zero_disables_impressions(): void {
+		$this->reset_crawl_logger_state();
+		$this->stub_crawl_logger_dependencies();
+
+		// Cap of 0 → no impressions recorded; the search REQUEST row
+		// is unaffected (covered separately so merchants who tune the
+		// filter to 0 still see Catalog queries / Top searches).
+		Functions\when( 'apply_filters' )->alias(
+			static function ( string $hook, $value ) {
+				if ( 'wc_ai_storefront_search_impression_cap' === $hook ) {
+					return 0;
+				}
+				return $value;
+			}
+		);
+
+		$this->fake_product_list = [
+			$this->make_simple_product( 31, 'Hat A' ),
+			$this->make_simple_product( 32, 'Hat B' ),
+		];
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search(
+			$this->search_request_as_known_agent( [ 'query' => 'hat' ] )
+		);
+
+		$rows            = $this->get_pending_crawl_records();
+		$request_rows    = array_filter(
+			$rows,
+			static fn( $r ) => WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH === $r[2]
+		);
+		$impression_rows = array_filter(
+			$rows,
+			static fn( $r ) => WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH_HIT === $r[2]
+		);
+		$this->assertCount( 1, $request_rows, 'Request row still recorded with cap=0.' );
+		$this->assertCount( 0, $impression_rows, 'Impressions disabled when cap=0.' );
+	}
+
+	public function test_catalog_search_impression_cap_filter_negative_value_is_clamped_to_zero(): void {
+		$this->reset_crawl_logger_state();
+		$this->stub_crawl_logger_dependencies();
+
+		// max(0, $cap) clamps a misbehaving filter return to 0 so a
+		// callback returning -1 doesn't corrupt array_slice / introduce
+		// a fatal. Same shape as cap=0 — request row only, no impressions.
+		Functions\when( 'apply_filters' )->alias(
+			static function ( string $hook, $value ) {
+				if ( 'wc_ai_storefront_search_impression_cap' === $hook ) {
+					return -5;
+				}
+				return $value;
+			}
+		);
+
+		$this->fake_product_list = [ $this->make_simple_product( 41, 'Bag' ) ];
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search(
+			$this->search_request_as_known_agent( [ 'query' => 'bag' ] )
+		);
+
+		$impression_rows = array_filter(
+			$this->get_pending_crawl_records(),
+			static fn( $r ) => WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH_HIT === $r[2]
+		);
+		$this->assertCount( 0, $impression_rows );
+	}
+
+	public function test_catalog_search_default_impression_cap_is_50(): void {
+		$this->reset_crawl_logger_state();
+		$this->stub_crawl_logger_dependencies();
+
+		// No filter set → default constant SEARCH_IMPRESSION_CAP applies.
+		// Build a 75-product result set; expect exactly 50 impression rows.
+		$products = [];
+		for ( $i = 1; $i <= 75; $i++ ) {
+			$products[] = $this->make_simple_product( 1000 + $i, "Product {$i}" );
+		}
+		$this->fake_product_list = $products;
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search(
+			$this->search_request_as_known_agent( [ 'query' => 'anything' ] )
+		);
+
+		$impression_rows = array_filter(
+			$this->get_pending_crawl_records(),
+			static fn( $r ) => WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH_HIT === $r[2]
+		);
+		$this->assertCount(
+			WC_AI_Storefront_Crawl_Logger::SEARCH_IMPRESSION_CAP,
+			$impression_rows,
+			'Default cap of 50 truncates a 75-product result set.'
+		);
+	}
+
+	public function test_catalog_search_skips_impressions_for_zero_or_missing_product_id(): void {
+		$this->reset_crawl_logger_state();
+		$this->stub_crawl_logger_dependencies();
+
+		$this->fake_product_list = [
+			$this->make_simple_product( 51, 'Real Product' ),
+			[ 'id' => 0, 'name' => 'Bogus' ],     // product_id = 0 → skipped.
+			[ 'name' => 'No ID at all' ],         // missing 'id' → skipped.
+			$this->make_simple_product( 52, 'Another Real Product' ),
+		];
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search(
+			$this->search_request_as_known_agent( [ 'query' => 'mixed' ] )
+		);
+
+		$impression_rows = array_values(
+			array_filter(
+				$this->get_pending_crawl_records(),
+				static fn( $r ) => WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH_HIT === $r[2]
+			)
+		);
+		$this->assertSame(
+			[ 51, 52 ],
+			array_column( $impression_rows, 0 ),
+			'Defensive product_id > 0 guard skips zero/missing entries.'
+		);
+	}
 }

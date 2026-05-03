@@ -1225,12 +1225,20 @@ class WC_AI_Storefront_Admin_Controller {
 	 *
 	 * Returned shape:
 	 *   period                 — echoed back for the client's cache key.
-	 *   total_requests         — SUM(request_count) across all endpoints.
+	 *   total_requests         — SUM(request_count) across all REQUEST endpoints.
+	 *                            Excludes ENDPOINT_STORE_API_SEARCH_HIT impression rows.
 	 *   unique_products        — COUNT(DISTINCT product_id) where product_id > 0.
+	 *                            Includes products surfaced via catalog/search results
+	 *                            (recorded under ENDPOINT_STORE_API_SEARCH_HIT) AND products
+	 *                            inspected via catalog/lookup. Reflects "what products has
+	 *                            an AI seen" rather than just "what products did an AI click."
 	 *   store_api_queries      — requests to store_api_product + store_api_search.
+	 *                            (search_hit impression rows are not counted as queries.)
 	 *   llms_txt_hits          — requests to the llms.txt endpoint.
 	 *   ucp_hits               — requests to the UCP manifest endpoint.
-	 *   throttle_count         — SUM(throttle_count) across all endpoints.
+	 *   throttle_count         — SUM(throttle_count) across all REQUEST endpoints (excludes
+	 *                            search_hit, which can never be throttled — it's a side-effect
+	 *                            of the parent search request).
 	 *   throttle_rate          — throttle_count / total_requests × 100 (0 when no data).
 	 *   by_agent               — top-10 agents by request count: [{agent, requests}].
 	 *   top_queries            — top-10 search queries from the raw log: [{query, count, agents}].
@@ -1311,6 +1319,13 @@ class WC_AI_Storefront_Admin_Controller {
 		$table = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY;
 
 		// Per-endpoint aggregates — single query, aggregated in PHP below.
+		// Excludes ENDPOINT_STORE_API_SEARCH_HIT because those rows are
+		// per-result impressions emitted alongside each catalog/search
+		// request, not requests themselves; counting them here would
+		// inflate Catalog queries / total_requests / by-agent totals
+		// by N (number of products returned) per search. The impressions
+		// are still in the summary table and are picked up by the
+		// `unique_products` query below via product_id > 0.
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$endpoint_rows = $wpdb->get_results(
 			$wpdb->prepare(
@@ -1319,8 +1334,10 @@ class WC_AI_Storefront_Admin_Controller {
 				        SUM(throttle_count) AS throttles
 				 FROM {$table}
 				 WHERE crawl_date >= %s
+				   AND endpoint != %s
 				 GROUP BY endpoint",
-				$after_date
+				$after_date,
+				WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH_HIT
 			)
 		);
 		$last_error    = $wpdb->last_error;
@@ -1350,16 +1367,21 @@ class WC_AI_Storefront_Admin_Controller {
 			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
 		}
 
-		// Top-10 agents by request count.
+		// Top-10 agents by request count. Excludes ENDPOINT_STORE_API_SEARCH_HIT
+		// for the same reason as the by-endpoint query above — those rows
+		// are per-result impressions, not requests, and would otherwise
+		// dominate the by-agent chart for any agent that ran a few searches.
 		$agent_rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT agent, SUM(request_count) AS requests
 				 FROM {$table}
 				 WHERE crawl_date >= %s
+				   AND endpoint != %s
 				 GROUP BY agent
 				 ORDER BY requests DESC
 				 LIMIT 10",
-				$after_date
+				$after_date,
+				WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH_HIT
 			)
 		);
 		$last_error = $wpdb->last_error;
