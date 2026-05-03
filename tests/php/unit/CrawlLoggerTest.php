@@ -40,6 +40,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		// it silently by default. Tests that want to assert the call count
 		// set up Functions\expect() themselves before triggering record().
 		Functions\when( 'current_time' )->justReturn( '2025-01-01 12:00:00' );
+		Functions\when( 'delete_transient' )->justReturn( true );
 		// Reset static state between tests.
 		self::$rp_pending->setValue( null, [] );
 		self::$rp_shutdown->setValue( null, false );
