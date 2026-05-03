@@ -11,6 +11,29 @@
 
 
 
+if ( ! function_exists( 'esc_sql' ) ) {
+	/**
+	 * Minimal esc_sql stub — uses PHP's addslashes() to escape
+	 * single quotes, double quotes, backslashes, and NUL bytes.
+	 * This is a simplified stand-in for WordPress core's
+	 * `wpdb::_real_escape()` which uses mysqli_real_escape_string()
+	 * when available; addslashes is sufficient for unit tests that
+	 * only assert SQL fragment shape, not real DB safety.
+	 *
+	 * Defined here (before Patchwork loads) so it cannot be redefined
+	 * via Brain\Monkey's Functions\when().
+	 *
+	 * @param string|array $data Input to escape.
+	 * @return string|array
+	 */
+	function esc_sql( $data ) {
+		if ( is_array( $data ) ) {
+			return array_map( 'esc_sql', $data );
+		}
+		return addslashes( (string) $data );
+	}
+}
+
 if ( ! class_exists( 'WP_Error' ) ) {
 	/**
 	 * Minimal WP_Error stub.
