@@ -1121,7 +1121,7 @@ const CrawlerActivityCard = () => {
 																		padding:
 																			'5px 8px',
 																		background:
-																			colors.surface,
+																			colors.surfaceSubtle,
 																		borderRadius:
 																			radii.sm,
 																	} }
@@ -1274,7 +1274,7 @@ const CrawlerActivityCard = () => {
 												alignItems: 'center',
 												padding: '5px 8px',
 												background:
-													colors.surface,
+													colors.surfaceSubtle,
 												borderRadius: radii.sm,
 												gap: '8px',
 											} }
@@ -1662,7 +1662,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								marginTop: '12px',
 								marginBottom: 0,
 								padding: '10px 12px',
-								background: colors.surface,
+								background: colors.surfaceSubtle,
 								borderLeft: `3px solid ${ colors.error }`,
 								borderRadius: '2px',
 								color: colors.textSecondary,
