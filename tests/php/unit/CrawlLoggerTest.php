@@ -93,10 +93,39 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $pending );
 		[ $product_id, $agent, $endpoint, $query, $throttled ] = $pending[0];
 		$this->assertSame( 0, $product_id );
-		$this->assertSame( 'GPTBot', $agent );
+		$this->assertSame( 'ChatGPT', $agent ); // GPTBot canonicalised to brand name.
 		$this->assertSame( WC_AI_Storefront_Crawl_Logger::ENDPOINT_LLMS_TXT, $endpoint );
 		$this->assertSame( '', $query );
 		$this->assertSame( 0, $throttled );
+	}
+
+	public function test_record_canonicalises_raw_bot_tokens_to_brand_names(): void {
+		$cases = array(
+			'GPTBot'        => 'ChatGPT',
+			'ChatGPT-User'  => 'ChatGPT',
+			'OAI-SearchBot' => 'ChatGPT',
+			'ClaudeBot'     => 'Claude',
+			'Claude-User'   => 'Claude',
+			'PerplexityBot' => 'Perplexity',
+			'Perplexity-User' => 'Perplexity',
+			'KlarnaBot'     => 'Klarna',
+			'UnknownBot'    => 'UnknownBot', // Unknown tokens pass through unchanged.
+		);
+
+		foreach ( $cases as $raw => $expected ) {
+			self::$rp_pending->setValue( null, [] );
+			self::$rp_shutdown->setValue( null, false );
+			WC_AI_Storefront_Crawl_Logger::record(
+				WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP,
+				0,
+				$raw
+			);
+			$this->assertSame(
+				$expected,
+				$this->pending()[0][1],
+				"'$raw' should be stored as '$expected'"
+			);
+		}
 	}
 
 	public function test_record_stores_query_string_when_non_empty(): void {

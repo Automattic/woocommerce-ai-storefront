@@ -173,9 +173,11 @@ class WC_AI_Storefront_Crawl_Logger {
 	 *
 	 * @param string   $endpoint  One of the ENDPOINT_* constants.
 	 * @param int      $product_id Product ID, or 0 for non-product endpoints.
-	 * @param string   $agent     Normalised agent name (e.g. 'GPTBot').
-	 * @param string   $query     Search query string (ENDPOINT_STORE_API_SEARCH only).
-	 * @param bool     $throttled Whether this request was rejected with a 429.
+	 * @param string   $agent      Raw crawler token (e.g. 'GPTBot') or brand
+	 *                             name. Canonicalised to brand name before storing
+	 *                             so stats surface consistently with attribution.
+	 * @param string   $query      Search query string (ENDPOINT_STORE_API_SEARCH only).
+	 * @param bool     $throttled  Whether this request was rejected with a 429.
 	 */
 	public static function record(
 		string $endpoint,
@@ -187,6 +189,54 @@ class WC_AI_Storefront_Crawl_Logger {
 		if ( '' === $agent ) {
 			return;
 		}
+
+		// Map raw User-Agent tokens → merchant-facing brand names so crawl
+		// stats surface the same names as the attribution / orders layer.
+		// Tokens not in the table are stored as-is (forward-compat for bots
+		// added to AI_CRAWLERS before the map is updated).
+		$brand_names = array(
+			// OpenAI.
+			'GPTBot'                     => 'ChatGPT',
+			'ChatGPT-User'               => 'ChatGPT',
+			'OAI-SearchBot'              => 'ChatGPT',
+			// Anthropic.
+			'ClaudeBot'                  => 'Claude',
+			'Claude-User'                => 'Claude',
+			'Claude-SearchBot'           => 'Claude',
+			// Perplexity.
+			'PerplexityBot'              => 'Perplexity',
+			'Perplexity-User'            => 'Perplexity',
+			// Google.
+			'Storebot-Google'            => 'Google Shopping',
+			'Google-Extended'            => 'Google',
+			// Apple.
+			'Applebot'                   => 'Apple',
+			'Applebot-Extended'          => 'Apple',
+			// Amazon.
+			'AmazonBuyForMe'             => 'Amazon Rufus',
+			'Amazonbot'                  => 'Amazon',
+			// Microsoft / Copilot.
+			'AdIdxBot'                   => 'Copilot',
+			'Microsoft-BingBot-Extended' => 'Copilot',
+			// DuckDuckGo.
+			'DuckAssistBot'              => 'DuckDuckGo',
+			// Klarna.
+			'KlarnaBot'                  => 'Klarna',
+			// Baidu.
+			'ERNIEBot'                   => 'Baidu',
+			'YiyanBot'                   => 'Baidu',
+			// Regional.
+			'NaverBot'                   => 'Naver',
+			'PetalBot'                   => 'Petal',
+			'WRTNBot'                    => 'WRTN',
+			'YandexBot'                  => 'Yandex',
+			// Training.
+			'Bytespider'                 => 'ByteDance',
+			'CCBot'                      => 'Common Crawl',
+			'cohere-ai'                  => 'Cohere',
+			'Meta-ExternalAgent'         => 'Meta',
+		);
+		$agent       = $brand_names[ $agent ] ?? $agent;
 
 		self::$pending[] = array( $product_id, $agent, $endpoint, $query, $throttled ? 1 : 0 );
 

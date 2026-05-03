@@ -973,7 +973,7 @@ const CrawlerActivityCard = () => {
 								} }
 							>
 								{ __(
-									'By crawler',
+									'By AI agent',
 									'woocommerce-ai-storefront'
 								) }
 							</p>
@@ -1103,14 +1103,6 @@ const CrawlerActivityCard = () => {
 																colIdx * half +
 																rowIdx +
 																1;
-															const visibleAgents =
-																entry.agents.slice(
-																	0,
-																	2
-																);
-															const overflowCount =
-																entry.agents
-																	.length - 2;
 															return (
 																<div
 																	key={
@@ -1118,125 +1110,104 @@ const CrawlerActivityCard = () => {
 																	}
 																	style={ {
 																		display:
-																			'flex',
+																			'grid',
+																		gridTemplateColumns:
+																			'20px 1fr auto',
 																		alignItems:
 																			'center',
+																		gap: '8px',
 																		padding:
 																			'5px 8px',
 																		background:
 																			colors.surfaceSubtle,
 																		borderRadius:
 																			radii.sm,
-																		gap: '8px',
 																	} }
 																>
 																	<span
 																		style={ {
 																			fontSize:
-																				'11px',
+																				'12px',
 																			color: colors.textMuted,
 																			fontVariantNumeric:
 																				'tabular-nums',
-																			minWidth:
-																				'16px',
 																			textAlign:
 																				'right',
-																			flexShrink: 0,
+																			lineHeight:
+																				'1',
 																		} }
 																	>
 																		{ rank }
 																	</span>
-																	<span
-																		style={ {
-																			fontSize:
-																				'13px',
-																			color: colors.textPrimary,
-																			flex: 1,
-																			minWidth: 0,
-																			overflow:
-																				'hidden',
-																			textOverflow:
-																				'ellipsis',
-																			whiteSpace:
-																				'nowrap',
-																		} }
-																		title={
-																			entry.query
-																		}
-																	>
-																		{
-																			entry.query
-																		}
-																	</span>
 																	<div
 																		style={ {
-																			display:
-																				'flex',
-																			alignItems:
-																				'center',
-																			gap: '4px',
-																			flexShrink: 0,
+																			minWidth: 0,
 																		} }
 																	>
-																		{ visibleAgents.map(
-																			(
-																				agent
-																			) => (
-																				<span
-																					key={
-																						agent
-																					}
-																					style={ {
-																						fontSize:
-																							'11px',
-																						color: colors.textMuted,
-																						background:
-																							colors.surface,
-																						border: `1px solid ${ colors.borderSubtle }`,
-																						borderRadius:
-																							radii.pill,
-																						padding:
-																							'1px 6px',
-																					} }
-																				>
-																					{
-																						agent
-																					}
-																				</span>
-																			)
-																		) }
-																		{ overflowCount >
+																		<div
+																			style={ {
+																				fontSize:
+																					'13px',
+																				color: colors.textPrimary,
+																				overflow:
+																					'hidden',
+																				textOverflow:
+																					'ellipsis',
+																				whiteSpace:
+																					'nowrap',
+																			} }
+																			title={
+																				entry.query
+																			}
+																		>
+																			{
+																				entry.query
+																			}
+																		</div>
+																		{ entry
+																			.agents
+																			.length >
 																			0 && (
-																			<span
+																			<div
 																				style={ {
 																					fontSize:
 																						'11px',
 																					color: colors.textMuted,
+																					overflow:
+																						'hidden',
+																					textOverflow:
+																						'ellipsis',
+																					whiteSpace:
+																						'nowrap',
+																					marginTop:
+																						'1px',
 																				} }
 																			>
-																				{ `+${ overflowCount }` }
-																			</span>
+																				{ entry.agents.join(
+																					' · '
+																				) }
+																			</div>
 																		) }
-																		<span
-																			style={ {
-																				fontSize:
-																					'12px',
-																				fontWeight:
-																					'600',
-																				color: colors.textSecondary,
-																				minWidth:
-																					'20px',
-																				textAlign:
-																					'right',
-																				fontVariantNumeric:
-																					'tabular-nums',
-																			} }
-																		>
-																			{ fmt(
-																				entry.count
-																			) }
-																		</span>
 																	</div>
+																	<span
+																		style={ {
+																			fontSize:
+																				'13px',
+																			fontWeight:
+																				'600',
+																			color: colors.textPrimary,
+																			fontVariantNumeric:
+																				'tabular-nums',
+																			textAlign:
+																				'right',
+																			whiteSpace:
+																				'nowrap',
+																		} }
+																	>
+																		{ fmt(
+																			entry.count
+																		) }
+																	</span>
 																</div>
 															);
 														}
