@@ -4,6 +4,8 @@
 
 ### Features
 
+- **Discovery tab — boundary note for general-purpose SEO crawlers.** The "Allowed AI agents" section now includes a one-paragraph explainer clarifying that the list controls AI-specific crawlers (ChatGPT, Claude, Perplexity, Gemini, etc.) and that general-purpose search engines (Google, Bing, Yandex, etc.) are managed by WordPress core and any installed SEO plugin (Yoast, Rank Math, AIOSEO, SEOPress) — not by this plugin. Resolves the "I don't see Googlebot — does that mean I haven't allowed it?" confusion for merchants without an SEO plugin. Closes #268.
+
 ### Fixes
 
 ### Refactors

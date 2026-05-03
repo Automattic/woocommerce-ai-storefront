@@ -1886,6 +1886,34 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 					</p>
 
 					{ /*
+						Boundary note: clarifies what this list covers
+						(AI-specific crawlers) and what it doesn't
+						(general-purpose search engines like Google,
+						Bing, Yandex, etc.), so merchants without an SEO
+						plugin don't read the absence of Googlebot here
+						as "I haven't allowed Googlebot." General SEO
+						bots are allowed by default via WordPress core's
+						`User-agent: *` block and managed by SEO plugins
+						(Yoast, Rank Math, AIOSEO) where applicable.
+						Styling matches the intro paragraph above; muted
+						color signals "secondary context" rather than
+						"required reading." See issue #268.
+					*/ }
+					<p
+						style={ {
+							color: colors.textMuted,
+							fontSize: '12px',
+							margin: '0 0 12px',
+							lineHeight: '1.5',
+						} }
+					>
+						{ __(
+							'This list controls AI-specific crawlers (ChatGPT, Claude, Perplexity, Gemini, etc.). General-purpose search engines like Google and Bing are managed by WordPress core and your SEO plugin (if any) — adjust those in your SEO plugin settings or robots.txt directly.',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
+
+					{ /*
 						Action toolbar: count pill ("X of Y") + bulk
 						Select all / Clear actions, right-aligned above
 						the first crawler-category group. The previous
