@@ -8,11 +8,14 @@
 
 ### Fixes
 
+- **Top searches — clamp lookback to raw-log retention.** `top_queries` reads from the raw log (query strings aren't aggregated into the summary table), and the raw log retains only 30 days. For `period=quarter` the SQL would previously ask for 90 days back but receive at most 30, creating an internal inconsistency between the search list and the rest of the card. The lower bound is now clamped to `min(period_days, RAW_RETENTION_DAYS=30)`, the response surfaces a new `top_queries_window_days` field, and the UI labels the effective window when it differs from the selected period.
+
 ### Refactors
 
 ### Tests
 
 - **`schedule_crons()` covered by three Brain Monkey unit tests.** New tests assert the default `hourly` interval, that a valid filter override (`twicedaily`) is respected, and that an invalid filter value (`gibberish`) falls back to `hourly`. Each test uses `@runInSeparateProcess` to avoid the one-shot static guard inside `schedule_crons()`.
+- **`get_crawl_stats()` top_queries SQL contract.** New `AdminCrawlStatsTest` pins two contracts: the SQL must use only a lower-bound date filter (no `crawled_at < %s` upper bound), and the lower-bound timestamp for `period=quarter` must be clamped to ~30 days back so the parameter matches the raw log's actual retention.
 
 ### Docs
 

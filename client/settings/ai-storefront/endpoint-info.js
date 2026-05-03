@@ -1082,6 +1082,40 @@ const CrawlerActivityCard = () => {
 										),
 										crawlStats.top_queries.length
 									) }
+									{ /* When the requested period exceeds the
+									     raw-log retention window (currently 30
+									     days), the API clamps the top-searches
+									     lookback. Surface the effective window
+									     so merchants don't see "90 days" on the
+									     chip strip but get only the last 30 in
+									     the search list. */ }
+									{ typeof crawlStats.top_queries_window_days ===
+										'number' &&
+										crawlStats.top_queries_window_days <
+											( {
+												day: 1,
+												week: 7,
+												month: 30,
+												quarter: 90,
+											}[ period ] ?? 0 ) && (
+											<span
+												style={ {
+													fontWeight: 'normal',
+													textTransform: 'none',
+													letterSpacing: 'normal',
+													color: colors.textMuted,
+												} }
+											>
+												{ sprintf(
+													/* translators: %d: number of days of search history available. */
+													__(
+														'last %d days',
+														'woocommerce-ai-storefront'
+													),
+													crawlStats.top_queries_window_days
+												) }
+											</span>
+										) }
 									<span
 										className="top-searches-chevron"
 										aria-hidden="true"

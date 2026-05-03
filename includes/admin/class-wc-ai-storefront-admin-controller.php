@@ -32,59 +32,59 @@ class WC_AI_Storefront_Admin_Controller {
 		register_rest_route(
 			self::NAMESPACE,
 			'/settings',
-			[
-				[
+			array(
+				array(
 					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => [ $this, 'get_settings' ],
-					'permission_callback' => [ $this, 'check_admin_permission' ],
-				],
-				[
+					'callback'            => array( $this, 'get_settings' ),
+					'permission_callback' => array( $this, 'check_admin_permission' ),
+				),
+				array(
 					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => [ $this, 'update_settings' ],
-					'permission_callback' => [ $this, 'check_admin_permission' ],
-					'args'                => [
-						'enabled'                  => [
+					'callback'            => array( $this, 'update_settings' ),
+					'permission_callback' => array( $this, 'check_admin_permission' ),
+					'args'                => array(
+						'enabled'                  => array(
 							'type' => 'string',
-							'enum' => [ 'yes', 'no' ],
-						],
-						'product_selection_mode'   => [
+							'enum' => array( 'yes', 'no' ),
+						),
+						'product_selection_mode'   => array(
 							'type' => 'string',
-							'enum' => [ 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ],
-						],
-						'selected_categories'      => [
+							'enum' => array( 'all', 'by_taxonomy', 'categories', 'tags', 'brands', 'selected' ),
+						),
+						'selected_categories'      => array(
 							'type'  => 'array',
-							'items' => [ 'type' => 'integer' ],
-						],
-						'selected_tags'            => [
+							'items' => array( 'type' => 'integer' ),
+						),
+						'selected_tags'            => array(
 							'type'  => 'array',
-							'items' => [ 'type' => 'integer' ],
-						],
-						'selected_brands'          => [
+							'items' => array( 'type' => 'integer' ),
+						),
+						'selected_brands'          => array(
 							'type'  => 'array',
-							'items' => [ 'type' => 'integer' ],
-						],
-						'selected_products'        => [
+							'items' => array( 'type' => 'integer' ),
+						),
+						'selected_products'        => array(
 							'type'  => 'array',
-							'items' => [ 'type' => 'integer' ],
-						],
-						'rate_limit_rpm'           => [
+							'items' => array( 'type' => 'integer' ),
+						),
+						'rate_limit_rpm'           => array(
 							'type'    => 'integer',
 							'minimum' => 1,
 							'maximum' => 1000,
-						],
-						'allowed_crawlers'         => [
+						),
+						'allowed_crawlers'         => array(
 							'type'  => 'array',
-							'items' => [ 'type' => 'string' ],
-						],
+							'items' => array( 'type' => 'string' ),
+						),
 						// UCP REST gate for unknown-host AI agents.
 						// Strict enum here so REST 400s on a malformed
 						// value before the sanitizer runs — there's
 						// only two valid states for a yes/no toggle and
 						// no normalization to do.
-						'allow_unknown_ucp_agents' => [
+						'allow_unknown_ucp_agents' => array(
 							'type' => 'string',
-							'enum' => [ 'yes', 'no' ],
-						],
+							'enum' => array( 'yes', 'no' ),
+						),
 						// Return policy schema is intentionally type-only:
 						// no `enum`, no `minimum/maximum`. The canonical
 						// validation/normalization rules live in
@@ -99,56 +99,56 @@ class WC_AI_Storefront_Admin_Controller {
 						// REST flow. Type checking still catches gross
 						// shape errors (string where integer expected,
 						// etc.) at the boundary.
-						'return_policy'            => [
+						'return_policy'            => array(
 							'type'       => 'object',
-							'properties' => [
-								'mode'    => [
+							'properties' => array(
+								'mode'    => array(
 									'type' => 'string',
-								],
-								'page_id' => [
+								),
+								'page_id' => array(
 									'type' => 'integer',
-								],
+								),
 								// `days` accepts integer OR null (the
 								// "no window configured" sentinel
 								// returned by the sanitizer). Without
 								// `'null'` in the type list, sending
 								// `days: null` would 400 even though
 								// it's a canonical sanitizer output.
-								'days'    => [
-									'type' => [ 'integer', 'null' ],
-								],
-								'fees'    => [
+								'days'    => array(
+									'type' => array( 'integer', 'null' ),
+								),
+								'fees'    => array(
 									'type' => 'string',
-								],
-								'methods' => [
+								),
+								'methods' => array(
 									'type'  => 'array',
-									'items' => [
+									'items' => array(
 										'type' => 'string',
-									],
-								],
-							],
-						],
-					],
-				],
-			]
+									),
+								),
+							),
+						),
+					),
+				),
+			)
 		);
 
 		// Attribution stats.
 		register_rest_route(
 			self::NAMESPACE,
 			'/stats',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_stats' ],
-				'permission_callback' => [ $this, 'check_admin_permission' ],
-				'args'                => [
-					'period' => [
+				'callback'            => array( $this, 'get_stats' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+				'args'                => array(
+					'period' => array(
 						'type'    => 'string',
 						'default' => 'month',
-						'enum'    => [ 'day', 'week', 'month', 'quarter', 'year' ],
-					],
-				],
-			]
+						'enum'    => array( 'day', 'week', 'month', 'quarter', 'year' ),
+					),
+				),
+			)
 		);
 
 		// Recent AI-attributed orders. Feeds the Overview tab's
@@ -160,46 +160,46 @@ class WC_AI_Storefront_Admin_Controller {
 		register_rest_route(
 			self::NAMESPACE,
 			'/recent-orders',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_recent_orders' ],
-				'permission_callback' => [ $this, 'check_admin_permission' ],
-				'args'                => [
-					'per_page' => [
+				'callback'            => array( $this, 'get_recent_orders' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+				'args'                => array(
+					'per_page' => array(
 						'type'    => 'integer',
 						'default' => 10,
 						'minimum' => 1,
 						'maximum' => 100,
-					],
-					'page'     => [
+					),
+					'page'     => array(
 						'type'    => 'integer',
 						'default' => 1,
 						'minimum' => 1,
-					],
-					'orderby'  => [
+					),
+					'orderby'  => array(
 						'type'    => 'string',
 						'default' => 'date',
-						'enum'    => [ 'date', 'total', 'status', 'id' ],
-					],
-					'order'    => [
+						'enum'    => array( 'date', 'total', 'status', 'id' ),
+					),
+					'order'    => array(
 						'type'    => 'string',
 						'default' => 'DESC',
-						'enum'    => [ 'ASC', 'DESC' ],
-					],
-					'search'   => [
+						'enum'    => array( 'ASC', 'DESC' ),
+					),
+					'search'   => array(
 						'type'    => 'string',
 						'default' => '',
-					],
-					'agent'    => [
+					),
+					'agent'    => array(
 						'type'    => 'string',
 						'default' => '',
-					],
-					'status'   => [
+					),
+					'status'   => array(
 						'type'    => 'string',
 						'default' => '',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		// Syndicated product count for display surfaces (Overview tab's
@@ -217,38 +217,38 @@ class WC_AI_Storefront_Admin_Controller {
 		register_rest_route(
 			self::NAMESPACE,
 			'/product-count',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_product_count' ],
-				'permission_callback' => [ $this, 'check_admin_permission' ],
-				'args'                => [
-					'mode'                => [
+				'callback'            => array( $this, 'get_product_count' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+				'args'                => array(
+					'mode'                => array(
 						'type'              => 'string',
-						'enum'              => [ 'all', 'by_taxonomy', 'selected' ],
+						'enum'              => array( 'all', 'by_taxonomy', 'selected' ),
 						'sanitize_callback' => 'sanitize_text_field',
-					],
-					'selected_categories' => [
+					),
+					'selected_categories' => array(
 						'type'              => 'array',
-						'items'             => [ 'type' => 'integer' ],
+						'items'             => array( 'type' => 'integer' ),
 						'sanitize_callback' => array( __CLASS__, 'sanitize_id_array' ),
-					],
-					'selected_tags'       => [
+					),
+					'selected_tags'       => array(
 						'type'              => 'array',
-						'items'             => [ 'type' => 'integer' ],
+						'items'             => array( 'type' => 'integer' ),
 						'sanitize_callback' => array( __CLASS__, 'sanitize_id_array' ),
-					],
-					'selected_brands'     => [
+					),
+					'selected_brands'     => array(
 						'type'              => 'array',
-						'items'             => [ 'type' => 'integer' ],
+						'items'             => array( 'type' => 'integer' ),
 						'sanitize_callback' => array( __CLASS__, 'sanitize_id_array' ),
-					],
-					'selected_products'   => [
+					),
+					'selected_products'   => array(
 						'type'              => 'array',
-						'items'             => [ 'type' => 'integer' ],
+						'items'             => array( 'type' => 'integer' ),
 						'sanitize_callback' => array( __CLASS__, 'sanitize_id_array' ),
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		// Pages suitable for linking from the Policies tab — excludes
@@ -260,70 +260,70 @@ class WC_AI_Storefront_Admin_Controller {
 		register_rest_route(
 			self::NAMESPACE,
 			'/policy-pages',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_policy_pages' ],
-				'permission_callback' => [ $this, 'check_admin_permission' ],
-			]
+				'callback'            => array( $this, 'get_policy_pages' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
 		);
 
 		// Product/category/tag/brand search for selection UI.
 		register_rest_route(
 			self::NAMESPACE,
 			'/search/categories',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'search_categories' ],
-				'permission_callback' => [ $this, 'check_admin_permission' ],
-			]
+				'callback'            => array( $this, 'search_categories' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/search/tags',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'search_tags' ],
-				'permission_callback' => [ $this, 'check_admin_permission' ],
-			]
+				'callback'            => array( $this, 'search_tags' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/search/brands',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'search_brands' ],
-				'permission_callback' => [ $this, 'check_admin_permission' ],
-			]
+				'callback'            => array( $this, 'search_brands' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/search/products',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'search_products' ],
-				'permission_callback' => [ $this, 'check_admin_permission' ],
-				'args'                => [
-					'search'   => [ 'type' => 'string' ],
-					'per_page' => [
+				'callback'            => array( $this, 'search_products' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+				'args'                => array(
+					'search'   => array( 'type' => 'string' ),
+					'per_page' => array(
 						'type'    => 'integer',
 						'default' => 20,
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		// Discovery endpoint URLs.
 		register_rest_route(
 			self::NAMESPACE,
 			'/endpoints',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_endpoints_info' ],
-				'permission_callback' => [ $this, 'check_admin_permission' ],
-			]
+				'callback'            => array( $this, 'get_endpoints_info' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
 		);
 
 		// Crawler-visibility stats for the Discovery tab.
@@ -333,18 +333,18 @@ class WC_AI_Storefront_Admin_Controller {
 		register_rest_route(
 			self::NAMESPACE,
 			'/crawl-stats',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_crawl_stats' ],
-				'permission_callback' => [ $this, 'check_admin_permission' ],
-				'args'                => [
-					'period' => [
+				'callback'            => array( $this, 'get_crawl_stats' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+				'args'                => array(
+					'period' => array(
 						'type'    => 'string',
 						'default' => 'month',
-						'enum'    => [ 'day', 'week', 'month', 'quarter' ],
-					],
-				],
-			]
+						'enum'    => array( 'day', 'week', 'month', 'quarter' ),
+					),
+				),
+			)
 		);
 	}
 
@@ -383,9 +383,9 @@ class WC_AI_Storefront_Admin_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function update_settings( $request ) {
-		$data = [];
+		$data = array();
 
-		$fields = [ 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'return_policy' ];
+		$fields = array( 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'return_policy' );
 		foreach ( $fields as $field ) {
 			$value = $request->get_param( $field );
 			if ( null !== $value ) {
@@ -498,7 +498,7 @@ class WC_AI_Storefront_Admin_Controller {
 			if ( null !== $param_mode ) {
 				$settings['product_selection_mode'] = $param_mode;
 			}
-			foreach ( [ 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products' ] as $key ) {
+			foreach ( array( 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products' ) as $key ) {
 				$param = $request->get_param( $key );
 				if ( null !== $param ) {
 					$settings[ $key ] = $param;
@@ -517,40 +517,40 @@ class WC_AI_Storefront_Admin_Controller {
 		if ( 'all' === $mode ) {
 			$counts = wp_count_posts( 'product' );
 			return new WP_REST_Response(
-				[ 'count' => (int) ( $counts->publish ?? 0 ) ]
+				array( 'count' => (int) ( $counts->publish ?? 0 ) )
 			);
 		}
 
 		if ( 'selected' === $mode ) {
-			$ids = array_map( 'absint', $settings['selected_products'] ?? [] );
+			$ids = array_map( 'absint', $settings['selected_products'] ?? array() );
 			if ( empty( $ids ) ) {
-				return new WP_REST_Response( [ 'count' => 0 ] );
+				return new WP_REST_Response( array( 'count' => 0 ) );
 			}
 			// Count only published products in the allow-list — a
 			// deleted or drafted product shouldn't inflate the card.
 			$query = new WP_Query(
-				[
+				array(
 					'post_type'      => 'product',
 					'post_status'    => 'publish',
 					'post__in'       => $ids,
 					'posts_per_page' => 1,
 					'fields'         => 'ids',
 					'no_found_rows'  => false,
-				]
+				)
 			);
 			return new WP_REST_Response(
-				[ 'count' => (int) $query->found_posts ]
+				array( 'count' => (int) $query->found_posts )
 			);
 		}
 
 		if ( 'by_taxonomy' === $mode ) {
-			$base_args  = [
+			$base_args  = array(
 				'post_type'      => 'product',
 				'post_status'    => 'publish',
 				'posts_per_page' => 1,
 				'fields'         => 'ids',
 				'no_found_rows'  => false,
-			];
+			);
 			$filter     = new WC_AI_Storefront_UCP_Store_API_Filter();
 			$query_args = $filter->apply_union_restriction( $base_args, $settings );
 
@@ -560,19 +560,19 @@ class WC_AI_Storefront_Admin_Controller {
 			if ( ! isset( $query_args['tax_query'] ) && ! isset( $query_args['post__in'] ) ) {
 				$counts = wp_count_posts( 'product' );
 				return new WP_REST_Response(
-					[ 'count' => (int) ( $counts->publish ?? 0 ) ]
+					array( 'count' => (int) ( $counts->publish ?? 0 ) )
 				);
 			}
 
 			// Empty-selection: apply_union_restriction() sets post__in = [0].
-			if ( isset( $query_args['post__in'] ) && [ 0 ] === $query_args['post__in'] ) {
-				return new WP_REST_Response( [ 'count' => 0 ] );
+			if ( isset( $query_args['post__in'] ) && array( 0 ) === $query_args['post__in'] ) {
+				return new WP_REST_Response( array( 'count' => 0 ) );
 			}
 
 			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
 			$query = new WP_Query( $query_args );
 			return new WP_REST_Response(
-				[ 'count' => (int) $query->found_posts ]
+				array( 'count' => (int) $query->found_posts )
 			);
 		}
 
@@ -588,7 +588,7 @@ class WC_AI_Storefront_Admin_Controller {
 				__( 'Unrecognized product_selection_mode: %s', 'woocommerce-ai-storefront' ),
 				esc_html( (string) $mode )
 			),
-			[ 'status' => 500 ]
+			array( 'status' => 500 )
 		);
 	}
 
@@ -630,12 +630,12 @@ class WC_AI_Storefront_Admin_Controller {
 		$status_filter = sanitize_text_field( $request->get_param( 'status' ) );
 
 		// Map DataViews field IDs to wc_get_orders orderby keys.
-		$orderby_map = [
+		$orderby_map = array(
 			'date'   => 'date',
 			'total'  => 'total',
 			'status' => 'status',
 			'id'     => 'ID',
-		];
+		);
 		$orderby     = $orderby_map[ $orderby_raw ] ?? 'date';
 
 		// Restrict to commercially relevant statuses only, not all 12+ WC order
@@ -698,7 +698,7 @@ class WC_AI_Storefront_Admin_Controller {
 		$total_orders = $this->count_ai_orders( $status_arg, $agent_filter, $search );
 
 		$statuses = wc_get_order_statuses();
-		$rows     = [];
+		$rows     = array();
 
 		foreach ( $orders as $order ) {
 			$raw_agent = (string) $order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY );
@@ -722,11 +722,11 @@ class WC_AI_Storefront_Admin_Controller {
 			$customer_id  = $order->get_customer_id();
 			$customer_url = $customer_id
 				? add_query_arg(
-					[
+					array(
 						'page'           => 'wc-orders',
 						'_customer_user' => $customer_id,
 						'status'         => 'all',
-					],
+					),
 					admin_url( 'admin.php' )
 				)
 				: '';
@@ -736,7 +736,7 @@ class WC_AI_Storefront_Admin_Controller {
 				array_values( $order->get_items() )
 			);
 
-			$rows[] = [
+			$rows[] = array(
 				'id'           => $order->get_id(),
 				'number'       => $order->get_order_number(),
 				'customer'     => $customer,
@@ -756,15 +756,15 @@ class WC_AI_Storefront_Admin_Controller {
 				'total'        => (float) $order->get_total(),
 				'currency'     => $order->get_currency(),
 				'edit_url'     => $order->get_edit_order_url(),
-			];
+			);
 		}
 
 		return new WP_REST_Response(
-			[
+			array(
 				'orders'   => $rows,
 				'total'    => $total_orders,
 				'currency' => get_woocommerce_currency(),
-			]
+			)
 		);
 	}
 
@@ -825,7 +825,7 @@ class WC_AI_Storefront_Admin_Controller {
 			           INNER JOIN {$meta_table} m
 			               ON o.id = m.order_id AND m.meta_key = %s
 			           WHERE o.status IN ( {$status_placeholders} )";
-			$params = array_merge( [ $agent_key ], $db_statuses );
+			$params = array_merge( array( $agent_key ), $db_statuses );
 
 			if ( $agent_filter ) {
 				$sql     .= ' AND m.meta_value = %s';
@@ -870,7 +870,7 @@ class WC_AI_Storefront_Admin_Controller {
 			               ON p.ID = pm.post_id AND pm.meta_key = %s
 			           WHERE p.post_type = 'shop_order'
 			             AND p.post_status IN ( {$status_placeholders} )";
-			$params = array_merge( [ $agent_key ], $db_statuses );
+			$params = array_merge( array( $agent_key ), $db_statuses );
 
 			if ( $agent_filter ) {
 				$sql     .= ' AND pm.meta_value = %s';
@@ -919,7 +919,7 @@ class WC_AI_Storefront_Admin_Controller {
 		if ( $wpdb->last_error ) {
 			wc_get_logger()->warning(
 				'count_ai_orders DB error: ' . $wpdb->last_error,
-				[ 'source' => 'wc-ai-storefront' ]
+				array( 'source' => 'wc-ai-storefront' )
 			);
 		}
 
@@ -956,8 +956,8 @@ class WC_AI_Storefront_Admin_Controller {
 		// `Requires Plugins: woocommerce` header + runtime
 		// `class_exists('WooCommerce')` gate). No `function_exists`
 		// guard needed at this layer.
-		$excluded = [];
-		foreach ( [ 'cart', 'checkout', 'myaccount', 'shop' ] as $slug ) {
+		$excluded = array();
+		foreach ( array( 'cart', 'checkout', 'myaccount', 'shop' ) as $slug ) {
 			$page_id = (int) wc_get_page_id( $slug );
 			// `wc_get_page_id()` returns -1 for unconfigured pages; the
 			// `> 0` test correctly excludes -1 from the exclude list.
@@ -995,7 +995,7 @@ class WC_AI_Storefront_Admin_Controller {
 		$excluded = array_values( array_unique( $excluded ) );
 
 		$pages = get_pages(
-			[
+			array(
 				'post_status' => 'publish',
 				'sort_column' => 'post_title',
 				'sort_order'  => 'ASC',
@@ -1006,7 +1006,7 @@ class WC_AI_Storefront_Admin_Controller {
 				// has 5-30 pages); the bounded result avoids surprises.
 				'number'      => 200,
 				'exclude'     => $excluded,
-			]
+			)
 		);
 
 		// `get_pages()` returns false on DB error, an array on success
@@ -1022,11 +1022,11 @@ class WC_AI_Storefront_Admin_Controller {
 			return new WP_Error(
 				'wc_ai_storefront_pages_query_failed',
 				__( 'Could not load pages.', 'woocommerce-ai-storefront' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
-		$result = [];
+		$result = array();
 		foreach ( $pages as $page ) {
 			// Run the title through `the_title` filter to match the
 			// `/wp/v2/pages` REST endpoint's output shape: it filters
@@ -1038,17 +1038,17 @@ class WC_AI_Storefront_Admin_Controller {
 			// surface in the dropdown as the literal pre-filter
 			// string (e.g., shortcodes unexpanded, entities double-
 			// encoded after the JS-side decode).
-			$result[] = [
+			$result[] = array(
 				'id'    => (int) $page->ID,
-				'title' => [
+				'title' => array(
 					// wp_strip_all_tags() prevents a third-party plugin that injects
 					// unescaped HTML into `the_title` from surfacing raw markup in the
 					// admin REST response (FIND-S05). The dropdown only needs plain text.
 					// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's `the_title` filter to mirror the `/wp/v2/pages` REST endpoint's `title.rendered` field shape (entity decoding, shortcode stripping, third-party title-tweaking plugins). The drop-in-replacement contract requires identical filtering, not a plugin-prefixed parallel hook.
 					'rendered' => wp_strip_all_tags( (string) apply_filters( 'the_title', $page->post_title, $page->ID ) ),
-				],
+				),
 				'link'  => get_permalink( $page->ID ),
-			];
+			);
 		}
 
 		return new WP_REST_Response( $result );
@@ -1075,18 +1075,18 @@ class WC_AI_Storefront_Admin_Controller {
 		);
 
 		if ( is_wp_error( $categories ) ) {
-			return new WP_REST_Response( [] );
+			return new WP_REST_Response( array() );
 		}
 
-		$data = [];
+		$data = array();
 		foreach ( $categories as $category ) {
-			$data[] = [
+			$data[] = array(
 				'id'     => $category->term_id,
 				'name'   => $category->name,
 				'slug'   => $category->slug,
 				'count'  => $category->count,
 				'parent' => $category->parent,
-			];
+			);
 		}
 
 		return new WP_REST_Response( $data );
@@ -1121,7 +1121,7 @@ class WC_AI_Storefront_Admin_Controller {
 	 */
 	public function search_brands() {
 		if ( ! taxonomy_exists( 'product_brand' ) ) {
-			return new WP_REST_Response( [] );
+			return new WP_REST_Response( array() );
 		}
 		return self::fetch_flat_taxonomy_terms( 'product_brand' );
 	}
@@ -1161,17 +1161,17 @@ class WC_AI_Storefront_Admin_Controller {
 		);
 
 		if ( is_wp_error( $terms ) ) {
-			return new WP_REST_Response( [] );
+			return new WP_REST_Response( array() );
 		}
 
-		$data = [];
+		$data = array();
 		foreach ( $terms as $term ) {
-			$data[] = [
+			$data[] = array(
 				'id'    => $term->term_id,
 				'name'  => $term->name,
 				'slug'  => $term->slug,
 				'count' => $term->count,
-			];
+			);
 		}
 
 		return new WP_REST_Response( $data );
@@ -1187,30 +1187,30 @@ class WC_AI_Storefront_Admin_Controller {
 		$search   = sanitize_text_field( $request->get_param( 'search' ) ?? '' );
 		$per_page = min( absint( $request->get_param( 'per_page' ) ?? 20 ), 100 );
 
-		$args = [
+		$args = array(
 			'status' => 'publish',
 			'limit'  => $per_page,
-			'type'   => [ 'simple', 'variable' ],
-		];
+			'type'   => array( 'simple', 'variable' ),
+		);
 
 		if ( $search ) {
 			$args['s'] = $search;
 		}
 
 		$products = wc_get_products( $args );
-		$data     = [];
+		$data     = array();
 
 		foreach ( $products as $product ) {
 			// `wp_get_attachment_image_url` returns false for products with
 			// no image; normalize to empty string for JSON consumers.
 			$image_url = wp_get_attachment_image_url( $product->get_image_id(), 'thumbnail' );
-			$data[]    = [
+			$data[]    = array(
 				'id'    => $product->get_id(),
 				'name'  => $product->get_name(),
 				'sku'   => $product->get_sku(),
 				'price' => wp_strip_all_tags( $product->get_price_html() ),
 				'image' => $image_url ? $image_url : '',
-			];
+			);
 		}
 
 		return new WP_REST_Response( $data );
@@ -1259,6 +1259,19 @@ class WC_AI_Storefront_Admin_Controller {
 		$after_ts       = time() - $days_map[ $period ] * DAY_IN_SECONDS;
 		$after_date     = gmdate( 'Y-m-d', $after_ts );
 		$after_datetime = $after_date . ' 00:00:00';
+
+		// Top searches read from the raw log (query strings aren't aggregated
+		// into the summary table). The raw log is pruned at RAW_RETENTION_DAYS,
+		// so `quarter` (90d) can only return at most 30d of search data. Clamp
+		// the lower bound so the timestamp passed to the query reflects what
+		// the table actually contains, and surface the effective window in the
+		// response so the UI can label it accurately.
+		$top_queries_days     = min(
+			$days_map[ $period ],
+			WC_AI_Storefront_Crawl_Logger::RAW_RETENTION_DAYS
+		);
+		$top_queries_after_ts = time() - $top_queries_days * DAY_IN_SECONDS;
+		$top_queries_after    = gmdate( 'Y-m-d', $top_queries_after_ts ) . ' 00:00:00';
 
 		$table     = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY;
 		$log_table = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_LOG;
@@ -1328,6 +1341,8 @@ class WC_AI_Storefront_Admin_Controller {
 		// aggregated into the summary table, so we go to TABLE_LOG here).
 		// `query != ''` filters out non-search events where query is stored
 		// as an empty string (search events always carry a non-empty query).
+		// The lower bound is clamped to RAW_RETENTION_DAYS — see comment on
+		// $top_queries_after above for why this differs from $after_datetime.
 		$query_rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT query,
@@ -1341,7 +1356,7 @@ class WC_AI_Storefront_Admin_Controller {
 				 ORDER BY count DESC
 				 LIMIT 10",
 				WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH,
-				$after_datetime
+				$top_queries_after
 			)
 		);
 		$last_error = $wpdb->last_error;
@@ -1387,16 +1402,17 @@ class WC_AI_Storefront_Admin_Controller {
 		}
 
 		$data = array(
-			'period'            => $period,
-			'total_requests'    => $total_requests,
-			'unique_products'   => $unique_products,
-			'store_api_queries' => $store_api_queries,
-			'llms_txt_hits'     => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_LLMS_TXT ] ?? 0,
-			'ucp_hits'          => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP ] ?? 0,
-			'throttle_count'    => $total_throttles,
-			'throttle_rate'     => $total_requests > 0 ? round( ( $total_throttles / $total_requests ) * 100, 1 ) : 0.0,
-			'by_agent'          => $by_agent,
-			'top_queries'       => $top_queries,
+			'period'                  => $period,
+			'total_requests'          => $total_requests,
+			'unique_products'         => $unique_products,
+			'store_api_queries'       => $store_api_queries,
+			'llms_txt_hits'           => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_LLMS_TXT ] ?? 0,
+			'ucp_hits'                => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP ] ?? 0,
+			'throttle_count'          => $total_throttles,
+			'throttle_rate'           => $total_requests > 0 ? round( ( $total_throttles / $total_requests ) * 100, 1 ) : 0.0,
+			'by_agent'                => $by_agent,
+			'top_queries'             => $top_queries,
+			'top_queries_window_days' => $top_queries_days,
 		);
 
 		set_transient( 'wc_ai_storefront_crawl_stats_' . $period, $data, 5 * MINUTE_IN_SECONDS );
@@ -1411,7 +1427,7 @@ class WC_AI_Storefront_Admin_Controller {
 	 */
 	public function get_endpoints_info() {
 		return new WP_REST_Response(
-			[
+			array(
 				'llms_txt' => home_url( '/llms.txt' ),
 				'ucp'      => home_url( '/.well-known/ucp' ),
 				// UCP API: the structured commerce surface AI agents
@@ -1430,7 +1446,7 @@ class WC_AI_Storefront_Admin_Controller {
 				// enabled. Surfacing it here gives merchants a direct
 				// view of what the plugin publishes to bots.
 				'robots'   => home_url( '/robots.txt' ),
-			]
+			)
 		);
 	}
 }

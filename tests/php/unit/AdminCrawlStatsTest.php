@@ -88,4 +88,70 @@ class AdminCrawlStatsTest extends \PHPUnit\Framework\TestCase {
 			'top_queries SQL must NOT have an upper-bound date filter — today\'s searches must be included'
 		);
 	}
+
+	/**
+	 * For period=quarter (90d), top_queries reads from the raw log which is
+	 * pruned at RAW_RETENTION_DAYS (30d). The lower-bound timestamp passed
+	 * to the SQL must be clamped to ~30 days back, not 90, so the parameter
+	 * reflects what the table actually contains. The response must also
+	 * surface top_queries_window_days = 30 so the UI can label it.
+	 */
+	public function test_top_queries_window_clamps_to_raw_retention_for_quarter_period(): void {
+		$captured_top_queries_arg = null;
+
+		global $wpdb;
+		$wpdb             = Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->last_error = '';
+		$wpdb->shouldReceive( 'prepare' )
+			->andReturnUsing(
+				static function () use ( &$captured_top_queries_arg ) {
+					$args = func_get_args();
+					$sql  = $args[0];
+					// Identify the top_queries SQL by its unique GROUP_CONCAT shape
+					// — it's the only query in get_crawl_stats() that uses it.
+					if ( false !== strpos( $sql, 'GROUP_CONCAT' ) ) {
+						// Args: (sql, $endpoint, $after_datetime). We want the date.
+						$captured_top_queries_arg = $args[2] ?? null;
+					}
+					return 'PREPARED';
+				}
+			);
+		$wpdb->shouldReceive( 'get_results' )->andReturn( array() );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( '0' );
+
+		$req = new WP_REST_Request();
+		$req->set_param( 'period', 'quarter' );
+
+		$response       = $this->controller->get_crawl_stats( $req );
+		$response_data  = $response->get_data();
+
+		$this->assertNotNull(
+			$captured_top_queries_arg,
+			'Expected to capture the top_queries date argument'
+		);
+
+		// The clamped lookback should be ~30 days back, not 90. Compare the
+		// captured timestamp's epoch to "now minus 30 days" with a tolerance
+		// of a few seconds for the time drift between request and assertion.
+		$captured_ts        = strtotime( $captured_top_queries_arg . ' UTC' );
+		$expected_ts_30_day = time() - 30 * DAY_IN_SECONDS;
+		$this->assertGreaterThanOrEqual(
+			$expected_ts_30_day - DAY_IN_SECONDS,
+			$captured_ts,
+			'top_queries lower bound must not be more than 30 days back (raw log retention)'
+		);
+		$this->assertLessThanOrEqual(
+			$expected_ts_30_day + DAY_IN_SECONDS,
+			$captured_ts,
+			'top_queries lower bound must be ~30 days back for quarter period (clamp)'
+		);
+
+		// The response must surface the effective window so the UI can label it.
+		$this->assertSame(
+			30,
+			$response_data['top_queries_window_days'],
+			'top_queries_window_days must be 30 when the period (quarter=90d) exceeds raw log retention'
+		);
+	}
 }

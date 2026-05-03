@@ -294,6 +294,8 @@ Daily aggregates rolled up from the raw log. Powers the `/crawl-stats` admin end
 
 The summary table is refreshed on every rollup run (hourly by default). Today's in-progress events appear within one rollup cycle. The rollup uses `INSERT … ON DUPLICATE KEY UPDATE` so repeated runs are safe.
 
+**Note on top_queries:** Search query strings are *not* aggregated into the summary table — `top_queries` in `/crawl-stats` reads from the raw log directly. Because raw rows are pruned at `RAW_RETENTION_DAYS = 30`, the effective top-searches lookback is clamped to `min(period_days, 30)`. The API surfaces the effective window as `top_queries_window_days` in the response so consumers can label it accurately (e.g. `period=quarter` returns the last 30 days of searches, not 90).
+
 ---
 
 ## Scheduled events (cron)
