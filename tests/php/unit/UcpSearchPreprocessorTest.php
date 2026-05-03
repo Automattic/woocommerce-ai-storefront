@@ -145,11 +145,12 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_punctuation_other_than_apostrophe_and_hyphen_dropped(): void {
-		// "100% cotton!" → "100", "cotton".
-		$terms = \WC_AI_Storefront_UCP_Store_API_Filter::extract_search_terms( '100% cotton!' );
+		// "100% cotton!" → "100", "cotton" — percent and exclamation stripped.
+		$terms     = \WC_AI_Storefront_UCP_Store_API_Filter::extract_search_terms( '100% cotton!' );
+		$terms_str = implode( ' ', $terms );
 		$this->assertContains( 'cotton', $terms );
-		$this->assertNotContains( '%', implode( '', $terms ) );
-		$this->assertNotContains( '!', implode( '', $terms ) );
+		$this->assertStringNotContainsString( '%', $terms_str );
+		$this->assertStringNotContainsString( '!', $terms_str );
 	}
 
 	// ---------------------------------------------------------------
@@ -286,7 +287,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'search' => 'hoodie' ) );
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
 		$args     = array( 'where' => '', 'join' => '' );
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
@@ -300,7 +301,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'search' => '' ) );
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => '' ) );
 		$args     = array( 'where' => '', 'join' => '' );
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
@@ -313,7 +314,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'search' => 'for the a' ) );
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'for the a' ) );
 		$args     = array( 'where' => '', 'join' => '' );
 
 		$filter->on_posts_clauses_search( $args, $wp_query );
@@ -326,7 +327,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'search' => 'blue shirt' ) );
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue shirt' ) );
 		$args     = array( 'where' => '', 'join' => '' );
 
 		$filter->on_posts_clauses_search( $args, $wp_query );
@@ -340,7 +341,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// No taxonomy terms → all signal words fall back to title LIKE.
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'search' => 'Hoodie with logo' ) );
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodie with logo' ) );
 		$args     = array( 'where' => '', 'join' => '' );
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
@@ -355,7 +356,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'search' => 'blue shirt' ) );
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue shirt' ) );
 		$args     = array( 'where' => '', 'join' => '' );
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
@@ -373,7 +374,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
 		// "hoodies" matches the "Hoodies" category via plural→singular; "logo" does not.
-		$wp_query = new WP_Query( array( 'search' => 'hoodies logo' ) );
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodies logo' ) );
 		$args     = array( 'where' => '', 'join' => '' );
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
@@ -394,7 +395,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		) );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'search' => 'running' ) );
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'running' ) );
 		$args     = array( 'where' => '', 'join' => '' );
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
@@ -411,7 +412,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( true );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'search' => 'hoodie' ) );
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
 		$args     = array( 'where' => '', 'join' => '' );
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
@@ -424,7 +425,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( true );
 
 		$filter        = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query      = new WP_Query( array( 'search' => 'hoodie' ) );
+		$wp_query      = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
 		$existing_join = 'LEFT JOIN wp_wc_product_meta_lookup ON wp_posts.ID = wp_wc_product_meta_lookup.product_id';
 		$args          = array( 'where' => '', 'join' => $existing_join );
 
@@ -438,7 +439,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'search' => 'hoodie' ) );
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
 		$args     = array( 'where' => '', 'join' => '' );
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );

@@ -398,6 +398,14 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			return $args;
 		}
 
+		// Product-query gate — mirrors on_pre_get_posts(). posts_clauses fires
+		// for every WP_Query inside the UCP dispatch (nav menus, related posts,
+		// etc.); mutating non-product queries would corrupt unrelated SQL.
+		$post_type = $wp_query->get( 'post_type' );
+		if ( 'product' !== $post_type && ! ( is_array( $post_type ) && in_array( 'product', $post_type, true ) ) ) {
+			return $args;
+		}
+
 		$raw_search = $wp_query->get( 'search' );
 		if ( empty( $raw_search ) || ! is_string( $raw_search ) ) {
 			return $args;
@@ -425,7 +433,19 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		}
 
 		// Resolve which signal terms have matching taxonomy term IDs.
-		$taxonomy_map = self::resolve_taxonomy_terms( $terms );
+		// Returns map of signal → [ term_id, … ] scoped to product taxonomies.
+		$taxonomy_map      = self::resolve_taxonomy_terms( $terms );
+		$product_tax_names = self::get_product_taxonomy_names();
+		// Build a quoted IN list for use in the EXISTS subquery taxonomy constraint.
+		// phpcs:disable WordPress.DB.PreparedSQL.NotPrepared
+		$tax_names_sql = implode(
+			',',
+			array_map(
+				static fn( string $t ) => "'" . esc_sql( $t ) . "'",
+				$product_tax_names
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.NotPrepared
 
 		$per_term = array();
 		foreach ( $terms as $signal ) {
@@ -446,15 +466,22 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 			$term_ids = $taxonomy_map[ $signal ] ?? array();
-			if ( ! empty( $term_ids ) ) {
-				// Taxonomy route via EXISTS subquery — no extra JOIN needed.
+			if ( ! empty( $term_ids ) && ! empty( $tax_names_sql ) ) {
+				// Taxonomy route via EXISTS subquery. The ucp_tt.taxonomy IN (…)
+				// constraint prevents false positives from WordPress sharing a
+				// term_id across multiple taxonomies — without it, a term_id that
+				// appears in an unrelated taxonomy (e.g. a post category) could
+				// match product rows that have no product taxonomy relationship.
+				// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				$ids_sql    = implode( ',', array_map( 'intval', $term_ids ) );
 				$tax_clause = "EXISTS (
 					SELECT 1 FROM {$tr_table} ucp_tr
 					JOIN {$tt_table} ucp_tt ON ucp_tr.term_taxonomy_id = ucp_tt.term_taxonomy_id
 					WHERE ucp_tr.object_id = {$posts_table}.ID
 					AND ucp_tt.term_id IN ({$ids_sql})
+					AND ucp_tt.taxonomy IN ({$tax_names_sql})
 				)";
+				// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				$per_term[] = "( {$tax_clause} OR {$title_clause} )";
 			} else {
 				$per_term[] = $title_clause;
@@ -464,6 +491,33 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		$args['where'] .= ' AND ( ' . implode( ' AND ', $per_term ) . ' )';
 
 		return $args;
+	}
+
+	/**
+	 * Return the list of product taxonomy names relevant for AI search:
+	 * product_cat, product_tag, product_brand, and pa_* attributes.
+	 *
+	 * Extracted as a shared helper so both `resolve_taxonomy_terms()`
+	 * (which resolves term IDs) and `on_posts_clauses_search()` (which
+	 * needs the taxonomy names for the EXISTS subquery constraint) call
+	 * the same logic without duplication.
+	 *
+	 * @since 0.9.0
+	 *
+	 * @return string[] Taxonomy name strings.
+	 */
+	private static function get_product_taxonomy_names(): array {
+		/** @var array<string, string> $raw_taxonomies */
+		$raw_taxonomies = (array) get_taxonomies( array( 'object_type' => array( 'product' ) ), 'names' );
+		return array_values(
+			array_filter(
+				array_keys( $raw_taxonomies ),
+				static function ( string $t ) {
+					return in_array( $t, array( 'product_cat', 'product_tag', 'product_brand' ), true )
+						|| str_starts_with( $t, 'pa_' );
+				}
+			)
+		);
 	}
 
 	/**
@@ -486,20 +540,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			return array();
 		}
 
-		// get_taxonomies('names') returns array<string,string> — both keys and
-		// values are the taxonomy name strings. PHPStan can't narrow array_keys()
-		// to string[] without the annotation below.
-		/** @var array<string, string> $raw_taxonomies */
-		$raw_taxonomies = (array) get_taxonomies( array( 'object_type' => array( 'product' ) ), 'names' );
-		$taxonomies     = array_values(
-			array_filter(
-				array_keys( $raw_taxonomies ),
-				static function ( string $t ) {
-					return in_array( $t, array( 'product_cat', 'product_tag', 'product_brand' ), true )
-						|| str_starts_with( $t, 'pa_' );
-				}
-			)
-		);
+		$taxonomies = self::get_product_taxonomy_names();
 
 		if ( empty( $taxonomies ) ) {
 			return array();
@@ -595,8 +636,8 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 
 		// {ch,sh,x,s,z}es → drop 'es'  (watches → watch, boxes → box)
 		if ( $len > 3 && str_ends_with( $signal, 'es' ) ) {
-			$base      = substr( $signal, 0, -2 );
-			$last_two  = substr( $base, -2 );
+			$base     = substr( $signal, 0, -2 );
+			$last_two = substr( $base, -2 );
 			if ( in_array( $last_two, array( 'ch', 'sh' ), true ) || in_array( substr( $base, -1 ), array( 'x', 's', 'z' ), true ) ) {
 				if ( isset( $lookup[ $base ] ) ) {
 					return array_unique( $lookup[ $base ] );
