@@ -2,7 +2,9 @@
 
 Inventory of every persisted artifact this plugin writes — options, transients, post meta, order meta, scheduled events. For each: where it's defined, who reads/writes it, lifetime, and behavior on uninstall.
 
-The surface is deliberately small: two options, five transients, one scheduled event, one post-meta key, four order-meta keys. No custom tables. No custom post types.
+The surface is deliberately small: two options, six transients, three scheduled events, one post-meta key, four order-meta keys, and two custom tables. No custom post types.
+
+The two custom tables back the Discovery analytics surface. They were added in 0.8.6 alongside the crawler-side visibility stats. Pre-0.8.6 installs got both tables created on the version-bump dbDelta path; the schema is rebuildable on every version bump and the tables are dropped on uninstall.
 
 ## Data flow
 
@@ -169,6 +171,15 @@ Cached AI-attributed order aggregates served by `GET /admin/stats`. Four variant
 - **Invalidated by:** `WC_AI_Storefront_Attribution::bust_stats_cache()` on order status transitions (`woocommerce_order_status_completed`, `woocommerce_order_status_processing`) and order deletion/trash hooks. All four period variants are deleted together on each bust.
 - **Uninstall:** deleted by `uninstall.php` (all four variants)
 
+### `wc_ai_storefront_crawl_stats_{period}`
+
+Cached crawler-visibility aggregates served by `GET /admin/crawl-stats`. Four variants: `wc_ai_storefront_crawl_stats_day`, `wc_ai_storefront_crawl_stats_week`, `wc_ai_storefront_crawl_stats_month`, `wc_ai_storefront_crawl_stats_quarter`.
+
+- **TTL:** 5 minutes (`5 * MINUTE_IN_SECONDS`)
+- **Written by:** `WC_AI_Storefront_Admin_Controller::get_crawl_stats()` after the four supporting SELECTs against the summary table
+- **Invalidated by:** the daily rollup cron (`wc_ai_storefront_rollup_crawl_log`) busts all four variants once new aggregate rows are written so the next admin request re-reads
+- **Uninstall:** deleted by `uninstall.php` (all four variants)
+
 ### Note on UCP REST responses
 
 UCP REST endpoint responses (`/catalog/search`, `/catalog/lookup`, `/checkout-sessions`) are **not** cached. Every dispatch computes fresh because per-request attribution (UTM stamping) and `chk_…` session IDs must vary per agent and per request.
@@ -257,6 +268,34 @@ The underscore prefix marks the key as protected (not editable from the default 
 
 ---
 
+## Custom tables
+
+Two MySQL tables back the Discovery analytics surface. Both are scoped to the site's `$wpdb->prefix`, so multisite installs get one pair per site. Schema is created and upgraded via `dbDelta` on plugin version bump (idempotent — safe to re-run); both tables are dropped on uninstall.
+
+### `{prefix}wc_ai_storefront_crawl_log`
+
+Raw event log — one row per identified AI-agent request. Written from a static pending-array buffer that flushes on WordPress's `shutdown` action, so the latency added to any individual AI request is one batched INSERT at the end of the response.
+
+- **Defined in:** `WC_AI_Storefront_Crawl_Logger::TABLE_LOG` ([`includes/ai-storefront/class-wc-ai-storefront-crawl-logger.php`](../../includes/ai-storefront/class-wc-ai-storefront-crawl-logger.php))
+- **Written by:** `WC_AI_Storefront_Crawl_Logger::record()` calls from `WC_AI_Storefront_Attribution`, `WC_AI_Storefront_Llms_Txt`, `WC_AI_Storefront_Robots`, `WC_AI_Storefront_UCP`, `WC_AI_Storefront_UCP_REST_Controller`, `WC_AI_Storefront_Store_API_Rate_Limiter`
+- **Retention:** `WC_AI_Storefront_Crawl_Logger::RAW_RETENTION_DAYS = 30`. Pruned by the daily cron `wc_ai_storefront_prune_crawl_log`.
+- **Uninstall:** dropped via `DROP TABLE` in `uninstall.php`
+
+**Schema (key columns):** event timestamp, agent name (resolved from User-Agent), endpoint kind (one of llms.txt, UCP manifest, UCP REST, robots, Store API), URL path, status code, throttled flag, optional product IDs returned, optional Store API search query.
+
+### `{prefix}wc_ai_storefront_crawl_summary`
+
+Daily aggregates rolled up from the raw log. Powers the `/crawl-stats` admin endpoint without scanning the raw table on every request.
+
+- **Defined in:** `WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY`
+- **Written by:** `wc_ai_storefront_rollup_crawl_log` daily cron — selects the prior day's raw rows, groups by (date, agent, endpoint), and writes one row per group
+- **Retention:** `WC_AI_Storefront_Crawl_Logger::SUMMARY_RETENTION_DAYS = 90`. Pruned by the same daily cron that does the rollup.
+- **Uninstall:** dropped via `DROP TABLE` in `uninstall.php`
+
+The summary table only contains data through end-of-yesterday. Today's events sit in the raw log until the next nightly rollup. The `/crawl-stats` endpoint is documented to reflect "activity up to the end of yesterday" for that reason.
+
+---
+
 ## Scheduled events (cron)
 
 ### `wc_ai_storefront_warm_llms_txt_cache`
@@ -270,6 +309,22 @@ Debounced WP-Cron event that regenerates the `/llms.txt` cache after a content c
 
 The debounce coalesces invalidations so a bulk product import doesn't fire dozens of regenerations in sequence. Staleness is bounded by the regeneration window — seconds, not minutes.
 
+### `wc_ai_storefront_prune_crawl_log`
+
+Daily cron that deletes raw log rows older than `RAW_RETENTION_DAYS` (30) and summary rows older than `SUMMARY_RETENTION_DAYS` (90).
+
+- **Schedule:** `daily`, anchored to UTC midnight
+- **Defined in:** `WC_AI_Storefront_Crawl_Logger`
+- **Uninstall:** cleared by `uninstall.php`
+
+### `wc_ai_storefront_rollup_crawl_log`
+
+Daily cron that rolls yesterday's raw log into the summary table.
+
+- **Schedule:** `daily`, anchored to UTC midnight + 60 seconds (runs after pruning so the rollup never sees rows being deleted underneath it)
+- **Defined in:** `WC_AI_Storefront_Crawl_Logger`
+- **Uninstall:** cleared by `uninstall.php`
+
 ---
 
 ## Multisite
@@ -277,8 +332,9 @@ The debounce coalesces invalidations so a bulk product import doesn't fire dozen
 When activated network-wide, options and transients are per-site (each site has its own `wp_options` row). `uninstall.php` loops through `get_sites()` and deletes from each:
 
 - `wc_ai_storefront_settings`, `wc_ai_storefront_version`
-- `wc_ai_storefront_llms_txt`, `wc_ai_storefront_ucp`, `wc_ai_storefront_flush_rewrite`, `wc_ai_storefront_catalog_summary`, `wc_ai_storefront_stats_{day,week,month,year}` (transients)
-- `wc_ai_storefront_warm_llms_txt_cache` (cron)
+- `wc_ai_storefront_llms_txt`, `wc_ai_storefront_ucp`, `wc_ai_storefront_flush_rewrite`, `wc_ai_storefront_catalog_summary`, `wc_ai_storefront_stats_{day,week,month,year}`, `wc_ai_storefront_crawl_stats_{day,week,month,quarter}` (transients)
+- `wc_ai_storefront_warm_llms_txt_cache`, `wc_ai_storefront_prune_crawl_log`, `wc_ai_storefront_rollup_crawl_log` (cron)
+- `{prefix}wc_ai_storefront_crawl_log`, `{prefix}wc_ai_storefront_crawl_summary` (custom tables, dropped via `DROP TABLE`)
 
 The cleanup loop is wrapped in a function-existence guard so re-running uninstall by mistake doesn't redefine the function and warn.
 

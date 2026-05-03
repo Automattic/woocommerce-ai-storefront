@@ -38,6 +38,8 @@ Module: [`includes/ai-storefront/ucp-rest/`](../../includes/ai-storefront/ucp-re
 
 Search the merchant's syndicated catalog. Translates UCP search params into a WC Store API call.
 
+The free-text `query` is preprocessed by `WC_AI_Storefront_UCP_Store_API_Filter::on_posts_clauses_search()` (hooked at `posts_clauses` priority 9): the phrase is split into signal terms and each term is resolved against the store's own `product_cat`, `product_tag`, `product_brand`, and `pa_*` taxonomies via a suffix-flip dictionary, then combined with title LIKE fallback. This means natural-language queries like `"hoodie with logo"` or `"running shoes for men"` resolve to relevant products even when the exact phrase isn't in any product title — `hoodie` matches the "Hoodies" category, `running shoes` resolves morphologically to "Running Shoe", etc. See [`ARCHITECTURE.md`](ARCHITECTURE.md#ucp-rest-adapter) for the full clause-shape spec.
+
 **Permission:** `check_agent_access`.
 
 **Request body** (JSON object):
@@ -372,6 +374,42 @@ Discovery endpoint URLs for the Discovery tab.
   "robots":   "https://your-store.com/robots.txt"
 }
 ```
+
+### `GET /crawl-stats`
+
+Aggregated crawler-visibility stats for the Discovery tab. Reads from the daily summary table (`{prefix}wc_ai_storefront_crawl_summary`) — data reflects activity up to end-of-yesterday; today's events sit in the raw log until the nightly rollup. Response is cached for 5 minutes via the `wc_ai_storefront_crawl_stats_{period}` transient.
+
+**Query params:**
+
+| Param | Type | Default | Values |
+|-------|------|---------|--------|
+| `period` | string | `month` | `day` \| `week` \| `month` \| `quarter` |
+
+**Response:**
+
+```json
+{
+  "period":            "month",
+  "total_requests":    12483,
+  "unique_products":   147,
+  "store_api_queries": 4521,
+  "llms_txt_hits":     2104,
+  "ucp_hits":          5872,
+  "throttle_count":    14,
+  "throttle_rate":     0.1,
+  "by_agent": [
+    { "agent": "ChatGPT",    "requests": 8120 },
+    { "agent": "Perplexity", "requests": 2944 },
+    { "agent": "Gemini",     "requests": 1419 }
+  ],
+  "top_queries": [
+    { "query": "running shoes", "count": 47, "agents": ["ChatGPT", "Perplexity"] },
+    { "query": "hoodies",       "count": 31, "agents": ["ChatGPT"] }
+  ]
+}
+```
+
+`throttle_rate` is `(throttle_count / total_requests) * 100` rounded to one decimal place; returns `0.0` when `total_requests` is zero. `top_queries[].agents` is the deduplicated list of agents that issued each search term in the period.
 
 ---
 

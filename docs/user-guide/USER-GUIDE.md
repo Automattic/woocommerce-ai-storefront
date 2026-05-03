@@ -105,6 +105,8 @@ If something returns 404 or shows your homepage, jump to [Troubleshooting](#10-t
 
 A working setup returns real product names with prices and links to your store within 3–10 seconds. If the agent says it can't find anything, wait a few hours (most agents cache crawl results) and retry.
 
+Natural-language search queries match against your product categories, tags, brands, and attributes, not just product titles. So an agent asking for "hoodies" will find products in your "Hoodies" category even if the individual product titles use a different word, and "watches" will find products in a "Watch" category. Plural and singular forms are handled automatically.
+
 ---
 
 ## 5. Choose which products to expose
@@ -164,6 +166,20 @@ A 2 × 2 card grid shows four preset options: Free, Light, Standard, and Custom.
 Selecting **Custom** reveals a 120px input with `requests / min` suffix directly below the Custom card.
 
 Rate limiting only affects AI crawlers (matched by user-agent). Regular customers, your storefront, and admin REST traffic are unaffected.
+
+### AI activity log
+
+The Discovery tab includes a visibility section that surfaces what AI crawlers are actually doing on your store. The plugin records every identified AI-agent request that hits your discovery endpoints (llms.txt, the UCP manifest, the UCP API, robots.txt, and the Store API) into a private log on your own database. Nothing is sent off-site.
+
+The period selector at the top (Day / Week / Month / Quarter) drives all three cards:
+
+- **Top searches.** The most common search phrases AI agents have asked for, with the agents that issued each one. If you see "running shoes" but you don't sell shoes, that's a signal an AI is sending the wrong shoppers your way; if you see "hoodies" and you sell hoodies but not enough are showing, you may want to check that your hoodies category is named conventionally.
+- **Products seen.** A sampled list of products that have been returned to AI agents in the period, with the count of how many times each was surfaced.
+- **Per-agent breakdown.** Total requests grouped by AI brand (ChatGPT, Perplexity, Gemini, etc.). Useful for noticing when a new crawler starts visiting your store.
+
+There's nothing to configure. Data starts populating from the moment you enable the plugin. Raw events are kept for 30 days; aggregated daily counts are kept for 90 days. There is no option to extend retention; if you need long-term analytics, treat this as a "what changed last quarter" tool, not a permanent dashboard.
+
+The summary view shows activity through end-of-yesterday. Today's events sit in the raw log and roll into the summary on the next nightly cron.
 
 ### Revisit cadence
 
