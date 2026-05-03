@@ -102,15 +102,24 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_record_canonicalises_raw_bot_tokens_to_brand_names(): void {
 		$cases = array(
-			'GPTBot'        => 'ChatGPT',
-			'ChatGPT-User'  => 'ChatGPT',
-			'OAI-SearchBot' => 'ChatGPT',
-			'ClaudeBot'     => 'Claude',
-			'Claude-User'   => 'Claude',
-			'PerplexityBot' => 'Perplexity',
+			'GPTBot'          => 'ChatGPT',
+			'ChatGPT-User'    => 'ChatGPT',
+			'OAI-SearchBot'   => 'ChatGPT',
+			'ClaudeBot'       => 'Claude',
+			'Claude-User'     => 'Claude',
+			'anthropic-ai'    => 'Claude',  // Anthropic legacy crawler — same brand as ClaudeBot.
+			'PerplexityBot'   => 'Perplexity',
 			'Perplexity-User' => 'Perplexity',
-			'KlarnaBot'     => 'Klarna',
-			'UnknownBot'    => 'UnknownBot', // Unknown tokens pass through unchanged.
+			'KlarnaBot'       => 'Klarna',
+			// YouBot must canonicalise to 'You' (NOT 'You.com') so UA-token
+			// traffic and UCP-attributed traffic from you.com both roll up
+			// under the same brand. The host map in
+			// WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS uses
+			// 'you.com' => 'You'; the brand_names table here must agree.
+			'YouBot'          => 'You',
+			'Mistralai-User'  => 'Mistral',
+			'Diffbot'         => 'Diffbot',
+			'UnknownBot'      => 'UnknownBot', // Unknown tokens pass through unchanged.
 		);
 
 		foreach ( $cases as $raw => $expected ) {

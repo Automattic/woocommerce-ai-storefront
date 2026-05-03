@@ -284,11 +284,12 @@ class WC_AI_Storefront_Robots {
 	 * Sanitize an `allowed_crawlers` input against the canonical crawler list.
 	 *
 	 * Strips unknown IDs left over from plugin upgrades that rotated the
-	 * crawler roster — e.g. the phantom `Gemini` entry removed in 1.6.0
-	 * (never matched any real crawler; Google's Gemini-training bot is
-	 * `Google-Extended`). Keeping the stored list in sync with
-	 * `AI_CRAWLERS` prevents stale `User-agent:` blocks from leaking into
-	 * `robots.txt` and keeps the admin UI's "X of Y" count honest.
+	 * crawler roster — e.g. the phantom `Gemini` entry that was removed
+	 * in an earlier release (it never matched any real crawler; Google's
+	 * Gemini-training bot is `Google-Extended`). Keeping the stored list
+	 * in sync with `AI_CRAWLERS` prevents stale `User-agent:` blocks
+	 * from leaking into `robots.txt` and keeps the admin UI's "X of Y"
+	 * count honest.
 	 *
 	 * Note: `anthropic-ai` was previously treated as deprecated and stripped
 	 * on upgrade, but Anthropic continues to send it in real-world traffic
