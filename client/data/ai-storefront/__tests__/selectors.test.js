@@ -8,6 +8,8 @@ import {
 	getEndpoints,
 	getEndpointsError,
 	getEndpointStatus,
+	getCrawlStats,
+	getCrawlStatsError,
 	isDirty,
 } from '../selectors';
 
@@ -215,6 +217,40 @@ describe( 'AI Syndication selectors', () => {
 				},
 			};
 			expect( isDirty( state ) ).toBe( true );
+		} );
+	} );
+
+	describe( 'getCrawlStats', () => {
+		it( 'returns the stored crawlStats object', () => {
+			const data = { period: 'month', total_requests: 10 };
+			expect( getCrawlStats( { crawlStats: data } ) ).toBe( data );
+		} );
+
+		it( 'returns null when crawlStats is null', () => {
+			expect( getCrawlStats( { crawlStats: null } ) ).toBeNull();
+		} );
+
+		it( 'returns null when state is undefined', () => {
+			expect( getCrawlStats( undefined ) ).toBeNull();
+		} );
+	} );
+
+	describe( 'getCrawlStatsError', () => {
+		it( 'returns the stored error', () => {
+			const error = new Error( 'crawl stats fetch failed' );
+			expect( getCrawlStatsError( { crawlStatsError: error } ) ).toBe(
+				error
+			);
+		} );
+
+		it( 'returns null when there is no error', () => {
+			expect(
+				getCrawlStatsError( { crawlStatsError: null } )
+			).toBeNull();
+		} );
+
+		it( 'returns null when state is undefined', () => {
+			expect( getCrawlStatsError( undefined ) ).toBeNull();
 		} );
 	} );
 } );

@@ -781,15 +781,22 @@ class WC_AI_Storefront_Attribution {
 
 		if ( $results ) {
 			foreach ( $results as $row ) {
-				$count   = (int) $row->order_count;
-				$revenue = (float) $row->revenue;
+				$count     = (int) $row->order_count;
+				$revenue   = (float) $row->revenue;
+				$canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_host_idempotent( (string) $row->agent );
 
-				$total_orders           += $count;
-				$total_revenue          += $revenue;
-				$by_agent[ $row->agent ] = [
-					'orders'  => $count,
-					'revenue' => $revenue,
-				];
+				$total_orders  += $count;
+				$total_revenue += $revenue;
+
+				if ( isset( $by_agent[ $canonical ] ) ) {
+					$by_agent[ $canonical ]['orders']  += $count;
+					$by_agent[ $canonical ]['revenue'] += $revenue;
+				} else {
+					$by_agent[ $canonical ] = [
+						'orders'  => $count,
+						'revenue' => $revenue,
+					];
+				}
 			}
 		}
 

@@ -782,12 +782,24 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 		( select ) => select( STORE_NAME ).getStats(),
 		[]
 	);
+	const crawlStats = useSelect(
+		( select ) => select( STORE_NAME ).getCrawlStats(),
+		[]
+	);
+	const crawlStatsError = useSelect(
+		( select ) => select( STORE_NAME ).getCrawlStatsError(),
+		[]
+	);
 
-	const { fetchStats } = useDispatch( STORE_NAME );
+	const { fetchStats, fetchCrawlStats } = useDispatch( STORE_NAME );
 	const [ period, setPeriod ] = useState( 'month' );
+
+	// Crawl stats retention caps at 90 days; 'year' is not a valid crawl period.
+	const crawlPeriod = period === 'year' ? 'quarter' : period;
 
 	useEffect( () => {
 		fetchStats( period );
+		fetchCrawlStats( crawlPeriod );
 	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Refetch when period changes.
 
 	// Products Exposed card — actual count of products that will
@@ -1063,6 +1075,42 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						'woocommerce-ai-storefront'
 					) }
 					value={ productCountDisplay }
+					background={ colors.surfaceSubtle }
+				/>
+				<StatCard
+					label={ __( 'Products seen', 'woocommerce-ai-storefront' ) }
+					value={
+						crawlStatsError ||
+						! crawlStats ||
+						crawlStats.period !== crawlPeriod
+							? '—'
+							: crawlStats.unique_products.toLocaleString()
+					}
+					reference={
+						typeof productCount === 'number'
+							? productCount.toLocaleString()
+							: null
+					}
+					background={ colors.surfaceSubtle }
+				/>
+				<StatCard
+					label={ __(
+						'Products seen %',
+						'woocommerce-ai-storefront'
+					) }
+					value={
+						! crawlStatsError &&
+						crawlStats &&
+						crawlStats.period === crawlPeriod &&
+						typeof productCount === 'number' &&
+						productCount > 0
+							? `${ (
+									( crawlStats.unique_products /
+										productCount ) *
+									100
+							  ).toFixed( 1 ) }%`
+							: '—'
+					}
 					background={ colors.surfaceSubtle }
 				/>
 				{ /* Card labels omit the time-period suffix

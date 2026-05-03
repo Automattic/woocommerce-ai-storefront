@@ -163,6 +163,12 @@ class WC_AI_Storefront_Ucp {
 		// even though the manifest is served as `application/json`.
 		WC_AI_Storefront_Logger::debug( 'UCP manifest — generating per-request' );
 		$body = wp_json_encode( $this->generate_manifest( $settings ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT );
+
+		$crawler = WC_AI_Storefront_Robots::detect_crawler_from_ua();
+		if ( '' !== $crawler ) {
+			WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP, 0, $crawler );
+		}
+
 		echo $body; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON content.
 		exit;
 	}

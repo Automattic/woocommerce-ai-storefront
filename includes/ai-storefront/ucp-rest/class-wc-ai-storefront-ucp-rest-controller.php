@@ -741,6 +741,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
+		if ( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE !== $agent_data['name'] ) {
+			WC_AI_Storefront_Crawl_Logger::record(
+				WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH,
+				0,
+				$agent_data['name'],
+				is_string( $request->get_param( 'query' ) ) ? $request->get_param( 'query' ) : ''
+			);
+		}
+
 		return $response;
 	}
 
@@ -1627,6 +1636,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 */
 			$filtered_product = apply_filters( 'wc_ai_storefront_ucp_product', $product, $wc_product );
 			$products[]       = is_array( $filtered_product ) ? $filtered_product : $product;
+
+			if ( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE !== $agent_data['name'] ) {
+				WC_AI_Storefront_Crawl_Logger::record(
+					WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SINGLE,
+					$wc_id,
+					$agent_data['name']
+				);
+			}
 		}
 
 		$response_body = array(

@@ -52,13 +52,12 @@ describe( 'loadPersistedView', () => {
 		expect( loadPersistedView().sort ).toEqual( sort );
 	} );
 
-	it( 'restores persisted fields subset', () => {
-		const fields = [ 'order', 'date', 'total' ];
+	it( 'ignores stored fields and always returns DEFAULT_VIEW fields', () => {
 		window.localStorage.setItem(
 			VIEW_STORAGE_KEY,
-			JSON.stringify( { fields } )
+			JSON.stringify( { fields: [ 'order', 'date', 'total' ] } )
 		);
-		expect( loadPersistedView().fields ).toEqual( fields );
+		expect( loadPersistedView().fields ).toEqual( DEFAULT_FIELDS );
 	} );
 
 	it( 'always resets page to 1 even when stored value differs', () => {
@@ -141,13 +140,16 @@ describe( 'persistView', () => {
 		expect( stored.sort ).toEqual( sort );
 	} );
 
-	it( 'persists fields array', () => {
-		const fields = [ 'order', 'total' ];
-		persistView( { type: 'table', perPage: 10, fields } );
+	it( 'does not persist fields — column schema is owned by DEFAULT_VIEW', () => {
+		persistView( {
+			type: 'table',
+			perPage: 10,
+			fields: [ 'order', 'total' ],
+		} );
 		const stored = JSON.parse(
 			window.localStorage.getItem( VIEW_STORAGE_KEY )
 		);
-		expect( stored.fields ).toEqual( fields );
+		expect( stored ).not.toHaveProperty( 'fields' );
 	} );
 
 	it( 'persists layout including density', () => {
@@ -159,7 +161,7 @@ describe( 'persistView', () => {
 		expect( stored.layout ).toEqual( layout );
 	} );
 
-	it( 'round-trips: persist then load returns the saved prefs', () => {
+	it( 'round-trips: persist then load returns saved prefs with default fields', () => {
 		const sort = { field: 'total', direction: 'asc' };
 		const layout = { density: 'comfortable' };
 		persistView( {
@@ -173,7 +175,7 @@ describe( 'persistView', () => {
 		const view = loadPersistedView();
 		expect( view.perPage ).toBe( 50 );
 		expect( view.sort ).toEqual( sort );
-		expect( view.fields ).toEqual( [ 'order', 'date' ] );
+		expect( view.fields ).toEqual( DEFAULT_FIELDS );
 		expect( view.layout ).toEqual( layout );
 		expect( view.page ).toBe( 1 );
 	} );

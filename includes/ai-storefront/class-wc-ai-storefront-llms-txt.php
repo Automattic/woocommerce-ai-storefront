@@ -168,6 +168,11 @@ class WC_AI_Storefront_Llms_Txt {
 			exit;
 		}
 
+		$crawler = WC_AI_Storefront_Robots::detect_crawler_from_ua();
+		if ( '' !== $crawler ) {
+			WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_LLMS_TXT, 0, $crawler );
+		}
+
 		echo $this->get_cached_content(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markdown content.
 		exit;
 	}

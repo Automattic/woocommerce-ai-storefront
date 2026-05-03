@@ -134,6 +134,14 @@ class WC_AI_Storefront {
 		// controller when syndication is toggled on.
 		WC_AI_Storefront_Cache_Invalidator::register( 'wc_ai_storefront_ucp' );
 
+		// Crawl logger cron handlers are registered unconditionally so that
+		// WP-Cron keeps firing prune/rollup even while syndication is disabled.
+		// Without this, disabling the plugin for a day would permanently miss
+		// that day's rollup (rollup only aggregates "yesterday").
+		WC_AI_Storefront_Crawl_Logger::schedule_crons();
+		add_action( 'wc_ai_storefront_prune_crawl_log', array( 'WC_AI_Storefront_Crawl_Logger', 'prune_raw_log' ) );
+		add_action( 'wc_ai_storefront_rollup_crawl_log', array( 'WC_AI_Storefront_Crawl_Logger', 'rollup' ) );
+
 		$settings = self::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			// Only load attribution (to track even when syndication is paused)
@@ -247,6 +255,12 @@ class WC_AI_Storefront {
 
 		if ( $needs_flush || $stored_version !== WC_AI_STOREFRONT_VERSION ) {
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );
+
+			// Create or upgrade crawl-log tables on every version bump.
+			// dbDelta is idempotent — no-ops when the schema is already current.
+			// Version option is bumped AFTER create_tables() so that a transient
+			// DB failure leaves the version unchanged and the next request retries.
+			WC_AI_Storefront_Crawl_Logger::create_tables();
 			update_option( 'wc_ai_storefront_version', WC_AI_STOREFRONT_VERSION );
 
 			// Self-healing flush: register the rules IMMEDIATELY (at the

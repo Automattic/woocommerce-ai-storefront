@@ -11,6 +11,8 @@ export const getEndpointsError = ( state ) => state?.endpointsError || null;
 export const getEndpointStatus = ( state ) =>
 	state?.endpointStatus || EMPTY_OBJ;
 export const getRecentOrders = ( state ) => state?.recentOrders || null;
+export const getCrawlStats = ( state ) => state?.crawlStats || null;
+export const getCrawlStatsError = ( state ) => state?.crawlStatsError || null;
 
 /**
  * Whether the merchant has unsaved changes — drives the Save button's

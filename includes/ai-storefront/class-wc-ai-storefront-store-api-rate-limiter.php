@@ -183,6 +183,20 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 				(int) $count,
 				$limit
 			);
+
+			// Record the throttled hit only for catalog endpoints so throttle
+			// counts stay consistent with where non-throttled requests are also
+			// logged. check_outer_rate_limit() is invoked for all UCP REST
+			// routes; without this guard, non-catalog routes (checkout sessions
+			// etc.) would be miscounted as ENDPOINT_STORE_API_SEARCH traffic.
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+			if ( str_contains( $uri, 'catalog/lookup' ) ) {
+				WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SINGLE, 0, $matched_bot, '', true );
+			} elseif ( str_contains( $uri, 'catalog/search' ) ) {
+				WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH, 0, $matched_bot, '', true );
+			}
+
 			return new WP_Error(
 				WC_AI_Storefront_UCP_Error_Codes::UCP_RATE_LIMIT_EXCEEDED,
 				__( 'Too many requests. Please try again later.', 'woocommerce-ai-storefront' ),

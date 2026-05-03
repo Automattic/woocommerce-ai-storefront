@@ -187,12 +187,16 @@ const DEFAULT_VIEW = {
 };
 
 // localStorage key for persisted view preferences.
-// Only display settings (type, layout, perPage, sort, fields) are stored;
-// transient navigation state (page, search, filters) is not.
+// Only display preferences (type, layout, perPage, sort) are stored;
+// transient navigation state (page, search, filters) and column schema
+// (fields) are not — see PERSISTED_VIEW_KEYS.
 export const VIEW_STORAGE_KEY = 'wc_ai_storefront_orders_view';
 
-// Keys whose values are display preferences worth persisting.
-const PERSISTED_VIEW_KEYS = [ 'type', 'perPage', 'sort', 'fields', 'layout' ];
+// Keys whose values are display preferences worth persisting across sessions.
+// `fields` is intentionally excluded — column set and order are owned by
+// DEFAULT_VIEW (developer schema); persisting them causes stale stored orders
+// to override the correct default when columns are added or reordered.
+const PERSISTED_VIEW_KEYS = [ 'type', 'perPage', 'sort', 'layout' ];
 
 // The only layout this component registers in defaultLayouts. A stored
 // type outside this set causes DataViews to render null — guard against
@@ -633,37 +637,6 @@ const AIOrdersTable = () => {
 				getValue: ( { item } ) => item.customer,
 			},
 			{
-				id: 'items',
-				label: __( 'Items', 'woocommerce-ai-storefront' ),
-				enableSorting: false,
-				render: ( { item } ) => {
-					const items = item.items || [];
-					if ( ! items.length ) {
-						return '—';
-					}
-					const visible = items.slice( 0, 2 ).join( ', ' );
-					const overflow = items.length - 2;
-					return overflow > 0 ? (
-						<span title={ items.join( ', ' ) }>
-							{ visible }{ ' ' }
-							<span style={ { color: colors.textMuted } }>
-								{ sprintf(
-									/* translators: %d: number of additional items not shown */
-									__(
-										'+%d more',
-										'woocommerce-ai-storefront'
-									),
-									overflow
-								) }
-							</span>
-						</span>
-					) : (
-						visible
-					);
-				},
-				getValue: ( { item } ) => ( item.items || [] ).join( ', ' ),
-			},
-			{
 				id: 'date',
 				label: __( 'Date', 'woocommerce-ai-storefront' ),
 				enableSorting: true,
@@ -705,6 +678,37 @@ const AIOrdersTable = () => {
 					/>
 				),
 				getValue: ( { item } ) => item.status,
+			},
+			{
+				id: 'items',
+				label: __( 'Items', 'woocommerce-ai-storefront' ),
+				enableSorting: false,
+				render: ( { item } ) => {
+					const items = item.items || [];
+					if ( ! items.length ) {
+						return '—';
+					}
+					const visible = items.slice( 0, 2 ).join( ', ' );
+					const overflow = items.length - 2;
+					return overflow > 0 ? (
+						<span title={ items.join( ', ' ) }>
+							{ visible }{ ' ' }
+							<span style={ { color: colors.textMuted } }>
+								{ sprintf(
+									/* translators: %d: number of additional items not shown */
+									__(
+										'+%d more',
+										'woocommerce-ai-storefront'
+									),
+									overflow
+								) }
+							</span>
+						</span>
+					) : (
+						visible
+					);
+				},
+				getValue: ( { item } ) => ( item.items || [] ).join( ', ' ),
 			},
 			{
 				id: 'agent',
