@@ -584,9 +584,13 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_rollup_uses_yesterday_date(): void {
-		// Capture the range args from the first prepare() call (the INSERT).
-		// rollup() now passes $yesterday_start and $tomorrow_start as range
-		// bounds so DATE(crawled_at) grouping covers yesterday + today.
+		// Pin $now to a fixed epoch so the test is immune to clock-tick
+		// races at UTC midnight. rollup() accepts an optional $now param
+		// specifically to enable this.
+		$now            = mktime( 12, 0, 0, 6, 15, 2025 ); // 2025-06-15 12:00:00 UTC
+		$expected_start = '2025-06-14 00:00:00';
+		$expected_end   = '2025-06-16 00:00:00';
+
 		$captured_args = [];
 		$call_index    = 0;
 
@@ -606,9 +610,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 			);
 		$wpdb->shouldReceive( 'query' )->andReturn( 0 );
 
-		$expected_start = gmdate( 'Y-m-d', strtotime( '-1 day' ) ) . ' 00:00:00';
-		$expected_end   = gmdate( 'Y-m-d', strtotime( '+1 day' ) ) . ' 00:00:00';
-		WC_AI_Storefront_Crawl_Logger::rollup();
+		WC_AI_Storefront_Crawl_Logger::rollup( $now );
 
 		$this->assertSame(
 			$expected_start,

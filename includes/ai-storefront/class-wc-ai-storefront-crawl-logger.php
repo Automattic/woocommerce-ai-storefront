@@ -161,6 +161,9 @@ class WC_AI_Storefront_Crawl_Logger {
 		// Rollup runs hourly by default. Override via:
 		// add_filter( 'wc_ai_storefront_rollup_interval', fn() => 'twicedaily' );
 		$rollup_interval = (string) apply_filters( 'wc_ai_storefront_rollup_interval', 'hourly' );
+		if ( ! array_key_exists( $rollup_interval, wp_get_schedules() ) ) {
+			$rollup_interval = 'hourly';
+		}
 		if ( ! wp_next_scheduled( 'wc_ai_storefront_rollup_crawl_log' ) ) {
 			wp_schedule_event( time(), $rollup_interval, 'wc_ai_storefront_rollup_crawl_log' );
 		}
@@ -401,12 +404,16 @@ class WC_AI_Storefront_Crawl_Logger {
 	 * stats stay within ~1 hour of real-time when the hourly cron fires.
 	 * Uses INSERT … ON DUPLICATE KEY UPDATE so repeated runs are safe.
 	 * Called by the hourly cron hook `wc_ai_storefront_rollup_crawl_log`.
+	 *
+	 * @param int|null $now Unix timestamp to use as "now". Defaults to time().
+	 *                      Exposed for deterministic unit testing.
 	 */
-	public static function rollup(): void {
+	public static function rollup( ?int $now = null ): void {
 		global $wpdb;
 
-		$yesterday_start = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS ) . ' 00:00:00';
-		$tomorrow_start  = gmdate( 'Y-m-d', time() + DAY_IN_SECONDS ) . ' 00:00:00';
+		$now             = $now ?? time();
+		$yesterday_start = gmdate( 'Y-m-d', $now - DAY_IN_SECONDS ) . ' 00:00:00';
+		$tomorrow_start  = gmdate( 'Y-m-d', $now + DAY_IN_SECONDS ) . ' 00:00:00';
 
 		// Roll up all days from yesterday through today in one pass.
 		// DATE(crawled_at) groups each day's rows onto the correct crawl_date.
