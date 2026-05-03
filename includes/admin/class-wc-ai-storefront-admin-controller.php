@@ -1244,6 +1244,11 @@ class WC_AI_Storefront_Admin_Controller {
 		$valid_periods = array( 'day', 'week', 'month', 'quarter', 'year' );
 		$period        = in_array( $period, $valid_periods, true ) ? $period : 'month';
 
+		$cached = get_transient( 'wc_ai_storefront_crawl_stats_' . $period );
+		if ( false !== $cached && is_array( $cached ) ) {
+			return new WP_REST_Response( $cached );
+		}
+
 		$date_map = array(
 			'day'     => '1 day ago',
 			'week'    => '7 days ago',
@@ -1388,20 +1393,22 @@ class WC_AI_Storefront_Admin_Controller {
 			);
 		}
 
-		return new WP_REST_Response(
-			array(
-				'period'            => $period,
-				'total_requests'    => $total_requests,
-				'unique_products'   => $unique_products,
-				'store_api_queries' => $store_api_queries,
-				'llms_txt_hits'     => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_LLMS_TXT ] ?? 0,
-				'ucp_hits'          => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP ] ?? 0,
-				'throttle_count'    => $total_throttles,
-				'throttle_rate'     => $total_requests > 0 ? round( ( $total_throttles / $total_requests ) * 100, 1 ) : 0.0,
-				'by_agent'          => $by_agent,
-				'top_queries'       => $top_queries,
-			)
+		$data = array(
+			'period'            => $period,
+			'total_requests'    => $total_requests,
+			'unique_products'   => $unique_products,
+			'store_api_queries' => $store_api_queries,
+			'llms_txt_hits'     => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_LLMS_TXT ] ?? 0,
+			'ucp_hits'          => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP ] ?? 0,
+			'throttle_count'    => $total_throttles,
+			'throttle_rate'     => $total_requests > 0 ? round( ( $total_throttles / $total_requests ) * 100, 1 ) : 0.0,
+			'by_agent'          => $by_agent,
+			'top_queries'       => $top_queries,
 		);
+
+		set_transient( 'wc_ai_storefront_crawl_stats_' . $period, $data, 5 * MINUTE_IN_SECONDS );
+
+		return new WP_REST_Response( $data );
 	}
 
 	/**

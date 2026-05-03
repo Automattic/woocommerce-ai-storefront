@@ -899,7 +899,7 @@ const CrawlerActivityCard = () => {
 						<div style={ { background: colors.surface } }>
 							<StatTile
 								label={ __(
-									'Store API queries',
+									'Catalog queries',
 									'woocommerce-ai-storefront'
 								) }
 								value={ fmt( crawlStats.store_api_queries ) }

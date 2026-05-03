@@ -97,7 +97,8 @@ class WC_AI_Storefront_Crawl_Logger {
   PRIMARY KEY  (id),
   KEY idx_crawled_at (crawled_at),
   KEY idx_agent_crawled_at (agent, crawled_at),
-  KEY idx_product_crawled_at (product_id, crawled_at)
+  KEY idx_product_crawled_at (product_id, crawled_at),
+  KEY idx_endpoint_crawled_at (endpoint, crawled_at)
 ) {$charset_collate};"
 		);
 
@@ -144,6 +145,12 @@ class WC_AI_Storefront_Crawl_Logger {
 	 * so the events are re-registered if accidentally cleared.
 	 */
 	public static function schedule_crons(): void {
+		static $scheduled = false;
+		if ( $scheduled ) {
+			return;
+		}
+		$scheduled = true;
+
 		if ( ! wp_next_scheduled( 'wc_ai_storefront_prune_crawl_log' ) ) {
 			wp_schedule_event( strtotime( 'tomorrow midnight' ), 'daily', 'wc_ai_storefront_prune_crawl_log' );
 		}
@@ -393,5 +400,17 @@ class WC_AI_Storefront_Crawl_Logger {
 		}
 
 		self::prune_summary();
+		self::bust_crawl_stats_cache();
+	}
+
+	/**
+	 * Delete all period-keyed crawl-stats transients.
+	 *
+	 * Called after rollup so the next period-chip click fetches fresh data.
+	 */
+	public static function bust_crawl_stats_cache(): void {
+		foreach ( array( 'day', 'week', 'month', 'quarter', 'year' ) as $period ) {
+			delete_transient( 'wc_ai_storefront_crawl_stats_' . $period );
+		}
 	}
 }
