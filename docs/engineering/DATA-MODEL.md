@@ -288,11 +288,11 @@ Raw event log — one row per identified AI-agent request. Written from a static
 Daily aggregates rolled up from the raw log. Powers the `/crawl-stats` admin endpoint without scanning the raw table on every request.
 
 - **Defined in:** `WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY`
-- **Written by:** `wc_ai_storefront_rollup_crawl_log` hourly cron — selects yesterday's and today's raw rows, groups by (date, agent, endpoint, product_id), and upserts one row per group
-- **Retention:** `WC_AI_Storefront_Crawl_Logger::SUMMARY_RETENTION_DAYS = 90`. Pruned by the daily prune cron.
+- **Written by:** `wc_ai_storefront_rollup_crawl_log` cron — selects yesterday's and today's raw rows, groups by (date, agent, endpoint, product_id), and upserts one row per group. Default schedule is `hourly`; override with the `wc_ai_storefront_rollup_interval` filter.
+- **Retention:** `WC_AI_Storefront_Crawl_Logger::SUMMARY_RETENTION_DAYS = 90`. Pruned inside `rollup()` via `prune_summary()` on every successful rollup run.
 - **Uninstall:** dropped via `DROP TABLE` in `uninstall.php`
 
-The summary table is refreshed hourly. Today's in-progress events appear within ~1 hour of occurring. The rollup uses `INSERT … ON DUPLICATE KEY UPDATE` so repeated runs are safe.
+The summary table is refreshed on every rollup run (hourly by default). Today's in-progress events appear within one rollup cycle. The rollup uses `INSERT … ON DUPLICATE KEY UPDATE` so repeated runs are safe.
 
 ---
 

@@ -587,7 +587,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		// Pin $now to a fixed epoch so the test is immune to clock-tick
 		// races at UTC midnight. rollup() accepts an optional $now param
 		// specifically to enable this.
-		$now            = mktime( 12, 0, 0, 6, 15, 2025 ); // 2025-06-15 12:00:00 UTC
+		$now            = gmmktime( 12, 0, 0, 6, 15, 2025 ); // 2025-06-15 12:00:00 UTC
 		$expected_start = '2025-06-14 00:00:00';
 		$expected_end   = '2025-06-16 00:00:00';
 
@@ -640,6 +640,8 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 	 */
 	public function test_schedule_crons_uses_hourly_interval_by_default(): void {
 		$scheduled_interval = null;
+		$scheduled_timestamp = null;
+		$before              = time();
 
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
 		Functions\when( 'wp_get_schedules' )->justReturn(
@@ -662,9 +664,10 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		Functions\expect( 'wp_schedule_event' )
 			->twice()
 			->andReturnUsing(
-				static function ( $_timestamp, $recurrence, $hook ) use ( &$scheduled_interval ) {
+				static function ( $timestamp, $recurrence, $hook ) use ( &$scheduled_interval, &$scheduled_timestamp ) {
 					if ( 'wc_ai_storefront_rollup_crawl_log' === $hook ) {
-						$scheduled_interval = $recurrence;
+						$scheduled_interval  = $recurrence;
+						$scheduled_timestamp = $timestamp;
 					}
 					return true;
 				}
@@ -672,10 +675,22 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 
 		WC_AI_Storefront_Crawl_Logger::schedule_crons();
 
+		$after = time();
+
 		$this->assertSame(
 			'hourly',
 			$scheduled_interval,
 			'schedule_crons() must schedule rollup with hourly interval by default'
+		);
+		$this->assertGreaterThanOrEqual(
+			$before,
+			$scheduled_timestamp,
+			'rollup cron must be scheduled to run immediately (at or after test start time)'
+		);
+		$this->assertLessThanOrEqual(
+			$after + 5,
+			$scheduled_timestamp,
+			'rollup cron must be scheduled to run now, not at a distant future midnight'
 		);
 	}
 

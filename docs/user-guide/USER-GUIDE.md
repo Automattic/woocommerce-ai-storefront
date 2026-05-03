@@ -179,7 +179,7 @@ The period selector at the top (Day / Week / Month / Quarter) drives all three c
 
 There's nothing to configure. Data starts populating from the moment you enable the plugin. Raw events are kept for 30 days; aggregated daily counts are kept for 90 days. There is no option to extend retention; if you need long-term analytics, treat this as a "what changed last quarter" tool, not a permanent dashboard.
 
-Stats refresh hourly — today's traffic appears in the dashboard within about an hour of occurring.
+Stats refresh on every rollup run (hourly by default) — today's traffic appears in the dashboard within one rollup cycle of occurring.
 
 ### Revisit cadence
 

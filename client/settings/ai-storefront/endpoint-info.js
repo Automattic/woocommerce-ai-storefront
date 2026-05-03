@@ -824,7 +824,7 @@ const CrawlerActivityCard = () => {
 									} }
 								>
 									{ __(
-										'Updated hourly.',
+										'Updated periodically.',
 										'woocommerce-ai-storefront'
 									) }
 								</p>
@@ -1082,7 +1082,10 @@ const CrawlerActivityCard = () => {
 										),
 										crawlStats.top_queries.length
 									) }
-									<span className="top-searches-chevron">
+									<span
+										className="top-searches-chevron"
+										aria-hidden="true"
+									>
 										{ '▾' }
 									</span>
 								</summary>
