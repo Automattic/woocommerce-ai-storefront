@@ -22,7 +22,8 @@
  * response has been sent to the browser.
  *
  * Only requests whose user-agent matches a known agent from the Discovery-tab
- * allowlist are logged. Unknown agents are skipped entirely.
+ * allowlist are logged. Unknown tokens pass through unchanged and are stored
+ * as-is (forward-compatible with new bots added before the map is updated).
  *
  * @package WooCommerce_AI_Storefront
  * @since 0.9.0
@@ -237,9 +238,12 @@ class WC_AI_Storefront_Crawl_Logger {
 			'Meta-ExternalAgent'         => 'Meta',
 		);
 		$agent       = $brand_names[ $agent ] ?? $agent;
-		$agent       = mb_substr( $agent, 0, 64 );
-		$endpoint    = mb_substr( $endpoint, 0, 32 );
-		$query       = mb_substr( $query, 0, 255 );
+		// mb_substr is recommended but not required; fall back to substr so
+		// record() never fatals on minimal hosts without the mbstring extension.
+		$fn       = function_exists( 'mb_substr' ) ? 'mb_substr' : 'substr';
+		$agent    = $fn( $agent, 0, 64 );
+		$endpoint = $fn( $endpoint, 0, 32 );
+		$query    = $fn( $query, 0, 255 );
 
 		self::$pending[] = array( $product_id, $agent, $endpoint, $query, $throttled ? 1 : 0 );
 
@@ -354,23 +358,29 @@ class WC_AI_Storefront_Crawl_Logger {
 	public static function rollup(): void {
 		global $wpdb;
 
-		$yesterday = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+		$yesterday       = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+		$yesterday_start = $yesterday . ' 00:00:00';
+		$today_start     = gmdate( 'Y-m-d' ) . ' 00:00:00';
 
+		// Use a range on crawled_at rather than DATE(crawled_at) = %s so MySQL
+		// can use the idx_crawled_at index instead of doing a full table scan.
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 		$result = $wpdb->query(
 			$wpdb->prepare(
 				"INSERT INTO {$wpdb->prefix}" . self::TABLE_SUMMARY // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 				. " (agent, product_id, endpoint, crawl_date, request_count, throttle_count)
-				SELECT agent, product_id, endpoint, DATE(crawled_at) AS crawl_date,
+				SELECT agent, product_id, endpoint, %s AS crawl_date,
 				       COUNT(*) AS request_count,
 				       SUM(throttled) AS throttle_count
 				FROM {$wpdb->prefix}" . self::TABLE_LOG // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				. ' WHERE DATE(crawled_at) = %s
-				GROUP BY agent, product_id, endpoint, DATE(crawled_at)
+				. ' WHERE crawled_at >= %s AND crawled_at < %s
+				GROUP BY agent, product_id, endpoint
 				ON DUPLICATE KEY UPDATE
 				  request_count  = VALUES(request_count),
 				  throttle_count = VALUES(throttle_count)',
-				$yesterday
+				$yesterday,
+				$yesterday_start,
+				$today_start
 			)
 		);
 

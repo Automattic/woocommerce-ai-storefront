@@ -44,7 +44,9 @@ export function fetchCrawlStats( period = 'month' ) {
 	return async ( { dispatch } ) => {
 		try {
 			const data = await apiFetch( {
-				path: `${ ADMIN_NAMESPACE }/crawl-stats?period=${ period }`,
+				path: `${ ADMIN_NAMESPACE }/crawl-stats?period=${ encodeURIComponent(
+					period
+				) }`,
 			} );
 			dispatch.setCrawlStats( data );
 		} catch ( error ) {

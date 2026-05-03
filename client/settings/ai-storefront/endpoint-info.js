@@ -1186,7 +1186,25 @@ const CrawlerActivityCard = () => {
 																						'1px',
 																				} }
 																			>
-																				{ entry.agents.join(
+																				{ [
+																					...entry.agents.slice(
+																						0,
+																						2
+																					),
+																					...( entry
+																						.agents
+																						.length >
+																					2
+																						? [
+																								`+${
+																									entry
+																										.agents
+																										.length -
+																									2
+																								}`,
+																						  ]
+																						: [] ),
+																				].join(
 																					' · '
 																				) }
 																			</div>
