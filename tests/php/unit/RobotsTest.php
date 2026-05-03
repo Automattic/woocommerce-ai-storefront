@@ -62,29 +62,28 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	public function test_strips_deprecated_crawler_ids_from_legacy_upgrades(): void {
 		// Sanitizer behavior on upgrade paths where the stored
 		// allow-list contains entries no longer in AI_CRAWLERS.
-		// Originally shipped to cover the "13 of 12" bug around
-		// v1.1.0; the fixture has been updated as the canonical
-		// list evolved across 1.1.x → 1.6.0 → 0.8.8.
+		// The fixture is updated as the canonical list rotates across
+		// releases — see git history for which release introduced or
+		// retired each entry, since the comment-as-version-history
+		// here would inevitably drift.
 		//
-		// As of 0.8.8 the truly-stale entry merchants might have
-		// carried forward is `Gemini` (removed in 1.6.0; phantom
-		// entry that never matched any real crawler — Google's
-		// training bot is `Google-Extended`).
+		// The truly-stale entry merchants might have carried forward
+		// today is `Gemini` (a phantom entry that never matched any
+		// real crawler — Google's training bot is `Google-Extended`).
 		//
-		// Note: `anthropic-ai` was dropped from the canonical list
-		// pre-1.6.0 as "Anthropic-deprecated" but Anthropic continues
-		// to send it in real-world traffic. It was re-added in 0.8.8
-		// and is now a kept entry, not stripped. `Bytespider`, `CCBot`,
-		// and `cohere-ai` followed a similar drop-then-restore arc in
-		// 1.6.0 and remain kept.
+		// Note: `anthropic-ai` was previously dropped as "Anthropic-
+		// deprecated" but Anthropic continues to send it in real-world
+		// traffic. Restored to the canonical list and is now a kept
+		// entry, not stripped. `Bytespider`, `CCBot`, and `cohere-ai`
+		// followed a similar drop-then-restore arc and remain kept.
 		$input = [
 			'GPTBot',          // kept
 			'ChatGPT-User',    // kept
-			'Gemini',          // dropped (removed in 1.6.0)
+			'Gemini',          // dropped (phantom entry)
 			'ClaudeBot',       // kept
-			'anthropic-ai',    // kept (restored in 0.8.8)
-			'Bytespider',      // kept (restored in 1.6.0 re-audit)
-			'CCBot',           // kept (restored in 1.6.0 re-audit)
+			'anthropic-ai',    // kept (restored to canonical list)
+			'Bytespider',      // kept (restored to canonical list)
+			'CCBot',           // kept (restored to canonical list)
 			'Claude-User',     // kept
 		];
 

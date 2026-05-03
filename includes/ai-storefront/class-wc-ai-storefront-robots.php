@@ -27,9 +27,9 @@ class WC_AI_Storefront_Robots {
 	 * discoverability at all.
 	 *
 	 * Distinguished from training crawlers by vendor convention —
-	 * the `-User` suffix (ChatGPT-User, Claude-User, Perplexity-User)
-	 * signals "triggered by an active user session" per each
-	 * vendor's documentation.
+	 * the `-User` suffix (ChatGPT-User, Claude-User, Perplexity-User,
+	 * Mistralai-User) signals "triggered by an active user session"
+	 * per each vendor's documentation.
 	 *
 	 * @var string[]
 	 */
@@ -286,12 +286,14 @@ class WC_AI_Storefront_Robots {
 	 * Strips unknown IDs left over from plugin upgrades that rotated the
 	 * crawler roster — e.g. the phantom `Gemini` entry removed in 1.6.0
 	 * (never matched any real crawler; Google's Gemini-training bot is
-	 * `Google-Extended`), or the deprecated `anthropic-ai` UA that
-	 * Anthropic replaced with the `ClaudeBot` / `Claude-User` /
-	 * `Claude-SearchBot` family. Keeping the stored list in sync with
-	 * `AI_CRAWLERS` prevents deprecated `User-agent:` blocks from
-	 * leaking into `robots.txt` and keeps the admin UI's "X of Y"
-	 * count honest.
+	 * `Google-Extended`). Keeping the stored list in sync with
+	 * `AI_CRAWLERS` prevents stale `User-agent:` blocks from leaking into
+	 * `robots.txt` and keeps the admin UI's "X of Y" count honest.
+	 *
+	 * Note: `anthropic-ai` was treated as deprecated pre-0.8.8 and stripped
+	 * on upgrade, but Anthropic continues to send it in real-world traffic
+	 * alongside the newer `ClaudeBot` / `Claude-User` / `Claude-SearchBot`
+	 * family. As of 0.8.8 it is restored as a kept entry.
 	 *
 	 * @param mixed $input Raw input from settings save — expected array of strings.
 	 * @return string[]    Re-indexed list of valid crawler IDs.

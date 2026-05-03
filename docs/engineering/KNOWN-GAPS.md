@@ -56,7 +56,7 @@ Three options in ascending complexity:
 
 3. **Behavioral fingerprinting.** Distinguish agentic browsers from humans via signals that don't depend on UA: webdriver/Playwright/Puppeteer flags, viewport heuristics, request patterns (no mouse movement, instant form fills, accessibility-tree fetches). This gets us a binary "agent vs human" signal but not vendor identity. Implementation is non-trivial and creates false-positive risk on accessibility tools — out of scope until it becomes load-bearing.
 
-The realistic 2026 trajectory is option 1 plus option 2: keep the UA list current, and make the `Other AI` bucket honest in the merchant UI. Option 3 is a bigger product decision (do we want to identify, throttle, or block agentic shoppers differently from humans?) that crosses into the broader strategic question raised in the [ecommerce crawlers and AI agents inventory](#references-external).
+The realistic 2026 trajectory is option 1 plus option 2: keep the UA list current, and make the `Other AI` bucket honest in the merchant UI. Option 3 is a bigger product decision (do we want to identify, throttle, or block agentic shoppers differently from humans?) that crosses into broader strategic territory and is out of scope for an incremental measurement fix.
 
 ---
 
@@ -78,7 +78,6 @@ Wire `ENDPOINT_PRODUCT_PAGE` recording into a `template_redirect` hook on single
 
 ## References (external)
 
-- `claude-code-a8c-woo/reference-materials/research/ecommerce-crawlers-and-ai-agents.md` — comprehensive bot inventory and rationale for which categories to track. The agentic-shopper section (Section 6) is the source of the gap above.
 - [OpenAI bot docs](https://platform.openai.com/docs/bots) — current GPTBot / ChatGPT-User / OAI-SearchBot UA tokens and behavior.
 - [Anthropic crawler docs](https://support.anthropic.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler) — current ClaudeBot / Claude-User / Claude-SearchBot tokens.
 - [Perplexity bot docs](https://docs.perplexity.ai/guides/bots) — PerplexityBot / Perplexity-User behavior, including the documented robots.txt non-compliance edge cases.
