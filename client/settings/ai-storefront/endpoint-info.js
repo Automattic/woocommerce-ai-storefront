@@ -1329,12 +1329,42 @@ const CrawlerActivityCard = () => {
 										color: colors.textSecondary,
 										textTransform: 'uppercase',
 										letterSpacing: '0.05em',
+										display: 'flex',
+										alignItems: 'center',
+										gap: '6px',
 									} }
 								>
 									{ __(
 										'Top searches',
 										'woocommerce-ai-storefront'
 									) }
+									{ typeof crawlStats.top_queries_window_days ===
+										'number' &&
+										crawlStats.top_queries_window_days <
+											( {
+												day: 1,
+												week: 7,
+												month: 30,
+												quarter: 90,
+											}[ period ] ?? 0 ) && (
+											<span
+												style={ {
+													fontWeight: 'normal',
+													textTransform: 'none',
+													letterSpacing: 'normal',
+													color: colors.textMuted,
+												} }
+											>
+												{ sprintf(
+													/* translators: %d: number of days of search history available. */
+													__(
+														'last %d days',
+														'woocommerce-ai-storefront'
+													),
+													crawlStats.top_queries_window_days
+												) }
+											</span>
+										) }
 								</p>
 								{ /* Ghost rows — aria-hidden, purely visual preview */ }
 								<div

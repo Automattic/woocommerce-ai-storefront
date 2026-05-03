@@ -896,7 +896,8 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 
 	/**
 	 * An existing event with the wrong recurrence (e.g. old daily schedule
-	 * on an upgraded site) is cleared and re-registered at the target interval.
+	 * on an upgraded site) is cleared and re-registered at the target interval
+	 * when wp_clear_scheduled_hook() succeeds.
 	 *
 	 * @runInSeparateProcess
 	 * @preserveGlobalState disabled
@@ -909,9 +910,15 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		$fake_existing_event           = new \stdClass();
 		$fake_existing_event->schedule = 'daily';
 
+		// First call → stale daily event; second call (after clear) → false.
+		$get_event_call = 0;
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
 		Functions\when( 'wp_get_scheduled_event' )
-			->justReturn( $fake_existing_event );
+			->alias(
+				static function () use ( &$get_event_call, $fake_existing_event ) {
+					return ++$get_event_call === 1 ? $fake_existing_event : false;
+				}
+			);
 		Functions\when( 'wp_get_schedules' )->justReturn(
 			array(
 				'hourly' => array(
@@ -932,7 +939,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 			->andReturnUsing(
 				static function ( $hook ) use ( &$cleared_hook ) {
 					$cleared_hook = $hook;
-					return 0;
+					return 1;
 				}
 			);
 		// wp_schedule_event is called once for prune (no existing event) and
@@ -959,6 +966,58 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 			'hourly',
 			$scheduled_interval,
 			'schedule_crons() must re-register with the target interval after migrating'
+		);
+	}
+
+	/**
+	 * If wp_clear_scheduled_hook() fails, the re-read confirms the old event
+	 * still exists and schedule_crons() must not register a duplicate.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_schedule_crons_does_not_duplicate_when_clear_fails(): void {
+		$schedule_event_calls = 0;
+
+		$fake_existing_event           = new \stdClass();
+		$fake_existing_event->schedule = 'daily';
+
+		// Both calls return the stale event — clear did not remove it.
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_get_scheduled_event' )->justReturn( $fake_existing_event );
+		Functions\when( 'wp_get_schedules' )->justReturn(
+			array(
+				'hourly' => array(
+					'interval' => HOUR_IN_SECONDS,
+					'display'  => 'Once Hourly',
+				),
+				'daily'  => array(
+					'interval' => DAY_IN_SECONDS,
+					'display'  => 'Once Daily',
+				),
+			)
+		);
+		Functions\expect( 'apply_filters' )
+			->with( 'wc_ai_storefront_rollup_interval', 'hourly' )
+			->andReturn( 'hourly' );
+		Functions\when( 'wp_clear_scheduled_hook' )->justReturn( 0 );
+		// Only the prune cron should be registered; rollup must be skipped
+		// because the stale event is still present after the failed clear.
+		Functions\expect( 'wp_schedule_event' )
+			->once()
+			->andReturnUsing(
+				static function () use ( &$schedule_event_calls ) {
+					++$schedule_event_calls;
+					return true;
+				}
+			);
+
+		WC_AI_Storefront_Crawl_Logger::schedule_crons();
+
+		$this->assertSame(
+			1,
+			$schedule_event_calls,
+			'schedule_crons() must not register a duplicate rollup event when wp_clear_scheduled_hook() fails'
 		);
 	}
 }

@@ -174,10 +174,12 @@ class WC_AI_Storefront_Crawl_Logger {
 		}
 		// Migrate upgraded sites: if the event exists with a different recurrence
 		// (e.g. the old daily schedule), clear it and let it re-register below.
+		// Re-read after the clear so a failed wp_clear_scheduled_hook() leaves
+		// $existing_rollup truthy and prevents scheduling a duplicate event.
 		$existing_rollup = wp_get_scheduled_event( 'wc_ai_storefront_rollup_crawl_log' );
 		if ( $existing_rollup && $existing_rollup->schedule !== $rollup_interval ) {
 			wp_clear_scheduled_hook( 'wc_ai_storefront_rollup_crawl_log' );
-			$existing_rollup = null;
+			$existing_rollup = wp_get_scheduled_event( 'wc_ai_storefront_rollup_crawl_log' );
 		}
 		if ( ! $existing_rollup ) {
 			wp_schedule_event( time(), $rollup_interval, 'wc_ai_storefront_rollup_crawl_log' );
