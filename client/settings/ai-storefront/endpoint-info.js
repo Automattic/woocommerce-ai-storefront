@@ -1895,9 +1895,10 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						bots are allowed by default via WordPress core's
 						`User-agent: *` block and managed by SEO plugins
 						(Yoast, Rank Math, AIOSEO) where applicable.
-						Styling matches the intro paragraph above; muted
-						color signals "secondary context" rather than
-						"required reading." See issue #268.
+						Styled as helper text (muted color, 12px) rather
+						than primary copy (13px) so it reads as secondary
+						context to the intro paragraph above rather than
+						a competing instruction. See issue #268.
 					*/ }
 					<p
 						style={ {
