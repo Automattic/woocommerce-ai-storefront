@@ -124,10 +124,17 @@ We maintain two changelogs:
 ## [0.7.0] – 2026-05-12
 
 ### Features
-- **Title-case headline.** Body paragraph explaining what changed, why, and any merchant-facing implication. Code references in backticks. Closes #issue.
+
+- **Title-case headline.** Closes #issue.
+  - First detail bullet — what changed.
+  - Second detail bullet — why it changed or what tradeoff was made.
+  - Third detail bullet — merchant-facing impact, scope, or limitations.
 
 ### Fixes
-- **Title-case headline.** Body paragraph.
+
+- **Title-case headline.** Closes #issue.
+  - First detail bullet.
+  - Second detail bullet.
 
 ---
 
@@ -140,9 +147,12 @@ Conventions:
 - `## [X.Y.Z] – YYYY-MM-DD` for each released version. ISO date. En-dash separator.
 - `## [Unreleased]` block at the top accumulates entries between releases. Move under the next version header on release.
 - Subsections in this fixed order: `### Features`, `### Fixes`, `### Refactors`, `### Tests`, `### Docs`. Omit empty subsections.
-- Each entry: a bolded title sentence, then a body paragraph. Body explains _what_, _why_, and _impact_. Reference issue/PR numbers (`Closes #123`, `Addressed by #124`).
-- No truncation — long entries are fine. The CHANGELOG is for engineering memory and incident triage, not marketing.
+- Each entry uses **bold-headline + nested-bullets** format, not bold-headline + long-paragraph. The headline is one short bolded sentence (with the issue/PR reference appended, e.g. `Closes #N.`). Each subsequent fact gets its own nested bullet (2-space indent). This reads on GitHub's release page, in `gh release view`, and in the rendered CHANGELOG without forcing readers to parse a wall of prose.
+- Detail bullets explain _what_, _why_, and _impact_. Reference issue/PR numbers in the headline, not in every nested bullet.
+- No truncation — long entries are fine. Use as many nested bullets as the change deserves. The CHANGELOG is for engineering memory and incident triage, not marketing.
 - `---` separator between versions.
+
+This format also flows directly into GitHub release notes — the release-extraction step (`awk '/## \[X.Y.Z\]/,/^---$/' CHANGELOG.md`) copies the same Markdown verbatim, so the bullets render the same way on the Release page.
 
 ### `readme.txt` `== Changelog ==` format
 
