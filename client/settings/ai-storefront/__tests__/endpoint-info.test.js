@@ -21,11 +21,7 @@ describe( 'shouldShowCrawlStatsEmptyState', () => {
 
 	it( 'returns true when total_requests is 0 and top_queries is absent', () => {
 		expect(
-			shouldShowCrawlStatsEmptyState(
-				{ total_requests: 0 },
-				false,
-				null
-			)
+			shouldShowCrawlStatsEmptyState( { total_requests: 0 }, false, null )
 		).toBe( true );
 	} );
 
@@ -35,7 +31,10 @@ describe( 'shouldShowCrawlStatsEmptyState', () => {
 		// total_requests = 0. The empty state must NOT render in this window.
 		expect(
 			shouldShowCrawlStatsEmptyState(
-				{ total_requests: 0, top_queries: [ { query: 'hoodie', count: 3 } ] },
+				{
+					total_requests: 0,
+					top_queries: [ { query: 'hoodie', count: 3 } ],
+				},
 				false,
 				null
 			)

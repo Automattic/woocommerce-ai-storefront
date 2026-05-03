@@ -1420,21 +1420,21 @@ const CrawlerActivityCard = () => {
 					isLoading,
 					crawlStatsError
 				) && (
-						<p
-							style={ {
-								marginTop: '16px',
-								marginBottom: 0,
-								fontSize: '13px',
-								color: colors.textMuted,
-								textAlign: 'center',
-							} }
-						>
-							{ __(
-								'No AI agent activity recorded for this period. Stats appear here after the first AI agent visits your store.',
-								'woocommerce-ai-storefront'
-							) }
-						</p>
-					) }
+					<p
+						style={ {
+							marginTop: '16px',
+							marginBottom: 0,
+							fontSize: '13px',
+							color: colors.textMuted,
+							textAlign: 'center',
+						} }
+					>
+						{ __(
+							'No AI agent activity recorded for this period. Stats appear here after the first AI agent visits your store.',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
+				) }
 			</CardBody>
 		</Card>
 	);
