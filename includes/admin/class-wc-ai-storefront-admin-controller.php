@@ -1325,7 +1325,7 @@ class WC_AI_Storefront_Admin_Controller {
 			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
 		}
 
-		// Top-20 search queries from the raw log (query strings are not
+		// Top-10 search queries from the raw log (query strings are not
 		// aggregated into the summary table, so we go to TABLE_LOG here).
 		// `query != ''` filters out non-search events where query is stored
 		// as an empty string (search events always carry a non-empty query).
@@ -1341,7 +1341,7 @@ class WC_AI_Storefront_Admin_Controller {
 				   AND crawled_at < %s
 				 GROUP BY query
 				 ORDER BY count DESC
-				 LIMIT 20",
+				 LIMIT 10",
 				WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH,
 				$after_datetime,
 				$today_start
