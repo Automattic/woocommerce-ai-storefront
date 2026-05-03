@@ -136,7 +136,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/ai-storefront/class-wc-ai-storefront-robots.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php` | ARCHITECTURE.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-cache-invalidator.php` | DATA-MODEL.md, ARCHITECTURE.md |
-| `includes/ai-storefront/class-wc-ai-storefront-crawl-logger.php` | DATA-MODEL.md, ARCHITECTURE.md, API-REFERENCE.md, USER-GUIDE.md |
+| `includes/ai-storefront/class-wc-ai-storefront-crawl-logger.php` | DATA-MODEL.md, ARCHITECTURE.md, API-REFERENCE.md, USER-GUIDE.md, HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-logger.php` | HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-return-policy.php` | DATA-MODEL.md, USER-GUIDE.md |
 | `includes/admin/class-wc-ai-storefront-product-meta-box.php` | DATA-MODEL.md, USER-GUIDE.md |

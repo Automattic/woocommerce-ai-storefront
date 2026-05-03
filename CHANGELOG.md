@@ -4,22 +4,53 @@
 
 ### Features
 
-- **Discovery stats — hourly rollup cron with developer interval filter.** The crawl-log rollup cron now runs hourly instead of daily, so today's AI agent activity appears in the Discovery tab within ~1 hour of occurring. A new `wc_ai_storefront_rollup_interval` filter lets developers change the recurrence to `hourly`, `twicedaily`, or `daily` — slower cadences are rejected because `rollup()` only covers a 2-day window and would silently lose data. Invalid slugs and intervals slower than `daily` fall back to `hourly`. The top-searches query no longer excludes today's rows, so the full rolling window is always visible. Closes #260 via #261.
+- **Discovery stats — hourly rollup cron with developer interval filter.** Closes #260 via #261.
+  - The crawl-log rollup cron now runs hourly instead of daily, so today's AI agent activity appears in the Discovery tab within ~1 hour of occurring.
+  - New `wc_ai_storefront_rollup_interval` filter lets developers change the recurrence to `hourly`, `twicedaily`, or `daily`. Slower cadences are rejected because `rollup()` only covers a 2-day window and would silently lose data; invalid slugs fall back to `hourly`.
+  - `schedule_crons()` runs on every request (not just admin) and auto-migrates an existing event whose recurrence no longer matches the filtered value, so filter changes take effect on the very next request without manual `wp cron` intervention. A re-read pattern after `wp_clear_scheduled_hook()` prevents duplicate events when the clear silently fails.
+  - The top-searches SQL no longer excludes today's rows, so the full rolling window is always visible.
+  - The Discovery tab subtitle adapts to the live cadence: "Updated hourly." / "Updated every 12 hours." / "Updated daily." (with "Updated periodically." as a fallback for unknown values).
 
 ### Fixes
 
+- **`/crawl-stats` — `rollup_interval` is now live, not cached.**
+  - Previously `rollup_interval` was baked into the 5-minute crawl-stats transient, so a filter change wouldn't show up in the Discovery subtitle until the cache expired or the next rollup ran. This defeated the "takes effect on the next request" contract for the new filter.
+  - The field is now excluded from the transient and injected live on every response — both the cache-hit path and the fresh-computation path call `get_effective_rollup_interval()` after `set_transient()`.
+
+- **`/crawl-stats` — `raw_event_count` field for pre-rollup empty-state suppression.**
+  - The Discovery empty state ("No AI agent activity recorded…") would render even when raw-log traffic existed but the first rollup hadn't run yet — a brand-new install with llms.txt or UCP hits but no search queries would falsely look idle.
+  - The `/crawl-stats` response now includes a new `raw_event_count` field that runs `COUNT(*)` on the raw log directly (live, never cached). The empty-state guard checks all three signals — `total_requests`, `top_queries`, and `raw_event_count` — before rendering, so any kind of raw activity suppresses it.
+
 - **Top searches — clamp lookback to raw-log retention.** `top_queries` reads from the raw log (query strings aren't aggregated into the summary table), and the raw log retains only 30 days. For `period=quarter` the SQL would previously ask for 90 days back but receive at most 30, creating an internal inconsistency between the search list and the rest of the card. The lower bound is now clamped to `min(period_days, RAW_RETENTION_DAYS=30)`, the response surfaces a new `top_queries_window_days` field, and the UI labels the effective window when it differs from the selected period.
+
+- **`get_crawl_stats()` — period-window off-by-one.** The lower bound was computed as `time() - N * DAY_IN_SECONDS`, which floored to a mid-day timestamp and combined with the open-ended upper bound to span N+1 calendar dates. The window now anchors to today's midnight and counts back `(N - 1)` full days, so each period covers exactly N calendar dates inclusive of today.
 
 ### Refactors
 
+- **`get_effective_rollup_interval()` — single source of truth for the recurrence slug.** Extracted the allowlist-validated, filter-aware interval resolution into a new public static helper on `WC_AI_Storefront_Crawl_Logger`. Both `schedule_crons()` (cron registration) and `get_crawl_stats()` (REST response) call this helper, so they cannot disagree about what "the effective rollup interval" is.
+
+- **JS — pure helpers extracted from `endpoint-info.js`.** `getRollupIntervalLabel(interval)` (slug → localised "Updated X." subtitle) and `shouldShowCrawlStatsEmptyState(crawlStats, isLoading, error)` are now exported pure functions, unit-tested independently of the React render tree.
+
 ### Tests
 
-- **`schedule_crons()` covered by four Brain Monkey unit tests.** New tests assert the default `hourly` interval (and the rollup's first-fire timestamp is now, not midnight), that a valid filter override (`twicedaily`) is respected, that an invalid filter value (`gibberish`) falls back to `hourly`, and that registered-but-too-slow intervals (`weekly`) are rejected. Each test asserts the filter hook tag and default argument so a regression in the hook contract is caught. Each test uses `@runInSeparateProcess` to avoid the one-shot static guard inside `schedule_crons()`.
-- **`get_crawl_stats()` top_queries SQL contract.** New `AdminCrawlStatsTest` pins two contracts: the SQL must use only a lower-bound date filter (no `crawled_at < %s` upper bound), and the lower-bound timestamp for `period=quarter` must be clamped to ~30 days back so the parameter matches the raw log's actual retention.
+- **`schedule_crons()` covered by six Brain Monkey unit tests.** Asserts: default `hourly` interval (with rollup's first-fire timestamp set to now, not midnight); valid filter override (`twicedaily`) is respected; invalid filter value (`gibberish`) falls back to `hourly`; registered-but-too-slow intervals (`weekly`) are rejected; an existing event with the wrong recurrence is auto-migrated on the next run; if `wp_clear_scheduled_hook()` silently fails, no duplicate event is registered. Each test asserts the filter hook tag and default argument so a regression in the hook contract is caught, and each uses `@runInSeparateProcess` to bypass the one-shot static guard inside `schedule_crons()`.
+
+- **`get_effective_rollup_interval()` — three direct unit tests.** Verifies the default value, that a valid filter override is propagated, and that an invalid value falls back to `hourly`.
+
+- **`AdminCrawlStatsTest` — four tests pin the `/crawl-stats` SQL and response contracts.** The top_queries SQL must use only a lower-bound date filter (no `crawled_at < %s` upper bound); the lower-bound timestamp for `period=quarter` must be clamped to ~30 days back so the parameter matches the raw log's retention; the response must include `rollup_interval` reflecting the filtered value; the response must include `raw_event_count`.
+
+- **`CrawlLoggerTest` — `crawl_date` per-day SQL contract.** New test pins that the rollup SQL uses `DATE(crawled_at) AS crawl_date` in both SELECT and GROUP BY so yesterday's and today's rows materialize as separate `crawl_date` values rather than collapsing into one row.
+
+- **JS — eleven tests across `shouldShowCrawlStatsEmptyState` and `getRollupIntervalLabel`.** Covers all empty-state suppression paths (loading, error, non-zero `total_requests`, populated `top_queries`, non-zero `raw_event_count`) and all label mappings (`hourly`, `twicedaily`, `daily`, fallback).
 
 ### Docs
 
-- **Engineering and merchant docs synced for #261.** `DATA-MODEL.md` updated: rollup runs hourly by default (configurable via filter), GROUP BY description includes `product_id`, auto-migration note added. `HOOKS.md` gains a `wc_ai_storefront_rollup_interval` filter entry with usage examples and notes that filter changes take effect on the next page load. `ARCHITECTURE.md` updated to reflect the configurable rollup cadence. `USER-GUIDE.md` updated: "Stats refresh on every rollup run (hourly by default) — today's traffic appears in the dashboard within one rollup cycle of occurring."
+- **Engineering and merchant docs synced for #261.**
+  - `HOOKS.md` — `wc_ai_storefront_rollup_interval` filter entry with usage example, allowlist rationale, and the corrected note that the filter takes effect on the very next request (not just admin requests).
+  - `DATA-MODEL.md` — rollup runs hourly by default (configurable via filter); auto-migration note clarifies that `schedule_crons()` runs on every request, not only admin.
+  - `API-REFERENCE.md` — new `raw_event_count` field, expanded `rollup_interval` description, and explicit cache contract: rolled-up aggregates cached 5 min, `raw_event_count` and `rollup_interval` queried live on every response.
+  - `ARCHITECTURE.md` — configurable rollup cadence reflected in the analytics overview.
+  - `USER-GUIDE.md` — stats refresh hourly by default; today's traffic appears within one rollup cycle.
 
 ---
 
