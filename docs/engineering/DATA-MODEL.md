@@ -288,11 +288,13 @@ Raw event log — one row per identified AI-agent request. Written from a static
 Daily aggregates rolled up from the raw log. Powers the `/crawl-stats` admin endpoint without scanning the raw table on every request.
 
 - **Defined in:** `WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY`
-- **Written by:** `wc_ai_storefront_rollup_crawl_log` daily cron — selects the prior day's raw rows, groups by (date, agent, endpoint), and writes one row per group
-- **Retention:** `WC_AI_Storefront_Crawl_Logger::SUMMARY_RETENTION_DAYS = 90`. Pruned by the same daily cron that does the rollup.
+- **Written by:** `wc_ai_storefront_rollup_crawl_log` cron — selects yesterday's and today's raw rows, groups by (date, agent, endpoint, product_id), and upserts one row per group. Default schedule is `hourly`; override with the `wc_ai_storefront_rollup_interval` filter.
+- **Retention:** `WC_AI_Storefront_Crawl_Logger::SUMMARY_RETENTION_DAYS = 90`. Pruned inside `rollup()` via `prune_summary()` on every successful rollup run.
 - **Uninstall:** dropped via `DROP TABLE` in `uninstall.php`
 
-The summary table only contains data through end-of-yesterday. Today's events sit in the raw log until the next nightly rollup. The `/crawl-stats` endpoint is documented to reflect "activity up to the end of yesterday" for that reason.
+The summary table is refreshed on every rollup run (hourly by default). Today's in-progress events appear within one rollup cycle. The rollup uses `INSERT … ON DUPLICATE KEY UPDATE` so repeated runs are safe.
+
+**Note on top_queries:** Search query strings are *not* aggregated into the summary table — `top_queries` in `/crawl-stats` reads from the raw log directly. Because raw rows are pruned at `RAW_RETENTION_DAYS = 30`, the effective top-searches lookback is clamped to `min(period_days, 30)`. The API surfaces the effective window as `top_queries_window_days` in the response so consumers can label it accurately (e.g. `period=quarter` returns the last 30 days of searches, not 90).
 
 ---
 
@@ -319,9 +321,9 @@ Daily cron that deletes raw log rows older than `RAW_RETENTION_DAYS` (30) and su
 
 ### `wc_ai_storefront_rollup_crawl_log`
 
-Daily cron that rolls yesterday's raw log into the summary table.
+Hourly cron that rolls yesterday's and today's raw log into the summary table, keeping stats within ~1 hour of real-time.
 
-- **Schedule:** `daily`, anchored to UTC midnight + 60 seconds (runs after pruning so the rollup never sees rows being deleted underneath it)
+- **Schedule:** `hourly` by default. Override with the `wc_ai_storefront_rollup_interval` filter; allowed values are `hourly`, `twicedaily`, and `daily` — only these three cadences are safe within the 2-day rollup window. Any other value silently falls back to `hourly`. `schedule_crons()` compares the existing event's recurrence to the filtered value on every admin request and auto-migrates mismatches, so filter changes take effect on the next page load without manual intervention.
 - **Defined in:** `WC_AI_Storefront_Crawl_Logger`
 - **Uninstall:** cleared by `uninstall.php`
 

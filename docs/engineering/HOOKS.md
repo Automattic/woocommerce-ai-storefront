@@ -294,6 +294,34 @@ add_filter( 'wc_ai_storefront_ucp_store_api_args', function( $store_params, $end
 
 ---
 
+### `wc_ai_storefront_rollup_interval`
+
+Filter the WP-Cron schedule used for the crawl-log rollup event.
+
+```php
+apply_filters( 'wc_ai_storefront_rollup_interval', string $interval );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$interval` | `string` | WP-Cron recurrence slug. Default `'hourly'`. |
+
+**Returns:** one of `'hourly'`, `'twicedaily'`, or `'daily'` — the only intervals up to a 24-hour cadence are accepted because `rollup()` always covers a fixed yesterday+today window. Anything slower (e.g. `'weekly'`) would leave gaps of unsummarized days; values outside the allowlist are silently rejected and the schedule falls back to `'hourly'`.
+
+**When to use:** high-traffic stores that want to reduce DB load (`'twicedaily'` or `'daily'`), or to keep the default `'hourly'` cadence on low-traffic stores.
+
+**Applying a change:** `schedule_crons()` compares the existing event's recurrence to the filtered value on every admin request and automatically clears and re-registers the event when they differ. Filter changes take effect on the next page load — no manual `wp cron` commands needed.
+
+**Example — switch to twice-daily rollup:**
+
+```php
+add_filter( 'wc_ai_storefront_rollup_interval', function() {
+    return 'twicedaily';
+} );
+```
+
+---
+
 ## Actions
 
 ### `wc_ai_storefront_attribution_captured`

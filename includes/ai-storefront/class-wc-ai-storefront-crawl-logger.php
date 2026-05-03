@@ -139,10 +139,36 @@ class WC_AI_Storefront_Crawl_Logger {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Ensure the daily prune and rollup crons are scheduled.
+	 * Return the validated rollup cron interval.
+	 *
+	 * Applies the `wc_ai_storefront_rollup_interval` filter and validates
+	 * the result against the safe allowlist `{hourly, twicedaily, daily}`.
+	 * Any value outside the allowlist — or one not registered in
+	 * `wp_get_schedules()` — falls back silently to `'hourly'`.
+	 *
+	 * Called by both `schedule_crons()` (cron registration) and
+	 * `get_crawl_stats()` (API response) so both surfaces reflect the same
+	 * effective interval without duplicating the validation logic.
+	 *
+	 * @return string One of 'hourly', 'twicedaily', or 'daily'.
+	 */
+	public static function get_effective_rollup_interval(): string {
+		$valid_intervals = array( 'hourly', 'twicedaily', 'daily' );
+		$interval        = (string) apply_filters( 'wc_ai_storefront_rollup_interval', 'hourly' );
+		if ( ! in_array( $interval, $valid_intervals, true )
+			|| ! array_key_exists( $interval, wp_get_schedules() ) ) {
+			return 'hourly';
+		}
+		return $interval;
+	}
+
+	/**
+	 * Ensure the prune (daily) and rollup (hourly by default) crons are scheduled.
 	 *
 	 * Called from `WC_AI_Storefront::init_components()` on every request
-	 * so the events are re-registered if accidentally cleared.
+	 * so the events are re-registered if accidentally cleared, and to
+	 * auto-migrate existing events whose recurrence no longer matches the
+	 * effective interval returned by `get_effective_rollup_interval()`.
 	 */
 	public static function schedule_crons(): void {
 		static $scheduled = false;
@@ -154,11 +180,22 @@ class WC_AI_Storefront_Crawl_Logger {
 		// Next UTC midnight: floor current UTC time to the day, then add one day.
 		$utc_midnight = gmmktime( 0, 0, 0, (int) gmdate( 'n' ), (int) gmdate( 'j' ) + 1, (int) gmdate( 'Y' ) );
 
+		// Prune stays daily (runs at midnight UTC).
 		if ( ! wp_next_scheduled( 'wc_ai_storefront_prune_crawl_log' ) ) {
 			wp_schedule_event( $utc_midnight, 'daily', 'wc_ai_storefront_prune_crawl_log' );
 		}
-		if ( ! wp_next_scheduled( 'wc_ai_storefront_rollup_crawl_log' ) ) {
-			wp_schedule_event( $utc_midnight + 60, 'daily', 'wc_ai_storefront_rollup_crawl_log' );
+		$rollup_interval = self::get_effective_rollup_interval();
+		// Migrate upgraded sites: if the event exists with a different recurrence
+		// (e.g. the old daily schedule), clear it and let it re-register below.
+		// Re-read after the clear so a failed wp_clear_scheduled_hook() leaves
+		// $existing_rollup truthy and prevents scheduling a duplicate event.
+		$existing_rollup = wp_get_scheduled_event( 'wc_ai_storefront_rollup_crawl_log' );
+		if ( $existing_rollup && $existing_rollup->schedule !== $rollup_interval ) {
+			wp_clear_scheduled_hook( 'wc_ai_storefront_rollup_crawl_log' );
+			$existing_rollup = wp_get_scheduled_event( 'wc_ai_storefront_rollup_crawl_log' );
+		}
+		if ( ! $existing_rollup ) {
+			wp_schedule_event( time(), $rollup_interval, 'wc_ai_storefront_rollup_crawl_log' );
 		}
 	}
 
@@ -391,37 +428,42 @@ class WC_AI_Storefront_Crawl_Logger {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Materialise yesterday's raw events into the daily summary table.
+	 * Materialise raw events into the daily summary table.
 	 *
-	 * Uses INSERT … ON DUPLICATE KEY UPDATE so repeated cron runs are safe.
-	 * Called by the daily cron hook `wc_ai_storefront_rollup_crawl_log`.
+	 * Rolls up both yesterday (finalized) and today (in-progress) so that
+	 * stats stay within ~1 hour of real-time when the hourly cron fires.
+	 * Uses INSERT … ON DUPLICATE KEY UPDATE so repeated runs are safe.
+	 * Called by the hourly cron hook `wc_ai_storefront_rollup_crawl_log`.
+	 *
+	 * @param int|null $now Unix timestamp to use as "now". Defaults to time().
+	 *                      Exposed for deterministic unit testing.
 	 */
-	public static function rollup(): void {
+	public static function rollup( ?int $now = null ): void {
 		global $wpdb;
 
-		$yesterday       = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS );
-		$yesterday_start = $yesterday . ' 00:00:00';
-		$today_start     = gmdate( 'Y-m-d' ) . ' 00:00:00';
+		$now             = $now ?? time();
+		$yesterday_start = gmdate( 'Y-m-d', $now - DAY_IN_SECONDS ) . ' 00:00:00';
+		$tomorrow_start  = gmdate( 'Y-m-d', $now + DAY_IN_SECONDS ) . ' 00:00:00';
 
-		// Use a range on crawled_at rather than DATE(crawled_at) = %s so MySQL
-		// can use the idx_crawled_at index instead of doing a full table scan.
+		// Roll up all days from yesterday through today in one pass.
+		// DATE(crawled_at) groups each day's rows onto the correct crawl_date.
+		// The range guard keeps the scan bounded and index-friendly.
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 		$result = $wpdb->query(
 			$wpdb->prepare(
 				"INSERT INTO {$wpdb->prefix}" . self::TABLE_SUMMARY // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 				. " (agent, product_id, endpoint, crawl_date, request_count, throttle_count)
-				SELECT agent, product_id, endpoint, %s AS crawl_date,
+				SELECT agent, product_id, endpoint, DATE(crawled_at) AS crawl_date,
 				       COUNT(*) AS request_count,
 				       SUM(throttled) AS throttle_count
 				FROM {$wpdb->prefix}" . self::TABLE_LOG // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 				. ' WHERE crawled_at >= %s AND crawled_at < %s
-				GROUP BY agent, product_id, endpoint
+				GROUP BY agent, product_id, endpoint, DATE(crawled_at)
 				ON DUPLICATE KEY UPDATE
 				  request_count  = VALUES(request_count),
 				  throttle_count = VALUES(throttle_count)',
-				$yesterday,
 				$yesterday_start,
-				$today_start
+				$tomorrow_start
 			)
 		);
 

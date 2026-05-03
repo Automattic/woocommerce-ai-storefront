@@ -18,6 +18,65 @@ const ENDPOINT_TAB_CLASS = 'ai-storefront-endpoint-tab';
 
 const CRAWLER_GROUP_CLASS = 'ai-storefront-crawler-group';
 
+/**
+ * Maps a rollup interval slug to a human-readable "Updated X." subtitle.
+ *
+ * Exported for unit testing. The interval comes from the `rollup_interval`
+ * field on the /crawl-stats API response, which reflects the effective value
+ * of the `wc_ai_storefront_rollup_interval` filter on the server.
+ *
+ * @param {string|undefined} interval The interval slug from the API response.
+ * @return {string} Localised subtitle string, always ending with a period.
+ */
+export function getRollupIntervalLabel( interval ) {
+	const labels = {
+		hourly: __( 'Updated hourly.', 'woocommerce-ai-storefront' ),
+		twicedaily: __(
+			'Updated every 12 hours.',
+			'woocommerce-ai-storefront'
+		),
+		daily: __( 'Updated daily.', 'woocommerce-ai-storefront' ),
+	};
+	return (
+		labels[ interval ] ??
+		__( 'Updated periodically.', 'woocommerce-ai-storefront' )
+	);
+}
+
+/**
+ * Returns true when the no-activity empty state should render.
+ *
+ * Exported for unit testing. The three conditions guard against showing
+ * "no activity" while data already exists but hasn't been rolled up yet:
+ *
+ *  1. total_requests — from the summary table; zero before the first rollup.
+ *  2. top_queries    — from the raw log (search events only); zero when there
+ *                      are no search queries yet.
+ *  3. raw_event_count — total raw-log rows in the period; non-zero even for
+ *                       llms.txt/UCP/product-page hits that haven't rolled up.
+ *
+ * We only show the empty state when all three are zero (or absent), so a
+ * fresh install that already has raw traffic doesn't falsely claim no activity.
+ *
+ * @param {Object}  crawlStats      API response object (may be empty object).
+ * @param {boolean} isLoading       True while the API request is in-flight.
+ * @param {*}       crawlStatsError Truthy when the API call failed.
+ * @return {boolean} Whether the empty-state message should be shown.
+ */
+export function shouldShowCrawlStatsEmptyState(
+	crawlStats,
+	isLoading,
+	crawlStatsError
+) {
+	return (
+		! crawlStatsError &&
+		! isLoading &&
+		crawlStats?.total_requests === 0 &&
+		( ! crawlStats?.top_queries || crawlStats.top_queries.length === 0 ) &&
+		! crawlStats?.raw_event_count
+	);
+}
+
 // localStorage key for persisted crawler-group collapse/expand state.
 // Stored value is JSON: `{ [groupKey]: boolean }`. Groups missing from
 // the stored object fall back to their `defaultOpen` flag, so adding a
@@ -242,6 +301,19 @@ function EndpointTabStyles() {
 					justify-self: end;
 				}
 				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(4) { display: none; }
+			}
+			details.ai-storefront-top-searches summary { list-style: none; }
+			details.ai-storefront-top-searches summary::-webkit-details-marker { display: none; }
+			details.ai-storefront-top-searches summary .top-searches-chevron {
+				margin-left: auto;
+				font-size: 14px;
+				line-height: 1;
+				display: inline-block;
+				transition: transform .15s;
+				transform: rotate(-90deg);
+			}
+			details.ai-storefront-top-searches[open] summary .top-searches-chevron {
+				transform: rotate(0deg);
 			}
 		` }</style>
 	);
@@ -713,7 +785,7 @@ const StatTile = ( { label, value, sub } ) => (
 	<div
 		style={ {
 			textAlign: 'center',
-			padding: `${ spacing.s3 } ${ spacing.s2 }`,
+			padding: `${ spacing.s4 } ${ spacing.s3 }`,
 		} }
 	>
 		<div
@@ -800,18 +872,21 @@ const CrawlerActivityCard = () => {
 								'woocommerce-ai-storefront'
 							) }
 						</h3>
-						<p
-							style={ {
-								margin: 0,
-								fontSize: '12px',
-								color: colors.textMuted,
-							} }
-						>
-							{ __(
-								"Updated daily from yesterday's AI activity log.",
-								'woocommerce-ai-storefront'
+						{ ! crawlStatsError &&
+							! isLoading &&
+							crawlStats.total_requests > 0 && (
+								<p
+									style={ {
+										margin: 0,
+										fontSize: '12px',
+										color: colors.textMuted,
+									} }
+								>
+									{ getRollupIntervalLabel(
+										crawlStats.rollup_interval
+									) }
+								</p>
 							) }
-						</p>
 					</div>
 					{ /* Period chip strip */ }
 					<div
@@ -1035,7 +1110,10 @@ const CrawlerActivityCard = () => {
 					>
 						{ crawlStats.top_queries &&
 						crawlStats.top_queries.length > 0 ? (
-							<details open>
+							<details
+								open
+								className="ai-storefront-top-searches"
+							>
 								<summary
 									style={ {
 										listStyle: 'none',
@@ -1062,6 +1140,46 @@ const CrawlerActivityCard = () => {
 										),
 										crawlStats.top_queries.length
 									) }
+									{ /* When the requested period exceeds the
+									     raw-log retention window (currently 30
+									     days), the API clamps the top-searches
+									     lookback. Surface the effective window
+									     so merchants don't see "90 days" on the
+									     chip strip but get only the last 30 in
+									     the search list. */ }
+									{ typeof crawlStats.top_queries_window_days ===
+										'number' &&
+										crawlStats.top_queries_window_days <
+											( {
+												day: 1,
+												week: 7,
+												month: 30,
+												quarter: 90,
+											}[ period ] ?? 0 ) && (
+											<span
+												style={ {
+													fontWeight: 'normal',
+													textTransform: 'none',
+													letterSpacing: 'normal',
+													color: colors.textMuted,
+												} }
+											>
+												{ sprintf(
+													/* translators: %d: number of days of search history available. */
+													__(
+														'last %d days',
+														'woocommerce-ai-storefront'
+													),
+													crawlStats.top_queries_window_days
+												) }
+											</span>
+										) }
+									<span
+										className="top-searches-chevron"
+										aria-hidden="true"
+									>
+										{ '▾' }
+									</span>
 								</summary>
 								{ /* 5×2 desktop grid, 10×1 mobile stack.
 								     JS split gives column-major order (ranks 1–5
@@ -1131,8 +1249,6 @@ const CrawlerActivityCard = () => {
 																				'tabular-nums',
 																			textAlign:
 																				'right',
-																			lineHeight:
-																				'1',
 																		} }
 																	>
 																		{ rank }
@@ -1178,24 +1294,24 @@ const CrawlerActivityCard = () => {
 																					whiteSpace:
 																						'nowrap',
 																					marginTop:
-																						'1px',
+																						'2px',
 																				} }
 																			>
 																				{ [
 																					...entry.agents.slice(
 																						0,
-																						2
+																						3
 																					),
 																					...( entry
 																						.agents
 																						.length >
-																					2
+																					3
 																						? [
 																								`+${
 																									entry
 																										.agents
 																										.length -
-																									2
+																									3
 																								}`,
 																						  ]
 																						: [] ),
@@ -1244,12 +1360,42 @@ const CrawlerActivityCard = () => {
 										color: colors.textSecondary,
 										textTransform: 'uppercase',
 										letterSpacing: '0.05em',
+										display: 'flex',
+										alignItems: 'center',
+										gap: '6px',
 									} }
 								>
 									{ __(
 										'Top searches',
 										'woocommerce-ai-storefront'
 									) }
+									{ typeof crawlStats.top_queries_window_days ===
+										'number' &&
+										crawlStats.top_queries_window_days <
+											( {
+												day: 1,
+												week: 7,
+												month: 30,
+												quarter: 90,
+											}[ period ] ?? 0 ) && (
+											<span
+												style={ {
+													fontWeight: 'normal',
+													textTransform: 'none',
+													letterSpacing: 'normal',
+													color: colors.textMuted,
+												} }
+											>
+												{ sprintf(
+													/* translators: %d: number of days of search history available. */
+													__(
+														'last %d days',
+														'woocommerce-ai-storefront'
+													),
+													crawlStats.top_queries_window_days
+												) }
+											</span>
+										) }
 								</p>
 								{ /* Ghost rows — aria-hidden, purely visual preview */ }
 								<div
@@ -1299,10 +1445,15 @@ const CrawlerActivityCard = () => {
 								</div>
 								<p
 									style={ {
-										margin: '10px 0 0',
-										fontSize: '12px',
-										color: colors.textMuted,
-										textAlign: 'center',
+										position: 'absolute',
+										width: '1px',
+										height: '1px',
+										padding: 0,
+										margin: '-1px',
+										overflow: 'hidden',
+										clip: 'rect(0,0,0,0)',
+										whiteSpace: 'nowrap',
+										border: 0,
 									} }
 								>
 									{ __(
@@ -1315,25 +1466,36 @@ const CrawlerActivityCard = () => {
 					</div>
 				) }
 
-				{ /* Empty state */ }
-				{ ! crawlStatsError &&
-					! isLoading &&
-					crawlStats.total_requests === 0 && (
-						<p
-							style={ {
-								marginTop: '16px',
-								marginBottom: 0,
-								fontSize: '13px',
-								color: colors.textMuted,
-								textAlign: 'center',
-							} }
-						>
-							{ __(
-								'No AI agent activity recorded for this period. Stats appear here after the first AI agent visits your store.',
-								'woocommerce-ai-storefront'
-							) }
-						</p>
-					) }
+				{ /* Empty state — shown when no requests at all for the period
+				     AND no top searches in the raw log. The latter check
+				     matters because top_queries reads from the raw log
+				     directly, while total_requests comes from the summary
+				     table which is updated on the rollup cadence. Within the
+				     gap (e.g. between rollup runs on a fresh install), the
+				     raw log can have rows that the summary doesn't yet, so
+				     this check prevents the contradictory state of showing
+				     "No AI agent activity recorded…" while the Top searches
+				     panel above is rendering real query terms. */ }
+				{ shouldShowCrawlStatsEmptyState(
+					crawlStats,
+					isLoading,
+					crawlStatsError
+				) && (
+					<p
+						style={ {
+							marginTop: '16px',
+							marginBottom: 0,
+							fontSize: '13px',
+							color: colors.textMuted,
+							textAlign: 'center',
+						} }
+					>
+						{ __(
+							'No AI agent activity recorded for this period. Stats appear here after the first AI agent visits your store.',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
+				) }
 			</CardBody>
 		</Card>
 	);
@@ -2180,7 +2342,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										style={ {
 											...typography.statValue,
 											color: colors.textPrimary,
-											marginBottom: '6px',
+											marginBottom: '4px',
 										} }
 									>
 										{ card.rpm }
