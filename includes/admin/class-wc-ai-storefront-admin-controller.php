@@ -1249,17 +1249,14 @@ class WC_AI_Storefront_Admin_Controller {
 			return new WP_REST_Response( $cached );
 		}
 
-		$date_map = array(
-			'day'     => '1 day ago',
-			'week'    => '7 days ago',
-			'month'   => '30 days ago',
-			'quarter' => '90 days ago',
+		$days_map = array(
+			'day'     => 1,
+			'week'    => 7,
+			'month'   => 30,
+			'quarter' => 90,
 		);
 
-		$after_ts = strtotime( $date_map[ $period ] );
-		if ( false === $after_ts ) {
-			$after_ts = strtotime( '30 days ago' );
-		}
+		$after_ts = time() - ( $days_map[ $period ] ?? 30 ) * DAY_IN_SECONDS;
 		$after_date     = gmdate( 'Y-m-d', $after_ts );
 		$after_datetime = $after_date . ' 00:00:00';
 		$today_start    = gmdate( 'Y-m-d' ) . ' 00:00:00';

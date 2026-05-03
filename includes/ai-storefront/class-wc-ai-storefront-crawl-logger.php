@@ -21,9 +21,11 @@
  * WordPress `shutdown` action and performs a single batched INSERT after the
  * response has been sent to the browser.
  *
- * Only requests whose user-agent matches a known agent from the Discovery-tab
- * allowlist are logged. Unknown tokens pass through unchanged and are stored
- * as-is (forward-compatible with new bots added before the map is updated).
+ * Agent identification varies by call site: passive endpoints (product pages,
+ * llms.txt, UCP manifest) match against the UA token allowlist; UCP REST
+ * routes identify agents via the UCP-Agent request header. Unknown UA tokens
+ * pass through unchanged and are stored as-is (forward-compatible with new
+ * bots added before the brand-name map is updated).
  *
  * @package WooCommerce_AI_Storefront
  * @since 0.9.0
@@ -151,11 +153,14 @@ class WC_AI_Storefront_Crawl_Logger {
 		}
 		$scheduled = true;
 
+		// Next UTC midnight: floor current UTC time to the day, then add one day.
+		$utc_midnight = gmmktime( 0, 0, 0, (int) gmdate( 'n' ), (int) gmdate( 'j' ) + 1, (int) gmdate( 'Y' ) );
+
 		if ( ! wp_next_scheduled( 'wc_ai_storefront_prune_crawl_log' ) ) {
-			wp_schedule_event( strtotime( 'tomorrow midnight' ), 'daily', 'wc_ai_storefront_prune_crawl_log' );
+			wp_schedule_event( $utc_midnight, 'daily', 'wc_ai_storefront_prune_crawl_log' );
 		}
 		if ( ! wp_next_scheduled( 'wc_ai_storefront_rollup_crawl_log' ) ) {
-			wp_schedule_event( strtotime( 'tomorrow midnight' ) + 60, 'daily', 'wc_ai_storefront_rollup_crawl_log' );
+			wp_schedule_event( $utc_midnight + 60, 'daily', 'wc_ai_storefront_rollup_crawl_log' );
 		}
 	}
 
@@ -167,6 +172,37 @@ class WC_AI_Storefront_Crawl_Logger {
 	public static function clear_crons(): void {
 		wp_clear_scheduled_hook( 'wc_ai_storefront_prune_crawl_log' );
 		wp_clear_scheduled_hook( 'wc_ai_storefront_rollup_crawl_log' );
+
+		// On multisite, cron events are stored per-blog (each site's wp_options).
+		// Clear the hooks for every subsite so they don't fire after deactivation.
+		if ( is_multisite() ) {
+			$current_blog_id = get_current_blog_id();
+			$offset          = 0;
+			$batch           = 500;
+			do {
+				$blog_ids = get_sites(
+					array(
+						'fields' => 'ids',
+						'number' => $batch,
+						'offset' => $offset,
+					)
+				);
+				foreach ( $blog_ids as $blog_id ) {
+					if ( (int) $blog_id === $current_blog_id ) {
+						continue;
+					}
+					switch_to_blog( $blog_id );
+					try {
+						wp_clear_scheduled_hook( 'wc_ai_storefront_prune_crawl_log' );
+						wp_clear_scheduled_hook( 'wc_ai_storefront_rollup_crawl_log' );
+					} finally {
+						restore_current_blog();
+					}
+				}
+				$offset       += $batch;
+				$fetched_count = count( $blog_ids );
+			} while ( $fetched_count === $batch );
+		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -312,7 +348,7 @@ class WC_AI_Storefront_Crawl_Logger {
 	 */
 	public static function prune_raw_log(): void {
 		global $wpdb;
-		$cutoff = gmdate( 'Y-m-d H:i:s', strtotime( '-' . self::RAW_RETENTION_DAYS . ' days' ) );
+		$cutoff = gmdate( 'Y-m-d H:i:s', time() - self::RAW_RETENTION_DAYS * DAY_IN_SECONDS );
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 		$result = $wpdb->query(
 			$wpdb->prepare(
@@ -336,7 +372,7 @@ class WC_AI_Storefront_Crawl_Logger {
 	 */
 	public static function prune_summary(): void {
 		global $wpdb;
-		$cutoff = gmdate( 'Y-m-d', strtotime( '-' . self::SUMMARY_RETENTION_DAYS . ' days' ) );
+		$cutoff = gmdate( 'Y-m-d', time() - self::SUMMARY_RETENTION_DAYS * DAY_IN_SECONDS );
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 		$result = $wpdb->query(
 			$wpdb->prepare(
@@ -365,7 +401,7 @@ class WC_AI_Storefront_Crawl_Logger {
 	public static function rollup(): void {
 		global $wpdb;
 
-		$yesterday       = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+		$yesterday       = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS );
 		$yesterday_start = $yesterday . ' 00:00:00';
 		$today_start     = gmdate( 'Y-m-d' ) . ' 00:00:00';
 
