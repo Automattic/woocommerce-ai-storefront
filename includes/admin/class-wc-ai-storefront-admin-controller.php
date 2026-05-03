@@ -1236,9 +1236,10 @@ class WC_AI_Storefront_Admin_Controller {
 	 *   top_queries            — top-10 search queries from the raw log: [{query, count, agents}].
 	 *   top_queries_window_days — effective lookback for top_queries (min(period_days, 30)).
 	 *   raw_event_count        — total raw-log events in the period (COUNT(*) on TABLE_LOG).
-	 *                            Non-zero even before the first rollup runs; the UI uses this
-	 *                            to suppress the "no activity" empty state while data exists
-	 *                            in the raw log but has not yet been rolled up.
+	 *                            Queried live on every response (not cached) so new traffic
+	 *                            arriving between rollups suppresses the "no activity" empty
+	 *                            state immediately, without waiting for the 5-min transient
+	 *                            to expire.
 	 *   rollup_interval        — the validated cron recurrence slug ('hourly', 'twicedaily',
 	 *                            or 'daily'). Injected live on every response (not cached)
 	 *                            so a filter change takes effect immediately without waiting
@@ -1254,14 +1255,6 @@ class WC_AI_Storefront_Admin_Controller {
 		$valid_periods = array( 'day', 'week', 'month', 'quarter' );
 		$period        = in_array( $period, $valid_periods, true ) ? $period : 'month';
 
-		$cached = get_transient( 'wc_ai_storefront_crawl_stats_' . $period );
-		if ( false !== $cached && is_array( $cached ) ) {
-			// rollup_interval is a filter-dependent config value — inject it live
-			// so a filter change takes effect without waiting for the transient.
-			$cached['rollup_interval'] = WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval();
-			return new WP_REST_Response( $cached );
-		}
-
 		$days_map = array(
 			'day'     => 1,
 			'week'    => 7,
@@ -1273,9 +1266,35 @@ class WC_AI_Storefront_Admin_Controller {
 		// dates (today inclusive). Using time() - N*86400 would floor to a
 		// mid-day timestamp, making the window N+1 calendar dates wide once
 		// today's rows are included via the open-ended upper bound.
+		// Computed before the cache check so the live raw_event_count query
+		// (below) can run on the cache-hit path too.
 		$today_midnight = gmmktime( 0, 0, 0, (int) gmdate( 'n' ), (int) gmdate( 'j' ), (int) gmdate( 'Y' ) );
 		$after_date     = gmdate( 'Y-m-d', $today_midnight - ( $days_map[ $period ] - 1 ) * DAY_IN_SECONDS );
 		$after_datetime = $after_date . ' 00:00:00';
+
+		$log_table = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_LOG;
+
+		// raw_event_count must be live on every response — its purpose is to
+		// detect new raw-log traffic since the last rollup, so caching it for
+		// up to 5 minutes inside the transient would defeat the empty-state
+		// suppression it powers. Single COUNT(*) on an indexed column.
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$raw_event_count = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$log_table} WHERE crawled_at >= %s",
+				$after_datetime
+			)
+		);
+		// phpcs:enable
+
+		$cached = get_transient( 'wc_ai_storefront_crawl_stats_' . $period );
+		if ( false !== $cached && is_array( $cached ) ) {
+			// Filter-/state-dependent fields are injected live on every response
+			// so changes take effect without waiting for the transient to expire.
+			$cached['rollup_interval'] = WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval();
+			$cached['raw_event_count'] = $raw_event_count;
+			return new WP_REST_Response( $cached );
+		}
 
 		// Top searches read from the raw log (query strings aren't aggregated
 		// into the summary table). The raw log is pruned at RAW_RETENTION_DAYS,
@@ -1289,8 +1308,7 @@ class WC_AI_Storefront_Admin_Controller {
 		);
 		$top_queries_after = gmdate( 'Y-m-d', $today_midnight - ( $top_queries_days - 1 ) * DAY_IN_SECONDS ) . ' 00:00:00';
 
-		$table     = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY;
-		$log_table = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_LOG;
+		$table = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY;
 
 		// Per-endpoint aggregates — single query, aggregated in PHP below.
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -1383,16 +1401,6 @@ class WC_AI_Storefront_Admin_Controller {
 			);
 			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
 		}
-
-		// Total raw-log events in the period — used by the UI to distinguish
-		// "no activity ever" from "activity exists but not yet rolled up".
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-		$raw_event_count = (int) $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$log_table} WHERE crawled_at >= %s",
-				$after_datetime
-			)
-		);
 		// phpcs:enable
 
 		$total_requests  = 0;
@@ -1439,14 +1447,14 @@ class WC_AI_Storefront_Admin_Controller {
 			'by_agent'                => $by_agent,
 			'top_queries'             => $top_queries,
 			'top_queries_window_days' => $top_queries_days,
-			'raw_event_count'         => $raw_event_count,
 		);
 
 		set_transient( 'wc_ai_storefront_crawl_stats_' . $period, $data, 5 * MINUTE_IN_SECONDS );
 
-		// rollup_interval injected after caching — never stored in the transient
-		// so filter changes apply on the very next request.
+		// Live fields — never stored in the transient so they reflect current
+		// state on every response (filter changes / new raw-log traffic).
 		$data['rollup_interval'] = WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval();
+		$data['raw_event_count'] = $raw_event_count;
 
 		return new WP_REST_Response( $data );
 	}

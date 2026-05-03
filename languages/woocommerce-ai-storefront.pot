@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-03T21:12:13+00:00\n"
+"POT-Creation-Date: 2026-05-03T21:21:33+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -51,10 +51,10 @@ msgstr ""
 msgid "Could not load pages."
 msgstr ""
 
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:1314
 #: includes/admin/class-wc-ai-storefront-admin-controller.php:1332
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:1353
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:1384
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:1350
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:1371
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:1402
 msgid "Could not load crawler stats."
 msgstr ""
 
