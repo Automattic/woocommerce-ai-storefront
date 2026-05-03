@@ -794,9 +794,12 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 	const { fetchStats, fetchCrawlStats } = useDispatch( STORE_NAME );
 	const [ period, setPeriod ] = useState( 'month' );
 
+	// Crawl stats retention caps at 90 days; 'year' is not a valid crawl period.
+	const crawlPeriod = period === 'year' ? 'quarter' : period;
+
 	useEffect( () => {
 		fetchStats( period );
-		fetchCrawlStats( period );
+		fetchCrawlStats( crawlPeriod );
 	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Refetch when period changes.
 
 	// Products Exposed card — actual count of products that will

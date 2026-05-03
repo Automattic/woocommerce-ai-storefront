@@ -91,7 +91,7 @@ class WC_AI_Storefront_Crawl_Logger {
   product_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
   agent VARCHAR(64) NOT NULL DEFAULT '',
   endpoint VARCHAR(32) NOT NULL DEFAULT '',
-  query VARCHAR(255) DEFAULT NULL,
+  query VARCHAR(255) NOT NULL DEFAULT '',
   throttled TINYINT(1) UNSIGNED NOT NULL DEFAULT 0,
   crawled_at DATETIME NOT NULL,
   PRIMARY KEY  (id),
