@@ -430,6 +430,8 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			$like = '%' . $wpdb->esc_like( $signal ) . '%';
 
 			// Title (+ SKU) fallback — always present.
+			// Table names can't be parameterised — suppress the interpolation sniff.
+			// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if ( $sku_enabled ) {
 				$title_clause = $wpdb->prepare(
 					"( {$posts_table}.post_title LIKE %s OR {$meta_table}.sku LIKE %s )",
@@ -439,6 +441,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			} else {
 				$title_clause = $wpdb->prepare( "{$posts_table}.post_title LIKE %s", $like );
 			}
+			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 			$term_ids = $taxonomy_map[ $signal ] ?? array();
 			if ( ! empty( $term_ids ) ) {
@@ -481,9 +484,14 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			return array();
 		}
 
-		$taxonomies = array_values(
+		// get_taxonomies('names') returns array<string,string> — both keys and
+		// values are the taxonomy name strings. PHPStan can't narrow array_keys()
+		// to string[] without the annotation below.
+		/** @var array<string, string> $raw_taxonomies */
+		$raw_taxonomies = (array) get_taxonomies( array( 'object_type' => array( 'product' ) ), 'names' );
+		$taxonomies     = array_values(
 			array_filter(
-				array_keys( (array) get_taxonomies( array( 'object_type' => array( 'product' ) ), 'names' ) ),
+				array_keys( $raw_taxonomies ),
 				static function ( string $t ) {
 					return in_array( $t, array( 'product_cat', 'product_tag', 'product_brand' ), true )
 						|| str_starts_with( $t, 'pa_' );
@@ -511,7 +519,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		// Build lookup: normalised key → [term_id, …]
 		$lookup = array();
 		foreach ( $all_terms as $term ) {
-			$key_name = strtolower( trim( $term->name ) );
+			$key_name              = strtolower( trim( $term->name ) );
 			$lookup[ $key_name ][] = (int) $term->term_id;
 			if ( $term->slug !== $key_name ) {
 				$lookup[ $term->slug ][] = (int) $term->term_id;
@@ -557,10 +565,40 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 */
 	public static function extract_search_terms( string $query ): array {
 		static $stopwords = array(
-			'a', 'an', 'the', 'and', 'or', 'for', 'in', 'on', 'at', 'to',
-			'of', 'from', 'by', 'with', 'is', 'are', 'was', 'were', 'be',
-			'i', 'me', 'my', 'we', 'our', 'you', 'your', 'it', 'its',
-			'this', 'that', 'these', 'those', 'some', 'any',
+			'a',
+			'an',
+			'the',
+			'and',
+			'or',
+			'for',
+			'in',
+			'on',
+			'at',
+			'to',
+			'of',
+			'from',
+			'by',
+			'with',
+			'is',
+			'are',
+			'was',
+			'were',
+			'be',
+			'i',
+			'me',
+			'my',
+			'we',
+			'our',
+			'you',
+			'your',
+			'it',
+			'its',
+			'this',
+			'that',
+			'these',
+			'those',
+			'some',
+			'any',
 		);
 
 		$words = preg_split( '/\s+/', strtolower( trim( $query ) ), -1, PREG_SPLIT_NO_EMPTY );
