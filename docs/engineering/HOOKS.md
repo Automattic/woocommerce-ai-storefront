@@ -310,7 +310,7 @@ apply_filters( 'wc_ai_storefront_rollup_interval', string $interval );
 
 **When to use:** high-traffic stores that want to reduce DB load (`'twicedaily'` or `'daily'`), or to keep the default `'hourly'` cadence on low-traffic stores.
 
-**Important:** the filter is read only when the cron event is first registered (plugin activation, or after the event is cleared). To apply a change on a live site: `wp cron event delete wc_ai_storefront_rollup_crawl_log`, then reload any admin page to re-register with the new interval.
+**Applying a change:** `schedule_crons()` compares the existing event's recurrence to the filtered value on every admin request and automatically clears and re-registers the event when they differ. Filter changes take effect on the next page load — no manual `wp cron` commands needed.
 
 **Example — switch to twice-daily rollup:**
 

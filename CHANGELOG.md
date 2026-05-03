@@ -19,7 +19,7 @@
 
 ### Docs
 
-- **Engineering and merchant docs synced for #261.** `DATA-MODEL.md` updated: rollup is now hourly, GROUP BY description includes `product_id`. `HOOKS.md` gains a `wc_ai_storefront_rollup_interval` filter entry with usage examples. `ARCHITECTURE.md` updated to reflect the hourly cron and filter. `USER-GUIDE.md` updated: "Stats refresh hourly — today's traffic appears in the dashboard within about an hour."
+- **Engineering and merchant docs synced for #261.** `DATA-MODEL.md` updated: rollup runs hourly by default (configurable via filter), GROUP BY description includes `product_id`, auto-migration note added. `HOOKS.md` gains a `wc_ai_storefront_rollup_interval` filter entry with usage examples and notes that filter changes take effect on the next page load. `ARCHITECTURE.md` updated to reflect the configurable rollup cadence. `USER-GUIDE.md` updated: "Stats refresh on every rollup run (hourly by default) — today's traffic appears in the dashboard within one rollup cycle of occurring."
 
 ---
 

@@ -323,7 +323,7 @@ Daily cron that deletes raw log rows older than `RAW_RETENTION_DAYS` (30) and su
 
 Hourly cron that rolls yesterday's and today's raw log into the summary table, keeping stats within ~1 hour of real-time.
 
-- **Schedule:** `hourly` by default. Override with the `wc_ai_storefront_rollup_interval` filter; allowed values are `hourly`, `twicedaily`, and `daily` — only these three cadences are safe within the 2-day rollup window. Any other value silently falls back to `hourly`. The filter is read at registration time — to change an already-registered schedule, delete the event first (`wp cron event delete wc_ai_storefront_rollup_crawl_log`) and let it re-register on the next request.
+- **Schedule:** `hourly` by default. Override with the `wc_ai_storefront_rollup_interval` filter; allowed values are `hourly`, `twicedaily`, and `daily` — only these three cadences are safe within the 2-day rollup window. Any other value silently falls back to `hourly`. `schedule_crons()` compares the existing event's recurrence to the filtered value on every admin request and auto-migrates mismatches, so filter changes take effect on the next page load without manual intervention.
 - **Defined in:** `WC_AI_Storefront_Crawl_Logger`
 - **Uninstall:** cleared by `uninstall.php`
 
