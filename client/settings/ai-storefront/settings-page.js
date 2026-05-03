@@ -1080,7 +1080,9 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 				<StatCard
 					label={ __( 'Products seen', 'woocommerce-ai-storefront' ) }
 					value={
-						crawlStatsError || ! crawlStats
+						crawlStatsError ||
+						! crawlStats ||
+						crawlStats.period !== crawlPeriod
 							? '—'
 							: crawlStats.unique_products.toLocaleString()
 					}
@@ -1099,6 +1101,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					value={
 						! crawlStatsError &&
 						crawlStats &&
+						crawlStats.period === crawlPeriod &&
 						typeof productCount === 'number' &&
 						productCount > 0
 							? `${ (

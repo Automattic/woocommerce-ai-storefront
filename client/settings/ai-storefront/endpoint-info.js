@@ -1093,10 +1093,6 @@ const CrawlerActivityCard = () => {
 														display: 'flex',
 														flexDirection: 'column',
 														gap: '4px',
-														...( colIdx === 1 && {
-															borderLeft: `1px solid ${ colors.borderSubtle }`,
-															paddingLeft: '20px',
-														} ),
 													} }
 												>
 													{ col.map(
