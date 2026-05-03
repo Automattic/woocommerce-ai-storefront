@@ -74,9 +74,7 @@ class WC_AI_Storefront_Crawl_Logger {
 	 * Create or upgrade both crawl-log tables.
 	 *
 	 * Uses dbDelta, which is idempotent — safe to call on every version bump.
-	 * Requires `wp-admin/includes/upgrade.php` to be loaded by the caller
-	 * (already true inside the `plugins_loaded` / activation paths this is
-	 * invoked from).
+	 * Loads `wp-admin/includes/upgrade.php` itself before calling dbDelta.
 	 */
 	public static function create_tables(): void {
 		global $wpdb;

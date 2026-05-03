@@ -134,6 +134,14 @@ class WC_AI_Storefront {
 		// controller when syndication is toggled on.
 		WC_AI_Storefront_Cache_Invalidator::register( 'wc_ai_storefront_ucp' );
 
+		// Crawl logger cron handlers are registered unconditionally so that
+		// WP-Cron keeps firing prune/rollup even while syndication is disabled.
+		// Without this, disabling the plugin for a day would permanently miss
+		// that day's rollup (rollup only aggregates "yesterday").
+		WC_AI_Storefront_Crawl_Logger::schedule_crons();
+		add_action( 'wc_ai_storefront_prune_crawl_log', array( 'WC_AI_Storefront_Crawl_Logger', 'prune_raw_log' ) );
+		add_action( 'wc_ai_storefront_rollup_crawl_log', array( 'WC_AI_Storefront_Crawl_Logger', 'rollup' ) );
+
 		$settings = self::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
 			// Only load attribution (to track even when syndication is paused)
@@ -159,11 +167,6 @@ class WC_AI_Storefront {
 		// Store API rate limiting for AI bots.
 		$rate_limiter = new WC_AI_Storefront_Store_Api_Rate_Limiter();
 		$rate_limiter->init();
-
-		// Crawl logger — cron handlers and daily scheduling.
-		WC_AI_Storefront_Crawl_Logger::schedule_crons();
-		add_action( 'wc_ai_storefront_prune_crawl_log', array( 'WC_AI_Storefront_Crawl_Logger', 'prune_raw_log' ) );
-		add_action( 'wc_ai_storefront_rollup_crawl_log', array( 'WC_AI_Storefront_Crawl_Logger', 'rollup' ) );
 
 		// UCP product-scoping hook — enforces the merchant's
 		// `product_selection_mode` on product `WP_Query` instances
