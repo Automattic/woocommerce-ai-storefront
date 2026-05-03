@@ -584,10 +584,11 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_rollup_uses_yesterday_date(): void {
-		// Capture only the first prepare() call (the INSERT); the second
-		// is from prune_summary() which takes a different date argument.
-		$captured_values = [];
-		$call_index      = 0;
+		// Capture the range args from the first prepare() call (the INSERT).
+		// rollup() now passes $yesterday_start and $tomorrow_start as range
+		// bounds so DATE(crawled_at) grouping covers yesterday + today.
+		$captured_args = [];
+		$call_index    = 0;
 
 		global $wpdb;
 		$wpdb             = Mockery::mock( 'wpdb' );
@@ -596,22 +597,28 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		$wpdb->shouldReceive( 'prepare' )
 			->twice()
 			->andReturnUsing(
-				static function ( $sql, $date ) use ( &$captured_values, &$call_index ) {
+				static function ( $sql, $range_start, $range_end = null ) use ( &$captured_args, &$call_index ) {
 					if ( 0 === $call_index++ ) {
-						$captured_values[] = $date;
+						$captured_args = [ $range_start, $range_end ];
 					}
 					return 'PREPARED';
 				}
 			);
 		$wpdb->shouldReceive( 'query' )->andReturn( 0 );
 
-		$expected_yesterday = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+		$expected_start = gmdate( 'Y-m-d', strtotime( '-1 day' ) ) . ' 00:00:00';
+		$expected_end   = gmdate( 'Y-m-d', strtotime( '+1 day' ) ) . ' 00:00:00';
 		WC_AI_Storefront_Crawl_Logger::rollup();
 
 		$this->assertSame(
-			$expected_yesterday,
-			$captured_values[0],
-			'rollup() must aggregate yesterday\'s date'
+			$expected_start,
+			$captured_args[0],
+			'rollup() range must start at yesterday midnight'
+		);
+		$this->assertSame(
+			$expected_end,
+			$captured_args[1],
+			'rollup() range must end at tomorrow midnight'
 		);
 	}
 }

@@ -405,8 +405,8 @@ class WC_AI_Storefront_Crawl_Logger {
 	public static function rollup(): void {
 		global $wpdb;
 
-		$yesterday_start  = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS ) . ' 00:00:00';
-		$tomorrow_start   = gmdate( 'Y-m-d', time() + DAY_IN_SECONDS ) . ' 00:00:00';
+		$yesterday_start = gmdate( 'Y-m-d', time() - DAY_IN_SECONDS ) . ' 00:00:00';
+		$tomorrow_start  = gmdate( 'Y-m-d', time() + DAY_IN_SECONDS ) . ' 00:00:00';
 
 		// Roll up all days from yesterday through today in one pass.
 		// DATE(crawled_at) groups each day's rows onto the correct crawl_date.

@@ -801,21 +801,21 @@ const CrawlerActivityCard = () => {
 							) }
 						</h3>
 						{ ! crawlStatsError &&
-						! isLoading &&
-						crawlStats.total_requests > 0 && (
-							<p
-								style={ {
-									margin: 0,
-									fontSize: '12px',
-									color: colors.textMuted,
-								} }
-							>
-								{ __(
-									'Updated hourly.',
-									'woocommerce-ai-storefront'
-								) }
-							</p>
-						) }
+							! isLoading &&
+							crawlStats.total_requests > 0 && (
+								<p
+									style={ {
+										margin: 0,
+										fontSize: '12px',
+										color: colors.textMuted,
+									} }
+								>
+									{ __(
+										'Updated hourly.',
+										'woocommerce-ai-storefront'
+									) }
+								</p>
+							) }
 					</div>
 					{ /* Period chip strip */ }
 					<div
