@@ -409,7 +409,7 @@ class WC_AI_Storefront_Crawl_Logger {
 	 * Called after rollup so the next period-chip click fetches fresh data.
 	 */
 	public static function bust_crawl_stats_cache(): void {
-		foreach ( array( 'day', 'week', 'month', 'quarter', 'year' ) as $period ) {
+		foreach ( array( 'day', 'week', 'month', 'quarter' ) as $period ) {
 			delete_transient( 'wc_ai_storefront_crawl_stats_' . $period );
 		}
 	}

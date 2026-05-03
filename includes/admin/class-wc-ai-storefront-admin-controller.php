@@ -145,7 +145,7 @@ class WC_AI_Storefront_Admin_Controller {
 					'period' => [
 						'type'    => 'string',
 						'default' => 'month',
-						'enum'    => [ 'day', 'week', 'month', 'quarter', 'year' ],
+						'enum'    => [ 'day', 'week', 'month', 'quarter' ],
 					],
 				],
 			]
@@ -341,7 +341,7 @@ class WC_AI_Storefront_Admin_Controller {
 					'period' => [
 						'type'    => 'string',
 						'default' => 'month',
-						'enum'    => [ 'day', 'week', 'month', 'quarter', 'year' ],
+						'enum'    => [ 'day', 'week', 'month', 'quarter' ],
 					],
 				],
 			]
@@ -1241,7 +1241,7 @@ class WC_AI_Storefront_Admin_Controller {
 		global $wpdb;
 
 		$period        = $request->get_param( 'period' );
-		$valid_periods = array( 'day', 'week', 'month', 'quarter', 'year' );
+		$valid_periods = array( 'day', 'week', 'month', 'quarter' );
 		$period        = in_array( $period, $valid_periods, true ) ? $period : 'month';
 
 		$cached = get_transient( 'wc_ai_storefront_crawl_stats_' . $period );
@@ -1254,7 +1254,6 @@ class WC_AI_Storefront_Admin_Controller {
 			'week'    => '7 days ago',
 			'month'   => '30 days ago',
 			'quarter' => '90 days ago',
-			'year'    => '12 months ago',
 		);
 
 		$after_ts = strtotime( $date_map[ $period ] );

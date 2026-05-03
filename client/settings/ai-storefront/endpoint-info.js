@@ -699,7 +699,6 @@ const CRAWL_PERIODS = [
 		value: 'quarter',
 		label: __( '90 days', 'woocommerce-ai-storefront' ),
 	},
-	{ value: 'year', label: __( '12 months', 'woocommerce-ai-storefront' ) },
 ];
 
 /**
