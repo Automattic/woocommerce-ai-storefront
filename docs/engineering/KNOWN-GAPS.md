@@ -17,13 +17,24 @@ Each entry follows the same shape:
 
 A growing class of AI shoppers — ChatGPT Operator, ChatGPT Atlas, Perplexity Comet, Brave Leo, Google Project Mariner, Microsoft Copilot Vision, Arc/Dia, Manus, Multion, and the long tail of agents built on Browserbase / Anchor Browser / Steel.dev — drives a real Chromium or Edge browser on the user's behalf. Their HTTP `User-Agent` header is the parent browser's UA. There is no AI-specific token in the string for our [`detect_crawler_from_ua()`](../../includes/ai-storefront/class-wc-ai-storefront-robots.php) or the [`brand_names` map in `class-wc-ai-storefront-crawl-logger.php`](../../includes/ai-storefront/class-wc-ai-storefront-crawl-logger.php) to match.
 
-When one of these agents hits our UCP REST endpoints (`catalog/search`, `catalog/lookup`, checkout), the attribution path resolves into one of two distinct buckets depending on what the request carries:
+When one of these agents hits our UCP REST endpoints (`catalog/search`, `catalog/lookup`, checkout), the attribution path resolves into one of two distinct buckets depending on what the request carries. The two paths are also asymmetric: the **crawl logger** (powering Discovery stats) and the **order attribution** (powering Recent AI Orders) treat the same cohort differently.
 
-1. **No `UCP-Agent` header** (or unparseable header) → the canonical name becomes [`FALLBACK_SOURCE`](../../includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-agent-header.php) (`'ucp_unknown'`). The crawl logger explicitly skips recording rows whose name equals the fallback sentinel (see the `if ( FALLBACK_SOURCE !== $agent_data['name'] )` guards in `class-wc-ai-storefront-ucp-rest-controller.php`), so these requests are **invisible in Discovery stats entirely**. Orders are not stamped with an AI source.
+1. **No `UCP-Agent` header** (or unparseable header) → the canonical name becomes [`FALLBACK_SOURCE`](../../includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-agent-header.php) (`'ucp_unknown'`).
+   - **Crawl logger / Discovery stats:** the `if ( FALLBACK_SOURCE !== $agent_data['name'] )` guards in `class-wc-ai-storefront-ucp-rest-controller.php` skip recording entirely, so these requests are **invisible in Discovery stats**.
+   - **Order attribution:** the checkout-session continue URL still carries `utm_id=woo_ucp` and `utm_source=ucp_unknown`. When the customer completes checkout, [`WC_AI_Storefront_Attribution::capture_ai_attribution()`](../../includes/ai-storefront/class-wc-ai-storefront-attribution.php)'s strict gate fires on `utm_id=woo_ucp` and stamps the order with `_wc_ai_storefront_agent = "Other AI"` (because `utm_source` is non-empty but unknown). So **Recent AI Orders does show these orders, attributed as "Other AI" with no raw host**.
 
-2. **Header parses, but the host isn't in `KNOWN_AGENT_HOSTS`** → the canonical name becomes [`OTHER_AI_BUCKET`](../../includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-agent-header.php) (`'Other AI'`). The crawl logger DOES record these rows; orders DO get stamped. So they appear in Discovery stats under the literal `Other AI` brand, distinguishable from "no AI activity at all" but not from each other.
+2. **Header parses, but the host isn't in `KNOWN_AGENT_HOSTS`** → the canonical name becomes [`OTHER_AI_BUCKET`](../../includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-agent-header.php) (`'Other AI'`).
+   - **Crawl logger / Discovery stats:** the guard returns false (name is `Other AI`, not the fallback sentinel), so these rows ARE recorded and appear under the literal `Other AI` brand.
+   - **Order attribution:** same outcome as cohort 1's order path (strict gate stamps `_wc_ai_storefront_agent = "Other AI"`). Indistinguishable from cohort 1 once the order is stamped.
 
-The two cohorts represent very different states. Cohort 1 is "we know nothing" — the request is indistinguishable from any other anonymous browser visit. Cohort 2 is "we know it's an AI but not which one" — the agent identified itself enough to claim AI status but not enough to claim a vendor.
+The two cohorts represent very different states for *traffic visibility* but converge on the *order attribution* surface:
+
+| Cohort | Discovery stats | Recent AI Orders |
+|---|---|---|
+| 1 — `ucp_unknown` (no/unparseable header) | Invisible | "Other AI" |
+| 2 — `Other AI` (parseable, unknown host) | "Other AI" | "Other AI" |
+
+Cohort 1 is "we know nothing about the traffic" — the request is invisible to crawler analytics — but **the order it generates is still flagged as AI-attributed** via the strict-gate path on `utm_id=woo_ucp`. Cohort 2 is "we know it's an AI but not which one" on both surfaces.
 
 ### Why it exists
 
@@ -41,10 +52,10 @@ The UCP-Agent header is the protocol's intended attribution channel: a well-beha
 |---|---|---|
 | Discovery tab → "AI agent activity" → "By AI Agent" breakdown | Not present — crawl logger skips fallback-sentinel rows. | Appears under the literal `Other AI` brand. |
 | Discovery tab → Top searches | Search query is not recorded in the raw log (the same `FALLBACK_SOURCE` guard fires before the record call). | Search query is recorded; `By AI Agent` column shows `Other AI`. |
-| Recent AI Orders → Customer / Source columns | Order is not stamped as AI-attributed — looks like an organic browser purchase. | Order is stamped with `_wc_ai_storefront_agent: Other AI` and appears in Recent AI Orders, distinguishable from organic. |
-| Crawler-stats charts | Volume is invisible — the gap is silent under-counting. | Volume rolls into `Other AI` totals; merchant sees AI activity but can't slice by vendor. |
+| Recent AI Orders → Customer / Source columns | Order IS stamped as AI-attributed via the strict-gate path on `utm_id=woo_ucp` — appears as `_wc_ai_storefront_agent: Other AI` with no raw host. Distinguishable from an organic purchase, but indistinguishable from cohort 2. | Same as cohort 1 — order stamped `_wc_ai_storefront_agent: Other AI`. The two cohorts converge on this surface. |
+| Crawler-stats charts | Volume is invisible — the gap is silent under-counting on the *traffic* side. | Volume rolls into `Other AI` totals; merchant sees AI activity but can't slice by vendor. |
 
-The most common shape of this gap, in production: a merchant looking at the Discovery tab sees `4 catalog queries, "Other AI: 4"`. The 4 are real AI-driven queries from agents that sent a parseable but non-canonical `UCP-Agent` header. The harder-to-see version of the gap is the cohort whose absence shows up nowhere — they were never logged.
+The most common shape of this gap, in production: a merchant looking at the Discovery tab sees `4 catalog queries, "Other AI: 4"`. The 4 are real AI-driven queries from agents that sent a parseable but non-canonical `UCP-Agent` header (cohort 2). The harder-to-see version is cohort 1 — those agents' *traffic* is invisible to Discovery stats, but their *orders* still land in Recent AI Orders attributed as "Other AI" via the strict-gate path. So a merchant who checks both surfaces won't miss the conversions; they will miss the upstream activity that led to them.
 
 ### Mitigations available today
 
