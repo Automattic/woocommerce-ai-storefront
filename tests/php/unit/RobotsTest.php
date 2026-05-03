@@ -64,25 +64,25 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// allow-list contains entries no longer in AI_CRAWLERS.
 		// Originally shipped to cover the "13 of 12" bug around
 		// v1.1.0; the fixture has been updated as the canonical
-		// list evolved across 1.1.x → 1.6.0.
+		// list evolved across 1.1.x → 1.6.0 → 0.8.8.
 		//
-		// As of 1.6.0 the truly-stale entries merchants might
-		// have carried forward:
-		//   - `Gemini`: removed in 1.6.0 (phantom entry, never
-		//     matched any real crawler)
-		//   - `anthropic-ai`: Anthropic-deprecated; replaced by
-		//     `ClaudeBot` + `Claude-User` + `Claude-SearchBot`
-		//     and never added back
+		// As of 0.8.8 the truly-stale entry merchants might have
+		// carried forward is `Gemini` (removed in 1.6.0; phantom
+		// entry that never matched any real crawler — Google's
+		// training bot is `Google-Extended`).
 		//
-		// Note: `Bytespider`, `CCBot`, and `cohere-ai` were in
-		// the pre-v1.1.0 list, briefly removed, and restored in
-		// 1.6.0's re-audit. They are now kept, not stripped.
+		// Note: `anthropic-ai` was dropped from the canonical list
+		// pre-1.6.0 as "Anthropic-deprecated" but Anthropic continues
+		// to send it in real-world traffic. It was re-added in 0.8.8
+		// and is now a kept entry, not stripped. `Bytespider`, `CCBot`,
+		// and `cohere-ai` followed a similar drop-then-restore arc in
+		// 1.6.0 and remain kept.
 		$input = [
 			'GPTBot',          // kept
 			'ChatGPT-User',    // kept
 			'Gemini',          // dropped (removed in 1.6.0)
 			'ClaudeBot',       // kept
-			'anthropic-ai',    // dropped (Anthropic-deprecated)
+			'anthropic-ai',    // kept (restored in 0.8.8)
 			'Bytespider',      // kept (restored in 1.6.0 re-audit)
 			'CCBot',           // kept (restored in 1.6.0 re-audit)
 			'Claude-User',     // kept
@@ -91,10 +91,10 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
 		$this->assertSame(
-			[ 'GPTBot', 'ChatGPT-User', 'ClaudeBot', 'Bytespider', 'CCBot', 'Claude-User' ],
+			[ 'GPTBot', 'ChatGPT-User', 'ClaudeBot', 'anthropic-ai', 'Bytespider', 'CCBot', 'Claude-User' ],
 			$result
 		);
-		$this->assertCount( 6, $result );
+		$this->assertCount( 7, $result );
 	}
 
 	public function test_returns_sequentially_indexed_array(): void {
@@ -345,9 +345,11 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 				'Claude-SearchBot',
 				'Claude-User',
 				'DuckAssistBot',
+				'Mistralai-User',
 				'OAI-SearchBot',
 				'Perplexity-User',
 				'PerplexityBot',
+				'YouBot',
 				// Agentic shopping (alphabetical).
 				'AmazonBuyForMe',
 				'KlarnaBot',
@@ -383,13 +385,18 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame(
 			[
 				// Alphabetical (case-insensitive). Reordered in 0.6.1
-				// for scannability.
+				// for scannability. anthropic-ai (Anthropic legacy
+				// crawler still seen in real logs) and Diffbot
+				// (Knowledge Graph licensed by LLM vendors as training
+				// input) added in 0.8.8.
 				'Amazonbot',
+				'anthropic-ai',
 				'Applebot-Extended',
 				'Bytespider',
 				'CCBot',
 				'ClaudeBot',
 				'cohere-ai',
+				'Diffbot',
 				'Google-Extended',
 				'GPTBot',
 				'Meta-ExternalAgent',

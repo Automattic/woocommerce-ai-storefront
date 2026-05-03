@@ -37,20 +37,25 @@ class WC_AI_Storefront_Robots {
 		// General-purpose AI assistants — alphabetical.
 		//
 		// Foundation-model / search-assistant bots. The `-User` suffix
-		// (ChatGPT-User, Claude-User, Perplexity-User) signals
-		// "triggered by an active user session" per each vendor's
+		// (ChatGPT-User, Claude-User, Perplexity-User, Mistralai-User)
+		// signals "triggered by an active user session" per each vendor's
 		// documentation. Applebot is the long-standing Siri/Spotlight
 		// search crawler (since 2015) — Applebot-Extended is the AI-
 		// training variant and lives in TRAINING_CRAWLERS.
 		// DuckAssistBot powers DDG's AI-generated answer summaries.
+		// YouBot is You.com's combined retrieval/training crawler;
+		// listed here because the live-retrieval purpose dominates and
+		// the bot identifies cleanly by token.
 		'Applebot',
 		'ChatGPT-User',
 		'Claude-SearchBot',
 		'Claude-User',
 		'DuckAssistBot',
+		'Mistralai-User',
 		'OAI-SearchBot',
 		'Perplexity-User',
 		'PerplexityBot',
+		'YouBot',
 
 		// Agentic shopping — AI that places orders, not just reads.
 		// Highest commerce intent: appearing here means appearing at
@@ -126,12 +131,18 @@ class WC_AI_Storefront_Robots {
 		// brand-strategy decision — no functional sub-grouping
 		// (compare LIVE_BROWSING_AGENTS where revenue-vs-discovery
 		// distinctions matter), so ordering is pure scannability.
+		// `anthropic-ai` is Anthropic's older crawler identifier,
+		// still seen in real logs alongside the newer `ClaudeBot`.
+		// `Diffbot` builds the Knowledge Graph that several LLM
+		// vendors purchase as training input.
 		'Amazonbot',
+		'anthropic-ai',
 		'Applebot-Extended',
 		'Bytespider',
 		'CCBot',
 		'ClaudeBot',
 		'cohere-ai',
+		'Diffbot',
 		'Google-Extended',
 		'GPTBot',
 		'Meta-ExternalAgent',
@@ -202,9 +213,11 @@ class WC_AI_Storefront_Robots {
 		'Claude-SearchBot',
 		'Claude-User',
 		'DuckAssistBot',
+		'Mistralai-User',
 		'OAI-SearchBot',
 		'Perplexity-User',
 		'PerplexityBot',
+		'YouBot',
 		'AmazonBuyForMe',
 		'KlarnaBot',
 		'AdIdxBot',
@@ -218,11 +231,13 @@ class WC_AI_Storefront_Robots {
 
 		// Training crawlers — alphabetical (case-insensitive).
 		'Amazonbot',
+		'anthropic-ai',
 		'Applebot-Extended',
 		'Bytespider',
 		'CCBot',
 		'ClaudeBot',
 		'cohere-ai',
+		'Diffbot',
 		'Google-Extended',
 		'GPTBot',
 		'Meta-ExternalAgent',

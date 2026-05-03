@@ -282,6 +282,7 @@ class WC_AI_Storefront_Crawl_Logger {
 			'ClaudeBot'                  => 'Claude',
 			'Claude-User'                => 'Claude',
 			'Claude-SearchBot'           => 'Claude',
+			'anthropic-ai'               => 'Claude',
 			// Perplexity.
 			'PerplexityBot'              => 'Perplexity',
 			'Perplexity-User'            => 'Perplexity',
@@ -313,7 +314,13 @@ class WC_AI_Storefront_Crawl_Logger {
 			'Bytespider'                 => 'ByteDance',
 			'CCBot'                      => 'Common Crawl',
 			'cohere-ai'                  => 'Cohere',
+			'Diffbot'                    => 'Diffbot',
 			'Meta-ExternalAgent'         => 'Meta',
+			// Mistral, You.com — both training and live retrieval; the
+			// `-User` suffix (Mistralai-User) is the vendor's signal for
+			// live user-triggered fetches.
+			'Mistralai-User'             => 'Mistral',
+			'YouBot'                     => 'You.com',
 		);
 		$agent       = $brand_names[ $agent ] ?? $agent;
 		// mb_substr is recommended but not required; fall back to substr so

@@ -467,6 +467,12 @@ const KNOWN_CRAWLERS = [
 		subgroup: 'general',
 	},
 	{
+		id: 'Mistralai-User',
+		label: 'Mistralai-User (Mistral AI)',
+		category: 'live',
+		subgroup: 'general',
+	},
+	{
 		id: 'OAI-SearchBot',
 		label: 'OAI-SearchBot (OpenAI SearchGPT)',
 		category: 'live',
@@ -481,6 +487,12 @@ const KNOWN_CRAWLERS = [
 	{
 		id: 'PerplexityBot',
 		label: 'PerplexityBot (Perplexity)',
+		category: 'live',
+		subgroup: 'general',
+	},
+	{
+		id: 'YouBot',
+		label: 'YouBot (You.com)',
 		category: 'live',
 		subgroup: 'general',
 	},
@@ -563,6 +575,11 @@ const KNOWN_CRAWLERS = [
 		category: 'training',
 	},
 	{
+		id: 'anthropic-ai',
+		label: 'anthropic-ai (Anthropic legacy)',
+		category: 'training',
+	},
+	{
 		id: 'Applebot-Extended',
 		label: 'Applebot-Extended (Apple Intelligence)',
 		category: 'training',
@@ -575,6 +592,11 @@ const KNOWN_CRAWLERS = [
 	{ id: 'CCBot', label: 'CCBot (CommonCrawl)', category: 'training' },
 	{ id: 'ClaudeBot', label: 'ClaudeBot (Anthropic)', category: 'training' },
 	{ id: 'cohere-ai', label: 'cohere-ai (Cohere)', category: 'training' },
+	{
+		id: 'Diffbot',
+		label: 'Diffbot (Knowledge Graph for AI)',
+		category: 'training',
+	},
 	{
 		id: 'Google-Extended',
 		label: 'Google-Extended (Gemini training)',

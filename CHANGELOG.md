@@ -4,6 +4,14 @@
 
 ### Features
 
+- **Expanded AI crawler allow-list.** Added four AI agents to the canonical crawler list:
+  - `YouBot` (You.com) — live retrieval + training. Default-on, `LIVE_BROWSING_AGENTS` general subgroup. Brand: "You.com".
+  - `Mistralai-User` (Mistral) — live retrieval. Default-on, `LIVE_BROWSING_AGENTS` general subgroup, following the `-User` suffix convention used by OpenAI / Anthropic / Perplexity. Brand: "Mistral".
+  - `anthropic-ai` — Anthropic's older crawler identifier still seen in real logs alongside the newer `ClaudeBot`. Default-off, `TRAINING_CRAWLERS`. Maps to the existing "Claude" brand so per-vendor stats consolidate cleanly.
+  - `Diffbot` — Knowledge Graph builder licensed by several LLM vendors as training input. Default-off, `TRAINING_CRAWLERS`. Brand: "Diffbot".
+
+  Token→brand map in `class-wc-ai-storefront-crawl-logger.php` updated; admin UI checkbox list in `endpoint-info.js` updated; existing `RobotsTest::test_ai_crawlers_is_union_of_live_training_and_test` continues to pass since the flat `AI_CRAWLERS` constant was updated in lockstep.
+
 ### Fixes
 
 ### Refactors
@@ -11,6 +19,10 @@
 ### Tests
 
 ### Docs
+
+- **New `docs/engineering/KNOWN-GAPS.md`.** Single source of truth for known plugin limitations that are explicit design choices or measurement gaps rather than bugs to fix imminently. Initial entries:
+  - **Attribution gap for Chromium-based agentic browser shoppers** (ChatGPT Operator / Atlas, Perplexity Comet, Brave Leo, Project Mariner, Copilot Vision, Manus, Multion, Browserbase-hosted agents). These present as plain Chromium/Edge UAs and cannot be identified by UA-token matching. UCP REST traffic from them is bucketed as `Other AI` via the existing `OTHER_AI_BUCKET` fallback; Store API traffic from them is currently invisible. Documents the structural reasons, the merchant-facing impact on each Discovery surface, mitigations available today (UCP-Agent header is the intended channel), and three options for future work.
+  - **`ENDPOINT_PRODUCT_PAGE` is declared but unused.** Constant exists in the crawl logger but no call site records under it, so AI crawlers reading product pages (and the embedded JSON-LD) directly are not surfaced. Logged as a follow-up tied to the bulk-catalog ingestion work.
 
 ---
 
