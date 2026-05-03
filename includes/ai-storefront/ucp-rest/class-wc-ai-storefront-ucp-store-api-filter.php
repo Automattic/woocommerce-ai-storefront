@@ -126,6 +126,16 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			PHP_INT_MAX,
 			1
 		);
+		// Priority 9 — one tick before WooCommerce's ProductQuery::add_query_clauses()
+		// at priority 10 on the same hook. Running first lets us zero out the 'search'
+		// query var so WooCommerce's callback becomes a no-op, then we add our own
+		// per-word AND LIKE clauses in their place.
+		add_filter(
+			'posts_clauses',
+			[ $this, 'on_posts_clauses_search' ],
+			9,
+			2
+		);
 		self::$hook_registered = true;
 	}
 
@@ -339,6 +349,229 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		}
 
 		return $args;
+	}
+
+	/**
+	 * Replace WooCommerce's single-phrase LIKE with per-signal-term
+	 * clauses that expand each term against the store's own product
+	 * taxonomy (categories, tags, brands, attributes) and fall back
+	 * to a title LIKE for terms that don't match any taxonomy term.
+	 *
+	 * WooCommerce's ProductQuery::add_query_clauses() (priority 10 on
+	 * posts_clauses) builds `post_title LIKE '%full phrase%'`. For
+	 * natural-language AI queries like "Hoodie with logo" or "Running
+	 * shoes for men" this phrase match fails unless the product title
+	 * contains the exact multi-word string.
+	 *
+	 * Running at priority 9 this method:
+	 *   1. Splits the query, strips stopwords — leaving signal terms.
+	 *   2. Resolves each signal term against the store's taxonomy:
+	 *      product_cat, product_tag, product_brand, pa_* attributes.
+	 *   3. For taxonomy-matched terms emits an EXISTS subquery so the
+	 *      product can be found via its category/tag/attribute term
+	 *      even when that word doesn't appear in the title.
+	 *   4. Combines taxonomy clause OR title LIKE per term so both
+	 *      routes count.
+	 *   5. Zeroes out 'search' to suppress WooCommerce's phrase LIKE.
+	 *
+	 * Example — "Hoodie with logo":
+	 *   signal terms: hoodie, logo
+	 *   hoodie → matches category "Hoodies" (term_id 5)
+	 *   logo   → no taxonomy match
+	 *   WHERE AND (
+	 *     (EXISTS(… term_id IN (5)) OR post_title LIKE '%hoodie%')
+	 *     AND post_title LIKE '%logo%'
+	 *   )
+	 *
+	 * Only active inside UCP dispatch.
+	 *
+	 * @since 0.9.0
+	 *
+	 * @param array    $args     posts_clauses array (join, where, …).
+	 * @param WP_Query $wp_query The WP_Query being built.
+	 * @return array             Modified args.
+	 */
+	public function on_posts_clauses_search( array $args, WP_Query $wp_query ): array {
+		if ( ! self::is_in_ucp_dispatch() ) {
+			return $args;
+		}
+
+		$raw_search = $wp_query->get( 'search' );
+		if ( empty( $raw_search ) || ! is_string( $raw_search ) ) {
+			return $args;
+		}
+
+		$terms = self::extract_search_terms( $raw_search );
+		if ( empty( $terms ) ) {
+			// All stopwords — let WooCommerce's phrase LIKE run as fallback.
+			return $args;
+		}
+
+		global $wpdb;
+
+		// Suppress WooCommerce's phrase-LIKE at priority 10.
+		$wp_query->set( 'search', '' );
+
+		$posts_table = $wpdb->prefix . 'posts';
+		$meta_table  = $wpdb->prefix . 'wc_product_meta_lookup';
+		$tr_table    = $wpdb->prefix . 'term_relationships';
+		$tt_table    = $wpdb->prefix . 'term_taxonomy';
+		$sku_enabled = function_exists( 'wc_product_sku_enabled' ) && wc_product_sku_enabled();
+
+		if ( $sku_enabled && false === strpos( $args['join'], $meta_table ) ) {
+			$args['join'] .= " LEFT JOIN {$meta_table} ON {$posts_table}.ID = {$meta_table}.product_id ";
+		}
+
+		// Resolve which signal terms have matching taxonomy term IDs.
+		$taxonomy_map = self::resolve_taxonomy_terms( $terms );
+
+		$per_term = array();
+		foreach ( $terms as $signal ) {
+			$like = '%' . $wpdb->esc_like( $signal ) . '%';
+
+			// Title (+ SKU) fallback — always present.
+			if ( $sku_enabled ) {
+				$title_clause = $wpdb->prepare(
+					"( {$posts_table}.post_title LIKE %s OR {$meta_table}.sku LIKE %s )",
+					$like,
+					$like
+				);
+			} else {
+				$title_clause = $wpdb->prepare( "{$posts_table}.post_title LIKE %s", $like );
+			}
+
+			$term_ids = $taxonomy_map[ $signal ] ?? array();
+			if ( ! empty( $term_ids ) ) {
+				// Taxonomy route via EXISTS subquery — no extra JOIN needed.
+				$ids_sql    = implode( ',', array_map( 'intval', $term_ids ) );
+				$tax_clause = "EXISTS (
+					SELECT 1 FROM {$tr_table} ucp_tr
+					JOIN {$tt_table} ucp_tt ON ucp_tr.term_taxonomy_id = ucp_tt.term_taxonomy_id
+					WHERE ucp_tr.object_id = {$posts_table}.ID
+					AND ucp_tt.term_id IN ({$ids_sql})
+				)";
+				$per_term[] = "( {$tax_clause} OR {$title_clause} )";
+			} else {
+				$per_term[] = $title_clause;
+			}
+		}
+
+		$args['where'] .= ' AND ( ' . implode( ' AND ', $per_term ) . ' )';
+
+		return $args;
+	}
+
+	/**
+	 * Resolve signal terms to product taxonomy term IDs using the
+	 * store's own categories, tags, brands, and attribute values.
+	 *
+	 * Fetches all terms across product_cat / product_tag /
+	 * product_brand / pa_* in a single get_terms() call (result is
+	 * cached by WordPress's object cache). Matches each signal term
+	 * by exact name or slug, then by simple plural↔singular
+	 * normalisation (strip or add a trailing 's').
+	 *
+	 * @since 0.9.0
+	 *
+	 * @param string[] $signal_terms Lowercase signal terms.
+	 * @return array<string, int[]>  Map of signal_term → matched term IDs.
+	 */
+	public static function resolve_taxonomy_terms( array $signal_terms ): array {
+		if ( empty( $signal_terms ) ) {
+			return array();
+		}
+
+		$taxonomies = array_values(
+			array_filter(
+				array_keys( (array) get_taxonomies( array( 'object_type' => array( 'product' ) ), 'names' ) ),
+				static function ( string $t ) {
+					return in_array( $t, array( 'product_cat', 'product_tag', 'product_brand' ), true )
+						|| str_starts_with( $t, 'pa_' );
+				}
+			)
+		);
+
+		if ( empty( $taxonomies ) ) {
+			return array();
+		}
+
+		$all_terms = get_terms(
+			array(
+				'taxonomy'   => $taxonomies,
+				'hide_empty' => false,
+				'fields'     => 'all',
+				'number'     => 0,
+			)
+		);
+
+		if ( is_wp_error( $all_terms ) || empty( $all_terms ) ) {
+			return array();
+		}
+
+		// Build lookup: normalised key → [term_id, …]
+		$lookup = array();
+		foreach ( $all_terms as $term ) {
+			$key_name = strtolower( trim( $term->name ) );
+			$lookup[ $key_name ][] = (int) $term->term_id;
+			if ( $term->slug !== $key_name ) {
+				$lookup[ $term->slug ][] = (int) $term->term_id;
+			}
+		}
+
+		$result = array();
+		foreach ( $signal_terms as $signal ) {
+			// Exact match.
+			if ( isset( $lookup[ $signal ] ) ) {
+				$result[ $signal ] = array_unique( $lookup[ $signal ] );
+				continue;
+			}
+			// Plural → singular: hoodies → hoodie.
+			if ( str_ends_with( $signal, 's' ) && strlen( $signal ) > 2 ) {
+				$singular = substr( $signal, 0, -1 );
+				if ( isset( $lookup[ $singular ] ) ) {
+					$result[ $signal ] = array_unique( $lookup[ $singular ] );
+					continue;
+				}
+			}
+			// Singular → plural: shoe → shoes.
+			if ( isset( $lookup[ $signal . 's' ] ) ) {
+				$result[ $signal ] = array_unique( $lookup[ $signal . 's' ] );
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Split a raw search string into meaningful signal terms.
+	 *
+	 * Lowercases the query, splits on whitespace, and strips common
+	 * English stopwords and single-character tokens. Returns an empty
+	 * array if every word is a stopword — callers treat that as "fall
+	 * back to WooCommerce default behavior."
+	 *
+	 * @since 0.9.0
+	 *
+	 * @param string $query Raw search query.
+	 * @return string[]     Lowercase signal terms.
+	 */
+	public static function extract_search_terms( string $query ): array {
+		static $stopwords = array(
+			'a', 'an', 'the', 'and', 'or', 'for', 'in', 'on', 'at', 'to',
+			'of', 'from', 'by', 'with', 'is', 'are', 'was', 'were', 'be',
+			'i', 'me', 'my', 'we', 'our', 'you', 'your', 'it', 'its',
+			'this', 'that', 'these', 'those', 'some', 'any',
+		);
+
+		$words = preg_split( '/\s+/', strtolower( trim( $query ) ), -1, PREG_SPLIT_NO_EMPTY );
+		return array_values(
+			array_filter(
+				(array) $words,
+				static function ( string $w ) use ( $stopwords ) {
+					return strlen( $w ) > 1 && ! in_array( $w, $stopwords, true );
+				}
+			)
+		);
 	}
 
 	/**
