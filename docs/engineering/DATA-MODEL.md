@@ -288,11 +288,11 @@ Raw event log — one row per identified AI-agent request. Written from a static
 Daily aggregates rolled up from the raw log. Powers the `/crawl-stats` admin endpoint without scanning the raw table on every request.
 
 - **Defined in:** `WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY`
-- **Written by:** `wc_ai_storefront_rollup_crawl_log` daily cron — selects the prior day's raw rows, groups by (date, agent, endpoint), and writes one row per group
-- **Retention:** `WC_AI_Storefront_Crawl_Logger::SUMMARY_RETENTION_DAYS = 90`. Pruned by the same daily cron that does the rollup.
+- **Written by:** `wc_ai_storefront_rollup_crawl_log` hourly cron — selects yesterday's and today's raw rows, groups by (date, agent, endpoint), and upserts one row per group
+- **Retention:** `WC_AI_Storefront_Crawl_Logger::SUMMARY_RETENTION_DAYS = 90`. Pruned by the daily prune cron.
 - **Uninstall:** dropped via `DROP TABLE` in `uninstall.php`
 
-The summary table only contains data through end-of-yesterday. Today's events sit in the raw log until the next nightly rollup. The `/crawl-stats` endpoint is documented to reflect "activity up to the end of yesterday" for that reason.
+The summary table is refreshed hourly. Today's in-progress events appear within ~1 hour of occurring. The rollup uses `INSERT … ON DUPLICATE KEY UPDATE` so repeated runs are safe.
 
 ---
 
@@ -319,9 +319,9 @@ Daily cron that deletes raw log rows older than `RAW_RETENTION_DAYS` (30) and su
 
 ### `wc_ai_storefront_rollup_crawl_log`
 
-Daily cron that rolls yesterday's raw log into the summary table.
+Hourly cron that rolls yesterday's and today's raw log into the summary table, keeping stats within ~1 hour of real-time.
 
-- **Schedule:** `daily`, anchored to UTC midnight + 60 seconds (runs after pruning so the rollup never sees rows being deleted underneath it)
+- **Schedule:** `hourly` by default. Override with the `wc_ai_storefront_rollup_interval` filter (any WP-registered cron schedule: `daily`, `twicedaily`, etc.). The filter is read at registration time — to change an already-registered schedule, delete the event first (`wp cron event delete wc_ai_storefront_rollup_crawl_log`) and let it re-register on the next request.
 - **Defined in:** `WC_AI_Storefront_Crawl_Logger`
 - **Uninstall:** cleared by `uninstall.php`
 

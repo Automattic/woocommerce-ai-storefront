@@ -713,7 +713,7 @@ const StatTile = ( { label, value, sub } ) => (
 	<div
 		style={ {
 			textAlign: 'center',
-			padding: `${ spacing.s3 } ${ spacing.s2 }`,
+			padding: `${ spacing.s4 } ${ spacing.s3 }`,
 		} }
 	>
 		<div
@@ -800,18 +800,22 @@ const CrawlerActivityCard = () => {
 								'woocommerce-ai-storefront'
 							) }
 						</h3>
-						<p
-							style={ {
-								margin: 0,
-								fontSize: '12px',
-								color: colors.textMuted,
-							} }
-						>
-							{ __(
-								"Updated daily from yesterday's AI activity log.",
-								'woocommerce-ai-storefront'
-							) }
-						</p>
+						{ ! crawlStatsError &&
+						! isLoading &&
+						crawlStats.total_requests > 0 && (
+							<p
+								style={ {
+									margin: 0,
+									fontSize: '12px',
+									color: colors.textMuted,
+								} }
+							>
+								{ __(
+									'Updated hourly.',
+									'woocommerce-ai-storefront'
+								) }
+							</p>
+						) }
 					</div>
 					{ /* Period chip strip */ }
 					<div
@@ -1062,6 +1066,15 @@ const CrawlerActivityCard = () => {
 										),
 										crawlStats.top_queries.length
 									) }
+									<span
+										style={ {
+											marginLeft: 'auto',
+											fontSize: '14px',
+											lineHeight: 1,
+										} }
+									>
+										{ '▾' }
+									</span>
 								</summary>
 								{ /* 5×2 desktop grid, 10×1 mobile stack.
 								     JS split gives column-major order (ranks 1–5
@@ -1131,8 +1144,6 @@ const CrawlerActivityCard = () => {
 																				'tabular-nums',
 																			textAlign:
 																				'right',
-																			lineHeight:
-																				'1',
 																		} }
 																	>
 																		{ rank }
@@ -1178,24 +1189,24 @@ const CrawlerActivityCard = () => {
 																					whiteSpace:
 																						'nowrap',
 																					marginTop:
-																						'1px',
+																						'2px',
 																				} }
 																			>
 																				{ [
 																					...entry.agents.slice(
 																						0,
-																						2
+																						3
 																					),
 																					...( entry
 																						.agents
 																						.length >
-																					2
+																					3
 																						? [
 																								`+${
 																									entry
 																										.agents
 																										.length -
-																									2
+																									3
 																								}`,
 																						  ]
 																						: [] ),
@@ -1297,25 +1308,12 @@ const CrawlerActivityCard = () => {
 										</div>
 									) ) }
 								</div>
-								<p
-									style={ {
-										margin: '10px 0 0',
-										fontSize: '12px',
-										color: colors.textMuted,
-										textAlign: 'center',
-									} }
-								>
-									{ __(
-										'Search queries from AI agents will appear here.',
-										'woocommerce-ai-storefront'
-									) }
-								</p>
 							</>
 						) }
 					</div>
 				) }
 
-				{ /* Empty state */ }
+				{ /* Empty state — shown when no requests at all for the period */ }
 				{ ! crawlStatsError &&
 					! isLoading &&
 					crawlStats.total_requests === 0 && (
@@ -2180,7 +2178,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										style={ {
 											...typography.statValue,
 											color: colors.textPrimary,
-											marginBottom: '6px',
+											marginBottom: '4px',
 										} }
 									>
 										{ card.rpm }
