@@ -128,6 +128,30 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_apostrophe_stripped_in_place(): void {
+		// "women's" → "womens" (not split into two tokens).
+		$this->assertSame(
+			array( 'womens', 'jacket' ),
+			\WC_AI_Storefront_UCP_Store_API_Filter::extract_search_terms( "Women's jacket" )
+		);
+	}
+
+	public function test_hyphen_splits_into_tokens(): void {
+		// "mid-layer" → "mid", "layer".
+		$this->assertSame(
+			array( 'mid', 'layer' ),
+			\WC_AI_Storefront_UCP_Store_API_Filter::extract_search_terms( 'mid-layer' )
+		);
+	}
+
+	public function test_punctuation_other_than_apostrophe_and_hyphen_dropped(): void {
+		// "100% cotton!" → "100", "cotton".
+		$terms = \WC_AI_Storefront_UCP_Store_API_Filter::extract_search_terms( '100% cotton!' );
+		$this->assertContains( 'cotton', $terms );
+		$this->assertNotContains( '%', implode( '', $terms ) );
+		$this->assertNotContains( '!', implode( '', $terms ) );
+	}
+
 	// ---------------------------------------------------------------
 	// resolve_taxonomy_terms() — taxonomy lookup
 	// ---------------------------------------------------------------
@@ -203,6 +227,45 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'men', $result );
 		$this->assertContains( 5, $result['hoodies'] );
 		$this->assertContains( 12, $result['men'] );
+	}
+
+	public function test_resolve_ches_es_to_ch(): void {
+		// "watches" → "watch" via {ch}es → ch rule.
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 8, 'Watch', 'product_cat' ),
+		) );
+
+		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'watches' ) );
+
+		$this->assertArrayHasKey( 'watches', $result );
+		$this->assertContains( 8, $result['watches'] );
+	}
+
+	public function test_resolve_ies_to_y(): void {
+		// "accessories" → "accessory" via ies → y rule.
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 9, 'Accessory', 'product_cat' ),
+		) );
+
+		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'accessories' ) );
+
+		$this->assertArrayHasKey( 'accessories', $result );
+		$this->assertContains( 9, $result['accessories'] );
+	}
+
+	public function test_resolve_y_to_ies(): void {
+		// "accessory" → "accessories" via y → ies rule (singular query, plural category).
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 9, 'Accessories', 'product_cat' ),
+		) );
+
+		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'accessory' ) );
+
+		$this->assertArrayHasKey( 'accessory', $result );
+		$this->assertContains( 9, $result['accessory'] );
 	}
 
 	public function test_resolve_returns_empty_on_wp_error(): void {

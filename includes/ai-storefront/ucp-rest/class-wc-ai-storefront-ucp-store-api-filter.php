@@ -364,8 +364,10 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * contains the exact multi-word string.
 	 *
 	 * Running at priority 9 this method:
-	 *   1. Splits the query, strips stopwords — leaving signal terms.
-	 *   2. Resolves each signal term against the store's taxonomy:
+	 *   1. Strips punctuation (apostrophes in-place, hyphens→spaces),
+	 *      splits on whitespace, removes stopwords — leaving signal terms.
+	 *   2. Resolves each signal term against the store's taxonomy via
+	 *      exact match or suffix-flip dictionary (ies↔y, es↔, s↔):
 	 *      product_cat, product_tag, product_brand, pa_* attributes.
 	 *   3. For taxonomy-matched terms emits an EXISTS subquery so the
 	 *      product can be found via its category/tag/attribute term
@@ -471,8 +473,8 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * Fetches all terms across product_cat / product_tag /
 	 * product_brand / pa_* in a single get_terms() call (result is
 	 * cached by WordPress's object cache). Matches each signal term
-	 * by exact name or slug, then by simple plural↔singular
-	 * normalisation (strip or add a trailing 's').
+	 * by exact name or slug, then via `find_in_lookup_via_variants()`
+	 * which applies a suffix-flip dictionary (ies↔y, es↔, s↔).
 	 *
 	 * @since 0.9.0
 	 *
@@ -528,26 +530,113 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 
 		$result = array();
 		foreach ( $signal_terms as $signal ) {
-			// Exact match.
+			// Exact match first.
 			if ( isset( $lookup[ $signal ] ) ) {
 				$result[ $signal ] = array_unique( $lookup[ $signal ] );
 				continue;
 			}
-			// Plural → singular: hoodies → hoodie.
-			if ( str_ends_with( $signal, 's' ) && strlen( $signal ) > 2 ) {
-				$singular = substr( $signal, 0, -1 );
-				if ( isset( $lookup[ $singular ] ) ) {
-					$result[ $signal ] = array_unique( $lookup[ $singular ] );
-					continue;
-				}
-			}
-			// Singular → plural: shoe → shoes.
-			if ( isset( $lookup[ $signal . 's' ] ) ) {
-				$result[ $signal ] = array_unique( $lookup[ $signal . 's' ] );
+
+			// Try morphological variants in priority order and take the
+			// first that hits the lookup. Rules cover the most common
+			// English suffix transformations seen in product taxonomy names.
+			$ids = self::find_in_lookup_via_variants( $signal, $lookup );
+			if ( ! empty( $ids ) ) {
+				$result[ $signal ] = $ids;
 			}
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Generate morphological variants of a signal term and return the
+	 * first batch of term IDs found in the taxonomy lookup.
+	 *
+	 * Covers the most common English suffix transformations that occur
+	 * between how AI agents phrase queries and how merchants title their
+	 * product taxonomy terms:
+	 *
+	 *   Plural → singular (query is plural, taxonomy is singular):
+	 *     ies → y   : "hoodies" → "hoodie"
+	 *     ches → ch : "watches" → "watch"
+	 *     shes → sh : "brushes" → "brush"
+	 *     xes → x   : "boxes"   → "box"
+	 *     ses → s   : "dresses" → "dress"
+	 *     zes → z   : "buzzes"  → "buzz"
+	 *     es → (drop): "scarves" edge case covered by next rule
+	 *     s → (drop) : "shoes"  → "shoe"
+	 *
+	 *   Singular → plural (query is singular, taxonomy is plural):
+	 *     y → ies   : "hoodie" missed; covers "category" → "categories"
+	 *     (base)→es : only tried for ch/sh/x/s/z endings
+	 *     (base)→s  : "shoe"   → "shoes"
+	 *
+	 * Returns the first non-empty hit, or an empty array if no variant
+	 * is found. Does NOT mutate the lookup.
+	 *
+	 * @since 0.9.0
+	 *
+	 * @param string            $signal The signal term to match.
+	 * @param array<string,int[]> $lookup Normalised name/slug → [term_id, …].
+	 * @return int[]                     Unique term IDs, or empty array.
+	 */
+	private static function find_in_lookup_via_variants( string $signal, array $lookup ): array {
+		$len = strlen( $signal );
+
+		// ---- Plural → singular ----------------------------------------
+
+		// ies → y  (hoodies → hoodie, accessories → accessory)
+		if ( $len > 3 && str_ends_with( $signal, 'ies' ) ) {
+			$candidate = substr( $signal, 0, -3 ) . 'y';
+			if ( isset( $lookup[ $candidate ] ) ) {
+				return array_unique( $lookup[ $candidate ] );
+			}
+		}
+
+		// {ch,sh,x,s,z}es → drop 'es'  (watches → watch, boxes → box)
+		if ( $len > 3 && str_ends_with( $signal, 'es' ) ) {
+			$base      = substr( $signal, 0, -2 );
+			$last_two  = substr( $base, -2 );
+			if ( in_array( $last_two, array( 'ch', 'sh' ), true ) || in_array( substr( $base, -1 ), array( 'x', 's', 'z' ), true ) ) {
+				if ( isset( $lookup[ $base ] ) ) {
+					return array_unique( $lookup[ $base ] );
+				}
+			}
+		}
+
+		// s → drop (shoes → shoe, jackets → jacket)
+		if ( $len > 2 && str_ends_with( $signal, 's' ) ) {
+			$candidate = substr( $signal, 0, -1 );
+			if ( isset( $lookup[ $candidate ] ) ) {
+				return array_unique( $lookup[ $candidate ] );
+			}
+		}
+
+		// ---- Singular → plural ----------------------------------------
+
+		// y → ies  (accessory → accessories)
+		if ( $len > 2 && str_ends_with( $signal, 'y' ) ) {
+			$candidate = substr( $signal, 0, -1 ) . 'ies';
+			if ( isset( $lookup[ $candidate ] ) ) {
+				return array_unique( $lookup[ $candidate ] );
+			}
+		}
+
+		// base + es  (watch → watches, box → boxes)
+		$last_two = substr( $signal, -2 );
+		if ( in_array( $last_two, array( 'ch', 'sh' ), true ) || in_array( substr( $signal, -1 ), array( 'x', 's', 'z' ), true ) ) {
+			$candidate = $signal . 'es';
+			if ( isset( $lookup[ $candidate ] ) ) {
+				return array_unique( $lookup[ $candidate ] );
+			}
+		}
+
+		// base + s  (shoe → shoes, jacket → jackets)
+		if ( isset( $lookup[ $signal . 's' ] ) ) {
+			return array_unique( $lookup[ $signal . 's' ] );
+		}
+
+		return array();
 	}
 
 	/**
@@ -601,7 +690,18 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			'any',
 		);
 
-		$words = preg_split( '/\s+/', strtolower( trim( $query ) ), -1, PREG_SPLIT_NO_EMPTY );
+		// Strip apostrophes in-place (women's → womens) so possessives and
+		// contractions don't produce a token with a literal apostrophe that
+		// would never match a product title. Other punctuation (hyphens,
+		// slashes) is converted to spaces so compound words split into
+		// separate signal tokens ("mid-layer" → "mid", "layer"). Everything
+		// else that is not a letter or digit is then removed.
+		$normalised = strtolower( trim( $query ) );
+		$normalised = str_replace( "'", '', $normalised );      // apostrophes: don't split.
+		$normalised = preg_replace( '/[-\/]+/', ' ', $normalised ); // hyphens/slashes: split.
+		$normalised = preg_replace( '/[^a-z0-9 ]/', '', (string) $normalised ); // everything else: drop.
+
+		$words = preg_split( '/\s+/', (string) $normalised, -1, PREG_SPLIT_NO_EMPTY );
 		return array_values(
 			array_filter(
 				(array) $words,
