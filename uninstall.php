@@ -74,6 +74,10 @@ foreach ( array( 'day', 'week', 'month', 'year' ) as $wc_ai_storefront_period ) 
 	delete_transient( 'wc_ai_storefront_stats_' . $wc_ai_storefront_period );
 }
 unset( $wc_ai_storefront_period );
+foreach ( array( 'day', 'week', 'month', 'quarter' ) as $wc_ai_storefront_period ) {
+	delete_transient( 'wc_ai_storefront_crawl_stats_' . $wc_ai_storefront_period );
+}
+unset( $wc_ai_storefront_period );
 
 /*
  * --------------------------------------------------------------------------
@@ -126,6 +130,10 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 			delete_transient( 'wc_ai_storefront_sitemap_urls' );
 			foreach ( array( 'day', 'week', 'month', 'year' ) as $_period ) {
 				delete_transient( 'wc_ai_storefront_stats_' . $_period );
+			}
+			unset( $_period );
+			foreach ( array( 'day', 'week', 'month', 'quarter' ) as $_period ) {
+				delete_transient( 'wc_ai_storefront_crawl_stats_' . $_period );
 			}
 			unset( $_period );
 			wp_clear_scheduled_hook( 'wc_ai_storefront_warm_llms_txt_cache' );

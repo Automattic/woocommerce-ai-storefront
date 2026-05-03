@@ -252,11 +252,13 @@ class WC_AI_Storefront {
 
 		if ( $needs_flush || $stored_version !== WC_AI_STOREFRONT_VERSION ) {
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );
-			update_option( 'wc_ai_storefront_version', WC_AI_STOREFRONT_VERSION );
 
 			// Create or upgrade crawl-log tables on every version bump.
 			// dbDelta is idempotent — no-ops when the schema is already current.
+			// Version option is bumped AFTER create_tables() so that a transient
+			// DB failure leaves the version unchanged and the next request retries.
 			WC_AI_Storefront_Crawl_Logger::create_tables();
+			update_option( 'wc_ai_storefront_version', WC_AI_STOREFRONT_VERSION );
 
 			// Self-healing flush: register the rules IMMEDIATELY (at the
 			// current `plugins_loaded` hook, which is before WordPress
