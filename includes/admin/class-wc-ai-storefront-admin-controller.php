@@ -1258,6 +1258,7 @@ class WC_AI_Storefront_Admin_Controller {
 		}
 		$after_date     = gmdate( 'Y-m-d', $after_ts );
 		$after_datetime = $after_date . ' 00:00:00';
+		$today_start    = gmdate( 'Y-m-d' ) . ' 00:00:00';
 
 		$table     = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY;
 		$log_table = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_LOG;
@@ -1336,11 +1337,13 @@ class WC_AI_Storefront_Admin_Controller {
 				 WHERE endpoint = %s
 				   AND query != ''
 				   AND crawled_at >= %s
+				   AND crawled_at < %s
 				 GROUP BY query
 				 ORDER BY count DESC
 				 LIMIT 20",
 				WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH,
-				$after_datetime
+				$after_datetime,
+				$today_start
 			)
 		);
 		$last_error = $wpdb->last_error;

@@ -184,14 +184,18 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 				$limit
 			);
 
-			// Record the throttled hit. Infer endpoint from the request URI
-			// since the rate limiter doesn't receive the WP_REST_Request object.
+			// Record the throttled hit only for catalog endpoints so throttle
+			// counts stay consistent with where non-throttled requests are also
+			// logged. check_outer_rate_limit() is invoked for all UCP REST
+			// routes; without this guard, non-catalog routes (checkout sessions
+			// etc.) would be miscounted as ENDPOINT_STORE_API_SEARCH traffic.
 			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$uri               = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
-			$throttle_endpoint = str_contains( $uri, 'catalog/lookup' )
-				? WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SINGLE
-				: WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH;
-			WC_AI_Storefront_Crawl_Logger::record( $throttle_endpoint, 0, $matched_bot, '', true );
+			$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+			if ( str_contains( $uri, 'catalog/lookup' ) ) {
+				WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SINGLE, 0, $matched_bot, '', true );
+			} elseif ( str_contains( $uri, 'catalog/search' ) ) {
+				WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH, 0, $matched_bot, '', true );
+			}
 
 			return new WP_Error(
 				WC_AI_Storefront_UCP_Error_Codes::UCP_RATE_LIMIT_EXCEEDED,

@@ -238,9 +238,11 @@ class WC_AI_Storefront_Robots {
 	 * User-Agent string, or '' if none match.
 	 *
 	 * Used by passive-serve paths (llms.txt, UCP manifest) that don't carry
-	 * a structured UCP-Agent header. Callers that need brand-name bucketing
-	 * should run the result through
-	 * `WC_AI_Storefront_UCP_Agent_Header::canonicalize_host_idempotent()`.
+	 * a structured UCP-Agent header. Pass the returned token directly to
+	 * `WC_AI_Storefront_Crawl_Logger::record()`, which maps UA tokens to
+	 * merchant-facing brand names internally via its own token→brand table.
+	 * Do not pass UA tokens through `canonicalize_host_idempotent()` — that
+	 * helper maps hostnames/utm_source values, not UA tokens.
 	 *
 	 * @return string Matched bot token (e.g. 'GPTBot', 'ChatGPT-User') or ''.
 	 */
