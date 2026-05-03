@@ -991,7 +991,7 @@ const CrawlerActivityCard = () => {
 						<div style={ { background: colors.surface } }>
 							<StatTile
 								label={ __(
-									'UCP API hits',
+									'UCP manifest hits',
 									'woocommerce-ai-storefront'
 								) }
 								value={ fmt( crawlStats.ucp_hits ) }
