@@ -452,16 +452,31 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			$like = '%' . $wpdb->esc_like( $signal ) . '%';
 
 			// Title (+ SKU) fallback — always present.
+			// For title LIKE, also include the suffix-flip variant so "hoodies"
+			// matches products titled "Classic Hoodie" and "shoe" matches
+			// "Trail Running Shoes". SKU LIKE uses only the raw signal — SKUs
+			// are codes, not English words, so stemming would add noise.
 			// Table names can't be parameterised — suppress the interpolation sniff.
 			// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$like_forms     = self::get_title_like_forms( $signal );
+			$title_likes    = array_map(
+				function ( string $form ) use ( $wpdb, $posts_table ) {
+					$f = '%' . $wpdb->esc_like( $form ) . '%';
+					return $wpdb->prepare( "{$posts_table}.post_title LIKE %s", $f );
+				},
+				$like_forms
+			);
+			$title_like_sql = count( $title_likes ) > 1
+				? '( ' . implode( ' OR ', $title_likes ) . ' )'
+				: $title_likes[0];
+
 			if ( $sku_enabled ) {
 				$title_clause = $wpdb->prepare(
-					"( {$posts_table}.post_title LIKE %s OR {$meta_table}.sku LIKE %s )",
-					$like,
+					"( {$title_like_sql} OR {$meta_table}.sku LIKE %s )",
 					$like
 				);
 			} else {
-				$title_clause = $wpdb->prepare( "{$posts_table}.post_title LIKE %s", $like );
+				$title_clause = $title_like_sql;
 			}
 			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
@@ -546,12 +561,35 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			return array();
 		}
 
+		// Option B: pre-generate all candidate name strings so get_terms()
+		// fetches only the handful of rows that could possibly match,
+		// rather than the full taxonomy table on every search request.
+		// Note: WP does not support name__in + slug__in together cleanly;
+		// name__in covers the common case since single-word term slugs
+		// equal their lowercased name. Slug-only matches (multi-word terms
+		// with spaces-to-hyphens slugs) still resolve via the post-filter
+		// in find_in_lookup_via_variants() because those terms ARE returned
+		// when their name matches a candidate.
+		$candidates = array_values(
+			array_unique(
+				array_merge(
+					...array_map(
+						array( self::class, 'get_candidate_strings' ),
+						$signal_terms
+					)
+				)
+			)
+		);
+
 		$all_terms = get_terms(
 			array(
-				'taxonomy'   => $taxonomies,
-				'hide_empty' => false,
-				'fields'     => 'all',
-				'number'     => 0,
+				'taxonomy'               => $taxonomies,
+				'hide_empty'             => false,
+				'fields'                 => 'all',
+				'number'                 => 0,
+				'name__in'               => $candidates,
+				'update_term_meta_cache' => false,
+				'orderby'                => 'none',
 			)
 		);
 
@@ -678,6 +716,140 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		}
 
 		return array();
+	}
+
+	/**
+	 * Return both morphological forms of a signal term for title LIKE
+	 * expansion — the raw signal plus its suffix-flip variant.
+	 *
+	 * Unlike `find_in_lookup_via_variants()` this helper requires no
+	 * taxonomy lookup; it returns both the original form and its
+	 * counterpart unconditionally so the SQL title LIKE clause can OR
+	 * across both. Result is deduplicated so a no-op flip (e.g. a word
+	 * whose plural and singular are identical after the rule) returns
+	 * just the original form.
+	 *
+	 * Rules mirror the suffix table in `find_in_lookup_via_variants()`:
+	 *   ies → y      : "hoodies"  → ["hoodies", "hoodie"]
+	 *   {ch,sh,x,s,z}es → base : "watches"  → ["watches", "watch"]
+	 *   s → drop     : "shoes"   → ["shoes", "shoe"]
+	 *   y → ies      : "hoodie"  → ["hoodie", "hoodies"]
+	 *   base + es    : "watch"   → ["watch", "watches"]
+	 *   base + s     : "shoe"    → ["shoe", "shoes"]
+	 *   no rule      : "logo"    → ["logo"]
+	 *
+	 * SKU LIKE is intentionally excluded — SKUs are codes, not English
+	 * words, so suffix stemming would add noise rather than recall.
+	 *
+	 * @since 0.9.0
+	 *
+	 * @param string $signal Lowercase signal term.
+	 * @return string[]      One or two deduplicated LIKE forms.
+	 */
+	private static function get_title_like_forms( string $signal ): array {
+		$len = strlen( $signal );
+
+		// ---- Plural → singular ----------------------------------------
+		// s → drop FIRST so "hoodies" → "hoodie" via simple strip, not
+		// "hoody" via the ies→y rule. ies→y is correct for taxonomy names
+		// ("accessories"→"accessory") but wrong for product titles where
+		// the stem ends in 'ie' ("hoodie", "beanie").
+
+		// {ch,sh,x,s,z}es → drop 'es'  (watches → watch)
+		if ( $len > 3 && str_ends_with( $signal, 'es' ) ) {
+			$base     = substr( $signal, 0, -2 );
+			$last_two = substr( $base, -2 );
+			if ( in_array( $last_two, array( 'ch', 'sh' ), true ) || in_array( substr( $base, -1 ), array( 'x', 's', 'z' ), true ) ) {
+				return array_unique( array( $signal, $base ) );
+			}
+		}
+
+		// s → drop (hoodies → hoodie, shoes → shoe)
+		if ( $len > 2 && str_ends_with( $signal, 's' ) ) {
+			$variant = substr( $signal, 0, -1 );
+			return array_unique( array( $signal, $variant ) );
+		}
+
+		// ---- Singular → plural ----------------------------------------
+
+		// y → ies  (accessory → accessories)
+		if ( $len > 2 && str_ends_with( $signal, 'y' ) ) {
+			$variant = substr( $signal, 0, -1 ) . 'ies';
+			return array_unique( array( $signal, $variant ) );
+		}
+
+		// base + es  (watch → watches, box → boxes)
+		$last_two = substr( $signal, -2 );
+		if ( in_array( $last_two, array( 'ch', 'sh' ), true ) || in_array( substr( $signal, -1 ), array( 'x', 's', 'z' ), true ) ) {
+			return array_unique( array( $signal, $signal . 'es' ) );
+		}
+
+		// base + s for words ending in 'e' (shoe → shoes, hoodie → hoodies,
+		// beanie → beanies). Skipping the unconditional +s fallback prevents
+		// widening terms like "logo" → "logos" where the plural is uncommon
+		// in product titles and adds noise rather than recall.
+		if ( $len > 2 && str_ends_with( $signal, 'e' ) ) {
+			return array( $signal, $signal . 's' );
+		}
+
+		return array( $signal );
+	}
+
+	/**
+	 * Return all candidate strings that `find_in_lookup_via_variants()`
+	 * would attempt as lookup keys for a given signal term.
+	 *
+	 * Used by `resolve_taxonomy_terms()` to pre-scope the `get_terms()`
+	 * DB query via `name__in` — fetching only the handful of terms whose
+	 * name matches a candidate rather than the full taxonomy table.
+	 *
+	 * Mirrors the variant generation logic in `find_in_lookup_via_variants()`
+	 * without the lookup step; always returns all possible forms so no
+	 * match is silently missed at the DB scoping stage.
+	 *
+	 * @since 0.9.0
+	 *
+	 * @param string $signal Lowercase signal term.
+	 * @return string[]      Deduplicated candidate strings.
+	 */
+	private static function get_candidate_strings( string $signal ): array {
+		$len        = strlen( $signal );
+		$candidates = array( $signal );
+
+		// ies → y
+		if ( $len > 3 && str_ends_with( $signal, 'ies' ) ) {
+			$candidates[] = substr( $signal, 0, -3 ) . 'y';
+		}
+
+		// {ch,sh,x,s,z}es → base
+		if ( $len > 3 && str_ends_with( $signal, 'es' ) ) {
+			$base     = substr( $signal, 0, -2 );
+			$last_two = substr( $base, -2 );
+			if ( in_array( $last_two, array( 'ch', 'sh' ), true ) || in_array( substr( $base, -1 ), array( 'x', 's', 'z' ), true ) ) {
+				$candidates[] = $base;
+			}
+		}
+
+		// s → drop
+		if ( $len > 2 && str_ends_with( $signal, 's' ) ) {
+			$candidates[] = substr( $signal, 0, -1 );
+		}
+
+		// y → ies
+		if ( $len > 2 && str_ends_with( $signal, 'y' ) ) {
+			$candidates[] = substr( $signal, 0, -1 ) . 'ies';
+		}
+
+		// base + es
+		$last_two_sig = substr( $signal, -2 );
+		if ( in_array( $last_two_sig, array( 'ch', 'sh' ), true ) || in_array( substr( $signal, -1 ), array( 'x', 's', 'z' ), true ) ) {
+			$candidates[] = $signal . 'es';
+		}
+
+		// base + s
+		$candidates[] = $signal . 's';
+
+		return array_values( array_unique( $candidates ) );
 	}
 
 	/**

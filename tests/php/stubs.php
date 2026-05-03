@@ -11,6 +11,24 @@
 
 
 
+if ( ! function_exists( 'esc_sql' ) ) {
+	/**
+	 * Minimal esc_sql stub — strips backslashes and escapes single
+	 * quotes for SQL safety, mirroring WordPress core's behavior.
+	 * Defined here (before Patchwork loads) so it cannot be redefined
+	 * via Brain\Monkey's Functions\when().
+	 *
+	 * @param string|array $data Input to escape.
+	 * @return string|array
+	 */
+	function esc_sql( $data ) {
+		if ( is_array( $data ) ) {
+			return array_map( 'esc_sql', $data );
+		}
+		return addslashes( (string) $data );
+	}
+}
+
 if ( ! class_exists( 'WP_Error' ) ) {
 	/**
 	 * Minimal WP_Error stub.

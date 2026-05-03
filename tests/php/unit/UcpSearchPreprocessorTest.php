@@ -473,4 +473,54 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertStringNotContainsString( 'wc_product_meta_lookup', $result['join'] );
 	}
+
+	// ---------------------------------------------------------------
+	// Title LIKE stem expansion (get_title_like_forms via SQL output)
+	// ---------------------------------------------------------------
+
+	public function test_title_like_includes_singular_form_for_plural_signal(): void {
+		// "hoodies" → title LIKE must contain both '%hoodies%' and '%hoodie%'.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodies' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertStringContainsString( '%hoodies%', $result['where'] );
+		$this->assertStringContainsString( '%hoodie%', $result['where'] );
+	}
+
+	public function test_title_like_includes_plural_form_for_singular_signal(): void {
+		// "shoe" → title LIKE must contain both '%shoe%' and '%shoes%'.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'shoe' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertStringContainsString( '%shoe%', $result['where'] );
+		$this->assertStringContainsString( '%shoes%', $result['where'] );
+	}
+
+	public function test_title_like_single_form_when_no_variant_applies(): void {
+		// "logo" has no applicable suffix rule — only '%logo%' should appear,
+		// not '%logos%' (which would widen recall without justification).
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'logo' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertStringContainsString( '%logo%', $result['where'] );
+		$this->assertStringNotContainsString( '%logos%', $result['where'] );
+	}
 }
