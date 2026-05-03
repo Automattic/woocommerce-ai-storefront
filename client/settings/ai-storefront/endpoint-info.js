@@ -18,6 +18,33 @@ const ENDPOINT_TAB_CLASS = 'ai-storefront-endpoint-tab';
 
 const CRAWLER_GROUP_CLASS = 'ai-storefront-crawler-group';
 
+/**
+ * Returns true when the no-activity empty state should render.
+ *
+ * Exported for unit testing. The two conditions guard against a transient
+ * contradiction: top_queries reads the raw log directly while total_requests
+ * comes from the summary table (updated on the rollup cadence). Between
+ * rollup runs the raw log can have rows that the summary doesn't yet, so we
+ * must check both before declaring "no activity".
+ *
+ * @param {Object}  crawlStats      API response object (may be empty object).
+ * @param {boolean} isLoading       True while the API request is in-flight.
+ * @param {*}       crawlStatsError Truthy when the API call failed.
+ * @return {boolean} Whether the empty-state message should be shown.
+ */
+export function shouldShowCrawlStatsEmptyState(
+	crawlStats,
+	isLoading,
+	crawlStatsError
+) {
+	return (
+		! crawlStatsError &&
+		! isLoading &&
+		crawlStats?.total_requests === 0 &&
+		( ! crawlStats?.top_queries || crawlStats.top_queries.length === 0 )
+	);
+}
+
 // localStorage key for persisted crawler-group collapse/expand state.
 // Stored value is JSON: `{ [groupKey]: boolean }`. Groups missing from
 // the stored object fall back to their `defaultOpen` flag, so adding a
@@ -1388,11 +1415,11 @@ const CrawlerActivityCard = () => {
 				     this check prevents the contradictory state of showing
 				     "No AI agent activity recorded…" while the Top searches
 				     panel above is rendering real query terms. */ }
-				{ ! crawlStatsError &&
-					! isLoading &&
-					crawlStats.total_requests === 0 &&
-					( ! crawlStats.top_queries ||
-						crawlStats.top_queries.length === 0 ) && (
+				{ shouldShowCrawlStatsEmptyState(
+					crawlStats,
+					isLoading,
+					crawlStatsError
+				) && (
 						<p
 							style={ {
 								marginTop: '16px',

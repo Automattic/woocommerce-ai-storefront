@@ -624,6 +624,45 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_rollup_sql_preserves_crawl_date_per_day(): void {
+		// The rollup INSERT uses DATE(crawled_at) in both SELECT and GROUP BY
+		// so that yesterday's rows and today's rows land on separate crawl_date
+		// values. If the GROUP BY were removed or collapsed, all activity in
+		// the 2-day window would merge into a single row per (agent, product,
+		// endpoint), silently destroying the per-day resolution.
+		$captured_sql = '';
+		$call_index   = 0;
+
+		global $wpdb;
+		$wpdb             = Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->last_error = '';
+		$wpdb->shouldReceive( 'prepare' )
+			->twice()
+			->andReturnUsing(
+				static function ( $sql ) use ( &$captured_sql, &$call_index ) {
+					if ( 0 === $call_index++ ) {
+						$captured_sql = $sql;
+					}
+					return 'PREPARED';
+				}
+			);
+		$wpdb->shouldReceive( 'query' )->andReturn( 1 );
+
+		WC_AI_Storefront_Crawl_Logger::rollup();
+
+		$this->assertStringContainsString(
+			'DATE(crawled_at) AS crawl_date',
+			$captured_sql,
+			'rollup() SELECT must derive crawl_date via DATE(crawled_at) so each day produces a distinct summary row'
+		);
+		$this->assertStringContainsString(
+			'GROUP BY agent, product_id, endpoint, DATE(crawled_at)',
+			$captured_sql,
+			'rollup() must GROUP BY DATE(crawled_at) so yesterday and today are materialized as separate crawl_date rows'
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// schedule_crons() — interval and filter tests.
 	//
