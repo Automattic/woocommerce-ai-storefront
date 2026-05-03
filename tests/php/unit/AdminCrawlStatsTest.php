@@ -170,6 +170,38 @@ class AdminCrawlStatsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
+	 * The response must include raw_event_count so the UI can distinguish
+	 * "no activity ever" from "activity exists but not yet rolled up".
+	 */
+	public function test_get_crawl_stats_includes_raw_event_count(): void {
+		Functions\when( 'apply_filters' )->alias( static fn( string $hook, $default ) => $default );
+
+		global $wpdb;
+		$wpdb             = Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->last_error = '';
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'PREPARED' );
+		$wpdb->shouldReceive( 'get_results' )->andReturn( array() );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( '0' );
+
+		$req = new WP_REST_Request();
+		$req->set_param( 'period', 'day' );
+
+		$response_data = $this->controller->get_crawl_stats( $req )->get_data();
+
+		$this->assertArrayHasKey(
+			'raw_event_count',
+			$response_data,
+			'Response must include raw_event_count'
+		);
+		$this->assertSame(
+			0,
+			$response_data['raw_event_count'],
+			'raw_event_count must be 0 when DB returns 0'
+		);
+	}
+
+	/**
 	 * The response must include rollup_interval so the UI can render a
 	 * specific "Updated X." subtitle rather than a generic fallback.
 	 */

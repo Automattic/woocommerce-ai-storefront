@@ -44,6 +44,20 @@ describe( 'shouldShowCrawlStatsEmptyState', () => {
 		).toBe( false );
 	} );
 
+	it( 'returns false when raw_event_count is non-zero even if total_requests and top_queries are empty', () => {
+		// Non-search raw-log hits (llms.txt, UCP, product-page) land in the raw
+		// log before the first rollup, so total_requests stays 0 and top_queries
+		// is empty — but raw_event_count is already non-zero. The empty state
+		// must NOT render while actual traffic exists in the raw log.
+		expect(
+			shouldShowCrawlStatsEmptyState(
+				{ total_requests: 0, top_queries: [], raw_event_count: 4 },
+				false,
+				null
+			)
+		).toBe( false );
+	} );
+
 	it( 'returns false when total_requests is non-zero', () => {
 		expect(
 			shouldShowCrawlStatsEmptyState(

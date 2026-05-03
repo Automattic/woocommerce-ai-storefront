@@ -46,11 +46,17 @@ export function getRollupIntervalLabel( interval ) {
 /**
  * Returns true when the no-activity empty state should render.
  *
- * Exported for unit testing. The two conditions guard against a transient
- * contradiction: top_queries reads the raw log directly while total_requests
- * comes from the summary table (updated on the rollup cadence). Between
- * rollup runs the raw log can have rows that the summary doesn't yet, so we
- * must check both before declaring "no activity".
+ * Exported for unit testing. The three conditions guard against showing
+ * "no activity" while data already exists but hasn't been rolled up yet:
+ *
+ *  1. total_requests — from the summary table; zero before the first rollup.
+ *  2. top_queries    — from the raw log (search events only); zero when there
+ *                      are no search queries yet.
+ *  3. raw_event_count — total raw-log rows in the period; non-zero even for
+ *                       llms.txt/UCP/product-page hits that haven't rolled up.
+ *
+ * We only show the empty state when all three are zero (or absent), so a
+ * fresh install that already has raw traffic doesn't falsely claim no activity.
  *
  * @param {Object}  crawlStats      API response object (may be empty object).
  * @param {boolean} isLoading       True while the API request is in-flight.
@@ -66,7 +72,8 @@ export function shouldShowCrawlStatsEmptyState(
 		! crawlStatsError &&
 		! isLoading &&
 		crawlStats?.total_requests === 0 &&
-		( ! crawlStats?.top_queries || crawlStats.top_queries.length === 0 )
+		( ! crawlStats?.top_queries || crawlStats.top_queries.length === 0 ) &&
+		! crawlStats?.raw_event_count
 	);
 }
 

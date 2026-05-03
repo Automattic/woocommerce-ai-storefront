@@ -1235,9 +1235,14 @@ class WC_AI_Storefront_Admin_Controller {
 	 *   by_agent               — top-10 agents by request count: [{agent, requests}].
 	 *   top_queries            — top-10 search queries from the raw log: [{query, count, agents}].
 	 *   top_queries_window_days — effective lookback for top_queries (min(period_days, 30)).
+	 *   raw_event_count        — total raw-log events in the period (COUNT(*) on TABLE_LOG).
+	 *                            Non-zero even before the first rollup runs; the UI uses this
+	 *                            to suppress the "no activity" empty state while data exists
+	 *                            in the raw log but has not yet been rolled up.
 	 *   rollup_interval        — the validated cron recurrence slug ('hourly', 'twicedaily',
-	 *                            or 'daily'). Matches what schedule_crons() registered.
-	 *                            Clients use this to render a specific "Updated X" subtitle.
+	 *                            or 'daily'). Injected live on every response (not cached)
+	 *                            so a filter change takes effect immediately without waiting
+	 *                            for the transient to expire.
 	 *
 	 * @param WP_REST_Request $request The request.
 	 * @return WP_REST_Response|WP_Error
@@ -1251,6 +1256,9 @@ class WC_AI_Storefront_Admin_Controller {
 
 		$cached = get_transient( 'wc_ai_storefront_crawl_stats_' . $period );
 		if ( false !== $cached && is_array( $cached ) ) {
+			// rollup_interval is a filter-dependent config value — inject it live
+			// so a filter change takes effect without waiting for the transient.
+			$cached['rollup_interval'] = WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval();
 			return new WP_REST_Response( $cached );
 		}
 
@@ -1375,6 +1383,16 @@ class WC_AI_Storefront_Admin_Controller {
 			);
 			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
 		}
+
+		// Total raw-log events in the period — used by the UI to distinguish
+		// "no activity ever" from "activity exists but not yet rolled up".
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$raw_event_count = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$log_table} WHERE crawled_at >= %s",
+				$after_datetime
+			)
+		);
 		// phpcs:enable
 
 		$total_requests  = 0;
@@ -1421,10 +1439,14 @@ class WC_AI_Storefront_Admin_Controller {
 			'by_agent'                => $by_agent,
 			'top_queries'             => $top_queries,
 			'top_queries_window_days' => $top_queries_days,
-			'rollup_interval'         => WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval(),
+			'raw_event_count'         => $raw_event_count,
 		);
 
 		set_transient( 'wc_ai_storefront_crawl_stats_' . $period, $data, 5 * MINUTE_IN_SECONDS );
+
+		// rollup_interval injected after caching — never stored in the transient
+		// so filter changes apply on the very next request.
+		$data['rollup_interval'] = WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval();
 
 		return new WP_REST_Response( $data );
 	}
