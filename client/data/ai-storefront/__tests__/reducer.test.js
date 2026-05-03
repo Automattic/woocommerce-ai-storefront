@@ -20,6 +20,8 @@ describe( 'AI Syndication reducer', () => {
 		endpointsError: null,
 		endpointStatus: {},
 		recentOrders: null,
+		crawlStats: null,
+		crawlStatsError: null,
 	};
 
 	it( 'returns default state for undefined state', () => {
@@ -358,6 +360,54 @@ describe( 'AI Syndication reducer', () => {
 			} );
 			expect( state.recentOrders.orders ).toEqual( [] );
 			expect( state.recentOrders.total ).toBe( 0 );
+		} );
+	} );
+
+	describe( 'SET_CRAWL_STATS', () => {
+		it( 'stores the payload and clears crawlStatsError', () => {
+			const initial = {
+				...defaultState,
+				crawlStatsError: new Error( 'stale' ),
+			};
+			const data = {
+				period: 'month',
+				total_requests: 42,
+				unique_products: 7,
+			};
+			const state = reducer( initial, {
+				type: ACTION_TYPES.SET_CRAWL_STATS,
+				data,
+			} );
+			expect( state.crawlStats ).toEqual( data );
+			expect( state.crawlStatsError ).toBeNull();
+		} );
+
+		it( 'replaces previous crawlStats entirely', () => {
+			const first = { period: 'day', total_requests: 5 };
+			const second = { period: 'month', total_requests: 99 };
+			let state = reducer( defaultState, {
+				type: ACTION_TYPES.SET_CRAWL_STATS,
+				data: first,
+			} );
+			state = reducer( state, {
+				type: ACTION_TYPES.SET_CRAWL_STATS,
+				data: second,
+			} );
+			expect( state.crawlStats ).toEqual( second );
+		} );
+	} );
+
+	describe( 'SET_CRAWL_STATS_ERROR', () => {
+		it( 'stores the error and leaves crawlStats unchanged', () => {
+			const error = new Error( 'network failure' );
+			const state = reducer( defaultState, {
+				type: ACTION_TYPES.SET_CRAWL_STATS_ERROR,
+				error,
+			} );
+			expect( state.crawlStatsError ).toBe( error );
+			// crawlStats stays null — the spinner transitions to error UI via
+			// the crawlStatsError selector, not by replacing the data slot.
+			expect( state.crawlStats ).toBeNull();
 		} );
 	} );
 } );

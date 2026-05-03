@@ -50,7 +50,7 @@ class WC_AI_Storefront_Crawl_Logger {
 	/**
 	 * Events accumulated during the current request.
 	 *
-	 * Each entry: [ product_id, agent, endpoint, query|null, throttled ].
+	 * Each entry: [ product_id, agent, endpoint, query string ('' for non-search), throttled ].
 	 *
 	 * @var array[]
 	 */
@@ -188,7 +188,7 @@ class WC_AI_Storefront_Crawl_Logger {
 			return;
 		}
 
-		self::$pending[] = array( $product_id, $agent, $endpoint, '' !== $query ? $query : null, $throttled ? 1 : 0 );
+		self::$pending[] = array( $product_id, $agent, $endpoint, $query, $throttled ? 1 : 0 );
 
 		if ( ! self::$shutdown_registered ) {
 			add_action( 'shutdown', array( static::class, 'flush' ) );
@@ -228,7 +228,13 @@ class WC_AI_Storefront_Crawl_Logger {
 			. implode( ', ', $placeholders );
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$wpdb->query( $wpdb->prepare( $sql, $values ) );
+		$result = $wpdb->query( $wpdb->prepare( $sql, $values ) );
+		if ( false === $result ) {
+			wc_get_logger()->warning(
+				'WC_AI_Storefront_Crawl_Logger::flush() — DB write failed: ' . $wpdb->last_error,
+				array( 'source' => 'wc-ai-storefront' )
+			);
+		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -244,12 +250,18 @@ class WC_AI_Storefront_Crawl_Logger {
 		global $wpdb;
 		$cutoff = gmdate( 'Y-m-d H:i:s', strtotime( '-' . self::RAW_RETENTION_DAYS . ' days' ) );
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->query(
+		$result = $wpdb->query(
 			$wpdb->prepare(
 				"DELETE FROM {$wpdb->prefix}" . self::TABLE_LOG . ' WHERE crawled_at < %s', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 				$cutoff
 			)
 		);
+		if ( false === $result ) {
+			wc_get_logger()->warning(
+				'WC_AI_Storefront_Crawl_Logger::prune_raw_log() — DB query failed: ' . $wpdb->last_error,
+				array( 'source' => 'wc-ai-storefront' )
+			);
+		}
 	}
 
 	/**
@@ -262,12 +274,18 @@ class WC_AI_Storefront_Crawl_Logger {
 		global $wpdb;
 		$cutoff = gmdate( 'Y-m-d', strtotime( '-' . self::SUMMARY_RETENTION_DAYS . ' days' ) );
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->query(
+		$result = $wpdb->query(
 			$wpdb->prepare(
 				"DELETE FROM {$wpdb->prefix}" . self::TABLE_SUMMARY . ' WHERE crawl_date < %s', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 				$cutoff
 			)
 		);
+		if ( false === $result ) {
+			wc_get_logger()->warning(
+				'WC_AI_Storefront_Crawl_Logger::prune_summary() — DB query failed: ' . $wpdb->last_error,
+				array( 'source' => 'wc-ai-storefront' )
+			);
+		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -286,22 +304,30 @@ class WC_AI_Storefront_Crawl_Logger {
 		$yesterday = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->query(
+		$result = $wpdb->query(
 			$wpdb->prepare(
 				"INSERT INTO {$wpdb->prefix}" . self::TABLE_SUMMARY // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				. ' (agent, product_id, endpoint, crawl_date, request_count, throttle_count)
+				. " (agent, product_id, endpoint, crawl_date, request_count, throttle_count)
 				SELECT agent, product_id, endpoint, DATE(crawled_at) AS crawl_date,
 				       COUNT(*) AS request_count,
 				       SUM(throttled) AS throttle_count
-				FROM {$wpdb->prefix}' . self::TABLE_LOG // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				. ' WHERE DATE(crawled_at) = %s
+				FROM {$wpdb->prefix}" . self::TABLE_LOG // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				. " WHERE DATE(crawled_at) = %s
 				GROUP BY agent, product_id, endpoint, DATE(crawled_at)
 				ON DUPLICATE KEY UPDATE
 				  request_count  = VALUES(request_count),
-				  throttle_count = VALUES(throttle_count)',
+				  throttle_count = VALUES(throttle_count)",
 				$yesterday
 			)
 		);
+
+		if ( false === $result ) {
+			wc_get_logger()->error(
+				'WC_AI_Storefront_Crawl_Logger::rollup() — summary INSERT failed: ' . $wpdb->last_error,
+				array( 'source' => 'wc-ai-storefront' )
+			);
+			return;
+		}
 
 		self::prune_summary();
 	}

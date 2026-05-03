@@ -141,7 +141,11 @@ describe( 'persistView', () => {
 	} );
 
 	it( 'does not persist fields — column schema is owned by DEFAULT_VIEW', () => {
-		persistView( { type: 'table', perPage: 10, fields: [ 'order', 'total' ] } );
+		persistView( {
+			type: 'table',
+			perPage: 10,
+			fields: [ 'order', 'total' ],
+		} );
 		const stored = JSON.parse(
 			window.localStorage.getItem( VIEW_STORAGE_KEY )
 		);

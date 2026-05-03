@@ -18,6 +18,7 @@ jest.mock( '@wordpress/i18n', () => ( {
 import {
 	saveSettings,
 	fetchStats,
+	fetchCrawlStats,
 	fetchEndpoints,
 	fetchRecentOrders,
 	updateSettings,
@@ -58,6 +59,8 @@ describe( 'AI Syndication actions', () => {
 			updateSettings: jest.fn(),
 			setStats: jest.fn(),
 			setStatsError: jest.fn(),
+			setCrawlStats: jest.fn(),
+			setCrawlStatsError: jest.fn(),
 			setEndpoints: jest.fn(),
 			setEndpointsError: jest.fn(),
 			setEndpointStatus: jest.fn(),
@@ -584,6 +587,51 @@ describe( 'AI Syndication actions', () => {
 			apiFetch.mockResolvedValue( {} );
 
 			const thunk = fetchStats();
+			await thunk( { dispatch: mockDispatch } );
+
+			expect( apiFetch ).toHaveBeenCalledWith( {
+				path: expect.stringContaining( 'period=month' ),
+			} );
+		} );
+	} );
+
+	describe( 'fetchCrawlStats', () => {
+		it( 'dispatches setCrawlStats on success', async () => {
+			const data = {
+				period: 'month',
+				total_requests: 42,
+				unique_products: 7,
+			};
+			apiFetch.mockResolvedValue( data );
+
+			const thunk = fetchCrawlStats( 'month' );
+			await thunk( { dispatch: mockDispatch } );
+
+			expect( mockDispatch.setCrawlStats ).toHaveBeenCalledWith( data );
+			expect( mockDispatch.setCrawlStatsError ).not.toHaveBeenCalled();
+		} );
+
+		it( 'dispatches setCrawlStatsError on failure and logs to console', async () => {
+			// Regression guard: catch block must not swallow the error silently —
+			// it both dispatches the error action and emits console.error so
+			// failures are visible in browser DevTools without a Redux extension.
+			const error = new Error( 'crawl stats API failed' );
+			apiFetch.mockRejectedValue( error );
+
+			const thunk = fetchCrawlStats( 'month' );
+			await thunk( { dispatch: mockDispatch } );
+
+			expect( mockDispatch.setCrawlStats ).not.toHaveBeenCalled();
+			expect( mockDispatch.setCrawlStatsError ).toHaveBeenCalledWith(
+				error
+			);
+			expect( console ).toHaveErrored();
+		} );
+
+		it( 'uses "month" as the default period', async () => {
+			apiFetch.mockResolvedValue( {} );
+
+			const thunk = fetchCrawlStats();
 			await thunk( { dispatch: mockDispatch } );
 
 			expect( apiFetch ).toHaveBeenCalledWith( {

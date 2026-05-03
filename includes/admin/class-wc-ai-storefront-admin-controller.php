@@ -1275,6 +1275,13 @@ class WC_AI_Storefront_Admin_Controller {
 				$after_date
 			)
 		);
+		if ( $wpdb->last_error ) {
+			wc_get_logger()->warning(
+				'get_crawl_stats endpoint_rows DB error: ' . $wpdb->last_error,
+				array( 'source' => 'wc-ai-storefront' )
+			);
+			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
+		}
 
 		// Unique products seen across all endpoints in the period.
 		$unique_products = (int) $wpdb->get_var(
@@ -1285,6 +1292,13 @@ class WC_AI_Storefront_Admin_Controller {
 				$after_date
 			)
 		);
+		if ( $wpdb->last_error ) {
+			wc_get_logger()->warning(
+				'get_crawl_stats unique_products DB error: ' . $wpdb->last_error,
+				array( 'source' => 'wc-ai-storefront' )
+			);
+			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
+		}
 
 		// Top-10 agents by request count.
 		$agent_rows = $wpdb->get_results(
@@ -1298,9 +1312,18 @@ class WC_AI_Storefront_Admin_Controller {
 				$after_date
 			)
 		);
+		if ( $wpdb->last_error ) {
+			wc_get_logger()->warning(
+				'get_crawl_stats agent_rows DB error: ' . $wpdb->last_error,
+				array( 'source' => 'wc-ai-storefront' )
+			);
+			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
+		}
 
 		// Top-20 search queries from the raw log (query strings are not
 		// aggregated into the summary table, so we go to TABLE_LOG here).
+		// `query != ''` filters out non-search events where query is stored
+		// as an empty string (search events always carry a non-empty query).
 		$query_rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT query,
@@ -1308,7 +1331,7 @@ class WC_AI_Storefront_Admin_Controller {
 				        GROUP_CONCAT(DISTINCT agent ORDER BY agent SEPARATOR ',') AS agents
 				 FROM {$log_table}
 				 WHERE endpoint = %s
-				   AND query IS NOT NULL
+				   AND query != ''
 				   AND crawled_at >= %s
 				 GROUP BY query
 				 ORDER BY count DESC
@@ -1317,6 +1340,13 @@ class WC_AI_Storefront_Admin_Controller {
 				$after_datetime
 			)
 		);
+		if ( $wpdb->last_error ) {
+			wc_get_logger()->warning(
+				'get_crawl_stats query_rows DB error: ' . $wpdb->last_error,
+				array( 'source' => 'wc-ai-storefront' )
+			);
+			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
+		}
 		// phpcs:enable
 
 		$total_requests  = 0;

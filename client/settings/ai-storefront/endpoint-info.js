@@ -699,7 +699,7 @@ const CRAWL_PERIODS = [
 		value: 'quarter',
 		label: __( '90 days', 'woocommerce-ai-storefront' ),
 	},
-	{ value: 'year', label: __( 'Year', 'woocommerce-ai-storefront' ) },
+	{ value: 'year', label: __( '12 months', 'woocommerce-ai-storefront' ) },
 ];
 
 /**
@@ -762,6 +762,10 @@ const CrawlerActivityCard = () => {
 		( select ) => select( STORE_NAME ).getCrawlStats(),
 		[]
 	);
+	const crawlStatsError = useSelect(
+		( select ) => select( STORE_NAME ).getCrawlStatsError(),
+		[]
+	);
 	const { fetchCrawlStats } = useDispatch( STORE_NAME );
 
 	const [ period, setPeriod ] = useState( 'month' );
@@ -770,7 +774,9 @@ const CrawlerActivityCard = () => {
 		fetchCrawlStats( period );
 	}, [ period ] ); // eslint-disable-line react-hooks/exhaustive-deps -- Stable dispatch.
 
-	const isLoading = crawlStats === null || crawlStats.period !== period;
+	const isLoading =
+		! crawlStatsError &&
+		( crawlStats === null || crawlStats.period !== period );
 
 	const fmt = ( n ) => new Intl.NumberFormat().format( n );
 
@@ -850,7 +856,21 @@ const CrawlerActivityCard = () => {
 				</div>
 
 				{ /* Stat grid */ }
-				{ isLoading ? (
+				{ crawlStatsError && (
+					<p
+						style={ {
+							color: colors.error,
+							textAlign: 'center',
+							padding: `${ spacing.s4 } 0`,
+						} }
+					>
+						{ __(
+							'Could not load crawler stats. Please refresh the page.',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
+				) }
+				{ ! crawlStatsError && isLoading && (
 					<div
 						style={ {
 							textAlign: 'center',
@@ -859,7 +879,8 @@ const CrawlerActivityCard = () => {
 					>
 						<Spinner />
 					</div>
-				) : (
+				) }
+				{ ! crawlStatsError && ! isLoading && (
 					<div
 						style={ {
 							display: 'grid',
@@ -930,7 +951,8 @@ const CrawlerActivityCard = () => {
 				) }
 
 				{ /* By-agent breakdown — only shown when there's data */ }
-				{ ! isLoading &&
+				{ ! crawlStatsError &&
+					! isLoading &&
 					crawlStats.by_agent &&
 					crawlStats.by_agent.length > 0 && (
 						<div
@@ -1001,7 +1023,7 @@ const CrawlerActivityCard = () => {
 				     Populated: collapsible <details> open by default.
 				     Empty: ghost rows + one-line copy (aria-hidden on
 				     skeleton, same rationale as the orders GhostTable). */ }
-				{ ! isLoading && (
+				{ ! crawlStatsError && ! isLoading && (
 					<div
 						style={ {
 							marginTop: '16px',
@@ -1200,22 +1222,24 @@ const CrawlerActivityCard = () => {
 				) }
 
 				{ /* Empty state */ }
-				{ ! isLoading && crawlStats.total_requests === 0 && (
-					<p
-						style={ {
-							marginTop: '16px',
-							marginBottom: 0,
-							fontSize: '13px',
-							color: colors.textMuted,
-							textAlign: 'center',
-						} }
-					>
-						{ __(
-							'No AI agent activity recorded for this period. Stats appear here after the first AI agent visits your store.',
-							'woocommerce-ai-storefront'
-						) }
-					</p>
-				) }
+				{ ! crawlStatsError &&
+					! isLoading &&
+					crawlStats.total_requests === 0 && (
+						<p
+							style={ {
+								marginTop: '16px',
+								marginBottom: 0,
+								fontSize: '13px',
+								color: colors.textMuted,
+								textAlign: 'center',
+							} }
+						>
+							{ __(
+								'No AI agent activity recorded for this period. Stats appear here after the first AI agent visits your store.',
+								'woocommerce-ai-storefront'
+							) }
+						</p>
+					) }
 			</CardBody>
 		</Card>
 	);

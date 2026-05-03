@@ -786,6 +786,10 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 		( select ) => select( STORE_NAME ).getCrawlStats(),
 		[]
 	);
+	const crawlStatsError = useSelect(
+		( select ) => select( STORE_NAME ).getCrawlStatsError(),
+		[]
+	);
 
 	const { fetchStats, fetchCrawlStats } = useDispatch( STORE_NAME );
 	const [ period, setPeriod ] = useState( 'month' );
@@ -1071,14 +1075,11 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 					background={ colors.surfaceSubtle }
 				/>
 				<StatCard
-					label={ __(
-						'Products seen',
-						'woocommerce-ai-storefront'
-					) }
+					label={ __( 'Products seen', 'woocommerce-ai-storefront' ) }
 					value={
-						crawlStats
-							? crawlStats.unique_products.toLocaleString()
-							: '—'
+						crawlStatsError || ! crawlStats
+							? '—'
+							: crawlStats.unique_products.toLocaleString()
 					}
 					reference={
 						typeof productCount === 'number'
@@ -1093,6 +1094,7 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 						'woocommerce-ai-storefront'
 					) }
 					value={
+						! crawlStatsError &&
 						crawlStats &&
 						typeof productCount === 'number' &&
 						productCount > 0

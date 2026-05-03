@@ -48,6 +48,11 @@ export function fetchCrawlStats( period = 'month' ) {
 			} );
 			dispatch.setCrawlStats( data );
 		} catch ( error ) {
+			// eslint-disable-next-line no-console
+			console.error(
+				'WC AI Storefront: failed to load crawl stats',
+				error
+			);
 			dispatch.setCrawlStatsError( error );
 		}
 	};

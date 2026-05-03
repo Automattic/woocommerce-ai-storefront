@@ -95,7 +95,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 0, $product_id );
 		$this->assertSame( 'GPTBot', $agent );
 		$this->assertSame( WC_AI_Storefront_Crawl_Logger::ENDPOINT_LLMS_TXT, $endpoint );
-		$this->assertNull( $query );
+		$this->assertSame( '', $query );
 		$this->assertSame( 0, $throttled );
 	}
 
@@ -112,7 +112,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'red shoes', $pending[0][3] );
 	}
 
-	public function test_record_stores_null_query_when_empty_string(): void {
+	public function test_record_stores_empty_string_query_when_not_provided(): void {
 		WC_AI_Storefront_Crawl_Logger::record(
 			WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH,
 			0,
@@ -121,7 +121,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$pending = $this->pending();
-		$this->assertNull( $pending[0][3], 'Empty query string should be stored as NULL' );
+		$this->assertSame( '', $pending[0][3], 'Empty query string should be stored as empty string (not NULL) to match DB write' );
 	}
 
 	public function test_record_stores_throttled_flag(): void {
@@ -235,7 +235,8 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP, 0, 'ClaudeBot' );
 		WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SINGLE, 7, 'PerplexityBot' );
 
-		$captured_sql = '';
+		$captured_sql    = '';
+		$captured_values = [];
 
 		global $wpdb;
 		$wpdb         = Mockery::mock( 'wpdb' );
@@ -243,8 +244,9 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		$wpdb->shouldReceive( 'prepare' )
 			->once()
 			->andReturnUsing(
-				static function ( $sql ) use ( &$captured_sql ) {
-					$captured_sql = $sql;
+				static function ( $sql, $values ) use ( &$captured_sql, &$captured_values ) {
+					$captured_sql    = $sql;
+					$captured_values = $values;
 					return 'PREPARED';
 				}
 			);
@@ -257,6 +259,12 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 			3,
 			substr_count( $captured_sql, '(%d, %s, %s, %s, %d, %s)' ),
 			'All three rows must be batched into one INSERT VALUES clause'
+		);
+		// 6 bindings per row × 3 rows = 18 total values.
+		$this->assertCount(
+			18,
+			$captured_values,
+			'Values array must contain 6 bindings × 3 rows = 18 entries'
 		);
 	}
 
@@ -349,6 +357,231 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 			count( $constants ),
 			count( array_unique( $constants ) ),
 			'All ENDPOINT_* constants must be distinct strings'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// prune_raw_log()
+	// ------------------------------------------------------------------
+
+	public function test_prune_raw_log_targets_correct_table(): void {
+		$captured_sql = '';
+
+		global $wpdb;
+		$wpdb         = Mockery::mock( 'wpdb' );
+		$wpdb->prefix = 'test_';
+		$wpdb->shouldReceive( 'prepare' )
+			->once()
+			->andReturnUsing(
+				static function ( $sql ) use ( &$captured_sql ) {
+					$captured_sql = $sql;
+					return 'PREPARED';
+				}
+			);
+		$wpdb->shouldReceive( 'query' )->once()->andReturn( 0 );
+
+		WC_AI_Storefront_Crawl_Logger::prune_raw_log();
+
+		$this->assertStringContainsString(
+			'test_' . WC_AI_Storefront_Crawl_Logger::TABLE_LOG,
+			$captured_sql,
+			'prune_raw_log() must DELETE from the prefixed raw log table'
+		);
+		$this->assertStringNotContainsString(
+			WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY,
+			$captured_sql,
+			'prune_raw_log() must not touch the summary table'
+		);
+	}
+
+	public function test_prune_raw_log_cutoff_matches_retention_days(): void {
+		$captured_sql    = '';
+		$captured_values = [];
+
+		global $wpdb;
+		$wpdb         = Mockery::mock( 'wpdb' );
+		$wpdb->prefix = 'wp_';
+		$wpdb->shouldReceive( 'prepare' )
+			->once()
+			->andReturnUsing(
+				static function ( $sql, $cutoff ) use ( &$captured_sql, &$captured_values ) {
+					$captured_sql      = $sql;
+					$captured_values[] = $cutoff;
+					return 'PREPARED';
+				}
+			);
+		$wpdb->shouldReceive( 'query' )->andReturn( 0 );
+
+		$before = gmdate( 'Y-m-d H:i:s', strtotime( '-' . WC_AI_Storefront_Crawl_Logger::RAW_RETENTION_DAYS . ' days' ) );
+		WC_AI_Storefront_Crawl_Logger::prune_raw_log();
+		$after = gmdate( 'Y-m-d H:i:s', strtotime( '-' . WC_AI_Storefront_Crawl_Logger::RAW_RETENTION_DAYS . ' days' ) );
+
+		$cutoff = $captured_values[0];
+		$this->assertGreaterThanOrEqual( $before, $cutoff );
+		$this->assertLessThanOrEqual( $after, $cutoff );
+	}
+
+	// ------------------------------------------------------------------
+	// prune_summary()
+	// ------------------------------------------------------------------
+
+	public function test_prune_summary_targets_correct_table(): void {
+		$captured_sql = '';
+
+		global $wpdb;
+		$wpdb         = Mockery::mock( 'wpdb' );
+		$wpdb->prefix = 'test_';
+		$wpdb->shouldReceive( 'prepare' )
+			->once()
+			->andReturnUsing(
+				static function ( $sql ) use ( &$captured_sql ) {
+					$captured_sql = $sql;
+					return 'PREPARED';
+				}
+			);
+		$wpdb->shouldReceive( 'query' )->once()->andReturn( 0 );
+
+		WC_AI_Storefront_Crawl_Logger::prune_summary();
+
+		$this->assertStringContainsString(
+			'test_' . WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY,
+			$captured_sql,
+			'prune_summary() must DELETE from the prefixed summary table'
+		);
+		$this->assertStringNotContainsString(
+			WC_AI_Storefront_Crawl_Logger::TABLE_LOG,
+			$captured_sql,
+			'prune_summary() must not touch the raw log table'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// rollup()
+	// ------------------------------------------------------------------
+
+	public function test_rollup_prefix_is_interpolated_not_literal(): void {
+		// Regression test for the single-quote interpolation bug:
+		// the SQL template previously contained a single-quoted string
+		// with `{$wpdb->prefix}` which PHP does not interpolate, causing
+		// every nightly cron to fail with a MySQL parse error on `{`.
+		// Capture only the first prepare() call (the INSERT); the second
+		// is from prune_summary() which is an unrelated DELETE.
+		$captured_sql  = '';
+		$call_index    = 0;
+
+		global $wpdb;
+		$wpdb             = Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->last_error = '';
+		$wpdb->shouldReceive( 'prepare' )
+			->twice()
+			->andReturnUsing(
+				static function ( $sql ) use ( &$captured_sql, &$call_index ) {
+					if ( 0 === $call_index++ ) {
+						$captured_sql = $sql;
+					}
+					return 'PREPARED';
+				}
+			);
+		$wpdb->shouldReceive( 'query' )->andReturn( 0 );
+
+		WC_AI_Storefront_Crawl_Logger::rollup();
+
+		$this->assertStringNotContainsString(
+			'{$wpdb->prefix}',
+			$captured_sql,
+			'rollup() SQL must not contain the literal string {$wpdb->prefix} — use double-quoted strings for interpolation'
+		);
+		$this->assertStringContainsString(
+			'wp_' . WC_AI_Storefront_Crawl_Logger::TABLE_LOG,
+			$captured_sql,
+			'rollup() SELECT must reference the prefixed raw log table'
+		);
+		$this->assertStringContainsString(
+			'wp_' . WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY,
+			$captured_sql,
+			'rollup() INSERT must reference the prefixed summary table'
+		);
+	}
+
+	public function test_rollup_calls_prune_summary_on_success(): void {
+		$query_call_count = 0;
+
+		global $wpdb;
+		$wpdb             = Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->last_error = '';
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'PREPARED' );
+		$wpdb->shouldReceive( 'query' )
+			->twice()
+			->andReturnUsing(
+				static function () use ( &$query_call_count ) {
+					return ++$query_call_count;
+				}
+			);
+
+		WC_AI_Storefront_Crawl_Logger::rollup();
+
+		// First query = INSERT INTO summary; second query = DELETE FROM summary (prune).
+		$this->assertSame( 2, $query_call_count, 'rollup() must call query() twice: INSERT then prune DELETE' );
+	}
+
+	public function test_rollup_does_not_call_prune_summary_on_db_failure(): void {
+		// If the INSERT fails, prune_summary() must not run — it would
+		// delete summary rows that were never refreshed, destroying history.
+		$query_call_count = 0;
+
+		global $wpdb;
+		$wpdb             = Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->last_error = 'simulated error';
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'PREPARED' );
+		$wpdb->shouldReceive( 'query' )
+			->once()
+			->andReturnUsing(
+				static function () use ( &$query_call_count ) {
+					++$query_call_count;
+					return false; // simulate DB failure
+				}
+			);
+		Functions\when( 'wc_get_logger' )->justReturn(
+			Mockery::mock( [ 'error' => null ] )
+		);
+
+		WC_AI_Storefront_Crawl_Logger::rollup();
+
+		$this->assertSame( 1, $query_call_count, 'rollup() must stop after the failed INSERT and not call prune_summary()' );
+	}
+
+	public function test_rollup_uses_yesterday_date(): void {
+		// Capture only the first prepare() call (the INSERT); the second
+		// is from prune_summary() which takes a different date argument.
+		$captured_values = [];
+		$call_index      = 0;
+
+		global $wpdb;
+		$wpdb             = Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->last_error = '';
+		$wpdb->shouldReceive( 'prepare' )
+			->twice()
+			->andReturnUsing(
+				static function ( $sql, $date ) use ( &$captured_values, &$call_index ) {
+					if ( 0 === $call_index++ ) {
+						$captured_values[] = $date;
+					}
+					return 'PREPARED';
+				}
+			);
+		$wpdb->shouldReceive( 'query' )->andReturn( 0 );
+
+		$expected_yesterday = gmdate( 'Y-m-d', strtotime( '-1 day' ) );
+		WC_AI_Storefront_Crawl_Logger::rollup();
+
+		$this->assertSame(
+			$expected_yesterday,
+			$captured_values[0],
+			'rollup() must aggregate yesterday\'s date'
 		);
 	}
 }
