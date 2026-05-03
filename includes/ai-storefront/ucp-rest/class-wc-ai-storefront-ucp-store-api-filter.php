@@ -546,11 +546,22 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * Resolve signal terms to product taxonomy term IDs using the
 	 * store's own categories, tags, brands, and attribute values.
 	 *
-	 * Fetches all terms across product_cat / product_tag /
-	 * product_brand / pa_* in a single get_terms() call (result is
-	 * cached by WordPress's object cache). Matches each signal term
-	 * by exact name or slug, then via `find_in_lookup_via_variants()`
-	 * which applies a suffix-flip dictionary (ies↔y, es↔, s↔).
+	 * Fetches matching terms across product_cat / product_tag /
+	 * product_brand / pa_* via two scoped get_terms() calls — one
+	 * filtered by `name__in`, one by `slug__in` — then merges the
+	 * results by term_id. Two queries are required because WordPress
+	 * combines name__in + slug__in with AND inside a single call,
+	 * which would only match terms whose name AND slug both appear
+	 * in the candidate set; the OR semantics we need (match if name
+	 * OR slug matches a candidate) requires two calls.
+	 *
+	 * Candidate strings are pre-generated from each signal via
+	 * `get_candidate_strings()` so the DB fetches only the handful of
+	 * rows that could possibly match rather than the full taxonomy
+	 * table. After fetch, signals are matched against the merged
+	 * result by exact name/slug, then via `find_in_lookup_via_variants()`
+	 * which applies a suffix-flip dictionary (ies→y, {ch,sh,x,s,z}es→
+	 * base, s→base, y→ies, base→es, base→+s).
 	 *
 	 * @since 0.9.0
 	 *
@@ -659,19 +670,25 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * product taxonomy terms:
 	 *
 	 *   Plural → singular (query is plural, taxonomy is singular):
-	 *     ies → y   : "hoodies" → "hoodie"
-	 *     ches → ch : "watches" → "watch"
-	 *     shes → sh : "brushes" → "brush"
-	 *     xes → x   : "boxes"   → "box"
-	 *     ses → s   : "dresses" → "dress"
-	 *     zes → z   : "buzzes"  → "buzz"
-	 *     es → (drop): "scarves" edge case covered by next rule
-	 *     s → (drop) : "shoes"  → "shoe"
+	 *     ies → y   : "accessories" → "accessory"
+	 *     ches → ch : "watches"     → "watch"
+	 *     shes → sh : "brushes"     → "brush"
+	 *     xes → x   : "boxes"       → "box"
+	 *     ses → s   : "dresses"     → "dress"
+	 *     zes → z   : "buzzes"      → "buzz"
+	 *     s → (drop) : "shoes"      → "shoe"
+	 *                  "hoodies"    → "hoodie" (the bare-s rule, NOT ies→y)
 	 *
 	 *   Singular → plural (query is singular, taxonomy is plural):
-	 *     y → ies   : "hoodie" missed; covers "category" → "categories"
-	 *     (base)→es : only tried for ch/sh/x/s/z endings
-	 *     (base)→s  : "shoe"   → "shoes"
+	 *     y → ies   : "accessory" → "accessories"
+	 *     (base)→es : "watch"     → "watches" (only ch/sh/x/s/z endings)
+	 *     (base)→s  : "shoe"      → "shoes"
+	 *                 "hoodie"    → "hoodies" (handled by the +s rule)
+	 *
+	 * Words like "scarves"/"scarf" or "leaves"/"leaf" (irregular -ves
+	 * plurals) are NOT covered — neither rule produces the right stem.
+	 * If those become important taxonomy terms in the wild we'd add a
+	 * dedicated `ves → f`/`ves → fe` branch.
 	 *
 	 * Returns the first non-empty hit, or an empty array if no variant
 	 * is found. Does NOT mutate the lookup.
@@ -686,8 +703,12 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		$len = strlen( $signal );
 
 		// ---- Plural → singular ----------------------------------------
+		// Rules try variants in order; each branch only returns if its
+		// candidate hits the lookup, so `hoodies` falls through ies→y
+		// (which would produce "hoody", not in any taxonomy) and
+		// {ch,sh,x,s,z}es (no match) into bare s→drop where "hoodie" hits.
 
-		// ies → y  (hoodies → hoodie, accessories → accessory)
+		// ies → y  (accessories → accessory)
 		if ( $len > 3 && str_ends_with( $signal, 'ies' ) ) {
 			$candidate = substr( $signal, 0, -3 ) . 'y';
 			if ( isset( $lookup[ $candidate ] ) ) {
@@ -706,7 +727,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			}
 		}
 
-		// s → drop (shoes → shoe, jackets → jacket)
+		// s → drop (shoes → shoe, hoodies → hoodie, jackets → jacket)
 		if ( $len > 2 && str_ends_with( $signal, 's' ) ) {
 			$candidate = substr( $signal, 0, -1 );
 			if ( isset( $lookup[ $candidate ] ) ) {
