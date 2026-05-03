@@ -312,11 +312,11 @@ class WC_AI_Storefront_Crawl_Logger {
 				       COUNT(*) AS request_count,
 				       SUM(throttled) AS throttle_count
 				FROM {$wpdb->prefix}" . self::TABLE_LOG // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				. " WHERE DATE(crawled_at) = %s
+				. ' WHERE DATE(crawled_at) = %s
 				GROUP BY agent, product_id, endpoint, DATE(crawled_at)
 				ON DUPLICATE KEY UPDATE
 				  request_count  = VALUES(request_count),
-				  throttle_count = VALUES(throttle_count)",
+				  throttle_count = VALUES(throttle_count)',
 				$yesterday
 			)
 		);

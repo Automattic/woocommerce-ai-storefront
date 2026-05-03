@@ -1235,7 +1235,7 @@ class WC_AI_Storefront_Admin_Controller {
 	 *   by_agent           — top-10 agents by request count: [{agent, requests}].
 	 *
 	 * @param WP_REST_Request $request The request.
-	 * @return WP_REST_Response
+	 * @return WP_REST_Response|WP_Error
 	 */
 	public function get_crawl_stats( $request ) {
 		global $wpdb;
@@ -1275,9 +1275,10 @@ class WC_AI_Storefront_Admin_Controller {
 				$after_date
 			)
 		);
-		if ( $wpdb->last_error ) {
+		$last_error    = $wpdb->last_error;
+		if ( $last_error ) {
 			wc_get_logger()->warning(
-				'get_crawl_stats endpoint_rows DB error: ' . $wpdb->last_error,
+				'get_crawl_stats endpoint_rows DB error: ' . $last_error,
 				array( 'source' => 'wc-ai-storefront' )
 			);
 			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
@@ -1292,9 +1293,10 @@ class WC_AI_Storefront_Admin_Controller {
 				$after_date
 			)
 		);
-		if ( $wpdb->last_error ) {
+		$last_error      = $wpdb->last_error;
+		if ( $last_error ) {
 			wc_get_logger()->warning(
-				'get_crawl_stats unique_products DB error: ' . $wpdb->last_error,
+				'get_crawl_stats unique_products DB error: ' . $last_error,
 				array( 'source' => 'wc-ai-storefront' )
 			);
 			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
@@ -1312,9 +1314,10 @@ class WC_AI_Storefront_Admin_Controller {
 				$after_date
 			)
 		);
-		if ( $wpdb->last_error ) {
+		$last_error = $wpdb->last_error;
+		if ( $last_error ) {
 			wc_get_logger()->warning(
-				'get_crawl_stats agent_rows DB error: ' . $wpdb->last_error,
+				'get_crawl_stats agent_rows DB error: ' . $last_error,
 				array( 'source' => 'wc-ai-storefront' )
 			);
 			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
@@ -1340,9 +1343,10 @@ class WC_AI_Storefront_Admin_Controller {
 				$after_datetime
 			)
 		);
-		if ( $wpdb->last_error ) {
+		$last_error = $wpdb->last_error;
+		if ( $last_error ) {
 			wc_get_logger()->warning(
-				'get_crawl_stats query_rows DB error: ' . $wpdb->last_error,
+				'get_crawl_stats query_rows DB error: ' . $last_error,
 				array( 'source' => 'wc-ai-storefront' )
 			);
 			return new WP_Error( 'db_error', __( 'Could not load crawler stats.', 'woocommerce-ai-storefront' ), array( 'status' => 500 ) );
