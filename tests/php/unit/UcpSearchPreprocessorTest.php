@@ -283,6 +283,21 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 20, $result['hooded-jacket'] );
 	}
 
+	public function test_resolve_includes_product_brand_taxonomy(): void {
+		// product_brand is registered when WC 9.5+ or a brand plugin is active.
+		// Locks the contract in get_product_taxonomy_names() so a regression
+		// dropping 'product_brand' from the allowlist fails this test.
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_brand' => 'product_brand' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 40, 'Nike', 'product_brand' ),
+		) );
+
+		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'nike' ) );
+
+		$this->assertArrayHasKey( 'nike', $result );
+		$this->assertContains( 40, $result['nike'] );
+	}
+
 	public function test_resolve_includes_pa_attribute_taxonomy(): void {
 		// pa_color is a product attribute taxonomy — should be included in resolution.
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'pa_color' => 'pa_color' ) );
