@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.8.6
+Stable tag: 0.8.7
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,17 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.8.7 - 2026-05-03 =
+**New**
+* Discovery stats: hourly rollup. Today's AI agent activity now appears in the Discovery tab within ~1 hour, instead of waiting for the next nightly rollup. Existing sites auto-migrate on upgrade — no manual steps. Developers can switch the cadence to `twicedaily` or `daily` via the new `wc_ai_storefront_rollup_interval` filter; slower cadences fall back to `hourly` to avoid silent data loss.
+* Discovery tab: the "Top searches" subtitle now reflects the live cron cadence ("Updated hourly.", "Updated every 12 hours.", "Updated daily.") instead of a generic placeholder, so merchants know exactly how fresh the data is.
+
+**Fixed**
+* Discovery tab no longer shows "No AI agent activity recorded" when raw-log traffic exists but the first rollup hasn't run yet — a brand-new install with llms.txt or UCP hits will now correctly reflect that activity in the empty-state guard.
+* Cron filter changes (`wc_ai_storefront_rollup_interval`) now take effect on the very next request without waiting for the 5-minute stats cache to expire.
+* Top searches list no longer drops today's queries — the SQL window is now lower-bound only, and the lookback for `period=quarter` (90d) is correctly clamped to the raw log's 30-day retention so the search list and the rest of the card stay internally consistent.
+* Period filters now span the exact selected window (off-by-one fix): "Last 7 days" returns 7 calendar dates including today, not 8.
 
 = 0.8.6 - 2026-05-03 =
 **New**

@@ -4,6 +4,20 @@
 
 ### Features
 
+### Fixes
+
+### Refactors
+
+### Tests
+
+### Docs
+
+---
+
+## [0.8.7] – 2026-05-03
+
+### Features
+
 - **Discovery stats — hourly rollup cron with developer interval filter.** Closes #260 via #261.
   - The crawl-log rollup cron now runs hourly instead of daily, so today's AI agent activity appears in the Discovery tab within ~1 hour of occurring.
   - New `wc_ai_storefront_rollup_interval` filter lets developers change the recurrence to `hourly`, `twicedaily`, or `daily`. Slower cadences are rejected because `rollup()` only covers a 2-day window and would silently lose data; invalid slugs fall back to `hourly`.
