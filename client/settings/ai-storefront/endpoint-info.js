@@ -243,6 +243,19 @@ function EndpointTabStyles() {
 				}
 				.${ ENDPOINT_TAB_CLASS } table.widefat td:nth-child(4) { display: none; }
 			}
+			details.ai-storefront-top-searches summary { list-style: none; }
+			details.ai-storefront-top-searches summary::-webkit-details-marker { display: none; }
+			details.ai-storefront-top-searches summary .top-searches-chevron {
+				margin-left: auto;
+				font-size: 14px;
+				line-height: 1;
+				display: inline-block;
+				transition: transform .15s;
+				transform: rotate(-90deg);
+			}
+			details.ai-storefront-top-searches[open] summary .top-searches-chevron {
+				transform: rotate(0deg);
+			}
 		` }</style>
 	);
 }
@@ -1039,7 +1052,10 @@ const CrawlerActivityCard = () => {
 					>
 						{ crawlStats.top_queries &&
 						crawlStats.top_queries.length > 0 ? (
-							<details open>
+							<details
+								open
+								className="ai-storefront-top-searches"
+							>
 								<summary
 									style={ {
 										listStyle: 'none',
@@ -1066,13 +1082,7 @@ const CrawlerActivityCard = () => {
 										),
 										crawlStats.top_queries.length
 									) }
-									<span
-										style={ {
-											marginLeft: 'auto',
-											fontSize: '14px',
-											lineHeight: 1,
-										} }
-									>
+									<span className="top-searches-chevron">
 										{ '▾' }
 									</span>
 								</summary>
@@ -1308,6 +1318,24 @@ const CrawlerActivityCard = () => {
 										</div>
 									) ) }
 								</div>
+								<p
+									style={ {
+										position: 'absolute',
+										width: '1px',
+										height: '1px',
+										padding: 0,
+										margin: '-1px',
+										overflow: 'hidden',
+										clip: 'rect(0,0,0,0)',
+										whiteSpace: 'nowrap',
+										border: 0,
+									} }
+								>
+									{ __(
+										'Search queries from AI agents will appear here.',
+										'woocommerce-ai-storefront'
+									) }
+								</p>
 							</>
 						) }
 					</div>

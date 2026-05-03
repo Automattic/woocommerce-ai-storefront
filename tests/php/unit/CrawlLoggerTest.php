@@ -623,4 +623,157 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 			'rollup() range must end at tomorrow midnight'
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// schedule_crons() — interval and filter tests.
+	//
+	// schedule_crons() contains a static $scheduled guard that prevents
+	// re-running in the same process. To keep tests independent we use
+	// @runInSeparateProcess so each test starts with a fresh static state.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Default interval is hourly when the filter is not hooked.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_schedule_crons_uses_hourly_interval_by_default(): void {
+		$scheduled_interval = null;
+
+		Functions\when( 'gmmktime' )->justReturn( time() + DAY_IN_SECONDS );
+		Functions\when( 'gmdate' )->justReturn( '1' );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_get_schedules' )->justReturn(
+			array(
+				'hourly'     => array(
+					'interval' => HOUR_IN_SECONDS,
+					'display'  => 'Once Hourly',
+				),
+				'twicedaily' => array(
+					'interval' => 12 * HOUR_IN_SECONDS,
+					'display'  => 'Twice Daily',
+				),
+				'daily'      => array(
+					'interval' => DAY_IN_SECONDS,
+					'display'  => 'Once Daily',
+				),
+			)
+		);
+		Functions\when( 'apply_filters' )->justReturn( 'hourly' );
+		Functions\expect( 'wp_schedule_event' )
+			->twice()
+			->andReturnUsing(
+				static function ( $_timestamp, $recurrence, $hook ) use ( &$scheduled_interval ) {
+					if ( 'wc_ai_storefront_rollup_crawl_log' === $hook ) {
+						$scheduled_interval = $recurrence;
+					}
+					return true;
+				}
+			);
+
+		WC_AI_Storefront_Crawl_Logger::schedule_crons();
+
+		$this->assertSame(
+			'hourly',
+			$scheduled_interval,
+			'schedule_crons() must schedule rollup with hourly interval by default'
+		);
+	}
+
+	/**
+	 * Filter wc_ai_storefront_rollup_interval overrides the default when the
+	 * returned value is a registered WP-Cron schedule.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_schedule_crons_respects_rollup_interval_filter(): void {
+		$scheduled_interval = null;
+
+		Functions\when( 'gmmktime' )->justReturn( time() + DAY_IN_SECONDS );
+		Functions\when( 'gmdate' )->justReturn( '1' );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_get_schedules' )->justReturn(
+			array(
+				'hourly'     => array(
+					'interval' => HOUR_IN_SECONDS,
+					'display'  => 'Once Hourly',
+				),
+				'twicedaily' => array(
+					'interval' => 12 * HOUR_IN_SECONDS,
+					'display'  => 'Twice Daily',
+				),
+				'daily'      => array(
+					'interval' => DAY_IN_SECONDS,
+					'display'  => 'Once Daily',
+				),
+			)
+		);
+		Functions\when( 'apply_filters' )->justReturn( 'twicedaily' );
+		Functions\expect( 'wp_schedule_event' )
+			->twice()
+			->andReturnUsing(
+				static function ( $_timestamp, $recurrence, $hook ) use ( &$scheduled_interval ) {
+					if ( 'wc_ai_storefront_rollup_crawl_log' === $hook ) {
+						$scheduled_interval = $recurrence;
+					}
+					return true;
+				}
+			);
+
+		WC_AI_Storefront_Crawl_Logger::schedule_crons();
+
+		$this->assertSame(
+			'twicedaily',
+			$scheduled_interval,
+			'schedule_crons() must use the interval returned by wc_ai_storefront_rollup_interval filter'
+		);
+	}
+
+	/**
+	 * Filter wc_ai_storefront_rollup_interval returning an unregistered
+	 * schedule name is silently discarded and falls back to hourly.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_schedule_crons_falls_back_to_hourly_for_invalid_filter_value(): void {
+		$scheduled_interval = null;
+
+		Functions\when( 'gmmktime' )->justReturn( time() + DAY_IN_SECONDS );
+		Functions\when( 'gmdate' )->justReturn( '1' );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_get_schedules' )->justReturn(
+			array(
+				'hourly' => array(
+					'interval' => HOUR_IN_SECONDS,
+					'display'  => 'Once Hourly',
+				),
+				'daily'  => array(
+					'interval' => DAY_IN_SECONDS,
+					'display'  => 'Once Daily',
+				),
+			)
+		);
+		Functions\when( 'apply_filters' )->justReturn( 'gibberish' );
+		Functions\expect( 'wp_schedule_event' )
+			->twice()
+			->andReturnUsing(
+				static function ( $_timestamp, $recurrence, $hook ) use ( &$scheduled_interval ) {
+					if ( 'wc_ai_storefront_rollup_crawl_log' === $hook ) {
+						$scheduled_interval = $recurrence;
+					}
+					return true;
+				}
+			);
+
+		WC_AI_Storefront_Crawl_Logger::schedule_crons();
+
+		$this->assertSame(
+			'hourly',
+			$scheduled_interval,
+			'schedule_crons() must fall back to hourly when filter returns an unregistered schedule'
+		);
+	}
 }

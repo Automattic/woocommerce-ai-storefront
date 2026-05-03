@@ -288,7 +288,7 @@ Raw event log — one row per identified AI-agent request. Written from a static
 Daily aggregates rolled up from the raw log. Powers the `/crawl-stats` admin endpoint without scanning the raw table on every request.
 
 - **Defined in:** `WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY`
-- **Written by:** `wc_ai_storefront_rollup_crawl_log` hourly cron — selects yesterday's and today's raw rows, groups by (date, agent, endpoint), and upserts one row per group
+- **Written by:** `wc_ai_storefront_rollup_crawl_log` hourly cron — selects yesterday's and today's raw rows, groups by (date, agent, endpoint, product_id), and upserts one row per group
 - **Retention:** `WC_AI_Storefront_Crawl_Logger::SUMMARY_RETENTION_DAYS = 90`. Pruned by the daily prune cron.
 - **Uninstall:** dropped via `DROP TABLE` in `uninstall.php`
 

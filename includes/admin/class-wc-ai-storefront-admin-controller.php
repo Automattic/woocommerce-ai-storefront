@@ -1338,13 +1338,11 @@ class WC_AI_Storefront_Admin_Controller {
 				 WHERE endpoint = %s
 				   AND query != ''
 				   AND crawled_at >= %s
-				   AND crawled_at < %s
 				 GROUP BY query
 				 ORDER BY count DESC
 				 LIMIT 10",
 				WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH,
-				$after_datetime,
-				$today_start
+				$after_datetime
 			)
 		);
 		$last_error = $wpdb->last_error;

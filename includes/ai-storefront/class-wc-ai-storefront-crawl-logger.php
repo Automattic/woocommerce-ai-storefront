@@ -158,8 +158,8 @@ class WC_AI_Storefront_Crawl_Logger {
 		if ( ! wp_next_scheduled( 'wc_ai_storefront_prune_crawl_log' ) ) {
 			wp_schedule_event( $utc_midnight, 'daily', 'wc_ai_storefront_prune_crawl_log' );
 		}
-		// Rollup runs hourly by default. Override via:
-		// add_filter( 'wc_ai_storefront_rollup_interval', fn() => 'twicedaily' );
+		// Rollup runs hourly by default; override via:
+		// add_filter( 'wc_ai_storefront_rollup_interval', fn() => 'twicedaily' ).
 		$rollup_interval = (string) apply_filters( 'wc_ai_storefront_rollup_interval', 'hourly' );
 		if ( ! array_key_exists( $rollup_interval, wp_get_schedules() ) ) {
 			$rollup_interval = 'hourly';
