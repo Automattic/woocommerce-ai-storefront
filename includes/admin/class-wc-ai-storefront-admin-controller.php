@@ -1256,7 +1256,7 @@ class WC_AI_Storefront_Admin_Controller {
 			'quarter' => 90,
 		);
 
-		$after_ts = time() - ( $days_map[ $period ] ?? 30 ) * DAY_IN_SECONDS;
+		$after_ts       = time() - $days_map[ $period ] * DAY_IN_SECONDS;
 		$after_date     = gmdate( 'Y-m-d', $after_ts );
 		$after_datetime = $after_date . ' 00:00:00';
 		$today_start    = gmdate( 'Y-m-d' ) . ' 00:00:00';
