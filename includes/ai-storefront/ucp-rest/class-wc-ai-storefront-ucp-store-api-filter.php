@@ -422,6 +422,13 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		// Suppress WooCommerce's phrase-LIKE at priority 10.
 		$wp_query->set( 'search', '' );
 
+		// Normalise the clauses array — `posts_clauses` typically passes
+		// 'join' and 'where' but PHP typing here doesn't guarantee it,
+		// and a future core/plugin change passing a partial clauses array
+		// would otherwise raise an undefined-index notice under WP_DEBUG.
+		$args['join']  = $args['join'] ?? '';
+		$args['where'] = $args['where'] ?? '';
+
 		$posts_table = $wpdb->prefix . 'posts';
 		$meta_table  = $wpdb->prefix . 'wc_product_meta_lookup';
 		$tr_table    = $wpdb->prefix . 'term_relationships';
@@ -561,15 +568,18 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			return array();
 		}
 
-		// Option B: pre-generate all candidate name strings so get_terms()
+		// Option B: pre-generate all candidate strings so get_terms()
 		// fetches only the handful of rows that could possibly match,
 		// rather than the full taxonomy table on every search request.
-		// Note: WP does not support name__in + slug__in together cleanly;
-		// name__in covers the common case since single-word term slugs
-		// equal their lowercased name. Slug-only matches (multi-word terms
-		// with spaces-to-hyphens slugs) still resolve via the post-filter
-		// in find_in_lookup_via_variants() because those terms ARE returned
-		// when their name matches a candidate.
+		//
+		// WordPress does not support name__in + slug__in in a single
+		// get_terms() call — they're combined with AND, which would
+		// only match a term if both its name AND slug were in the
+		// candidate set. We need OR semantics, so we issue two queries
+		// and merge: name__in catches "Hoodies"/`hoodies`-style terms,
+		// slug__in catches terms whose name doesn't match a candidate
+		// (e.g. name "Women's", slug "womens" — `womens` matches the
+		// slug but the term name with the apostrophe never matches).
 		$candidates = array_values(
 			array_unique(
 				array_merge(
@@ -581,19 +591,32 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			)
 		);
 
-		$all_terms = get_terms(
-			array(
-				'taxonomy'               => $taxonomies,
-				'hide_empty'             => false,
-				'fields'                 => 'all',
-				'number'                 => 0,
-				'name__in'               => $candidates,
-				'update_term_meta_cache' => false,
-				'orderby'                => 'none',
-			)
+		$base_args = array(
+			'taxonomy'               => $taxonomies,
+			'hide_empty'             => false,
+			'fields'                 => 'all',
+			'number'                 => 0,
+			'update_term_meta_cache' => false,
+			'orderby'                => 'none',
 		);
 
-		if ( is_wp_error( $all_terms ) || empty( $all_terms ) ) {
+		$by_name = get_terms( array_merge( $base_args, array( 'name__in' => $candidates ) ) );
+		$by_slug = get_terms( array_merge( $base_args, array( 'slug__in' => $candidates ) ) );
+
+		if ( is_wp_error( $by_name ) ) {
+			$by_name = array();
+		}
+		if ( is_wp_error( $by_slug ) ) {
+			$by_slug = array();
+		}
+
+		// Merge by term_id so a term hit on both queries appears once.
+		$all_terms = array();
+		foreach ( array_merge( (array) $by_name, (array) $by_slug ) as $term ) {
+			$all_terms[ (int) $term->term_id ] = $term;
+		}
+
+		if ( empty( $all_terms ) ) {
 			return array();
 		}
 
@@ -725,18 +748,28 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * Unlike `find_in_lookup_via_variants()` this helper requires no
 	 * taxonomy lookup; it returns both the original form and its
 	 * counterpart unconditionally so the SQL title LIKE clause can OR
-	 * across both. Result is deduplicated so a no-op flip (e.g. a word
-	 * whose plural and singular are identical after the rule) returns
-	 * just the original form.
+	 * across both. Result is deduplicated so a no-op flip returns just
+	 * the original form.
 	 *
-	 * Rules mirror the suffix table in `find_in_lookup_via_variants()`:
-	 *   ies → y      : "hoodies"  → ["hoodies", "hoodie"]
+	 * Rules in evaluation order:
 	 *   {ch,sh,x,s,z}es → base : "watches"  → ["watches", "watch"]
-	 *   s → drop     : "shoes"   → ["shoes", "shoe"]
-	 *   y → ies      : "hoodie"  → ["hoodie", "hoodies"]
-	 *   base + es    : "watch"   → ["watch", "watches"]
-	 *   base + s     : "shoe"    → ["shoe", "shoes"]
-	 *   no rule      : "logo"    → ["logo"]
+	 *   s → drop               : "hoodies"  → ["hoodies", "hoodie"]
+	 *   y → ies                : "accessory"→ ["accessory", "accessories"]
+	 *   base + es              : "watch"    → ["watch", "watches"]
+	 *   +s for words ending 'e': "shoe"     → ["shoe", "shoes"]
+	 *   no rule                : "logo"     → ["logo"]
+	 *
+	 * Notably this helper does NOT have an `ies → y` branch (which
+	 * `find_in_lookup_via_variants()` does have). For title matching
+	 * the simpler `s → drop` rule yields better results: "hoodies" →
+	 * "hoodie" instead of the technically-correct "hoody". `ies → y`
+	 * is appropriate for taxonomy term names like "accessories" →
+	 * "accessory" but rarely useful for product titles where stems
+	 * commonly end in `ie` ("hoodie", "beanie").
+	 *
+	 * The +s expansion is intentionally restricted to words ending
+	 * in `e` to avoid widening unrelated terms like "logo" → "logos"
+	 * which adds noise rather than recall.
 	 *
 	 * SKU LIKE is intentionally excluded — SKUs are codes, not English
 	 * words, so suffix stemming would add noise rather than recall.
@@ -750,10 +783,9 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		$len = strlen( $signal );
 
 		// ---- Plural → singular ----------------------------------------
-		// s → drop FIRST so "hoodies" → "hoodie" via simple strip, not
-		// "hoody" via the ies→y rule. ies→y is correct for taxonomy names
-		// ("accessories"→"accessory") but wrong for product titles where
-		// the stem ends in 'ie' ("hoodie", "beanie").
+		// {ch,sh,x,s,z}es checked before bare 's' so "watches" → "watch"
+		// rather than "watche". No `ies → y` branch on purpose — see
+		// docblock for rationale.
 
 		// {ch,sh,x,s,z}es → drop 'es'  (watches → watch)
 		if ( $len > 3 && str_ends_with( $signal, 'es' ) ) {

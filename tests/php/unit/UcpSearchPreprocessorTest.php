@@ -283,6 +283,57 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 20, $result['hooded-jacket'] );
 	}
 
+	public function test_resolve_slug_only_match_when_name_differs(): void {
+		// Real-world: term named "Women's" has slug "womens" (apostrophe
+		// stripped by WP). Signal "womens" must resolve via slug__in
+		// because name__in candidates ('womens', 'women', 'womenss') won't
+		// match the literal name "Women's". Locks the two-query
+		// (name__in + slug__in) approach in resolve_taxonomy_terms().
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+
+		$term           = new \stdClass();
+		$term->term_id  = 50;
+		$term->name     = "Women's";
+		$term->slug     = 'womens';
+		$term->taxonomy = 'product_cat';
+
+		// Capture get_terms() args to prove both name__in and slug__in
+		// queries actually run, and dispatch the right return per call.
+		$received_args = array();
+		Functions\when( 'get_terms' )->alias(
+			function ( $args ) use ( &$received_args, $term ) {
+				$received_args[] = $args;
+				if ( isset( $args['slug__in'] ) ) {
+					return array( $term );
+				}
+				return array();
+			}
+		);
+
+		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'womens' ) );
+
+		// Both queries must have run.
+		$this->assertCount( 2, $received_args, 'Expected one name__in + one slug__in get_terms() call' );
+		$has_name_in_call = false;
+		$has_slug_in_call = false;
+		foreach ( $received_args as $a ) {
+			if ( isset( $a['name__in'] ) ) {
+				$has_name_in_call = true;
+				$this->assertContains( 'womens', $a['name__in'] );
+			}
+			if ( isset( $a['slug__in'] ) ) {
+				$has_slug_in_call = true;
+				$this->assertContains( 'womens', $a['slug__in'] );
+			}
+		}
+		$this->assertTrue( $has_name_in_call, 'A get_terms() call with name__in must fire' );
+		$this->assertTrue( $has_slug_in_call, 'A get_terms() call with slug__in must fire' );
+
+		// And the slug-only term must resolve.
+		$this->assertArrayHasKey( 'womens', $result );
+		$this->assertContains( 50, $result['womens'] );
+	}
+
 	public function test_resolve_includes_product_brand_taxonomy(): void {
 		// product_brand is registered when WC 9.5+ or a brand plugin is active.
 		// Locks the contract in get_product_taxonomy_names() so a regression
