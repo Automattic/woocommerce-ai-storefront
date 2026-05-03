@@ -127,6 +127,14 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
+= 0.8.6 - Unreleased =
+**New**
+* Discovery tab: crawler-side visibility stats. The plugin now records every identified AI-agent request (llms.txt, UCP manifest, UCP REST, robots.txt, Store API rate limiter) into a write-buffered log and rolls it up daily. The Discovery tab surfaces total requests, unique products seen, top searches with the agents that issued them, throttle rate, and per-agent breakdowns. Raw events kept 30 days; daily aggregates kept 90 days. Tables removed on uninstall.
+* UCP product search: AI-agent natural-language queries now match across the store's own categories, tags, brands, and attributes — not just the product title. "Hoodie with logo", "Running shoes for men", and "watches" each resolve to relevant products even when the exact phrase isn't in any product title. Plural/singular morphology is handled automatically (hoodies/hoodie, watches/watch, accessories/accessory). Storefront, Cart, and Checkout product searches are unaffected.
+
+**Fixed**
+* Updater: now reads `WC_AI_STOREFRONT_GITHUB_TOKEN` as a PHP constant fallback so local-development update checks against the internal GitHub repo authenticate without requiring a manual filter. Production sites using the existing `wc_ai_storefront_github_token` filter are unchanged.
+
 = 0.8.5 - 2026-05-02 =
 **New**
 * Overview tab: new AI Revenue % stat card shows AI-attributed revenue as a share of total store revenue for the selected period. Shows "—" when no store revenue exists.

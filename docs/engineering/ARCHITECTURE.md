@@ -73,7 +73,7 @@ Module location: `includes/ai-storefront/ucp-rest/`
 | `class-wc-ai-storefront-ucp-variant-translator.php` | WC variation → UCP variant. Builds titles from attribute values, preserves integer minor units for prices, handles simple-product defaults via `synthesize_default()`. |
 | `class-wc-ai-storefront-ucp-envelope.php` | Builds the `ucp: { version, capabilities, payment_handlers }` wrapper that prefixes every response. Reads `PROTOCOL_VERSION` from `WC_AI_Storefront_Ucp` so manifest and response envelopes stay in sync. |
 | `class-wc-ai-storefront-ucp-agent-header.php` | Parses the `UCP-Agent` header (RFC 8941 Dictionary or RFC 7231 Product/Version), normalizes hostnames, canonicalizes brand names, and falls back to `ucp_unknown` when missing/malformed. Used as `utm_source` and for the per-brand allow-list gate. |
-| `class-wc-ai-storefront-ucp-store-api-filter.php` | Hooks `pre_get_posts` (gated by an internal UCP-dispatch depth counter + `post_type === 'product'`) to enforce `product_selection_mode` on UCP-controller-initiated Store API queries. Front-end Cart, themes, and third-party Store API consumers are untouched. Intersects with incoming `post__in` and merges (outer AND) with incoming `tax_query`, so the merchant's allow-list can't be bypassed AND the caller's filters stay in effect. |
+| `class-wc-ai-storefront-ucp-store-api-filter.php` | Hooks `pre_get_posts` (gated by an internal UCP-dispatch depth counter + `post_type === 'product'`) to enforce `product_selection_mode` on UCP-controller-initiated Store API queries. Also hooks `posts_clauses` at priority 9 (one tick before WooCommerce's `add_query_clauses` at priority 10) to replace the default phrase LIKE on `post_title` with **taxonomy-aware per-signal-term matching**: signal-term extraction (lowercase, stopword strip, apostrophe-strip-in-place, hyphen→space split) → resolution against `product_cat` / `product_tag` / `product_brand` / `pa_*` via two scoped `get_terms()` calls (`name__in` + `slug__in`, merged by term_id) plus a suffix-flip dictionary (`ies↔y`, `{ch,sh,x,s,z}es↔base`, `s↔drop`, `y→ies`, `+es`, `+s`) → EXISTS subquery on hits (constrained by `taxonomy IN (...)` to prevent shared-term_id false positives), title LIKE expanded to both morphological forms on misses, OR per term, AND across terms. Front-end Cart, themes, and third-party Store API consumers are untouched. Intersects with incoming `post__in` and merges (outer AND) with incoming `tax_query`, so the merchant's allow-list can't be bypassed AND the caller's filters stay in effect. |
 | `class-wc-ai-storefront-store-api-extension.php` | Adds an `extensions.com_woocommerce_ai_storefront` block to Store API product responses with `barcodes` (GTIN/UPC/EAN/MPN) sourced from WC core's `global_unique_id`. Removable once core surfaces the field directly. |
 | `class-wc-ai-storefront-ucp-error-codes.php` | Typed string constants for every UCP error code used across the REST controller. Eliminates bare string literals in handler logic and enables static-analysis exhaustiveness checks. |
 | `class-wc-ai-storefront-ucp-request-context.php` | Per-request product memoization cache. Holds already-fetched `WC_Product` objects by ID so a single outer UCP request never dispatches to the Store API for the same product twice. A fresh context is created for each outer UCP request, making the controller safe under persistent-worker runtimes (Swoole, RoadRunner, FrankenPHP) where static properties survive across requests. |
@@ -124,11 +124,17 @@ Agent name is surfaced in WC core's "Origin" column (fed by `_wc_order_attributi
 |------|---------|
 | `class-wc-ai-storefront-logger.php` | Off-by-default. Enable per-request via `add_filter( 'wc_ai_storefront_debug', '__return_true' );`. Instruments cache hit/miss, rate-limit fingerprint matches, attribution captures. Output goes to `error_log()` (usually `wp-content/debug.log` when `WP_DEBUG_LOG` is on) prefixed `[wc-ai-storefront]`. The filter is evaluated once per request and cached. |
 
+### Crawler analytics
+
+| File | Purpose |
+|------|---------|
+| `class-wc-ai-storefront-crawl-logger.php` | Records every identified AI-agent request into `{prefix}wc_ai_storefront_crawl_log` (raw events, 30-day retention) and `{prefix}wc_ai_storefront_crawl_summary` (daily aggregates, 90-day retention). `record()` is called from attribution, llms-txt, robots, ucp, ucp-rest-controller, and the rate limiter; calls push onto a static pending array that flushes on WordPress's `shutdown` action so per-request latency is unchanged. Schema is created/upgraded via `dbDelta` on plugin version bump (idempotent). Two daily WP cron jobs (`wc_ai_storefront_prune_crawl_log`, `wc_ai_storefront_rollup_crawl_log`) handle retention pruning and the daily rollup. Powers the Discovery tab's analytics surface via `GET /admin/crawl-stats`. See [`DATA-MODEL.md`](DATA-MODEL.md#custom-tables) for schema and retention details. |
+
 ### Admin
 
 | File | Purpose |
 |------|---------|
-| `class-wc-ai-storefront-admin-controller.php` | REST API for the admin settings UI: settings CRUD, stats, recent orders, product count, category/tag/brand/product search, policy pages, endpoint URLs. |
+| `class-wc-ai-storefront-admin-controller.php` | REST API for the admin settings UI: settings CRUD, stats, recent orders, product count, category/tag/brand/product search, policy pages, endpoint URLs, and crawler-visibility stats (`/crawl-stats`). |
 | `class-wc-ai-storefront-product-meta-box.php` | Adds the `AI: Final sale` checkbox to the product editor's Inventory tab. Read by `WC_AI_Storefront_JsonLd` to override the store-wide return policy on a per-product basis. |
 | `class-wc-ai-storefront.php` | Main orchestrator (singleton): dependency loading, rewrite rules, settings with memoization + cache busting, version-based flush. |
 
@@ -201,6 +207,7 @@ woocommerce-ai-storefront/
 │       ├── class-wc-ai-storefront-store-api-rate-limiter.php
 │       ├── class-wc-ai-storefront-attribution.php
 │       ├── class-wc-ai-storefront-cache-invalidator.php
+│       ├── class-wc-ai-storefront-crawl-logger.php
 │       ├── class-wc-ai-storefront-logger.php
 │       ├── class-wc-ai-storefront-return-policy.php
 │       └── ucp-rest/

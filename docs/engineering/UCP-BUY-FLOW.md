@@ -34,6 +34,8 @@ The same manifest carries a `config.store_context` block (currency, `prices_incl
 
 When the agent calls `dev.ucp.shopping.catalog.search` or `.lookup`, it only sees products the merchant has chosen to syndicate. Filtering happens at the Store API layer in [`class-wc-ai-storefront-ucp-store-api-filter.php`](../../includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-store-api-filter.php). Three syndication modes — *all*, *by taxonomy*, or *specific products* — are enforced as a UNION.
 
+The same filter also rewrites the `search` query so natural-language phrases match products via the store's own taxonomies, not just literal title substrings. Each signal term in the query is resolved against `product_cat` / `product_tag` / `product_brand` / `pa_*` (with morphological variant matching: hoodies↔hoodie, watches↔watch, accessories↔accessory) and emits an EXISTS subquery; words that don't match any taxonomy fall back to a title LIKE expanded to both plural and singular forms. Per-term clauses combine OR (taxonomy hit OR title hit), and per-query clauses combine AND, so a product must satisfy all signal words but each can be satisfied via either route. The merchant's syndication scope is unchanged — search runs *inside* it.
+
 If a product isn't returned, or `store_context.currency` doesn't match what the agent can quote, no buy CTA. Agents are expected to drop products they can't transact.
 
 ## Layer 3 — Checkout session (the real green light)
