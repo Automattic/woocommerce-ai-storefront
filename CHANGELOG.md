@@ -4,7 +4,7 @@
 
 ### Features
 
-- **Discovery stats — hourly rollup cron with developer interval filter.** The crawl-log rollup cron now runs hourly instead of daily, so today's AI agent activity appears in the Discovery tab within ~1 hour of occurring. A new `wc_ai_storefront_rollup_interval` filter lets developers change the recurrence to any WP-registered schedule (`daily`, `twicedaily`, etc.) — invalid slugs are silently discarded and fall back to `hourly`. The top-searches query no longer excludes today's rows, so the full rolling window is always visible. Closes #260 via #261.
+- **Discovery stats — hourly rollup cron with developer interval filter.** The crawl-log rollup cron now runs hourly instead of daily, so today's AI agent activity appears in the Discovery tab within ~1 hour of occurring. A new `wc_ai_storefront_rollup_interval` filter lets developers change the recurrence to `hourly`, `twicedaily`, or `daily` — slower cadences are rejected because `rollup()` only covers a 2-day window and would silently lose data. Invalid slugs and intervals slower than `daily` fall back to `hourly`. The top-searches query no longer excludes today's rows, so the full rolling window is always visible. Closes #260 via #261.
 
 ### Fixes
 
@@ -14,7 +14,7 @@
 
 ### Tests
 
-- **`schedule_crons()` covered by three Brain Monkey unit tests.** New tests assert the default `hourly` interval, that a valid filter override (`twicedaily`) is respected, and that an invalid filter value (`gibberish`) falls back to `hourly`. Each test uses `@runInSeparateProcess` to avoid the one-shot static guard inside `schedule_crons()`.
+- **`schedule_crons()` covered by four Brain Monkey unit tests.** New tests assert the default `hourly` interval (and the rollup's first-fire timestamp is now, not midnight), that a valid filter override (`twicedaily`) is respected, that an invalid filter value (`gibberish`) falls back to `hourly`, and that registered-but-too-slow intervals (`weekly`) are rejected. Each test asserts the filter hook tag and default argument so a regression in the hook contract is caught. Each test uses `@runInSeparateProcess` to avoid the one-shot static guard inside `schedule_crons()`.
 - **`get_crawl_stats()` top_queries SQL contract.** New `AdminCrawlStatsTest` pins two contracts: the SQL must use only a lower-bound date filter (no `crawled_at < %s` upper bound), and the lower-bound timestamp for `period=quarter` must be clamped to ~30 days back so the parameter matches the raw log's actual retention.
 
 ### Docs

@@ -304,11 +304,11 @@ apply_filters( 'wc_ai_storefront_rollup_interval', string $interval );
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `$interval` | `string` | WP-registered cron recurrence slug. Default `'hourly'`. |
+| `$interval` | `string` | WP-Cron recurrence slug. Default `'hourly'`. |
 
-**Returns:** any slug registered in `wp_get_schedules()` — built-in values are `'hourly'`, `'twicedaily'`, `'daily'`, `'weekly'`.
+**Returns:** one of `'hourly'`, `'twicedaily'`, or `'daily'` — the only intervals up to a 24-hour cadence are accepted because `rollup()` always covers a fixed yesterday+today window. Anything slower (e.g. `'weekly'`) would leave gaps of unsummarized days; values outside the allowlist are silently rejected and the schedule falls back to `'hourly'`.
 
-**When to use:** high-traffic stores that want to reduce DB load, or low-traffic stores that prefer more frequent refreshes.
+**When to use:** high-traffic stores that want to reduce DB load (`'twicedaily'` or `'daily'`), or to keep the default `'hourly'` cadence on low-traffic stores.
 
 **Important:** the filter is read only when the cron event is first registered (plugin activation, or after the event is cleared). To apply a change on a live site: `wp cron event delete wc_ai_storefront_rollup_crawl_log`, then reload any admin page to re-register with the new interval.
 

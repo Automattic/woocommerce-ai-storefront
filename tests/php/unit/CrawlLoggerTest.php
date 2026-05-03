@@ -660,7 +660,11 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 				),
 			)
 		);
-		Functions\when( 'apply_filters' )->justReturn( 'hourly' );
+		// Assert the hook tag AND the default argument so a regression that
+		// renames the hook or drops the 'hourly' default is caught here.
+		Functions\expect( 'apply_filters' )
+			->with( 'wc_ai_storefront_rollup_interval', 'hourly' )
+			->andReturn( 'hourly' );
 		Functions\expect( 'wp_schedule_event' )
 			->twice()
 			->andReturnUsing(
@@ -721,7 +725,11 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 				),
 			)
 		);
-		Functions\when( 'apply_filters' )->justReturn( 'twicedaily' );
+		// Assert the hook tag AND the default argument so the filter contract
+		// is locked down. The filter override returns 'twicedaily'.
+		Functions\expect( 'apply_filters' )
+			->with( 'wc_ai_storefront_rollup_interval', 'hourly' )
+			->andReturn( 'twicedaily' );
 		Functions\expect( 'wp_schedule_event' )
 			->twice()
 			->andReturnUsing(
@@ -765,7 +773,9 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 				),
 			)
 		);
-		Functions\when( 'apply_filters' )->justReturn( 'gibberish' );
+		Functions\expect( 'apply_filters' )
+			->with( 'wc_ai_storefront_rollup_interval', 'hourly' )
+			->andReturn( 'gibberish' );
 		Functions\expect( 'wp_schedule_event' )
 			->twice()
 			->andReturnUsing(
@@ -783,6 +793,61 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 			'hourly',
 			$scheduled_interval,
 			'schedule_crons() must fall back to hourly when filter returns an unregistered schedule'
+		);
+	}
+
+	/**
+	 * Filter wc_ai_storefront_rollup_interval returning a registered but
+	 * too-slow cadence (e.g. 'weekly') is rejected. rollup() only covers
+	 * a 2-day window, so anything slower than 'daily' would lose data
+	 * between runs. The fallback is 'hourly'.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_schedule_crons_rejects_intervals_slower_than_daily(): void {
+		$scheduled_interval = null;
+
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_get_schedules' )->justReturn(
+			array(
+				'hourly' => array(
+					'interval' => HOUR_IN_SECONDS,
+					'display'  => 'Once Hourly',
+				),
+				'daily'  => array(
+					'interval' => DAY_IN_SECONDS,
+					'display'  => 'Once Daily',
+				),
+				'weekly' => array(
+					'interval' => 7 * DAY_IN_SECONDS,
+					'display'  => 'Once Weekly',
+				),
+			)
+		);
+		// 'weekly' is a registered schedule, but our allowlist rejects
+		// anything slower than 'daily' because rollup() only materializes
+		// rows from yesterday + today.
+		Functions\expect( 'apply_filters' )
+			->with( 'wc_ai_storefront_rollup_interval', 'hourly' )
+			->andReturn( 'weekly' );
+		Functions\expect( 'wp_schedule_event' )
+			->twice()
+			->andReturnUsing(
+				static function ( $_timestamp, $recurrence, $hook ) use ( &$scheduled_interval ) {
+					if ( 'wc_ai_storefront_rollup_crawl_log' === $hook ) {
+						$scheduled_interval = $recurrence;
+					}
+					return true;
+				}
+			);
+
+		WC_AI_Storefront_Crawl_Logger::schedule_crons();
+
+		$this->assertSame(
+			'hourly',
+			$scheduled_interval,
+			'schedule_crons() must reject intervals slower than daily and fall back to hourly'
 		);
 	}
 }

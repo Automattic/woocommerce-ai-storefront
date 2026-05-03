@@ -1378,10 +1378,21 @@ const CrawlerActivityCard = () => {
 					</div>
 				) }
 
-				{ /* Empty state — shown when no requests at all for the period */ }
+				{ /* Empty state — shown when no requests at all for the period
+				     AND no top searches in the raw log. The latter check
+				     matters because top_queries reads from the raw log
+				     directly, while total_requests comes from the summary
+				     table which is updated on the rollup cadence. Within the
+				     gap (e.g. between rollup runs on a fresh install), the
+				     raw log can have rows that the summary doesn't yet, so
+				     this check prevents the contradictory state of showing
+				     "No AI agent activity recorded…" while the Top searches
+				     panel above is rendering real query terms. */ }
 				{ ! crawlStatsError &&
 					! isLoading &&
-					crawlStats.total_requests === 0 && (
+					crawlStats.total_requests === 0 &&
+					( ! crawlStats.top_queries ||
+						crawlStats.top_queries.length === 0 ) && (
 						<p
 							style={ {
 								marginTop: '16px',

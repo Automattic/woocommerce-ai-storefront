@@ -160,8 +160,16 @@ class WC_AI_Storefront_Crawl_Logger {
 		}
 		// Rollup runs hourly by default; override via:
 		// add_filter( 'wc_ai_storefront_rollup_interval', fn() => 'twicedaily' ).
+		//
+		// Allowlist: only intervals up to `daily` are safe because rollup()
+		// always covers a fixed yesterday+today window. Anything slower
+		// (e.g. `weekly`) would leave gaps of unsummarized days. We
+		// intentionally do NOT accept arbitrary `wp_get_schedules()` slugs;
+		// invalid or too-slow values fall back to `hourly`.
+		$valid_intervals = array( 'hourly', 'twicedaily', 'daily' );
 		$rollup_interval = (string) apply_filters( 'wc_ai_storefront_rollup_interval', 'hourly' );
-		if ( ! array_key_exists( $rollup_interval, wp_get_schedules() ) ) {
+		if ( ! in_array( $rollup_interval, $valid_intervals, true )
+			|| ! array_key_exists( $rollup_interval, wp_get_schedules() ) ) {
 			$rollup_interval = 'hourly';
 		}
 		if ( ! wp_next_scheduled( 'wc_ai_storefront_rollup_crawl_log' ) ) {
