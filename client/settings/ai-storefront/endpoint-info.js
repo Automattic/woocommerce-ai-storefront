@@ -816,6 +816,7 @@ const CrawlerActivityCard = () => {
 					</div>
 					{ /* Period chip strip */ }
 					<div
+						role="radiogroup"
 						style={ {
 							display: 'flex',
 							gap: '4px',
@@ -827,6 +828,8 @@ const CrawlerActivityCard = () => {
 							return (
 								<button
 									key={ p.value }
+									role="radio"
+									aria-checked={ isActive }
 									type="button"
 									onClick={ () => setPeriod( p.value ) }
 									style={ {

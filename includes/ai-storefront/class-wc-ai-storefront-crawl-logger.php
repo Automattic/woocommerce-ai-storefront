@@ -237,6 +237,9 @@ class WC_AI_Storefront_Crawl_Logger {
 			'Meta-ExternalAgent'         => 'Meta',
 		);
 		$agent       = $brand_names[ $agent ] ?? $agent;
+		$agent       = mb_substr( $agent, 0, 64 );
+		$endpoint    = mb_substr( $endpoint, 0, 32 );
+		$query       = mb_substr( $query, 0, 255 );
 
 		self::$pending[] = array( $product_id, $agent, $endpoint, $query, $throttled ? 1 : 0 );
 

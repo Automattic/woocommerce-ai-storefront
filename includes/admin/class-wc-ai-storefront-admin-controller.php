@@ -1257,7 +1257,7 @@ class WC_AI_Storefront_Admin_Controller {
 			$after_ts = strtotime( '30 days ago' );
 		}
 		$after_date     = gmdate( 'Y-m-d', $after_ts );
-		$after_datetime = gmdate( 'Y-m-d H:i:s', $after_ts );
+		$after_datetime = $after_date . ' 00:00:00';
 
 		$table     = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_SUMMARY;
 		$log_table = $wpdb->prefix . WC_AI_Storefront_Crawl_Logger::TABLE_LOG;
