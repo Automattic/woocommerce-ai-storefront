@@ -354,46 +354,76 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_live_browsing_agents_has_expected_members(): void {
 		// Order matters (it's how they render in the admin UI).
-		// Grouped by ecosystem: foundation models (OpenAI,
-		// Anthropic, Perplexity, Apple), then agentic shopping
-		// (Amazon Rufus, Klarna), then Google Shopping, then
-		// regional search+AI (Asia first, then Europe).
+		// Grouped: AI search & discovery (search-index crawlers,
+		// dual-purpose crawlers, live user-session agents — all
+		// alphabetical within each sub-flavour), then regional
+		// Asia (alphabetical), then regional Europe.
 		//
-		// The regional bots (ERNIEBot, YiyanBot, WRTNBot,
-		// NaverBot, PetalBot, YandexBot) are traditional search
-		// crawlers that ALSO power AI features in their markets —
-		// "live" covers both user-initiated search and AI-agent
-		// fetching, so the classification fits even though these
-		// bots predate the modern AI-agent taxonomy.
+		// Regional bots are traditional search crawlers that also
+		// power AI features in their markets — "live" covers both
+		// user-initiated search and AI-agent fetching.
+		//
+		// KlarnaBot removed: no such user-agent token exists in the
+		// wild. Klarna uses merchant feed-push for indexing; its
+		// in-app browser sends `Klarna/YY.WW.BUILD` in a mobile
+		// WebKit UA — a human session, not a crawler.
+		// AmazonBuyForMe removed: represents checkout-in-AI model
+		// this plugin does not support — routes purchases externally
+		// rather than to the merchant's own checkout.
+		// ClaudeBot + GPTBot moved here from TRAINING_CRAWLERS:
+		// dual-purpose crawlers that both index-build and feed live
+		// AI answer surfaces (Claude.ai, ChatGPT).
+		// Amazonbot moved here from TRAINING_CRAWLERS: indexing
+		// prerequisite for Amazon Rufus (live AI shopping surface).
 		$this->assertSame(
 			[
-				// General-purpose AI assistants (alphabetical).
+				// AI search & discovery (alphabetical).
 				'Applebot',
+				'Bingbot',
+				'BraveBot',
 				'ChatGPT-User',
 				'Claude-SearchBot',
 				'Claude-User',
+				'ClaudeBot',
 				'DuckAssistBot',
+				'DuckDuckBot',
+				'Googlebot',
+				'GPTBot',
 				'Mistralai-User',
+				'Mojeekbot',
 				'OAI-SearchBot',
 				'Perplexity-User',
 				'PerplexityBot',
+				'Phindbot',
 				'YouBot',
-				// Agentic shopping (alphabetical).
-				'AmazonBuyForMe',
-				'KlarnaBot',
-				// Commerce search engines (alphabetical).
 				'AdIdxBot',
+				'Amazonbot',
+				'Pinterestbot',
 				'Storebot-Google',
-				// Regional — Asia (alphabetical).
+			],
+			WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
+		);
+	}
+
+	public function test_regional_crawlers_has_expected_members(): void {
+		$this->assertSame(
+			[
+				// Asia — alphabetical.
+				'Baiduspider',
+				'coccocbot-web',
+				'Daumoa',
 				'ERNIEBot',
 				'NaverBot',
 				'PetalBot',
 				'WRTNBot',
+				'Yeti',
 				'YiyanBot',
-				// Regional — Europe.
+				// Europe — alphabetical.
+				'Qwantify',
+				'SeznamBot',
 				'YandexBot',
 			],
-			WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
+			WC_AI_Storefront_Robots::REGIONAL_CRAWLERS
 		);
 	}
 
@@ -418,16 +448,19 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 				// LLM vendors as training input) are recent additions —
 				// see git log for the introducing commit if you need
 				// the version anchor.
-				'Amazonbot',
+				// Note: Amazonbot was here pre-#275 but moved to
+				// LIVE_BROWSING_AGENTS as it is the indexing
+				// prerequisite for Amazon Rufus (live AI shopping).
+				// ClaudeBot + GPTBot moved to LIVE_BROWSING_AGENTS:
+				// dual-purpose crawlers that feed live answer surfaces
+				// as well as training corpora.
 				'anthropic-ai',
 				'Applebot-Extended',
 				'Bytespider',
 				'CCBot',
-				'ClaudeBot',
 				'cohere-ai',
 				'Diffbot',
 				'Google-Extended',
-				'GPTBot',
 				'Meta-ExternalAgent',
 				'Microsoft-BingBot-Extended',
 			],
@@ -449,17 +482,24 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_fresh_install_returns_live_browsing_only_default(): void {
 		// Empty settings array → no prior configuration → commerce-safe
-		// default. Training crawlers must NOT be present so merchants
-		// get the protection-by-default posture out of the box.
+		// default. Regional, training, and test crawlers must NOT be
+		// present so merchants get the protection-by-default posture.
 		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers( [] );
 
 		$this->assertSame( WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS, $result );
 
-		foreach ( WC_AI_Storefront_Robots::TRAINING_CRAWLERS as $training_bot ) {
+		foreach ( WC_AI_Storefront_Robots::REGIONAL_CRAWLERS as $bot ) {
 			$this->assertNotContains(
-				$training_bot,
+				$bot,
 				$result,
-				"Training crawler $training_bot should NOT be in the fresh-install default"
+				"Regional crawler $bot should NOT be in the fresh-install default"
+			);
+		}
+		foreach ( WC_AI_Storefront_Robots::TRAINING_CRAWLERS as $bot ) {
+			$this->assertNotContains(
+				$bot,
+				$result,
+				"Training crawler $bot should NOT be in the fresh-install default"
 			);
 		}
 	}
@@ -481,16 +521,38 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_stored_allowed_crawlers_list_is_preserved(): void {
-		// Happy path for existing installs with saved selections —
-		// the resolver must return the stored list verbatim.
-		$stored = [ 'GPTBot', 'ClaudeBot', 'Claude-User' ];
+	public function test_stored_allowed_crawlers_list_preserved_with_seo_bots_unioned_in(): void {
+		// Existing installs' saved selections are preserved. Bingbot and
+		// Googlebot are always force-unioned in so upgrading stores whose
+		// saved list predates those IDs can't accidentally emit Disallow:/
+		// for search indexing bots (SEO-deindex regression, Comment 4).
+		$stored = array( 'GPTBot', 'ClaudeBot', 'Claude-User' );
 
 		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
-			[ 'allowed_crawlers' => $stored ]
+			array( 'allowed_crawlers' => $stored )
 		);
 
-		$this->assertSame( $stored, $result );
+		foreach ( $stored as $bot ) {
+			$this->assertContains( $bot, $result, "Stored bot $bot must still be present" );
+		}
+		$this->assertContains( 'Bingbot', $result, 'Bingbot must be force-added to prevent search-indexing block' );
+		$this->assertContains( 'Googlebot', $result, 'Googlebot must be force-added to prevent search-indexing block' );
+	}
+
+	public function test_upgrade_migration_adds_bingbot_and_googlebot_to_pre_existing_list(): void {
+		// Upgrade scenario: a saved list from before Bingbot/Googlebot
+		// were added. The resolver must inject them so robots.txt does not
+		// emit `Disallow: /` for the store's primary search indexing bots.
+		$pre_upgrade = array( 'GPTBot', 'ChatGPT-User', 'ClaudeBot' );
+
+		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
+			array( 'allowed_crawlers' => $pre_upgrade )
+		);
+
+		$this->assertContains( 'Bingbot', $result );
+		$this->assertContains( 'Googlebot', $result );
+		// No duplicates.
+		$this->assertSame( array_unique( $result ), $result );
 	}
 
 	public function test_non_array_stored_value_degrades_to_empty_list(): void {
@@ -602,18 +664,17 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_ai_crawlers_is_union_of_live_training_and_test(): void {
-		// Backward compat: AI_CRAWLERS is the pre-1.5.0 public
-		// constant that external callers and the sanitizer have
-		// been consuming since 1.0.0. It must exactly equal the
-		// concatenation of all category lists in declaration order —
-		// otherwise `sanitize_allowed_crawlers()` (which intersects
-		// against AI_CRAWLERS) would reject valid category members.
-		// TEST_CRAWLERS was added in the 0.2.x series for validation
-		// tools (e.g. UCPPlayground) and follows training in the
-		// concatenation order.
+	public function test_ai_crawlers_is_union_of_all_categories(): void {
+		// AI_CRAWLERS is the pre-1.5.0 public constant that external
+		// callers and the sanitizer have been consuming since 1.0.0.
+		// It must exactly equal the concatenation of all category
+		// lists in declaration order — otherwise
+		// `sanitize_allowed_crawlers()` (which intersects against
+		// AI_CRAWLERS) would reject valid category members.
+		// Order: LIVE ++ REGIONAL ++ TRAINING ++ TEST.
 		$expected = array_merge(
 			WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS,
+			WC_AI_Storefront_Robots::REGIONAL_CRAWLERS,
 			WC_AI_Storefront_Robots::TRAINING_CRAWLERS,
 			WC_AI_Storefront_Robots::TEST_CRAWLERS
 		);
@@ -621,7 +682,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame(
 			$expected,
 			WC_AI_Storefront_Robots::AI_CRAWLERS,
-			'AI_CRAWLERS must equal LIVE_BROWSING_AGENTS + TRAINING_CRAWLERS + TEST_CRAWLERS in order.'
+			'AI_CRAWLERS must equal LIVE_BROWSING_AGENTS + REGIONAL_CRAWLERS + TRAINING_CRAWLERS + TEST_CRAWLERS in order.'
 		);
 	}
 
@@ -630,32 +691,18 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// addition ends up in multiple lists, the admin UI renders a
 		// duplicate checkbox (confusing) and the render `filter` logic
 		// selects the first category only (hiding the duplicate in the
-		// other group). Regression catches both side effects across all
-		// three pairs (live∩training, live∩test, training∩test).
-		$this->assertSame(
-			[],
-			array_intersect(
-				WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS,
-				WC_AI_Storefront_Robots::TRAINING_CRAWLERS
-			),
-			'LIVE_BROWSING_AGENTS and TRAINING_CRAWLERS must be disjoint.'
-		);
-		$this->assertSame(
-			[],
-			array_intersect(
-				WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS,
-				WC_AI_Storefront_Robots::TEST_CRAWLERS
-			),
-			'LIVE_BROWSING_AGENTS and TEST_CRAWLERS must be disjoint.'
-		);
-		$this->assertSame(
-			[],
-			array_intersect(
-				WC_AI_Storefront_Robots::TRAINING_CRAWLERS,
-				WC_AI_Storefront_Robots::TEST_CRAWLERS
-			),
-			'TRAINING_CRAWLERS and TEST_CRAWLERS must be disjoint.'
-		);
+		// other group). Regression catches all six pairs.
+		$live     = WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS;
+		$regional = WC_AI_Storefront_Robots::REGIONAL_CRAWLERS;
+		$training = WC_AI_Storefront_Robots::TRAINING_CRAWLERS;
+		$test     = WC_AI_Storefront_Robots::TEST_CRAWLERS;
+
+		$this->assertSame( [], array_intersect( $live, $regional ),  'LIVE and REGIONAL must be disjoint.' );
+		$this->assertSame( [], array_intersect( $live, $training ),  'LIVE and TRAINING must be disjoint.' );
+		$this->assertSame( [], array_intersect( $live, $test ),      'LIVE and TEST must be disjoint.' );
+		$this->assertSame( [], array_intersect( $regional, $training ), 'REGIONAL and TRAINING must be disjoint.' );
+		$this->assertSame( [], array_intersect( $regional, $test ),  'REGIONAL and TEST must be disjoint.' );
+		$this->assertSame( [], array_intersect( $training, $test ),  'TRAINING and TEST must be disjoint.' );
 	}
 
 	public function test_ai_crawlers_has_no_duplicates(): void {

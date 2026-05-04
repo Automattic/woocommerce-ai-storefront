@@ -288,22 +288,22 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		$this->assertInstanceOf( WP_Error::class, $result );
 	}
 
-	public function test_blocks_klarna_when_klarna_crawler_id_missing(): void {
-		// Defense-in-depth: it's not just ChatGPT-vs-not-ChatGPT.
-		// Every brand in the map must respect its own row in the
-		// allow-list. Picking Klarna here because its KlarnaBot ID
-		// is the SOLE crawler equivalent — if the gate had a bug
-		// where it short-circuited on a single map entry, this test
-		// would catch it.
+	public function test_klarna_always_allowed_regardless_of_allow_list(): void {
+		// Klarna has no robots.txt user-agent token (KlarnaBot does not
+		// exist). Its in-app browser is a human session, not a crawler.
+		// The brand is therefore not in UCP_AGENT_CRAWLER_MAP, so
+		// is_agent_allowed() falls through to the default ALLOW path
+		// for unmapped brands — regardless of what the merchant has
+		// toggled in the allow-list. Issue #275.
 		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers' => [ 'ChatGPT-User', 'Claude-User' ],
+			'allowed_crawlers' => [],
 		];
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://klarna.com/shopping-agent.json"' )
 		);
 
-		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertNotInstanceOf( WP_Error::class, $result );
 	}
 
 	// ------------------------------------------------------------------

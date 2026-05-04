@@ -111,8 +111,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// training) which live in the Discovery crawler list.
 		'siri.apple.com'        => 'Siri',
 
-		// Amazon — Rufus is the conversational shopping assistant,
-		// AmazonBuyForMe is its agentic-purchase crawler variant.
+		// Amazon — Rufus is the conversational shopping assistant.
 		'rufus.amazon.com'      => 'Rufus',
 
 		// Klarna.
@@ -280,8 +279,12 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		'Copilot'       => [ 'AdIdxBot' ],
 		'Perplexity'    => [ 'PerplexityBot', 'Perplexity-User' ],
 		'Siri'          => [ 'Applebot' ],
-		'Rufus'         => [ 'AmazonBuyForMe' ],
-		'Klarna'        => [ 'KlarnaBot' ],
+		'Rufus'         => [ 'Amazonbot' ],
+		// Klarna intentionally omitted: no robots.txt user-agent token
+		// exists for Klarna. Its in-app browser sends `Klarna/YY.WW.BUILD`
+		// appended to a mobile WebKit UA — a human session, not a crawler.
+		// Brand "Klarna" not being in this map means is_agent_allowed()
+		// falls through to the default ALLOW path for unmapped brands.
 		'UCPPlayground' => [ 'UCPPlayground' ],
 	];
 
