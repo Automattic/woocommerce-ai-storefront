@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-04T19:21:03+00:00\n"
+"POT-Creation-Date: 2026-05-04T19:35:36+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -599,13 +599,13 @@ msgid "%1$d of %2$d"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:2094
-#: client/settings/ai-storefront/endpoint-info.js:2270
+#: client/settings/ai-storefront/endpoint-info.js:2271
 #: client/settings/ai-storefront/product-selection.js:2023
 msgid "Select all"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:2126
-#: client/settings/ai-storefront/endpoint-info.js:2309
+#: client/settings/ai-storefront/endpoint-info.js:2311
 msgid "Clear"
 msgstr ""
 
@@ -615,73 +615,73 @@ msgstr ""
 msgid "%1$d/%2$d"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2372
+#: client/settings/ai-storefront/endpoint-info.js:2374
 msgid "Other AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2385
+#: client/settings/ai-storefront/endpoint-info.js:2387
 msgid "When checked, AI agents whose brand isn’t in the list can access your store."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2391
+#: client/settings/ai-storefront/endpoint-info.js:2393
 msgid "Allow agents not on the list"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2431
+#: client/settings/ai-storefront/endpoint-info.js:2433
 msgid "Rate limits"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2440
+#: client/settings/ai-storefront/endpoint-info.js:2442
 msgid "Control how frequently AI agents can query your store. Higher limits allow faster product discovery but use more server resources."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2461
+#: client/settings/ai-storefront/endpoint-info.js:2463
 msgid "Recommended"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2466
+#: client/settings/ai-storefront/endpoint-info.js:2468
 msgid "Works well for most stores."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2473
+#: client/settings/ai-storefront/endpoint-info.js:2475
 msgid "Conservative"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2478
+#: client/settings/ai-storefront/endpoint-info.js:2480
 msgid "Shared hosting or low-traffic stores."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2485
+#: client/settings/ai-storefront/endpoint-info.js:2487
 msgid "Generous"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2490
+#: client/settings/ai-storefront/endpoint-info.js:2492
 msgid "High-traffic stores on dedicated hosting."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2497
+#: client/settings/ai-storefront/endpoint-info.js:2499
 msgid "Custom"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2505
+#: client/settings/ai-storefront/endpoint-info.js:2507
 msgid "Set your own requests-per-minute cap."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2596
+#: client/settings/ai-storefront/endpoint-info.js:2598
 msgid "Requests per minute"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2628
+#: client/settings/ai-storefront/endpoint-info.js:2630
 msgid "/ min"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2690
+#: client/settings/ai-storefront/endpoint-info.js:2692
 #: client/settings/ai-storefront/policies-tab.js:1130
 #: client/settings/ai-storefront/product-selection.js:1926
 msgid "Saving…"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2691
+#: client/settings/ai-storefront/endpoint-info.js:2693
 #: client/settings/ai-storefront/policies-tab.js:1131
 #: client/settings/ai-storefront/product-selection.js:1927
 msgid "Save changes"

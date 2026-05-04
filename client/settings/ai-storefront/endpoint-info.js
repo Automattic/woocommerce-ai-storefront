@@ -2250,6 +2250,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 												} }
 												onClick={ ( e ) => {
 													e.preventDefault();
+													e.stopPropagation();
 													const ids = crawlers.map(
 														( c ) => c.id
 													);
@@ -2292,6 +2293,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 												} }
 												onClick={ ( e ) => {
 													e.preventDefault();
+													e.stopPropagation();
 													const ids = crawlers.map(
 														( c ) => c.id
 													);
