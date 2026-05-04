@@ -574,13 +574,16 @@ if ( ! class_exists( 'WC_Shipping_Zone' ) ) {
 
 if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
 	class WC_Shipping_Zones {
+		/** @var array<int, WC_Shipping_Zone> Keyed by zone id. Set in tests to inject zones without a DB. */
+		public static array $test_zones = [];
+
 		public static function get_zones(): array {
 			return [];
 		}
 
 		/** @return WC_Shipping_Zone[] Keyed by zone id — mirrors WooCommerce core. */
 		public static function get_shipping_zones(): array {
-			return [];
+			return self::$test_zones;
 		}
 	}
 }

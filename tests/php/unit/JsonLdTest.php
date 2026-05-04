@@ -27,6 +27,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		WC_Shipping_Zones::$test_zones = [];
 		$this->jsonld = new WC_AI_Storefront_JsonLd();
 
 		// Default: syndication enabled, no category restriction. Tests
@@ -80,6 +81,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	protected function tearDown(): void {
 		WC_AI_Storefront::$test_settings = [];
+		WC_Shipping_Zones::$test_zones   = [];
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -855,29 +857,18 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// will fail the instanceof check and free-shipping detection silently
 		// breaks for all non-RoW zones.
 		//
-		// We can't call WC_Shipping_Zones::get_shipping_zones() in a unit test
-		// (no DB), so we subclass to inject a keyed-by-id array of mock zone
-		// objects — the same shape the real static call returns — and assert
-		// that the production method unwraps them correctly into a flat array
-		// of WC_Shipping_Zone instances with the RoW zone appended at the end.
+		// We inject two WC_Shipping_Zone mocks into the stub's $test_zones
+		// (keyed by id — the exact shape WC_Shipping_Zones::get_shipping_zones()
+		// returns in production) and call the REAL production get_shipping_zones()
+		// method. The test therefore catches any regression in the production
+		// code, not just in a mirrored copy of it.
 		$zone_42 = Mockery::mock( 'WC_Shipping_Zone' );
 		$zone_99 = Mockery::mock( 'WC_Shipping_Zone' );
 
-		// Keyed by zone id — exactly the shape WC_Shipping_Zones::get_shipping_zones() uses.
-		$keyed_zones = array( 42 => $zone_42, 99 => $zone_99 );
+		WC_Shipping_Zones::$test_zones = array( 42 => $zone_42, 99 => $zone_99 );
 
-		$jsonld = new class( $keyed_zones ) extends WC_AI_Storefront_JsonLd {
-			public function __construct( private array $raw ) {}
-
-			protected function get_shipping_zones(): array {
-				// Mirrors the production implementation exactly, but uses the
-				// injected $raw array instead of calling the static WC API.
-				$zones   = array_values( $this->raw );
-				$zones[] = new WC_Shipping_Zone( 0 );
-				return $zones;
-			}
-
-			// Expose the protected method for direct assertion.
+		// Expose the protected method for direct assertion without overriding it.
+		$jsonld = new class extends WC_AI_Storefront_JsonLd {
 			public function call_get_shipping_zones(): array {
 				return $this->get_shipping_zones();
 			}
