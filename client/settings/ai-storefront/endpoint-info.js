@@ -821,10 +821,7 @@ const StatusBadge = ( { status } ) => {
 const CRAWLER_GROUPS = [
 	{
 		key: 'ai_search_discovery',
-		title: __(
-			'AI search & discovery',
-			'woocommerce-ai-storefront'
-		),
+		title: __( 'AI search & discovery', 'woocommerce-ai-storefront' ),
 		categories: [ 'live' ],
 		subgroup: 'ai_search_discovery',
 		defaultOpen: true,
@@ -2253,15 +2250,27 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 												} }
 												onClick={ ( e ) => {
 													e.preventDefault();
-													const ids = crawlers.map( ( c ) => c.id );
+													const ids = crawlers.map(
+														( c ) => c.id
+													);
 													const next = [
-														...allowedCrawlers.filter( ( id ) => ! ids.includes( id ) ),
+														...allowedCrawlers.filter(
+															( id ) =>
+																! ids.includes(
+																	id
+																)
+														),
 														...ids,
 													];
-													onChange( { allowed_crawlers: next } );
+													onChange( {
+														allowed_crawlers: next,
+													} );
 												} }
 											>
-												{ __( 'Select all', 'woocommerce-ai-storefront' ) }
+												{ __(
+													'Select all',
+													'woocommerce-ai-storefront'
+												) }
 											</Button>
 											<span
 												aria-hidden="true"
@@ -2283,15 +2292,24 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 												} }
 												onClick={ ( e ) => {
 													e.preventDefault();
-													const ids = crawlers.map( ( c ) => c.id );
+													const ids = crawlers.map(
+														( c ) => c.id
+													);
 													onChange( {
-														allowed_crawlers: allowedCrawlers.filter(
-															( id ) => ! ids.includes( id )
-														),
+														allowed_crawlers:
+															allowedCrawlers.filter(
+																( id ) =>
+																	! ids.includes(
+																		id
+																	)
+															),
 													} );
 												} }
 											>
-												{ __( 'Clear', 'woocommerce-ai-storefront' ) }
+												{ __(
+													'Clear',
+													'woocommerce-ai-storefront'
+												) }
 											</Button>
 										</span>
 									) }
