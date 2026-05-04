@@ -377,12 +377,17 @@ const getActivePreset = ( rpm ) => {
 /**
  * Known AI crawler metadata, grouped by traffic category.
  *
- * The two categories map to different merchant value propositions:
+ * The three categories map to different merchant value propositions:
  *
  *   - `live`     agents fetch during an active user query. They see
  *                fresh inventory and route the user to checkout —
  *                this is the revenue-path traffic for a commerce
- *                site. Recommended on.
+ *                site. Recommended on (default on).
+ *
+ *   - `regional` crawlers are real, high-value search + AI bots for
+ *                specific markets (Asia, Europe). Globally relevant for
+ *                merchants in those regions; no benefit for English-only
+ *                stores. Default off — merchant opts in for their market.
  *
  *   - `training` crawlers index content for later use in model
  *                weights or cached snapshots. They do not route
@@ -390,6 +395,7 @@ const getActivePreset = ( rpm ) => {
  *                captured in April may surface as "answer" in an
  *                AI response in October, by which point prices and
  *                availability have moved. Merchant discretion.
+ *                Default off.
  *
  * The UCP protocol (v2026-04-08) is intentionally silent on
  * training-crawler policy — UCP is a live-commerce spec, training is
@@ -435,145 +441,225 @@ const KNOWN_CRAWLERS = [
 	// alphabetical within each sub-group.
 	// ----------------------------------------------------------------
 
-	// General-purpose AI assistants.
+	// AI search & discovery — search-index crawlers, dual-purpose
+	// crawlers, and live user-session agents. All default-on.
+	// Alphabetical within each sub-flavour grouping.
 	{
 		id: 'Applebot',
 		label: 'Applebot (Apple Siri / Spotlight)',
 		category: 'live',
-		subgroup: 'general',
+		subgroup: 'ai_search_discovery',
+	},
+	{
+		id: 'Bingbot',
+		label: 'Bingbot (Microsoft Copilot / Bing / DuckDuckGo)',
+		category: 'live',
+		subgroup: 'ai_search_discovery',
+	},
+	{
+		id: 'BraveBot',
+		label: 'BraveBot (Brave Search / Leo)',
+		category: 'live',
+		subgroup: 'ai_search_discovery',
 	},
 	{
 		id: 'ChatGPT-User',
-		label: 'ChatGPT-User (OpenAI)',
+		label: 'ChatGPT-User (OpenAI — live session)',
 		category: 'live',
-		subgroup: 'general',
+		subgroup: 'ai_search_discovery',
 	},
 	{
 		id: 'Claude-SearchBot',
 		label: 'Claude-SearchBot (Anthropic)',
 		category: 'live',
-		subgroup: 'general',
+		subgroup: 'ai_search_discovery',
 	},
 	{
 		id: 'Claude-User',
-		label: 'Claude-User (Anthropic)',
+		label: 'Claude-User (Anthropic — live session)',
 		category: 'live',
-		subgroup: 'general',
+		subgroup: 'ai_search_discovery',
+	},
+	{
+		id: 'ClaudeBot',
+		label: 'ClaudeBot (Anthropic — dual-purpose: index + live answers)',
+		category: 'live',
+		subgroup: 'ai_search_discovery',
 	},
 	{
 		id: 'DuckAssistBot',
-		label: 'DuckAssistBot (DuckDuckGo)',
+		label: 'DuckAssistBot (DuckDuckGo AI answers)',
 		category: 'live',
-		subgroup: 'general',
+		subgroup: 'ai_search_discovery',
+	},
+	{
+		id: 'DuckDuckBot',
+		label: 'DuckDuckBot (DuckDuckGo Search)',
+		category: 'live',
+		subgroup: 'ai_search_discovery',
+	},
+	{
+		id: 'Googlebot',
+		label: 'Googlebot (Google Search / Shopping / AI Overviews)',
+		category: 'live',
+		subgroup: 'ai_search_discovery',
+	},
+	{
+		id: 'GPTBot',
+		label: 'GPTBot (OpenAI — dual-purpose: index + live answers)',
+		category: 'live',
+		subgroup: 'ai_search_discovery',
 	},
 	{
 		id: 'Mistralai-User',
-		label: 'Mistralai-User (Mistral AI)',
+		label: 'Mistralai-User (Mistral AI — live session)',
 		category: 'live',
-		subgroup: 'general',
+		subgroup: 'ai_search_discovery',
+	},
+	{
+		id: 'Mojeekbot',
+		label: 'Mojeekbot (Mojeek / AI grounding)',
+		category: 'live',
+		subgroup: 'ai_search_discovery',
 	},
 	{
 		id: 'OAI-SearchBot',
 		label: 'OAI-SearchBot (OpenAI SearchGPT)',
 		category: 'live',
-		subgroup: 'general',
+		subgroup: 'ai_search_discovery',
 	},
 	{
 		id: 'Perplexity-User',
-		label: 'Perplexity-User (Perplexity)',
+		label: 'Perplexity-User (Perplexity — live session)',
 		category: 'live',
-		subgroup: 'general',
+		subgroup: 'ai_search_discovery',
 	},
 	{
 		id: 'PerplexityBot',
 		label: 'PerplexityBot (Perplexity)',
 		category: 'live',
-		subgroup: 'general',
+		subgroup: 'ai_search_discovery',
+	},
+	{
+		id: 'Phindbot',
+		label: 'Phindbot (Phind AI Search)',
+		category: 'live',
+		subgroup: 'ai_search_discovery',
 	},
 	{
 		id: 'YouBot',
 		label: 'YouBot (You.com)',
 		category: 'live',
-		subgroup: 'general',
+		subgroup: 'ai_search_discovery',
 	},
-
-	// Agentic shopping — AI that places orders, not just reads.
-	{
-		id: 'AmazonBuyForMe',
-		label: 'AmazonBuyForMe (Amazon Rufus)',
-		category: 'live',
-		subgroup: 'agentic_shopping',
-	},
-	{
-		id: 'KlarnaBot',
-		label: 'KlarnaBot (Klarna AI)',
-		category: 'live',
-		subgroup: 'agentic_shopping',
-	},
-
-	// Commerce search engines.
 	{
 		id: 'AdIdxBot',
 		label: 'AdIdxBot (Microsoft Shopping / Copilot)',
 		category: 'live',
-		subgroup: 'commerce_search',
+		subgroup: 'ai_search_discovery',
+	},
+	{
+		id: 'Amazonbot',
+		label: 'Amazonbot (Amazon Rufus — product index)',
+		category: 'live',
+		subgroup: 'ai_search_discovery',
+	},
+	{
+		id: 'Pinterestbot',
+		label: 'Pinterestbot (Pinterest / AI Shopping Assistant)',
+		category: 'live',
+		subgroup: 'ai_search_discovery',
 	},
 	{
 		id: 'Storebot-Google',
 		label: 'Storebot-Google (Google Shopping AI)',
 		category: 'live',
-		subgroup: 'commerce_search',
+		subgroup: 'ai_search_discovery',
 	},
 
 	// Regional — Asia.
 	{
+		id: 'Baiduspider',
+		label: 'Baiduspider (Baidu Search / China)',
+		category: 'regional',
+		subgroup: 'regional_asia',
+	},
+	{
+		id: 'coccocbot-web',
+		label: 'coccocbot-web (Coccoc / Vietnam)',
+		category: 'regional',
+		subgroup: 'regional_asia',
+	},
+	{
+		id: 'Daumoa',
+		label: 'Daumoa (Daum / Kakao / Korea)',
+		category: 'regional',
+		subgroup: 'regional_asia',
+	},
+	{
 		id: 'ERNIEBot',
-		label: 'ERNIEBot (Baidu / China)',
-		category: 'live',
+		label: 'ERNIEBot (Baidu AI / China)',
+		category: 'regional',
 		subgroup: 'regional_asia',
 	},
 	{
 		id: 'NaverBot',
 		label: 'NaverBot (Naver / Korea)',
-		category: 'live',
+		category: 'regional',
 		subgroup: 'regional_asia',
 	},
 	{
 		id: 'PetalBot',
 		label: 'PetalBot (Huawei / Global)',
-		category: 'live',
+		category: 'regional',
 		subgroup: 'regional_asia',
 	},
 	{
 		id: 'WRTNBot',
 		label: 'WRTNBot (Wrtn / Korea)',
-		category: 'live',
+		category: 'regional',
+		subgroup: 'regional_asia',
+	},
+	{
+		id: 'Yeti',
+		label: 'Yeti (Naver Search / HyperCLOVA X / Korea)',
+		category: 'regional',
 		subgroup: 'regional_asia',
 	},
 	{
 		id: 'YiyanBot',
 		label: 'YiyanBot (Baidu Conversational / China)',
-		category: 'live',
+		category: 'regional',
 		subgroup: 'regional_asia',
 	},
 
 	// Regional — Europe.
 	{
+		id: 'Qwantify',
+		label: 'Qwantify (Qwant / France + EU)',
+		category: 'regional',
+		subgroup: 'regional_europe',
+	},
+	{
+		id: 'SeznamBot',
+		label: 'SeznamBot (Seznam / Czech Republic)',
+		category: 'regional',
+		subgroup: 'regional_europe',
+	},
+	{
 		id: 'YandexBot',
 		label: 'YandexBot (Yandex / Russia + E. Europe)',
-		category: 'live',
+		category: 'regional',
 		subgroup: 'regional_europe',
 	},
 
 	// ----------------------------------------------------------------
 	// Training crawlers — alphabetical (case-insensitive). Brand-
 	// strategy decision; default off.
+	// Note: Amazonbot, ClaudeBot, and GPTBot have moved to
+	// live/ai_search_discovery above — all three are dual-purpose
+	// (index-build + live answer surfaces).
 	// ----------------------------------------------------------------
-	{
-		id: 'Amazonbot',
-		label: 'Amazonbot (Amazon / Alexa)',
-		category: 'training',
-	},
 	{
 		id: 'anthropic-ai',
 		label: 'anthropic-ai (Anthropic legacy)',
@@ -590,7 +676,6 @@ const KNOWN_CRAWLERS = [
 		category: 'training',
 	},
 	{ id: 'CCBot', label: 'CCBot (CommonCrawl)', category: 'training' },
-	{ id: 'ClaudeBot', label: 'ClaudeBot (Anthropic)', category: 'training' },
 	{ id: 'cohere-ai', label: 'cohere-ai (Cohere)', category: 'training' },
 	{
 		id: 'Diffbot',
@@ -602,7 +687,6 @@ const KNOWN_CRAWLERS = [
 		label: 'Google-Extended (Gemini training)',
 		category: 'training',
 	},
-	{ id: 'GPTBot', label: 'GPTBot (OpenAI)', category: 'training' },
 	{
 		id: 'Meta-ExternalAgent',
 		label: 'Meta-ExternalAgent (Meta AI)',
@@ -736,42 +820,28 @@ const StatusBadge = ( { status } ) => {
 // surfaces mismatches.
 const CRAWLER_GROUPS = [
 	{
-		key: 'general',
+		key: 'ai_search_discovery',
 		title: __(
-			'General-purpose AI assistants',
+			'AI search & discovery',
 			'woocommerce-ai-storefront'
 		),
 		categories: [ 'live' ],
-		subgroup: 'general',
-		defaultOpen: true,
-	},
-	{
-		key: 'agentic_shopping',
-		title: __( 'Agentic shopping', 'woocommerce-ai-storefront' ),
-		categories: [ 'live' ],
-		subgroup: 'agentic_shopping',
-		defaultOpen: true,
-	},
-	{
-		key: 'commerce_search',
-		title: __( 'Commerce search engines', 'woocommerce-ai-storefront' ),
-		categories: [ 'live' ],
-		subgroup: 'commerce_search',
+		subgroup: 'ai_search_discovery',
 		defaultOpen: true,
 	},
 	{
 		key: 'regional_asia',
 		title: __( 'Regional Asia', 'woocommerce-ai-storefront' ),
-		categories: [ 'live' ],
+		categories: [ 'regional' ],
 		subgroup: 'regional_asia',
-		defaultOpen: true,
+		defaultOpen: false,
 	},
 	{
 		key: 'regional_europe',
 		title: __( 'Regional Europe', 'woocommerce-ai-storefront' ),
-		categories: [ 'live' ],
+		categories: [ 'regional' ],
 		subgroup: 'regional_europe',
-		defaultOpen: true,
+		defaultOpen: false,
 	},
 	{
 		key: 'training_and_test',
@@ -1908,20 +1978,30 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 					</p>
 
 					{ /*
-						Boundary note: clarifies what this list covers
-						(AI-specific crawlers) and what it doesn't
-						(general-purpose search engines like Google,
-						Bing, Yandex, etc.), so merchants without an SEO
-						plugin don't read the absence of Googlebot here
-						as "I haven't allowed Googlebot." General SEO
-						bots are allowed by default via WordPress core's
-						`User-agent: *` block and managed by SEO plugins
-						(Yoast, Rank Math, AIOSEO) where applicable.
-						Styled as helper text (muted color, 12px) rather
-						than primary copy (13px) so it reads as secondary
-						context to the intro paragraph above rather than
-						a competing instruction. See issue #268.
+						Two boundary notes (12px muted helper text):
+						1. Agentic browsers note: ChatGPT Atlas and
+						   Perplexity Comet identify as standard Chrome
+						   — no user-agent token exists to allow or deny
+						   them via robots.txt. See issue #275.
+						2. General SEO bots note (retained from #268):
+						   Googlebot and Bingbot are included in this
+						   list for AI-discoverability; their general
+						   crawl behavior is also governed by WordPress
+						   core and SEO plugins.
 					*/ }
+					<p
+						style={ {
+							color: colors.textMuted,
+							fontSize: '12px',
+							margin: '0 0 4px',
+							lineHeight: '1.5',
+						} }
+					>
+						{ __(
+							'Agentic browsers like ChatGPT Atlas and Perplexity Comet browse as standard Chrome and cannot be managed here — they have no robots.txt user-agent token.',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
 					<p
 						style={ {
 							color: colors.textMuted,
@@ -1931,7 +2011,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						} }
 					>
 						{ __(
-							'This list controls AI-specific crawlers (ChatGPT, Claude, Perplexity, Gemini, etc.). General-purpose search engines like Google and Bing are managed by WordPress core and your SEO plugin (if any) — adjust those in your SEO plugin settings or robots.txt directly.',
+							'Googlebot and Bingbot are included here for AI discoverability (AI Overviews, Copilot). Their general search crawl behavior is also managed by WordPress core and your SEO plugin.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>
@@ -2087,7 +2167,8 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							);
 							const orphans = KNOWN_CRAWLERS.filter(
 								( c ) =>
-									c.category === 'live' &&
+									( c.category === 'live' ||
+										c.category === 'regional' ) &&
 									! knownSubgroups.has( c.subgroup )
 							);
 							if ( orphans.length > 0 ) {
@@ -2140,15 +2221,80 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 										} }
 									>
 										{ sprintf(
-											/* translators: %1$d allowed, %2$d total */
+											/* translators: %1$d: allowed count, %2$d: total count */
 											__(
-												'%1$d/%2$d allowed',
+												'%1$d/%2$d',
 												'woocommerce-ai-storefront'
 											),
 											allowedCount,
 											crawlers.length
 										) }
 									</span>
+									{ expandedGroups[ group.key ] && (
+										<span
+											style={ {
+												display: 'inline-flex',
+												alignItems: 'center',
+												marginLeft: '8px',
+												flexShrink: 0,
+												// Reset the summary's font shorthand
+												// (600 13px) so these links match the
+												// page-level Select all / Clear style.
+												font: `400 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`,
+											} }
+										>
+											<Button
+												variant="link"
+												style={ {
+													fontSize: '12px',
+													fontWeight: '400',
+													padding: 0,
+													minHeight: 'auto',
+												} }
+												onClick={ ( e ) => {
+													e.preventDefault();
+													const ids = crawlers.map( ( c ) => c.id );
+													const next = [
+														...allowedCrawlers.filter( ( id ) => ! ids.includes( id ) ),
+														...ids,
+													];
+													onChange( { allowed_crawlers: next } );
+												} }
+											>
+												{ __( 'Select all', 'woocommerce-ai-storefront' ) }
+											</Button>
+											<span
+												aria-hidden="true"
+												style={ {
+													padding: '0 6px',
+													color: colors.textMuted,
+													fontSize: '12px',
+												} }
+											>
+												|
+											</span>
+											<Button
+												variant="link"
+												style={ {
+													fontSize: '12px',
+													fontWeight: '400',
+													padding: 0,
+													minHeight: 'auto',
+												} }
+												onClick={ ( e ) => {
+													e.preventDefault();
+													const ids = crawlers.map( ( c ) => c.id );
+													onChange( {
+														allowed_crawlers: allowedCrawlers.filter(
+															( id ) => ! ids.includes( id )
+														),
+													} );
+												} }
+											>
+												{ __( 'Clear', 'woocommerce-ai-storefront' ) }
+											</Button>
+										</span>
+									) }
 								</summary>
 								<div className="crawler-group-body">
 									{ crawlers.map( ( crawler ) => (

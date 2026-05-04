@@ -34,70 +34,131 @@ class WC_AI_Storefront_Robots {
 	 * @var string[]
 	 */
 	const LIVE_BROWSING_AGENTS = [
-		// General-purpose AI assistants — alphabetical.
+		// AI search & discovery crawlers — alphabetical.
 		//
-		// Foundation-model / search-assistant bots. The `-User` suffix
-		// (ChatGPT-User, Claude-User, Perplexity-User, Mistralai-User)
-		// signals "triggered by an active user session" per each vendor's
-		// documentation. Applebot is the long-standing Siri/Spotlight
-		// search crawler (since 2015) — Applebot-Extended is the AI-
-		// training variant and lives in TRAINING_CRAWLERS.
-		// DuckAssistBot powers DDG's AI-generated answer summaries.
-		// YouBot is You.com's combined retrieval/training crawler;
-		// listed here because the live-retrieval purpose dominates and
-		// the bot identifies cleanly by token.
+		// These build indexes that AI surfaces draw on when answering
+		// product queries. Two sub-flavours coexist here:
+		//
+		// Search-index crawlers (build a persistent index):
+		//   Applebot → Siri/Spotlight/Apple Intelligence
+		//   Bingbot  → Bing/Copilot/DuckDuckGo (partial)
+		//   BraveBot → Brave Search/Leo/Grounding API
+		//   Claude-SearchBot → Claude.ai search index
+		//   DuckDuckBot → DDG search (feeds DuckAssistBot)
+		//   Googlebot → Google Search/Shopping/AI Overviews/Gemini
+		//   Mojeekbot → independent index relicensed to AI startups
+		//   OAI-SearchBot → ChatGPT Search index
+		//   PerplexityBot → Perplexity answers index
+		//   Phindbot → Phind developer AI search
+		//   YouBot → You.com (dual-purpose: index + live retrieval)
+		//   AdIdxBot → Bing Ads/Copilot Shopping
+		//   Amazonbot → Amazon Rufus product awareness index
+		//   Pinterestbot → Rich Pins + Pinterest AI Shopping (518M MAUs)
+		//   Storebot-Google → Google Shopping AI/AI Outfit
+		//
+		// Dual-purpose crawlers (index + live answer surface):
+		//   ClaudeBot → Anthropic's general crawler; index-builds and
+		//               feeds live Claude.ai answer surfaces alongside
+		//               Claude-User/Claude-SearchBot
+		//   GPTBot → OpenAI's general crawler; index-builds and feeds
+		//            live ChatGPT answer surfaces alongside ChatGPT-User/
+		//            OAI-SearchBot
+		//
+		// Live user-session agents (fetch on behalf of an active user):
+		//   ChatGPT-User → live fetch during ChatGPT session
+		//   Claude-User → live fetch during Claude.ai session
+		//   DuckAssistBot → DDG AI answer summaries
+		//   Mistralai-User → live fetch during Mistral session
+		//                    (dual-purpose: also trains Mistral models)
+		//   Perplexity-User → live fetch during Perplexity session
+		//
+		// All three sub-flavours are default-on: search-index crawlers
+		// drive discovery; dual-purpose crawlers feed live answer surfaces;
+		// live-session agents drive immediate conversion.
+		// The distinction is preserved in subgroup values so the admin
+		// UI can render them under separate headings within this category.
+		//
+		// Note: AmazonBuyForMe (autonomous purchase execution) has been
+		// removed. It represents a checkout-in-AI model this plugin does
+		// not support — this plugin routes shoppers to the merchant's own
+		// checkout, not into an AI-side payment flow.
+		//
+		// Googlebot/Bingbot are also managed by WordPress core and SEO
+		// plugins; this entry ensures AI-specific discoverability is not
+		// inadvertently blocked by a merchant-side robots.txt override.
+		//
+		// Regional crawlers (Asia + Europe) have been moved to
+		// REGIONAL_CRAWLERS (default-off). Merchants targeting those
+		// markets opt in explicitly.
 		'Applebot',
+		'Bingbot',
+		'BraveBot',
 		'ChatGPT-User',
 		'Claude-SearchBot',
 		'Claude-User',
+		'ClaudeBot',
 		'DuckAssistBot',
+		'DuckDuckBot',
+		'Googlebot',
+		'GPTBot',
 		'Mistralai-User',
+		'Mojeekbot',
 		'OAI-SearchBot',
 		'Perplexity-User',
 		'PerplexityBot',
+		'Phindbot',
 		'YouBot',
-
-		// Agentic shopping — AI that places orders, not just reads.
-		// Highest commerce intent: appearing here means appearing at
-		// purchase time, not just research. AmazonBuyForMe powers
-		// Amazon Rufus's "buy from the open web" feature; KlarnaBot
-		// drives high-intent shopping queries primarily in EU and US
-		// fashion/lifestyle.
-		'AmazonBuyForMe',
-		'KlarnaBot',
-
-		// Commerce search engines. AdIdxBot indexes product landing
-		// pages for Microsoft Advertising / Bing Ads / Copilot
-		// shopping answers — the commerce prerequisite for Copilot
-		// discoverability. Storebot-Google powers Shopping Overviews
-		// and "AI Outfit" recommendations; distinct from Googlebot
-		// (general search) and Google-Extended (training).
 		'AdIdxBot',
+		'Amazonbot',
+		'Pinterestbot',
 		'Storebot-Google',
+	];
 
-		// Regional search + AI — Asia. Baidu (China) — ERNIEBot
-		// (general crawling for the Ernie model) + YiyanBot (real-
-		// time conversational citations). Naver (Korea) powers
-		// AiRSearch. Huawei's PetalBot backs Petal Search and the
-		// AI Assistant shipped on hundreds of millions of Huawei
-		// devices. Wrtn ("the Korean ChatGPT") is the lifestyle
-		// product-discovery leader in South Korea.
-		//
-		// Merchants selling only in English-speaking markets can
-		// safely keep these checked without traffic impact — they
-		// only invoke when users actually search from the relevant
-		// region. Merchants selling in Asia lose significant AI
-		// discovery if these are blocked.
+	/**
+	 * Regional search + AI crawlers — default off.
+	 *
+	 * These are real, high-value crawlers for their respective markets,
+	 * but merchants selling only in English-speaking markets get no
+	 * benefit from them. A merchant selling in Korea, China, Vietnam,
+	 * Russia, France, or the Czech Republic should opt in; everyone
+	 * else can leave these off without affecting AI discoverability in
+	 * their target markets.
+	 *
+	 * Default-off rationale: unlike LIVE_BROWSING_AGENTS (which are
+	 * globally relevant and revenue-routing), regional crawlers are
+	 * market-specific. An English-only store opting in gets bot
+	 * traffic with zero conversion upside. The merchant signals their
+	 * market by toggling these on.
+	 *
+	 * @var string[]
+	 */
+	const REGIONAL_CRAWLERS = [
+		// Asia — alphabetical.
+		// Baiduspider (China) is the primary Baidu crawler — gates
+		// Baidu Search and Ernie Bot. ERNIEBot + YiyanBot are Baidu's
+		// AI-model and conversational-citation crawlers. NaverBot powers
+		// Naver AiRSearch; Yeti feeds HyperCLOVA X. Daumoa serves
+		// Daum/Kakao (Korea). PetalBot backs Huawei Petal Search + AI
+		// Assistant on hundreds of millions of devices. WRTNBot powers
+		// Wrtn ("the Korean ChatGPT"). coccocbot-web covers Coccoc
+		// browser + search (Vietnam).
+		'Baiduspider',
+		'coccocbot-web',
+		'Daumoa',
 		'ERNIEBot',
 		'NaverBot',
 		'PetalBot',
 		'WRTNBot',
+		'Yeti',
 		'YiyanBot',
 
-		// Regional search + AI — Europe. YandexBot powers Yandex's
-		// AI Assistant plus the traditional Yandex search engine —
-		// covers Russian-speaking markets globally. Search + AI
-		// fusion similar to Naver/Baidu (one bot, dual duties).
+		// Europe — alphabetical.
+		// YandexBot powers Yandex's AI Assistant + traditional search
+		// (Russian-speaking markets globally). Qwantify is Qwant's
+		// crawler (France/EU privacy segment). SeznamBot is the top
+		// engine in the Czech market.
+		'Qwantify',
+		'SeznamBot',
 		'YandexBot',
 	];
 
@@ -135,16 +196,22 @@ class WC_AI_Storefront_Robots {
 		// still seen in real logs alongside the newer `ClaudeBot`.
 		// `Diffbot` builds the Knowledge Graph that several LLM
 		// vendors purchase as training input.
-		'Amazonbot',
+		// `Amazonbot` was previously here but has moved to
+		// LIVE_BROWSING_AGENTS (AI search & discovery) — it is the
+		// indexing prerequisite for Amazon Rufus, a live AI
+		// shopping surface, not a pure training crawler.
+		// `ClaudeBot` and `GPTBot` have moved to LIVE_BROWSING_AGENTS
+		// (AI search & discovery) — both vendors publish separate live
+		// tokens (Claude-User, Claude-SearchBot, ChatGPT-User,
+		// OAI-SearchBot) and treat their main crawler as dual-purpose:
+		// index-building that also feeds live answer surfaces.
 		'anthropic-ai',
 		'Applebot-Extended',
 		'Bytespider',
 		'CCBot',
-		'ClaudeBot',
 		'cohere-ai',
 		'Diffbot',
 		'Google-Extended',
-		'GPTBot',
 		'Meta-ExternalAgent',
 		'Microsoft-BingBot-Extended',
 	];
@@ -180,7 +247,7 @@ class WC_AI_Storefront_Robots {
 	];
 
 	/**
-	 * Combined allow-list — live browsing + training + test.
+	 * Combined allow-list — live browsing + regional + training + test.
 	 *
 	 * Preserved as the pre-1.5.0 canonical list for backward
 	 * compatibility: existing installs' saved `allowed_crawlers`
@@ -193,53 +260,64 @@ class WC_AI_Storefront_Robots {
 	 * in the admin UI).
 	 *
 	 * Order invariant — must remain
-	 *   `LIVE_BROWSING_AGENTS` ++ `TRAINING_CRAWLERS` ++ `TEST_CRAWLERS`
+	 *   `LIVE_BROWSING_AGENTS` ++ `REGIONAL_CRAWLERS` ++ `TRAINING_CRAWLERS` ++ `TEST_CRAWLERS`
 	 * in declaration order. Adding a new entry: append it to the
 	 * appropriate category constant AND add it here at the end of the
-	 * matching block. Don't sort alphabetically and don't introduce a
-	 * fourth category without updating both this constant and
-	 * `RobotsTest::test_ai_crawlers_is_union_of_live_training_and_test`,
+	 * matching block. Don't introduce a new category without updating
+	 * both this constant and
+	 * `RobotsTest::test_ai_crawlers_is_union_of_all_categories`,
 	 * which `assertSame()`s the order.
 	 *
 	 * @var string[]
 	 */
 	const AI_CRAWLERS = [
-		// Live browsing — alphabetical within sub-groups
-		// (general-purpose, agentic shopping, commerce search,
-		// regional Asia, regional Europe). See LIVE_BROWSING_AGENTS
-		// for sub-group rationale.
+		// Live browsing — order mirrors LIVE_BROWSING_AGENTS.
 		'Applebot',
+		'Bingbot',
+		'BraveBot',
 		'ChatGPT-User',
 		'Claude-SearchBot',
 		'Claude-User',
+		'ClaudeBot',
 		'DuckAssistBot',
+		'DuckDuckBot',
+		'Googlebot',
+		'GPTBot',
 		'Mistralai-User',
+		'Mojeekbot',
 		'OAI-SearchBot',
 		'Perplexity-User',
 		'PerplexityBot',
+		'Phindbot',
 		'YouBot',
-		'AmazonBuyForMe',
-		'KlarnaBot',
 		'AdIdxBot',
+		'Amazonbot',
+		'Pinterestbot',
 		'Storebot-Google',
+
+		// Regional crawlers — order mirrors REGIONAL_CRAWLERS:
+		// Asia then Europe, alphabetical within each.
+		'Baiduspider',
+		'coccocbot-web',
+		'Daumoa',
 		'ERNIEBot',
 		'NaverBot',
 		'PetalBot',
 		'WRTNBot',
+		'Yeti',
 		'YiyanBot',
+		'Qwantify',
+		'SeznamBot',
 		'YandexBot',
 
 		// Training crawlers — alphabetical (case-insensitive).
-		'Amazonbot',
 		'anthropic-ai',
 		'Applebot-Extended',
 		'Bytespider',
 		'CCBot',
-		'ClaudeBot',
 		'cohere-ai',
 		'Diffbot',
 		'Google-Extended',
-		'GPTBot',
 		'Meta-ExternalAgent',
 		'Microsoft-BingBot-Extended',
 
