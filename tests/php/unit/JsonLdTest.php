@@ -924,6 +924,113 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'EUR', $rate['currency'] );
 	}
 
+	public function test_shipping_rate_omitted_when_method_is_not_free_shipping_type(): void {
+		// A flat-rate method in a matching zone must not trigger the free-shipping
+		// rate — only WC_Shipping_Free_Shipping instances qualify.
+		$flat_rate           = Mockery::mock( 'WC_Shipping_Flat_Rate' );
+		$flat_rate->requires = '';
+		$zone                = $this->make_zone( [ 'US' ], [ $flat_rate ] );
+		$jsonld              = $this->make_jsonld_with_zones( [ $zone ] );
+
+		$result = $jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$this->make_product()
+		);
+
+		$this->assertArrayNotHasKey( 'shippingRate', $result['offers'][0]['shippingDetails'] );
+	}
+
+	/**
+	 * @dataProvider requires_values_that_prevent_free_rate
+	 */
+	public function test_shipping_rate_omitted_when_requires_is_not_empty( string $requires ): void {
+		$zone   = $this->make_zone( [ 'US' ], [ $this->make_free_method( $requires ) ] );
+		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+
+		$result = $jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$this->make_product()
+		);
+
+		$this->assertArrayNotHasKey( 'shippingRate', $result['offers'][0]['shippingDetails'] );
+	}
+
+	public static function requires_values_that_prevent_free_rate(): array {
+		return array(
+			'coupon' => array( 'coupon' ),
+			'either' => array( 'either' ),
+			'both'   => array( 'both' ),
+		);
+	}
+
+	public function test_shipping_rate_cache_stores_negative_result(): void {
+		// A zone that covers US but has only conditional free shipping must write
+		// false into the cache so a second call does NOT re-walk the zones.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$zone       = Mockery::mock( 'WC_Shipping_Zone' );
+		$call_count = 0;
+		$zone->shouldReceive( 'get_zone_locations' )->andReturnUsing(
+			static function () use ( &$call_count ) {
+				++$call_count;
+				$loc       = new stdClass();
+				$loc->type = 'country';
+				$loc->code = 'US';
+				return [ $loc ];
+			}
+		);
+		$zone->shouldReceive( 'get_shipping_methods' )->with( true )
+			->andReturn( [ $this->make_free_method( 'min_amount' ) ] );
+
+		$jsonld  = $this->make_jsonld_with_zones( [ $zone ] );
+		$product = $this->make_product();
+		$input   = [ 'offers' => [ [ '@type' => 'Offer' ] ] ];
+
+		$jsonld->enhance_product_data( $input, $product );
+		$jsonld->enhance_product_data( $input, $product );
+
+		$this->assertSame( 1, $call_count, 'Negative result must be cached — zone walk must not repeat' );
+	}
+
+	public function test_non_zone_entry_in_zone_list_is_skipped(): void {
+		// get_shipping_zones() could return non-WC_Shipping_Zone values
+		// (e.g. raw associative arrays from WC_Shipping_Zones::get_zones()).
+		// The implementation guards with instanceof — verify no crash and no rate.
+		$not_a_zone = [ 'id' => 1, 'zone_name' => 'Test' ];
+		$jsonld     = $this->make_jsonld_with_zones( [ $not_a_zone ] );
+
+		$result = $jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$this->make_product()
+		);
+
+		$this->assertArrayNotHasKey( 'shippingRate', $result['offers'][0]['shippingDetails'] );
+	}
+
+	public function test_zone_with_state_location_type_does_not_match_country(): void {
+		// A zone whose only location is a state entry must NOT be treated as
+		// covering the whole country — zone_covers_country checks type === 'country'.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$loc       = new stdClass();
+		$loc->type = 'state';
+		$loc->code = 'US:NY';
+
+		$zone = Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_zone_locations' )->andReturn( [ $loc ] );
+		$zone->shouldReceive( 'get_shipping_methods' )->with( true )
+			->andReturn( [ $this->make_free_method( '' ) ] );
+
+		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+
+		$result = $jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$this->make_product()
+		);
+
+		$this->assertArrayNotHasKey( 'shippingRate', $result['offers'][0]['shippingDetails'] );
+	}
+
 	public function test_shipping_rate_cache_avoids_redundant_zone_walk(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 

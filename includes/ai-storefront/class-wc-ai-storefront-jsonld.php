@@ -36,7 +36,7 @@ class WC_AI_Storefront_JsonLd {
 	 *
 	 * @var array<string, bool>
 	 */
-	private array $free_shipping_cache = [];
+	private array $free_shipping_cache = array();
 
 	/**
 	 * Initialize hooks.
