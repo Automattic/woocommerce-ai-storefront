@@ -521,16 +521,38 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_stored_allowed_crawlers_list_is_preserved(): void {
-		// Happy path for existing installs with saved selections —
-		// the resolver must return the stored list verbatim.
-		$stored = [ 'GPTBot', 'ClaudeBot', 'Claude-User' ];
+	public function test_stored_allowed_crawlers_list_preserved_with_seo_bots_unioned_in(): void {
+		// Existing installs' saved selections are preserved. Bingbot and
+		// Googlebot are always force-unioned in so upgrading stores whose
+		// saved list predates those IDs can't accidentally emit Disallow:/
+		// for search indexing bots (SEO-deindex regression, Comment 4).
+		$stored = array( 'GPTBot', 'ClaudeBot', 'Claude-User' );
 
 		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
-			[ 'allowed_crawlers' => $stored ]
+			array( 'allowed_crawlers' => $stored )
 		);
 
-		$this->assertSame( $stored, $result );
+		foreach ( $stored as $bot ) {
+			$this->assertContains( $bot, $result, "Stored bot $bot must still be present" );
+		}
+		$this->assertContains( 'Bingbot', $result, 'Bingbot must be force-added to prevent search-indexing block' );
+		$this->assertContains( 'Googlebot', $result, 'Googlebot must be force-added to prevent search-indexing block' );
+	}
+
+	public function test_upgrade_migration_adds_bingbot_and_googlebot_to_pre_existing_list(): void {
+		// Upgrade scenario: a saved list from before Bingbot/Googlebot
+		// were added. The resolver must inject them so robots.txt does not
+		// emit `Disallow: /` for the store's primary search indexing bots.
+		$pre_upgrade = array( 'GPTBot', 'ChatGPT-User', 'ClaudeBot' );
+
+		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
+			array( 'allowed_crawlers' => $pre_upgrade )
+		);
+
+		$this->assertContains( 'Bingbot', $result );
+		$this->assertContains( 'Googlebot', $result );
+		// No duplicates.
+		$this->assertSame( array_unique( $result ), $result );
 	}
 
 	public function test_non_array_stored_value_degrades_to_empty_list(): void {

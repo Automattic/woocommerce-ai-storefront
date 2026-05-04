@@ -404,10 +404,10 @@ const getActivePreset = ( rpm ) => {
  *
  * Keep this list in sync with the PHP constants
  * `WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS`,
- * `::TRAINING_CRAWLERS`, and `::TEST_CRAWLERS`. The frontend renders
- * from this constant; the backend sanitizes against the PHP-side
- * `AI_CRAWLERS` (which is the union of all three). Drift would
- * produce silently-dropped checkboxes on save.
+ * `::REGIONAL_CRAWLERS`, `::TRAINING_CRAWLERS`, and `::TEST_CRAWLERS`.
+ * The frontend renders from this constant; the backend sanitizes against
+ * the PHP-side `AI_CRAWLERS` (which is the union of all four). Drift
+ * would produce silently-dropped checkboxes on save.
  */
 /**
  * Shape of a section in the AI Crawlers list.
@@ -2148,11 +2148,11 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								( group.subgroup === null ||
 									c.subgroup === group.subgroup )
 						);
-						// Dev-mode safeguard: if a `live` crawler is added
-						// with a subgroup that no rendered group claims,
-						// it would silently vanish from the merchant UI.
-						// Surface it during development so the missing
-						// group/subgroup mismatch can be fixed at source.
+						// Dev-mode safeguard: if a `live` or `regional`
+						// crawler is added with a subgroup that no rendered
+						// group claims, it would silently vanish from the
+						// merchant UI. Surface it during development so the
+						// missing group/subgroup mismatch can be fixed at source.
 						if (
 							process.env.NODE_ENV !== 'production' &&
 							group.key === allGroups[ 0 ].key
@@ -2171,7 +2171,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							if ( orphans.length > 0 ) {
 								// eslint-disable-next-line no-console -- Dev-only orphan warning.
 								console.warn(
-									'[ai-storefront] Live crawlers with no matching group:',
+									'[ai-storefront] Live/regional crawlers with no matching group:',
 									orphans.map( ( o ) => o.id )
 								);
 							}
@@ -2385,7 +2385,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							} }
 						>
 							{ __(
-								'When checked, AI agents whose brand isn\u2019t in the list can access your store.',
+								'When checked, unrecognized AI agents (brands not matched to a known crawler) can access your store.',
 								'woocommerce-ai-storefront'
 							) }
 						</p>

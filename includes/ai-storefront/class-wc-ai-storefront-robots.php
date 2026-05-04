@@ -75,8 +75,9 @@ class WC_AI_Storefront_Robots {
 		// All three sub-flavours are default-on: search-index crawlers
 		// drive discovery; dual-purpose crawlers feed live answer surfaces;
 		// live-session agents drive immediate conversion.
-		// The distinction is preserved in subgroup values so the admin
-		// UI can render them under separate headings within this category.
+		// The distinction is captured in the JS KNOWN_CRAWLERS metadata,
+		// which the admin UI uses to render separate headings within this
+		// category. No subgroup data lives in this PHP constant.
 		//
 		// Note: AmazonBuyForMe (autonomous purchase execution) has been
 		// removed. It represents a checkout-in-AI model this plugin does
@@ -349,7 +350,12 @@ class WC_AI_Storefront_Robots {
 			return '';
 		}
 
-		foreach ( self::AI_CRAWLERS as $bot ) {
+		// Sort longest token first so a shorter token (e.g. 'Bingbot') can't
+		// shadow a longer one that contains it ('Microsoft-BingBot-Extended').
+		$bots = self::AI_CRAWLERS;
+		usort( $bots, static fn( $a, $b ) => strlen( $b ) - strlen( $a ) );
+
+		foreach ( $bots as $bot ) {
 			if ( stripos( $ua, $bot ) !== false ) {
 				return $bot;
 			}
@@ -403,7 +409,12 @@ class WC_AI_Storefront_Robots {
 	 *      admin UI's "Clear selection" button): preserve `[]`. This
 	 *      is the "block all AI crawlers" opt-out choice.
 	 *
-	 *   3. Merchant saved a non-empty list: preserve verbatim.
+	 *   3. Merchant saved a non-empty list: return it with Bingbot and
+	 *      Googlebot force-unioned in. These two drive general search
+	 *      indexing; emitting `Disallow: /` for them because they
+	 *      predate the saved list would silently deindex the store.
+	 *      Case 2 (empty list = block all) is unaffected — the union
+	 *      only applies to non-empty stored lists.
 	 *
 	 *      Using `array_key_exists()` rather than `! empty()` is
 	 *      load-bearing for case 2: `! empty([])` is true, which
@@ -429,7 +440,22 @@ class WC_AI_Storefront_Robots {
 		}
 
 		$stored = $stored_settings['allowed_crawlers'];
-		return is_array( $stored ) ? $stored : [];
+		if ( ! is_array( $stored ) ) {
+			return [];
+		}
+
+		// Empty list = merchant's explicit "block all" choice. Preserve as-is.
+		if ( empty( $stored ) ) {
+			return [];
+		}
+
+		// Non-empty list: always include Bingbot and Googlebot regardless of
+		// when the list was saved. Stored lists that predate these IDs being
+		// added to AI_CRAWLERS would otherwise emit `Disallow: /` for them
+		// on the next robots.txt render, silently blocking search indexing.
+		return array_values(
+			array_unique( array_merge( $stored, array( 'Bingbot', 'Googlebot' ) ) )
+		);
 	}
 
 	/**
