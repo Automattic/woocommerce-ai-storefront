@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.8.8
+Stable tag: 0.9.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,14 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.9.0 - 2026-05-04 =
+**New**
+* Policies tab — new Shipping card lets merchants set minimum and maximum order handling time (business days). Emits `handlingTime` in product JSON-LD so AI agents can surface shipping timelines.
+* JSON-LD now emits `shippingRate: 0` when unconditional free shipping is available for the store's base country, allowing AI agents to read "free shipping" as a machine-readable fact.
+
+**Fixed**
+* Orders table: missing comma before "+N more" in the items column when an order has more than two line items.
 
 = 0.8.8 - 2026-05-03 =
 **New**
