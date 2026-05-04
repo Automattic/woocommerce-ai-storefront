@@ -79,6 +79,7 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_currency( $markup );
 		$this->decode_seller_name( $markup );
 		$this->add_shipping_details( $markup, $country );
+		$this->add_handling_time( $markup, $settings );
 		$this->add_return_policy( $markup, $product, $settings, $country );
 
 		/**
@@ -445,6 +446,45 @@ class WC_AI_Storefront_JsonLd {
 		$zones   = array_values( WC_Shipping_Zones::get_shipping_zones() );
 		$zones[] = new WC_Shipping_Zone( 0 ); // Rest of World.
 		return $zones;
+	}
+
+	/**
+	 * Enriches an existing shippingDetails block with a handlingTime QuantitativeValue.
+	 *
+	 * Requires that `add_shipping_details()` has already placed
+	 * `offers[0]['shippingDetails']`. If that key is absent (e.g. no
+	 * store country set), this method is a no-op. Emits nothing when
+	 * either min or max is 0 (unconfigured) or when min > max (invalid pair).
+	 *
+	 * @param array $markup   Markup array, modified by reference.
+	 * @param array $settings Full plugin settings array.
+	 */
+	private function add_handling_time( array &$markup, array $settings ): void {
+		if (
+			! isset( $markup['offers'][0] ) ||
+			! is_array( $markup['offers'][0] ) ||
+			! isset( $markup['offers'][0]['shippingDetails'] )
+		) {
+			return;
+		}
+
+		$ht  = $settings['handling_time'] ?? [];
+		$min = isset( $ht['min'] ) ? (int) $ht['min'] : 0;
+		$max = isset( $ht['max'] ) ? (int) $ht['max'] : 0;
+
+		if ( $min <= 0 || $max <= 0 || $min > $max ) {
+			return;
+		}
+
+		$markup['offers'][0]['shippingDetails']['deliveryTime'] = array(
+			'@type'        => 'ShippingDeliveryTime',
+			'handlingTime' => array(
+				'@type'    => 'QuantitativeValue',
+				'minValue' => $min,
+				'maxValue' => $max,
+				'unitCode' => 'DAY',
+			),
+		);
 	}
 
 	/**

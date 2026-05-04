@@ -48,6 +48,7 @@ require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-robots.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-attribution.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-cache-invalidator.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-handling-time.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-jsonld.php';
 
 // UCP REST adapter module (1.3.0+).

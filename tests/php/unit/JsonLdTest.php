@@ -1347,4 +1347,132 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue( $set_transient_called, 'set_transient() must be called after a cache miss' );
 		$this->assertSame( 'wc_ai_storefront_catalog_summary', $set_key );
 	}
+
+	// ------------------------------------------------------------------
+	// Handling time — ShippingDeliveryTime emission
+	// ------------------------------------------------------------------
+
+	private function make_product_with_shipping(): Mockery\MockInterface {
+		return $this->make_product( [ 'id' => 42 ] );
+	}
+
+	private function base_markup(): array {
+		return [
+			'@type'  => 'Product',
+			'offers' => [
+				[
+					'@type' => 'Offer',
+					'price' => '9.99',
+				],
+			],
+		];
+	}
+
+	public function test_handling_time_emitted_when_both_min_and_max_set(): void {
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'handling_time' => [ 'min' => 1, 'max' => 3 ],
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->make_product_with_shipping();
+		$result  = $this->jsonld->enhance_product_data( $this->base_markup(), $product );
+
+		$delivery = $result['offers'][0]['shippingDetails']['deliveryTime'] ?? null;
+		$this->assertNotNull( $delivery, 'deliveryTime must be present when handling_time is set' );
+		$this->assertSame( 'ShippingDeliveryTime', $delivery['@type'] );
+
+		$ht = $delivery['handlingTime'];
+		$this->assertSame( 'QuantitativeValue', $ht['@type'] );
+		$this->assertSame( 1, $ht['minValue'] );
+		$this->assertSame( 3, $ht['maxValue'] );
+		$this->assertSame( 'DAY', $ht['unitCode'] );
+	}
+
+	public function test_handling_time_omitted_when_min_is_zero(): void {
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'handling_time' => [ 'min' => 0, 'max' => 3 ],
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->make_product_with_shipping();
+		$result  = $this->jsonld->enhance_product_data( $this->base_markup(), $product );
+
+		$this->assertArrayNotHasKey(
+			'deliveryTime',
+			$result['offers'][0]['shippingDetails'] ?? []
+		);
+	}
+
+	public function test_handling_time_omitted_when_max_is_zero(): void {
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'handling_time' => [ 'min' => 2, 'max' => 0 ],
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->make_product_with_shipping();
+		$result  = $this->jsonld->enhance_product_data( $this->base_markup(), $product );
+
+		$this->assertArrayNotHasKey(
+			'deliveryTime',
+			$result['offers'][0]['shippingDetails'] ?? []
+		);
+	}
+
+	public function test_handling_time_omitted_when_setting_absent(): void {
+		// handling_time key entirely absent from settings.
+		WC_AI_Storefront::$test_settings = [
+			'enabled' => 'yes',
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->make_product_with_shipping();
+		$result  = $this->jsonld->enhance_product_data( $this->base_markup(), $product );
+
+		$this->assertArrayNotHasKey(
+			'deliveryTime',
+			$result['offers'][0]['shippingDetails'] ?? []
+		);
+	}
+
+	public function test_handling_time_omitted_when_no_shipping_details_block(): void {
+		// No offers[0] in markup — shippingDetails is never added, so
+		// handling time has nowhere to attach.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'handling_time' => [ 'min' => 1, 'max' => 2 ],
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		// Suppress base-location return so no shippingDetails block is placed.
+		Functions\when( 'wc_get_base_location' )->justReturn( [ 'country' => '', 'state' => '' ] );
+
+		$product = $this->make_product_with_shipping();
+		$result  = $this->jsonld->enhance_product_data( [ '@type' => 'Product' ], $product );
+
+		$this->assertArrayNotHasKey( 'shippingDetails', $result['offers'][0] ?? [] );
+	}
+
+	public function test_handling_time_omitted_when_stored_pair_is_invalid(): void {
+		// Simulates a DB row written by a filter or direct WP option update
+		// that bypassed WC_AI_Storefront_Handling_Time::sanitize(), leaving
+		// min > max in storage. The emitter must not publish a structurally
+		// invalid Schema.org QuantitativeValue block.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'handling_time' => [ 'min' => 5, 'max' => 2 ],
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->make_product_with_shipping();
+		$result  = $this->jsonld->enhance_product_data( $this->base_markup(), $product );
+
+		$this->assertArrayNotHasKey(
+			'handlingTime',
+			$result['offers'][0]['shippingDetails']['deliveryTime'] ?? [],
+			'Emitter must skip handlingTime block when stored min > max.'
+		);
+	}
 }

@@ -29,6 +29,7 @@ spl_autoload_register(
 			'WC_AI_Storefront_JsonLd'                 => '/ai-storefront/class-wc-ai-storefront-jsonld.php',
 			'WC_AI_Storefront_Llms_Txt'               => '/ai-storefront/class-wc-ai-storefront-llms-txt.php',
 			'WC_AI_Storefront_Logger'                 => '/ai-storefront/class-wc-ai-storefront-logger.php',
+			'WC_AI_Storefront_Handling_Time'          => '/ai-storefront/class-wc-ai-storefront-handling-time.php',
 			'WC_AI_Storefront_Return_Policy'          => '/ai-storefront/class-wc-ai-storefront-return-policy.php',
 			'WC_AI_Storefront_Robots'                 => '/ai-storefront/class-wc-ai-storefront-robots.php',
 			'WC_AI_Storefront_Store_Api_Rate_Limiter' => '/ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php',
