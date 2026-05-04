@@ -765,18 +765,21 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// `wc_ai_storefront_search_impression_cap` filter (return 0 to
 			// disable impression recording entirely without affecting the
 			// request row above).
-			$wc_products = is_array( $fetched['wc_products'] ?? null ) ? $fetched['wc_products'] : [];
-			$cap         = (int) apply_filters(
+			// `fetch_wc_products_for_search()` always populates `wc_products`
+			// as an array (initialized to `array()`, only reassigned to
+			// other arrays — see lines ~931 and ~979). No defensive
+			// `is_array()` guard needed at this site.
+			$cap = (int) apply_filters(
 				'wc_ai_storefront_search_impression_cap',
 				WC_AI_Storefront_Crawl_Logger::SEARCH_IMPRESSION_CAP
 			);
-			$cap         = max( 0, $cap );
+			$cap = max( 0, $cap );
 			if ( $cap > 0 ) {
 				// `wc_products` here is the normalized Store API list response
 				// (array of associative product arrays), not WC_Product objects.
 				// See fetch_wc_products_for_search() for shape; same key access
 				// pattern used by translate_products_for_search() below.
-				foreach ( array_slice( $wc_products, 0, $cap ) as $wc_product ) {
+				foreach ( array_slice( $fetched['wc_products'], 0, $cap ) as $wc_product ) {
 					if ( ! is_array( $wc_product ) ) {
 						continue;
 					}

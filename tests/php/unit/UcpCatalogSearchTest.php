@@ -2433,35 +2433,29 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	/**
 	 * Build a search request with a UCP-Agent header that resolves
-	 * to a known canonical name (UCPPlayground) — needed to bypass the
-	 * FALLBACK_SOURCE guard in the crawl-logging code path.
+	 * to a known canonical brand (UCPPlayground) — needed to bypass the
+	 * FALLBACK_SOURCE guard in the crawl-logging code path AND to
+	 * exercise the canonical-product code path (rather than the
+	 * Other-AI fallback).
 	 *
 	 * @param array<string, mixed> $body
 	 */
-	private function search_request_as_known_agent( array $body = [] ): WP_REST_Request {
+	private function search_request_as_known_agent( array $body = array() ): WP_REST_Request {
 		$request = $this->search_request( $body );
-		// `UCPPlayground/1.0` is in WC_AI_Storefront_UCP_Agent_Header's
-		// PRODUCT_TO_HOSTNAME map and canonicalises to 'UCPPlayground'
-		// — a non-fallback agent that triggers the recording path.
-		$request->set_header( 'UCP-Agent', 'UCPPlayground/1.0' );
+		// Header product token is `UCP-Playground/1.0` (WITH hyphen).
+		// `extract_agent_product()` lowercases to `ucp-playground`, which
+		// matches `WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_PRODUCT_NAMES`
+		// (the map `canonicalize_product()` consults) → resolves to the
+		// canonical brand `'UCPPlayground'`. Without the hyphen the token
+		// would lowercase to `ucpplayground`, miss the map, and fall
+		// through to OTHER_AI_BUCKET ('Other AI') — still non-fallback,
+		// but exercising the wrong branch.
+		$request->set_header( 'UCP-Agent', 'UCP-Playground/1.0' );
 		return $request;
-	}
-
-	/**
-	 * Crawl-log assertions exercise the real record() write path, which
-	 * stamps `current_time()` into each pending row and tries to write
-	 * a single-flight transient on shutdown. Stub both so the path runs
-	 * cleanly without a WP environment.
-	 */
-	private function stub_crawl_logger_dependencies(): void {
-		Functions\when( 'current_time' )->justReturn( '2026-05-04 12:00:00' );
-		Functions\when( 'delete_transient' )->justReturn( true );
 	}
 
 	public function test_catalog_search_records_one_request_row_plus_one_impression_per_result(): void {
 		$this->reset_crawl_logger_state();
-		$this->stub_crawl_logger_dependencies();
-
 		$this->fake_product_list = [
 			$this->make_simple_product( 11, 'Hoodie A' ),
 			$this->make_simple_product( 12, 'Hoodie B' ),
@@ -2503,8 +2497,6 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_catalog_search_skips_impression_recording_when_agent_is_fallback(): void {
 		$this->reset_crawl_logger_state();
-		$this->stub_crawl_logger_dependencies();
-
 		$this->fake_product_list = [
 			$this->make_simple_product( 11, 'Hoodie A' ),
 			$this->make_simple_product( 12, 'Hoodie B' ),
@@ -2525,8 +2517,6 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_catalog_search_impression_cap_filter_clamps_recording(): void {
 		$this->reset_crawl_logger_state();
-		$this->stub_crawl_logger_dependencies();
-
 		// Filter set BEFORE handle_catalog_search() is called. Cap of 2
 		// against a 5-product result set should produce 2 impression rows.
 		Functions\when( 'apply_filters' )->alias(
@@ -2564,8 +2554,6 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_catalog_search_impression_cap_filter_returning_zero_disables_impressions(): void {
 		$this->reset_crawl_logger_state();
-		$this->stub_crawl_logger_dependencies();
-
 		// Cap of 0 → no impressions recorded; the search REQUEST row
 		// is unaffected (covered separately so merchants who tune the
 		// filter to 0 still see Catalog queries / Top searches).
@@ -2603,8 +2591,6 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_catalog_search_impression_cap_filter_negative_value_is_clamped_to_zero(): void {
 		$this->reset_crawl_logger_state();
-		$this->stub_crawl_logger_dependencies();
-
 		// max(0, $cap) clamps a misbehaving filter return to 0 so a
 		// callback returning -1 doesn't corrupt array_slice / introduce
 		// a fatal. Same shape as cap=0 — request row only, no impressions.
@@ -2633,8 +2619,6 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_catalog_search_default_impression_cap_is_50(): void {
 		$this->reset_crawl_logger_state();
-		$this->stub_crawl_logger_dependencies();
-
 		// No filter set → default constant SEARCH_IMPRESSION_CAP applies.
 		// Build a 75-product result set; expect exactly 50 impression rows.
 		$products = [];
@@ -2661,8 +2645,6 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_catalog_search_skips_impressions_for_zero_or_missing_product_id(): void {
 		$this->reset_crawl_logger_state();
-		$this->stub_crawl_logger_dependencies();
-
 		$this->fake_product_list = [
 			$this->make_simple_product( 51, 'Real Product' ),
 			[ 'id' => 0, 'name' => 'Bogus' ],     // product_id = 0 → skipped.
