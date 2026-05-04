@@ -4,6 +4,11 @@
 
 ### Features
 
+- **Discovery tab — boundary note for general-purpose SEO crawlers.** Closes #268.
+  - The "Allowed AI agents" section now includes a one-line helper text clarifying that this list controls AI-specific crawlers (ChatGPT, Claude, Perplexity, Gemini, etc.).
+  - Notes that general-purpose search engines (Google, Bing, Yandex, etc.) are managed by WordPress core and any installed SEO plugin — not by this plugin.
+  - Resolves the "I don't see Googlebot here — does that mean I haven't allowed it?" confusion for merchants without an SEO plugin.
+
 ### Fixes
 
 - **`/llms.txt` now announces the UCP API instead of the raw Store API.** Closes #271.
