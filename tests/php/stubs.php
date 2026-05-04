@@ -556,6 +556,48 @@ if ( ! class_exists( 'wpdb' ) ) {
 	}
 }
 
+if ( ! class_exists( 'WC_Shipping_Zone' ) ) {
+	class WC_Shipping_Zone {
+		private int $id;
+		public function __construct( int $id = 0 ) {
+			$this->id = $id;
+		}
+		public function get_zone_locations(): array {
+			return [];
+		}
+		/** @return WC_Shipping_Method[] */
+		public function get_shipping_methods( bool $enabled_only = false ): array {
+			return [];
+		}
+	}
+}
+
+if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
+	class WC_Shipping_Zones {
+		/** @var array<int, WC_Shipping_Zone> Keyed by zone id. Set in tests to inject zones without a DB. */
+		public static array $test_zones = [];
+
+		public static function get_zones(): array {
+			return [];
+		}
+
+		/** @return WC_Shipping_Zone[] Keyed by zone id — mirrors WooCommerce core. */
+		public static function get_shipping_zones(): array {
+			return self::$test_zones;
+		}
+	}
+}
+
+if ( ! class_exists( 'WC_Shipping_Method' ) ) {
+	class WC_Shipping_Method {}
+}
+
+if ( ! class_exists( 'WC_Shipping_Free_Shipping' ) ) {
+	class WC_Shipping_Free_Shipping extends WC_Shipping_Method {
+		public string $requires = '';
+	}
+}
+
 if ( ! class_exists( 'WC_DateTime_Stub' ) ) {
 	/**
 	 * Minimal stub for WC_DateTime — just the two methods the admin
