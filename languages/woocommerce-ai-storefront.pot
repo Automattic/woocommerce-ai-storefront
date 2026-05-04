@@ -82,7 +82,7 @@ msgstr ""
 msgid "Session ID:"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-jsonld.php:414
+#: includes/ai-storefront/class-wc-ai-storefront-jsonld.php:511
 #: client/settings/ai-storefront/product-selection.js:914
 #: client/settings/ai-storefront/product-selection.js:1128
 msgid "Products"

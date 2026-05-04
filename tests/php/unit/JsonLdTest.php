@@ -800,6 +800,158 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// Shipping rate — free shipping detection
+	// ------------------------------------------------------------------
+
+	/**
+	 * Build a mock WC_Shipping_Zone covering the given country codes.
+	 * Pass an empty array for a Rest-of-World zone (no location restrictions).
+	 *
+	 * @param string[] $country_codes
+	 * @param object[] $methods       Shipping method mocks returned by get_shipping_methods(true).
+	 */
+	private function make_zone( array $country_codes, array $methods ): Mockery\MockInterface {
+		$locations = array_map(
+			static function ( string $code ) {
+				$loc       = new stdClass();
+				$loc->type = 'country';
+				$loc->code = $code;
+				return $loc;
+			},
+			$country_codes
+		);
+
+		$zone = Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_zone_locations' )->andReturn( $locations );
+		$zone->shouldReceive( 'get_shipping_methods' )->with( true )->andReturn( $methods );
+		return $zone;
+	}
+
+	/** Build a mock free-shipping method. */
+	private function make_free_method( string $requires = '' ): Mockery\MockInterface {
+		$method           = Mockery::mock( 'WC_Shipping_Free_Shipping' );
+		$method->requires = $requires;
+		return $method;
+	}
+
+	/**
+	 * Thin subclass that replaces get_shipping_zones() with a controlled
+	 * return so tests don't need WC_Shipping_Zones static infrastructure.
+	 */
+	private function make_jsonld_with_zones( array $zones ): WC_AI_Storefront_JsonLd {
+		return new class( $zones ) extends WC_AI_Storefront_JsonLd {
+			public function __construct( private array $stub_zones ) {}
+			protected function get_shipping_zones(): array {
+				return $this->stub_zones;
+			}
+		};
+	}
+
+	public function test_shipping_rate_zero_emitted_when_unconditional_free_shipping_exists(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$zone   = $this->make_zone( [ 'US' ], [ $this->make_free_method( '' ) ] );
+		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+
+		$result = $jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$this->make_product()
+		);
+
+		$rate = $result['offers'][0]['shippingDetails']['shippingRate'];
+		$this->assertEquals( 'MonetaryAmount', $rate['@type'] );
+		$this->assertSame( 0, $rate['value'] );
+		$this->assertEquals( 'USD', $rate['currency'] );
+	}
+
+	public function test_shipping_rate_omitted_when_only_threshold_free_shipping_exists(): void {
+		// requires: 'min_amount' = free above a spend threshold, not unconditionally free.
+		$zone   = $this->make_zone( [ 'US' ], [ $this->make_free_method( 'min_amount' ) ] );
+		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+
+		$result = $jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$this->make_product()
+		);
+
+		$this->assertArrayNotHasKey( 'shippingRate', $result['offers'][0]['shippingDetails'] );
+		// DefinedRegion must still be present.
+		$this->assertEquals( 'US', $result['offers'][0]['shippingDetails']['shippingDestination']['addressCountry'] );
+	}
+
+	public function test_shipping_rate_omitted_when_no_shipping_zones(): void {
+		$jsonld = $this->make_jsonld_with_zones( [] );
+
+		$result = $jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$this->make_product()
+		);
+
+		$this->assertArrayNotHasKey( 'shippingRate', $result['offers'][0]['shippingDetails'] );
+		$this->assertEquals( 'US', $result['offers'][0]['shippingDetails']['shippingDestination']['addressCountry'] );
+	}
+
+	public function test_shipping_rate_omitted_when_no_zone_covers_store_country(): void {
+		// Zone covers CA only; store is US.
+		$zone   = $this->make_zone( [ 'CA' ], [ $this->make_free_method( '' ) ] );
+		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+
+		$result = $jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$this->make_product()
+		);
+
+		$this->assertArrayNotHasKey( 'shippingRate', $result['offers'][0]['shippingDetails'] );
+	}
+
+	public function test_row_zone_covers_any_country(): void {
+		// Empty locations = Rest of World — matches any country.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'EUR' );
+
+		$zone = Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_zone_locations' )->andReturn( [] );
+		$zone->shouldReceive( 'get_shipping_methods' )->with( true )->andReturn( [ $this->make_free_method( '' ) ] );
+
+		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+
+		$result = $jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$this->make_product()
+		);
+
+		$rate = $result['offers'][0]['shippingDetails']['shippingRate'];
+		$this->assertSame( 0, $rate['value'] );
+		$this->assertEquals( 'EUR', $rate['currency'] );
+	}
+
+	public function test_shipping_rate_cache_avoids_redundant_zone_walk(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$zone       = Mockery::mock( 'WC_Shipping_Zone' );
+		$call_count = 0;
+		$zone->shouldReceive( 'get_zone_locations' )->andReturnUsing(
+			static function () use ( &$call_count ) {
+				++$call_count;
+				$loc       = new stdClass();
+				$loc->type = 'country';
+				$loc->code = 'US';
+				return [ $loc ];
+			}
+		);
+		$zone->shouldReceive( 'get_shipping_methods' )->with( true )->andReturn( [ $this->make_free_method( '' ) ] );
+
+		$jsonld  = $this->make_jsonld_with_zones( [ $zone ] );
+		$product = $this->make_product();
+		$input   = [ 'offers' => [ [ '@type' => 'Offer' ] ] ];
+
+		$jsonld->enhance_product_data( $input, $product );
+		$jsonld->enhance_product_data( $input, $product );
+		$jsonld->enhance_product_data( $input, $product );
+
+		$this->assertSame( 1, $call_count, 'Zone walk must be cached after the first call for the same country' );
+	}
+
+	// ------------------------------------------------------------------
 	// Filter extensibility
 	// ------------------------------------------------------------------
 

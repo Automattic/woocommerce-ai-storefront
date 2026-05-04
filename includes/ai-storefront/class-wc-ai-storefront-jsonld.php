@@ -31,6 +31,14 @@ class WC_AI_Storefront_JsonLd {
 	private $dimension_unit_code_cache = null;
 
 	/**
+	 * Per-request cache for the free-shipping lookup keyed by country code.
+	 * `true` = unconditional free shipping found, `false` = not found.
+	 *
+	 * @var array<string, bool>
+	 */
+	private array $free_shipping_cache = [];
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function init() {
@@ -325,6 +333,13 @@ class WC_AI_Storefront_JsonLd {
 	 * A DefinedRegion without addressCountry is meaningless — no emission
 	 * when $country is empty.
 	 *
+	 * Emits shippingRate (value: 0) when an unconditionally free shipping
+	 * method (WC_Shipping_Free_Shipping with requires === '') exists in any
+	 * zone that covers the store's base country or has no location
+	 * restrictions (Rest of World zone). Threshold-gated free shipping
+	 * (requires: 'min_amount') is intentionally excluded — it is not
+	 * unconditionally free.
+	 *
 	 * @param array  $markup  Markup array, modified by reference.
 	 * @param string $country ISO country code from the WC store base location.
 	 */
@@ -332,13 +347,95 @@ class WC_AI_Storefront_JsonLd {
 		if ( ! $country || ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
 			return;
 		}
-		$markup['offers'][0]['shippingDetails'] = array(
+
+		$block = array(
 			'@type'               => 'OfferShippingDetails',
 			'shippingDestination' => array(
 				'@type'          => 'DefinedRegion',
 				'addressCountry' => $country,
 			),
 		);
+
+		if ( $this->has_unconditional_free_shipping( $country ) ) {
+			$block['shippingRate'] = array(
+				'@type'    => 'MonetaryAmount',
+				'value'    => 0,
+				'currency' => get_woocommerce_currency(),
+			);
+		}
+
+		$markup['offers'][0]['shippingDetails'] = $block;
+	}
+
+	/**
+	 * Returns true when an unconditionally free shipping method exists for
+	 * the given country. Result is cached per country for the request
+	 * lifetime so archive pages with many products don't re-walk zones.
+	 *
+	 * @param string $country ISO country code.
+	 * @return bool
+	 */
+	private function has_unconditional_free_shipping( string $country ): bool {
+		if ( array_key_exists( $country, $this->free_shipping_cache ) ) {
+			return $this->free_shipping_cache[ $country ];
+		}
+
+		$found = false;
+		foreach ( $this->get_shipping_zones() as $zone ) {
+			if ( ! ( $zone instanceof WC_Shipping_Zone ) ) {
+				continue;
+			}
+			if ( ! $this->zone_covers_country( $zone, $country ) ) {
+				continue;
+			}
+			foreach ( $zone->get_shipping_methods( true ) as $method ) {
+				if (
+					$method instanceof WC_Shipping_Free_Shipping
+					&& '' === $method->requires
+				) {
+					$found = true;
+					break 2;
+				}
+			}
+		}
+
+		$this->free_shipping_cache[ $country ] = $found;
+		return $found;
+	}
+
+	/**
+	 * Returns true when the zone covers the given country or has no
+	 * location restrictions (Rest of World zone).
+	 *
+	 * @param WC_Shipping_Zone $zone    Shipping zone.
+	 * @param string           $country ISO country code.
+	 * @return bool
+	 */
+	private function zone_covers_country( WC_Shipping_Zone $zone, string $country ): bool {
+		$locations = $zone->get_zone_locations();
+		if ( empty( $locations ) ) {
+			return true; // Rest of World — covers everything.
+		}
+		foreach ( $locations as $location ) {
+			if ( 'country' === $location->type && $country === $location->code ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Returns all shipping zones including the Rest of World zone (id 0).
+	 *
+	 * Extracted as a protected method so tests can override it without
+	 * needing to call the static WC_Shipping_Zones API.
+	 *
+	 * @return WC_Shipping_Zone[]
+	 */
+	protected function get_shipping_zones(): array {
+		$zones   = array_values( WC_Shipping_Zones::get_zones() );
+		$zones[] = new WC_Shipping_Zone( 0 ); // Rest of World.
+		return $zones;
 	}
 
 	/**
