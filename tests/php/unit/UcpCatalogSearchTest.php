@@ -2520,7 +2520,8 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Filter set BEFORE handle_catalog_search() is called. Cap of 2
 		// against a 5-product result set should produce 2 impression rows.
 		Functions\when( 'apply_filters' )->alias(
-			static function ( string $hook, $value ) {
+			static function ( string $hook, $value, ...$rest ) {
+				unset( $rest ); // Other filters in handle_catalog_search() may pass extra args.
 				if ( 'wc_ai_storefront_search_impression_cap' === $hook ) {
 					return 2;
 				}
@@ -2558,7 +2559,8 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// is unaffected (covered separately so merchants who tune the
 		// filter to 0 still see Catalog queries / Top searches).
 		Functions\when( 'apply_filters' )->alias(
-			static function ( string $hook, $value ) {
+			static function ( string $hook, $value, ...$rest ) {
+				unset( $rest ); // Other filters in handle_catalog_search() may pass extra args.
 				if ( 'wc_ai_storefront_search_impression_cap' === $hook ) {
 					return 0;
 				}
@@ -2595,7 +2597,8 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// callback returning -1 doesn't corrupt array_slice / introduce
 		// a fatal. Same shape as cap=0 — request row only, no impressions.
 		Functions\when( 'apply_filters' )->alias(
-			static function ( string $hook, $value ) {
+			static function ( string $hook, $value, ...$rest ) {
+				unset( $rest ); // Other filters in handle_catalog_search() may pass extra args.
 				if ( 'wc_ai_storefront_search_impression_cap' === $hook ) {
 					return -5;
 				}

@@ -767,8 +767,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// request row above).
 			// `fetch_wc_products_for_search()` always populates `wc_products`
 			// as an array (initialized to `array()`, only reassigned to
-			// other arrays — see lines ~931 and ~979). No defensive
-			// `is_array()` guard needed at this site.
+			// other arrays — see lines ~931 and ~979). The OUTER container
+			// is therefore guaranteed array-shaped at this site, no
+			// defensive guard needed there. The per-element `is_array()`
+			// check inside the loop below is still warranted: individual
+			// product entries come from `normalize_store_api_data()` and
+			// could theoretically be non-array if a Store API extension
+			// emits a malformed item.
 			$cap = (int) apply_filters(
 				'wc_ai_storefront_search_impression_cap',
 				WC_AI_Storefront_Crawl_Logger::SEARCH_IMPRESSION_CAP
