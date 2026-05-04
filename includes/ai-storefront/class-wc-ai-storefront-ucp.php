@@ -123,15 +123,16 @@ class WC_AI_Storefront_Ucp {
 		}
 
 		header( 'Content-Type: application/json; charset=utf-8' );
-		header( 'Cache-Control: public, max-age=3600' );
-		// `Vary: Host` is required because the manifest body is derived
-		// from `home_url()` / `rest_url()`, which are themselves derived
-		// from the HTTP Host header on loose-vhost / multisite installs.
-		// Without this header, a shared cache (CDN, reverse proxy) keyed
-		// on URL alone would store one body and serve it across Host
-		// values — a cache-poisoning vector if an attacker can issue a
-		// request with a forged Host header. `Vary: Host` forces the
-		// cache to maintain a separate entry per Host value.
+		// `no-store` prevents CDN/proxy caches from absorbing requests before
+		// they reach PHP. The manifest is generated per-request (cheap — one
+		// settings read + JSON encode, no external calls) and hit-logging
+		// happens inside serve_manifest(). A CDN HIT means PHP never runs,
+		// so the crawl-logger record() call is never reached and UCP manifest
+		// hits show zero even when crawlers are actively fetching the manifest.
+		// The Vary: Host defence is no longer needed once the response is
+		// not cached at all, but we keep it as defence-in-depth for any
+		// intermediate proxy that ignores Cache-Control: no-store.
+		header( 'Cache-Control: no-store' );
 		header( 'Vary: Host' );
 		header( 'Access-Control-Allow-Origin: *' );
 		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );

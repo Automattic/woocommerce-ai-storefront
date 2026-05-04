@@ -8,6 +8,16 @@
 
 ---
 
+## [0.9.1] – 2026-05-04
+
+### Fixes
+
+- **UCP manifest hits always zero on CDN-fronted installs.** Closes #283.
+  - `/.well-known/ucp` was emitting `Cache-Control: public, max-age=3600`, causing Atomic/WordPress.com CDN edges (and any reverse proxy) to serve the manifest from cache — PHP never executed, so `WC_AI_Storefront_Crawl_Logger::record()` was never reached and the hit was never written to the database.
+  - Switched to `Cache-Control: no-store`. The manifest is generated per-request (one settings read + JSON encode, no external calls), so per-origin serving has negligible cost and restores accurate hit recording.
+
+---
+
 ## [0.9.0] – 2026-05-04
 
 ### Features
