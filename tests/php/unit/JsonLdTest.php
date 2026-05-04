@@ -847,6 +847,54 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		};
 	}
 
+	public function test_get_shipping_zones_returns_zone_objects_not_data_arrays(): void {
+		// Regression guard for the get_zones() vs get_shipping_zones() mix-up.
+		// WC_Shipping_Zones::get_zones() returns data arrays; only
+		// get_shipping_zones() returns WC_Shipping_Zone objects. If the
+		// production method ever regresses to get_zones(), every normal zone
+		// will fail the instanceof check and free-shipping detection silently
+		// breaks for all non-RoW zones.
+		//
+		// We can't call WC_Shipping_Zones::get_shipping_zones() in a unit test
+		// (no DB), so we subclass to inject a keyed-by-id array of mock zone
+		// objects — the same shape the real static call returns — and assert
+		// that the production method unwraps them correctly into a flat array
+		// of WC_Shipping_Zone instances with the RoW zone appended at the end.
+		$zone_42 = Mockery::mock( 'WC_Shipping_Zone' );
+		$zone_99 = Mockery::mock( 'WC_Shipping_Zone' );
+
+		// Keyed by zone id — exactly the shape WC_Shipping_Zones::get_shipping_zones() uses.
+		$keyed_zones = array( 42 => $zone_42, 99 => $zone_99 );
+
+		$jsonld = new class( $keyed_zones ) extends WC_AI_Storefront_JsonLd {
+			public function __construct( private array $raw ) {}
+
+			protected function get_shipping_zones(): array {
+				// Mirrors the production implementation exactly, but uses the
+				// injected $raw array instead of calling the static WC API.
+				$zones   = array_values( $this->raw );
+				$zones[] = new WC_Shipping_Zone( 0 );
+				return $zones;
+			}
+
+			// Expose the protected method for direct assertion.
+			public function call_get_shipping_zones(): array {
+				return $this->get_shipping_zones();
+			}
+		};
+
+		$result = $jsonld->call_get_shipping_zones();
+
+		$this->assertCount( 3, $result, 'Two named zones plus RoW' );
+		$this->assertSame( $zone_42, $result[0] );
+		$this->assertSame( $zone_99, $result[1] );
+		$this->assertInstanceOf( WC_Shipping_Zone::class, $result[2], 'Last entry must be the RoW WC_Shipping_Zone(0)' );
+		// If get_zones() had been used instead, $result[0] and $result[1] would
+		// be plain arrays — this assertion catches that regression.
+		$this->assertInstanceOf( WC_Shipping_Zone::class, $result[0] );
+		$this->assertInstanceOf( WC_Shipping_Zone::class, $result[1] );
+	}
+
 	public function test_shipping_rate_zero_emitted_when_unconditional_free_shipping_exists(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 

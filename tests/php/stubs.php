@@ -577,6 +577,11 @@ if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
 		public static function get_zones(): array {
 			return [];
 		}
+
+		/** @return WC_Shipping_Zone[] Keyed by zone id — mirrors WooCommerce core. */
+		public static function get_shipping_zones(): array {
+			return [];
+		}
 	}
 }
 

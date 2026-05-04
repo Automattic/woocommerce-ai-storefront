@@ -433,7 +433,10 @@ class WC_AI_Storefront_JsonLd {
 	 * @return WC_Shipping_Zone[]
 	 */
 	protected function get_shipping_zones(): array {
-		$zones   = array_values( WC_Shipping_Zones::get_zones() );
+		// `get_shipping_zones()` returns WC_Shipping_Zone objects keyed by id.
+		// `get_zones()` returns data arrays (used by the admin UI) and must NOT
+		// be used here — those arrays fail `instanceof WC_Shipping_Zone`.
+		$zones   = array_values( WC_Shipping_Zones::get_shipping_zones() );
 		$zones[] = new WC_Shipping_Zone( 0 ); // Rest of World.
 		return $zones;
 	}
