@@ -217,19 +217,48 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		return ( new WC_AI_Storefront_Robots() )->add_ai_crawler_rules( $base, true );
 	}
 
-	public function test_allows_ucp_rest_endpoint_for_every_crawler(): void {
+	public function test_allows_ucp_rest_endpoint_in_consolidated_block(): void {
 		// The UCP adapter endpoints at /wp-json/wc/ucp/ must be
-		// explicitly allow-listed per crawler so well-behaved bots know
-		// to index them. Without this line, strict crawlers obeying a
-		// wildcard /wp-json/ disallow upstream in the file would skip
-		// our catalog/search + checkout-sessions routes entirely.
+		// explicitly allow-listed so well-behaved bots know to index
+		// them. Without this line, strict crawlers obeying a wildcard
+		// /wp-json/ disallow upstream in the file would skip our
+		// catalog/search + checkout-sessions routes entirely.
+		//
+		// As of 0.8.8 the opt-in block emits a single consolidated rule
+		// group for all allowed crawlers (RFC 9309 §2.2.1) rather than
+		// one duplicated block per bot, so this allow appears exactly
+		// once regardless of how many crawlers are allowed.
 		$output = $this->generate_robots_output();
 
-		// Appears once per allowed crawler (GPTBot + ClaudeBot = 2).
 		$this->assertEquals(
-			2,
+			1,
 			substr_count( $output, 'Allow: /wp-json/wc/ucp/' ),
-			'UCP endpoint allow-list should be emitted once per crawler'
+			'UCP endpoint allow-list should be emitted exactly once for the grouped opt-in block'
+		);
+	}
+
+	public function test_opt_in_block_uses_grouped_user_agent_form(): void {
+		// Pin the consolidation: every allowed crawler appears as its
+		// own `User-agent:` line followed by a single shared rule body,
+		// not as a duplicated full block per bot. Pre-0.8.8 a default
+		// install emitted ~200 lines here; the consolidated form drops
+		// that to ~30 without changing the rules any crawler sees.
+		$output = $this->generate_robots_output();
+
+		// Both fixture bots present.
+		$this->assertStringContainsString( 'User-agent: GPTBot', $output );
+		$this->assertStringContainsString( 'User-agent: ClaudeBot', $output );
+
+		// Allow rules appear exactly once for the whole group.
+		$this->assertEquals(
+			1,
+			substr_count( $output, "Allow: /llms.txt\n" ),
+			'Allow: /llms.txt appears once for the consolidated group'
+		);
+		$this->assertEquals(
+			1,
+			substr_count( $output, "Allow: /.well-known/ucp\n" ),
+			'Allow: /.well-known/ucp appears once for the consolidated group'
 		);
 	}
 

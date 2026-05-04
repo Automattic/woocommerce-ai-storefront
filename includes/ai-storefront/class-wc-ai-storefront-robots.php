@@ -414,24 +414,48 @@ class WC_AI_Storefront_Robots {
 		$product_base  = '/' . trim( get_option( 'woocommerce_permalinks', [] )['product_base'] ?? 'product', '/' ) . '/';
 		$category_base = '/' . trim( get_option( 'woocommerce_permalinks', [] )['category_base'] ?? 'product-category', '/' ) . '/';
 
-		foreach ( $allowed_bots as $bot ) {
-			$bot     = sanitize_text_field( $bot );
-			$output .= "User-agent: {$bot}\n";
-
-			// Note: pre-0.1.9 each per-bot block also emitted
-			// `Crawl-delay: 2` as a polite advisory rate hint. Removed
-			// in 0.1.9 because (1) Google explicitly doesn't support
-			// `Crawl-delay` and Search Console's robots.txt tester
-			// flags it as an "ignored" directive globally (regardless
-			// of which User-agent block contains it), creating
-			// merchant-facing noise; (2) Bing's compliance is
-			// inconsistent in practice; (3) the major AI crawlers
-			// (OpenAI, Anthropic, Perplexity) don't publish their
-			// stance on `Crawl-delay`. Hard rate enforcement remains
-			// via the plugin's Store API rate limiter (HTTP 429 +
-			// Retry-After at 25 req/min per bot by default), which
-			// every well-behaved crawler honors more reliably than
-			// the polite advisory ever did.
+		// Opt-in rule group for all allowed AI crawlers.
+		//
+		// All allowed bots share the same Allow/Disallow body, so we
+		// emit one consolidated rule group (multiple `User-agent:` lines
+		// followed by a single Allow/Disallow block) — valid per
+		// RFC 9309 §2.2.1 and the same shape used by the opt-out block
+		// below.
+		//
+		// Pre-0.8.8 this section emitted a separate User-agent block per
+		// bot, duplicating the ~10-line rule body for every entry. With
+		// ~20 default-on bots that produced ~200 lines of repeated
+		// content. Consolidation drops that to ~30 lines without changing
+		// the semantics — Google, Bing, OpenAI, Anthropic, and Perplexity
+		// all document support for grouped User-agent rule blocks.
+		//
+		// Note: pre-0.1.9 each per-bot block also emitted
+		// `Crawl-delay: 2` as a polite advisory rate hint. Removed in
+		// 0.1.9 because (1) Google explicitly doesn't support
+		// `Crawl-delay` and Search Console's robots.txt tester flags it
+		// as an "ignored" directive globally, creating merchant-facing
+		// noise; (2) Bing's compliance is inconsistent in practice;
+		// (3) the major AI crawlers (OpenAI, Anthropic, Perplexity)
+		// don't publish their stance on `Crawl-delay`. Hard rate
+		// enforcement remains via the plugin's Store API rate limiter
+		// (HTTP 429 + Retry-After at 25 req/min per bot by default),
+		// which every well-behaved crawler honors more reliably than
+		// the polite advisory ever did.
+		//
+		// Note: pre-0.1.9 this section also emitted `Allow:` rules for
+		// the discovered sitemap paths, justified as "defense against
+		// crawlers that only parse directives within their own
+		// User-agent group." That defense was misdirected — `Allow:`
+		// only matters when a `Disallow:` would otherwise block the
+		// path, and none of the per-bot `Disallow:` rules below touch
+		// sitemap paths. The rules permitted something that was never
+		// blocked. Sitemap discovery happens via the top-level
+		// `Sitemap:` directives emitted by WP core / Jetpack / SEO
+		// plugins outside this section.
+		if ( ! empty( $allowed_bots ) ) {
+			foreach ( $allowed_bots as $bot ) {
+				$output .= 'User-agent: ' . sanitize_text_field( $bot ) . "\n";
+			}
 
 			$output .= "Allow: /llms.txt\n";
 			$output .= "Allow: /.well-known/ucp\n";
@@ -442,26 +466,6 @@ class WC_AI_Storefront_Robots {
 			// agents dispatch to. Distinct from the /.well-known/ucp
 			// discovery manifest, which announces that these exist.
 			$output .= "Allow: /wp-json/wc/ucp/\n";
-
-			// Note: pre-0.1.9 this loop also emitted `Allow:` rules for
-			// the discovered sitemap paths, justified as "defense
-			// against crawlers that only parse directives within their
-			// own User-agent group." That defense was misdirected —
-			// `Allow:` only matters when there's a `Disallow:` that
-			// would otherwise block the path, and none of the per-bot
-			// `Disallow:` rules below touch sitemap paths. The rules
-			// were permitting something that was never blocked. Sitemap
-			// discovery happens via the top-level `Sitemap:` directives
-			// emitted by WP core / Jetpack / SEO plugins outside this
-			// section. (Pre-0.1.13 our plugin also re-emitted them at
-			// the bottom of our section; that re-emission was removed
-			// for separate reasons — see the comment block below the
-			// opt-out group at the end of `add_ai_crawler_rules`.)
-			// With every bot in `LIVE_BROWSING_AGENTS` × 4 sitemap
-			// paths the deletion saves dozens of redundant lines on
-			// a typical merchant's robots.txt (rather than hardcoding
-			// the count, which would rot the next time a bot is added
-			// to the constant).
 
 			if ( '/' !== $shop_path ) {
 				$output .= "Allow: {$shop_path}\n";
