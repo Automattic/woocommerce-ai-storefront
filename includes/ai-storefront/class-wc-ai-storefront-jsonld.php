@@ -407,6 +407,12 @@ class WC_AI_Storefront_JsonLd {
 	 * Returns true when the zone covers the given country or has no
 	 * location restrictions (Rest of World zone).
 	 *
+	 * Known gap: continent-type locations (type === 'continent') are not
+	 * matched. A continent zone whose continent contains the store country
+	 * would be skipped here. Continent matching requires resolving the
+	 * country to its WC continent code via WC_Countries and is left for
+	 * a follow-up.
+	 *
 	 * @param WC_Shipping_Zone $zone    Shipping zone.
 	 * @param string           $country ISO country code.
 	 * @return bool
