@@ -27,9 +27,9 @@ class WC_AI_Storefront_Robots {
 	 * discoverability at all.
 	 *
 	 * Distinguished from training crawlers by vendor convention —
-	 * the `-User` suffix (ChatGPT-User, Claude-User, Perplexity-User)
-	 * signals "triggered by an active user session" per each
-	 * vendor's documentation.
+	 * the `-User` suffix (ChatGPT-User, Claude-User, Perplexity-User,
+	 * Mistralai-User) signals "triggered by an active user session"
+	 * per each vendor's documentation.
 	 *
 	 * @var string[]
 	 */
@@ -37,20 +37,25 @@ class WC_AI_Storefront_Robots {
 		// General-purpose AI assistants — alphabetical.
 		//
 		// Foundation-model / search-assistant bots. The `-User` suffix
-		// (ChatGPT-User, Claude-User, Perplexity-User) signals
-		// "triggered by an active user session" per each vendor's
+		// (ChatGPT-User, Claude-User, Perplexity-User, Mistralai-User)
+		// signals "triggered by an active user session" per each vendor's
 		// documentation. Applebot is the long-standing Siri/Spotlight
 		// search crawler (since 2015) — Applebot-Extended is the AI-
 		// training variant and lives in TRAINING_CRAWLERS.
 		// DuckAssistBot powers DDG's AI-generated answer summaries.
+		// YouBot is You.com's combined retrieval/training crawler;
+		// listed here because the live-retrieval purpose dominates and
+		// the bot identifies cleanly by token.
 		'Applebot',
 		'ChatGPT-User',
 		'Claude-SearchBot',
 		'Claude-User',
 		'DuckAssistBot',
+		'Mistralai-User',
 		'OAI-SearchBot',
 		'Perplexity-User',
 		'PerplexityBot',
+		'YouBot',
 
 		// Agentic shopping — AI that places orders, not just reads.
 		// Highest commerce intent: appearing here means appearing at
@@ -126,12 +131,18 @@ class WC_AI_Storefront_Robots {
 		// brand-strategy decision — no functional sub-grouping
 		// (compare LIVE_BROWSING_AGENTS where revenue-vs-discovery
 		// distinctions matter), so ordering is pure scannability.
+		// `anthropic-ai` is Anthropic's older crawler identifier,
+		// still seen in real logs alongside the newer `ClaudeBot`.
+		// `Diffbot` builds the Knowledge Graph that several LLM
+		// vendors purchase as training input.
 		'Amazonbot',
+		'anthropic-ai',
 		'Applebot-Extended',
 		'Bytespider',
 		'CCBot',
 		'ClaudeBot',
 		'cohere-ai',
+		'Diffbot',
 		'Google-Extended',
 		'GPTBot',
 		'Meta-ExternalAgent',
@@ -202,9 +213,11 @@ class WC_AI_Storefront_Robots {
 		'Claude-SearchBot',
 		'Claude-User',
 		'DuckAssistBot',
+		'Mistralai-User',
 		'OAI-SearchBot',
 		'Perplexity-User',
 		'PerplexityBot',
+		'YouBot',
 		'AmazonBuyForMe',
 		'KlarnaBot',
 		'AdIdxBot',
@@ -218,11 +231,13 @@ class WC_AI_Storefront_Robots {
 
 		// Training crawlers — alphabetical (case-insensitive).
 		'Amazonbot',
+		'anthropic-ai',
 		'Applebot-Extended',
 		'Bytespider',
 		'CCBot',
 		'ClaudeBot',
 		'cohere-ai',
+		'Diffbot',
 		'Google-Extended',
 		'GPTBot',
 		'Meta-ExternalAgent',
@@ -269,14 +284,17 @@ class WC_AI_Storefront_Robots {
 	 * Sanitize an `allowed_crawlers` input against the canonical crawler list.
 	 *
 	 * Strips unknown IDs left over from plugin upgrades that rotated the
-	 * crawler roster — e.g. the phantom `Gemini` entry removed in 1.6.0
-	 * (never matched any real crawler; Google's Gemini-training bot is
-	 * `Google-Extended`), or the deprecated `anthropic-ai` UA that
-	 * Anthropic replaced with the `ClaudeBot` / `Claude-User` /
-	 * `Claude-SearchBot` family. Keeping the stored list in sync with
-	 * `AI_CRAWLERS` prevents deprecated `User-agent:` blocks from
-	 * leaking into `robots.txt` and keeps the admin UI's "X of Y"
+	 * crawler roster — e.g. the phantom `Gemini` entry that was removed
+	 * in an earlier release (it never matched any real crawler; Google's
+	 * Gemini-training bot is `Google-Extended`). Keeping the stored list
+	 * in sync with `AI_CRAWLERS` prevents stale `User-agent:` blocks
+	 * from leaking into `robots.txt` and keeps the admin UI's "X of Y"
 	 * count honest.
+	 *
+	 * Note: `anthropic-ai` was previously treated as deprecated and stripped
+	 * on upgrade, but Anthropic continues to send it in real-world traffic
+	 * alongside the newer `ClaudeBot` / `Claude-User` / `Claude-SearchBot`
+	 * family. It is now restored as a kept entry.
 	 *
 	 * @param mixed $input Raw input from settings save — expected array of strings.
 	 * @return string[]    Re-indexed list of valid crawler IDs.
