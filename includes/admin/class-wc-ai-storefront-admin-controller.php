@@ -128,6 +128,19 @@ class WC_AI_Storefront_Admin_Controller {
 								),
 							),
 						),
+						// Handling time: min/max business days. Both 0 = not
+						// configured (emitter skips handlingTime block).
+						'handling_time'            => array(
+							'type'       => 'object',
+							'properties' => array(
+								'min' => array(
+									'type' => 'integer',
+								),
+								'max' => array(
+									'type' => 'integer',
+								),
+							),
+						),
 					),
 				),
 			)
@@ -385,7 +398,7 @@ class WC_AI_Storefront_Admin_Controller {
 	public function update_settings( $request ) {
 		$data = array();
 
-		$fields = array( 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'return_policy' );
+		$fields = array( 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'return_policy', 'handling_time' );
 		foreach ( $fields as $field ) {
 			$value = $request->get_param( $field );
 			if ( null !== $value ) {

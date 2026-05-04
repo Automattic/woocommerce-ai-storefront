@@ -7,7 +7,12 @@
  * since that's the most subtle of the three modes' output shapes.
  */
 
-import { derivePreview } from '../policies-tab';
+import {
+	applyHandlingTimeMin,
+	applyHandlingTimeMax,
+	derivePreview,
+	deriveHandlingTimePreview,
+} from '../policies-tab';
 
 describe( 'derivePreview', () => {
 	it( 'returns null for unconfigured mode', () => {
@@ -107,5 +112,92 @@ describe( 'derivePreview', () => {
 		expect( block.merchantReturnLink ).toBe(
 			'https://example.com/no-returns'
 		);
+	} );
+} );
+
+describe( 'applyHandlingTimeMin', () => {
+	it( 'sets min without touching max when max >= new min', () => {
+		expect( applyHandlingTimeMin( { min: 1, max: 5 }, 3 ) ).toEqual( {
+			min: 3,
+			max: 5,
+		} );
+	} );
+
+	it( 'bumps max up to new min when max would fall below (mirrors PHP direction)', () => {
+		expect( applyHandlingTimeMin( { min: 1, max: 2 }, 5 ) ).toEqual( {
+			min: 5,
+			max: 5,
+		} );
+	} );
+
+	it( 'does not touch max when max is 0 (not-set)', () => {
+		expect( applyHandlingTimeMin( { min: 0, max: 0 }, 3 ) ).toEqual( {
+			min: 3,
+			max: 0,
+		} );
+	} );
+} );
+
+describe( 'applyHandlingTimeMax', () => {
+	it( 'sets max without touching min when max >= min', () => {
+		expect( applyHandlingTimeMax( { min: 2, max: 3 }, 7 ) ).toEqual( {
+			min: 2,
+			max: 7,
+		} );
+	} );
+
+	it( 'bumps max up to min when entered value is below min — not min down (mirrors PHP direction)', () => {
+		expect( applyHandlingTimeMax( { min: 5, max: 5 }, 2 ) ).toEqual( {
+			min: 5,
+			max: 5,
+		} );
+	} );
+
+	it( 'does not touch min when min is 0 (not-set)', () => {
+		expect( applyHandlingTimeMax( { min: 0, max: 0 }, 3 ) ).toEqual( {
+			min: 0,
+			max: 3,
+		} );
+	} );
+
+	it( 'does not touch min when new val is 0 (clearing max)', () => {
+		expect( applyHandlingTimeMax( { min: 3, max: 5 }, 0 ) ).toEqual( {
+			min: 3,
+			max: 0,
+		} );
+	} );
+} );
+
+describe( 'deriveHandlingTimePreview', () => {
+	it( 'returns null when min is 0', () => {
+		expect( deriveHandlingTimePreview( { min: 0, max: 3 } ) ).toBeNull();
+	} );
+
+	it( 'returns null when max is 0', () => {
+		expect( deriveHandlingTimePreview( { min: 2, max: 0 } ) ).toBeNull();
+	} );
+
+	it( 'returns null for empty object', () => {
+		expect( deriveHandlingTimePreview( {} ) ).toBeNull();
+	} );
+
+	it( 'returns null when min > max (pre-stored invalid pair, N2 guard)', () => {
+		expect( deriveHandlingTimePreview( { min: 5, max: 2 } ) ).toBeNull();
+	} );
+
+	it( 'returns QuantitativeValue when both min and max are positive', () => {
+		const result = deriveHandlingTimePreview( { min: 1, max: 3 } );
+		expect( result ).toEqual( {
+			'@type': 'QuantitativeValue',
+			minValue: 1,
+			maxValue: 3,
+			unitCode: 'DAY',
+		} );
+	} );
+
+	it( 'returns same value for min === max', () => {
+		const result = deriveHandlingTimePreview( { min: 2, max: 2 } );
+		expect( result?.minValue ).toBe( 2 );
+		expect( result?.maxValue ).toBe( 2 );
 	} );
 } );

@@ -62,6 +62,7 @@ class WC_AI_Storefront {
 				'selected_products'        => [],
 				'rate_limit_rpm'           => 25,
 				'return_policy'            => [ 'mode' => 'unconfigured' ],
+				'handling_time'            => [ 'min' => 0, 'max' => 0 ],
 				// Mirror production default. The gate consumer only
 				// reads this with `isset() && 'yes' ===`, so a missing
 				// key behaves identically to `'no'` today — but the
@@ -258,6 +259,10 @@ class WC_AI_Storefront {
 		// assert real sanitized values.
 		if ( array_key_exists( 'return_policy', $settings ) ) {
 			$overrides['return_policy'] = self::sanitize_return_policy( $settings['return_policy'] );
+		}
+
+		if ( array_key_exists( 'handling_time', $settings ) ) {
+			$overrides['handling_time'] = WC_AI_Storefront_Handling_Time::sanitize( $settings['handling_time'] );
 		}
 
 		self::$test_settings = array_merge(

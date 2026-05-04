@@ -71,6 +71,12 @@ class WC_AI_Storefront {
 			// `WC_AI_Storefront_JsonLd::build_return_policy_block()`
 			// for the per-mode emission logic.
 			'return_policy'            => array( 'mode' => 'unconfigured' ),
+			// Handling time (min/max business days) for ShippingDeliveryTime.
+			// Both values 0 = not configured (no handlingTime block emitted).
+			'handling_time'            => array(
+				'min' => 0,
+				'max' => 0,
+			),
 		);
 	}
 
@@ -638,6 +644,9 @@ class WC_AI_Storefront {
 			),
 			'return_policy'            => self::sanitize_return_policy(
 				$merged['return_policy'] ?? []
+			),
+			'handling_time'            => WC_AI_Storefront_Handling_Time::sanitize(
+				$merged['handling_time'] ?? []
 			),
 			// See `$allow_unknown` resolution above the array literal
 			// for why we don't inline this with `??` + ternary.

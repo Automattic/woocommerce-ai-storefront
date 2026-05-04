@@ -81,6 +81,8 @@ const DEFAULT_POLICY = {
 	methods: [],
 };
 
+const DEFAULT_HANDLING_TIME = { min: 0, max: 0 };
+
 /**
  * Segmented control for policy mode selection.
  *
@@ -138,7 +140,11 @@ function PoliciesTabStyles() {
 				}
 			}
 			#wc-ai-storefront-return-window::-webkit-outer-spin-button,
-			#wc-ai-storefront-return-window::-webkit-inner-spin-button {
+			#wc-ai-storefront-return-window::-webkit-inner-spin-button,
+			#wc-ai-storefront-handling-min::-webkit-outer-spin-button,
+			#wc-ai-storefront-handling-min::-webkit-inner-spin-button,
+			#wc-ai-storefront-handling-max::-webkit-outer-spin-button,
+			#wc-ai-storefront-handling-max::-webkit-inner-spin-button {
 				-webkit-appearance: none;
 				margin: 0;
 			}
@@ -258,6 +264,127 @@ export const derivePreview = ( policy, country ) => {
 
 	return block;
 };
+
+/**
+ * Pure helper: derive the JSON-LD `ShippingDeliveryTime.handlingTime` block
+ * from a draft handling-time state. Mirrors the server-side
+ * `WC_AI_Storefront_JsonLd::add_handling_time()` emission contract.
+ *
+ * Returns null when either value is 0 (unconfigured) or min > max (invalid
+ * pair) — mirroring the PHP emitter's full guard:
+ * `if ( $min <= 0 || $max <= 0 || $min > $max ) return;`.
+ *
+ * @param {Object} handlingTime Draft handling-time state `{ min, max }`.
+ * @return {Object|null} handlingTime QuantitativeValue block, or null.
+ */
+export const deriveHandlingTimePreview = ( handlingTime ) => {
+	const min = Math.trunc( Number( handlingTime?.min ) ) || 0;
+	const max = Math.trunc( Number( handlingTime?.max ) ) || 0;
+	if ( min <= 0 || max <= 0 || min > max ) {
+		return null;
+	}
+	return {
+		'@type': 'QuantitativeValue',
+		minValue: min,
+		maxValue: max,
+		unitCode: 'DAY',
+	};
+};
+
+/**
+ * A stepper input (− / text / +) for integer values in the 0–365 range.
+ *
+ * @param {Object}   props
+ * @param {string}   props.id        HTML id for the input.
+ * @param {number}   props.value     Current integer value.
+ * @param {Function} props.onChange  Called with the new integer value.
+ * @param {number}   [props.min=0]   Minimum clamped value.
+ * @param {number}   [props.max=365] Maximum clamped value.
+ */
+const StepperInput = ( { id, value, onChange, min = 0, max = 365 } ) => (
+	<div
+		style={ {
+			display: 'inline-flex',
+			alignItems: 'stretch',
+			width: '120px',
+			height: '32px',
+			border: `1px solid ${ colors.borderStrong }`,
+			borderRadius: radii.sm,
+			background: colors.surface,
+			overflow: 'hidden',
+		} }
+	>
+		<button
+			type="button"
+			aria-label={ __( 'Decrease', 'woocommerce-ai-storefront' ) }
+			onClick={ () => onChange( Math.max( min, value - 1 ) ) }
+			style={ {
+				width: '28px',
+				flexShrink: 0,
+				background: colors.surfaceSubtle,
+				border: 'none',
+				borderRight: `1px solid ${ colors.borderSubtle }`,
+				color: colors.textPrimary,
+				fontSize: '16px',
+				fontWeight: 600,
+				lineHeight: 1,
+				cursor: 'pointer',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+			} }
+		>
+			{ '−' }
+		</button>
+		<input
+			type="number"
+			id={ id }
+			min={ min }
+			max={ max }
+			value={ value }
+			onChange={ ( e ) => {
+				const parsed = parseInt( e.target.value, 10 );
+				const normalized = Number.isNaN( parsed )
+					? min
+					: Math.min( max, Math.max( min, parsed ) );
+				onChange( normalized );
+			} }
+			style={ {
+				flex: 1,
+				minWidth: 0,
+				border: 'none',
+				padding: '0 4px',
+				fontSize: '13px',
+				textAlign: 'center',
+				background: 'transparent',
+				color: colors.textPrimary,
+				MozAppearance: 'textfield',
+			} }
+		/>
+		<button
+			type="button"
+			aria-label={ __( 'Increase', 'woocommerce-ai-storefront' ) }
+			onClick={ () => onChange( Math.min( max, value + 1 ) ) }
+			style={ {
+				width: '28px',
+				flexShrink: 0,
+				background: colors.surfaceSubtle,
+				border: 'none',
+				borderLeft: `1px solid ${ colors.borderSubtle }`,
+				color: colors.textPrimary,
+				fontSize: '16px',
+				fontWeight: 600,
+				lineHeight: 1,
+				cursor: 'pointer',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+			} }
+		>
+			{ '+' }
+		</button>
+	</div>
+);
 
 /**
  * The return & refund policy configuration section inside the Policies
@@ -538,118 +665,13 @@ const ReturnRefundPolicySection = ( {
 										'woocommerce-ai-storefront'
 									) }
 								</label>
-								<div
-									style={ {
-										display: 'inline-flex',
-										alignItems: 'stretch',
-										width: '120px',
-										height: '32px',
-										border: `1px solid ${ colors.borderStrong }`,
-										borderRadius: radii.sm,
-										background: colors.surface,
-										overflow: 'hidden',
-									} }
-								>
-									<button
-										type="button"
-										aria-label={ __(
-											'Decrease',
-											'woocommerce-ai-storefront'
-										) }
-										onClick={ () =>
-											handleField(
-												'days',
-												Math.max(
-													0,
-													( policy.days || 0 ) - 1
-												)
-											)
-										}
-										style={ {
-											width: '28px',
-											flexShrink: 0,
-											background: colors.surfaceSubtle,
-											border: 'none',
-											borderRight: `1px solid ${ colors.borderSubtle }`,
-											color: colors.textPrimary,
-											fontSize: '16px',
-											fontWeight: 600,
-											lineHeight: 1,
-											cursor: 'pointer',
-											display: 'flex',
-											alignItems: 'center',
-											justifyContent: 'center',
-										} }
-									>
-										{ '−' }
-									</button>
-									<input
-										type="number"
-										id="wc-ai-storefront-return-window"
-										min={ 0 }
-										max={ 365 }
-										value={ policy.days ?? 0 }
-										onChange={ ( e ) => {
-											const parsed = parseInt(
-												e.target.value,
-												10
-											);
-											const normalized = Number.isNaN(
-												parsed
-											)
-												? 0
-												: Math.min(
-														365,
-														Math.max( 0, parsed )
-												  );
-											handleField( 'days', normalized );
-										} }
-										style={ {
-											flex: 1,
-											minWidth: 0,
-											border: 'none',
-											padding: '0 4px',
-											fontSize: '13px',
-											textAlign: 'center',
-											background: 'transparent',
-											color: colors.textPrimary,
-											MozAppearance: 'textfield',
-										} }
-									/>
-									<button
-										type="button"
-										aria-label={ __(
-											'Increase',
-											'woocommerce-ai-storefront'
-										) }
-										onClick={ () =>
-											handleField(
-												'days',
-												Math.min(
-													365,
-													( policy.days || 0 ) + 1
-												)
-											)
-										}
-										style={ {
-											width: '28px',
-											flexShrink: 0,
-											background: colors.surfaceSubtle,
-											border: 'none',
-											borderLeft: `1px solid ${ colors.borderSubtle }`,
-											color: colors.textPrimary,
-											fontSize: '16px',
-											fontWeight: 600,
-											lineHeight: 1,
-											cursor: 'pointer',
-											display: 'flex',
-											alignItems: 'center',
-											justifyContent: 'center',
-										} }
-									>
-										{ '+' }
-									</button>
-								</div>
+								<StepperInput
+									id="wc-ai-storefront-return-window"
+									value={ policy.days ?? 0 }
+									onChange={ ( v ) =>
+										handleField( 'days', v )
+									}
+								/>
 								<p
 									style={ {
 										margin: `${ spacing.s1 } 0 0`,
@@ -830,6 +852,143 @@ const ReturnRefundPolicySection = ( {
 };
 
 /**
+ * Apply a new min value, bumping max up to match if max would fall below.
+ *
+ * Mirrors PHP `WC_AI_Storefront_Handling_Time::sanitize()` direction:
+ * max is always raised to meet min, never lowered.
+ *
+ * @param {{ min: number, max: number }} current
+ * @param {number}                       val
+ * @return {{ min: number, max: number }} Updated handling-time pair.
+ */
+export const applyHandlingTimeMin = ( current, val ) => {
+	const next = { ...current, min: val };
+	if ( next.max > 0 && next.max < val ) {
+		next.max = val;
+	}
+	return next;
+};
+
+/**
+ * Apply a new max value, bumping max up to min when the entered value
+ * falls below the current min.
+ *
+ * Mirrors PHP `WC_AI_Storefront_Handling_Time::sanitize()` direction:
+ * max is raised to min, never min lowered to max.
+ *
+ * @param {{ min: number, max: number }} current
+ * @param {number}                       val
+ * @return {{ min: number, max: number }} Updated handling-time pair.
+ */
+export const applyHandlingTimeMax = ( current, val ) => {
+	const next = { ...current, max: val };
+	if ( next.min > 0 && val > 0 && val < next.min ) {
+		next.max = next.min;
+	}
+	return next;
+};
+
+const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
+	const handleMin = ( val ) =>
+		onChange( applyHandlingTimeMin( handlingTime, val ) );
+	const handleMax = ( val ) =>
+		onChange( applyHandlingTimeMax( handlingTime, val ) );
+
+	return (
+		<Card>
+			<CardBody>
+				<h3
+					style={ {
+						margin: '0 0 8px',
+						fontSize: '14px',
+						fontWeight: 600,
+						color: colors.textPrimary,
+					} }
+				>
+					{ __( 'Shipping', 'woocommerce-ai-storefront' ) }
+				</h3>
+				<p
+					style={ {
+						margin: '0 0 16px',
+						color: colors.textSecondary,
+						fontSize: '13px',
+					} }
+				>
+					{ __(
+						'Set your typical order handling time so AI agents can quote an accurate fulfilment window before checkout.',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+
+				<div
+					style={ {
+						display: 'flex',
+						flexWrap: 'wrap',
+						gap: spacing.s4,
+						alignItems: 'flex-end',
+					} }
+				>
+					<div>
+						<label
+							htmlFor="wc-ai-storefront-handling-min"
+							style={ {
+								display: 'block',
+								marginBottom: spacing.s1,
+								...typography.eyebrowLabel,
+								color: colors.textSecondary,
+							} }
+						>
+							{ __(
+								'Min handling time (days)',
+								'woocommerce-ai-storefront'
+							) }
+						</label>
+						<StepperInput
+							id="wc-ai-storefront-handling-min"
+							value={ handlingTime.min }
+							onChange={ handleMin }
+						/>
+					</div>
+					<div>
+						<label
+							htmlFor="wc-ai-storefront-handling-max"
+							style={ {
+								display: 'block',
+								marginBottom: spacing.s1,
+								...typography.eyebrowLabel,
+								color: colors.textSecondary,
+							} }
+						>
+							{ __(
+								'Max handling time (days)',
+								'woocommerce-ai-storefront'
+							) }
+						</label>
+						<StepperInput
+							id="wc-ai-storefront-handling-max"
+							value={ handlingTime.max }
+							onChange={ handleMax }
+						/>
+					</div>
+				</div>
+				<p
+					style={ {
+						margin: `${ spacing.s2 } 0 0`,
+						fontSize: '12px',
+						color: colors.textMuted,
+					} }
+				>
+					{ __(
+						'Leave both at 0 to omit handling time from structured data.',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+			</CardBody>
+		</Card>
+	);
+};
+
+/**
  * Top-level Policies tab component. Owns the local draft of all
  * policy sections, hydrates it from saved settings, fetches the
  * published-pages list once on mount, and orchestrates save +
@@ -920,6 +1079,41 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 		( nextPolicy ) => {
 			setDraft( nextPolicy );
 			onChange( { return_policy: nextPolicy } );
+		},
+		[ onChange ]
+	);
+
+	// Handling-time draft — mirrors the return-policy draft pattern.
+	const initialHandlingTime = useMemo(
+		() => ( {
+			...DEFAULT_HANDLING_TIME,
+			...( settings.handling_time || {} ),
+		} ),
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[]
+	);
+	const [ handlingDraft, setHandlingDraft ] = useState( initialHandlingTime );
+
+	useEffect( () => {
+		if ( ! settings.handling_time ) {
+			return;
+		}
+		setHandlingDraft( ( prev ) => {
+			const next = {
+				...DEFAULT_HANDLING_TIME,
+				...settings.handling_time,
+			};
+			if ( prev.min === next.min && prev.max === next.max ) {
+				return prev;
+			}
+			return next;
+		} );
+	}, [ settings.handling_time ] );
+
+	const handleHandlingTimeEdit = useCallback(
+		( nextHandlingTime ) => {
+			setHandlingDraft( nextHandlingTime );
+			onChange( { handling_time: nextHandlingTime } );
 		},
 		[ onChange ]
 	);
@@ -1093,6 +1287,13 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 				pages={ pages }
 				pagesLoading={ pagesLoading }
 			/>
+
+			<div style={ { marginTop: '16px' } }>
+				<ShippingPoliciesSection
+					handlingTime={ handlingDraft }
+					onChange={ handleHandlingTimeEdit }
+				/>
+			</div>
 
 			{ /*
 				Page-level Save footer. Right-aligned + 24px top margin
