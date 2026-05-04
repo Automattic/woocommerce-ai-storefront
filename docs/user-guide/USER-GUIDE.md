@@ -12,7 +12,7 @@ A step-by-step guide for store owners. Make your catalog discoverable to AI shop
 4. [Verify your discovery endpoints](#4-verify-your-discovery-endpoints)
 5. [Choose which products to expose](#5-choose-which-products-to-expose)
 6. [Configure crawlers and rate limits](#6-configure-crawlers-and-rate-limits)
-7. [Set your return policy](#7-set-your-return-policy)
+7. [Set your store policies](#7-set-your-store-policies)
 8. [Read attribution stats](#8-read-attribution-stats)
 9. [Maintenance and monitoring](#9-maintenance-and-monitoring)
 10. [Troubleshooting](#10-troubleshooting)
@@ -188,11 +188,15 @@ Stats refresh on every rollup run (hourly by default) — today's traffic appear
 
 ---
 
-## 7. Set your return policy
+## 7. Set your store policies
 
-AI agents that surface your products often try to display return windows inline ("Free returns for 30 days"). The **Store policies** tab publishes a structured policy agents can read.
+The **Policies** tab publishes structured signals that AI agents read when deciding what to show shoppers — return terms, shipping timelines, and more. Two cards are currently available.
 
 ![Store policies tab](screenshots/07-policies-tab.png)
+
+### Return & refund policy
+
+AI agents that surface your products often try to display return windows inline ("Free returns for 30 days").
 
 Three modes:
 
@@ -202,11 +206,23 @@ Three modes:
 
 You can also link to an existing returns/refunds page from the dropdown. This is useful when the policy already lives on a customer-facing page.
 
-### Per-product overrides
+#### Per-product overrides
 
 Some merchants have a generally returnable catalog with specific final-sale items (clearance, custom, perishable). The **AI: Final sale** checkbox in the product editor's Inventory tab overrides the store-wide policy for that single product.
 
 ![Product editor Inventory tab with AI Final sale checkbox](screenshots/08-product-final-sale.png)
+
+### Shipping — handling time
+
+AI agents that compare products often surface shipping timelines ("Ships in 1–2 business days"). The **Shipping** card lets you declare your order handling time so agents can read it as structured data rather than guessing from free-text descriptions.
+
+Set **Minimum** and **Maximum** business days using the stepper inputs (0–365). When both are greater than 0, the plugin emits a `handlingTime` block under `OfferShippingDetails` in the product JSON-LD.
+
+- Leave both at **0** (default) to omit handling time from structured data entirely.
+- If you set max below min, max is automatically raised to match min.
+- A live preview beneath the inputs shows the would-be structured-data shape so you can verify before saving.
+
+> **Note:** Handling time reflects how long it takes to pack and dispatch — not total transit time. Transit time depends on the carrier and destination and is not currently modeled.
 
 ---
 

@@ -131,10 +131,28 @@ Store name, double-decoded for HTML entities.
 
 ### `offers[0].shippingDetails`
 
-`OfferShippingDetails` declaring the shipping destination country.
+`OfferShippingDetails` declaring the shipping destination country, free-shipping rate, and handling time.
 
 - **Emitted when** the WC base country is set in WooCommerce settings.
 - **Country source**: `wc_get_base_location()`.
+
+#### `offers[0].shippingDetails.shippingRate`
+
+Schema.org `MonetaryAmount` emitted when unconditional free shipping is available for the store's base country.
+
+- **Emitted when** a WooCommerce shipping zone covers the base country and contains a free-shipping method with no minimum order amount.
+- **Value**: always `{ "@type": "MonetaryAmount", "value": 0, "currency": "<store currency>" }`.
+- **Not emitted** when free shipping requires a coupon or minimum spend — those are conditional, not unconditional.
+- **Source**: `add_shipping_details()` → `has_free_shipping_for_country()`. Result is per-request cached keyed by country code.
+
+#### `offers[0].shippingDetails.deliveryTime.handlingTime`
+
+Schema.org `ShippingDeliveryTime` → `QuantitativeValue` emitted when the merchant has configured handling time on the Policies tab.
+
+- **Emitted when** Policies tab → Shipping → Minimum > 0 AND Maximum > 0 AND min ≤ max.
+- **Value**: `{ "@type": "QuantitativeValue", "minValue": <min>, "maxValue": <max>, "unitCode": "DAY" }`.
+- **Guard**: invalid pairs stored in the database (e.g. `{min:5, max:2}`) are silently skipped — the block is omitted rather than emitting broken structured data.
+- **Source**: `add_handling_time()`. Sanitization is enforced by `WC_AI_Storefront_Handling_Time::sanitize()` at save time (0–365 clamp, max raised to min when below).
 
 ### `offers[0].hasMerchantReturnPolicy`
 
