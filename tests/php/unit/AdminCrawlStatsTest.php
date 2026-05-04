@@ -241,4 +241,141 @@ class AdminCrawlStatsTest extends \PHPUnit\Framework\TestCase {
 			'rollup_interval must reflect the effective filtered value'
 		);
 	}
+
+	/**
+	 * The endpoint-aggregate SQL must exclude store_api_search_hit so
+	 * per-result impression rows don't inflate Catalog queries /
+	 * total_requests / by_endpoint counts. The same exclusion must apply
+	 * to the by-agent aggregate so an agent that ran a few searches
+	 * doesn't dominate the chart with its impression rows.
+	 *
+	 * Pins the SQL contract by capturing the prepared SQL strings and
+	 * asserting the exclusion clauses are present in both aggregates.
+	 */
+	public function test_aggregate_sql_excludes_search_hit_endpoint(): void {
+		Functions\when( 'apply_filters' )->alias( static fn( string $hook, $default ) => $default );
+
+		$captured_sqls = array();
+		$captured_args = array();
+
+		global $wpdb;
+		$wpdb             = Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->last_error = '';
+		$wpdb->shouldReceive( 'prepare' )
+			->andReturnUsing(
+				static function () use ( &$captured_sqls, &$captured_args ) {
+					$args            = func_get_args();
+					$captured_sqls[] = $args[0];
+					$captured_args[] = array_slice( $args, 1 );
+					return 'PREPARED';
+				}
+			);
+		$wpdb->shouldReceive( 'get_results' )->andReturn( array() );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( '0' );
+
+		$req = new WP_REST_Request();
+		$req->set_param( 'period', 'day' );
+
+		$this->controller->get_crawl_stats( $req );
+
+		// Two SQL strings need the exclusion: the per-endpoint aggregate
+		// (identified by `GROUP BY endpoint`) and the by-agent aggregate
+		// (`GROUP BY agent`).
+		$endpoint_sql = '';
+		$agent_sql    = '';
+		foreach ( $captured_sqls as $i => $sql ) {
+			if ( str_contains( $sql, 'GROUP BY endpoint' ) ) {
+				$endpoint_sql = $sql;
+				$this->assertContains(
+					WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH_HIT,
+					$captured_args[ $i ],
+					'Endpoint-aggregate prepare call must pass the search_hit constant as a bound arg.'
+				);
+			}
+			if ( str_contains( $sql, 'GROUP BY agent' ) ) {
+				$agent_sql = $sql;
+				$this->assertContains(
+					WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH_HIT,
+					$captured_args[ $i ],
+					'Agent-aggregate prepare call must pass the search_hit constant as a bound arg.'
+				);
+			}
+		}
+
+		$this->assertNotEmpty( $endpoint_sql, 'Captured the endpoint-aggregate SQL.' );
+		$this->assertNotEmpty( $agent_sql, 'Captured the agent-aggregate SQL.' );
+
+		// Both SQL strings must contain the exclusion clause. Using
+		// `endpoint != %s` (not interpolated) so the parameter is bound.
+		$this->assertStringContainsString(
+			'endpoint != %s',
+			$endpoint_sql,
+			'Endpoint aggregate must exclude search_hit via prepared parameter.'
+		);
+		$this->assertStringContainsString(
+			'endpoint != %s',
+			$agent_sql,
+			'Agent aggregate must exclude search_hit via prepared parameter.'
+		);
+	}
+
+	/**
+	 * `unique_products` reads from the summary table with
+	 * `WHERE product_id > 0` and no endpoint filter, so per-result
+	 * impression rows (endpoint=store_api_search_hit, product_id=N)
+	 * naturally feed it. This test pins that contract — a regression
+	 * that adds an endpoint filter here would break the whole point
+	 * of the search_hit endpoint.
+	 *
+	 * Captures the unique_products SQL and asserts it does NOT carry
+	 * an endpoint filter. The complementary fact (the SQL DOES have
+	 * `product_id > 0`) is unchanged from prior behavior and locked
+	 * in by the existing top_queries / period tests above.
+	 */
+	public function test_unique_products_sql_has_no_endpoint_filter(): void {
+		Functions\when( 'apply_filters' )->alias( static fn( string $hook, $default ) => $default );
+
+		$captured_sqls = array();
+
+		global $wpdb;
+		$wpdb             = Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->last_error = '';
+		$wpdb->shouldReceive( 'prepare' )
+			->andReturnUsing(
+				static function () use ( &$captured_sqls ) {
+					$args            = func_get_args();
+					$captured_sqls[] = $args[0];
+					return 'PREPARED';
+				}
+			);
+		$wpdb->shouldReceive( 'get_results' )->andReturn( array() );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( '0' );
+
+		$req = new WP_REST_Request();
+		$req->set_param( 'period', 'day' );
+
+		$this->controller->get_crawl_stats( $req );
+
+		$unique_products_sql = '';
+		foreach ( $captured_sqls as $sql ) {
+			if ( str_contains( $sql, 'COUNT(DISTINCT product_id)' ) ) {
+				$unique_products_sql = $sql;
+				break;
+			}
+		}
+
+		$this->assertNotEmpty( $unique_products_sql, 'Captured the unique_products SQL.' );
+		$this->assertStringContainsString(
+			'product_id > 0',
+			$unique_products_sql,
+			'unique_products must filter product_id > 0.'
+		);
+		$this->assertStringNotContainsString(
+			'endpoint',
+			$unique_products_sql,
+			'unique_products must NOT filter by endpoint — search_hit rows feed it intentionally.'
+		);
+	}
 }

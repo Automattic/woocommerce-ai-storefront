@@ -44,8 +44,34 @@ class WC_AI_Storefront_Crawl_Logger {
 	const ENDPOINT_PRODUCT_PAGE     = 'product_page';
 	const ENDPOINT_STORE_API_SINGLE = 'store_api_product';
 	const ENDPOINT_STORE_API_SEARCH = 'store_api_search';
-	const ENDPOINT_LLMS_TXT         = 'llms_txt';
-	const ENDPOINT_UCP              = 'ucp';
+	// Per-result impression rows emitted alongside a single
+	// ENDPOINT_STORE_API_SEARCH "request" row when an agent runs
+	// catalog/search. One row per product in the search response (capped
+	// at SEARCH_IMPRESSION_CAP), product_id populated, query empty.
+	// Recording these as a separate endpoint keeps the request count
+	// (Catalog queries) and the impression count (Products seen) from
+	// conflating: aggregates that count requests explicitly exclude this
+	// endpoint, while COUNT(DISTINCT product_id) for "Products seen"
+	// naturally picks them up via the existing product_id > 0 filter.
+	const ENDPOINT_STORE_API_SEARCH_HIT = 'store_api_search_hit';
+	const ENDPOINT_LLMS_TXT             = 'llms_txt';
+	const ENDPOINT_UCP                  = 'ucp';
+
+	/**
+	 * Default cap on the number of per-result impression rows emitted
+	 * for a single catalog/search response.
+	 *
+	 * Store API's `per_page` defaults to 10 and tops out at 100. AI
+	 * agents typically request 10-20 results. The default of 50
+	 * comfortably covers realistic traffic while bounding worst-case
+	 * write volume on a high-traffic store. Override via the
+	 * `wc_ai_storefront_search_impression_cap` filter — return 0 to
+	 * disable per-result impression recording entirely (the
+	 * search-request row is unaffected).
+	 *
+	 * @var int
+	 */
+	const SEARCH_IMPRESSION_CAP = 50;
 
 	const RAW_RETENTION_DAYS     = 30;
 	const SUMMARY_RETENTION_DAYS = 90;

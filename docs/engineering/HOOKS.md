@@ -2,7 +2,7 @@
 
 Filters and actions exposed by WooCommerce AI Storefront for extending plugins.
 
-The plugin exposes a deliberately small surface — eleven filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
+The plugin exposes a deliberately small surface — twelve filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
 
 ## Filters
 
@@ -318,6 +318,40 @@ apply_filters( 'wc_ai_storefront_rollup_interval', string $interval );
 add_filter( 'wc_ai_storefront_rollup_interval', function() {
     return 'twicedaily';
 } );
+```
+
+---
+
+### `wc_ai_storefront_search_impression_cap`
+
+Cap the number of per-result impression rows recorded for a single `catalog/search` response.
+
+```php
+apply_filters( 'wc_ai_storefront_search_impression_cap', int $cap );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$cap` | `int` | Maximum impression rows to record per search. Default `50` (the value of `WC_AI_Storefront_Crawl_Logger::SEARCH_IMPRESSION_CAP`). |
+
+**Returns:** an integer used to bound the per-search write volume. Values are cast via `(int)` and clamped with `max( 0, $cap )`, so non-numeric returns become `0`. A returned value of `0` disables impression recording entirely (the search-request row is unaffected); negative returns are clamped to `0`. Values larger than the actual result count are a no-op (`array_slice` doesn't pad).
+
+**Background.** The plugin records two distinct kinds of crawl-log row for each `catalog/search` response: one **request** row (`endpoint = store_api_search`, `product_id = 0`, `query = <keyword>`) that feeds Catalog queries / Top searches, and **N impression rows** (`endpoint = store_api_search_hit`, `product_id = N`, `query = ''`) that feed the "Products seen" tile via `COUNT(DISTINCT product_id)`. The cap controls only the impression rows.
+
+**When to use:** high-traffic stores returning large result pages may want to dial down the cap to bound row growth in the raw log (e.g. a store doing 10,000 searches/day with `per_page=100` would write 1,000,000 impression rows/day at the default cap). Stores doing typical merchant traffic (`per_page` 10–20) won't exceed the default cap. Returning `0` disables impression recording entirely while leaving the request row + Top searches data path intact.
+
+**Example — cap at 10 to reduce write volume on a high-traffic store:**
+
+```php
+add_filter( 'wc_ai_storefront_search_impression_cap', function() {
+    return 10;
+} );
+```
+
+**Example — disable impression recording entirely while preserving Catalog queries / Top searches:**
+
+```php
+add_filter( 'wc_ai_storefront_search_impression_cap', '__return_zero' );
 ```
 
 ---

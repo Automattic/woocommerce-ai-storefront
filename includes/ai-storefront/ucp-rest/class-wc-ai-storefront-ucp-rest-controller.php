@@ -742,12 +742,61 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		if ( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE !== $agent_data['name'] ) {
+			// Search REQUEST row — product_id=0, query=keyword. Counted as
+			// a Catalog query / Top search; feeds by-agent request totals.
 			WC_AI_Storefront_Crawl_Logger::record(
 				WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH,
 				0,
 				$agent_data['name'],
 				is_string( $request->get_param( 'query' ) ) ? $request->get_param( 'query' ) : ''
 			);
+
+			// Search IMPRESSION rows — product_id=N (one per result), query=''.
+			// These power "Products seen" via the existing
+			// COUNT(DISTINCT product_id) WHERE product_id > 0 query in
+			// get_crawl_stats(); recorded under a distinct endpoint
+			// (ENDPOINT_STORE_API_SEARCH_HIT) so by-endpoint and by-agent
+			// request aggregates can exclude them and avoid inflating the
+			// Catalog queries count by N per search.
+			//
+			// Capped at SEARCH_IMPRESSION_CAP (default 50) to bound write
+			// volume on high-traffic stores returning large result pages;
+			// merchants with very high traffic can override via the
+			// `wc_ai_storefront_search_impression_cap` filter (return 0 to
+			// disable impression recording entirely without affecting the
+			// request row above).
+			// `fetch_wc_products_for_search()` always returns `wc_products`
+			// as an array-shaped list (initialized to `array()` and only
+			// reassigned to other arrays). The OUTER container is therefore
+			// guaranteed array-shaped at this site, so no defensive guard is
+			// needed there. The per-element `is_array()` check inside the
+			// loop below is still warranted: individual product entries come
+			// from `normalize_store_api_data()` and could theoretically be
+			// non-array if a Store API extension emits a malformed item.
+			$cap = (int) apply_filters(
+				'wc_ai_storefront_search_impression_cap',
+				WC_AI_Storefront_Crawl_Logger::SEARCH_IMPRESSION_CAP
+			);
+			$cap = max( 0, $cap );
+			if ( $cap > 0 ) {
+				// `wc_products` here is the normalized Store API list response
+				// (array of associative product arrays), not WC_Product objects.
+				// See fetch_wc_products_for_search() for shape; same key access
+				// pattern used by translate_products_for_search() below.
+				foreach ( array_slice( $fetched['wc_products'], 0, $cap ) as $wc_product ) {
+					if ( ! is_array( $wc_product ) ) {
+						continue;
+					}
+					$product_id = (int) ( $wc_product['id'] ?? 0 );
+					if ( $product_id > 0 ) {
+						WC_AI_Storefront_Crawl_Logger::record(
+							WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH_HIT,
+							$product_id,
+							$agent_data['name']
+						);
+					}
+				}
+			}
 		}
 
 		return $response;
