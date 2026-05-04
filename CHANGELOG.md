@@ -1,4 +1,14 @@
-## Unreleased
+## [Unreleased]
+
+### Features
+### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.8.8] – 2026-05-03
 
 ### Features
 

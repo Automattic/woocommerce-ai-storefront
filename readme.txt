@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.8.7
+Stable tag: 0.8.8
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,17 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.8.8 - 2026-05-03 =
+**New**
+* Discovery tab now adds helper text clarifying that the AI crawler allowlist controls AI-specific agents only — general-purpose search engines (Google, Bing, Yandex) are managed by WordPress and SEO plugins.
+* Expanded AI crawler allow-list with four additional agents: YouBot (You.com), Mistralai-User (Mistral), anthropic-ai (Anthropic's older crawler), and Diffbot.
+* robots.txt opt-in block now uses a single consolidated rule (RFC 9309 §2.2.1), reducing output from ~200 lines to ~30 lines on a typical install.
+
+**Fixed**
+* `/llms.txt` now points AI agents to the UCP REST API (`/wp-json/wc/ucp/v1`) instead of the raw Store API, ensuring proper agent fingerprinting, rate limiting, and access control.
+* Discovery tab "Products seen" now correctly counts products returned by AI search queries, not just lookup hits.
+* Discovery tab "UCP API hits" relabeled to "UCP manifest hits" to accurately reflect what is being counted (`.well-known/ucp` manifest fetches, not REST API calls).
 
 = 0.8.7 - 2026-05-03 =
 **New**
