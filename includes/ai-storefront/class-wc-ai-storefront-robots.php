@@ -328,8 +328,7 @@ class WC_AI_Storefront_Robots {
 	];
 
 	/**
-	 * Return the first AI_CRAWLERS token found in the current request's
-	 * User-Agent string, or '' if none match.
+	 * Resolve a recordable identifier from the current request's User-Agent.
 	 *
 	 * Used by passive-serve paths (llms.txt, UCP manifest) that don't carry
 	 * a structured UCP-Agent header. Pass the returned token directly to
@@ -338,7 +337,33 @@ class WC_AI_Storefront_Robots {
 	 * Do not pass UA tokens through `canonicalize_host_idempotent()` — that
 	 * helper maps hostnames/utm_source values, not UA tokens.
 	 *
-	 * @return string Matched bot token (e.g. 'GPTBot', 'ChatGPT-User') or ''.
+	 * Two-stage match:
+	 *
+	 *   1. Substring search against `AI_CRAWLERS` (longest-first to prevent
+	 *      shorter tokens shadowing longer supersets, e.g. `Bingbot` inside
+	 *      `Microsoft-BingBot-Extended`). When a known crawler hits, we
+	 *      return its canonical token so the recorder's brand-name table
+	 *      can translate `GPTBot` → `ChatGPT`, etc.
+	 *
+	 *   2. Fallback for unknown UAs: extract the first product token at
+	 *      the start of the UA (RFC 7231 `User-Agent = product *(WS / RWS
+	 *      ( product / comment ))`, where `product = token "/" version`).
+	 *      Returns the bare token, no version. This captures legitimate
+	 *      UCP-aware clients (`UCPScanner/1.0 (+https://...)` →
+	 *      `UCPScanner`; `UCPCheckerBot/1.0 (+https://...)` →
+	 *      `UCPCheckerBot`) that aren't in the AI_CRAWLERS allow-list,
+	 *      since the manifest and llms.txt are public discovery surfaces
+	 *      that should record any hit, not just hits from a hardcoded
+	 *      crawler set. Browser visits also fall through this path
+	 *      (recorded as `Mozilla`) — intentional: low frequency, useful
+	 *      forensic signal that a human is poking at the URL.
+	 *
+	 * Empty UA returns '' — call sites use that as the "do not record"
+	 * signal for malformed/anonymous requests.
+	 *
+	 * @return string Recordable token (canonical AI_CRAWLERS match,
+	 *                extracted product name for unknown UAs, or '' when
+	 *                the UA is empty).
 	 */
 	public static function detect_crawler_from_ua(): string {
 		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
@@ -350,8 +375,9 @@ class WC_AI_Storefront_Robots {
 			return '';
 		}
 
-		// Sort longest token first so a shorter token (e.g. 'Bingbot') can't
-		// shadow a longer one that contains it ('Microsoft-BingBot-Extended').
+		// Stage 1: known-crawler substring match. Sort longest token first
+		// so a shorter token (e.g. 'Bingbot') can't shadow a longer one
+		// that contains it ('Microsoft-BingBot-Extended').
 		$bots = self::AI_CRAWLERS;
 		usort( $bots, static fn( $a, $b ) => strlen( $b ) - strlen( $a ) );
 
@@ -359,6 +385,25 @@ class WC_AI_Storefront_Robots {
 			if ( stripos( $ua, $bot ) !== false ) {
 				return $bot;
 			}
+		}
+
+		// Stage 2: extract the leading RFC 7231 product token. Anchored
+		// to the start of the string so we capture the *primary* product
+		// identifier — `Mozilla/5.0 (compatible; ClaudeBot/1.0; ...)` is
+		// already handled by stage 1's substring match on `ClaudeBot`,
+		// so a leading `Mozilla` here is genuine browser traffic, not a
+		// crawler hiding behind a Mozilla preamble. Token charset matches
+		// RFC 7230 `token = 1*tchar` reduced to the printable subset
+		// real-world UAs actually use.
+		//
+		// Bounded `{0,63}` so the matched token caps at 64 chars total
+		// (1 leading char + up to 63 follow chars). The recorder also
+		// caps at 64 via `mb_substr`; bounding here makes the limit
+		// visible at the regex layer rather than relying on invisible
+		// downstream truncation, and keeps the matcher cheap on
+		// pathological inputs (long-string UAs).
+		if ( preg_match( '/^([A-Za-z][A-Za-z0-9._-]{0,63})/', $ua, $matches ) ) {
+			return $matches[1];
 		}
 
 		return '';
