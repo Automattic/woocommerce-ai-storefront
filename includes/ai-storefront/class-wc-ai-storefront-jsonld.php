@@ -749,9 +749,11 @@ class WC_AI_Storefront_JsonLd {
 			$fields['logo'] = $logo_url;
 		}
 
-		// `address` — auto-sourced from the WC base address. Built
-		// inline rather than via a helper because this is the single
-		// caller and the shape maps 1:1 to Schema.org `PostalAddress`.
+		// `address` — auto-sourced from the WC base address. Helper
+		// is `protected` (rather than inlined) so unit tests can
+		// subclass with a fixture instead of mocking `WC()` globally,
+		// which Brain Monkey would leak across the suite. See the
+		// `build_postal_address()` docblock for the test-seam detail.
 		$address = $this->build_postal_address();
 		if ( ! empty( $address ) ) {
 			$fields['address'] = $address;
