@@ -1528,9 +1528,20 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// merchant settings, no admin UI:
 	//
 	//   - `logo` — custom-logo theme mod, with site-icon as fallback
-	//   - `address` — `WC()->countries->get_base_*` (Schema.org PostalAddress)
-	//   - `contactPoint.email` — `woocommerce_email_from_address` option,
-	//     validated; admin email is intentionally NOT a fallback
+	//   - `address` — `WC()->countries->get_base_*` (Schema.org
+	//     PostalAddress); streetAddress is NEVER emitted (privacy guard
+	//     against publishing residential addresses)
+	//   - `contactPoint.email` — two-stage resolver:
+	//       1. `woocommerce_email_reply_to_address` when
+	//          `woocommerce_email_reply_to_enabled === 'yes'` (WC's
+	//          purpose-built customer-reply field)
+	//       2. `woocommerce_email_from_address` as fallback, but
+	//          rejected when its local-part starts with a noreply
+	//          pattern (`noreply`, `no-reply`, `donotreply`,
+	//          `do-not-reply`), with optional `+tag` suffix
+	//     Each candidate validated via `is_email`. `admin_email` is
+	//     intentionally NOT a fallback (privacy: it's used for
+	//     password resets and security notifications).
 	//
 	// The filter `wc_ai_storefront_jsonld_store` is the documented
 	// injection point for ecosystem plugins (Jetpack, Yoast) that
@@ -1895,14 +1906,23 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public static function noreply_local_parts_provider(): array {
 		return [
-			'noreply'              => [ 'noreply' ],
-			'NoReply mixed case'   => [ 'NoReply' ],
-			'NOREPLY upper case'   => [ 'NOREPLY' ],
-			'no-reply hyphenated'  => [ 'no-reply' ],
-			'No-Reply mixed case'  => [ 'No-Reply' ],
-			'donotreply'           => [ 'donotreply' ],
-			'do-not-reply'         => [ 'do-not-reply' ],
-			'Do-Not-Reply'         => [ 'Do-Not-Reply' ],
+			'noreply'                       => [ 'noreply' ],
+			'NoReply mixed case'            => [ 'NoReply' ],
+			'NOREPLY upper case'            => [ 'NOREPLY' ],
+			'no-reply hyphenated'           => [ 'no-reply' ],
+			'No-Reply mixed case'           => [ 'No-Reply' ],
+			'donotreply'                    => [ 'donotreply' ],
+			'do-not-reply'                  => [ 'do-not-reply' ],
+			'Do-Not-Reply'                  => [ 'Do-Not-Reply' ],
+			// RFC 5233 plus-addressing variants — these route to the
+			// same underlying mailbox as the bare prefix at most
+			// providers (Gmail, Outlook, Postfix, etc.), so they're
+			// noreply addresses for publishing purposes.
+			'noreply+orders'                => [ 'noreply+orders' ],
+			'no-reply+customer-service'     => [ 'no-reply+customer-service' ],
+			'donotreply+tag'                => [ 'donotreply+tag' ],
+			'do-not-reply+billing'          => [ 'do-not-reply+billing' ],
+			'NoReply+Mixed plus-addressing' => [ 'NoReply+Mixed' ],
 		];
 	}
 
@@ -1918,6 +1938,27 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$captured = $this->capture_store_jsonld_filter_value();
 
 		$this->assertSame( 'support@noreply.example.com', $captured['contactPoint']['email'] ?? null );
+	}
+
+	public function test_store_jsonld_does_not_match_noreply_substring_in_local_part(): void {
+		// `noreplies@store.com` is NOT a noreply address — the
+		// local-part is a different word that happens to start with
+		// the same letters. We match exact prefixes (with optional
+		// `+tag`), not substrings, so this should be publishable.
+		// Regression guard against an over-eager refactor that switches
+		// the prefix check to a `str_starts_with` substring match.
+		$this->stub_options( [
+			'woocommerce_email_reply_to_enabled' => 'no',
+			'woocommerce_email_from_address'     => 'noreplies@store.com',
+		] );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertSame(
+			'noreplies@store.com',
+			$captured['contactPoint']['email'] ?? null,
+			'Substring match must NOT trigger noreply guard — only exact prefix or prefix+tag.'
+		);
 	}
 
 	public function test_store_jsonld_omits_contactpoint_when_both_options_empty(): void {

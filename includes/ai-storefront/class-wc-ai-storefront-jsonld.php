@@ -979,23 +979,38 @@ class WC_AI_Storefront_JsonLd {
 	/**
 	 * Detect noreply-shaped local-parts so we don't publish an address
 	 * the merchant intends as one-way. Matches the four common shapes
-	 * (`noreply`, `no-reply`, `donotreply`, `do-not-reply`) anchored
-	 * to the start of the local-part, case-insensitive. Examples that
-	 * match: `noreply@store.com`, `NoReply@store.com`,
-	 * `do-not-reply@store.com`. Examples that do NOT match:
-	 * `support@noreply.example.com` (the local-part is `support`),
-	 * `notifications@store.com` (we can't infer intent without a
-	 * deny-list).
+	 * (`noreply`, `no-reply`, `donotreply`, `do-not-reply`) at the
+	 * **start** of the local-part, case-insensitive. The match includes
+	 * the local-part as a whole (`noreply@store.com`) AND any
+	 * RFC 5233 plus-addressed variant (`noreply+orders@store.com`,
+	 * `no-reply+tag@store.com`) — both routes deliver to the same
+	 * underlying mailbox at most providers, so a `+`-tagged noreply is
+	 * still a noreply for publishing purposes.
 	 *
-	 * Local-part-only matching prevents false positives on legitimate
-	 * customer-service mailboxes that happen to be hosted on a
-	 * `noreply.*` subdomain — rare but not impossible, and we err on
-	 * the side of publishing legitimate addresses rather than over-
-	 * filtering.
+	 * Examples that match:
+	 *   - `noreply@store.com`
+	 *   - `NoReply@store.com` (case-insensitive)
+	 *   - `do-not-reply@store.com`
+	 *   - `noreply+orders@store.com` (plus-addressing variant)
+	 *   - `no-reply+customer-service@store.com`
+	 *
+	 * Examples that do NOT match:
+	 *   - `support@noreply.example.com` — local-part is `support`;
+	 *     we only inspect the local-part. Local-part-only matching
+	 *     avoids false-positives on legitimate customer-service
+	 *     mailboxes that happen to be hosted on a `noreply.*`
+	 *     subdomain (rare but not impossible).
+	 *   - `noreplies@store.com` — `noreplies` is not in the prefix
+	 *     list and doesn't have a `+` separator, so the whole
+	 *     local-part is checked against the exact patterns.
+	 *   - `notifications@store.com` — we can't infer intent without
+	 *     a broader deny-list, and erring on the side of publishing
+	 *     legitimate addresses is the right default.
 	 *
 	 * @param string $email A sanitized, is_email-validated address.
-	 * @return bool         True if the local-part matches a noreply
-	 *                      pattern.
+	 * @return bool         True if the local-part starts with a
+	 *                      noreply pattern (with optional `+tag`
+	 *                      suffix).
 	 */
 	private static function is_noreply_email( string $email ): bool {
 		$at = strpos( $email, '@' );
@@ -1005,7 +1020,17 @@ class WC_AI_Storefront_JsonLd {
 			// noreply rather than triggering a substring on garbage.
 			return false;
 		}
-		$local = strtolower( substr( $email, 0, $at ) );
+
+		// Strip plus-addressing tag (RFC 5233) so `noreply+orders` and
+		// `noreply` are treated identically. Most providers (Gmail,
+		// Outlook, Postfix, etc.) route plus-tagged variants to the
+		// base local-part's mailbox, so a `+`-tagged noreply is still
+		// a noreply for publishing purposes.
+		$local         = strtolower( substr( $email, 0, $at ) );
+		$plus_position = strpos( $local, '+' );
+		if ( false !== $plus_position ) {
+			$local = substr( $local, 0, $plus_position );
+		}
 
 		return 'noreply' === $local
 			|| 'no-reply' === $local
