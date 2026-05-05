@@ -28,9 +28,19 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'sanitize_text_field' )->alias(
 			static fn( $v ) => is_string( $v ) ? trim( $v ) : ''
 		);
+
+		// `wp_unslash` is the inverse of WP's automatic magic-quotes
+		// slashing on superglobals. In a real request the value has
+		// already been slashed; in tests we set $_SERVER directly with
+		// raw values, so an identity stub is correct.
+		Functions\when( 'wp_unslash' )->returnArg();
 	}
 
 	protected function tearDown(): void {
+		// Reset between tests so a previous test's UA doesn't leak into
+		// the next via the shared $_SERVER superglobal.
+		unset( $_SERVER['HTTP_USER_AGENT'] );
+
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -973,6 +983,100 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// longer consumed by robots.txt. See
 	// `test_sitemap_paths_not_emitted_as_per_bot_allow_rules` above for the
 	// regression guard that locks the new robots.txt behavior.
+
+	// ------------------------------------------------------------------
+	// detect_crawler_from_ua() — two-stage match
+	//
+	// Stage 1: substring search against AI_CRAWLERS, longest-first.
+	// Stage 2: fall back to RFC 7231 product-token extraction so legitimate
+	//          UCP-aware clients (UCPScanner, UCPCheckerBot) and any other
+	//          identifying programmatic client are still recorded. Empty
+	//          UA returns '' — call sites use that as the no-record signal.
+	// ------------------------------------------------------------------
+
+	public function test_detect_crawler_from_ua_returns_empty_when_ua_missing(): void {
+		unset( $_SERVER['HTTP_USER_AGENT'] );
+
+		$this->assertSame( '', WC_AI_Storefront_Robots::detect_crawler_from_ua() );
+	}
+
+	public function test_detect_crawler_from_ua_returns_empty_when_ua_blank(): void {
+		$_SERVER['HTTP_USER_AGENT'] = '';
+
+		$this->assertSame( '', WC_AI_Storefront_Robots::detect_crawler_from_ua() );
+	}
+
+	public function test_detect_crawler_from_ua_matches_known_crawler_in_realistic_ua(): void {
+		// Real-world ClaudeBot UA — token sits inside a Mozilla preamble
+		// and a comment block. Stage 1 stripos must find it regardless of
+		// position, otherwise stage 2 would misidentify the request as
+		// `Mozilla` (the leading product token).
+		$_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)';
+
+		$this->assertSame( 'ClaudeBot', WC_AI_Storefront_Robots::detect_crawler_from_ua() );
+	}
+
+	public function test_detect_crawler_from_ua_prefers_longest_known_token(): void {
+		// `Microsoft-BingBot-Extended` contains `Bingbot` as a substring;
+		// longest-first sorting must prevent the shorter token from
+		// shadowing the canonical one.
+		$_SERVER['HTTP_USER_AGENT'] = 'Microsoft-BingBot-Extended/1.0 (+http://www.bing.com)';
+
+		$this->assertSame( 'Microsoft-BingBot-Extended', WC_AI_Storefront_Robots::detect_crawler_from_ua() );
+	}
+
+	public function test_detect_crawler_from_ua_extracts_product_token_for_ucp_scanner(): void {
+		// The exact UA observed in production from a UCP discovery
+		// scanner not in AI_CRAWLERS. Stage 1 misses; stage 2 must
+		// return the product token so the analytics page records the
+		// hit instead of silently dropping it.
+		$_SERVER['HTTP_USER_AGENT'] = 'UCPScanner/1.0 (+https://ucpscanner.com)';
+
+		$this->assertSame( 'UCPScanner', WC_AI_Storefront_Robots::detect_crawler_from_ua() );
+	}
+
+	public function test_detect_crawler_from_ua_extracts_product_token_for_ucp_checker_bot(): void {
+		$_SERVER['HTTP_USER_AGENT'] = 'UCPCheckerBot/1.0 (+https://ucpchecker.com/methodology)';
+
+		$this->assertSame( 'UCPCheckerBot', WC_AI_Storefront_Robots::detect_crawler_from_ua() );
+	}
+
+	public function test_detect_crawler_from_ua_extracts_product_token_for_curl(): void {
+		// curl with no -A flag sends `curl/8.x`. Developers and CI
+		// scripts hitting the URL count as discovery events too, per
+		// the "any hit is a hit" principle for public surfaces.
+		$_SERVER['HTTP_USER_AGENT'] = 'curl/8.7.1';
+
+		$this->assertSame( 'curl', WC_AI_Storefront_Robots::detect_crawler_from_ua() );
+	}
+
+	public function test_detect_crawler_from_ua_extracts_mozilla_for_browser_visit(): void {
+		// Real browser visits (a developer or merchant previewing the
+		// URL) record as `Mozilla`. Intentional: low frequency, useful
+		// forensic signal that a human is poking at the URL. Filtering
+		// browser tokens would lose that visibility.
+		$_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15';
+
+		$this->assertSame( 'Mozilla', WC_AI_Storefront_Robots::detect_crawler_from_ua() );
+	}
+
+	public function test_detect_crawler_from_ua_returns_empty_when_ua_starts_with_unparseable_chars(): void {
+		// Defensive: a UA starting with a non-letter (digits, slash,
+		// punctuation, space) doesn't match the leading-product-token
+		// regex. Falls through to '' rather than recording garbage.
+		$_SERVER['HTTP_USER_AGENT'] = '/1.0';
+
+		$this->assertSame( '', WC_AI_Storefront_Robots::detect_crawler_from_ua() );
+	}
+
+	public function test_detect_crawler_from_ua_strips_version_from_extracted_token(): void {
+		// Stage 2 returns just the token, not the version. Two version
+		// variants of the same scanner must roll up under one analytics
+		// row. Verified separately to lock the regex grouping behavior.
+		$_SERVER['HTTP_USER_AGENT'] = 'UCPScanner/2.4.1-beta (+https://ucpscanner.com)';
+
+		$this->assertSame( 'UCPScanner', WC_AI_Storefront_Robots::detect_crawler_from_ua() );
+	}
 
 	public function test_cors_headers_method_is_hooked_on_do_robotstxt(): void {
 		// Can't test the actual `header()` calls without process
