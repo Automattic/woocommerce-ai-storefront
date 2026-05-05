@@ -677,15 +677,29 @@ class WC_AI_Storefront_JsonLd {
 	 *     plugin — when the merchant updates their WC store address,
 	 *     the JSON-LD picks up the change on the next homepage load.
 	 *
-	 *   - `contactPoint.email`: sourced from `woocommerce_email_from_address`,
-	 *     the WC option for the "from" address used on transactional
-	 *     emails (WooCommerce > Settings > Emails > Sender options).
-	 *     Validated via `is_email` before emit; omitted otherwise.
-	 *     We deliberately do NOT fall back to `admin_email` here —
-	 *     admin email is intentionally private (used for password
-	 *     resets, security notifications) and merchants don't expect
-	 *     it to be published in JSON-LD. The whole `contactPoint`
-	 *     block is omitted when no valid email exists.
+	 *   - `contactPoint.email`: two-stage resolution that mirrors how
+	 *     WC itself decides where customer replies should land:
+	 *
+	 *       1. `woocommerce_email_reply_to_address` when
+	 *          `woocommerce_email_reply_to_enabled === 'yes'`. This is
+	 *          WC's purpose-built "where customers should reach me"
+	 *          field, set explicitly when the merchant wants replies
+	 *          routed somewhere other than the From address.
+	 *       2. `woocommerce_email_from_address` as a fallback, *but*
+	 *          rejected when its local-part matches a noreply pattern
+	 *          (`noreply@`, `no-reply@`, `donotreply@`,
+	 *          `do-not-reply@`, case-insensitive). Many merchants set
+	 *          From to a noreply address to avoid bounce-handling;
+	 *          publishing that as a customer-facing contact would
+	 *          route real questions into a black hole.
+	 *
+	 *     Each candidate is validated via `is_email` before being
+	 *     accepted. If neither stage produces a usable address, the
+	 *     whole `contactPoint` block is omitted. We deliberately do
+	 *     NOT fall back to `admin_email` — admin email is
+	 *     intentionally private (password resets, security
+	 *     notifications) and merchants do not expect it to be
+	 *     published in JSON-LD.
 	 *
 	 * Phone (`contactPoint.telephone`) and social profiles (`sameAs`)
 	 * are intentionally NOT emitted from this method. Neither has a
@@ -734,13 +748,11 @@ class WC_AI_Storefront_JsonLd {
 			$fields['address'] = $address;
 		}
 
-		// `contactPoint.email` — auto-sourced from WC's sender email
-		// option. The WC setting is the merchant's documented public
-		// "from" address for transactional mail; emitting it as the
-		// public customer-service contact aligns the published signal
-		// with what customers already see in their inbox. NEVER fall
-		// back to `admin_email` (private by convention).
-		$email = $this->get_validated_sender_email();
+		// `contactPoint.email` — two-stage resolution: WC's reply-to
+		// address (when enabled), then From (when not noreply-shaped).
+		// See `get_validated_contact_email()` for the precedence
+		// rationale. NEVER falls back to `admin_email` (private).
+		$email = $this->get_validated_contact_email();
 		if ( '' !== $email ) {
 			$fields['contactPoint'] = array(
 				'@type'       => 'ContactPoint',
@@ -822,22 +834,80 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Resolve and validate the WC sender email for emit as
-	 * `contactPoint.email`. Returns '' when the option is unset or the
-	 * stored value fails `is_email` validation.
+	 * Resolve a customer-facing contact email for emit as
+	 * `contactPoint.email`. Two-stage resolution mirrors WC's own
+	 * "where do customer replies land" logic (see `WC_Email::headers()`
+	 * lines ~687 in plugins/woocommerce/includes/emails/class-wc-email.php):
+	 *
+	 *   1. `woocommerce_email_reply_to_address` when
+	 *      `woocommerce_email_reply_to_enabled === 'yes'`. WC's
+	 *      purpose-built field for "where customers should reach me",
+	 *      set explicitly when the merchant routes replies somewhere
+	 *      other than the From address.
+	 *
+	 *   2. `woocommerce_email_from_address` as a fallback, *but*
+	 *      rejected when its local-part matches a noreply pattern.
+	 *      Many merchants set From to `noreply@store.com` to avoid
+	 *      bounce-handling; publishing that as a customer-facing
+	 *      contact would route real questions into a black hole.
+	 *
+	 * Each candidate is validated via `is_email` before being accepted.
+	 * Returns '' when neither stage produces a usable address — the
+	 * emitter then omits the whole `contactPoint` block.
 	 *
 	 * Deliberately does NOT fall back to `admin_email` — admin email
-	 * is intentionally private and merchants do not expect it to be
-	 * published in JSON-LD. A merchant who has not configured the
-	 * sender email gets `contactPoint` omitted entirely, which is
-	 * the honest signal: no public contact channel asserted.
+	 * is intentionally private (password resets, security
+	 * notifications) and merchants do not expect it to be published
+	 * in JSON-LD.
 	 *
 	 * @return string Validated email address, or '' when missing /
-	 *                invalid.
+	 *                invalid / noreply-shaped.
 	 */
-	private function get_validated_sender_email(): string {
-		$raw = get_option( 'woocommerce_email_from_address', '' );
-		if ( ! is_string( $raw ) || '' === $raw ) {
+	private function get_validated_contact_email(): string {
+		// Stage 1: Reply-to, but only when the merchant explicitly
+		// enabled it via WC settings. The 'yes'/'no' string check
+		// matches WC's own runtime logic at WC_Email::headers().
+		if ( 'yes' === (string) get_option( 'woocommerce_email_reply_to_enabled', 'no' ) ) {
+			$reply_to = $this->validate_email_string(
+				(string) get_option( 'woocommerce_email_reply_to_address', '' )
+			);
+			if ( '' !== $reply_to ) {
+				return $reply_to;
+			}
+			// Reply-to enabled but address blank/invalid — fall through
+			// to From rather than omit. The merchant clearly intended a
+			// public contact channel; the configuration error
+			// shouldn't punish the JSON-LD output. From may itself be
+			// a noreply, in which case we omit at stage 2.
+		}
+
+		// Stage 2: From address, with a noreply-pattern guard so we
+		// don't publish a "don't reply to me" address as a public
+		// customer-service contact.
+		$from_address = $this->validate_email_string(
+			(string) get_option( 'woocommerce_email_from_address', '' )
+		);
+		if ( '' !== $from_address && ! self::is_noreply_email( $from_address ) ) {
+			return $from_address;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Sanitize and validate a raw email-string from a WC option.
+	 * Returns the valid address or '' when the input is empty,
+	 * malformed, or fails `is_email`'s structural check.
+	 *
+	 * Centralized so both stages of the contact-email resolver use
+	 * identical validation rules — a future tightening (e.g. blocking
+	 * specific TLDs) only needs to change one method.
+	 *
+	 * @param string $raw Raw option value.
+	 * @return string     Validated email or ''.
+	 */
+	private function validate_email_string( string $raw ): string {
+		if ( '' === $raw ) {
 			return '';
 		}
 		$email = sanitize_email( trim( $raw ) );
@@ -845,6 +915,43 @@ class WC_AI_Storefront_JsonLd {
 			return '';
 		}
 		return $email;
+	}
+
+	/**
+	 * Detect noreply-shaped local-parts so we don't publish an address
+	 * the merchant intends as one-way. Matches the four common shapes
+	 * (`noreply`, `no-reply`, `donotreply`, `do-not-reply`) anchored
+	 * to the start of the local-part, case-insensitive. Examples that
+	 * match: `noreply@store.com`, `NoReply@store.com`,
+	 * `do-not-reply@store.com`. Examples that do NOT match:
+	 * `support@noreply.example.com` (the local-part is `support`),
+	 * `notifications@store.com` (we can't infer intent without a
+	 * deny-list).
+	 *
+	 * Local-part-only matching prevents false positives on legitimate
+	 * customer-service mailboxes that happen to be hosted on a
+	 * `noreply.*` subdomain — rare but not impossible, and we err on
+	 * the side of publishing legitimate addresses rather than over-
+	 * filtering.
+	 *
+	 * @param string $email A sanitized, is_email-validated address.
+	 * @return bool         True if the local-part matches a noreply
+	 *                      pattern.
+	 */
+	private static function is_noreply_email( string $email ): bool {
+		$at = strpos( $email, '@' );
+		if ( false === $at || 0 === $at ) {
+			// Defensive: is_email already rejected this shape, but if
+			// a future caller skips validation, fall through as not-
+			// noreply rather than triggering a substring on garbage.
+			return false;
+		}
+		$local = strtolower( substr( $email, 0, $at ) );
+
+		return 'noreply' === $local
+			|| 'no-reply' === $local
+			|| 'donotreply' === $local
+			|| 'do-not-reply' === $local;
 	}
 
 	/**
