@@ -677,14 +677,26 @@ class WC_AI_Storefront_JsonLd {
 	 *   - `address`: `PostalAddress` block built from
 	 *     `WC()->countries->get_base_*` (the source of truth WC
 	 *     populates from the WooCommerce > Settings > General
-	 *     "Store Address" form). Each sub-key (`streetAddress`,
-	 *     `addressLocality`, `postalCode`, `addressRegion`,
-	 *     `addressCountry`) is emitted only when WC has a non-empty
-	 *     value; the whole block is omitted when WC has no country
-	 *     configured (the minimum viable address signal). Auto-
-	 *     sourcing means there's nothing to maintain inside this
-	 *     plugin — when the merchant updates their WC store address,
-	 *     the JSON-LD picks up the change on the next homepage load.
+	 *     "Store Address" form). `addressLocality`, `postalCode`,
+	 *     `addressRegion`, and `addressCountry` are emitted only when
+	 *     WC has a non-empty value; the whole block is omitted when
+	 *     WC has no country configured (the minimum viable address
+	 *     signal). Auto-sourcing means there's nothing to maintain
+	 *     inside this plugin — when the merchant updates their WC
+	 *     store address, the JSON-LD picks up the change on the next
+	 *     homepage load.
+	 *
+	 *     `streetAddress` is intentionally suppressed even when WC
+	 *     has it. For an `OnlineStore` (vs. a `LocalBusiness`), the
+	 *     street address adds little verification value — buyers
+	 *     don't visit — but the privacy/safety risk is real: many
+	 *     small Woo merchants populate the WC base address with their
+	 *     home address and don't realize saving that field publishes
+	 *     it in machine-readable form on the homepage. City + region
+	 *     + postcode + country preserve every meaningful signal
+	 *     (jurisdiction, shipping origin, fraud-check
+	 *     disambiguation) without the residential-address leak. See
+	 *     `build_postal_address()` for the suppression detail.
 	 *
 	 *   - `contactPoint.email`: two-stage resolution that mirrors how
 	 *     WC itself decides where customer replies should land:
@@ -791,6 +803,21 @@ class WC_AI_Storefront_JsonLd {
 	 * General) writes into. Reads happen per request — no
 	 * computation, no DB query, no cache needed.
 	 *
+	 * `streetAddress` is intentionally suppressed even when WC has
+	 * the `get_base_address()` / `get_base_address_2()` values
+	 * populated. For an `OnlineStore` (vs. a `LocalBusiness`) the
+	 * field has low signal value — buyers transact remotely and don't
+	 * visit the store — but the privacy/safety risk is real. Many
+	 * small Woo merchants populate WooCommerce > Settings > General
+	 * with their home address (the field is required at WC setup so
+	 * tax calculations work) and don't realize that saving it
+	 * publishes the address in machine-readable form on the
+	 * homepage's JSON-LD. By emitting only `addressLocality`,
+	 * `addressRegion`, `postalCode`, and `addressCountry`, we
+	 * preserve every meaningful identity signal (jurisdiction,
+	 * shipping origin, fraud-check disambiguation) without leaking a
+	 * residential street address to AI agents.
+	 *
 	 * Marked `protected` (rather than `private`) for the same reason
 	 * `get_shipping_zones()` above is — unit tests subclass the
 	 * emitter and override this method to inject a fixture, avoiding
@@ -804,12 +831,12 @@ class WC_AI_Storefront_JsonLd {
 	 *                               WC has no base country configured.
 	 */
 	protected function build_postal_address(): array {
-		$woocommerce = function_exists( 'WC' ) ? WC() : null;
-		if ( ! $woocommerce || ! isset( $woocommerce->countries ) || ! is_object( $woocommerce->countries ) ) {
+		$countries = $this->get_wc_countries();
+		if ( null === $countries ) {
 			return array();
 		}
 
-		$country = (string) $woocommerce->countries->get_base_country();
+		$country = (string) $countries->get_base_country();
 		if ( '' === $country ) {
 			return array();
 		}
@@ -819,29 +846,50 @@ class WC_AI_Storefront_JsonLd {
 			'addressCountry' => $country,
 		);
 
-		$street1 = (string) $woocommerce->countries->get_base_address();
-		$street2 = (string) $woocommerce->countries->get_base_address_2();
-		$street  = trim( $street1 . ( '' !== $street2 ? ', ' . $street2 : '' ) );
-		if ( '' !== $street ) {
-			$address['streetAddress'] = $street;
-		}
+		// `streetAddress` deliberately omitted — see method docblock for
+		// the privacy / online-vs-local-business rationale. Note we do
+		// NOT read `get_base_address()` / `get_base_address_2()` at all,
+		// so even a future filter that thinks it can re-emit street
+		// would have to source it independently.
 
-		$city = (string) $woocommerce->countries->get_base_city();
+		$city = (string) $countries->get_base_city();
 		if ( '' !== $city ) {
 			$address['addressLocality'] = $city;
 		}
 
-		$state = (string) $woocommerce->countries->get_base_state();
+		$state = (string) $countries->get_base_state();
 		if ( '' !== $state ) {
 			$address['addressRegion'] = $state;
 		}
 
-		$postcode = (string) $woocommerce->countries->get_base_postcode();
+		$postcode = (string) $countries->get_base_postcode();
 		if ( '' !== $postcode ) {
 			$address['postalCode'] = $postcode;
 		}
 
 		return $address;
+	}
+
+	/**
+	 * Resolve the live `WC_Countries` instance, or null when WC isn't
+	 * loaded (e.g. unit-test environments where `WC()` is undefined).
+	 *
+	 * Extracted so unit tests can subclass and inject a stub-shaped
+	 * object exposing only the `get_base_*()` methods that
+	 * `build_postal_address()` reads. This avoids globally stubbing
+	 * `WC()` via Brain Monkey, which leaks across the test suite as
+	 * `MissingFunctionExpectations` for unrelated tests that call
+	 * real `WC()` (UcpTest, UcpCatalogLookupTest, etc.).
+	 *
+	 * @return object|null `WC_Countries` (or shape-compatible stub),
+	 *                     or null when WC isn't available.
+	 */
+	protected function get_wc_countries() {
+		$woocommerce = function_exists( 'WC' ) ? WC() : null;
+		if ( ! $woocommerce || ! isset( $woocommerce->countries ) || ! is_object( $woocommerce->countries ) ) {
+			return null;
+		}
+		return $woocommerce->countries;
 	}
 
 	/**

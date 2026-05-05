@@ -1590,8 +1590,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 * Build a JsonLd subclass that overrides `build_postal_address()`
 	 * with a fixed return value. Avoids the need to globally stub
 	 * `WC()` (which Brain Monkey strict mode would leak across the
-	 * suite). The pattern mirrors how `get_shipping_zones()` is
-	 * tested elsewhere in this class.
+	 * suite). Use this when the test cares about how the *emitter*
+	 * handles a specific PostalAddress shape, not how the address
+	 * itself is built.
 	 */
 	private function jsonld_with_address( array $address ): WC_AI_Storefront_JsonLd {
 		// phpcs:ignore Squiz.Commenting.ClassComment.Missing -- inline test fixture
@@ -1604,6 +1605,31 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 			protected function build_postal_address(): array {
 				return $this->fixture;
+			}
+		};
+	}
+
+	/**
+	 * Build a JsonLd subclass that injects a `WC_Countries`-shaped
+	 * stub (an object exposing the `get_base_*()` methods
+	 * `build_postal_address()` reads). Use this when the test cares
+	 * about how `build_postal_address()` itself transforms WC data
+	 * — e.g., the streetAddress-suppression privacy guard. Stub
+	 * methods can return arbitrary strings; even if WC has a value
+	 * for a field we deliberately don't emit, the stub method gets
+	 * called only to verify the omission.
+	 */
+	private function jsonld_with_wc_countries( object $countries ): WC_AI_Storefront_JsonLd {
+		// phpcs:ignore Squiz.Commenting.ClassComment.Missing -- inline test fixture
+		return new class( $countries ) extends WC_AI_Storefront_JsonLd {
+			private object $countries;
+
+			public function __construct( object $countries ) {
+				$this->countries = $countries;
+			}
+
+			protected function get_wc_countries() {
+				return $this->countries;
 			}
 		};
 	}
@@ -1654,15 +1680,17 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_store_jsonld_emits_postal_address_from_wc_base_settings(): void {
-		// All five PostalAddress sub-keys populated. Test seam:
-		// subclass overrides `build_postal_address()` rather than
-		// mocking WC() globally, since `WC()` mocks leak across the
-		// suite under Brain Monkey strict mode.
+		// Country + city + region + postcode populated. Note:
+		// streetAddress is NEVER emitted (privacy guard), so this
+		// fixture intentionally omits it even at the seam layer to
+		// match what `build_postal_address()` actually produces.
+		// Test exercises how the emitter merges the address block
+		// into the JSON-LD; coverage of the suppression itself lives
+		// in `test_store_jsonld_omits_streetaddress_*`.
 		$emitter = $this->jsonld_with_address(
 			[
 				'@type'           => 'PostalAddress',
 				'addressCountry'  => 'US',
-				'streetAddress'   => '123 Main St, Suite 4B',
 				'addressLocality' => 'Springfield',
 				'addressRegion'   => 'IL',
 				'postalCode'      => '62701',
@@ -1675,10 +1703,72 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertIsArray( $address );
 		$this->assertSame( 'PostalAddress', $address['@type'] );
 		$this->assertSame( 'US', $address['addressCountry'] );
-		$this->assertSame( '123 Main St, Suite 4B', $address['streetAddress'] );
 		$this->assertSame( 'Springfield', $address['addressLocality'] );
 		$this->assertSame( 'IL', $address['addressRegion'] );
 		$this->assertSame( '62701', $address['postalCode'] );
+		$this->assertArrayNotHasKey( 'streetAddress', $address );
+	}
+
+	public function test_build_postal_address_suppresses_street_address_even_when_wc_has_it(): void {
+		// Privacy regression guard. Many small Woo merchants populate
+		// WooCommerce > Settings > General with their home address
+		// because WC requires it for tax calculations. They do NOT
+		// expect that field to be published in machine-readable form
+		// on the homepage. For an OnlineStore, streetAddress adds
+		// little verification value (buyers don't visit) — so we
+		// suppress it even when WC has the data.
+		//
+		// The stub returns a populated street address; the emitter
+		// must drop it. A regression that re-adds the streetAddress
+		// emit (intentional or accidental) would fail this test.
+		$countries = new class {
+			public function get_base_country() { return 'US'; }
+			public function get_base_address() { return '123 Main St'; }
+			public function get_base_address_2() { return 'Suite 4B'; }
+			public function get_base_city() { return 'Springfield'; }
+			public function get_base_state() { return 'IL'; }
+			public function get_base_postcode() { return '62701'; }
+		};
+
+		$emitter = $this->jsonld_with_wc_countries( $countries );
+		$captured = $this->capture_store_jsonld_filter_value( $emitter );
+		$address  = $captured['address'] ?? null;
+
+		$this->assertIsArray( $address );
+		$this->assertArrayNotHasKey(
+			'streetAddress',
+			$address,
+			'streetAddress must NEVER be emitted on OnlineStore — privacy regression.'
+		);
+		// Sanity check: the rest of the address still emits, so we
+		// haven't broken the address block entirely.
+		$this->assertSame( 'US', $address['addressCountry'] );
+		$this->assertSame( 'Springfield', $address['addressLocality'] );
+		$this->assertSame( 'IL', $address['addressRegion'] );
+		$this->assertSame( '62701', $address['postalCode'] );
+	}
+
+	public function test_build_postal_address_omits_when_wc_has_no_country(): void {
+		// Real exercise of the early-return path: WC base country is
+		// blank. `build_postal_address()` returns []; the emitter
+		// then omits the whole `address` key. (The handful of
+		// existing tests using `jsonld_with_address([])` exercise
+		// the emitter side of this; this test pins the behavior of
+		// `build_postal_address()` itself when the live WC source is
+		// unconfigured.)
+		$countries = new class {
+			public function get_base_country() { return ''; }
+			public function get_base_address() { return ''; }
+			public function get_base_address_2() { return ''; }
+			public function get_base_city() { return ''; }
+			public function get_base_state() { return ''; }
+			public function get_base_postcode() { return ''; }
+		};
+
+		$emitter = $this->jsonld_with_wc_countries( $countries );
+		$captured = $this->capture_store_jsonld_filter_value( $emitter );
+
+		$this->assertArrayNotHasKey( 'address', $captured ?? [] );
 	}
 
 	public function test_store_jsonld_omits_address_when_postal_address_is_empty(): void {
