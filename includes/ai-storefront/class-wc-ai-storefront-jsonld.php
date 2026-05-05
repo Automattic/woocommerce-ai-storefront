@@ -522,6 +522,25 @@ class WC_AI_Storefront_JsonLd {
 
 	/**
 	 * Output store-level JSON-LD on the homepage/shop page.
+	 *
+	 * `@type: OnlineStore` (an `Organization` subtype, since 0.10.0;
+	 * previously `Store` which extends `LocalBusiness`/`Place` and is
+	 * not an `Organization`). The switch satisfies AI-readiness audits
+	 * that look specifically for an `Organization`-shaped entity to
+	 * verify brand identity. `OnlineStore` is the most accurate type
+	 * for the merchant — they're definitionally an online retailer —
+	 * and inherits all the descriptive fields (`name`, `url`,
+	 * `description`) that `Store` carried. The `potentialAction` and
+	 * `hasOfferCatalog` blocks are valid on `OnlineStore` exactly as
+	 * they were on `Store`, so existing crawlers parsing those keys
+	 * see no change.
+	 *
+	 * Brand identity fields (`logo`, `sameAs`, `contactPoint`) are
+	 * appended via `build_identity_fields()` with omit-when-empty
+	 * semantics — an unconfigured merchant publishes the same `name +
+	 * url + description + currency + search + catalog` shape they did
+	 * before, plus the new `@type`. A merchant who configures their
+	 * profile URLs or contact info gets the additional keys.
 	 */
 	public function output_store_jsonld() {
 		if ( ! is_front_page() && ! is_shop() ) {
@@ -535,7 +554,7 @@ class WC_AI_Storefront_JsonLd {
 
 		$store_data = array(
 			'@context'           => 'https://schema.org',
-			'@type'              => 'Store',
+			'@type'              => 'OnlineStore',
 			'name'               => get_bloginfo( 'name' ),
 			'description'        => get_bloginfo( 'description' ),
 			'url'                => home_url( '/' ),
@@ -562,8 +581,35 @@ class WC_AI_Storefront_JsonLd {
 			),
 		);
 
+		// Merge identity fields after the base shape so they sit at
+		// the end of the JSON-LD output — easier for crawlers tailing
+		// for `logo` / `address` / `contactPoint` to find them, and
+		// keeps the static base fields (`@context` through
+		// `hasOfferCatalog`) at the top of the script tag where most
+		// agents focus their parsing budget.
+		$identity_fields = $this->build_identity_fields();
+		if ( ! empty( $identity_fields ) ) {
+			$store_data = array_merge( $store_data, $identity_fields );
+		}
+
 		/**
 		 * Filter the store-level JSON-LD data.
+		 *
+		 * Plugins that capture social profile URLs (Jetpack, Yoast,
+		 * etc.) can inject `sameAs` here without the plugin owning a
+		 * UI for it:
+		 *
+		 *     add_filter( 'wc_ai_storefront_jsonld_store', function( $data ) {
+		 *         $profiles = jetpack_get_social_profiles(); // hypothetical
+		 *         if ( ! empty( $profiles ) ) {
+		 *             $data['sameAs'] = array_values( $profiles );
+		 *         }
+		 *         return $data;
+		 *     } );
+		 *
+		 * Same hook works for `contactPoint.telephone` and any other
+		 * Schema.org Organization field a plugin in the ecosystem
+		 * already captures.
 		 *
 		 * @since 1.0.0
 		 * @param array $store_data      The store structured data.
@@ -599,6 +645,206 @@ class WC_AI_Storefront_JsonLd {
 		// Google's structured-data validator handle hex-escaped
 		// characters correctly per the JSON spec.
 		echo '<script type="application/ld+json">' . wp_json_encode( $store_data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE ) . '</script>' . "\n";
+	}
+
+	/**
+	 * Build the brand-identity sub-fields appended to the homepage
+	 * `OnlineStore` JSON-LD. Three fields, all auto-sourced from
+	 * existing WP/WC data — no plugin-owned merchant settings, no
+	 * admin UI, no new options.
+	 *
+	 * Each field follows omit-when-empty semantics so an unconfigured
+	 * merchant publishes none of these keys:
+	 *
+	 *   - `logo`: resolved from the WP custom-logo theme mod first
+	 *     (more visually intentional — the merchant explicitly chose
+	 *     a brand mark for the storefront), with site-icon as fallback
+	 *     (a pre-WC-era favicon-style asset, less brand-shaped but
+	 *     still better than nothing). Omitted entirely when neither
+	 *     is set — Schema.org's `logo` field is meant to carry the
+	 *     merchant's primary brand mark, and emitting a default WP
+	 *     favicon URL would mislead crawlers about brand identity.
+	 *
+	 *   - `address`: `PostalAddress` block built from
+	 *     `WC()->countries->get_base_*` (the source of truth WC
+	 *     populates from the WooCommerce > Settings > General
+	 *     "Store Address" form). Each sub-key (`streetAddress`,
+	 *     `addressLocality`, `postalCode`, `addressRegion`,
+	 *     `addressCountry`) is emitted only when WC has a non-empty
+	 *     value; the whole block is omitted when WC has no country
+	 *     configured (the minimum viable address signal). Auto-
+	 *     sourcing means there's nothing to maintain inside this
+	 *     plugin — when the merchant updates their WC store address,
+	 *     the JSON-LD picks up the change on the next homepage load.
+	 *
+	 *   - `contactPoint.email`: sourced from `woocommerce_email_from_address`,
+	 *     the WC option for the "from" address used on transactional
+	 *     emails (WooCommerce > Settings > Emails > Sender options).
+	 *     Validated via `is_email` before emit; omitted otherwise.
+	 *     We deliberately do NOT fall back to `admin_email` here —
+	 *     admin email is intentionally private (used for password
+	 *     resets, security notifications) and merchants don't expect
+	 *     it to be published in JSON-LD. The whole `contactPoint`
+	 *     block is omitted when no valid email exists.
+	 *
+	 * Phone (`contactPoint.telephone`) and social profiles (`sameAs`)
+	 * are intentionally NOT emitted from this method. Neither has a
+	 * canonical WP/WC source today, and ecosystem plugins (Jetpack,
+	 * Yoast, etc.) already capture them via their own settings. The
+	 * `wc_ai_storefront_jsonld_store` filter is the documented
+	 * injection point — see the filter docblock at the call site for
+	 * an example.
+	 *
+	 * @return array Identity fields, possibly empty when nothing is
+	 *               configured (no logo, no WC address, no sender
+	 *               email).
+	 */
+	private function build_identity_fields(): array {
+		$fields = array();
+
+		// `logo` — prefer custom-logo theme mod over site-icon. The
+		// custom-logo flow is brand-intentional (merchant uploaded a
+		// logo for the storefront header); site-icon is a smaller
+		// favicon-shaped asset commonly used for browser tabs. Either
+		// is acceptable Schema.org `logo` content, but the brand mark
+		// is the more honest signal when present.
+		$logo_url = '';
+		$logo_id  = (int) get_theme_mod( 'custom_logo' );
+		if ( $logo_id > 0 ) {
+			$logo_src = wp_get_attachment_image_src( $logo_id, 'full' );
+			if ( is_array( $logo_src ) && ! empty( $logo_src[0] ) ) {
+				$logo_url = (string) $logo_src[0];
+			}
+		}
+		if ( '' === $logo_url ) {
+			$site_icon = get_site_icon_url();
+			if ( is_string( $site_icon ) && '' !== $site_icon ) {
+				$logo_url = $site_icon;
+			}
+		}
+		if ( '' !== $logo_url ) {
+			$fields['logo'] = $logo_url;
+		}
+
+		// `address` — auto-sourced from the WC base address. Built
+		// inline rather than via a helper because this is the single
+		// caller and the shape maps 1:1 to Schema.org `PostalAddress`.
+		$address = $this->build_postal_address();
+		if ( ! empty( $address ) ) {
+			$fields['address'] = $address;
+		}
+
+		// `contactPoint.email` — auto-sourced from WC's sender email
+		// option. The WC setting is the merchant's documented public
+		// "from" address for transactional mail; emitting it as the
+		// public customer-service contact aligns the published signal
+		// with what customers already see in their inbox. NEVER fall
+		// back to `admin_email` (private by convention).
+		$email = $this->get_validated_sender_email();
+		if ( '' !== $email ) {
+			$fields['contactPoint'] = array(
+				'@type'       => 'ContactPoint',
+				'contactType' => 'Customer Service',
+				'email'       => $email,
+			);
+		}
+
+		return $fields;
+	}
+
+	/**
+	 * Build a Schema.org `PostalAddress` block from WC's base-address
+	 * settings. Returns an empty array when WC has no country
+	 * configured (the minimum viable address signal — addresses
+	 * without a country are crawler-noise).
+	 *
+	 * Each optional sub-key is omitted when WC has no value, so a
+	 * merchant who configured only country + city emits both fields
+	 * and skips `streetAddress` / `postalCode` / `addressRegion`
+	 * cleanly rather than emitting empty strings.
+	 *
+	 * Source: `WC()->countries->get_base_*`. These are the same
+	 * values WC's "Store Address" form (WooCommerce > Settings >
+	 * General) writes into. Reads happen per request — no
+	 * computation, no DB query, no cache needed.
+	 *
+	 * Marked `protected` (rather than `private`) for the same reason
+	 * `get_shipping_zones()` above is — unit tests subclass the
+	 * emitter and override this method to inject a fixture, avoiding
+	 * the need to globally stub `WC()` (which Brain Monkey leaks
+	 * into other tests in the suite as `MissingFunctionExpectations`
+	 * once registered). The seam is package-internal; the protected
+	 * scope keeps it out of the public API while making it test-
+	 * accessible.
+	 *
+	 * @return array<string, string> The PostalAddress block, or [] when
+	 *                               WC has no base country configured.
+	 */
+	protected function build_postal_address(): array {
+		$woocommerce = function_exists( 'WC' ) ? WC() : null;
+		if ( ! $woocommerce || ! isset( $woocommerce->countries ) || ! is_object( $woocommerce->countries ) ) {
+			return array();
+		}
+
+		$country = (string) $woocommerce->countries->get_base_country();
+		if ( '' === $country ) {
+			return array();
+		}
+
+		$address = array(
+			'@type'          => 'PostalAddress',
+			'addressCountry' => $country,
+		);
+
+		$street1 = (string) $woocommerce->countries->get_base_address();
+		$street2 = (string) $woocommerce->countries->get_base_address_2();
+		$street  = trim( $street1 . ( '' !== $street2 ? ', ' . $street2 : '' ) );
+		if ( '' !== $street ) {
+			$address['streetAddress'] = $street;
+		}
+
+		$city = (string) $woocommerce->countries->get_base_city();
+		if ( '' !== $city ) {
+			$address['addressLocality'] = $city;
+		}
+
+		$state = (string) $woocommerce->countries->get_base_state();
+		if ( '' !== $state ) {
+			$address['addressRegion'] = $state;
+		}
+
+		$postcode = (string) $woocommerce->countries->get_base_postcode();
+		if ( '' !== $postcode ) {
+			$address['postalCode'] = $postcode;
+		}
+
+		return $address;
+	}
+
+	/**
+	 * Resolve and validate the WC sender email for emit as
+	 * `contactPoint.email`. Returns '' when the option is unset or the
+	 * stored value fails `is_email` validation.
+	 *
+	 * Deliberately does NOT fall back to `admin_email` — admin email
+	 * is intentionally private and merchants do not expect it to be
+	 * published in JSON-LD. A merchant who has not configured the
+	 * sender email gets `contactPoint` omitted entirely, which is
+	 * the honest signal: no public contact channel asserted.
+	 *
+	 * @return string Validated email address, or '' when missing /
+	 *                invalid.
+	 */
+	private function get_validated_sender_email(): string {
+		$raw = get_option( 'woocommerce_email_from_address', '' );
+		if ( ! is_string( $raw ) || '' === $raw ) {
+			return '';
+		}
+		$email = sanitize_email( trim( $raw ) );
+		if ( '' === $email || ! is_email( $email ) ) {
+			return '';
+		}
+		return $email;
 	}
 
 	/**
