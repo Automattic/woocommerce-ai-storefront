@@ -100,7 +100,25 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_site_icon_url' )->justReturn( '' );
 		Functions\when( 'get_option' )->justReturn( '' );
 		Functions\when( 'sanitize_email' )->returnArg();
-		Functions\when( 'is_email' )->justReturn( false );
+		// Structural validity check rather than a hardcoded `false`
+		// return. WP's real `is_email()` accepts anything that has an
+		// `@` somewhere with non-empty local- and domain-parts; that's
+		// enough for unit-test purposes and prevents tests that
+		// configure a real email from silently passing for the wrong
+		// reason (an always-false stub would fail the email check
+		// regardless of the input the test set up). Tests that need
+		// to assert the "invalid email" branch use a sentinel like
+		// `gibberish` (no `@`), which falls through this alias to
+		// false naturally.
+		Functions\when( 'is_email' )->alias(
+			static function ( $email ) {
+				if ( ! is_string( $email ) || '' === $email ) {
+					return false;
+				}
+				$at = strpos( $email, '@' );
+				return false !== $at && $at > 0 && $at < strlen( $email ) - 1;
+			}
+		);
 	}
 
 	protected function tearDown(): void {
@@ -1695,13 +1713,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_store_jsonld_emits_contactpoint_from_wc_from_address_when_no_reply_to(): void {
 		// Default WC posture: reply-to disabled. From address is the
 		// only signal. Validated, not noreply-shaped → published as
-		// the public contact email.
+		// the public contact email. setUp's `is_email` alias handles
+		// validation; no per-test override needed.
 		$this->stub_options( [
 			'woocommerce_email_reply_to_enabled' => 'no',
 			'woocommerce_email_from_address'     => 'support@example.com',
 		] );
-		Functions\when( 'sanitize_email' )->returnArg();
-		Functions\when( 'is_email' )->justReturn( true );
 
 		$captured = $this->capture_store_jsonld_filter_value();
 		$cp       = $captured['contactPoint'] ?? null;
@@ -1713,17 +1730,23 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_store_jsonld_prefers_reply_to_address_when_enabled(): void {
-		// Both From and Reply-To configured. Reply-to wins because
-		// it's WC's purpose-built "where customers should reach me"
-		// field and is set explicitly when the merchant routes
-		// replies somewhere other than From.
+		// Both From and Reply-To configured with valid, non-noreply
+		// addresses. Reply-to wins because it's WC's purpose-built
+		// "where customers should reach me" field, set explicitly
+		// when the merchant routes replies somewhere other than From.
+		//
+		// From is intentionally a *valid alternative* (`support@`,
+		// not `noreply@`) so a regression in the resolver — say,
+		// "always return From" — would publish `support@example.com`
+		// rather than fall through to omit, and the test catches it.
+		// A test that used `noreply@` for From could pass even with
+		// such a regression because the noreply guard would still
+		// produce omit, masking the precedence bug.
 		$this->stub_options( [
 			'woocommerce_email_reply_to_enabled' => 'yes',
 			'woocommerce_email_reply_to_address' => 'help@example.com',
-			'woocommerce_email_from_address'     => 'noreply@example.com',
+			'woocommerce_email_from_address'     => 'support@example.com',
 		] );
-		Functions\when( 'sanitize_email' )->returnArg();
-		Functions\when( 'is_email' )->justReturn( true );
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
@@ -1740,10 +1763,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'woocommerce_email_reply_to_address' => '',
 			'woocommerce_email_from_address'     => 'support@example.com',
 		] );
-		Functions\when( 'sanitize_email' )->returnArg();
-		Functions\when( 'is_email' )->alias(
-			static fn( $email ) => '' !== $email
-		);
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
@@ -1759,8 +1778,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'woocommerce_email_reply_to_enabled' => 'no',
 			'woocommerce_email_from_address'     => 'noreply@example.com',
 		] );
-		Functions\when( 'sanitize_email' )->returnArg();
-		Functions\when( 'is_email' )->justReturn( true );
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
@@ -1783,8 +1800,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'woocommerce_email_reply_to_enabled' => 'no',
 			'woocommerce_email_from_address'     => $local_part . '@example.com',
 		] );
-		Functions\when( 'sanitize_email' )->returnArg();
-		Functions\when( 'is_email' )->justReturn( true );
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
@@ -1812,8 +1827,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'woocommerce_email_reply_to_enabled' => 'no',
 			'woocommerce_email_from_address'     => 'support@noreply.example.com',
 		] );
-		Functions\when( 'sanitize_email' )->returnArg();
-		Functions\when( 'is_email' )->justReturn( true );
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
@@ -1831,13 +1844,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_store_jsonld_omits_contactpoint_when_from_address_is_invalid(): void {
 		// is_email rejects structurally broken values. Sentinel:
-		// `gibberish` (no @, no TLD) — both sanitize_email and is_email
-		// recognize this is malformed.
+		// `gibberish` (no @, no TLD) — setUp's structural is_email
+		// alias rejects this naturally because it lacks an `@`.
 		$this->stub_options( [
 			'woocommerce_email_reply_to_enabled' => 'no',
 			'woocommerce_email_from_address'     => 'gibberish',
 		] );
-		// is_email already stubbed to false in setUp.
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
@@ -1851,14 +1863,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// do not expect it to be published in JSON-LD. This test
 		// would fail if a future "helpful" refactor adds a fallback
 		// chain.
-		// Both WC email options blank, admin_email populated. The
-		// resolver must never even read admin_email.
+		// Both WC email options blank, admin_email populated with a
+		// valid address. The resolver must never even read
+		// admin_email — the structural is_email alias would accept
+		// `private-admin@example.com` if the resolver ever tried it.
 		$this->stub_options( [
 			'woocommerce_email_reply_to_enabled' => 'no',
 			'woocommerce_email_from_address'     => '',
 			'admin_email'                        => 'private-admin@example.com',
 		] );
-		Functions\when( 'is_email' )->justReturn( true );
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
