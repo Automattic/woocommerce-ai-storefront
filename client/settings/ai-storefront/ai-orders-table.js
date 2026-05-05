@@ -692,7 +692,8 @@ const AIOrdersTable = () => {
 					const overflow = items.length - 2;
 					return overflow > 0 ? (
 						<span title={ items.join( ', ' ) }>
-							{ visible }{ ', ' }
+							{ visible }
+							{ ', ' }
 							<span style={ { color: colors.textMuted } }>
 								{ sprintf(
 									/* translators: %d: number of additional items not shown */

@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-05T17:25:28+00:00\n"
+"POT-Creation-Date: 2026-05-05T17:30:01+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -347,17 +347,17 @@ msgid "Status"
 msgstr ""
 
 #: client/settings/ai-storefront/ai-orders-table.js:368
-#: client/settings/ai-storefront/ai-orders-table.js:715
+#: client/settings/ai-storefront/ai-orders-table.js:716
 msgid "Agent"
 msgstr ""
 
 #: client/settings/ai-storefront/ai-orders-table.js:369
-#: client/settings/ai-storefront/ai-orders-table.js:724
+#: client/settings/ai-storefront/ai-orders-table.js:725
 msgid "Total"
 msgstr ""
 
 #: client/settings/ai-storefront/ai-orders-table.js:412
-#: client/settings/ai-storefront/ai-orders-table.js:777
+#: client/settings/ai-storefront/ai-orders-table.js:778
 msgid "Recent AI orders"
 msgstr ""
 
@@ -378,7 +378,7 @@ msgid "Items"
 msgstr ""
 
 #. translators: %d: number of additional items not shown
-#: client/settings/ai-storefront/ai-orders-table.js:699
+#: client/settings/ai-storefront/ai-orders-table.js:700
 #, js-format
 msgid "+%d more"
 msgstr ""
