@@ -523,24 +523,33 @@ class WC_AI_Storefront_JsonLd {
 	/**
 	 * Output store-level JSON-LD on the homepage/shop page.
 	 *
-	 * `@type: OnlineStore` (an `Organization` subtype, since 0.10.0;
-	 * previously `Store` which extends `LocalBusiness`/`Place` and is
-	 * not an `Organization`). The switch satisfies AI-readiness audits
-	 * that look specifically for an `Organization`-shaped entity to
-	 * verify brand identity. `OnlineStore` is the most accurate type
-	 * for the merchant — they're definitionally an online retailer —
-	 * and inherits all the descriptive fields (`name`, `url`,
+	 * `@type: OnlineStore` (an `Organization` subtype). Previously
+	 * `Store` which extends `LocalBusiness`/`Place` and is not an
+	 * `Organization`. The switch satisfies AI-readiness audits that
+	 * look specifically for an `Organization`-shaped entity to verify
+	 * brand identity. `OnlineStore` is the most accurate type for the
+	 * merchant — they're definitionally an online retailer — and
+	 * inherits all the descriptive fields (`name`, `url`,
 	 * `description`) that `Store` carried. The `potentialAction` and
 	 * `hasOfferCatalog` blocks are valid on `OnlineStore` exactly as
 	 * they were on `Store`, so existing crawlers parsing those keys
 	 * see no change.
 	 *
-	 * Brand identity fields (`logo`, `sameAs`, `contactPoint`) are
+	 * Brand identity fields (`logo`, `address`, `contactPoint`) are
 	 * appended via `build_identity_fields()` with omit-when-empty
-	 * semantics — an unconfigured merchant publishes the same `name +
-	 * url + description + currency + search + catalog` shape they did
-	 * before, plus the new `@type`. A merchant who configures their
-	 * profile URLs or contact info gets the additional keys.
+	 * semantics. The fields are auto-sourced from existing WP/WC data
+	 * (custom-logo theme mod, `WC()->countries->get_base_*`, WC sender
+	 * email options) — no merchant settings, no admin UI. An
+	 * unconfigured merchant publishes the same `name + url +
+	 * description + currency + search + catalog` shape they did
+	 * before, plus the new `@type`. A merchant whose underlying
+	 * WP/WC data is filled in gets the additional keys.
+	 *
+	 * `sameAs` (social profiles) and `contactPoint.telephone` are NOT
+	 * emitted from this method — neither has a canonical WP/WC source
+	 * today. Ecosystem plugins (Jetpack, Yoast, etc.) that capture
+	 * those fields can inject them via the `wc_ai_storefront_jsonld_store`
+	 * filter applied below; see the filter docblock for an example.
 	 */
 	public function output_store_jsonld() {
 		if ( ! is_front_page() && ! is_shop() ) {

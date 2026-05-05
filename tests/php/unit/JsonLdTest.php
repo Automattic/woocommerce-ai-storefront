@@ -1546,14 +1546,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 * intercept the filter (the value is fully assembled when the
 	 * filter fires, so identity fields are visible there) and let
 	 * `output_store_jsonld()` echo into a buffer we discard.
-	 */
-	/**
-	 * Capture the array passed through `wc_ai_storefront_jsonld_store`
-	 * during a call to `output_store_jsonld()`. The optional `$emitter`
-	 * argument lets identity tests inject a subclass that overrides
-	 * `build_postal_address()` with a fixture, avoiding a global
-	 * `WC()` stub (which Brain Monkey's strict mode would leak into
-	 * unrelated tests across the suite).
+	 *
+	 * The optional `$emitter` argument lets identity tests inject a
+	 * subclass that overrides `build_postal_address()` with a fixture,
+	 * avoiding a global `WC()` stub (which Brain Monkey's strict mode
+	 * would leak into unrelated tests across the suite).
 	 */
 	private function capture_store_jsonld_filter_value( ?WC_AI_Storefront_JsonLd $emitter = null ): ?array {
 		$emitter = $emitter ?? $this->jsonld;
