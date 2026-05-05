@@ -16,9 +16,27 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 class RobotsTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
+	/**
+	 * Snapshot of `$_SERVER['HTTP_USER_AGENT']` before each test. `null`
+	 * means the key was not set on entry; tearDown uses this to restore
+	 * the exact pre-test state instead of unconditionally clearing,
+	 * which would clobber state any pre-existing test in this file may
+	 * have set up. Save-and-restore is the safe contract; an
+	 * unconditional `unset` is broader than the new detector tests
+	 * require.
+	 *
+	 * @var string|null
+	 */
+	private ?string $original_ua = null;
+
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+
+		// Snapshot before any test mutation so tearDown can restore.
+		$this->original_ua = isset( $_SERVER['HTTP_USER_AGENT'] )
+			? (string) $_SERVER['HTTP_USER_AGENT']
+			: null;
 
 		// `sanitize_text_field` is a WordPress function — stub it to a
 		// trim-and-passthrough so we can exercise the sanitizer without a
@@ -37,9 +55,16 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		// Reset between tests so a previous test's UA doesn't leak into
-		// the next via the shared $_SERVER superglobal.
-		unset( $_SERVER['HTTP_USER_AGENT'] );
+		// Restore `$_SERVER['HTTP_USER_AGENT']` to whatever it was on
+		// entry (including unset). Prevents detector tests from leaking
+		// UA fixtures into unrelated tests via the shared superglobal,
+		// without claiming ownership of state that pre-existing tests
+		// may legitimately rely on.
+		if ( null === $this->original_ua ) {
+			unset( $_SERVER['HTTP_USER_AGENT'] );
+		} else {
+			$_SERVER['HTTP_USER_AGENT'] = $this->original_ua;
+		}
 
 		Monkey\tearDown();
 		parent::tearDown();

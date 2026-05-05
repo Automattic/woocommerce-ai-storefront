@@ -395,7 +395,14 @@ class WC_AI_Storefront_Robots {
 		// crawler hiding behind a Mozilla preamble. Token charset matches
 		// RFC 7230 `token = 1*tchar` reduced to the printable subset
 		// real-world UAs actually use.
-		if ( preg_match( '/^([A-Za-z][A-Za-z0-9._-]*)/', $ua, $matches ) ) {
+		//
+		// Bounded `{0,63}` so the matched token caps at 64 chars total
+		// (1 leading char + up to 63 follow chars). The recorder also
+		// caps at 64 via `mb_substr`; bounding here makes the limit
+		// visible at the regex layer rather than relying on invisible
+		// downstream truncation, and keeps the matcher cheap on
+		// pathological inputs (long-string UAs).
+		if ( preg_match( '/^([A-Za-z][A-Za-z0-9._-]{0,63})/', $ua, $matches ) ) {
 			return $matches[1];
 		}
 
