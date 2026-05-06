@@ -1,0 +1,158 @@
+# Local development stack for the WooCommerce AI Storefront plugin.
+#
+# Replaces the prior wp-env workflow with a project-root compose file —
+# matches the house style used by woopay, woocommerce-payments, and
+# woocommerce-gateway-stripe. Why:
+#
+#   - Compose project name auto-derives from this file's directory
+#     (`woocommerce-ai-storefront`), so `container_name:` values render
+#     correctly in Docker Desktop without remembering env vars.
+#   - "Open in VSCode" from Docker Desktop's Containers list routes
+#     correctly to a container in this project.
+#   - No hashed temp directories under ~/.wp-env/, no compose-file
+#     regeneration on every start, no project-name lottery.
+#
+# First-boot setup is automated by the `bootstrap` service: it waits
+# for MySQL to be healthy, then runs `wp core install`, activates
+# WooCommerce + this plugin, sets pretty permalinks, flushes rewrite
+# rules, and enables the plugin's syndication setting (so the
+# /llms.txt, /robots.txt, /.well-known/ucp endpoints respond). The
+# service is idempotent — it short-circuits when WP is already
+# installed — so subsequent `docker compose up` calls don't re-run
+# setup.
+
+services:
+  mysql:
+    container_name: woocommerce-ai-storefront-mysql
+    image: mariadb:lts
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: wordpress
+      MARIADB_AUTO_UPGRADE: '1'
+    volumes:
+      - mysql:/var/lib/mysql
+    healthcheck:
+      # Match wp-env's healthcheck — `healthcheck.sh --connect
+      # --innodb_initialized` is bundled with the mariadb:lts image
+      # and reports healthy only when the server is accepting
+      # connections AND InnoDB has finished crash-recovery. Without
+      # the InnoDB check, depends_on services start before the DB is
+      # truly query-able and `wp core install` can fail with cryptic
+      # innodb errors on the first boot of a fresh volume.
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 60s
+
+  wordpress:
+    container_name: woocommerce-ai-storefront-wordpress
+    # Pinned to a major.minor (not `latest`) so a future WP release that
+    # changes plugin loader behavior, deprecates a hook, or breaks our
+    # tests doesn't silently land on every `docker compose up`. Bump
+    # this when you intentionally want the new version. WC requires
+    # WP 6.8+ as of 2026; we use the latest 6.8.x at compose-write time.
+    image: wordpress:6.8-apache
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - '${WP_PORT:-8030}:80'
+    environment:
+      WORDPRESS_DB_HOST: mysql
+      WORDPRESS_DB_USER: root
+      WORDPRESS_DB_PASSWORD: password
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DEBUG: '1'
+      # `WORDPRESS_CONFIG_EXTRA` injects literal PHP into wp-config.php
+      # at container boot. Used to flip on debug-log + script-debug
+      # without forcing the merchant to maintain a custom wp-config.php.
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_DEBUG_LOG', true);
+        define('WP_DEBUG_DISPLAY', false);
+        define('SCRIPT_DEBUG', true);
+        define('WP_ENVIRONMENT_TYPE', 'local');
+    volumes:
+      # WordPress core files. Persists in the named volume across
+      # container recreations. Plugins/themes installed via the admin
+      # land here and survive `docker compose down` (volume preserved
+      # unless `-v` is passed).
+      - wordpress:/var/www/html
+      # Plugin source — bind-mount from the project root so edits in
+      # the IDE are reflected instantly inside the container, no
+      # rebuild required. Matches wp-env's primary value-add for
+      # plugin development.
+      - .:/var/www/html/wp-content/plugins/woocommerce-ai-storefront
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+  cli:
+    # Long-lived wp-cli container so `docker exec
+    # woocommerce-ai-storefront-cli wp <command>` works without
+    # spinning up a one-shot container per call. Shares the WordPress
+    # core volume + the plugin bind-mount so it sees the same
+    # filesystem as the wordpress service.
+    container_name: woocommerce-ai-storefront-cli
+    image: wordpress:cli
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      wordpress:
+        condition: service_started
+    user: '33:33'  # www-data, matching the wordpress service
+    environment:
+      WORDPRESS_DB_HOST: mysql
+      WORDPRESS_DB_USER: root
+      WORDPRESS_DB_PASSWORD: password
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wordpress:/var/www/html
+      - .:/var/www/html/wp-content/plugins/woocommerce-ai-storefront
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    # Keep alive so we can `docker exec` into it. wordpress:cli's
+    # default ENTRYPOINT runs wp and exits; override with a sleep
+    # loop instead. `tail -f /dev/null` is the conventional one-liner
+    # for "stay running, do nothing."
+    entrypoint: ['/bin/sh', '-c']
+    command: ['tail -f /dev/null']
+
+  bootstrap:
+    # One-shot service that runs first-boot setup: install WP,
+    # activate plugins, set pretty permalinks, flush rewrite rules,
+    # and turn on plugin syndication. Idempotent — short-circuits
+    # when WP is already installed — so `docker compose up` on a
+    # subsequent boot is a no-op.
+    container_name: woocommerce-ai-storefront-bootstrap
+    image: wordpress:cli
+    depends_on:
+      mysql:
+        condition: service_healthy
+      wordpress:
+        condition: service_started
+    user: '33:33'
+    environment:
+      WORDPRESS_DB_HOST: mysql
+      WORDPRESS_DB_USER: root
+      WORDPRESS_DB_PASSWORD: password
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wordpress:/var/www/html
+      - .:/var/www/html/wp-content/plugins/woocommerce-ai-storefront
+      - ./bin:/bootstrap:ro
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    entrypoint: ['/bin/sh', '-c']
+    command: ['/bootstrap/local-dev-bootstrap.sh']
+    # restart: 'no' is the default but stated explicitly — bootstrap
+    # is one-shot. If it fails, surface the failure rather than
+    # restart-loop. `docker compose up` exits non-zero, the merchant
+    # sees the bootstrap log, fixes the issue, and re-runs.
+    restart: 'no'
+
+volumes:
+  mysql:
+  wordpress:
