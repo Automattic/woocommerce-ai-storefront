@@ -702,12 +702,10 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( ') AND (', $result['where'] );
 	}
 
-	public function test_comma_no_space_falls_back_to_like(): void {
-		// "Hoodies,Belts" (no space after comma) — extract_search_terms() strips the
-		// comma without inserting a space, collapsing the pair into the single token
-		// "hoodiesbelts" which does not resolve to any taxonomy term. The result is a
-		// title LIKE fallback rather than an OR join. This documents a known limitation:
-		// spaced commas ("Hoodies, Belts") work; no-space commas do not.
+	public function test_comma_no_space_joins_with_or(): void {
+		// "Hoodies,Belts" (no space after comma) — commas are now converted to spaces
+		// in extract_search_terms() before the punctuation-drop pass, so the pair splits
+		// into ["hoodies", "belts"] and both resolve to taxonomy terms → OR join.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
@@ -722,8 +720,8 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
-		$this->assertStringContainsString( 'LIKE', $result['where'] );
-		$this->assertStringNotContainsString( ') OR (', $result['where'] );
+		$this->assertStringContainsString( ') OR (', $result['where'] );
+		$this->assertStringNotContainsString( ') AND (', $result['where'] );
 	}
 
 	public function test_or_connector_all_taxonomy_matched_joins_with_or(): void {
