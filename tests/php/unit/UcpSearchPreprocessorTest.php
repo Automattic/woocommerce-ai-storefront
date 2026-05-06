@@ -611,7 +611,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
-		$this->assertMatchesRegularExpression( '/EXISTS.*OR.*EXISTS/is', $result['where'] );
+		$this->assertStringContainsString( ') OR (', $result['where'] );
 		$this->assertStringNotContainsString( ') AND (', $result['where'] );
 	}
 
@@ -632,7 +632,8 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
-		$this->assertMatchesRegularExpression( '/LIKE.*AND.*EXISTS/is', $result['where'] );
+		$this->assertStringContainsString( ') AND (', $result['where'] );
+		$this->assertStringNotContainsString( ') OR (', $result['where'] );
 	}
 
 	public function test_and_connector_uppercase_still_joins_with_or(): void {
@@ -651,7 +652,8 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
-		$this->assertMatchesRegularExpression( '/EXISTS.*OR.*EXISTS/is', $result['where'] );
+		$this->assertStringContainsString( ') OR (', $result['where'] );
+		$this->assertStringNotContainsString( ') AND (', $result['where'] );
 	}
 
 	public function test_comma_separated_query_keeps_and(): void {
