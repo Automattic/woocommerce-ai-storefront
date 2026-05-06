@@ -632,8 +632,14 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
+		// Top-level join is AND — partial taxonomy resolution keeps narrowing mode.
 		$this->assertStringContainsString( ') AND (', $result['where'] );
 		$this->assertStringNotContainsString( ') OR (', $result['where'] );
+		// "hat" resolved to taxonomy term 12 → EXISTS subquery present.
+		$this->assertStringContainsString( 'EXISTS', $result['where'] );
+		$this->assertStringContainsString( '12', $result['where'] );
+		// "blue" did not resolve → title LIKE fallback present.
+		$this->assertStringContainsString( '%blue%', $result['where'] );
 	}
 
 	public function test_and_connector_uppercase_still_joins_with_or(): void {
