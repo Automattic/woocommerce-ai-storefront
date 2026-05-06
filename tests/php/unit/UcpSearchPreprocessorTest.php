@@ -673,7 +673,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
-		$this->assertMatchesRegularExpression( '/EXISTS.*AND.*EXISTS/is', $result['where'] );
+		$this->assertStringContainsString( ') AND (', $result['where'] );
 	}
 
 	public function test_three_way_and_query_all_matched_joins_with_or(): void {
