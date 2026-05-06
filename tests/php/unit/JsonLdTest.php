@@ -77,6 +77,48 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// non-variation product mocks. Override-scope resolution
 		// happens at the `enhance_product_data` entry point.
 		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
+
+		// `output_store_jsonld()` reads identity fields from existing
+		// WP/WC data. Stub the readers to "merchant has nothing
+		// configured" by default so pre-existing tests of unrelated
+		// store-JSON-LD behavior (search action URL, taxonomy hex
+		// escaping, etc.) don't have to know about identity fields.
+		// Tests that exercise the identity path override these via
+		// per-test `Functions\when()` calls (Brain Monkey overwrites
+		// the latest binding).
+		//
+		// `WC()` is deliberately NOT stubbed here. Once Brain Monkey
+		// registers a `Functions\when()` for a function name, every
+		// later test in the suite must explicitly re-register or call
+		// `Mockery::close()` clean — otherwise the global stub leaks
+		// and unrelated tests (UcpCatalogLookupTest, UcpTest, etc.)
+		// see `MissingFunctionExpectations` on real `WC()` calls.
+		// Identity tests stub `WC` inline; tests that don't touch the
+		// address path don't need it.
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		Functions\when( 'get_option' )->justReturn( '' );
+		Functions\when( 'sanitize_email' )->returnArg();
+		// Structural validity check rather than a hardcoded `false`
+		// return. WP's real `is_email()` accepts anything that has an
+		// `@` somewhere with non-empty local- and domain-parts; that's
+		// enough for unit-test purposes and prevents tests that
+		// configure a real email from silently passing for the wrong
+		// reason (an always-false stub would fail the email check
+		// regardless of the input the test set up). Tests that need
+		// to assert the "invalid email" branch use a sentinel like
+		// `gibberish` (no `@`), which falls through this alias to
+		// false naturally.
+		Functions\when( 'is_email' )->alias(
+			static function ( $email ) {
+				if ( ! is_string( $email ) || '' === $email ) {
+					return false;
+				}
+				$at = strpos( $email, '@' );
+				return false !== $at && $at > 0 && $at < strlen( $email ) - 1;
+			}
+		);
 	}
 
 	protected function tearDown(): void {
@@ -1473,6 +1515,500 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'handlingTime',
 			$result['offers'][0]['shippingDetails']['deliveryTime'] ?? [],
 			'Emitter must skip handlingTime block when stored min > max.'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// OnlineStore identity fields (homepage / shop page JSON-LD)
+	//
+	// `output_store_jsonld()` emits Schema.org `OnlineStore` (an
+	// `Organization` subtype) so AI-readiness audits that look for
+	// brand-identity entities can verify the merchant. Identity fields
+	// are auto-sourced from existing WP/WC data — no plugin-owned
+	// merchant settings, no admin UI:
+	//
+	//   - `logo` — custom-logo theme mod, with site-icon as fallback
+	//   - `address` — `WC()->countries->get_base_*` (Schema.org
+	//     PostalAddress); streetAddress is NEVER emitted (privacy guard
+	//     against publishing residential addresses)
+	//   - `contactPoint.email` — two-stage resolver:
+	//       1. `woocommerce_email_reply_to_address` when
+	//          `woocommerce_email_reply_to_enabled === 'yes'` (WC's
+	//          purpose-built customer-reply field)
+	//       2. `woocommerce_email_from_address` as fallback, but
+	//          rejected when its local-part starts with a noreply
+	//          pattern (`noreply`, `no-reply`, `donotreply`,
+	//          `do-not-reply`), with optional `+tag` suffix
+	//     Each candidate validated via `is_email`. `admin_email` is
+	//     intentionally NOT a fallback (privacy: it's used for
+	//     password resets and security notifications).
+	//
+	// The filter `wc_ai_storefront_jsonld_store` is the documented
+	// injection point for ecosystem plugins (Jetpack, Yoast) that
+	// already capture social profiles or phone — those are NOT emitted
+	// from the plugin itself.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Capture the array passed through `wc_ai_storefront_jsonld_store`
+	 * during a call to `output_store_jsonld()`.
+	 *
+	 * Mirrors the pattern in `test_searchaction_url_template_emits_*`:
+	 * intercept the filter (the value is fully assembled when the
+	 * filter fires, so identity fields are visible there) and let
+	 * `output_store_jsonld()` echo into a buffer we discard.
+	 *
+	 * The optional `$emitter` argument lets identity tests inject a
+	 * subclass that overrides `build_postal_address()` with a fixture,
+	 * avoiding a global `WC()` stub (which Brain Monkey's strict mode
+	 * would leak into unrelated tests across the suite).
+	 */
+	private function capture_store_jsonld_filter_value( ?WC_AI_Storefront_JsonLd $emitter = null ): ?array {
+		$emitter = $emitter ?? $this->jsonld;
+
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'home_url' )->alias(
+			static fn( $path = '' ) => 'https://example.com' . $path
+		);
+		Functions\when( 'get_bloginfo' )->returnArg();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
+		Functions\when( '__' )->returnArg( 1 );
+
+		$captured = null;
+		Functions\when( 'apply_filters' )->alias(
+			static function ( string $tag, $value, ...$extras ) use ( &$captured ) {
+				if ( $tag === 'wc_ai_storefront_jsonld_store' ) {
+					$captured = $value;
+				}
+				return $value;
+			}
+		);
+
+		ob_start();
+		try {
+			$emitter->output_store_jsonld();
+		} finally {
+			ob_end_clean();
+		}
+
+		return $captured;
+	}
+
+	/**
+	 * Build a JsonLd subclass that overrides `build_postal_address()`
+	 * with a fixed return value. Avoids the need to globally stub
+	 * `WC()` (which Brain Monkey strict mode would leak across the
+	 * suite). Use this when the test cares about how the *emitter*
+	 * handles a specific PostalAddress shape, not how the address
+	 * itself is built.
+	 */
+	private function jsonld_with_address( array $address ): WC_AI_Storefront_JsonLd {
+		// phpcs:ignore Squiz.Commenting.ClassComment.Missing -- inline test fixture
+		return new class( $address ) extends WC_AI_Storefront_JsonLd {
+			private array $fixture;
+
+			public function __construct( array $fixture ) {
+				$this->fixture = $fixture;
+			}
+
+			protected function build_postal_address(): array {
+				return $this->fixture;
+			}
+		};
+	}
+
+	/**
+	 * Build a JsonLd subclass that injects a `WC_Countries`-shaped
+	 * stub (an object exposing the `get_base_*()` methods
+	 * `build_postal_address()` reads). Use this when the test cares
+	 * about how `build_postal_address()` itself transforms WC data
+	 * — e.g., the streetAddress-suppression privacy guard. Stub
+	 * methods can return arbitrary strings; even if WC has a value
+	 * for a field we deliberately don't emit, the stub method gets
+	 * called only to verify the omission.
+	 */
+	private function jsonld_with_wc_countries( object $countries ): WC_AI_Storefront_JsonLd {
+		// phpcs:ignore Squiz.Commenting.ClassComment.Missing -- inline test fixture
+		return new class( $countries ) extends WC_AI_Storefront_JsonLd {
+			private object $countries;
+
+			public function __construct( object $countries ) {
+				$this->countries = $countries;
+			}
+
+			protected function get_wc_countries() {
+				return $this->countries;
+			}
+		};
+	}
+
+	public function test_store_jsonld_uses_onlinestore_type(): void {
+		// The whole point of this PR — `OnlineStore` (an Organization
+		// subtype) replaces `Store` (a LocalBusiness subtype). Audit
+		// tools looking for an Organization-shaped entity now find one.
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertIsArray( $captured );
+		$this->assertSame( 'OnlineStore', $captured['@type'] ?? null );
+	}
+
+	public function test_store_jsonld_emits_logo_from_custom_logo_theme_mod(): void {
+		// Custom-logo wins over site-icon: the merchant explicitly
+		// chose a brand mark for the storefront header.
+		$logo_id = 4242;
+		Functions\when( 'get_theme_mod' )->alias(
+			static fn( $name ) => 'custom_logo' === $name ? $logo_id : null
+		);
+		Functions\when( 'wp_get_attachment_image_src' )->alias(
+			static fn( $id ) => $id === $logo_id ? [ 'https://example.com/wp-content/uploads/brand.png', 800, 200, false ] : false
+		);
+		Functions\when( 'get_site_icon_url' )->justReturn( 'https://example.com/site-icon.png' );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertSame( 'https://example.com/wp-content/uploads/brand.png', $captured['logo'] ?? null );
+	}
+
+	public function test_store_jsonld_falls_back_to_site_icon_when_no_custom_logo(): void {
+		Functions\when( 'get_site_icon_url' )->justReturn( 'https://example.com/site-icon.png' );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertSame( 'https://example.com/site-icon.png', $captured['logo'] ?? null );
+	}
+
+	public function test_store_jsonld_omits_logo_when_neither_custom_logo_nor_site_icon_set(): void {
+		// Schema.org's `logo` is for the merchant's primary brand mark.
+		// Emitting nothing is more honest than emitting a default WP
+		// favicon URL that would mislead crawlers about brand identity.
+		// (setUp's defaults already simulate "no logo configured".)
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayNotHasKey( 'logo', $captured ?? [] );
+	}
+
+	public function test_store_jsonld_emits_postal_address_from_wc_base_settings(): void {
+		// Country + city + region + postcode populated. Note:
+		// streetAddress is NEVER emitted (privacy guard), so this
+		// fixture intentionally omits it even at the seam layer to
+		// match what `build_postal_address()` actually produces.
+		// Test exercises how the emitter merges the address block
+		// into the JSON-LD; coverage of the suppression itself lives
+		// in `test_store_jsonld_omits_streetaddress_*`.
+		$emitter = $this->jsonld_with_address(
+			[
+				'@type'           => 'PostalAddress',
+				'addressCountry'  => 'US',
+				'addressLocality' => 'Springfield',
+				'addressRegion'   => 'IL',
+				'postalCode'      => '62701',
+			]
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value( $emitter );
+		$address  = $captured['address'] ?? null;
+
+		$this->assertIsArray( $address );
+		$this->assertSame( 'PostalAddress', $address['@type'] );
+		$this->assertSame( 'US', $address['addressCountry'] );
+		$this->assertSame( 'Springfield', $address['addressLocality'] );
+		$this->assertSame( 'IL', $address['addressRegion'] );
+		$this->assertSame( '62701', $address['postalCode'] );
+		$this->assertArrayNotHasKey( 'streetAddress', $address );
+	}
+
+	public function test_build_postal_address_suppresses_street_address_even_when_wc_has_it(): void {
+		// Privacy regression guard. Many small Woo merchants populate
+		// WooCommerce > Settings > General with their home address
+		// because WC requires it for tax calculations. They do NOT
+		// expect that field to be published in machine-readable form
+		// on the homepage. For an OnlineStore, streetAddress adds
+		// little verification value (buyers don't visit) — so we
+		// suppress it even when WC has the data.
+		//
+		// The stub returns a populated street address; the emitter
+		// must drop it. A regression that re-adds the streetAddress
+		// emit (intentional or accidental) would fail this test.
+		$countries = new class {
+			public function get_base_country() { return 'US'; }
+			public function get_base_address() { return '123 Main St'; }
+			public function get_base_address_2() { return 'Suite 4B'; }
+			public function get_base_city() { return 'Springfield'; }
+			public function get_base_state() { return 'IL'; }
+			public function get_base_postcode() { return '62701'; }
+		};
+
+		$emitter = $this->jsonld_with_wc_countries( $countries );
+		$captured = $this->capture_store_jsonld_filter_value( $emitter );
+		$address  = $captured['address'] ?? null;
+
+		$this->assertIsArray( $address );
+		$this->assertArrayNotHasKey(
+			'streetAddress',
+			$address,
+			'streetAddress must NEVER be emitted on OnlineStore — privacy regression.'
+		);
+		// Sanity check: the rest of the address still emits, so we
+		// haven't broken the address block entirely.
+		$this->assertSame( 'US', $address['addressCountry'] );
+		$this->assertSame( 'Springfield', $address['addressLocality'] );
+		$this->assertSame( 'IL', $address['addressRegion'] );
+		$this->assertSame( '62701', $address['postalCode'] );
+	}
+
+	public function test_build_postal_address_omits_when_wc_has_no_country(): void {
+		// Real exercise of the early-return path: WC base country is
+		// blank. `build_postal_address()` returns []; the emitter
+		// then omits the whole `address` key. (The handful of
+		// existing tests using `jsonld_with_address([])` exercise
+		// the emitter side of this; this test pins the behavior of
+		// `build_postal_address()` itself when the live WC source is
+		// unconfigured.)
+		$countries = new class {
+			public function get_base_country() { return ''; }
+			public function get_base_address() { return ''; }
+			public function get_base_address_2() { return ''; }
+			public function get_base_city() { return ''; }
+			public function get_base_state() { return ''; }
+			public function get_base_postcode() { return ''; }
+		};
+
+		$emitter = $this->jsonld_with_wc_countries( $countries );
+		$captured = $this->capture_store_jsonld_filter_value( $emitter );
+
+		$this->assertArrayNotHasKey( 'address', $captured ?? [] );
+	}
+
+	public function test_store_jsonld_omits_address_when_postal_address_is_empty(): void {
+		// `build_postal_address()` returns [] when WC has no base
+		// country (its omit-when-empty signal). The emitter must skip
+		// the `address` key entirely rather than emitting an empty
+		// stub.
+		$emitter = $this->jsonld_with_address( [] );
+
+		$captured = $this->capture_store_jsonld_filter_value( $emitter );
+
+		$this->assertArrayNotHasKey( 'address', $captured ?? [] );
+	}
+
+	/**
+	 * Build a `get_option` alias that returns values from a fixture
+	 * map and the option's own default for anything not in the map.
+	 * Tests can express WC email-config scenarios as a small array
+	 * rather than nesting ternaries inline.
+	 */
+	private function stub_options( array $values ): void {
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = '' ) use ( $values ) {
+				return array_key_exists( $name, $values ) ? $values[ $name ] : $default;
+			}
+		);
+	}
+
+	public function test_store_jsonld_emits_contactpoint_from_wc_from_address_when_no_reply_to(): void {
+		// Default WC posture: reply-to disabled. From address is the
+		// only signal. Validated, not noreply-shaped → published as
+		// the public contact email. setUp's `is_email` alias handles
+		// validation; no per-test override needed.
+		$this->stub_options( [
+			'woocommerce_email_reply_to_enabled' => 'no',
+			'woocommerce_email_from_address'     => 'support@example.com',
+		] );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+		$cp       = $captured['contactPoint'] ?? null;
+
+		$this->assertIsArray( $cp );
+		$this->assertSame( 'ContactPoint', $cp['@type'] );
+		$this->assertSame( 'Customer Service', $cp['contactType'] );
+		$this->assertSame( 'support@example.com', $cp['email'] );
+	}
+
+	public function test_store_jsonld_prefers_reply_to_address_when_enabled(): void {
+		// Both From and Reply-To configured with valid, non-noreply
+		// addresses. Reply-to wins because it's WC's purpose-built
+		// "where customers should reach me" field, set explicitly
+		// when the merchant routes replies somewhere other than From.
+		//
+		// From is intentionally a *valid alternative* (`support@`,
+		// not `noreply@`) so a regression in the resolver — say,
+		// "always return From" — would publish `support@example.com`
+		// rather than fall through to omit, and the test catches it.
+		// A test that used `noreply@` for From could pass even with
+		// such a regression because the noreply guard would still
+		// produce omit, masking the precedence bug.
+		$this->stub_options( [
+			'woocommerce_email_reply_to_enabled' => 'yes',
+			'woocommerce_email_reply_to_address' => 'help@example.com',
+			'woocommerce_email_from_address'     => 'support@example.com',
+		] );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertSame( 'help@example.com', $captured['contactPoint']['email'] ?? null );
+	}
+
+	public function test_store_jsonld_falls_back_to_from_when_reply_to_enabled_but_address_blank(): void {
+		// Configuration error: enabled flag set but address never
+		// filled in. The merchant intended a public contact channel
+		// (they enabled reply-to), so we shouldn't omit — fall
+		// through to From if it's a usable address.
+		$this->stub_options( [
+			'woocommerce_email_reply_to_enabled' => 'yes',
+			'woocommerce_email_reply_to_address' => '',
+			'woocommerce_email_from_address'     => 'support@example.com',
+		] );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertSame( 'support@example.com', $captured['contactPoint']['email'] ?? null );
+	}
+
+	public function test_store_jsonld_omits_contactpoint_when_from_is_noreply(): void {
+		// Many merchants set From to noreply@ to avoid bounce-handling.
+		// Publishing it as a customer-facing contact would route real
+		// questions into a black hole. With reply-to disabled and the
+		// only From candidate being noreply-shaped, we omit.
+		$this->stub_options( [
+			'woocommerce_email_reply_to_enabled' => 'no',
+			'woocommerce_email_from_address'     => 'noreply@example.com',
+		] );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayNotHasKey(
+			'contactPoint',
+			$captured ?? [],
+			'noreply-shaped From must not be published as a public contact.'
+		);
+	}
+
+	/**
+	 * @dataProvider noreply_local_parts_provider
+	 */
+	public function test_store_jsonld_recognizes_common_noreply_patterns( string $local_part ): void {
+		// All four canonical noreply shapes (case-insensitive,
+		// hyphenated and unhyphenated). Lock the heuristic — a future
+		// refactor that narrows the pattern would silently start
+		// publishing one of these as a public contact.
+		$this->stub_options( [
+			'woocommerce_email_reply_to_enabled' => 'no',
+			'woocommerce_email_from_address'     => $local_part . '@example.com',
+		] );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayNotHasKey( 'contactPoint', $captured ?? [] );
+	}
+
+	public static function noreply_local_parts_provider(): array {
+		return [
+			'noreply'                       => [ 'noreply' ],
+			'NoReply mixed case'            => [ 'NoReply' ],
+			'NOREPLY upper case'            => [ 'NOREPLY' ],
+			'no-reply hyphenated'           => [ 'no-reply' ],
+			'No-Reply mixed case'           => [ 'No-Reply' ],
+			'donotreply'                    => [ 'donotreply' ],
+			'do-not-reply'                  => [ 'do-not-reply' ],
+			'Do-Not-Reply'                  => [ 'Do-Not-Reply' ],
+			// RFC 5233 plus-addressing variants — these route to the
+			// same underlying mailbox as the bare prefix at most
+			// providers (Gmail, Outlook, Postfix, etc.), so they're
+			// noreply addresses for publishing purposes.
+			'noreply+orders'                => [ 'noreply+orders' ],
+			'no-reply+customer-service'     => [ 'no-reply+customer-service' ],
+			'donotreply+tag'                => [ 'donotreply+tag' ],
+			'do-not-reply+billing'          => [ 'do-not-reply+billing' ],
+			'NoReply+Mixed plus-addressing' => [ 'NoReply+Mixed' ],
+		];
+	}
+
+	public function test_store_jsonld_does_not_match_noreply_in_domain_part(): void {
+		// `support@noreply.example.com` is a legitimate customer-service
+		// mailbox that happens to be hosted on a `noreply.*` subdomain.
+		// Local-part-only matching means we don't false-positive on it.
+		$this->stub_options( [
+			'woocommerce_email_reply_to_enabled' => 'no',
+			'woocommerce_email_from_address'     => 'support@noreply.example.com',
+		] );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertSame( 'support@noreply.example.com', $captured['contactPoint']['email'] ?? null );
+	}
+
+	public function test_store_jsonld_does_not_match_noreply_substring_in_local_part(): void {
+		// `noreplies@store.com` is NOT a noreply address — the
+		// local-part is a different word that happens to start with
+		// the same letters. We match exact prefixes (with optional
+		// `+tag`), not substrings, so this should be publishable.
+		// Regression guard against an over-eager refactor that switches
+		// the prefix check to a `str_starts_with` substring match.
+		$this->stub_options( [
+			'woocommerce_email_reply_to_enabled' => 'no',
+			'woocommerce_email_from_address'     => 'noreplies@store.com',
+		] );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertSame(
+			'noreplies@store.com',
+			$captured['contactPoint']['email'] ?? null,
+			'Substring match must NOT trigger noreply guard — only exact prefix or prefix+tag.'
+		);
+	}
+
+	public function test_store_jsonld_omits_contactpoint_when_both_options_empty(): void {
+		// setUp's defaults exercise this case directly: `get_option`
+		// returns '' for everything, and the `is_email` structural
+		// validator alias rejects empty strings (no `@` to find).
+		// Reply-to disabled by default, from-address blank → omit.
+		// Whole block is omitted (no admin_email fallback).
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayNotHasKey( 'contactPoint', $captured ?? [] );
+	}
+
+	public function test_store_jsonld_omits_contactpoint_when_from_address_is_invalid(): void {
+		// is_email rejects structurally broken values. Sentinel:
+		// `gibberish` (no @, no TLD) — setUp's structural is_email
+		// alias rejects this naturally because it lacks an `@`.
+		$this->stub_options( [
+			'woocommerce_email_reply_to_enabled' => 'no',
+			'woocommerce_email_from_address'     => 'gibberish',
+		] );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayNotHasKey( 'contactPoint', $captured ?? [] );
+	}
+
+	public function test_store_jsonld_does_not_fall_back_to_admin_email(): void {
+		// Regression guard for the explicit decision NOT to use
+		// admin_email as a fallback. admin_email is intentionally
+		// private (password resets, security notifications); merchants
+		// do not expect it to be published in JSON-LD. This test
+		// would fail if a future "helpful" refactor adds a fallback
+		// chain.
+		// Both WC email options blank, admin_email populated with a
+		// valid address. The resolver must never even read
+		// admin_email — the structural is_email alias would accept
+		// `private-admin@example.com` if the resolver ever tried it.
+		$this->stub_options( [
+			'woocommerce_email_reply_to_enabled' => 'no',
+			'woocommerce_email_from_address'     => '',
+			'admin_email'                        => 'private-admin@example.com',
+		] );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayNotHasKey(
+			'contactPoint',
+			$captured ?? [],
+			'admin_email must NEVER be a public-facing contact fallback.'
 		);
 	}
 }
