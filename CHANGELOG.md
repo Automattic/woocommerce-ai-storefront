@@ -9,6 +9,22 @@
 
 ---
 
+## [0.10.1] – 2026-05-06
+
+### Fixes
+
+- **Multi-category searches now return results.** PR #314. Closes #315 (partial).
+  - Queries like `"Hoodies and Belts"` previously returned zero results because every extracted term was AND-joined, requiring a single product to satisfy all category constraints simultaneously.
+  - When the raw query contains a whitespace-surrounded `and` connector **and** every extracted term resolves to a product taxonomy match (category, tag, brand, or attribute), the per-term SQL clauses are now joined with `OR` instead of `AND`. Products from each category are returned independently.
+  - If any term is unresolved (falls back to a title `LIKE`) — even with `and` present — `AND` is preserved. The user is most likely describing attributes of one product (`"blue and hat"`) rather than listing distinct categories.
+  - Comma-separated multi-category queries (`"Hoodies, Belts"`) are tracked as a known limitation in issue #315.
+
+### Chores
+
+- **Pre-commit hook no longer bumps `.pot` timestamp on commits with no translatable string changes.** `wp i18n make-pot` always writes a fresh `POT-Creation-Date` header; the hook now strips that line before checksumming and restores the prior timestamp when no msgid or line reference changed, preventing spurious `.pot` diffs in PRs that don't touch i18n strings.
+
+---
+
 ## [0.10.0] – 2026-05-06
 
 ### Features
