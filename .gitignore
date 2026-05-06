@@ -14,3 +14,10 @@ node_modules/
 .claude/
 .tools/
 release-staging/
+
+# Local docker-compose overrides. Teammates can drop `.env` for port
+# overrides (e.g. `WP_PORT=8088`) or `docker-compose.override.yml` for
+# personal tweaks (xdebug, alternate PHP versions, custom mounts)
+# without committing those to the shared compose file.
+/.env
+/docker-compose.override.yml

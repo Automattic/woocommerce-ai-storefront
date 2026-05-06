@@ -87,6 +87,30 @@ Two changelogs:
 
 Every PR adds an entry to the `[Unreleased]` block in `CHANGELOG.md`. The PR template's CHANGELOG checkbox should be ticked or explicitly waived.
 
+## Local development
+
+```bash
+docker compose up -d
+```
+
+That's the whole setup. The committed `docker-compose.yml` brings up WordPress + MariaDB + a long-lived wp-cli container, and a one-shot `bootstrap` service runs `wp core install`, activates WC + this plugin, sets pretty permalinks, flushes rewrite rules, and enables plugin syndication.
+
+| URL | Purpose |
+|---|---|
+| http://localhost:8030/ | The store |
+| http://localhost:8030/wp-admin | Admin (user `admin` / password `password`) |
+| http://localhost:8030/llms.txt | Plugin's discovery file |
+| http://localhost:8030/.well-known/ucp | UCP manifest |
+| http://localhost:8030/robots.txt | Robots.txt |
+
+Plugin source bind-mounts from the project root, so file edits in the IDE are reflected instantly inside the container — no rebuild step. PHP files are served directly; JS/CSS still go through `npm run build` (or `npm start` for watch mode).
+
+For wp-cli: `docker exec woocommerce-ai-storefront-cli wp <command>`.
+
+The bootstrap script ([`bin/local-dev-bootstrap.sh`](./bin/local-dev-bootstrap.sh)) is idempotent — `docker compose up` after the first boot is a no-op. To wipe everything and start fresh: `docker compose down -v` (the `-v` removes volumes).
+
+To override the port or add personal tweaks (xdebug, alternate PHP version) without modifying the shared compose file, drop a `.env` (`WP_PORT=8088`) or `docker-compose.override.yml` — both are gitignored.
+
 ## Testing
 
 PHP suite uses PHPUnit + Brain Monkey + Mockery. **No real WordPress install required** — Brain Monkey mocks WP/WC functions. Tests live in `tests/php/unit/`, flat structure, one file per production class. Naming: `<UnitOfBehaviorBeingTested>Test.php`. Test methods: `test_<what>_<conditions>_<outcome>` snake_case.
