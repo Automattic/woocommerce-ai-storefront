@@ -616,8 +616,8 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_and_connector_with_unresolved_term_keeps_and(): void {
-		// "blue hat" — "blue" does not resolve to a taxonomy term, so AND is
-		// kept: the user is describing a single product, not listing categories.
+		// "blue and hat" — $has_and_connector is true but "blue" does not resolve to a
+		// taxonomy term, so $all_taxonomy_matched is false and AND is kept.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
@@ -626,12 +626,76 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		) );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		// "blue" won't match the "Hats" term; only "hat"/"hats" will.
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue hat' ) );
+		// "blue" won't match the "Hats" term; only "hat"/"hats" will — partial match → AND.
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue and hat' ) );
 		$args     = array( 'where' => '', 'join' => '' );
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
 		$this->assertMatchesRegularExpression( '/LIKE.*AND.*EXISTS/is', $result['where'] );
+	}
+
+	public function test_and_connector_uppercase_still_joins_with_or(): void {
+		// "Hoodies AND Belts" — the /i flag on the regex must handle uppercase connectors.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 13, 'Hoodies', 'product_cat' ),
+			$this->fake_term( 14, 'Belts', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodies AND Belts' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertMatchesRegularExpression( '/EXISTS.*OR.*EXISTS/is', $result['where'] );
+	}
+
+	public function test_comma_separated_query_keeps_and(): void {
+		// "Hoodies, Belts" — comma is stripped by extract_search_terms(), leaving no
+		// " and " connector, so $has_and_connector is false and AND is used. This
+		// documents the current behaviour: comma-separated lists are not treated as
+		// multi-category OR queries.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 15, 'Hoodies', 'product_cat' ),
+			$this->fake_term( 16, 'Belts', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodies, Belts' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertMatchesRegularExpression( '/EXISTS.*AND.*EXISTS/is', $result['where'] );
+	}
+
+	public function test_three_way_and_query_all_matched_joins_with_or(): void {
+		// "Hoodies and Belts and Caps" — all three terms resolve to taxonomy → OR,
+		// producing three EXISTS subqueries joined with OR.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 17, 'Hoodies', 'product_cat' ),
+			$this->fake_term( 18, 'Belts', 'product_cat' ),
+			$this->fake_term( 19, 'Caps', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodies and Belts and Caps' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		// All three EXISTS clauses must be OR-joined — matches two OR separators.
+		$this->assertMatchesRegularExpression( '/EXISTS.*OR.*EXISTS.*OR.*EXISTS/is', $result['where'] );
+		$this->assertStringNotContainsString( ') AND (', $result['where'] );
 	}
 }
