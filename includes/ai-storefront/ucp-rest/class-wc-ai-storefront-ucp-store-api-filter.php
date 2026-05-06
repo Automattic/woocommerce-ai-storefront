@@ -976,13 +976,14 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 
 		// Strip apostrophes in-place (women's → womens) so possessives and
 		// contractions don't produce a token with a literal apostrophe that
-		// would never match a product title. Other punctuation (hyphens,
-		// slashes) is converted to spaces so compound words split into
-		// separate signal tokens ("mid-layer" → "mid", "layer"). Everything
-		// else that is not a letter or digit is then removed.
+		// would never match a product title. Commas, hyphens, and slashes are
+		// converted to spaces so compound words and comma-separated lists split
+		// into separate signal tokens ("mid-layer" → "mid", "layer";
+		// "Hoodies,Belts" → "hoodies", "belts"). Everything else that is not
+		// a letter or digit is then removed.
 		$normalised = strtolower( trim( $query ) );
-		$normalised = str_replace( "'", '', $normalised );      // apostrophes: don't split.
-		$normalised = preg_replace( '/[-\/]+/', ' ', $normalised ); // hyphens/slashes: split.
+		$normalised = str_replace( "'", '', $normalised );           // apostrophes: don't split.
+		$normalised = preg_replace( '/[-\/,]+/', ' ', $normalised ); // hyphens/slashes/commas: split.
 		$normalised = preg_replace( '/[^a-z0-9 ]/', '', (string) $normalised ); // everything else: drop.
 
 		$words = preg_split( '/\s+/', (string) $normalised, -1, PREG_SPLIT_NO_EMPTY );
