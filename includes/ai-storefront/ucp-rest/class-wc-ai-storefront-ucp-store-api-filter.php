@@ -510,7 +510,20 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			}
 		}
 
-		$args['where'] .= ' AND ( ' . implode( ' AND ', $per_term ) . ' )';
+		// "Hoodies and Belts" lists two distinct categories; "Hoodies and blue" refines one.
+		// When the raw query contains a whitespace-surrounded " and " connector AND every extracted
+		// term resolved to a taxonomy match, treat the terms as alternatives (OR).
+		// If any term is unresolved (title-LIKE fallback) — even with "and" present — AND
+		// is safer: the user is probably describing attributes of a single product.
+		// The connector check uses $raw_search (pre-stopword) because "and" is in the
+		// stopword list and is stripped from $terms before this point.
+		// Use array_unique() when comparing counts: $taxonomy_map is keyed by signal so
+		// duplicates in $terms (e.g. "red shirts and red pants") don't inflate the count.
+		$all_taxonomy_matched = ! empty( $taxonomy_map ) && count( $taxonomy_map ) === count( array_unique( $terms ) );
+		$has_and_connector    = (bool) preg_match( '/\s+and\s+/i', $raw_search );
+		$join_op              = ( $has_and_connector && $all_taxonomy_matched ) ? 'OR' : 'AND';
+
+		$args['where'] .= ' AND ( ' . implode( " {$join_op} ", $per_term ) . ' )';
 
 		return $args;
 	}
