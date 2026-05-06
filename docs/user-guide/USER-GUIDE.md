@@ -40,7 +40,7 @@ You **don't** need an AI account, an API key, or a developer.
 
 ![Plugins screen with WooCommerce AI Storefront activated](screenshots/01-plugins-screen.png)
 
-A new menu item appears under **WooCommerce → AI Storefront** in the sidebar. The page opens with a slim header strip — small Woo logo + the title "AI Storefront". On the disabled state, a purple-tinted hero block sits directly below with the headline "List once. Sell everywhere AI shops.", a one-line reassurance ("Checkout stays on your store. One click."), a strip of four assistant chips (ChatGPT, Gemini, Perplexity, Copilot), the **Enable AI Storefront** button, and a "Read-only · Reversible anytime" note beneath the button. Once you enable the plugin, the hero is replaced by the section nav (Overview, Visibility, Policies, Discovery) directly below the header strip. If you don't see the menu item, confirm WooCommerce itself is active. AI Storefront depends on it.
+A new menu item appears under **WooCommerce → AI Storefront** in the sidebar. The page opens with a slim header strip (small Woo logo + the title "AI Storefront"). On the disabled state, a purple-tinted hero block sits directly below with the headline "List once. Sell everywhere AI shops.", a one-line reassurance ("Checkout stays on your store. One click."), a strip of four assistant chips (ChatGPT, Gemini, Perplexity, Copilot), the **Enable AI Storefront** button, and a "Read-only · Reversible anytime" note beneath the button. Once you enable the plugin, the hero is replaced by the section nav (Overview, Visibility, Policies, Discovery) directly below the header strip. If you don't see the menu item, confirm WooCommerce itself is active. AI Storefront depends on it.
 
 ---
 
@@ -69,7 +69,7 @@ The Overview tab populates with stat cards once data flows in:
 - **AI orders**: AI-attributed volume in the period, shown as `N / M` where M is the total orders denominator.
 - **AI Order Rate**: percentage of all orders in the period that came from AI agents (`AI orders / all orders`). Shows `0.0%` when orders exist but none are AI-attributed.
 - **AI revenue**: gross revenue from AI-referred orders, shown as `$X / $Y` where Y is total store revenue in the period (no decimals on the denominator).
-- **AI revenue %**: AI-attributed revenue as a percentage of total store revenue (`AI revenue / all revenue`). Shows `—` when no store revenue exists in the period.
+- **AI revenue %**: AI-attributed revenue as a percentage of total store revenue (`AI revenue / all revenue`). Shows a dash placeholder when no store revenue exists in the period.
 - **AI AOV**: average order value from AI-referred orders.
 - **Top agent**: which agent drives the most AI volume.
 - **Top agent share**: what share of AI revenue the top agent represents.
@@ -91,6 +91,7 @@ Before configuring anything else, take 30 seconds to confirm the endpoints are l
 | `https://your-store.com/llms.txt` | A plain-text Markdown document starting with `# Your Store Name`, with a category list and "How AI agents should link to products" section. |
 | `https://your-store.com/.well-known/ucp` | A pretty-printed JSON document in monospace. Top-level keys: `name`, `version`, `capabilities`, `payment_handlers`, `services`. |
 | `https://your-store.com/robots.txt` | The standard WordPress `robots.txt` plus a block of `User-agent: GPTBot` / `User-agent: ChatGPT-User` / etc. each with `Allow:` lines. |
+| Homepage → "View page source" | Search for `"@type":"OnlineStore"`. This is your store's brand-identity card, surfaced for AI shopping agents. See [section 4a](#4a-what-the-homepage-publishes-to-ai-agents). |
 | Any product page → "View page source" | Search for `"@type":"Product"`. Look for a `BuyAction` block, an `offers` array with prices, and (once you set one in [section 7](#7-set-your-return-policy)) `hasMerchantReturnPolicy`. |
 
 The Discovery tab shows the same URLs as clickable links with reachability dots. URLs render in monospace font:
@@ -106,6 +107,31 @@ If something returns 404 or shows your homepage, jump to [Troubleshooting](#10-t
 A working setup returns real product names with prices and links to your store within 3–10 seconds. If the agent says it can't find anything, wait a few hours (most agents cache crawl results) and retry.
 
 Natural-language search queries match against your product categories, tags, brands, and attributes, not just product titles. So an agent asking for "hoodies" will find products in your "Hoodies" category even if the individual product titles use a different word, and "watches" will find products in a "Watch" category. Plural and singular forms are handled automatically.
+
+### 4a. What the homepage publishes to AI agents
+
+Your homepage now includes a JSON-LD `OnlineStore` block. AI shopping agents and search engines use this to verify your brand identity and link your manifest data to a recognizable entity.
+
+| Field | Source | Notes |
+|-------|--------|-------|
+| `name`, `description`, `url` | WordPress Site Settings | Edit at **Settings → General**. |
+| `currenciesAccepted` | WooCommerce currency setting | Edit at **WooCommerce → Settings → General**. |
+| `logo` | WP Custom Logo (preferred) or Site Icon (fallback) | Edit at **Appearance → Customize → Site Identity**. Omitted if neither is set. |
+| `address` | WooCommerce Store Address | Edit at **WooCommerce → Settings → General**. Built from city, region, postcode, and country. |
+| `contactPoint.email` | Two-stage from WooCommerce email settings | See **Customer service email** below. |
+| `potentialAction` (search) | Auto-generated | Lets agents search your store with `?s=...&post_type=product`. |
+| `hasOfferCatalog` | Auto-generated | A summary of your top product categories. |
+
+**About the address.** Only city, region (state/province), postcode, and country are published. Your **street address is intentionally NOT included** in the JSON-LD, even when you have one set in WooCommerce settings. This is a privacy and safety choice: many small Woo merchants use a home address for tax-calculation purposes and don't expect it to appear in machine-readable form. City + region + postcode + country preserve everything an AI agent needs (jurisdiction, shipping origin, fraud-check) without leaking a residential address.
+
+**Customer service email.** The plugin chooses one of two WooCommerce email settings, in this order:
+
+1. **Reply-to address** at **WooCommerce → Settings → Emails → Sender options**, *if* you've enabled the "Reply-to" toggle. This is WooCommerce's purpose-built field for "where customers should reach me."
+2. **From address** at the same screen, as a fallback. Skipped if it looks like a noreply address (starts with `noreply`, `no-reply`, `donotreply`, or `do-not-reply`, with or without a `+tag` suffix). Many merchants set their From to a noreply address to avoid bounce-handling, which means publishing it as a customer contact would route real questions into a black hole.
+
+The plugin **never** publishes your WordPress admin email as a public contact. If neither of the WooCommerce email settings produces a usable address, the `contactPoint` block is omitted entirely.
+
+**Phone and social profiles** are not published by this plugin. WooCommerce doesn't store either, and ecosystem plugins (Jetpack, Yoast, etc.) typically own that capture. Developers can inject these fields via the `wc_ai_storefront_jsonld_store` filter (see the engineering reference in `docs/engineering/HOOKS.md`).
 
 ---
 
@@ -179,7 +205,7 @@ The period selector at the top (Day / Week / Month / Quarter) drives all three c
 
 There's nothing to configure. Data starts populating from the moment you enable the plugin. Raw events are kept for 30 days; aggregated daily counts are kept for 90 days. There is no option to extend retention; if you need long-term analytics, treat this as a "what changed last quarter" tool, not a permanent dashboard.
 
-Stats refresh on every rollup run (hourly by default) — today's traffic appears in the dashboard within one rollup cycle of occurring. On upgrade the plugin automatically migrates any pre-existing cron event to the new cadence, so no manual steps are needed.
+Stats refresh on every rollup run (hourly by default), so today's traffic appears in the dashboard within one rollup cycle of occurring. On upgrade the plugin automatically migrates any pre-existing cron event to the new cadence, so no manual steps are needed.
 
 ### Revisit cadence
 
@@ -190,7 +216,7 @@ Stats refresh on every rollup run (hourly by default) — today's traffic appear
 
 ## 7. Set your store policies
 
-The **Policies** tab publishes structured signals that AI agents read when deciding what to show shoppers — return terms, shipping timelines, and more. Two cards are currently available.
+The **Policies** tab publishes structured signals that AI agents read when deciding what to show shoppers: return terms, shipping timelines, and more. Two cards are currently available.
 
 ![Store policies tab](screenshots/07-policies-tab.png)
 
@@ -212,7 +238,7 @@ Some merchants have a generally returnable catalog with specific final-sale item
 
 ![Product editor Inventory tab with AI Final sale checkbox](screenshots/08-product-final-sale.png)
 
-### Shipping — handling time
+### Shipping: handling time
 
 AI agents that compare products often surface shipping timelines ("Ships in 1–2 business days"). The **Shipping** card lets you declare your order handling time so agents can read it as structured data rather than guessing from free-text descriptions.
 
@@ -222,7 +248,7 @@ Set **Minimum** and **Maximum** business days using the stepper inputs (0–365)
 - If you set max below min, max is automatically raised to match min.
 - A live preview beneath the inputs shows the would-be structured-data shape so you can verify before saving.
 
-> **Note:** Handling time reflects how long it takes to pack and dispatch — not total transit time. Transit time depends on the carrier and destination and is not currently modeled.
+> **Note:** Handling time reflects how long it takes to pack and dispatch, not total transit time. Transit time depends on the carrier and destination and is not currently modeled.
 
 ---
 
@@ -248,7 +274,7 @@ The Discovery tab shows a reachability indicator in the card intro. The note "Re
 
 ![Overview tab per-agent stat cards](screenshots/11-per-agent-stats.png)
 
-**Recent AI Orders table** (Overview tab). The most recent AI-attributed orders with order number, customer, date, status, items, agent, and total. Clicking the order number opens the WC order edit screen. Clicking a customer name opens the WooCommerce orders list filtered to that customer. Search, column-sort, and pagination work server-side — the table fetches only the current page, so large order volumes don't slow the Overview tab. Filters by **agent** and by **status** narrow the result set without leaving the table. Table preferences — rows per page, column visibility, sort order, and density — are saved in the browser and restored on your next visit.
+**Recent AI Orders table** (Overview tab). The most recent AI-attributed orders with order number, customer, date, status, items, agent, and total. Clicking the order number opens the WC order edit screen. Clicking a customer name opens the WooCommerce orders list filtered to that customer. Search, column-sort, and pagination work server-side, so the table fetches only the current page and large order volumes don't slow the Overview tab. Filters by **agent** and by **status** narrow the result set without leaving the table. Table preferences (rows per page, column visibility, sort order, and density) are saved in the browser and restored on your next visit.
 
 ![Recent AI Orders table](screenshots/12-recent-ai-orders.png)
 

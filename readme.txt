@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.9.1
+Stable tag: 0.10.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,17 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.10.0 - 2026-05-06 =
+**New**
+* Homepage JSON-LD now emits `@type: OnlineStore` (a Schema.org `Organization` subtype) instead of `@type: Store`, so AI shopping agents and search engines can verify your brand identity. Adds three auto-sourced identity fields: `logo` (from your WP custom logo or site icon), `address` (from WooCommerce store address; `streetAddress` deliberately omitted to protect home-office merchants from publishing residential addresses in machine-readable form), and `contactPoint.email` (resolved from your WooCommerce reply-to or sender email, with a noreply-pattern guard). No new merchant settings, no new admin UI: everything sourced from WP/WC config you already have.
+
+**Fixed**
+* Manifest and `/llms.txt` hits from UCP-aware clients (UCPScanner, UCPCheckerBot, etc.) now record correctly. Previously, only User-Agents matching a hardcoded AI crawler list were recorded; legitimate UCP discovery scanners with well-formed product tokens were silently dropped, producing a misleading zero in the analytics page.
+* `/llms.txt` hits now record correctly on CDN-fronted installs (Atomic/WordPress.com). Same fix shape as the 0.9.1 manifest hotfix; `/llms.txt` was missed in that fix and was still emitting `Cache-Control: public, max-age=3600`. Switched to `Cache-Control: no-store`.
+
+**Chores**
+* Local development workflow simplified: project-root `docker-compose.yml` replaces the prior wp-env setup. `docker compose up -d` from a fresh clone now produces correctly-named containers and runs first-boot setup automatically. Existing wp-env users are unaffected; the `.wp-env.json` config is retained.
 
 = 0.9.1 - 2026-05-04 =
 **Fixed**
