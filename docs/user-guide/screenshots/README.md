@@ -5,7 +5,8 @@ The PNG files in this folder are referenced from [`USER-GUIDE.md`](../USER-GUIDE
 | File | Source page | What it shows |
 |------|-------------|---------------|
 | `01-plugins-screen.png` | **Plugins → Installed Plugins** (filtered by "ai storefront") | The plugin row, active, with version and metadata. |
-| `02-enable-toggle.png` | **WooCommerce → AI Storefront → Overview** | Banner at top of the Overview tab with the Enable / Disable button. |
+| `02-disabled-state.png` | **WooCommerce → AI Storefront** (disabled) | Hero screen: headline, four AI agent chips, Enable button, and benefit cards. |
+| `02-enable-toggle.png` | **WooCommerce → AI Storefront → Overview** | Overview tab after enabling: stat cards and section nav. |
 | `03-overview-cards.png` | Same screen | The full row of stat cards (Products exposed, AI orders, Total orders, AI revenue, AI AOV, Top agent, Top agent share). |
 | `04-products-by-taxonomy.png` | **AI Storefront → Product Visibility** | "Products by category, tag, or brand" mode with category checkboxes and selected tokens visible. |
 | `05-products-selected.png` | Same screen | "Specific products only" mode with the product picker visible. |
