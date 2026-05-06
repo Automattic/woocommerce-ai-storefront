@@ -187,11 +187,13 @@ A toggle labeled **Other AI agents** controls whether unlisted crawlers can acce
 
 ### Rate limits
 
-A 2 × 2 card grid shows four preset options: Free, Light, Standard, and Custom. Select one to set how many AI commerce requests per minute each AI crawler can make before receiving HTTP 429. One request counts as one slot regardless of how many products are in the request (a catalog lookup for 50 products counts the same as a lookup for 1).
+A 2 × 2 card grid shows four preset options: **Recommended** (25/min), **Conservative** (10/min), **Generous** (100/min), and **Custom**. Select one to set how many AI commerce requests per minute each AI crawler can make before receiving HTTP 429. One request counts as one slot regardless of how many products are in the request (a catalog lookup for 50 products counts the same as a lookup for 1).
 
-Selecting **Custom** reveals a 120px input with `requests / min` suffix directly below the Custom card.
+Selecting **Custom** reveals an input with `requests / min` suffix directly below the Custom card.
 
 Rate limiting only affects AI crawlers (matched by user-agent). Regular customers, your storefront, and admin REST traffic are unaffected.
+
+![Discovery tab — AI agent list and rate limit cards](screenshots/06b-rate-limits.png)
 
 ### AI activity log
 
@@ -346,4 +348,4 @@ Correct behavior. The plugin removes its own block; what remains is WordPress's 
 
 ---
 
-*Covers AI Storefront 0.6.x. Screenshots taken from a stock WordPress 6.7 + WooCommerce 9.9 install. Your store may look slightly different depending on theme and admin color scheme.*
+*Covers AI Storefront 0.10.1. Screenshots taken from a stock WordPress 6.7 + WooCommerce 9.9 install. Your store may look slightly different depending on theme and admin color scheme.*

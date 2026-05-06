@@ -83,9 +83,15 @@ Each field added by the plugin, with the rule that controls its presence.
 A Schema.org `BuyAction` pointing to a URL the AI agent can use to send the shopper to checkout with that product pre-added.
 
 - **Always emitted** for purchasable products (not draft, not out of stock when stock management is on, has a price).
-- **`target` URL** is built from `$product->add_to_cart_url()` plus `utm_*` placeholders (`{agent}`, `{session}`) the AI agent substitutes at runtime per UCP convention.
+- **`target` URL** is built from `$product->add_to_cart_url()` plus `utm_*` placeholders (`{agent_id}`, `{session_id}`) the AI agent substitutes at runtime per UCP convention.
 - **`result.@type`** is always `Order` (Schema.org's expected result type for `BuyAction`).
 - **Source**: `add_buy_action()` (line ~108 in `class-wc-ai-storefront-jsonld.php`).
+
+#### Are the UTM placeholders actually filled in by AI agents?
+
+No — not today. JSON-LD is crawled and indexed offline; AI agents query their knowledge base at recommendation time, not the live page. The `{agent_id}` and `{session_id}` placeholders are stored verbatim in the crawler's index. No AI agent currently dynamically constructs purchase URLs from `BuyAction` `urlTemplate` at recommendation time (unlike `SearchAction`'s `{search_term}`, which Google does exercise for sitelinks search boxes).
+
+The placeholders are **aspirational**: they express a machine-readable intent that allows agents to attribute traffic and correlate sessions if a future agentic standard emerges for dynamic URL construction. There is no harm in leaving them in — crawlers store the template string as-is, no session data leaks, and no broken URLs reach browsers.
 
 ### `offers[0].inventoryLevel`
 
@@ -123,9 +129,17 @@ ISO 4217 currency code, normalized.
 - **Always emitted**. Inherits from WC core when present; otherwise plugin synthesizes from store settings.
 - **Defensive**: covers a WC core edge case where nested `priceSpecification[0].priceCurrency` was set but top-level `priceCurrency` wasn't.
 
-### `offers[0].seller.name`
+### `offers[0].seller`
 
-Store name, double-decoded for HTML entities.
+WooCommerce core emits `seller` as `{ "@type": "Organization", "name": "...", "url": "..." }`. The plugin does not change the `@type`.
+
+**Why `Organization` and not `OnlineStore`?**
+
+Schema.org allows `Person` or `Organization` (and any `Organization` subtype) as the `seller` value. `OnlineStore` is an `Organization` subtype and would be strictly more accurate — it is the same entity described in the store-level JSON-LD block. However, this field is owned by WC core's output pipeline; the plugin only post-processes `seller.name` (entity decoding, see below). Changing `@type` here would require overriding a core field that core may update independently.
+
+The current stance is to defer to core's `Organization` and leave `OnlineStore` refinement for a future pass — possibly when core itself adopts a more specific type, or when we have a clear signal from Google/schema.org validators that the `seller` subtype materially affects rich results. The `wc_ai_storefront_jsonld_product` filter is available for extensions that want to override it today.
+
+#### `offers[0].seller.name` — entity decoding
 
 - **Modification, not addition**: WC core sets this; the plugin double-decodes any HTML entities to ensure correct rendering when the store name contains characters like `'`, `&`, `<`.
 
