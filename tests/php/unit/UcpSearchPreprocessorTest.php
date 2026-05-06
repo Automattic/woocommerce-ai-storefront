@@ -662,11 +662,9 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( ') AND (', $result['where'] );
 	}
 
-	public function test_comma_separated_query_keeps_and(): void {
-		// "Hoodies, Belts" — comma is stripped by extract_search_terms(), leaving no
-		// " and " connector, so $has_and_connector is false and AND is used. This
-		// documents the current behaviour: comma-separated lists are not treated as
-		// multi-category OR queries.
+	public function test_comma_separated_query_joins_with_or(): void {
+		// "Hoodies, Belts" — comma is a multi-item connector just like "and"; both terms
+		// resolve to taxonomy → OR so each category's products are returned independently.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
@@ -681,7 +679,8 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
-		$this->assertStringContainsString( ') AND (', $result['where'] );
+		$this->assertMatchesRegularExpression( '/EXISTS.*OR.*EXISTS/is', $result['where'] );
+		$this->assertStringNotContainsString( ') AND (', $result['where'] );
 	}
 
 	public function test_three_way_and_query_all_matched_joins_with_or(): void {
