@@ -9,6 +9,28 @@
 
 ---
 
+## [0.10.2] – 2026-05-06
+
+### Fixes
+
+- **Comma-separated and "or"-connected multi-category searches now return results.** PR #316. Closes #315.
+  - Queries like `"Hoodies, Belts"` returned zero results because commas were stripped before the OR-vs-AND join decision, so the connector was never detected.
+  - The connector regex now also matches a comma followed by optional whitespace (`/\s+and\s+|,\s*/i`), treating spaced comma-lists the same as `and`-connected lists.
+  - `"Hat or Shoes"` now always OR-joins — `or` is an explicit choice, so the `$all_taxonomy_matched` guard (required for `and`/comma to prevent false positives on product-description queries like `"blue and hat"`) is bypassed.
+  - Known limitation: no-space commas (`"Hoodies,Belts"`) collapse to a single token in `extract_search_terms()` and still fall back to a title `LIKE` rather than an OR join.
+
+### Docs
+
+- **User guide refreshed for 0.10.1.** PR #317.
+  - All screenshots replaced with tight element-level captures at 640 px width; file sizes reduced 70–95%.
+  - New rate-limits screenshot (`06b-rate-limits.png`) added alongside the endpoint-info card.
+  - Rate-limit preset names corrected to match UI labels (Recommended / Conservative / Generous / Custom).
+  - Version footer updated to 0.10.1.
+- **Engineering ARCHITECTURE.md documents context-sensitive OR-join logic.** PR #316, #317, #318.
+  - Describes `$has_or_connector` / `$has_and_connector` / `$all_taxonomy_matched` interaction and the known no-space-comma limitation.
+
+---
+
 ## [0.10.1] – 2026-05-06
 
 ### Fixes
