@@ -9,6 +9,17 @@
 
 ---
 
+## [0.10.3] – 2026-05-06
+
+### Fixes
+
+- **No-space comma queries now resolve correctly.** PR #320. Closes #319.
+  - `"Hoodies,Belts"` (no space after comma) returned no results because `extract_search_terms()` silently dropped the comma, collapsing the pair into the single unresolvable token `"hoodiesbelts"`.
+  - Commas are now converted to spaces before the punctuation-drop pass — the same treatment as hyphens and slashes — so `"Hoodies,Belts"` extracts `["hoodies", "belts"]` and OR-joins when both terms resolve to taxonomy matches.
+  - Behaviour is now identical to the spaced-comma case `"Hoodies, Belts"`.
+
+---
+
 ## [0.10.2] – 2026-05-06
 
 ### Fixes
