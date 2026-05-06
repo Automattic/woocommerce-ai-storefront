@@ -58,13 +58,13 @@ Click **Enable AI Storefront**. The hero is replaced by the section nav (Overvie
 
 Enabling does five things:
 
-- Adds AI agent `Allow:` directives to `robots.txt`.
-- Publishes the Markdown store guide at `/llms.txt`.
-- Publishes the JSON manifest at `/.well-known/ucp`.
-- Enables enhanced JSON-LD on product pages.
-- Starts capturing AI-attributed orders into WooCommerce Order Attribution.
+- Tells AI crawlers where they're allowed to look on your store.
+- Publishes a text guide of your store at `/llms.txt` (visible to AI agents).
+- Publishes your store's business details at `/.well-known/ucp` (visible to AI agents).
+- Adds product details (prices, return policies, etc.) in a format AI agents understand.
+- Starts tracking which orders came from AI shopping assistants so you can see the results.
 
-To pause, click **Disable AI Storefront** at the bottom of the page. Discovery endpoints return 404, JSON-LD additions are removed, `robots.txt` reverts to the WordPress default. Captured order attribution stays in place.
+To pause, click **Disable AI Storefront** at the bottom of the page. AI agents will no longer be able to see your catalog endpoints, but existing order tracking remains in place.
 
 The Overview tab populates with stat cards once data flows in:
 
@@ -94,8 +94,8 @@ Before configuring anything else, take 30 seconds to confirm the endpoints are l
 | `https://your-store.com/llms.txt` | A plain-text Markdown document starting with `# Your Store Name`, with a category list and "How AI agents should link to products" section. |
 | `https://your-store.com/.well-known/ucp` | A pretty-printed JSON document in monospace. Top-level keys: `name`, `version`, `capabilities`, `payment_handlers`, `services`. |
 | `https://your-store.com/robots.txt` | The standard WordPress `robots.txt` plus a block of `User-agent: GPTBot` / `User-agent: ChatGPT-User` / etc. each with `Allow:` lines. |
-| Homepage → "View page source" | Search for `"@type":"OnlineStore"`. This is your store's brand-identity card, surfaced for AI shopping agents. See [section 4a](#4a-what-the-homepage-publishes-to-ai-agents). |
-| Any product page → "View page source" | Search for `"@type":"Product"`. Look for a `BuyAction` block, an `offers` array with prices, and (once you set one in [section 7](#7-set-your-return-policy)) `hasMerchantReturnPolicy`. |
+| Homepage → "View page source" | Search for `"@type":"OnlineStore"`. This is your store's brand info available to AI shopping agents. See [section 4a](#4a-what-the-homepage-publishes-to-ai-agents). |
+| Any product page → "View page source" | Search for `"@type":"Product"`. You should see product details like prices and (once you set one in [section 7](#7-set-your-store-policies)) return policy information. |
 
 The Discovery tab shows the same URLs as clickable links with reachability dots. URLs render in monospace font:
 
@@ -113,28 +113,28 @@ Natural-language search queries match against your product categories, tags, bra
 
 ### 4a. What the homepage publishes to AI agents
 
-Your homepage now includes a JSON-LD `OnlineStore` block. AI shopping agents and search engines use this to verify your brand identity and link your manifest data to a recognizable entity.
+Your homepage now publishes your store's brand details (name, logo, address, contact) in a format that AI agents understand. AI shopping assistants use this info to confirm they're recommending the right store.
 
 | Field | Source | Notes |
 |-------|--------|-------|
-| `name`, `description`, `url` | WordPress Site Settings | Edit at **Settings → General**. |
-| `currenciesAccepted` | WooCommerce currency setting | Edit at **WooCommerce → Settings → General**. |
-| `logo` | WP Custom Logo (preferred) or Site Icon (fallback) | Edit at **Appearance → Customize → Site Identity**. Omitted if neither is set. |
-| `address` | WooCommerce Store Address | Edit at **WooCommerce → Settings → General**. Built from city, region, postcode, and country. |
-| `contactPoint.email` | Two-stage from WooCommerce email settings | See **Customer service email** below. |
-| `potentialAction` (search) | Auto-generated | Lets agents search your store with `?s=...&post_type=product`. |
-| `hasOfferCatalog` | Auto-generated | A summary of your top product categories. |
+| Store name, description, URL | WordPress Site Settings | Edit at **Settings → General**. |
+| Currency | WooCommerce setting | Edit at **WooCommerce → Settings → General**. |
+| Logo | Site logo or icon | Edit at **Appearance → Customize → Site Identity**. Used if set. |
+| Address | Store location | Edit at **WooCommerce → Settings → General**. Shows city, state, zip, country only. |
+| Email | Your WooCommerce email | See **Customer service email** below. |
+| Search | Auto-generated | Lets AI agents search your store. |
+| Categories | Auto-generated | A summary of your main product types. |
 
-**About the address.** Only city, region (state/province), postcode, and country are published. Your **street address is intentionally NOT included** in the JSON-LD, even when you have one set in WooCommerce settings. This is a privacy and safety choice: many small Woo merchants use a home address for tax-calculation purposes and don't expect it to appear in machine-readable form. City + region + postcode + country preserve everything an AI agent needs (jurisdiction, shipping origin, fraud-check) without leaking a residential address.
+**About the address.** Only your city, state, zip, and country are published to AI agents. Your street address is intentionally hidden for privacy and safety — if you use your home address for tax purposes, it stays private.
 
-**Customer service email.** The plugin chooses one of two WooCommerce email settings, in this order:
+**Customer service email.** The plugin uses your WooCommerce email settings in this order:
 
-1. **Reply-to address** at **WooCommerce → Settings → Emails → Sender options**, *if* you've enabled the "Reply-to" toggle. This is WooCommerce's purpose-built field for "where customers should reach me."
-2. **From address** at the same screen, as a fallback. Skipped if it looks like a noreply address (starts with `noreply`, `no-reply`, `donotreply`, or `do-not-reply`, with or without a `+tag` suffix). Many merchants set their From to a noreply address to avoid bounce-handling, which means publishing it as a customer contact would route real questions into a black hole.
+1. **Reply-to address** at **WooCommerce → Settings → Emails → Sender options**, if enabled. This is your customer-contact email.
+2. **From address** as a backup, unless it's a noreply address (the plugin skips those to avoid routing messages into black holes).
 
-The plugin **never** publishes your WordPress admin email as a public contact. If neither of the WooCommerce email settings produces a usable address, the `contactPoint` block is omitted entirely.
+The plugin never publishes your WordPress admin email as a public contact. If neither address works, the email contact is omitted entirely.
 
-**Phone and social profiles** are not published by this plugin. WooCommerce doesn't store either, and ecosystem plugins (Jetpack, Yoast, etc.) typically own that capture. Developers can inject these fields via the `wc_ai_storefront_jsonld_store` filter (see the engineering reference in `docs/engineering/HOOKS.md`).
+**Phone and social profiles** are not published by this plugin. If you want to add them, other plugins (like Jetpack or Yoast) can help with that.
 
 ---
 
@@ -160,7 +160,7 @@ The **Visibility** tab controls what AI agents can see. Three modes:
 
 ![Visibility tab, specific products mode](screenshots/05-products-selected.png)
 
-Visibility applies consistently across `/llms.txt`, the UCP catalog endpoints, and JSON-LD on product pages. Excluded products cannot be returned by an AI agent's catalog query; exclusion is enforced at the data layer, not by hiding links.
+Visibility settings apply everywhere: your store guide, your catalog endpoints, and product details. Excluded products won't show up when AI agents search your catalog.
 
 ### Catalog access
 
@@ -184,33 +184,33 @@ The crawler list groups 18+ AI bots into three collapsible sections, each with a
 - **Training crawlers**: feed AI providers' training corpora. Default: **on**. Letting your catalog inform model updates is generally good for long-tail product discovery.
 - **Test/validation crawlers**: for protocol-compliance tools like UCPPlayground. Default: **off**.
 
-Unchecking adds a `Disallow:` directive for that user-agent. This is a cooperative protocol; well-behaved crawlers respect it; malicious bots ignore robots.txt entirely (and don't make purchase recommendations either).
+Unchecking tells that crawler to stop. Most legitimate AI crawlers will respect this; malicious bots typically ignore it anyway.
 
 A toggle labeled **Other AI agents** controls whether unlisted crawlers can access your store. When checked, AI agents whose brand isn't in the list can access your store.
 
 ### Rate limits
 
-A 2 × 2 card grid shows four preset options: **Recommended** (25/min), **Conservative** (10/min), **Generous** (100/min), and **Custom**. Select one to set how many AI commerce requests per minute each AI crawler can make before receiving HTTP 429. One request counts as one slot regardless of how many products are in the request (a catalog lookup for 50 products counts the same as a lookup for 1).
+A 2 × 2 card grid shows four preset options: **Recommended** (25 per minute), **Conservative** (10 per minute), **Generous** (100 per minute), and **Custom**. Select one to set how many times per minute each AI crawler can look up your products before being temporarily blocked.
 
-Selecting **Custom** reveals an input with `requests / min` suffix directly below the Custom card.
+Selecting **Custom** reveals an input box directly below where you can set your own limit.
 
-Rate limiting only affects AI crawlers (matched by user-agent). Regular customers, your storefront, and admin REST traffic are unaffected.
+Rate limiting only affects AI crawlers. Your regular shoppers and store experience are unaffected.
 
 ![Discovery tab — AI agent list and rate limit cards](screenshots/06b-rate-limits.png)
 
 ### AI activity log
 
-The Discovery tab includes a visibility section that surfaces what AI crawlers are actually doing on your store. The plugin records every identified AI-agent request that hits your discovery endpoints (llms.txt, the UCP manifest, the UCP API, robots.txt, and the Store API) into a private log on your own database. Nothing is sent off-site.
+The Discovery tab shows what AI crawlers are actually doing on your store. The plugin records every AI request to your catalog endpoints in a private log on your own server — nothing leaves your site.
 
 The period selector at the top (Day / Week / Month / Quarter) drives all three cards:
 
-- **Top searches.** The most common search phrases AI agents have asked for, with the agents that issued each one. If you see "running shoes" but you don't sell shoes, that's a signal an AI is sending the wrong shoppers your way; if you see "hoodies" and you sell hoodies but not enough are showing, you may want to check that your hoodies category is named conventionally.
+- **Top searches.** The most common product searches AI agents have asked for. If you see "running shoes" but don't sell shoes, the AI may be sending you the wrong shoppers. If you see "hoodies" and sell them but don't see many impressions, check that your category name matches what customers search for.
 - **Products seen.** A sampled list of products that have been returned to AI agents in the period, with the count of how many times each was surfaced.
 - **Per-agent breakdown.** Total requests grouped by AI brand (ChatGPT, Perplexity, Gemini, etc.). Useful for noticing when a new crawler starts visiting your store.
 
-There's nothing to configure. Data starts populating from the moment you enable the plugin. Raw events are kept for 30 days; aggregated daily counts are kept for 90 days. There is no option to extend retention; if you need long-term analytics, treat this as a "what changed last quarter" tool, not a permanent dashboard.
+Data starts populating automatically once you enable the plugin. Detailed event logs are kept for 30 days; summary counts are kept for 90 days. Use this log to spot trends and problems, not as permanent storage.
 
-Stats refresh on every rollup run (hourly by default), so today's traffic appears in the dashboard within one rollup cycle of occurring. On upgrade the plugin automatically migrates any pre-existing cron event to the new cadence, so no manual steps are needed.
+Stats update hourly, so today's AI traffic appears in the dashboard within an hour of occurring.
 
 ### Revisit cadence
 
@@ -225,15 +225,15 @@ The **Policies** tab publishes structured signals that AI agents read when decid
 
 ### Return & refund policy
 
-AI agents that surface your products often try to display return windows inline ("Free returns for 30 days").
+When AI agents recommend your products, they often tell customers about your return window ("Free returns for 30 days"). This section controls what they say.
 
 ![Return & refund policy section](screenshots/07-policies-tab.png)
 
 Three modes:
 
-- **Not configured** *(default)*. No JSON-LD return policy is published. Use when your policy is too complex to summarize and you'd rather link to a dedicated returns page.
-- **Returns accepted.** Specify window in days, who pays return fees, accepted return methods. Emits as Schema.org `MerchantReturnPolicy`.
-- **Final sale.** Declares no returns. Same Schema.org markup, with the appropriate flag.
+- **Not configured** *(default)*. AI agents won't mention a return policy. Use when your policy is complex and you'd rather AI agents link to your dedicated returns page.
+- **Returns accepted.** Tell AI agents how many days customers have to return items, who pays for shipping, and what methods you accept.
+- **Final sale.** Tell AI agents that items cannot be returned.
 
 You can also link to an existing returns/refunds page from the dropdown. This is useful when the policy already lives on a customer-facing page.
 
@@ -245,27 +245,26 @@ Some merchants have a generally returnable catalog with specific final-sale item
 
 ### Shipping: handling time
 
-AI agents that compare products often surface shipping timelines ("Ships in 1–2 business days"). The **Shipping** card lets you declare your order handling time so agents can read it as structured data rather than guessing from free-text descriptions.
+AI agents often tell shoppers "Ships in 1–2 business days" when recommending your products. This section lets you specify your actual handling time.
 
 ![Shipping handling time section](screenshots/07b-handling-time.png)
 
-Set **Minimum** and **Maximum** business days using the stepper inputs (0–365). When both are greater than 0, the plugin emits a `handlingTime` block under `OfferShippingDetails` in the product JSON-LD.
+Set **Minimum** and **Maximum** business days using the number inputs. This is how long you need to pack and ship an order.
 
-- Leave both at **0** (default) to omit handling time from structured data entirely.
-- If you set max below min, max is automatically raised to match min.
-- A live preview beneath the inputs shows the would-be structured-data shape so you can verify before saving.
+- Leave both at **0** (default) to skip this info.
+- If you set max below min, it automatically adjusts to match min.
+- A live preview below shows what AI agents will see.
 
-> **Note:** Handling time reflects how long it takes to pack and dispatch, not total transit time. Transit time depends on the carrier and destination and is not currently modeled.
+> **Note:** Handling time is how long you need to pack and ship. Transit time (carrier and destination) is not included here.
 
 ---
 
 ## 8. Read attribution stats
 
-When a shopper completes a purchase via an AI-agent link, WooCommerce captures three things on the order:
+When a shopper finds your store through an AI assistant and makes a purchase, WooCommerce automatically records:
 
-- The agent's hostname (e.g. `chatgpt.com`), stored as `utm_source`.
-- `utm_medium=referral` and `utm_id=woo_ucp`: the signals AI Storefront uses to identify the order as AI-referred.
-- A session correlation ID (`ai_session_id`): useful for debugging; not personally identifying.
+- Which AI agent sent them (ChatGPT, Gemini, etc.).
+- A session ID to track the interaction (not personally identifying).
 
 ### Reachability check
 
@@ -273,7 +272,7 @@ The Discovery tab shows a reachability indicator in the card intro. The note "Re
 
 ### Where to see it
 
-**WooCommerce Orders list.** Open **WooCommerce → Orders**. The built-in **Origin** column shows the agent hostname (`Source: Chatgpt.com`, `Source: Gemini.google.com`, `Source: Ucpplayground.com`) for AI-referred orders. Non-AI orders show `Direct`, `Unknown`, or the standard referring source.
+**WooCommerce Orders list.** Open **WooCommerce → Orders**. The **Origin** column shows which AI agent sent the customer (ChatGPT, Gemini, etc.). Non-AI orders show `Direct`, `Unknown`, or the standard source.
 
 ![WooCommerce Orders list with Origin column](screenshots/10-orders-origin.png)
 
@@ -281,7 +280,7 @@ The Discovery tab shows a reachability indicator in the card intro. The note "Re
 
 ![Overview tab per-agent stat cards](screenshots/11-per-agent-stats.png)
 
-**Recent AI Orders table** (Overview tab). The most recent AI-attributed orders with order number, customer, date, status, items, agent, and total. Clicking the order number opens the WC order edit screen. Clicking a customer name opens the WooCommerce orders list filtered to that customer. Search, column-sort, and pagination work server-side, so the table fetches only the current page and large order volumes don't slow the Overview tab. Filters by **agent** and by **status** narrow the result set without leaving the table. Table preferences (rows per page, column visibility, sort order, and density) are saved in the browser and restored on your next visit.
+**Recent AI Orders table** (Overview tab). Shows your latest orders from AI referrals: order number, customer, date, status, items, which agent sent them, and total. Click an order number to see full details. Click a customer name to see all their orders. You can filter by agent or status, search, sort columns, and adjust the table view. Your table preferences are saved.
 
 ![Recent AI Orders table](screenshots/12-recent-ai-orders.png)
 
@@ -289,11 +288,10 @@ The Discovery tab shows a reachability indicator in the card intro. The note "Re
 
 The plugin does not record:
 
-- Shopper identity beyond what WooCommerce already captures at checkout (name, email).
-- The shopper's conversation with the AI agent.
-- Cross-device or cross-session journey data.
+- The customer's conversation with the AI agent (only that they came from one).
+- Cross-device or cross-session journeys (only the final click).
 
-For multi-touch journey attribution, pair this plugin with an analytics tool that reads WooCommerce's order-attribution meta. That's the supported integration point.
+If you want deeper multi-touch attribution, use an analytics tool that reads WooCommerce's order data.
 
 ---
 
@@ -303,11 +301,11 @@ Day-to-day maintenance is minimal.
 
 **Weekly (5 min).** Glance at the Overview tab. Sudden drops in AI orders usually mean an agent revised its crawl policy or `robots.txt` changed. If one agent dominates, dig into how that agent surfaces your products.
 
-**Monthly (10 min).** Re-verify the four endpoint URLs from [section 4](#4-verify-your-discovery-endpoints). Hosting, CDN, and security plugin changes can break virtual URLs. Review your visibility scope.
+**Monthly (10 min).** Re-verify the four endpoint URLs from [section 4](#4-verify-your-discovery-endpoints). Security plugins or CDN changes can sometimes block them. Review your visibility scope too.
 
 **After major changes.** Re-verify endpoints after a WordPress core update, a WooCommerce major version update, switching themes, installing or updating a security plugin (some block `/.well-known/` by default; allow-list `/.well-known/ucp` if so), or migrating hosts.
 
-**Plugin updates.** AI Storefront ships frequent updates while the protocol is evolving. Each release has a CHANGELOG entry; review before updating in production. 0.x.y updates are backwards-compatible; a major version bump (e.g. 0.x → 1.0) will be called out explicitly with migration notes.
+**Plugin updates.** AI Storefront updates often as the AI discovery protocol evolves. Check the CHANGELOG before updating. Version 0.x updates are backwards-compatible with your settings; a version 1.0 bump will include a migration guide.
 
 ---
 
@@ -315,23 +313,34 @@ Day-to-day maintenance is minimal.
 
 ### `/llms.txt` returns 404
 
-Permalinks need flushing. Go to **Settings → Permalinks**, click **Save Changes** without changing anything, reload `/llms.txt`. If still 404, check the plugin is enabled. Paused means 404 by design.
+Permalinks need flushing. Go to **Settings → Permalinks** and click **Save Changes** (don't change anything, just save). Then reload `/llms.txt`. If still 404, check the plugin is enabled (it must be active, not paused).
 
 ### `/.well-known/ucp` returns 404 but `/llms.txt` works
 
-A security or hardening plugin is blocking `/.well-known/`. Allow-list `/.well-known/ucp` in its rules.
+A security plugin is blocking `/.well-known/`. Add `/.well-known/ucp` to its allow list.
 
 ### JSON-LD doesn't include the BuyAction
 
-A theme or page-builder is overriding WooCommerce's `wp_head` hooks. Switch to Storefront temporarily to confirm; then either contact the theme developer or pick a theme that respects WC's structured-data hooks.
+Your theme or page builder may be overriding WooCommerce's product details. Try switching to the Storefront theme temporarily to confirm. If that works, contact your theme developer or try a different theme.
 
 ### AI agents say they can't find your store
 
-Most likely the store has been live for less than 24 hours, or `robots.txt` blocks the agent's user-agent, or your `WordPress Address (URL)` in **Settings → General** doesn't match the public hostname. Wait 24–48 hours; check the Discovery tab; confirm the URLs match; visit `/llms.txt` from a fresh browser session.
+Check these in order:
+
+1. Wait 24–48 hours (AI crawlers take time to discover new stores).
+2. Look at the Discovery tab to see if any crawlers are allowed and working.
+3. Check that your store's public URL in **Settings → General** matches the address you're testing from.
+4. Visit `/llms.txt` from a fresh browser session to confirm it's live.
 
 ### Stats are zero after a week
 
-Confirm "Products exposed" > 0 on the Overview tab, at least one live-browsing crawler is checked on the Discovery tab, and the four endpoints from section 4 verify. Discovery is asynchronous; consumer-facing AI traffic is the lagging signal.
+Check:
+
+1. The Overview tab shows "Products exposed" > 0.
+2. At least one live-browsing crawler is enabled on the Discovery tab.
+3. The four URLs from [section 4](#4-verify-your-discovery-endpoints) all work.
+
+If all are okay, AI traffic may still be building. AI agents cache your catalog, so it can take a week or more for real orders to appear.
 
 ### Orders show up as AI-attributed when they shouldn't
 
@@ -339,7 +348,7 @@ A team member tested with a real AI assistant and clicked through. The attributi
 
 ### `robots.txt` looks empty after disabling
 
-Correct behavior. The plugin removes its own block; what remains is WordPress's default (`User-agent: *` + `Disallow: /wp-admin/`).
+That's normal. The plugin removes its own instructions; what's left is just WordPress's standard settings (blocking the admin area).
 
 ---
 
