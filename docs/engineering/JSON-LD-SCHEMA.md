@@ -9,7 +9,7 @@ Two distinct JSON-LD blocks:
 | Surface | Block | Location | Source |
 |---------|-------|----------|--------|
 | Product page (single product) | Enhanced `Product` | Inside the `<head>` via `wp_head`, layered on top of WooCommerce core's existing `Product` block | [`includes/ai-storefront/class-wc-ai-storefront-jsonld.php`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) `enhance_product_data()` |
-| Store homepage | `Store` | Inside the `<head>` via `wp_head`, only on the front page when the plugin is enabled | Same file, `output_store_jsonld()` |
+| Store homepage / shop page | `OnlineStore` (an `Organization` subtype, since 0.10.0; previously `Store`) | Inside the `<head>` via `wp_head`, on `is_front_page() || is_shop()` when the plugin is enabled | Same file, `output_store_jsonld()` |
 
 Both blocks emit only when the plugin is enabled (`enabled === 'yes'` in `wc_ai_storefront_settings`). Disabling the plugin removes the markup entirely; the underlying WooCommerce core JSON-LD (basic Product, Offer, AggregateRating) continues to render unchanged.
 
@@ -166,32 +166,84 @@ Schema.org `MerchantReturnPolicy` describing return rules.
   - `returnMethod`: same allow-list defense (`ReturnByMail`, `ReturnInStore`, `ReturnAtKiosk`).
 - **Source**: `add_return_policy()` (line ~356) and `build_return_policy_block()` (line ~559).
 
-## Store homepage: Store schema
+## Store homepage: OnlineStore schema
 
-A separate JSON-LD block emitted only on the front page (when `is_front_page()` is true) and only when the plugin is enabled.
+A separate JSON-LD block emitted on the front page or shop page (`is_front_page() || is_shop()`) when the plugin is enabled.
+
+The `@type` is `OnlineStore` (a Schema.org `Organization` subtype). Prior to 0.10.0 this was `Store` (a `LocalBusiness`/`Place` subtype), which doesn't satisfy AI-readiness audits looking for `Organization`-shaped brand entities. `OnlineStore` is the most accurate type for a Woo storefront and inherits all the descriptive fields (`name`, `url`, `description`) that `Store` carried.
 
 ```jsonc
 {
-  "@context": "https://schema.org/",
-  "@type": "Store",
-  "@id": "https://yourstore.example.com/#store",
+  "@context": "https://schema.org",
+  "@type": "OnlineStore",
   "name": "Your Store",
+  "description": "Your store's tagline / blog description",
   "url": "https://yourstore.example.com/",
-  "image": "https://yourstore.example.com/wp-content/uploads/.../logo.png",
   "currenciesAccepted": "USD",
-  "paymentAccepted": "Credit Card, PayPal",
-  "areaServed": "US",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": {
+      "@type": "EntryPoint",
+      "urlTemplate": "https://yourstore.example.com/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=woo_ucp"
+    },
+    "query-input": "required name=search_term"
+  },
+  "hasOfferCatalog": {
+    "@type": "OfferCatalog",
+    "name": "Products",
+    "itemListElement": [
+      // Top-level categories with product counts; built by get_catalog_summary().
+      // Empty categories (zero exposed products) are omitted.
+    ]
+  },
 
-  // Catalog summary (top categories with product counts)
-  "department": [
-    { "@type": "Store", "name": "Clothing", "numberOfItems": 14 },
-    { "@type": "Store", "name": "Accessories", "numberOfItems": 5 },
-    { "@type": "Store", "name": "Decor", "numberOfItems": 1 }
-  ]
+  // Identity fields (since 0.10.0). Each is omit-when-empty: a merchant
+  // who has no logo, no WC base country, and no usable email gets none of
+  // these keys.
+  "logo": "https://yourstore.example.com/wp-content/uploads/.../brand.png",
+  "address": {
+    "@type": "PostalAddress",
+    "addressCountry": "US",
+    "addressLocality": "Springfield",
+    "addressRegion":   "IL",
+    "postalCode":      "62701"
+    // Note: streetAddress is intentionally NEVER emitted. See "Identity
+    // field sourcing" below.
+  },
+  "contactPoint": {
+    "@type":       "ContactPoint",
+    "contactType": "Customer Service",
+    "email":       "support@yourstore.example.com"
+  }
 }
 ```
 
-The `department` array is built by `get_catalog_summary()` and respects the plugin's product visibility setting -- categories with zero exposed products are omitted.
+### Identity field sourcing
+
+All three identity fields are auto-sourced from existing WP/WC data. There are **no plugin-owned settings** for these — the plugin reads what's already configured at the platform level.
+
+| Field | Source | Omit-when-empty rule |
+|-------|--------|----------------------|
+| `logo` | WP custom-logo theme mod (`get_theme_mod( 'custom_logo' )` → resolved via `wp_get_attachment_image_src`), with `get_site_icon_url()` as fallback. | Omitted when neither is set. Avoids publishing the default WP favicon as a brand mark. |
+| `address.addressCountry` | `WC()->countries->get_base_country()`. | The whole `address` block is omitted when country is empty (the minimum viable address signal). |
+| `address.addressLocality` / `addressRegion` / `postalCode` | `WC()->countries->get_base_city()` / `get_base_state()` / `get_base_postcode()`. | Each sub-key is omitted when WC has no value. |
+| `address.streetAddress` | **NEVER emitted.** Not even when WC has the street address populated (`get_base_address()` / `get_base_address_2()`). | See "Why streetAddress is suppressed" below. |
+| `contactPoint.email` | Two-stage: (1) `woocommerce_email_reply_to_address` when `woocommerce_email_reply_to_enabled === 'yes'`, (2) `woocommerce_email_from_address` as fallback (rejected when local-part is a noreply pattern). | The whole `contactPoint` block is omitted when neither stage produces a usable address. **Never** falls back to `admin_email`. |
+
+### Why streetAddress is suppressed
+
+For an `OnlineStore` (vs. a `LocalBusiness`), street address has low signal value: buyers transact remotely and don't visit. But the privacy/safety risk is real — many small Woo merchants populate WooCommerce > Settings > General with their home address (the field is required at WC setup so tax calculations work) and don't realize that saving it would publish the address in machine-readable form on the homepage's JSON-LD. By emitting only `addressLocality`, `addressRegion`, `postalCode`, and `addressCountry`, we preserve every meaningful identity signal (jurisdiction, shipping origin, fraud-check disambiguation) without leaking a residential address. `build_postal_address()` in the emitter doesn't even read `get_base_address()` or `get_base_address_2()` — even a future filter that wants to re-emit street would have to source it independently.
+
+### Why the email resolver has a noreply guard
+
+WC's "From" address is often set to `noreply@store.com` to avoid bounce-handling on outgoing transactional emails. Publishing that as `contactPoint.email` would route legitimate customer questions into a black hole. The `is_noreply_email()` heuristic matches the four canonical noreply local-parts (`noreply`, `no-reply`, `donotreply`, `do-not-reply`) case-insensitively, including their RFC 5233 plus-addressing variants (`noreply+orders@…`, `do-not-reply+billing@…`) which route to the same underlying mailbox at most providers. Local-part-only matching prevents false positives on legitimate mailboxes hosted on a `noreply.*` subdomain (e.g. `support@noreply.example.com` stays publishable). The guard only applies to the From-address fallback path; the merchant's explicit reply-to address (when enabled in WC settings) is trusted as-is.
+
+### What this plugin does NOT emit
+
+- **`sameAs`** (social profile URLs). WC has no canonical storage for these; ecosystem plugins (Jetpack Social, Yoast Knowledge Graph, etc.) own the merchant capture and can inject via the `wc_ai_storefront_jsonld_store` filter. See [`HOOKS.md`](HOOKS.md) for a worked example.
+- **`contactPoint.telephone`**. Same reason: WC has no phone option, so the plugin can't auto-source. Plugins that capture a merchant phone number can inject via the same filter.
+
+The `hasOfferCatalog.itemListElement` is built by `get_catalog_summary()` and respects the plugin's product visibility setting — categories with zero exposed products are omitted.
 
 ## Public filters
 
