@@ -156,7 +156,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/ai-storefront/class-wc-ai-storefront-attribution.php` | DATA-MODEL.md, UCP-BUY-FLOW.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-ucp.php` | API-REFERENCE.md, UCP-BUY-FLOW.md, CART-MODELS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-llms-txt.php` | ARCHITECTURE.md, HOOKS.md |
-| `includes/ai-storefront/class-wc-ai-storefront-jsonld.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md |
+| `includes/ai-storefront/class-wc-ai-storefront-jsonld.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md, JSON-LD-SCHEMA.md |
 | `includes/ai-storefront/class-wc-ai-storefront-robots.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php` | ARCHITECTURE.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-cache-invalidator.php` | DATA-MODEL.md, ARCHITECTURE.md |
@@ -173,6 +173,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `package.json` | TESTING.md, RELEASE.md |
 | `phpcs.xml.dist`, `phpstan.neon.dist` | TESTING.md |
 | `.github/workflows/**` | TESTING.md, RELEASE.md |
+| `docker-compose.yml`, `bin/local-dev-bootstrap.sh` | AGENTS.md (Local development section) |
 
 If you add a code file outside this map, add a row to both this table and the workflow YAML so the autonomous docs-followup picks it up.
 

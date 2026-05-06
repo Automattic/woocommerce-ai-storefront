@@ -38,7 +38,7 @@ add_filter( 'wc_ai_storefront_jsonld_product', function( $markup, $product, $set
 
 ### `wc_ai_storefront_jsonld_store`
 
-Filter the store-level JSON-LD emitted on the homepage and shop page.
+Filter the store-level JSON-LD emitted on the homepage and shop page (Schema.org `OnlineStore`, an `Organization` subtype). The filter receives the fully-assembled structure including auto-sourced identity fields (`logo`, `address`, `contactPoint.email`) so plugins can layer extra identity claims without re-implementing the WP/WC reads.
 
 ```php
 apply_filters( 'wc_ai_storefront_jsonld_store', array $store_data, array $settings );
@@ -46,12 +46,58 @@ apply_filters( 'wc_ai_storefront_jsonld_store', array $store_data, array $settin
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `$store_data` | `array` | The Schema.org `OnlineStore` structure (name, url, sameAs, etc.). |
+| `$store_data` | `array` | The Schema.org `OnlineStore` structure (`@type`, `@context`, `name`, `description`, `url`, `currenciesAccepted`, `potentialAction`, `hasOfferCatalog`, plus optionally `logo`, `address`, `contactPoint`). |
 | `$settings` | `array` | A minimal 3-key subset of the plugin's settings: `enabled`, `product_selection_mode`, `return_policy`. Security-sensitive fields are intentionally excluded (same subset as `wc_ai_storefront_jsonld_product`). |
 
 **Returns:** modified `array`.
 
-**When to use:** add organization-level metadata that AI agents read once per crawl — `sameAs` social profiles, `contactPoint`, `address`, regional `inLanguage`, etc.
+**When to use:** add organization-level metadata that AI agents read once per crawl. The plugin **does not** capture `sameAs` (social profiles) or `contactPoint.telephone` itself, because neither has a canonical WP/WC source — ecosystem plugins (Jetpack, Yoast, custom merchant code) own that capture and inject via this filter.
+
+**Common pattern: injecting social profiles.** Plugins that already manage merchant social URLs (Jetpack's "Social Profiles" module, Yoast's "Knowledge Graph" config, etc.) can publish them as `sameAs` in one filter:
+
+```php
+add_filter( 'wc_ai_storefront_jsonld_store', function ( array $store_data, array $settings ): array {
+    // Replace with whatever your plugin / theme exposes:
+    $profiles = array_filter( [
+        get_option( 'my_plugin_twitter_url' ),
+        get_option( 'my_plugin_instagram_url' ),
+        get_option( 'my_plugin_linkedin_url' ),
+    ] );
+
+    if ( ! empty( $profiles ) ) {
+        $store_data['sameAs'] = array_values( $profiles );
+    }
+
+    return $store_data;
+}, 10, 2 );
+```
+
+**Common pattern: injecting a phone number.** Schema.org allows partial `ContactPoint` blocks, so plugins can extend an existing `contactPoint` (added by the plugin from the WC reply-to/from email resolver) with a `telephone` key — or add a fresh `contactPoint` if none exists:
+
+```php
+add_filter( 'wc_ai_storefront_jsonld_store', function ( array $store_data, array $settings ): array {
+    $phone = get_option( 'my_plugin_support_phone' );
+    if ( empty( $phone ) ) {
+        return $store_data;
+    }
+
+    if ( isset( $store_data['contactPoint'] ) ) {
+        // Plugin already emitted contactPoint.email from WC settings;
+        // we add telephone alongside it.
+        $store_data['contactPoint']['telephone'] = $phone;
+    } else {
+        $store_data['contactPoint'] = [
+            '@type'       => 'ContactPoint',
+            'contactType' => 'Customer Service',
+            'telephone'   => $phone,
+        ];
+    }
+
+    return $store_data;
+}, 10, 2 );
+```
+
+**What you should NOT add via this filter.** `streetAddress` is deliberately suppressed by the plugin — for an `OnlineStore` (vs. a `LocalBusiness`) the field has low signal value but real privacy risk (many merchants populate WC Settings with their home address for tax purposes and don't expect it published). Re-injecting `streetAddress` via this filter undoes that privacy guard. If a merchant actually wants their street address published, they should configure that through a plugin that explicitly asks them to opt in.
 
 ### `wc_ai_storefront_ucp_manifest`
 
