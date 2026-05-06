@@ -99,23 +99,27 @@ if ! command -v php >/dev/null 2>&1; then
 	exit 0
 fi
 
-# Snapshot the .pot's checksum BEFORE the regen so we can detect
-# whether the regen actually changed it. Using `php -r` instead of
-# `shasum -a 256` because shasum isn't ubiquitous (some Linux distros
-# only ship `sha256sum`); since PHP is already a hard dependency for
-# the make-pot.sh invocation below, leveraging it for the checksum
-# avoids an additional cross-distro portability problem.
+# Snapshot the .pot's meaningful content BEFORE the regen.
+# `wp i18n make-pot` always writes a fresh POT-Creation-Date timestamp,
+# so a raw file checksum would flag every commit as "drifted" even when
+# no translatable string or line reference changed. We strip that header
+# line before hashing so only real msgid/line-ref changes are detected.
 POT="languages/woocommerce-ai-storefront.pot"
-checksum() {
+content_checksum() {
 	local f="$1"
 	if [ -f "${f}" ]; then
-		php -r "echo hash_file('sha256', '${f}');"
+		grep -v '^"POT-Creation-Date:' "${f}" \
+			| php -r "echo hash('sha256', file_get_contents('php://stdin'));"
 	else
 		echo ""
 	fi
 }
 
-before=$(checksum "${POT}")
+# Also remember the existing timestamp so we can restore it if the
+# regen produces no meaningful change (only the timestamp differs).
+old_timestamp=$(grep '^"POT-Creation-Date:' "${POT}" 2>/dev/null || true)
+
+before=$(content_checksum "${POT}")
 
 # Run the regen. Suppress its stdout (it's a one-line "wrote..."
 # success message) but propagate stderr so real errors surface.
@@ -125,17 +129,21 @@ if ! ./bin/make-pot.sh >/dev/null; then
 	exit 1
 fi
 
-after=$(checksum "${POT}")
+after=$(content_checksum "${POT}")
 
 if [ "${before}" = "${after}" ]; then
-	# No drift — common case for edits that didn't shift any
-	# translatable string's line number (e.g. comment-only changes
-	# inside a function that has no `__()` calls).
+	# Only the POT-Creation-Date timestamp changed — restore the old
+	# value so the committed file stays byte-identical to HEAD and no
+	# spurious .pot diff lands in the PR.
+	if [ -n "${old_timestamp}" ]; then
+		# Use perl for in-place substitution: it's available everywhere
+		# PHP is and handles the replacement without temp-file gymnastics.
+		perl -i -pe "s|^\"POT-Creation-Date:.*|${old_timestamp}|" "${POT}"
+	fi
 	exit 0
 fi
 
-# .pot drifted. Auto-stage the regen so it lands in this commit.
-# This pattern matches what `prettier --write` and `eslint --fix`
-# pre-commit hooks do — auto-fix and re-stage rather than abort.
+# Real drift (msgids or line refs changed). Auto-stage the regen so it
+# lands in this commit — mirrors what `prettier --write` hooks do.
 git add "${POT}"
-echo "pre-commit: regenerated ${POT} (line refs drifted) — staged for this commit." >&2
+echo "pre-commit: regenerated ${POT} (msgids/line refs drifted) — staged for this commit." >&2
