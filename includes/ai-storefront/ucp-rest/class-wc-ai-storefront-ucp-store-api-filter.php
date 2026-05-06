@@ -510,7 +510,16 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			}
 		}
 
-		$args['where'] .= ' AND ( ' . implode( ' AND ', $per_term ) . ' )';
+		// "Hoodies and Belts" lists two distinct categories; "blue hat" refines one.
+		// When the raw query contains a literal " and " connector AND every extracted
+		// term resolved to a taxonomy match, treat the terms as alternatives (OR).
+		// If any term is unresolved (title-LIKE fallback), AND is safer — the user
+		// is probably describing attributes of a single product, not listing categories.
+		$all_taxonomy_matched = ! empty( $taxonomy_map ) && count( $taxonomy_map ) === count( $terms );
+		$has_and_connector    = (bool) preg_match( '/\band\b/i', $raw_search );
+		$join_op              = ( $has_and_connector && $all_taxonomy_matched ) ? 'OR' : 'AND';
+
+		$args['where'] .= ' AND ( ' . implode( " {$join_op} ", $per_term ) . ' )';
 
 		return $args;
 	}

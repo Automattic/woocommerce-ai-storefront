@@ -589,4 +589,49 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '%logo%', $result['where'] );
 		$this->assertStringNotContainsString( '%logos%', $result['where'] );
 	}
+
+	// ---------------------------------------------------------------
+	// AND vs OR join logic for multi-category queries
+	// ---------------------------------------------------------------
+
+	public function test_and_connector_with_all_taxonomy_matched_joins_with_or(): void {
+		// "Hoodies and Belts" — both terms resolve to taxonomy → OR so each
+		// category's products are returned independently.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 10, 'Hoodies', 'product_cat' ),
+			$this->fake_term( 11, 'Belts', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodies and Belts' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertMatchesRegularExpression( '/EXISTS.*OR.*EXISTS/is', $result['where'] );
+		$this->assertStringNotContainsString( ') AND (', $result['where'] );
+	}
+
+	public function test_and_connector_with_unresolved_term_keeps_and(): void {
+		// "blue hat" — "blue" does not resolve to a taxonomy term, so AND is
+		// kept: the user is describing a single product, not listing categories.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 12, 'Hats', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		// "blue" won't match the "Hats" term; only "hat"/"hats" will.
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue hat' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertMatchesRegularExpression( '/LIKE.*AND.*EXISTS/is', $result['where'] );
+	}
 }
