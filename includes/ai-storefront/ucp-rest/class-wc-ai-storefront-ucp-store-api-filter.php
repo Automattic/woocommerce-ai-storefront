@@ -519,9 +519,9 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		// in the stopword list and commas are stripped before this point.
 		// Use array_unique() when comparing counts: $taxonomy_map is keyed by signal so
 		// duplicates in $terms (e.g. "red shirts and red pants") don't inflate the count.
-		$all_taxonomy_matched  = ! empty( $taxonomy_map ) && count( $taxonomy_map ) === count( array_unique( $terms ) );
-		$has_multi_connector   = (bool) preg_match( '/\s+and\s+|,\s*/i', $raw_search );
-		$join_op               = ( $has_multi_connector && $all_taxonomy_matched ) ? 'OR' : 'AND';
+		$all_taxonomy_matched = ! empty( $taxonomy_map ) && count( $taxonomy_map ) === count( array_unique( $terms ) );
+		$has_multi_connector  = (bool) preg_match( '/\s+and\s+|,\s*/i', $raw_search );
+		$join_op              = ( $has_multi_connector && $all_taxonomy_matched ) ? 'OR' : 'AND';
 
 		$args['where'] .= ' AND ( ' . implode( " {$join_op} ", $per_term ) . ' )';
 

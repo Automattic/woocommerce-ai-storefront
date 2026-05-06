@@ -683,6 +683,50 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( ') AND (', $result['where'] );
 	}
 
+	public function test_comma_separated_with_unresolved_term_keeps_and(): void {
+		// "blue, Hats" — "blue" does not resolve to a taxonomy term, so AND is kept
+		// even though a comma connector is present.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 20, 'Hats', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue, Hats' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		// Per-term clauses are AND-joined (not OR): the two terms' conditions are separated by AND.
+		$this->assertMatchesRegularExpression( '/LIKE.*\) AND \(.*EXISTS/is', $result['where'] );
+	}
+
+	public function test_comma_no_space_falls_back_to_like(): void {
+		// "Hoodies,Belts" (no space after comma) — extract_search_terms() strips the
+		// comma without inserting a space, collapsing the pair into the single token
+		// "hoodiesbelts" which does not resolve to any taxonomy term. The result is a
+		// title LIKE fallback rather than an OR join. This documents a known limitation:
+		// spaced commas ("Hoodies, Belts") work; no-space commas do not.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 21, 'Hoodies', 'product_cat' ),
+			$this->fake_term( 22, 'Belts', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodies,Belts' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertStringContainsString( 'LIKE', $result['where'] );
+		$this->assertStringNotContainsString( ') OR (', $result['where'] );
+	}
+
 	public function test_three_way_and_query_all_matched_joins_with_or(): void {
 		// "Hoodies and Belts and Caps" — all three terms resolve to taxonomy → OR,
 		// producing three EXISTS subqueries joined with OR.
