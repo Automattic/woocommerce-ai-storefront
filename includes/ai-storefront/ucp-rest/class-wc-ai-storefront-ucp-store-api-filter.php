@@ -510,18 +510,23 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			}
 		}
 
-		// "Hoodies and Belts" / "Hoodies, Belts" list two distinct categories; "blue hat" refines one.
-		// When the raw query contains a multi-item connector (" and " or a comma) AND every
-		// extracted term resolved to a taxonomy match, treat the terms as alternatives (OR).
-		// If any term is unresolved (title-LIKE fallback) AND is safer: the user is probably
-		// describing attributes of a single product, not listing categories.
-		// Both checks use $raw_search (pre-stopword, pre-punctuation-strip) because "and" is
-		// in the stopword list and commas are stripped before this point.
+		// "Hoodies and Belts" / "Hoodies, Belts" / "Hat or Shoes" list distinct categories.
+		// "blue hat" describes a single product — no connector, so AND-join is correct.
+		//
+		// Two connector types, two rules:
+		//   "or"  — intent is unambiguous (explicit choice); OR-join regardless of taxonomy resolution.
+		//   "and" / comma — ambiguous ("hat and shoes" could be a combo product); only OR-join when
+		//           every extracted term resolved to a taxonomy match ($all_taxonomy_matched).
+		//           If any term fell back to a title LIKE, AND is safer.
+		//
+		// All checks use $raw_search (pre-stopword, pre-punctuation-strip): "and" and "or" are
+		// stopwords so they are stripped from $terms; commas are stripped by extract_search_terms().
 		// Use array_unique() when comparing counts: $taxonomy_map is keyed by signal so
 		// duplicates in $terms (e.g. "red shirts and red pants") don't inflate the count.
 		$all_taxonomy_matched = ! empty( $taxonomy_map ) && count( $taxonomy_map ) === count( array_unique( $terms ) );
-		$has_multi_connector  = (bool) preg_match( '/\s+and\s+|,\s*/i', $raw_search );
-		$join_op              = ( $has_multi_connector && $all_taxonomy_matched ) ? 'OR' : 'AND';
+		$has_or_connector     = (bool) preg_match( '/\bor\b/i', $raw_search );
+		$has_and_connector    = (bool) preg_match( '/\s+and\s+|,\s*/i', $raw_search );
+		$join_op              = ( $has_or_connector || ( $has_and_connector && $all_taxonomy_matched ) ) ? 'OR' : 'AND';
 
 		$args['where'] .= ' AND ( ' . implode( " {$join_op} ", $per_term ) . ' )';
 

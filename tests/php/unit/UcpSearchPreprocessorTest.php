@@ -727,6 +727,48 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( ') OR (', $result['where'] );
 	}
 
+	public function test_or_connector_all_taxonomy_matched_joins_with_or(): void {
+		// "Hat or Shoes" — explicit "or" means unambiguous choice; OR-join even without
+		// needing the $all_taxonomy_matched guard.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 23, 'Hats', 'product_cat' ),
+			$this->fake_term( 24, 'Shoes', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hat or Shoes' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertStringContainsString( ') OR (', $result['where'] );
+		$this->assertStringNotContainsString( ') AND (', $result['where'] );
+	}
+
+	public function test_or_connector_with_unresolved_term_still_joins_with_or(): void {
+		// "blue or Shoes" — "or" is unambiguous even when one term is unresolved;
+		// unlike "and", the $all_taxonomy_matched guard does not apply.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 25, 'Shoes', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		// "blue" won't resolve to a taxonomy term; "shoes" will.
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue or Shoes' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertStringContainsString( ') OR (', $result['where'] );
+		$this->assertStringNotContainsString( ') AND (', $result['where'] );
+	}
+
 	public function test_three_way_and_query_all_matched_joins_with_or(): void {
 		// "Hoodies and Belts and Caps" — all three terms resolve to taxonomy → OR,
 		// producing three EXISTS subqueries joined with OR.
