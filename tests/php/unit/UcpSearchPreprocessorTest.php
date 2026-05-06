@@ -662,11 +662,9 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( ') AND (', $result['where'] );
 	}
 
-	public function test_comma_separated_query_keeps_and(): void {
-		// "Hoodies, Belts" — comma is stripped by extract_search_terms(), leaving no
-		// " and " connector, so $has_and_connector is false and AND is used. This
-		// documents the current behaviour: comma-separated lists are not treated as
-		// multi-category OR queries.
+	public function test_comma_separated_query_joins_with_or(): void {
+		// "Hoodies, Belts" — comma is a multi-item connector just like "and"; both terms
+		// resolve to taxonomy → OR so each category's products are returned independently.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
@@ -681,7 +679,93 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
+		$this->assertStringContainsString( ') OR (', $result['where'] );
+		$this->assertStringNotContainsString( ') AND (', $result['where'] );
+	}
+
+	public function test_comma_separated_with_unresolved_term_keeps_and(): void {
+		// "blue, Hats" — "blue" does not resolve to a taxonomy term, so AND is kept
+		// even though a comma connector is present.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 20, 'Hats', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue, Hats' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
 		$this->assertStringContainsString( ') AND (', $result['where'] );
+	}
+
+	public function test_comma_no_space_falls_back_to_like(): void {
+		// "Hoodies,Belts" (no space after comma) — extract_search_terms() strips the
+		// comma without inserting a space, collapsing the pair into the single token
+		// "hoodiesbelts" which does not resolve to any taxonomy term. The result is a
+		// title LIKE fallback rather than an OR join. This documents a known limitation:
+		// spaced commas ("Hoodies, Belts") work; no-space commas do not.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 21, 'Hoodies', 'product_cat' ),
+			$this->fake_term( 22, 'Belts', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodies,Belts' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertStringContainsString( 'LIKE', $result['where'] );
+		$this->assertStringNotContainsString( ') OR (', $result['where'] );
+	}
+
+	public function test_or_connector_all_taxonomy_matched_joins_with_or(): void {
+		// "Hat or Shoes" — explicit "or" means unambiguous choice; OR-join even without
+		// needing the $all_taxonomy_matched guard.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 23, 'Hats', 'product_cat' ),
+			$this->fake_term( 24, 'Shoes', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hat or Shoes' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertStringContainsString( ') OR (', $result['where'] );
+		$this->assertStringNotContainsString( ') AND (', $result['where'] );
+	}
+
+	public function test_or_connector_with_unresolved_term_still_joins_with_or(): void {
+		// "blue or Shoes" — "or" is unambiguous even when one term is unresolved;
+		// unlike "and", the $all_taxonomy_matched guard does not apply.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_terms' )->justReturn( array(
+			$this->fake_term( 25, 'Shoes', 'product_cat' ),
+		) );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		// "blue" won't resolve to a taxonomy term; "shoes" will.
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue or Shoes' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertStringContainsString( ') OR (', $result['where'] );
+		$this->assertStringNotContainsString( ') AND (', $result['where'] );
 	}
 
 	public function test_three_way_and_query_all_matched_joins_with_or(): void {
