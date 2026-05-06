@@ -1962,7 +1962,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_store_jsonld_omits_contactpoint_when_both_options_empty(): void {
-		// setUp already stubs get_option → '' and is_email → false.
+		// setUp's defaults exercise this case directly: `get_option`
+		// returns '' for everything, and the `is_email` structural
+		// validator alias rejects empty strings (no `@` to find).
 		// Reply-to disabled by default, from-address blank → omit.
 		// Whole block is omitted (no admin_email fallback).
 		$captured = $this->capture_store_jsonld_filter_value();
