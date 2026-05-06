@@ -220,11 +220,11 @@ Stats refresh on every rollup run (hourly by default), so today's traffic appear
 
 The **Policies** tab publishes structured signals that AI agents read when deciding what to show shoppers: return terms, shipping timelines, and more. Two cards are currently available.
 
-![Store policies tab](screenshots/07-policies-tab.png)
-
 ### Return & refund policy
 
 AI agents that surface your products often try to display return windows inline ("Free returns for 30 days").
+
+![Return & refund policy section](screenshots/07-policies-tab.png)
 
 Three modes:
 
@@ -243,6 +243,8 @@ Some merchants have a generally returnable catalog with specific final-sale item
 ### Shipping: handling time
 
 AI agents that compare products often surface shipping timelines ("Ships in 1–2 business days"). The **Shipping** card lets you declare your order handling time so agents can read it as structured data rather than guessing from free-text descriptions.
+
+![Shipping handling time section](screenshots/07b-handling-time.png)
 
 Set **Minimum** and **Maximum** business days using the stepper inputs (0–365). When both are greater than 0, the plugin emits a `handlingTime` block under `OfferShippingDetails` in the product JSON-LD.
 

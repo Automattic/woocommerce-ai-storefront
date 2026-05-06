@@ -1,6 +1,6 @@
 # Screenshot manifest
 
-The PNG files in this folder are referenced from [`USER-GUIDE.md`](../USER-GUIDE.md). They were captured from a live WordPress 6.7 + WooCommerce 9.9 + AI Storefront 0.6.3 install ("Piero's Fashion House") at 1372 px wide, default WordPress admin color scheme.
+The PNG files in this folder are referenced from [`USER-GUIDE.md`](../USER-GUIDE.md). They were captured from a live WordPress + WooCommerce + AI Storefront install at a **1280×800** viewport (laptop size), default WordPress admin color scheme.
 
 | File | Source page | What it shows |
 |------|-------------|---------------|
@@ -10,7 +10,8 @@ The PNG files in this folder are referenced from [`USER-GUIDE.md`](../USER-GUIDE
 | `04-products-by-taxonomy.png` | **AI Storefront → Product Visibility** | "Products by category, tag, or brand" mode with category checkboxes and selected tokens visible. |
 | `05-products-selected.png` | Same screen | "Specific products only" mode with the product picker visible. |
 | `06-discovery-tab.png` | **AI Storefront → Discovery** | Crawler checkboxes (live browsing / training / test groups) and the rate-limit control. |
-| `07-policies-tab.png` | **AI Storefront → Policies** | Return policy mode picker. |
+| `07-policies-tab.png` | **AI Storefront → Policies** | Return & refund policy section: mode picker, policy page, fees, window, and return methods. |
+| `07b-handling-time.png` | Same screen (scrolled) | Shipping section: min/max handling time steppers. |
 | `08-product-final-sale.png` | **Products → Edit a product → Inventory tab** | The Product Data box with the "AI: Final sale" checkbox visible at the bottom. |
 | `09-endpoints-info.png` | **AI Storefront → Discovery** | The "Discovery Endpoints" card listing `/llms.txt`, `/.well-known/ucp`, the UCP API base, and `/robots.txt`. |
 | `10-orders-origin.png` | **WooCommerce → Orders** | Orders list with the Origin column showing AI-agent sources alongside Direct/Unknown rows. |
