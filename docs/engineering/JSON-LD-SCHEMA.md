@@ -234,10 +234,10 @@ Variable products with at least one attribute marked **Used for variations** emi
 
 Each entry under `hasVariant` is itself a Product with:
 
-- `@type: "Product"`, `@id` (variation permalink), `name`, `sku`, `image` (variation-specific when set; falls back to parent gallery image).
+- `@type: "Product"`, `@id` and `url` (variation permalink), `name` (WC's variation display name, e.g. `"Hoodie - Blue, Logo: Yes"`), `sku`, `image` (variation-specific when set; falls back to parent gallery image).
 - The typed Schema.org property for the variation's differentiating attribute (`color` / `size` / `material` / `pattern`) — same mapping as the parent's typed-property emission.
-- An `Offer` with `price`, `priceCurrency`, `availability`, and `checkoutPageURLTemplate`.
-- A `BuyAction` whose `target.urlTemplate` points at the **variation ID** so an AI agent's deep-link resolves to that specific SKU instead of the parent's "choose your color" detour.
+- An `offers` array (single-element) whose member carries `price`, `priceCurrency`, `availability`, `shippingDetails`, `hasMerchantReturnPolicy`, and `checkoutPageURLTemplate` (Schema.org `Offer` property — a URL template per [RFC 6570](https://datatracker.ietf.org/doc/html/rfc6570) that points at the variation's checkout page).
+- A `potentialAction: BuyAction` whose `target.urlTemplate` points at the **variation ID** so an AI agent's deep-link resolves to that specific SKU instead of the parent's "choose your color" detour.
 
 **Core-typed override (parent flag missing):**
 
@@ -267,17 +267,21 @@ Worked example (V-Neck T-Shirt with 3 variations across color and size):
   "hasVariant": [
     {
       "@type": "Product",
+      "@id": "https://example.com/product/v-neck-t-shirt/?attribute_pa_color=red&attribute_pa_size=s",
+      "url": "https://example.com/product/v-neck-t-shirt/?attribute_pa_color=red&attribute_pa_size=s",
       "name": "V-Neck T-Shirt - Red, Small",
       "sku": "woo-vneck-tee-red-s",
       "color": "Red",
       "size": "Small",
-      "offers": {
-        "@type": "Offer",
-        "price": "20",
-        "priceCurrency": "USD",
-        "availability": "https://schema.org/InStock",
-        "checkoutPageURLTemplate": "https://example.com/checkout-link/?products=43:1&utm_source={agent_id}&..."
-      },
+      "offers": [
+        {
+          "@type": "Offer",
+          "price": "20",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "checkoutPageURLTemplate": "https://example.com/checkout-link/?products=43:1&utm_source={agent_id}&..."
+        }
+      ],
       "potentialAction": {
         "@type": "BuyAction",
         "target": { "@type": "EntryPoint", "urlTemplate": "...products=43:1..." }

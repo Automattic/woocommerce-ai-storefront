@@ -705,19 +705,19 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
-		// Convert top-level type + add ProductGroup-specific fields.
-		$markup['@type']          = 'ProductGroup';
-		$sku                      = $product->get_sku();
-		$markup['productGroupID'] = '' !== $sku ? $sku : (string) $product->get_id();
-		$markup['variesBy']       = $varies_by;
-
-		// Drop parent-level fields that the variants own. Buyers can't
-		// purchase the parent of a variable product, so a parent-level
-		// `BuyAction` or `offers[]` block would point at an unbuyable
-		// entity. Per Schema.org, `ProductGroup` represents the abstract
-		// group; concrete offers live on the `hasVariant` Product entries.
-		unset( $markup['offers'], $markup['potentialAction'] );
-
+		// Build the variant entries FIRST. Only commit the conversion
+		// (rewrite `@type`, drop parent `offers` + `potentialAction`,
+		// add `productGroupID` / `variesBy` / `hasVariant`) once we
+		// know we have at least one buildable variant.
+		//
+		// Why: `get_children()` can contain stale post IDs (data
+		// corruption, soft-deleted variations, or a transient WP
+		// cache miss). If `wc_get_product()` returns false for every
+		// child, an unconditional convert would emit a `ProductGroup`
+		// with no `hasVariant` AND no `offers`/`potentialAction` —
+		// strictly worse than the simple-Product fallback for AI
+		// agents trying to deep-link or buy. Building first lets the
+		// fallback fire when the variations are unrecoverable.
 		$has_variant = array();
 		foreach ( $children as $child_id ) {
 			$variation = $this->resolve_variation( (int) $child_id );
@@ -726,10 +726,21 @@ class WC_AI_Storefront_JsonLd {
 			}
 			$has_variant[] = $this->build_variant_entry( $variation, $product, $settings, $country );
 		}
-
-		if ( ! empty( $has_variant ) ) {
-			$markup['hasVariant'] = $has_variant;
+		if ( empty( $has_variant ) ) {
+			return;
 		}
+
+		$markup['@type']          = 'ProductGroup';
+		$sku                      = $product->get_sku();
+		$markup['productGroupID'] = '' !== $sku ? $sku : (string) $product->get_id();
+		$markup['variesBy']       = $varies_by;
+		// Buyers can't purchase the parent of a variable product, so a
+		// parent-level `BuyAction` or `offers[]` block would point at
+		// an unbuyable entity. Per Schema.org, `ProductGroup`
+		// represents the abstract group; concrete offers live on the
+		// `hasVariant` Product entries.
+		unset( $markup['offers'], $markup['potentialAction'] );
+		$markup['hasVariant'] = $has_variant;
 	}
 
 	/**
@@ -821,6 +832,25 @@ class WC_AI_Storefront_JsonLd {
 	 * @param WC_Product $parent_product The parent (image fallback only).
 	 */
 	private function add_variant_basics( array &$entry, $variation, $parent_product ): void {
+		// `@id` and `name` are Schema.org Product fundamentals — agents
+		// dereference `@id` to fetch the variant's own page, and `name`
+		// is the human-readable label that surfaces in rich results.
+		// We use the variation permalink as `@id` (so it round-trips to
+		// a real WC URL) and WC's own variation name (e.g. "Hoodie -
+		// Blue, Logo: Yes") which already encodes the differentiating
+		// attribute values per the merchant's variation form.
+		$permalink = $variation->get_permalink();
+		if ( is_string( $permalink ) && '' !== $permalink ) {
+			$entry['@id'] = $permalink;
+			$entry['url'] = $permalink;
+		}
+		if ( method_exists( $variation, 'get_name' ) ) {
+			$name = $variation->get_name();
+			if ( is_string( $name ) && '' !== $name ) {
+				$entry['name'] = $name;
+			}
+		}
+
 		$sku = $variation->get_sku();
 		if ( ! $sku ) {
 			// Mirror WC core's fallback: when no SKU is set, use the

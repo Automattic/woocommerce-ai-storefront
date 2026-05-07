@@ -179,6 +179,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	private function make_product( array $overrides = [] ): Mockery\MockInterface {
 		$product = Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_id' )->andReturn( $overrides['id'] ?? 42 );
+		$product->shouldReceive( 'get_name' )
+			->andReturn( $overrides['name'] ?? 'Test Product' );
 		$product->shouldReceive( 'get_permalink' )
 			->andReturn( $overrides['permalink'] ?? 'https://example.com/product/test/' );
 		$product->shouldReceive( 'managing_stock' )
@@ -472,6 +474,31 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'tee-white-l', $entry['sku'] );
 	}
 
+	public function test_variant_entry_emits_id_url_and_name(): void {
+		// `@id` and `name` are Schema.org Product fundamentals — agents
+		// dereference `@id` to fetch the variant's own page and
+		// `name` is what surfaces in rich-result snippets. Regression
+		// guard for PR #338 review feedback (these went missing in the
+		// initial implementation).
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent    = $this->make_product( [ 'id' => 100 ] );
+		$variation = $this->make_variation( [
+			'id'        => 101,
+			'name'      => 'Hoodie - Blue, Logo: Yes',
+			'permalink' => 'https://example.com/product/hoodie/?attribute_pa_color=blue&attribute_logo=Yes',
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame(
+			'https://example.com/product/hoodie/?attribute_pa_color=blue&attribute_logo=Yes',
+			$entry['@id']
+		);
+		$this->assertSame( $entry['@id'], $entry['url'] );
+		$this->assertSame( 'Hoodie - Blue, Logo: Yes', $entry['name'] );
+	}
+
 	public function test_variant_entry_falls_back_to_id_when_no_sku(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
@@ -751,6 +778,45 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// The simple-Product enrichers (BuyAction, currency, etc.) still ran.
 		$this->assertArrayHasKey( 'potentialAction', $result );
 		$this->assertArrayHasKey( 'offers', $result );
+	}
+
+	public function test_unbuyable_variations_fall_back_to_simple_product(): void {
+		// Regression guard for PR #338 review feedback: when
+		// `get_children()` returns IDs but `wc_get_product()` resolves
+		// none of them (data corruption, soft-deleted variations, or a
+		// stale WP cache), we MUST NOT emit a `ProductGroup` with empty
+		// `hasVariant` and the parent's `offers` + `potentialAction`
+		// already dropped. That would produce a strictly-worse shape
+		// than the simple-Product fallback (no offers, no buy action,
+		// no variants — completely unbuyable). Build the variants
+		// FIRST and only commit the conversion when at least one
+		// resolved.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// Stub `wc_get_product()` to return false for every child ID
+		// — simulating the corrupted-data case.
+		Functions\when( 'wc_get_product' )->justReturn( false );
+
+		$parent = $this->make_product( [
+			'id'                   => 100,
+			'children'             => [ 901, 902, 903 ],
+			'variation_attributes' => array( 'pa_color' => array( 'red', 'blue' ) ),
+		] );
+
+		$markup = array(
+			'@type'           => 'Product',
+			'offers'          => array( array( '@type' => 'Offer', 'price' => '20' ) ),
+			'potentialAction' => array( '@type' => 'BuyAction' ),
+		);
+		$result = $this->jsonld->enhance_product_data( $markup, $parent );
+
+		$this->assertSame( 'Product', $result['@type'] );
+		$this->assertArrayNotHasKey( 'hasVariant', $result );
+		$this->assertArrayNotHasKey( 'productGroupID', $result );
+		$this->assertArrayNotHasKey( 'variesBy', $result );
+		// Critical: the parent-level offers + potentialAction must
+		// survive intact. Pre-fix, both were unconditionally dropped.
+		$this->assertArrayHasKey( 'offers', $result );
+		$this->assertArrayHasKey( 'potentialAction', $result );
 	}
 
 	public function test_simple_product_does_not_convert_to_product_group(): void {
