@@ -2906,14 +2906,18 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		};
 	}
 
-	public function test_store_jsonld_uses_onlinestore_type(): void {
-		// The whole point of this PR — `OnlineStore` (an Organization
-		// subtype) replaces `Store` (a LocalBusiness subtype). Audit
-		// tools looking for an Organization-shaped entity now find one.
+	public function test_store_jsonld_uses_onlinebusiness_type(): void {
+		// `OnlineBusiness` (the parent of `OnlineStore` in the
+		// `Thing → Organization → OnlineBusiness → OnlineStore` chain)
+		// replaced `OnlineStore` in #334. The wider type covers WC's
+		// full install base — services, subscriptions, donations,
+		// lead-gen, digital downloads, and traditional retail — without
+		// claiming product retail. Regression guard: a revert to
+		// `OnlineStore` would fail here.
 		$captured = $this->capture_store_jsonld_filter_value();
 
 		$this->assertIsArray( $captured );
-		$this->assertSame( 'OnlineStore', $captured['@type'] ?? null );
+		$this->assertSame( 'OnlineBusiness', $captured['@type'] ?? null );
 	}
 
 	public function test_store_jsonld_emits_logo_from_custom_logo_theme_mod(): void {

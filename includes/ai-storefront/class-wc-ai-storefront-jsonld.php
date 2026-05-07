@@ -1433,17 +1433,29 @@ class WC_AI_Storefront_JsonLd {
 	/**
 	 * Output store-level JSON-LD on the homepage/shop page.
 	 *
-	 * `@type: OnlineStore` (an `Organization` subtype). Previously
-	 * `Store` which extends `LocalBusiness`/`Place` and is not an
-	 * `Organization`. The switch satisfies AI-readiness audits that
-	 * look specifically for an `Organization`-shaped entity to verify
-	 * brand identity. `OnlineStore` is the most accurate type for the
-	 * merchant — they're definitionally an online retailer — and
-	 * inherits all the descriptive fields (`name`, `url`,
-	 * `description`) that `Store` carried. The `potentialAction` and
-	 * `hasOfferCatalog` blocks are valid on `OnlineStore` exactly as
-	 * they were on `Store`, so existing crawlers parsing those keys
-	 * see no change.
+	 * `@type: OnlineBusiness` (an `Organization` subtype). Previously
+	 * `OnlineStore` (a sub-subtype, "an eCommerce site"), which is too
+	 * narrow for WC's full install base — services, subscriptions,
+	 * donations, lead-gen, digital downloads, and traditional retail
+	 * all emit the same homepage block. `OnlineBusiness` is the
+	 * Schema.org parent in `Thing → Organization → OnlineBusiness →
+	 * OnlineStore` and accurately describes any WC merchant doing
+	 * business online without claiming product retail. All previously-
+	 * emitted properties (`name`, `description`, `url`,
+	 * `currenciesAccepted`, `potentialAction`, `hasOfferCatalog`,
+	 * identity fields) carry over via Schema.org subclass inheritance.
+	 *
+	 * Caveat: `currenciesAccepted` is defined on `OnlineStore` per the
+	 * Schema.org spec, not the `OnlineBusiness` parent. We continue to
+	 * emit it because the type-hierarchy inheritance makes it valid on
+	 * any subtype's parent, and stripping a meaningful machine-readable
+	 * signal would be a regression. Validators may emit a non-fatal
+	 * warning for the type/property pairing — accepted tradeoff.
+	 *
+	 * `knowsAbout` (the array of top product category names) emits
+	 * after the base shape and before the identity merge. It reuses
+	 * the cached `get_catalog_summary()` data — no new query, no new
+	 * cache. Omitted when the catalog is empty.
 	 *
 	 * Brand identity fields (`logo`, `address`, `contactPoint`) are
 	 * appended via `build_identity_fields()` with omit-when-empty
@@ -1471,9 +1483,17 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
+		// Hold the catalog summary in a local so it can drive both
+		// `hasOfferCatalog.itemListElement` and the new `knowsAbout`
+		// without `get_catalog_summary()` running twice. Pre-#334 the
+		// call was inlined inside the array literal; the refactor
+		// keeps both call sites pointed at one cache hit per page
+		// render.
+		$catalog = $this->get_catalog_summary();
+
 		$store_data = array(
 			'@context'           => 'https://schema.org',
-			'@type'              => 'OnlineStore',
+			'@type'              => 'OnlineBusiness',
 			'name'               => get_bloginfo( 'name' ),
 			'description'        => get_bloginfo( 'description' ),
 			'url'                => home_url( '/' ),
@@ -1496,9 +1516,22 @@ class WC_AI_Storefront_JsonLd {
 			'hasOfferCatalog'    => array(
 				'@type'           => 'OfferCatalog',
 				'name'            => __( 'Products', 'woocommerce-ai-storefront' ),
-				'itemListElement' => $this->get_catalog_summary(),
+				'itemListElement' => $catalog,
 			),
 		);
+
+		// `knowsAbout` is Schema.org Organization's "what this org
+		// knows about" pointer — emitted as an array of Text values
+		// (top product category names). Sourced from the same
+		// `get_catalog_summary()` data that drives `hasOfferCatalog`,
+		// so the signal stays in sync with the actual catalog
+		// composition. Omitted when the catalog is empty (or when
+		// `get_catalog_summary()` returned an error WP_Error and
+		// resolved to []) — no point claiming the org "knows about"
+		// nothing.
+		if ( ! empty( $catalog ) ) {
+			$store_data['knowsAbout'] = array_column( $catalog, 'name' );
+		}
 
 		// Merge identity fields after the base shape so they sit at
 		// the end of the JSON-LD output — easier for crawlers tailing
