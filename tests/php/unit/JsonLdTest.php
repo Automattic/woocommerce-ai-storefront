@@ -1082,6 +1082,44 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_duplicate_cross_sell_ids_are_deduplicated_before_emission(): void {
+		// WC's editor doesn't enforce uniqueness on cross/upsell ID
+		// storage. Corrupted or imported postmeta can carry the same
+		// ID multiple times — without per-list dedup, we'd emit ten
+		// identical `@id` entries and never fall through to the
+		// distinct products beyond. Pin: pass `[201, 201, 202, 202]`,
+		// expect two distinct refs (in first-seen order) and a single
+		// `wc_get_product()` resolution per ID.
+		$product = $this->make_product( [ 'cross_sell_ids' => array( 201, 201, 202, 202 ) ] );
+
+		$resolve_count = array( 201 => 0, 202 => 0 );
+		$t201 = $this->make_related_target( 201, 'https://example.com/product/p201/' );
+		$t202 = $this->make_related_target( 202, 'https://example.com/product/p202/' );
+		Functions\when( 'wc_get_product' )->alias(
+			static function ( $id ) use ( $t201, $t202, &$resolve_count ) {
+				$id = (int) $id;
+				if ( isset( $resolve_count[ $id ] ) ) {
+					++$resolve_count[ $id ];
+				}
+				return 201 === $id ? $t201 : ( 202 === $id ? $t202 : false );
+			}
+		);
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame(
+			array(
+				array( '@id' => 'https://example.com/product/p201/' ),
+				array( '@id' => 'https://example.com/product/p202/' ),
+			),
+			$result['isRelatedTo']
+		);
+		// Each ID resolved exactly once — dedup happens before the
+		// build loop, not after.
+		$this->assertSame( 1, $resolve_count[201] );
+		$this->assertSame( 1, $resolve_count[202] );
+	}
+
 	public function test_both_keys_set_short_circuits_and_does_not_call_wc_get_product(): void {
 		// When both isRelatedTo and isSimilarTo are already populated
 		// (e.g. by a higher-priority third-party filter), the method

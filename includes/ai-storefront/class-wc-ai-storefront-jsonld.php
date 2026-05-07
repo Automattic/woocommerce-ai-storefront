@@ -1315,6 +1315,18 @@ class WC_AI_Storefront_JsonLd {
 			? (array) $product->get_upsell_ids()
 			: array();
 
+		// De-duplicate each list before slicing + the downstream loop.
+		// WC's editor doesn't enforce uniqueness on cross/upsell ID
+		// storage, and corrupted or imported postmeta can carry the
+		// same ID multiple times. Without this, `[101, 101, 101, ...]`
+		// would emit ten identical `@id` entries instead of falling
+		// through to distinct products. `array_unique()` preserves
+		// first-seen order via PHP's default key behavior;
+		// `array_values()` re-keys the result so the subsequent slice
+		// operates on a 0-indexed list.
+		$cross_sells = array_values( array_unique( $cross_sells ) );
+		$upsells     = array_values( array_unique( $upsells ) );
+
 		// Cap each list at 2× the emission cap before priming + the
 		// downstream loop. The output cap is MAX_RELATED_PRODUCT_REFS
 		// (10), but some candidates fall out at the deleted-product
