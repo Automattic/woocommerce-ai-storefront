@@ -24,9 +24,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	private WC_AI_Storefront_JsonLd $jsonld;
 
+	/**
+	 * Per-post postmeta lookup table consulted by the `get_post_meta`
+	 * stub installed in setUp(). Tests populate via `make_variation()`
+	 * (when a variation_attributes override is supplied) so the
+	 * variation's `attribute_<slug>` reads return the test fixture's
+	 * values. Other meta keys still fall through to empty.
+	 *
+	 * @var array<int,array<string,string>>
+	 */
+	private array $post_meta_by_id = [];
+
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		$this->post_meta_by_id = [];
 		WC_Shipping_Zones::$test_zones = [];
 		$this->jsonld = new WC_AI_Storefront_JsonLd();
 
@@ -37,25 +49,41 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'product_selection_mode' => 'all',
 		];
 
-		// add_query_arg is the only WP function we consistently need
-		// across tests — simple passthrough that appends params.
+		// `add_query_arg()` mock mirroring WP's actual behavior. Two
+		// places this differs from PHP's native `http_build_query`:
+		//
+		// 1. WP's `add_query_arg` → `build_query` → `_http_build_query`
+		//    is called with `$urlencode = false`, so values are NOT
+		//    URL-encoded. A pre-0.11 mock built on `http_build_query`
+		//    silently produced `utm_source=%7Bagent_id%7D` while
+		//    production emitted `utm_source={agent_id}` — RFC 6570
+		//    placeholders survive verbatim.
+		// 2. WP strips and re-appends the URI fragment around the
+		//    query string. Without this, a permalink like
+		//    `.../widget/#reviews` would produce
+		//    `.../widget/#reviews?add-to-cart=42` where the whole
+		//    query is in the fragment and never reaches the server.
 		Functions\when( 'add_query_arg' )->alias(
 			static function ( $args, $url ) {
-				// Strip any fragment before appending query params, then
-				// re-append it — matching WordPress core's behavior.
-				// Without this, a permalink like `.../widget/#reviews`
-				// would produce `.../widget/#reviews?add-to-cart=42`
-				// where the entire query string is part of the fragment
-				// and never reaches the server.
 				$fragment = '';
 				if ( str_contains( $url, '#' ) ) {
 					[ $url, $fragment ] = explode( '#', $url, 2 );
 					$fragment = '#' . $fragment;
 				}
-				$query = http_build_query( $args );
+				$pairs = array();
+				foreach ( $args as $k => $v ) {
+					$pairs[] = $k . '=' . $v;
+				}
+				$query = implode( '&', $pairs );
 				$sep   = str_contains( $url, '?' ) ? '&' : '?';
 				return $url . $sep . $query . $fragment;
 			}
+		);
+		// `home_url()` is the base of the Shareable Checkout URL the
+		// BuyAction emits. Stub a stable value so URL-shape assertions
+		// don't depend on the WP test bootstrap's site URL.
+		Functions\when( 'home_url' )->alias(
+			static fn( $path = '' ) => 'https://example.com' . $path
 		);
 		Functions\when( 'wc_get_product_cat_ids' )->justReturn( [] );
 		Functions\when( 'wc_get_base_location' )->justReturn(
@@ -72,7 +100,32 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Stub the per-product final-sale meta read to "not flagged"
 		// across all tests in this file. Per-product override coverage
 		// lives in JsonLdReturnPolicyTest's dedicated branch.
-		Functions\when( 'get_post_meta' )->justReturn( '' );
+		//
+		// Variation-attribute postmeta (`attribute_<slug>`) reads consult
+		// the per-test `$this->post_meta_by_id` table populated by
+		// `make_variation()`. The closure captures `$this` so each test
+		// gets the table state at call time, not at setUp time.
+		//
+		// FOOT-GUN: an individual test calling
+		// `Functions\when( 'get_post_meta' )->justReturn( ... )` will
+		// silently REPLACE this aliased version (Brain Monkey keeps the
+		// most recent binding). When that happens, every variation in
+		// the test loses its `attribute_<slug>` reads and ProductGroup
+		// detection falls back to "no varying axis." If you need to
+		// override `get_post_meta` for a specific key in one test, use
+		// a fresh alias that consults `$this->post_meta_by_id` for the
+		// keys this stub already serves and your custom logic for the
+		// rest — don't `justReturn` over the whole function.
+		$test = $this;
+		Functions\when( 'get_post_meta' )->alias(
+			static function ( $post_id, $key = '', $single = false ) use ( $test ) {
+				$post_id = (int) $post_id;
+				if ( isset( $test->post_meta_by_id[ $post_id ][ $key ] ) ) {
+					return $test->post_meta_by_id[ $post_id ][ $key ];
+				}
+				return '';
+			}
+		);
 		// Default `wp_get_post_parent_id()` to 0 — these tests use
 		// non-variation product mocks. Override-scope resolution
 		// happens at the `enhance_product_data` entry point.
@@ -136,6 +189,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	private function make_product( array $overrides = [] ): Mockery\MockInterface {
 		$product = Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_id' )->andReturn( $overrides['id'] ?? 42 );
+		$product->shouldReceive( 'get_name' )
+			->andReturn( $overrides['name'] ?? 'Test Product' );
 		$product->shouldReceive( 'get_permalink' )
 			->andReturn( $overrides['permalink'] ?? 'https://example.com/product/test/' );
 		$product->shouldReceive( 'managing_stock' )
@@ -154,6 +209,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( $overrides['attributes'] ?? [] );
 		$product->shouldReceive( 'get_variation_attributes' )
 			->andReturn( $overrides['variation_attributes'] ?? [] );
+		$product->shouldReceive( 'get_image_id' )
+			->andReturn( $overrides['image_id'] ?? 0 );
+		$product->shouldReceive( 'get_children' )
+			->andReturn( $overrides['children'] ?? [] );
+		$product->shouldReceive( 'get_sku' )
+			->andReturn( $overrides['sku'] ?? '' );
 		return $product;
 	}
 
@@ -200,13 +261,39 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'BuyAction', $result['potentialAction']['@type'] );
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
-		$this->assertStringContainsString( 'add-to-cart=42', $url );
-		$this->assertStringContainsString( 'utm_source=%7Bagent_id%7D', $url );
+		// Shareable Checkout URL format (0.11.0+): the URL goes through
+		// WC's `/checkout-link/` rewrite handler with `?products=ID:1`.
+		// Values are NOT URL-encoded — WP's `add_query_arg()` uses
+		// `_http_build_query( ..., $urlencode = false )`, which lets
+		// the `:` separator and the RFC 6570 `{...}` placeholders
+		// survive verbatim so consumers can substitute variables
+		// without first decoding the URL.
+		$this->assertStringContainsString( '/checkout-link/', $url );
+		$this->assertStringContainsString( 'products=42:1', $url );
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
 		// Canonical UTM shape (0.5.0+): medium=referral (Google-canonical),
 		// utm_id=woo_ucp flags "we routed this".
 		$this->assertStringContainsString( 'utm_medium=referral', $url );
 		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
-		$this->assertStringContainsString( 'ai_session_id=%7Bsession_id%7D', $url );
+		$this->assertStringContainsString( 'ai_session_id={session_id}', $url );
+	}
+
+	public function test_buyaction_url_uses_home_checkout_link_not_product_permalink(): void {
+		// Regression guard: the URL must NOT be derived from the
+		// product permalink (the pre-0.11.0 shape used `add-to-cart=ID`
+		// on the product page). A custom permalink shouldn't appear in
+		// the output.
+		$product = $this->make_product(
+			[ 'permalink' => 'https://example.com/product/widget/#tab-description' ]
+		);
+		$result  = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+
+		$this->assertStringStartsWith( 'https://example.com/checkout-link/', $url );
+		$this->assertStringNotContainsString( '/product/widget/', $url );
+		$this->assertStringNotContainsString( '#tab-description', $url );
+		$this->assertStringNotContainsString( 'add-to-cart=', $url );
 	}
 
 	public function test_buyaction_declares_web_platforms(): void {
@@ -218,77 +305,605 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'https://schema.org/MobileWebPlatform', $platforms );
 	}
 
-	public function test_buyaction_uritemplate_preserves_fragment_from_permalink(): void {
-		// Some themes append tab deep-links to product permalinks, e.g.
-		// `https://example.com/product/widget/#tab-description`. The real
-		// `add_query_arg()` strips the fragment, appends query params to
-		// the base URL, then re-appends the fragment — producing a
-		// well-formed URL where the query string is readable by the server.
-		//
-		// Regression guard: the mock must behave identically so CI catches
-		// any future production-code change that re-introduces the bug.
-		$product = $this->make_product(
-			[ 'permalink' => 'https://example.com/product/widget/#tab-description' ]
+	// ------------------------------------------------------------------
+	// Offer.checkoutPageURLTemplate (#328) — coexists with BuyAction
+	// ------------------------------------------------------------------
+
+	public function test_offer_emits_checkout_page_url_template_with_same_url_as_buyaction(): void {
+		// Both signals MUST carry the same URL value — different consumers
+		// key on different Schema.org paths but should resolve to the same
+		// destination.
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
 		);
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		$product = $this->make_product();
 
-		$url = $result['potentialAction']['target']['urlTemplate'];
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
-		// Query params must appear BEFORE the fragment separator.
-		$fragment_pos    = strpos( $url, '#' );
-		$query_param_pos = strpos( $url, 'add-to-cart=' );
-
-		$this->assertNotFalse( $fragment_pos, 'urlTemplate should still contain the fragment' );
-		$this->assertNotFalse( $query_param_pos, 'urlTemplate should contain add-to-cart param' );
-		$this->assertLessThan(
-			$fragment_pos,
-			$query_param_pos,
-			'Query params must appear before the # fragment separator'
+		$this->assertSame(
+			$result['potentialAction']['target']['urlTemplate'],
+			$result['offers'][0]['checkoutPageURLTemplate'],
+			'BuyAction.urlTemplate and Offer.checkoutPageURLTemplate must carry the same URL value'
 		);
+	}
 
-		// The fragment itself should be intact at the very end.
-		$this->assertStringEndsWith( '#tab-description', $url );
+	public function test_offer_checkout_page_url_template_uses_shareable_checkout_format(): void {
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+		);
+		$product = $this->make_product();
 
-		// Sanity: attribution params must survive too.
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$url = $result['offers'][0]['checkoutPageURLTemplate'];
+		$this->assertStringStartsWith( 'https://example.com/checkout-link/', $url );
+		$this->assertStringContainsString( 'products=42:1', $url );
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
 		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
 	}
 
-	public function test_buyaction_uritemplate_preserves_fragment_when_permalink_has_existing_query(): void {
-		// Combination case: permalink already carries a query string
-		// (e.g. a language plugin adds `?lang=fr`) AND has a fragment.
-		// The mock's `?`-vs-`&` separator check must look at the
-		// fragment-stripped URL so it finds the existing `?` and uses
-		// `&`. Without the fragment strip, a naive check on the full
-		// URL including `#reviews` would still find `?` and use `&`
-		// — but only by accident; the fragment would still land in the
-		// wrong position. This test pins both invariants explicitly.
-		$product = $this->make_product(
-			[ 'permalink' => 'https://example.com/product/widget/?lang=fr#tab-description' ]
+	// ------------------------------------------------------------------
+	// detect_varies_by() — Schema.org URLs for varying variation axes (#328)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Direct test of the static helper via reflection. Covers slug→URL
+	 * mapping, "actually varies" filtering (>1 distinct value), and
+	 * unmapped-axis text-label fallback.
+	 */
+	private function invoke_detect_varies_by( Mockery\MockInterface $product ): array {
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'detect_varies_by' );
+		return $method->invoke( null, $product );
+	}
+
+	public function test_detect_varies_by_returns_schema_urls_for_mapped_attributes(): void {
+		$product = $this->make_product( [
+			'variation_attributes' => array(
+				'pa_color' => array( 'navy', 'white', 'gray' ),
+				'pa_size'  => array( 'l', 'm', 's', 'xl' ),
+			),
+		] );
+
+		$result = $this->invoke_detect_varies_by( $product );
+
+		$this->assertContains( 'https://schema.org/color', $result );
+		$this->assertContains( 'https://schema.org/size', $result );
+		$this->assertCount( 2, $result );
+	}
+
+	public function test_detect_varies_by_excludes_uniform_axes(): void {
+		// pa_color has only one distinct value ("navy") — all variations
+		// are navy, only sizes differ. Color shouldn't appear in variesBy.
+		$product = $this->make_product( [
+			'variation_attributes' => array(
+				'pa_color' => array( 'navy' ),
+				'pa_size'  => array( 'l', 'm', 's' ),
+			),
+		] );
+
+		$result = $this->invoke_detect_varies_by( $product );
+
+		$this->assertSame( array( 'https://schema.org/size' ), $result );
+	}
+
+	public function test_detect_varies_by_returns_empty_for_non_variable_product(): void {
+		// Simple product (no `variation_attributes` override → returns []).
+		$product = $this->make_product();
+
+		$result = $this->invoke_detect_varies_by( $product );
+
+		$this->assertSame( array(), $result );
+	}
+
+	public function test_detect_varies_by_returns_empty_for_variable_with_no_varying_axes(): void {
+		// Edge case: variable product where every axis has at most one
+		// value (Product 16 misconfigured-variable territory).
+		$product = $this->make_product( [
+			'variation_attributes' => array(
+				'pa_color' => array( '' ),
+				'pa_size'  => array( '' ),
+			),
+		] );
+
+		$result = $this->invoke_detect_varies_by( $product );
+
+		$this->assertSame( array(), $result );
+	}
+
+	public function test_detect_varies_by_emits_text_label_for_unmapped_axis(): void {
+		// Custom merchant axes (not in CORE_ATTRIBUTE_MAP) emit as plain
+		// Text labels so agents see SOME signal. Schema.org `variesBy`
+		// accepts both URL-shaped Text and plain Text per spec.
+		Functions\when( 'wc_attribute_label' )->alias(
+			static fn( $slug ) => ucfirst( str_replace( 'pa_', '', $slug ) )
 		);
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		$product = $this->make_product( [
+			'variation_attributes' => array(
+				'pa_style' => array( 'casual', 'formal', 'sport' ),
+			),
+		] );
 
-		$url = $result['potentialAction']['target']['urlTemplate'];
+		$result = $this->invoke_detect_varies_by( $product );
 
-		// Original query param must survive.
-		$this->assertStringContainsString( 'lang=fr', $url );
+		$this->assertSame( array( 'Style' ), $result );
+	}
 
-		// All added params must appear before the fragment.
-		$fragment_pos    = strpos( $url, '#' );
-		$query_param_pos = strpos( $url, 'add-to-cart=' );
+	// ------------------------------------------------------------------
+	// build_variant_entry() — per-variation Product blocks (#328)
+	// ------------------------------------------------------------------
 
-		$this->assertNotFalse( $fragment_pos );
-		$this->assertNotFalse( $query_param_pos );
-		$this->assertLessThan(
-			$fragment_pos,
-			$query_param_pos,
-			'Added query params must appear before the # separator'
+	/**
+	 * Build a `WC_Product_Variation`-shaped mock for the per-variant tests.
+	 *
+	 * Variations expose the same WC_Product API plus `get_variation_attributes()`
+	 * which on a variation returns its specific picks like
+	 * `['attribute_pa_color' => 'white']` (different from the parent's
+	 * version which returns the SET of values across all variations).
+	 */
+	private function make_variation( array $overrides = [] ): Mockery\MockInterface {
+		$variation = $this->make_product( $overrides );
+		$variation->shouldReceive( 'get_price' )->andReturn( $overrides['price'] ?? '20.00' );
+		$variation->shouldReceive( 'is_in_stock' )->andReturn( $overrides['in_stock'] ?? true );
+
+		// `add_variant_basics()` reads typed-property values directly
+		// from variation postmeta (`attribute_<slug>`) — see the doc in
+		// `read_variation_core_attributes()` for why. Translate the
+		// `variation_attributes` test override into the postmeta lookup
+		// table so existing test fixtures keep working without each test
+		// having to know about the indirection.
+		$variation_id = (int) ( $overrides['id'] ?? 42 );
+		foreach ( ( $overrides['variation_attributes'] ?? [] ) as $key => $value ) {
+			$meta_key = str_starts_with( (string) $key, 'attribute_' )
+				? (string) $key
+				: 'attribute_' . (string) $key;
+			$this->post_meta_by_id[ $variation_id ][ $meta_key ] = (string) $value;
+		}
+		return $variation;
+	}
+
+	private function invoke_build_variant_entry(
+		Mockery\MockInterface $variation,
+		Mockery\MockInterface $parent
+	): array {
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'build_variant_entry' );
+		return $method->invoke(
+			$this->jsonld,
+			$variation,
+			$parent,
+			[ 'enabled' => 'yes', 'return_policy' => [ 'mode' => 'unconfigured' ] ],
+			'US'
+		);
+	}
+
+	public function test_variant_entry_has_product_type_and_sku(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent    = $this->make_product( [ 'id' => 100 ] );
+		$variation = $this->make_variation( [ 'id' => 101, 'sku' => 'tee-white-l' ] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 'Product', $entry['@type'] );
+		$this->assertSame( 'tee-white-l', $entry['sku'] );
+	}
+
+	public function test_variant_entry_emits_id_url_and_name(): void {
+		// `@id` and `name` are Schema.org Product fundamentals — agents
+		// dereference `@id` to fetch the variant's own page and
+		// `name` is what surfaces in rich-result snippets. Regression
+		// guard for PR #338 review feedback (these went missing in the
+		// initial implementation).
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent    = $this->make_product( [ 'id' => 100 ] );
+		$variation = $this->make_variation( [
+			'id'        => 101,
+			'name'      => 'Hoodie - Blue, Logo: Yes',
+			'permalink' => 'https://example.com/product/hoodie/?attribute_pa_color=blue&attribute_logo=Yes',
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame(
+			'https://example.com/product/hoodie/?attribute_pa_color=blue&attribute_logo=Yes',
+			$entry['@id']
+		);
+		$this->assertSame( $entry['@id'], $entry['url'] );
+		$this->assertSame( 'Hoodie - Blue, Logo: Yes', $entry['name'] );
+	}
+
+	public function test_variant_entry_falls_back_to_id_when_no_sku(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent    = $this->make_product( [ 'id' => 100 ] );
+		$variation = $this->make_variation( [ 'id' => 101, 'sku' => '' ] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( '101', $entry['sku'] );
+	}
+
+	public function test_variant_entry_emits_typed_color_from_variation_attribute(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// Free-text attribute (no `pa_` prefix): value used directly.
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array( 'attribute_color' => 'White' ),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 'White', $entry['color'] );
+	}
+
+	public function test_variant_entry_offer_carries_price_currency_availability(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'price'    => '20.00',
+			'in_stock' => true,
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertCount( 1, $entry['offers'] );
+		$this->assertSame( '20.00', $entry['offers'][0]['price'] );
+		$this->assertSame( 'USD', $entry['offers'][0]['priceCurrency'] );
+		$this->assertSame( 'https://schema.org/InStock', $entry['offers'][0]['availability'] );
+	}
+
+	public function test_variant_entry_offer_marks_out_of_stock(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [ 'in_stock' => false ] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame(
+			'https://schema.org/OutOfStock',
+			$entry['offers'][0]['availability']
+		);
+	}
+
+	public function test_variant_entry_buy_action_uses_variation_id_not_parent(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent    = $this->make_product( [ 'id' => 100 ] );
+		$variation = $this->make_variation( [ 'id' => 999 ] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$url = $entry['potentialAction']['target']['urlTemplate'];
+		$this->assertStringContainsString( 'products=999:1', $url );
+		$this->assertStringNotContainsString( 'products=100', $url );
+	}
+
+	public function test_variant_entry_offer_carries_checkout_page_url_template_with_variation_id(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent    = $this->make_product( [ 'id' => 100 ] );
+		$variation = $this->make_variation( [ 'id' => 999 ] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame(
+			$entry['potentialAction']['target']['urlTemplate'],
+			$entry['offers'][0]['checkoutPageURLTemplate'],
+			'Per-variant BuyAction URL and checkoutPageURLTemplate must match'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// ProductGroup conversion — variable-product end-to-end (#328)
+	// ------------------------------------------------------------------
+	//
+	// `enhance_product_data()` runs all the simple-product enrichers
+	// first (they describe shared characteristics that belong on the
+	// ProductGroup parent), then `maybe_convert_to_product_group()`
+	// reshapes the markup. These tests pin the converted shape:
+	// @type flips, productGroupID/variesBy/hasVariant added, parent's
+	// offers[] and potentialAction dropped (variants own them).
+
+	private function setup_wc_get_product_for_variations( array $variations ): void {
+		// Stub `wc_get_product()` to return one of `$variations` keyed by ID.
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $id ) => $variations[ (int) $id ] ?? false
+		);
+	}
+
+	public function test_variable_product_emits_as_product_group(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$variation = $this->make_variation( [ 'id' => 101, 'sku' => 'tee-w' ] );
+		$this->setup_wc_get_product_for_variations( [ 101 => $variation ] );
+
+		$parent = $this->make_product( [
+			'id'       => 100,
+			'sku'      => 'tee-parent',
+			'children' => [ 101 ],
+			'variation_attributes' => array(
+				'pa_color' => array( 'navy', 'white' ),
+			),
+		] );
+
+		$markup = array(
+			'@type'  => 'Product',
+			'name'   => 'V-Neck T-Shirt',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
 		);
 
-		// Exactly one `#` — no duplication of the fragment marker.
-		$this->assertSame( 1, substr_count( $url, '#' ) );
+		$result = $this->jsonld->enhance_product_data( $markup, $parent );
 
-		// Fragment intact at the end.
-		$this->assertStringEndsWith( '#tab-description', $url );
+		$this->assertSame( 'ProductGroup', $result['@type'] );
+		$this->assertSame( 'tee-parent', $result['productGroupID'] );
+	}
+
+	public function test_product_group_variesBy_lists_actually_varying_axes_only(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$variation = $this->make_variation( [ 'id' => 101 ] );
+		$this->setup_wc_get_product_for_variations( [ 101 => $variation ] );
+
+		$parent = $this->make_product( [
+			'id'       => 100,
+			'children' => [ 101 ],
+			'variation_attributes' => array(
+				'pa_color' => array( 'navy' ),  // uniform — should NOT appear
+				'pa_size'  => array( 'l', 'm', 's' ),
+			),
+		] );
+
+		$result = $this->jsonld->enhance_product_data( [], $parent );
+
+		$this->assertSame(
+			array( 'https://schema.org/size' ),
+			$result['variesBy']
+		);
+	}
+
+	public function test_product_group_drops_parent_offers_and_potential_action(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$variation = $this->make_variation( [ 'id' => 101 ] );
+		$this->setup_wc_get_product_for_variations( [ 101 => $variation ] );
+
+		$parent = $this->make_product( [
+			'id'                   => 100,
+			'children'             => [ 101 ],
+			'variation_attributes' => array( 'pa_color' => array( 'navy', 'red' ) ),
+		] );
+
+		$markup = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $parent );
+
+		$this->assertArrayNotHasKey( 'offers', $result );
+		$this->assertArrayNotHasKey( 'potentialAction', $result );
+	}
+
+	public function test_product_group_emits_one_has_variant_entry_per_child(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$v1 = $this->make_variation( [ 'id' => 101, 'sku' => 'tee-w' ] );
+		$v2 = $this->make_variation( [ 'id' => 102, 'sku' => 'tee-n' ] );
+		$v3 = $this->make_variation( [ 'id' => 103, 'sku' => 'tee-g' ] );
+		$this->setup_wc_get_product_for_variations( [ 101 => $v1, 102 => $v2, 103 => $v3 ] );
+
+		$parent = $this->make_product( [
+			'id'                   => 100,
+			'children'             => [ 101, 102, 103 ],
+			'variation_attributes' => array( 'pa_color' => array( 'white', 'navy', 'green' ) ),
+		] );
+
+		$result = $this->jsonld->enhance_product_data( [], $parent );
+
+		$this->assertCount( 3, $result['hasVariant'] );
+		$skus = array_column( $result['hasVariant'], 'sku' );
+		$this->assertSame( array( 'tee-w', 'tee-n', 'tee-g' ), $skus );
+	}
+
+	public function test_product_group_falls_back_to_simple_product_when_no_variations(): void {
+		// Locked decision: variable + 0 children → keep simple Product
+		// shape (don't convert). Edge case for misconfigured stores
+		// where variations were deleted.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent = $this->make_product( [
+			'id'                   => 100,
+			'children'             => [],
+			'variation_attributes' => array( 'pa_color' => array( 'navy' ) ),
+		] );
+
+		$result = $this->jsonld->enhance_product_data( [ '@type' => 'Product' ], $parent );
+
+		$this->assertSame( 'Product', $result['@type'] );
+		$this->assertArrayNotHasKey( 'hasVariant', $result );
+		$this->assertArrayNotHasKey( 'productGroupID', $result );
+	}
+
+	public function test_misconfigured_variable_with_core_typed_axis_still_emits_product_group(): void {
+		// The "core typed override" path: parent attribute `pa_color`
+		// is NOT flagged "Used for variations" (so
+		// `get_variation_attributes()` returns []), but the variation
+		// children themselves have `attribute_pa_color` postmeta with
+		// distinct values. Schema.org has a canonical typed property
+		// for color, AI agents care about it, and the data is right
+		// there on each variation — we override the missing parent
+		// flag and emit ProductGroup with `variesBy: [color]` and
+		// per-variant typed `color` values.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$v1 = $this->make_variation( [ 'id' => 101, 'sku' => 'h-r', 'variation_attributes' => [ 'pa_color' => 'red' ] ] );
+		$v2 = $this->make_variation( [ 'id' => 102, 'sku' => 'h-g', 'variation_attributes' => [ 'pa_color' => 'green' ] ] );
+		$v3 = $this->make_variation( [ 'id' => 103, 'sku' => 'h-b', 'variation_attributes' => [ 'pa_color' => 'blue' ] ] );
+		$this->setup_wc_get_product_for_variations( [ 101 => $v1, 102 => $v2, 103 => $v3 ] );
+
+		// Parent: variable, has children, but `get_variation_attributes()`
+		// returns empty (parent flag missing on `pa_color`).
+		$parent = $this->make_product( [
+			'id'                   => 100,
+			'children'             => [ 101, 102, 103 ],
+			'variation_attributes' => array(),  // parent flag unset
+		] );
+
+		Functions\when( 'get_term_by' )->justReturn( false );  // free-text fallback for term-name lookup
+
+		$result = $this->jsonld->enhance_product_data( [], $parent );
+
+		$this->assertSame( 'ProductGroup', $result['@type'] );
+		$this->assertSame( array( 'https://schema.org/color' ), $result['variesBy'] );
+		$this->assertCount( 3, $result['hasVariant'] );
+		$colors = array_column( $result['hasVariant'], 'color' );
+		$this->assertSame( array( 'red', 'green', 'blue' ), $colors );
+	}
+
+	public function test_misconfigured_variable_falls_back_to_simple_product(): void {
+		// Product 16 / Hoodie territory in the dev fixtures: variable
+		// type with variation children but **no** attribute is flagged
+		// "Used for variations". `detect_varies_by()` returns an empty
+		// array. Emitting `hasVariant` without `variesBy` would hand
+		// agents N near-identical blocks they can't tell apart, so we
+		// fall back to simple-Product shape — keep `offers` and
+		// `potentialAction`, no `hasVariant`, no `productGroupID`.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$v1 = $this->make_variation( [ 'id' => 101, 'variation_attributes' => [] ] );
+		$this->setup_wc_get_product_for_variations( [ 101 => $v1 ] );
+
+		$parent = $this->make_product( [
+			'id'                   => 100,
+			'children'             => [ 101 ],
+			'variation_attributes' => array(),  // no varying axes
+		] );
+
+		$markup = array( '@type' => 'Product', 'offers' => array( array( '@type' => 'Offer' ) ) );
+		$result = $this->jsonld->enhance_product_data( $markup, $parent );
+
+		$this->assertSame( 'Product', $result['@type'] );
+		$this->assertArrayNotHasKey( 'hasVariant', $result );
+		$this->assertArrayNotHasKey( 'productGroupID', $result );
+		$this->assertArrayNotHasKey( 'variesBy', $result );
+		// The simple-Product enrichers (BuyAction, currency, etc.) still ran.
+		$this->assertArrayHasKey( 'potentialAction', $result );
+		$this->assertArrayHasKey( 'offers', $result );
+	}
+
+	public function test_unbuyable_variations_fall_back_to_simple_product(): void {
+		// Regression guard for PR #338 review feedback: when
+		// `get_children()` returns IDs but `wc_get_product()` resolves
+		// none of them (data corruption, soft-deleted variations, or a
+		// stale WP cache), we MUST NOT emit a `ProductGroup` with empty
+		// `hasVariant` and the parent's `offers` + `potentialAction`
+		// already dropped. That would produce a strictly-worse shape
+		// than the simple-Product fallback (no offers, no buy action,
+		// no variants — completely unbuyable). Build the variants
+		// FIRST and only commit the conversion when at least one
+		// resolved.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// Stub `wc_get_product()` to return false for every child ID
+		// — simulating the corrupted-data case.
+		Functions\when( 'wc_get_product' )->justReturn( false );
+
+		$parent = $this->make_product( [
+			'id'                   => 100,
+			'children'             => [ 901, 902, 903 ],
+			'variation_attributes' => array( 'pa_color' => array( 'red', 'blue' ) ),
+		] );
+
+		$markup = array(
+			'@type'           => 'Product',
+			'offers'          => array( array( '@type' => 'Offer', 'price' => '20' ) ),
+			'potentialAction' => array( '@type' => 'BuyAction' ),
+		);
+		$result = $this->jsonld->enhance_product_data( $markup, $parent );
+
+		$this->assertSame( 'Product', $result['@type'] );
+		$this->assertArrayNotHasKey( 'hasVariant', $result );
+		$this->assertArrayNotHasKey( 'productGroupID', $result );
+		$this->assertArrayNotHasKey( 'variesBy', $result );
+		// Critical: the parent-level offers + potentialAction must
+		// survive intact. Pre-fix, both were unconditionally dropped.
+		$this->assertArrayHasKey( 'offers', $result );
+		$this->assertArrayHasKey( 'potentialAction', $result );
+	}
+
+	public function test_simple_product_does_not_convert_to_product_group(): void {
+		// Regression guard: simple products (no `get_variation_attributes()`
+		// stub on the WC_Product base) must not get the ProductGroup
+		// conversion. The capability gate is method_exists.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->make_product( [ 'id' => 50 ] );
+
+		$markup = array( '@type' => 'Product', 'name' => 'Sunglasses' );
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( 'Product', $result['@type'] );
+		$this->assertArrayNotHasKey( 'hasVariant', $result );
+	}
+
+	// ------------------------------------------------------------------
+	// allow_product_group_type — registers `productgroup` on the WC core
+	// per-page allow-list so the rewritten @type survives
+	// `WC_Structured_Data::get_structured_data()`. Without this hook
+	// the entire ProductGroup block is silently dropped on the
+	// front-end (regression observed against TT5 + WC 10.7).
+	// ------------------------------------------------------------------
+
+	public function test_allow_product_group_type_appends_productgroup_on_single_product(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+
+		$result = $this->jsonld->allow_product_group_type( [ 'product', 'breadcrumblist' ] );
+
+		$this->assertContains( 'productgroup', $result );
+		// Existing types must survive untouched — we only append.
+		$this->assertContains( 'product', $result );
+		$this->assertContains( 'breadcrumblist', $result );
+	}
+
+	public function test_allow_product_group_type_does_not_append_off_product_pages(): void {
+		// On non-product pages (cart, archive, generic post) we have no
+		// reason to admit `productgroup`, and admitting it indiscriminately
+		// could surface a stale ProductGroup block from a transient if a
+		// future feature ever caches structured data globally.
+		Functions\when( 'is_product' )->justReturn( false );
+
+		$result = $this->jsonld->allow_product_group_type( [ 'product', 'breadcrumblist' ] );
+
+		$this->assertNotContains( 'productgroup', $result );
+	}
+
+	public function test_allow_product_group_type_does_not_duplicate_when_already_present(): void {
+		// Another plugin (or this filter running multiple times against
+		// the same `$types` array) may have already added
+		// `productgroup`. Avoid duplicates — they're noise in the
+		// allow-list even though WC core's intersection step doesn't
+		// break on them.
+		Functions\when( 'is_product' )->justReturn( true );
+
+		$result = $this->jsonld->allow_product_group_type( [ 'product', 'productgroup', 'breadcrumblist' ] );
+
+		$this->assertSame( 1, count( array_keys( $result, 'productgroup', true ) ) );
+		$this->assertContains( 'product', $result );
+		$this->assertContains( 'breadcrumblist', $result );
+	}
+
+	public function test_offer_checkout_page_url_template_omitted_when_no_offers(): void {
+		// Defensive: products without an offer (rare — typically
+		// non-purchasable) shouldn't get a stranded checkoutPageURLTemplate
+		// on a non-existent Offer.
+		$product = $this->make_product();
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertArrayNotHasKey( 'offers', $result );
 	}
 
 	// ------------------------------------------------------------------

@@ -199,7 +199,7 @@ Mapped slugs (case-insensitive lookup) → typed Schema.org property:
 
 - **Single-value attribute** with no upstream owner → emit as the typed property (e.g. `"color": "Black"`). The attribute is then *excluded* from `additionalProperty` to avoid double-emit.
 - **Multi-value attribute** (any `,` or `|` in the value) → typed-property emission is **skipped**. Schema.org's `Text` type can't honestly carry a multi-value claim, and a first-piece-only emit would silently drop merchant data. Falls back to `additionalProperty` with the joined string preserved.
-- **Variation-defining attribute** → both typed-property and `additionalProperty` emission are skipped on the parent. Variation-defining attributes describe individual *variants*, not the parent product as a whole — emitting them at the parent level would claim a single intrinsic color/size that the parent doesn't have. Per-variant JSON-LD (`ProductGroup` + `hasVariant`) is tracked in [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328); until that lands, variation-specific data isn't currently emitted as Schema.org.
+- **Variation-defining attribute** → both typed-property and `additionalProperty` emission are skipped on the parent. Variation-defining attributes describe individual *variants*, not the parent product as a whole — emitting them at the parent level would claim a single intrinsic color/size that the parent doesn't have. Per-variant typed emission lives on each `hasVariant` Product entry under the `ProductGroup` shape — see [`ProductGroup` / `hasVariant` / `variesBy`](#productgroup--hasvariant--variesby-variable-products) below.
 - **Existing value in `$markup`** (set by WC core or another plugin) → defer on the typed side, don't overwrite. The merchant's attribute *still* emits to `additionalProperty` so its data signal reaches agents even when upstream chose a different typed value. Caller control over the typed claim is preserved.
 
 Worked example:
@@ -218,6 +218,81 @@ Worked example:
 ```
 
 Implementation: [`emit_attributes()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) — single-pass per attribute, decides typed property vs `additionalProperty` inline. One `get_attribute()` lookup per visible attribute regardless of which path the value takes.
+
+### `ProductGroup` / `hasVariant` / `variesBy` (variable products)
+
+Variable products with at least one attribute marked **Used for variations** emit as Schema.org [`ProductGroup`](https://schema.org/ProductGroup) — a parent abstraction over its variations, where each concrete buyable SKU lives under `hasVariant` as its own Product block.
+
+**Top-level shape change:**
+
+- `@type` flips from `Product` → `ProductGroup`.
+- `productGroupID` is the parent SKU (or, when no SKU is set, the parent post ID as a string).
+- `variesBy` lists Schema.org property URLs (or short Text labels for unmapped attributes) for the axes that **actually** vary across variations — i.e. axes with more than one distinct non-empty value. If every variation shares the same color and only differs by size, only `size` appears in `variesBy`.
+- Parent-level `offers` and `potentialAction` are dropped on conversion. Buyers can't purchase the parent of a variable product, and per Schema.org the concrete offers belong on the `hasVariant` Product entries.
+
+**Per-variant shape (one entry per child variation):**
+
+Each entry under `hasVariant` is itself a Product with:
+
+- `@type: "Product"`, `@id` and `url` (variation permalink), `name` (WC's variation display name, e.g. `"Hoodie - Blue, Logo: Yes"`), `sku`, `image` (variation-specific when set; falls back to parent gallery image).
+- The typed Schema.org property for the variation's differentiating attribute (`color` / `size` / `material` / `pattern`) — same mapping as the parent's typed-property emission.
+- An `offers` array (single-element) whose member carries `price`, `priceCurrency`, `availability`, `shippingDetails`, `hasMerchantReturnPolicy`, and `checkoutPageURLTemplate` (Schema.org `Offer` property — a URL template per [RFC 6570](https://datatracker.ietf.org/doc/html/rfc6570) that points at the variation's checkout page).
+- A `potentialAction: BuyAction` whose `target.urlTemplate` points at the **variation ID** so an AI agent's deep-link resolves to that specific SKU instead of the parent's "choose your color" detour.
+
+**Core-typed override (parent flag missing):**
+
+WC's `get_variation_attributes()` is gated by the parent attribute's "Used for variations" flag — if a merchant configures variations with distinct `pa_color` / `pa_size` / `pa_material` / `pa_pattern` values but forgets to flag the parent attribute, that API silently returns empty. Per-variation postmeta (`attribute_<slug>`) is still populated, though. For these four core typed slugs only, the plugin reads variation postmeta directly: if at least two children have distinct non-empty values for a core slug, the axis qualifies as varying and the corresponding Schema.org URL appears in `variesBy`. Each `hasVariant` entry's typed property (`color` / `size` / etc.) is filled from the same postmeta source so the variant data stays coherent with the advertised axis.
+
+Override is intentionally limited to the four core typed slugs: they have canonical Schema.org typed-property mappings and AI agents look for them by name. Unmapped custom attributes (Style, Heel Height, Logo) honor the parent flag — getting them wrong only changes a Text label.
+
+**Misconfigured-variable fallback:**
+
+When a variable product has variation children but no axis qualifies — neither `get_variation_attributes()` nor the core-typed override surfaces ≥2 distinct values — the plugin falls back to simple-Product emission. With no `variesBy` to advertise, a `hasVariant` block of N near-identical entries would just confuse agents. Better to emit a working single-SKU shape and let the merchant fix the variation config in the editor.
+
+**WC core type-allow-list registration:**
+
+`WC_Structured_Data::get_structured_data()` keys the generated markup by `strtolower($value['@type'])` and intersects with the per-page allow-list returned by `get_data_type_for_page()` — which only ships `product`, `breadcrumblist`, `review`, `order`. The plugin hooks `woocommerce_structured_data_type_for_page` on single-product pages to add `productgroup` to that list; without the registration the entire ProductGroup block is silently dropped at output time.
+
+Worked example (V-Neck T-Shirt with 3 variations across color and size):
+
+```jsonc
+{
+  "@type": "ProductGroup",
+  "productGroupID": "woo-vneck-tee",
+  "name": "V-Neck T-Shirt",
+  "variesBy": [
+    "https://schema.org/color",
+    "https://schema.org/size"
+  ],
+  "hasVariant": [
+    {
+      "@type": "Product",
+      "@id": "https://example.com/product/v-neck-t-shirt/?attribute_pa_color=red&attribute_pa_size=s",
+      "url": "https://example.com/product/v-neck-t-shirt/?attribute_pa_color=red&attribute_pa_size=s",
+      "name": "V-Neck T-Shirt - Red, Small",
+      "sku": "woo-vneck-tee-red-s",
+      "color": "Red",
+      "size": "Small",
+      "offers": [
+        {
+          "@type": "Offer",
+          "price": "20",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "checkoutPageURLTemplate": "https://example.com/checkout-link/?products=43:1&utm_source={agent_id}&..."
+        }
+      ],
+      "potentialAction": {
+        "@type": "BuyAction",
+        "target": { "@type": "EntryPoint", "urlTemplate": "...products=43:1..." }
+      }
+    }
+    // ...other variations
+  ]
+}
+```
+
+Implementation: [`maybe_convert_to_product_group()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) (parent-level rewrite) and [`build_variant_entry()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) (per-variant block). Type registration: [`allow_product_group_type()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php).
 
 ### `additionalProperty` (attributes)
 
@@ -419,7 +494,7 @@ For reference, fields that a JSON-LD reader might expect but aren't part of this
 
 - **`aggregateRating` / `review`** -- inherited from WC core if present (e.g. via WooCommerce's reviews feature); plugin doesn't add or modify.
 - **`audience`, `eligibleRegion`** -- not modeled. AI agents that need region/audience scoping should infer from `shippingDetails.shippingDestination`.
-- **Variation-level JSON-LD** -- the plugin enhances the parent Product. Variations remain in WC core's `offers` array; per-variation JSON-LD blocks are not emitted.
+- **Per-variation top-level JSON-LD** -- variations don't get their own top-level Product `<script>` block when the buyer lands on a variation permalink. The plugin emits per-variation Product blocks under `hasVariant` on the parent's `ProductGroup` shape (see [`ProductGroup` / `hasVariant` / `variesBy`](#productgroup--hasvariant--variesby-variable-products) above) so AI agents can deep-link to the specific SKU; rendering those same blocks again as standalone top-level markup on each variation URL would duplicate data.
 
 These omissions are deliberate: the plugin's scope is "AI-shopping discovery essentials," not full Schema.org coverage. Extensions can fill these via the `wc_ai_storefront_jsonld_product` filter.
 

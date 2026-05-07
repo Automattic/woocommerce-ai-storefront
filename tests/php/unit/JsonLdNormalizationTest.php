@@ -52,6 +52,9 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 				return $url . $sep . $query . $fragment;
 			}
 		);
+		Functions\when( 'home_url' )->alias(
+			static fn( $path = '' ) => 'https://example.com' . $path
+		);
 		Functions\when( 'wc_get_product_cat_ids' )->justReturn( [] );
 		Functions\when( 'wc_get_base_location' )->justReturn(
 			[ 'country' => 'US' ]
@@ -92,6 +95,8 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'has_dimensions' )->andReturn( false );
 		$product->shouldReceive( 'get_dimensions' )->andReturn( [] );
 		$product->shouldReceive( 'get_attributes' )->andReturn( [] );
+		$product->shouldReceive( 'get_children' )->andReturn( [] );
+		$product->shouldReceive( 'get_sku' )->andReturn( '' );
 		return $product;
 	}
 
