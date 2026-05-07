@@ -127,6 +127,16 @@ Schema.org `QuantitativeValue` exposing the current stock level.
 - **Emitted only when** WooCommerce stock management is enabled for the product AND the product has a numeric `stock_quantity`.
 - **Skipped for** products with `manage_stock=false` (out of scope for inventory-level discovery).
 
+### `brand`
+
+`{"@type": "Brand", "name": "..."}` from the `product_brand` taxonomy.
+
+- **Emitted when** WooCommerce's built-in brand support is active (`product_brand` taxonomy registered) and the product has at least one assigned brand term.
+- **Selection rule**: WC core picks the first assigned brand if multiple are set (a product belongs to one brand for Schema.org purposes).
+- **Source**: emitted by **WC core**'s `WC_Brands::add_structured_data()` (in `wp-content/plugins/woocommerce/includes/class-wc-brands.php`), hooked into `woocommerce_structured_data_product` at priority 20 — separate from the main `WC_Structured_Data` class. This is why early audit grep on the main structured-data class missed it.
+- **Compatibility**: requires WC's modern brands feature (rolled out via the `Automattic\WooCommerce\Internal\Brands` package). Older WC installs without brand taxonomy support, or sites using third-party brand plugins, may not emit this — and would need the third-party plugin's own structured-data integration.
+- **Plugin enrichment**: this plugin doesn't add or modify the brand emission; it relies on WC core.
+
 ### `category`
 
 The primary category path as a breadcrumb string (e.g. `"Clothing > Hoodies"`).

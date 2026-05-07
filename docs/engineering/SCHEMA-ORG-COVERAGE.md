@@ -54,7 +54,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `aggregateRating` | — | ✓ when reviews enabled + ≥1 rated | WC core |
 | `audience` | — | — | — |
 | `award` | — | — | — |
-| `brand` | — | — | — *(WC core does NOT emit `brand` from `WC_Structured_Data`. SEO plugins like Yoast/Rank Math add it. See "Recommended follow-ups" below.)* |
+| `brand` | ✓ §brand | ✓ when `product_brand` taxonomy has a value | WC core (`WC_Brands::add_structured_data()` in `class-wc-brands.php`, NOT `class-wc-structured-data.php` — that's why an audit grep against just the main structured-data file missed it) |
 | `category` | ✓ | ✓ | Plugin |
 | `color` | ✓ §typed | ✓ (single value, taxonomy or free-text) | Plugin |
 | `colorSwatch` | — | — | — |
@@ -385,7 +385,7 @@ For now, conservatism wins: the broader `OnlineBusiness` type accurately covers 
 
 1. **Coverage is biased toward "what we add beyond WC core"**. `JSON-LD-SCHEMA.md` documents fields the plugin contributes; WC-core-emitted fields (`name`, `description`, `image`, `url`, `aggregateRating`, `review[]`, top-level `OnlineStore` fields) are largely undocumented even though they're part of the shipped JSON-LD. This is a doc bias to consider correcting.
 
-2. **No `brand` emission today**. WC core's `WC_Structured_Data::generate_product_data()` doesn't emit `Product.brand` in default WooCommerce. SEO plugins (Yoast, Rank Math) typically add it. Absent any of those, AI agents see no brand. Schema.org treats `brand` as a primary identification field.
+2. **`brand` IS emitted by WC core** via a separate handler. `WC_Brands::add_structured_data()` in `wp-content/plugins/woocommerce/includes/class-wc-brands.php` hooks `woocommerce_structured_data_product` at priority 20 — distinct from the main `WC_Structured_Data` class. An audit grep against just the main file would miss this; the lesson is to grep the broader plugin tree for filter handlers, not just the canonical class. Coverage is conditional: requires WC's modern brands feature and `product_brand` taxonomy values.
 
 3. **Future #328 fills three gaps**: `Product.inProductGroupWithID`, `Product.isVariantOf`, and per-variant `Product` emission via `hasVariant`. Plus migrating `BuyAction.urlTemplate` to the WC Shareable Checkout URL format (`?products=ID:1`).
 
@@ -397,12 +397,11 @@ For now, conservatism wins: the broader `OnlineBusiness` type accurately covers 
 
 In rough priority order:
 
-1. **`Product.brand`** — emit when WC's brand taxonomy has a value. Schema.org primary identification field; AI agents heavily key on it. ~10 LOC.
-2. **`Organization.sameAs`** — array of merchant social-profile URLs (Twitter, Facebook, Instagram). Filterable per-merchant in admin settings or auto-detected from common SEO plugins.
-3. **`Product.itemCondition`** — new vs refurbished. Useful for resale stores; merchant-config required.
-4. **`Product.gtin8` / `gtin12` / `gtin13` / `gtin14`** — more specific GTIN forms when WC's GTIN field has a value with the right length.
-5. **`Organization.telephone`** — currently suppressed by default. Worth a per-merchant opt-in toggle.
-6. **`Product.audience`** — target demographic (`PeopleAudience` with `audienceType`). Merchant-config; useful for kids/adult/professional/etc. categorization.
-7. **Switch homepage `@type` from `OnlineStore` to `OnlineBusiness`** — broader fit for WC's full install base (services, bookings, memberships, donations, lead-gen, retail). Code change is one line in [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) plus a `JSON-LD-SCHEMA.md` update. Decision rationale captured in [the OnlineBusiness section](#onlinebusiness--target-type).
+1. **`Organization.sameAs`** — array of merchant social-profile URLs (Twitter, Facebook, Instagram). Filterable per-merchant in admin settings or auto-detected from common SEO plugins.
+2. **`Product.itemCondition`** — new vs refurbished. Useful for resale stores; merchant-config required.
+3. **`Product.gtin8` / `gtin12` / `gtin13` / `gtin14`** — more specific GTIN forms when WC's GTIN field has a value with the right length.
+4. **`Organization.telephone`** — currently suppressed by default. Worth a per-merchant opt-in toggle.
+5. **`Product.audience`** — target demographic (`PeopleAudience` with `audienceType`). Merchant-config; useful for kids/adult/professional/etc. categorization.
+6. **Switch homepage `@type` from `OnlineStore` to `OnlineBusiness`** — broader fit for WC's full install base (services, bookings, memberships, donations, lead-gen, retail). Code change is one line in [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) plus a `JSON-LD-SCHEMA.md` update. Decision rationale captured in [the OnlineBusiness section](#onlinebusiness--target-type).
 
 These can be filed as standalone issues; none are blocked by the current PR pipeline (#328 → ProductGroup work).
