@@ -1293,10 +1293,25 @@ class WC_AI_Storefront_JsonLd {
 	 *                             per-ID syndication check).
 	 */
 	private function add_related_products( array &$markup, $product, array $settings ): void {
-		$cross_sells = method_exists( $product, 'get_cross_sell_ids' )
+		// Short-circuit if BOTH keys are already populated — no work to
+		// do. WC core doesn't currently set either, but a third-party
+		// filter at higher priority might. Avoids the
+		// `get_cross_sell_ids()` + `get_upsell_ids()` reads, the slice,
+		// the candidate-ID merge, and the three cache-priming calls
+		// when none of them would be put to use.
+		$skip_related = isset( $markup['isRelatedTo'] );
+		$skip_similar = isset( $markup['isSimilarTo'] );
+		if ( $skip_related && $skip_similar ) {
+			return;
+		}
+
+		// Only fetch the lists we'll actually consume — if the caller
+		// already set `isRelatedTo`, we don't need cross-sells; if they
+		// already set `isSimilarTo`, we don't need upsells.
+		$cross_sells = ( ! $skip_related && method_exists( $product, 'get_cross_sell_ids' ) )
 			? (array) $product->get_cross_sell_ids()
 			: array();
-		$upsells     = method_exists( $product, 'get_upsell_ids' )
+		$upsells     = ( ! $skip_similar && method_exists( $product, 'get_upsell_ids' ) )
 			? (array) $product->get_upsell_ids()
 			: array();
 
@@ -1338,13 +1353,13 @@ class WC_AI_Storefront_JsonLd {
 			WC_AI_Storefront::prime_syndication_cache( $candidate_ids, $settings );
 		}
 
-		if ( ! isset( $markup['isRelatedTo'] ) ) {
+		if ( ! $skip_related ) {
 			$related = $this->build_related_product_refs( $cross_sells, $settings );
 			if ( ! empty( $related ) ) {
 				$markup['isRelatedTo'] = $related;
 			}
 		}
-		if ( ! isset( $markup['isSimilarTo'] ) ) {
+		if ( ! $skip_similar ) {
 			$similar = $this->build_related_product_refs( $upsells, $settings );
 			if ( ! empty( $similar ) ) {
 				$markup['isSimilarTo'] = $similar;

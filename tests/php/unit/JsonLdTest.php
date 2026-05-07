@@ -1082,6 +1082,42 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_both_keys_set_short_circuits_and_does_not_call_wc_get_product(): void {
+		// When both isRelatedTo and isSimilarTo are already populated
+		// (e.g. by a higher-priority third-party filter), the method
+		// must short-circuit BEFORE doing any work — no
+		// get_cross_sell_ids() reads, no candidate-ID building, no
+		// cache priming, no `wc_get_product()` calls. Pin this with a
+		// `wc_get_product()` alias that fails the test if it's
+		// called, since the absence of the call is the whole point.
+		$product = $this->make_product( [
+			'cross_sell_ids' => array( 1101 ),
+			'upsell_ids'     => array( 1102 ),
+		] );
+
+		Functions\when( 'wc_get_product' )->alias(
+			function ( $id ) {
+				$this->fail( 'wc_get_product() must not be called when both keys are pre-populated; got id=' . (int) $id );
+			}
+		);
+
+		$markup = array(
+			'isRelatedTo' => array( array( '@id' => 'https://upstream.example.com/r/' ) ),
+			'isSimilarTo' => array( array( '@id' => 'https://upstream.example.com/s/' ) ),
+		);
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		// Both keys preserved, neither overwritten.
+		$this->assertSame(
+			array( array( '@id' => 'https://upstream.example.com/r/' ) ),
+			$result['isRelatedTo']
+		);
+		$this->assertSame(
+			array( array( '@id' => 'https://upstream.example.com/s/' ) ),
+			$result['isSimilarTo']
+		);
+	}
+
 	public function test_related_products_capped_at_max_refs_constant(): void {
 		// Hard cap of 10 entries per property prevents markup blowout
 		// on stores with very large cross-sell lists. Pass 12 IDs;
