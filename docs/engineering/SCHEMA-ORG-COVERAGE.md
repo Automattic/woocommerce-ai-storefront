@@ -453,3 +453,40 @@ In rough priority order:
    - Backward-compatible migration path: phase 1 adds Organization-level emission (purely additive); phase 2 makes Offer-level conditional. Or keep both as redundant signals if migration risk is too high. Reuses existing `add_return_policy()` emission code.
 
 These can be filed as standalone issues; none are blocked by the current PR pipeline (#328 → ProductGroup work).
+
+## Beyond the current types — Schema.org surfaces worth pursuing
+
+Types we don't emit today but that would extend AI-shopping and SEO leverage. Not a backlog (yet) — a brainstorm of what's worth filing as discrete issues.
+
+### Top picks (high leverage, modest cost)
+
+| Schema.org type | What it adds | Implementation note |
+|---|---|---|
+| [`BreadcrumbList`](https://schema.org/BreadcrumbList) | Google breadcrumb rich result; AI navigation context | We already build the category path via `add_category_path()` — small refactor |
+| [`WebSite`](https://schema.org/WebSite) + site-level `SearchAction` | Google Sitelinks Search Box | Trivial; `@type: WebSite` block at site level, ~15 LOC |
+| [`Product.isRelatedTo`](https://schema.org/isRelatedTo) / [`isSimilarTo`](https://schema.org/isSimilarTo) | "People also bought" / "Similar products" via WC's existing cross-sells / upsells | WC has the data (`get_cross_sell_ids()`, `get_upsell_ids()`); zero new merchant config |
+| [`FAQPage`](https://schema.org/FAQPage) | AI agents quote store policies verbatim; rich-result eligibility | Detect `/refund_returns/`, `/shipping/`, `/faq/` patterns, parse H2/H3 → P |
+
+### Strong consideration
+
+| Schema.org type | What it adds | Implementation note |
+|---|---|---|
+| [`Organization.knowsAbout`](https://schema.org/knowsAbout) | "What the store specializes in" — derived from top categories | Reuses category data we already pull for `hasOfferCatalog` |
+| [`LocalBusiness`](https://schema.org/LocalBusiness) | "Near me" discoverability for omnichannel merchants | Requires merchant-config: physical address, opening hours, telephone |
+| [`HowTo`](https://schema.org/HowTo) | Care/assembly/usage instructions per product | Per-product merchant data; integrates with product description sections |
+| [`Event`](https://schema.org/Event) / [`SpecialAnnouncement`](https://schema.org/SpecialAnnouncement) | Limited-time store events (sales, closures, trunk shows) | Separate "Store Events" admin section; broad Google search support |
+
+### Lower priority / niche
+
+- [`Quotation`](https://schema.org/Quotation) — B2B/wholesale quote workflows
+- [`MonetaryGrant`](https://schema.org/MonetaryGrant) — store credit / gift card balance
+- [`Course`](https://schema.org/Course) — educational-product merchants
+- [`Reservation`](https://schema.org/Reservation) — bookable services / custom-order intake
+- [`Certification`](https://schema.org/Certification), [`EnergyConsumptionDetails`](https://schema.org/EnergyConsumptionDetails) — regulated industries
+
+### What we deliberately rule out
+
+- **`Article` / `BlogPosting`** — content surfaces; out of scope for an e-commerce plugin (SEO plugins like Yoast/Rank Math handle these)
+- **`SiteNavigationElement`** — generally redundant with theme HTML/menu structure; low leverage for the cost
+- **`AboutPage` / `ContactPage`** — page-type signals; mostly handled by SEO plugins; minimal AI-shopping value
+- **`Organization.review`** at the org level — store-as-entity reviews are a different surface from product reviews; needs merchant data we don't have today (Trustpilot integration etc.)
