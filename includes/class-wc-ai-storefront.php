@@ -197,7 +197,7 @@ class WC_AI_Storefront {
 		$store_api_extension->init();
 
 		// Per-product final-sale meta box (admin-only). Adds the
-		// "AI: Final sale" checkbox to the WC product editor's
+		// "Final sale" checkbox to the WC product editor's
 		// Inventory tab and persists the merchant's choice. The
 		// checkbox is read by `WC_AI_Storefront_JsonLd::build_return_policy_block()`
 		// at JSON-LD emission time to override the store-wide return

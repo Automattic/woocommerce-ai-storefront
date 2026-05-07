@@ -100,7 +100,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 	}
 
 	/**
-	 * Render the "AI: Final sale" checkbox inside the Inventory tab.
+	 * Render the "Final sale" checkbox inside the Inventory tab.
 	 *
 	 * Uses WC core's `woocommerce_wp_checkbox()` helper so the visual
 	 * treatment, label width, and description-tooltip behavior match
@@ -108,10 +108,21 @@ class WC_AI_Storefront_Product_Meta_Box {
 	 * individually, etc.) — important for visual consistency in the
 	 * editor where mixing styling looks like a UI bug.
 	 *
-	 * The `AI:` label prefix scans visually as "this isn't a core WC
-	 * field" so merchants browsing the Inventory tab can tell at a
-	 * glance which checkboxes are this plugin vs. WC core. Same
-	 * pattern other commerce plugins follow.
+	 * The label is policy-first ("Final sale"), not channel-first
+	 * ("AI: Final sale"). The flag captures merchant intent — this
+	 * specific product is final sale and cannot be returned, regardless
+	 * of the store's standard return policy.
+	 *
+	 * Plugin scope today: the flag is consumed only by the structured-
+	 * data emitter (META_KEY is read in
+	 * `WC_AI_Storefront_JsonLd::build_return_policy_block()`), so AI
+	 * agents and search crawlers see "no returns" while the customer-
+	 * facing product page is unchanged. Customer-visible notices
+	 * (badges, description text, theme banners) are the merchant's
+	 * responsibility. If the plugin ever surfaces a frontend notice
+	 * for final-sale products, this same flag would be the right
+	 * input — the field captures intent that the plugin could route
+	 * to multiple consumers, even if today it routes to just one.
 	 */
 	public function render_checkbox(): void {
 		// Bail early if WC's helper isn't loaded — defensive against
@@ -126,9 +137,9 @@ class WC_AI_Storefront_Product_Meta_Box {
 		woocommerce_wp_checkbox(
 			[
 				'id'          => self::META_KEY,
-				'label'       => __( 'AI: Final sale', 'woocommerce-ai-storefront' ),
+				'label'       => __( 'Final sale', 'woocommerce-ai-storefront' ),
 				'description' => __(
-					'Override the store-wide return policy for this product. AI agents will see "no returns" regardless of your store policy. Use for clearance items, custom orders, or any product whose return terms diverge from the store default.',
+					'Mark this product as final sale (no returns). Overrides your store-wide return policy in the structured data sent to AI agents and search crawlers. The customer-facing product page is unchanged — add a notice in your theme or product description if you want shoppers to see it before purchase.',
 					'woocommerce-ai-storefront'
 				),
 				'desc_tip'    => true,
