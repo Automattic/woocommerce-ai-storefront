@@ -846,6 +846,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->jsonld->enhance_product_data( [], $product );
 
 		$this->assertSame( 'L', $result['size'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
 	}
 
 	public function test_pa_material_emits_as_typed_material_property(): void {
@@ -854,6 +855,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->jsonld->enhance_product_data( [], $product );
 
 		$this->assertSame( 'Cotton', $result['material'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
 	}
 
 	public function test_pa_pattern_emits_as_typed_pattern_property(): void {
@@ -862,6 +864,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->jsonld->enhance_product_data( [], $product );
 
 		$this->assertSame( 'Striped', $result['pattern'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
 	}
 
 	public function test_uk_spelling_colour_maps_to_color(): void {
@@ -873,6 +876,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->jsonld->enhance_product_data( [], $product );
 
 		$this->assertSame( 'Navy', $result['color'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
 	}
 
 	public function test_free_text_capitalized_color_attribute_maps_to_color(): void {
@@ -883,6 +887,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->jsonld->enhance_product_data( [], $product );
 
 		$this->assertSame( 'Red', $result['color'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
 	}
 
 	public function test_multi_value_core_attribute_skips_typed_emission(): void {

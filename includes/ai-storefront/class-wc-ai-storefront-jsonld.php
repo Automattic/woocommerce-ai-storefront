@@ -293,14 +293,7 @@ class WC_AI_Storefront_JsonLd {
 		if ( empty( $attributes ) ) {
 			return;
 		}
-		// `get_variation_attributes()` is on `WC_Product` base — returns
-		// `[]` for non-variable products and is also overridden by
-		// extension product types (subscriptions, bundles). Lowercase
-		// keys to match `$slug` for the case-insensitive comparison.
-		$variation_attrs = array_map(
-			'strtolower',
-			array_keys( $product->get_variation_attributes() )
-		);
+		$variation_attrs = self::get_variation_attribute_slugs( $product );
 
 		foreach ( $attributes as $attribute ) {
 			if ( ! $attribute->get_visible() ) {
@@ -308,6 +301,13 @@ class WC_AI_Storefront_JsonLd {
 			}
 			$slug = strtolower( $attribute->get_name() );
 			if ( ! isset( self::CORE_ATTRIBUTE_MAP[ $slug ] ) ) {
+				continue;
+			}
+			$schema_prop = self::CORE_ATTRIBUTE_MAP[ $slug ];
+			// Short-circuit before fetching the attribute value — the
+			// "already populated" check is cheap, get_attribute() can
+			// trigger taxonomy term joins.
+			if ( isset( $markup[ $schema_prop ] ) ) {
 				continue;
 			}
 			if ( in_array( $slug, $variation_attrs, true ) ) {
@@ -322,12 +322,27 @@ class WC_AI_Storefront_JsonLd {
 			if ( false !== strpbrk( $value, '|,' ) ) {
 				continue;
 			}
-			$schema_prop = self::CORE_ATTRIBUTE_MAP[ $slug ];
-			if ( isset( $markup[ $schema_prop ] ) ) {
-				continue;
-			}
 			$markup[ $schema_prop ] = $value;
 		}
+	}
+
+	/**
+	 * Returns the lowercased slugs of attributes that drive variations on
+	 * this product. Empty array for non-variable products. Lowercasing
+	 * matches the case-insensitive comparison both call sites use against
+	 * `$attribute->get_name()`.
+	 *
+	 * @param WC_Product $product The product object.
+	 * @return string[]
+	 */
+	private static function get_variation_attribute_slugs( $product ): array {
+		// `get_variation_attributes()` is on `WC_Product` base — returns
+		// `[]` for non-variable products and is also overridden by
+		// extension product types (subscriptions, bundles).
+		return array_map(
+			'strtolower',
+			array_keys( $product->get_variation_attributes() )
+		);
 	}
 
 	/**
@@ -346,14 +361,7 @@ class WC_AI_Storefront_JsonLd {
 		if ( empty( $attributes ) ) {
 			return;
 		}
-		// `get_variation_attributes()` is on `WC_Product` base — returns
-		// `[]` for non-variable products and is also overridden by
-		// extension product types (subscriptions, bundles). Lowercase
-		// keys to match `$slug` for the case-insensitive comparison.
-		$variation_attrs = array_map(
-			'strtolower',
-			array_keys( $product->get_variation_attributes() )
-		);
+		$variation_attrs = self::get_variation_attribute_slugs( $product );
 
 		$additional_properties = array();
 		foreach ( $attributes as $attribute ) {
