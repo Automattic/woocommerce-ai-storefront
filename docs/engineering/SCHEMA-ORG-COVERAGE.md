@@ -456,37 +456,39 @@ These can be filed as standalone issues; none are blocked by the current PR pipe
 
 ## Beyond the current types — Schema.org surfaces worth pursuing
 
-Types we don't emit today but that would extend AI-shopping and SEO leverage. Not a backlog (yet) — a brainstorm of what's worth filing as discrete issues.
+Types we don't emit today but might extend AI-shopping and SEO leverage. Decision tiers reflect prioritization (active / deferred / ruled out).
 
-### Top picks (high leverage, modest cost)
+### Already emitted (doc gap, not a coverage gap)
 
-| Schema.org type | What it adds | Implementation note |
+| Schema.org type | Source | Status |
 |---|---|---|
-| [`BreadcrumbList`](https://schema.org/BreadcrumbList) | Google breadcrumb rich result; AI navigation context | We already build the category path via `add_category_path()` — small refactor |
-| [`WebSite`](https://schema.org/WebSite) + site-level `SearchAction` | Google Sitelinks Search Box | Trivial; `@type: WebSite` block at site level, ~15 LOC |
-| [`Product.isRelatedTo`](https://schema.org/isRelatedTo) / [`isSimilarTo`](https://schema.org/isSimilarTo) | "People also bought" / "Similar products" via WC's existing cross-sells / upsells | WC has the data (`get_cross_sell_ids()`, `get_upsell_ids()`); zero new merchant config |
-| [`FAQPage`](https://schema.org/FAQPage) | AI agents quote store policies verbatim; rich-result eligibility | Detect `/refund_returns/`, `/shipping/`, `/faq/` patterns, parse H2/H3 → P |
+| [`BreadcrumbList`](https://schema.org/BreadcrumbList) | WC core (`WC_Structured_Data::generate_breadcrumblist_data()`) | ✓ emitted on product pages with WC's breadcrumb data; not yet in `JSON-LD-SCHEMA.md`. **Doc fix:** add a `### BreadcrumbList` section. |
 
-### Strong consideration
+### Active follow-ups (in priority order)
 
-| Schema.org type | What it adds | Implementation note |
-|---|---|---|
-| [`Organization.knowsAbout`](https://schema.org/knowsAbout) | "What the store specializes in" — derived from top categories | Reuses category data we already pull for `hasOfferCatalog` |
-| [`LocalBusiness`](https://schema.org/LocalBusiness) | "Near me" discoverability for omnichannel merchants | Requires merchant-config: physical address, opening hours, telephone |
-| [`HowTo`](https://schema.org/HowTo) | Care/assembly/usage instructions per product | Per-product merchant data; integrates with product description sections |
-| [`Event`](https://schema.org/Event) / [`SpecialAnnouncement`](https://schema.org/SpecialAnnouncement) | Limited-time store events (sales, closures, trunk shows) | Separate "Store Events" admin section; broad Google search support |
+| # | Schema.org type | Why pursue | Implementation note |
+|---|---|---|---|
+| 1 | [`Product.isRelatedTo`](https://schema.org/isRelatedTo) / [`isSimilarTo`](https://schema.org/isSimilarTo) | "People also bought" / "Similar products" via WC's existing cross-sells / upsells. AI agents key heavily on this. | WC has the data (`get_cross_sell_ids()`, `get_upsell_ids()`); zero new merchant config required |
+| 2 | [`WebSite`](https://schema.org/WebSite) + site-level `SearchAction` | Google Sitelinks Search Box (separate from `OnlineStore.potentialAction`) | Trivial; `@type: WebSite` block at site level, ~15 LOC |
+| 3 | [`Organization.knowsAbout`](https://schema.org/knowsAbout) | "What the store specializes in" signal for AI agents | Derive from top product categories — reuses data already pulled for `hasOfferCatalog` |
 
-### Lower priority / niche
+### Deferred (not now, but on the radar)
 
-- [`Quotation`](https://schema.org/Quotation) — B2B/wholesale quote workflows
-- [`MonetaryGrant`](https://schema.org/MonetaryGrant) — store credit / gift card balance
-- [`Course`](https://schema.org/Course) — educational-product merchants
-- [`Reservation`](https://schema.org/Reservation) — bookable services / custom-order intake
-- [`Certification`](https://schema.org/Certification), [`EnergyConsumptionDetails`](https://schema.org/EnergyConsumptionDetails) — regulated industries
+| Schema.org type | Why deferred |
+|---|---|
+| [`LocalBusiness`](https://schema.org/LocalBusiness) for omnichannel merchants | Needs merchant-config (physical address, opening hours) we don't collect today |
+| [`HowTo`](https://schema.org/HowTo) for care/assembly instructions | Per-product merchant data input that doesn't yet exist; product-description integration is its own design |
+| [`Event`](https://schema.org/Event) / [`SpecialAnnouncement`](https://schema.org/SpecialAnnouncement) for sales/closures | Needs a "Store Events" admin section; full standalone feature, not a small addition |
 
-### What we deliberately rule out
+### Ruled out
 
-- **`Article` / `BlogPosting`** — content surfaces; out of scope for an e-commerce plugin (SEO plugins like Yoast/Rank Math handle these)
-- **`SiteNavigationElement`** — generally redundant with theme HTML/menu structure; low leverage for the cost
-- **`AboutPage` / `ContactPage`** — page-type signals; mostly handled by SEO plugins; minimal AI-shopping value
-- **`Organization.review`** at the org level — store-as-entity reviews are a different surface from product reviews; needs merchant data we don't have today (Trustpilot integration etc.)
+- **[`FAQPage`](https://schema.org/FAQPage)** — out of scope. Detecting and parsing arbitrary policy pages into Q/A pairs is fragile, theme-dependent, and pulls the plugin into content-extraction territory better-served by dedicated SEO/FAQ plugins.
+- **`Article` / `BlogPosting`** — content surfaces; out of scope for an e-commerce plugin (SEO plugins like Yoast/Rank Math handle these).
+- **`SiteNavigationElement`** — generally redundant with theme HTML/menu structure; low leverage for the cost.
+- **`AboutPage` / `ContactPage`** — page-type signals; mostly handled by SEO plugins; minimal AI-shopping value.
+- **`Organization.review`** at the org level — store-as-entity reviews are a different surface from product reviews; needs merchant data we don't have today (Trustpilot integration etc.).
+- **[`Quotation`](https://schema.org/Quotation)** — B2B/wholesale-specific; narrow audience.
+- **[`MonetaryGrant`](https://schema.org/MonetaryGrant)** — store credit / gift card balance; post-purchase context, narrower use.
+- **[`Course`](https://schema.org/Course)** — educational-product merchants only; niche.
+- **[`Reservation`](https://schema.org/Reservation)** — bookable services / custom-order intake; needs WC Bookings or similar.
+- **[`Certification`](https://schema.org/Certification), [`EnergyConsumptionDetails`](https://schema.org/EnergyConsumptionDetails)** — regulated industries only.

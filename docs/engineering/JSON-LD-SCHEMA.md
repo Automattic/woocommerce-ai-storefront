@@ -138,6 +138,25 @@ These identification fields are emitted by **WC core** in its base Product JSON-
 
 The plugin's `wc_ai_storefront_jsonld_product` filter is the right hook for extensions that want to add `mpn` or `productID` from custom merchant data (or normalize an SKU value to a more specific `gtin8`/`gtin13` shape per Schema.org).
 
+### `BreadcrumbList`
+
+A separate JSON-LD block emitted on product pages (and other archive pages) by **WC core**, not by this plugin. The `<script type="application/ld+json">` element on a product page has TWO entries in its `@graph`: a `BreadcrumbList` (category-path navigation) and the `Product` block.
+
+```jsonc
+{
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "..." },
+    { "@type": "ListItem", "position": 2, "name": "Clothing", "item": "..." },
+    { "@type": "ListItem", "position": 3, "name": "Tshirts", "item": "..." }
+  ]
+}
+```
+
+- **Source**: WC core's [`WC_Structured_Data::generate_breadcrumblist_data()`](https://github.com/woocommerce/woocommerce/blob/trunk/plugins/woocommerce/includes/class-wc-structured-data.php) — uses WC's `WC_Breadcrumb` data builder.
+- **Plugin contribution**: none. We don't add to or modify the BreadcrumbList. Available to AI agents and search crawlers as the natural Schema.org breadcrumb-rich-result signal.
+- **Why this matters**: Google requires `BreadcrumbList` for breadcrumb rich results in search. AI agents use the breadcrumb chain for product-context navigation ("this is in Clothing > Tshirts > Long Sleeve Tee").
+
 ### `brand`
 
 `{"@type": "Brand", "name": "..."}` from the `product_brand` taxonomy.
