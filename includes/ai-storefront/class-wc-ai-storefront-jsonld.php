@@ -251,16 +251,7 @@ class WC_AI_Storefront_JsonLd {
 
 	/**
 	 * Adds visible product attributes as additionalProperty PropertyValues.
-	 *
-	 * Multi-value attributes are split into separate `PropertyValue`
-	 * entries (one per value), with the `name` repeated across entries.
-	 * Schema.org's `PropertyValue` spec explicitly allows the same
-	 * `name` on multiple entries within `additionalProperty`. Without
-	 * this split, an agent reading "Color: Black | Tan" on a simple
-	 * product can't tell intrinsic-multi-color (a two-tone shoe) from
-	 * selectable-variation (the buyer chooses Black or Tan): the pipe
-	 * is the same syntax WC uses for variation options on variable
-	 * products. See #326.
+	 * See {@see split_attribute_values()} for the multi-value split rationale.
 	 *
 	 * @param array      $markup  Markup array, modified by reference.
 	 * @param WC_Product $product The product object.
@@ -294,41 +285,27 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Split a WC-joined multi-value attribute string into its component
-	 * values. Handles both delimiter shapes WC uses to join values:
+	 * Split a WC-joined multi-value attribute string into component values.
 	 *
-	 *   - ` | ` (with spaces) — `WC_DELIMITER`-joined free-text
-	 *     attributes per `wc_implode_text_attributes()`.
-	 *   - `, ` (comma-space) — taxonomy attributes joined inline by
-	 *     `WC_Product::get_attribute()`.
+	 * WC joins multi-value attributes with two distinct delimiter shapes:
+	 *   - ` | ` for free-text attributes (`WC_DELIMITER` via `wc_implode_text_attributes()`).
+	 *   - `, ` for taxonomy attributes (inline `implode` in `WC_Product::get_attribute()`).
 	 *
-	 * Trims each piece (defensive against `Black|Tan` no-space, mixed
-	 * whitespace). Drops empty pieces (defensive against `Black ||
-	 * Tan` from a misformatted attribute). Preserves WC's original
-	 * ordering — no sort. Single-value inputs pass through unchanged
-	 * (the regex doesn't match, the input becomes a one-element array).
-	 *
-	 * Static so issue #327's dedicated-property mapping can reuse the
-	 * same split logic without going through the per-product enrichment
-	 * pipeline. Marked `private` because the contract — "split this WC
-	 * attribute string the WC way" — is package-internal; the protected
-	 * scope is reserved for production seams that tests need to override.
+	 * Without splitting, an agent reading `Color: Black | Tan` on a simple
+	 * product can't tell intrinsic-multi-color (one SKU, two colors) from
+	 * selectable-variation (the buyer picks one) — the pipe is the same
+	 * syntax WC uses for variation options. See #326.
 	 *
 	 * @param string $value Raw value from `WC_Product::get_attribute()`.
-	 * @return string[]     Trimmed, non-empty values. Empty array when
-	 *                      the input is empty or only whitespace.
+	 * @return string[]
 	 */
 	private static function split_attribute_values( string $value ): array {
-		// `\s*[|,]\s*` matches either WC delimiter with any surrounding
-		// whitespace. preg_split with PREG_SPLIT_NO_EMPTY drops empty
-		// pieces produced by adjacent delimiters (`Black ||  Tan`).
 		$pieces = preg_split( '/\s*[|,]\s*/', $value, -1, PREG_SPLIT_NO_EMPTY );
 		if ( false === $pieces || empty( $pieces ) ) {
 			return array();
 		}
-		// Defensive trim — preg_split's `\s*` boundaries strip ASCII
-		// whitespace, but a non-breaking space (U+00A0) or other
-		// Unicode whitespace could leak through.
+		// Catches whitespace-only input ('   ' survives PREG_SPLIT_NO_EMPTY)
+		// and Unicode whitespace (NBSP) the regex's `\s*` doesn't match.
 		$pieces = array_map( 'trim', $pieces );
 		return array_values( array_filter( $pieces, static fn( $p ) => '' !== $p ) );
 	}

@@ -93,6 +93,32 @@ Wire `ENDPOINT_PRODUCT_PAGE` recording into a `template_redirect` hook on single
 
 ---
 
+## JSON-LD: free-text attribute values containing internal commas over-split
+
+### What
+
+Since [#326](https://github.com/Automattic/woocommerce-ai-storefront/issues/326), [`split_attribute_values()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) splits multi-value attributes on either `|` or `,` to map both WC delimiter shapes (free-text `WC_DELIMITER` and taxonomy `implode(', ', ...)`) to separate `additionalProperty` entries. The comma split is unconditional — it applies to all attribute values, including free-text values that may contain a literal comma.
+
+A merchant who types `"Made in USA, Canada"` as a single free-text custom attribute (intending one origin description) will see two `PropertyValue` entries (`"Made in USA"`, `"Canada"`) instead of one.
+
+### Why it exists
+
+The two WC delimiter shapes are indistinguishable by inspection: by the time `WC_Product::get_attribute()` returns a string, the join has already happened and the source delimiter is lost. We can't ask "was this a free-text value or a taxonomy value?" cheaply at JSON-LD emit time without re-fetching the underlying `WC_Product_Attribute` and re-running the join logic. The current emitter trades an edge case (free-text values with literal commas) for the common case (correct splitting of taxonomy values).
+
+### Impact
+
+Free-text attributes with literal commas in their values render as multiple `PropertyValue` entries. The downstream AI agent reads them as a multi-value attribute rather than a single descriptive value. Negligible in practice — most descriptive single values that need commas (origin descriptions, ingredient lists) belong in the product description field, not as an attribute value.
+
+### Mitigations available today
+
+Merchants can pipe-separate (` | `) or rephrase the value to avoid an internal comma. The split is also a no-op for attributes that legitimately use commas as a multi-value delimiter (taxonomy attributes, the common case).
+
+### Future work
+
+If the gap matters, switch the helper to consult the underlying `WC_Product_Attribute::is_taxonomy()` to choose between `|` and `,` as the delimiter rather than splitting on either. Defer until a merchant report makes the trade-off concrete.
+
+---
+
 ## References (external)
 
 - [OpenAI bot docs](https://platform.openai.com/docs/bots) — current GPTBot / ChatGPT-User / OAI-SearchBot UA tokens and behavior.
