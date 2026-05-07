@@ -109,12 +109,20 @@ class WC_AI_Storefront_Product_Meta_Box {
 	 * editor where mixing styling looks like a UI bug.
 	 *
 	 * The label is policy-first ("Final sale"), not channel-first
-	 * ("AI: Final sale"). The flag represents a business decision —
-	 * this specific product cannot be returned, regardless of the
-	 * store's standard return policy. AI agents, search crawlers, and
-	 * customers viewing the product page all see the same "no returns"
-	 * outcome; the structured-data emission is just one downstream
-	 * effect of that policy, not the policy itself.
+	 * ("AI: Final sale"). The flag captures merchant intent — this
+	 * specific product is final sale and cannot be returned, regardless
+	 * of the store's standard return policy.
+	 *
+	 * Plugin scope today: the flag is consumed only by the structured-
+	 * data emitter (META_KEY is read in
+	 * `WC_AI_Storefront_JsonLd::build_return_policy_block()`), so AI
+	 * agents and search crawlers see "no returns" while the customer-
+	 * facing product page is unchanged. Customer-visible notices
+	 * (badges, description text, theme banners) are the merchant's
+	 * responsibility. If the plugin ever surfaces a frontend notice
+	 * for final-sale products, this same flag would be the right
+	 * input — the field captures intent that the plugin could route
+	 * to multiple consumers, even if today it routes to just one.
 	 */
 	public function render_checkbox(): void {
 		// Bail early if WC's helper isn't loaded — defensive against
@@ -131,7 +139,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 				'id'          => self::META_KEY,
 				'label'       => __( 'Final sale', 'woocommerce-ai-storefront' ),
 				'description' => __(
-					'Mark this product as final sale (no returns). Overrides your store-wide return policy for this product only. Reflected to customers, AI agents, and search crawlers. Use for clearance, custom orders, or any product whose return terms diverge from the store default.',
+					'Mark this product as final sale (no returns). Overrides your store-wide return policy in the structured data sent to AI agents and search crawlers. The customer-facing product page is unchanged — add a notice in your theme or product description if you want shoppers to see it before purchase.',
 					'woocommerce-ai-storefront'
 				),
 				'desc_tip'    => true,
