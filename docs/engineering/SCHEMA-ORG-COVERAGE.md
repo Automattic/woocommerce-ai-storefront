@@ -54,7 +54,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `aggregateRating` | — | ✓ when reviews enabled + ≥1 rated | WC core |
 | `audience` | — | — | — |
 | `award` | — | — | — |
-| `brand` | — | — | — *(WC core does NOT emit `brand` from `WC_Structured_Data`. SEO plugins like Yoast/Rank Math add it. See "Recommended follow-ups" below.)* |
+| `brand` | ✓ §brand | ✓ when `product_brand` taxonomy has a value | WC core (`WC_Brands::add_structured_data()` in `class-wc-brands.php`, NOT `class-wc-structured-data.php` — that's why an audit grep against just the main structured-data file missed it) |
 | `category` | ✓ | ✓ | Plugin |
 | `color` | ✓ §typed | ✓ (single value, taxonomy or free-text) | Plugin |
 | `colorSwatch` | — | — | — |
@@ -62,8 +62,8 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `depth` | ✓ §dimensions | ✓ (`QuantitativeValue` with UN/CEFACT `unitCode`) | Plugin |
 | `displayLocation` | — | — | — |
 | `funding` | — | — | — |
-| `gtin` | — | ✓ when set | WC core |
-| `gtin8` / `gtin12` / `gtin13` / `gtin14` | — | — | — |
+| `gtin` | ✓ ([§deliberately-not-emitted](./JSON-LD-SCHEMA.md), as a "plugin doesn't enrich" note) | ✓ when WC's GTIN field is set | WC core |
+| `gtin8` / `gtin12` / `gtin13` / `gtin14` | — | — | — *(WC core emits a generic `gtin` only — see follow-up)* |
 | `hasAdultConsideration` | — | — | — |
 | `hasCertification` | — | — | — |
 | `hasEnergyConsumptionDetails` | — | — | — |
@@ -90,7 +90,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `productionDate` / `purchaseDate` / `releaseDate` | — | — | — |
 | `review` | — | ✓ top 5 most recent when reviews enabled | WC core |
 | `size` | ✓ §typed | ✓ (single value) | Plugin |
-| `sku` | — | ✓ | WC core (falls back to `get_id()` if no SKU) |
+| `sku` | ✓ (in worked example) | ✓ | WC core (falls back to `get_id()` if no SKU) |
 | `slogan` | — | — | — |
 | `weight` | ✓ §dimensions | ✓ | Plugin |
 
@@ -120,15 +120,15 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `addOn` | — | — | — |
 | `additionalProperty` | — | — | — |
 | `advanceBookingRequirement` | — | — | — |
-| `aggregateRating` | — | — | — *(plugin emits at Product level instead)* |
+| `aggregateRating` | — | — | — *(WC core emits at Product level instead — single-merchant stores don't need per-offer rating differentiation)* |
 | `areaServed` | — | — | — |
 | `asin` | — | — | — |
 | `availability` | — | ✓ (`InStock`/`OutOfStock`/`BackOrder`) | WC core |
 | `availabilityEnds` / `availabilityStarts` | — | — | — |
 | `availableAtOrFrom` / `availableDeliveryMethod` | — | — | — |
 | `businessFunction` | — | — | — |
-| `category` | — | — | — *(emitted at Product level)* |
-| `checkoutPageURLTemplate` | — | — | Future [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328) |
+| `category` | — | — | — *(plugin emits at Product level; WC's `product_cat` taxonomy classifies the thing being sold, not the offer's commercial role)* |
+| `checkoutPageURLTemplate` | — | — | **In-scope for [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328)** — coexists with `BuyAction`, not a replacement. The two emit the same URL at different positions: `BuyAction` on `Product.potentialAction` (Action-vocabulary signal, with `actionPlatform`/`agent`/`result`, recognized by older consumers and cross-domain action-discovery agents); `checkoutPageURLTemplate` directly on `Offer` (newer dedicated e-commerce property, supports per-offer URLs natively — important for #328's per-variant emission). Keep BuyAction for breadth of consumer support; add checkoutPageURLTemplate for modern signal + per-variant fit. |
 | `deliveryLeadTime` | — | — | — *(handlingTime is in `shippingDetails` instead)* |
 | `eligibleCustomerType` / `eligibleDuration` / `eligibleQuantity` / `eligibleRegion` / `eligibleTransactionVolume` | — | — | — |
 | `gtin` / `gtin8/12/13/14` / `mpn` | — | — | — *(emitted at Product level when set)* |
@@ -163,6 +163,42 @@ Most don't apply at Offer level. WC core sets `url` on offer to the product perm
 | `description` / `name` / `image` | — | — | — |
 | `url` | — | ✓ (product permalink) | WC core |
 | Others (Thing-inherited) | — | — | — |
+
+---
+
+## Nested types: `OfferShippingDetails` and `ShippingDeliveryTime`
+
+These nested types are emitted under `Offer.shippingDetails`. The Offer table above marks `shippingDetails` as ✓; this section breaks down the sub-tree.
+
+### `OfferShippingDetails`
+
+[Schema.org spec →](https://schema.org/OfferShippingDetails)
+
+| Property | In doc? | Emitted? | Source |
+|---|---|---|---|
+| `deliveryTime` (`ShippingDeliveryTime`) | ✓ §shipping | ✓ when handling time configured | Plugin (see `ShippingDeliveryTime` table below) |
+| `depth` / `height` / `width` / `weight` | — | — | — *(would be **shipment box** dimensions, distinct from product dimensions emitted at Product level)* |
+| `doesNotShip` | — | — | — *(regional exclusions; merchant data exists in WC's restricted-shipping zones, but we don't reflect it here)* |
+| `hasShippingService` (`ShippingService`) | — | — | — *(newer Schema.org property for service-tier shipping info)* |
+| `shippingDestination` (`DefinedRegion`) | ✓ §shipping | ✓ (`addressCountry` from store base location) | Plugin |
+| `shippingOrigin` (`DefinedRegion`) | — | — | — *(where the shipment ships from — useful for international agents to estimate transit time)* |
+| `shippingRate` (`MonetaryAmount`) | ✓ §shipping | ✓ when unconditional free shipping configured (`value: 0`) | Plugin |
+| `validForMemberTier` | — | — | — *(membership-tier-specific shipping; out of scope for current plugin)* |
+
+### `ShippingDeliveryTime`
+
+[Schema.org spec →](https://schema.org/ShippingDeliveryTime)
+
+| Property | In doc? | Emitted? | Source |
+|---|---|---|---|
+| `businessDays` | — | — | — *(operating days; merchant data exists in WC settings, not currently propagated)* |
+| `cutoffTime` | — | — | — *(order deadline for same-day shipping; high-value for AI agents calculating delivery dates)* |
+| `handlingTime` (`QuantitativeValue`) | ✓ §shipping | ✓ when handling-time setting populated (`min`/`max`/`unitCode: DAY`) | Plugin |
+| `transitTime` (`QuantitativeValue`) | — | — | — *(delivery duration AFTER dispatch; complements handlingTime for full delivery-estimate signal)* |
+
+### Coverage gap summary for Shipping
+
+We emit the structural skeleton (OfferShippingDetails wrapper, free-shipping `shippingRate`, handling time, destination country) but miss several high-value signals AI agents use for delivery-estimate computation: `transitTime`, `cutoffTime`, `businessDays`, `shippingOrigin`. Filed as a follow-up below.
 
 ---
 
@@ -259,7 +295,7 @@ The plugin emits `@type: OnlineStore` (deepest in the chain — see hierarchy se
 |---|---|---|---|
 | `address` (`PostalAddress`) | ✓ §identity, §address | ✓ when WC store address fields set | Plugin (suppresses `streetAddress` for privacy) |
 | `contactPoint` (`ContactPoint` with `email`, `contactType: Customer Service`) | ✓ §identity, §email | ✓ when valid email resolvable | Plugin (two-stage resolver: reply-to → from-address with noreply guard) |
-| `hasOfferCatalog` (`OfferCatalog` with `itemListElement`) | ✓ implicit | ✓ | Plugin |
+| `hasOfferCatalog` (`OfferCatalog` with nested `OfferCatalog` entries) | — *(not yet in [`JSON-LD-SCHEMA.md`](./JSON-LD-SCHEMA.md))* | ✓ on homepage; top 10 root product_cat categories ordered by product count, each with `name`/`numberOfItems`/`url`, cached 1h | Plugin (`get_catalog_summary()`) |
 | `logo` | ✓ §identity | ✓ when site icon or custom logo set | Plugin (precedence: custom_logo → site_icon) |
 
 ### Direct properties — not emitted
@@ -289,7 +325,7 @@ The plugin emits `@type: OnlineStore` (deepest in the chain — see hierarchy se
 | `funder` / `funding` / `sponsor` | — | — | — |
 | `hasCertification` / `hasCredential` / `hasGS1DigitalLink` | — | — | — |
 | `hasMemberProgram` | — | — | — |
-| `hasMerchantReturnPolicy` | — | — | — *(emitted at Offer level instead)* |
+| `hasMerchantReturnPolicy` | — | — | — *(**Organization-level emission is the right default for our model.** The merchant configures one store-wide return policy in plugin settings; per-product variance only happens when a product is flagged as "final sale" (an override, not a separate policy). Cleanest emission: standard policy at `Organization.hasMerchantReturnPolicy`, per-Offer override only when final-sale changes the terms. Schema.org allows the property at both positions and consumers read Offer-level as an override of Organization-level. Currently we emit only at Offer level (every product), which is redundant for the common case.)* |
 | `hasPOS` / `hasShippingService` | — | — | — |
 | `interactionStatistic` | — | — | — |
 | `keywords` | — | — | — |
@@ -385,7 +421,7 @@ For now, conservatism wins: the broader `OnlineBusiness` type accurately covers 
 
 1. **Coverage is biased toward "what we add beyond WC core"**. `JSON-LD-SCHEMA.md` documents fields the plugin contributes; WC-core-emitted fields (`name`, `description`, `image`, `url`, `aggregateRating`, `review[]`, top-level `OnlineStore` fields) are largely undocumented even though they're part of the shipped JSON-LD. This is a doc bias to consider correcting.
 
-2. **No `brand` emission today**. WC core's `WC_Structured_Data::generate_product_data()` doesn't emit `Product.brand` in default WooCommerce. SEO plugins (Yoast, Rank Math) typically add it. Absent any of those, AI agents see no brand. Schema.org treats `brand` as a primary identification field.
+2. **`brand` IS emitted by WC core** via a separate handler. `WC_Brands::add_structured_data()` in `wp-content/plugins/woocommerce/includes/class-wc-brands.php` hooks `woocommerce_structured_data_product` at priority 20 — distinct from the main `WC_Structured_Data` class. An audit grep against just the main file would miss this; the lesson is to grep the broader plugin tree for filter handlers, not just the canonical class. Coverage is conditional: requires WC's modern brands feature and `product_brand` taxonomy values.
 
 3. **Future #328 fills three gaps**: `Product.inProductGroupWithID`, `Product.isVariantOf`, and per-variant `Product` emission via `hasVariant`. Plus migrating `BuyAction.urlTemplate` to the WC Shareable Checkout URL format (`?products=ID:1`).
 
@@ -393,16 +429,66 @@ For now, conservatism wins: the broader `OnlineBusiness` type accurately covers 
 
 5. **Biggest uncovered surface**: organizational metadata. `Organization` has 50+ direct properties. We emit a handful (logo, address, contactPoint, hasOfferCatalog, name, description, url). Most are niche or B2B-specific (DUNS, VAT ID, NAICS), but a few are broad-interest gaps — see follow-ups.
 
+6. **Audience scope: not just AI**. The plugin's JSON-LD enhancements are read by *both* AI agents AND traditional search crawlers (Google, Bing, Yandex) — the same Schema.org Product/Offer/Organization output is consumed by both audiences. This is worth reflecting in merchant-facing copy throughout the settings UI; current strings (`"Products available to AI agents"`, `"Control which products AI agents can see and recommend"`) are AI-only and undersell the SEO value. Tracked as a separate UX/copy issue, not in this audit's coverage table.
+
 ## Recommended follow-ups
 
 In rough priority order:
 
-1. **`Product.brand`** — emit when WC's brand taxonomy has a value. Schema.org primary identification field; AI agents heavily key on it. ~10 LOC.
-2. **`Organization.sameAs`** — array of merchant social-profile URLs (Twitter, Facebook, Instagram). Filterable per-merchant in admin settings or auto-detected from common SEO plugins.
-3. **`Product.itemCondition`** — new vs refurbished. Useful for resale stores; merchant-config required.
-4. **`Product.gtin8` / `gtin12` / `gtin13` / `gtin14`** — more specific GTIN forms when WC's GTIN field has a value with the right length.
-5. **`Organization.telephone`** — currently suppressed by default. Worth a per-merchant opt-in toggle.
-6. **`Product.audience`** — target demographic (`PeopleAudience` with `audienceType`). Merchant-config; useful for kids/adult/professional/etc. categorization.
-7. **Switch homepage `@type` from `OnlineStore` to `OnlineBusiness`** — broader fit for WC's full install base (services, bookings, memberships, donations, lead-gen, retail). Code change is one line in [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) plus a `JSON-LD-SCHEMA.md` update. Decision rationale captured in [the OnlineBusiness section](#onlinebusiness--target-type).
+1. **`Organization.sameAs`** — array of merchant social-profile URLs (Twitter, Facebook, Instagram). Filterable per-merchant in admin settings or auto-detected from common SEO plugins.
+2. **`Product.itemCondition`** — new vs refurbished. Useful for resale stores; merchant-config required.
+3. **`Product.gtin8` / `gtin12` / `gtin13` / `gtin14`** — more specific GTIN forms when WC's GTIN field has a value with the right length.
+4. **`Organization.telephone`** — currently suppressed by default. Worth a per-merchant opt-in toggle.
+5. **`Product.audience`** — target demographic (`PeopleAudience` with `audienceType`). Merchant-config; useful for kids/adult/professional/etc. categorization.
+6. **Switch homepage `@type` from `OnlineStore` to `OnlineBusiness`** — broader fit for WC's full install base (services, bookings, memberships, donations, lead-gen, retail). Code change is one line in [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) plus a `JSON-LD-SCHEMA.md` update. Decision rationale captured in [the OnlineBusiness section](#onlinebusiness--target-type).
+7. **Expand `ShippingDeliveryTime` emission carefully** — currently we emit only `handlingTime`. The spec also has `transitTime`, `cutoffTime`, `businessDays`, and `shippingOrigin`. **Caveat: shipping data is multi-dimensional in reality** — transit time depends on the buyer's destination, the chosen service level (ground vs expedited vs overnight), the merchant's shipping origin, and sometimes the day of week. A single static `transitTime: 3-5 days` claim hides this dimensionality. Two paths forward:
+   - **Conservative**: emit only `cutoffTime` and `businessDays` (which DON'T depend on the buyer's destination — they're store-level operating windows). Skip `transitTime` until we can model destination/service-level shape.
+   - **Multi-rate**: emit multiple `OfferShippingDetails` entries, one per shipping method × destination region, each with its own `transitTime`. Spec-compliant per Schema.org Example 1 ("Cheaper and slower: $5 in 5-7 days or Fast and expensive: $15 in 1-2 days"). Higher implementation cost; needs full shipping-zone walk.
+
+   Recommend the conservative path first — it captures real merchant-known data without faking precision the multi-rate path would also be needed for. Multi-rate is a separate, larger initiative.
+
+8. **Restructure return-policy emission to match merchant model** — the merchant has ONE store-wide return policy (configured once in plugin settings); per-product variance is just the "final sale" flag (no returns on this product). Right emission shape:
+   - **Always emit** the standard policy at `Organization.hasMerchantReturnPolicy` (homepage `OnlineStore`/`OnlineBusiness` block) — single canonical store-wide commitment.
+   - **Emit at `Offer.hasMerchantReturnPolicy` only when the product overrides** (final-sale flag changes the policy). Schema.org consumers read Offer-level as a per-offer override of the Organization-level default.
+   - Backward-compatible migration path: phase 1 adds Organization-level emission (purely additive); phase 2 makes Offer-level conditional. Or keep both as redundant signals if migration risk is too high. Reuses existing `add_return_policy()` emission code.
 
 These can be filed as standalone issues; none are blocked by the current PR pipeline (#328 → ProductGroup work).
+
+## Beyond the current types — Schema.org surfaces worth pursuing
+
+Types we don't emit today but might extend AI-shopping and SEO leverage. Decision tiers reflect prioritization (active / deferred / ruled out).
+
+### Already emitted (doc gap, not a coverage gap)
+
+| Schema.org type | Source | Status |
+|---|---|---|
+| [`BreadcrumbList`](https://schema.org/BreadcrumbList) | WC core (`WC_Structured_Data::generate_breadcrumblist_data()`) | ✓ emitted on product pages with WC's breadcrumb data; not yet in `JSON-LD-SCHEMA.md`. **Doc fix:** add a `### BreadcrumbList` section. |
+
+### Active follow-ups (in priority order)
+
+| # | Schema.org type | Why pursue | Implementation note |
+|---|---|---|---|
+| 1 | [`Product.isRelatedTo`](https://schema.org/isRelatedTo) / [`isSimilarTo`](https://schema.org/isSimilarTo) | "People also bought" / "Similar products" via WC's existing cross-sells / upsells. AI agents key heavily on this. | WC has the data (`get_cross_sell_ids()`, `get_upsell_ids()`); zero new merchant config required |
+| 2 | [`WebSite`](https://schema.org/WebSite) + site-level `SearchAction` | Google Sitelinks Search Box (separate from `OnlineStore.potentialAction`) | Trivial; `@type: WebSite` block at site level, ~15 LOC |
+| 3 | [`Organization.knowsAbout`](https://schema.org/knowsAbout) | "What the store specializes in" signal for AI agents | Derive from top product categories — reuses data already pulled for `hasOfferCatalog` |
+
+### Deferred (not now, but on the radar)
+
+| Schema.org type | Why deferred |
+|---|---|
+| [`LocalBusiness`](https://schema.org/LocalBusiness) for omnichannel merchants | Needs merchant-config (physical address, opening hours) we don't collect today |
+| [`HowTo`](https://schema.org/HowTo) for care/assembly instructions | Per-product merchant data input that doesn't yet exist; product-description integration is its own design |
+| [`Event`](https://schema.org/Event) / [`SpecialAnnouncement`](https://schema.org/SpecialAnnouncement) for sales/closures | Needs a "Store Events" admin section; full standalone feature, not a small addition |
+
+### Ruled out
+
+- **[`FAQPage`](https://schema.org/FAQPage)** — out of scope. Detecting and parsing arbitrary policy pages into Q/A pairs is fragile, theme-dependent, and pulls the plugin into content-extraction territory better-served by dedicated SEO/FAQ plugins.
+- **`Article` / `BlogPosting`** — content surfaces; out of scope for an e-commerce plugin (SEO plugins like Yoast/Rank Math handle these).
+- **`SiteNavigationElement`** — generally redundant with theme HTML/menu structure; low leverage for the cost.
+- **`AboutPage` / `ContactPage`** — page-type signals; mostly handled by SEO plugins; minimal AI-shopping value.
+- **`Organization.review`** at the org level — store-as-entity reviews are a different surface from product reviews; needs merchant data we don't have today (Trustpilot integration etc.).
+- **[`Quotation`](https://schema.org/Quotation)** — B2B/wholesale-specific; narrow audience.
+- **[`MonetaryGrant`](https://schema.org/MonetaryGrant)** — store credit / gift card balance; post-purchase context, narrower use.
+- **[`Course`](https://schema.org/Course)** — educational-product merchants only; niche.
+- **[`Reservation`](https://schema.org/Reservation)** — bookable services / custom-order intake; needs WC Bookings or similar.
+- **[`Certification`](https://schema.org/Certification), [`EnergyConsumptionDetails`](https://schema.org/EnergyConsumptionDetails)** — regulated industries only.

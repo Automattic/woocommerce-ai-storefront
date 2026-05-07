@@ -127,6 +127,46 @@ Schema.org `QuantitativeValue` exposing the current stock level.
 - **Emitted only when** WooCommerce stock management is enabled for the product AND the product has a numeric `stock_quantity`.
 - **Skipped for** products with `manage_stock=false` (out of scope for inventory-level discovery).
 
+### `sku`, `gtin`, `mpn`, `productID` (WC-core identifiers)
+
+These identification fields are emitted by **WC core** in its base Product JSON-LD; the plugin doesn't add or modify them.
+
+- **`sku`** -- always emitted. From `$product->get_sku()`. Falls back to `$product->get_id()` if the merchant didn't set an SKU. *(Note: `sku` and `gtin` are different concepts. SKU is the merchant's internal stock code; GTIN is the global Trade Item Number — UPC, EAN, ISBN, ITF-14. A merchant whose SKU happens to be EAN-format should also populate the dedicated GTIN field — WC core's `_global_unique_id` meta — to get both emitted correctly.)*
+- **`gtin`** -- emitted when WC's `_global_unique_id` (Global Unique ID) field is set on the product. WC core handles emission; this plugin doesn't synthesize or override.
+- **`mpn`** -- not emitted in default WC core. Some extensions add it via the `woocommerce_structured_data_product` filter.
+- **`productID`** -- not emitted in default WC core.
+
+The plugin's `wc_ai_storefront_jsonld_product` filter is the right hook for extensions that want to add `mpn` or `productID` from custom merchant data (or normalize an SKU value to a more specific `gtin8`/`gtin13` shape per Schema.org).
+
+### `BreadcrumbList`
+
+A separate JSON-LD block emitted on product pages (and other archive pages) by **WC core**, not by this plugin. The `<script type="application/ld+json">` element on a product page has TWO entries in its `@graph`: a `BreadcrumbList` (category-path navigation) and the `Product` block.
+
+```jsonc
+{
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "..." },
+    { "@type": "ListItem", "position": 2, "name": "Clothing", "item": "..." },
+    { "@type": "ListItem", "position": 3, "name": "Tshirts", "item": "..." }
+  ]
+}
+```
+
+- **Source**: WC core's [`WC_Structured_Data::generate_breadcrumblist_data()`](https://github.com/woocommerce/woocommerce/blob/trunk/plugins/woocommerce/includes/class-wc-structured-data.php) — uses WC's `WC_Breadcrumb` data builder.
+- **Plugin contribution**: none. We don't add to or modify the BreadcrumbList. Available to AI agents and search crawlers as the natural Schema.org breadcrumb-rich-result signal.
+- **Why this matters**: Google requires `BreadcrumbList` for breadcrumb rich results in search. AI agents use the breadcrumb chain for product-context navigation ("this is in Clothing > Tshirts > Long Sleeve Tee").
+
+### `brand`
+
+`{"@type": "Brand", "name": "..."}` from the `product_brand` taxonomy.
+
+- **Emitted when** WooCommerce's built-in brand support is active (`product_brand` taxonomy registered) and the product has at least one assigned brand term.
+- **Selection rule**: WC core picks the first assigned brand if multiple are set (a product belongs to one brand for Schema.org purposes).
+- **Source**: emitted by **WC core**'s `WC_Brands::add_structured_data()` (in `wp-content/plugins/woocommerce/includes/class-wc-brands.php`), hooked into `woocommerce_structured_data_product` at priority 20 — separate from the main `WC_Structured_Data` class. This is why early audit grep on the main structured-data class missed it.
+- **Compatibility**: requires WC's modern brands feature (rolled out via the `Automattic\WooCommerce\Internal\Brands` package). Older WC installs without brand taxonomy support, or sites using third-party brand plugins, may not emit this — and would need the third-party plugin's own structured-data integration.
+- **Plugin enrichment**: this plugin doesn't add or modify the brand emission; it relies on WC core.
+
 ### `category`
 
 The primary category path as a breadcrumb string (e.g. `"Clothing > Hoodies"`).
@@ -299,6 +339,30 @@ The `@type` is `OnlineStore` (a Schema.org `Organization` subtype). Prior to 0.1
 }
 ```
 
+### `hasOfferCatalog` (homepage / shop)
+
+Schema.org's "what this organization sells" pointer, emitted on the homepage `OnlineStore` block as a structured summary of the storefront's catalog. Lets AI agents and search crawlers learn the store's category structure without crawling individual product pages.
+
+```jsonc
+{
+  "@type": "OnlineStore",
+  "hasOfferCatalog": {
+    "@type": "OfferCatalog",
+    "name": "Products",
+    "itemListElement": [
+      { "@type": "OfferCatalog", "name": "Clothing", "numberOfItems": 25, "url": "..." },
+      { "@type": "OfferCatalog", "name": "Hoodies",  "numberOfItems": 8,  "url": "..." },
+      // top 10 root categories, ordered by product count
+    ]
+  }
+}
+```
+
+- **Emitted when**: plugin is enabled and on `is_front_page() || is_shop()`.
+- **Source**: top 10 root `product_cat` categories (`hide_empty: true`, ordered by product count DESC), pulled by [`get_catalog_summary()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php). Subcategories are not recursed.
+- **Per-category fields**: nested `OfferCatalog` with `name`, `numberOfItems`, and `url` (term archive link).
+- **Cache**: 1-hour transient (`wc_ai_storefront_catalog_summary`); product/category changes don't propagate immediately. Invalidated by `WC_AI_Storefront_Cache_Invalidator` when relevant terms change.
+
 ### Identity field sourcing
 
 All three identity fields are auto-sourced from existing WP/WC data. There are **no plugin-owned settings** for these — the plugin reads what's already configured at the platform level.
@@ -354,7 +418,6 @@ For automated checks, the plugin's PHPUnit suite covers:
 For reference, fields that a JSON-LD reader might expect but aren't part of this plugin's enhancement:
 
 - **`aggregateRating` / `review`** -- inherited from WC core if present (e.g. via WooCommerce's reviews feature); plugin doesn't add or modify.
-- **`gtin`, `mpn`, `productID`** -- plugin doesn't synthesize. WC core may emit these if the store has them; plugin doesn't enforce.
 - **`audience`, `eligibleRegion`** -- not modeled. AI agents that need region/audience scoping should infer from `shippingDetails.shippingDestination`.
 - **Variation-level JSON-LD** -- the plugin enhances the parent Product. Variations remain in WC core's `offers` array; per-variation JSON-LD blocks are not emitted.
 
