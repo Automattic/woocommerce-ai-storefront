@@ -64,7 +64,36 @@ class WC_AI_Storefront_JsonLd {
 	 */
 	public function init() {
 		add_filter( 'woocommerce_structured_data_product', [ $this, 'enhance_product_data' ], 20, 2 );
+		add_filter( 'woocommerce_structured_data_type_for_page', [ $this, 'allow_product_group_type' ] );
 		add_action( 'wp_head', [ $this, 'output_store_jsonld' ], 5 );
+	}
+
+	/**
+	 * Register `productgroup` as a renderable structured-data type on
+	 * single-product pages.
+	 *
+	 * WC core's `WC_Structured_Data::get_structured_data()` keys the
+	 * generated markup by `strtolower( $value['@type'] )` and intersects
+	 * the result with the per-page allow-list returned by
+	 * `get_data_type_for_page()`. That list ships only `product`,
+	 * `breadcrumblist`, `review`, `order` — so when our enhancer rewrites
+	 * `@type` from `Product` to `ProductGroup` for variable products
+	 * (PR #328 / `maybe_convert_to_product_group()`), the entire block
+	 * silently drops out of the emitted `<script type="application/ld+json">`.
+	 *
+	 * Adding `productgroup` to the allow-list keeps the block in the
+	 * output without disturbing anything else — `Product` stays allowed
+	 * for simple products, and the new type only matters when our
+	 * filter has actually rewritten `@type`.
+	 *
+	 * @param array $types Allow-listed structured-data types for the page.
+	 * @return array
+	 */
+	public function allow_product_group_type( $types ) {
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			$types[] = 'productgroup';
+		}
+		return $types;
 	}
 
 	/**
@@ -86,6 +115,8 @@ class WC_AI_Storefront_JsonLd {
 
 		$this->add_buy_action( $markup, $product );
 
+		$this->add_checkout_page_url_template( $markup, $product );
+
 		$this->add_inventory_level( $markup, $product );
 
 		$this->add_category_path( $markup, $product );
@@ -102,6 +133,8 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_shipping_details( $markup, $country );
 		$this->add_handling_time( $markup, $settings );
 		$this->add_return_policy( $markup, $product, $settings, $country );
+
+		$this->maybe_convert_to_product_group( $markup, $product, $settings, $country );
 
 		/**
 		 * Filter the enhanced JSON-LD product data.
@@ -128,10 +161,6 @@ class WC_AI_Storefront_JsonLd {
 	 * Adds a BuyAction potentialAction pointing at the store checkout with
 	 * attribution placeholders.
 	 *
-	 * Canonical UTM shape (0.5.0+): utm_medium=referral is Google-canonical;
-	 * utm_id=woo_ucp flags AI-routed traffic via the constant so a future
-	 * rename stays consistent with the attribution matcher.
-	 *
 	 * @param array      $markup  Markup array, modified by reference.
 	 * @param WC_Product $product The product object.
 	 */
@@ -140,22 +169,89 @@ class WC_AI_Storefront_JsonLd {
 			'@type'  => 'BuyAction',
 			'target' => array(
 				'@type'          => 'EntryPoint',
-				'urlTemplate'    => add_query_arg(
-					array(
-						'add-to-cart'   => $product->get_id(),
-						'utm_source'    => '{agent_id}',
-						'utm_medium'    => 'referral',
-						'utm_id'        => WC_AI_Storefront_Attribution::WOO_UCP_ID,
-						'ai_session_id' => '{session_id}',
-					),
-					$product->get_permalink()
-				),
+				'urlTemplate'    => self::build_checkout_url_template( $product->get_id() ),
 				'actionPlatform' => array(
 					'https://schema.org/DesktopWebPlatform',
 					'https://schema.org/MobileWebPlatform',
 				),
 			),
 		);
+	}
+
+	/**
+	 * Build a [WooCommerce Shareable Checkout URL][1] for a product or
+	 * variation, with the canonical UTM-attribution placeholders so an
+	 * AI agent can substitute its identity at recommendation time.
+	 *
+	 * Output shape:
+	 *   `{home}/checkout-link/?products={id}:1&utm_source={agent_id}&utm_medium=referral&utm_id=woo_ucp&ai_session_id={session_id}`
+	 *
+	 * The `?products=ID:QUANTITY` format goes through WC's
+	 * `/checkout-link/` rewrite handler — it adds the item to the cart
+	 * and redirects directly to checkout. For variable products, the
+	 * caller passes the **variation ID** so the right SKU lands in the
+	 * cart pre-selected (no "choose your color" detour). Same construction
+	 * for both simple and variable products; only the ID varies.
+	 *
+	 * Canonical UTM shape (0.5.0+): `utm_medium=referral` is Google-
+	 * canonical; `utm_id=woo_ucp` flags AI-routed traffic via the
+	 * `WOO_UCP_ID` constant so a future rename stays consistent with
+	 * the attribution matcher.
+	 *
+	 * Static so callers without a class instance (e.g. the per-variant
+	 * builder under `hasVariant`) can build URLs uniformly.
+	 *
+	 * [1]: https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/
+	 *
+	 * @param int $id Product ID for simple products, variation ID for
+	 *                variable products. Quantity is fixed at 1 — the
+	 *                Shareable Checkout URL spec supports multi-product
+	 *                / multi-quantity carts but AI-shopping flows are
+	 *                single-item by convention.
+	 * @return string The full URL with `{agent_id}` and `{session_id}`
+	 *                placeholders ready for the agent to substitute.
+	 */
+	private static function build_checkout_url_template( int $id ): string {
+		return add_query_arg(
+			array(
+				'products'      => $id . ':1',
+				'utm_source'    => '{agent_id}',
+				'utm_medium'    => 'referral',
+				'utm_id'        => WC_AI_Storefront_Attribution::WOO_UCP_ID,
+				'ai_session_id' => '{session_id}',
+			),
+			home_url( '/checkout-link/' )
+		);
+	}
+
+	/**
+	 * Adds `checkoutPageURLTemplate` to `offers[0]` with the same
+	 * Shareable Checkout URL as `BuyAction.urlTemplate`.
+	 *
+	 * Schema.org `Offer.checkoutPageURLTemplate` is the modern dedicated
+	 * e-commerce property — emitted alongside (NOT instead of)
+	 * `Product.potentialAction.BuyAction`. The two cover different
+	 * consumer paths:
+	 *
+	 *   - `BuyAction` is the Action-vocabulary signal recognized by
+	 *     older / cross-domain consumers; supports `actionPlatform`,
+	 *     `result`, etc.
+	 *   - `checkoutPageURLTemplate` lives directly on Offer with
+	 *     native per-offer scope — the right fit for variant-level
+	 *     emission (#328) and modern e-commerce-aware AI agents.
+	 *
+	 * Both emit the same URL value. See
+	 * [SCHEMA-ORG-COVERAGE.md](docs/engineering/SCHEMA-ORG-COVERAGE.md)
+	 * for the keep-both rationale.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product object.
+	 */
+	private function add_checkout_page_url_template( array &$markup, $product ): void {
+		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
+			return;
+		}
+		$markup['offers'][0]['checkoutPageURLTemplate'] = self::build_checkout_url_template( $product->get_id() );
 	}
 
 	/**
@@ -383,6 +479,441 @@ class WC_AI_Storefront_JsonLd {
 		return array_map(
 			'strtolower',
 			array_keys( $product->get_variation_attributes() )
+		);
+	}
+
+	/**
+	 * Builds the `variesBy` array for a `ProductGroup` — Schema.org property
+	 * URLs (or short labels for unmapped attributes) for the dimensions that
+	 * actually vary across this product's variations.
+	 *
+	 * "Actually vary" means the variation set has more than one distinct
+	 * non-empty value for the axis. If all variations share the same color
+	 * and only differ by size, color is uniform and only `size` should appear
+	 * in `variesBy`. This matters because Google's variant rich result keys
+	 * on `variesBy` to know which dimensions a buyer can choose between.
+	 *
+	 * **Core typed override**: If a slug maps to a Schema.org typed property
+	 * via {@see CORE_ATTRIBUTE_MAP} (color / size / material / pattern), we
+	 * also inspect the variation children's own attribute meta directly —
+	 * not just the parent's `get_variation_attributes()`. WC's parent-level
+	 * "Used for variations" flag gates `get_variation_attributes()` but not
+	 * the underlying variation meta; merchants who configure `pa_color`
+	 * with distinct values across variations but forget to flag it as a
+	 * variation axis still get correct ProductGroup emission, because the
+	 * data is right there on each child even if the parent flag is wrong.
+	 * This override is intentionally limited to the four core typed slugs
+	 * — they have canonical Schema.org type mappings and are the axes AI
+	 * agents are most likely to query, so getting them right matters more
+	 * than honoring a likely-misconfigured parent flag.
+	 *
+	 * Slug → Schema.org URL mapping uses {@see CORE_ATTRIBUTE_MAP} (the same
+	 * lookup #331 uses for typed-property emission). Mapped attributes emit
+	 * as full Schema.org URLs (e.g. `https://schema.org/color`); unmapped
+	 * attributes (custom merchant axes like "Style" or "Heel Height") emit
+	 * as plain Text labels — Schema.org `variesBy` accepts both shapes.
+	 *
+	 * @param WC_Product $product The variable product.
+	 * @return string[] List of Schema.org URLs and/or Text labels for axes
+	 *                 that vary. Empty array for non-variable products or
+	 *                 variable products with uniform variation values.
+	 */
+	private static function detect_varies_by( $product ): array {
+		if ( ! method_exists( $product, 'get_variation_attributes' ) ) {
+			return array();
+		}
+
+		$varies_urls   = array();
+		$varies_labels = array();
+
+		// Path 1: parent-flagged variation attributes (canonical WC route).
+		$variation_attrs = $product->get_variation_attributes();
+		foreach ( (array) $variation_attrs as $slug => $values ) {
+			$distinct = array_filter(
+				array_unique( (array) $values ),
+				static fn( $v ) => '' !== (string) $v
+			);
+			if ( count( $distinct ) <= 1 ) {
+				continue;
+			}
+			$slug_lower = strtolower( (string) $slug );
+			if ( isset( self::CORE_ATTRIBUTE_MAP[ $slug_lower ] ) ) {
+				$varies_urls[] = 'https://schema.org/' . self::CORE_ATTRIBUTE_MAP[ $slug_lower ];
+			} else {
+				$varies_labels[] = function_exists( 'wc_attribute_label' )
+					? wc_attribute_label( $slug, $product )
+					: $slug;
+			}
+		}
+
+		// Path 2: core-typed override. For the four canonical Schema.org
+		// slugs (color / size / material / pattern), also peek at the
+		// variation children directly. This catches the misconfigured
+		// case where a merchant set up variations with real per-child
+		// values but didn't flag the parent attribute "Used for
+		// variations". Schema.org rich results care that the typed axis
+		// is advertised correctly; the parent flag is incidental.
+		$override_urls = self::detect_core_typed_axes_from_children( $product );
+		foreach ( $override_urls as $url ) {
+			$varies_urls[] = $url;
+		}
+
+		return array_values( array_unique( array_merge( $varies_urls, $varies_labels ) ) );
+	}
+
+	/**
+	 * Inspect variation children's attribute meta to find core-typed axes
+	 * (color / size / material / pattern) that have ≥2 distinct values
+	 * across children — even if the parent's "Used for variations" flag
+	 * is unset on the matching attribute.
+	 *
+	 * Returns Schema.org property URLs only (no Text labels), because
+	 * the override is scoped to the four core typed slugs by design.
+	 *
+	 * @param WC_Product $product The variable product (parent).
+	 * @return string[] Schema.org URLs for core-typed axes that factually vary.
+	 */
+	private static function detect_core_typed_axes_from_children( $product ): array {
+		$children = $product->get_children();
+		if ( ! is_array( $children ) || count( $children ) < 2 ) {
+			// Need at least 2 children to compare values across.
+			return array();
+		}
+
+		// Bucket: core slug → set of distinct non-empty values seen.
+		$values_by_core_slug = array();
+		foreach ( $children as $child_id ) {
+			$attrs = self::read_variation_core_attributes( (int) $child_id );
+			foreach ( $attrs as $slug_lower => $value_str ) {
+				$values_by_core_slug[ $slug_lower ][ $value_str ] = true;
+			}
+		}
+
+		$urls = array();
+		foreach ( $values_by_core_slug as $slug_lower => $value_set ) {
+			if ( count( $value_set ) >= 2 ) {
+				$urls[] = 'https://schema.org/' . self::CORE_ATTRIBUTE_MAP[ $slug_lower ];
+			}
+		}
+		return $urls;
+	}
+
+	/**
+	 * Read a variation's core-typed attribute values directly from
+	 * postmeta — bypassing the parent's "Used for variations" flag.
+	 *
+	 * `WC_Product_Variation::get_attributes()` (and its
+	 * `get_variation_attributes()` wrapper) only surface attributes
+	 * whose parent has `is_variation: 1`. The per-variation postmeta
+	 * key `attribute_<slug>` is populated whenever the merchant entered
+	 * a value on the variation form, regardless of the parent flag —
+	 * so reading meta directly is the only path to surface the data
+	 * when the merchant configured variations correctly but forgot to
+	 * flag the parent attribute.
+	 *
+	 * Scoped to the four core typed slugs ({@see CORE_ATTRIBUTE_MAP})
+	 * because they have canonical Schema.org typed properties; unmapped
+	 * custom attributes intentionally honor the parent's flag.
+	 *
+	 * @param int $variation_id The variation post ID.
+	 * @return array<string,string> Slug → trimmed value, only for non-empty
+	 *                              core typed slugs.
+	 */
+	private static function read_variation_core_attributes( int $variation_id ): array {
+		if ( $variation_id <= 0 || ! function_exists( 'get_post_meta' ) ) {
+			return array();
+		}
+		$out = array();
+		foreach ( self::CORE_ATTRIBUTE_MAP as $slug_lower => $_schema_property ) {
+			$value     = get_post_meta( $variation_id, 'attribute_' . $slug_lower, true );
+			$value_str = is_string( $value ) ? trim( $value ) : '';
+			if ( '' === $value_str ) {
+				continue;
+			}
+			$out[ $slug_lower ] = $value_str;
+		}
+		return $out;
+	}
+
+	/**
+	 * Convert a variable product's markup to Schema.org `ProductGroup`
+	 * shape with `hasVariant` entries. No-op for simple/grouped/external
+	 * products and for variable products with zero variation children.
+	 *
+	 * Per the locked design (issue #328):
+	 *
+	 *   - Variable + ≥1 variation child + ≥1 attribute marked
+	 *     "Used for variations" → emit `@type: ProductGroup` with
+	 *     `productGroupID`, `variesBy`, and `hasVariant: [...]`. Drop the
+	 *     parent's `offers[]` and `potentialAction` (the variants own
+	 *     them — buyers can't buy the parent of a variable product).
+	 *   - Variable + 0 children → leave as `@type: Product` (today's
+	 *     simple-product shape). Edge case; `BuyAction` URL with the
+	 *     parent ID may not resolve, but mirrors today's pre-#328
+	 *     behavior for misconfigured stores.
+	 *   - Variable + ≥1 child but **no** attribute is flagged "Used for
+	 *     variations" (Product 16 / Hoodie territory in the dev
+	 *     fixtures) → fall back to simple-Product shape. We have no
+	 *     `variesBy` to advertise, so a `hasVariant` block of N
+	 *     near-identical entries would just confuse agents. Honor the
+	 *     merchant-typed-it-wrong reality: emit what works for a single
+	 *     SKU and let the merchant fix the variation flag.
+	 *
+	 * @param array      $markup   Markup array, modified by reference.
+	 * @param WC_Product $product  The product object.
+	 * @param array      $settings Plugin settings (passed to per-variant builder).
+	 * @param string     $country  Store base country (passed to per-variant builder).
+	 */
+	private function maybe_convert_to_product_group( array &$markup, $product, array $settings, string $country ): void {
+		// Capability gate: only WC_Product_Variable (and subclasses) have
+		// variation_attributes. Same gate as `get_variation_attribute_slugs`.
+		if ( ! method_exists( $product, 'get_variation_attributes' ) ) {
+			return;
+		}
+
+		$children = $product->get_children();
+		if ( ! is_array( $children ) || empty( $children ) ) {
+			// No variations to nest under hasVariant — keep simple-Product
+			// shape (locked decision for the zero-children edge case).
+			return;
+		}
+
+		$varies_by = self::detect_varies_by( $product );
+		if ( empty( $varies_by ) ) {
+			// Variations exist but nothing is flagged "Used for variations"
+			// — there are no axes to advertise. Emitting `hasVariant`
+			// without `variesBy` would just hand agents N near-identical
+			// blocks with no way to tell them apart. Fall back to
+			// simple-Product shape; the merchant's WC variation-config
+			// gap belongs in their editor, not in our schema output.
+			return;
+		}
+
+		// Convert top-level type + add ProductGroup-specific fields.
+		$markup['@type']          = 'ProductGroup';
+		$sku                      = $product->get_sku();
+		$markup['productGroupID'] = '' !== $sku ? $sku : (string) $product->get_id();
+		$markup['variesBy']       = $varies_by;
+
+		// Drop parent-level fields that the variants own. Buyers can't
+		// purchase the parent of a variable product, so a parent-level
+		// `BuyAction` or `offers[]` block would point at an unbuyable
+		// entity. Per Schema.org, `ProductGroup` represents the abstract
+		// group; concrete offers live on the `hasVariant` Product entries.
+		unset( $markup['offers'], $markup['potentialAction'] );
+
+		$has_variant = array();
+		foreach ( $children as $child_id ) {
+			$variation = $this->resolve_variation( (int) $child_id );
+			if ( null === $variation ) {
+				continue;
+			}
+			$has_variant[] = $this->build_variant_entry( $variation, $product, $settings, $country );
+		}
+
+		if ( ! empty( $has_variant ) ) {
+			$markup['hasVariant'] = $has_variant;
+		}
+	}
+
+	/**
+	 * Resolve a variation post ID to a WC_Product instance.
+	 *
+	 * Wraps `wc_get_product()` with the null/falsy guard agents need —
+	 * `wc_get_product()` returns `false` for non-product IDs (e.g. data
+	 * corruption where `get_children()` returned a stale ID). Returns
+	 * `null` for callers to short-circuit.
+	 *
+	 * @param int $variation_id The variation post ID.
+	 * @return WC_Product|null The variation product object, or null if
+	 *                         not resolvable.
+	 */
+	private function resolve_variation( int $variation_id ) {
+		if ( $variation_id <= 0 || ! function_exists( 'wc_get_product' ) ) {
+			return null;
+		}
+		$variation = wc_get_product( $variation_id );
+		return ( $variation && is_object( $variation ) ) ? $variation : null;
+	}
+
+	/**
+	 * Build one `hasVariant` Product entry from a `WC_Product_Variation`.
+	 *
+	 * The entry is a standalone Schema.org Product block describing the
+	 * specific variation: SKU, image (with parent fallback), per-variant
+	 * typed properties (color/size/material/pattern from the variation's
+	 * specific attribute selections), an `offers[0]` Offer block with
+	 * price/availability/currency/inventory/shipping/return-policy, the
+	 * variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
+	 *
+	 * Both URL fields point at the WC Shareable Checkout URL using the
+	 * **variation ID** so AI-routed traffic lands on checkout with the
+	 * right SKU pre-selected — no "choose your color" detour.
+	 *
+	 * Existing top-level enrichers (`add_inventory_level`, `add_currency`,
+	 * `add_shipping_details`, `add_handling_time`, `add_return_policy`,
+	 * `add_buy_action`, `add_checkout_page_url_template`) all operate on
+	 * `$markup['offers'][0]` — we reuse them by passing the variant's
+	 * own markup as `$markup` and the variation as `$product`. The
+	 * return policy is read from the parent (variants inherit the
+	 * parent's policy + final-sale flag, not their own).
+	 *
+	 * @param WC_Product $variation      The variation (a `WC_Product_Variation` at runtime; typed as `WC_Product` since the variation subclass isn't in PHPStan's stubs and the variation API used here is on the base class).
+	 * @param WC_Product $parent_product The variable parent (for image fallback + return-policy meta).
+	 * @param array      $settings       Plugin settings (for return policy + handling time).
+	 * @param string     $country        Store base country (for shipping).
+	 * @return array Schema.org Product entry suitable for `hasVariant[]`.
+	 */
+	private function build_variant_entry( $variation, $parent_product, array $settings, string $country ): array {
+		$entry = array( '@type' => 'Product' );
+
+		$this->add_variant_basics( $entry, $variation, $parent_product );
+
+		$entry['offers'] = array( $this->build_variant_offer_skeleton( $variation ) );
+
+		// All of these operate on `$entry['offers'][0]`; pass the variation
+		// as `$product` so per-variant data (stock, price) flows through.
+		// Return policy uses the parent — variants inherit, no per-variant
+		// final-sale override (deferred — Pattern B in the meta-box design).
+		$this->add_inventory_level( $entry, $variation );
+		$this->add_currency( $entry );
+		$this->add_shipping_details( $entry, $country );
+		$this->add_handling_time( $entry, $settings );
+		$this->add_return_policy( $entry, $parent_product, $settings, $country );
+
+		// BuyAction + checkoutPageURLTemplate both use the VARIATION ID
+		// (not the parent product ID) so the URL drops the buyer on
+		// checkout with the specific SKU.
+		$this->add_buy_action( $entry, $variation );
+		$this->add_checkout_page_url_template( $entry, $variation );
+
+		return $entry;
+	}
+
+	/**
+	 * Populate a variant entry with sku, image (with parent fallback),
+	 * and per-variant typed Schema.org properties from the variation's
+	 * specific attribute selections.
+	 *
+	 * `WC_Product_Variation::get_variation_attributes()` returns the
+	 * variation's specific picks as `['attribute_pa_color' => 'white']`.
+	 * We strip the `attribute_` prefix, look up the slug in
+	 * {@see CORE_ATTRIBUTE_MAP}, and emit the typed property.
+	 *
+	 * @param array      $entry          Variant markup, modified by reference.
+	 * @param WC_Product $variation      The variation.
+	 * @param WC_Product $parent_product The parent (image fallback only).
+	 */
+	private function add_variant_basics( array &$entry, $variation, $parent_product ): void {
+		$sku = $variation->get_sku();
+		if ( ! $sku ) {
+			// Mirror WC core's fallback: when no SKU is set, use the
+			// post ID. Schema.org requires an `sku` for AI-shopping rich
+			// results to fire.
+			$sku = (string) $variation->get_id();
+		}
+		$entry['sku'] = $sku;
+
+		$image_url = $this->get_variant_image_url( $variation, $parent_product );
+		if ( '' !== $image_url ) {
+			$entry['image'] = $image_url;
+		}
+
+		// Per-variant typed properties (color/size/material/pattern from
+		// the variation's specific attribute selections).
+		//
+		// Read meta directly via `read_variation_core_attributes()`
+		// rather than `get_variation_attributes()` — the latter is
+		// gated by the parent's "Used for variations" flag and silently
+		// returns empty when that flag is unset, even if per-variation
+		// values exist in postmeta. The misconfigured-variable
+		// `ProductGroup` override (see `detect_varies_by()`) depends on
+		// the typed value reaching the variant entry, so the same
+		// fallback path is the source of truth here too.
+		if ( ! method_exists( $variation, 'get_id' ) ) {
+			return;
+		}
+		$variation_attrs = self::read_variation_core_attributes( (int) $variation->get_id() );
+		foreach ( $variation_attrs as $slug => $value ) {
+			$schema_prop = self::CORE_ATTRIBUTE_MAP[ $slug ];
+			if ( array_key_exists( $schema_prop, $entry ) ) {
+				continue;
+			}
+			$entry[ $schema_prop ] = $this->display_name_for_attribute_value( $slug, $value );
+		}
+	}
+
+	/**
+	 * Resolve the image URL for a variant, falling back to the parent.
+	 *
+	 * WC's variation editor lets merchants upload a variation-specific
+	 * image; if none is set, the front-end falls back to the parent
+	 * product's image. Schema.org JSON-LD should mirror this behavior so
+	 * agents see a consistent image regardless of which variations were
+	 * photographed.
+	 *
+	 * @param WC_Product $variation      The variation.
+	 * @param WC_Product $parent_product The variable parent (fallback).
+	 * @return string Absolute image URL, or empty string when neither has one.
+	 */
+	private function get_variant_image_url( $variation, $parent_product ): string {
+		$image_id = $variation->get_image_id();
+		if ( ! $image_id && $parent_product ) {
+			$image_id = $parent_product->get_image_id();
+		}
+		if ( ! $image_id || ! function_exists( 'wp_get_attachment_image_url' ) ) {
+			return '';
+		}
+		$image_url = wp_get_attachment_image_url( $image_id, 'full' );
+		return is_string( $image_url ) ? $image_url : '';
+	}
+
+	/**
+	 * Convert a variation attribute value to its display form.
+	 *
+	 * For taxonomy attributes (`pa_*`), the variation stores the **term
+	 * slug** (e.g. `white`); we resolve it to the display name (`White`)
+	 * via `get_term_by()`. For free-text custom attributes, the value is
+	 * stored as-is and used directly.
+	 *
+	 * @param string $slug  Attribute slug (e.g. `pa_color`).
+	 * @param string $value The raw value (term slug for taxonomy, literal for free-text).
+	 * @return string Display-name form, or the input value as fallback.
+	 */
+	private function display_name_for_attribute_value( string $slug, string $value ): string {
+		if ( ! str_starts_with( $slug, 'pa_' ) || ! function_exists( 'get_term_by' ) ) {
+			return $value;
+		}
+		$term = get_term_by( 'slug', $value, $slug );
+		if ( $term instanceof \WP_Term && '' !== $term->name ) {
+			return $term->name;
+		}
+		return $value;
+	}
+
+	/**
+	 * Build the bare-minimum Offer skeleton for a variant — price,
+	 * priceCurrency, availability. The remaining fields (inventory,
+	 * shipping, return policy, checkoutPageURLTemplate) are layered on
+	 * by the existing enrichers, exactly as they are for the parent
+	 * Product's offer.
+	 *
+	 * @param WC_Product $variation The variation.
+	 * @return array Single Offer block.
+	 */
+	private function build_variant_offer_skeleton( $variation ): array {
+		$price        = function_exists( 'wc_format_decimal' ) && function_exists( 'wc_get_price_decimals' )
+			? wc_format_decimal( $variation->get_price(), wc_get_price_decimals() )
+			: (string) $variation->get_price();
+		$availability = $variation->is_in_stock()
+			? 'https://schema.org/InStock'
+			: 'https://schema.org/OutOfStock';
+
+		return array(
+			'@type'         => 'Offer',
+			'price'         => $price,
+			'priceCurrency' => function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : 'USD',
+			'availability'  => $availability,
 		);
 	}
 

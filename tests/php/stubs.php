@@ -311,6 +311,27 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return '19.99';
 		}
 
+		public function get_sku(): string {
+			return '';
+		}
+
+		public function get_image_id(): int {
+			return 0;
+		}
+
+		/**
+		 * Real WC_Product returns variation IDs for variable products,
+		 * grouped product IDs for grouped products, empty array for
+		 * simple/external. Test stub returns empty by default — tests
+		 * that exercise the variable-products path override via
+		 * `make_product([ 'children' => [...] ])`.
+		 *
+		 * @return int[]
+		 */
+		public function get_children(): array {
+			return [];
+		}
+
 		// Stock.
 		public function managing_stock(): bool {
 			return false;

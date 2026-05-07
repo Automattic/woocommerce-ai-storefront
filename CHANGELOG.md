@@ -9,15 +9,29 @@
   - Variation-defining attributes are skipped from both the typed property and `additionalProperty` on the parent — they describe variants, not the parent product. Per-variant emission is intentionally omitted until #328 (`ProductGroup` + `hasVariant`) lands.
   - Existing typed-property values in the markup (from WC core or other plugins) are not overwritten.
 
+- **JSON-LD: variable products now emit as Schema.org `ProductGroup` with per-variant `hasVariant` entries.** Closes #328.
+  - Variable products with at least one attribute marked "Used for variations" emit `@type: ProductGroup` with `productGroupID` (parent SKU, or post ID fallback), `variesBy` (Schema.org property URLs for axes that actually differ across variations — e.g. `https://schema.org/color`, `https://schema.org/size`), and `hasVariant: [...]` containing one Product entry per variation.
+  - Each `hasVariant` entry carries the variation's own `name`, `sku`, `image`, typed Schema.org property (`color`/`size`/`material`/`pattern`) for its differentiating attribute, an `Offer` (price, currency, availability), and a `BuyAction` whose URL targets the **variation ID** so an AI agent's deep-link resolves to the specific SKU instead of the parent's "choose your color" detour.
+  - Parent-level `offers` and `potentialAction` are intentionally dropped on conversion — buyers can't purchase the parent of a variable product, and per Schema.org, concrete offers belong on the `hasVariant` Product entries.
+  - Core-typed override: when the parent's "Used for variations" flag is unset on `pa_color` / `pa_size` / `pa_material` / `pa_pattern` but variation children still have distinct values stored under `attribute_<slug>` postmeta, the plugin reads that meta directly and emits ProductGroup with the correct `variesBy` URL and per-variant typed property. Limited to the four core typed slugs because they have canonical Schema.org typed-property mappings; unmapped custom attributes still honor the parent flag.
+  - When neither path surfaces a varying axis — variations exist but no core typed attribute and no parent-flagged attribute factually differ — the plugin falls back to simple-Product emission. With no `variesBy` to advertise, `hasVariant` would just hand agents N near-identical blocks they can't tell apart — better to emit a working single-SKU shape.
+  - `Offer.checkoutPageURLTemplate` (Schema.org's newer Action vocabulary) emits alongside the existing `BuyAction.target.urlTemplate` — same Shareable Checkout URL on both, so consumers reading from either property resolve a working AI-attribution-tagged link.
+
+- **JSON-LD: `BuyAction` and `SearchAction` URLs now use the WooCommerce Shareable Checkout URL format.** Closes part of #328.
+  - `BuyAction.target.urlTemplate` now points at `{home}/checkout-link/?products={id}:1&utm_source={agent_id}&utm_medium=referral&utm_id=woo_ucp&ai_session_id={session_id}` instead of the prior product-permalink + `add-to-cart` form.
+  - The `?products=ID:QUANTITY` format goes through WC's `/checkout-link/` rewrite handler, which adds the item to the cart and redirects directly to checkout — no intermediate landing page for the buyer.
+
 ### Fixes
 ### Refactors
 ### Tests
 
 - **`JsonLdTest.php`** — 14 new unit tests covering typed-property emission for all four mapped slugs, UK spelling (`colour`), free-text capitalized slugs, multi-value skip + fallback, variation-defining skip, existing-markup preservation, unmapped-attribute passthrough, invisible-attribute skip, and whitespace-only value handling. Existing `test_visible_attributes_are_emitted_as_additional_properties` updated to use unmapped slugs (`pa_style`, `pa_origin`) since `pa_color`/`pa_size` now route to typed properties.
+- **`JsonLdTest.php`** (PR #328) — 24 new unit tests across `detect_varies_by()` (5), `build_variant_entry()` (7), full ProductGroup conversion (7 — including the misconfigured-variable fallback regression guard), `Offer.checkoutPageURLTemplate` (3), and `allow_product_group_type` (2). The `allow_product_group_type` pair pins the WC core type-allow-list registration that prevents `ProductGroup` blocks from being silently dropped at `WC_Structured_Data::get_structured_data()`.
 
 ### Docs
 
 - **`JSON-LD-SCHEMA.md`** — added a `color`/`material`/`pattern`/`size` typed-property section under "Field reference" with the slug mapping table, emission rules, and a worked example. Updated the `additionalProperty` section to reflect the new exclusion semantics.
+- **`JSON-LD-SCHEMA.md`** — added a `ProductGroup` / `hasVariant` / `variesBy` section documenting the variable-product emission shape, the misconfigured-variable fallback rule, and `Offer.checkoutPageURLTemplate` coexistence with `BuyAction`.
 
 ### Chores
 
