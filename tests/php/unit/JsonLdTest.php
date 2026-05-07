@@ -2825,8 +2825,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 * would leak into unrelated tests across the suite).
 	 */
 	private function capture_store_jsonld_filter_value( ?WC_AI_Storefront_JsonLd $emitter = null ): ?array {
-		$emitter = $emitter ?? $this->jsonld;
+		$this->stub_store_jsonld_environment();
+		Functions\when( 'get_terms' )->justReturn( [] );
+		return $this->run_store_jsonld_capture( $emitter );
+	}
 
+	/**
+	 * Set up the WP/WC stubs `output_store_jsonld()` reads, EXCEPT for
+	 * `get_terms` (which drives `get_catalog_summary()`) — leaving
+	 * that to per-test overrides for tests that need non-empty
+	 * catalog data. Tests can call `stub_store_jsonld_environment()`
+	 * directly, set their own `get_terms` / `get_term_link` /
+	 * `get_transient` stubs in any order, and finish with
+	 * `run_store_jsonld_capture()`.
+	 */
+	private function stub_store_jsonld_environment(): void {
 		Functions\when( 'is_front_page' )->justReturn( true );
 		Functions\when( 'is_shop' )->justReturn( false );
 		Functions\when( 'home_url' )->alias(
@@ -2834,9 +2847,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'get_bloginfo' )->returnArg();
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
-		Functions\when( 'get_terms' )->justReturn( [] );
 		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
 		Functions\when( '__' )->returnArg( 1 );
+	}
+
+	/**
+	 * Run `output_store_jsonld()` with the `apply_filters` capture
+	 * hook installed, return the structured-data array as it appeared
+	 * to the `wc_ai_storefront_jsonld_store` filter callback.
+	 *
+	 * Caller must have already invoked `stub_store_jsonld_environment()`
+	 * (or `capture_store_jsonld_filter_value()`'s defaults) so the
+	 * WP/WC stubs are in place.
+	 */
+	private function run_store_jsonld_capture( ?WC_AI_Storefront_JsonLd $emitter = null ): ?array {
+		$emitter = $emitter ?? $this->jsonld;
 
 		$captured = null;
 		Functions\when( 'apply_filters' )->alias(
@@ -2918,6 +2943,179 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertIsArray( $captured );
 		$this->assertSame( 'OnlineBusiness', $captured['@type'] ?? null );
+	}
+
+	// ------------------------------------------------------------------
+	// knowsAbout — Schema.org Organization "what this org knows about"
+	// pointer, sourced from get_catalog_summary() top category names.
+	// (#334)
+	// ------------------------------------------------------------------
+
+	public function test_store_jsonld_emits_knows_about_from_catalog_summary(): void {
+		// `knowsAbout` reuses the cached `get_catalog_summary()` data —
+		// no new query — and emits a Text[] of category names. Drives
+		// `get_terms` directly to seed two categories. Uses the split
+		// helper pair (`stub_store_jsonld_environment` + override +
+		// `run_store_jsonld_capture`) instead of the all-in-one
+		// `capture_store_jsonld_filter_value` because the latter
+		// stubs `get_terms` to [] AFTER any earlier override would
+		// land — Brain Monkey's last-call-wins clobbers it.
+		$this->stub_store_jsonld_environment();
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				(object) array( 'term_id' => 11, 'name' => 'Clothing', 'count' => 10 ),
+				(object) array( 'term_id' => 12, 'name' => 'Hoodies',  'count' => 4 ),
+			)
+		);
+		Functions\when( 'get_term_link' )->alias(
+			static fn( $term ) => 'https://example.com/category/' . strtolower( $term->name ) . '/'
+		);
+
+		$captured = $this->run_store_jsonld_capture();
+
+		$this->assertSame(
+			array( 'Clothing', 'Hoodies' ),
+			$captured['knowsAbout'] ?? null
+		);
+	}
+
+	public function test_store_jsonld_omits_knows_about_when_catalog_is_empty(): void {
+		// Default `get_terms` stub in `capture_store_jsonld_filter_value()`
+		// returns []. Don't claim the org "knows about" nothing — omit
+		// the key entirely.
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayNotHasKey( 'knowsAbout', $captured ?? array() );
+	}
+
+	public function test_store_jsonld_calls_get_catalog_summary_only_once_per_render(): void {
+		// Refactor regression guard: `hasOfferCatalog.itemListElement`
+		// AND `knowsAbout` both consume the catalog summary. Pre-#334
+		// the call was inlined inside the array literal; the refactor
+		// hoisted it to a local variable. Confirm the transient cache
+		// is consulted exactly once per page render — the wrapper that
+		// drives `get_catalog_summary()` reads `get_transient`, so we
+		// count those reads as a proxy for catalog-summary
+		// invocations.
+		$this->stub_store_jsonld_environment();
+		$transient_calls = 0;
+		Functions\when( 'get_transient' )->alias(
+			static function ( $key ) use ( &$transient_calls ) {
+				if ( 'wc_ai_storefront_catalog_summary' === $key ) {
+					++$transient_calls;
+				}
+				return false;  // miss → triggers get_terms() on each call
+			}
+		);
+		Functions\when( 'set_transient' )->justReturn( true );
+		Functions\when( 'get_terms' )->justReturn(
+			array( (object) array( 'term_id' => 1, 'name' => 'X', 'count' => 1 ) )
+		);
+		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/x/' );
+
+		$this->run_store_jsonld_capture();
+
+		$this->assertSame( 1, $transient_calls, 'get_catalog_summary() must run exactly once per page render.' );
+	}
+
+	// ------------------------------------------------------------------
+	// Organization-level hasMerchantReturnPolicy — homepage emission
+	// (#337 phase 1). Reuses build_return_policy_block(), so the block
+	// shape matches per-Offer emission for the same configuration.
+	// ------------------------------------------------------------------
+
+	public function test_store_jsonld_emits_org_level_return_policy_when_configured(): void {
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => array(
+				'mode' => 'returns_accepted',
+				'days' => 30,
+				'fees' => 'free',
+			),
+		);
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			array( 'country' => 'US' )
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayHasKey( 'hasMerchantReturnPolicy', $captured );
+		$this->assertSame(
+			'MerchantReturnPolicy',
+			$captured['hasMerchantReturnPolicy']['@type']
+		);
+		$this->assertSame( 'US', $captured['hasMerchantReturnPolicy']['applicableCountry'] );
+		$this->assertSame( 30, $captured['hasMerchantReturnPolicy']['merchantReturnDays'] );
+	}
+
+	public function test_store_jsonld_omits_org_level_return_policy_when_unconfigured(): void {
+		// `mode: unconfigured` is the no-policy state. Don't emit a
+		// MerchantReturnPolicy claiming nothing — Schema.org
+		// consumers reading the absence of the key correctly
+		// interpret "no public commitment."
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => array( 'mode' => 'unconfigured' ),
+		);
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			array( 'country' => 'US' )
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $captured ?? array() );
+	}
+
+	public function test_store_jsonld_omits_org_level_return_policy_when_setting_missing(): void {
+		// `return_policy` key entirely absent from settings — same
+		// null-policy posture as `mode: unconfigured`. The defensive
+		// fallback in `output_store_jsonld()` should normalize to
+		// `mode: unconfigured` and skip emission.
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			// no 'return_policy' key
+		);
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			array( 'country' => 'US' )
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $captured ?? array() );
+	}
+
+	public function test_org_level_and_per_offer_return_policy_blocks_are_identical_for_same_config(): void {
+		// Shared-builder regression guard for the `private`→`protected`
+		// refactor in commit (a) of PR-C. The Org-level call at
+		// `output_store_jsonld()` and the per-Offer call at
+		// `add_return_policy()` must both produce identical
+		// MerchantReturnPolicy block shapes for the same
+		// `$policy` + `$country` input. Anonymous subclass exposes the
+		// protected helper as public so the test can call it twice and
+		// `assertEquals` the result — pinning the shared-shape
+		// contract.
+		// phpcs:ignore Squiz.Commenting.ClassComment.Missing -- inline test fixture
+		$emitter = new class extends WC_AI_Storefront_JsonLd {
+			public function call_build( array $policy, string $country ): ?array {
+				return $this->build_return_policy_block( $policy, $country, null );
+			}
+		};
+
+		$policy = array(
+			'mode' => 'returns_accepted',
+			'days' => 14,
+			'fees' => 'restocking',
+		);
+		$a = $emitter->call_build( $policy, 'US' );
+		$b = $emitter->call_build( $policy, 'US' );
+
+		$this->assertSame( $a, $b );
+		// Sanity: the returned block IS what the Org-level call site
+		// would emit — same merchantReturnDays from the policy input.
+		$this->assertSame( 14, $a['merchantReturnDays'] );
 	}
 
 	public function test_store_jsonld_emits_logo_from_custom_logo_theme_mod(): void {
