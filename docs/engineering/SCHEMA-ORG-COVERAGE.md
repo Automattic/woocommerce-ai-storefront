@@ -127,7 +127,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `availabilityEnds` / `availabilityStarts` | — | — | — |
 | `availableAtOrFrom` / `availableDeliveryMethod` | — | — | — |
 | `businessFunction` | — | — | — |
-| `category` | — | — | — *(emitted at Product level)* |
+| `category` | — | — | — *(plugin emits at Product level; WC's `product_cat` taxonomy classifies the thing being sold, not the offer's commercial role)* |
 | `checkoutPageURLTemplate` | — | — | Future [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328) |
 | `deliveryLeadTime` | — | — | — *(handlingTime is in `shippingDetails` instead)* |
 | `eligibleCustomerType` / `eligibleDuration` / `eligibleQuantity` / `eligibleRegion` / `eligibleTransactionVolume` | — | — | — |
