@@ -96,6 +96,8 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_dimensions' )->andReturn( [] );
 		$product->shouldReceive( 'get_attributes' )->andReturn( [] );
 		$product->shouldReceive( 'get_children' )->andReturn( [] );
+		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( [] );
+		$product->shouldReceive( 'get_upsell_ids' )->andReturn( [] );
 		$product->shouldReceive( 'get_sku' )->andReturn( '' );
 		return $product;
 	}

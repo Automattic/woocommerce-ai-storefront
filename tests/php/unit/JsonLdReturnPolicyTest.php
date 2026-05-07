@@ -108,6 +108,8 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_attributes' )->andReturn( [] );
 		$product->shouldReceive( 'get_children' )->andReturn( [] );
 		$product->shouldReceive( 'get_sku' )->andReturn( '' );
+		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( [] );
+		$product->shouldReceive( 'get_upsell_ids' )->andReturn( [] );
 		return $product;
 	}
 

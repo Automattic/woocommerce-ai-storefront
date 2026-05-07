@@ -72,7 +72,8 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `hasMerchantReturnPolicy` | ✓ §return | ✓ at `offers[0]` level | Plugin |
 | `height` | ✓ §dimensions | ✓ | Plugin |
 | `inProductGroupWithID` | — | — | Future [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328) |
-| `isAccessoryOrSparePartFor` / `isConsumableFor` / `isRelatedTo` / `isSimilarTo` | — | — | — |
+| `isAccessoryOrSparePartFor` / `isConsumableFor` | — | — | — |
+| `isRelatedTo` / `isSimilarTo` | ✓ §isRelatedTo-isSimilarTo | ✓ when product has cross-sells / upsells | Plugin (`add_related_products()`) — cross-sells → `isRelatedTo`, upsells → `isSimilarTo`, capped at 10 entries each, syndication-filtered |
 | `isVariantOf` | — | — | Future [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328) |
 | `itemCondition` | — | — | — *(see "Recommended follow-ups")* |
 | `keywords` | — | — | — |
@@ -466,11 +467,11 @@ Types we don't emit today but might extend AI-shopping and SEO leverage. Decisio
 
 ### Active follow-ups (in priority order)
 
-| # | Schema.org type | Why pursue | Implementation note |
+| # | Schema.org type | Why pursue | Status |
 |---|---|---|---|
-| 1 | [`Product.isRelatedTo`](https://schema.org/isRelatedTo) / [`isSimilarTo`](https://schema.org/isSimilarTo) | "People also bought" / "Similar products" via WC's existing cross-sells / upsells. AI agents key heavily on this. | WC has the data (`get_cross_sell_ids()`, `get_upsell_ids()`); zero new merchant config required |
-| 2 | [`WebSite`](https://schema.org/WebSite) + site-level `SearchAction` | Google Sitelinks Search Box (separate from `OnlineStore.potentialAction`) | Trivial; `@type: WebSite` block at site level, ~15 LOC |
-| 3 | [`Organization.knowsAbout`](https://schema.org/knowsAbout) | "What the store specializes in" signal for AI agents | Derive from top product categories — reuses data already pulled for `hasOfferCatalog` |
+| ~~1~~ | ~~[`Product.isRelatedTo`](https://schema.org/isRelatedTo) / [`isSimilarTo`](https://schema.org/isSimilarTo)~~ | ~~"People also bought" / "Similar products"~~ | ✓ Implemented in [#335](https://github.com/Automattic/woocommerce-ai-storefront/issues/335) — cross-sells → `isRelatedTo`, upsells → `isSimilarTo`, capped at 10 entries each, syndication-filtered. See [`isRelatedTo` / `isSimilarTo` in JSON-LD-SCHEMA.md](./JSON-LD-SCHEMA.md#isrelatedto-and-issimilarto-cross-sells--upsells) |
+| 1 | [`WebSite`](https://schema.org/WebSite) + site-level `SearchAction` | Google Sitelinks Search Box (separate from `OnlineStore.potentialAction`) | Trivial; `@type: WebSite` block at site level, ~15 LOC ([#336](https://github.com/Automattic/woocommerce-ai-storefront/issues/336)) |
+| 2 | [`Organization.knowsAbout`](https://schema.org/knowsAbout) | "What the store specializes in" signal for AI agents | Derive from top product categories — reuses data already pulled for `hasOfferCatalog` ([#334](https://github.com/Automattic/woocommerce-ai-storefront/issues/334)) |
 
 ### Deferred (not now, but on the radar)
 

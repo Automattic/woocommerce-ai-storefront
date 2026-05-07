@@ -22,17 +22,27 @@
   - The `?products=ID:QUANTITY` format goes through WC's `/checkout-link/` rewrite handler, which adds the item to the cart and redirects directly to checkout — no intermediate landing page for the buyer.
   - The store-level `SearchAction.target.urlTemplate` is unchanged (it still points at the WP search endpoint with the canonical `utm_id=woo_ucp` attribution shape).
 
+- **JSON-LD: cross-sells and upsells now emit as `Product.isRelatedTo` and `Product.isSimilarTo`.** Closes #335.
+  - WC cross-sell IDs map to `isRelatedTo` (Schema.org: *"a pointer to another, somehow related product"*) — the cart-page complementary purchases.
+  - WC upsell IDs map to `isSimilarTo` (Schema.org: *"a pointer to another, functionally similar product"*) — premium / alternate versions of the same item.
+  - Each related product emits as `{"@id": permalink}` only, not a full Product block, to keep markup compact. AI agents dereference `@id` to retrieve the linked product's own structured data.
+  - Three guards: (a) IDs that fail `is_product_syndicated()` are silently dropped so excluded products aren't reachable via graph traversal; (b) deleted/trashed products (`wc_get_product()` returns false) are skipped; (c) hard cap of 10 entries per property prevents markup blowout on stores with very large cross-sell lists.
+  - Existing `isRelatedTo` / `isSimilarTo` values in markup (set by WC core or another plugin's filter at higher priority) are preserved — same deference pattern as the typed-property emission.
+  - Survives the `ProductGroup` conversion: `add_related_products()` runs before `maybe_convert_to_product_group()`, and Schema.org's `ProductGroup` is a `Product` subtype where both properties are valid.
+
 ### Fixes
 ### Refactors
 ### Tests
 
 - **`JsonLdTest.php`** — 14 new unit tests covering typed-property emission for all four mapped slugs, UK spelling (`colour`), free-text capitalized slugs, multi-value skip + fallback, variation-defining skip, existing-markup preservation, unmapped-attribute passthrough, invisible-attribute skip, and whitespace-only value handling. Existing `test_visible_attributes_are_emitted_as_additional_properties` updated to use unmapped slugs (`pa_style`, `pa_origin`) since `pa_color`/`pa_size` now route to typed properties.
 - **`JsonLdTest.php`** (PR #328) — 24 new unit tests across `detect_varies_by()` (5), `build_variant_entry()` (7), full ProductGroup conversion (7 — including the misconfigured-variable fallback regression guard), `Offer.checkoutPageURLTemplate` (3), and `allow_product_group_type` (2). The `allow_product_group_type` pair pins the WC core type-allow-list registration that prevents `ProductGroup` blocks from being silently dropped at `WC_Structured_Data::get_structured_data()`.
+- **`JsonLdTest.php`** (PR #335) — 14 new unit tests covering: empty-input no-op for both properties, `@id` shape for both, syndication-exclusion filtering for both, deleted-product skip, existing-markup preservation for both, the 10-entry hard cap, explicit-empty-array suppression for both (`isRelatedTo => array()` is "caller already decided"), the both-keys-set short-circuit (no `wc_get_product()` calls when both are pre-populated), and per-list de-duplication of source IDs (corrupted/imported postmeta with `[101, 101, 102]` resolves each ID exactly once).
 
 ### Docs
 
 - **`JSON-LD-SCHEMA.md`** — added a `color`/`material`/`pattern`/`size` typed-property section under "Field reference" with the slug mapping table, emission rules, and a worked example. Updated the `additionalProperty` section to reflect the new exclusion semantics.
 - **`JSON-LD-SCHEMA.md`** — added a `ProductGroup` / `hasVariant` / `variesBy` section documenting the variable-product emission shape, the misconfigured-variable fallback rule, and `Offer.checkoutPageURLTemplate` coexistence with `BuyAction`.
+- **`JSON-LD-SCHEMA.md`** + **`SCHEMA-ORG-COVERAGE.md`** — added an `isRelatedTo` / `isSimilarTo` field-reference section covering the cross-sell → `isRelatedTo` and upsell → `isSimilarTo` mapping, the three guards (visibility, deleted-product skip, 10-entry cap), and existing-key preservation. Audit doc's hierarchy table flips the `isRelatedTo`/`isSimilarTo` row to ✓; active-follow-ups table strikes through #1.
 
 ### Chores
 

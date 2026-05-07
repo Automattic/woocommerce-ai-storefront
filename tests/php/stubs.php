@@ -332,6 +332,20 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return [];
 		}
 
+		/**
+		 * @return int[]
+		 */
+		public function get_cross_sell_ids(): array {
+			return [];
+		}
+
+		/**
+		 * @return int[]
+		 */
+		public function get_upsell_ids(): array {
+			return [];
+		}
+
 		// Stock.
 		public function managing_stock(): bool {
 			return false;

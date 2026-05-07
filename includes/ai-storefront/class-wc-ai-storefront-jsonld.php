@@ -60,6 +60,19 @@ class WC_AI_Storefront_JsonLd {
 	);
 
 	/**
+	 * Hard cap on per-property entries emitted under
+	 * {@see add_related_products()} — `isRelatedTo` and `isSimilarTo`
+	 * are each capped independently. A merchant who has 100 cross-sell
+	 * IDs configured on a single product would otherwise inflate the
+	 * JSON-LD payload with 100 reference blocks per property; agents
+	 * only need a few signal-rich pointers, not an exhaustive list.
+	 *
+	 * Not exposed as a filter today — YAGNI until a real merchant need
+	 * surfaces. The constant is the single tuning knob.
+	 */
+	private const MAX_RELATED_PRODUCT_REFS = 10;
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function init() {
@@ -143,6 +156,8 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_shipping_details( $markup, $country );
 		$this->add_handling_time( $markup, $settings );
 		$this->add_return_policy( $markup, $product, $settings, $country );
+
+		$this->add_related_products( $markup, $product, $settings );
 
 		$this->maybe_convert_to_product_group( $markup, $product, $settings, $country );
 
@@ -1222,6 +1237,197 @@ class WC_AI_Storefront_JsonLd {
 		if ( null !== $policy_block ) {
 			$markup['offers'][0]['hasMerchantReturnPolicy'] = $policy_block;
 		}
+	}
+
+	/**
+	 * Emit Schema.org `isRelatedTo` (cross-sells) and `isSimilarTo`
+	 * (upsells) as `{"@id": permalink}` reference arrays on the
+	 * top-level Product.
+	 *
+	 * **Schema.org mapping** (verified against the spec):
+	 *   - {@link https://schema.org/isRelatedTo} = "A pointer to another,
+	 *     somehow related product (or multiple products)." → WC
+	 *     **cross-sells** (`get_cross_sell_ids()`) — the cart-page
+	 *     complementary purchases.
+	 *   - {@link https://schema.org/isSimilarTo} = "A pointer to
+	 *     another, functionally similar product (or multiple products)."
+	 *     → WC **upsells** (`get_upsell_ids()`) — the
+	 *     premium / alternate version of the same item.
+	 *
+	 * **Reference-only emission**: each entry is `["@id" => permalink]`,
+	 * NOT a full Product block. Full blocks would 5×+ the markup size
+	 * for AI agents that already dereference `@id` to fetch the linked
+	 * product's own structured data.
+	 *
+	 * **Three guards**:
+	 *   1. Per-product visibility — IDs failing
+	 *      {@see WC_AI_Storefront::is_product_syndicated()} are dropped
+	 *      so excluded products aren't reachable via graph traversal
+	 *      either. Consistent with the rest of the plugin's
+	 *      visibility model.
+	 *   2. Deleted/trashed products — `wc_get_product()` returns
+	 *      `false`; we skip those IDs. WC doesn't auto-prune stale
+	 *      cross-sell/upsell IDs when a referenced product is deleted,
+	 *      so this case is common on older stores.
+	 *   3. Hard cap of {@see MAX_RELATED_PRODUCT_REFS} (10) per
+	 *      property. A merchant with 100 cross-sells doesn't need 100
+	 *      reference blocks per product page; agents only need a few
+	 *      signal-rich pointers.
+	 *
+	 * **Existing-key preservation**: if `$markup` already carries
+	 * `isRelatedTo` or `isSimilarTo` (set by WC core or another
+	 * plugin's filter at higher priority), don't overwrite. Same
+	 * deference pattern as the typed-property emission for
+	 * `color`/`size`/`material`/`pattern`. The `isset()` check
+	 * intentionally treats `isRelatedTo => array()` as "caller already
+	 * decided" — emitting nothing is a valid caller choice and we
+	 * shouldn't quietly fill it in with our cross-sell list.
+	 *
+	 * Runs before `maybe_convert_to_product_group()` so the references
+	 * survive the ProductGroup rewrite — Schema.org's `ProductGroup`
+	 * is a Product subtype, both properties are valid there.
+	 *
+	 * @param array      $markup   Markup array, modified by reference.
+	 * @param WC_Product $product  The product object.
+	 * @param array      $settings Plugin settings (passed to the
+	 *                             per-ID syndication check).
+	 */
+	private function add_related_products( array &$markup, $product, array $settings ): void {
+		// Short-circuit if BOTH keys are already populated — no work to
+		// do. WC core doesn't currently set either, but a third-party
+		// filter at higher priority might. Avoids the
+		// `get_cross_sell_ids()` + `get_upsell_ids()` reads, the slice,
+		// the candidate-ID merge, and the three cache-priming calls
+		// when none of them would be put to use.
+		$skip_related = isset( $markup['isRelatedTo'] );
+		$skip_similar = isset( $markup['isSimilarTo'] );
+		if ( $skip_related && $skip_similar ) {
+			return;
+		}
+
+		// Only fetch the lists we'll actually consume — if the caller
+		// already set `isRelatedTo`, we don't need cross-sells; if they
+		// already set `isSimilarTo`, we don't need upsells.
+		$cross_sells = ( ! $skip_related && method_exists( $product, 'get_cross_sell_ids' ) )
+			? (array) $product->get_cross_sell_ids()
+			: array();
+		$upsells     = ( ! $skip_similar && method_exists( $product, 'get_upsell_ids' ) )
+			? (array) $product->get_upsell_ids()
+			: array();
+
+		// De-duplicate each list before slicing + the downstream loop.
+		// WC's editor doesn't enforce uniqueness on cross/upsell ID
+		// storage, and corrupted or imported postmeta can carry the
+		// same ID multiple times. Without this, `[101, 101, 101, ...]`
+		// would emit ten identical `@id` entries instead of falling
+		// through to distinct products. `array_unique()` preserves
+		// first-seen order via PHP's default key behavior;
+		// `array_values()` re-keys the result so the subsequent slice
+		// operates on a 0-indexed list.
+		$cross_sells = array_values( array_unique( $cross_sells ) );
+		$upsells     = array_values( array_unique( $upsells ) );
+
+		// Cap each list at 2× the emission cap before priming + the
+		// downstream loop. The output cap is MAX_RELATED_PRODUCT_REFS
+		// (10), but some candidates fall out at the deleted-product
+		// or syndication-exclusion guards — 2× gives breathing room
+		// for typical failure rates while preventing pathological
+		// cases (a merchant with 1000 cross-sells) from bulk-priming
+		// thousands of posts when only ~10 will be emitted. Trades a
+		// rare edge case (>50% of the first 20 candidates fail
+		// validation) for a much bigger perf win on the common path.
+		$slice_cap   = self::MAX_RELATED_PRODUCT_REFS * 2;
+		$cross_sells = array_slice( $cross_sells, 0, $slice_cap );
+		$upsells     = array_slice( $upsells, 0, $slice_cap );
+
+		// Prime post, meta, and (in by_taxonomy mode) term-relationship
+		// caches in batched queries, before the per-ID loops issue
+		// up to 40 separate `wc_get_product()` + `is_product_syndicated()`
+		// lookups. Same shape as the priming in
+		// `maybe_convert_to_product_group()` for variation children;
+		// `prime_syndication_cache()` is no-op in `all` and `selected`
+		// modes.
+		$candidate_ids = array_values(
+			array_unique(
+				array_filter(
+					array_map( 'intval', array_merge( $cross_sells, $upsells ) ),
+					static fn( $id ) => $id > 0
+				)
+			)
+		);
+		if ( ! empty( $candidate_ids ) ) {
+			if ( function_exists( '_prime_post_caches' ) ) {
+				_prime_post_caches( $candidate_ids, false, false );
+			}
+			if ( function_exists( 'update_meta_cache' ) ) {
+				update_meta_cache( 'post', $candidate_ids );
+			}
+			WC_AI_Storefront::prime_syndication_cache( $candidate_ids, $settings );
+		}
+
+		if ( ! $skip_related ) {
+			$related = $this->build_related_product_refs( $cross_sells, $settings );
+			if ( ! empty( $related ) ) {
+				$markup['isRelatedTo'] = $related;
+			}
+		}
+		if ( ! $skip_similar ) {
+			$similar = $this->build_related_product_refs( $upsells, $settings );
+			if ( ! empty( $similar ) ) {
+				$markup['isSimilarTo'] = $similar;
+			}
+		}
+	}
+
+	/**
+	 * Build the `[{"@id": permalink}, ...]` array for a list of related
+	 * product IDs, applying syndication-visibility, deleted-product,
+	 * and cardinality-cap guards.
+	 *
+	 * Caller is responsible for the existing-markup-key guard — this
+	 * helper unconditionally builds, returns empty array on no
+	 * survivors.
+	 *
+	 * @param int[] $product_ids Candidate product IDs (raw from WC
+	 *                           `get_cross_sell_ids()` /
+	 *                           `get_upsell_ids()`).
+	 * @param array $settings    Plugin settings (passed through to the
+	 *                           per-ID syndication check).
+	 * @return array<int,array<string,string>> List of `["@id" => url]`
+	 *                                         entries, capped at
+	 *                                         MAX_RELATED_PRODUCT_REFS.
+	 */
+	private function build_related_product_refs( array $product_ids, array $settings ): array {
+		if ( empty( $product_ids ) || ! function_exists( 'wc_get_product' ) ) {
+			return array();
+		}
+		$refs = array();
+		foreach ( $product_ids as $candidate_id ) {
+			if ( count( $refs ) >= self::MAX_RELATED_PRODUCT_REFS ) {
+				break;
+			}
+			$candidate_id = (int) $candidate_id;
+			if ( $candidate_id <= 0 ) {
+				continue;
+			}
+			$candidate = wc_get_product( $candidate_id );
+			// `wc_get_product()` returns false for deleted/trashed IDs
+			// — WC doesn't auto-prune stale cross-sell/upsell IDs.
+			if ( ! is_object( $candidate ) ) {
+				continue;
+			}
+			if ( ! WC_AI_Storefront::is_product_syndicated( $candidate, $settings ) ) {
+				continue;
+			}
+			$permalink = method_exists( $candidate, 'get_permalink' )
+				? $candidate->get_permalink()
+				: '';
+			if ( ! is_string( $permalink ) || '' === $permalink ) {
+				continue;
+			}
+			$refs[] = array( '@id' => $permalink );
+		}
+		return $refs;
 	}
 
 	/**
