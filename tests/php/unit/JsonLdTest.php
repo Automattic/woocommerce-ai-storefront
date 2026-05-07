@@ -95,6 +95,17 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// the per-test `$this->post_meta_by_id` table populated by
 		// `make_variation()`. The closure captures `$this` so each test
 		// gets the table state at call time, not at setUp time.
+		//
+		// FOOT-GUN: an individual test calling
+		// `Functions\when( 'get_post_meta' )->justReturn( ... )` will
+		// silently REPLACE this aliased version (Brain Monkey keeps the
+		// most recent binding). When that happens, every variation in
+		// the test loses its `attribute_<slug>` reads and ProductGroup
+		// detection falls back to "no varying axis." If you need to
+		// override `get_post_meta` for a specific key in one test, use
+		// a fresh alias that consults `$this->post_meta_by_id` for the
+		// keys this stub already serves and your custom logic for the
+		// rest — don't `justReturn` over the whole function.
 		$test = $this;
 		Functions\when( 'get_post_meta' )->alias(
 			static function ( $post_id, $key = '', $single = false ) use ( $test ) {

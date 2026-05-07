@@ -678,6 +678,22 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
+		// Prime the post + meta caches for all children in a single
+		// query each, before any per-child read. Both `detect_varies_by()`
+		// (via `read_variation_core_attributes()`) and the per-variant
+		// build loop below touch every child; without priming, a 50-
+		// variation product would issue 50+ separate `get_post_meta()`
+		// queries plus 50+ `wc_get_product()` lookups during one page
+		// render. `_prime_post_caches` keeps the WC product factory's
+		// cache hot too — `wc_get_product()` reads from the WP post
+		// cache before falling through to the database.
+		if ( function_exists( '_prime_post_caches' ) ) {
+			_prime_post_caches( $children, false, false );
+		}
+		if ( function_exists( 'update_meta_cache' ) ) {
+			update_meta_cache( 'post', $children );
+		}
+
 		$varies_by = self::detect_varies_by( $product );
 		if ( empty( $varies_by ) ) {
 			// Variations exist but nothing is flagged "Used for variations"
