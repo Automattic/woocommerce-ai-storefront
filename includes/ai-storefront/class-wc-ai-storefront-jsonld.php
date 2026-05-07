@@ -2049,7 +2049,7 @@ class WC_AI_Storefront_JsonLd {
 	 *                                   `returns_accepted` and `$country` is empty
 	 *                                   (caller skips emission in all null cases).
 	 */
-	private function build_return_policy_block( array $policy, string $country, ?int $product_id = null ): ?array {
+	protected function build_return_policy_block( array $policy, string $country, ?int $product_id = null ): ?array {
 		// Per-product final-sale override (highest-priority gate). A
 		// flagged product emits MerchantReturnNotPermitted regardless
 		// of the store-wide mode — including when the store-wide mode
