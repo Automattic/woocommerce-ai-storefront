@@ -62,8 +62,8 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `depth` | ✓ §dimensions | ✓ (`QuantitativeValue` with UN/CEFACT `unitCode`) | Plugin |
 | `displayLocation` | — | — | — |
 | `funding` | — | — | — |
-| `gtin` | — | ✓ when set | WC core |
-| `gtin8` / `gtin12` / `gtin13` / `gtin14` | — | — | — |
+| `gtin` | ✓ ([§deliberately-not-emitted](./JSON-LD-SCHEMA.md), as a "plugin doesn't enrich" note) | ✓ when WC's GTIN field is set | WC core |
+| `gtin8` / `gtin12` / `gtin13` / `gtin14` | — | — | — *(WC core emits a generic `gtin` only — see follow-up)* |
 | `hasAdultConsideration` | — | — | — |
 | `hasCertification` | — | — | — |
 | `hasEnergyConsumptionDetails` | — | — | — |
@@ -90,7 +90,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `productionDate` / `purchaseDate` / `releaseDate` | — | — | — |
 | `review` | — | ✓ top 5 most recent when reviews enabled | WC core |
 | `size` | ✓ §typed | ✓ (single value) | Plugin |
-| `sku` | — | ✓ | WC core (falls back to `get_id()` if no SKU) |
+| `sku` | ✓ (in worked example) | ✓ | WC core (falls back to `get_id()` if no SKU) |
 | `slogan` | — | — | — |
 | `weight` | ✓ §dimensions | ✓ | Plugin |
 

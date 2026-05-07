@@ -127,6 +127,17 @@ Schema.org `QuantitativeValue` exposing the current stock level.
 - **Emitted only when** WooCommerce stock management is enabled for the product AND the product has a numeric `stock_quantity`.
 - **Skipped for** products with `manage_stock=false` (out of scope for inventory-level discovery).
 
+### `sku`, `gtin`, `mpn`, `productID` (WC-core identifiers)
+
+These identification fields are emitted by **WC core** in its base Product JSON-LD; the plugin doesn't add or modify them.
+
+- **`sku`** -- always emitted. From `$product->get_sku()`. Falls back to `$product->get_id()` if the merchant didn't set an SKU. *(Note: `sku` and `gtin` are different concepts. SKU is the merchant's internal stock code; GTIN is the global Trade Item Number — UPC, EAN, ISBN, ITF-14. A merchant whose SKU happens to be EAN-format should also populate the dedicated GTIN field — WC core's `_global_unique_id` meta — to get both emitted correctly.)*
+- **`gtin`** -- emitted when WC's `_global_unique_id` (Global Unique ID) field is set on the product. WC core handles emission; this plugin doesn't synthesize or override.
+- **`mpn`** -- not emitted in default WC core. Some extensions add it via the `woocommerce_structured_data_product` filter.
+- **`productID`** -- not emitted in default WC core.
+
+The plugin's `wc_ai_storefront_jsonld_product` filter is the right hook for extensions that want to add `mpn` or `productID` from custom merchant data (or normalize an SKU value to a more specific `gtin8`/`gtin13` shape per Schema.org).
+
 ### `brand`
 
 `{"@type": "Brand", "name": "..."}` from the `product_brand` taxonomy.
@@ -364,7 +375,6 @@ For automated checks, the plugin's PHPUnit suite covers:
 For reference, fields that a JSON-LD reader might expect but aren't part of this plugin's enhancement:
 
 - **`aggregateRating` / `review`** -- inherited from WC core if present (e.g. via WooCommerce's reviews feature); plugin doesn't add or modify.
-- **`gtin`, `mpn`, `productID`** -- plugin doesn't synthesize. WC core may emit these if the store has them; plugin doesn't enforce.
 - **`audience`, `eligibleRegion`** -- not modeled. AI agents that need region/audience scoping should infer from `shippingDetails.shippingDestination`.
 - **Variation-level JSON-LD** -- the plugin enhances the parent Product. Variations remain in WC core's `offers` array; per-variation JSON-LD blocks are not emitted.
 
