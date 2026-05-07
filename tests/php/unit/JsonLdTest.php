@@ -740,9 +740,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->jsonld->enhance_product_data( [], $product );
 
 		$this->assertCount( 2, $result['additionalProperty'] );
-		$this->assertEquals( 'Style', $result['additionalProperty'][0]['name'] );
-		$this->assertEquals( 'Casual', $result['additionalProperty'][0]['value'] );
-		$this->assertEquals( 'PropertyValue', $result['additionalProperty'][0]['@type'] );
+		// Search by name so the test isn't sensitive to emit order.
+		$by_name = array_column( $result['additionalProperty'], null, 'name' );
+		$this->assertSame( 'PropertyValue', $by_name['Style']['@type'] );
+		$this->assertSame( 'Casual', $by_name['Style']['value'] );
+		$this->assertSame( 'PropertyValue', $by_name['Origin']['@type'] );
+		$this->assertSame( 'Portugal', $by_name['Origin']['value'] );
 	}
 
 	public function test_invisible_attributes_are_skipped(): void {

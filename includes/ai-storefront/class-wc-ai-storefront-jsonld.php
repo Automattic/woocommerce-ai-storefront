@@ -92,9 +92,12 @@ class WC_AI_Storefront_JsonLd {
 
 		$this->add_dimensions( $markup, $product );
 
-		$this->map_core_typed_attributes( $markup, $product );
+		// Compute once, share between the two attribute writers.
+		$variation_attrs = self::get_variation_attribute_slugs( $product );
 
-		$this->add_attributes( $markup, $product );
+		$this->map_core_typed_attributes( $markup, $product, $variation_attrs );
+
+		$this->add_attributes( $markup, $product, $variation_attrs );
 
 		$base_location = wc_get_base_location();
 		$country       = $base_location['country'] ?? '';
@@ -285,15 +288,16 @@ class WC_AI_Storefront_JsonLd {
 	 *   - The target property is already populated (don't overwrite WC core
 	 *     or another plugin's value).
 	 *
-	 * @param array      $markup  Markup array, modified by reference.
-	 * @param WC_Product $product The product object.
+	 * @param array      $markup          Markup array, modified by reference.
+	 * @param WC_Product $product         The product object.
+	 * @param string[]   $variation_attrs Lowercased slugs of variation-defining
+	 *                                    attributes for this product.
 	 */
-	private function map_core_typed_attributes( array &$markup, $product ): void {
+	private function map_core_typed_attributes( array &$markup, $product, array $variation_attrs ): void {
 		$attributes = $product->get_attributes();
 		if ( empty( $attributes ) ) {
 			return;
 		}
-		$variation_attrs = self::get_variation_attribute_slugs( $product );
 
 		foreach ( $attributes as $attribute ) {
 			if ( ! $attribute->get_visible() ) {
@@ -306,8 +310,9 @@ class WC_AI_Storefront_JsonLd {
 			$schema_prop = self::CORE_ATTRIBUTE_MAP[ $slug ];
 			// Short-circuit before fetching the attribute value — the
 			// "already populated" check is cheap, get_attribute() can
-			// trigger taxonomy term joins.
-			if ( isset( $markup[ $schema_prop ] ) ) {
+			// trigger taxonomy term joins. `array_key_exists` instead of
+			// `isset` so an upstream null value still counts as owned.
+			if ( array_key_exists( $schema_prop, $markup ) ) {
 				continue;
 			}
 			if ( in_array( $slug, $variation_attrs, true ) ) {
@@ -353,15 +358,16 @@ class WC_AI_Storefront_JsonLd {
 	 *   - Core attributes whose typed property was already emitted by
 	 *     {@see map_core_typed_attributes()} — avoids double-emit.
 	 *
-	 * @param array      $markup  Markup array, modified by reference.
-	 * @param WC_Product $product The product object.
+	 * @param array      $markup          Markup array, modified by reference.
+	 * @param WC_Product $product         The product object.
+	 * @param string[]   $variation_attrs Lowercased slugs of variation-defining
+	 *                                    attributes for this product.
 	 */
-	private function add_attributes( array &$markup, $product ): void {
+	private function add_attributes( array &$markup, $product, array $variation_attrs ): void {
 		$attributes = $product->get_attributes();
 		if ( empty( $attributes ) ) {
 			return;
 		}
-		$variation_attrs = self::get_variation_attribute_slugs( $product );
 
 		$additional_properties = array();
 		foreach ( $attributes as $attribute ) {
@@ -374,7 +380,7 @@ class WC_AI_Storefront_JsonLd {
 			}
 			if (
 				isset( self::CORE_ATTRIBUTE_MAP[ $slug ] )
-				&& isset( $markup[ self::CORE_ATTRIBUTE_MAP[ $slug ] ] )
+				&& array_key_exists( self::CORE_ATTRIBUTE_MAP[ $slug ], $markup )
 			) {
 				continue;
 			}
