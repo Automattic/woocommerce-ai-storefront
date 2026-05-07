@@ -289,7 +289,7 @@ The plugin emits `@type: OnlineStore` (deepest in the chain — see hierarchy se
 | `funder` / `funding` / `sponsor` | — | — | — |
 | `hasCertification` / `hasCredential` / `hasGS1DigitalLink` | — | — | — |
 | `hasMemberProgram` | — | — | — |
-| `hasMerchantReturnPolicy` | — | — | — *(currently only emitted at `Offer.hasMerchantReturnPolicy` per-product. **Worth adding** to the homepage `OnlineStore`/`OnlineBusiness` block too: same policy, but Organization-level lets agents discover the store-wide default without hitting a product page. Schema.org allows the property at both positions.)* |
+| `hasMerchantReturnPolicy` | — | — | — *(**Organization-level emission is the right default for our model.** The merchant configures one store-wide return policy in plugin settings; per-product variance only happens when a product is flagged as "final sale" (an override, not a separate policy). Cleanest emission: standard policy at `Organization.hasMerchantReturnPolicy`, per-Offer override only when final-sale changes the terms. Schema.org allows the property at both positions and consumers read Offer-level as an override of Organization-level. Currently we emit only at Offer level (every product), which is redundant for the common case.)* |
 | `hasPOS` / `hasShippingService` | — | — | — |
 | `interactionStatistic` | — | — | — |
 | `keywords` | — | — | — |
@@ -403,6 +403,9 @@ In rough priority order:
 4. **`Organization.telephone`** — currently suppressed by default. Worth a per-merchant opt-in toggle.
 5. **`Product.audience`** — target demographic (`PeopleAudience` with `audienceType`). Merchant-config; useful for kids/adult/professional/etc. categorization.
 6. **Switch homepage `@type` from `OnlineStore` to `OnlineBusiness`** — broader fit for WC's full install base (services, bookings, memberships, donations, lead-gen, retail). Code change is one line in [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) plus a `JSON-LD-SCHEMA.md` update. Decision rationale captured in [the OnlineBusiness section](#onlinebusiness--target-type).
-7. **`Organization.hasMerchantReturnPolicy`** — emit the merchant's standard return policy at the homepage `OnlineStore`/`OnlineBusiness` level (same policy data we emit at Offer level today). Lets AI agents discover the store-wide default policy without needing to hit a product page. Cheap addition; reuses the existing return-policy emission code from `add_return_policy()`.
+7. **Restructure return-policy emission to match merchant model** — the merchant has ONE store-wide return policy (configured once in plugin settings); per-product variance is just the "final sale" flag (no returns on this product). Right emission shape:
+   - **Always emit** the standard policy at `Organization.hasMerchantReturnPolicy` (homepage `OnlineStore`/`OnlineBusiness` block) — single canonical store-wide commitment.
+   - **Emit at `Offer.hasMerchantReturnPolicy` only when the product overrides** (final-sale flag changes the policy). Schema.org consumers read Offer-level as a per-offer override of the Organization-level default.
+   - Backward-compatible migration path: phase 1 adds Organization-level emission (purely additive); phase 2 makes Offer-level conditional. Or keep both as redundant signals if migration risk is too high. Reuses existing `add_return_policy()` emission code.
 
 These can be filed as standalone issues; none are blocked by the current PR pipeline (#328 → ProductGroup work).
