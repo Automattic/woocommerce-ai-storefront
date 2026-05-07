@@ -1544,6 +1544,36 @@ class WC_AI_Storefront_JsonLd {
 			$store_data = array_merge( $store_data, $identity_fields );
 		}
 
+		// Organization-level return policy emission (#337 phase 1).
+		//
+		// Schema.org consumers read `Organization.hasMerchantReturnPolicy`
+		// as the canonical store-wide commitment — the merchant's
+		// "all our products follow this return policy unless an
+		// individual offer overrides it" claim. Per-Offer emission
+		// (in `add_return_policy()`) is the per-product override
+		// surface and remains unchanged in this PR.
+		//
+		// `null` is passed for `$product_id` because Org-level
+		// emission has no per-product context — `build_return_policy_block()`
+		// already handles `null` correctly (skips the
+		// `is_final_sale()` override branch). The shared builder
+		// returns `null` when policy `mode` is `unconfigured` OR when
+		// the country is empty — both gates are honored at this call
+		// site too via the `null !== $policy_block` check below.
+		//
+		// Phase 2 (making per-Offer emission conditional on the
+		// per-product final-sale override only) is deferred to a
+		// separate PR — keeping this one purely additive.
+		$policy           = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
+			? $settings['return_policy']
+			: array( 'mode' => 'unconfigured' );
+		$base_location    = wc_get_base_location();
+		$store_country    = $base_location['country'] ?? '';
+		$org_policy_block = $this->build_return_policy_block( $policy, $store_country, null );
+		if ( null !== $org_policy_block ) {
+			$store_data['hasMerchantReturnPolicy'] = $org_policy_block;
+		}
+
 		/**
 		 * Filter the store-level JSON-LD data.
 		 *
