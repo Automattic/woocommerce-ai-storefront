@@ -351,10 +351,6 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return '';
 		}
 
-		public function is_type( string $type ): bool {
-			return $this->type === $type;
-		}
-
 		/**
 		 * On the real WC_Product base class, this returns the empty
 		 * array; WC_Product_Variable overrides it. We expose it here

@@ -152,10 +152,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( $overrides['dimensions'] ?? [] );
 		$product->shouldReceive( 'get_attributes' )
 			->andReturn( $overrides['attributes'] ?? [] );
-		$product->shouldReceive( 'is_type' )
-			->andReturnUsing(
-				static fn( $t ) => $t === ( $overrides['product_type'] ?? 'simple' )
-			);
 		$product->shouldReceive( 'get_variation_attributes' )
 			->andReturn( $overrides['variation_attributes'] ?? [] );
 		return $product;
@@ -782,6 +778,27 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		// Empty values add no information and would render as blank
 		// PropertyValues; they're filtered out.
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
+	}
+
+	public function test_whitespace_only_unmapped_attribute_value_is_skipped(): void {
+		// Same gate as `test_empty_attribute_values_are_skipped` but for
+		// whitespace-only input, which the previous truthy `if ( $value )`
+		// branch would have let through. add_attributes() now trims +
+		// length-checks, matching map_core_typed_attributes() semantics.
+		$attribute = Mockery::mock();
+		$attribute->shouldReceive( 'get_visible' )->andReturn( true );
+		$attribute->shouldReceive( 'get_name' )->andReturn( 'pa_style' );
+
+		$product = $this->make_product( [
+			'attributes' => [ 'pa_style' => $attribute ],
+		] );
+		$product->shouldReceive( 'get_attribute' )
+			->with( 'pa_style' )->andReturn( '   ' );
+		Functions\when( 'wc_attribute_label' )->justReturn( 'Style' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
 		$this->assertArrayNotHasKey( 'additionalProperty', $result );
 	}
 

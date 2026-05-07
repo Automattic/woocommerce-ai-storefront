@@ -293,9 +293,14 @@ class WC_AI_Storefront_JsonLd {
 		if ( empty( $attributes ) ) {
 			return;
 		}
-		$variation_attrs = $product->is_type( 'variable' )
-			? array_keys( $product->get_variation_attributes() )
-			: array();
+		// `get_variation_attributes()` is on `WC_Product` base — returns
+		// `[]` for non-variable products and is also overridden by
+		// extension product types (subscriptions, bundles). Lowercase
+		// keys to match `$slug` for the case-insensitive comparison.
+		$variation_attrs = array_map(
+			'strtolower',
+			array_keys( $product->get_variation_attributes() )
+		);
 
 		foreach ( $attributes as $attribute ) {
 			if ( ! $attribute->get_visible() ) {
@@ -341,9 +346,14 @@ class WC_AI_Storefront_JsonLd {
 		if ( empty( $attributes ) ) {
 			return;
 		}
-		$variation_attrs = $product->is_type( 'variable' )
-			? array_keys( $product->get_variation_attributes() )
-			: array();
+		// `get_variation_attributes()` is on `WC_Product` base — returns
+		// `[]` for non-variable products and is also overridden by
+		// extension product types (subscriptions, bundles). Lowercase
+		// keys to match `$slug` for the case-insensitive comparison.
+		$variation_attrs = array_map(
+			'strtolower',
+			array_keys( $product->get_variation_attributes() )
+		);
 
 		$additional_properties = array();
 		foreach ( $attributes as $attribute ) {
@@ -361,14 +371,15 @@ class WC_AI_Storefront_JsonLd {
 				continue;
 			}
 			$name  = wc_attribute_label( $attribute->get_name(), $product );
-			$value = $product->get_attribute( $attribute->get_name() );
-			if ( $value ) {
-				$additional_properties[] = array(
-					'@type' => 'PropertyValue',
-					'name'  => $name,
-					'value' => $value,
-				);
+			$value = trim( (string) $product->get_attribute( $attribute->get_name() ) );
+			if ( '' === $value ) {
+				continue;
 			}
+			$additional_properties[] = array(
+				'@type' => 'PropertyValue',
+				'name'  => $name,
+				'value' => $value,
+			);
 		}
 		if ( ! empty( $additional_properties ) ) {
 			$markup['additionalProperty'] = $additional_properties;
