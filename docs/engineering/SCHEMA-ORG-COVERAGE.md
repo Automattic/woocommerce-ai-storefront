@@ -470,8 +470,7 @@ Types we don't emit today but might extend AI-shopping and SEO leverage. Decisio
 | # | Schema.org type | Why pursue | Status |
 |---|---|---|---|
 | ~~1~~ | ~~[`Product.isRelatedTo`](https://schema.org/isRelatedTo) / [`isSimilarTo`](https://schema.org/isSimilarTo)~~ | ~~"People also bought" / "Similar products"~~ | ✓ Implemented in [#335](https://github.com/Automattic/woocommerce-ai-storefront/issues/335) — cross-sells → `isRelatedTo`, upsells → `isSimilarTo`, capped at 10 entries each, syndication-filtered. See [`isRelatedTo` / `isSimilarTo` in JSON-LD-SCHEMA.md](./JSON-LD-SCHEMA.md#isrelatedto-and-issimilarto-cross-sells--upsells) |
-| 1 | [`WebSite`](https://schema.org/WebSite) + site-level `SearchAction` | Google Sitelinks Search Box (separate from `OnlineStore.potentialAction`) | Trivial; `@type: WebSite` block at site level, ~15 LOC ([#336](https://github.com/Automattic/woocommerce-ai-storefront/issues/336)) |
-| 2 | [`Organization.knowsAbout`](https://schema.org/knowsAbout) | "What the store specializes in" signal for AI agents | Derive from top product categories — reuses data already pulled for `hasOfferCatalog` ([#334](https://github.com/Automattic/woocommerce-ai-storefront/issues/334)) |
+| 1 | [`Organization.knowsAbout`](https://schema.org/knowsAbout) | "What the store specializes in" signal for AI agents | Derive from top product categories — reuses data already pulled for `hasOfferCatalog` ([#334](https://github.com/Automattic/woocommerce-ai-storefront/issues/334)) |
 
 ### Deferred (not now, but on the radar)
 
@@ -483,6 +482,7 @@ Types we don't emit today but might extend AI-shopping and SEO leverage. Decisio
 
 ### Ruled out
 
+- **[`WebSite`](https://schema.org/WebSite) + site-level `SearchAction`** — original motivation was Google's Sitelinks Search Box rich result, but [Google retired the feature in October 2024](https://developers.google.com/search/docs/appearance/structured-data/sitelinks-searchbox) ("the sitelinks search box feature is no longer available in Google Search results"). The existing `OnlineStore.potentialAction` SearchAction continues to serve AI agents that interpret the Action vocabulary. A separate top-level `WebSite` block now adds maintenance surface for marginal payoff (theoretical use by other search engines or AI graph traversers, no evidence of demand). Implementation was drafted in [PR #340](https://github.com/Automattic/woocommerce-ai-storefront/pull/340) and closed; preserved in PR history if a real consumer-driven need surfaces later.
 - **[`FAQPage`](https://schema.org/FAQPage)** — out of scope. Detecting and parsing arbitrary policy pages into Q/A pairs is fragile, theme-dependent, and pulls the plugin into content-extraction territory better-served by dedicated SEO/FAQ plugins.
 - **`Article` / `BlogPosting`** — content surfaces; out of scope for an e-commerce plugin (SEO plugins like Yoast/Rank Math handle these).
 - **`SiteNavigationElement`** — generally redundant with theme HTML/menu structure; low leverage for the cost.
