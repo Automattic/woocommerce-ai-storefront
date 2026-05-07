@@ -214,16 +214,6 @@ class WC_AI_Storefront {
 	}
 
 	/**
-	 * Stub of `update_settings()` mirroring the production sanitization
-	 * for `product_selection_mode`. Stores the result back into
-	 * `$test_settings` so subsequent `get_settings()` calls reflect it.
-	 *
-	 * Keep in sync with `includes/class-wc-ai-storefront.php` when the
-	 * allowed `product_selection_mode` values change.
-	 *
-	 * @param array<string, mixed> $settings Partial settings to merge in.
-	 */
-	/**
 	 * No-op stub for the production cache-priming helper.
 	 *
 	 * The production implementation calls `update_object_term_cache()`
@@ -239,6 +229,16 @@ class WC_AI_Storefront {
 		// Intentionally empty.
 	}
 
+	/**
+	 * Stub of `update_settings()` mirroring the production sanitization
+	 * for `product_selection_mode`. Stores the result back into
+	 * `$test_settings` so subsequent `get_settings()` calls reflect it.
+	 *
+	 * Keep in sync with `includes/class-wc-ai-storefront.php` when the
+	 * allowed `product_selection_mode` values change.
+	 *
+	 * @param array<string, mixed> $settings Partial settings to merge in.
+	 */
 	public static function update_settings( array $settings ): void {
 		$current = self::get_settings();
 		$merged  = array_merge( $current, $settings );

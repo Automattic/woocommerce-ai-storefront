@@ -1049,6 +1049,25 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( array(), $result['isRelatedTo'] );
 	}
 
+	public function test_explicitly_empty_is_similar_to_is_not_overwritten(): void {
+		// Symmetric guard for the isSimilarTo branch. The two
+		// properties go through identical isset() checks; pin the
+		// upsell side too so a future refactor that special-cases one
+		// branch but not the other can't silently regress.
+		$product = $this->make_product( [ 'upsell_ids' => array( 911, 912 ) ] );
+
+		$t911 = $this->make_related_target( 911, 'https://example.com/product/p911/' );
+		$t912 = $this->make_related_target( 912, 'https://example.com/product/p912/' );
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $id ) => 911 === (int) $id ? $t911 : ( 912 === (int) $id ? $t912 : false )
+		);
+
+		$markup = array( 'isSimilarTo' => array() );
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( array(), $result['isSimilarTo'] );
+	}
+
 	public function test_existing_is_similar_to_is_not_overwritten(): void {
 		$product = $this->make_product( [ 'upsell_ids' => array( 801 ) ] );
 
