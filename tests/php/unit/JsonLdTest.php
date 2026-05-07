@@ -1027,6 +1027,28 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_explicitly_empty_is_related_to_is_not_overwritten(): void {
+		// `isset()` returns true for an explicit empty array, so a
+		// caller that deliberately set `isRelatedTo => array()` to
+		// suppress emission gets that respected. This is a deliberate
+		// choice over `array_key_exists() && ! empty()` — the latter
+		// would silently overwrite a caller's "no, really, emit
+		// nothing" intent with our cross-sell list. Pin the behavior
+		// so a future "fix" doesn't quietly flip it.
+		$product = $this->make_product( [ 'cross_sell_ids' => array( 901, 902 ) ] );
+
+		$t901 = $this->make_related_target( 901, 'https://example.com/product/p901/' );
+		$t902 = $this->make_related_target( 902, 'https://example.com/product/p902/' );
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $id ) => 901 === (int) $id ? $t901 : ( 902 === (int) $id ? $t902 : false )
+		);
+
+		$markup = array( 'isRelatedTo' => array() );
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( array(), $result['isRelatedTo'] );
+	}
+
 	public function test_existing_is_similar_to_is_not_overwritten(): void {
 		$product = $this->make_product( [ 'upsell_ids' => array( 801 ) ] );
 

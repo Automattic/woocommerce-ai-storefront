@@ -1278,7 +1278,10 @@ class WC_AI_Storefront_JsonLd {
 	 * `isRelatedTo` or `isSimilarTo` (set by WC core or another
 	 * plugin's filter at higher priority), don't overwrite. Same
 	 * deference pattern as the typed-property emission for
-	 * `color`/`size`/`material`/`pattern`.
+	 * `color`/`size`/`material`/`pattern`. The `isset()` check
+	 * intentionally treats `isRelatedTo => array()` as "caller already
+	 * decided" — emitting nothing is a valid caller choice and we
+	 * shouldn't quietly fill it in with our cross-sell list.
 	 *
 	 * Runs before `maybe_convert_to_product_group()` so the references
 	 * survive the ProductGroup rewrite — Schema.org's `ProductGroup`
@@ -1296,6 +1299,26 @@ class WC_AI_Storefront_JsonLd {
 		$upsells     = method_exists( $product, 'get_upsell_ids' )
 			? (array) $product->get_upsell_ids()
 			: array();
+
+		// Prime post + meta caches in two batched queries each (one
+		// per type), before the per-ID loops issue 20+ separate
+		// `wc_get_product()` and `is_product_syndicated()` lookups.
+		// Same shape as the priming added in `maybe_convert_to_product_group()`
+		// for variation children — a product with 10 cross-sells and
+		// 10 upsells would otherwise round-trip the DB up to 40 times
+		// per page render.
+		$candidate_ids = array_filter(
+			array_map( 'intval', array_merge( $cross_sells, $upsells ) ),
+			static fn( $id ) => $id > 0
+		);
+		if ( ! empty( $candidate_ids ) ) {
+			if ( function_exists( '_prime_post_caches' ) ) {
+				_prime_post_caches( $candidate_ids, false, false );
+			}
+			if ( function_exists( 'update_meta_cache' ) ) {
+				update_meta_cache( 'post', $candidate_ids );
+			}
+		}
 
 		if ( ! isset( $markup['isRelatedTo'] ) ) {
 			$related = $this->build_related_product_refs( $cross_sells, $settings );
