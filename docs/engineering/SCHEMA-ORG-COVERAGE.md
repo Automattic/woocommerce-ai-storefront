@@ -463,14 +463,15 @@ Types we don't emit today but might extend AI-shopping and SEO leverage. Decisio
 | Schema.org type | Source | Status |
 |---|---|---|
 | [`BreadcrumbList`](https://schema.org/BreadcrumbList) | WC core (`WC_Structured_Data::generate_breadcrumblist_data()`) | ✓ emitted on product pages with WC's breadcrumb data; not yet in `JSON-LD-SCHEMA.md`. **Doc fix:** add a `### BreadcrumbList` section. |
+| [`WebSite`](https://schema.org/WebSite) + Sitelinks `SearchAction` | Plugin (`output_website_jsonld()`) | ✓ emitted on homepage as a separate `<script>` tag; uses Google's `{search_term_string}` placeholder. See [§Homepage: WebSite block](./JSON-LD-SCHEMA.md#homepage-website-block-with-sitelinks-searchaction). |
 
 ### Active follow-ups (in priority order)
 
-| # | Schema.org type | Why pursue | Implementation note |
+| # | Schema.org type | Why pursue | Status |
 |---|---|---|---|
-| 1 | [`Product.isRelatedTo`](https://schema.org/isRelatedTo) / [`isSimilarTo`](https://schema.org/isSimilarTo) | "People also bought" / "Similar products" via WC's existing cross-sells / upsells. AI agents key heavily on this. | WC has the data (`get_cross_sell_ids()`, `get_upsell_ids()`); zero new merchant config required |
-| 2 | [`WebSite`](https://schema.org/WebSite) + site-level `SearchAction` | Google Sitelinks Search Box (separate from `OnlineStore.potentialAction`) | Trivial; `@type: WebSite` block at site level, ~15 LOC |
-| 3 | [`Organization.knowsAbout`](https://schema.org/knowsAbout) | "What the store specializes in" signal for AI agents | Derive from top product categories — reuses data already pulled for `hasOfferCatalog` |
+| ~~1~~ | ~~[`Product.isRelatedTo`](https://schema.org/isRelatedTo) / [`isSimilarTo`](https://schema.org/isSimilarTo)~~ | ~~"People also bought" / "Similar products"~~ | ✓ Implemented in [#335](https://github.com/Automattic/woocommerce-ai-storefront/issues/335) |
+| ~~2~~ | ~~[`WebSite`](https://schema.org/WebSite) + site-level `SearchAction`~~ | ~~Google Sitelinks Search Box (separate from `OnlineStore.potentialAction`)~~ | ✓ Implemented in [#336](https://github.com/Automattic/woocommerce-ai-storefront/issues/336) |
+| 1 | [`Organization.knowsAbout`](https://schema.org/knowsAbout) | "What the store specializes in" signal for AI agents | Derive from top product categories — reuses data already pulled for `hasOfferCatalog` ([#334](https://github.com/Automattic/woocommerce-ai-storefront/issues/334)) |
 
 ### Deferred (not now, but on the radar)
 

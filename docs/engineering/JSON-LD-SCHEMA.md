@@ -4,12 +4,13 @@ The structured-data shapes WooCommerce AI Storefront emits, where, and what cont
 
 ## What the plugin emits
 
-Two distinct JSON-LD blocks:
+Three distinct JSON-LD blocks:
 
 | Surface | Block | Location | Source |
 |---------|-------|----------|--------|
 | Product page (single product) | Enhanced `Product` | Inside the `<head>` via `wp_head`, layered on top of WooCommerce core's existing `Product` block | [`includes/ai-storefront/class-wc-ai-storefront-jsonld.php`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) `enhance_product_data()` |
 | Store homepage / shop page | `OnlineStore` (an `Organization` subtype, since 0.10.0; previously `Store`) | Inside the `<head>` via `wp_head`, on `is_front_page() || is_shop()` when the plugin is enabled | Same file, `output_store_jsonld()` |
+| Homepage only | `WebSite` with Google Sitelinks `SearchAction` | Inside the `<head>` via `wp_head` priority 5 — separate `<script>` tag from `OnlineStore`, on `is_front_page()` only when the plugin is enabled | Same file, `output_website_jsonld()` |
 
 Both blocks emit only when the plugin is enabled (`enabled === 'yes'` in `wc_ai_storefront_settings`). Disabling the plugin removes the markup entirely; the underlying WooCommerce core JSON-LD (basic Product, Offer, AggregateRating) continues to render unchanged.
 
@@ -464,6 +465,52 @@ WC's "From" address is often set to `noreply@store.com` to avoid bounce-handling
 - **`contactPoint.telephone`**. Same reason: WC has no phone option, so the plugin can't auto-source. Plugins that capture a merchant phone number can inject via the same filter.
 
 The `hasOfferCatalog.itemListElement` is built by `get_catalog_summary()` and respects the plugin's product visibility setting — categories with zero exposed products are omitted.
+
+## Homepage: WebSite block with Sitelinks SearchAction
+
+A separate top-level `WebSite` block emitted on the homepage only (`is_front_page()`), in its own `<script type="application/ld+json">` tag adjacent to the `OnlineStore` block.
+
+Worked example:
+
+```jsonc
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "url": "https://example.com/",
+  "name": "Acme Outdoors",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": {
+      "@type": "EntryPoint",
+      "urlTemplate": "https://example.com/?s={search_term_string}"
+    },
+    "query-input": "required name=search_term_string"
+  }
+}
+```
+
+**Why this exists alongside `OnlineStore.potentialAction` SearchAction**: the two SearchAction surfaces target different consumers.
+
+| Block | Consumer | Placeholder | Attribution |
+|---|---|---|---|
+| `OnlineStore.potentialAction` (in the store block) | AI agents that interpret the Action vocabulary | `{search_term}` + plugin's `{agent_id}` UTM shape | yes — agents that route a search through us get attribution |
+| `WebSite.potentialAction` (this block) | Google's [Sitelinks Search Box](https://developers.google.com/search/docs/appearance/structured-data/sitelinks-searchbox) rich result | `{search_term_string}` (Google's required literal) | no — UTMs would invalidate the rich result |
+
+The two emit as separate `<script>` tags rather than merging into one `@graph` because:
+
+1. Google's Sitelinks Search Box validator expects a top-level `WebSite` shape, not a nested `@graph` entry.
+2. Easier to debug (each block is independently parseable).
+3. The Action vocabularies and placeholders are intentionally different — keeping them separate prevents accidental cross-contamination during edits.
+
+**Spec rigidity**: Google's validator requires the placeholder to be the literal string `search_term_string` and the `query-input` value to be exactly `"required name=search_term_string"` (with the space between `required` and `name=`). Deviating from either fails rich-result eligibility. We do **not** add UTM parameters to this URL.
+
+**`site_url('/')` over `home_url('/')`**: identical on standard installs, but `site_url` is the WP convention for self-referential schema and is more defensible on multisite or non-standard setups where `home_url` can diverge.
+
+**Gate**: `is_front_page()` only. Compare `output_store_jsonld()` which fires on `is_front_page() || is_shop()` — `OnlineStore` is valid on either surface, but `WebSite` represents the site as a whole and should only appear once.
+
+**No filter**: the WebSite block is structurally rigid. A `wc_ai_storefront_jsonld_website` filter would invite mutations that break Google's rich-result eligibility. If a real customization need surfaces, add the filter then under a separate issue.
+
+Implementation: [`output_website_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php).
 
 ## Public filters
 

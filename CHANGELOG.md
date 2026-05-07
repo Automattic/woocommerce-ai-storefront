@@ -22,17 +22,27 @@
   - The `?products=ID:QUANTITY` format goes through WC's `/checkout-link/` rewrite handler, which adds the item to the cart and redirects directly to checkout — no intermediate landing page for the buyer.
   - The store-level `SearchAction.target.urlTemplate` is unchanged (it still points at the WP search endpoint with the canonical `utm_id=woo_ucp` attribution shape).
 
+- **JSON-LD: site-level `WebSite` block now emitted on the homepage for Google Sitelinks Search Box.** Closes #336.
+  - A second `<script type="application/ld+json">` tag is added to `<head>` on the front page only (`is_front_page()`) containing a `@type: WebSite` block with a `SearchAction` pointing at `site_url('/?s={search_term_string}')`.
+  - Distinct from the existing `OnlineStore.potentialAction` SearchAction. The two surfaces target different consumers — Google's [Sitelinks Search Box](https://developers.google.com/search/docs/appearance/structured-data/sitelinks-searchbox) rich result vs AI agents that interpret the Action vocabulary — so they emit as separate `<script>` tags rather than merging into one `@graph`.
+  - Spec-rigid: the placeholder is the literal string `search_term_string` (not the plugin's `{agent_id}` UTM shape), and `query-input` is exactly `"required name=search_term_string"`. Deviating from either fails Google's rich-result eligibility.
+  - No UTM parameters on this URL — UTMs are meaningful on the AI-agent SearchAction (where attribution matters) but would invalidate the rich result on the human-facing Google feature.
+  - Not emitted on shop archive pages, product pages, or any non-front-page — `WebSite` represents the site as a whole.
+  - Not filterable. The block is structurally rigid; a filter would invite mutations that break Google's rich-result eligibility.
+
 ### Fixes
 ### Refactors
 ### Tests
 
 - **`JsonLdTest.php`** — 14 new unit tests covering typed-property emission for all four mapped slugs, UK spelling (`colour`), free-text capitalized slugs, multi-value skip + fallback, variation-defining skip, existing-markup preservation, unmapped-attribute passthrough, invisible-attribute skip, and whitespace-only value handling. Existing `test_visible_attributes_are_emitted_as_additional_properties` updated to use unmapped slugs (`pa_style`, `pa_origin`) since `pa_color`/`pa_size` now route to typed properties.
 - **`JsonLdTest.php`** (PR #328) — 24 new unit tests across `detect_varies_by()` (5), `build_variant_entry()` (7), full ProductGroup conversion (7 — including the misconfigured-variable fallback regression guard), `Offer.checkoutPageURLTemplate` (3), and `allow_product_group_type` (2). The `allow_product_group_type` pair pins the WC core type-allow-list registration that prevents `ProductGroup` blocks from being silently dropped at `WC_Structured_Data::get_structured_data()`.
+- **`JsonLdTest.php`** (PR #336) — 11 new unit tests for `output_website_jsonld()` covering homepage emission, off-homepage suppression, plugin-disabled gate, `site_url`-based URL, name from `get_bloginfo`, the exact Google Sitelinks `{search_term_string}` placeholder, no-UTM verification, the exact `query-input` literal, SearchAction/EntryPoint types, XSS hex-escape regression for site name, and the "separate `<script>` tags from OnlineStore" design pin.
 
 ### Docs
 
 - **`JSON-LD-SCHEMA.md`** — added a `color`/`material`/`pattern`/`size` typed-property section under "Field reference" with the slug mapping table, emission rules, and a worked example. Updated the `additionalProperty` section to reflect the new exclusion semantics.
 - **`JSON-LD-SCHEMA.md`** — added a `ProductGroup` / `hasVariant` / `variesBy` section documenting the variable-product emission shape, the misconfigured-variable fallback rule, and `Offer.checkoutPageURLTemplate` coexistence with `BuyAction`.
+- **`JSON-LD-SCHEMA.md`** + **`SCHEMA-ORG-COVERAGE.md`** — added a `Homepage: WebSite block with Sitelinks SearchAction` section documenting the new top-level emission, the `OnlineStore.potentialAction` vs `WebSite.potentialAction` consumer split, the `{search_term_string}` placeholder rigidity, and the no-filter design decision. Audit doc's already-emitted table flips the WebSite row to ✓; active-follow-ups table strikes through #2.
 
 ### Chores
 

@@ -2933,4 +2933,226 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'admin_email must NEVER be a public-facing contact fallback.'
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// output_website_jsonld() — site-level WebSite block with Google
+	// Sitelinks SearchAction. Distinct from output_store_jsonld()'s
+	// OnlineStore.potentialAction (different consumers; emitted as a
+	// separate <script> tag). (#336)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Capture the site-level WebSite block by stubbing the WP/WC
+	 * functions `output_website_jsonld()` reads, buffering its echo,
+	 * and parsing the JSON. Returns the decoded array, or null if
+	 * the method short-circuited (gates rejected emission).
+	 *
+	 * Differs from `capture_store_jsonld_filter_value()` because the
+	 * WebSite block is intentionally not filterable (see method
+	 * docblock for rationale) — there's no `apply_filters` hook to
+	 * intercept, so we buffer-and-parse instead.
+	 */
+	private function capture_website_jsonld_output( bool $is_front_page = true ): ?array {
+		Functions\when( 'is_front_page' )->justReturn( $is_front_page );
+		// `site_url` is the WP convention for self-referential schema —
+		// `home_url` is what `output_store_jsonld` uses, but the
+		// WebSite block deliberately uses `site_url` per the design.
+		Functions\when( 'site_url' )->alias(
+			static fn( $path = '' ) => 'https://example.com' . $path
+		);
+		Functions\when( 'get_bloginfo' )->returnArg();
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
+
+		ob_start();
+		$this->jsonld->output_website_jsonld();
+		$out = ob_get_clean();
+
+		if ( '' === trim( $out ) ) {
+			return null;
+		}
+		// Extract the JSON payload from the <script> tag. The buffered
+		// output is exactly what would render in <head>, so just strip
+		// the wrapping tags before json_decode.
+		if ( ! preg_match( '#<script type="application/ld\+json">(.*)</script>#s', $out, $m ) ) {
+			$this->fail( 'WebSite output is not wrapped in a JSON-LD script tag.' );
+		}
+		$decoded = json_decode( $m[1], true );
+		$this->assertIsArray( $decoded, 'WebSite output is not valid JSON.' );
+		return $decoded;
+	}
+
+	public function test_website_jsonld_emits_on_homepage(): void {
+		$data = $this->capture_website_jsonld_output( true );
+
+		$this->assertNotNull( $data );
+		$this->assertSame( 'WebSite', $data['@type'] );
+	}
+
+	public function test_website_jsonld_does_not_emit_off_homepage(): void {
+		// The WebSite block represents the site as a whole; emitting it
+		// on archive / product / shop pages would duplicate the signal
+		// per page render with no payoff. `output_store_jsonld()` also
+		// fires on `is_shop()` because OnlineStore is valid on either
+		// surface — WebSite is stricter.
+		$data = $this->capture_website_jsonld_output( false );
+
+		$this->assertNull( $data );
+	}
+
+	public function test_website_jsonld_does_not_emit_when_plugin_disabled(): void {
+		WC_AI_Storefront::$test_settings = array(
+			'enabled' => 'no',
+		);
+
+		$data = $this->capture_website_jsonld_output( true );
+
+		$this->assertNull( $data );
+	}
+
+	public function test_website_jsonld_url_uses_site_url(): void {
+		// site_url('/') over home_url('/') — these are identical on
+		// standard installs but diverge on multisite or non-standard
+		// setups. site_url is the WP convention for self-referential
+		// schema and what Google's Sitelinks Search Box validator
+		// expects.
+		$data = $this->capture_website_jsonld_output();
+
+		$this->assertSame( 'https://example.com/', $data['url'] );
+	}
+
+	public function test_website_jsonld_name_from_get_bloginfo(): void {
+		// `get_bloginfo` stub uses `returnArg` so passing 'name'
+		// returns the literal string 'name'. Asserts the property
+		// flows through; production reads the real site name.
+		$data = $this->capture_website_jsonld_output();
+
+		$this->assertSame( 'name', $data['name'] );
+	}
+
+	public function test_website_jsonld_search_action_url_template_has_search_term_string_placeholder(): void {
+		// Google's Sitelinks Search Box spec is rigid: the placeholder
+		// MUST be the literal string `search_term_string`, NOT
+		// `search_term` (what the OnlineStore.potentialAction
+		// SearchAction uses) and NOT `{agent_id}` (the plugin's UTM
+		// attribution placeholder). Deviating fails rich-result
+		// eligibility.
+		$data = $this->capture_website_jsonld_output();
+
+		$this->assertSame(
+			'https://example.com/?s={search_term_string}',
+			$data['potentialAction']['target']['urlTemplate']
+		);
+	}
+
+	public function test_website_jsonld_search_action_url_template_has_no_utm_parameters(): void {
+		// UTM attribution is meaningless on Sitelinks Search Box (a
+		// human-facing Google feature) and would invalidate the rich
+		// result. The OnlineStore.potentialAction SearchAction has
+		// UTMs because it targets AI agents where attribution
+		// matters — these are different consumers.
+		$data = $this->capture_website_jsonld_output();
+
+		$url = $data['potentialAction']['target']['urlTemplate'];
+		$this->assertStringNotContainsString( 'utm_source', $url );
+		$this->assertStringNotContainsString( 'utm_medium', $url );
+		$this->assertStringNotContainsString( 'utm_id', $url );
+		$this->assertStringNotContainsString( 'agent_id', $url );
+	}
+
+	public function test_website_jsonld_query_input_matches_google_spec(): void {
+		// Exact string Google's validator requires. The space between
+		// `required` and `name=search_term_string` is significant.
+		$data = $this->capture_website_jsonld_output();
+
+		$this->assertSame(
+			'required name=search_term_string',
+			$data['potentialAction']['query-input']
+		);
+	}
+
+	public function test_website_jsonld_search_action_type(): void {
+		$data = $this->capture_website_jsonld_output();
+
+		$this->assertSame( 'SearchAction', $data['potentialAction']['@type'] );
+		$this->assertSame( 'EntryPoint', $data['potentialAction']['target']['@type'] );
+	}
+
+	public function test_website_jsonld_hex_escapes_script_close_tag_in_site_name(): void {
+		// XSS regression guard, mirrors the same pattern in
+		// output_store_jsonld(). `get_bloginfo('name')` is
+		// user-controlled admin input — an editor with
+		// `manage_options` could in principle store a site name
+		// containing `</script>`. The hex-escape flags
+		// (JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+		// must serialize that as `<\/script>`, never as
+		// the literal closing tag.
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'site_url' )->alias( static fn( $p = '' ) => 'https://example.com' . $p );
+		Functions\when( 'get_bloginfo' )->justReturn( '</script><script>alert(1)</script>' );
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
+
+		ob_start();
+		$this->jsonld->output_website_jsonld();
+		$out = ob_get_clean();
+
+		// The dangerous breakout sequence — a literal `</script>`
+		// inside the JSON payload — must NOT appear anywhere in the
+		// emitted output. JSON_HEX_TAG escapes `<` to `<` and `>`
+		// to `>`, so the inner `</script>` becomes
+		// `<\/script>` and the JSON-LD script-tag CDATA
+		// context stays intact.
+		$this->assertStringNotContainsString(
+			'</script><script>',
+			$out,
+			'</script> in site name must be hex-escaped, never emitted literally.'
+		);
+		// The hex-escaped form should be present. Compute the
+		// expected substring at runtime via json_encode with the
+		// same flags rather than hand-encoding it in source — both
+		// because PHP source-level `\u` sequences in single quotes
+		// don't get interpreted (so hand-writing the expected form
+		// is fragile) and because computing it from `json_encode`
+		// pins this assertion to the actual flag set rather than a
+		// human's interpretation of it.
+		$expected = trim( json_encode( '</script>', JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ), '"' );
+		$this->assertStringContainsString( $expected, $out );
+		// Sanity: the OUTER (real) <script> tag wrapping the JSON
+		// payload still has an unescaped opening — that's the
+		// browser-rendered tag, not part of the JSON.
+		$this->assertStringContainsString( '<script type="application/ld+json">', $out );
+	}
+
+	public function test_website_jsonld_emits_separate_script_tag_from_store_jsonld(): void {
+		// Pin the design decision: WebSite is a SEPARATE <script>
+		// tag, not merged into output_store_jsonld()'s @graph. A
+		// future "consolidation" refactor would silently break
+		// Google Sitelinks Search Box detection (the validator
+		// expects a top-level WebSite shape, not nested inside
+		// @graph).
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'site_url' )->alias( static fn( $p = '' ) => 'https://example.com' . $p );
+		Functions\when( 'home_url' )->alias( static fn( $p = '' ) => 'https://example.com' . $p );
+		Functions\when( 'get_bloginfo' )->returnArg();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
+		Functions\when( '__' )->returnArg( 1 );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+
+		ob_start();
+		$this->jsonld->output_store_jsonld();
+		$this->jsonld->output_website_jsonld();
+		$out = ob_get_clean();
+
+		// Two separate <script type="application/ld+json"> opening tags
+		// — confirms each block emits its own.
+		$this->assertSame(
+			2,
+			substr_count( $out, '<script type="application/ld+json">' ),
+			'Store and WebSite blocks must be separate script tags.'
+		);
+		$this->assertStringContainsString( '"@type":"OnlineStore"', $out );
+		$this->assertStringContainsString( '"@type":"WebSite"', $out );
+	}
 }

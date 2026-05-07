@@ -66,6 +66,7 @@ class WC_AI_Storefront_JsonLd {
 		add_filter( 'woocommerce_structured_data_product', [ $this, 'enhance_product_data' ], 20, 2 );
 		add_filter( 'woocommerce_structured_data_type_for_page', [ $this, 'allow_product_group_type' ] );
 		add_action( 'wp_head', [ $this, 'output_store_jsonld' ], 5 );
+		add_action( 'wp_head', [ $this, 'output_website_jsonld' ], 5 );
 	}
 
 	/**
@@ -1358,6 +1359,80 @@ class WC_AI_Storefront_JsonLd {
 		// Google's structured-data validator handle hex-escaped
 		// characters correctly per the JSON spec.
 		echo '<script type="application/ld+json">' . wp_json_encode( $store_data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE ) . '</script>' . "\n";
+	}
+
+	/**
+	 * Output the site-level `WebSite` JSON-LD block on the homepage.
+	 *
+	 * **Distinct from `output_store_jsonld()`** — this block targets
+	 * Google's [Sitelinks Search Box rich result](https://developers.google.com/search/docs/appearance/structured-data/sitelinks-searchbox);
+	 * `output_store_jsonld()`'s `OnlineStore.potentialAction` targets
+	 * AI agents that interpret the Action vocabulary. They serve
+	 * different consumers, so we emit two separate `<script>` tags
+	 * rather than merging into one `@graph`. Easier to debug, easier
+	 * for crawlers that look for the specific shape Google's spec
+	 * defines.
+	 *
+	 * **Spec rigidity**: Google's validator requires the placeholder
+	 * to be the literal string `search_term_string` and the
+	 * `query-input` value to be exactly
+	 * `"required name=search_term_string"`. Deviating from either
+	 * fails the rich-result eligibility check. We do NOT add the
+	 * plugin's `{agent_id}` UTM attribution placeholder here — that
+	 * lives on the `OnlineStore.potentialAction` SearchAction (which
+	 * is for AI agents, where attribution matters). Sitelinks Search
+	 * Box is for human-facing Google search; UTM attribution there
+	 * is meaningless and would invalidate the rich result.
+	 *
+	 * **`site_url('/')` over `home_url('/')`**: identical on standard
+	 * installs, but `site_url` is the WP convention for
+	 * self-referential schema and is more defensible on multisite or
+	 * non-standard setups where `home_url` can diverge.
+	 *
+	 * **Gate**: `is_front_page()` only — the WebSite type represents
+	 * the site as a whole and shouldn't appear on archive pages,
+	 * product pages, or the shop archive. (Compare
+	 * `output_store_jsonld()` which also fires on `is_shop()` because
+	 * an `OnlineStore` Organization claim is valid on either surface.)
+	 *
+	 * **No filter**: the WebSite block is structurally rigid — a
+	 * filter would invite mutations that break Google's
+	 * rich-result eligibility. If a real plugin-customization need
+	 * surfaces, add the filter then under a separate issue.
+	 */
+	public function output_website_jsonld(): void {
+		if ( ! is_front_page() ) {
+			return;
+		}
+
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			return;
+		}
+
+		$website_data = array(
+			'@context'        => 'https://schema.org',
+			'@type'           => 'WebSite',
+			'url'             => site_url( '/' ),
+			'name'            => get_bloginfo( 'name' ),
+			'potentialAction' => array(
+				'@type'       => 'SearchAction',
+				'target'      => array(
+					'@type'       => 'EntryPoint',
+					'urlTemplate' => site_url( '/?s={search_term_string}' ),
+				),
+				// Exact string Google's Sitelinks Search Box validator
+				// requires. The space between `required` and
+				// `name=search_term_string` is significant.
+				'query-input' => 'required name=search_term_string',
+			),
+		);
+
+		// Same hex-escape flags + rationale as `output_store_jsonld()`
+		// — `get_bloginfo('name')` is user-controlled admin input;
+		// hex-escaping closes the `</script>` breakout class for
+		// any unsanitized characters.
+		echo '<script type="application/ld+json">' . wp_json_encode( $website_data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE ) . '</script>' . "\n";
 	}
 
 	/**
