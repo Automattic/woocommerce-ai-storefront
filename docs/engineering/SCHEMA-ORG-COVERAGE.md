@@ -23,10 +23,10 @@ Use this audit to:
 
 The plugin emits two top-level JSON-LD blocks:
 
-| Surface | Top-level `@type` | Schema.org chain |
-|---|---|---|
-| Single product page | `Product` | Thing → Product |
-| Homepage / shop | `OnlineBusiness` | Thing → Organization → OnlineBusiness *(target — see decision below)* |
+| Surface | Currently emitted `@type` | Target `@type` | Schema.org chain |
+|---|---|---|---|
+| Single product page | `Product` | (no change) | Thing → Product |
+| Homepage / shop | `OnlineStore` | `OnlineBusiness` *([decision](#why-onlinebusiness-and-not-onlinestore))* | Thing → Organization → OnlineBusiness → OnlineStore |
 
 Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeValue`, `MonetaryAmount`, `OfferShippingDetails`, `ShippingDeliveryTime`, `MerchantReturnPolicy`, `DefinedRegion`, `PostalAddress`, `ContactPoint`, `OfferCatalog`, `Review`, `Rating`, `AggregateRating`, `Person`, `PropertyValue`, `SearchAction`.
 

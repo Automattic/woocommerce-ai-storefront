@@ -352,10 +352,21 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		}
 
 		/**
-		 * On the real WC_Product base class, this returns the empty
-		 * array; WC_Product_Variable overrides it. We expose it here
-		 * so PHPStan can resolve the call without forcing the caller
-		 * to type-narrow against the variable subclass.
+		 * Test/PHPStan-only stub. In real WooCommerce, this method is
+		 * defined on `WC_Product_Variable` (and its subclasses such as
+		 * `WC_Product_Variable_Subscription`) — NOT on the `WC_Product`
+		 * base class. Calling it directly on a `WC_Product_Simple`
+		 * instance fatals.
+		 *
+		 * Production code in `get_variation_attribute_slugs()` gates
+		 * the call via `method_exists()` to handle this. The stub
+		 * exposes the method on the base here purely so tests using
+		 * `Mockery::mock( 'WC_Product' )` and PHPStan can resolve
+		 * `$product->get_variation_attributes()` without manually
+		 * type-narrowing every call site to the variable subclass.
+		 *
+		 * If you're adding production code that calls this method,
+		 * use the `method_exists()` capability gate, not this stub.
 		 *
 		 * @return array<string, array<int, string>>
 		 */
