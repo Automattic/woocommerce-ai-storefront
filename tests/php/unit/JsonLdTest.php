@@ -152,6 +152,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( $overrides['dimensions'] ?? [] );
 		$product->shouldReceive( 'get_attributes' )
 			->andReturn( $overrides['attributes'] ?? [] );
+		$product->shouldReceive( 'get_variation_attributes' )
+			->andReturn( $overrides['variation_attributes'] ?? [] );
 		return $product;
 	}
 
@@ -709,24 +711,27 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_visible_attributes_are_emitted_as_additional_properties(): void {
-		$color = Mockery::mock();
-		$color->shouldReceive( 'get_visible' )->andReturn( true );
-		$color->shouldReceive( 'get_name' )->andReturn( 'pa_color' );
+		// Uses unmapped slugs (pa_style, pa_origin) — pa_color/pa_size now
+		// route to typed Schema.org properties; non-core attributes stay
+		// in additionalProperty.
+		$style = Mockery::mock();
+		$style->shouldReceive( 'get_visible' )->andReturn( true );
+		$style->shouldReceive( 'get_name' )->andReturn( 'pa_style' );
 
-		$size = Mockery::mock();
-		$size->shouldReceive( 'get_visible' )->andReturn( true );
-		$size->shouldReceive( 'get_name' )->andReturn( 'pa_size' );
+		$origin = Mockery::mock();
+		$origin->shouldReceive( 'get_visible' )->andReturn( true );
+		$origin->shouldReceive( 'get_name' )->andReturn( 'pa_origin' );
 
 		$product = $this->make_product( [
 			'attributes' => [
-				'pa_color' => $color,
-				'pa_size'  => $size,
+				'pa_style'  => $style,
+				'pa_origin' => $origin,
 			],
 		] );
 		$product->shouldReceive( 'get_attribute' )
-			->with( 'pa_color' )->andReturn( 'Red' );
+			->with( 'pa_style' )->andReturn( 'Casual' );
 		$product->shouldReceive( 'get_attribute' )
-			->with( 'pa_size' )->andReturn( 'Large' );
+			->with( 'pa_origin' )->andReturn( 'Portugal' );
 
 		Functions\when( 'wc_attribute_label' )->alias(
 			static fn( $slug ) => ucfirst( str_replace( 'pa_', '', $slug ) )
@@ -735,9 +740,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->jsonld->enhance_product_data( [], $product );
 
 		$this->assertCount( 2, $result['additionalProperty'] );
-		$this->assertEquals( 'Color', $result['additionalProperty'][0]['name'] );
-		$this->assertEquals( 'Red', $result['additionalProperty'][0]['value'] );
-		$this->assertEquals( 'PropertyValue', $result['additionalProperty'][0]['@type'] );
+		// Search by name so the test isn't sensitive to emit order.
+		$by_name = array_column( $result['additionalProperty'], null, 'name' );
+		$this->assertSame( 'PropertyValue', $by_name['Style']['@type'] );
+		$this->assertSame( 'Casual', $by_name['Style']['value'] );
+		$this->assertSame( 'PropertyValue', $by_name['Origin']['@type'] );
+		$this->assertSame( 'Portugal', $by_name['Origin']['value'] );
 	}
 
 	public function test_invisible_attributes_are_skipped(): void {
@@ -774,6 +782,305 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Empty values add no information and would render as blank
 		// PropertyValues; they're filtered out.
 		$this->assertArrayNotHasKey( 'additionalProperty', $result );
+	}
+
+	public function test_whitespace_only_unmapped_attribute_value_is_skipped(): void {
+		// Same gate as `test_empty_attribute_values_are_skipped` but for
+		// whitespace-only input — `emit_attributes()` trims and skips on
+		// empty post-trim, so a value like `'   '` doesn't render as a
+		// blank PropertyValue.
+		$attribute = Mockery::mock();
+		$attribute->shouldReceive( 'get_visible' )->andReturn( true );
+		$attribute->shouldReceive( 'get_name' )->andReturn( 'pa_style' );
+
+		$product = $this->make_product( [
+			'attributes' => [ 'pa_style' => $attribute ],
+		] );
+		$product->shouldReceive( 'get_attribute' )
+			->with( 'pa_style' )->andReturn( '   ' );
+		Functions\when( 'wc_attribute_label' )->justReturn( 'Style' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
+	}
+
+	// ------------------------------------------------------------------
+	// Core attribute → typed Schema.org property mapping (#327)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Build a single-attribute product mock for the typed-property tests.
+	 *
+	 * @param string $slug             Attribute slug (e.g. `pa_color`).
+	 * @param string $value            Joined attribute value as WC returns it.
+	 * @param array  $product_overrides Extra overrides for `make_product()` —
+	 *                                  e.g. `'variation_attributes'` to mark
+	 *                                  the slug as variation-defining.
+	 */
+	private function make_product_with_attr( string $slug, string $value, array $product_overrides = [] ): Mockery\MockInterface {
+		$attribute = Mockery::mock();
+		$attribute->shouldReceive( 'get_visible' )->andReturn( true );
+		$attribute->shouldReceive( 'get_name' )->andReturn( $slug );
+
+		$product = $this->make_product( array_merge(
+			[ 'attributes' => [ $slug => $attribute ] ],
+			$product_overrides
+		) );
+		$product->shouldReceive( 'get_attribute' )
+			->with( $slug )->andReturn( $value );
+		Functions\when( 'wc_attribute_label' )->justReturn(
+			ucfirst( str_replace( 'pa_', '', $slug ) )
+		);
+		return $product;
+	}
+
+	public function test_pa_color_emits_as_typed_color_property(): void {
+		$product = $this->make_product_with_attr( 'pa_color', 'Black' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame( 'Black', $result['color'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
+	}
+
+	public function test_pa_size_emits_as_typed_size_property(): void {
+		$product = $this->make_product_with_attr( 'pa_size', 'L' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame( 'L', $result['size'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
+	}
+
+	public function test_pa_material_emits_as_typed_material_property(): void {
+		$product = $this->make_product_with_attr( 'pa_material', 'Cotton' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame( 'Cotton', $result['material'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
+	}
+
+	public function test_pa_pattern_emits_as_typed_pattern_property(): void {
+		$product = $this->make_product_with_attr( 'pa_pattern', 'Striped' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame( 'Striped', $result['pattern'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
+	}
+
+	public function test_uk_spelling_colour_maps_to_color(): void {
+		// `colour` (UK) and `pa_colour` route to schema:color the same as
+		// the US-spelled variants. WC sample-products uses `pa_color`,
+		// but custom merchant taxonomies do appear in both spellings.
+		$product = $this->make_product_with_attr( 'pa_colour', 'Navy' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame( 'Navy', $result['color'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
+	}
+
+	public function test_free_text_capitalized_color_attribute_maps_to_color(): void {
+		// Free-text custom attributes preserve the merchant-typed casing
+		// in `get_name()` (e.g. "Color"). Slug lookup is case-insensitive.
+		$product = $this->make_product_with_attr( 'Color', 'Red' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame( 'Red', $result['color'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
+	}
+
+	public function test_multi_value_core_attribute_skips_typed_emission(): void {
+		// Schema.org's `color` is `Text` — a single value. Multi-value
+		// inputs (e.g. "Black, Navy" on a simple product) can't honestly
+		// be represented as a single typed property. Skip emission, fall
+		// back to additionalProperty.
+		$product = $this->make_product_with_attr( 'pa_color', 'Black, Navy' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertArrayNotHasKey( 'color', $result );
+		$this->assertCount( 1, $result['additionalProperty'] );
+		$this->assertSame( 'Black, Navy', $result['additionalProperty'][0]['value'] );
+	}
+
+	public function test_multi_value_pipe_joined_core_attribute_skips_typed_emission(): void {
+		// Either WC delimiter (`,` taxonomy or `|` free-text) triggers the
+		// multi-value detection.
+		$product = $this->make_product_with_attr( 'Color', 'Black | Tan' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertArrayNotHasKey( 'color', $result );
+		$this->assertCount( 1, $result['additionalProperty'] );
+		$this->assertSame( 'Black | Tan', $result['additionalProperty'][0]['value'] );
+	}
+
+	public function test_variation_defining_core_attribute_is_skipped_from_typed_property(): void {
+		// Variation-defining attributes describe variants, not the
+		// parent product. Emitting `color: "Navy"` at the parent would
+		// claim a single intrinsic color the parent doesn't have. Per-
+		// variant JSON-LD is tracked in #328; until then, variation-
+		// specific data isn't emitted as Schema.org.
+		$product = $this->make_product_with_attr(
+			'pa_color',
+			'Navy, White, Gray',
+			[
+				'variation_attributes' => [ 'pa_color' => [ 'navy', 'white', 'gray' ] ],
+			]
+		);
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertArrayNotHasKey( 'color', $result );
+	}
+
+	public function test_variation_defining_core_attribute_is_skipped_from_additional_property(): void {
+		// Variation-defining attributes describe variants, not the
+		// parent product — emitting them at the parent level (typed or
+		// additionalProperty) would misrepresent the parent. Per-variant
+		// emission is intentionally omitted until #328 lands.
+		$product = $this->make_product_with_attr(
+			'pa_color',
+			'Navy, White, Gray',
+			[
+				'variation_attributes' => [ 'pa_color' => [ 'navy', 'white', 'gray' ] ],
+			]
+		);
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertArrayNotHasKey( 'additionalProperty', $result );
+	}
+
+	public function test_existing_typed_property_in_markup_is_not_overwritten(): void {
+		// Two-part contract:
+		//   1. The upstream-set typed property is preserved (we defer).
+		//   2. The merchant's attribute still emits to additionalProperty
+		//      so its data signal isn't lost when upstream chose a
+		//      different value. This is "caller control" — the caller
+		//      gets to choose the typed claim, the merchant's data
+		//      reaches agents either way.
+		$product = $this->make_product_with_attr( 'pa_color', 'Black' );
+
+		$result = $this->jsonld->enhance_product_data( [ 'color' => 'PreSet' ], $product );
+
+		$this->assertSame( 'PreSet', $result['color'] );
+		$this->assertCount( 1, $result['additionalProperty'] );
+		$this->assertSame( 'Color', $result['additionalProperty'][0]['name'] );
+		$this->assertSame( 'Black', $result['additionalProperty'][0]['value'] );
+	}
+
+	public function test_unmapped_attribute_still_emits_to_additional_property(): void {
+		// Non-core attributes (Style, Origin, Heel Height, etc.) trust
+		// the merchant — single OR multi-value, emit as-is.
+		$product = $this->make_product_with_attr( 'pa_style', 'Casual' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertArrayNotHasKey( 'style', $result );  // not a typed Schema.org property
+		$this->assertCount( 1, $result['additionalProperty'] );
+		$this->assertSame( 'Style', $result['additionalProperty'][0]['name'] );
+		$this->assertSame( 'Casual', $result['additionalProperty'][0]['value'] );
+	}
+
+	public function test_existing_additional_property_entries_are_preserved(): void {
+		// If WC core or another plugin populated `additionalProperty`
+		// with entries before our filter ran, our merchant-attribute
+		// emissions append to that array rather than overwriting it.
+		$product = $this->make_product_with_attr( 'pa_style', 'Casual' );
+
+		$pre_existing = array(
+			array(
+				'@type' => 'PropertyValue',
+				'name'  => 'Upstream',
+				'value' => 'Preserved',
+			),
+		);
+		$result = $this->jsonld->enhance_product_data(
+			array( 'additionalProperty' => $pre_existing ),
+			$product
+		);
+
+		$this->assertCount( 2, $result['additionalProperty'] );
+		$by_name = array_column( $result['additionalProperty'], null, 'name' );
+		$this->assertSame( 'Preserved', $by_name['Upstream']['value'] );
+		$this->assertSame( 'Casual', $by_name['Style']['value'] );
+	}
+
+	public function test_existing_additional_property_with_filter_keys_is_preserved(): void {
+		// `array_filter()` preserves keys, so an upstream filter chain
+		// that drops bogus entries can leave a numeric-keyed array with
+		// gaps (e.g. `[1 => ..., 3 => ...]`). `array_is_list()` returns
+		// false for such arrays — without re-keying via `array_values()`
+		// the merge would have wrapped the whole array as a single
+		// nested element. This test locks the re-key behavior.
+		$product = $this->make_product_with_attr( 'pa_style', 'Casual' );
+
+		$pre_existing_filtered = array(
+			1 => array( '@type' => 'PropertyValue', 'name' => 'A', 'value' => 'a' ),
+			3 => array( '@type' => 'PropertyValue', 'name' => 'B', 'value' => 'b' ),
+		);
+		$result = $this->jsonld->enhance_product_data(
+			array( 'additionalProperty' => $pre_existing_filtered ),
+			$product
+		);
+
+		$this->assertCount( 3, $result['additionalProperty'] );
+		$by_name = array_column( $result['additionalProperty'], null, 'name' );
+		$this->assertSame( 'a', $by_name['A']['value'] );
+		$this->assertSame( 'b', $by_name['B']['value'] );
+		$this->assertSame( 'Casual', $by_name['Style']['value'] );
+	}
+
+	public function test_existing_single_additional_property_object_is_preserved(): void {
+		// Schema.org allows `additionalProperty` as a single value or an
+		// array. If upstream emitted a single PropertyValue (not wrapped
+		// in an array), our merge normalizes it to array form before
+		// appending — no data loss.
+		$product = $this->make_product_with_attr( 'pa_style', 'Casual' );
+
+		$pre_existing_single = array(
+			'@type' => 'PropertyValue',
+			'name'  => 'Upstream',
+			'value' => 'Preserved',
+		);
+		$result = $this->jsonld->enhance_product_data(
+			array( 'additionalProperty' => $pre_existing_single ),
+			$product
+		);
+
+		$this->assertCount( 2, $result['additionalProperty'] );
+		$by_name = array_column( $result['additionalProperty'], null, 'name' );
+		$this->assertSame( 'Preserved', $by_name['Upstream']['value'] );
+		$this->assertSame( 'Casual', $by_name['Style']['value'] );
+	}
+
+	public function test_invisible_core_attribute_is_not_mapped(): void {
+		$attribute = Mockery::mock();
+		$attribute->shouldReceive( 'get_visible' )->andReturn( false );
+
+		$product = $this->make_product( [
+			'attributes' => [ 'pa_color' => $attribute ],
+		] );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertArrayNotHasKey( 'color', $result );
+	}
+
+	public function test_whitespace_only_core_attribute_value_is_skipped(): void {
+		// Defensive: `get_attribute()` returning whitespace-only string
+		// shouldn't emit `color: "   "`.
+		$product = $this->make_product_with_attr( 'pa_color', '   ' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertArrayNotHasKey( 'color', $result );
 	}
 
 	// ------------------------------------------------------------------

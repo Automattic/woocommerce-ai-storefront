@@ -350,6 +350,29 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		public function get_attribute( string $name ): string {
 			return '';
 		}
+
+		/**
+		 * Test/PHPStan-only stub. In real WooCommerce, this method is
+		 * defined on `WC_Product_Variable` (and its subclasses such as
+		 * `WC_Product_Variable_Subscription`) — NOT on the `WC_Product`
+		 * base class. Calling it directly on a `WC_Product_Simple`
+		 * instance fatals.
+		 *
+		 * Production code in `get_variation_attribute_slugs()` gates
+		 * the call via `method_exists()` to handle this. The stub
+		 * exposes the method on the base here purely so tests using
+		 * `Mockery::mock( 'WC_Product' )` and PHPStan can resolve
+		 * `$product->get_variation_attributes()` without manually
+		 * type-narrowing every call site to the variable subclass.
+		 *
+		 * If you're adding production code that calls this method,
+		 * use the `method_exists()` capability gate, not this stub.
+		 *
+		 * @return array<string, array<int, string>>
+		 */
+		public function get_variation_attributes(): array {
+			return [];
+		}
 	}
 }
 

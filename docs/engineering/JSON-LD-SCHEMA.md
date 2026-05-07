@@ -142,12 +142,52 @@ Schema.org `QuantitativeValue` blocks with `unitCode` set to UN/CEFACT codes (`K
 - **Each emitted independently** if the product has a non-empty value for that dimension.
 - **Unit codes** map from WC's wordpress unit setting (kg, lbs, cm, in, m, mm) via `get_weight_unit_code()` / `get_dimension_unit_code()`.
 
+### `color`, `material`, `pattern`, `size` (typed Schema.org properties)
+
+Since [#327](https://github.com/Automattic/woocommerce-ai-storefront/issues/327) the plugin emits known WC attributes as their typed Schema.org Product properties rather than as `additionalProperty` entries. Schema.org's directive — *"Always use specific schema.org properties when they exist"* — supersedes the generic `additionalProperty` fallback for these.
+
+Mapped slugs (case-insensitive lookup) → typed Schema.org property:
+
+| WC attribute slug | Schema.org property | Spec type |
+|---|---|---|
+| `pa_color`, `color`, `pa_colour`, `colour` | [`color`](https://schema.org/color) | `Text` |
+| `pa_size`, `size` | [`size`](https://schema.org/size) | `Text` |
+| `pa_material`, `material` | [`material`](https://schema.org/material) | `Text` |
+| `pa_pattern`, `pattern` | [`pattern`](https://schema.org/pattern) | `Text` |
+
+**Emission rules:**
+
+- **Single-value attribute** with no upstream owner → emit as the typed property (e.g. `"color": "Black"`). The attribute is then *excluded* from `additionalProperty` to avoid double-emit.
+- **Multi-value attribute** (any `,` or `|` in the value) → typed-property emission is **skipped**. Schema.org's `Text` type can't honestly carry a multi-value claim, and a first-piece-only emit would silently drop merchant data. Falls back to `additionalProperty` with the joined string preserved.
+- **Variation-defining attribute** → both typed-property and `additionalProperty` emission are skipped on the parent. Variation-defining attributes describe individual *variants*, not the parent product as a whole — emitting them at the parent level would claim a single intrinsic color/size that the parent doesn't have. Per-variant JSON-LD (`ProductGroup` + `hasVariant`) is tracked in [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328); until that lands, variation-specific data isn't currently emitted as Schema.org.
+- **Existing value in `$markup`** (set by WC core or another plugin) → defer on the typed side, don't overwrite. The merchant's attribute *still* emits to `additionalProperty` so its data signal reaches agents even when upstream chose a different typed value. Caller control over the typed claim is preserved.
+
+Worked example:
+
+```jsonc
+// Simple product, attributes: pa_color="Black", pa_size="L", pa_style="Casual"
+{
+  "@type": "Product",
+  "name": "...",
+  "color": "Black",     // typed
+  "size": "L",          // typed
+  "additionalProperty": [
+    { "@type": "PropertyValue", "name": "Style", "value": "Casual" }  // unmapped
+  ]
+}
+```
+
+Implementation: [`emit_attributes()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) — single-pass per attribute, decides typed property vs `additionalProperty` inline. One `get_attribute()` lookup per visible attribute regardless of which path the value takes.
+
 ### `additionalProperty` (attributes)
 
-Array of `PropertyValue` entries from product attributes.
+Array of `PropertyValue` entries for product attributes that aren't represented as typed Schema.org properties on this pass.
 
-- **Emitted when** the product has at least one attribute that's marked "Visible on the product page" (the WC `is_visible()` check).
-- **Excluded**: variation-defining attributes (those that drive the variation matrix), since they're already represented in the `offers` variations.
+- **Emitted when** an attribute is visible (`WC_Product_Attribute::get_visible()`), not variation-defining, and **either**:
+  - (a) doesn't map to a typed Schema.org property (e.g. `Style`, `Heel Height`, `Origin`), OR
+  - (b) maps to one but typed emission was skipped or deferred — multi-value inputs and upstream-owned typed keys both fall through here so the merchant's data still reaches agents.
+- **Excluded**: variation-defining attributes (intentionally omitted from the parent — they describe variants, with per-variant emission tracked in [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328)), and attributes whose typed Schema.org property was emitted by this plugin in the current pass (no double-emit).
+- **Merge semantics**: existing `additionalProperty` entries from WC core or upstream filters are preserved. The plugin's emissions are appended to whatever already exists, with single-value upstream entries normalized to array form first.
 
 ### `offers[0].priceCurrency`
 
