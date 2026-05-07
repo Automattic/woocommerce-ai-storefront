@@ -304,8 +304,9 @@ class WC_AI_Storefront_JsonLd {
 		if ( false === $pieces || empty( $pieces ) ) {
 			return array();
 		}
-		// Catches whitespace-only input ('   ' survives PREG_SPLIT_NO_EMPTY)
-		// and Unicode whitespace (NBSP) the regex's `\s*` doesn't match.
+		// PREG_SPLIT_NO_EMPTY drops empty pieces between delimiter matches,
+		// but a whitespace-only input ('   ') has no match and survives as
+		// a one-element array — trim+filter collapses it to [].
 		$pieces = array_map( 'trim', $pieces );
 		return array_values( array_filter( $pieces, static fn( $p ) => '' !== $p ) );
 	}

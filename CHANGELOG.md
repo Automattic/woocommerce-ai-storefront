@@ -12,7 +12,7 @@
 ### Refactors
 ### Tests
 
-- **`JsonLdTest.php`** — 8 new unit tests covering: multi-value pipe-joined attribute split, multi-value comma-joined (taxonomy) split, ordering preservation, no-space delimiter, mixed-whitespace, empty-piece dropping, plus two direct unit tests on the static `split_attribute_values()` helper covering blank-input edge cases and single-value passthrough.
+- **`JsonLdTest.php`** — 4 new unit tests covering multi-value pipe-joined split, multi-value comma-joined (taxonomy) split, WC ordering preservation, and a `@dataProvider`-driven whitespace-variants test (no-space delimiter, extra whitespace, malformed double-pipe).
 
 ### Docs
 

@@ -844,7 +844,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		return [
 			'no-space delimiter'    => [ 'Black|Tan' ],
 			'extra whitespace'      => [ 'Black  |  Tan' ],
-			'misformed double pipe' => [ 'Black | | Tan' ],
+			'malformed double pipe' => [ 'Black | | Tan' ],
 		];
 	}
 
