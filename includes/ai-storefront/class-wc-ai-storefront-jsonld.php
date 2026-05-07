@@ -1529,7 +1529,14 @@ class WC_AI_Storefront_JsonLd {
 		// `get_catalog_summary()` returned an error WP_Error and
 		// resolved to []) — no point claiming the org "knows about"
 		// nothing.
-		if ( ! empty( $catalog ) ) {
+		//
+		// `is_array()` is a defensive guard: `get_catalog_summary()`
+		// returns the raw transient value via `get_transient()`, which
+		// can in principle hand back a non-array if the cache was
+		// corrupted by external code or a stale value from a prior
+		// schema. `array_column()` would TypeError on a non-array
+		// input under PHP 8.1+, so check the type before calling it.
+		if ( is_array( $catalog ) && ! empty( $catalog ) ) {
 			$store_data['knowsAbout'] = array_column( $catalog, 'name' );
 		}
 
@@ -1558,8 +1565,14 @@ class WC_AI_Storefront_JsonLd {
 		// already handles `null` correctly (skips the
 		// `is_final_sale()` override branch). The shared builder
 		// returns `null` when policy `mode` is `unconfigured` OR when
-		// the country is empty — both gates are honored at this call
-		// site too via the `null !== $policy_block` check below.
+		// `mode: returns_accepted` is paired with an empty country
+		// (a return-window declaration without a target region is
+		// useless to validators). For `mode: final_sale` the builder
+		// emits a `MerchantReturnNotPermitted` block regardless of
+		// country — "no returns" is a globally meaningful claim. All
+		// of those outcomes are funneled through the
+		// `null !== $org_policy_block` check below — the gate emits
+		// when the builder produced a block, suppresses when it didn't.
 		//
 		// Phase 2 (making per-Offer emission conditional on the
 		// per-product final-sale override only) is deferred to a

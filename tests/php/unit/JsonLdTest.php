@@ -2988,6 +2988,33 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'knowsAbout', $captured ?? array() );
 	}
 
+	public function test_store_jsonld_omits_knows_about_when_transient_is_corrupted(): void {
+		// Defensive guard: `get_catalog_summary()` reads via
+		// `get_transient()`, which can in principle hand back a
+		// non-array value if the cache was corrupted by external
+		// code or holds a stale value from a prior schema. Calling
+		// `array_column()` on a non-array would TypeError under
+		// PHP 8.1+. The `is_array($catalog)` guard at the call site
+		// must convert that into "skip emission" — same shape as
+		// the empty-catalog case.
+		$this->stub_store_jsonld_environment();
+		// Hand the call site a corrupted transient: a string, not
+		// an array. Bypasses `get_terms` entirely because
+		// `get_catalog_summary()` returns `$cached` early when
+		// `false !== $cached`.
+		Functions\when( 'get_transient' )->alias(
+			static function ( $key ) {
+				return 'wc_ai_storefront_catalog_summary' === $key
+					? 'corrupted-stale-string-from-prior-schema'
+					: false;
+			}
+		);
+
+		$captured = $this->run_store_jsonld_capture();
+
+		$this->assertArrayNotHasKey( 'knowsAbout', $captured ?? array() );
+	}
+
 	public function test_store_jsonld_calls_get_catalog_summary_only_once_per_render(): void {
 		// Refactor regression guard: `hasOfferCatalog.itemListElement`
 		// AND `knowsAbout` both consume the catalog summary. Pre-#334
