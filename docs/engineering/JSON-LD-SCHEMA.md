@@ -148,6 +148,17 @@ Array of `PropertyValue` entries from product attributes.
 
 - **Emitted when** the product has at least one attribute that's marked "Visible on the product page" (the WC `is_visible()` check).
 - **Excluded**: variation-defining attributes (those that drive the variation matrix), since they're already represented in the `offers` variations.
+- **Multi-value attributes are split into separate entries** (since 0.10.4, [#326](https://github.com/Automattic/woocommerce-ai-storefront/issues/326)). WC's `WC_Product::get_attribute()` returns multi-value attributes joined by ` | ` (free-text custom attributes via `WC_DELIMITER`) or `, ` (taxonomy attributes). Rather than passing that joined string through as a single `value`, the emitter splits on either delimiter and emits one `PropertyValue` per piece, with the same `name` repeated. Schema.org's `PropertyValue` spec explicitly allows repeated names within `additionalProperty`. Example:
+
+  ```jsonc
+  // WC stores: Color = "Black | Tan" (a two-tone shoe — single SKU, two intrinsic colors)
+  "additionalProperty": [
+    { "@type": "PropertyValue", "name": "Color", "value": "Black" },
+    { "@type": "PropertyValue", "name": "Color", "value": "Tan" }
+  ]
+  ```
+
+  Without this split, an AI agent reading the joined string had no way to disambiguate "this product has both colors" (intrinsic two-tone) from "the buyer chooses one of these colors" (selectable variation), since the pipe is the same syntax WC uses for variation options. Split via [`split_attribute_values()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) — handles both delimiters, trims whitespace, drops empty pieces, preserves WC's ordering.
 
 ### `offers[0].priceCurrency`
 

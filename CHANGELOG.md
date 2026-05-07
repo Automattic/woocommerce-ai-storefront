@@ -2,9 +2,22 @@
 
 ### Features
 ### Fixes
+
+- **JSON-LD: multi-value attributes now emit separate `PropertyValue` entries.** Closes #326.
+  - Previously, a simple product with a multi-value attribute (e.g. `Color: Black | Tan` on a two-tone shoe) emitted a single `PropertyValue` with `value: "Black | Tan"` — the joined string WC itself returns from `WC_Product::get_attribute()`. AI agents reading that JSON-LD couldn't disambiguate "this product has both colors at once" (intrinsic two-tone, single SKU) from "the buyer chooses one of these colors" (selectable variation, two SKUs), because the pipe is the same syntax WC uses for variation options on variable products.
+  - Now: `add_attributes()` splits the joined value on either `|` or `,` (the two delimiters WC uses for free-text and taxonomy attributes respectively), trims whitespace, drops empty pieces, and emits one `PropertyValue` per value with the `name` repeated. Schema.org's `PropertyValue` spec explicitly allows the same `name` across multiple entries within `additionalProperty`.
+  - Single-value attributes continue to emit as one entry (no behavior change for the common case).
+  - Doesn't yet map known attributes (Color, Material, etc.) to dedicated Schema.org properties, or emit `ProductGroup`/`hasVariant` for variable products — both tracked in #327 and #328.
+
 ### Refactors
 ### Tests
+
+- **`JsonLdTest.php`** — 8 new unit tests covering: multi-value pipe-joined attribute split, multi-value comma-joined (taxonomy) split, ordering preservation, no-space delimiter, mixed-whitespace, empty-piece dropping, plus two direct unit tests on the static `split_attribute_values()` helper covering blank-input edge cases and single-value passthrough.
+
 ### Docs
+
+- **`JSON-LD-SCHEMA.md`** — added a worked example to the `additionalProperty` section showing the new multi-value split behaviour, with the rationale (disambiguating intrinsic-multi-color from selectable-variation).
+
 ### Chores
 
 ---

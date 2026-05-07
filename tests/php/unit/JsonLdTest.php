@@ -777,6 +777,149 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// Attributes — multi-value splitting (#326)
+	//
+	// WC's `get_attribute()` returns multi-value attributes joined by
+	// ` | ` (free-text custom attributes via WC_DELIMITER) or `, `
+	// (taxonomy attributes via `implode(', ', ...)`). Until #326 we
+	// passed that joined string through as one PropertyValue.value,
+	// so an agent reading "Color: Black | Tan" on a simple product
+	// couldn't tell intrinsic-multi-color from selectable-variation
+	// (the pipe is the same syntax WC uses for variation options).
+	// Now: one PropertyValue entry per piece, same `name` repeated.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Build a single-attribute product mock for the multi-value tests.
+	 * Centralizes the boilerplate so each test focuses on the
+	 * input/output assertion rather than the mock setup.
+	 */
+	private function make_product_with_attribute( string $slug, string $value, string $label ): Mockery\MockInterface {
+		$attribute = Mockery::mock();
+		$attribute->shouldReceive( 'get_visible' )->andReturn( true );
+		$attribute->shouldReceive( 'get_name' )->andReturn( $slug );
+
+		$product = $this->make_product( [
+			'attributes' => [ $slug => $attribute ],
+		] );
+		$product->shouldReceive( 'get_attribute' )
+			->with( $slug )->andReturn( $value );
+		Functions\when( 'wc_attribute_label' )->justReturn( $label );
+		return $product;
+	}
+
+	public function test_multi_value_pipe_attribute_splits_into_separate_property_values(): void {
+		// The original symptom: a simple product with `Color: Black | Tan`
+		// as a free-text custom attribute. Before #326 this rendered as
+		// one PropertyValue with value `"Black | Tan"`; now it emits two.
+		$product = $this->make_product_with_attribute( 'pa_color', 'Black | Tan', 'Color' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertCount( 2, $result['additionalProperty'] );
+		$this->assertSame( 'Color', $result['additionalProperty'][0]['name'] );
+		$this->assertSame( 'Black', $result['additionalProperty'][0]['value'] );
+		$this->assertSame( 'Color', $result['additionalProperty'][1]['name'] );
+		$this->assertSame( 'Tan', $result['additionalProperty'][1]['value'] );
+	}
+
+	public function test_multi_value_comma_attribute_splits_into_separate_property_values(): void {
+		// Taxonomy attributes go through `implode(', ', ...)` in
+		// WC_Product::get_attribute() (abstract-wc-product.php:2258).
+		// Same split treatment as the pipe shape.
+		$product = $this->make_product_with_attribute( 'pa_color', 'Black, Tan', 'Color' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertCount( 2, $result['additionalProperty'] );
+		$this->assertSame( 'Black', $result['additionalProperty'][0]['value'] );
+		$this->assertSame( 'Tan', $result['additionalProperty'][1]['value'] );
+	}
+
+	public function test_multi_value_attribute_preserves_wc_ordering(): void {
+		// Don't sort — preserve whatever order WC handed us. A merchant
+		// who deliberately ordered colors by popularity (or by their
+		// own product photography) shouldn't see an alphabetical
+		// reshuffle in the JSON-LD.
+		$product = $this->make_product_with_attribute( 'pa_color', 'Tan | Black | Brown', 'Color' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$values = array_column( $result['additionalProperty'], 'value' );
+		$this->assertSame( [ 'Tan', 'Black', 'Brown' ], $values );
+	}
+
+	public function test_multi_value_attribute_handles_no_space_delimiter(): void {
+		// Defensive: a merchant who typed `Black|Tan` directly into the
+		// admin (without WC's standard ` | ` spacing) still gets the
+		// split. The `\s*` boundaries in the regex handle this.
+		$product = $this->make_product_with_attribute( 'pa_color', 'Black|Tan', 'Color' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertCount( 2, $result['additionalProperty'] );
+		$this->assertSame( 'Black', $result['additionalProperty'][0]['value'] );
+		$this->assertSame( 'Tan', $result['additionalProperty'][1]['value'] );
+	}
+
+	public function test_multi_value_attribute_handles_mixed_whitespace(): void {
+		// Defensive: extra whitespace around delimiters (`Black  |  Tan`)
+		// trims correctly. preg_split's `\s*` greedy match handles ASCII
+		// whitespace runs; the array_map(trim) belt-and-suspenders
+		// catches any Unicode whitespace that leaks through.
+		$product = $this->make_product_with_attribute( 'pa_color', 'Black  |  Tan', 'Color' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertCount( 2, $result['additionalProperty'] );
+		$this->assertSame( 'Black', $result['additionalProperty'][0]['value'] );
+		$this->assertSame( 'Tan', $result['additionalProperty'][1]['value'] );
+	}
+
+	public function test_multi_value_attribute_drops_empty_pieces(): void {
+		// Defensive: a misformatted attribute like `Black | | Tan`
+		// (typoed double-delimiter) produces empty pieces between the
+		// real values. PREG_SPLIT_NO_EMPTY + array_filter drop them so
+		// we never emit a `value: ""` PropertyValue.
+		$product = $this->make_product_with_attribute( 'pa_color', 'Black | | Tan', 'Color' );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertCount( 2, $result['additionalProperty'] );
+		$this->assertSame( 'Black', $result['additionalProperty'][0]['value'] );
+		$this->assertSame( 'Tan', $result['additionalProperty'][1]['value'] );
+	}
+
+	public function test_split_attribute_values_returns_empty_for_blank_input(): void {
+		// Direct test of the static helper. Whitespace-only input
+		// produces zero pieces (preg_split + filter both reject), so
+		// the method returns []. Caller (`add_attributes`) won't
+		// iterate, so no PropertyValue is added — same outcome as
+		// `test_empty_attribute_values_are_skipped` but exercising
+		// the lower-level seam directly.
+		// PHP 8.1+ allows reflection on private methods without
+		// `setAccessible()`. Calling it would be a no-op deprecation.
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'split_attribute_values' );
+
+		$this->assertSame( [], $method->invoke( null, '' ) );
+		$this->assertSame( [], $method->invoke( null, '   ' ) );
+		$this->assertSame( [], $method->invoke( null, ' | , | ' ) );
+	}
+
+	public function test_split_attribute_values_passes_single_value_through(): void {
+		// Direct test of the static helper. A single-value input has no
+		// delimiter, so preg_split returns a one-element array. Single-
+		// value attributes are the common case and must not regress to
+		// behave differently from before this PR.
+		// PHP 8.1+ allows reflection on private methods without
+		// `setAccessible()`. Calling it would be a no-op deprecation.
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'split_attribute_values' );
+
+		$this->assertSame( [ 'Black' ], $method->invoke( null, 'Black' ) );
+		$this->assertSame( [ 'Black' ], $method->invoke( null, '  Black  ' ) );
+	}
+
+	// ------------------------------------------------------------------
 	// Shipping + returns
 	// ------------------------------------------------------------------
 
