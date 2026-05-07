@@ -289,7 +289,7 @@ The plugin emits `@type: OnlineStore` (deepest in the chain — see hierarchy se
 | `funder` / `funding` / `sponsor` | — | — | — |
 | `hasCertification` / `hasCredential` / `hasGS1DigitalLink` | — | — | — |
 | `hasMemberProgram` | — | — | — |
-| `hasMerchantReturnPolicy` | — | — | — *(emitted at Offer level instead)* |
+| `hasMerchantReturnPolicy` | — | — | — *(currently only emitted at `Offer.hasMerchantReturnPolicy` per-product. **Worth adding** to the homepage `OnlineStore`/`OnlineBusiness` block too: same policy, but Organization-level lets agents discover the store-wide default without hitting a product page. Schema.org allows the property at both positions.)* |
 | `hasPOS` / `hasShippingService` | — | — | — |
 | `interactionStatistic` | — | — | — |
 | `keywords` | — | — | — |
@@ -403,5 +403,6 @@ In rough priority order:
 4. **`Organization.telephone`** — currently suppressed by default. Worth a per-merchant opt-in toggle.
 5. **`Product.audience`** — target demographic (`PeopleAudience` with `audienceType`). Merchant-config; useful for kids/adult/professional/etc. categorization.
 6. **Switch homepage `@type` from `OnlineStore` to `OnlineBusiness`** — broader fit for WC's full install base (services, bookings, memberships, donations, lead-gen, retail). Code change is one line in [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) plus a `JSON-LD-SCHEMA.md` update. Decision rationale captured in [the OnlineBusiness section](#onlinebusiness--target-type).
+7. **`Organization.hasMerchantReturnPolicy`** — emit the merchant's standard return policy at the homepage `OnlineStore`/`OnlineBusiness` level (same policy data we emit at Offer level today). Lets AI agents discover the store-wide default policy without needing to hit a product page. Cheap addition; reuses the existing return-policy emission code from `add_return_policy()`.
 
 These can be filed as standalone issues; none are blocked by the current PR pipeline (#328 → ProductGroup work).
