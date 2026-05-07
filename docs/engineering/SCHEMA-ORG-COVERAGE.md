@@ -120,7 +120,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `addOn` | — | — | — |
 | `additionalProperty` | — | — | — |
 | `advanceBookingRequirement` | — | — | — |
-| `aggregateRating` | — | — | — *(plugin emits at Product level instead)* |
+| `aggregateRating` | — | — | — *(WC core emits at Product level instead — single-merchant stores don't need per-offer rating differentiation)* |
 | `areaServed` | — | — | — |
 | `asin` | — | — | — |
 | `availability` | — | ✓ (`InStock`/`OutOfStock`/`BackOrder`) | WC core |
