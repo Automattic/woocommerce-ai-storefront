@@ -128,7 +128,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `availableAtOrFrom` / `availableDeliveryMethod` | — | — | — |
 | `businessFunction` | — | — | — |
 | `category` | — | — | — *(plugin emits at Product level; WC's `product_cat` taxonomy classifies the thing being sold, not the offer's commercial role)* |
-| `checkoutPageURLTemplate` | — | — | Future [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328) |
+| `checkoutPageURLTemplate` | — | — | Future [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328) — coexists with `BuyAction` rather than replacing it. `BuyAction` lives on `Product.potentialAction` (Action-vocabulary signal, with `actionPlatform`, etc.); `checkoutPageURLTemplate` lives directly on `Offer` and gives per-offer checkout URLs without traversing up to the Product. Both should be emitted for the same URL — different agents key on different paths. |
 | `deliveryLeadTime` | — | — | — *(handlingTime is in `shippingDetails` instead)* |
 | `eligibleCustomerType` / `eligibleDuration` / `eligibleQuantity` / `eligibleRegion` / `eligibleTransactionVolume` | — | — | — |
 | `gtin` / `gtin8/12/13/14` / `mpn` | — | — | — *(emitted at Product level when set)* |
