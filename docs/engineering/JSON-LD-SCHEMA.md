@@ -15,6 +15,33 @@ Both blocks emit only when the plugin is enabled (`enabled === 'yes'` in `wc_ai_
 
 The plugin **does not replace** WC core's JSON-LD. It registers a `woocommerce_structured_data_product` filter that runs after WC has built its base markup and merges enhancement fields into the existing array.
 
+### Visibility gating (per-product)
+
+Beyond the global enabled/disabled toggle, the merchant's **Visibility** setting (Visibility tab in the admin: All / Products by category, tag, or brand / Specific products only) gates the per-product enhancement on a finer-grained basis. The check happens at the top of [`enhance_product_data()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) before any field is added:
+
+```php
+if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
+    return $markup;  // WC core's untouched markup ships
+}
+```
+
+When a product is **excluded** from visibility — i.e. not in the merchant's `selected_categories` / `selected_tags` / `selected_brands` / `selected_products`, depending on the active mode — the plugin adds **none** of the enhancement fields. Specifically:
+
+- No `potentialAction` (`BuyAction` with attribution UTMs)
+- No `offers[0].inventoryLevel`
+- No `category` breadcrumb path
+- No `weight` / `depth` / `width` / `height` dimensions
+- No `additionalProperty` attribute array
+- No `priceCurrency` normalization
+- No `offers[0].shippingDetails` (`OfferShippingDetails`, including `handlingTime` and free-shipping `shippingRate`)
+- No `offers[0].hasMerchantReturnPolicy`
+
+What still ships on excluded products: WC core's untouched base block (`@type: Product`, `name`, `url`, `description`, `image`, `sku`, `offers[0].price` / `availability` / `seller`, etc.). The merchant's visibility intent is fully honored at the **AI-attribution layer** (no `BuyAction` UTMs means agents that recommend the product can't claim attribution credit) and at the **UCP catalog endpoints** (`/wp-json/wc/ucp/v1/catalog/{search,lookup}` filter excluded products out of result sets via a `pre_get_posts` gate). It is **not** honored at the WC-core JSON-LD layer, because we don't suppress WC core's emission; we just decline to augment it.
+
+Variations inherit their parent's visibility status, so a "Hoodie - Red" variation page gets the same gating answer as the parent "Hoodie." See [`is_product_syndicated()`](../../includes/class-wc-ai-storefront.php) and [`resolve_product_id_for_syndication()`](../../includes/class-wc-ai-storefront.php) for the parent-redirect logic.
+
+This behavior is locked by the `test_enhancement_is_bypassed_when_product_not_syndicated` test in [`tests/php/unit/JsonLdTest.php`](../../tests/php/unit/JsonLdTest.php) — a regression that re-introduces enhancement on excluded products would fail that test.
+
 ## Product page: enhanced Product schema
 
 Below is a representative full output for a published product after the plugin's enhancement pass. Annotations call out which fields are added or modified by this plugin vs. inherited from WC core.
