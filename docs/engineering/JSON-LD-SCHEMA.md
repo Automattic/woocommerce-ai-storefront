@@ -142,12 +142,49 @@ Schema.org `QuantitativeValue` blocks with `unitCode` set to UN/CEFACT codes (`K
 - **Each emitted independently** if the product has a non-empty value for that dimension.
 - **Unit codes** map from WC's wordpress unit setting (kg, lbs, cm, in, m, mm) via `get_weight_unit_code()` / `get_dimension_unit_code()`.
 
+### `color`, `material`, `pattern`, `size` (typed Schema.org properties)
+
+Since [#327](https://github.com/Automattic/woocommerce-ai-storefront/issues/327) the plugin emits known WC attributes as their typed Schema.org Product properties rather than as `additionalProperty` entries. Schema.org's directive — *"Always use specific schema.org properties when they exist"* — supersedes the generic `additionalProperty` fallback for these.
+
+Mapped slugs (case-insensitive lookup) → typed Schema.org property:
+
+| WC attribute slug | Schema.org property | Spec type |
+|---|---|---|
+| `pa_color`, `color`, `pa_colour`, `colour` | [`color`](https://schema.org/color) | `Text` |
+| `pa_size`, `size` | [`size`](https://schema.org/size) | `Text` |
+| `pa_material`, `material` | [`material`](https://schema.org/material) | `Text` |
+| `pa_pattern`, `pattern` | [`pattern`](https://schema.org/pattern) | `Text` |
+
+**Emission rules:**
+
+- **Single-value attribute** → emit as the typed property (e.g. `"color": "Black"`). The attribute is then *excluded* from `additionalProperty` to avoid double-emit.
+- **Multi-value attribute** (any `,` or `|` in the value) → typed-property emission is **skipped**. Schema.org's `Text` type can't honestly carry a multi-value claim, and a first-piece-only emit would silently drop merchant data. Falls back to `additionalProperty` with the joined string preserved.
+- **Variation-defining attribute** → both typed-property and `additionalProperty` emission are skipped on the parent. The per-SKU value lives in `offers[]` via the variation children. WC core handles that emission.
+- **Existing value in `$markup`** (set by WC core or another plugin) → defer; don't overwrite. The typed-property writer respects upstream owners.
+
+Worked example:
+
+```jsonc
+// Simple product, attributes: pa_color="Black", pa_size="L", pa_style="Casual"
+{
+  "@type": "Product",
+  "name": "...",
+  "color": "Black",     // typed
+  "size": "L",          // typed
+  "additionalProperty": [
+    { "@type": "PropertyValue", "name": "Style", "value": "Casual" }  // unmapped
+  ]
+}
+```
+
+Implementation: [`map_core_typed_attributes()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php), called from `enhance_product_data()` before `add_attributes()` so the additionalProperty writer can consult the typed-property state.
+
 ### `additionalProperty` (attributes)
 
-Array of `PropertyValue` entries from product attributes.
+Array of `PropertyValue` entries from product attributes that don't map to a typed Schema.org property.
 
-- **Emitted when** the product has at least one attribute that's marked "Visible on the product page" (the WC `is_visible()` check).
-- **Excluded**: variation-defining attributes (those that drive the variation matrix), since they're already represented in the `offers` variations.
+- **Emitted when** the product has at least one attribute marked "Visible on the product page" (the WC `is_visible()` check) that *isn't* a variation-defining or core-typed-mapped attribute.
+- **Excluded**: variation-defining attributes (carried by `offers[]` variations), and attributes whose typed Schema.org property was already emitted (no double-emit). Core-typed attributes whose typed emission was skipped (multi-value case) DO fall back here as the joined merchant-supplied string.
 
 ### `offers[0].priceCurrency`
 

@@ -350,6 +350,22 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		public function get_attribute( string $name ): string {
 			return '';
 		}
+
+		public function is_type( string $type ): bool {
+			return $this->type === $type;
+		}
+
+		/**
+		 * On the real WC_Product base class, this returns the empty
+		 * array; WC_Product_Variable overrides it. We expose it here
+		 * so PHPStan can resolve the call without forcing the caller
+		 * to type-narrow against the variable subclass.
+		 *
+		 * @return array<string, array<int, string>>
+		 */
+		public function get_variation_attributes(): array {
+			return [];
+		}
 	}
 }
 

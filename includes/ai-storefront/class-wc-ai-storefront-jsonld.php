@@ -39,6 +39,27 @@ class WC_AI_Storefront_JsonLd {
 	private array $free_shipping_cache = array();
 
 	/**
+	 * Maps WC attribute slugs to their typed Schema.org Product properties.
+	 * Schema.org's directive — "use specific schema.org properties when they
+	 * exist" — supersedes the generic additionalProperty fallback for these.
+	 * All targets are `Text`-typed per spec; multi-value inputs skip emission
+	 * entirely (no honest single-value claim available) and fall back to
+	 * additionalProperty. See #327.
+	 */
+	private const CORE_ATTRIBUTE_MAP = array(
+		'pa_color'    => 'color',
+		'color'       => 'color',
+		'pa_colour'   => 'color',
+		'colour'      => 'color',
+		'pa_size'     => 'size',
+		'size'        => 'size',
+		'pa_material' => 'material',
+		'material'    => 'material',
+		'pa_pattern'  => 'pattern',
+		'pattern'     => 'pattern',
+	);
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function init() {
@@ -70,6 +91,8 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_category_path( $markup, $product );
 
 		$this->add_dimensions( $markup, $product );
+
+		$this->map_core_typed_attributes( $markup, $product );
 
 		$this->add_attributes( $markup, $product );
 
@@ -250,7 +273,65 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
+	 * Emit known WC attributes as their typed Schema.org Product properties
+	 * (color, size, material, pattern). Schema.org's "use specific properties
+	 * when they exist" directive supersedes the generic additionalProperty
+	 * fallback for these.
+	 *
+	 * Skips emission when:
+	 *   - The attribute drives variations (the per-SKU value lives in offers).
+	 *   - The value is multi-valued — a Text-typed property can't honestly
+	 *     represent it; falls back to additionalProperty.
+	 *   - The target property is already populated (don't overwrite WC core
+	 *     or another plugin's value).
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product object.
+	 */
+	private function map_core_typed_attributes( array &$markup, $product ): void {
+		$attributes = $product->get_attributes();
+		if ( empty( $attributes ) ) {
+			return;
+		}
+		$variation_attrs = $product->is_type( 'variable' )
+			? array_keys( $product->get_variation_attributes() )
+			: array();
+
+		foreach ( $attributes as $attribute ) {
+			if ( ! $attribute->get_visible() ) {
+				continue;
+			}
+			$slug = strtolower( $attribute->get_name() );
+			if ( ! isset( self::CORE_ATTRIBUTE_MAP[ $slug ] ) ) {
+				continue;
+			}
+			if ( in_array( $slug, $variation_attrs, true ) ) {
+				continue;
+			}
+			$value = trim( (string) $product->get_attribute( $attribute->get_name() ) );
+			if ( '' === $value ) {
+				continue;
+			}
+			// Either WC delimiter present means multi-value — skip, fall back
+			// to additionalProperty.
+			if ( false !== strpbrk( $value, '|,' ) ) {
+				continue;
+			}
+			$schema_prop = self::CORE_ATTRIBUTE_MAP[ $slug ];
+			if ( isset( $markup[ $schema_prop ] ) ) {
+				continue;
+			}
+			$markup[ $schema_prop ] = $value;
+		}
+	}
+
+	/**
 	 * Adds visible product attributes as additionalProperty PropertyValues.
+	 *
+	 * Skips:
+	 *   - Variation-defining attributes (carried by `offers` variations).
+	 *   - Core attributes whose typed property was already emitted by
+	 *     {@see map_core_typed_attributes()} — avoids double-emit.
 	 *
 	 * @param array      $markup  Markup array, modified by reference.
 	 * @param WC_Product $product The product object.
@@ -260,9 +341,23 @@ class WC_AI_Storefront_JsonLd {
 		if ( empty( $attributes ) ) {
 			return;
 		}
+		$variation_attrs = $product->is_type( 'variable' )
+			? array_keys( $product->get_variation_attributes() )
+			: array();
+
 		$additional_properties = array();
 		foreach ( $attributes as $attribute ) {
 			if ( ! $attribute->get_visible() ) {
+				continue;
+			}
+			$slug = strtolower( $attribute->get_name() );
+			if ( in_array( $slug, $variation_attrs, true ) ) {
+				continue;
+			}
+			if (
+				isset( self::CORE_ATTRIBUTE_MAP[ $slug ] )
+				&& isset( $markup[ self::CORE_ATTRIBUTE_MAP[ $slug ] ] )
+			) {
 				continue;
 			}
 			$name  = wc_attribute_label( $attribute->get_name(), $product );
