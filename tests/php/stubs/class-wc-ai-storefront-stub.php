@@ -223,6 +223,22 @@ class WC_AI_Storefront {
 	 *
 	 * @param array<string, mixed> $settings Partial settings to merge in.
 	 */
+	/**
+	 * No-op stub for the production cache-priming helper.
+	 *
+	 * The production implementation calls `update_object_term_cache()`
+	 * to batch-load term relationships before per-ID
+	 * `is_product_syndicated()` calls. In unit tests there is no DB
+	 * to prime, so the stub is a no-op — call sites that pass through
+	 * here just need the method to exist on the class.
+	 *
+	 * @param int[] $product_ids Unused.
+	 * @param array $settings    Unused.
+	 */
+	public static function prime_syndication_cache( array $product_ids, array $settings ): void {
+		// Intentionally empty.
+	}
+
 	public static function update_settings( array $settings ): void {
 		$current = self::get_settings();
 		$merged  = array_merge( $current, $settings );

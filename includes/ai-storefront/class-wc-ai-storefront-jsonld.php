@@ -1300,16 +1300,33 @@ class WC_AI_Storefront_JsonLd {
 			? (array) $product->get_upsell_ids()
 			: array();
 
-		// Prime post + meta caches in two batched queries each (one
-		// per type), before the per-ID loops issue 20+ separate
-		// `wc_get_product()` and `is_product_syndicated()` lookups.
-		// Same shape as the priming added in `maybe_convert_to_product_group()`
-		// for variation children — a product with 10 cross-sells and
-		// 10 upsells would otherwise round-trip the DB up to 40 times
-		// per page render.
-		$candidate_ids = array_filter(
-			array_map( 'intval', array_merge( $cross_sells, $upsells ) ),
-			static fn( $id ) => $id > 0
+		// Cap each list at 2× the emission cap before priming + the
+		// downstream loop. The output cap is MAX_RELATED_PRODUCT_REFS
+		// (10), but some candidates fall out at the deleted-product
+		// or syndication-exclusion guards — 2× gives breathing room
+		// for typical failure rates while preventing pathological
+		// cases (a merchant with 1000 cross-sells) from bulk-priming
+		// thousands of posts when only ~10 will be emitted. Trades a
+		// rare edge case (>50% of the first 20 candidates fail
+		// validation) for a much bigger perf win on the common path.
+		$slice_cap   = self::MAX_RELATED_PRODUCT_REFS * 2;
+		$cross_sells = array_slice( $cross_sells, 0, $slice_cap );
+		$upsells     = array_slice( $upsells, 0, $slice_cap );
+
+		// Prime post, meta, and (in by_taxonomy mode) term-relationship
+		// caches in batched queries, before the per-ID loops issue
+		// up to 40 separate `wc_get_product()` + `is_product_syndicated()`
+		// lookups. Same shape as the priming in
+		// `maybe_convert_to_product_group()` for variation children;
+		// `prime_syndication_cache()` is no-op in `all` and `selected`
+		// modes.
+		$candidate_ids = array_values(
+			array_unique(
+				array_filter(
+					array_map( 'intval', array_merge( $cross_sells, $upsells ) ),
+					static fn( $id ) => $id > 0
+				)
+			)
 		);
 		if ( ! empty( $candidate_ids ) ) {
 			if ( function_exists( '_prime_post_caches' ) ) {
@@ -1318,6 +1335,7 @@ class WC_AI_Storefront_JsonLd {
 			if ( function_exists( 'update_meta_cache' ) ) {
 				update_meta_cache( 'post', $candidate_ids );
 			}
+			WC_AI_Storefront::prime_syndication_cache( $candidate_ids, $settings );
 		}
 
 		if ( ! isset( $markup['isRelatedTo'] ) ) {
