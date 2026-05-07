@@ -90,9 +90,19 @@ class WC_AI_Storefront_JsonLd {
 	 * @return array
 	 */
 	public function allow_product_group_type( $types ) {
-		if ( function_exists( 'is_product' ) && is_product() ) {
-			$types[] = 'productgroup';
+		if ( ! function_exists( 'is_product' ) || ! is_product() ) {
+			return $types;
 		}
+		// Guard against duplicate appends — another plugin (or this
+		// filter running multiple times against the same `$types`
+		// array) may have already added `productgroup`. Duplicates
+		// don't break WC core's allow-list intersection but they're
+		// noise and a future debugger reading the type list would
+		// rightly wonder why.
+		if ( in_array( 'productgroup', $types, true ) ) {
+			return $types;
+		}
+		$types[] = 'productgroup';
 		return $types;
 	}
 

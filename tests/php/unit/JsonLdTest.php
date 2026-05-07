@@ -49,22 +49,32 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'product_selection_mode' => 'all',
 		];
 
-		// add_query_arg is the only WP function we consistently need
-		// across tests — simple passthrough that appends params.
+		// `add_query_arg()` mock mirroring WP's actual behavior. Two
+		// places this differs from PHP's native `http_build_query`:
+		//
+		// 1. WP's `add_query_arg` → `build_query` → `_http_build_query`
+		//    is called with `$urlencode = false`, so values are NOT
+		//    URL-encoded. A pre-0.11 mock built on `http_build_query`
+		//    silently produced `utm_source=%7Bagent_id%7D` while
+		//    production emitted `utm_source={agent_id}` — RFC 6570
+		//    placeholders survive verbatim.
+		// 2. WP strips and re-appends the URI fragment around the
+		//    query string. Without this, a permalink like
+		//    `.../widget/#reviews` would produce
+		//    `.../widget/#reviews?add-to-cart=42` where the whole
+		//    query is in the fragment and never reaches the server.
 		Functions\when( 'add_query_arg' )->alias(
 			static function ( $args, $url ) {
-				// Strip any fragment before appending query params, then
-				// re-append it — matching WordPress core's behavior.
-				// Without this, a permalink like `.../widget/#reviews`
-				// would produce `.../widget/#reviews?add-to-cart=42`
-				// where the entire query string is part of the fragment
-				// and never reaches the server.
 				$fragment = '';
 				if ( str_contains( $url, '#' ) ) {
 					[ $url, $fragment ] = explode( '#', $url, 2 );
 					$fragment = '#' . $fragment;
 				}
-				$query = http_build_query( $args );
+				$pairs = array();
+				foreach ( $args as $k => $v ) {
+					$pairs[] = $k . '=' . $v;
+				}
+				$query = implode( '&', $pairs );
 				$sep   = str_contains( $url, '?' ) ? '&' : '?';
 				return $url . $sep . $query . $fragment;
 			}
@@ -253,15 +263,19 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		// Shareable Checkout URL format (0.11.0+): the URL goes through
 		// WC's `/checkout-link/` rewrite handler with `?products=ID:1`.
-		// The `:` is URL-encoded as `%3A` by `http_build_query`.
+		// Values are NOT URL-encoded — WP's `add_query_arg()` uses
+		// `_http_build_query( ..., $urlencode = false )`, which lets
+		// the `:` separator and the RFC 6570 `{...}` placeholders
+		// survive verbatim so consumers can substitute variables
+		// without first decoding the URL.
 		$this->assertStringContainsString( '/checkout-link/', $url );
-		$this->assertStringContainsString( 'products=42%3A1', $url );
-		$this->assertStringContainsString( 'utm_source=%7Bagent_id%7D', $url );
+		$this->assertStringContainsString( 'products=42:1', $url );
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
 		// Canonical UTM shape (0.5.0+): medium=referral (Google-canonical),
 		// utm_id=woo_ucp flags "we routed this".
 		$this->assertStringContainsString( 'utm_medium=referral', $url );
 		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
-		$this->assertStringContainsString( 'ai_session_id=%7Bsession_id%7D', $url );
+		$this->assertStringContainsString( 'ai_session_id={session_id}', $url );
 	}
 
 	public function test_buyaction_url_uses_home_checkout_link_not_product_permalink(): void {
@@ -325,7 +339,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$url = $result['offers'][0]['checkoutPageURLTemplate'];
 		$this->assertStringStartsWith( 'https://example.com/checkout-link/', $url );
-		$this->assertStringContainsString( 'products=42%3A1', $url );
+		$this->assertStringContainsString( 'products=42:1', $url );
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
 		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
 	}
 
@@ -563,7 +578,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
 		$url = $entry['potentialAction']['target']['urlTemplate'];
-		$this->assertStringContainsString( 'products=999%3A1', $url );
+		$this->assertStringContainsString( 'products=999:1', $url );
 		$this->assertStringNotContainsString( 'products=100', $url );
 	}
 
@@ -863,6 +878,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->jsonld->allow_product_group_type( [ 'product', 'breadcrumblist' ] );
 
 		$this->assertNotContains( 'productgroup', $result );
+	}
+
+	public function test_allow_product_group_type_does_not_duplicate_when_already_present(): void {
+		// Another plugin (or this filter running multiple times against
+		// the same `$types` array) may have already added
+		// `productgroup`. Avoid duplicates — they're noise in the
+		// allow-list even though WC core's intersection step doesn't
+		// break on them.
+		Functions\when( 'is_product' )->justReturn( true );
+
+		$result = $this->jsonld->allow_product_group_type( [ 'product', 'productgroup', 'breadcrumblist' ] );
+
+		$this->assertSame( 1, count( array_keys( $result, 'productgroup', true ) ) );
+		$this->assertContains( 'product', $result );
+		$this->assertContains( 'breadcrumblist', $result );
 	}
 
 	public function test_offer_checkout_page_url_template_omitted_when_no_offers(): void {
