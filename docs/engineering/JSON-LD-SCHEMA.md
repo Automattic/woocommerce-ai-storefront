@@ -157,10 +157,10 @@ Mapped slugs (case-insensitive lookup) → typed Schema.org property:
 
 **Emission rules:**
 
-- **Single-value attribute** → emit as the typed property (e.g. `"color": "Black"`). The attribute is then *excluded* from `additionalProperty` to avoid double-emit.
+- **Single-value attribute** with no upstream owner → emit as the typed property (e.g. `"color": "Black"`). The attribute is then *excluded* from `additionalProperty` to avoid double-emit.
 - **Multi-value attribute** (any `,` or `|` in the value) → typed-property emission is **skipped**. Schema.org's `Text` type can't honestly carry a multi-value claim, and a first-piece-only emit would silently drop merchant data. Falls back to `additionalProperty` with the joined string preserved.
 - **Variation-defining attribute** → both typed-property and `additionalProperty` emission are skipped on the parent. The per-SKU value lives in `offers[]` via the variation children. WC core handles that emission.
-- **Existing value in `$markup`** (set by WC core or another plugin) → defer; don't overwrite. The typed-property writer respects upstream owners.
+- **Existing value in `$markup`** (set by WC core or another plugin) → defer on the typed side, don't overwrite. The merchant's attribute *still* emits to `additionalProperty` so its data signal reaches agents even when upstream chose a different typed value. Caller control over the typed claim is preserved.
 
 Worked example:
 
@@ -177,7 +177,7 @@ Worked example:
 }
 ```
 
-Implementation: [`map_core_typed_attributes()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php), called from `enhance_product_data()` before `add_attributes()` so the additionalProperty writer can consult the typed-property state.
+Implementation: [`emit_attributes()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) — single-pass per attribute, decides typed property vs `additionalProperty` inline. One `get_attribute()` lookup per visible attribute regardless of which path the value takes.
 
 ### `additionalProperty` (attributes)
 

@@ -957,13 +957,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_existing_typed_property_in_markup_is_not_overwritten(): void {
-		// If WC core or another plugin already populated `color`, defer
-		// to that value rather than clobbering it.
+		// Two-part contract:
+		//   1. The upstream-set typed property is preserved (we defer).
+		//   2. The merchant's attribute still emits to additionalProperty
+		//      so its data signal isn't lost when upstream chose a
+		//      different value. This is "caller control" — the caller
+		//      gets to choose the typed claim, the merchant's data
+		//      reaches agents either way.
 		$product = $this->make_product_with_attr( 'pa_color', 'Black' );
 
 		$result = $this->jsonld->enhance_product_data( [ 'color' => 'PreSet' ], $product );
 
 		$this->assertSame( 'PreSet', $result['color'] );
+		$this->assertCount( 1, $result['additionalProperty'] );
+		$this->assertSame( 'Color', $result['additionalProperty'][0]['name'] );
+		$this->assertSame( 'Black', $result['additionalProperty'][0]['value'] );
 	}
 
 	public function test_unmapped_attribute_still_emits_to_additional_property(): void {

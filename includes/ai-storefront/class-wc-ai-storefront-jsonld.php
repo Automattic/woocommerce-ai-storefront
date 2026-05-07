@@ -92,18 +92,14 @@ class WC_AI_Storefront_JsonLd {
 
 		$this->add_dimensions( $markup, $product );
 
-		// Compute once, share between the two attribute writers. Skip the
-		// lookup entirely when the product has no attributes — saves a
-		// `get_variation_attributes()` call on every simple product, and
-		// keeps test fixtures simpler (mocks with no attributes don't
-		// need to stub the variation accessor).
+		// Skip variation lookup for products with no attributes — saves a
+		// `get_variation_attributes()` call and keeps test fixtures simpler
+		// (mocks with no attributes don't need to stub the accessor).
 		$variation_attrs = empty( $product->get_attributes() )
 			? array()
 			: self::get_variation_attribute_slugs( $product );
 
-		$this->map_core_typed_attributes( $markup, $product, $variation_attrs );
-
-		$this->add_attributes( $markup, $product, $variation_attrs );
+		$this->emit_attributes( $markup, $product, $variation_attrs );
 
 		$base_location = wc_get_base_location();
 		$country       = $base_location['country'] ?? '';
@@ -282,94 +278,30 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Emit known WC attributes as their typed Schema.org Product properties
-	 * (color, size, material, pattern). Schema.org's "use specific properties
-	 * when they exist" directive supersedes the generic additionalProperty
-	 * fallback for these.
+	 * Emit each visible attribute either as its typed Schema.org property
+	 * (color/size/material/pattern) or as an `additionalProperty` entry.
+	 * Single pass — one `get_attribute()` lookup per attribute.
 	 *
-	 * Skips emission when:
-	 *   - The attribute drives variations (the per-SKU value lives in offers).
-	 *   - The value is multi-valued — a Text-typed property can't honestly
-	 *     represent it; falls back to additionalProperty.
-	 *   - The target property is already populated (don't overwrite WC core
-	 *     or another plugin's value).
+	 * Per-attribute decision tree:
+	 *   1. Hidden / variation-defining / empty value → skip entirely.
+	 *   2. Maps to a typed property AND value is single-valued AND no
+	 *      upstream owner of the typed key → emit as typed property,
+	 *      skip additionalProperty for this slug.
+	 *   3. Otherwise (unmapped, multi-value, or upstream-owns-typed) →
+	 *      emit to additionalProperty.
 	 *
-	 * @param array      $markup          Markup array, modified by reference.
-	 * @param WC_Product $product         The product object.
-	 * @param string[]   $variation_attrs Lowercased slugs of variation-defining
-	 *                                    attributes for this product.
-	 */
-	private function map_core_typed_attributes( array &$markup, $product, array $variation_attrs ): void {
-		$attributes = $product->get_attributes();
-		if ( empty( $attributes ) ) {
-			return;
-		}
-
-		foreach ( $attributes as $attribute ) {
-			if ( ! $attribute->get_visible() ) {
-				continue;
-			}
-			$slug = strtolower( $attribute->get_name() );
-			if ( ! isset( self::CORE_ATTRIBUTE_MAP[ $slug ] ) ) {
-				continue;
-			}
-			$schema_prop = self::CORE_ATTRIBUTE_MAP[ $slug ];
-			// Short-circuit before fetching the attribute value — the
-			// "already populated" check is cheap, get_attribute() can
-			// trigger taxonomy term joins. `array_key_exists` instead of
-			// `isset` so an upstream null value still counts as owned.
-			if ( array_key_exists( $schema_prop, $markup ) ) {
-				continue;
-			}
-			if ( in_array( $slug, $variation_attrs, true ) ) {
-				continue;
-			}
-			$value = trim( (string) $product->get_attribute( $attribute->get_name() ) );
-			if ( '' === $value ) {
-				continue;
-			}
-			// Either WC delimiter present means multi-value — skip, fall back
-			// to additionalProperty.
-			if ( false !== strpbrk( $value, '|,' ) ) {
-				continue;
-			}
-			$markup[ $schema_prop ] = $value;
-		}
-	}
-
-	/**
-	 * Returns the lowercased slugs of attributes that drive variations on
-	 * this product. Empty array for non-variable products. Lowercasing
-	 * matches the case-insensitive comparison both call sites use against
-	 * `$attribute->get_name()`.
-	 *
-	 * @param WC_Product $product The product object.
-	 * @return string[]
-	 */
-	private static function get_variation_attribute_slugs( $product ): array {
-		// `get_variation_attributes()` is on `WC_Product` base — returns
-		// `[]` for non-variable products and is also overridden by
-		// extension product types (subscriptions, bundles).
-		return array_map(
-			'strtolower',
-			array_keys( $product->get_variation_attributes() )
-		);
-	}
-
-	/**
-	 * Adds visible product attributes as additionalProperty PropertyValues.
-	 *
-	 * Skips:
-	 *   - Variation-defining attributes (carried by `offers` variations).
-	 *   - Core attributes whose typed property was already emitted by
-	 *     {@see map_core_typed_attributes()} — avoids double-emit.
+	 * Caller control: when an upstream filter has already set the typed
+	 * property (e.g. `$markup['color']`), we defer on the typed side AND
+	 * still emit the merchant's attribute to `additionalProperty`. This
+	 * preserves the merchant's data signal even if it differs from what
+	 * upstream chose to claim.
 	 *
 	 * @param array      $markup          Markup array, modified by reference.
 	 * @param WC_Product $product         The product object.
 	 * @param string[]   $variation_attrs Lowercased slugs of variation-defining
 	 *                                    attributes for this product.
 	 */
-	private function add_attributes( array &$markup, $product, array $variation_attrs ): void {
+	private function emit_attributes( array &$markup, $product, array $variation_attrs ): void {
 		$attributes = $product->get_attributes();
 		if ( empty( $attributes ) ) {
 			return;
@@ -384,26 +316,56 @@ class WC_AI_Storefront_JsonLd {
 			if ( in_array( $slug, $variation_attrs, true ) ) {
 				continue;
 			}
-			if (
-				isset( self::CORE_ATTRIBUTE_MAP[ $slug ] )
-				&& array_key_exists( self::CORE_ATTRIBUTE_MAP[ $slug ], $markup )
-			) {
-				continue;
-			}
-			$name  = wc_attribute_label( $attribute->get_name(), $product );
 			$value = trim( (string) $product->get_attribute( $attribute->get_name() ) );
 			if ( '' === $value ) {
 				continue;
 			}
+
+			if ( isset( self::CORE_ATTRIBUTE_MAP[ $slug ] ) ) {
+				$schema_prop   = self::CORE_ATTRIBUTE_MAP[ $slug ];
+				$upstream_owns = array_key_exists( $schema_prop, $markup );
+				// Multi-value detection: either WC delimiter present means
+				// the value can't be honestly carried by a Text-typed
+				// property — fall back to additionalProperty.
+				$is_multi_value = false !== strpbrk( $value, '|,' );
+
+				if ( ! $is_multi_value && ! $upstream_owns ) {
+					$markup[ $schema_prop ] = $value;
+					continue;
+				}
+				// Multi-value or upstream-owns: fall through to
+				// additionalProperty so the merchant's data still reaches
+				// agents in some form.
+			}
+
 			$additional_properties[] = array(
 				'@type' => 'PropertyValue',
-				'name'  => $name,
+				'name'  => wc_attribute_label( $attribute->get_name(), $product ),
 				'value' => $value,
 			);
 		}
 		if ( ! empty( $additional_properties ) ) {
 			$markup['additionalProperty'] = $additional_properties;
 		}
+	}
+
+	/**
+	 * Returns the lowercased slugs of attributes that drive variations on
+	 * this product. Empty array for non-variable products. Lowercasing
+	 * matches the case-insensitive comparison the caller uses against
+	 * `$attribute->get_name()`.
+	 *
+	 * @param WC_Product $product The product object.
+	 * @return string[]
+	 */
+	private static function get_variation_attribute_slugs( $product ): array {
+		// `get_variation_attributes()` is on `WC_Product` base — returns
+		// `[]` for non-variable products and is also overridden by
+		// extension product types (subscriptions, bundles).
+		return array_map(
+			'strtolower',
+			array_keys( $product->get_variation_attributes() )
+		);
 	}
 
 	/**
