@@ -100,7 +100,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 	}
 
 	/**
-	 * Render the "AI: Final sale" checkbox inside the Inventory tab.
+	 * Render the "Final sale" checkbox inside the Inventory tab.
 	 *
 	 * Uses WC core's `woocommerce_wp_checkbox()` helper so the visual
 	 * treatment, label width, and description-tooltip behavior match
@@ -108,10 +108,13 @@ class WC_AI_Storefront_Product_Meta_Box {
 	 * individually, etc.) — important for visual consistency in the
 	 * editor where mixing styling looks like a UI bug.
 	 *
-	 * The `AI:` label prefix scans visually as "this isn't a core WC
-	 * field" so merchants browsing the Inventory tab can tell at a
-	 * glance which checkboxes are this plugin vs. WC core. Same
-	 * pattern other commerce plugins follow.
+	 * The label is policy-first ("Final sale"), not channel-first
+	 * ("AI: Final sale"). The flag represents a business decision —
+	 * this specific product cannot be returned, regardless of the
+	 * store's standard return policy. AI agents, search crawlers, and
+	 * customers viewing the product page all see the same "no returns"
+	 * outcome; the structured-data emission is just one downstream
+	 * effect of that policy, not the policy itself.
 	 */
 	public function render_checkbox(): void {
 		// Bail early if WC's helper isn't loaded — defensive against
@@ -126,9 +129,9 @@ class WC_AI_Storefront_Product_Meta_Box {
 		woocommerce_wp_checkbox(
 			[
 				'id'          => self::META_KEY,
-				'label'       => __( 'AI: Final sale', 'woocommerce-ai-storefront' ),
+				'label'       => __( 'Final sale', 'woocommerce-ai-storefront' ),
 				'description' => __(
-					'Override the store-wide return policy for this product. AI agents will see "no returns" regardless of your store policy. Use for clearance items, custom orders, or any product whose return terms diverge from the store default.',
+					'Mark this product as final sale (no returns). Overrides your store-wide return policy for this product only. Reflected to customers, AI agents, and search crawlers. Use for clearance, custom orders, or any product whose return terms diverge from the store default.',
 					'woocommerce-ai-storefront'
 				),
 				'desc_tip'    => true,
