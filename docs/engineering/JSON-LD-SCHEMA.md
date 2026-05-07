@@ -181,10 +181,13 @@ Implementation: [`emit_attributes()`](../../includes/ai-storefront/class-wc-ai-s
 
 ### `additionalProperty` (attributes)
 
-Array of `PropertyValue` entries from product attributes that don't map to a typed Schema.org property.
+Array of `PropertyValue` entries for product attributes that aren't represented as typed Schema.org properties on this pass.
 
-- **Emitted when** the product has at least one attribute marked "Visible on the product page" (the WC `WC_Product_Attribute::get_visible()` check) that *isn't* a variation-defining or core-typed-mapped attribute.
-- **Excluded**: variation-defining attributes (intentionally omitted from the parent — they describe variants, with per-variant emission tracked in [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328)), and attributes whose typed Schema.org property was already emitted (no double-emit). Core-typed attributes whose typed emission was skipped (multi-value case) DO fall back here as the joined merchant-supplied string.
+- **Emitted when** an attribute is visible (`WC_Product_Attribute::get_visible()`), not variation-defining, and **either**:
+  - (a) doesn't map to a typed Schema.org property (e.g. `Style`, `Heel Height`, `Origin`), OR
+  - (b) maps to one but typed emission was skipped or deferred — multi-value inputs and upstream-owned typed keys both fall through here so the merchant's data still reaches agents.
+- **Excluded**: variation-defining attributes (intentionally omitted from the parent — they describe variants, with per-variant emission tracked in [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328)), and attributes whose typed Schema.org property was emitted by this plugin in the current pass (no double-emit).
+- **Merge semantics**: existing `additionalProperty` entries from WC core or upstream filters are preserved. The plugin's emissions are appended to whatever already exists, with single-value upstream entries normalized to array form first.
 
 ### `offers[0].priceCurrency`
 
