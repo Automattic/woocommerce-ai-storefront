@@ -786,9 +786,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_whitespace_only_unmapped_attribute_value_is_skipped(): void {
 		// Same gate as `test_empty_attribute_values_are_skipped` but for
-		// whitespace-only input, which the previous truthy `if ( $value )`
-		// branch would have let through. add_attributes() now trims +
-		// length-checks, matching map_core_typed_attributes() semantics.
+		// whitespace-only input — `emit_attributes()` trims and skips on
+		// empty post-trim, so a value like `'   '` doesn't render as a
+		// blank PropertyValue.
 		$attribute = Mockery::mock();
 		$attribute->shouldReceive( 'get_visible' )->andReturn( true );
 		$attribute->shouldReceive( 'get_name' )->andReturn( 'pa_style' );

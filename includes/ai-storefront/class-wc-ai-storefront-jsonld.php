@@ -92,14 +92,7 @@ class WC_AI_Storefront_JsonLd {
 
 		$this->add_dimensions( $markup, $product );
 
-		// Skip variation lookup for products with no attributes — saves a
-		// `get_variation_attributes()` call and keeps test fixtures simpler
-		// (mocks with no attributes don't need to stub the accessor).
-		$variation_attrs = empty( $product->get_attributes() )
-			? array()
-			: self::get_variation_attribute_slugs( $product );
-
-		$this->emit_attributes( $markup, $product, $variation_attrs );
+		$this->emit_attributes( $markup, $product );
 
 		$base_location = wc_get_base_location();
 		$country       = $base_location['country'] ?? '';
@@ -296,16 +289,15 @@ class WC_AI_Storefront_JsonLd {
 	 * preserves the merchant's data signal even if it differs from what
 	 * upstream chose to claim.
 	 *
-	 * @param array      $markup          Markup array, modified by reference.
-	 * @param WC_Product $product         The product object.
-	 * @param string[]   $variation_attrs Lowercased slugs of variation-defining
-	 *                                    attributes for this product.
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product object.
 	 */
-	private function emit_attributes( array &$markup, $product, array $variation_attrs ): void {
+	private function emit_attributes( array &$markup, $product ): void {
 		$attributes = $product->get_attributes();
 		if ( empty( $attributes ) ) {
 			return;
 		}
+		$variation_attrs = self::get_variation_attribute_slugs( $product );
 
 		$additional_properties = array();
 		foreach ( $attributes as $attribute ) {
