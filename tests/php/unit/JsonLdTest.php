@@ -814,8 +814,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @param string $slug             Attribute slug (e.g. `pa_color`).
 	 * @param string $value            Joined attribute value as WC returns it.
-	 * @param array  $product_overrides Extra overrides for `make_product()`
-	 *                                  (e.g. `product_type`, `variation_attributes`).
+	 * @param array  $product_overrides Extra overrides for `make_product()` —
+	 *                                  e.g. `'variation_attributes'` to mark
+	 *                                  the slug as variation-defining.
 	 */
 	private function make_product_with_attr( string $slug, string $value, array $product_overrides = [] ): Mockery\MockInterface {
 		$attribute = Mockery::mock();
@@ -929,7 +930,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'pa_color',
 			'Navy, White, Gray',
 			[
-				'product_type'        => 'variable',
 				'variation_attributes' => [ 'pa_color' => [ 'navy', 'white', 'gray' ] ],
 			]
 		);
@@ -940,14 +940,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_variation_defining_core_attribute_is_skipped_from_additional_property(): void {
-		// Same skip rule applies to additionalProperty — the data is
-		// carried by offers variations and shouldn't be redundantly
-		// emitted at the parent level.
+		// Variation-defining attributes describe variants, not the
+		// parent product — emitting them at the parent level (typed or
+		// additionalProperty) would misrepresent the parent. Per-variant
+		// emission is intentionally omitted until #328 lands.
 		$product = $this->make_product_with_attr(
 			'pa_color',
 			'Navy, White, Gray',
 			[
-				'product_type'        => 'variable',
 				'variation_attributes' => [ 'pa_color' => [ 'navy', 'white', 'gray' ] ],
 			]
 		);

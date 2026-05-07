@@ -6,7 +6,7 @@
   - WC attributes mapped to dedicated Schema.org typed properties: `pa_color`/`color`/`pa_colour`/`colour` → `color`, `pa_size`/`size` → `size`, `pa_material`/`material` → `material`, `pa_pattern`/`pattern` → `pattern`. All four target properties are `Text`-typed per spec; mapped attributes are excluded from `additionalProperty` to avoid double-emit.
   - Schema.org's primary directive — *"Always use specific schema.org properties when they exist"* — supersedes the generic `additionalProperty` route for these. AI agents reading typed `color: "Black"` get an unambiguous single-color signal that the joined `additionalProperty` fallback can't match.
   - Multi-value inputs (e.g. `Color: Black, Navy` on a misconfigured simple product) skip typed emission entirely and fall back to `additionalProperty` with the joined merchant string preserved. No silent data loss, no incorrect single-color claim.
-  - Variation-defining attributes are skipped from both the typed property and `additionalProperty` — the per-SKU value is carried by `offers[]` variation children.
+  - Variation-defining attributes are skipped from both the typed property and `additionalProperty` on the parent — they describe variants, not the parent product. Per-variant emission is intentionally omitted until #328 (`ProductGroup` + `hasVariant`) lands.
   - Existing typed-property values in the markup (from WC core or other plugins) are not overwritten.
 
 ### Fixes

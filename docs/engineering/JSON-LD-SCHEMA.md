@@ -184,7 +184,7 @@ Implementation: [`emit_attributes()`](../../includes/ai-storefront/class-wc-ai-s
 Array of `PropertyValue` entries from product attributes that don't map to a typed Schema.org property.
 
 - **Emitted when** the product has at least one attribute marked "Visible on the product page" (the WC `WC_Product_Attribute::get_visible()` check) that *isn't* a variation-defining or core-typed-mapped attribute.
-- **Excluded**: variation-defining attributes (carried by `offers[]` variations), and attributes whose typed Schema.org property was already emitted (no double-emit). Core-typed attributes whose typed emission was skipped (multi-value case) DO fall back here as the joined merchant-supplied string.
+- **Excluded**: variation-defining attributes (intentionally omitted from the parent — they describe variants, with per-variant emission tracked in [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328)), and attributes whose typed Schema.org property was already emitted (no double-emit). Core-typed attributes whose typed emission was skipped (multi-value case) DO fall back here as the joined merchant-supplied string.
 
 ### `offers[0].priceCurrency`
 
