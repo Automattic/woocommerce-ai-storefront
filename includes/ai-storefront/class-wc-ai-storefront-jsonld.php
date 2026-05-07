@@ -360,9 +360,16 @@ class WC_AI_Storefront_JsonLd {
 	 * @return string[]
 	 */
 	private static function get_variation_attribute_slugs( $product ): array {
-		// `get_variation_attributes()` is on `WC_Product` base — returns
-		// `[]` for non-variable products and is also overridden by
-		// extension product types (subscriptions, bundles).
+		// `get_variation_attributes()` is defined on `WC_Product_Variable`,
+		// not the `WC_Product` base — calling it unconditionally fatals
+		// on simple/grouped/external products. `method_exists()` is the
+		// right capability gate: true for `WC_Product_Variable` and any
+		// subclass (variable-subscription, variable-bundle, etc.), false
+		// for everyone else. This catches the extension product types
+		// that an `is_type('variable')` string-comparison gate would miss.
+		if ( ! method_exists( $product, 'get_variation_attributes' ) ) {
+			return array();
+		}
 		return array_map(
 			'strtolower',
 			array_keys( $product->get_variation_attributes() )
