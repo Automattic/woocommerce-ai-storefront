@@ -393,6 +393,8 @@ For now, conservatism wins: the broader `OnlineBusiness` type accurately covers 
 
 5. **Biggest uncovered surface**: organizational metadata. `Organization` has 50+ direct properties. We emit a handful (logo, address, contactPoint, hasOfferCatalog, name, description, url). Most are niche or B2B-specific (DUNS, VAT ID, NAICS), but a few are broad-interest gaps — see follow-ups.
 
+6. **Audience scope: not just AI**. The plugin's JSON-LD enhancements are read by *both* AI agents AND traditional search crawlers (Google, Bing, Yandex) — the same Schema.org Product/Offer/Organization output is consumed by both audiences. This is worth reflecting in merchant-facing copy throughout the settings UI; current strings (`"Products available to AI agents"`, `"Control which products AI agents can see and recommend"`) are AI-only and undersell the SEO value. Tracked as a separate UX/copy issue, not in this audit's coverage table.
+
 ## Recommended follow-ups
 
 In rough priority order:
