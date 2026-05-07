@@ -23,10 +23,10 @@ Use this audit to:
 
 The plugin emits two top-level JSON-LD blocks:
 
-| Surface | Currently emitted `@type` | Target `@type` | Schema.org chain |
-|---|---|---|---|
-| Single product page | `Product` | (no change) | Thing → Product |
-| Homepage / shop | `OnlineStore` | `OnlineBusiness` *([decision](#why-onlinebusiness-and-not-onlinestore))* | Thing → Organization → OnlineBusiness → OnlineStore |
+| Surface | Currently emitted `@type` | Schema.org chain |
+|---|---|---|
+| Single product page | `Product` | Thing → Product |
+| Homepage / shop | `OnlineBusiness` *([decision](#why-onlinebusiness-and-not-onlinestore))* | Thing → Organization → OnlineBusiness → OnlineStore |
 
 Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeValue`, `MonetaryAmount`, `OfferShippingDetails`, `ShippingDeliveryTime`, `MerchantReturnPolicy`, `DefinedRegion`, `PostalAddress`, `ContactPoint`, `OfferCatalog`, `Review`, `Rating`, `AggregateRating`, `Person`, `PropertyValue`, `SearchAction`.
 
@@ -326,11 +326,12 @@ The plugin emits `@type: OnlineStore` (deepest in the chain — see hierarchy se
 | `funder` / `funding` / `sponsor` | — | — | — |
 | `hasCertification` / `hasCredential` / `hasGS1DigitalLink` | — | — | — |
 | `hasMemberProgram` | — | — | — |
-| `hasMerchantReturnPolicy` | — | — | — *(**Organization-level emission is the right default for our model.** The merchant configures one store-wide return policy in plugin settings; per-product variance only happens when a product is flagged as "final sale" (an override, not a separate policy). Cleanest emission: standard policy at `Organization.hasMerchantReturnPolicy`, per-Offer override only when final-sale changes the terms. Schema.org allows the property at both positions and consumers read Offer-level as an override of Organization-level. Currently we emit only at Offer level (every product), which is redundant for the common case.)* |
+| `hasMerchantReturnPolicy` | ✓ §org-return | ✓ when policy configured | Plugin (`output_store_jsonld()` → `build_return_policy_block()` shared with per-Offer emission). Phase 1 of #337 — Org-level is purely additive alongside existing per-Offer emission. Phase 2 (making per-Offer conditional on the per-product final-sale override) is deferred. |
 | `hasPOS` / `hasShippingService` | — | — | — |
 | `interactionStatistic` | — | — | — |
 | `keywords` | — | — | — |
-| `knowsAbout` / `knowsLanguage` | — | — | — |
+| `knowsAbout` | ✓ §knowsAbout | ✓ when catalog non-empty | Plugin (`output_store_jsonld()`) — Text[] of top product category names sourced from cached `get_catalog_summary()`, no new query |
+| `knowsLanguage` | — | — | — |
 | `legalAddress` / `legalName` / `legalRepresentative` | — | — | — |
 | `location` | — | — | — |
 | `makesOffer` | — | — | — |
@@ -385,9 +386,9 @@ Schema.org's `OnlineStore` description is *"An eCommerce site"* — strictly pro
 
 Emitting `OnlineStore` for everything would mis-classify a meaningful fraction of merchants. `OnlineBusiness` covers the same intent ("this entity does business online") without claiming product retail.
 
-The trade-off: we lose the ability to emit `currenciesAccepted` and `hasOfferCatalog` semantically (those are technically valid on Organization too, but they're more idiomatic on the OnlineStore subtype). For our audience, that's fine — better to be accurate at the type level than to over-claim retail-specific shape.
+The trade-off: `currenciesAccepted` is defined on `OnlineStore` per the Schema.org spec, not on the `OnlineBusiness` parent. We continue to emit it because subclass-hierarchy inheritance makes it valid on the parent of any subtype, and stripping a meaningful machine-readable signal would be a regression. Schema.org validators may emit a non-fatal warning for the type/property pairing — accepted tradeoff. `hasOfferCatalog` is defined on `Organization` itself, so no inheritance trick is needed there.
 
-> **Status:** documented decision; the [code currently emits `@type: OnlineStore`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php#L662). Switching to `OnlineBusiness` is tracked as follow-up.
+> **Status:** Implemented in PR #334 (bundled with #337 phase 1 in PR-C). The [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) method now emits `@type: OnlineBusiness`.
 
 ---
 
@@ -449,9 +450,9 @@ In rough priority order:
    Recommend the conservative path first — it captures real merchant-known data without faking precision the multi-rate path would also be needed for. Multi-rate is a separate, larger initiative.
 
 8. **Restructure return-policy emission to match merchant model** — the merchant has ONE store-wide return policy (configured once in plugin settings); per-product variance is just the "final sale" flag (no returns on this product). Right emission shape:
-   - **Always emit** the standard policy at `Organization.hasMerchantReturnPolicy` (homepage `OnlineStore`/`OnlineBusiness` block) — single canonical store-wide commitment.
-   - **Emit at `Offer.hasMerchantReturnPolicy` only when the product overrides** (final-sale flag changes the policy). Schema.org consumers read Offer-level as a per-offer override of the Organization-level default.
-   - Backward-compatible migration path: phase 1 adds Organization-level emission (purely additive); phase 2 makes Offer-level conditional. Or keep both as redundant signals if migration risk is too high. Reuses existing `add_return_policy()` emission code.
+   - **Always emit** the standard policy at `Organization.hasMerchantReturnPolicy` (homepage `OnlineBusiness` block) — single canonical store-wide commitment. ✓ **Implemented in #337 phase 1.**
+   - **Emit at `Offer.hasMerchantReturnPolicy` only when the product overrides** (final-sale flag changes the policy). Schema.org consumers read Offer-level as a per-offer override of the Organization-level default. **Phase 2 — deferred.** Today both Org-level and per-Offer emit redundantly for the common case; phase 2 will gate per-Offer on the override.
+   - Both call sites share `build_return_policy_block()` (now `protected`), so the shapes stay identical for the same configuration.
 
 These can be filed as standalone issues; none are blocked by the current PR pipeline (#328 → ProductGroup work).
 
@@ -467,10 +468,12 @@ Types we don't emit today but might extend AI-shopping and SEO leverage. Decisio
 
 ### Active follow-ups (in priority order)
 
+All previously-active follow-ups have shipped or been ruled out. Remaining work is tracked in open issues directly.
+
 | # | Schema.org type | Why pursue | Status |
 |---|---|---|---|
-| ~~1~~ | ~~[`Product.isRelatedTo`](https://schema.org/isRelatedTo) / [`isSimilarTo`](https://schema.org/isSimilarTo)~~ | ~~"People also bought" / "Similar products"~~ | ✓ Implemented in [#335](https://github.com/Automattic/woocommerce-ai-storefront/issues/335) — cross-sells → `isRelatedTo`, upsells → `isSimilarTo`, capped at 10 entries each, syndication-filtered. See [`isRelatedTo` / `isSimilarTo` in JSON-LD-SCHEMA.md](./JSON-LD-SCHEMA.md#isrelatedto-and-issimilarto-cross-sells--upsells) |
-| 1 | [`Organization.knowsAbout`](https://schema.org/knowsAbout) | "What the store specializes in" signal for AI agents | Derive from top product categories — reuses data already pulled for `hasOfferCatalog` ([#334](https://github.com/Automattic/woocommerce-ai-storefront/issues/334)) |
+| ~~1~~ | ~~[`Product.isRelatedTo`](https://schema.org/isRelatedTo) / [`isSimilarTo`](https://schema.org/isSimilarTo)~~ | ~~"People also bought" / "Similar products"~~ | ✓ Implemented in [#335](https://github.com/Automattic/woocommerce-ai-storefront/issues/335). |
+| ~~2~~ | ~~[`Organization.knowsAbout`](https://schema.org/knowsAbout)~~ | ~~"What the store specializes in" signal for AI agents~~ | ✓ Implemented in [#334](https://github.com/Automattic/woocommerce-ai-storefront/issues/334) — Text[] of top category names from cached `get_catalog_summary()`, omitted when catalog empty. |
 
 ### Deferred (not now, but on the radar)
 

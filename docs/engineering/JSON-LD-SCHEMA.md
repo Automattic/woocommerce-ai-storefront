@@ -9,7 +9,7 @@ Two distinct JSON-LD blocks:
 | Surface | Block | Location | Source |
 |---------|-------|----------|--------|
 | Product page (single product) | Enhanced `Product` | Inside the `<head>` via `wp_head`, layered on top of WooCommerce core's existing `Product` block | [`includes/ai-storefront/class-wc-ai-storefront-jsonld.php`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) `enhance_product_data()` |
-| Store homepage / shop page | `OnlineStore` (an `Organization` subtype, since 0.10.0; previously `Store`) | Inside the `<head>` via `wp_head`, on `is_front_page() || is_shop()` when the plugin is enabled | Same file, `output_store_jsonld()` |
+| Store homepage / shop page | `OnlineBusiness` (an `Organization` subtype) | Inside the `<head>` via `wp_head`, on `is_front_page() || is_shop()` when the plugin is enabled | Same file, `output_store_jsonld()` |
 
 Both blocks emit only when the plugin is enabled (`enabled === 'yes'` in `wc_ai_storefront_settings`). Disabling the plugin removes the markup entirely; the underlying WooCommerce core JSON-LD (basic Product, Offer, AggregateRating) continues to render unchanged.
 
@@ -392,16 +392,16 @@ Schema.org `MerchantReturnPolicy` describing return rules.
   - `returnMethod`: same allow-list defense (`ReturnByMail`, `ReturnInStore`, `ReturnAtKiosk`).
 - **Source**: `add_return_policy()` (line ~356) and `build_return_policy_block()` (line ~559).
 
-## Store homepage: OnlineStore schema
+## Store homepage: OnlineBusiness schema
 
 A separate JSON-LD block emitted on the front page or shop page (`is_front_page() || is_shop()`) when the plugin is enabled.
 
-The `@type` is `OnlineStore` (a Schema.org `Organization` subtype). Prior to 0.10.0 this was `Store` (a `LocalBusiness`/`Place` subtype), which doesn't satisfy AI-readiness audits looking for `Organization`-shaped brand entities. `OnlineStore` is the most accurate type for a Woo storefront and inherits all the descriptive fields (`name`, `url`, `description`) that `Store` carried.
+The `@type` is [`OnlineBusiness`](https://schema.org/OnlineBusiness) — a Schema.org `Organization` subtype that covers the breadth of WC's actual install base: traditional retail, services (WooCommerce Bookings, consultancies), subscriptions, donations, lead-gen, digital downloads. Prior to PR #334 the plugin emitted [`OnlineStore`](https://schema.org/OnlineStore), a sub-subtype defined as "an eCommerce site"; that was too narrow for the install-base reality. `OnlineBusiness` is the parent in `Thing → Organization → OnlineBusiness → OnlineStore` and inherits all the descriptive fields (`name`, `url`, `description`) plus `currenciesAccepted` (which Schema.org defines on `OnlineStore` but is valid on the parent via subclass inheritance — see [SCHEMA-ORG-COVERAGE.md](./SCHEMA-ORG-COVERAGE.md#why-onlinebusiness-and-not-onlinestore) for the rationale).
 
 ```jsonc
 {
   "@context": "https://schema.org",
-  "@type": "OnlineStore",
+  "@type": "OnlineBusiness",
   "name": "Your Store",
   "description": "Your store's tagline / blog description",
   "url": "https://yourstore.example.com/",
@@ -422,6 +422,7 @@ The `@type` is `OnlineStore` (a Schema.org `Organization` subtype). Prior to 0.1
       // Empty categories (zero exposed products) are omitted.
     ]
   },
+  "knowsAbout": ["Clothing", "Hoodies", "T-Shirts" /* up to 10 category names */],
 
   // Identity fields (since 0.10.0). Each is omit-when-empty: a merchant
   // who has no logo, no WC base country, and no usable email gets none of
@@ -440,17 +441,28 @@ The `@type` is `OnlineStore` (a Schema.org `Organization` subtype). Prior to 0.1
     "@type":       "ContactPoint",
     "contactType": "Customer Service",
     "email":       "support@yourstore.example.com"
+  },
+
+  // Organization-level return policy (since #337 phase 1). Always emitted
+  // when configured; per-Offer emission on product pages remains the
+  // per-product override surface.
+  "hasMerchantReturnPolicy": {
+    "@type": "MerchantReturnPolicy",
+    "applicableCountry": "US",
+    "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
+    "merchantReturnDays": 30,
+    "returnFees": "https://schema.org/FreeReturn"
   }
 }
 ```
 
 ### `hasOfferCatalog` (homepage / shop)
 
-Schema.org's "what this organization sells" pointer, emitted on the homepage `OnlineStore` block as a structured summary of the storefront's catalog. Lets AI agents and search crawlers learn the store's category structure without crawling individual product pages.
+Schema.org's "what this organization sells" pointer, emitted on the homepage `OnlineBusiness` block as a structured summary of the storefront's catalog. Lets AI agents and search crawlers learn the store's category structure without crawling individual product pages.
 
 ```jsonc
 {
-  "@type": "OnlineStore",
+  "@type": "OnlineBusiness",
   "hasOfferCatalog": {
     "@type": "OfferCatalog",
     "name": "Products",
@@ -468,6 +480,28 @@ Schema.org's "what this organization sells" pointer, emitted on the homepage `On
 - **Per-category fields**: nested `OfferCatalog` with `name`, `numberOfItems`, and `url` (term archive link).
 - **Cache**: 1-hour transient (`wc_ai_storefront_catalog_summary`); product/category changes don't propagate immediately. Invalidated by `WC_AI_Storefront_Cache_Invalidator` when relevant terms change.
 
+### `knowsAbout` (homepage)
+
+Schema.org [`Organization.knowsAbout`](https://schema.org/knowsAbout) — a Text array of topics this organization knows about. Tells AI agents what the store specializes in without forcing them to crawl every product page.
+
+```jsonc
+"knowsAbout": ["Clothing", "Hoodies", "T-Shirts", "Accessories"]
+```
+
+- **Emitted when**: catalog is non-empty. Sourced from the same `get_catalog_summary()` data that drives `hasOfferCatalog` — the call is hoisted to a local variable so both consumers share one cache hit per page render.
+- **Values**: top 10 root product category names, in the order `get_catalog_summary()` returns them (by product count DESC).
+- **Omitted when**: catalog is empty — no point claiming the org "knows about" nothing.
+- **Cache**: same 1-hour transient as `hasOfferCatalog` (no separate cache).
+
+### `hasMerchantReturnPolicy` (Organization-level)
+
+Same `MerchantReturnPolicy` block shape that the per-Offer emission produces, but at the Organization level — the canonical store-wide commitment.
+
+- **Emitted when**: a return policy is configured (`mode !== 'unconfigured'`) and the WC base country is set. Always additive in this PR — the per-Offer emission on product pages is unchanged.
+- **Shared builder**: both this call site and `add_return_policy()` (for per-Offer emission) call `build_return_policy_block($policy, $country, $product_id)`. Org-level emission passes `null` for `$product_id` (no per-product context). The shared builder guarantees the two emissions produce identical block shapes for the same configuration.
+- **Phase 2 deferred**: making per-Offer emission conditional on the per-product final-sale override (so the per-product block only appears when it differs from the Org-level default) is tracked as phase 2 of #337 in a separate future PR. Today both emissions coexist redundantly.
+- **Source**: `output_store_jsonld()` for the Org-level call site; `build_return_policy_block()` (now `protected`) for the shared block builder.
+
 ### Identity field sourcing
 
 All three identity fields are auto-sourced from existing WP/WC data. There are **no plugin-owned settings** for these — the plugin reads what's already configured at the platform level.
@@ -482,7 +516,7 @@ All three identity fields are auto-sourced from existing WP/WC data. There are *
 
 ### Why streetAddress is suppressed
 
-For an `OnlineStore` (vs. a `LocalBusiness`), street address has low signal value: buyers transact remotely and don't visit. But the privacy/safety risk is real — many small Woo merchants populate WooCommerce > Settings > General with their home address (the field is required at WC setup so tax calculations work) and don't realize that saving it would publish the address in machine-readable form on the homepage's JSON-LD. By emitting only `addressLocality`, `addressRegion`, `postalCode`, and `addressCountry`, we preserve every meaningful identity signal (jurisdiction, shipping origin, fraud-check disambiguation) without leaking a residential address. `build_postal_address()` in the emitter doesn't even read `get_base_address()` or `get_base_address_2()` — even a future filter that wants to re-emit street would have to source it independently.
+For an `OnlineBusiness` (vs. a `LocalBusiness`), street address has low signal value: buyers transact remotely and don't visit. But the privacy/safety risk is real — many small Woo merchants populate WooCommerce > Settings > General with their home address (the field is required at WC setup so tax calculations work) and don't realize that saving it would publish the address in machine-readable form on the homepage's JSON-LD. By emitting only `addressLocality`, `addressRegion`, `postalCode`, and `addressCountry`, we preserve every meaningful identity signal (jurisdiction, shipping origin, fraud-check disambiguation) without leaking a residential address. `build_postal_address()` in the emitter doesn't even read `get_base_address()` or `get_base_address_2()` — even a future filter that wants to re-emit street would have to source it independently.
 
 ### Why the email resolver has a noreply guard
 
