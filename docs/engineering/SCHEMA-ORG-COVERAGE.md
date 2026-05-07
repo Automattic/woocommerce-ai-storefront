@@ -166,6 +166,42 @@ Most don't apply at Offer level. WC core sets `url` on offer to the product perm
 
 ---
 
+## Nested types: `OfferShippingDetails` and `ShippingDeliveryTime`
+
+These nested types are emitted under `Offer.shippingDetails`. The Offer table above marks `shippingDetails` as ✓; this section breaks down the sub-tree.
+
+### `OfferShippingDetails`
+
+[Schema.org spec →](https://schema.org/OfferShippingDetails)
+
+| Property | In doc? | Emitted? | Source |
+|---|---|---|---|
+| `deliveryTime` (`ShippingDeliveryTime`) | ✓ §shipping | ✓ when handling time configured | Plugin (see `ShippingDeliveryTime` table below) |
+| `depth` / `height` / `width` / `weight` | — | — | — *(would be **shipment box** dimensions, distinct from product dimensions emitted at Product level)* |
+| `doesNotShip` | — | — | — *(regional exclusions; merchant data exists in WC's restricted-shipping zones, but we don't reflect it here)* |
+| `hasShippingService` (`ShippingService`) | — | — | — *(newer Schema.org property for service-tier shipping info)* |
+| `shippingDestination` (`DefinedRegion`) | ✓ §shipping | ✓ (`addressCountry` from store base location) | Plugin |
+| `shippingOrigin` (`DefinedRegion`) | — | — | — *(where the shipment ships from — useful for international agents to estimate transit time)* |
+| `shippingRate` (`MonetaryAmount`) | ✓ §shipping | ✓ when unconditional free shipping configured (`value: 0`) | Plugin |
+| `validForMemberTier` | — | — | — *(membership-tier-specific shipping; out of scope for current plugin)* |
+
+### `ShippingDeliveryTime`
+
+[Schema.org spec →](https://schema.org/ShippingDeliveryTime)
+
+| Property | In doc? | Emitted? | Source |
+|---|---|---|---|
+| `businessDays` | — | — | — *(operating days; merchant data exists in WC settings, not currently propagated)* |
+| `cutoffTime` | — | — | — *(order deadline for same-day shipping; high-value for AI agents calculating delivery dates)* |
+| `handlingTime` (`QuantitativeValue`) | ✓ §shipping | ✓ when handling-time setting populated (`min`/`max`/`unitCode: DAY`) | Plugin |
+| `transitTime` (`QuantitativeValue`) | — | — | — *(delivery duration AFTER dispatch; complements handlingTime for full delivery-estimate signal)* |
+
+### Coverage gap summary for Shipping
+
+We emit the structural skeleton (OfferShippingDetails wrapper, free-shipping `shippingRate`, handling time, destination country) but miss several high-value signals AI agents use for delivery-estimate computation: `transitTime`, `cutoffTime`, `businessDays`, `shippingOrigin`. Filed as a follow-up below.
+
+---
+
 ## `Action` (specifically `BuyAction` and `SearchAction`)
 
 [Schema.org Action spec →](https://schema.org/Action)
@@ -405,7 +441,9 @@ In rough priority order:
 4. **`Organization.telephone`** — currently suppressed by default. Worth a per-merchant opt-in toggle.
 5. **`Product.audience`** — target demographic (`PeopleAudience` with `audienceType`). Merchant-config; useful for kids/adult/professional/etc. categorization.
 6. **Switch homepage `@type` from `OnlineStore` to `OnlineBusiness`** — broader fit for WC's full install base (services, bookings, memberships, donations, lead-gen, retail). Code change is one line in [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) plus a `JSON-LD-SCHEMA.md` update. Decision rationale captured in [the OnlineBusiness section](#onlinebusiness--target-type).
-7. **Restructure return-policy emission to match merchant model** — the merchant has ONE store-wide return policy (configured once in plugin settings); per-product variance is just the "final sale" flag (no returns on this product). Right emission shape:
+7. **Expand `ShippingDeliveryTime` emission** — currently we emit only `handlingTime`. Adding `transitTime` (delivery duration after dispatch), `cutoffTime` (order deadline for same-day), and optionally `businessDays` would give AI agents a complete delivery-estimate signal. WC's shipping zone settings have most of this data; merchants who configure it would benefit from agents being able to answer "when will it arrive?" Spec property table in [the Shipping section](#nested-types-offershippingdetails-and-shippingdeliverytime).
+
+8. **Restructure return-policy emission to match merchant model** — the merchant has ONE store-wide return policy (configured once in plugin settings); per-product variance is just the "final sale" flag (no returns on this product). Right emission shape:
    - **Always emit** the standard policy at `Organization.hasMerchantReturnPolicy` (homepage `OnlineStore`/`OnlineBusiness` block) — single canonical store-wide commitment.
    - **Emit at `Offer.hasMerchantReturnPolicy` only when the product overrides** (final-sale flag changes the policy). Schema.org consumers read Offer-level as a per-offer override of the Organization-level default.
    - Backward-compatible migration path: phase 1 adds Organization-level emission (purely additive); phase 2 makes Offer-level conditional. Or keep both as redundant signals if migration risk is too high. Reuses existing `add_return_policy()` emission code.
