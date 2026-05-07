@@ -828,14 +828,25 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Populate a variant entry with sku, image (with parent fallback),
-	 * and per-variant typed Schema.org properties from the variation's
-	 * specific attribute selections.
+	 * Populate a variant entry with `@id`, `url`, `name`, `sku`, `image`
+	 * (with parent fallback), and per-variant typed Schema.org
+	 * properties from the variation's specific attribute selections.
 	 *
-	 * `WC_Product_Variation::get_variation_attributes()` returns the
-	 * variation's specific picks as `['attribute_pa_color' => 'white']`.
-	 * We strip the `attribute_` prefix, look up the slug in
-	 * {@see CORE_ATTRIBUTE_MAP}, and emit the typed property.
+	 * **Typed-property source**: read postmeta directly via
+	 * {@see read_variation_core_attributes()} rather than through
+	 * `WC_Product_Variation::get_variation_attributes()`. The latter
+	 * is gated by the parent's "Used for variations" flag — it
+	 * silently returns empty when that flag is unset on a core typed
+	 * attribute (e.g. `pa_color`), even when each variation child
+	 * carries a real value in its `attribute_<slug>` postmeta. The
+	 * misconfigured-variable `ProductGroup` override in
+	 * {@see detect_varies_by()} depends on those typed values
+	 * reaching the variant entry, so the same direct-postmeta path is
+	 * the source of truth here too.
+	 *
+	 * Scoped to the four core typed slugs in
+	 * {@see CORE_ATTRIBUTE_MAP} — unmapped custom attributes
+	 * (Style, Heel Height, Logo) intentionally honor the parent flag.
 	 *
 	 * @param array      $entry          Variant markup, modified by reference.
 	 * @param WC_Product $variation      The variation.
