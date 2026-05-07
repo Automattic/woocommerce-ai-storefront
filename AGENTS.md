@@ -18,6 +18,8 @@ Core principle: AI agents discover and recommend. The merchant owns the transact
 | How an agent decides to render a Buy CTA | [`docs/engineering/UCP-BUY-FLOW.md`](./docs/engineering/UCP-BUY-FLOW.md) |
 | Cart and checkout flow models (and roadmap for `dev.ucp.cart`) | [`docs/engineering/CART-MODELS.md`](./docs/engineering/CART-MODELS.md) |
 | REST endpoint shapes (UCP and admin) | [`docs/engineering/API-REFERENCE.md`](./docs/engineering/API-REFERENCE.md) |
+| JSON-LD field reference (Product enhancement + homepage `OnlineStore`) | [`docs/engineering/JSON-LD-SCHEMA.md`](./docs/engineering/JSON-LD-SCHEMA.md) |
+| Known limitations and design choices we've consciously accepted | [`docs/engineering/KNOWN-GAPS.md`](./docs/engineering/KNOWN-GAPS.md) |
 | Options, transients, meta keys, cron | [`docs/engineering/DATA-MODEL.md`](./docs/engineering/DATA-MODEL.md) |
 | Filters and actions exposed | [`docs/engineering/HOOKS.md`](./docs/engineering/HOOKS.md) |
 | React UI conventions | [`docs/engineering/UI-CONVENTIONS.md`](./docs/engineering/UI-CONVENTIONS.md) |
@@ -157,6 +159,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/ai-storefront/class-wc-ai-storefront-ucp.php` | API-REFERENCE.md, UCP-BUY-FLOW.md, CART-MODELS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-llms-txt.php` | ARCHITECTURE.md, HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-jsonld.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md, JSON-LD-SCHEMA.md |
+| `includes/ai-storefront/class-wc-ai-storefront-handling-time.php` | JSON-LD-SCHEMA.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-robots.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php` | ARCHITECTURE.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-cache-invalidator.php` | DATA-MODEL.md, ARCHITECTURE.md |
