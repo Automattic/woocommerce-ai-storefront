@@ -920,10 +920,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_variation_defining_core_attribute_is_skipped_from_typed_property(): void {
-		// On a properly configured variable product, the per-SKU color
-		// lives in offers via the variation children — emitting `color`
-		// at the parent would claim a single intrinsic color the parent
-		// doesn't have.
+		// Variation-defining attributes describe variants, not the
+		// parent product. Emitting `color: "Navy"` at the parent would
+		// claim a single intrinsic color the parent doesn't have. Per-
+		// variant JSON-LD is tracked in #328; until then, variation-
+		// specific data isn't emitted as Schema.org.
 		$product = $this->make_product_with_attr(
 			'pa_color',
 			'Navy, White, Gray',
@@ -985,6 +986,53 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $result['additionalProperty'] );
 		$this->assertSame( 'Style', $result['additionalProperty'][0]['name'] );
 		$this->assertSame( 'Casual', $result['additionalProperty'][0]['value'] );
+	}
+
+	public function test_existing_additional_property_entries_are_preserved(): void {
+		// If WC core or another plugin populated `additionalProperty`
+		// with entries before our filter ran, our merchant-attribute
+		// emissions append to that array rather than overwriting it.
+		$product = $this->make_product_with_attr( 'pa_style', 'Casual' );
+
+		$pre_existing = array(
+			array(
+				'@type' => 'PropertyValue',
+				'name'  => 'Upstream',
+				'value' => 'Preserved',
+			),
+		);
+		$result = $this->jsonld->enhance_product_data(
+			array( 'additionalProperty' => $pre_existing ),
+			$product
+		);
+
+		$this->assertCount( 2, $result['additionalProperty'] );
+		$by_name = array_column( $result['additionalProperty'], null, 'name' );
+		$this->assertSame( 'Preserved', $by_name['Upstream']['value'] );
+		$this->assertSame( 'Casual', $by_name['Style']['value'] );
+	}
+
+	public function test_existing_single_additional_property_object_is_preserved(): void {
+		// Schema.org allows `additionalProperty` as a single value or an
+		// array. If upstream emitted a single PropertyValue (not wrapped
+		// in an array), our merge normalizes it to array form before
+		// appending — no data loss.
+		$product = $this->make_product_with_attr( 'pa_style', 'Casual' );
+
+		$pre_existing_single = array(
+			'@type' => 'PropertyValue',
+			'name'  => 'Upstream',
+			'value' => 'Preserved',
+		);
+		$result = $this->jsonld->enhance_product_data(
+			array( 'additionalProperty' => $pre_existing_single ),
+			$product
+		);
+
+		$this->assertCount( 2, $result['additionalProperty'] );
+		$by_name = array_column( $result['additionalProperty'], null, 'name' );
+		$this->assertSame( 'Preserved', $by_name['Upstream']['value'] );
+		$this->assertSame( 'Casual', $by_name['Style']['value'] );
 	}
 
 	public function test_invisible_core_attribute_is_not_mapped(): void {

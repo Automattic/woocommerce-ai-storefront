@@ -159,7 +159,7 @@ Mapped slugs (case-insensitive lookup) → typed Schema.org property:
 
 - **Single-value attribute** with no upstream owner → emit as the typed property (e.g. `"color": "Black"`). The attribute is then *excluded* from `additionalProperty` to avoid double-emit.
 - **Multi-value attribute** (any `,` or `|` in the value) → typed-property emission is **skipped**. Schema.org's `Text` type can't honestly carry a multi-value claim, and a first-piece-only emit would silently drop merchant data. Falls back to `additionalProperty` with the joined string preserved.
-- **Variation-defining attribute** → both typed-property and `additionalProperty` emission are skipped on the parent. The per-SKU value lives in `offers[]` via the variation children. WC core handles that emission.
+- **Variation-defining attribute** → both typed-property and `additionalProperty` emission are skipped on the parent. Variation-defining attributes describe individual *variants*, not the parent product as a whole — emitting them at the parent level would claim a single intrinsic color/size that the parent doesn't have. Per-variant JSON-LD (`ProductGroup` + `hasVariant`) is tracked in [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328); until that lands, variation-specific data isn't currently emitted as Schema.org.
 - **Existing value in `$markup`** (set by WC core or another plugin) → defer on the typed side, don't overwrite. The merchant's attribute *still* emits to `additionalProperty` so its data signal reaches agents even when upstream chose a different typed value. Caller control over the typed claim is preserved.
 
 Worked example:

@@ -337,7 +337,16 @@ class WC_AI_Storefront_JsonLd {
 			);
 		}
 		if ( ! empty( $additional_properties ) ) {
-			$markup['additionalProperty'] = $additional_properties;
+			// Merge with any pre-existing entries (WC core or another
+			// plugin filtered `woocommerce_structured_data_product` and
+			// added their own). Schema.org allows `additionalProperty`
+			// as a single value or an array; normalize to array form
+			// before merging.
+			$existing = $markup['additionalProperty'] ?? array();
+			if ( ! is_array( $existing ) || ! array_is_list( $existing ) ) {
+				$existing = array( $existing );
+			}
+			$markup['additionalProperty'] = array_merge( $existing, $additional_properties );
 		}
 	}
 
