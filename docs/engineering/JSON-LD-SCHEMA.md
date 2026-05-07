@@ -320,6 +320,30 @@ The `@type` is `OnlineStore` (a Schema.org `Organization` subtype). Prior to 0.1
 }
 ```
 
+### `hasOfferCatalog` (homepage / shop)
+
+Schema.org's "what this organization sells" pointer, emitted on the homepage `OnlineStore` block as a structured summary of the storefront's catalog. Lets AI agents and search crawlers learn the store's category structure without crawling individual product pages.
+
+```jsonc
+{
+  "@type": "OnlineStore",
+  "hasOfferCatalog": {
+    "@type": "OfferCatalog",
+    "name": "Products",
+    "itemListElement": [
+      { "@type": "OfferCatalog", "name": "Clothing", "numberOfItems": 25, "url": "..." },
+      { "@type": "OfferCatalog", "name": "Hoodies",  "numberOfItems": 8,  "url": "..." },
+      // top 10 root categories, ordered by product count
+    ]
+  }
+}
+```
+
+- **Emitted when**: plugin is enabled and on `is_front_page() || is_shop()`.
+- **Source**: top 10 root `product_cat` categories (`hide_empty: true`, ordered by product count DESC), pulled by [`get_catalog_summary()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php). Subcategories are not recursed.
+- **Per-category fields**: nested `OfferCatalog` with `name`, `numberOfItems`, and `url` (term archive link).
+- **Cache**: 1-hour transient (`wc_ai_storefront_catalog_summary`); product/category changes don't propagate immediately. Invalidated by `WC_AI_Storefront_Cache_Invalidator` when relevant terms change.
+
 ### Identity field sourcing
 
 All three identity fields are auto-sourced from existing WP/WC data. There are **no plugin-owned settings** for these — the plugin reads what's already configured at the platform level.

@@ -295,7 +295,7 @@ The plugin emits `@type: OnlineStore` (deepest in the chain — see hierarchy se
 |---|---|---|---|
 | `address` (`PostalAddress`) | ✓ §identity, §address | ✓ when WC store address fields set | Plugin (suppresses `streetAddress` for privacy) |
 | `contactPoint` (`ContactPoint` with `email`, `contactType: Customer Service`) | ✓ §identity, §email | ✓ when valid email resolvable | Plugin (two-stage resolver: reply-to → from-address with noreply guard) |
-| `hasOfferCatalog` (`OfferCatalog` with `itemListElement`) | ✓ implicit | ✓ | Plugin |
+| `hasOfferCatalog` (`OfferCatalog` with nested `OfferCatalog` entries) | — *(not yet in [`JSON-LD-SCHEMA.md`](./JSON-LD-SCHEMA.md))* | ✓ on homepage; top 10 root product_cat categories ordered by product count, each with `name`/`numberOfItems`/`url`, cached 1h | Plugin (`get_catalog_summary()`) |
 | `logo` | ✓ §identity | ✓ when site icon or custom logo set | Plugin (precedence: custom_logo → site_icon) |
 
 ### Direct properties — not emitted
@@ -441,7 +441,11 @@ In rough priority order:
 4. **`Organization.telephone`** — currently suppressed by default. Worth a per-merchant opt-in toggle.
 5. **`Product.audience`** — target demographic (`PeopleAudience` with `audienceType`). Merchant-config; useful for kids/adult/professional/etc. categorization.
 6. **Switch homepage `@type` from `OnlineStore` to `OnlineBusiness`** — broader fit for WC's full install base (services, bookings, memberships, donations, lead-gen, retail). Code change is one line in [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) plus a `JSON-LD-SCHEMA.md` update. Decision rationale captured in [the OnlineBusiness section](#onlinebusiness--target-type).
-7. **Expand `ShippingDeliveryTime` emission** — currently we emit only `handlingTime`. Adding `transitTime` (delivery duration after dispatch), `cutoffTime` (order deadline for same-day), and optionally `businessDays` would give AI agents a complete delivery-estimate signal. WC's shipping zone settings have most of this data; merchants who configure it would benefit from agents being able to answer "when will it arrive?" Spec property table in [the Shipping section](#nested-types-offershippingdetails-and-shippingdeliverytime).
+7. **Expand `ShippingDeliveryTime` emission carefully** — currently we emit only `handlingTime`. The spec also has `transitTime`, `cutoffTime`, `businessDays`, and `shippingOrigin`. **Caveat: shipping data is multi-dimensional in reality** — transit time depends on the buyer's destination, the chosen service level (ground vs expedited vs overnight), the merchant's shipping origin, and sometimes the day of week. A single static `transitTime: 3-5 days` claim hides this dimensionality. Two paths forward:
+   - **Conservative**: emit only `cutoffTime` and `businessDays` (which DON'T depend on the buyer's destination — they're store-level operating windows). Skip `transitTime` until we can model destination/service-level shape.
+   - **Multi-rate**: emit multiple `OfferShippingDetails` entries, one per shipping method × destination region, each with its own `transitTime`. Spec-compliant per Schema.org Example 1 ("Cheaper and slower: $5 in 5-7 days or Fast and expensive: $15 in 1-2 days"). Higher implementation cost; needs full shipping-zone walk.
+
+   Recommend the conservative path first — it captures real merchant-known data without faking precision the multi-rate path would also be needed for. Multi-rate is a separate, larger initiative.
 
 8. **Restructure return-policy emission to match merchant model** — the merchant has ONE store-wide return policy (configured once in plugin settings); per-product variance is just the "final sale" flag (no returns on this product). Right emission shape:
    - **Always emit** the standard policy at `Organization.hasMerchantReturnPolicy` (homepage `OnlineStore`/`OnlineBusiness` block) — single canonical store-wide commitment.
