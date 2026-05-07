@@ -340,11 +340,21 @@ class WC_AI_Storefront_JsonLd {
 			// Merge with any pre-existing entries (WC core or another
 			// plugin filtered `woocommerce_structured_data_product` and
 			// added their own). Schema.org allows `additionalProperty`
-			// as a single value or an array; normalize to array form
-			// before merging.
+			// as a single value or an array; normalize to a re-keyed
+			// list before merging.
 			$existing = $markup['additionalProperty'] ?? array();
-			if ( ! is_array( $existing ) || ! array_is_list( $existing ) ) {
+			if ( ! is_array( $existing ) ) {
+				// Null or scalar — treat as empty so we never insert
+				// a stray null/scalar entry into the output array.
+				$existing = array();
+			} elseif ( isset( $existing['@type'] ) ) {
+				// Single PropertyValue object — wrap as a one-element list.
 				$existing = array( $existing );
+			} else {
+				// Already a list of entries. `array_values()` re-keys —
+				// `array_is_list()` is too strict for arrays whose keys
+				// have been disturbed by `array_filter()` upstream.
+				$existing = array_values( $existing );
 			}
 			$markup['additionalProperty'] = array_merge( $existing, $additional_properties );
 		}

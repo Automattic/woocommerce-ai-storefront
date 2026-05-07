@@ -1012,6 +1012,31 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Casual', $by_name['Style']['value'] );
 	}
 
+	public function test_existing_additional_property_with_filter_keys_is_preserved(): void {
+		// `array_filter()` preserves keys, so an upstream filter chain
+		// that drops bogus entries can leave a numeric-keyed array with
+		// gaps (e.g. `[1 => ..., 3 => ...]`). `array_is_list()` returns
+		// false for such arrays — without re-keying via `array_values()`
+		// the merge would have wrapped the whole array as a single
+		// nested element. This test locks the re-key behavior.
+		$product = $this->make_product_with_attr( 'pa_style', 'Casual' );
+
+		$pre_existing_filtered = array(
+			1 => array( '@type' => 'PropertyValue', 'name' => 'A', 'value' => 'a' ),
+			3 => array( '@type' => 'PropertyValue', 'name' => 'B', 'value' => 'b' ),
+		);
+		$result = $this->jsonld->enhance_product_data(
+			array( 'additionalProperty' => $pre_existing_filtered ),
+			$product
+		);
+
+		$this->assertCount( 3, $result['additionalProperty'] );
+		$by_name = array_column( $result['additionalProperty'], null, 'name' );
+		$this->assertSame( 'a', $by_name['A']['value'] );
+		$this->assertSame( 'b', $by_name['B']['value'] );
+		$this->assertSame( 'Casual', $by_name['Style']['value'] );
+	}
+
 	public function test_existing_single_additional_property_object_is_preserved(): void {
 		// Schema.org allows `additionalProperty` as a single value or an
 		// array. If upstream emitted a single PropertyValue (not wrapped
