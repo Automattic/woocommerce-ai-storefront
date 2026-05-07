@@ -92,8 +92,14 @@ class WC_AI_Storefront_JsonLd {
 
 		$this->add_dimensions( $markup, $product );
 
-		// Compute once, share between the two attribute writers.
-		$variation_attrs = self::get_variation_attribute_slugs( $product );
+		// Compute once, share between the two attribute writers. Skip the
+		// lookup entirely when the product has no attributes — saves a
+		// `get_variation_attributes()` call on every simple product, and
+		// keeps test fixtures simpler (mocks with no attributes don't
+		// need to stub the variation accessor).
+		$variation_attrs = empty( $product->get_attributes() )
+			? array()
+			: self::get_variation_attribute_slugs( $product );
 
 		$this->map_core_typed_attributes( $markup, $product, $variation_attrs );
 
