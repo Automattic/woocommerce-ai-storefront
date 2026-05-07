@@ -60,6 +60,19 @@ class WC_AI_Storefront_JsonLd {
 	);
 
 	/**
+	 * Hard cap on per-property entries emitted under
+	 * {@see add_related_products()} — `isRelatedTo` and `isSimilarTo`
+	 * are each capped independently. A merchant who has 100 cross-sell
+	 * IDs configured on a single product would otherwise inflate the
+	 * JSON-LD payload with 100 reference blocks per property; agents
+	 * only need a few signal-rich pointers, not an exhaustive list.
+	 *
+	 * Not exposed as a filter today — YAGNI until a real merchant need
+	 * surfaces. The constant is the single tuning knob.
+	 */
+	private const MAX_RELATED_PRODUCT_REFS = 10;
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function init() {
@@ -143,6 +156,8 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_shipping_details( $markup, $country );
 		$this->add_handling_time( $markup, $settings );
 		$this->add_return_policy( $markup, $product, $settings, $country );
+
+		$this->add_related_products( $markup, $product, $settings );
 
 		$this->maybe_convert_to_product_group( $markup, $product, $settings, $country );
 
@@ -1222,6 +1237,129 @@ class WC_AI_Storefront_JsonLd {
 		if ( null !== $policy_block ) {
 			$markup['offers'][0]['hasMerchantReturnPolicy'] = $policy_block;
 		}
+	}
+
+	/**
+	 * Emit Schema.org `isRelatedTo` (cross-sells) and `isSimilarTo`
+	 * (upsells) as `{"@id": permalink}` reference arrays on the
+	 * top-level Product.
+	 *
+	 * **Schema.org mapping** (verified against the spec):
+	 *   - {@link https://schema.org/isRelatedTo} = "A pointer to another,
+	 *     somehow related product (or multiple products)." → WC
+	 *     **cross-sells** (`get_cross_sell_ids()`) — the cart-page
+	 *     complementary purchases.
+	 *   - {@link https://schema.org/isSimilarTo} = "A pointer to
+	 *     another, functionally similar product (or multiple products)."
+	 *     → WC **upsells** (`get_upsell_ids()`) — the
+	 *     premium / alternate version of the same item.
+	 *
+	 * **Reference-only emission**: each entry is `["@id" => permalink]`,
+	 * NOT a full Product block. Full blocks would 5×+ the markup size
+	 * for AI agents that already dereference `@id` to fetch the linked
+	 * product's own structured data.
+	 *
+	 * **Three guards**:
+	 *   1. Per-product visibility — IDs failing
+	 *      {@see WC_AI_Storefront::is_product_syndicated()} are dropped
+	 *      so excluded products aren't reachable via graph traversal
+	 *      either. Consistent with the rest of the plugin's
+	 *      visibility model.
+	 *   2. Deleted/trashed products — `wc_get_product()` returns
+	 *      `false`; we skip those IDs. WC doesn't auto-prune stale
+	 *      cross-sell/upsell IDs when a referenced product is deleted,
+	 *      so this case is common on older stores.
+	 *   3. Hard cap of {@see MAX_RELATED_PRODUCT_REFS} (10) per
+	 *      property. A merchant with 100 cross-sells doesn't need 100
+	 *      reference blocks per product page; agents only need a few
+	 *      signal-rich pointers.
+	 *
+	 * **Existing-key preservation**: if `$markup` already carries
+	 * `isRelatedTo` or `isSimilarTo` (set by WC core or another
+	 * plugin's filter at higher priority), don't overwrite. Same
+	 * deference pattern as the typed-property emission for
+	 * `color`/`size`/`material`/`pattern`.
+	 *
+	 * Runs before `maybe_convert_to_product_group()` so the references
+	 * survive the ProductGroup rewrite — Schema.org's `ProductGroup`
+	 * is a Product subtype, both properties are valid there.
+	 *
+	 * @param array      $markup   Markup array, modified by reference.
+	 * @param WC_Product $product  The product object.
+	 * @param array      $settings Plugin settings (passed to the
+	 *                             per-ID syndication check).
+	 */
+	private function add_related_products( array &$markup, $product, array $settings ): void {
+		$cross_sells = method_exists( $product, 'get_cross_sell_ids' )
+			? (array) $product->get_cross_sell_ids()
+			: array();
+		$upsells     = method_exists( $product, 'get_upsell_ids' )
+			? (array) $product->get_upsell_ids()
+			: array();
+
+		if ( ! isset( $markup['isRelatedTo'] ) ) {
+			$related = $this->build_related_product_refs( $cross_sells, $settings );
+			if ( ! empty( $related ) ) {
+				$markup['isRelatedTo'] = $related;
+			}
+		}
+		if ( ! isset( $markup['isSimilarTo'] ) ) {
+			$similar = $this->build_related_product_refs( $upsells, $settings );
+			if ( ! empty( $similar ) ) {
+				$markup['isSimilarTo'] = $similar;
+			}
+		}
+	}
+
+	/**
+	 * Build the `[{"@id": permalink}, ...]` array for a list of related
+	 * product IDs, applying syndication-visibility, deleted-product,
+	 * and cardinality-cap guards.
+	 *
+	 * Caller is responsible for the existing-markup-key guard — this
+	 * helper unconditionally builds, returns empty array on no
+	 * survivors.
+	 *
+	 * @param int[] $product_ids Candidate product IDs (raw from WC
+	 *                           `get_cross_sell_ids()` /
+	 *                           `get_upsell_ids()`).
+	 * @param array $settings    Plugin settings (passed through to the
+	 *                           per-ID syndication check).
+	 * @return array<int,array<string,string>> List of `["@id" => url]`
+	 *                                         entries, capped at
+	 *                                         MAX_RELATED_PRODUCT_REFS.
+	 */
+	private function build_related_product_refs( array $product_ids, array $settings ): array {
+		if ( empty( $product_ids ) || ! function_exists( 'wc_get_product' ) ) {
+			return array();
+		}
+		$refs = array();
+		foreach ( $product_ids as $candidate_id ) {
+			if ( count( $refs ) >= self::MAX_RELATED_PRODUCT_REFS ) {
+				break;
+			}
+			$candidate_id = (int) $candidate_id;
+			if ( $candidate_id <= 0 ) {
+				continue;
+			}
+			$candidate = wc_get_product( $candidate_id );
+			// `wc_get_product()` returns false for deleted/trashed IDs
+			// — WC doesn't auto-prune stale cross-sell/upsell IDs.
+			if ( ! is_object( $candidate ) ) {
+				continue;
+			}
+			if ( ! WC_AI_Storefront::is_product_syndicated( $candidate, $settings ) ) {
+				continue;
+			}
+			$permalink = method_exists( $candidate, 'get_permalink' )
+				? $candidate->get_permalink()
+				: '';
+			if ( ! is_string( $permalink ) || '' === $permalink ) {
+				continue;
+			}
+			$refs[] = array( '@id' => $permalink );
+		}
+		return $refs;
 	}
 
 	/**

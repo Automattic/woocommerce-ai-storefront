@@ -215,6 +215,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( $overrides['children'] ?? [] );
 		$product->shouldReceive( 'get_sku' )
 			->andReturn( $overrides['sku'] ?? '' );
+		$product->shouldReceive( 'get_cross_sell_ids' )
+			->andReturn( $overrides['cross_sell_ids'] ?? [] );
+		$product->shouldReceive( 'get_upsell_ids' )
+			->andReturn( $overrides['upsell_ids'] ?? [] );
 		return $product;
 	}
 
@@ -847,6 +851,226 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 'Product', $result['@type'] );
 		$this->assertArrayNotHasKey( 'hasVariant', $result );
+	}
+
+	// ------------------------------------------------------------------
+	// add_related_products — Schema.org isRelatedTo (cross-sells) and
+	// isSimilarTo (upsells). Reference-only (`@id` URL) emission, not
+	// full Product blocks. Three guards: syndication visibility,
+	// deleted-product skip, hard cap of MAX_RELATED_PRODUCT_REFS.
+	// (#335)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Build a minimal WC_Product mock for use as the *target* of a
+	 * cross-sell / upsell pointer. Tests stub `wc_get_product()` to
+	 * return mocks built by this helper. Visibility (in
+	 * `is_product_syndicated()` terms) is controlled by the test's
+	 * `WC_AI_Storefront::$test_settings` rather than per-mock state —
+	 * see the syndication-exclusion tests below for the
+	 * `selected_products` allow-list pattern.
+	 */
+	private function make_related_target(
+		int $id,
+		string $permalink
+	): Mockery\MockInterface {
+		$mock = Mockery::mock( 'WC_Product' );
+		$mock->shouldReceive( 'get_id' )->andReturn( $id );
+		$mock->shouldReceive( 'get_permalink' )->andReturn( $permalink );
+		return $mock;
+	}
+
+	public function test_no_cross_sells_emits_no_is_related_to(): void {
+		$product = $this->make_product();
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertArrayNotHasKey( 'isRelatedTo', $result );
+	}
+
+	public function test_no_upsells_emits_no_is_similar_to(): void {
+		$product = $this->make_product();
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertArrayNotHasKey( 'isSimilarTo', $result );
+	}
+
+	public function test_cross_sells_emit_is_related_to_with_at_id_shape(): void {
+		// Schema.org isRelatedTo = "loosely related"; WC cross-sells =
+		// cart-page complementary purchases. Each entry is `@id`-only
+		// so AI agents dereference to the linked product's own block.
+		$product = $this->make_product( [ 'cross_sell_ids' => array( 201, 202 ) ] );
+
+		$t201 = $this->make_related_target( 201, 'https://example.com/product/coat/' );
+		$t202 = $this->make_related_target( 202, 'https://example.com/product/scarf/' );
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $id ) => 201 === (int) $id ? $t201 : ( 202 === (int) $id ? $t202 : false )
+		);
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame(
+			array(
+				array( '@id' => 'https://example.com/product/coat/' ),
+				array( '@id' => 'https://example.com/product/scarf/' ),
+			),
+			$result['isRelatedTo']
+		);
+	}
+
+	public function test_upsells_emit_is_similar_to_with_at_id_shape(): void {
+		// Schema.org isSimilarTo = "functionally similar"; WC upsells =
+		// premium / alternate version of the same item.
+		$product = $this->make_product( [ 'upsell_ids' => array( 301, 302 ) ] );
+
+		$t301 = $this->make_related_target( 301, 'https://example.com/product/sweater-premium/' );
+		$t302 = $this->make_related_target( 302, 'https://example.com/product/sweater-deluxe/' );
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $id ) => 301 === (int) $id ? $t301 : ( 302 === (int) $id ? $t302 : false )
+		);
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame(
+			array(
+				array( '@id' => 'https://example.com/product/sweater-premium/' ),
+				array( '@id' => 'https://example.com/product/sweater-deluxe/' ),
+			),
+			$result['isSimilarTo']
+		);
+	}
+
+	public function test_cross_sell_excluded_from_syndication_is_filtered_out(): void {
+		// Visibility consistency: cross-sells that fail
+		// is_product_syndicated() must not appear in isRelatedTo, or
+		// excluded products are reachable via graph traversal.
+		// Use `selected` mode with an allow-list that excludes 402 to
+		// drive `is_product_syndicated()` to return false for it.
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'selected',
+			'selected_products'      => array( 42, 401 ),  // parent (42) + visible cross-sell (401)
+		);
+		$product = $this->make_product( [ 'cross_sell_ids' => array( 401, 402 ) ] );
+
+		$t_visible = $this->make_related_target( 401, 'https://example.com/product/visible/' );
+		$t_hidden  = $this->make_related_target( 402, 'https://example.com/product/hidden/' );
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $id ) => 401 === (int) $id ? $t_visible : ( 402 === (int) $id ? $t_hidden : false )
+		);
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame(
+			array( array( '@id' => 'https://example.com/product/visible/' ) ),
+			$result['isRelatedTo']
+		);
+	}
+
+	public function test_upsell_excluded_from_syndication_is_filtered_out(): void {
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'selected',
+			'selected_products'      => array( 42, 501 ),  // parent (42) + visible upsell (501)
+		);
+		$product = $this->make_product( [ 'upsell_ids' => array( 501, 502 ) ] );
+
+		$t_visible = $this->make_related_target( 501, 'https://example.com/product/v/' );
+		$t_hidden  = $this->make_related_target( 502, 'https://example.com/product/h/' );
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $id ) => 501 === (int) $id ? $t_visible : ( 502 === (int) $id ? $t_hidden : false )
+		);
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame(
+			array( array( '@id' => 'https://example.com/product/v/' ) ),
+			$result['isSimilarTo']
+		);
+	}
+
+	public function test_deleted_cross_sell_product_is_skipped(): void {
+		// `wc_get_product()` returns false for deleted/trashed IDs.
+		// WC doesn't auto-prune stale cross-sell IDs when the
+		// referenced product is deleted, so this case is common on
+		// older stores.
+		$product = $this->make_product( [ 'cross_sell_ids' => array( 601, 9999 ) ] );
+
+		$alive = $this->make_related_target( 601, 'https://example.com/product/alive/' );
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $id ) => 601 === (int) $id ? $alive : false
+		);
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertSame(
+			array( array( '@id' => 'https://example.com/product/alive/' ) ),
+			$result['isRelatedTo']
+		);
+	}
+
+	public function test_existing_is_related_to_is_not_overwritten(): void {
+		// If WC core or another plugin's filter already set
+		// isRelatedTo at higher priority, defer — same pattern as the
+		// typed-property emission for color/size/material/pattern.
+		$product = $this->make_product( [ 'cross_sell_ids' => array( 701 ) ] );
+
+		$markup = array(
+			'isRelatedTo' => array( array( '@id' => 'https://upstream.example.com/p/' ) ),
+		);
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame(
+			array( array( '@id' => 'https://upstream.example.com/p/' ) ),
+			$result['isRelatedTo']
+		);
+	}
+
+	public function test_existing_is_similar_to_is_not_overwritten(): void {
+		$product = $this->make_product( [ 'upsell_ids' => array( 801 ) ] );
+
+		$markup = array(
+			'isSimilarTo' => array( array( '@id' => 'https://upstream.example.com/p/' ) ),
+		);
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame(
+			array( array( '@id' => 'https://upstream.example.com/p/' ) ),
+			$result['isSimilarTo']
+		);
+	}
+
+	public function test_related_products_capped_at_max_refs_constant(): void {
+		// Hard cap of 10 entries per property prevents markup blowout
+		// on stores with very large cross-sell lists. Pass 12 IDs;
+		// expect 10 in the output.
+		$ids = range( 1001, 1012 );
+		$product = $this->make_product( [ 'cross_sell_ids' => $ids ] );
+
+		$targets = array();
+		foreach ( $ids as $id ) {
+			$targets[ $id ] = $this->make_related_target(
+				$id,
+				'https://example.com/product/p' . $id . '/'
+			);
+		}
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $id ) => $targets[ (int) $id ] ?? false
+		);
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$this->assertCount( 10, $result['isRelatedTo'] );
+		// First 10 in input order.
+		$this->assertSame(
+			'https://example.com/product/p1001/',
+			$result['isRelatedTo'][0]['@id']
+		);
+		$this->assertSame(
+			'https://example.com/product/p1010/',
+			$result['isRelatedTo'][9]['@id']
+		);
 	}
 
 	// ------------------------------------------------------------------

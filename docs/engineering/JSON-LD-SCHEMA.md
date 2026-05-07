@@ -294,6 +294,36 @@ Worked example (V-Neck T-Shirt with 3 variations across color and size):
 
 Implementation: [`maybe_convert_to_product_group()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) (parent-level rewrite) and [`build_variant_entry()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) (per-variant block). Type registration: [`allow_product_group_type()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php).
 
+### `isRelatedTo` and `isSimilarTo` (cross-sells / upsells)
+
+Schema.org pointers to other products on the same store. AI agents use these as the product graph for "people also bought" / "similar items" reasoning.
+
+- [`isRelatedTo`](https://schema.org/isRelatedTo) — *"a pointer to another, somehow related product."* Sourced from WC **cross-sells** (`get_cross_sell_ids()`) — the cart-page complementary purchases the merchant configured.
+- [`isSimilarTo`](https://schema.org/isSimilarTo) — *"a pointer to another, functionally similar product."* Sourced from WC **upsells** (`get_upsell_ids()`) — the premium / alternate version of the same item.
+
+Each entry is a Schema.org `@id` reference, not a full Product block:
+
+```jsonc
+"isRelatedTo": [
+  { "@id": "https://example.com/product/coat/" },
+  { "@id": "https://example.com/product/scarf/" }
+]
+```
+
+Reference-only emission keeps the markup compact — agents dereference `@id` to fetch the linked product's own structured-data block. Full Product blocks would 5×+ the page weight on stores with rich cross-sell graphs.
+
+**Three guards apply to every entry**:
+
+1. **Visibility consistency** — IDs that fail [`is_product_syndicated()`](../../includes/class-wc-ai-storefront.php) are dropped, so excluded products aren't reachable via graph traversal either. Honors `selected` / `by_taxonomy` modes the same way the per-product gate does.
+2. **Deleted-product skip** — `wc_get_product()` returns `false` for trashed/deleted IDs; we drop those silently. WC doesn't auto-prune stale cross-sell IDs when a referenced product is deleted, so this case is common on long-lived stores.
+3. **Hard cap of 10 entries per property** — a merchant with 100 cross-sells gets the first 10 (in the order WC returned them). The cap is a private constant `MAX_RELATED_PRODUCT_REFS`, not a filter; agents need a few signal-rich pointers, not an exhaustive list.
+
+**Existing-key preservation**: if `$markup` already carries `isRelatedTo` or `isSimilarTo` (set by WC core or another plugin's filter at higher priority), defer — same pattern as the typed-property emission for `color`/`size`/`material`/`pattern`.
+
+The references survive the `ProductGroup` conversion: `add_related_products()` runs before `maybe_convert_to_product_group()`, and Schema.org's `ProductGroup` is a `Product` subtype where both properties are valid.
+
+Implementation: [`add_related_products()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php).
+
 ### `additionalProperty` (attributes)
 
 Array of `PropertyValue` entries for product attributes that aren't represented as typed Schema.org properties on this pass.
