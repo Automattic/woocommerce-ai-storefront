@@ -1475,10 +1475,14 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_variant_options_id_emitted_from_term_slug_map(): void {
 		// Variants get `selected_option.id` from the threaded
-		// `term_slug_map` built once per product. The map sources
-		// slugs from the parent's `attributes[].terms[].{name,slug}`
-		// and is keyed by axis label → value label → slug, plus
-		// `__tax__` sentinel for the axis taxonomy.
+		// `term_slug_map` built once per product. Map shape:
+		//   [axis_label => {
+		//     taxonomy: 'pa_color',
+		//     slugs:    [value_label => slug, ...],
+		//   }]
+		// The structured per-axis shape (vs. an earlier sentinel-key
+		// design) eliminates collision risk with merchant-defined
+		// term names.
 		$wc_product = [
 			'id'         => 999,
 			'name'       => 'Tee',

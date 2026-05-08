@@ -299,35 +299,41 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * Build the per-axis term-slug lookup map for `selected_option.id`
 	 * emission on each variant.
 	 *
-	 * Shape: `[axis_label => [value_label => slug, '__tax__' => taxonomy]]`.
+	 * Shape: `[axis_label => ['taxonomy' => string, 'slugs' => [label => slug]]]`.
 	 * Example for a Color/Size product:
 	 *
 	 *   [
 	 *     'Color' => [
-	 *       'Black'  => 'black',
-	 *       'Green'  => 'green',
-	 *       '__tax__' => 'pa_color',
+	 *       'taxonomy' => 'pa_color',
+	 *       'slugs'    => [ 'Black' => 'black', 'Green' => 'green' ],
 	 *     ],
 	 *     'Size'  => [
-	 *       'M' => 'm',
-	 *       'L' => 'l',
-	 *       '__tax__' => 'pa_size',
+	 *       'taxonomy' => 'pa_size',
+	 *       'slugs'    => [ 'M' => 'm', 'L' => 'l' ],
 	 *     ],
 	 *   ]
 	 *
 	 * Only included when the attribute taxonomy starts with `pa_` (i.e.
-	 * a real WC taxonomy with stable slugs). Custom inline attributes
-	 * are excluded — they have no canonical identifier, so the variant
-	 * translator omits `selected_option.id` for them per spec.
+	 * a real WC taxonomy with stable slugs). Excludes:
+	 *   - Custom inline attributes (no taxonomy) — no canonical id
+	 *     available; variant translator omits `selected_option.id`.
+	 *   - Third-party non-`pa_` product-attribute taxonomies (e.g.
+	 *     `pwb-brand` from Perfect Brands, WCFM brand attributes) —
+	 *     these don't follow WC's `wc_attribute_taxonomy_name()`
+	 *     convention, so we can't compose a stable
+	 *     `<taxonomy>:<slug>` identifier that downstream agents would
+	 *     reliably interpret. Same graceful-degradation as custom
+	 *     inline attributes: emit `label`, omit `id`.
 	 *
-	 * The `__tax__` sentinel key is consumed by the variant translator's
-	 * `lookup_option_value_id()` helper to compose the spec-format
-	 * `<taxonomy>:<slug>` id string. The sentinel is illegal as a real
-	 * value label (term names cannot start/end with `__`); using a
-	 * label-namespace sentinel avoids adding a parallel data structure.
+	 * The structured `{taxonomy, slugs}` shape (vs. the earlier
+	 * `__tax__` sentinel-key approach) eliminates an entire collision
+	 * class — WordPress doesn't restrict double-underscore in term
+	 * *names* (only slugs go through `sanitize_title`), so a term
+	 * literally named `__tax__` would have overwritten a sentinel
+	 * key. The parallel-arrays-per-axis approach is unambiguous.
 	 *
 	 * @param array<string, mixed> $wc_product
-	 * @return array<string, array<string, string>>
+	 * @return array<string, array{taxonomy: string, slugs: array<string, string>}>
 	 */
 	private static function build_term_slug_map( array $wc_product ): array {
 		$attributes = $wc_product['attributes'] ?? [];
@@ -343,6 +349,9 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			$axis_label = (string) ( $attribute['name'] ?? '' );
 			$taxonomy   = (string) ( $attribute['taxonomy'] ?? '' );
 			$terms      = $attribute['terms'] ?? [];
+			// Excludes custom inline attributes (no `taxonomy`) AND
+			// third-party non-`pa_` product-attribute taxonomies.
+			// See docblock above for the rationale.
 			if ( '' === $axis_label || '' === $taxonomy || ! str_starts_with( $taxonomy, 'pa_' ) ) {
 				continue;
 			}
@@ -350,7 +359,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				continue;
 			}
 
-			$entry = [ '__tax__' => $taxonomy ];
+			$slugs = [];
 			foreach ( $terms as $term ) {
 				if ( ! is_array( $term ) ) {
 					continue;
@@ -360,13 +369,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				if ( '' === $name || '' === $slug ) {
 					continue;
 				}
-				$entry[ $name ] = $slug;
+				$slugs[ $name ] = $slug;
 			}
 
-			// Skip axes whose terms all lacked usable name/slug pairs;
-			// the bare `__tax__` entry alone has no value.
-			if ( count( $entry ) > 1 ) {
-				$map[ $axis_label ] = $entry;
+			// Skip axes whose terms all lacked usable name/slug pairs.
+			if ( ! empty( $slugs ) ) {
+				$map[ $axis_label ] = [
+					'taxonomy' => $taxonomy,
+					'slugs'    => $slugs,
+				];
 			}
 		}
 		return $map;
@@ -894,9 +905,16 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			// Per `option_value.json` (UCP 2026-04-08): required `label`,
 			// optional `id`. We emit `id` only for taxonomy-backed
 			// attributes (slug starts with `pa_`) where each term has
-			// a stable URL-safe slug. Custom inline attributes have no
-			// taxonomy registration and no canonical identifier — omit
-			// `id` for them per the spec's optional-field semantics.
+			// a stable URL-safe slug. Excluded from `id` emission:
+			//   - Custom inline attributes (no taxonomy registration,
+			//     no canonical identifier).
+			//   - Third-party non-`pa_` product-attribute taxonomies
+			//     (e.g. `pwb-brand` from Perfect Brands, WCFM brand
+			//     attributes) — these don't follow WC's
+			//     `wc_attribute_taxonomy_name()` convention, so we
+			//     can't compose a stable `<taxonomy>:<slug>` agents
+			//     can rely on. Same graceful-degradation as custom
+			//     inline attributes: emit `label`, omit `id`.
 			//
 			// `id` format: `<taxonomy>:<slug>` (e.g. `pa_color:black`).
 			// Colon separator is unambiguous because both halves are
