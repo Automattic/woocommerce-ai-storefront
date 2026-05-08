@@ -16,7 +16,8 @@
         "phpstan/phpstan": "^2.1",
         "szepeviktor/phpstan-wordpress": "^2.0",
         "wp-coding-standards/wpcs": "*",
-        "dealerdirect/phpcodesniffer-composer-installer": "*"
+        "dealerdirect/phpcodesniffer-composer-installer": "*",
+        "opis/json-schema": "^2.6"
     },
     "scripts": {
         "test": "phpunit",
