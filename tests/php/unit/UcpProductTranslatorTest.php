@@ -1530,6 +1530,104 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	// ------------------------------------------------------------------
+	// Hierarchical category strings (#350)
+	// ------------------------------------------------------------------
+
+	public function test_category_value_uses_hierarchy_path_when_supplied(): void {
+		// Per UCP `category.json` (release/2026-04-08), hierarchy is
+		// encoded as a `>`-delimited string in the `value` field. When
+		// the controller pre-builds a path map (e.g.
+		// `[42 => "Clothing > Tshirts"]`), the translator emits the
+		// path string instead of the bare leaf name.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['categories'] = [
+			[ 'id' => 42, 'name' => 'Tshirts', 'slug' => 'tshirts', 'parent' => 41 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$fixture,
+			[],
+			null,
+			[ 42 => 'Clothing > Tshirts' ]
+		);
+
+		$this->assertSame(
+			[ [ 'value' => 'Clothing > Tshirts', 'taxonomy' => 'merchant' ] ],
+			$result['categories']
+		);
+	}
+
+	public function test_category_value_falls_back_to_bare_name_when_path_missing(): void {
+		// Graceful degradation: when the path map doesn't have an entry
+		// for a category id (controller couldn't fetch its parents,
+		// dispatch failed, etc.), emit the bare leaf name.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['categories'] = [
+			[ 'id' => 99, 'name' => 'OrphanCat', 'slug' => 'orphancat', 'parent' => 0 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$fixture,
+			[],
+			null,
+			[ /* no entry for 99 */ ]
+		);
+
+		$this->assertSame(
+			[ [ 'value' => 'OrphanCat', 'taxonomy' => 'merchant' ] ],
+			$result['categories']
+		);
+	}
+
+	public function test_category_value_unchanged_when_path_map_omitted(): void {
+		// Backwards-compat: when no $category_paths is passed (legacy
+		// callers), emit the bare leaf name as before. Strict shape
+		// preserved.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['categories'] = [
+			[ 'id' => 5, 'name' => 'Widgets', 'slug' => 'widgets', 'parent' => 0 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame(
+			[ [ 'value' => 'Widgets', 'taxonomy' => 'merchant' ] ],
+			$result['categories']
+		);
+	}
+
+	public function test_brand_categories_stay_flat_regardless_of_path_map(): void {
+		// WC `product_brand` taxonomy has no native hierarchy — brands
+		// stay flat even when the controller supplies a path map.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['brands']     = [
+			[ 'id' => 70, 'name' => 'NorthPeak', 'slug' => 'northpeak' ],
+		];
+		$fixture['categories'] = [
+			[ 'id' => 42, 'name' => 'Tshirts', 'slug' => 'tshirts', 'parent' => 41 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$fixture,
+			[],
+			null,
+			[ 42 => 'Clothing > Tshirts', 70 => 'Should-Not-Be-Used' ]
+		);
+
+		// Two categories: hierarchical merchant + flat brand.
+		$this->assertCount( 2, $result['categories'] );
+		$this->assertSame(
+			[ 'value' => 'Clothing > Tshirts', 'taxonomy' => 'merchant' ],
+			$result['categories'][0]
+		);
+		// Brand entry: bare name even though path map has key 70.
+		$this->assertSame(
+			[ 'value' => 'NorthPeak', 'taxonomy' => 'brand' ],
+			$result['categories'][1]
+		);
+	}
+
 	public function test_variant_options_id_omitted_when_term_label_missing_from_map(): void {
 		// String-path variation references a value not in the map
 		// (e.g. label-case mismatch, custom-per-variation override).

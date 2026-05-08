@@ -74,12 +74,24 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *                                                        passes it in — keeps the translator
 	 *                                                        WP-unaware. See `extract_variants()`
 	 *                                                        for where the seller lands.
+	 * @param array<int, string>|null          $category_paths Optional per-category-id
+	 *                                                        `>`-delimited hierarchy strings
+	 *                                                        (e.g. `[42 => "Clothing > Tshirts"]`).
+	 *                                                        Pre-built by the controller from
+	 *                                                        `/products/categories` once per
+	 *                                                        request and threaded through;
+	 *                                                        keeps the translator WP-unaware.
+	 *                                                        When supplied, emitted
+	 *                                                        `category.value` is the path
+	 *                                                        string instead of the bare name.
+	 *                                                        Per UCP `category.json` (2026-04-08).
 	 * @return array<string, mixed>                           UCP product shape.
 	 */
 	public static function translate(
 		array $wc_product,
 		array $wc_variations = array(),
-		?array $seller = null
+		?array $seller = null,
+		?array $category_paths = null
 	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
@@ -158,7 +170,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// made `filters.tags[]` vs `filters.category[]` feel
 		// asymmetric and forced agents to walk the full categories
 		// array to discover tags. Splitting matches the spec exactly.
-		$taxonomies = self::extract_taxonomies( $wc_product );
+		$taxonomies = self::extract_taxonomies( $wc_product, $category_paths );
 		if ( ! empty( $taxonomies['categories'] ) ) {
 			$product['categories'] = $taxonomies['categories'];
 		}
@@ -747,23 +759,55 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *
 	 * Brands surface via `brands` on the Store API product response
 	 * when the merchant has the taxonomy registered. Shape is
-	 * `[{id, name, slug}, ...]` — mechanical extraction.
+	 * `[{id, name, slug}, ...]` — mechanical extraction. **Brands
+	 * stay flat** even when `$category_paths` is supplied — the WC
+	 * `product_brand` taxonomy has no native hierarchy in the data
+	 * model, and the spec convention for `taxonomy:"brand"` entries
+	 * is a flat brand label.
 	 *
-	 * @param array<string, mixed> $wc_product
+	 * Hierarchical category emission (#350): when `$category_paths`
+	 * is supplied, replace each merchant category's `value` with the
+	 * pre-computed `>`-delimited path string (e.g.
+	 * `"Clothing > Tshirts"` for a child category). Categories
+	 * without a map entry fall back to the bare `name` for graceful
+	 * degradation. Per UCP `category.json` (release/2026-04-08), the
+	 * canonical hierarchy encoding is a `>`-delimited string in the
+	 * `value` field — there is no `parent` / `path` / `breadcrumbs`
+	 * structured field.
+	 *
+	 * @param array<string, mixed>          $wc_product
+	 * @param array<int, string>|null       $category_paths Per-category-id `>`-delimited
+	 *                                                      hierarchy strings, pre-built by
+	 *                                                      the controller. Map keyed by
+	 *                                                      WC term ID. Null means no
+	 *                                                      hierarchy data available — emit
+	 *                                                      bare names (legacy behavior).
 	 * @return array{categories: array<int, array{value: string, taxonomy: string}>, tags: array<int, string>}
 	 */
-	private static function extract_taxonomies( array $wc_product ): array {
+	private static function extract_taxonomies(
+		array $wc_product,
+		?array $category_paths = null
+	): array {
 		$categories = [];
 		$tags       = [];
 
 		if ( ! empty( $wc_product['categories'] ) && is_array( $wc_product['categories'] ) ) {
 			foreach ( $wc_product['categories'] as $cat ) {
-				if ( is_array( $cat ) && ! empty( $cat['name'] ) ) {
-					$categories[] = [
-						'value'    => (string) $cat['name'],
-						'taxonomy' => 'merchant',
-					];
+				if ( ! is_array( $cat ) || empty( $cat['name'] ) ) {
+					continue;
 				}
+				$cat_id = (int) ( $cat['id'] ?? 0 );
+				$value  = (string) $cat['name'];
+				if ( null !== $category_paths && $cat_id > 0 && isset( $category_paths[ $cat_id ] ) ) {
+					$path = (string) $category_paths[ $cat_id ];
+					if ( '' !== $path ) {
+						$value = $path;
+					}
+				}
+				$categories[] = [
+					'value'    => $value,
+					'taxonomy' => 'merchant',
+				];
 			}
 		}
 
@@ -778,6 +822,9 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		if ( ! empty( $wc_product['brands'] ) && is_array( $wc_product['brands'] ) ) {
 			foreach ( $wc_product['brands'] as $brand ) {
 				if ( is_array( $brand ) && ! empty( $brand['name'] ) ) {
+					// Brands stay flat — no `$category_paths` lookup
+					// (WC `product_brand` taxonomy has no native
+					// hierarchy in the data model).
 					$categories[] = [
 						'value'    => (string) $brand['name'],
 						'taxonomy' => 'brand',
