@@ -267,9 +267,19 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 
 		if ( is_array( $attributes ) ) {
 			foreach ( $attributes as $attribute ) {
-				if ( is_array( $attribute ) && ! empty( $attribute['value'] ) ) {
-					$values[] = (string) $attribute['value'];
+				if ( ! is_array( $attribute ) ) {
+					continue;
 				}
+				$value = $attribute['value'] ?? '';
+				// Strict empty-string check rather than `! empty()` —
+				// `! empty()` treats string `"0"` as empty, which would
+				// drop a legitimate `Size: 0` value from the title while
+				// `extract_options()` keeps it (the two helpers must
+				// agree on what counts as a value).
+				if ( '' === $value ) {
+					continue;
+				}
+				$values[] = (string) $value;
 			}
 		}
 

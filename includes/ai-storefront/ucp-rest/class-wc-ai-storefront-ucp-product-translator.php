@@ -263,13 +263,19 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	}
 
 	/**
-	 * Pull the human-readable attribute names from the parent product's
-	 * Store API `attributes[]` array.
+	 * Pull the human-readable names of the parent's variation-axis
+	 * attributes from the Store API `attributes[]` array.
 	 *
 	 * Used by `extract_variants()` to give the variant translator the
 	 * anchor list it needs for parsing each variation's formatted
-	 * `variation` string. Returns an empty array when the parent
-	 * has no attributes (e.g. a misconfigured variable product) — the
+	 * `variation` string. Only attributes flagged
+	 * `has_variations: true` make it into the anchor list — purely
+	 * informational attributes (Material, Brand, Origin) never appear
+	 * in a variation string, so including them would just bloat the
+	 * regex with no-op anchors.
+	 *
+	 * Returns an empty array when the parent has no variation
+	 * attributes (e.g. a misconfigured variable product) — the
 	 * translator falls back to a naive split in that case.
 	 *
 	 * @param array<string, mixed> $wc_product
@@ -284,6 +290,14 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		$names = [];
 		foreach ( $attributes as $attribute ) {
 			if ( ! is_array( $attribute ) ) {
+				continue;
+			}
+			// Strict `=== true` rather than `! empty()` mirrors the
+			// classifier in `extract_classified_attributes()` — `empty()`
+			// would treat the literal string `"false"` as truthy
+			// (PHP footgun), misclassifying an informational attribute
+			// as a variation axis.
+			if ( true !== ( $attribute['has_variations'] ?? false ) ) {
 				continue;
 			}
 			$name = $attribute['name'] ?? '';

@@ -853,6 +853,32 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'options', $result );
 	}
 
+	public function test_translate_preserves_zero_string_value_in_title_and_options(): void {
+		// Regression guard: a value of literal "0" (e.g. a "Size: 0"
+		// shoe variation, or a "Quantity: 0" sample-pack) is a valid
+		// merchant input. PHP's `! empty("0")` is true — using
+		// `! empty()` to gate the title path while options uses strict
+		// `'' === ` would silently drop the value from the title only,
+		// emitting "Leather Shoes" instead of "0" while options
+		// correctly carries it. Lock in that both helpers agree.
+		$fixture = [
+			'id'         => 999,
+			'name'       => 'Sample',
+			'prices'     => [ 'price' => '500', 'currency_code' => 'USD' ],
+			'attributes' => [
+				[ 'name' => 'Size', 'value' => '0' ],
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertSame( '0', $result['title'] );
+		$this->assertSame(
+			[ [ 'attribute' => 'Size', 'value' => '0' ] ],
+			$result['options']
+		);
+	}
+
 	public function test_translate_attributes_array_takes_precedence_over_variation_string(): void {
 		// Defensive ordering: if both are populated (e.g. a future Store
 		// API version or a custom plugin backfilling the array), the
