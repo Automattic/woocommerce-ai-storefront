@@ -3185,13 +3185,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					? (int) ( $ref['id'] ?? 0 )
 					: (int) $ref;
 				if ( $variation_id > 0 ) {
-					$expected_ids[]                    = $variation_id;
-					$expected_set[ $variation_id ]     = true;
+					$expected_ids[]                = $variation_id;
+					$expected_set[ $variation_id ] = true;
 				}
 			}
 
 			if ( ! empty( $expected_ids ) ) {
-				$expected_per_parent[ $parent_id ]     = $expected_ids;
+				$expected_per_parent[ $parent_id ] = $expected_ids;
 				// Per-parent associative `[vid => true]` map for O(1)
 				// `isset()` membership checks at accumulation + binning
 				// time. Building this once here costs O(cap) per parent
