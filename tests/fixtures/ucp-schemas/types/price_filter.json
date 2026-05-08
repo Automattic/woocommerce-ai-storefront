@@ -2,22 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ucp.dev/schemas/shopping/types/price_filter.json",
   "title": "Price Filter",
-  "description": "Filter products by price range. Either bound is optional; specifying both narrows to the inclusive [min, max] range.",
+  "description": "Price range filter denominated in context.currency. When context.currency matches the presentment currency, businesses apply the filter directly. When it differs, businesses SHOULD convert filter values to the presentment currency before applying; if conversion is not supported, businesses MAY ignore the filter and SHOULD indicate this via a message. When context.currency is absent, filter denomination is ambiguous and businesses MAY ignore it.",
   "type": "object",
   "properties": {
     "min": {
       "$ref": "amount.json",
-      "description": "Inclusive lower bound for the product's price, in ISO 4217 minor units."
+      "description": "Minimum price in ISO 4217 minor units."
     },
     "max": {
       "$ref": "amount.json",
-      "description": "Inclusive upper bound for the product's price, in ISO 4217 minor units."
-    },
-    "currency": {
-      "type": "string",
-      "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP'). When omitted, the merchant's default currency is assumed.",
-      "pattern": "^[A-Z]{3}$"
+      "description": "Maximum price in ISO 4217 minor units."
     }
-  },
-  "additionalProperties": true
+  }
 }
