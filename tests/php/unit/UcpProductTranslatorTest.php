@@ -774,8 +774,8 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$fixture['variations']
 		);
 
-		$this->assertSame( 1000, $result['variants'][0]['list_price']['amount'] );
-		$this->assertSame( 1500, $result['variants'][1]['list_price']['amount'] );
+		$this->assertSame( 1000, $result['variants'][0]['price']['amount'] );
+		$this->assertSame( 1500, $result['variants'][1]['price']['amount'] );
 	}
 
 	public function test_variable_product_variants_build_title_from_attributes(): void {

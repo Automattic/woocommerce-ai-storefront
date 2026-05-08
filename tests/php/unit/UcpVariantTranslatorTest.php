@@ -156,13 +156,14 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$this->variation_fixture()
 		);
 
-		$this->assertSame( 12000, $result['list_price']['amount'] );
-		$this->assertEquals( 'USD', $result['list_price']['currency'] );
-		// Hard-cut regression guard for the 2.0.0 rename — if a future
-		// change re-introduces the old `price` key alongside (or
-		// instead of) `list_price`, this assertion fires and forces a
-		// conscious re-decision.
-		$this->assertArrayNotHasKey( 'price', $result );
+		$this->assertSame( 12000, $result['price']['amount'] );
+		$this->assertEquals( 'USD', $result['price']['currency'] );
+		// Hard-cut regression guard for the 0.12.0 rename — UCP spec
+		// names the active-price field `price`. If a future change
+		// re-introduces `list_price` carrying the active price (its
+		// historical 0.11.x meaning), this assertion fires.
+		// `list_price` is now reserved for strikethrough — see Commit 2.
+		$this->assertArrayNotHasKey( 'list_price', $result );
 	}
 
 	public function test_translate_includes_sku_when_present(): void {
@@ -242,8 +243,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$this->simple_product_fixture()
 		);
 
-		$this->assertSame( 500, $result['list_price']['amount'] );
-		$this->assertEquals( 'USD', $result['list_price']['currency'] );
+		$this->assertSame( 500, $result['price']['amount'] );
+		$this->assertEquals( 'USD', $result['price']['currency'] );
 	}
 
 	public function test_synthesize_default_includes_sku_when_present(): void {
@@ -347,7 +348,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'compare_at_price', $result );
 		$this->assertSame( 2000, $result['compare_at_price']['amount'] );
 		$this->assertSame( 'USD', $result['compare_at_price']['currency'] );
-		$this->assertSame( 1500, $result['list_price']['amount'] );
+		$this->assertSame( 1500, $result['price']['amount'] );
 	}
 
 	public function test_translate_omits_compare_at_price_when_not_on_sale(): void {
@@ -729,8 +730,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $fixture );
 
-		$this->assertSame( 5000, $result['list_price']['amount'] );
-		$this->assertEquals( 'JPY', $result['list_price']['currency'] );
+		$this->assertSame( 5000, $result['price']['amount'] );
+		$this->assertEquals( 'JPY', $result['price']['currency'] );
 	}
 
 	// ------------------------------------------------------------------

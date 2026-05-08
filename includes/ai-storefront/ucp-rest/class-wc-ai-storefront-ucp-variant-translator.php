@@ -8,13 +8,13 @@
  *
  *     source/schemas/shopping/types/variant.json
  *
- * Required UCP fields: id, title, description, list_price.
- * (`list_price` replaced the 1.x `price` field in 2.0.0 — it carries
- * the current/cart amount from WC's `prices.price`; on-sale variants
- * additionally emit `compare_at_price` from `prices.regular_price`
- * for strikethrough rendering.) Variants also carry `options`
- * (selected option values like "Color: Blue, Size: Large"),
- * `availability`, and optional `sku`, `barcodes`, `media`.
+ * Required UCP fields: id, title, description, price.
+ * (`price` carries the current/cart amount from WC's `prices.price`;
+ * on-sale variants additionally emit the optional `list_price` from
+ * `prices.regular_price` for strikethrough rendering.) Variants also
+ * carry `options` (selected option values like "Color: Blue,
+ * Size: Large"), `availability`, and optional `sku`, `barcodes`,
+ * `media`.
  *
  * @package WooCommerce_AI_Storefront
  * @since 1.3.0
@@ -93,16 +93,13 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			'id'          => self::VARIANT_ID_PREFIX . $id,
 			'title'       => self::extract_title( $wc_variation, $pre_parsed_pairs ),
 			'description' => self::extract_description( $wc_variation ),
-			// `list_price` is the UCP core name for the current
-			// purchasable price — sourced from WC's `prices.price`
-			// (the active amount that lands in the cart, which on a
-			// sale variant is the discounted price, not the regular
-			// one). Previously emitted as `price`; renamed in 2.0.0
-			// for spec parity. On-sale variants additionally emit
-			// `compare_at_price` as the pre-discount amount from
-			// WC's `prices.regular_price`, letting agents render
-			// strike-through pricing ("was $X, now $Y").
-			'list_price'  => self::extract_price( $wc_variation ),
+			// `price` is the UCP-required field for the current
+			// purchasable amount — sourced from WC's `prices.price`,
+			// which is the active value (sale price when on_sale, else
+			// regular). Strike-through display lives in the optional
+			// `list_price` field per `variant.json` (see Commit 2 of
+			// the 0.12.0 compliance pass for that rename).
+			'price'       => self::extract_price( $wc_variation ),
 		];
 
 		// Structured options — the {attribute, value} pairs that
@@ -210,9 +207,8 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			'id'          => self::VARIANT_ID_PREFIX . $id . self::DEFAULT_VARIANT_SUFFIX,
 			'title'       => $wc_product['name'] ?? '',
 			'description' => [ 'plain' => '' ],
-			// `list_price` (renamed from `price` in 2.0.0) — see the
-			// translate() method above for the naming rationale.
-			'list_price'  => self::extract_price( $wc_product ),
+			// `price` — UCP-required active price. See translate() above.
+			'price'       => self::extract_price( $wc_product ),
 		];
 
 		// Sale pricing carries through the simple-product path too
