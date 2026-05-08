@@ -388,7 +388,7 @@ Emitting `OnlineStore` for everything would mis-classify a meaningful fraction o
 
 The trade-off: `currenciesAccepted` is defined on `OnlineStore` per the Schema.org spec, not on the `OnlineBusiness` parent — and Schema.org property inheritance flows parent → child only, so the parent does NOT pick up subtype-scoped properties from a child. We continue to emit `currenciesAccepted` on `OnlineBusiness` despite the domain mismatch as an **intentional non-domain pairing**: most consumers (AI agents, search crawlers) parse the property regardless of the enclosing type, and the machine-readable currency signal is too useful to drop. Strict validators may emit a non-fatal "unrecognized property for this type" warning — accepted tradeoff. `hasOfferCatalog`, `name`, `description`, `url`, and `potentialAction` are all defined on `Organization` (or `Thing`) and apply cleanly to `OnlineBusiness` via standard parent-to-child inheritance.
 
-> **Status:** Implemented in PR #334 (bundled with #337 phase 1 in PR-C). The [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) method now emits `@type: OnlineBusiness`.
+> **Status:** Resolved (issues [#334](https://github.com/Automattic/woocommerce-ai-storefront/issues/334) and [#337](https://github.com/Automattic/woocommerce-ai-storefront/issues/337) phase 1, bundled in one PR). The [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) method now emits `@type: OnlineBusiness`.
 
 ---
 

@@ -3115,34 +3115,66 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_org_level_and_per_offer_return_policy_blocks_are_identical_for_same_config(): void {
-		// Shared-builder regression guard for the `private`→`protected`
-		// refactor in commit (a) of PR-C. The Org-level call at
-		// `output_store_jsonld()` and the per-Offer call at
-		// `add_return_policy()` must both produce identical
-		// MerchantReturnPolicy block shapes for the same
-		// `$policy` + `$country` input. Anonymous subclass exposes the
-		// protected helper as public so the test can call it twice and
-		// `assertEquals` the result — pinning the shared-shape
-		// contract.
-		// phpcs:ignore Squiz.Commenting.ClassComment.Missing -- inline test fixture
-		$emitter = new class extends WC_AI_Storefront_JsonLd {
-			public function call_build( array $policy, string $country ): ?array {
-				return $this->build_return_policy_block( $policy, $country, null );
-			}
-		};
-
+		// Shared-shape regression guard. The Org-level emission in
+		// `output_store_jsonld()` and the per-Offer emission in
+		// `add_return_policy()` (called via `enhance_product_data()`)
+		// must produce identical MerchantReturnPolicy block shapes
+		// for the same return-policy settings + country, so an AI
+		// agent reading either surface gets the same commitment
+		// claim for the common (non-final-sale) case.
+		//
+		// Captures both blocks from their actual call sites:
+		// - Org-level: via `capture_store_jsonld_filter_value()` →
+		//   `$captured['hasMerchantReturnPolicy']`
+		// - Per-Offer: via `enhance_product_data()` →
+		//   `$result['offers'][0]['hasMerchantReturnPolicy']`
+		//
+		// Both call sites consume `build_return_policy_block()`
+		// (now `protected`), so the two captures should be
+		// `assertSame`-equal. A future refactor that diverges the
+		// two call sites' inputs (e.g. passes a different country)
+		// or wraps the per-Offer block in additional fields would
+		// fail this test loudly. Phase 2 of #337 — making per-Offer
+		// emission conditional on the per-product final-sale
+		// override — will rely on this contract holding for
+		// non-final-sale products.
 		$policy = array(
 			'mode' => 'returns_accepted',
 			'days' => 14,
 			'fees' => 'restocking',
 		);
-		$a = $emitter->call_build( $policy, 'US' );
-		$b = $emitter->call_build( $policy, 'US' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => $policy,
+		);
+		Functions\when( 'wc_get_base_location' )->justReturn( array( 'country' => 'US' ) );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$this->assertSame( $a, $b );
-		// Sanity: the returned block IS what the Org-level call site
-		// would emit — same merchantReturnDays from the policy input.
-		$this->assertSame( 14, $a['merchantReturnDays'] );
+		// Org-level capture.
+		$captured_store = $this->capture_store_jsonld_filter_value();
+		$org_block      = $captured_store['hasMerchantReturnPolicy'] ?? null;
+
+		// Per-Offer capture: run a non-final-sale product through
+		// `enhance_product_data()`. `get_post_meta` is stubbed in
+		// setUp to return '' (no per-product final-sale override),
+		// so the per-Offer call falls through to the same
+		// `build_return_policy_block($policy, 'US', $product_id)`
+		// that the Org-level call site invokes with `null` for
+		// `$product_id` — both produce a `returns_accepted` block
+		// with the same days/fees.
+		$product = $this->make_product( [ 'id' => 42 ] );
+		$markup  = array( 'offers' => array( array( '@type' => 'Offer' ) ) );
+		$result  = $this->jsonld->enhance_product_data( $markup, $product );
+		$per_offer_block = $result['offers'][0]['hasMerchantReturnPolicy'] ?? null;
+
+		$this->assertNotNull( $org_block, 'Org-level emission must produce a block.' );
+		$this->assertNotNull( $per_offer_block, 'Per-Offer emission must produce a block.' );
+		$this->assertSame(
+			$org_block,
+			$per_offer_block,
+			'Org-level and per-Offer MerchantReturnPolicy blocks must be identical for the same config.'
+		);
 	}
 
 	public function test_store_jsonld_emits_logo_from_custom_logo_theme_mod(): void {
