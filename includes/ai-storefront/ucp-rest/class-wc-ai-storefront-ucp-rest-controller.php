@@ -3035,11 +3035,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * `fetch_variations_for()`.
 	 *
 	 * Uses `GET /wc/store/v1/products?parent_includes=<csv>&per_page=100`,
-	 * which WC's collection endpoint supports for variation post-types
-	 * (verified live: `?parent_includes=35` returns the 10 variations of
-	 * product 35 in one response). Pagination kicks in when combined
-	 * variation count across all parents exceeds 100; we walk pages
-	 * until short-page sentinel.
+	 * where `<csv>` is a comma-separated list of parent product IDs (NOT
+	 * variation IDs — `parent_includes` is the only Store API parameter
+	 * that surfaces `post_type='product_variation'` through the
+	 * collection endpoint, by filtering on the variations' `post_parent`
+	 * field). Verified live: `?parent_includes=35` returns the 10
+	 * variations of product 35 in one response. Pagination kicks in
+	 * when combined variation count across all parents exceeds 100; we
+	 * walk pages until short-page sentinel.
 	 *
 	 * For typical traffic (20-product /catalog/search, 30% variable, avg
 	 * 5 variations each), this collapses ~30 dispatches to 1. Worst real-
@@ -3053,11 +3056,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * for individual fetch failures while making the typical case
 	 * dramatically faster.
 	 *
-	 * MAX_VARIATIONS_PER_PRODUCT cap is enforced per-parent at the
-	 * pre-fetch stage (slice variation refs before building the CSV).
-	 * Cap-truncated entries are not in the expected-set, so they don't
-	 * generate a skipped count — preserves the contract of
-	 * `fetch_variations_for()`.
+	 * MAX_VARIATIONS_PER_PRODUCT cap is enforced per-parent in the
+	 * expected-set used for response binning (cap-truncated variation
+	 * IDs are never in the expected-set, so the binner drops them
+	 * even though the Store API returns ALL variations of the parent).
+	 * `skipped` is computed as `total_declared - returned`, so cap
+	 * overage DOES contribute to the partial_variants warning count —
+	 * matching `fetch_variations_for()`'s historical contract that
+	 * agents see when their product overflows the cap.
 	 *
 	 * Scope gate: variations inherit visibility from their parent. The
 	 * parent already passed `is_product_syndicated()` upstream
@@ -3091,6 +3097,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// the per-variation `fetch_variations_for()`: agents should see
 		// a `partial_variants` warning when their product has more
 		// variations than we'll fetch.
+		//
+		// `$expected_per_parent` only includes parents that contributed
+		// at least one valid variation ID to the dispatch worklist —
+		// the binner uses it as the source of truth for what we tried
+		// to fetch.
+		//
+		// `$declared_per_parent` tracks total_declared for ALL variable
+		// parents, including ones whose pointer lists were all
+		// malformed (zero/negative IDs). Those parents skip the
+		// dispatch worklist but still need a result entry so the
+		// `partial_variants` warning fires — pre-fix they were
+		// silently dropped, regressing the per-variation path's
+		// behavior of emitting a warning whenever the parent declared
+		// variations we couldn't surface.
 		$expected_per_parent = array();
 		$declared_per_parent = array();
 		foreach ( $wc_products as $wc_product ) {
@@ -3107,7 +3127,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 
 			$total_declared = count( $variation_refs );
-			$capped         = $total_declared > self::MAX_VARIATIONS_PER_PRODUCT
+			// Track declared count for every variable parent — even
+			// ones whose IDs are all malformed below — so the warning
+			// path stays consistent with the per-variation predecessor.
+			$declared_per_parent[ $parent_id ] = $total_declared;
+
+			$capped = $total_declared > self::MAX_VARIATIONS_PER_PRODUCT
 				? array_slice( $variation_refs, 0, self::MAX_VARIATIONS_PER_PRODUCT )
 				: $variation_refs;
 
@@ -3121,17 +3146,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				}
 			}
 
-			if ( empty( $expected_ids ) ) {
-				continue;
+			if ( ! empty( $expected_ids ) ) {
+				$expected_per_parent[ $parent_id ] = $expected_ids;
 			}
-
-			$expected_per_parent[ $parent_id ] = $expected_ids;
-			$declared_per_parent[ $parent_id ] = $total_declared;
+			// If $expected_ids is empty (all malformed), $declared_per_parent
+			// still has the entry — the result-build loop below catches
+			// it and emits skipped: total_declared.
 		}
 
-		// Edge case: no variable products (or all variable products have
-		// empty `variations[]` pointers). Skip the dispatch entirely.
-		if ( empty( $expected_per_parent ) ) {
+		// Edge case: no variable parents at all (no entries in
+		// `$declared_per_parent`). Skip the dispatch entirely.
+		// Note: we DON'T early-return when only `$expected_per_parent`
+		// is empty — `$declared_per_parent` may still have parents
+		// with all-malformed pointers that need a fallback result.
+		if ( empty( $declared_per_parent ) ) {
 			return array();
 		}
 
@@ -3150,12 +3178,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// on earlier pages. `$first_page_failed` distinguishes the
 		// degenerate case (page 1 itself fails) from partial-success
 		// cases that benefit from keeping prior data.
+		//
+		// Skip the dispatch entirely when no parents contributed valid
+		// IDs to the worklist — the all-malformed-pointers parents
+		// still get `variations: [], skipped: total_declared` entries
+		// from the result-build loop below using `$declared_per_parent`.
 		$all_variations    = array();
 		$page              = 1;
 		$per_page          = 100;
 		$first_page_failed = false;
 
-		while ( true ) {
+		while ( ! empty( $parent_ids ) ) {
 			$store_params = array(
 				'parent_includes' => implode( ',', $parent_ids ),
 				'per_page'        => $per_page,
@@ -3250,20 +3283,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			++$page;
 		}
 
-		// Build the result map. On a degenerate page-1 failure, every
-		// variable parent gets `variations: [], skipped: total_declared`
-		// so the partial-variants warning fires for each. On partial
-		// failures (some pages succeeded, later pages errored), we
-		// preserve the page-1 data and let the per-parent
-		// `declared - returned` math naturally compute skipped — that
-		// way parents whose variations were fully captured on the first
+		// Build the result map from `$declared_per_parent` so EVERY
+		// variable parent gets an entry — including parents whose
+		// pointer lists were all malformed (those skip the dispatch
+		// worklist via `$expected_per_parent` but still need an entry
+		// here so the `partial_variants` warning fires below).
+		//
+		// On a degenerate page-1 failure, every parent gets
+		// `variations: [], skipped: total_declared` so the warning
+		// fires for each. On partial failures (some pages succeeded,
+		// later pages errored), we preserve the page-1 data and let
+		// the per-parent `declared - returned` math compute skipped —
+		// parents whose variations were fully captured on the first
 		// page aren't punished for a later-page failure that didn't
 		// affect them.
 		$result = array();
-		foreach ( $expected_per_parent as $parent_id => $expected_ids ) {
+		foreach ( $declared_per_parent as $parent_id => $total_declared ) {
 			$result[ $parent_id ] = array(
 				'variations' => array(),
-				'skipped'    => $first_page_failed ? $declared_per_parent[ $parent_id ] : 0,
+				'skipped'    => $first_page_failed ? $total_declared : 0,
 			);
 		}
 
@@ -3283,6 +3321,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				continue;
 			}
 
+			// All-malformed parents have no expected set — they aren't
+			// in the worklist, so the API shouldn't return variations
+			// for them. Defensively skip if it ever happens.
+			if ( ! isset( $expected_per_parent[ $parent_id ] ) ) {
+				continue;
+			}
+
 			// Honor MAX cap when binning: ignore variations whose IDs
 			// aren't in the expected (capped) set for that parent.
 			$variation_id = (int) ( $variation['id'] ?? 0 );
@@ -3292,6 +3337,28 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 			$result[ $parent_id ]['variations'][] = $variation;
 		}
+
+		// Restore source order: bin order follows Store API page order,
+		// not the parent's declared order. Sort each bin to match
+		// `$expected_per_parent[$parent_id]` so callers see variations
+		// in the same sequence as the parent's `variations[]` list.
+		// Matches the per-variation `fetch_variations_for()` contract,
+		// which iterates IDs in declared order.
+		foreach ( $result as $parent_id => &$entry ) {
+			if ( ! isset( $expected_per_parent[ $parent_id ] ) || count( $entry['variations'] ) <= 1 ) {
+				continue;
+			}
+			$position = array_flip( $expected_per_parent[ $parent_id ] );
+			usort(
+				$entry['variations'],
+				static function ( array $a, array $b ) use ( $position ) {
+					$a_pos = $position[ (int) ( $a['id'] ?? 0 ) ] ?? PHP_INT_MAX;
+					$b_pos = $position[ (int) ( $b['id'] ?? 0 ) ] ?? PHP_INT_MAX;
+					return $a_pos <=> $b_pos;
+				}
+			);
+		}
+		unset( $entry );
 
 		// Compute skipped per parent: total_declared - actually_returned.
 		// Includes cap-truncated + scope-filtered + fetch-failed entries.

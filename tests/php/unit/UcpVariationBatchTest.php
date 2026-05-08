@@ -172,6 +172,111 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 0, $this->captured_dispatches );
 	}
 
+	public function test_all_malformed_pointers_emits_partial_variants_warning(): void {
+		// Variable parent declares 3 variations but every pointer ID
+		// is malformed (zero/negative). Pre-fix: the parent silently
+		// dropped from the result map, no warning. Post-fix: the
+		// parent gets `variations: [], skipped: 3` so the partial-
+		// variants warning fires — matches fetch_variations_for()
+		// semantics where any unsurfaced declared variation triggers
+		// the warning.
+		$result = $this->call_batched(
+			array(
+				array(
+					'id'         => 35,
+					'type'       => 'variable',
+					'variations' => array(
+						array( 'id' => 0 ),
+						array( 'id' => -1 ),
+						array( 'id' => 0 ),
+					),
+				),
+			)
+		);
+
+		$this->assertArrayHasKey( 35, $result );
+		$this->assertSame( array(), $result[35]['variations'] );
+		$this->assertSame( 3, $result[35]['skipped'] );
+		// No dispatch — all-malformed parents have nothing to fetch.
+		$this->assertCount( 0, $this->captured_dispatches );
+	}
+
+	public function test_mixed_malformed_and_valid_parents_dispatches_only_valid(): void {
+		// Mixed worklist: parent 35 has a valid pointer, parent 36 is
+		// all-malformed. Verify the dispatch only includes parent 35
+		// AND parent 36 still gets a result entry with skipped: 2.
+		$this->canned_pages = array(
+			1 => array(
+				$this->variation( 101, 35 ),
+			),
+		);
+
+		$result = $this->call_batched(
+			array(
+				array(
+					'id'         => 35,
+					'type'       => 'variable',
+					'variations' => array( array( 'id' => 101 ) ),
+				),
+				array(
+					'id'         => 36,
+					'type'       => 'variable',
+					'variations' => array( array( 'id' => 0 ), array( 'id' => -5 ) ),
+				),
+			)
+		);
+
+		$this->assertCount( 1, $this->captured_dispatches );
+		$this->assertSame( '35', $this->captured_dispatches[0]['parent_includes'] );
+
+		$this->assertArrayHasKey( 35, $result );
+		$this->assertCount( 1, $result[35]['variations'] );
+		$this->assertSame( 0, $result[35]['skipped'] );
+
+		$this->assertArrayHasKey( 36, $result );
+		$this->assertSame( array(), $result[36]['variations'] );
+		$this->assertSame( 2, $result[36]['skipped'] );
+	}
+
+	public function test_returned_variations_match_declared_source_order(): void {
+		// Store API may return variations in any order (typically by
+		// menu_order or modification time). The result MUST honor the
+		// parent's declared `variations[]` sequence so downstream
+		// emission matches what the agent expects from the parent's
+		// pointer list. Mirrors the per-variation predecessor that
+		// iterated declared IDs in order.
+		$this->canned_pages = array(
+			// API returns them shuffled vs. declared order [101,102,103,104].
+			1 => array(
+				$this->variation( 103, 35 ),
+				$this->variation( 101, 35 ),
+				$this->variation( 104, 35 ),
+				$this->variation( 102, 35 ),
+			),
+		);
+
+		$result = $this->call_batched(
+			array(
+				array(
+					'id'         => 35,
+					'type'       => 'variable',
+					'variations' => array(
+						array( 'id' => 101 ),
+						array( 'id' => 102 ),
+						array( 'id' => 103 ),
+						array( 'id' => 104 ),
+					),
+				),
+			)
+		);
+
+		$ids = array_map(
+			static fn( array $v ): int => (int) $v['id'],
+			$result[35]['variations']
+		);
+		$this->assertSame( array( 101, 102, 103, 104 ), $ids );
+	}
+
 	// ------------------------------------------------------------------
 	// Happy path — single + multi parent
 	// ------------------------------------------------------------------
@@ -442,8 +547,10 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_max_cap_truncates_expected_set_and_reports_overage_as_skipped(): void {
-		// Parent declares 60 variations; cap is 50. Expected-set is
-		// the first 50; only those go in the parent_includes CSV.
+		// Parent declares 60 variations; cap is 50. The dispatch sends
+		// the parent's ID in parent_includes (parent_includes is a CSV
+		// of parent IDs, not variation IDs), and the binner uses the
+		// capped expected-set to drop the over-cap tail.
 		// `skipped` = declared(60) - returned(50) = 10 — cap-truncated
 		// entries DO contribute to skipped so agents see a
 		// `partial_variants` warning when their product overflows the
