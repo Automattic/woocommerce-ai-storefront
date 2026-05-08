@@ -1700,24 +1700,43 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// Attach per-variant `inputs[]` correlation per
 			// `catalog_lookup.json#/$defs/lookup_variant` (UCP 2026-04-08).
 			// Each emitted variant declares which request ID resolved
-			// to it. We only accept product IDs as lookup inputs today,
-			// so the resolution is `featured` — the server selected this
-			// variant as one of the representative variants for the
-			// requested product. If lookup grows variant-ID support
-			// later, distinguish `exact` (variant-ID input) here.
+			// to it.
 			//
-			// Done last (after both filters) so the spec-required
-			// transport-layer correlation isn't mutable by content
-			// filters; filter authors care about variant content,
-			// not server-side request reconciliation.
+			// `match` per `types/input_correlation.json`:
+			//   - `exact`    — input directly identifies this variant
+			//                  (variant ID, SKU, etc.).
+			//   - `featured` — server picked this variant as a
+			//                  representative for a product-level input.
+			//
+			// `parse_ucp_id_to_wc_int()` accepts both `prod_<id>` and
+			// `var_<id>` prefixes. In practice, `var_` inputs rarely
+			// survive `fetch_store_api_product()`'s syndication gate
+			// (variations aren't directly syndicated), but if one does
+			// reach this loop the correlation should claim `exact` —
+			// the agent asked for that specific variant, not a
+			// representative. Stamping every variant `featured` would
+			// be wrong for the `var_` case.
+			//
+			// Derive `match` from the raw echo's prefix rather than the
+			// parsed WC ID so the correlation tracks what the agent
+			// SENT, not what we resolved to. Done last (after both
+			// filters) so the spec-required transport-layer correlation
+			// isn't mutable by content filters; filter authors care
+			// about variant content, not server-side request
+			// reconciliation.
 			if ( isset( $final_product['variants'] ) && is_array( $final_product['variants'] ) ) {
 				$input_echo = (string) ( $inputs[ $index ] ?? '' );
 				if ( '' !== $input_echo ) {
+					$match_type = str_starts_with(
+						$input_echo,
+						WC_AI_Storefront_UCP_Variant_Translator::VARIANT_ID_PREFIX
+					) ? 'exact' : 'featured';
+
 					foreach ( $final_product['variants'] as $variant_idx => $variant ) {
 						$final_product['variants'][ $variant_idx ]['inputs'] = [
 							[
 								'id'    => $input_echo,
-								'match' => 'featured',
+								'match' => $match_type,
 							],
 						];
 					}

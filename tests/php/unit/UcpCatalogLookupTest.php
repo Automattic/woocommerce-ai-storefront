@@ -431,6 +431,53 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_var_prefix_input_correlates_as_exact_not_featured(): void {
+		// `var_<id>` input semantics per types/input_correlation.json:
+		// the agent is asking for that specific variant directly, so
+		// the correlation match value MUST be `exact` — not `featured`,
+		// which is reserved for product-level inputs where the server
+		// picks a representative variant.
+		//
+		// In practice `var_` inputs rarely survive the syndication
+		// gate because variations aren't directly syndicated, but the
+		// stamping logic must still emit the right match value when
+		// they do (e.g. when `product_selection_mode` is `all` and the
+		// variation's parent product passes the scope check). This is
+		// also a bare-correctness guard: even if today's syndication
+		// gate filters them out, future gate changes shouldn't silently
+		// emit misleading correlation data.
+		$this->seed_simple_product( 456, 'Widget' );
+
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'var_456' ] ]
+		);
+
+		$this->assertCount( 1, $body['products'] );
+		$this->assertSame(
+			[ [ 'id' => 'var_456', 'match' => 'exact' ] ],
+			$body['products'][0]['variants'][0]['inputs']
+		);
+	}
+
+	public function test_var_default_suffix_input_also_correlates_as_exact(): void {
+		// `var_<id>_default` is the synthesized-default-variant ID
+		// shape (variant translator emits this for products that don't
+		// have explicit variations but need a default variant). It
+		// still starts with `var_`, so it's a variant-level input and
+		// the correlation must be `exact`.
+		$this->seed_simple_product( 456, 'Widget' );
+
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'var_456_default' ] ]
+		);
+
+		$this->assertCount( 1, $body['products'] );
+		$this->assertSame(
+			[ [ 'id' => 'var_456_default', 'match' => 'exact' ] ],
+			$body['products'][0]['variants'][0]['inputs']
+		);
+	}
+
 	public function test_message_path_points_at_raw_request_index_not_deduped(): void {
 		// Request: [found_A, found_A, missing, found_B]
 		// Raw `ids[]` indices:       0,        1,        2,       3
