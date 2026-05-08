@@ -14,6 +14,15 @@ name: CHANGELOG check
 #     the "Tests" CHANGELOG category, and bin/ scripts have shipped
 #     in past CHANGELOGs (e.g. bin/cleanup-test-fixtures.sh).
 #
+# Release-prep PRs MUST use `skip-changelog`. The version-bump PR
+# moves bullets out of `## [Unreleased]` into a new `## [X.Y.Z]`
+# section — there's no NET-NEW bullet under `[Unreleased]` to count,
+# so this check would otherwise fail and block release. The smarter
+# alternative (detect "Unreleased → versioned" moves and accept them)
+# would add awk complexity that's hard to keep correct under multi-
+# bullet rearrangements; using the existing label is simpler and
+# only costs maintainers one extra step at release-cut time.
+#
 # Security note: all user-controllable values (PR labels, file paths)
 # flow through `env:` into shell-quoted variable expansions; no
 # direct interpolation into `run:` script bodies. Workflow-injection
