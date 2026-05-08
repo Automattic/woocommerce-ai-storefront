@@ -1740,6 +1740,23 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$input_echo = (string) ( $inputs[ $index ] ?? '' );
 				if ( '' !== $input_echo ) {
 					foreach ( $final_product['variants'] as $variant_idx => $variant ) {
+						// `$final_product` came through the
+						// `wc_ai_storefront_ucp_product` filter; a
+						// third-party callback could replace a
+						// variant with a non-array (string, null, etc.).
+						// Guard before reading `$variant['id']` so a
+						// malformed callback doesn't fatal the whole
+						// lookup with PHP 8+'s "Cannot access offset"
+						// error. Skipping the entry here means the
+						// malformed variant is left as-is (without an
+						// `inputs[]` correlation); the schema validator
+						// downstream will surface the bad shape via
+						// the same path it already handles for other
+						// filter-malformations.
+						if ( ! is_array( $variant ) ) {
+							continue;
+						}
+
 						$variant_id = (string) ( $variant['id'] ?? '' );
 						$match_type = ( '' !== $variant_id && $input_echo === $variant_id )
 							? 'exact'

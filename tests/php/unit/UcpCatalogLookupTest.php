@@ -508,6 +508,48 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
+	public function test_inputs_stamping_skips_non_array_variants_from_filter(): void {
+		// Resilience guard: `$final_product` flows through the
+		// `wc_ai_storefront_ucp_product` filter before the inputs[]
+		// stamping loop runs. A third-party callback could (by
+		// accident or otherwise) leave non-arrays in the variants
+		// list — string, null, stdClass — which would fatal in PHP
+		// 8+ on `$variant['id']` access. The stamping loop must skip
+		// non-array entries so a broken plugin doesn't take down
+		// every catalog/lookup response.
+		$this->seed_simple_product( 456, 'Widget' );
+
+		// Hook in a filter that injects a malformed entry alongside
+		// the legitimate variant. Mockery filter binding via Brain
+		// Monkey's Filters API.
+		\Brain\Monkey\Filters\expectApplied( 'wc_ai_storefront_ucp_product' )
+			->andReturnUsing(
+				static function ( $product ) {
+					if ( isset( $product['variants'] ) && is_array( $product['variants'] ) ) {
+						array_unshift( $product['variants'], 'string instead of variant array' );
+					}
+					return $product;
+				}
+			);
+
+		// Should not fatal. Without the guard, `$variant['id']` on
+		// the string entry would throw "Cannot access offset" in PHP 8+.
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'prod_456' ] ]
+		);
+
+		$this->assertCount( 1, $body['products'] );
+		// The malformed entry is preserved as-is (no inputs[] stamped),
+		// the legitimate variant got its inputs[] correlation.
+		$variants = $body['products'][0]['variants'];
+		$this->assertSame( 'string instead of variant array', $variants[0] );
+		$this->assertIsArray( $variants[1] );
+		$this->assertSame(
+			[ [ 'id' => 'prod_456', 'match' => 'featured' ] ],
+			$variants[1]['inputs']
+		);
+	}
+
 	public function test_message_path_points_at_raw_request_index_not_deduped(): void {
 		// Request: [found_A, found_A, missing, found_B]
 		// Raw `ids[]` indices:       0,        1,        2,       3
