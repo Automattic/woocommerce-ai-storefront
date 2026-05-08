@@ -41,7 +41,7 @@
 - Added `UcpShapeTest` running JSON Schema validation against the canonical UCP `release/2026-04-08` schemas vendored at `tests/fixtures/ucp-schemas/`. 12 new tests cover all touched shapes including the `lookup_variant` allOf merge.
 - Added `opis/json-schema` v2.6 as a dev dependency — only PHP library with complete draft-2020-12 / `$defs` / cross-file `$ref` support.
 - Updated existing translator + REST controller tests for the new key names and message shapes (~15 sites). Hard-cut regression guards (`assertArrayNotHasKey`) for the old keys.
-- Added `UcpVariationBatchTest` (14 tests) covering the batched variation helper directly: empty/all-simple guards, single-/multi-parent dispatch shape, >100-variation pagination, partial response detection, WP_Error degradation, MAX cap overage, `wc_ai_storefront_ucp_store_api_args` filter compatibility.
+- Added `UcpVariationBatchTest` (21 tests) covering the batched variation helper directly: empty/all-simple guards, single-/multi-parent dispatch shape (asserts both `type=variation` AND `parent=<csv>`), >100-variation pagination with early-stop optimization, source-order preservation, partial response detection, WP_Error / HTTP >= 400 degradation, MAX cap overage, all-malformed-pointer fallback, stdClass response normalization, `wc_ai_storefront_ucp_store_api_args` filter compatibility.
 
 ---
 
