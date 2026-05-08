@@ -1115,18 +1115,27 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
-		// Variation axis landed in options[]
+		// Variation axis landed in options[] with `option_value` shape
+		// items (UCP 2026-04-08: required `label`, optional `id`).
 		$this->assertArrayHasKey( 'options', $result );
 		$this->assertCount( 1, $result['options'] );
 		$this->assertSame( 'Size', $result['options'][0]['name'] );
-		$this->assertSame( [ 'S', 'M', 'L' ], $result['options'][0]['values'] );
+		$this->assertSame(
+			[ [ 'label' => 'S' ], [ 'label' => 'M' ], [ 'label' => 'L' ] ],
+			$result['options'][0]['values']
+		);
 
-		// Informational attribute landed in metadata.attributes
+		// Informational attribute landed in metadata.attributes with
+		// the same shape (mirrors the option_value structure for
+		// internal consistency).
 		$this->assertArrayHasKey( 'metadata', $result );
 		$this->assertArrayHasKey( 'attributes', $result['metadata'] );
 		$this->assertCount( 1, $result['metadata']['attributes'] );
 		$this->assertSame( 'Material', $result['metadata']['attributes'][0]['name'] );
-		$this->assertSame( [ 'Cotton', 'Organic' ], $result['metadata']['attributes'][0]['values'] );
+		$this->assertSame(
+			[ [ 'label' => 'Cotton' ], [ 'label' => 'Organic' ] ],
+			$result['metadata']['attributes'][0]['values']
+		);
 
 		// Regression guard for the 1.x flat shape — must not reappear.
 		$this->assertArrayNotHasKey( 'attributes', $result );
@@ -1182,11 +1191,10 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_translate_emits_rating_under_core_when_reviews_exist(): void {
-		// 2.0.0+: rating moved out of the
-		// `extensions.com.woocommerce.ai_storefront.ratings`
-		// namespace into core `product.rating`. Shape stays
-		// `{average, count}` — `average` (not `value`) is explicit
-		// about what the number represents.
+		// UCP `rating.json` shape: `{value, scale_min, scale_max, count}`.
+		// 0.12.0+ aligned to spec — `value` (the average) replaces the
+		// pre-0.12.0 `average` key, and `scale_min`/`scale_max` are
+		// hardcoded to WC core's inflexible 1-5 star bounds.
 		$fixture                   = $this->simple_product_fixture();
 		$fixture['average_rating'] = '4.67';
 		$fixture['review_count']   = 42;
@@ -1194,10 +1202,15 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
 		$this->assertArrayHasKey( 'rating', $result );
-		$this->assertSame( 4.67, $result['rating']['average'] );
+		$this->assertSame( 4.67, $result['rating']['value'] );
+		$this->assertSame( 1, $result['rating']['scale_min'] );
+		$this->assertSame( 5, $result['rating']['scale_max'] );
 		$this->assertSame( 42, $result['rating']['count'] );
+		// Hard-cut regression guard for the 0.12.0 rename — old
+		// `average` key must not reappear.
+		$this->assertArrayNotHasKey( 'average', $result['rating'] );
 
-		// Regression guard: the old extension-namespace home must
+		// Regression guard: the pre-2.0.0 extension-namespace home must
 		// stay empty — agents that were reading from there need to
 		// see the migration cleanly, not a double-emission.
 		$this->assertArrayNotHasKey( 'extensions', $result );

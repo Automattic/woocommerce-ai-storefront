@@ -718,7 +718,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * product contributes nothing to the agent-facing payload.
 	 *
 	 * @param array<string, mixed> $wc_product
-	 * @return array{options: array<int, array{name: string, values: array<int, string>}>, metadata_attributes: array<int, array{name: string, values: array<int, string>}>}
+	 * @return array{options: array<int, array{name: string, values: array<int, array{label: string}>}>, metadata_attributes: array<int, array{name: string, values: array<int, array{label: string}>}>}
 	 */
 	private static function extract_classified_attributes( array $wc_product ): array {
 		$attributes = $wc_product['attributes'] ?? [];
@@ -743,10 +743,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				continue;
 			}
 
+			// Per `option_value.json` (UCP 2026-04-08), `values[]` items
+			// must be objects with a required `label` field, not bare
+			// strings. We don't yet emit the optional `id` field —
+			// that's deferred to issue #350 where it pairs with
+			// `selected_option.id` for stable cross-locale matching.
 			$values = [];
 			foreach ( $terms as $term ) {
 				if ( is_array( $term ) && ! empty( $term['name'] ) ) {
-					$values[] = (string) $term['name'];
+					$values[] = [ 'label' => (string) $term['name'] ];
 				}
 			}
 			if ( empty( $values ) ) {
@@ -782,23 +787,25 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	}
 
 	/**
-	 * Extract the core `product.rating` payload.
+	 * Extract the core `product.rating` payload per UCP `rating.json`.
 	 *
-	 * Returns a compact `{average, count}` shape when the merchant
+	 * Returns `{value, scale_min, scale_max, count}` when the merchant
 	 * has at least one review, otherwise null (caller omits the
 	 * `rating` key rather than emitting zeros — no reviews ≠ 0.0
-	 * stars, and conflating them would mislead agents). Average
-	 * rating is a string in the Store API response (e.g. "4.67");
-	 * we coerce to float for agents that do numeric comparisons.
-	 * Review count is already an int.
+	 * stars, and conflating them would mislead agents).
 	 *
-	 * Agents recommending products benefit enormously from rating
-	 * data — "customers rate it 4.7 / 2,384 reviews" is dominant
-	 * social proof that converts. The data is already computed by
-	 * WC; we just forward it.
+	 * `value` is the average rating, coerced to float (the Store API
+	 * returns it as a string like "4.67"). `count` is review_count.
+	 * `scale_min` / `scale_max` are hardcoded 1 and 5 because WC core
+	 * uses an inflexible 1-5 star scale — the bounds aren't surfaced
+	 * by the Store API because they're not configurable. Custom
+	 * review plugins that override the scale (rare, e.g. 0-10) would
+	 * misrepresent here, but the spec field is required and stock WC
+	 * is the overwhelming case; revisit with a filter only if a real
+	 * deployment surfaces the need.
 	 *
 	 * @param array<string, mixed> $wc_product
-	 * @return array{average: float, count: int}|null
+	 * @return array{value: float, scale_min: int, scale_max: int, count: int}|null
 	 */
 	private static function extract_rating( array $wc_product ): ?array {
 		$count = isset( $wc_product['review_count'] )
@@ -810,10 +817,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		}
 
 		return [
-			'average' => isset( $wc_product['average_rating'] )
+			'value'     => isset( $wc_product['average_rating'] )
 				? (float) $wc_product['average_rating']
 				: 0.0,
-			'count'   => $count,
+			'scale_min' => 1,
+			'scale_max' => 5,
+			'count'     => $count,
 		];
 	}
 }
