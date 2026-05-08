@@ -1530,7 +1530,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$positions  = $normalized['positions'];
 
 		// Same single-merchant seller block as the search handler —
-		// computed once, stamped on every product (see handle_catalog_search).
+		// computed once, threaded through to extract_variants() so
+		// every emitted variant carries it (UCP 2026-04-08 defines
+		// `seller` inline on `variant.json` only; no `product.seller`
+		// field exists). See handle_catalog_search for the parallel
+		// flow.
 		$seller = self::build_seller();
 
 		// Prime the WP object-cache with term relationships and post-meta for
