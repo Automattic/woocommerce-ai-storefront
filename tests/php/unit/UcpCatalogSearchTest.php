@@ -239,18 +239,43 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 				$route = $request->get_route();
 
 				if ( '/wc/store/v1/products' === $route ) {
-					// Regression guard: the controller must NEVER use the
-					// collection endpoint to fetch variation IDs. Variations
-					// have post_type='product_variation'; the collection
-					// endpoint filters to post_type='product' and silently
-					// drops them. Variation fetches must use the single-item
-					// route (/wc/store/v1/products/{id}) instead.
+					// Regression guard: the controller must NEVER use
+					// `?include=` against variations. Variations have
+					// post_type='product_variation'; the collection
+					// endpoint's `?include=` filters to post_type='product'
+					// and silently drops them. The legitimate batched
+					// variation path is `?parent_includes=` (handled
+					// below), which WC's collection endpoint surfaces
+					// for variations.
 					$include = $request->get_param( 'include' );
 					if ( is_array( $include ) && ! empty( $include ) ) {
 						throw new \LogicException(
 							'Controller must not use the collection endpoint with ?include for variations. ' .
-							'Use the single-item route /wc/store/v1/products/{id} instead.'
+							'Use ?parent_includes= for batched variation fetch (#351) or the single-item route.'
 						);
+					}
+
+					// Batched variation fetch (issue #351). When the
+					// controller dispatches with `parent_includes=<csv>`,
+					// return all canned variations from `$api` whose
+					// `parent` field matches one of the requested IDs.
+					$parent_includes = $request->get_param( 'parent_includes' );
+					if ( null !== $parent_includes && '' !== $parent_includes ) {
+						$parent_ids = array_map(
+							'intval',
+							explode( ',', (string) $parent_includes )
+						);
+						$variations = array();
+						foreach ( $api as $maybe_variation ) {
+							if ( ! is_array( $maybe_variation ) ) {
+								continue;
+							}
+							$parent = (int) ( $maybe_variation['parent'] ?? 0 );
+							if ( $parent > 0 && in_array( $parent, $parent_ids, true ) ) {
+								$variations[] = $maybe_variation;
+							}
+						}
+						return new WP_REST_Response( $variations, 200 );
 					}
 
 					// List dispatch — capture the params so tests can
@@ -1600,6 +1625,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->fake_store_api[101] = [
 			'id'                => 101,
+			'parent'            => 789, // Required for batched fetch (#351) parent binning.
 			'name'              => 'T-Shirt',
 			'short_description' => '',
 			'is_in_stock'       => true,
@@ -1608,6 +1634,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		];
 		$this->fake_store_api[102] = [
 			'id'                => 102,
+			'parent'            => 789,
 			'name'              => 'T-Shirt',
 			'short_description' => '',
 			'is_in_stock'       => true,
@@ -1652,16 +1679,20 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		// Seed only the Small variation; Large fetch will 404.
+		// Seed only the Small variation; Large is intentionally absent
+		// from the fake store → batched dispatch returns just the
+		// Small entry, partial-variants warning fires for the missing 102.
 		$this->fake_store_api[101] = [
 			'id'                => 101,
+			'parent'            => 789, // Required for batched fetch (#351) binning.
 			'name'              => 'T-Shirt',
 			'short_description' => '',
 			'is_in_stock'       => true,
 			'prices'            => [ 'price' => '1000', 'currency_code' => 'USD' ],
 			'attributes'        => [ [ 'name' => 'Size', 'value' => 'Small' ] ],
 		];
-		// Leave 102 unseeded → fake returns 404.
+		// Leave 102 unseeded → batched dispatch omits it from the
+		// returned set → expected_count(2) - returned(1) = skipped(1).
 
 		$body = $this->successful_search( [] );
 

@@ -1034,14 +1034,26 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$products         = array();
 		$variant_messages = array();
 
+		// Pre-fetch all variable products' variations in one (or few)
+		// batched dispatches before entering the per-product loop. For a
+		// 20-product / 30%-variable / avg-5-vars page this collapses
+		// ~30 internal `rest_do_request` dispatches to 1, saving
+		// ~700ms/request warm and ~2s+ cold-cache. See issue #351.
+		// Returns map keyed by parent ID; simple products absent.
+		$variations_by_parent = $this->fetch_variations_batched( $wc_products );
+
 		foreach ( $wc_products as $wc_product ) {
 			if ( ! is_array( $wc_product ) ) {
 				continue;
 			}
-			$variation_fetch = $this->fetch_variations_for( $wc_product );
+			$parent_id       = (int) ( $wc_product['id'] ?? 0 );
+			$variation_fetch = $variations_by_parent[ $parent_id ] ?? array(
+				'variations' => array(),
+				'skipped'    => 0,
+			);
 			if ( $variation_fetch['skipped'] > 0 ) {
 				$variant_messages[] = self::partial_variants_message(
-					(int) ( $wc_product['id'] ?? 0 ),
+					$parent_id,
 					$variation_fetch['skipped']
 				);
 			}
