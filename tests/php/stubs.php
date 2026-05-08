@@ -162,6 +162,20 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 			return $this->params[ $key ] ?? null;
 		}
 
+		/**
+		 * Match WP_REST_Request::get_params(): merge of JSON body and
+		 * form params with form-style query params taking precedence
+		 * for matching keys (consistent with how WP itself merges).
+		 *
+		 * @return array<string, mixed>
+		 */
+		public function get_params(): array {
+			return array_merge(
+				$this->json_params ?? array(),
+				$this->params
+			);
+		}
+
 		public function get_header( string $key ): ?string {
 			$normalized = strtolower( str_replace( '-', '_', $key ) );
 			return $this->headers[ $normalized ] ?? null;
