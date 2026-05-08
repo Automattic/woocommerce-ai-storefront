@@ -10,6 +10,17 @@
 
 ## [0.12.0] – 2026-05-08
 
+### Features
+
+- **UCP enrichment: stable `option_value.id` and `selected_option.id` from WC taxonomy slugs.** Closes #350 (option_value).
+  - Format: `<taxonomy>:<slug>` (e.g. `pa_color:black`). Per `option_value.json` and `selected_option.json` (release/2026-04-08), `id` is optional but "the server SHOULD use it for matching" — letting agents echo the stable identifier back via `selected_option.id` for cross-locale variant matching, instead of relying on the displayed `label` (which may be translated).
+  - Emission gated on `taxonomy` starting with `pa_` (real WC taxonomy attributes only). Custom inline attributes have no canonical identifier and omit `id` per the spec's optional-field semantics.
+  - Variant translator threads a per-axis `term_slug_map` (built once per product from the parent's `attributes[].terms[].{name,slug}`) to emit `selected_option.id` on every variation. Mirrors the `parent_attribute_names` pattern from #348 — pure-function contract preserved (no `wc_get_product()` / `get_term()` inside translators).
+- **UCP enrichment: hierarchical category strings per `category.json`.** Closes #350 (category hierarchy).
+  - Per UCP `category.json` (release/2026-04-08), hierarchy is encoded as a `>`-delimited string in the `value` field (e.g. `"Clothing > Tshirts"`). Pre-#350 we emitted bare leaf names; post-#350 we emit the full ancestry path when available.
+  - Controller pre-builds a `category_paths` map once per request via a new `build_category_paths_map()` helper that walks parent chains and batch-fetches missing ancestors via `GET /wc/store/v1/products/categories?include=<csv>`. Iteration capped at 10 for cycle defense.
+  - Brands stay flat (`product_brand` has no hierarchy in WC). Categories without resolvable parents fall back to bare `name` for graceful degradation. Backwards-compat: nullable parameter, legacy callers unchanged.
+
 ### Fixes
 
 - **UCP wire-format compliance with `release/2026-04-08`.** Closes #349.
@@ -29,6 +40,8 @@
 - Added `UcpShapeTest` running JSON Schema validation against the canonical UCP `release/2026-04-08` schemas vendored at `tests/fixtures/ucp-schemas/`. 12 new tests cover all touched shapes including the `lookup_variant` allOf merge.
 - Added `opis/json-schema` v2.6 as a dev dependency — only PHP library with complete draft-2020-12 / `$defs` / cross-file `$ref` support.
 - Updated existing translator + REST controller tests for the new key names and message shapes (~15 sites). Hard-cut regression guards (`assertArrayNotHasKey`) for the old keys.
+- Added 4 enrichment tests covering `option_value.id` (#350): present for taxonomy attributes, omitted for custom attributes, omitted when term slug missing, end-to-end flow through the variant translator's parsed-string path with `term_slug_map`.
+- Added 4 enrichment tests covering hierarchical categories (#350): path string emission, graceful degradation when path missing, backwards-compat with no path map, brands stay flat regardless of map.
 
 ---
 

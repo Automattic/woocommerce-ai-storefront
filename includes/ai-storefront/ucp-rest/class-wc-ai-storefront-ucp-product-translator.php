@@ -74,12 +74,24 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *                                                        passes it in — keeps the translator
 	 *                                                        WP-unaware. See `extract_variants()`
 	 *                                                        for where the seller lands.
+	 * @param array<int, string>|null          $category_paths Optional per-category-id
+	 *                                                        `>`-delimited hierarchy strings
+	 *                                                        (e.g. `[42 => "Clothing > Tshirts"]`).
+	 *                                                        Pre-built by the controller from
+	 *                                                        `/products/categories` once per
+	 *                                                        request and threaded through;
+	 *                                                        keeps the translator WP-unaware.
+	 *                                                        When supplied, emitted
+	 *                                                        `category.value` is the path
+	 *                                                        string instead of the bare name.
+	 *                                                        Per UCP `category.json` (2026-04-08).
 	 * @return array<string, mixed>                           UCP product shape.
 	 */
 	public static function translate(
 		array $wc_product,
 		array $wc_variations = array(),
-		?array $seller = null
+		?array $seller = null,
+		?array $category_paths = null
 	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
@@ -158,7 +170,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// made `filters.tags[]` vs `filters.category[]` feel
 		// asymmetric and forced agents to walk the full categories
 		// array to discover tags. Splitting matches the spec exactly.
-		$taxonomies = self::extract_taxonomies( $wc_product );
+		$taxonomies = self::extract_taxonomies( $wc_product, $category_paths );
 		if ( ! empty( $taxonomies['categories'] ) ) {
 			$product['categories'] = $taxonomies['categories'];
 		}
@@ -258,12 +270,21 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			// axis names, so this is O(parent.attributes), not
 			// O(variations × attributes).
 			$parent_attribute_names = self::extract_parent_attribute_names( $wc_product );
-			$variants               = array();
+
+			// Term-slug map for `selected_option.id` enrichment (issue
+			// #350). Pre-built once per product from
+			// `attributes[].terms[].{name,slug}` and threaded down to
+			// every variation. Pure-function contract preserved — same
+			// pattern as `parent_attribute_names`.
+			$term_slug_map = self::build_term_slug_map( $wc_product );
+
+			$variants = array();
 			foreach ( $wc_variations as $wc_variation ) {
 				$variants[] = WC_AI_Storefront_UCP_Variant_Translator::translate(
 					$wc_variation,
 					$parent_attribute_names,
-					$seller
+					$seller,
+					$term_slug_map
 				);
 			}
 			return $variants;
@@ -272,6 +293,94 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		return array(
 			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product, $seller ),
 		);
+	}
+
+	/**
+	 * Build the per-axis term-slug lookup map for `selected_option.id`
+	 * emission on each variant.
+	 *
+	 * Shape: `[axis_label => ['taxonomy' => string, 'slugs' => [label => slug]]]`.
+	 * Example for a Color/Size product:
+	 *
+	 *   [
+	 *     'Color' => [
+	 *       'taxonomy' => 'pa_color',
+	 *       'slugs'    => [ 'Black' => 'black', 'Green' => 'green' ],
+	 *     ],
+	 *     'Size'  => [
+	 *       'taxonomy' => 'pa_size',
+	 *       'slugs'    => [ 'M' => 'm', 'L' => 'l' ],
+	 *     ],
+	 *   ]
+	 *
+	 * Only included when the attribute taxonomy starts with `pa_` (i.e.
+	 * a real WC taxonomy with stable slugs). Excludes:
+	 *   - Custom inline attributes (no taxonomy) — no canonical id
+	 *     available; variant translator omits `selected_option.id`.
+	 *   - Third-party non-`pa_` product-attribute taxonomies (e.g.
+	 *     `pwb-brand` from Perfect Brands, WCFM brand attributes) —
+	 *     these don't follow WC's `wc_attribute_taxonomy_name()`
+	 *     convention, so we can't compose a stable
+	 *     `<taxonomy>:<slug>` identifier that downstream agents would
+	 *     reliably interpret. Same graceful-degradation as custom
+	 *     inline attributes: emit `label`, omit `id`.
+	 *
+	 * The structured `{taxonomy, slugs}` shape (vs. the earlier
+	 * `__tax__` sentinel-key approach) eliminates an entire collision
+	 * class — WordPress doesn't restrict double-underscore in term
+	 * *names* (only slugs go through `sanitize_title`), so a term
+	 * literally named `__tax__` would have overwritten a sentinel
+	 * key. The parallel-arrays-per-axis approach is unambiguous.
+	 *
+	 * @param array<string, mixed> $wc_product
+	 * @return array<string, array{taxonomy: string, slugs: array<string, string>}>
+	 */
+	private static function build_term_slug_map( array $wc_product ): array {
+		$attributes = $wc_product['attributes'] ?? [];
+		if ( ! is_array( $attributes ) ) {
+			return [];
+		}
+
+		$map = [];
+		foreach ( $attributes as $attribute ) {
+			if ( ! is_array( $attribute ) ) {
+				continue;
+			}
+			$axis_label = (string) ( $attribute['name'] ?? '' );
+			$taxonomy   = (string) ( $attribute['taxonomy'] ?? '' );
+			$terms      = $attribute['terms'] ?? [];
+			// Excludes custom inline attributes (no `taxonomy`) AND
+			// third-party non-`pa_` product-attribute taxonomies.
+			// See docblock above for the rationale.
+			if ( '' === $axis_label || '' === $taxonomy || ! str_starts_with( $taxonomy, 'pa_' ) ) {
+				continue;
+			}
+			if ( ! is_array( $terms ) || empty( $terms ) ) {
+				continue;
+			}
+
+			$slugs = [];
+			foreach ( $terms as $term ) {
+				if ( ! is_array( $term ) ) {
+					continue;
+				}
+				$name = (string) ( $term['name'] ?? '' );
+				$slug = (string) ( $term['slug'] ?? '' );
+				if ( '' === $name || '' === $slug ) {
+					continue;
+				}
+				$slugs[ $name ] = $slug;
+			}
+
+			// Skip axes whose terms all lacked usable name/slug pairs.
+			if ( ! empty( $slugs ) ) {
+				$map[ $axis_label ] = [
+					'taxonomy' => $taxonomy,
+					'slugs'    => $slugs,
+				];
+			}
+		}
+		return $map;
 	}
 
 	/**
@@ -661,23 +770,55 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *
 	 * Brands surface via `brands` on the Store API product response
 	 * when the merchant has the taxonomy registered. Shape is
-	 * `[{id, name, slug}, ...]` — mechanical extraction.
+	 * `[{id, name, slug}, ...]` — mechanical extraction. **Brands
+	 * stay flat** even when `$category_paths` is supplied — the WC
+	 * `product_brand` taxonomy has no native hierarchy in the data
+	 * model, and the spec convention for `taxonomy:"brand"` entries
+	 * is a flat brand label.
 	 *
-	 * @param array<string, mixed> $wc_product
+	 * Hierarchical category emission (#350): when `$category_paths`
+	 * is supplied, replace each merchant category's `value` with the
+	 * pre-computed `>`-delimited path string (e.g.
+	 * `"Clothing > Tshirts"` for a child category). Categories
+	 * without a map entry fall back to the bare `name` for graceful
+	 * degradation. Per UCP `category.json` (release/2026-04-08), the
+	 * canonical hierarchy encoding is a `>`-delimited string in the
+	 * `value` field — there is no `parent` / `path` / `breadcrumbs`
+	 * structured field.
+	 *
+	 * @param array<string, mixed>          $wc_product
+	 * @param array<int, string>|null       $category_paths Per-category-id `>`-delimited
+	 *                                                      hierarchy strings, pre-built by
+	 *                                                      the controller. Map keyed by
+	 *                                                      WC term ID. Null means no
+	 *                                                      hierarchy data available — emit
+	 *                                                      bare names (legacy behavior).
 	 * @return array{categories: array<int, array{value: string, taxonomy: string}>, tags: array<int, string>}
 	 */
-	private static function extract_taxonomies( array $wc_product ): array {
+	private static function extract_taxonomies(
+		array $wc_product,
+		?array $category_paths = null
+	): array {
 		$categories = [];
 		$tags       = [];
 
 		if ( ! empty( $wc_product['categories'] ) && is_array( $wc_product['categories'] ) ) {
 			foreach ( $wc_product['categories'] as $cat ) {
-				if ( is_array( $cat ) && ! empty( $cat['name'] ) ) {
-					$categories[] = [
-						'value'    => (string) $cat['name'],
-						'taxonomy' => 'merchant',
-					];
+				if ( ! is_array( $cat ) || empty( $cat['name'] ) ) {
+					continue;
 				}
+				$cat_id = (int) ( $cat['id'] ?? 0 );
+				$value  = (string) $cat['name'];
+				if ( null !== $category_paths && $cat_id > 0 && isset( $category_paths[ $cat_id ] ) ) {
+					$path = (string) $category_paths[ $cat_id ];
+					if ( '' !== $path ) {
+						$value = $path;
+					}
+				}
+				$categories[] = [
+					'value'    => $value,
+					'taxonomy' => 'merchant',
+				];
 			}
 		}
 
@@ -692,6 +833,9 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		if ( ! empty( $wc_product['brands'] ) && is_array( $wc_product['brands'] ) ) {
 			foreach ( $wc_product['brands'] as $brand ) {
 				if ( is_array( $brand ) && ! empty( $brand['name'] ) ) {
+					// Brands stay flat — no `$category_paths` lookup
+					// (WC `product_brand` taxonomy has no native
+					// hierarchy in the data model).
 					$categories[] = [
 						'value'    => (string) $brand['name'],
 						'taxonomy' => 'brand',
@@ -732,7 +876,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * product contributes nothing to the agent-facing payload.
 	 *
 	 * @param array<string, mixed> $wc_product
-	 * @return array{options: array<int, array{name: string, values: array<int, array{label: string}>}>, metadata_attributes: array<int, array{name: string, values: array<int, array{label: string}>}>}
+	 * @return array{options: array<int, array{name: string, values: array<int, array{label: string, id?: string}>}>, metadata_attributes: array<int, array{name: string, values: array<int, array{label: string, id?: string}>}>}
 	 */
 	private static function extract_classified_attributes( array $wc_product ): array {
 		$attributes = $wc_product['attributes'] ?? [];
@@ -751,22 +895,49 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				continue;
 			}
 
-			$name  = (string) ( $attribute['name'] ?? '' );
-			$terms = $attribute['terms'] ?? [];
+			$name     = (string) ( $attribute['name'] ?? '' );
+			$taxonomy = (string) ( $attribute['taxonomy'] ?? '' );
+			$terms    = $attribute['terms'] ?? [];
 			if ( '' === $name || ! is_array( $terms ) || empty( $terms ) ) {
 				continue;
 			}
 
-			// Per `option_value.json` (UCP 2026-04-08), `values[]` items
-			// must be objects with a required `label` field, not bare
-			// strings. We don't yet emit the optional `id` field —
-			// that's deferred to issue #350 where it pairs with
-			// `selected_option.id` for stable cross-locale matching.
+			// Per `option_value.json` (UCP 2026-04-08): required `label`,
+			// optional `id`. We emit `id` only for taxonomy-backed
+			// attributes (slug starts with `pa_`) where each term has
+			// a stable URL-safe slug. Excluded from `id` emission:
+			//   - Custom inline attributes (no taxonomy registration,
+			//     no canonical identifier).
+			//   - Third-party non-`pa_` product-attribute taxonomies
+			//     (e.g. `pwb-brand` from Perfect Brands, WCFM brand
+			//     attributes) — these don't follow WC's
+			//     `wc_attribute_taxonomy_name()` convention, so we
+			//     can't compose a stable `<taxonomy>:<slug>` agents
+			//     can rely on. Same graceful-degradation as custom
+			//     inline attributes: emit `label`, omit `id`.
+			//
+			// `id` format: `<taxonomy>:<slug>` (e.g. `pa_color:black`).
+			// Colon separator is unambiguous because both halves are
+			// URL-safe / hyphen-delimited and never contain colons.
+			// Agents can echo the `id` back via `selected_option.id`
+			// for stable cross-locale variant matching (UCP 2026-04-08
+			// `selected_option.id` semantics: "server SHOULD use it for
+			// matching; name and label remain required for display").
+			$is_taxonomy = '' !== $taxonomy && str_starts_with( $taxonomy, 'pa_' );
+
 			$values = [];
 			foreach ( $terms as $term ) {
-				if ( is_array( $term ) && ! empty( $term['name'] ) ) {
-					$values[] = [ 'label' => (string) $term['name'] ];
+				if ( ! is_array( $term ) || empty( $term['name'] ) ) {
+					continue;
 				}
+				$value = [ 'label' => (string) $term['name'] ];
+				if ( $is_taxonomy ) {
+					$slug = $term['slug'] ?? '';
+					if ( is_string( $slug ) && '' !== $slug ) {
+						$value['id'] = $taxonomy . ':' . $slug;
+					}
+				}
+				$values[] = $value;
 			}
 			if ( empty( $values ) ) {
 				continue;

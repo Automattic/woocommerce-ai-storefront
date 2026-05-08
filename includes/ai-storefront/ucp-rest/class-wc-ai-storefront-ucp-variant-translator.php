@@ -69,12 +69,30 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 *                                                        store; controller computes
 	 *                                                        once and threads through.
 	 *                                                        Omit when null/empty.
+	 * @param array<string, array{taxonomy: string, slugs: array<string, string>}>|null $term_slug_map
+	 *                                                        Per-attribute term slug lookup,
+	 *                                                        nested as
+	 *                                                        `[axis_label => {taxonomy, slugs:
+	 *                                                        [value_label => slug]}]`
+	 *                                                        (e.g. `["Color" => ["taxonomy" =>
+	 *                                                        "pa_color", "slugs" => ["Black" =>
+	 *                                                        "black"]]]`).
+	 *                                                        Pre-built by the product translator
+	 *                                                        from the parent's
+	 *                                                        `attributes[].terms[].{name,slug}`.
+	 *                                                        Used to emit
+	 *                                                        `selected_option.id` (UCP 2026-04-08
+	 *                                                        optional field) for stable cross-locale
+	 *                                                        variant matching. Format of `id`:
+	 *                                                        `<taxonomy>:<slug>`. Omit `id` per-pair
+	 *                                                        when the slug isn't found in the map.
 	 * @return array<string, mixed>                           UCP variant shape.
 	 */
 	public static function translate(
 		array $wc_variation,
 		?array $parent_attribute_names = null,
-		?array $seller = null
+		?array $seller = null,
+		?array $term_slug_map = null
 	): array {
 		$id = (int) ( $wc_variation['id'] ?? 0 );
 
@@ -122,7 +140,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		// agents that want to filter or match by attribute need them
 		// structured. UCP v2026-04-08 `selected_option.json` carries
 		// `options` exactly for this.
-		$options = self::extract_options( $wc_variation, $pre_parsed_pairs );
+		$options = self::extract_options( $wc_variation, $pre_parsed_pairs, $term_slug_map );
 		if ( ! empty( $options ) ) {
 			$variant['options'] = $options;
 		}
@@ -555,11 +573,19 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 *        or null if the array path is the live one. Parser uses the
 	 *        internal `{attribute, value}` shape; this method renames to
 	 *        the spec's `{name, label}` shape on emission.
-	 * @return array<int, array{name: string, label: string}>
+	 * @param array<string, array{taxonomy: string, slugs: array<string, string>}>|null $term_slug_map
+	 *        Per-axis term slug lookup, nested as
+	 *        `[axis_label => {taxonomy, slugs: [value_label => slug]}]`.
+	 *        When supplied, emit `selected_option.id` as
+	 *        `<taxonomy>:<slug>` for matching axis/value pairs. Omit `id`
+	 *        per-pair when no match is found (case-sensitive lookup —
+	 *        labels come from the same WC source on both sides).
+	 * @return array<int, array{name: string, label: string, id?: string}>
 	 */
 	private static function extract_options(
 		array $wc_variation,
-		?array $pre_parsed_pairs = null
+		?array $pre_parsed_pairs = null,
+		?array $term_slug_map = null
 	): array {
 		$attributes = $wc_variation['attributes'] ?? [];
 		$options    = [];
@@ -590,10 +616,24 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				if ( '' === $label ) {
 					continue;
 				}
-				$options[] = [
+				// Array path: try to source the slug from the variation's
+				// own `taxonomy` field first (when the WC Store API
+				// populates it), then fall back to the threaded
+				// $term_slug_map for the parsed-string path.
+				$option = [
 					'name'  => $label,
 					'label' => $value,
 				];
+				$id     = self::lookup_option_value_id(
+					$label,
+					$value,
+					(string) ( $attribute['taxonomy'] ?? '' ),
+					$term_slug_map
+				);
+				if ( null !== $id ) {
+					$option['id'] = $id;
+				}
+				$options[] = $option;
 			}
 		}
 
@@ -606,13 +646,88 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		}
 
 		foreach ( $pre_parsed_pairs as $pair ) {
-			$options[] = [
+			$option = [
 				'name'  => $pair['attribute'],
 				'label' => $pair['value'],
 			];
+			// String path: the parsed pair carries no taxonomy info —
+			// rely entirely on the threaded $term_slug_map to lookup
+			// both the taxonomy slug and the term slug.
+			$id = self::lookup_option_value_id(
+				$pair['attribute'],
+				$pair['value'],
+				'',
+				$term_slug_map
+			);
+			if ( null !== $id ) {
+				$option['id'] = $id;
+			}
+			$options[] = $option;
 		}
 
 		return $options;
+	}
+
+	/**
+	 * Build the optional `selected_option.id` (UCP 2026-04-08).
+	 *
+	 * `id` format: `<taxonomy>:<slug>` (e.g. `pa_color:black`). Two
+	 * resolution strategies in priority order:
+	 *
+	 *   1. **Variation-supplied taxonomy** (array path): the WC Store API
+	 *      sometimes carries `taxonomy` directly on each variation
+	 *      attribute entry. When present and prefixed `pa_`, lookup the
+	 *      term slug from `$term_slug_map[$axis_label]['slugs'][$value_label]`
+	 *      and combine with the variation's taxonomy.
+	 *   2. **Map-supplied taxonomy** (string path or array path with
+	 *      missing taxonomy): read the axis's taxonomy from
+	 *      `$term_slug_map[$axis_label]['taxonomy']` so the string-parse
+	 *      path (which has no per-attribute taxonomy field) can still
+	 *      emit `id`.
+	 *
+	 * Returns `null` whenever any required piece is missing (no map,
+	 * no axis entry, no value entry, non-pa_ taxonomy). The optional
+	 * `id` is omitted from the emitted pair in that case.
+	 *
+	 * @param string $axis_label  Axis name (e.g. "Color").
+	 * @param string $value_label Value name (e.g. "Black").
+	 * @param string $taxonomy    Taxonomy slug from variation attribute
+	 *                            when available; "" otherwise.
+	 * @param array<string, array{taxonomy: string, slugs: array<string, string>}>|null $term_slug_map
+	 *                            Per-axis lookup map.
+	 */
+	private static function lookup_option_value_id(
+		string $axis_label,
+		string $value_label,
+		string $taxonomy,
+		?array $term_slug_map
+	): ?string {
+		if ( ! is_array( $term_slug_map ) ) {
+			return null;
+		}
+		$axis_entry = $term_slug_map[ $axis_label ] ?? null;
+		if ( ! is_array( $axis_entry ) ) {
+			return null;
+		}
+		$slugs = $axis_entry['slugs'] ?? [];
+		if ( ! is_array( $slugs ) ) {
+			return null;
+		}
+		$slug = $slugs[ $value_label ] ?? '';
+		if ( ! is_string( $slug ) || '' === $slug ) {
+			return null;
+		}
+		// Resolve the taxonomy half. Variation-supplied wins; otherwise
+		// fall back to the map's `taxonomy` field so the string-parse
+		// path can still emit `id` even though it has no per-attribute
+		// `taxonomy` field.
+		if ( '' === $taxonomy ) {
+			$taxonomy = (string) ( $axis_entry['taxonomy'] ?? '' );
+		}
+		if ( '' === $taxonomy || ! str_starts_with( $taxonomy, 'pa_' ) ) {
+			return null;
+		}
+		return $taxonomy . ':' . $slug;
 	}
 
 	/**

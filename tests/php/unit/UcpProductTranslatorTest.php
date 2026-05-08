@@ -1117,23 +1117,33 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		// Variation axis landed in options[] with `option_value` shape
 		// items (UCP 2026-04-08: required `label`, optional `id`).
+		// `id` is emitted from `<taxonomy>:<slug>` for taxonomy-backed
+		// (pa_*) attributes — issue #350.
 		$this->assertArrayHasKey( 'options', $result );
 		$this->assertCount( 1, $result['options'] );
 		$this->assertSame( 'Size', $result['options'][0]['name'] );
 		$this->assertSame(
-			[ [ 'label' => 'S' ], [ 'label' => 'M' ], [ 'label' => 'L' ] ],
+			[
+				[ 'label' => 'S', 'id' => 'pa_size:s' ],
+				[ 'label' => 'M', 'id' => 'pa_size:m' ],
+				[ 'label' => 'L', 'id' => 'pa_size:l' ],
+			],
 			$result['options'][0]['values']
 		);
 
 		// Informational attribute landed in metadata.attributes with
 		// the same shape (mirrors the option_value structure for
-		// internal consistency).
+		// internal consistency). Same `id` enrichment applies for
+		// taxonomy-backed informational attributes.
 		$this->assertArrayHasKey( 'metadata', $result );
 		$this->assertArrayHasKey( 'attributes', $result['metadata'] );
 		$this->assertCount( 1, $result['metadata']['attributes'] );
 		$this->assertSame( 'Material', $result['metadata']['attributes'][0]['name'] );
 		$this->assertSame(
-			[ [ 'label' => 'Cotton' ], [ 'label' => 'Organic' ] ],
+			[
+				[ 'label' => 'Cotton', 'id' => 'pa_material:cotton' ],
+				[ 'label' => 'Organic', 'id' => 'pa_material:organic' ],
+			],
 			$result['metadata']['attributes'][0]['values']
 		);
 
@@ -1406,5 +1416,269 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayNotHasKey( 'seller', $result );
 		$this->assertArrayNotHasKey( 'seller', $result['variants'][0] );
+	}
+
+	// ------------------------------------------------------------------
+	// option_value.id enrichment (#350)
+	// ------------------------------------------------------------------
+
+	public function test_option_value_id_omitted_for_custom_non_taxonomy_attribute(): void {
+		// Custom inline attributes have no `taxonomy` slug starting with
+		// `pa_` and thus no canonical identifier. Per UCP 2026-04-08
+		// `option_value.json`, `id` is optional — omit it cleanly
+		// rather than emit a synthetic one.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Custom Axis',
+				'taxonomy'       => '', // no taxonomy → custom inline
+				'has_variations' => true,
+				'terms'          => [
+					[ 'name' => 'A', 'slug' => 'a' ],
+					[ 'name' => 'B', 'slug' => 'b' ],
+				],
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame( 'Custom Axis', $result['options'][0]['name'] );
+		foreach ( $result['options'][0]['values'] as $value ) {
+			$this->assertArrayHasKey( 'label', $value );
+			$this->assertArrayNotHasKey( 'id', $value );
+		}
+	}
+
+	public function test_option_value_id_omitted_when_term_slug_missing(): void {
+		// Defensive: a taxonomy-backed attribute whose terms lack a
+		// `slug` (corrupt data, plugin override) should still emit
+		// `label` but skip `id` per term — graceful degradation.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Color',
+				'taxonomy'       => 'pa_color',
+				'has_variations' => true,
+				'terms'          => [
+					[ 'name' => 'Black', 'slug' => 'black' ],
+					[ 'name' => 'NoSlug' ], // missing slug
+				],
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$values = $result['options'][0]['values'];
+		$this->assertSame( 'pa_color:black', $values[0]['id'] );
+		$this->assertArrayNotHasKey( 'id', $values[1] );
+	}
+
+	public function test_variant_options_id_emitted_from_term_slug_map(): void {
+		// Variants get `selected_option.id` from the threaded
+		// `term_slug_map` built once per product. Map shape:
+		//   [axis_label => {
+		//     taxonomy: 'pa_color',
+		//     slugs:    [value_label => slug, ...],
+		//   }]
+		// The structured per-axis shape (vs. an earlier sentinel-key
+		// design) eliminates collision risk with merchant-defined
+		// term names.
+		$wc_product = [
+			'id'         => 999,
+			'name'       => 'Tee',
+			'type'       => 'variable',
+			'prices'     => [
+				'price'         => '1500',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '1500', 'max_amount' => '1500' ],
+			],
+			'attributes' => [
+				[
+					'name'           => 'Color',
+					'taxonomy'       => 'pa_color',
+					'has_variations' => true,
+					'terms'          => [
+						[ 'name' => 'Black', 'slug' => 'black' ],
+						[ 'name' => 'Green', 'slug' => 'green' ],
+					],
+				],
+			],
+			'variations' => [ [ 'id' => 991 ] ],
+		];
+
+		$wc_variations = [
+			[
+				'id'                => 991,
+				'name'              => 'Tee',
+				'is_in_stock'       => true,
+				'short_description' => '',
+				'prices'            => [
+					'price'         => '1500',
+					'currency_code' => 'USD',
+				],
+				// Live WC variations carry empty `attributes[]` plus a
+				// formatted `variation` string (post-#347 path).
+				'attributes'        => [],
+				'variation'         => 'Color: Black',
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $wc_product, $wc_variations );
+
+		$variant = $result['variants'][0];
+		$this->assertSame(
+			[
+				[ 'name' => 'Color', 'label' => 'Black', 'id' => 'pa_color:black' ],
+			],
+			$variant['options']
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// Hierarchical category strings (#350)
+	// ------------------------------------------------------------------
+
+	public function test_category_value_uses_hierarchy_path_when_supplied(): void {
+		// Per UCP `category.json` (release/2026-04-08), hierarchy is
+		// encoded as a `>`-delimited string in the `value` field. When
+		// the controller pre-builds a path map (e.g.
+		// `[42 => "Clothing > Tshirts"]`), the translator emits the
+		// path string instead of the bare leaf name.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['categories'] = [
+			[ 'id' => 42, 'name' => 'Tshirts', 'slug' => 'tshirts', 'parent' => 41 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$fixture,
+			[],
+			null,
+			[ 42 => 'Clothing > Tshirts' ]
+		);
+
+		$this->assertSame(
+			[ [ 'value' => 'Clothing > Tshirts', 'taxonomy' => 'merchant' ] ],
+			$result['categories']
+		);
+	}
+
+	public function test_category_value_falls_back_to_bare_name_when_path_missing(): void {
+		// Graceful degradation: when the path map doesn't have an entry
+		// for a category id (controller couldn't fetch its parents,
+		// dispatch failed, etc.), emit the bare leaf name.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['categories'] = [
+			[ 'id' => 99, 'name' => 'OrphanCat', 'slug' => 'orphancat', 'parent' => 0 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$fixture,
+			[],
+			null,
+			[ /* no entry for 99 */ ]
+		);
+
+		$this->assertSame(
+			[ [ 'value' => 'OrphanCat', 'taxonomy' => 'merchant' ] ],
+			$result['categories']
+		);
+	}
+
+	public function test_category_value_unchanged_when_path_map_omitted(): void {
+		// Backwards-compat: when no $category_paths is passed (legacy
+		// callers), emit the bare leaf name as before. Strict shape
+		// preserved.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['categories'] = [
+			[ 'id' => 5, 'name' => 'Widgets', 'slug' => 'widgets', 'parent' => 0 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame(
+			[ [ 'value' => 'Widgets', 'taxonomy' => 'merchant' ] ],
+			$result['categories']
+		);
+	}
+
+	public function test_brand_categories_stay_flat_regardless_of_path_map(): void {
+		// WC `product_brand` taxonomy has no native hierarchy — brands
+		// stay flat even when the controller supplies a path map.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['brands']     = [
+			[ 'id' => 70, 'name' => 'NorthPeak', 'slug' => 'northpeak' ],
+		];
+		$fixture['categories'] = [
+			[ 'id' => 42, 'name' => 'Tshirts', 'slug' => 'tshirts', 'parent' => 41 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$fixture,
+			[],
+			null,
+			[ 42 => 'Clothing > Tshirts', 70 => 'Should-Not-Be-Used' ]
+		);
+
+		// Two categories: hierarchical merchant + flat brand.
+		$this->assertCount( 2, $result['categories'] );
+		$this->assertSame(
+			[ 'value' => 'Clothing > Tshirts', 'taxonomy' => 'merchant' ],
+			$result['categories'][0]
+		);
+		// Brand entry: bare name even though path map has key 70.
+		$this->assertSame(
+			[ 'value' => 'NorthPeak', 'taxonomy' => 'brand' ],
+			$result['categories'][1]
+		);
+	}
+
+	public function test_variant_options_id_omitted_when_term_label_missing_from_map(): void {
+		// String-path variation references a value not in the map
+		// (e.g. label-case mismatch, custom-per-variation override).
+		// Emit name + label without `id` — silent graceful degradation.
+		$wc_product = [
+			'id'         => 999,
+			'name'       => 'Tee',
+			'type'       => 'variable',
+			'prices'     => [
+				'price'         => '1500',
+				'currency_code' => 'USD',
+				'price_range'   => [ 'min_amount' => '1500', 'max_amount' => '1500' ],
+			],
+			'attributes' => [
+				[
+					'name'           => 'Color',
+					'taxonomy'       => 'pa_color',
+					'has_variations' => true,
+					'terms'          => [
+						[ 'name' => 'Black', 'slug' => 'black' ],
+					],
+				],
+			],
+			'variations' => [ [ 'id' => 991 ] ],
+		];
+
+		$wc_variations = [
+			[
+				'id'                => 991,
+				'name'              => 'Tee',
+				'is_in_stock'       => true,
+				'short_description' => '',
+				'prices'            => [
+					'price'         => '1500',
+					'currency_code' => 'USD',
+				],
+				'attributes'        => [],
+				// "Charcoal" not in the term slug map.
+				'variation'         => 'Color: Charcoal',
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $wc_product, $wc_variations );
+
+		$variant = $result['variants'][0];
+		$this->assertSame( 'Color', $variant['options'][0]['name'] );
+		$this->assertSame( 'Charcoal', $variant['options'][0]['label'] );
+		$this->assertArrayNotHasKey( 'id', $variant['options'][0] );
 	}
 }

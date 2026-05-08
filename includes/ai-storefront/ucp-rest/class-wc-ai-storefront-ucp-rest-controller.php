@@ -98,6 +98,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	const MAX_VARIATIONS_PER_PRODUCT = 50;
 
 	/**
+	 * Upper bound on category IDs requested per `include=<csv>` page in
+	 * the batched category-terms fetch.
+	 *
+	 * Matches WC Store API's `per_page` ceiling on `/products/categories`.
+	 * `fetch_category_terms()` chunks the input ID list at this size so
+	 * that a parent-chain walk across a search-page's worth of products
+	 * (potentially 100s of distinct categories) doesn't silently truncate
+	 * — agents would then see bare leaf names instead of full paths.
+	 */
+	const MAX_CATEGORY_INCLUDE_PER_PAGE = 100;
+
+	/**
 	 * Upper bound on `quantity` in a checkout line item.
 	 *
 	 * Prevents `unit_price_minor * quantity` from silently overflowing
@@ -1034,6 +1046,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$products         = array();
 		$variant_messages = array();
 
+		// Pre-build per-category hierarchy strings once per request so
+		// every product's `categories[].value` can be the spec-canonical
+		// `>`-delimited path (issue #350) without per-product lookups.
+		// Pure-function contract preserved: controller orchestrates the
+		// WP/Store-API call, translator just consumes the map.
+		$category_paths = $this->build_category_paths_map( $wc_products );
+
 		foreach ( $wc_products as $wc_product ) {
 			if ( ! is_array( $wc_product ) ) {
 				continue;
@@ -1048,7 +1067,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$product = WC_AI_Storefront_UCP_Product_Translator::translate(
 				$wc_product,
 				$variation_fetch['variations'],
-				$seller
+				$seller,
+				$category_paths
 			);
 
 			// Stamp UTM attribution onto the product URL now that translation
@@ -1270,6 +1290,199 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		return array(
 			'name' => $name,
 		);
+	}
+
+	/**
+	 * Build a `category_paths` map for `category.value` hierarchy
+	 * emission (UCP 2026-04-08, issue #350).
+	 *
+	 * Returns `[term_id => "Parent > Child"]` so the product translator
+	 * can emit spec-canonical `>`-delimited paths in `categories[].value`
+	 * instead of bare leaf names. Categories with no parent (top-level)
+	 * map to their bare name; deeply-nested ones walk up the tree.
+	 *
+	 * Strategy:
+	 *   1. Collect all category IDs across the input products.
+	 *   2. Seed the local cache with the per-product category data we
+	 *      already have (name + parent), no extra dispatch needed.
+	 *   3. For any parent IDs referenced but not seeded, fetch the
+	 *      missing parents in a chunked batched
+	 *      `GET /products/categories?include=<csv>` call (chunks of
+	 *      MAX_CATEGORY_INCLUDE_PER_PAGE since WC Store API caps
+	 *      per_page at 100). Loop in case those parents have parents
+	 *      we still need.
+	 *   4. Walk each leaf upward to build the full path string.
+	 *
+	 * Returns empty array on dispatch failure — translator falls back
+	 * to bare names per its null-handling.
+	 *
+	 * @param array<int, array<string, mixed>> $wc_products Decoded Store API product responses.
+	 * @return array<int, string> Map of `term_id => "Parent > Child"`.
+	 */
+	private function build_category_paths_map( array $wc_products ): array {
+		// Local cache: id => [name, parent].
+		$tree = array();
+		// All category IDs we need a path for (the leaves).
+		$leaf_ids = array();
+
+		foreach ( $wc_products as $wc_product ) {
+			if ( ! is_array( $wc_product ) ) {
+				continue;
+			}
+			$cats = $wc_product['categories'] ?? array();
+			if ( ! is_array( $cats ) ) {
+				continue;
+			}
+			foreach ( $cats as $cat ) {
+				if ( ! is_array( $cat ) ) {
+					continue;
+				}
+				$id = (int) ( $cat['id'] ?? 0 );
+				if ( $id <= 0 ) {
+					continue;
+				}
+				$leaf_ids[ $id ] = true;
+				if ( ! isset( $tree[ $id ] ) ) {
+					$tree[ $id ] = array(
+						'name'   => (string) ( $cat['name'] ?? '' ),
+						'parent' => (int) ( $cat['parent'] ?? 0 ),
+					);
+				}
+			}
+		}
+
+		if ( empty( $leaf_ids ) ) {
+			return array();
+		}
+
+		// Walk parent chains, fetching missing entries in batches.
+		// Hard cap on iterations to defend against pathological cycles.
+		$max_iterations = 10;
+		for ( $iter = 0; $iter < $max_iterations; $iter++ ) {
+			$missing = array();
+			foreach ( $tree as $entry ) {
+				$parent_id = $entry['parent'];
+				if ( $parent_id > 0 && ! isset( $tree[ $parent_id ] ) ) {
+					$missing[ $parent_id ] = true;
+				}
+			}
+			if ( empty( $missing ) ) {
+				break;
+			}
+			$fetched = $this->fetch_category_terms( array_keys( $missing ) );
+			if ( empty( $fetched ) ) {
+				// Dispatch failure — leave tree as-is and let the
+				// upward walk degrade gracefully on missing parents.
+				break;
+			}
+			foreach ( $fetched as $id => $entry ) {
+				$tree[ $id ] = $entry;
+			}
+		}
+
+		// Build path strings for each leaf via upward walk.
+		$paths = array();
+		foreach ( array_keys( $leaf_ids ) as $leaf_id ) {
+			$names      = array();
+			$current_id = $leaf_id;
+			$visited    = array();
+			while ( $current_id > 0 && isset( $tree[ $current_id ] ) ) {
+				if ( isset( $visited[ $current_id ] ) ) {
+					break; // Cycle guard (defensive).
+				}
+				$visited[ $current_id ] = true;
+				$entry                  = $tree[ $current_id ];
+				if ( '' !== $entry['name'] ) {
+					array_unshift( $names, $entry['name'] );
+				}
+				$current_id = (int) $entry['parent'];
+			}
+			if ( ! empty( $names ) ) {
+				$paths[ $leaf_id ] = implode( ' > ', $names );
+			}
+		}
+
+		return $paths;
+	}
+
+	/**
+	 * Batched fetch of WC product categories by term ID.
+	 *
+	 * Dispatches one or more
+	 * `GET /wc/store/v1/products/categories?include=<csv>&per_page=100`
+	 * calls (chunking at MAX_CATEGORY_INCLUDE_PER_PAGE because WC Store
+	 * API caps `per_page` at 100 — sending more IDs in `include` would
+	 * silently truncate the response). Returns `[id => [name, parent]]`
+	 * merged across chunks. On any chunk error returns the partial map
+	 * accumulated so far; the caller degrades to bare-name emission for
+	 * still-missing parents.
+	 *
+	 * Internal-dispatch responses may carry stdClass nodes (the WC Store
+	 * API's REST controller uses prepared `\WP_REST_Response` objects
+	 * whose data nests as objects, not arrays) — we route the response
+	 * through `normalize_store_api_data()` so the term iteration is
+	 * uniform regardless of dispatch path. Without normalization, every
+	 * term would silently fail the `is_array` guard and the path map
+	 * would degrade to bare leaf names even on success.
+	 *
+	 * Supports `build_category_paths_map()` (issue #350).
+	 *
+	 * @param array<int, int> $ids
+	 * @return array<int, array{name: string, parent: int}>
+	 */
+	private function fetch_category_terms( array $ids ): array {
+		if ( empty( $ids ) ) {
+			return array();
+		}
+
+		$ids = array_values( array_unique( array_map( 'intval', $ids ) ) );
+		$out = array();
+
+		foreach ( array_chunk( $ids, self::MAX_CATEGORY_INCLUDE_PER_PAGE ) as $chunk ) {
+			$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products/categories' );
+			$store_request->set_param( 'include', implode( ',', $chunk ) );
+			$store_request->set_param( 'per_page', self::MAX_CATEGORY_INCLUDE_PER_PAGE );
+
+			WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
+			try {
+				$response = rest_do_request( $store_request );
+			} finally {
+				WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
+			}
+
+			if ( $response instanceof WP_Error || $response->get_status() >= 400 ) {
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'UCP fetch_category_terms: dispatch failed for chunk of %d IDs; returning %d already-fetched terms; remaining categories will fall back to bare names.',
+						count( $chunk ),
+						count( $out )
+					)
+				);
+				return $out;
+			}
+
+			$data       = $response->get_data();
+			$normalized = self::normalize_store_api_data( $data );
+			if ( null === $normalized ) {
+				continue;
+			}
+
+			foreach ( $normalized as $term ) {
+				if ( ! is_array( $term ) ) {
+					continue;
+				}
+				$id = (int) ( $term['id'] ?? 0 );
+				if ( $id <= 0 ) {
+					continue;
+				}
+				$out[ $id ] = array(
+					'name'   => (string) ( $term['name'] ?? '' ),
+					'parent' => (int) ( $term['parent'] ?? 0 ),
+				);
+			}
+		}
+
+		return $out;
 	}
 
 	/**
@@ -1566,6 +1779,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
+		// Pass 1: fetch all parent products + record not-found messages.
+		// Two-pass structure (vs. a single fetch+translate loop) lets us
+		// pre-build the category-paths hierarchy map once across the
+		// full product set — needed for spec-canonical `>`-delimited
+		// `category.value` strings (issue #350).
+		$wc_products_by_index = array();
 		foreach ( $wc_ids as $index => $wc_id ) {
 			$id_echo   = (string) ( $inputs[ $index ] ?? '' );
 			$raw_index = (int) ( $positions[ $index ] ?? $index );
@@ -1580,6 +1799,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				continue;
 			}
 
+			$wc_products_by_index[ $index ] = $wc_product;
+		}
+
+		// Pre-build category-paths map across all fetched products
+		// before entering the translate loop.
+		$category_paths = $this->build_category_paths_map(
+			array_values( $wc_products_by_index )
+		);
+
+		// Pass 2: translate each product using its pre-fetched parents
+		// + the shared category-paths map.
+		foreach ( $wc_products_by_index as $index => $wc_product ) {
+			$wc_id = (int) ( $wc_product['id'] ?? 0 );
+
 			// Variable products: pre-fetch each variation's full Store API
 			// response so the product translator can emit one real variant
 			// per variation rather than a synthesized default. When any
@@ -1589,7 +1822,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$variation_fetch = $this->fetch_variations_for( $wc_product );
 			if ( $variation_fetch['skipped'] > 0 ) {
 				$messages[] = self::partial_variants_message(
-					(int) ( $wc_product['id'] ?? 0 ),
+					$wc_id,
 					$variation_fetch['skipped']
 				);
 			}
@@ -1597,7 +1830,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$product = WC_AI_Storefront_UCP_Product_Translator::translate(
 				$wc_product,
 				$variation_fetch['variations'],
-				$seller
+				$seller,
+				$category_paths
 			);
 
 			// Stamp UTM attribution onto the product URL now that translation
