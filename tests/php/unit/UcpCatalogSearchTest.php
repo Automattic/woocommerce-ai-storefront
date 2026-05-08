@@ -405,12 +405,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_search_stamps_seller_name_on_every_product(): void {
+	public function test_search_stamps_seller_name_on_every_variant(): void {
 		// Integration test for the build_seller() thread-through:
-		// the controller computes seller once and passes it into
-		// each translate() call. We assert every product carries
-		// the same seller block — catching a regression where the
-		// threading accidentally drops or diverges across the loop.
+		// the controller computes seller once and passes it into each
+		// translate() call. Per UCP `variant.json`, seller lives on
+		// each variant — not on the product. We assert every variant
+		// across every product carries the same seller block —
+		// catching a regression where the threading accidentally
+		// drops or diverges across the loop.
 		$this->fake_product_list = [
 			$this->make_simple_product( 1, 'Alpha' ),
 			$this->make_simple_product( 2, 'Beta' ),
@@ -419,8 +421,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$body = $this->successful_search( [] );
 
 		foreach ( $body['products'] as $product ) {
-			$this->assertArrayHasKey( 'seller', $product );
-			$this->assertSame( 'Example Store', $product['seller']['name'] );
+			$this->assertArrayNotHasKey( 'seller', $product );
+			$this->assertNotEmpty( $product['variants'] );
+			foreach ( $product['variants'] as $variant ) {
+				$this->assertArrayHasKey( 'seller', $variant );
+				$this->assertSame( 'Example Store', $variant['seller']['name'] );
+			}
 		}
 	}
 
@@ -566,7 +572,9 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$message = array_values( $not_found )[0];
 		$this->assertEquals( 'warning', $message['type'] );
-		$this->assertEquals( 'advisory', $message['severity'] );
+		// `message_warning.json` (UCP 2026-04-08) has no `severity`
+		// field; dropped in 0.12.0 to match spec.
+		$this->assertArrayNotHasKey( 'severity', $message );
 		// JSONPath points at the exact offending input index.
 		$this->assertEquals( '$.filters.categories[1]', $message['path'] );
 	}
@@ -1615,7 +1623,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'var_101', $variants[0]['id'] );
 		$this->assertEquals( 'Small', $variants[0]['title'] );
 		$this->assertEquals( 'var_102', $variants[1]['id'] );
-		$this->assertSame( 2000, $variants[1]['list_price']['amount'] );
+		$this->assertSame( 2000, $variants[1]['price']['amount'] );
 	}
 
 	public function test_search_emits_partial_variants_warning_when_variation_fetch_fails(): void {

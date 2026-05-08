@@ -156,13 +156,14 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$this->variation_fixture()
 		);
 
-		$this->assertSame( 12000, $result['list_price']['amount'] );
-		$this->assertEquals( 'USD', $result['list_price']['currency'] );
-		// Hard-cut regression guard for the 2.0.0 rename — if a future
-		// change re-introduces the old `price` key alongside (or
-		// instead of) `list_price`, this assertion fires and forces a
-		// conscious re-decision.
-		$this->assertArrayNotHasKey( 'price', $result );
+		$this->assertSame( 12000, $result['price']['amount'] );
+		$this->assertEquals( 'USD', $result['price']['currency'] );
+		// Hard-cut regression guard for the 0.12.0 rename — UCP spec
+		// names the active-price field `price`. If a future change
+		// re-introduces `list_price` carrying the active price (its
+		// historical 0.11.x meaning), this assertion fires.
+		// `list_price` is now reserved for strikethrough — see Commit 2.
+		$this->assertArrayNotHasKey( 'list_price', $result );
 	}
 
 	public function test_translate_includes_sku_when_present(): void {
@@ -242,8 +243,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$this->simple_product_fixture()
 		);
 
-		$this->assertSame( 500, $result['list_price']['amount'] );
-		$this->assertEquals( 'USD', $result['list_price']['currency'] );
+		$this->assertSame( 500, $result['price']['amount'] );
+		$this->assertEquals( 'USD', $result['price']['currency'] );
 	}
 
 	public function test_synthesize_default_includes_sku_when_present(): void {
@@ -287,8 +288,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'options', $result );
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Blue' ],
-				[ 'attribute' => 'Size', 'value' => 'Medium' ],
+				[ 'name' => 'Color', 'label' => 'Blue' ],
+				[ 'name' => 'Size', 'label' => 'Medium' ],
 			],
 			$result['options']
 		);
@@ -326,11 +327,11 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertCount( 2, $result['options'] );
-		$this->assertSame( 'Color', $result['options'][0]['attribute'] );
-		$this->assertSame( 'Size', $result['options'][1]['attribute'] );
+		$this->assertSame( 'Color', $result['options'][0]['name'] );
+		$this->assertSame( 'Size', $result['options'][1]['name'] );
 	}
 
-	public function test_translate_emits_compare_at_price_when_on_sale(): void {
+	public function test_translate_emits_list_price_when_on_sale(): void {
 		$fixture = [
 			'id'      => 601,
 			'name'    => 'Sale item',
@@ -344,13 +345,16 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
-		$this->assertArrayHasKey( 'compare_at_price', $result );
-		$this->assertSame( 2000, $result['compare_at_price']['amount'] );
-		$this->assertSame( 'USD', $result['compare_at_price']['currency'] );
-		$this->assertSame( 1500, $result['list_price']['amount'] );
+		$this->assertArrayHasKey( 'list_price', $result );
+		$this->assertSame( 2000, $result['list_price']['amount'] );
+		$this->assertSame( 'USD', $result['list_price']['currency'] );
+		$this->assertSame( 1500, $result['price']['amount'] );
+		// Hard-cut regression guard for the 0.12.0 rename — the old
+		// non-spec `compare_at_price` key must not reappear.
+		$this->assertArrayNotHasKey( 'compare_at_price', $result );
 	}
 
-	public function test_translate_omits_compare_at_price_when_not_on_sale(): void {
+	public function test_translate_omits_list_price_when_not_on_sale(): void {
 		$fixture = [
 			'id'      => 602,
 			'name'    => 'Regular item',
@@ -364,10 +368,11 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
+		$this->assertArrayNotHasKey( 'list_price', $result );
 		$this->assertArrayNotHasKey( 'compare_at_price', $result );
 	}
 
-	public function test_translate_omits_compare_at_price_on_inconsistent_state(): void {
+	public function test_translate_omits_list_price_on_inconsistent_state(): void {
 		// on_sale: true but regular_price <= price — rather than
 		// emit nonsensical "was $10, now $10" we skip it. Third-
 		// party plugins occasionally produce this state.
@@ -384,6 +389,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
+		$this->assertArrayNotHasKey( 'list_price', $result );
 		$this->assertArrayNotHasKey( 'compare_at_price', $result );
 	}
 
@@ -707,7 +713,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $fixture );
 
-		$this->assertSame( 2000, $result['compare_at_price']['amount'] );
+		$this->assertSame( 2000, $result['list_price']['amount'] );
 		$this->assertSame( 5, $result['availability']['quantity'] );
 		$this->assertSame( '9876543210987', $result['barcodes'][0]['value'] );
 	}
@@ -729,8 +735,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $fixture );
 
-		$this->assertSame( 5000, $result['list_price']['amount'] );
-		$this->assertEquals( 'JPY', $result['list_price']['currency'] );
+		$this->assertSame( 5000, $result['price']['amount'] );
+		$this->assertEquals( 'JPY', $result['price']['currency'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -753,8 +759,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'options', $result );
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Tan' ],
-				[ 'attribute' => 'Size', 'value' => '9' ],
+				[ 'name' => 'Color', 'label' => 'Tan' ],
+				[ 'name' => 'Size', 'label' => '9' ],
 			],
 			$result['options']
 		);
@@ -788,8 +794,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Tan' ],
-				[ 'attribute' => 'Size', 'value' => '9' ],
+				[ 'name' => 'Color', 'label' => 'Tan' ],
+				[ 'name' => 'Size', 'label' => '9' ],
 			],
 			$result['options']
 		);
@@ -812,8 +818,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Red, White' ],
-				[ 'attribute' => 'Size', 'value' => 'M' ],
+				[ 'name' => 'Color', 'label' => 'Red, White' ],
+				[ 'name' => 'Size', 'label' => 'M' ],
 			],
 			$result['options']
 		);
@@ -833,8 +839,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Tan' ],
-				[ 'attribute' => 'Size (cm)', 'value' => '25' ],
+				[ 'name' => 'Color', 'label' => 'Tan' ],
+				[ 'name' => 'Size (cm)', 'label' => '25' ],
 			],
 			$result['options']
 		);
@@ -875,7 +881,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( '0', $result['title'] );
 		$this->assertSame(
-			[ [ 'attribute' => 'Size', 'value' => '0' ] ],
+			[ [ 'name' => 'Size', 'label' => '0' ] ],
 			$result['options']
 		);
 	}
@@ -903,7 +909,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 'Leather', $result['title'] );
 		$this->assertSame(
-			[ [ 'attribute' => 'Material', 'value' => 'Leather' ] ],
+			[ [ 'name' => 'Material', 'label' => 'Leather' ] ],
 			$result['options']
 		);
 	}
@@ -933,8 +939,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Tan / 9', $result['title'] );
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Tan' ],
-				[ 'attribute' => 'Size', 'value' => '9' ],
+				[ 'name' => 'Color', 'label' => 'Tan' ],
+				[ 'name' => 'Size', 'label' => '9' ],
 			],
 			$result['options']
 		);
@@ -959,8 +965,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Black / 10', $result['title'] );
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Black' ],
-				[ 'attribute' => 'Size', 'value' => '10' ],
+				[ 'name' => 'Color', 'label' => 'Black' ],
+				[ 'name' => 'Size', 'label' => '10' ],
 			],
 			$result['options']
 		);

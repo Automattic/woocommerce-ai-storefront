@@ -1260,7 +1260,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// the emotional valence (informational), not restate the
 		// protocol-level state.
 		$this->assertEquals( 'info', $msg['type'] );
-		$this->assertEquals( 'advisory', $msg['severity'] );
+		// `message_info.json` (UCP 2026-04-08) has no `severity` field —
+		// only errors carry it. Pre-0.12.0 we emitted `severity: advisory`
+		// here as a non-spec extension; dropped to match spec.
+		$this->assertArrayNotHasKey( 'severity', $msg );
 	}
 
 	public function test_buyer_handoff_message_omitted_when_no_continue_url(): void {
@@ -1511,7 +1514,8 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 		$msg = array_values( $provisional )[0];
 		$this->assertSame( 'info', $msg['type'] );
-		$this->assertSame( 'advisory', $msg['severity'] );
+		// `message_info.json` doesn't define `severity`; dropped in 0.12.0.
+		$this->assertArrayNotHasKey( 'severity', $msg );
 	}
 
 	public function test_total_is_provisional_omitted_on_error_path(): void {

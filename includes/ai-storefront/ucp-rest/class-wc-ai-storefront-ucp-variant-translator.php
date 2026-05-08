@@ -8,13 +8,13 @@
  *
  *     source/schemas/shopping/types/variant.json
  *
- * Required UCP fields: id, title, description, list_price.
- * (`list_price` replaced the 1.x `price` field in 2.0.0 — it carries
- * the current/cart amount from WC's `prices.price`; on-sale variants
- * additionally emit `compare_at_price` from `prices.regular_price`
- * for strikethrough rendering.) Variants also carry `options`
- * (selected option values like "Color: Blue, Size: Large"),
- * `availability`, and optional `sku`, `barcodes`, `media`.
+ * Required UCP fields: id, title, description, price.
+ * (`price` carries the current/cart amount from WC's `prices.price`;
+ * on-sale variants additionally emit the optional `list_price` from
+ * `prices.regular_price` for strikethrough rendering.) Variants also
+ * carry `options` (selected option values like "Color: Blue,
+ * Size: Large"), `availability`, and optional `sku`, `barcodes`,
+ * `media`.
  *
  * @package WooCommerce_AI_Storefront
  * @since 1.3.0
@@ -59,9 +59,23 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 *                                                        9.x). Without these, comma-in-value
 	 *                                                        cases (e.g. "Color: Red, White")
 	 *                                                        cannot be split unambiguously.
+	 * @param array<string, mixed>|null $seller               Seller block to attach as
+	 *                                                        `variant.seller` per UCP
+	 *                                                        `variant.json` (the spec defines
+	 *                                                        seller inline on variants only —
+	 *                                                        no `product.seller` field).
+	 *                                                        Same value passed for every
+	 *                                                        variant in a single-merchant
+	 *                                                        store; controller computes
+	 *                                                        once and threads through.
+	 *                                                        Omit when null/empty.
 	 * @return array<string, mixed>                           UCP variant shape.
 	 */
-	public static function translate( array $wc_variation, ?array $parent_attribute_names = null ): array {
+	public static function translate(
+		array $wc_variation,
+		?array $parent_attribute_names = null,
+		?array $seller = null
+	): array {
 		$id = (int) ( $wc_variation['id'] ?? 0 );
 
 		// Parse the formatted `variation` string at most once per variant
@@ -93,41 +107,37 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			'id'          => self::VARIANT_ID_PREFIX . $id,
 			'title'       => self::extract_title( $wc_variation, $pre_parsed_pairs ),
 			'description' => self::extract_description( $wc_variation ),
-			// `list_price` is the UCP core name for the current
-			// purchasable price — sourced from WC's `prices.price`
-			// (the active amount that lands in the cart, which on a
-			// sale variant is the discounted price, not the regular
-			// one). Previously emitted as `price`; renamed in 2.0.0
-			// for spec parity. On-sale variants additionally emit
-			// `compare_at_price` as the pre-discount amount from
-			// WC's `prices.regular_price`, letting agents render
-			// strike-through pricing ("was $X, now $Y").
-			'list_price'  => self::extract_price( $wc_variation ),
+			// `price` is the UCP-required field for the current
+			// purchasable amount — sourced from WC's `prices.price`,
+			// which is the active value (sale price when on_sale, else
+			// regular). Strike-through display lives in the optional
+			// `list_price` field per `variant.json` (see Commit 2 of
+			// the 0.12.0 compliance pass for that rename).
+			'price'       => self::extract_price( $wc_variation ),
 		];
 
-		// Structured options — the {attribute, value} pairs that
+		// Structured options — the {name, label} pairs that
 		// distinguish this variant from siblings (e.g. "Color: Blue,
 		// Size: M"). Already implied by `title` for human display, but
 		// agents that want to filter or match by attribute need them
-		// structured. UCP v2026-04-08 variant schema carries
+		// structured. UCP v2026-04-08 `selected_option.json` carries
 		// `options` exactly for this.
 		$options = self::extract_options( $wc_variation, $pre_parsed_pairs );
 		if ( ! empty( $options ) ) {
 			$variant['options'] = $options;
 		}
 
-		// Sale pricing — agents showing "was $X, now $Y" need
-		// compare_at_price alongside the canonical `list_price`. WC
-		// marks this via the `on_sale` flag plus `prices.regular_price`
-		// (higher) vs `prices.price` (the active/sale value). Only
-		// emit when actually on sale so non-sale variants stay
-		// clean. `compare_at_price` is non-spec but widely understood
-		// (Shopify convention) — retained for agents rendering
-		// strike-through pricing; spec-strict consumers ignore it.
+		// Sale pricing — agents showing "was $X, now $Y" need the
+		// pre-discount amount alongside the active `price`. WC marks
+		// this via the `on_sale` flag plus `prices.regular_price`
+		// (higher) vs `prices.price` (the active/sale value). Spec
+		// names the strikethrough field `list_price` (variant.json
+		// optional). Only emit when actually on sale so non-sale
+		// variants stay clean.
 		if ( ! empty( $wc_variation['on_sale'] ) ) {
-			$compare_at = self::extract_compare_at_price( $wc_variation );
-			if ( null !== $compare_at ) {
-				$variant['compare_at_price'] = $compare_at;
+			$list_price = self::extract_list_price( $wc_variation );
+			if ( null !== $list_price ) {
+				$variant['list_price'] = $list_price;
 			}
 		}
 
@@ -188,6 +198,15 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			];
 		}
 
+		// Seller — UCP `variant.json` defines `seller` inline on
+		// variants only (optional, no required subfields). Same value
+		// shared across every variant in a single-merchant store; the
+		// controller computes once via `build_seller()` and threads
+		// the same value to each variant translation.
+		if ( null !== $seller && ! empty( $seller ) ) {
+			$variant['seller'] = $seller;
+		}
+
 		return $variant;
 	}
 
@@ -200,28 +219,32 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * same availability, id suffixed with `_default` so it's distinguishable
 	 * from a real variation.
 	 *
-	 * @param array<string, mixed> $wc_product Decoded Store API response.
-	 * @return array<string, mixed>            UCP variant shape.
+	 * @param array<string, mixed>      $wc_product Decoded Store API response.
+	 * @param array<string, mixed>|null $seller     Seller block to attach as
+	 *                                              `variant.seller`. See `translate()`.
+	 * @return array<string, mixed>                 UCP variant shape.
 	 */
-	public static function synthesize_default( array $wc_product ): array {
+	public static function synthesize_default(
+		array $wc_product,
+		?array $seller = null
+	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
 		$variant = [
 			'id'          => self::VARIANT_ID_PREFIX . $id . self::DEFAULT_VARIANT_SUFFIX,
 			'title'       => $wc_product['name'] ?? '',
 			'description' => [ 'plain' => '' ],
-			// `list_price` (renamed from `price` in 2.0.0) — see the
-			// translate() method above for the naming rationale.
-			'list_price'  => self::extract_price( $wc_product ),
+			// `price` — UCP-required active price. See translate() above.
+			'price'       => self::extract_price( $wc_product ),
 		];
 
 		// Sale pricing carries through the simple-product path too
 		// (a discounted simple product has on_sale + regular_price
 		// just like a variation).
 		if ( ! empty( $wc_product['on_sale'] ) ) {
-			$compare_at = self::extract_compare_at_price( $wc_product );
-			if ( null !== $compare_at ) {
-				$variant['compare_at_price'] = $compare_at;
+			$list_price = self::extract_list_price( $wc_product );
+			if ( null !== $list_price ) {
+				$variant['list_price'] = $list_price;
 			}
 		}
 
@@ -253,6 +276,14 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			$variant['metadata'] = [
 				'shipping' => $shipping,
 			];
+		}
+
+		// Seller — same routing as translate() above. Per-variant
+		// emission per UCP `variant.json`; the synthesized default
+		// satisfies the schema's minItems-1 requirement and carries
+		// seller alongside any real variant in the same response.
+		if ( null !== $seller && ! empty( $seller ) ) {
+			$variant['seller'] = $seller;
 		}
 
 		return $variant;
@@ -460,14 +491,15 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	}
 
 	/**
-	 * Extract the compare-at price (the pre-sale price), or null when
-	 * the variation isn't on sale or the regular_price isn't higher.
+	 * Extract the strikethrough `list_price` (pre-discount amount), or
+	 * null when the variation isn't on sale or the regular_price isn't
+	 * higher.
 	 *
 	 * WC sale convention: `prices.price` is the currently-charged
 	 * amount (sale price when on_sale is true, regular price otherwise).
 	 * `prices.regular_price` is the "was" value. When on_sale is true
-	 * AND regular > price, we emit `compare_at_price` so agents can
-	 * render "was $X, now $Y" or compute a savings percent.
+	 * AND regular > price, we emit `list_price` so agents can render
+	 * "was $X, now $Y" or compute a savings percent.
 	 *
 	 * Defensive against data oddities: if regular_price somehow equals
 	 * or is less than price while on_sale is flagged (inconsistent
@@ -477,7 +509,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @param array<string, mixed> $wc
 	 * @return array{amount: int, currency: string}|null
 	 */
-	private static function extract_compare_at_price( array $wc ): ?array {
+	private static function extract_list_price( array $wc ): ?array {
 		$prices  = $wc['prices'] ?? [];
 		$regular = isset( $prices['regular_price'] ) ? (int) $prices['regular_price'] : 0;
 		$current = (int) ( $prices['price'] ?? 0 );
@@ -520,8 +552,10 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @param array<string, mixed>                                            $wc_variation
 	 * @param array<int, array{attribute: string, value: string}>|null        $pre_parsed_pairs
 	 *        Pairs already parsed from the variation string by `translate()`,
-	 *        or null if the array path is the live one.
-	 * @return array<int, array{attribute: string, value: string}>
+	 *        or null if the array path is the live one. Parser uses the
+	 *        internal `{attribute, value}` shape; this method renames to
+	 *        the spec's `{name, label}` shape on emission.
+	 * @return array<int, array{name: string, label: string}>
 	 */
 	private static function extract_options(
 		array $wc_variation,
@@ -546,8 +580,8 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				if ( '' === $value ) {
 					continue;
 				}
-				// Skip entries missing a human-readable label. Emitting
-				// `{attribute: "", value: "Blue"}` conveys no option axis
+				// Skip entries missing a human-readable axis name. Emitting
+				// `{name: "", label: "Blue"}` conveys no option axis
 				// to the agent — worse than dropping the entry because it
 				// pollutes the options list with an unlabeled row that
 				// can't be filtered or displayed meaningfully. Parallel to
@@ -557,8 +591,8 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 					continue;
 				}
 				$options[] = [
-					'attribute' => $label,
-					'value'     => $value,
+					'name'  => $label,
+					'label' => $value,
 				];
 			}
 		}
@@ -573,8 +607,8 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 
 		foreach ( $pre_parsed_pairs as $pair ) {
 			$options[] = [
-				'attribute' => $pair['attribute'],
-				'value'     => $pair['value'],
+				'name'  => $pair['attribute'],
+				'label' => $pair['value'],
 			];
 		}
 

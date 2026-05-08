@@ -1100,10 +1100,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					 *
 					 * @param array<string, mixed> $variant                    The translated UCP variant shape.
 					 *                                                          Required keys: `id`, `title`,
-					 *                                                          `description`, `list_price`,
+					 *                                                          `description`, `price`,
 					 *                                                          `availability`. Optional: `options`,
-					 *                                                          `compare_at_price`, `sku`,
-					 *                                                          `barcodes`, `media`, `metadata`.
+					 *                                                          `list_price`, `sku`, `barcodes`,
+					 *                                                          `media`, `metadata`, `seller`.
 					 * @param array<string, mixed> $second_arg                 For variable products: the raw
 					 *                                                          decoded Store API variation
 					 *                                                          response. For simple products:
@@ -1131,10 +1131,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 *                                         Required keys: `id`, `title`,
 			 *                                         `description`, `price_range`,
 			 *                                         `variants`. Optional: `url`,
-			 *                                         `handle`, `status`, `seller`,
+			 *                                         `handle`, `status`,
 			 *                                         `categories`, `tags`, `media`,
 			 *                                         `options`, `metadata`, `rating`,
 			 *                                         `published_at`, `updated_at`.
+			 *                                         (Per UCP 2026-04-08 the `seller`
+			 *                                         block is emitted on each variant,
+			 *                                         not on the product — see the
+			 *                                         `wc_ai_storefront_ucp_variant`
+			 *                                         filter to override seller per
+			 *                                         variant.)
 			 * @param array<string, mixed> $wc_product The raw decoded Store API product
 			 *                                         response. Use this to read WC-native
 			 *                                         fields (e.g. custom meta surfaced via
@@ -1220,57 +1226,50 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * Build the `seller` block stamped on every emitted product.
+	 * Build the `seller` block attached to every emitted variant.
 	 *
-	 * UCP core's `product.seller` is spec-expected even for single-
-	 * merchant stores — strict validators will reject a product
-	 * without it. For this plugin (single-merchant by posture), the
-	 * seller is the same for every product in a request, so we
-	 * compute it once and thread it through the translator rather
-	 * than re-reading WP globals per-product.
+	 * Per UCP 2026-04-08, `seller` is defined inline on `variant.json`
+	 * only (optional, no required subfields) — there is no
+	 * `product.seller` field in the spec. The controller computes
+	 * this once per request and threads it through the translators so
+	 * every emitted variant carries the same merchant identity in a
+	 * single-merchant store, without re-reading WP globals per-product.
 	 *
 	 * Shape:
-	 *   - `name`    — `get_bloginfo('name')` stripped + entity-decoded
-	 *                  (same normalization the JSON-LD @graph uses so
-	 *                  the two surfaces agree on merchant display name)
-	 *   - `country` — ISO 3166-1 alpha-2 from WC's base country, or
-	 *                  omitted when not configured. Mirrors the
-	 *                  store_context.country logic exactly.
+	 *   - `name` — `get_bloginfo('name')` stripped + entity-decoded
+	 *              (same normalization the JSON-LD @graph uses so the
+	 *              two surfaces agree on merchant display name).
 	 *
-	 * Why not add an `id` — the UCP core shape allows seller.id but
-	 * we have no namespace-stable seller identifier (site URL could
-	 * work but changes with migrations; plugin is single-merchant
-	 * anyway so a distinguishing ID adds cost without value). If
-	 * this plugin ever grows multi-vendor support, seller.id becomes
-	 * required and the per-request compute-once pattern here
-	 * becomes per-product.
+	 * Spec scope: `variant.seller` defines optional `name` + `links[]`
+	 * only — no `id`, no `country`. Pre-0.12.0 we also emitted
+	 * `country` here from WC's base country and attached the block at
+	 * the product level; both were non-spec and were dropped to keep
+	 * strict validators happy. Site name remains the only seller datum
+	 * we surface; revisit if multi-vendor support arrives and a stable
+	 * seller identifier becomes available.
+	 *
+	 * Returns an empty array when `get_bloginfo('name')` resolves to
+	 * empty/whitespace-only — the variant translator's null-or-empty
+	 * guard then omits the `seller` block entirely instead of emitting
+	 * `seller: { name: "" }`. Empty-name sellers convey nothing useful
+	 * to agents and would fail any reasonable consumer's display logic.
 	 *
 	 * @return array<string, string>
 	 */
 	private static function build_seller(): array {
-		$seller = [
-			'name' => html_entity_decode(
-				wp_strip_all_tags( get_bloginfo( 'name' ) ),
-				ENT_QUOTES,
-				'UTF-8'
-			),
-		];
+		$name = html_entity_decode(
+			wp_strip_all_tags( get_bloginfo( 'name' ) ),
+			ENT_QUOTES,
+			'UTF-8'
+		);
 
-		// `countries` is a PROPERTY on the WooCommerce singleton (an
-		// instance of WC_Countries), not a method — `method_exists`
-		// would always return false here. Guard via `isset()` on the
-		// property so we correctly pick up the country when WC is
-		// fully loaded, and fall through gracefully when it isn't
-		// (tests, early-boot paths, WC plugin-deactivated state).
-		$woocommerce = function_exists( 'WC' ) ? WC() : null;
-		if ( $woocommerce && isset( $woocommerce->countries ) && is_object( $woocommerce->countries ) ) {
-			$country = $woocommerce->countries->get_base_country();
-			if ( $country ) {
-				$seller['country'] = $country;
-			}
+		if ( '' === trim( $name ) ) {
+			return array();
 		}
 
-		return $seller;
+		return array(
+			'name' => $name,
+		);
 	}
 
 	/**
@@ -1520,14 +1519,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// work list (one per unique input, aligned positionally
 		// with `inputs`); `inputs` is the echo array we return to
 		// the agent so they can reconcile what they sent against
-		// what we processed. See `normalize_and_dedupe_lookup_ids`
-		// for the dedup semantics.
+		// what we processed; `positions` is the first raw `ids[]`
+		// index for each deduped entry, used by not_found_message()
+		// to build a JSONPath that resolves against the agent's
+		// request body (not the deduped sequence). See
+		// `normalize_and_dedupe_lookup_ids` for the dedup semantics.
 		$normalized = self::normalize_and_dedupe_lookup_ids( $ids );
 		$inputs     = $normalized['inputs'];
 		$wc_ids     = $normalized['wc_ids'];
+		$positions  = $normalized['positions'];
 
 		// Same single-merchant seller block as the search handler —
-		// computed once, stamped on every product (see handle_catalog_search).
+		// computed once, threaded through to extract_variants() so
+		// every emitted variant carries it (UCP 2026-04-08 defines
+		// `seller` inline on `variant.json` only; no `product.seller`
+		// field exists). See handle_catalog_search for the parallel
+		// flow.
 		$seller = self::build_seller();
 
 		// Prime the WP object-cache with term relationships and post-meta for
@@ -1560,14 +1567,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		foreach ( $wc_ids as $index => $wc_id ) {
+			$id_echo   = (string) ( $inputs[ $index ] ?? '' );
+			$raw_index = (int) ( $positions[ $index ] ?? $index );
 			if ( $wc_id <= 0 ) {
-				$messages[] = self::not_found_message( (int) $index );
+				$messages[] = self::not_found_message( $raw_index, $id_echo );
 				continue;
 			}
 
 			$wc_product = $this->fetch_store_api_product( $wc_id );
 			if ( null === $wc_product ) {
-				$messages[] = self::not_found_message( (int) $index );
+				$messages[] = self::not_found_message( $raw_index, $id_echo );
 				continue;
 			}
 
@@ -1640,10 +1649,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					 *
 					 * @param array<string, mixed> $variant    The translated UCP variant shape.
 					 *                                         Required keys: `id`, `title`,
-					 *                                         `description`, `list_price`,
+					 *                                         `description`, `price`,
 					 *                                         `availability`. Optional: `options`,
-					 *                                         `compare_at_price`, `sku`,
-					 *                                         `barcodes`, `media`, `metadata`.
+					 *                                         `list_price`, `sku`, `barcodes`,
+					 *                                         `media`, `metadata`, `seller`.
 					 * @param array<string, mixed> $second_arg For variable products: the raw
 					 *                                         decoded Store API variation
 					 *                                         response. For simple products:
@@ -1671,10 +1680,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 *                                         Required keys: `id`, `title`,
 			 *                                         `description`, `price_range`,
 			 *                                         `variants`. Optional: `url`,
-			 *                                         `handle`, `status`, `seller`,
+			 *                                         `handle`, `status`,
 			 *                                         `categories`, `tags`, `media`,
 			 *                                         `options`, `metadata`, `rating`,
 			 *                                         `published_at`, `updated_at`.
+			 *                                         (Per UCP 2026-04-08 the `seller`
+			 *                                         block is emitted on each variant,
+			 *                                         not on the product — see the
+			 *                                         `wc_ai_storefront_ucp_variant`
+			 *                                         filter to override seller per
+			 *                                         variant.)
 			 * @param array<string, mixed> $wc_product The raw decoded Store API product
 			 *                                         response. Use this to read WC-native
 			 *                                         fields (e.g. custom meta surfaced via
@@ -1684,7 +1699,80 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 * @return array<string, mixed> The (possibly modified) UCP product shape.
 			 */
 			$filtered_product = apply_filters( 'wc_ai_storefront_ucp_product', $product, $wc_product );
-			$products[]       = is_array( $filtered_product ) ? $filtered_product : $product;
+			$final_product    = is_array( $filtered_product ) ? $filtered_product : $product;
+
+			// Attach per-variant `inputs[]` correlation per
+			// `catalog_lookup.json#/$defs/lookup_variant` (UCP 2026-04-08).
+			// Each emitted variant declares which request ID resolved
+			// to it.
+			//
+			// `match` per `types/input_correlation.json`:
+			//   - `exact`    — input directly identifies this variant
+			//                  (variant ID, SKU, etc.).
+			//   - `featured` — server picked this variant as a
+			//                  representative for a product-level input.
+			//
+			// Per-variant comparison: `match` is `exact` only when the
+			// raw input echo equals THIS variant's emitted `id`,
+			// otherwise `featured`. Two important nuances driving
+			// the per-variant comparison (vs. a prefix-only check):
+			//
+			//   1. A bare `var_<product_id>` input against a simple
+			//      product emits a synthetic default variant whose id
+			//      is `var_<product_id>_default`. Those strings differ
+			//      — the input did NOT directly identify the emitted
+			//      variant id — so the correlation is `featured`,
+			//      not `exact`. A prefix-only check ("input starts
+			//      with `var_`") would misclaim exact precision.
+			//
+			//   2. For a variable product where the input echoes one
+			//      specific variation's id (e.g. `var_<vid>`), only
+			//      that variant's id matches; sibling variants get
+			//      `featured` because they're representatives the
+			//      server emitted alongside the directly-requested
+			//      one.
+			//
+			// Done last (after both filters) so the spec-required
+			// transport-layer correlation isn't mutable by content
+			// filters; filter authors care about variant content,
+			// not server-side request reconciliation.
+			if ( isset( $final_product['variants'] ) && is_array( $final_product['variants'] ) ) {
+				$input_echo = (string) ( $inputs[ $index ] ?? '' );
+				if ( '' !== $input_echo ) {
+					foreach ( $final_product['variants'] as $variant_idx => $variant ) {
+						// `$final_product` came through the
+						// `wc_ai_storefront_ucp_product` filter; a
+						// third-party callback could replace a
+						// variant with a non-array (string, null, etc.).
+						// Guard before reading `$variant['id']` so a
+						// malformed callback doesn't fatal the whole
+						// lookup with PHP 8+'s "Cannot access offset"
+						// error. Skipping the entry here means the
+						// malformed variant is left as-is (without an
+						// `inputs[]` correlation); the schema validator
+						// downstream will surface the bad shape via
+						// the same path it already handles for other
+						// filter-malformations.
+						if ( ! is_array( $variant ) ) {
+							continue;
+						}
+
+						$variant_id = (string) ( $variant['id'] ?? '' );
+						$match_type = ( '' !== $variant_id && $input_echo === $variant_id )
+							? 'exact'
+							: 'featured';
+
+						$final_product['variants'][ $variant_idx ]['inputs'] = [
+							[
+								'id'    => $input_echo,
+								'match' => $match_type,
+							],
+						];
+					}
+				}
+			}
+
+			$products[] = $final_product;
 
 			if ( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE !== $agent_data['name'] ) {
 				WC_AI_Storefront_Crawl_Logger::record(
@@ -1695,9 +1783,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
+		// Per `catalog_lookup.json#/$defs/lookup_response` (UCP 2026-04-08),
+		// the envelope requires only `[ucp, products]`. Per-variant
+		// correlation (which input resolved to which variant) lives on
+		// each variant via `inputs[]` (attached above), not on the
+		// envelope. The pre-0.12.0 top-level `inputs` echo was a
+		// non-spec extension; dropping it keeps strict validators happy
+		// and per-variant correlation is more granular anyway.
 		$response_body = array(
 			'ucp'      => WC_AI_Storefront_UCP_Envelope::catalog_envelope( $capability ),
-			'inputs'   => $inputs,
 			'products' => $products,
 		);
 
@@ -1999,10 +2093,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// actually see the merged line.
 		if ( $surviving_merges ) {
 			$messages[] = [
-				'type'     => 'info',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::MERGED_DUPLICATE_ITEMS,
-				'severity' => 'advisory',
-				'content'  => __( 'Duplicate line items targeting the same product were merged. Quantities have been summed; the response shows one line per product.', 'woocommerce-ai-storefront' ),
+				'type'    => 'info',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::MERGED_DUPLICATE_ITEMS,
+				'content' => __( 'Duplicate line items targeting the same product were merged. Quantities have been summed; the response shows one line per product.', 'woocommerce-ai-storefront' ),
 			];
 		}
 
@@ -2104,8 +2197,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				// this as a terminal failure and abandoning the cart.
 				// Distinct from `buyer_handoff_required` (the
 				// happy-path redirect message), which is `type: info`
-				// + `severity: advisory` because it's not an error —
-				// just informational copy accompanying the redirect.
+				// — informational copy accompanying the redirect, not
+				// an error. (`message_info.json` defines no `severity`
+				// field — see the buyer-handoff message below.)
 				'severity' => 'requires_buyer_input',
 				'path'     => '$.line_items',
 				'content'  => sprintf(
@@ -2149,27 +2243,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			if ( ! is_string( $handoff_content ) ) {
 				$handoff_content = $default_handoff;
 			}
-			// Type `info` + severity `advisory` rather than `error` /
-			// `requires_buyer_input`: this message accompanies the
-			// happy-path redirect, not a failure. Agents (UCPPlayground
-			// observed; production agents likely follow) read
-			// `messages[].type` as a UI rendering hint — `error`
+			// Type `info` rather than `error` — this message accompanies
+			// the happy-path redirect, not a failure. Agents
+			// (UCPPlayground observed; production agents likely follow)
+			// read `messages[].type` as a UI rendering hint — `error`
 			// triggers red/warning styling and the AI mirrors the
 			// problem-flavored framing back to the user, producing
 			// "there was an issue, here's the link" copy instead of
 			// "you're set, click here to buy." The `status` field
 			// already says `requires_escalation` to signal the redirect
-			// posture; the message type/severity should match the
-			// emotional valence (informational, not an error condition)
-			// rather than restate the protocol-level state. The
-			// partner `total_is_provisional` message below uses the
-			// same `info` / `advisory` shape and renders correctly —
-			// staying consistent with that.
+			// posture; the message type should match the emotional
+			// valence (informational) rather than restate the
+			// protocol-level state. Per UCP `message_info.json`
+			// (release/2026-04-08) info messages have no `severity`
+			// field; the partner `total_is_provisional` message below
+			// uses the same shape.
 			$messages[] = [
-				'type'     => 'info',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED,
-				'severity' => 'advisory',
-				'content'  => $handoff_content,
+				'type'    => 'info',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED,
+				'content' => $handoff_content,
 			];
 
 			// `total_is_provisional` — UCP spec requires a `total`
@@ -2180,10 +2272,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// info-message alongside `total: subtotal` so agents
 			// can disclose the caveat to the user before the redirect.
 			$messages[] = [
-				'type'     => 'info',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL,
-				'severity' => 'advisory',
-				'content'  => __( 'Total excludes tax and shipping, which are calculated at the merchant checkout.', 'woocommerce-ai-storefront' ),
+				'type'    => 'info',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL,
+				'content' => __( 'Total excludes tax and shipping, which are calculated at the merchant checkout.', 'woocommerce-ai-storefront' ),
 			];
 		}
 
@@ -3002,24 +3093,58 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * Build a UCP `not_found` error message for the ID at position
-	 * `$index` in the response's `inputs` array. The JSONPath-style
-	 * `path` lets agents localize which specific ID failed.
+	 * Build a UCP `not_found` error message for an ID that did not
+	 * resolve to any known product or variant.
 	 *
-	 * Note: the path references `$.inputs[...]`, not `$.ids[...]`.
-	 * After request-side deduplication (see
-	 * `normalize_and_dedupe_lookup_ids`), the original `ids[]` is
-	 * collapsed into a deduped `inputs[]` echoed in the response.
-	 * Messages address positions in that echoed array so agents can
-	 * map failures to the processed (not raw-requested) set.
+	 * `path` references `$.ids[...]` — the request-side field name.
+	 * Pre-0.12.0 we used `$.inputs[...]`, but the `inputs[]` envelope
+	 * echo was dropped (per UCP 2026-04-08 `lookup_response`, the
+	 * envelope only requires `[ucp, products]`). The JSONPath now
+	 * points at the request's `ids` array, which IS spec-defined
+	 * (`lookup_request.ids`).
 	 *
+	 * The position MUST be the raw request-body index (first occurrence
+	 * for duplicates), not the deduped index. Agents cross-reference
+	 * `path` against the request body they sent — pointing at a deduped
+	 * position would be off-by-one whenever duplicates collapsed earlier
+	 * entries. `normalize_and_dedupe_lookup_ids` returns a `positions[]`
+	 * array tracking the first raw index for each deduped entry; pass
+	 * that raw index here so the JSONPath resolves correctly against
+	 * the agent's original payload.
+	 *
+	 * `content` includes the actual unresolved ID echo (e.g.
+	 * `prod_999` or the malformed string the agent sent) — much
+	 * easier for agents and humans to reconcile than a numeric index
+	 * alone. The echo is run through `sanitize_reflected_value()`
+	 * before interpolation: stripping tags prevents reflected-XSS via
+	 * malicious `ids[]` payloads, and the 200-char cap bounds payload
+	 * inflation (a hostile agent submitting a 100KB "id" can't make
+	 * the error response any larger than the cap allows).
+	 *
+	 * @param int    $raw_index Zero-based position in the request body's
+	 *                          `ids[]` array (first occurrence for
+	 *                          duplicates), NOT the deduped position.
+	 * @param string $id_echo   The unresolved ID as the agent submitted it
+	 *                          (or the normalized echo form for malformed
+	 *                          non-string inputs). Sanitized before
+	 *                          interpolation into `content`.
 	 * @return array<string, string>
 	 */
-	private static function not_found_message( int $index ): array {
+	private static function not_found_message( int $raw_index, string $id_echo = '' ): array {
+		$safe_echo = self::sanitize_reflected_value( $id_echo );
+		$content   = '' !== $safe_echo
+			? sprintf(
+				/* translators: %s: the input ID the agent submitted that didn't resolve. */
+				__( 'Input "%s" did not resolve to a known product or variant.', 'woocommerce-ai-storefront' ),
+				$safe_echo
+			)
+			: __( 'An input did not resolve to a known product or variant.', 'woocommerce-ai-storefront' );
+
 		return [
 			'type'     => 'error',
 			'code'     => WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND,
-			'path'     => '$.inputs[' . $index . ']',
+			'content'  => $content,
+			'path'     => '$.ids[' . $raw_index . ']',
 			'severity' => 'unrecoverable',
 		];
 	}
@@ -3052,19 +3177,29 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * resolution step even though we echo the raw form back so the
 	 * agent can see what we received.
 	 *
+	 * `positions[]` tracks the first raw index in `$raw_ids` for each
+	 * deduped entry (positionally aligned with `inputs[]` and `wc_ids[]`).
+	 * Used by `not_found_message()` to build a JSONPath against the
+	 * request body's original `ids[]` rather than the deduped sequence —
+	 * agents cross-reference `path` against what they sent, so a deduped
+	 * index would be off-by-one whenever duplicates collapsed earlier
+	 * entries.
+	 *
 	 * @param array<int, mixed> $raw_ids
 	 *
 	 * @return array{
 	 *     inputs: array<int, string>,
-	 *     wc_ids: array<int, int>
+	 *     wc_ids: array<int, int>,
+	 *     positions: array<int, int>
 	 * }
 	 */
 	private static function normalize_and_dedupe_lookup_ids( array $raw_ids ): array {
-		$inputs = [];
-		$wc_ids = [];
-		$seen   = [];
+		$inputs    = [];
+		$wc_ids    = [];
+		$positions = [];
+		$seen      = [];
 
-		foreach ( $raw_ids as $raw ) {
+		foreach ( $raw_ids as $raw_index => $raw ) {
 			// Non-scalar inputs (arrays/objects/null) can't resolve
 			// to a WC product, but we still echo a stable,
 			// distinguishable string form so agents see what kind of
@@ -3130,11 +3265,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$seen[ $key ] = true;
 			$inputs[]     = $echo;
 			$wc_ids[]     = $wc_id;
+			$positions[]  = (int) $raw_index;
 		}
 
 		return [
-			'inputs' => $inputs,
-			'wc_ids' => $wc_ids,
+			'inputs'    => $inputs,
+			'wc_ids'    => $wc_ids,
+			'positions' => $positions,
 		];
 	}
 
@@ -3159,10 +3296,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 */
 	private static function partial_variants_message( int $product_id, int $skipped ): array {
 		return [
-			'type'     => 'warning',
-			'code'     => WC_AI_Storefront_UCP_Error_Codes::PARTIAL_VARIANTS,
-			'severity' => 'advisory',
-			'content'  => sprintf(
+			'type'    => 'warning',
+			'code'    => WC_AI_Storefront_UCP_Error_Codes::PARTIAL_VARIANTS,
+			// `message_warning.json` (UCP 2026-04-08) does NOT define a
+			// `severity` field — that's only on `message_error.json`.
+			// Pre-0.12.0 we emitted `severity: advisory` here as a
+			// non-spec extension; dropping it keeps strict validators
+			// happy. Warnings already carry `presentation` semantics
+			// elsewhere in the spec.
+			'content' => sprintf(
 				/* translators: 1: number of variations missing, 2: WC product ID. */
 				_n(
 					'%1$d variation of product %2$d is not included in the variants list; the list is incomplete.',
@@ -3231,11 +3373,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		if ( null !== $pagination && ! is_array( $pagination ) ) {
 			$messages[] = [
-				'type'     => 'warning',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_PAGINATION_SHAPE,
-				'severity' => 'advisory',
-				'path'     => '$.pagination',
-				'content'  => __( 'pagination must be an object; using defaults.', 'woocommerce-ai-storefront' ),
+				'type'    => 'warning',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_PAGINATION_SHAPE,
+				'path'    => '$.pagination',
+				'content' => __( 'pagination must be an object; using defaults.', 'woocommerce-ai-storefront' ),
 			];
 		}
 
@@ -3260,11 +3401,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$limit     = max( 1, min( self::MAX_SEARCH_LIMIT, $requested ) );
 					if ( $limit !== $requested ) {
 						$messages[] = [
-							'type'     => 'warning',
-							'code'     => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
-							'severity' => 'advisory',
-							'path'     => '$.pagination.limit',
-							'content'  => sprintf(
+							'type'    => 'warning',
+							'code'    => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
+							'path'    => '$.pagination.limit',
+							'content' => sprintf(
 								/* translators: 1: requested limit, 2: applied limit, 3: max allowed. */
 								__( 'Requested pagination.limit %1$d was clamped to %2$d (allowed range: 1–%3$d).', 'woocommerce-ai-storefront' ),
 								$requested,
@@ -3280,11 +3420,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// it; the content tells them the value was
 					// unusable, not clamped-from-a-number.
 					$messages[] = [
-						'type'     => 'warning',
-						'code'     => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
-						'severity' => 'advisory',
-						'path'     => '$.pagination.limit',
-						'content'  => sprintf(
+						'type'    => 'warning',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
+						'path'    => '$.pagination.limit',
+						'content' => sprintf(
 							/* translators: %d is the applied default limit. */
 							__( 'pagination.limit must be a non-negative integer; using default %d.', 'woocommerce-ai-storefront' ),
 							$limit
@@ -3307,11 +3446,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// handled downstream by Store API returning an
 					// empty result set — no warning needed there.
 					$messages[] = [
-						'type'     => 'warning',
-						'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_CURSOR,
-						'severity' => 'advisory',
-						'path'     => '$.pagination.cursor',
-						'content'  => __( 'Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug.', 'woocommerce-ai-storefront' ),
+						'type'    => 'warning',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_CURSOR,
+						'path'    => '$.pagination.cursor',
+						'content' => __( 'Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug.', 'woocommerce-ai-storefront' ),
 					];
 				}
 			}
@@ -3340,11 +3478,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 			if ( ! is_string( $raw_field ) || ! is_string( $raw_direction ) ) {
 				$messages[] = [
-					'type'     => 'warning',
-					'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE,
-					'severity' => 'advisory',
-					'path'     => '$.sort',
-					'content'  => __( 'sort.field and sort.direction must be strings; using default ordering.', 'woocommerce-ai-storefront' ),
+					'type'    => 'warning',
+					'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE,
+					'path'    => '$.sort',
+					'content' => __( 'sort.field and sort.direction must be strings; using default ordering.', 'woocommerce-ai-storefront' ),
 				];
 			} else {
 				$field     = strtolower( trim( $raw_field ) );
@@ -3374,11 +3511,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					}
 				} elseif ( '' !== $field ) {
 					$messages[] = [
-						'type'     => 'warning',
-						'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD,
-						'severity' => 'advisory',
-						'path'     => '$.sort.field',
-						'content'  => sprintf(
+						'type'    => 'warning',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD,
+						'path'    => '$.sort.field',
+						'content' => sprintf(
 							/* translators: %s is the unsupported sort field the agent sent. */
 							__( 'Sort field "%s" is not supported; using default ordering.', 'woocommerce-ai-storefront' ),
 							$raw_field
@@ -3405,11 +3541,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 			foreach ( $category_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
-					'type'     => 'warning',
-					'code'     => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND,
-					'severity' => 'advisory',
-					'path'     => '$.filters.categories[' . $index . ']',
-					'content'  => sprintf(
+					'type'    => 'warning',
+					'code'    => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND,
+					'path'    => '$.filters.categories[' . $index . ']',
+					'content' => sprintf(
 						/* translators: %s is the category slug/name the agent sent that couldn't be resolved. */
 						__( 'Category "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
@@ -3477,11 +3612,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				if ( null !== $ctx_currency && $ctx_currency !== $store_currency ) {
 					$apply_price_filter = false;
 					$messages[]         = [
-						'type'     => 'warning',
-						'code'     => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
-						'severity' => 'advisory',
-						'path'     => '$.filters.price',
-						'content'  => sprintf(
+						'type'    => 'warning',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
+						'path'    => '$.filters.price',
+						'content' => sprintf(
 							/* translators: 1: agent-supplied currency, 2: store currency. */
 							__( 'context.currency "%1$s" does not match store currency "%2$s" and conversion is not supported; price filter ignored.', 'woocommerce-ai-storefront' ),
 							$ctx_currency,
@@ -3528,11 +3662,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 			foreach ( $tag_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
-					'type'     => 'warning',
-					'code'     => WC_AI_Storefront_UCP_Error_Codes::TAG_NOT_FOUND,
-					'severity' => 'advisory',
-					'path'     => '$.filters.tags[' . $index . ']',
-					'content'  => sprintf(
+					'type'    => 'warning',
+					'code'    => WC_AI_Storefront_UCP_Error_Codes::TAG_NOT_FOUND,
+					'path'    => '$.filters.tags[' . $index . ']',
+					'content' => sprintf(
 						/* translators: %s is the tag slug/name the agent sent that couldn't be resolved. */
 						__( 'Tag "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
@@ -3558,11 +3691,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 			foreach ( $brand_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
-					'type'     => 'warning',
-					'code'     => WC_AI_Storefront_UCP_Error_Codes::BRAND_NOT_FOUND,
-					'severity' => 'advisory',
-					'path'     => '$.filters.brand[' . $index . ']',
-					'content'  => sprintf(
+					'type'    => 'warning',
+					'code'    => WC_AI_Storefront_UCP_Error_Codes::BRAND_NOT_FOUND,
+					'path'    => '$.filters.brand[' . $index . ']',
+					'content' => sprintf(
 						/* translators: %s is the brand slug/name the agent sent that couldn't be resolved. */
 						__( 'Brand "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
@@ -3648,11 +3780,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$sanitized_key
 				);
 				$messages[]    = [
-					'type'     => 'warning',
-					'code'     => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND,
-					'severity' => 'advisory',
-					'path'     => sprintf( "\$.filters.attributes['%s']", $escaped_key ),
-					'content'  => sprintf(
+					'type'    => 'warning',
+					'code'    => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND,
+					'path'    => sprintf( "\$.filters.attributes['%s']", $escaped_key ),
+					'content' => sprintf(
 						/* translators: %s is the attribute taxonomy name the agent sent that doesn't exist on the store. */
 						__( 'Attribute taxonomy "%s" was not found on the store; filter ignored for this axis.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad['taxonomy'] )
@@ -3887,11 +4018,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$original_count = count( $values );
 		$capped         = array_slice( $values, 0, self::MAX_FILTER_VALUES );
 		$messages[]     = [
-			'type'     => 'warning',
-			'code'     => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
-			'severity' => 'advisory',
-			'path'     => $path,
-			'content'  => sprintf(
+			'type'    => 'warning',
+			'code'    => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
+			'path'    => $path,
+			'content' => sprintf(
 				/* translators: 1: filter path, 2: original count, 3: applied cap. */
 				__( '%1$s received %2$d values; truncated to the first %3$d. Further values were ignored.', 'woocommerce-ai-storefront' ),
 				$path,
@@ -3922,11 +4052,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$original_count = count( $map );
 		$capped         = array_slice( $map, 0, self::MAX_FILTER_VALUES, true );
 		$messages[]     = [
-			'type'     => 'warning',
-			'code'     => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
-			'severity' => 'advisory',
-			'path'     => $path,
-			'content'  => sprintf(
+			'type'    => 'warning',
+			'code'    => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
+			'path'    => $path,
+			'content' => sprintf(
 				/* translators: 1: filter path, 2: original count, 3: applied cap. */
 				__( '%1$s received %2$d keys; truncated to the first %3$d. Further keys were ignored.', 'woocommerce-ai-storefront' ),
 				$path,
@@ -4624,11 +4753,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		return array(
-			'type'     => 'warning',
-			'code'     => WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED,
-			'severity' => 'advisory',
-			'path'     => $path,
-			'content'  => sprintf(
+			'type'    => 'warning',
+			'code'    => WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED,
+			'path'    => $path,
+			'content' => sprintf(
 				/* translators: 1: expected amount (minor units), 2: current amount (minor units). */
 				__( 'Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched.', 'woocommerce-ai-storefront' ),
 				$expected,
@@ -4804,10 +4932,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'url'  => $privacy_url,
 			];
 		} else {
+			// `message_warning.json` (UCP 2026-04-08) requires `content`.
+			// Pre-fix we emitted only `type` + `code`; strict validators
+			// would reject the message.
 			$warnings[] = [
-				'type'     => 'warning',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::PRIVACY_POLICY_UNCONFIGURED,
-				'severity' => 'advisory',
+				'type'    => 'warning',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::PRIVACY_POLICY_UNCONFIGURED,
+				'content' => __( 'Merchant has no privacy policy configured; agents may want to surface this caveat to buyers before proceeding.', 'woocommerce-ai-storefront' ),
 			];
 		}
 
@@ -4821,9 +4952,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			];
 		} else {
 			$warnings[] = [
-				'type'     => 'warning',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::TERMS_UNCONFIGURED,
-				'severity' => 'advisory',
+				'type'    => 'warning',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::TERMS_UNCONFIGURED,
+				'content' => __( 'Merchant has no terms of service configured; agents may want to surface this caveat to buyers before proceeding.', 'woocommerce-ai-storefront' ),
 			];
 		}
 

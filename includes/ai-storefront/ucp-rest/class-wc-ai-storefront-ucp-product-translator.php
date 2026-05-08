@@ -62,11 +62,18 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @param array<int, array<string, mixed>> $wc_variations Optional pre-fetched Store API
 	 *                                                        variation responses. Empty = fall
 	 *                                                        back to synthesized default.
-	 * @param array<string, mixed>|null        $seller        Optional seller block to copy onto
-	 *                                                        every product. Same for every product
-	 *                                                        in a request, so the controller
-	 *                                                        computes it once and passes it in —
-	 *                                                        keeps the translator WP-unaware.
+	 * @param array<string, mixed>|null        $seller        Optional seller block, threaded
+	 *                                                        through to every emitted variant
+	 *                                                        (UCP 2026-04-08 defines `seller`
+	 *                                                        inline on `variant.json` only —
+	 *                                                        no `product.seller` field exists,
+	 *                                                        so this is NOT copied onto the
+	 *                                                        product itself). Same seller for
+	 *                                                        every product in a request, so the
+	 *                                                        controller computes it once and
+	 *                                                        passes it in — keeps the translator
+	 *                                                        WP-unaware. See `extract_variants()`
+	 *                                                        for where the seller lands.
 	 * @return array<string, mixed>                           UCP product shape.
 	 */
 	public static function translate(
@@ -81,7 +88,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			'title'       => $wc_product['name'] ?? '',
 			'description' => self::extract_description( $wc_product ),
 			'price_range' => self::extract_price_range( $wc_product ),
-			'variants'    => self::extract_variants( $wc_product, $wc_variations ),
+			'variants'    => self::extract_variants( $wc_product, $wc_variations, $seller ),
 		];
 
 		// `list_price_range` — UCP core optional field carrying the
@@ -118,12 +125,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			$product['updated_at'] = $timestamps['updated_at'];
 		}
 
-		// Seller — controller-computed once per request (same for every
-		// product in a single-merchant store). Spec-expected even for
-		// single-merchant plugins; omitting it fails strict validators.
-		if ( null !== $seller && ! empty( $seller ) ) {
-			$product['seller'] = $seller;
-		}
+		// Seller is no longer attached at the product level. UCP
+		// `variant.json` defines `seller` inline only on variants
+		// (no `product.seller` field anywhere in the spec tree). The
+		// controller still passes `$seller` here; we route it through
+		// `extract_variants()` so every emitted variant carries it.
+		// See `extract_variants()` below.
 
 		// Optional fields — only emit when source has a non-empty value.
 		if ( ! empty( $wc_product['slug'] ) ) {
@@ -234,7 +241,11 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @param array<int, array<string, mixed>> $wc_variations Pre-fetched variation responses.
 	 * @return array<int, array<string, mixed>>
 	 */
-	private static function extract_variants( array $wc_product, array $wc_variations ): array {
+	private static function extract_variants(
+		array $wc_product,
+		array $wc_variations,
+		?array $seller = null
+	): array {
 		if ( ! empty( $wc_variations ) ) {
 			// The variant translator can't read parent product data on
 			// its own without breaking the pure-function contract, but
@@ -251,14 +262,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			foreach ( $wc_variations as $wc_variation ) {
 				$variants[] = WC_AI_Storefront_UCP_Variant_Translator::translate(
 					$wc_variation,
-					$parent_attribute_names
+					$parent_attribute_names,
+					$seller
 				);
 			}
 			return $variants;
 		}
 
 		return array(
-			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product ),
+			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product, $seller ),
 		);
 	}
 
@@ -705,20 +717,22 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *
 	 * Two output buckets:
 	 *   - `options[]` — variation axes (`has_variations: true`).
-	 *      Shape `{name, values: string[]}`, matching UCP core
-	 *      `product.options` exactly. Consumed by variant-picker UIs.
+	 *      Shape `{name, values: [{label: string}, ...]}` per UCP
+	 *      `option_value.json` (release/2026-04-08): each value is
+	 *      an object with a required `label`, not a bare string.
+	 *      Consumed by variant-picker UIs.
 	 *   - `metadata_attributes[]` — informational attributes
-	 *      (`has_variations: false` or missing). Same shape, but
-	 *      nested under `metadata.attributes` on the emitted product
-	 *      so strict consumers don't confuse them with selectable
-	 *      variant axes.
+	 *      (`has_variations: false` or missing). Same `values[]`
+	 *      object shape, nested under `metadata.attributes` on the
+	 *      emitted product so strict consumers don't confuse them
+	 *      with selectable variant axes.
 	 *
 	 * Entries with no terms in either bucket are skipped entirely —
 	 * an attribute the merchant declared but never assigned to this
 	 * product contributes nothing to the agent-facing payload.
 	 *
 	 * @param array<string, mixed> $wc_product
-	 * @return array{options: array<int, array{name: string, values: array<int, string>}>, metadata_attributes: array<int, array{name: string, values: array<int, string>}>}
+	 * @return array{options: array<int, array{name: string, values: array<int, array{label: string}>}>, metadata_attributes: array<int, array{name: string, values: array<int, array{label: string}>}>}
 	 */
 	private static function extract_classified_attributes( array $wc_product ): array {
 		$attributes = $wc_product['attributes'] ?? [];
@@ -743,10 +757,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				continue;
 			}
 
+			// Per `option_value.json` (UCP 2026-04-08), `values[]` items
+			// must be objects with a required `label` field, not bare
+			// strings. We don't yet emit the optional `id` field —
+			// that's deferred to issue #350 where it pairs with
+			// `selected_option.id` for stable cross-locale matching.
 			$values = [];
 			foreach ( $terms as $term ) {
 				if ( is_array( $term ) && ! empty( $term['name'] ) ) {
-					$values[] = (string) $term['name'];
+					$values[] = [ 'label' => (string) $term['name'] ];
 				}
 			}
 			if ( empty( $values ) ) {
@@ -782,23 +801,25 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	}
 
 	/**
-	 * Extract the core `product.rating` payload.
+	 * Extract the core `product.rating` payload per UCP `rating.json`.
 	 *
-	 * Returns a compact `{average, count}` shape when the merchant
+	 * Returns `{value, scale_min, scale_max, count}` when the merchant
 	 * has at least one review, otherwise null (caller omits the
 	 * `rating` key rather than emitting zeros — no reviews ≠ 0.0
-	 * stars, and conflating them would mislead agents). Average
-	 * rating is a string in the Store API response (e.g. "4.67");
-	 * we coerce to float for agents that do numeric comparisons.
-	 * Review count is already an int.
+	 * stars, and conflating them would mislead agents).
 	 *
-	 * Agents recommending products benefit enormously from rating
-	 * data — "customers rate it 4.7 / 2,384 reviews" is dominant
-	 * social proof that converts. The data is already computed by
-	 * WC; we just forward it.
+	 * `value` is the average rating, coerced to float (the Store API
+	 * returns it as a string like "4.67"). `count` is review_count.
+	 * `scale_min` / `scale_max` are hardcoded 1 and 5 because WC core
+	 * uses an inflexible 1-5 star scale — the bounds aren't surfaced
+	 * by the Store API because they're not configurable. Custom
+	 * review plugins that override the scale (rare, e.g. 0-10) would
+	 * misrepresent here, but the spec field is required and stock WC
+	 * is the overwhelming case; revisit with a filter only if a real
+	 * deployment surfaces the need.
 	 *
 	 * @param array<string, mixed> $wc_product
-	 * @return array{average: float, count: int}|null
+	 * @return array{value: float, scale_min: int, scale_max: int, count: int}|null
 	 */
 	private static function extract_rating( array $wc_product ): ?array {
 		$count = isset( $wc_product['review_count'] )
@@ -810,10 +831,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		}
 
 		return [
-			'average' => isset( $wc_product['average_rating'] )
+			'value'     => isset( $wc_product['average_rating'] )
 				? (float) $wc_product['average_rating']
 				: 0.0,
-			'count'   => $count,
+			'scale_min' => 1,
+			'scale_max' => 5,
+			'count'     => $count,
 		];
 	}
 }

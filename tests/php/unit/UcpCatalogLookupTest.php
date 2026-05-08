@@ -355,11 +355,16 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	// inputs[] echo + deduplication (PR K)
 	// ------------------------------------------------------------------
 
-	public function test_response_echoes_inputs_array_for_happy_path(): void {
-		// UCP spec requires the lookup response to echo the
-		// (normalized, deduped) request IDs in an `inputs` array so
-		// agents can map products back to what they requested even
-		// after dedup/normalization.
+	public function test_response_correlates_inputs_via_per_variant_inputs_array(): void {
+		// UCP `catalog_lookup.json#/$defs/lookup_variant` (2026-04-08)
+		// requires every emitted variant to carry `inputs[]` with at
+		// least one `input_correlation` entry — `{id, match}` mapping
+		// the request ID that resolved to this variant. We only
+		// accept product IDs as lookup inputs; the resolution is
+		// `featured` (server-selected representative).
+		//
+		// The pre-0.12.0 envelope-level `inputs` echo was a non-spec
+		// extension and is now dropped (see commit 6 of #349).
 		$this->seed_simple_product( 100, 'Alpha' );
 		$this->seed_simple_product( 200, 'Beta' );
 
@@ -367,27 +372,39 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			[ 'ids' => [ 'prod_100', 'prod_200' ] ]
 		);
 
-		$this->assertArrayHasKey( 'inputs', $body );
-		$this->assertEquals( [ 'prod_100', 'prod_200' ], $body['inputs'] );
+		$this->assertArrayNotHasKey( 'inputs', $body );
+
+		$this->assertCount( 2, $body['products'] );
+		$this->assertSame(
+			[ [ 'id' => 'prod_100', 'match' => 'featured' ] ],
+			$body['products'][0]['variants'][0]['inputs']
+		);
+		$this->assertSame(
+			[ [ 'id' => 'prod_200', 'match' => 'featured' ] ],
+			$body['products'][1]['variants'][0]['inputs']
+		);
 	}
 
 	public function test_duplicate_ids_are_deduplicated_to_single_fetch_and_product(): void {
 		// `rest_do_request` is the expensive step — a repeated ID
 		// should not cause us to dispatch the same Store API call
-		// twice. Assert on both the observable output (1 input +
-		// 1 product) AND the internal dispatch count — the latter
-		// guards against a future refactor that dedupes *after*
-		// fetching (which would fix outputs while regressing the
-		// performance goal of O(unique) not O(request)).
+		// twice. Assert on both the observable output (1 product) AND
+		// the internal dispatch count — the latter guards against a
+		// future refactor that dedupes *after* fetching (which would
+		// fix outputs while regressing the performance goal of
+		// O(unique) not O(request)).
 		$this->seed_simple_product( 123, 'Widget' );
 
 		$body = $this->successful_lookup(
 			[ 'ids' => [ 'prod_123', 'prod_123', 'prod_123' ] ]
 		);
 
-		$this->assertEquals( [ 'prod_123' ], $body['inputs'] );
 		$this->assertCount( 1, $body['products'] );
 		$this->assertEquals( 'prod_123', $body['products'][0]['id'] );
+		$this->assertSame(
+			[ [ 'id' => 'prod_123', 'match' => 'featured' ] ],
+			$body['products'][0]['variants'][0]['inputs']
+		);
 		$this->assertSame(
 			1,
 			$this->store_api_dispatch_counts[123] ?? 0,
@@ -398,23 +415,154 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	public function test_prefixed_and_bare_ids_for_same_product_are_deduplicated(): void {
 		// Both `prod_123` and bare `123` resolve to WC product 123
 		// (see parse_ucp_id_to_wc_int — prefix-stripping is lenient).
-		// The dedup key is the parsed int, so both forms collapse
-		// to a single inputs entry. First-occurrence wins for echo.
+		// The dedup key is the parsed int, so both forms collapse to
+		// a single product. First-occurrence echo wins as the input
+		// correlation `id`.
 		$this->seed_simple_product( 123, 'Widget' );
 
 		$body = $this->successful_lookup(
 			[ 'ids' => [ 'prod_123', '123', 'var_123_default' ] ]
 		);
 
-		$this->assertEquals( [ 'prod_123' ], $body['inputs'] );
 		$this->assertCount( 1, $body['products'] );
+		$this->assertSame(
+			[ [ 'id' => 'prod_123', 'match' => 'featured' ] ],
+			$body['products'][0]['variants'][0]['inputs']
+		);
 	}
 
-	public function test_inputs_reflect_deduped_positions_in_message_paths(): void {
+	public function test_var_prefix_input_against_simple_product_correlates_as_featured(): void {
+		// Subtle correctness case: `var_<product_id>` is a valid input
+		// (parse_ucp_id_to_wc_int strips both `prod_` and `var_`), but
+		// when the resolved product is simple, the variant translator
+		// emits a synthetic default variant whose id is
+		// `var_<product_id>_default` — not `var_<product_id>`. The two
+		// strings differ, so the input did NOT directly identify the
+		// emitted variant id and the correlation must be `featured`,
+		// not `exact`. A prefix-only check ("input starts with `var_`")
+		// would misclaim exact precision here.
+		$this->seed_simple_product( 456, 'Widget' );
+
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'var_456' ] ]
+		);
+
+		$this->assertCount( 1, $body['products'] );
+		$this->assertSame( 'var_456_default', $body['products'][0]['variants'][0]['id'] );
+		$this->assertSame(
+			[ [ 'id' => 'var_456', 'match' => 'featured' ] ],
+			$body['products'][0]['variants'][0]['inputs']
+		);
+	}
+
+	public function test_input_correlates_as_exact_when_directly_matches_variant_id(): void {
+		// `var_<id>_default` is the actual emitted id of a synthetic
+		// default variant. When the agent submits that exact string,
+		// the input directly identifies the variant — correlation
+		// must be `exact`. This is the only simple-product input
+		// shape that produces an exact match (the input echo and the
+		// variant id are byte-equal).
+		$this->seed_simple_product( 456, 'Widget' );
+
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'var_456_default' ] ]
+		);
+
+		$this->assertCount( 1, $body['products'] );
+		$this->assertSame( 'var_456_default', $body['products'][0]['variants'][0]['id'] );
+		$this->assertSame(
+			[ [ 'id' => 'var_456_default', 'match' => 'exact' ] ],
+			$body['products'][0]['variants'][0]['inputs']
+		);
+	}
+
+	public function test_prod_input_against_variable_product_correlates_all_variants_as_featured(): void {
+		// Variable product, product-level input (`prod_<parent>`).
+		// Every emitted variant gets a unique `var_<vid>` id — none
+		// equal `prod_456`, so all variants are `featured`
+		// representatives the server emitted for the product-level
+		// input. Confirms the per-variant comparison's "no match
+		// anywhere" path.
+		$this->seed_variable_product(
+			456,
+			'Long Sleeve Tee',
+			[
+				[ 'id' => 100, 'price' => '2500', 'size' => 'S' ],
+				[ 'id' => 200, 'price' => '2500', 'size' => 'M' ],
+			]
+		);
+
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'prod_456' ] ]
+		);
+
+		$this->assertCount( 1, $body['products'] );
+		$this->assertCount( 2, $body['products'][0]['variants'] );
+
+		foreach ( $body['products'][0]['variants'] as $variant ) {
+			$this->assertSame(
+				[ [ 'id' => 'prod_456', 'match' => 'featured' ] ],
+				$variant['inputs'],
+				"Variant {$variant['id']} should correlate as featured (no variant id equals prod_456)."
+			);
+		}
+	}
+
+	public function test_inputs_stamping_skips_non_array_variants_from_filter(): void {
+		// Resilience guard: `$final_product` flows through the
+		// `wc_ai_storefront_ucp_product` filter before the inputs[]
+		// stamping loop runs. A third-party callback could (by
+		// accident or otherwise) leave non-arrays in the variants
+		// list — string, null, stdClass — which would fatal in PHP
+		// 8+ on `$variant['id']` access. The stamping loop must skip
+		// non-array entries so a broken plugin doesn't take down
+		// every catalog/lookup response.
+		$this->seed_simple_product( 456, 'Widget' );
+
+		// Hook in a filter that injects a malformed entry alongside
+		// the legitimate variant. Mockery filter binding via Brain
+		// Monkey's Filters API.
+		\Brain\Monkey\Filters\expectApplied( 'wc_ai_storefront_ucp_product' )
+			->andReturnUsing(
+				static function ( $product ) {
+					if ( isset( $product['variants'] ) && is_array( $product['variants'] ) ) {
+						array_unshift( $product['variants'], 'string instead of variant array' );
+					}
+					return $product;
+				}
+			);
+
+		// Should not fatal. Without the guard, `$variant['id']` on
+		// the string entry would throw "Cannot access offset" in PHP 8+.
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'prod_456' ] ]
+		);
+
+		$this->assertCount( 1, $body['products'] );
+		// The malformed entry is preserved as-is (no inputs[] stamped),
+		// the legitimate variant got its inputs[] correlation.
+		$variants = $body['products'][0]['variants'];
+		$this->assertSame( 'string instead of variant array', $variants[0] );
+		$this->assertIsArray( $variants[1] );
+		$this->assertSame(
+			[ [ 'id' => 'prod_456', 'match' => 'featured' ] ],
+			$variants[1]['inputs']
+		);
+	}
+
+	public function test_message_path_points_at_raw_request_index_not_deduped(): void {
 		// Request: [found_A, found_A, missing, found_B]
-		// After dedup: inputs = [found_A, missing, found_B]
-		// The missing one is at deduped position 1 — messages[].path
-		// must point to $.inputs[1], not to the raw request position.
+		// Raw `ids[]` indices:       0,        1,        2,       3
+		// Deduped work list:    [found_A, missing, found_B] at deduped
+		// indices 0, 1, 2.
+		//
+		// `messages[].path` MUST reference the raw request index, not
+		// the deduped one — agents cross-reference path against the
+		// JSON body they sent. Pre-fix this emitted `$.ids[1]` (deduped
+		// position of `missing`), which is wrong: deduped index 1
+		// resolves against raw[1] = found_A in the agent's request,
+		// pointing at the WRONG element. Post-fix it emits `$.ids[2]`
+		// (raw index of the first `missing` occurrence).
 		$this->seed_simple_product( 100, 'Alpha' );
 		$this->seed_simple_product( 300, 'Gamma' );
 
@@ -422,53 +570,76 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			[ 'ids' => [ 'prod_100', 'prod_100', 'prod_missing', 'prod_300' ] ]
 		);
 
-		$this->assertEquals(
-			[ 'prod_100', 'prod_missing', 'prod_300' ],
-			$body['inputs']
-		);
+		$this->assertCount( 2, $body['products'] );
 		$this->assertCount( 1, $body['messages'] );
-		$this->assertEquals( '$.inputs[1]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[2]', $body['messages'][0]['path'] );
 		$this->assertEquals( 'not_found', $body['messages'][0]['code'] );
+		$this->assertArrayHasKey( 'content', $body['messages'][0] );
 	}
 
-	public function test_repeated_malformed_ids_are_deduplicated_as_well(): void {
+	public function test_message_path_uses_first_raw_index_for_repeated_missing_id(): void {
+		// Request: [found_A, missing, found_B, missing]
+		// Raw `ids[]` indices: 0, 1, 2, 3.
+		// `missing` appears twice (raw 1 and raw 3) — dedup collapses
+		// to one entry. The emitted path must point at the FIRST raw
+		// occurrence (1), not the second (3) and not the deduped slot.
+		$this->seed_simple_product( 100, 'Alpha' );
+		$this->seed_simple_product( 200, 'Bravo' );
+
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'prod_100', 'prod_missing', 'prod_200', 'prod_missing' ] ]
+		);
+
+		$this->assertCount( 2, $body['products'] );
+		$this->assertCount( 1, $body['messages'] );
+		$this->assertEquals( '$.ids[1]', $body['messages'][0]['path'] );
+	}
+
+	public function test_repeated_malformed_ids_are_deduplicated(): void {
 		// Malformed inputs dedupe by identical raw echo, so two
 		// instances of the same garbage string collapse. Two
-		// different garbage strings stay distinct.
+		// different garbage strings stay distinct. Each unresolvable
+		// input emits one message; per-variant `inputs[]` doesn't
+		// apply because no products were resolved.
+		// Raw `ids[]` indices: [0=bogus, 1=bogus(dup), 2=other_bogus].
+		// Paths point at the FIRST raw occurrence of each deduped
+		// entry (raw 0 for `bogus`, raw 2 for `other_bogus`).
 		$body = $this->successful_lookup(
 			[ 'ids' => [ 'bogus', 'bogus', 'other_bogus' ] ]
 		);
 
-		$this->assertEquals( [ 'bogus', 'other_bogus' ], $body['inputs'] );
+		$this->assertEmpty( $body['products'] );
 		$this->assertCount( 2, $body['messages'] );
-		$this->assertEquals( '$.inputs[0]', $body['messages'][0]['path'] );
-		$this->assertEquals( '$.inputs[1]', $body['messages'][1]['path'] );
+		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[2]', $body['messages'][1]['path'] );
 	}
 
-	public function test_boolean_ids_echo_as_true_false_not_empty_string(): void {
+	public function test_boolean_ids_dedupe_by_distinct_echo_forms(): void {
 		// Regression guard: `(string) false` is `""` in PHP, so
 		// booleans echoed via naive string cast would collide with
-		// an actual empty-string id in the dedup key. Emit
-		// "true"/"false" explicitly so each boolean remains
-		// uniquely addressable in inputs[].
+		// an actual empty-string id in the dedup key. Internal echo
+		// is "true"/"false" explicitly so each boolean stays
+		// uniquely addressable for dedup. No products resolve from
+		// booleans, so the assertion is on `messages` count.
 		$body = $this->successful_lookup(
 			[ 'ids' => [ false, true, false ] ]
 		);
 
-		// Three distinct echo forms from two distinct booleans,
-		// duplicate `false` deduped against the first.
-		$this->assertEquals( [ 'false', 'true' ], $body['inputs'] );
 		$this->assertEmpty( $body['products'] );
+		// Two distinct booleans → two not-found messages, duplicate
+		// `false` deduped against the first.
+		$this->assertCount( 2, $body['messages'] );
 	}
 
-	public function test_non_scalar_ids_echo_with_stable_distinguishable_forms(): void {
-		// Arrays/objects/null in ids[] can't resolve, but they must
-		// echo distinguishably so (1) agents see what kind of
-		// invalid payload they sent, and (2) distinct non-scalars
-		// don't collapse into a single inputs slot (which would
-		// shift message paths). Null → "null"; array → JSON;
-		// objects → JSON. Identical values still dedupe by their
-		// echo form.
+	public function test_non_scalar_ids_dedupe_by_stable_distinguishable_forms(): void {
+		// Arrays/objects/null in ids[] can't resolve. Distinct
+		// non-scalars must remain individually addressable so dedup
+		// doesn't collapse them. Three distinct echo forms — null,
+		// empty array, nested array — with the second null deduped
+		// against the first → 3 unresolved messages.
+		// Raw `ids[]` indices: [0=null, 1=[], 2=null(dup), 3=nested].
+		// Nested-array message points at raw 3 (its actual position in
+		// the request), NOT deduped slot 2.
 		\Brain\Monkey\Functions\when( 'wp_json_encode' )->alias(
 			static fn( $v ): string|false => json_encode( $v )
 		);
@@ -477,16 +648,11 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			[ 'ids' => [ null, [], null, [ 'nested' => 'obj' ] ] ]
 		);
 
-		// Three distinct echo forms — null, empty array, nested
-		// array — with the second null deduped against the first.
-		$this->assertEquals(
-			[ 'null', '[]', '{"nested":"obj"}' ],
-			$body['inputs']
-		);
+		$this->assertEmpty( $body['products'] );
 		$this->assertCount( 3, $body['messages'] );
-		$this->assertEquals( '$.inputs[0]', $body['messages'][0]['path'] );
-		$this->assertEquals( '$.inputs[1]', $body['messages'][1]['path'] );
-		$this->assertEquals( '$.inputs[2]', $body['messages'][2]['path'] );
+		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[1]', $body['messages'][1]['path'] );
+		$this->assertEquals( '$.ids[3]', $body['messages'][2]['path'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -500,7 +666,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( [], $body['products'] );
 		$this->assertCount( 1, $body['messages'] );
 		$this->assertEquals( 'not_found', $body['messages'][0]['code'] );
-		$this->assertEquals( '$.inputs[0]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
 		$this->assertEquals( 'unrecoverable', $body['messages'][0]['severity'] );
 	}
 
@@ -522,7 +688,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $body['messages'] );
 		// The missing ID was at position 1 in the request — that's what
 		// the jsonpath should reflect, not the product-array index.
-		$this->assertEquals( '$.inputs[1]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[1]', $body['messages'][0]['path'] );
 	}
 
 	public function test_messages_key_omitted_when_all_ids_found(): void {
@@ -546,7 +712,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals( [], $body['products'] );
 		$this->assertCount( 1, $body['messages'] );
-		$this->assertEquals( '$.inputs[0]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
 	}
 
 	public function test_id_string_with_no_numeric_portion_is_not_found(): void {
@@ -611,8 +777,8 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 3, $variants );
 		$this->assertEquals( 'var_101', $variants[0]['id'] );
 		$this->assertEquals( 'Small', $variants[0]['title'] );
-		$this->assertSame( 1000, $variants[0]['list_price']['amount'] );
-		$this->assertSame( 2000, $variants[2]['list_price']['amount'] );
+		$this->assertSame( 1000, $variants[0]['price']['amount'] );
+		$this->assertSame( 2000, $variants[2]['price']['amount'] );
 	}
 
 	public function test_variable_product_skips_variations_that_fail_to_fetch(): void {
@@ -650,7 +816,12 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $partial );
 		$msg = array_values( $partial )[0];
 		$this->assertEquals( 'warning', $msg['type'] );
-		$this->assertEquals( 'advisory', $msg['severity'] );
+		// UCP `message_warning.json` (2026-04-08) does NOT define
+		// `severity` — that's only on errors. Pre-0.12.0 we emitted
+		// `severity: advisory` here as a non-spec extension; dropping
+		// it keeps strict validators happy.
+		$this->assertArrayNotHasKey( 'severity', $msg );
+		$this->assertArrayHasKey( 'content', $msg );
 	}
 
 	/**
@@ -836,8 +1007,8 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		// Variant price should also reflect the normalized stdClass.
 		$variant = $product['variants'][0];
-		$this->assertSame( 42400, $variant['list_price']['amount'] );
-		$this->assertEquals( 'EUR', $variant['list_price']['currency'] );
+		$this->assertSame( 42400, $variant['price']['amount'] );
+		$this->assertEquals( 'EUR', $variant['price']['currency'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -888,7 +1059,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			)
 		);
 		$this->assertCount( 1, $not_found );
-		$this->assertEquals( '$.inputs[1]', $not_found[0]['path'] );
+		$this->assertEquals( '$.ids[1]', $not_found[0]['path'] );
 
 		// Crux of the regression test: rest_do_request was NOT
 		// invoked for product 99. The dispatch counter only

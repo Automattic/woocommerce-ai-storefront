@@ -774,8 +774,8 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$fixture['variations']
 		);
 
-		$this->assertSame( 1000, $result['variants'][0]['list_price']['amount'] );
-		$this->assertSame( 1500, $result['variants'][1]['list_price']['amount'] );
+		$this->assertSame( 1000, $result['variants'][0]['price']['amount'] );
+		$this->assertSame( 1500, $result['variants'][1]['price']['amount'] );
 	}
 
 	public function test_variable_product_variants_build_title_from_attributes(): void {
@@ -903,15 +903,15 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Black / 8', $result['variants'][1]['title'] );
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Tan' ],
-				[ 'attribute' => 'Size', 'value' => '9' ],
+				[ 'name' => 'Color', 'label' => 'Tan' ],
+				[ 'name' => 'Size', 'label' => '9' ],
 			],
 			$result['variants'][0]['options']
 		);
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Black' ],
-				[ 'attribute' => 'Size', 'value' => '8' ],
+				[ 'name' => 'Color', 'label' => 'Black' ],
+				[ 'name' => 'Size', 'label' => '8' ],
 			],
 			$result['variants'][1]['options']
 		);
@@ -1115,18 +1115,27 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
-		// Variation axis landed in options[]
+		// Variation axis landed in options[] with `option_value` shape
+		// items (UCP 2026-04-08: required `label`, optional `id`).
 		$this->assertArrayHasKey( 'options', $result );
 		$this->assertCount( 1, $result['options'] );
 		$this->assertSame( 'Size', $result['options'][0]['name'] );
-		$this->assertSame( [ 'S', 'M', 'L' ], $result['options'][0]['values'] );
+		$this->assertSame(
+			[ [ 'label' => 'S' ], [ 'label' => 'M' ], [ 'label' => 'L' ] ],
+			$result['options'][0]['values']
+		);
 
-		// Informational attribute landed in metadata.attributes
+		// Informational attribute landed in metadata.attributes with
+		// the same shape (mirrors the option_value structure for
+		// internal consistency).
 		$this->assertArrayHasKey( 'metadata', $result );
 		$this->assertArrayHasKey( 'attributes', $result['metadata'] );
 		$this->assertCount( 1, $result['metadata']['attributes'] );
 		$this->assertSame( 'Material', $result['metadata']['attributes'][0]['name'] );
-		$this->assertSame( [ 'Cotton', 'Organic' ], $result['metadata']['attributes'][0]['values'] );
+		$this->assertSame(
+			[ [ 'label' => 'Cotton' ], [ 'label' => 'Organic' ] ],
+			$result['metadata']['attributes'][0]['values']
+		);
 
 		// Regression guard for the 1.x flat shape — must not reappear.
 		$this->assertArrayNotHasKey( 'attributes', $result );
@@ -1182,11 +1191,10 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_translate_emits_rating_under_core_when_reviews_exist(): void {
-		// 2.0.0+: rating moved out of the
-		// `extensions.com.woocommerce.ai_storefront.ratings`
-		// namespace into core `product.rating`. Shape stays
-		// `{average, count}` — `average` (not `value`) is explicit
-		// about what the number represents.
+		// UCP `rating.json` shape: `{value, scale_min, scale_max, count}`.
+		// 0.12.0+ aligned to spec — `value` (the average) replaces the
+		// pre-0.12.0 `average` key, and `scale_min`/`scale_max` are
+		// hardcoded to WC core's inflexible 1-5 star bounds.
 		$fixture                   = $this->simple_product_fixture();
 		$fixture['average_rating'] = '4.67';
 		$fixture['review_count']   = 42;
@@ -1194,10 +1202,15 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
 		$this->assertArrayHasKey( 'rating', $result );
-		$this->assertSame( 4.67, $result['rating']['average'] );
+		$this->assertSame( 4.67, $result['rating']['value'] );
+		$this->assertSame( 1, $result['rating']['scale_min'] );
+		$this->assertSame( 5, $result['rating']['scale_max'] );
 		$this->assertSame( 42, $result['rating']['count'] );
+		// Hard-cut regression guard for the 0.12.0 rename — old
+		// `average` key must not reappear.
+		$this->assertArrayNotHasKey( 'average', $result['rating'] );
 
-		// Regression guard: the old extension-namespace home must
+		// Regression guard: the pre-2.0.0 extension-namespace home must
 		// stay empty — agents that were reading from there need to
 		// see the migration cleanly, not a double-emission.
 		$this->assertArrayNotHasKey( 'extensions', $result );
@@ -1328,14 +1341,14 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'updated_at', $result );
 	}
 
-	public function test_translate_stamps_seller_when_passed(): void {
+	public function test_translate_stamps_seller_on_synthesized_default_variant(): void {
 		// Seller is computed once per request in the REST controller
-		// and threaded through. Same for every product in a single-
-		// merchant store, so passing via arg (not re-reading WP
-		// globals per product) keeps translation pure and fast.
+		// and threaded through. Per UCP `variant.json`, seller lives
+		// on each variant — not on the product (no `product.seller`
+		// field exists in the spec). Single-merchant store: every
+		// variant in the response carries the same seller.
 		$seller = [
-			'name'    => 'Example Store',
-			'country' => 'US',
+			'name' => 'Example Store',
 		];
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
@@ -1344,27 +1357,47 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$seller
 		);
 
-		$this->assertSame( $seller, $result['seller'] );
+		$this->assertArrayNotHasKey( 'seller', $result );
+		$this->assertCount( 1, $result['variants'] );
+		$this->assertSame( $seller, $result['variants'][0]['seller'] );
+	}
+
+	public function test_translate_stamps_seller_on_every_real_variant(): void {
+		// Variable products: same seller threads through to every
+		// translated variation, not just the first.
+		$fixture = $this->variable_product_with_variations_fixture();
+		$seller  = [ 'name' => 'Example Store' ];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$fixture['product'],
+			$fixture['variations'],
+			$seller
+		);
+
+		$this->assertArrayNotHasKey( 'seller', $result );
+		$this->assertCount( 2, $result['variants'] );
+		foreach ( $result['variants'] as $variant ) {
+			$this->assertSame( $seller, $variant['seller'] );
+		}
 	}
 
 	public function test_translate_omits_seller_when_not_passed(): void {
 		// Backward-compat — existing callers without the $seller arg
-		// keep working, just without seller emission. The REST
-		// controller now always passes it; this guards the public
-		// signature against accidental requirement-tightening.
+		// keep working, just without seller emission on variants.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
 			[]
 		);
 
 		$this->assertArrayNotHasKey( 'seller', $result );
+		$this->assertArrayNotHasKey( 'seller', $result['variants'][0] );
 	}
 
 	public function test_translate_omits_seller_when_passed_empty(): void {
 		// An empty seller array behaves the same as omitting the arg.
 		// Covers the edge case where the controller's build_seller()
 		// returns [] (no site name set, no WC available) — we'd rather
-		// skip the key than emit `seller: {}`.
+		// skip the key than emit `seller: {}` on every variant.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
 			[],
@@ -1372,5 +1405,6 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertArrayNotHasKey( 'seller', $result );
+		$this->assertArrayNotHasKey( 'seller', $result['variants'][0] );
 	}
 }
