@@ -66,23 +66,27 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 
 		// Parse the formatted `variation` string at most once per variant
 		// and pass the result into both `extract_title()` and
-		// `extract_options()`. The naive split is cheap, but the
-		// anchor-aware regex path (`split_variation_segments()`) builds
-		// an alternation pattern from `$parent_attribute_names` — doing
-		// that twice per variant on every catalog/search response (up to
-		// ~20 products × N variations) adds up. Only parse when the
-		// fallback path will actually run: `attributes[]` is empty and a
-		// non-empty `variation` string is present.
+		// `extract_options()`. The anchor-aware regex path
+		// (`split_variation_segments()`) builds an alternation pattern
+		// from `$parent_attribute_names` — doing that twice per variant
+		// on every catalog/search response (up to ~20 products × N
+		// variations) adds up.
+		//
+		// Parse whenever `variation` is non-empty — NOT just when
+		// `attributes[]` is empty. A malformed payload could populate
+		// `attributes[]` with a list whose values all filter out
+		// (`null`/`false`/`""`) and leave both helpers with zero
+		// usable pairs from the array path. In that case they fall
+		// through to `$pre_parsed_pairs` to recover. Earlier drafts
+		// gated this on "`attributes[]` is missing/empty", which broke
+		// the lazy fallback the helpers used to do themselves.
 		$pre_parsed_pairs = null;
-		$attributes       = $wc_variation['attributes'] ?? [];
-		if ( ! is_array( $attributes ) || empty( $attributes ) ) {
-			$variation_string = $wc_variation['variation'] ?? '';
-			if ( is_string( $variation_string ) && '' !== trim( $variation_string ) ) {
-				$pre_parsed_pairs = self::parse_variation_string(
-					$variation_string,
-					$parent_attribute_names
-				);
-			}
+		$variation_string = $wc_variation['variation'] ?? '';
+		if ( is_string( $variation_string ) && '' !== trim( $variation_string ) ) {
+			$pre_parsed_pairs = self::parse_variation_string(
+				$variation_string,
+				$parent_attribute_names
+			);
 		}
 
 		$variant = [

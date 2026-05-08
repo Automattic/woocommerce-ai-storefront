@@ -908,6 +908,38 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_translate_falls_back_to_variation_when_attributes_all_filtered_out(): void {
+		// Regression guard for the perf refactor (3a14d8d): an earlier
+		// draft only ran `parse_variation_string()` when `attributes[]`
+		// was missing or empty. That broke the case where `attributes[]`
+		// is populated but every entry filters out (null / false /
+		// missing-name) — the helpers had no pairs, no fallback parse,
+		// and emitted a stale parent-name title with empty options.
+		// Fix: parse whenever `variation` is non-empty; the array path
+		// still wins when it produces *any* usable pair.
+		$fixture = [
+			'id'         => 999,
+			'name'       => 'Padding',
+			'prices'     => [ 'price' => '500', 'currency_code' => 'USD' ],
+			'attributes' => [
+				[ 'name' => 'Color', 'value' => null ],
+				[ 'name' => 'Size',  'value' => false ],
+			],
+			'variation'  => 'Color: Tan, Size: 9',
+		];
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Color', 'Size' ] );
+
+		$this->assertSame( 'Tan / 9', $result['title'] );
+		$this->assertSame(
+			[
+				[ 'attribute' => 'Color', 'value' => 'Tan' ],
+				[ 'attribute' => 'Size', 'value' => '9' ],
+			],
+			$result['options']
+		);
+	}
+
 	public function test_translate_attributes_array_takes_precedence_over_variation_string(): void {
 		// Defensive ordering: if both are populated (e.g. a future Store
 		// API version or a custom plugin backfilling the array), the
