@@ -2018,9 +2018,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// actually see the merged line.
 		if ( $surviving_merges ) {
 			$messages[] = [
-				'type'     => 'info',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::MERGED_DUPLICATE_ITEMS,
-				'content'  => __( 'Duplicate line items targeting the same product were merged. Quantities have been summed; the response shows one line per product.', 'woocommerce-ai-storefront' ),
+				'type'    => 'info',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::MERGED_DUPLICATE_ITEMS,
+				'content' => __( 'Duplicate line items targeting the same product were merged. Quantities have been summed; the response shows one line per product.', 'woocommerce-ai-storefront' ),
 			];
 		}
 
@@ -2184,9 +2184,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// field; the partner `total_is_provisional` message below
 			// uses the same shape.
 			$messages[] = [
-				'type'     => 'info',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED,
-				'content'  => $handoff_content,
+				'type'    => 'info',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED,
+				'content' => $handoff_content,
 			];
 
 			// `total_is_provisional` — UCP spec requires a `total`
@@ -2197,9 +2197,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// info-message alongside `total: subtotal` so agents
 			// can disclose the caveat to the user before the redirect.
 			$messages[] = [
-				'type'     => 'info',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL,
-				'content'  => __( 'Total excludes tax and shipping, which are calculated at the merchant checkout.', 'woocommerce-ai-storefront' ),
+				'type'    => 'info',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL,
+				'content' => __( 'Total excludes tax and shipping, which are calculated at the merchant checkout.', 'woocommerce-ai-storefront' ),
 			];
 		}
 
@@ -3262,10 +3262,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		if ( null !== $pagination && ! is_array( $pagination ) ) {
 			$messages[] = [
-				'type'     => 'warning',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_PAGINATION_SHAPE,
-				'path'     => '$.pagination',
-				'content'  => __( 'pagination must be an object; using defaults.', 'woocommerce-ai-storefront' ),
+				'type'    => 'warning',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_PAGINATION_SHAPE,
+				'path'    => '$.pagination',
+				'content' => __( 'pagination must be an object; using defaults.', 'woocommerce-ai-storefront' ),
 			];
 		}
 
@@ -3290,10 +3290,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$limit     = max( 1, min( self::MAX_SEARCH_LIMIT, $requested ) );
 					if ( $limit !== $requested ) {
 						$messages[] = [
-							'type'     => 'warning',
-							'code'     => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
-							'path'     => '$.pagination.limit',
-							'content'  => sprintf(
+							'type'    => 'warning',
+							'code'    => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
+							'path'    => '$.pagination.limit',
+							'content' => sprintf(
 								/* translators: 1: requested limit, 2: applied limit, 3: max allowed. */
 								__( 'Requested pagination.limit %1$d was clamped to %2$d (allowed range: 1–%3$d).', 'woocommerce-ai-storefront' ),
 								$requested,
@@ -3309,10 +3309,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// it; the content tells them the value was
 					// unusable, not clamped-from-a-number.
 					$messages[] = [
-						'type'     => 'warning',
-						'code'     => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
-						'path'     => '$.pagination.limit',
-						'content'  => sprintf(
+						'type'    => 'warning',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
+						'path'    => '$.pagination.limit',
+						'content' => sprintf(
 							/* translators: %d is the applied default limit. */
 							__( 'pagination.limit must be a non-negative integer; using default %d.', 'woocommerce-ai-storefront' ),
 							$limit
@@ -3335,10 +3335,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// handled downstream by Store API returning an
 					// empty result set — no warning needed there.
 					$messages[] = [
-						'type'     => 'warning',
-						'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_CURSOR,
-						'path'     => '$.pagination.cursor',
-						'content'  => __( 'Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug.', 'woocommerce-ai-storefront' ),
+						'type'    => 'warning',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_CURSOR,
+						'path'    => '$.pagination.cursor',
+						'content' => __( 'Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug.', 'woocommerce-ai-storefront' ),
 					];
 				}
 			}
@@ -3367,10 +3367,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 			if ( ! is_string( $raw_field ) || ! is_string( $raw_direction ) ) {
 				$messages[] = [
-					'type'     => 'warning',
-					'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE,
-					'path'     => '$.sort',
-					'content'  => __( 'sort.field and sort.direction must be strings; using default ordering.', 'woocommerce-ai-storefront' ),
+					'type'    => 'warning',
+					'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE,
+					'path'    => '$.sort',
+					'content' => __( 'sort.field and sort.direction must be strings; using default ordering.', 'woocommerce-ai-storefront' ),
 				];
 			} else {
 				$field     = strtolower( trim( $raw_field ) );
@@ -3400,10 +3400,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					}
 				} elseif ( '' !== $field ) {
 					$messages[] = [
-						'type'     => 'warning',
-						'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD,
-						'path'     => '$.sort.field',
-						'content'  => sprintf(
+						'type'    => 'warning',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD,
+						'path'    => '$.sort.field',
+						'content' => sprintf(
 							/* translators: %s is the unsupported sort field the agent sent. */
 							__( 'Sort field "%s" is not supported; using default ordering.', 'woocommerce-ai-storefront' ),
 							$raw_field
@@ -3501,10 +3501,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				if ( null !== $ctx_currency && $ctx_currency !== $store_currency ) {
 					$apply_price_filter = false;
 					$messages[]         = [
-						'type'     => 'warning',
-						'code'     => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
-						'path'     => '$.filters.price',
-						'content'  => sprintf(
+						'type'    => 'warning',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
+						'path'    => '$.filters.price',
+						'content' => sprintf(
 							/* translators: 1: agent-supplied currency, 2: store currency. */
 							__( 'context.currency "%1$s" does not match store currency "%2$s" and conversion is not supported; price filter ignored.', 'woocommerce-ai-storefront' ),
 							$ctx_currency,
@@ -3551,10 +3551,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 			foreach ( $tag_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
-					'type'     => 'warning',
-					'code'     => WC_AI_Storefront_UCP_Error_Codes::TAG_NOT_FOUND,
-					'path'     => '$.filters.tags[' . $index . ']',
-					'content'  => sprintf(
+					'type'    => 'warning',
+					'code'    => WC_AI_Storefront_UCP_Error_Codes::TAG_NOT_FOUND,
+					'path'    => '$.filters.tags[' . $index . ']',
+					'content' => sprintf(
 						/* translators: %s is the tag slug/name the agent sent that couldn't be resolved. */
 						__( 'Tag "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
@@ -3580,10 +3580,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 			foreach ( $brand_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
-					'type'     => 'warning',
-					'code'     => WC_AI_Storefront_UCP_Error_Codes::BRAND_NOT_FOUND,
-					'path'     => '$.filters.brand[' . $index . ']',
-					'content'  => sprintf(
+					'type'    => 'warning',
+					'code'    => WC_AI_Storefront_UCP_Error_Codes::BRAND_NOT_FOUND,
+					'path'    => '$.filters.brand[' . $index . ']',
+					'content' => sprintf(
 						/* translators: %s is the brand slug/name the agent sent that couldn't be resolved. */
 						__( 'Brand "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
@@ -3669,10 +3669,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$sanitized_key
 				);
 				$messages[]    = [
-					'type'     => 'warning',
-					'code'     => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND,
-					'path'     => sprintf( "\$.filters.attributes['%s']", $escaped_key ),
-					'content'  => sprintf(
+					'type'    => 'warning',
+					'code'    => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND,
+					'path'    => sprintf( "\$.filters.attributes['%s']", $escaped_key ),
+					'content' => sprintf(
 						/* translators: %s is the attribute taxonomy name the agent sent that doesn't exist on the store. */
 						__( 'Attribute taxonomy "%s" was not found on the store; filter ignored for this axis.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad['taxonomy'] )
@@ -3907,10 +3907,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$original_count = count( $values );
 		$capped         = array_slice( $values, 0, self::MAX_FILTER_VALUES );
 		$messages[]     = [
-			'type'     => 'warning',
-			'code'     => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
-			'path'     => $path,
-			'content'  => sprintf(
+			'type'    => 'warning',
+			'code'    => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
+			'path'    => $path,
+			'content' => sprintf(
 				/* translators: 1: filter path, 2: original count, 3: applied cap. */
 				__( '%1$s received %2$d values; truncated to the first %3$d. Further values were ignored.', 'woocommerce-ai-storefront' ),
 				$path,
@@ -3941,10 +3941,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$original_count = count( $map );
 		$capped         = array_slice( $map, 0, self::MAX_FILTER_VALUES, true );
 		$messages[]     = [
-			'type'     => 'warning',
-			'code'     => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
-			'path'     => $path,
-			'content'  => sprintf(
+			'type'    => 'warning',
+			'code'    => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
+			'path'    => $path,
+			'content' => sprintf(
 				/* translators: 1: filter path, 2: original count, 3: applied cap. */
 				__( '%1$s received %2$d keys; truncated to the first %3$d. Further keys were ignored.', 'woocommerce-ai-storefront' ),
 				$path,
@@ -4642,10 +4642,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		return array(
-			'type'     => 'warning',
-			'code'     => WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED,
-			'path'     => $path,
-			'content'  => sprintf(
+			'type'    => 'warning',
+			'code'    => WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED,
+			'path'    => $path,
+			'content' => sprintf(
 				/* translators: 1: expected amount (minor units), 2: current amount (minor units). */
 				__( 'Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched.', 'woocommerce-ai-storefront' ),
 				$expected,
@@ -4822,8 +4822,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			];
 		} else {
 			$warnings[] = [
-				'type'     => 'warning',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::PRIVACY_POLICY_UNCONFIGURED,
+				'type' => 'warning',
+				'code' => WC_AI_Storefront_UCP_Error_Codes::PRIVACY_POLICY_UNCONFIGURED,
 			];
 		}
 
@@ -4837,8 +4837,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			];
 		} else {
 			$warnings[] = [
-				'type'     => 'warning',
-				'code'     => WC_AI_Storefront_UCP_Error_Codes::TERMS_UNCONFIGURED,
+				'type' => 'warning',
+				'code' => WC_AI_Storefront_UCP_Error_Codes::TERMS_UNCONFIGURED,
 			];
 		}
 
