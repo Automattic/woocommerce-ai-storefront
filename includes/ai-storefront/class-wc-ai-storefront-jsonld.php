@@ -1433,17 +1433,36 @@ class WC_AI_Storefront_JsonLd {
 	/**
 	 * Output store-level JSON-LD on the homepage/shop page.
 	 *
-	 * `@type: OnlineStore` (an `Organization` subtype). Previously
-	 * `Store` which extends `LocalBusiness`/`Place` and is not an
-	 * `Organization`. The switch satisfies AI-readiness audits that
-	 * look specifically for an `Organization`-shaped entity to verify
-	 * brand identity. `OnlineStore` is the most accurate type for the
-	 * merchant — they're definitionally an online retailer — and
-	 * inherits all the descriptive fields (`name`, `url`,
-	 * `description`) that `Store` carried. The `potentialAction` and
-	 * `hasOfferCatalog` blocks are valid on `OnlineStore` exactly as
-	 * they were on `Store`, so existing crawlers parsing those keys
-	 * see no change.
+	 * `@type: OnlineBusiness` (an `Organization` subtype). Previously
+	 * `OnlineStore` (a sub-subtype, "an eCommerce site"), which is too
+	 * narrow for WC's full install base — services, subscriptions,
+	 * donations, lead-gen, digital downloads, and traditional retail
+	 * all emit the same homepage block. `OnlineBusiness` is the
+	 * Schema.org parent in `Thing → Organization → OnlineBusiness →
+	 * OnlineStore` and accurately describes any WC merchant doing
+	 * business online without claiming product retail. All previously-
+	 * emitted properties — `name`, `description`, `url`,
+	 * `potentialAction`, `hasOfferCatalog`, identity fields — are
+	 * defined on `Organization` (or `Thing`) and apply cleanly to
+	 * `OnlineBusiness` via standard parent-to-child inheritance.
+	 *
+	 * Caveat: `currenciesAccepted` is defined on `OnlineStore` per the
+	 * Schema.org spec — not on the `OnlineBusiness` parent. (Schema.org
+	 * inheritance flows parent → child only; a property scoped to a
+	 * subtype is NOT inherited "upward" by its parent.) We continue to
+	 * emit `currenciesAccepted` despite the domain mismatch because:
+	 * (1) it carries meaningful machine-readable signal that AI agents
+	 * and search consumers parse for currency context regardless of
+	 * the enclosing type, and (2) most consumers tolerate the pairing
+	 * even when strict validators flag a non-fatal "unrecognized
+	 * property for this type" warning. This is an accepted intentional
+	 * non-domain pairing — stripping the signal to silence a warning
+	 * would be a regression.
+	 *
+	 * `knowsAbout` (the array of top product category names) emits
+	 * after the base shape and before the identity merge. It reuses
+	 * the cached `get_catalog_summary()` data — no new query, no new
+	 * cache. Omitted when the catalog is empty.
 	 *
 	 * Brand identity fields (`logo`, `address`, `contactPoint`) are
 	 * appended via `build_identity_fields()` with omit-when-empty
@@ -1471,9 +1490,30 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
+		// Hold the catalog summary in a local so it can drive both
+		// `hasOfferCatalog.itemListElement` and the new `knowsAbout`
+		// without `get_catalog_summary()` running twice. Pre-#334 the
+		// call was inlined inside the array literal; the refactor
+		// keeps both call sites pointed at one cache hit per page
+		// render.
+		//
+		// `is_array()` normalization at the source: `get_catalog_summary()`
+		// returns the raw transient value via `get_transient()`, which
+		// can in principle hand back a non-array if the cache was
+		// corrupted by external code or a stale value from a prior
+		// schema. Funneling a scalar through to either consumer would
+		// emit invalid Schema.org shape — `hasOfferCatalog.itemListElement`
+		// expects an array of OfferCatalog entries, and `array_column()`
+		// for `knowsAbout` would TypeError under PHP 8.1+. Coerce to
+		// `array()` at the source so all downstream consumers are safe.
+		$catalog = $this->get_catalog_summary();
+		if ( ! is_array( $catalog ) ) {
+			$catalog = array();
+		}
+
 		$store_data = array(
 			'@context'           => 'https://schema.org',
-			'@type'              => 'OnlineStore',
+			'@type'              => 'OnlineBusiness',
 			'name'               => get_bloginfo( 'name' ),
 			'description'        => get_bloginfo( 'description' ),
 			'url'                => home_url( '/' ),
@@ -1496,9 +1536,23 @@ class WC_AI_Storefront_JsonLd {
 			'hasOfferCatalog'    => array(
 				'@type'           => 'OfferCatalog',
 				'name'            => __( 'Products', 'woocommerce-ai-storefront' ),
-				'itemListElement' => $this->get_catalog_summary(),
+				'itemListElement' => $catalog,
 			),
 		);
+
+		// `knowsAbout` is Schema.org Organization's "what this org
+		// knows about" pointer — emitted as an array of Text values
+		// (top product category names). Sourced from the same
+		// `get_catalog_summary()` data that drives `hasOfferCatalog`,
+		// so the signal stays in sync with the actual catalog
+		// composition. Omitted when the catalog is empty (or when
+		// `get_catalog_summary()` returned an error WP_Error and
+		// resolved to []) — no point claiming the org "knows about"
+		// nothing. The `is_array()` normalization above guarantees
+		// `array_column()` is type-safe here.
+		if ( ! empty( $catalog ) ) {
+			$store_data['knowsAbout'] = array_column( $catalog, 'name' );
+		}
 
 		// Merge identity fields after the base shape so they sit at
 		// the end of the JSON-LD output — easier for crawlers tailing
@@ -1509,6 +1563,42 @@ class WC_AI_Storefront_JsonLd {
 		$identity_fields = $this->build_identity_fields();
 		if ( ! empty( $identity_fields ) ) {
 			$store_data = array_merge( $store_data, $identity_fields );
+		}
+
+		// Organization-level return policy emission (#337 phase 1).
+		//
+		// Schema.org consumers read `Organization.hasMerchantReturnPolicy`
+		// as the canonical store-wide commitment — the merchant's
+		// "all our products follow this return policy unless an
+		// individual offer overrides it" claim. Per-Offer emission
+		// (in `add_return_policy()`) is the per-product override
+		// surface and remains unchanged in this PR.
+		//
+		// `null` is passed for `$product_id` because Org-level
+		// emission has no per-product context — `build_return_policy_block()`
+		// already handles `null` correctly (skips the
+		// `is_final_sale()` override branch). The shared builder
+		// returns `null` when policy `mode` is `unconfigured` OR when
+		// `mode: returns_accepted` is paired with an empty country
+		// (a return-window declaration without a target region is
+		// useless to validators). For `mode: final_sale` the builder
+		// emits a `MerchantReturnNotPermitted` block regardless of
+		// country — "no returns" is a globally meaningful claim. All
+		// of those outcomes are funneled through the
+		// `null !== $org_policy_block` check below — the gate emits
+		// when the builder produced a block, suppresses when it didn't.
+		//
+		// Phase 2 (making per-Offer emission conditional on the
+		// per-product final-sale override only) is deferred to a
+		// separate PR — keeping this one purely additive.
+		$policy           = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
+			? $settings['return_policy']
+			: array( 'mode' => 'unconfigured' );
+		$base_location    = wc_get_base_location();
+		$store_country    = $base_location['country'] ?? '';
+		$org_policy_block = $this->build_return_policy_block( $policy, $store_country, null );
+		if ( null !== $org_policy_block ) {
+			$store_data['hasMerchantReturnPolicy'] = $org_policy_block;
 		}
 
 		/**
@@ -2049,7 +2139,7 @@ class WC_AI_Storefront_JsonLd {
 	 *                                   `returns_accepted` and `$country` is empty
 	 *                                   (caller skips emission in all null cases).
 	 */
-	private function build_return_policy_block( array $policy, string $country, ?int $product_id = null ): ?array {
+	protected function build_return_policy_block( array $policy, string $country, ?int $product_id = null ): ?array {
 		// Per-product final-sale override (highest-priority gate). A
 		// flagged product emits MerchantReturnNotPermitted regardless
 		// of the store-wide mode — including when the store-wide mode
