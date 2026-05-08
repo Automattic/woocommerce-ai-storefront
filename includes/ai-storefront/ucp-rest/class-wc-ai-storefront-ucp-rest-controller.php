@@ -3091,8 +3091,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// the per-variation `fetch_variations_for()`: agents should see
 		// a `partial_variants` warning when their product has more
 		// variations than we'll fetch.
-		$expected_per_parent  = array();
-		$declared_per_parent  = array();
+		$expected_per_parent = array();
+		$declared_per_parent = array();
 		foreach ( $wc_products as $wc_product ) {
 			if ( ! is_array( $wc_product ) ) {
 				continue;
