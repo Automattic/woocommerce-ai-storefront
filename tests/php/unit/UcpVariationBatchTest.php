@@ -612,8 +612,11 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 	public function test_max_cap_truncates_expected_set_and_reports_overage_as_skipped(): void {
 		// Parent declares 60 variations; cap is 50. The dispatch sends
 		// the parent's ID in `parent` (a CSV of parent IDs, not
-		// variation IDs), and the binner uses the capped expected-set
-		// to drop the over-cap tail.
+		// variation IDs), and the accumulation loop uses an O(1)
+		// per-parent expected-ID lookup (`$expected_per_parent_set`)
+		// to drop the over-cap tail at append time — non-expected
+		// variations never enter `$all_variations`, saving memory + CPU
+		// for parents with many over-cap variations.
 		// `skipped` = declared(60) - returned(50) = 10 — cap-truncated
 		// entries DO contribute to skipped so agents see a
 		// `partial_variants` warning when their product overflows the
@@ -625,10 +628,9 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 
 		// Production WC will return ALL 60 variations because the
 		// `parent` query param filters by post_parent__in, not by the
-		// capped expected-set. The binning step's
-		// `in_array($variation_id, $expected_ids)` guard is the only
-		// thing dropping the over-cap tail. Returning all 60 here
-		// exercises that guard.
+		// capped expected-set. The accumulation-time `isset()` lookup
+		// against the per-parent expected-set is what drops the
+		// over-cap tail. Returning all 60 here exercises that filter.
 		$page_1 = array();
 		for ( $i = 1; $i <= 60; $i++ ) {
 			$page_1[] = $this->variation( 1000 + $i, 35 );

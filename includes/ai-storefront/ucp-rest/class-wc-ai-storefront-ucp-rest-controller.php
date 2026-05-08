@@ -3152,8 +3152,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// silently dropped, regressing the per-variation path's
 		// behavior of emitting a warning whenever the parent declared
 		// variations we couldn't surface.
-		$expected_per_parent = array();
-		$declared_per_parent = array();
+		$expected_per_parent     = array();
+		$expected_per_parent_set = array();
+		$declared_per_parent     = array();
 		foreach ( $wc_products as $wc_product ) {
 			if ( ! is_array( $wc_product ) ) {
 				continue;
@@ -3178,17 +3179,27 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				: $variation_refs;
 
 			$expected_ids = array();
+			$expected_set = array();
 			foreach ( $capped as $ref ) {
 				$variation_id = is_array( $ref )
 					? (int) ( $ref['id'] ?? 0 )
 					: (int) $ref;
 				if ( $variation_id > 0 ) {
-					$expected_ids[] = $variation_id;
+					$expected_ids[]                    = $variation_id;
+					$expected_set[ $variation_id ]     = true;
 				}
 			}
 
 			if ( ! empty( $expected_ids ) ) {
-				$expected_per_parent[ $parent_id ] = $expected_ids;
+				$expected_per_parent[ $parent_id ]     = $expected_ids;
+				// Per-parent associative `[vid => true]` map for O(1)
+				// `isset()` membership checks at accumulation + binning
+				// time. Building this once here costs O(cap) per parent
+				// (cap = MAX_VARIATIONS_PER_PRODUCT, currently 50);
+				// pre-build, every page's variations cost
+				// O(returned × cap) via in_array, which compounds
+				// noticeably on >100-variation parents.
+				$expected_per_parent_set[ $parent_id ] = $expected_set;
 			}
 			// If $expected_ids is empty (all malformed), $declared_per_parent
 			// still has the entry — the result-build loop below catches
@@ -3348,12 +3359,32 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 
 			foreach ( $normalized_data as $variation ) {
-				if ( is_array( $variation ) ) {
-					$all_variations[] = $variation;
-					$variation_id     = (int) ( $variation['id'] ?? 0 );
-					if ( $variation_id > 0 && isset( $expected_remaining[ $variation_id ] ) ) {
-						unset( $expected_remaining[ $variation_id ] );
-					}
+				if ( ! is_array( $variation ) ) {
+					continue;
+				}
+
+				// Drop non-expected variations at accumulation time —
+				// don't carry them in `$all_variations` only to drop
+				// them again at binning. WC's `?type=variation&parent=`
+				// returns ALL of a parent's variations regardless of
+				// our cap, so for a 200-variation parent capped at 50,
+				// pre-filter sheds 150 entries here that would
+				// otherwise inflate memory + CPU through the binner.
+				// Also catches orphaned variations (parent_id not in
+				// our worklist) and over-cap tail entries.
+				$variation_id = (int) ( $variation['id'] ?? 0 );
+				$parent_id    = (int) ( $variation['parent'] ?? 0 );
+				if (
+					$variation_id <= 0
+					|| $parent_id <= 0
+					|| ! isset( $expected_per_parent_set[ $parent_id ][ $variation_id ] )
+				) {
+					continue;
+				}
+
+				$all_variations[] = $variation;
+				if ( isset( $expected_remaining[ $variation_id ] ) ) {
+					unset( $expected_remaining[ $variation_id ] );
 				}
 			}
 
@@ -3413,30 +3444,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		// Bin returned variations by `parent` field. Each variation in
 		// the Store API response carries its `parent` ID, so the binning
-		// is O(N) on the returned set.
+		// is O(N) on the returned set. The accumulation loop above
+		// pre-filtered against `$expected_per_parent_set` so every
+		// entry here is already known to belong in the result map and
+		// have an expected variation_id — the binner just routes by
+		// parent. The defensive `isset($result[...])` guard remains
+		// because an all-malformed parent could in theory have its
+		// `parent_id` arrive in `$all_variations` if the WC dispatch
+		// ever returned out-of-scope variations (it doesn't today,
+		// but the cost of the extra isset is negligible).
 		foreach ( $all_variations as $variation ) {
 			$parent_id = (int) ( $variation['parent'] ?? 0 );
 			if ( ! isset( $result[ $parent_id ] ) ) {
-				// Unexpected parent — possibly an orphaned variation
-				// whose parent isn't in the request. Drop it; the
-				// expected-set is the source of truth.
 				continue;
 			}
-
-			// All-malformed parents have no expected set — they aren't
-			// in the worklist, so the API shouldn't return variations
-			// for them. Defensively skip if it ever happens.
-			if ( ! isset( $expected_per_parent[ $parent_id ] ) ) {
-				continue;
-			}
-
-			// Honor MAX cap when binning: ignore variations whose IDs
-			// aren't in the expected (capped) set for that parent.
-			$variation_id = (int) ( $variation['id'] ?? 0 );
-			if ( ! in_array( $variation_id, $expected_per_parent[ $parent_id ], true ) ) {
-				continue;
-			}
-
 			$result[ $parent_id ]['variations'][] = $variation;
 		}
 
