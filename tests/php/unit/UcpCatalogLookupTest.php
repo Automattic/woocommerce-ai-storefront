@@ -82,13 +82,22 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// time since that class is loaded by the bootstrap.
 
 		// Route rest_do_request through our fake_store_api map.
-		// The controller only dispatches single-product requests:
+		// The controller dispatches two route shapes (post-#351):
 		//   - GET /wc/store/v1/products/{id}
-		//     Used for both parent products and variation IDs. The
-		//     collection endpoint cannot be used for variations because
-		//     WC Store API filters the collection to post_type='product',
-		//     which excludes post_type='product_variation'. Per-ID fetches
-		//     work for both types.
+		//     Per-ID parent product fetches via fetch_store_api_product().
+		//   - GET /wc/store/v1/products?parent_includes=<csv>
+		//     Batched variation fetch via fetch_variations_batched().
+		//     `parent_includes` is the only Store API parameter that
+		//     surfaces post_type='product_variation' through the
+		//     collection endpoint (verified live against WC 9.x).
+		//     Pre-#351 we used the per-ID route for variations too,
+		//     producing N+1 fan-out; the collection route collapses
+		//     that to one (or few) dispatches per request.
+		//
+		// Both branches read from `$api` (a fake_store_api map keyed
+		// by WC ID); the collection branch additionally walks every
+		// entry to find variations whose `parent` field matches one
+		// of the requested parent IDs.
 		$api    = &$this->fake_store_api;
 		$counts = &$this->store_api_dispatch_counts;
 		Functions\when( 'rest_do_request' )->alias(

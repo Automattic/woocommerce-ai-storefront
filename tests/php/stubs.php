@@ -163,16 +163,25 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		}
 
 		/**
-		 * Match WP_REST_Request::get_params(): merge of JSON body and
-		 * form params with form-style query params taking precedence
-		 * for matching keys (consistent with how WP itself merges).
+		 * Merge of JSON body and form params, with the same precedence
+		 * `get_param()` uses: JSON-body keys win over form/query keys.
+		 *
+		 * Caveat: this is NOT a full model of WP_REST_Request's
+		 * parameter-order semantics (in core, the order is `attributes`
+		 * → `URL` → `GET` → `POST` → `JSON` → `defaults`, so URL/GET
+		 * actually win over JSON). The stub collapses everything except
+		 * JSON into a single `$params` bucket, and we keep both
+		 * accessors aligned on the same precedence so tests that read
+		 * a key via either method see the same value. If a test really
+		 * needs URL-vs-JSON semantics, model that explicitly rather
+		 * than relying on the merge order here.
 		 *
 		 * @return array<string, mixed>
 		 */
 		public function get_params(): array {
 			return array_merge(
-				$this->json_params ?? array(),
-				$this->params
+				$this->params,
+				$this->json_params ?? array()
 			);
 		}
 

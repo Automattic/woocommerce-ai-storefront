@@ -3049,13 +3049,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * world case (heavy variable catalog, 60% variable × 8 vars = 96
 	 * variations) collapses to 1 dispatch (≤100) or 2 (>100).
 	 *
-	 * Failure policy: when the batch dispatch returns WP_Error or any
-	 * HTTP status >= 400 (treating 4xx and 5xx symmetrically — both
-	 * mean we can't trust the response body), every variable parent
-	 * in the input degrades to `variations: [], skipped: total_declared`
-	 * and emits one `partial_variants` warning per parent. Matches
-	 * today's worst case for individual fetch failures while making
-	 * the typical case dramatically faster.
+	 * Failure policy: WP_Error and HTTP status >= 400 are both treated
+	 * as page-level failures (4xx and 5xx symmetrically — both mean
+	 * we can't trust the response body). Two-tier degradation by which
+	 * page failed:
+	 *
+	 *   - Page-1 failure (degenerate): nothing was collected, so every
+	 *     variable parent degrades to `variations: [], skipped:
+	 *     total_declared` and each emits one `partial_variants`
+	 *     warning. Matches the worst case for individual fetch
+	 *     failures while keeping the typical case dramatically faster.
+	 *
+	 *   - Page-N failure (partial, N > 1): pages 1..N-1 already
+	 *     succeeded, so we KEEP that collected data and let the
+	 *     per-parent `skipped = total_declared - returned` math
+	 *     compute residue. Parents whose variations were fully
+	 *     captured on earlier pages see `skipped: 0`; parents
+	 *     missing variations from the failed page see `skipped > 0`
+	 *     and emit `partial_variants`. This avoids punishing fully-
+	 *     captured parents for an unrelated later-page error.
 	 *
 	 * MAX_VARIATIONS_PER_PRODUCT cap is enforced per-parent in the
 	 * expected-set used for response binning (cap-truncated variation
