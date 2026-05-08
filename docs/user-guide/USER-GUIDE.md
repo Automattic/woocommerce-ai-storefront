@@ -124,6 +124,8 @@ Your homepage now publishes your store's brand details (name, logo, address, con
 | Email | Your WooCommerce email | See **Customer service email** below. |
 | Search | Auto-generated | Lets AI agents search your store. |
 | Categories | Auto-generated | A summary of your main product types. |
+| Return policy | Your plugin settings | Edit at **WooCommerce → Settings → AI Storefront → Policies**. See [section 7](#7-set-your-store-policies). Published only when you've set a policy other than "Not configured". |
+| Specialties | Auto-generated | A short list of what your store specializes in, derived from your top product categories. |
 
 **About the address.** Only your city, state, zip, and country are published to AI agents. Your street address is intentionally hidden for privacy and safety — if you use your home address for tax purposes, it stays private.
 
@@ -222,6 +224,8 @@ Stats update hourly, so today's AI traffic appears in the dashboard within an ho
 ## 7. Set your store policies
 
 The **Policies** tab publishes structured signals that AI agents read when deciding what to show shoppers: return terms, shipping timelines, and more. Two cards are currently available.
+
+Your return policy publishes in two places: on each product page (so an AI agent recommending one of your products can mention the policy), AND on your homepage (so an agent that discovers your store before a specific product can learn the store-wide commitment up-front). Per-product overrides — see below — only affect the per-product copy.
 
 ### Return & refund policy
 

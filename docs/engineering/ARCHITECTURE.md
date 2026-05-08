@@ -22,13 +22,13 @@ AI agents are a fast-growing product-discovery channel. The plugin lets merchant
 │     (ChatGPT, Gemini, Perplexity, Claude, Copilot, any bot)         │
 └───────┬──────────────┬──────────────┬────────────────────┬──────────┘
         │              │              │                    │
-  ┌─────▼─────┐ ┌─────▼──────┐ ┌─────▼────────┐ ┌──────────▼──────────┐
-  │ /llms.txt │ │ UCP        │ │  JSON-LD     │ │ UCP REST API        │
-  │ (Markdown)│ │ Manifest   │ │ Product +    │ │ /wp-json/wc/ucp/v1/ │
-  │           │ │ (JSON)     │ │ OnlineStore  │ │                     │
-  │           │ │/.well-known│ │ (homepage +  │ │                     │
-  │           │ │   /ucp     │ │ product page)│ │                     │
-  └────────────┘ └─────────────┘ └──────────────┘ └──────────┬─────────┘
+  ┌─────▼─────┐ ┌─────▼──────┐ ┌─────▼─────────┐ ┌──────────▼──────────┐
+  │ /llms.txt │ │ UCP        │ │  JSON-LD      │ │ UCP REST API        │
+  │ (Markdown)│ │ Manifest   │ │ Product +     │ │ /wp-json/wc/ucp/v1/ │
+  │           │ │ (JSON)     │ │ OnlineBusiness│ │                     │
+  │           │ │/.well-known│ │ (homepage +   │ │                     │
+  │           │ │   /ucp     │ │ product page) │ │                     │
+  └────────────┘ └─────────────┘ └───────────────┘ └──────────┬─────────┘
         │              │              │                     │
         └──────────────┼──────────────┴─────────────────────┘
                        │                         │
@@ -56,7 +56,7 @@ AI agents are a fast-growing product-discovery channel. The plugin lets merchant
 | File | Endpoint | Purpose |
 |------|----------|---------|
 | `class-wc-ai-storefront-llms-txt.php` | `/llms.txt` | Machine-readable store guide: name, categories, products, attribution instructions. |
-| `class-wc-ai-storefront-jsonld.php` | Product pages + homepage / shop page | **Per product:** enhanced Schema.org `Product` markup — BuyAction, inventory, attributes, shipping (`OfferShippingDetails` with handlingTime + free-shipping rate), return policy. **Homepage / shop page:** Schema.org `OnlineStore` (an `Organization` subtype, since 0.10.0; previously `Store`/`LocalBusiness`) with auto-sourced identity fields: `logo` (custom-logo theme mod → site-icon fallback), `address` (PostalAddress from `WC()->countries->get_base_*` minus `streetAddress`, suppressed for privacy), `contactPoint.email` (two-stage from `woocommerce_email_reply_to_address` → `woocommerce_email_from_address` with noreply guard, never falls back to `admin_email`). See [`JSON-LD-SCHEMA.md`](JSON-LD-SCHEMA.md) for the full field reference and example output. |
+| `class-wc-ai-storefront-jsonld.php` | Product pages + homepage / shop page | **Per product:** enhanced Schema.org `Product` markup — typed properties (`color`/`size`/`material`/`pattern`), BuyAction with Shareable Checkout URL, `Offer.checkoutPageURLTemplate`, inventory, attributes, shipping (`OfferShippingDetails` with handlingTime + free-shipping rate), per-Offer return policy, and `isRelatedTo`/`isSimilarTo` from cross-sells/upsells. Variable products convert to Schema.org `ProductGroup` with per-variant `hasVariant` entries (with a postmeta-direct override path for misconfigured variations where the parent's "Used for variations" flag is unset). **Homepage / shop page:** Schema.org `OnlineBusiness` (an `Organization` subtype) with auto-sourced identity fields — `logo` (custom-logo theme mod → site-icon fallback), `address` (PostalAddress from `WC()->countries->get_base_*` minus `streetAddress`, suppressed for privacy), `contactPoint.email` (two-stage from `woocommerce_email_reply_to_address` → `woocommerce_email_from_address` with noreply guard, never falls back to `admin_email`) — plus `knowsAbout` (top product category names from cached catalog summary) and Org-level `hasMerchantReturnPolicy` when the merchant's return policy is configured. See [`JSON-LD-SCHEMA.md`](JSON-LD-SCHEMA.md) for the full field reference and example output. |
 | `class-wc-ai-storefront-robots.php` | `/robots.txt` | Allow-lists known AI crawlers, allows discovery endpoints, blocks checkout/account. |
 | `class-wc-ai-storefront-ucp.php` | `/.well-known/ucp` | JSON manifest declaring implemented capabilities (catalog, checkout), pointing at the UCP REST adapter, advertising empty `payment_handlers` for the redirect-only posture. |
 
