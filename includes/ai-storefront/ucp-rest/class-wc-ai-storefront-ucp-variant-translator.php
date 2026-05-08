@@ -270,16 +270,19 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				if ( ! is_array( $attribute ) ) {
 					continue;
 				}
-				$value = $attribute['value'] ?? '';
-				// Strict empty-string check rather than `! empty()` —
-				// `! empty()` treats string `"0"` as empty, which would
-				// drop a legitimate `Size: 0` value from the title while
-				// `extract_options()` keeps it (the two helpers must
-				// agree on what counts as a value).
+				// Cast first, then check for empty string. This handles
+				// the full set of bad inputs uniformly (null, false,
+				// missing key all coerce to "") while preserving the
+				// literal string "0" — `empty()` would drop "0", and a
+				// strict `'' === $value` without the cast would let
+				// `false` (cast: "") leak through as an empty title
+				// fragment. Mirrors `extract_options()` so both helpers
+				// agree on what counts as a value.
+				$value = (string) ( $attribute['value'] ?? '' );
 				if ( '' === $value ) {
 					continue;
 				}
-				$values[] = (string) $value;
+				$values[] = $value;
 			}
 		}
 
@@ -499,7 +502,14 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				if ( ! is_array( $attribute ) ) {
 					continue;
 				}
-				$value = $attribute['value'] ?? '';
+				// Cast first, then check for empty string — same gate
+				// as `extract_title()`. `false`/null/missing all coerce
+				// to "" and get skipped uniformly; the literal string
+				// "0" survives and becomes a legitimate option value.
+				// Without the upfront cast a `false` value would slip
+				// past `'' === $value` (false !== '') and emit an empty
+				// option `{value: ""}`.
+				$value = (string) ( $attribute['value'] ?? '' );
 				if ( '' === $value ) {
 					continue;
 				}
@@ -515,7 +525,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				}
 				$options[] = [
 					'attribute' => $label,
-					'value'     => (string) $value,
+					'value'     => $value,
 				];
 			}
 		}

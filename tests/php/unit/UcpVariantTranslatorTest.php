@@ -856,11 +856,12 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 	public function test_translate_preserves_zero_string_value_in_title_and_options(): void {
 		// Regression guard: a value of literal "0" (e.g. a "Size: 0"
 		// shoe variation, or a "Quantity: 0" sample-pack) is a valid
-		// merchant input. PHP's `! empty("0")` is true — using
-		// `! empty()` to gate the title path while options uses strict
-		// `'' === ` would silently drop the value from the title only,
-		// emitting "Leather Shoes" instead of "0" while options
-		// correctly carries it. Lock in that both helpers agree.
+		// merchant input. PHP's `empty("0")` is true (a long-standing
+		// footgun), so a `! empty()`-gated path drops "0" while a
+		// strict `'' === ` path keeps it. Pre-fix `extract_title()`
+		// used `! empty()` while `extract_options()` used the strict
+		// check, so "Size: 0" emitted correct options but a stale
+		// parent-name title. Lock in that both helpers now agree.
 		$fixture = [
 			'id'         => 999,
 			'name'       => 'Sample',
@@ -875,6 +876,34 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '0', $result['title'] );
 		$this->assertSame(
 			[ [ 'attribute' => 'Size', 'value' => '0' ] ],
+			$result['options']
+		);
+	}
+
+	public function test_translate_drops_false_and_null_values_from_title_and_options(): void {
+		// Defensive: a malformed upstream payload could produce
+		// `{name: "Color", value: false}` or `{name: "Color", value: null}`.
+		// Without an upfront `(string)` cast, a strict `'' === $value`
+		// check lets `false` through (false !== '') — emitting an empty
+		// title fragment and `{value: ""}` option. Casting first
+		// normalizes all of null/false/missing-key to "" and the gate
+		// drops them uniformly.
+		$fixture = [
+			'id'         => 999,
+			'name'       => 'Padding',
+			'prices'     => [ 'price' => '500', 'currency_code' => 'USD' ],
+			'attributes' => [
+				[ 'name' => 'Color', 'value' => false ],
+				[ 'name' => 'Size',  'value' => null ],
+				[ 'name' => 'Material', 'value' => 'Leather' ],
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertSame( 'Leather', $result['title'] );
+		$this->assertSame(
+			[ [ 'attribute' => 'Material', 'value' => 'Leather' ] ],
 			$result['options']
 		);
 	}
