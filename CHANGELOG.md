@@ -8,6 +8,24 @@
 
 ---
 
+## [0.11.1] – 2026-05-08
+
+### Fixes
+
+- **UCP: per-variant `title` and `options` now emit distinct values for variable-product variations.** Closes #347.
+  - Pre-fix: WC's Store API leaves `attributes[]` empty for every variable-product variation as of WC 9.x and puts the active option set in a `variation` formatted string (e.g. `"Color: Tan, Size: 9"`). The translator was only consulting `attributes[]`, so every variation in a set emitted empty `options` and fell back to the parent product's `name` for its title. A 22-variation product like Leather Shoes shipped 22 indistinguishable variants — agents asking for "Tan / 9" got back the wrong variation.
+  - Fix: parse `variation` into structured `[{attribute, value}]` pairs whenever it is non-empty. Existing array-shape callers (simple-product fixtures, future Store API versions that backfill the array) still take precedence when they produce any usable pair.
+  - Optional `$parent_attribute_names` parameter on the variant translator's `translate()` provides comma-in-value disambiguation (e.g. a value literally `"Red, White"`). Anchored regex split treats `, ` as a pair boundary only when followed by `<known_name>: `; without the anchor list, falls back to a naive `, ` split — correct for the overwhelming majority of attribute values.
+  - Product translator extracts the parent's variation-axis attribute names once (filtered on `has_variations: true`) and threads them down so the variant translator stays a pure function with no WP API calls.
+  - Bug shipped because the unit-test fixture matched a documented `attributes[]` shape that the live WC Store API never actually returns for variations. Fixture rewritten to match real Store API output.
+
+### Tests
+
+- Added `test_translate_parses_variation_string_into_options`, `test_translate_builds_title_from_variation_string`, `test_translate_parses_variation_string_without_anchor_list`, `test_translate_anchor_list_disambiguates_comma_in_value`, `test_translate_anchor_list_with_regex_metacharacters`, `test_translate_falls_back_to_name_when_variation_string_empty`, `test_translate_attributes_array_takes_precedence_over_variation_string`, `test_translate_falls_back_to_variation_when_attributes_all_filtered_out`, `test_translate_preserves_zero_string_value_in_title_and_options`, `test_translate_drops_false_and_null_values_from_title_and_options` to the variant translator.
+- Added `test_parent_attribute_names_flow_to_variant_translator` integration test on the product translator end-to-end.
+
+---
+
 ## [0.11.0] – 2026-05-08
 
 ### Features
