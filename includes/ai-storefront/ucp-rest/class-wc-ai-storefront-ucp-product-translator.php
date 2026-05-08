@@ -710,13 +710,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *
 	 * Two output buckets:
 	 *   - `options[]` — variation axes (`has_variations: true`).
-	 *      Shape `{name, values: string[]}`, matching UCP core
-	 *      `product.options` exactly. Consumed by variant-picker UIs.
+	 *      Shape `{name, values: [{label: string}, ...]}` per UCP
+	 *      `option_value.json` (release/2026-04-08): each value is
+	 *      an object with a required `label`, not a bare string.
+	 *      Consumed by variant-picker UIs.
 	 *   - `metadata_attributes[]` — informational attributes
-	 *      (`has_variations: false` or missing). Same shape, but
-	 *      nested under `metadata.attributes` on the emitted product
-	 *      so strict consumers don't confuse them with selectable
-	 *      variant axes.
+	 *      (`has_variations: false` or missing). Same `values[]`
+	 *      object shape, nested under `metadata.attributes` on the
+	 *      emitted product so strict consumers don't confuse them
+	 *      with selectable variant axes.
 	 *
 	 * Entries with no terms in either bucket are skipped entirely —
 	 * an attribute the merchant declared but never assigned to this
