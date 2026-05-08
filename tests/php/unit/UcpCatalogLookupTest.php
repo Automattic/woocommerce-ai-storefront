@@ -85,14 +85,18 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// The controller dispatches two route shapes (post-#351):
 		//   - GET /wc/store/v1/products/{id}
 		//     Per-ID parent product fetches via fetch_store_api_product().
-		//   - GET /wc/store/v1/products?parent_includes=<csv>
+		//   - GET /wc/store/v1/products?type=variation&parent=<csv>
 		//     Batched variation fetch via fetch_variations_batched().
-		//     `parent_includes` is the only Store API parameter that
-		//     surfaces post_type='product_variation' through the
-		//     collection endpoint (verified live against WC 9.x).
-		//     Pre-#351 we used the per-ID route for variations too,
-		//     producing N+1 fan-out; the collection route collapses
-		//     that to one (or few) dispatches per request.
+		//     Two params combine to surface variations through the
+		//     collection endpoint: `type=variation` flips post_type
+		//     from 'product' (the default) to 'product_variation';
+		//     `parent=<csv>` filters by post_parent__in via WC's
+		//     `wp_parse_id_list` sanitizer. Without `type=variation`
+		//     the dispatch would silently return zero variations
+		//     regardless of the parent filter. Pre-#351 we used the
+		//     per-ID route for variations too, producing N+1 fan-out;
+		//     the collection route collapses that to one (or few)
+		//     dispatches per request.
 		//
 		// Both branches read from `$api` (a fake_store_api map keyed
 		// by WC ID); the collection branch additionally walks every
@@ -105,7 +109,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 				$route = $request->get_route();
 
 				// Single-product route — handles parent products. Variations
-				// are batched via /wc/store/v1/products?parent_includes=
+				// are batched via /wc/store/v1/products?type=variation&parent=
 				// (issue #351), but `fetch_store_api_product()` still uses
 				// the per-ID route for parent fetches.
 				if ( preg_match( '#/wc/store/v1/products/(\d+)$#', $route, $m ) ) {
@@ -123,23 +127,28 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 				}
 
 				// Batched variation collection (issue #351): when the
-				// controller dispatches with `parent_includes=<csv>`,
+				// controller dispatches with `type=variation&parent=<csv>`,
 				// return all variations from `$api` whose `parent` field
-				// matches one of the requested IDs.
+				// matches one of the requested IDs. Both params are
+				// load-bearing — without `type=variation`, real WC
+				// would return zero results, so the stub must reject
+				// the call too; without `parent`, there's nothing to
+				// filter by.
 				if ( '/wc/store/v1/products' === $route ) {
-					$parent_includes = $request->get_param( 'parent_includes' );
-					if ( null !== $parent_includes && '' !== $parent_includes ) {
+					$type   = (string) ( $request->get_param( 'type' ) ?? '' );
+					$parent = $request->get_param( 'parent' );
+					if ( 'variation' === $type && null !== $parent && '' !== $parent ) {
 						$parent_ids = array_map(
 							'intval',
-							explode( ',', (string) $parent_includes )
+							explode( ',', (string) $parent )
 						);
 						$variations = array();
 						foreach ( $api as $maybe_variation ) {
 							if ( ! is_array( $maybe_variation ) ) {
 								continue;
 							}
-							$parent = (int) ( $maybe_variation['parent'] ?? 0 );
-							if ( $parent > 0 && in_array( $parent, $parent_ids, true ) ) {
+							$parent_field = (int) ( $maybe_variation['parent'] ?? 0 );
+							if ( $parent_field > 0 && in_array( $parent_field, $parent_ids, true ) ) {
 								$variations[] = $maybe_variation;
 							}
 						}
@@ -1123,13 +1132,15 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_parent_dispatched_once_variations_batched(): void {
 		// Parent fetch uses the single-product route; variations are
-		// pulled in one batched dispatch via `?parent_includes=`
-		// (issue #351). Pre-#351 each variation was an individual
-		// per-ID dispatch — N+1 fan-out. The batched path uses the
-		// collection endpoint with `parent_includes`, which WC's
-		// Store API DOES surface for variations (verified live).
-		// Per-ID `?include=` is still illegal for variations because
-		// of the post_type filter; `parent_includes` bypasses it.
+		// pulled in one batched dispatch via
+		// `?type=variation&parent=<csv>` (issue #351). Pre-#351 each
+		// variation was an individual per-ID dispatch — N+1 fan-out.
+		// The batched path uses the collection endpoint with
+		// `type=variation` flipping post_type and `parent=<csv>`
+		// filtering by post_parent__in. Per-ID `?include=` is still
+		// illegal for variations because the route's default
+		// post_type='product' filter excludes them; `type=variation`
+		// is the param that overrides that default.
 		$this->seed_variable_product(
 			100,
 			'Shirt',
@@ -1151,7 +1162,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			'Parent product must use the single-product route.'
 		);
 		// Variations are NOT dispatched per-ID anymore — the batched
-		// `?parent_includes=` pull doesn't increment the per-ID
+		// `?type=variation&parent=` pull doesn't increment the per-ID
 		// dispatch counter. Confirms the N+1 collapse.
 		$this->assertSame( 0, $this->store_api_dispatch_counts[101] ?? 0 );
 		$this->assertSame( 0, $this->store_api_dispatch_counts[102] ?? 0 );
@@ -1184,8 +1195,8 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// MAX_VARIATIONS_PER_PRODUCT variations must all appear in the
 		// response and be reachable via a single batched dispatch
 		// (issue #351). Pre-#351 this was 50 individual per-ID
-		// dispatches (N+1 fan-out); now it's one `?parent_includes=300`
-		// collection call.
+		// dispatches (N+1 fan-out); now it's one
+		// `?type=variation&parent=300` collection call.
 		$cap = WC_AI_Storefront_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
 		$this->seed_variable_with_n_variations( 300, $cap );
 
@@ -1195,13 +1206,13 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		// Per-ID dispatch count = 1 (parent only). Variation IDs are
 		// not dispatched individually under the batched path. The
-		// batched `parent_includes` call doesn't tick the per-ID
-		// counter — its absence is the regression guard against an
-		// accidental fallback to the old per-variation path.
+		// batched `?type=variation&parent=` call doesn't tick the
+		// per-ID counter — its absence is the regression guard against
+		// an accidental fallback to the old per-variation path.
 		$this->assertSame(
 			1,
 			array_sum( $this->store_api_dispatch_counts ),
-			'Expected exactly 1 per-ID dispatch (the parent). Variations should batch via parent_includes, not per-ID.'
+			'Expected exactly 1 per-ID dispatch (the parent). Variations should batch via ?type=variation&parent=, not per-ID.'
 		);
 	}
 
@@ -1210,7 +1221,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// in the same PHP request must each render the full variation
 		// set. Pre-#351 this test counted per-variation dispatch counts
 		// (1 per request, accumulating to 2); after #351 variations
-		// batch via `parent_includes` and don't tick the per-ID
+		// batch via `?type=variation&parent=` and don't tick the per-ID
 		// counter, so the test now asserts on the observable response
 		// shape (variant count) instead.
 		$this->seed_variable_product(

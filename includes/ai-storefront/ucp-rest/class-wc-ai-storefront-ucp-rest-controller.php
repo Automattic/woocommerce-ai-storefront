@@ -90,15 +90,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *
 	 * Pre-#351 this also bounded the per-variation N+1 fan-out — fewer
 	 * IDs in the worklist meant fewer dispatches. Post-#351 variations
-	 * batch via `?parent_includes=`, so the cap no longer bounds the
-	 * Store API response: WC returns ALL of a parent's variations
-	 * regardless of our cap (the binner then drops everything past the
-	 * first MAX_VARIATIONS_PER_PRODUCT IDs in the parent's declared
-	 * order). The page-walk has an early-stop optimization to avoid
-	 * fetching beyond the expected set, but for high-variation parents
-	 * where the API returns the expected IDs late in pagination, the
-	 * batch can still normalize more variations than it ultimately
-	 * emits.
+	 * batch via `?type=variation&parent=<csv>`, so the cap no longer
+	 * bounds the Store API response: WC returns ALL of a parent's
+	 * variations regardless of our cap (the binner then drops
+	 * everything past the first MAX_VARIATIONS_PER_PRODUCT IDs in the
+	 * parent's declared order). The page-walk has an early-stop
+	 * optimization to avoid fetching beyond the expected set, but for
+	 * high-variation parents where the API returns the expected IDs
+	 * late in pagination, the batch can still normalize more
+	 * variations than it ultimately emits.
 	 *
 	 * What the cap DOES bound: emitted variant count, translator
 	 * workload, response payload size to the agent.
@@ -3049,15 +3049,28 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * API dispatch(es), replacing the per-variation N+1 fan-out in
 	 * `fetch_variations_for()`.
 	 *
-	 * Uses `GET /wc/store/v1/products?parent_includes=<csv>&per_page=100`,
+	 * Uses `GET /wc/store/v1/products?type=variation&parent=<csv>&per_page=100`,
 	 * where `<csv>` is a comma-separated list of parent product IDs (NOT
-	 * variation IDs — `parent_includes` is the only Store API parameter
-	 * that surfaces `post_type='product_variation'` through the
-	 * collection endpoint, by filtering on the variations' `post_parent`
-	 * field). Verified live: `?parent_includes=35` returns the 10
-	 * variations of product 35 in one response. Pagination kicks in
-	 * when combined variation count across all parents exceeds 100; we
-	 * walk pages until short-page sentinel.
+	 * variation IDs). Two params combine to surface variations through
+	 * the collection endpoint:
+	 *
+	 *   - `type=variation` flips the underlying WP_Query's `post_type`
+	 *     from `'product'` (the default for this collection route) to
+	 *     `'product_variation'`. Without it, the route would never
+	 *     return any variations, since variations live under a different
+	 *     post type. (Source: WC `StoreApi/Utilities/ProductQuery.php`,
+	 *     `prepare_objects_query()` around the `if ( ProductType::VARIATION
+	 *     === $request['type'] )` branch.)
+	 *
+	 *   - `parent=<csv>` populates `post_parent__in`, sanitized through
+	 *     `wp_parse_id_list` so a comma-separated string is accepted and
+	 *     normalized to an int array. (Source: same file, line `'parent'
+	 *     => $params['parent']` registers as an `array<int>` with
+	 *     `wp_parse_id_list` sanitizer; parameter schema in
+	 *     `StoreApi/Routes/V1/Products.php`.)
+	 *
+	 * Pagination kicks in when combined variation count across all
+	 * parents exceeds 100; we walk pages until short-page sentinel.
 	 *
 	 * For typical traffic (20-product /catalog/search, 30% variable, avg
 	 * 5 variations each), this collapses ~30 dispatches to 1. Worst real-
@@ -3193,9 +3206,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		$parent_ids = array_keys( $expected_per_parent );
 
-		// Walk pages of `parent_includes=<csv>&per_page=100` until short-
-		// page sentinel. WC Store API caps per_page at 100; for the rare
-		// pages with combined-variation > 100 we paginate.
+		// Walk pages of `?type=variation&parent=<csv>&per_page=100`
+		// until short-page sentinel. WC Store API caps per_page at 100;
+		// for the rare pages with combined-variation > 100 we paginate.
 		//
 		// Failure handling is per-page rather than per-batch: when page N
 		// errors we KEEP whatever we've already collected (pages 1..N-1)
@@ -3239,9 +3252,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		while ( ! empty( $parent_ids ) ) {
 			$store_params = array(
-				'parent_includes' => implode( ',', $parent_ids ),
-				'per_page'        => $per_page,
-				'page'            => $page,
+				'type'     => 'variation',
+				'parent'   => implode( ',', $parent_ids ),
+				'per_page' => $per_page,
+				'page'     => $page,
 			);
 
 			// Apply the same filter the search dispatch uses, with the
@@ -3255,12 +3269,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			if ( ! is_array( $filtered ) ) {
 				$filtered = $store_params_before_filter;
 			}
-			// Restore pagination keys — filters MAY override scope but
-			// MUST NOT override our pagination state, which would break
-			// the page-walk invariant.
-			$filtered['per_page']        = $per_page;
-			$filtered['page']            = $page;
-			$filtered['parent_includes'] = $store_params['parent_includes'];
+			// Restore the four params we control — filters MAY override
+			// other scope keys (e.g. catalog filters) but MUST NOT
+			// override our dispatch shape, which would break either the
+			// post_type='product_variation' targeting (`type=variation`)
+			// or the page-walk invariant (`per_page`/`page`/`parent`).
+			$filtered['type']     = $store_params['type'];
+			$filtered['parent']   = $store_params['parent'];
+			$filtered['per_page'] = $per_page;
+			$filtered['page']     = $page;
 
 			$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products' );
 			foreach ( $filtered as $k => $v ) {

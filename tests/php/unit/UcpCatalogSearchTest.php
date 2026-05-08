@@ -242,36 +242,43 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 					// Regression guard: the controller must NEVER use
 					// `?include=` against variations. Variations have
 					// post_type='product_variation'; the collection
-					// endpoint's `?include=` filters to post_type='product'
-					// and silently drops them. The legitimate batched
-					// variation path is `?parent_includes=` (handled
-					// below), which WC's collection endpoint surfaces
-					// for variations.
+					// endpoint's default post_type='product' filter
+					// silently drops them. The legitimate batched
+					// variation path is `?type=variation&parent=<csv>`
+					// (handled below) — `type=variation` flips the
+					// underlying WP_Query's post_type, and `parent`
+					// populates post_parent__in via WC's
+					// `wp_parse_id_list` sanitizer.
 					$include = $request->get_param( 'include' );
 					if ( is_array( $include ) && ! empty( $include ) ) {
 						throw new \LogicException(
 							'Controller must not use the collection endpoint with ?include for variations. ' .
-							'Use ?parent_includes= for batched variation fetch (#351) or the single-item route.'
+							'Use ?type=variation&parent= for batched variation fetch (#351) or the single-item route.'
 						);
 					}
 
 					// Batched variation fetch (issue #351). When the
-					// controller dispatches with `parent_includes=<csv>`,
+					// controller dispatches with `type=variation&parent=<csv>`,
 					// return all canned variations from `$api` whose
 					// `parent` field matches one of the requested IDs.
-					$parent_includes = $request->get_param( 'parent_includes' );
-					if ( null !== $parent_includes && '' !== $parent_includes ) {
+					// Both params are load-bearing — without
+					// `type=variation`, real WC defaults to
+					// post_type='product' and returns zero variations,
+					// so the stub must reject the call too.
+					$type   = (string) ( $request->get_param( 'type' ) ?? '' );
+					$parent = $request->get_param( 'parent' );
+					if ( 'variation' === $type && null !== $parent && '' !== $parent ) {
 						$parent_ids = array_map(
 							'intval',
-							explode( ',', (string) $parent_includes )
+							explode( ',', (string) $parent )
 						);
 						$variations = array();
 						foreach ( $api as $maybe_variation ) {
 							if ( ! is_array( $maybe_variation ) ) {
 								continue;
 							}
-							$parent = (int) ( $maybe_variation['parent'] ?? 0 );
-							if ( $parent > 0 && in_array( $parent, $parent_ids, true ) ) {
+							$parent_field = (int) ( $maybe_variation['parent'] ?? 0 );
+							if ( $parent_field > 0 && in_array( $parent_field, $parent_ids, true ) ) {
 								$variations[] = $maybe_variation;
 							}
 						}

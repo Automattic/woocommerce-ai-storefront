@@ -3,7 +3,7 @@
  * Tests for WC_AI_Storefront_UCP_REST_Controller::fetch_variations_batched().
  *
  * The batched helper replaces per-variation N+1 fan-out with a single
- * (or few) `?parent_includes=<csv>&per_page=100` collection dispatch.
+ * (or few) `?type=variation&parent=<csv>&per_page=100` collection dispatch.
  * These tests cover the dispatch shape, pagination at the 100-cap,
  * partial-failure detection, the WP_Error degradation policy, the
  * MAX_VARIATIONS_PER_PRODUCT cap, the empty-input guard, and filter
@@ -250,7 +250,7 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertCount( 1, $this->captured_dispatches );
-		$this->assertSame( '35', $this->captured_dispatches[0]['parent_includes'] );
+		$this->assertSame( '35', $this->captured_dispatches[0]['parent'] );
 
 		$this->assertArrayHasKey( 35, $result );
 		$this->assertCount( 1, $result[35]['variations'] );
@@ -318,7 +318,13 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertCount( 1, $this->captured_dispatches );
-		$this->assertSame( '35', $this->captured_dispatches[0]['parent_includes'] );
+		// `type=variation` is load-bearing — without it, the underlying
+		// WP_Query defaults to post_type='product' and excludes every
+		// variation, so the dispatch would silently return zero
+		// variations regardless of the parent filter. Lock both
+		// params in the assertion shape.
+		$this->assertSame( 'variation', $this->captured_dispatches[0]['type'] );
+		$this->assertSame( '35', $this->captured_dispatches[0]['parent'] );
 		$this->assertSame( 100, $this->captured_dispatches[0]['per_page'] );
 		$this->assertSame( 1, $this->captured_dispatches[0]['page'] );
 
@@ -328,7 +334,7 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_multi_parent_dispatches_once_with_csv_of_parents(): void {
 		// Three variable parents in one search result page → one
-		// batched dispatch with comma-separated parent_includes.
+		// batched dispatch with comma-separated `parent`.
 		$this->canned_pages = array(
 			1 => array(
 				$this->variation( 101, 35 ),
@@ -348,7 +354,7 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertCount( 1, $this->captured_dispatches );
-		$this->assertSame( '35,36,37', $this->captured_dispatches[0]['parent_includes'] );
+		$this->assertSame( '35,36,37', $this->captured_dispatches[0]['parent'] );
 
 		$this->assertCount( 2, $result[35]['variations'] );
 		$this->assertCount( 1, $result[36]['variations'] );
@@ -372,7 +378,7 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertCount( 1, $this->captured_dispatches );
-		$this->assertSame( '35', $this->captured_dispatches[0]['parent_includes'] );
+		$this->assertSame( '35', $this->captured_dispatches[0]['parent'] );
 		$this->assertArrayHasKey( 35, $result );
 		$this->assertArrayNotHasKey( 22, $result );
 		$this->assertArrayNotHasKey( 23, $result );
@@ -504,8 +510,9 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 	public function test_orphan_variation_with_unknown_parent_is_dropped(): void {
 		// An orphaned variation whose parent isn't in the request
 		// shouldn't appear under any bin. Defensive — should never
-		// happen with `parent_includes=<csv>` but the binning code
-		// has the guard so we test it.
+		// happen with `?type=variation&parent=<csv>` (WC filters by
+		// post_parent__in) but the binning code has the guard so we
+		// test it.
 		$this->canned_pages = array(
 			1 => array(
 				$this->variation( 101, 35 ),
@@ -604,9 +611,9 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_max_cap_truncates_expected_set_and_reports_overage_as_skipped(): void {
 		// Parent declares 60 variations; cap is 50. The dispatch sends
-		// the parent's ID in parent_includes (parent_includes is a CSV
-		// of parent IDs, not variation IDs), and the binner uses the
-		// capped expected-set to drop the over-cap tail.
+		// the parent's ID in `parent` (a CSV of parent IDs, not
+		// variation IDs), and the binner uses the capped expected-set
+		// to drop the over-cap tail.
 		// `skipped` = declared(60) - returned(50) = 10 — cap-truncated
 		// entries DO contribute to skipped so agents see a
 		// `partial_variants` warning when their product overflows the
@@ -616,11 +623,12 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 			$declared_ids[] = 1000 + $i;
 		}
 
-		// Production WC will return ALL 60 variations because
-		// `parent_includes` filters by parent_id, not by the capped
-		// expected-set. The binning step's `in_array($variation_id,
-		// $expected_ids)` guard is the only thing dropping the
-		// over-cap tail. Returning all 60 here exercises that guard.
+		// Production WC will return ALL 60 variations because the
+		// `parent` query param filters by post_parent__in, not by the
+		// capped expected-set. The binning step's
+		// `in_array($variation_id, $expected_ids)` guard is the only
+		// thing dropping the over-cap tail. Returning all 60 here
+		// exercises that guard.
 		$page_1 = array();
 		for ( $i = 1; $i <= 60; $i++ ) {
 			$page_1[] = $this->variation( 1000 + $i, 35 );
@@ -776,7 +784,7 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 		// Pagination keys were restored — filter MUST NOT override them.
 		$this->assertSame( 100, $this->captured_dispatches[0]['per_page'] );
 		$this->assertSame( 1, $this->captured_dispatches[0]['page'] );
-		$this->assertSame( '35', $this->captured_dispatches[0]['parent_includes'] );
+		$this->assertSame( '35', $this->captured_dispatches[0]['parent'] );
 	}
 
 	public function test_filter_returning_non_array_falls_back_safely(): void {
@@ -795,6 +803,6 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertCount( 1, $this->captured_dispatches );
-		$this->assertSame( '35', $this->captured_dispatches[0]['parent_includes'] );
+		$this->assertSame( '35', $this->captured_dispatches[0]['parent'] );
 	}
 }
