@@ -310,13 +310,22 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_error_message_shape_validates(): void {
+		// `path` example uses `$.ids[0]` — the actual request-body
+		// field the lookup handler emits not-found errors against
+		// (see `not_found_message()`). Pre-0.12.0 we used
+		// `$.inputs[...]` because the response envelope echoed an
+		// `inputs[]` array; that envelope field was dropped in this
+		// PR for spec compliance and `not_found_message()` was
+		// updated to point at `$.ids[...]`. Test fixture matches the
+		// real emission shape so the compliance gate doesn't drift
+		// back to the deprecated form.
 		$this->assertMatchesUcpSchema(
 			[
 				'type'     => 'error',
 				'code'     => 'not_found',
 				'content'  => 'Input did not resolve.',
 				'severity' => 'unrecoverable',
-				'path'     => '$.inputs[0]',
+				'path'     => '$.ids[0]',
 			],
 			'https://ucp.dev/schemas/shopping/types/message_error.json',
 			'error message'
