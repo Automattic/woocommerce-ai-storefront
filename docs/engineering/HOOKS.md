@@ -38,7 +38,7 @@ add_filter( 'wc_ai_storefront_jsonld_product', function( $markup, $product, $set
 
 ### `wc_ai_storefront_jsonld_store`
 
-Filter the store-level JSON-LD emitted on the homepage and shop page (Schema.org `OnlineStore`, an `Organization` subtype). The filter receives the fully-assembled structure including auto-sourced identity fields (`logo`, `address`, `contactPoint.email`) so plugins can layer extra identity claims without re-implementing the WP/WC reads.
+Filter the store-level JSON-LD emitted on the homepage and shop page (Schema.org `OnlineBusiness`, an `Organization` subtype). The filter receives the fully-assembled structure including auto-sourced identity fields (`logo`, `address`, `contactPoint.email`), `knowsAbout` (top category names), and Org-level `hasMerchantReturnPolicy` (when configured) — so plugins can layer extra identity claims without re-implementing the WP/WC reads.
 
 ```php
 apply_filters( 'wc_ai_storefront_jsonld_store', array $store_data, array $settings );
