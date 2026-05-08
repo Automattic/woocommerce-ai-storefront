@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.10.3
+Stable tag: 0.11.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,17 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.11.0 - 2026-05-08 =
+**New**
+* JSON-LD: known attributes now emit as typed Schema.org `Product` properties (`color`/`size`/`material`/`pattern`).
+* JSON-LD: variable products now emit as Schema.org `ProductGroup` with per-variant `hasVariant` entries — including a postmeta-direct override path for misconfigured variations.
+* JSON-LD: cross-sells and upsells now emit as `Product.isRelatedTo` and `Product.isSimilarTo`.
+* JSON-LD: `BuyAction.target.urlTemplate` now uses the WooCommerce Shareable Checkout URL format. `Offer.checkoutPageURLTemplate` emits alongside.
+* JSON-LD: homepage `@type` switched from `OnlineStore` to `OnlineBusiness`. Now also emits `knowsAbout` (top product categories) and `hasMerchantReturnPolicy` at Organization level.
+
+**Fixed**
+* JSON-LD: per-variant `@id` no longer collapses to the parent URL on misconfigured variable products.
 
 = 0.10.3 - 2026-05-06 =
 **Fixed**
