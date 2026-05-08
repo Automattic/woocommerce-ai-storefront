@@ -875,7 +875,38 @@ class WC_AI_Storefront_JsonLd {
 		// a real WC URL) and WC's own variation name (e.g. "Hoodie -
 		// Blue, Logo: Yes") which already encodes the differentiating
 		// attribute values per the merchant's variation form.
-		$permalink = $variation->get_permalink();
+		//
+		// Override the bare parent URL when WC's `get_permalink()` fell
+		// through. `WC_Product_Variation::get_permalink()` is gated by
+		// the parent's `is_variation` flag — when that flag is unset on
+		// every variation attribute, the method returns the bare parent
+		// URL instead of the parent + `?attribute_<slug>=value` query
+		// args. Symptom: every variant's `@id` collapses to the same
+		// URL, breaking variant-graph traversal for AI agents. Detect
+		// the fall-through by comparing the two permalinks; if equal,
+		// synthesize the URL ourselves from the same postmeta source
+		// `read_variation_core_attributes()` already reads for the
+		// override-path typed-property emission. Same scope: core
+		// slugs only. Variants differing only by an unmapped attribute
+		// keep the bare parent URL — surfacing variation noise the
+		// merchant intentionally hid would over-step the override's
+		// narrow scope. (#341)
+		$permalink        = $variation->get_permalink();
+		$parent_permalink = $parent_product->get_permalink();
+		if (
+			is_string( $permalink ) && '' !== $permalink
+			&& $permalink === $parent_permalink
+		) {
+			$core_attrs = self::read_variation_core_attributes( (int) $variation->get_id() );
+			if ( ! empty( $core_attrs ) ) {
+				$query_args = array();
+				foreach ( $core_attrs as $slug => $value ) {
+					$query_args[ 'attribute_' . $slug ] = $value;
+				}
+				$permalink = add_query_arg( $query_args, $parent_permalink );
+			}
+		}
+
 		if ( is_string( $permalink ) && '' !== $permalink ) {
 			$entry['@id'] = $permalink;
 			$entry['url'] = $permalink;
