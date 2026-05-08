@@ -1100,10 +1100,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					 *
 					 * @param array<string, mixed> $variant                    The translated UCP variant shape.
 					 *                                                          Required keys: `id`, `title`,
-					 *                                                          `description`, `list_price`,
+					 *                                                          `description`, `price`,
 					 *                                                          `availability`. Optional: `options`,
-					 *                                                          `compare_at_price`, `sku`,
-					 *                                                          `barcodes`, `media`, `metadata`.
+					 *                                                          `list_price`, `sku`, `barcodes`,
+					 *                                                          `media`, `metadata`, `seller`.
 					 * @param array<string, mixed> $second_arg                 For variable products: the raw
 					 *                                                          decoded Store API variation
 					 *                                                          response. For simple products:
@@ -1131,10 +1131,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 *                                         Required keys: `id`, `title`,
 			 *                                         `description`, `price_range`,
 			 *                                         `variants`. Optional: `url`,
-			 *                                         `handle`, `status`, `seller`,
+			 *                                         `handle`, `status`,
 			 *                                         `categories`, `tags`, `media`,
 			 *                                         `options`, `metadata`, `rating`,
 			 *                                         `published_at`, `updated_at`.
+			 *                                         (Per UCP 2026-04-08 the `seller`
+			 *                                         block is emitted on each variant,
+			 *                                         not on the product — see the
+			 *                                         `wc_ai_storefront_ucp_variant`
+			 *                                         filter to override seller per
+			 *                                         variant.)
 			 * @param array<string, mixed> $wc_product The raw decoded Store API product
 			 *                                         response. Use this to read WC-native
 			 *                                         fields (e.g. custom meta surfaced via
@@ -1639,10 +1645,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					 *
 					 * @param array<string, mixed> $variant    The translated UCP variant shape.
 					 *                                         Required keys: `id`, `title`,
-					 *                                         `description`, `list_price`,
+					 *                                         `description`, `price`,
 					 *                                         `availability`. Optional: `options`,
-					 *                                         `compare_at_price`, `sku`,
-					 *                                         `barcodes`, `media`, `metadata`.
+					 *                                         `list_price`, `sku`, `barcodes`,
+					 *                                         `media`, `metadata`, `seller`.
 					 * @param array<string, mixed> $second_arg For variable products: the raw
 					 *                                         decoded Store API variation
 					 *                                         response. For simple products:
@@ -1670,10 +1676,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 *                                         Required keys: `id`, `title`,
 			 *                                         `description`, `price_range`,
 			 *                                         `variants`. Optional: `url`,
-			 *                                         `handle`, `status`, `seller`,
+			 *                                         `handle`, `status`,
 			 *                                         `categories`, `tags`, `media`,
 			 *                                         `options`, `metadata`, `rating`,
 			 *                                         `published_at`, `updated_at`.
+			 *                                         (Per UCP 2026-04-08 the `seller`
+			 *                                         block is emitted on each variant,
+			 *                                         not on the product — see the
+			 *                                         `wc_ai_storefront_ucp_variant`
+			 *                                         filter to override seller per
+			 *                                         variant.)
 			 * @param array<string, mixed> $wc_product The raw decoded Store API product
 			 *                                         response. Use this to read WC-native
 			 *                                         fields (e.g. custom meta surfaced via
@@ -3055,22 +3067,28 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * `content` includes the actual unresolved ID echo (e.g.
 	 * `prod_999` or the malformed string the agent sent) — much
 	 * easier for agents and humans to reconcile than a numeric index
-	 * alone.
+	 * alone. The echo is run through `sanitize_reflected_value()`
+	 * before interpolation: stripping tags prevents reflected-XSS via
+	 * malicious `ids[]` payloads, and the 200-char cap bounds payload
+	 * inflation (a hostile agent submitting a 100KB "id" can't make
+	 * the error response any larger than the cap allows).
 	 *
 	 * @param int    $raw_index Zero-based position in the request body's
 	 *                          `ids[]` array (first occurrence for
 	 *                          duplicates), NOT the deduped position.
 	 * @param string $id_echo   The unresolved ID as the agent submitted it
 	 *                          (or the normalized echo form for malformed
-	 *                          non-string inputs).
+	 *                          non-string inputs). Sanitized before
+	 *                          interpolation into `content`.
 	 * @return array<string, string>
 	 */
 	private static function not_found_message( int $raw_index, string $id_echo = '' ): array {
-		$content = '' !== $id_echo
+		$safe_echo = self::sanitize_reflected_value( $id_echo );
+		$content   = '' !== $safe_echo
 			? sprintf(
 				/* translators: %s: the input ID the agent submitted that didn't resolve. */
 				__( 'Input "%s" did not resolve to a known product or variant.', 'woocommerce-ai-storefront' ),
-				$id_echo
+				$safe_echo
 			)
 			: __( 'An input did not resolve to a known product or variant.', 'woocommerce-ai-storefront' );
 

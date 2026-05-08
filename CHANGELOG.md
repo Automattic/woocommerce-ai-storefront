@@ -22,16 +22,13 @@
   - **Seller moves from product to variant.** Spec defines `seller` inline on `variant.json` only; no `product.seller` field exists. Threaded through `extract_variants()` so every emitted variant carries the same seller. `country` field dropped from `build_seller()` (not in spec).
   - **Lookup per-variant `inputs[]` correlation.** Per `catalog_lookup.json#/$defs/lookup_variant`, every variant in a lookup response must carry `inputs: [{id, match}]` with `minItems: 1`. Top-level envelope `inputs` echo was non-spec and is dropped. Each variant now declares `[{id: <input>, match: 'featured'}]`.
   - **Message shape compliance.** `message_error.json` requires `content` (we omitted on `not_found`); `message_warning.json` and `message_info.json` have no `severity` field (we emitted `severity: 'advisory'` as a non-spec extension on 14 sites). Added required content; dropped severity from all warning/info emissions.
+  - **Release context.** Pre-1.0 minor bump for substantive wire-format scope. Spec-conforming agents reading our responses today are already getting validation rejections; this release fixes that. No coordination needed with public agent integrations because none read our specific non-conformant keys.
 
 ### Tests
 
 - Added `UcpShapeTest` running JSON Schema validation against the canonical UCP `release/2026-04-08` schemas vendored at `tests/fixtures/ucp-schemas/`. 12 new tests cover all touched shapes including the `lookup_variant` allOf merge.
 - Added `opis/json-schema` v2.6 as a dev dependency — only PHP library with complete draft-2020-12 / `$defs` / cross-file `$ref` support.
 - Updated existing translator + REST controller tests for the new key names and message shapes (~15 sites). Hard-cut regression guards (`assertArrayNotHasKey`) for the old keys.
-
-### Notes
-
-- This is a pre-1.0 minor bump for substantive wire-format scope. Spec-conforming agents reading our responses today are already getting validation rejections; this release fixes that. No coordination needed with public agent integrations because none read our specific non-conformant keys.
 
 ---
 
