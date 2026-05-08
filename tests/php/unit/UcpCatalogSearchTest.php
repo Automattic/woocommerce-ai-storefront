@@ -249,8 +249,20 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 					// underlying WP_Query's post_type, and `parent`
 					// populates post_parent__in via WC's
 					// `wp_parse_id_list` sanitizer.
+					//
+					// Match BOTH shapes WP_REST_Request can return for
+					// `include`: an array (when the request schema
+					// declared `type=array`) and a non-empty CSV
+					// string (when the param arrives as raw query
+					// string and the schema's `wp_parse_id_list`
+					// sanitizer hasn't yet expanded it). A future
+					// regression that built a CSV string instead of
+					// an array would otherwise bypass the guard.
 					$include = $request->get_param( 'include' );
-					if ( is_array( $include ) && ! empty( $include ) ) {
+					$has_include =
+						( is_array( $include ) && ! empty( $include ) )
+						|| ( is_string( $include ) && '' !== trim( $include ) );
+					if ( $has_include ) {
 						throw new \LogicException(
 							'Controller must not use the collection endpoint with ?include for variations. ' .
 							'Use ?type=variation&parent= for batched variation fetch (#351) or the single-item route.'
