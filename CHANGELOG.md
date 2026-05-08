@@ -10,6 +10,18 @@
 
 ## [0.12.0] – 2026-05-08
 
+### Performance
+
+- **Batched variation fetching for `/catalog/search` and `/catalog/lookup`.** Closes #351.
+  - Internal `rest_do_request` dispatches reduced from O(total_variations) to O(ceil(total_variations/100)) per request via `GET /wc/store/v1/products?parent_includes=<csv>&per_page=100` — the only Store API parameter that surfaces `post_type='product_variation'` through the collection endpoint.
+  - For a 20-product `/catalog/search` response with 30% variable products and avg 5 variations each: dispatches collapse from 30 to 1, saving ~700ms warm and ~2s+ cold-cache per request. Heavy-variable catalogs (60% variable × 8 vars) save ~2.4s warm, ~7s cold.
+  - For a 5-ID `/catalog/lookup` of all-variable products: dispatches collapse from 30 to 6, saving ~600ms.
+  - Lookup handler refactored to a two-pass structure: fetch all parents first, then batch their variations, then translate. Search handler pre-fetches before the per-product loop.
+  - `partial_variants` warning preserved: cap-overage and missing-variation cases still emit the warning so agents see when a product's variant list is incomplete.
+  - `MAX_VARIATIONS_PER_PRODUCT` cap (50) preserved per-parent. Cap-truncated entries contribute to `skipped` count.
+  - Failure policy: when the batch dispatch returns WP_Error or 5xx, every variable parent gracefully degrades to `variations: [], skipped: total_declared`. Matches today's worst case for individual fetch failures while making the typical case dramatically faster.
+  - `wc_ai_storefront_ucp_store_api_args` filter applies to the batched dispatch with the same `/wc/store/v1/products` endpoint string for symmetry; pagination keys (`page`, `per_page`, `parent_includes`) are restored after the filter so callbacks can't break the page-walk invariant.
+
 ### Fixes
 
 - **UCP wire-format compliance with `release/2026-04-08`.** Closes #349.
@@ -29,6 +41,7 @@
 - Added `UcpShapeTest` running JSON Schema validation against the canonical UCP `release/2026-04-08` schemas vendored at `tests/fixtures/ucp-schemas/`. 12 new tests cover all touched shapes including the `lookup_variant` allOf merge.
 - Added `opis/json-schema` v2.6 as a dev dependency — only PHP library with complete draft-2020-12 / `$defs` / cross-file `$ref` support.
 - Updated existing translator + REST controller tests for the new key names and message shapes (~15 sites). Hard-cut regression guards (`assertArrayNotHasKey`) for the old keys.
+- Added `UcpVariationBatchTest` (14 tests) covering the batched variation helper directly: empty/all-simple guards, single-/multi-parent dispatch shape, >100-variation pagination, partial response detection, WP_Error degradation, MAX cap overage, `wc_ai_storefront_ucp_store_api_args` filter compatibility.
 
 ---
 
