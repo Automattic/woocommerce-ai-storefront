@@ -431,21 +431,16 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_var_prefix_input_correlates_as_exact_not_featured(): void {
-		// `var_<id>` input semantics per types/input_correlation.json:
-		// the agent is asking for that specific variant directly, so
-		// the correlation match value MUST be `exact` — not `featured`,
-		// which is reserved for product-level inputs where the server
-		// picks a representative variant.
-		//
-		// In practice `var_` inputs rarely survive the syndication
-		// gate because variations aren't directly syndicated, but the
-		// stamping logic must still emit the right match value when
-		// they do (e.g. when `product_selection_mode` is `all` and the
-		// variation's parent product passes the scope check). This is
-		// also a bare-correctness guard: even if today's syndication
-		// gate filters them out, future gate changes shouldn't silently
-		// emit misleading correlation data.
+	public function test_var_prefix_input_against_simple_product_correlates_as_featured(): void {
+		// Subtle correctness case: `var_<product_id>` is a valid input
+		// (parse_ucp_id_to_wc_int strips both `prod_` and `var_`), but
+		// when the resolved product is simple, the variant translator
+		// emits a synthetic default variant whose id is
+		// `var_<product_id>_default` — not `var_<product_id>`. The two
+		// strings differ, so the input did NOT directly identify the
+		// emitted variant id and the correlation must be `featured`,
+		// not `exact`. A prefix-only check ("input starts with `var_`")
+		// would misclaim exact precision here.
 		$this->seed_simple_product( 456, 'Widget' );
 
 		$body = $this->successful_lookup(
@@ -453,18 +448,20 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertCount( 1, $body['products'] );
+		$this->assertSame( 'var_456_default', $body['products'][0]['variants'][0]['id'] );
 		$this->assertSame(
-			[ [ 'id' => 'var_456', 'match' => 'exact' ] ],
+			[ [ 'id' => 'var_456', 'match' => 'featured' ] ],
 			$body['products'][0]['variants'][0]['inputs']
 		);
 	}
 
-	public function test_var_default_suffix_input_also_correlates_as_exact(): void {
-		// `var_<id>_default` is the synthesized-default-variant ID
-		// shape (variant translator emits this for products that don't
-		// have explicit variations but need a default variant). It
-		// still starts with `var_`, so it's a variant-level input and
-		// the correlation must be `exact`.
+	public function test_input_correlates_as_exact_when_directly_matches_variant_id(): void {
+		// `var_<id>_default` is the actual emitted id of a synthetic
+		// default variant. When the agent submits that exact string,
+		// the input directly identifies the variant — correlation
+		// must be `exact`. This is the only simple-product input
+		// shape that produces an exact match (the input echo and the
+		// variant id are byte-equal).
 		$this->seed_simple_product( 456, 'Widget' );
 
 		$body = $this->successful_lookup(
@@ -472,10 +469,43 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertCount( 1, $body['products'] );
+		$this->assertSame( 'var_456_default', $body['products'][0]['variants'][0]['id'] );
 		$this->assertSame(
 			[ [ 'id' => 'var_456_default', 'match' => 'exact' ] ],
 			$body['products'][0]['variants'][0]['inputs']
 		);
+	}
+
+	public function test_prod_input_against_variable_product_correlates_all_variants_as_featured(): void {
+		// Variable product, product-level input (`prod_<parent>`).
+		// Every emitted variant gets a unique `var_<vid>` id — none
+		// equal `prod_456`, so all variants are `featured`
+		// representatives the server emitted for the product-level
+		// input. Confirms the per-variant comparison's "no match
+		// anywhere" path.
+		$this->seed_variable_product(
+			456,
+			'Long Sleeve Tee',
+			[
+				[ 'id' => 100, 'price' => '2500', 'size' => 'S' ],
+				[ 'id' => 200, 'price' => '2500', 'size' => 'M' ],
+			]
+		);
+
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'prod_456' ] ]
+		);
+
+		$this->assertCount( 1, $body['products'] );
+		$this->assertCount( 2, $body['products'][0]['variants'] );
+
+		foreach ( $body['products'][0]['variants'] as $variant ) {
+			$this->assertSame(
+				[ [ 'id' => 'prod_456', 'match' => 'featured' ] ],
+				$variant['inputs'],
+				"Variant {$variant['id']} should correlate as featured (no variant id equals prod_456)."
+			);
+		}
 	}
 
 	public function test_message_path_points_at_raw_request_index_not_deduped(): void {

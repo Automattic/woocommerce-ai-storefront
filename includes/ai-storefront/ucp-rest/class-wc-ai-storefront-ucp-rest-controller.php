@@ -1712,31 +1712,39 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			//   - `featured` — server picked this variant as a
 			//                  representative for a product-level input.
 			//
-			// `parse_ucp_id_to_wc_int()` accepts both `prod_<id>` and
-			// `var_<id>` prefixes. In practice, `var_` inputs rarely
-			// survive `fetch_store_api_product()`'s syndication gate
-			// (variations aren't directly syndicated), but if one does
-			// reach this loop the correlation should claim `exact` —
-			// the agent asked for that specific variant, not a
-			// representative. Stamping every variant `featured` would
-			// be wrong for the `var_` case.
+			// Per-variant comparison: `match` is `exact` only when the
+			// raw input echo equals THIS variant's emitted `id`,
+			// otherwise `featured`. Two important nuances driving
+			// the per-variant comparison (vs. a prefix-only check):
 			//
-			// Derive `match` from the raw echo's prefix rather than the
-			// parsed WC ID so the correlation tracks what the agent
-			// SENT, not what we resolved to. Done last (after both
-			// filters) so the spec-required transport-layer correlation
-			// isn't mutable by content filters; filter authors care
-			// about variant content, not server-side request
-			// reconciliation.
+			//   1. A bare `var_<product_id>` input against a simple
+			//      product emits a synthetic default variant whose id
+			//      is `var_<product_id>_default`. Those strings differ
+			//      — the input did NOT directly identify the emitted
+			//      variant id — so the correlation is `featured`,
+			//      not `exact`. A prefix-only check ("input starts
+			//      with `var_`") would misclaim exact precision.
+			//
+			//   2. For a variable product where the input echoes one
+			//      specific variation's id (e.g. `var_<vid>`), only
+			//      that variant's id matches; sibling variants get
+			//      `featured` because they're representatives the
+			//      server emitted alongside the directly-requested
+			//      one.
+			//
+			// Done last (after both filters) so the spec-required
+			// transport-layer correlation isn't mutable by content
+			// filters; filter authors care about variant content,
+			// not server-side request reconciliation.
 			if ( isset( $final_product['variants'] ) && is_array( $final_product['variants'] ) ) {
 				$input_echo = (string) ( $inputs[ $index ] ?? '' );
 				if ( '' !== $input_echo ) {
-					$match_type = str_starts_with(
-						$input_echo,
-						WC_AI_Storefront_UCP_Variant_Translator::VARIANT_ID_PREFIX
-					) ? 'exact' : 'featured';
-
 					foreach ( $final_product['variants'] as $variant_idx => $variant ) {
+						$variant_id = (string) ( $variant['id'] ?? '' );
+						$match_type = ( '' !== $variant_id && $input_echo === $variant_id )
+							? 'exact'
+							: 'featured';
+
 						$final_product['variants'][ $variant_idx ]['inputs'] = [
 							[
 								'id'    => $input_echo,
