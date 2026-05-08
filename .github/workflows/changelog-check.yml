@@ -121,12 +121,18 @@ jobs:
             exit 1
           fi
 
+          # Bullet matcher: `[[:space:]]*-[[:space:]]` accepts both
+          # unindented (`+- foo`) and indented (`+  - foo`) bullets,
+          # AND any whitespace character (space OR tab) after the dash.
+          # The earlier `[[:space:]]*- ` form required a literal space
+          # after the dash; tab-indented bullets that opted for tab
+          # after the dash too would have escaped detection.
           unreleased_bullet=$(printf '%s\n' "$diff_output" | awk '
             /^@@/                    { in_hunk = 1; next }
             in_hunk == 0             { next }
             /^[+ ]## \[Unreleased\]/ { in_unreleased = 1; next }
             /^[+ ]## \[/             { in_unreleased = 0; next }
-            in_unreleased && /^\+[[:space:]]*- / { print; found = 1 }
+            in_unreleased && /^\+[[:space:]]*-[[:space:]]/ { print; found = 1 }
             END                      { exit (found ? 0 : 1) }
           ' || true)
 

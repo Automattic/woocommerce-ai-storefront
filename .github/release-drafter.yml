@@ -1,6 +1,15 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 
+# Mark every drafted Release as a pre-release. We're pre-1.0 — every
+# 0.x release ships under the pre-release convention, and the GitHub
+# Release's UI badge ("Pre-release") signals that to consumers browsing
+# the releases page. Previously this flag lived in `release.yml` (when
+# release.yml owned Release creation); when ownership moved to
+# release-drafter in the workflow split, the flag came with it. Drop
+# once we ship 1.0.0.
+prerelease: true
+
 # How release-drafter computes the next version number.
 #
 # The resolver bumps from the **most recent published Release**:
