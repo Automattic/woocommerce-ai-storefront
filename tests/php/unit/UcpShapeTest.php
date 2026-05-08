@@ -39,14 +39,24 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 			throw new \RuntimeException( 'opis/json-schema validator returned unexpected resolver type.' );
 		}
 
-		// Register the vendored directory so any $ref pointing at
-		// `https://ucp.dev/schemas/shopping/...` resolves locally.
-		// `registerPrefix( $prefix, $path )` maps URL prefix → filesystem dir.
+		// Register prefix mappings so any $ref pointing at
+		// `https://ucp.dev/schemas/...` resolves locally without
+		// network. Two prefixes are needed:
+		//   - `/schemas/shopping/` for variant.json, product.json,
+		//     catalog_lookup.json, etc. — most schemas live here.
+		//   - `/schemas/` for ucp.json itself, which catalog
+		//     responses $ref via `../ucp.json` (resolves to
+		//     `https://ucp.dev/schemas/ucp.json`, OUTSIDE the
+		//     `/shopping/` subtree).
+		// Without the second prefix, validating a catalog envelope
+		// schema would attempt a network fetch on `ucp.json` and
+		// either time out or fail offline.
 		$schemas_dir = realpath( __DIR__ . '/../../fixtures/ucp-schemas' );
 		if ( false === $schemas_dir ) {
 			throw new \RuntimeException( 'Vendored UCP schemas directory not found.' );
 		}
 		$resolver->registerPrefix( 'https://ucp.dev/schemas/shopping/', $schemas_dir . DIRECTORY_SEPARATOR );
+		$resolver->registerPrefix( 'https://ucp.dev/schemas/', $schemas_dir . DIRECTORY_SEPARATOR );
 
 		self::$validator = $validator;
 		return $validator;
@@ -73,10 +83,16 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 
 		$formatter = new ErrorFormatter();
 		$errors    = $formatter->format( $result->error(), true );
+		// Use native `json_encode` instead of `wp_json_encode` —
+		// these tests run under Brain Monkey unit-test bootstrap
+		// without WordPress function shims fully loaded, and a
+		// missing `wp_json_encode` shim would fatal here, hiding
+		// the underlying schema-validation error this branch is
+		// trying to surface. Native PHP function is always available.
 		$this->fail(
 			"UCP schema violation against {$schema_uri}"
 			. ( '' !== $context ? " [{$context}]" : '' )
-			. ":\n" . wp_json_encode( $errors, JSON_PRETTY_PRINT )
+			. ":\n" . json_encode( $errors, JSON_PRETTY_PRINT )
 		);
 	}
 

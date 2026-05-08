@@ -1220,41 +1220,50 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * Build the `seller` block stamped on every emitted product.
+	 * Build the `seller` block attached to every emitted variant.
 	 *
-	 * UCP core's `product.seller` is spec-expected even for single-
-	 * merchant stores — strict validators will reject a product
-	 * without it. For this plugin (single-merchant by posture), the
-	 * seller is the same for every product in a request, so we
-	 * compute it once and thread it through the translator rather
-	 * than re-reading WP globals per-product.
+	 * Per UCP 2026-04-08, `seller` is defined inline on `variant.json`
+	 * only (optional, no required subfields) — there is no
+	 * `product.seller` field in the spec. The controller computes
+	 * this once per request and threads it through the translators so
+	 * every emitted variant carries the same merchant identity in a
+	 * single-merchant store, without re-reading WP globals per-product.
 	 *
 	 * Shape:
-	 *   - `name`    — `get_bloginfo('name')` stripped + entity-decoded
-	 *                  (same normalization the JSON-LD @graph uses so
-	 *                  the two surfaces agree on merchant display name)
-	 *   - `country` — ISO 3166-1 alpha-2 from WC's base country, or
-	 *                  omitted when not configured. Mirrors the
-	 *                  store_context.country logic exactly.
+	 *   - `name` — `get_bloginfo('name')` stripped + entity-decoded
+	 *              (same normalization the JSON-LD @graph uses so the
+	 *              two surfaces agree on merchant display name).
 	 *
-	 * Spec scope: `variant.seller` (UCP 2026-04-08, inline schema on
-	 * variant.json) defines optional `name` + `links[]` only — no `id`,
-	 * no `country`. Pre-0.12.0 we also emitted `country` here from WC's
-	 * base country; that field isn't in the spec, so it was dropped to
-	 * keep strict validators happy. Site name remains the only seller
-	 * datum we surface; revisit if multi-vendor support arrives and a
-	 * stable seller identifier becomes available.
+	 * Spec scope: `variant.seller` defines optional `name` + `links[]`
+	 * only — no `id`, no `country`. Pre-0.12.0 we also emitted
+	 * `country` here from WC's base country and attached the block at
+	 * the product level; both were non-spec and were dropped to keep
+	 * strict validators happy. Site name remains the only seller datum
+	 * we surface; revisit if multi-vendor support arrives and a stable
+	 * seller identifier becomes available.
+	 *
+	 * Returns an empty array when `get_bloginfo('name')` resolves to
+	 * empty/whitespace-only — the variant translator's null-or-empty
+	 * guard then omits the `seller` block entirely instead of emitting
+	 * `seller: { name: "" }`. Empty-name sellers convey nothing useful
+	 * to agents and would fail any reasonable consumer's display logic.
 	 *
 	 * @return array<string, string>
 	 */
 	private static function build_seller(): array {
-		return [
-			'name' => html_entity_decode(
-				wp_strip_all_tags( get_bloginfo( 'name' ) ),
-				ENT_QUOTES,
-				'UTF-8'
-			),
-		];
+		$name = html_entity_decode(
+			wp_strip_all_tags( get_bloginfo( 'name' ) ),
+			ENT_QUOTES,
+			'UTF-8'
+		);
+
+		if ( '' === trim( $name ) ) {
+			return array();
+		}
+
+		return array(
+			'name' => $name,
+		);
 	}
 
 	/**
@@ -1544,14 +1553,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		foreach ( $wc_ids as $index => $wc_id ) {
+			$id_echo = (string) ( $inputs[ $index ] ?? '' );
 			if ( $wc_id <= 0 ) {
-				$messages[] = self::not_found_message( (int) $index );
+				$messages[] = self::not_found_message( (int) $index, $id_echo );
 				continue;
 			}
 
 			$wc_product = $this->fetch_store_api_product( $wc_id );
 			if ( null === $wc_product ) {
-				$messages[] = self::not_found_message( (int) $index );
+				$messages[] = self::not_found_message( (int) $index, $id_echo );
 				continue;
 			}
 
@@ -3018,34 +3028,44 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * Build a UCP `not_found` error message for the ID at position
-	 * `$index` in the response's `inputs` array. The JSONPath-style
-	 * `path` lets agents localize which specific ID failed.
+	 * Build a UCP `not_found` error message for an ID that did not
+	 * resolve to any known product or variant.
 	 *
-	 * Note: the path references `$.inputs[...]`, not `$.ids[...]`.
-	 * After request-side deduplication (see
-	 * `normalize_and_dedupe_lookup_ids`), the original `ids[]` is
-	 * collapsed into a deduped `inputs[]` echoed in the response.
-	 * Messages address positions in that echoed array so agents can
-	 * map failures to the processed (not raw-requested) set.
+	 * `path` references `$.ids[...]` — the request-side field name.
+	 * Pre-0.12.0 we used `$.inputs[...]`, but the `inputs[]` envelope
+	 * echo was dropped (per UCP 2026-04-08 `lookup_response`, the
+	 * envelope only requires `[ucp, products]`). The JSONPath now
+	 * points at the request's `ids` array, which IS spec-defined
+	 * (`lookup_request.ids`). The position is the deduped one — see
+	 * `normalize_and_dedupe_lookup_ids` for how raw IDs collapse to
+	 * the position used here.
 	 *
+	 * `content` includes the actual unresolved ID echo (e.g.
+	 * `prod_999` or the malformed string the agent sent) — much
+	 * easier for agents and humans to reconcile than a numeric index
+	 * alone, given the index is post-dedup and may not match the
+	 * agent's raw request position.
+	 *
+	 * @param int    $index    Zero-based position in the deduped ids list.
+	 * @param string $id_echo  The unresolved ID as the agent submitted it
+	 *                         (or the normalized echo form for malformed
+	 *                         non-string inputs).
 	 * @return array<string, string>
 	 */
-	private static function not_found_message( int $index ): array {
+	private static function not_found_message( int $index, string $id_echo = '' ): array {
+		$content = '' !== $id_echo
+			? sprintf(
+				/* translators: %s: the input ID the agent submitted that didn't resolve. */
+				__( 'Input "%s" did not resolve to a known product or variant.', 'woocommerce-ai-storefront' ),
+				$id_echo
+			)
+			: __( 'An input did not resolve to a known product or variant.', 'woocommerce-ai-storefront' );
+
 		return [
 			'type'     => 'error',
 			'code'     => WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND,
-			// Required by `message_error.json` (UCP 2026-04-08).
-			// Pre-0.12.0 we omitted this — strict validators rejected
-			// the message. Default to an English template; localization
-			// happens at the call site (caller indexes the request's
-			// processed list).
-			'content'  => sprintf(
-				/* translators: %d: zero-based position in the deduped lookup inputs list. */
-				__( 'Input %d did not resolve to a known product or variant.', 'woocommerce-ai-storefront' ),
-				$index
-			),
-			'path'     => '$.inputs[' . $index . ']',
+			'content'  => $content,
+			'path'     => '$.ids[' . $index . ']',
 			'severity' => 'unrecoverable',
 		];
 	}
@@ -4821,9 +4841,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'url'  => $privacy_url,
 			];
 		} else {
+			// `message_warning.json` (UCP 2026-04-08) requires `content`.
+			// Pre-fix we emitted only `type` + `code`; strict validators
+			// would reject the message.
 			$warnings[] = [
-				'type' => 'warning',
-				'code' => WC_AI_Storefront_UCP_Error_Codes::PRIVACY_POLICY_UNCONFIGURED,
+				'type'    => 'warning',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::PRIVACY_POLICY_UNCONFIGURED,
+				'content' => __( 'Merchant has no privacy policy configured; agents may want to surface this caveat to buyers before proceeding.', 'woocommerce-ai-storefront' ),
 			];
 		}
 
@@ -4837,8 +4861,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			];
 		} else {
 			$warnings[] = [
-				'type' => 'warning',
-				'code' => WC_AI_Storefront_UCP_Error_Codes::TERMS_UNCONFIGURED,
+				'type'    => 'warning',
+				'code'    => WC_AI_Storefront_UCP_Error_Codes::TERMS_UNCONFIGURED,
+				'content' => __( 'Merchant has no terms of service configured; agents may want to surface this caveat to buyers before proceeding.', 'woocommerce-ai-storefront' ),
 			];
 		}
 

@@ -447,7 +447,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertCount( 2, $body['products'] );
 		$this->assertCount( 1, $body['messages'] );
-		$this->assertEquals( '$.inputs[1]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[1]', $body['messages'][0]['path'] );
 		$this->assertEquals( 'not_found', $body['messages'][0]['code'] );
 		$this->assertArrayHasKey( 'content', $body['messages'][0] );
 	}
@@ -464,8 +464,8 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEmpty( $body['products'] );
 		$this->assertCount( 2, $body['messages'] );
-		$this->assertEquals( '$.inputs[0]', $body['messages'][0]['path'] );
-		$this->assertEquals( '$.inputs[1]', $body['messages'][1]['path'] );
+		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[1]', $body['messages'][1]['path'] );
 	}
 
 	public function test_boolean_ids_dedupe_by_distinct_echo_forms(): void {
@@ -501,9 +501,9 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEmpty( $body['products'] );
 		$this->assertCount( 3, $body['messages'] );
-		$this->assertEquals( '$.inputs[0]', $body['messages'][0]['path'] );
-		$this->assertEquals( '$.inputs[1]', $body['messages'][1]['path'] );
-		$this->assertEquals( '$.inputs[2]', $body['messages'][2]['path'] );
+		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[1]', $body['messages'][1]['path'] );
+		$this->assertEquals( '$.ids[2]', $body['messages'][2]['path'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -517,7 +517,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( [], $body['products'] );
 		$this->assertCount( 1, $body['messages'] );
 		$this->assertEquals( 'not_found', $body['messages'][0]['code'] );
-		$this->assertEquals( '$.inputs[0]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
 		$this->assertEquals( 'unrecoverable', $body['messages'][0]['severity'] );
 	}
 
@@ -539,7 +539,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $body['messages'] );
 		// The missing ID was at position 1 in the request — that's what
 		// the jsonpath should reflect, not the product-array index.
-		$this->assertEquals( '$.inputs[1]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[1]', $body['messages'][0]['path'] );
 	}
 
 	public function test_messages_key_omitted_when_all_ids_found(): void {
@@ -563,7 +563,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals( [], $body['products'] );
 		$this->assertCount( 1, $body['messages'] );
-		$this->assertEquals( '$.inputs[0]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
 	}
 
 	public function test_id_string_with_no_numeric_portion_is_not_found(): void {
@@ -910,7 +910,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			)
 		);
 		$this->assertCount( 1, $not_found );
-		$this->assertEquals( '$.inputs[1]', $not_found[0]['path'] );
+		$this->assertEquals( '$.ids[1]', $not_found[0]['path'] );
 
 		// Crux of the regression test: rest_do_request was NOT
 		// invoked for product 99. The dispatch counter only
