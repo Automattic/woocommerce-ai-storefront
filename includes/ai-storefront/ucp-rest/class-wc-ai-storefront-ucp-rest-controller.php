@@ -1513,11 +1513,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// work list (one per unique input, aligned positionally
 		// with `inputs`); `inputs` is the echo array we return to
 		// the agent so they can reconcile what they sent against
-		// what we processed. See `normalize_and_dedupe_lookup_ids`
-		// for the dedup semantics.
+		// what we processed; `positions` is the first raw `ids[]`
+		// index for each deduped entry, used by not_found_message()
+		// to build a JSONPath that resolves against the agent's
+		// request body (not the deduped sequence). See
+		// `normalize_and_dedupe_lookup_ids` for the dedup semantics.
 		$normalized = self::normalize_and_dedupe_lookup_ids( $ids );
 		$inputs     = $normalized['inputs'];
 		$wc_ids     = $normalized['wc_ids'];
+		$positions  = $normalized['positions'];
 
 		// Same single-merchant seller block as the search handler —
 		// computed once, stamped on every product (see handle_catalog_search).
@@ -1553,15 +1557,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		foreach ( $wc_ids as $index => $wc_id ) {
-			$id_echo = (string) ( $inputs[ $index ] ?? '' );
+			$id_echo   = (string) ( $inputs[ $index ] ?? '' );
+			$raw_index = (int) ( $positions[ $index ] ?? $index );
 			if ( $wc_id <= 0 ) {
-				$messages[] = self::not_found_message( (int) $index, $id_echo );
+				$messages[] = self::not_found_message( $raw_index, $id_echo );
 				continue;
 			}
 
 			$wc_product = $this->fetch_store_api_product( $wc_id );
 			if ( null === $wc_product ) {
-				$messages[] = self::not_found_message( (int) $index, $id_echo );
+				$messages[] = self::not_found_message( $raw_index, $id_echo );
 				continue;
 			}
 
@@ -3036,23 +3041,31 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * echo was dropped (per UCP 2026-04-08 `lookup_response`, the
 	 * envelope only requires `[ucp, products]`). The JSONPath now
 	 * points at the request's `ids` array, which IS spec-defined
-	 * (`lookup_request.ids`). The position is the deduped one — see
-	 * `normalize_and_dedupe_lookup_ids` for how raw IDs collapse to
-	 * the position used here.
+	 * (`lookup_request.ids`).
+	 *
+	 * The position MUST be the raw request-body index (first occurrence
+	 * for duplicates), not the deduped index. Agents cross-reference
+	 * `path` against the request body they sent — pointing at a deduped
+	 * position would be off-by-one whenever duplicates collapsed earlier
+	 * entries. `normalize_and_dedupe_lookup_ids` returns a `positions[]`
+	 * array tracking the first raw index for each deduped entry; pass
+	 * that raw index here so the JSONPath resolves correctly against
+	 * the agent's original payload.
 	 *
 	 * `content` includes the actual unresolved ID echo (e.g.
 	 * `prod_999` or the malformed string the agent sent) — much
 	 * easier for agents and humans to reconcile than a numeric index
-	 * alone, given the index is post-dedup and may not match the
-	 * agent's raw request position.
+	 * alone.
 	 *
-	 * @param int    $index    Zero-based position in the deduped ids list.
-	 * @param string $id_echo  The unresolved ID as the agent submitted it
-	 *                         (or the normalized echo form for malformed
-	 *                         non-string inputs).
+	 * @param int    $raw_index Zero-based position in the request body's
+	 *                          `ids[]` array (first occurrence for
+	 *                          duplicates), NOT the deduped position.
+	 * @param string $id_echo   The unresolved ID as the agent submitted it
+	 *                          (or the normalized echo form for malformed
+	 *                          non-string inputs).
 	 * @return array<string, string>
 	 */
-	private static function not_found_message( int $index, string $id_echo = '' ): array {
+	private static function not_found_message( int $raw_index, string $id_echo = '' ): array {
 		$content = '' !== $id_echo
 			? sprintf(
 				/* translators: %s: the input ID the agent submitted that didn't resolve. */
@@ -3065,7 +3078,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'type'     => 'error',
 			'code'     => WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND,
 			'content'  => $content,
-			'path'     => '$.ids[' . $index . ']',
+			'path'     => '$.ids[' . $raw_index . ']',
 			'severity' => 'unrecoverable',
 		];
 	}
@@ -3098,19 +3111,29 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * resolution step even though we echo the raw form back so the
 	 * agent can see what we received.
 	 *
+	 * `positions[]` tracks the first raw index in `$raw_ids` for each
+	 * deduped entry (positionally aligned with `inputs[]` and `wc_ids[]`).
+	 * Used by `not_found_message()` to build a JSONPath against the
+	 * request body's original `ids[]` rather than the deduped sequence —
+	 * agents cross-reference `path` against what they sent, so a deduped
+	 * index would be off-by-one whenever duplicates collapsed earlier
+	 * entries.
+	 *
 	 * @param array<int, mixed> $raw_ids
 	 *
 	 * @return array{
 	 *     inputs: array<int, string>,
-	 *     wc_ids: array<int, int>
+	 *     wc_ids: array<int, int>,
+	 *     positions: array<int, int>
 	 * }
 	 */
 	private static function normalize_and_dedupe_lookup_ids( array $raw_ids ): array {
-		$inputs = [];
-		$wc_ids = [];
-		$seen   = [];
+		$inputs    = [];
+		$wc_ids    = [];
+		$positions = [];
+		$seen      = [];
 
-		foreach ( $raw_ids as $raw ) {
+		foreach ( $raw_ids as $raw_index => $raw ) {
 			// Non-scalar inputs (arrays/objects/null) can't resolve
 			// to a WC product, but we still echo a stable,
 			// distinguishable string form so agents see what kind of
@@ -3176,11 +3199,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$seen[ $key ] = true;
 			$inputs[]     = $echo;
 			$wc_ids[]     = $wc_id;
+			$positions[]  = (int) $raw_index;
 		}
 
 		return [
-			'inputs' => $inputs,
-			'wc_ids' => $wc_ids,
+			'inputs'    => $inputs,
+			'wc_ids'    => $wc_ids,
+			'positions' => $positions,
 		];
 	}
 

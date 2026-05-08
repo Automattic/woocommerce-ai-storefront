@@ -431,13 +431,19 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_dedup_positions_reflected_in_message_paths(): void {
+	public function test_message_path_points_at_raw_request_index_not_deduped(): void {
 		// Request: [found_A, found_A, missing, found_B]
-		// After dedup the work list is [found_A, missing, found_B];
-		// the missing one is at deduped position 1 — messages[].path
-		// points to `$.inputs[1]`. The path remains documentary
-		// (envelope `inputs` was dropped in 0.12.0); agents map the
-		// failure to the first matching ID in their submitted list.
+		// Raw `ids[]` indices:       0,        1,        2,       3
+		// Deduped work list:    [found_A, missing, found_B] at deduped
+		// indices 0, 1, 2.
+		//
+		// `messages[].path` MUST reference the raw request index, not
+		// the deduped one — agents cross-reference path against the
+		// JSON body they sent. Pre-fix this emitted `$.ids[1]` (deduped
+		// position of `missing`), which is wrong: deduped index 1
+		// resolves against raw[1] = found_A in the agent's request,
+		// pointing at the WRONG element. Post-fix it emits `$.ids[2]`
+		// (raw index of the first `missing` occurrence).
 		$this->seed_simple_product( 100, 'Alpha' );
 		$this->seed_simple_product( 300, 'Gamma' );
 
@@ -447,9 +453,27 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertCount( 2, $body['products'] );
 		$this->assertCount( 1, $body['messages'] );
-		$this->assertEquals( '$.ids[1]', $body['messages'][0]['path'] );
+		$this->assertEquals( '$.ids[2]', $body['messages'][0]['path'] );
 		$this->assertEquals( 'not_found', $body['messages'][0]['code'] );
 		$this->assertArrayHasKey( 'content', $body['messages'][0] );
+	}
+
+	public function test_message_path_uses_first_raw_index_for_repeated_missing_id(): void {
+		// Request: [found_A, missing, found_B, missing]
+		// Raw `ids[]` indices: 0, 1, 2, 3.
+		// `missing` appears twice (raw 1 and raw 3) — dedup collapses
+		// to one entry. The emitted path must point at the FIRST raw
+		// occurrence (1), not the second (3) and not the deduped slot.
+		$this->seed_simple_product( 100, 'Alpha' );
+		$this->seed_simple_product( 200, 'Bravo' );
+
+		$body = $this->successful_lookup(
+			[ 'ids' => [ 'prod_100', 'prod_missing', 'prod_200', 'prod_missing' ] ]
+		);
+
+		$this->assertCount( 2, $body['products'] );
+		$this->assertCount( 1, $body['messages'] );
+		$this->assertEquals( '$.ids[1]', $body['messages'][0]['path'] );
 	}
 
 	public function test_repeated_malformed_ids_are_deduplicated(): void {
@@ -458,6 +482,9 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// different garbage strings stay distinct. Each unresolvable
 		// input emits one message; per-variant `inputs[]` doesn't
 		// apply because no products were resolved.
+		// Raw `ids[]` indices: [0=bogus, 1=bogus(dup), 2=other_bogus].
+		// Paths point at the FIRST raw occurrence of each deduped
+		// entry (raw 0 for `bogus`, raw 2 for `other_bogus`).
 		$body = $this->successful_lookup(
 			[ 'ids' => [ 'bogus', 'bogus', 'other_bogus' ] ]
 		);
@@ -465,7 +492,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEmpty( $body['products'] );
 		$this->assertCount( 2, $body['messages'] );
 		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
-		$this->assertEquals( '$.ids[1]', $body['messages'][1]['path'] );
+		$this->assertEquals( '$.ids[2]', $body['messages'][1]['path'] );
 	}
 
 	public function test_boolean_ids_dedupe_by_distinct_echo_forms(): void {
@@ -491,6 +518,9 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// doesn't collapse them. Three distinct echo forms — null,
 		// empty array, nested array — with the second null deduped
 		// against the first → 3 unresolved messages.
+		// Raw `ids[]` indices: [0=null, 1=[], 2=null(dup), 3=nested].
+		// Nested-array message points at raw 3 (its actual position in
+		// the request), NOT deduped slot 2.
 		\Brain\Monkey\Functions\when( 'wp_json_encode' )->alias(
 			static fn( $v ): string|false => json_encode( $v )
 		);
@@ -503,7 +533,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 3, $body['messages'] );
 		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
 		$this->assertEquals( '$.ids[1]', $body['messages'][1]['path'] );
-		$this->assertEquals( '$.ids[2]', $body['messages'][2]['path'] );
+		$this->assertEquals( '$.ids[3]', $body['messages'][2]['path'] );
 	}
 
 	// ------------------------------------------------------------------
