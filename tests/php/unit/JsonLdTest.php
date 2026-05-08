@@ -599,6 +599,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
 		$this->assertSame( $parent_url, $entry['@id'] );
+		// `url` must mirror `@id` on every code path, including the
+		// scope-cap fall-through. Pins the contract that they don't
+		// diverge — a refactor that wired the override into one but
+		// not the other would fail here.
+		$this->assertSame( $entry['@id'], $entry['url'] );
 	}
 
 	public function test_variant_entry_falls_back_to_id_when_no_sku(): void {
