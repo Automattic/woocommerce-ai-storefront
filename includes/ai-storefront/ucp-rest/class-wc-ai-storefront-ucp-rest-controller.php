@@ -98,6 +98,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	const MAX_VARIATIONS_PER_PRODUCT = 50;
 
 	/**
+	 * Upper bound on category IDs requested per `include=<csv>` page in
+	 * the batched category-terms fetch.
+	 *
+	 * Matches WC Store API's `per_page` ceiling on `/products/categories`.
+	 * `fetch_category_terms()` chunks the input ID list at this size so
+	 * that a parent-chain walk across a search-page's worth of products
+	 * (potentially 100s of distinct categories) doesn't silently truncate
+	 * — agents would then see bare leaf names instead of full paths.
+	 */
+	const MAX_CATEGORY_INCLUDE_PER_PAGE = 100;
+
+	/**
 	 * Upper bound on `quantity` in a checkout line item.
 	 *
 	 * Prevents `unit_price_minor * quantity` from silently overflowing
@@ -1294,9 +1306,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *   2. Seed the local cache with the per-product category data we
 	 *      already have (name + parent), no extra dispatch needed.
 	 *   3. For any parent IDs referenced but not seeded, fetch the
-	 *      missing parents in a single batched
-	 *      `GET /products/categories?include[]=<id>&include[]=...` call.
-	 *      Loop in case those parents have parents we still need.
+	 *      missing parents in a chunked batched
+	 *      `GET /products/categories?include=<csv>` call (chunks of
+	 *      MAX_CATEGORY_INCLUDE_PER_PAGE since WC Store API caps
+	 *      per_page at 100). Loop in case those parents have parents
+	 *      we still need.
 	 *   4. Walk each leaf upward to build the full path string.
 	 *
 	 * Returns empty array on dispatch failure — translator falls back
@@ -1394,9 +1408,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	/**
 	 * Batched fetch of WC product categories by term ID.
 	 *
-	 * Dispatches a single `GET /wc/store/v1/products/categories?include[]=<id>...`
-	 * for the given IDs and returns `[id => [name, parent]]`. On error
-	 * returns empty array; the caller degrades to bare-name emission.
+	 * Dispatches one or more
+	 * `GET /wc/store/v1/products/categories?include=<csv>&per_page=100`
+	 * calls (chunking at MAX_CATEGORY_INCLUDE_PER_PAGE because WC Store
+	 * API caps `per_page` at 100 — sending more IDs in `include` would
+	 * silently truncate the response). Returns `[id => [name, parent]]`
+	 * merged across chunks. On any chunk error returns the partial map
+	 * accumulated so far; the caller degrades to bare-name emission for
+	 * still-missing parents.
+	 *
+	 * Internal-dispatch responses may carry stdClass nodes (the WC Store
+	 * API's REST controller uses prepared `\WP_REST_Response` objects
+	 * whose data nests as objects, not arrays) — we route the response
+	 * through `normalize_store_api_data()` so the term iteration is
+	 * uniform regardless of dispatch path. Without normalization, every
+	 * term would silently fail the `is_array` guard and the path map
+	 * would degrade to bare leaf names even on success.
 	 *
 	 * Supports `build_category_paths_map()` (issue #350).
 	 *
@@ -1408,43 +1435,53 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return array();
 		}
 
-		$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products/categories' );
-		$store_request->set_param( 'include', implode( ',', array_map( 'intval', $ids ) ) );
-		$store_request->set_param( 'per_page', 100 );
-
-		WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
-		try {
-			$response = rest_do_request( $store_request );
-		} finally {
-			WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
-		}
-
-		if ( $response instanceof WP_Error || $response->get_status() >= 400 ) {
-			WC_AI_Storefront_Logger::debug(
-				'UCP fetch_category_terms: dispatch failed; emitting bare category names instead of paths.'
-			);
-			return array();
-		}
-
-		$data = $response->get_data();
-		if ( ! is_array( $data ) ) {
-			return array();
-		}
-
+		$ids = array_values( array_unique( array_map( 'intval', $ids ) ) );
 		$out = array();
-		foreach ( $data as $term ) {
-			if ( ! is_array( $term ) ) {
+
+		foreach ( array_chunk( $ids, self::MAX_CATEGORY_INCLUDE_PER_PAGE ) as $chunk ) {
+			$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products/categories' );
+			$store_request->set_param( 'include', implode( ',', $chunk ) );
+			$store_request->set_param( 'per_page', self::MAX_CATEGORY_INCLUDE_PER_PAGE );
+
+			WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
+			try {
+				$response = rest_do_request( $store_request );
+			} finally {
+				WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
+			}
+
+			if ( $response instanceof WP_Error || $response->get_status() >= 400 ) {
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'UCP fetch_category_terms: dispatch failed for chunk of %d IDs; returning %d already-fetched terms; remaining categories will fall back to bare names.',
+						count( $chunk ),
+						count( $out )
+					)
+				);
+				return $out;
+			}
+
+			$data       = $response->get_data();
+			$normalized = self::normalize_store_api_data( $data );
+			if ( null === $normalized ) {
 				continue;
 			}
-			$id = (int) ( $term['id'] ?? 0 );
-			if ( $id <= 0 ) {
-				continue;
+
+			foreach ( $normalized as $term ) {
+				if ( ! is_array( $term ) ) {
+					continue;
+				}
+				$id = (int) ( $term['id'] ?? 0 );
+				if ( $id <= 0 ) {
+					continue;
+				}
+				$out[ $id ] = array(
+					'name'   => (string) ( $term['name'] ?? '' ),
+					'parent' => (int) ( $term['parent'] ?? 0 ),
+				);
 			}
-			$out[ $id ] = array(
-				'name'   => (string) ( $term['name'] ?? '' ),
-				'parent' => (int) ( $term['parent'] ?? 0 ),
-			);
 		}
+
 		return $out;
 	}
 
