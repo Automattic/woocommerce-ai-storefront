@@ -1,0 +1,75 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+# How release-drafter computes the next version number.
+#
+# The resolver bumps from the **most recent published Release**:
+#   - any PR with a `breaking` label  → MAJOR bump
+#   - any PR with `enhancement` / `feature` / `performance` → MINOR bump
+#   - everything else (`bug`, `documentation`, `refactor`, ...) → PATCH bump
+#
+# This is purely advisory — the draft Release shows the suggested
+# version, but the human cutting the release can override before
+# publishing. We're nowhere near 1.0 so MAJOR auto-bump is unlikely
+# to fire; even if it does, you can edit it to a minor on the way out.
+version-resolver:
+  major:
+    labels:
+      - 'breaking'
+  minor:
+    labels:
+      - 'enhancement'
+      - 'feature'
+      - 'performance'
+  patch:
+    labels:
+      - 'bug'
+      - 'documentation'
+      - 'refactor'
+      - 'tech-debt'
+      - 'task'
+  default: patch
+
+# Categories grouped to match the CHANGELOG.md convention used in
+# this repo (Features / Fixes / Performance / Refactors / Tests / Docs).
+# Each merged PR lands under whichever category matches its labels.
+categories:
+  - title: 'Features'
+    labels:
+      - 'enhancement'
+      - 'feature'
+  - title: 'Fixes'
+    labels:
+      - 'bug'
+  - title: 'Performance'
+    labels:
+      - 'performance'
+  - title: 'Refactors'
+    labels:
+      - 'refactor'
+      - 'tech-debt'
+      - 'architecture'
+  - title: 'Documentation'
+    labels:
+      - 'documentation'
+
+# Hide PRs labelled `automated` from the draft (e.g. dependabot bumps,
+# bot-opened release PRs). Same for `duplicate`/`invalid`/`wontfix`.
+exclude-labels:
+  - 'automated'
+  - 'duplicate'
+  - 'invalid'
+  - 'wontfix'
+
+# Per-PR template line. `$AUTHOR` is auto-substituted; we omit the
+# author for first-party PRs by post-filtering with autolabeler if
+# we ever want to. Keep it simple for now.
+change-template: '- $TITLE (#$NUMBER)'
+change-title-escapes: '\<*_&'
+
+template: |
+  ## What's changed
+
+  $CHANGES
+
+  **Full diff**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION

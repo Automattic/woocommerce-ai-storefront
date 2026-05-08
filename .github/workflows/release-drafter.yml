@@ -1,0 +1,42 @@
+name: Release drafter
+
+# Maintains a single draft GitHub Release that auto-updates as PRs
+# merge to main. Each merged PR is categorized into the draft based
+# on its labels (see `.github/release-drafter.yml`).
+#
+# When you're ready to ship, go to the repo Releases page, review
+# the draft, edit if needed, and click "Publish release." That step
+# also creates the git tag — no separate `git tag` push required.
+#
+# This workflow does NOT bump version constants, update CHANGELOG.md,
+# or publish on its own. Those remain manual steps in the same release
+# commit that bumps `WC_AI_STOREFRONT_VERSION` etc.
+#
+# Security note: this workflow contains no `run:` steps and no use of
+# untrusted user-controlled inputs (PR titles, issue bodies, commit
+# messages). The only token reference is the server-issued
+# `secrets.GITHUB_TOKEN`. Workflow-injection guidance at
+# https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+# applies to `run:` blocks; nothing here is at risk.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update_release_draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
