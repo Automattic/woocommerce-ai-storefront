@@ -81,7 +81,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			'title'       => $wc_product['name'] ?? '',
 			'description' => self::extract_description( $wc_product ),
 			'price_range' => self::extract_price_range( $wc_product ),
-			'variants'    => self::extract_variants( $wc_product, $wc_variations ),
+			'variants'    => self::extract_variants( $wc_product, $wc_variations, $seller ),
 		];
 
 		// `list_price_range` — UCP core optional field carrying the
@@ -118,12 +118,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			$product['updated_at'] = $timestamps['updated_at'];
 		}
 
-		// Seller — controller-computed once per request (same for every
-		// product in a single-merchant store). Spec-expected even for
-		// single-merchant plugins; omitting it fails strict validators.
-		if ( null !== $seller && ! empty( $seller ) ) {
-			$product['seller'] = $seller;
-		}
+		// Seller is no longer attached at the product level. UCP
+		// `variant.json` defines `seller` inline only on variants
+		// (no `product.seller` field anywhere in the spec tree). The
+		// controller still passes `$seller` here; we route it through
+		// `extract_variants()` so every emitted variant carries it.
+		// See `extract_variants()` below.
 
 		// Optional fields — only emit when source has a non-empty value.
 		if ( ! empty( $wc_product['slug'] ) ) {
@@ -234,7 +234,11 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @param array<int, array<string, mixed>> $wc_variations Pre-fetched variation responses.
 	 * @return array<int, array<string, mixed>>
 	 */
-	private static function extract_variants( array $wc_product, array $wc_variations ): array {
+	private static function extract_variants(
+		array $wc_product,
+		array $wc_variations,
+		?array $seller = null
+	): array {
 		if ( ! empty( $wc_variations ) ) {
 			// The variant translator can't read parent product data on
 			// its own without breaking the pure-function contract, but
@@ -251,14 +255,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			foreach ( $wc_variations as $wc_variation ) {
 				$variants[] = WC_AI_Storefront_UCP_Variant_Translator::translate(
 					$wc_variation,
-					$parent_attribute_names
+					$parent_attribute_names,
+					$seller
 				);
 			}
 			return $variants;
 		}
 
 		return array(
-			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product ),
+			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product, $seller ),
 		);
 	}
 

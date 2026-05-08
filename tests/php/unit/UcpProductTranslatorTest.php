@@ -1341,14 +1341,14 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'updated_at', $result );
 	}
 
-	public function test_translate_stamps_seller_when_passed(): void {
+	public function test_translate_stamps_seller_on_synthesized_default_variant(): void {
 		// Seller is computed once per request in the REST controller
-		// and threaded through. Same for every product in a single-
-		// merchant store, so passing via arg (not re-reading WP
-		// globals per product) keeps translation pure and fast.
+		// and threaded through. Per UCP `variant.json`, seller lives
+		// on each variant — not on the product (no `product.seller`
+		// field exists in the spec). Single-merchant store: every
+		// variant in the response carries the same seller.
 		$seller = [
-			'name'    => 'Example Store',
-			'country' => 'US',
+			'name' => 'Example Store',
 		];
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
@@ -1357,27 +1357,47 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$seller
 		);
 
-		$this->assertSame( $seller, $result['seller'] );
+		$this->assertArrayNotHasKey( 'seller', $result );
+		$this->assertCount( 1, $result['variants'] );
+		$this->assertSame( $seller, $result['variants'][0]['seller'] );
+	}
+
+	public function test_translate_stamps_seller_on_every_real_variant(): void {
+		// Variable products: same seller threads through to every
+		// translated variation, not just the first.
+		$fixture = $this->variable_product_with_variations_fixture();
+		$seller  = [ 'name' => 'Example Store' ];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$fixture['product'],
+			$fixture['variations'],
+			$seller
+		);
+
+		$this->assertArrayNotHasKey( 'seller', $result );
+		$this->assertCount( 2, $result['variants'] );
+		foreach ( $result['variants'] as $variant ) {
+			$this->assertSame( $seller, $variant['seller'] );
+		}
 	}
 
 	public function test_translate_omits_seller_when_not_passed(): void {
 		// Backward-compat — existing callers without the $seller arg
-		// keep working, just without seller emission. The REST
-		// controller now always passes it; this guards the public
-		// signature against accidental requirement-tightening.
+		// keep working, just without seller emission on variants.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
 			[]
 		);
 
 		$this->assertArrayNotHasKey( 'seller', $result );
+		$this->assertArrayNotHasKey( 'seller', $result['variants'][0] );
 	}
 
 	public function test_translate_omits_seller_when_passed_empty(): void {
 		// An empty seller array behaves the same as omitting the arg.
 		// Covers the edge case where the controller's build_seller()
 		// returns [] (no site name set, no WC available) — we'd rather
-		// skip the key than emit `seller: {}`.
+		// skip the key than emit `seller: {}` on every variant.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
 			[],
@@ -1385,5 +1405,6 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertArrayNotHasKey( 'seller', $result );
+		$this->assertArrayNotHasKey( 'seller', $result['variants'][0] );
 	}
 }

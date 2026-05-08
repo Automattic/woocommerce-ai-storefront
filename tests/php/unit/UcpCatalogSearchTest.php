@@ -405,12 +405,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_search_stamps_seller_name_on_every_product(): void {
+	public function test_search_stamps_seller_name_on_every_variant(): void {
 		// Integration test for the build_seller() thread-through:
-		// the controller computes seller once and passes it into
-		// each translate() call. We assert every product carries
-		// the same seller block — catching a regression where the
-		// threading accidentally drops or diverges across the loop.
+		// the controller computes seller once and passes it into each
+		// translate() call. Per UCP `variant.json`, seller lives on
+		// each variant — not on the product. We assert every variant
+		// across every product carries the same seller block —
+		// catching a regression where the threading accidentally
+		// drops or diverges across the loop.
 		$this->fake_product_list = [
 			$this->make_simple_product( 1, 'Alpha' ),
 			$this->make_simple_product( 2, 'Beta' ),
@@ -419,8 +421,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$body = $this->successful_search( [] );
 
 		foreach ( $body['products'] as $product ) {
-			$this->assertArrayHasKey( 'seller', $product );
-			$this->assertSame( 'Example Store', $product['seller']['name'] );
+			$this->assertArrayNotHasKey( 'seller', $product );
+			$this->assertNotEmpty( $product['variants'] );
+			foreach ( $product['variants'] as $variant ) {
+				$this->assertArrayHasKey( 'seller', $variant );
+				$this->assertSame( 'Example Store', $variant['seller']['name'] );
+			}
 		}
 	}
 

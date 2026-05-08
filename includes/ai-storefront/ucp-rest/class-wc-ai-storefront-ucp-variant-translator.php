@@ -59,9 +59,23 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 *                                                        9.x). Without these, comma-in-value
 	 *                                                        cases (e.g. "Color: Red, White")
 	 *                                                        cannot be split unambiguously.
+	 * @param array<string, mixed>|null $seller               Seller block to attach as
+	 *                                                        `variant.seller` per UCP
+	 *                                                        `variant.json` (the spec defines
+	 *                                                        seller inline on variants only —
+	 *                                                        no `product.seller` field).
+	 *                                                        Same value passed for every
+	 *                                                        variant in a single-merchant
+	 *                                                        store; controller computes
+	 *                                                        once and threads through.
+	 *                                                        Omit when null/empty.
 	 * @return array<string, mixed>                           UCP variant shape.
 	 */
-	public static function translate( array $wc_variation, ?array $parent_attribute_names = null ): array {
+	public static function translate(
+		array $wc_variation,
+		?array $parent_attribute_names = null,
+		?array $seller = null
+	): array {
 		$id = (int) ( $wc_variation['id'] ?? 0 );
 
 		// Parse the formatted `variation` string at most once per variant
@@ -184,6 +198,15 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			];
 		}
 
+		// Seller — UCP `variant.json` defines `seller` inline on
+		// variants only (optional, no required subfields). Same value
+		// shared across every variant in a single-merchant store; the
+		// controller computes once via `build_seller()` and threads
+		// the same value to each variant translation.
+		if ( null !== $seller && ! empty( $seller ) ) {
+			$variant['seller'] = $seller;
+		}
+
 		return $variant;
 	}
 
@@ -196,10 +219,15 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * same availability, id suffixed with `_default` so it's distinguishable
 	 * from a real variation.
 	 *
-	 * @param array<string, mixed> $wc_product Decoded Store API response.
-	 * @return array<string, mixed>            UCP variant shape.
+	 * @param array<string, mixed>      $wc_product Decoded Store API response.
+	 * @param array<string, mixed>|null $seller     Seller block to attach as
+	 *                                              `variant.seller`. See `translate()`.
+	 * @return array<string, mixed>                 UCP variant shape.
 	 */
-	public static function synthesize_default( array $wc_product ): array {
+	public static function synthesize_default(
+		array $wc_product,
+		?array $seller = null
+	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
 		$variant = [
@@ -248,6 +276,14 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			$variant['metadata'] = [
 				'shipping' => $shipping,
 			];
+		}
+
+		// Seller — same routing as translate() above. Per-variant
+		// emission per UCP `variant.json`; the synthesized default
+		// satisfies the schema's minItems-1 requirement and carries
+		// seller alongside any real variant in the same response.
+		if ( null !== $seller && ! empty( $seller ) ) {
+			$variant['seller'] = $seller;
 		}
 
 		return $variant;

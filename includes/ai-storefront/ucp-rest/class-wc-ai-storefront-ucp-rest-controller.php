@@ -1237,40 +1237,24 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                  omitted when not configured. Mirrors the
 	 *                  store_context.country logic exactly.
 	 *
-	 * Why not add an `id` — the UCP core shape allows seller.id but
-	 * we have no namespace-stable seller identifier (site URL could
-	 * work but changes with migrations; plugin is single-merchant
-	 * anyway so a distinguishing ID adds cost without value). If
-	 * this plugin ever grows multi-vendor support, seller.id becomes
-	 * required and the per-request compute-once pattern here
-	 * becomes per-product.
+	 * Spec scope: `variant.seller` (UCP 2026-04-08, inline schema on
+	 * variant.json) defines optional `name` + `links[]` only — no `id`,
+	 * no `country`. Pre-0.12.0 we also emitted `country` here from WC's
+	 * base country; that field isn't in the spec, so it was dropped to
+	 * keep strict validators happy. Site name remains the only seller
+	 * datum we surface; revisit if multi-vendor support arrives and a
+	 * stable seller identifier becomes available.
 	 *
 	 * @return array<string, string>
 	 */
 	private static function build_seller(): array {
-		$seller = [
+		return [
 			'name' => html_entity_decode(
 				wp_strip_all_tags( get_bloginfo( 'name' ) ),
 				ENT_QUOTES,
 				'UTF-8'
 			),
 		];
-
-		// `countries` is a PROPERTY on the WooCommerce singleton (an
-		// instance of WC_Countries), not a method — `method_exists`
-		// would always return false here. Guard via `isset()` on the
-		// property so we correctly pick up the country when WC is
-		// fully loaded, and fall through gracefully when it isn't
-		// (tests, early-boot paths, WC plugin-deactivated state).
-		$woocommerce = function_exists( 'WC' ) ? WC() : null;
-		if ( $woocommerce && isset( $woocommerce->countries ) && is_object( $woocommerce->countries ) ) {
-			$country = $woocommerce->countries->get_base_country();
-			if ( $country ) {
-				$seller['country'] = $country;
-			}
-		}
-
-		return $seller;
 	}
 
 	/**
