@@ -572,7 +572,9 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$message = array_values( $not_found )[0];
 		$this->assertEquals( 'warning', $message['type'] );
-		$this->assertEquals( 'advisory', $message['severity'] );
+		// `message_warning.json` (UCP 2026-04-08) has no `severity`
+		// field; dropped in 0.12.0 to match spec.
+		$this->assertArrayNotHasKey( 'severity', $message );
 		// JSONPath points at the exact offending input index.
 		$this->assertEquals( '$.filters.categories[1]', $message['path'] );
 	}

@@ -1668,7 +1668,36 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			 * @return array<string, mixed> The (possibly modified) UCP product shape.
 			 */
 			$filtered_product = apply_filters( 'wc_ai_storefront_ucp_product', $product, $wc_product );
-			$products[]       = is_array( $filtered_product ) ? $filtered_product : $product;
+			$final_product    = is_array( $filtered_product ) ? $filtered_product : $product;
+
+			// Attach per-variant `inputs[]` correlation per
+			// `catalog_lookup.json#/$defs/lookup_variant` (UCP 2026-04-08).
+			// Each emitted variant declares which request ID resolved
+			// to it. We only accept product IDs as lookup inputs today,
+			// so the resolution is `featured` — the server selected this
+			// variant as one of the representative variants for the
+			// requested product. If lookup grows variant-ID support
+			// later, distinguish `exact` (variant-ID input) here.
+			//
+			// Done last (after both filters) so the spec-required
+			// transport-layer correlation isn't mutable by content
+			// filters; filter authors care about variant content,
+			// not server-side request reconciliation.
+			if ( isset( $final_product['variants'] ) && is_array( $final_product['variants'] ) ) {
+				$input_echo = (string) ( $inputs[ $index ] ?? '' );
+				if ( '' !== $input_echo ) {
+					foreach ( $final_product['variants'] as $variant_idx => $variant ) {
+						$final_product['variants'][ $variant_idx ]['inputs'] = [
+							[
+								'id'    => $input_echo,
+								'match' => 'featured',
+							],
+						];
+					}
+				}
+			}
+
+			$products[] = $final_product;
 
 			if ( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE !== $agent_data['name'] ) {
 				WC_AI_Storefront_Crawl_Logger::record(
@@ -1679,9 +1708,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
+		// Per `catalog_lookup.json#/$defs/lookup_response` (UCP 2026-04-08),
+		// the envelope requires only `[ucp, products]`. Per-variant
+		// correlation (which input resolved to which variant) lives on
+		// each variant via `inputs[]` (attached above), not on the
+		// envelope. The pre-0.12.0 top-level `inputs` echo was a
+		// non-spec extension; dropping it keeps strict validators happy
+		// and per-variant correlation is more granular anyway.
 		$response_body = array(
 			'ucp'      => WC_AI_Storefront_UCP_Envelope::catalog_envelope( $capability ),
-			'inputs'   => $inputs,
 			'products' => $products,
 		);
 
@@ -1985,7 +2020,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$messages[] = [
 				'type'     => 'info',
 				'code'     => WC_AI_Storefront_UCP_Error_Codes::MERGED_DUPLICATE_ITEMS,
-				'severity' => 'advisory',
 				'content'  => __( 'Duplicate line items targeting the same product were merged. Quantities have been summed; the response shows one line per product.', 'woocommerce-ai-storefront' ),
 			];
 		}
@@ -2152,7 +2186,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$messages[] = [
 				'type'     => 'info',
 				'code'     => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED,
-				'severity' => 'advisory',
 				'content'  => $handoff_content,
 			];
 
@@ -2166,7 +2199,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$messages[] = [
 				'type'     => 'info',
 				'code'     => WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL,
-				'severity' => 'advisory',
 				'content'  => __( 'Total excludes tax and shipping, which are calculated at the merchant checkout.', 'woocommerce-ai-storefront' ),
 			];
 		}
@@ -3003,6 +3035,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		return [
 			'type'     => 'error',
 			'code'     => WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND,
+			// Required by `message_error.json` (UCP 2026-04-08).
+			// Pre-0.12.0 we omitted this — strict validators rejected
+			// the message. Default to an English template; localization
+			// happens at the call site (caller indexes the request's
+			// processed list).
+			'content'  => sprintf(
+				/* translators: %d: zero-based position in the deduped lookup inputs list. */
+				__( 'Input %d did not resolve to a known product or variant.', 'woocommerce-ai-storefront' ),
+				$index
+			),
 			'path'     => '$.inputs[' . $index . ']',
 			'severity' => 'unrecoverable',
 		];
@@ -3143,10 +3185,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 */
 	private static function partial_variants_message( int $product_id, int $skipped ): array {
 		return [
-			'type'     => 'warning',
-			'code'     => WC_AI_Storefront_UCP_Error_Codes::PARTIAL_VARIANTS,
-			'severity' => 'advisory',
-			'content'  => sprintf(
+			'type'    => 'warning',
+			'code'    => WC_AI_Storefront_UCP_Error_Codes::PARTIAL_VARIANTS,
+			// `message_warning.json` (UCP 2026-04-08) does NOT define a
+			// `severity` field — that's only on `message_error.json`.
+			// Pre-0.12.0 we emitted `severity: advisory` here as a
+			// non-spec extension; dropping it keeps strict validators
+			// happy. Warnings already carry `presentation` semantics
+			// elsewhere in the spec.
+			'content' => sprintf(
 				/* translators: 1: number of variations missing, 2: WC product ID. */
 				_n(
 					'%1$d variation of product %2$d is not included in the variants list; the list is incomplete.',
@@ -3217,7 +3264,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$messages[] = [
 				'type'     => 'warning',
 				'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_PAGINATION_SHAPE,
-				'severity' => 'advisory',
 				'path'     => '$.pagination',
 				'content'  => __( 'pagination must be an object; using defaults.', 'woocommerce-ai-storefront' ),
 			];
@@ -3246,7 +3292,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						$messages[] = [
 							'type'     => 'warning',
 							'code'     => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
-							'severity' => 'advisory',
 							'path'     => '$.pagination.limit',
 							'content'  => sprintf(
 								/* translators: 1: requested limit, 2: applied limit, 3: max allowed. */
@@ -3266,7 +3311,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$messages[] = [
 						'type'     => 'warning',
 						'code'     => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
-						'severity' => 'advisory',
 						'path'     => '$.pagination.limit',
 						'content'  => sprintf(
 							/* translators: %d is the applied default limit. */
@@ -3293,7 +3337,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$messages[] = [
 						'type'     => 'warning',
 						'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_CURSOR,
-						'severity' => 'advisory',
 						'path'     => '$.pagination.cursor',
 						'content'  => __( 'Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug.', 'woocommerce-ai-storefront' ),
 					];
@@ -3326,7 +3369,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$messages[] = [
 					'type'     => 'warning',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE,
-					'severity' => 'advisory',
 					'path'     => '$.sort',
 					'content'  => __( 'sort.field and sort.direction must be strings; using default ordering.', 'woocommerce-ai-storefront' ),
 				];
@@ -3360,7 +3402,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$messages[] = [
 						'type'     => 'warning',
 						'code'     => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD,
-						'severity' => 'advisory',
 						'path'     => '$.sort.field',
 						'content'  => sprintf(
 							/* translators: %s is the unsupported sort field the agent sent. */
@@ -3389,11 +3430,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 			foreach ( $category_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
-					'type'     => 'warning',
-					'code'     => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND,
-					'severity' => 'advisory',
-					'path'     => '$.filters.categories[' . $index . ']',
-					'content'  => sprintf(
+					'type'    => 'warning',
+					'code'    => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND,
+					'path'    => '$.filters.categories[' . $index . ']',
+					'content' => sprintf(
 						/* translators: %s is the category slug/name the agent sent that couldn't be resolved. */
 						__( 'Category "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
@@ -3463,7 +3503,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$messages[]         = [
 						'type'     => 'warning',
 						'code'     => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
-						'severity' => 'advisory',
 						'path'     => '$.filters.price',
 						'content'  => sprintf(
 							/* translators: 1: agent-supplied currency, 2: store currency. */
@@ -3514,7 +3553,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$messages[] = [
 					'type'     => 'warning',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::TAG_NOT_FOUND,
-					'severity' => 'advisory',
 					'path'     => '$.filters.tags[' . $index . ']',
 					'content'  => sprintf(
 						/* translators: %s is the tag slug/name the agent sent that couldn't be resolved. */
@@ -3544,7 +3582,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$messages[] = [
 					'type'     => 'warning',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::BRAND_NOT_FOUND,
-					'severity' => 'advisory',
 					'path'     => '$.filters.brand[' . $index . ']',
 					'content'  => sprintf(
 						/* translators: %s is the brand slug/name the agent sent that couldn't be resolved. */
@@ -3634,7 +3671,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$messages[]    = [
 					'type'     => 'warning',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND,
-					'severity' => 'advisory',
 					'path'     => sprintf( "\$.filters.attributes['%s']", $escaped_key ),
 					'content'  => sprintf(
 						/* translators: %s is the attribute taxonomy name the agent sent that doesn't exist on the store. */
@@ -3873,7 +3909,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$messages[]     = [
 			'type'     => 'warning',
 			'code'     => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
-			'severity' => 'advisory',
 			'path'     => $path,
 			'content'  => sprintf(
 				/* translators: 1: filter path, 2: original count, 3: applied cap. */
@@ -3908,7 +3943,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$messages[]     = [
 			'type'     => 'warning',
 			'code'     => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
-			'severity' => 'advisory',
 			'path'     => $path,
 			'content'  => sprintf(
 				/* translators: 1: filter path, 2: original count, 3: applied cap. */
@@ -4610,7 +4644,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		return array(
 			'type'     => 'warning',
 			'code'     => WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED,
-			'severity' => 'advisory',
 			'path'     => $path,
 			'content'  => sprintf(
 				/* translators: 1: expected amount (minor units), 2: current amount (minor units). */
@@ -4791,7 +4824,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$warnings[] = [
 				'type'     => 'warning',
 				'code'     => WC_AI_Storefront_UCP_Error_Codes::PRIVACY_POLICY_UNCONFIGURED,
-				'severity' => 'advisory',
 			];
 		}
 
@@ -4807,7 +4839,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$warnings[] = [
 				'type'     => 'warning',
 				'code'     => WC_AI_Storefront_UCP_Error_Codes::TERMS_UNCONFIGURED,
-				'severity' => 'advisory',
 			];
 		}
 
