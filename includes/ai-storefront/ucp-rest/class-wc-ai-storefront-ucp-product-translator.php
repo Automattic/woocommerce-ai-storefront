@@ -236,9 +236,23 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 */
 	private static function extract_variants( array $wc_product, array $wc_variations ): array {
 		if ( ! empty( $wc_variations ) ) {
-			$variants = array();
+			// The variant translator can't read parent product data on
+			// its own without breaking the pure-function contract, but
+			// it needs the parent's attribute names to disambiguate
+			// comma-in-value cases when parsing the variation's
+			// formatted `variation` string (the Store API always leaves
+			// `attributes[]` empty for variable-product variations as of
+			// WC 9.x — see issue #347). Extract once here and pass
+			// down — every variation in the set shares the same parent
+			// axis names, so this is O(parent.attributes), not
+			// O(variations × attributes).
+			$parent_attribute_names = self::extract_parent_attribute_names( $wc_product );
+			$variants               = array();
 			foreach ( $wc_variations as $wc_variation ) {
-				$variants[] = WC_AI_Storefront_UCP_Variant_Translator::translate( $wc_variation );
+				$variants[] = WC_AI_Storefront_UCP_Variant_Translator::translate(
+					$wc_variation,
+					$parent_attribute_names
+				);
 			}
 			return $variants;
 		}
@@ -246,6 +260,38 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		return array(
 			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product ),
 		);
+	}
+
+	/**
+	 * Pull the human-readable attribute names from the parent product's
+	 * Store API `attributes[]` array.
+	 *
+	 * Used by `extract_variants()` to give the variant translator the
+	 * anchor list it needs for parsing each variation's formatted
+	 * `variation` string. Returns an empty array when the parent
+	 * has no attributes (e.g. a misconfigured variable product) — the
+	 * translator falls back to a naive split in that case.
+	 *
+	 * @param array<string, mixed> $wc_product
+	 * @return array<int, string>
+	 */
+	private static function extract_parent_attribute_names( array $wc_product ): array {
+		$attributes = $wc_product['attributes'] ?? [];
+		if ( ! is_array( $attributes ) ) {
+			return [];
+		}
+
+		$names = [];
+		foreach ( $attributes as $attribute ) {
+			if ( ! is_array( $attribute ) ) {
+				continue;
+			}
+			$name = $attribute['name'] ?? '';
+			if ( is_string( $name ) && '' !== trim( $name ) ) {
+				$names[] = trim( $name );
+			}
+		}
+		return $names;
 	}
 
 	/**

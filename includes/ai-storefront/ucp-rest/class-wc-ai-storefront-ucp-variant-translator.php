@@ -48,14 +48,24 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * for a single variation (typically fetched via
 	 * `rest_do_request(GET /wc/store/v1/products/{variation_id})`).
 	 *
-	 * @param array<string, mixed> $wc_variation Decoded Store API response.
-	 * @return array<string, mixed>              UCP variant shape.
+	 * @param array<string, mixed>    $wc_variation           Decoded Store API response.
+	 * @param array<int, string>|null $parent_attribute_names Names of the parent product's
+	 *                                                        attributes (e.g. ["Color", "Size"]).
+	 *                                                        Used to parse the variation's
+	 *                                                        formatted `variation` string when
+	 *                                                        the Store API leaves `attributes[]`
+	 *                                                        empty (which it does for every
+	 *                                                        variable-product variation as of WC
+	 *                                                        9.x). Without these, comma-in-value
+	 *                                                        cases (e.g. "Color: Red, White")
+	 *                                                        cannot be split unambiguously.
+	 * @return array<string, mixed>                           UCP variant shape.
 	 */
-	public static function translate( array $wc_variation ): array {
+	public static function translate( array $wc_variation, ?array $parent_attribute_names = null ): array {
 		$id      = (int) ( $wc_variation['id'] ?? 0 );
 		$variant = [
 			'id'          => self::VARIANT_ID_PREFIX . $id,
-			'title'       => self::extract_title( $wc_variation ),
+			'title'       => self::extract_title( $wc_variation, $parent_attribute_names ),
 			'description' => self::extract_description( $wc_variation ),
 			// `list_price` is the UCP core name for the current
 			// purchasable price — sourced from WC's `prices.price`
@@ -75,7 +85,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		// agents that want to filter or match by attribute need them
 		// structured. UCP v2026-04-08 variant schema carries
 		// `options` exactly for this.
-		$options = self::extract_options( $wc_variation );
+		$options = self::extract_options( $wc_variation, $parent_attribute_names );
 		if ( ! empty( $options ) ) {
 			$variant['options'] = $options;
 		}
@@ -225,20 +235,51 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	/**
 	 * Extract a human-readable variant title from the WC response.
 	 *
-	 * For a real WC variation, the `name` field is typically the parent
-	 * product name; the meaningful title comes from the variation's
-	 * attributes (e.g. "Blue / Large"). Fall back to `name` when
-	 * attributes are absent.
+	 * Two paths in source-of-truth order:
 	 *
-	 * @param array<string, mixed> $wc_variation
+	 *   1. `attributes[]` — the structured array shape `[{name, value}]`.
+	 *      Used by simple-product fixtures and any future Store API
+	 *      version that populates this. Iterates and joins values with
+	 *      " / " (e.g. "Blue / Large").
+	 *   2. `variation` — a formatted string the Store API uses for
+	 *      every variable-product variation as of WC 9.x: an empty
+	 *      `attributes[]` plus a string like "Color: Tan, Size: 9".
+	 *      We parse it via `parse_variation_string()` and join the
+	 *      values with " / ".
+	 *
+	 * Pre-issue-#347 this only consulted `attributes[]`, so live
+	 * variations (which always carry empty `attributes[]`) all fell
+	 * through to the parent product `name` — making every variant in a
+	 * 22-variation set indistinguishable. The `variation` parse path
+	 * fixes that.
+	 *
+	 * @param array<string, mixed>    $wc_variation
+	 * @param array<int, string>|null $parent_attribute_names Disambiguator for comma-in-value
+	 *                                                        cases when parsing the `variation`
+	 *                                                        string. See parse_variation_string().
 	 */
-	private static function extract_title( array $wc_variation ): string {
+	private static function extract_title(
+		array $wc_variation,
+		?array $parent_attribute_names = null
+	): string {
 		$attributes = $wc_variation['attributes'] ?? [];
 		$values     = [];
 
-		foreach ( $attributes as $attribute ) {
-			if ( ! empty( $attribute['value'] ) ) {
-				$values[] = $attribute['value'];
+		if ( is_array( $attributes ) ) {
+			foreach ( $attributes as $attribute ) {
+				if ( is_array( $attribute ) && ! empty( $attribute['value'] ) ) {
+					$values[] = (string) $attribute['value'];
+				}
+			}
+		}
+
+		if ( empty( $values ) ) {
+			$variation_string = $wc_variation['variation'] ?? '';
+			if ( is_string( $variation_string ) && '' !== trim( $variation_string ) ) {
+				$pairs = self::parse_variation_string( $variation_string, $parent_attribute_names );
+				foreach ( $pairs as $pair ) {
+					$values[] = $pair['value'];
+				}
 			}
 		}
 
@@ -413,53 +454,204 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	/**
 	 * Extract the structured options list from WC variation attributes.
 	 *
-	 * WC Store API returns each variation's attributes as an array of
-	 * objects shaped `{ name, value, taxonomy }`. UCP's `options`
-	 * field expects `[{ attribute, value }]` — one entry per defining
-	 * attribute with the human-readable label and the selected value.
+	 * Two source paths in priority order:
 	 *
-	 * We use `name` (the attribute label) rather than `taxonomy` (the
-	 * slug like `pa_color`) because agents display this to buyers —
-	 * "Color: Blue" is merchant-readable, "pa_color: Blue" is not.
-	 * Empty-value entries are skipped to match the title-extraction
-	 * behavior.
+	 *   1. `attributes[]` (array of `{name, value, taxonomy}`) — the
+	 *      historical shape; populated by simple-product fixtures and
+	 *      any future Store API version that fills it in for variations.
+	 *   2. `variation` (formatted string like "Color: Tan, Size: 9") —
+	 *      the actual shape WC's Store API returns for variable-product
+	 *      variations as of WC 9.x. Pre-issue-#347 this path didn't
+	 *      exist, so every real-world variation emitted an empty
+	 *      `options` field, leaving agents unable to disambiguate
+	 *      siblings. We now parse the string via
+	 *      `parse_variation_string()` and emit the same UCP shape.
 	 *
-	 * @param array<string, mixed> $wc_variation
+	 * Both paths use the human-readable label (e.g. "Color") rather than
+	 * the taxonomy slug ("pa_color") because agents display this to
+	 * buyers. Empty-value or empty-label entries are skipped.
+	 *
+	 * @param array<string, mixed>    $wc_variation
+	 * @param array<int, string>|null $parent_attribute_names Disambiguator for comma-in-value
+	 *                                                        cases when parsing the `variation`
+	 *                                                        string. See parse_variation_string().
 	 * @return array<int, array{attribute: string, value: string}>
 	 */
-	private static function extract_options( array $wc_variation ): array {
+	private static function extract_options(
+		array $wc_variation,
+		?array $parent_attribute_names = null
+	): array {
 		$attributes = $wc_variation['attributes'] ?? [];
 		$options    = [];
 
-		if ( ! is_array( $attributes ) ) {
+		if ( is_array( $attributes ) ) {
+			foreach ( $attributes as $attribute ) {
+				if ( ! is_array( $attribute ) ) {
+					continue;
+				}
+				$value = $attribute['value'] ?? '';
+				if ( '' === $value ) {
+					continue;
+				}
+				// Skip entries missing a human-readable label. Emitting
+				// `{attribute: "", value: "Blue"}` conveys no option axis
+				// to the agent — worse than dropping the entry because it
+				// pollutes the options list with an unlabeled row that
+				// can't be filtered or displayed meaningfully. Parallel to
+				// the empty-value skip above.
+				$label = (string) ( $attribute['name'] ?? '' );
+				if ( '' === $label ) {
+					continue;
+				}
+				$options[] = [
+					'attribute' => $label,
+					'value'     => (string) $value,
+				];
+			}
+		}
+
+		if ( ! empty( $options ) ) {
 			return $options;
 		}
 
-		foreach ( $attributes as $attribute ) {
-			if ( ! is_array( $attribute ) ) {
-				continue;
-			}
-			$value = $attribute['value'] ?? '';
-			if ( '' === $value ) {
-				continue;
-			}
-			// Skip entries missing a human-readable label. Emitting
-			// `{attribute: "", value: "Blue"}` conveys no option axis
-			// to the agent — worse than dropping the entry because it
-			// pollutes the options list with an unlabeled row that
-			// can't be filtered or displayed meaningfully. Parallel to
-			// the empty-value skip above.
-			$label = (string) ( $attribute['name'] ?? '' );
-			if ( '' === $label ) {
-				continue;
-			}
+		$variation_string = $wc_variation['variation'] ?? '';
+		if ( ! is_string( $variation_string ) || '' === trim( $variation_string ) ) {
+			return [];
+		}
+
+		$pairs = self::parse_variation_string( $variation_string, $parent_attribute_names );
+		foreach ( $pairs as $pair ) {
 			$options[] = [
-				'attribute' => $label,
-				'value'     => (string) $value,
+				'attribute' => $pair['attribute'],
+				'value'     => $pair['value'],
 			];
 		}
 
 		return $options;
+	}
+
+	/**
+	 * Parse WC's `variation` formatted string into structured pairs.
+	 *
+	 * WC's Store API emits the active option set for a variable-product
+	 * variation as a single human-readable string under the `variation`
+	 * key — e.g. `"Color: Tan, Size: 9"`. Pairs are separated by `", "`
+	 * and each pair's name/value is separated by `": "`. The structured
+	 * `attributes[]` array exists in the schema but is always empty for
+	 * variations as of WC 9.x — which is why pre-#347 callers reading
+	 * only `attributes[]` saw 22 indistinguishable variants per product.
+	 *
+	 * Comma-in-value disambiguation: if a merchant defines a value that
+	 * itself contains `, ` (e.g. `"Red, White"`), the naive `, ` split
+	 * over-counts pairs. To handle this we accept an optional
+	 * `$known_attribute_names` list (the parent product's attribute
+	 * names from `$wc_product['attributes'][i]['name']`). When present,
+	 * we re-tokenize so that `, ` is only treated as a pair separator
+	 * when the segment that follows starts with `<known_name>: `.
+	 * Without that anchor we fall back to the naive split, which is
+	 * correct for the overwhelming majority of attribute values
+	 * (single-word labels like "Tan", "9", "Large"). Worst case in the
+	 * fallback path: a comma-bearing value gets split across two
+	 * options entries — agents see slightly degraded data, but every
+	 * variant still emits *some* structured options rather than none,
+	 * and the title is still distinct.
+	 *
+	 * @param string                  $variation_string Formatted "Name: Value, Name: Value" string.
+	 * @param array<int, string>|null $known_attribute_names Optional anchor list — the parent's
+	 *                                                       attribute names. Enables correct
+	 *                                                       splitting when a value contains `, `.
+	 * @return array<int, array{attribute: string, value: string}>
+	 */
+	private static function parse_variation_string(
+		string $variation_string,
+		?array $known_attribute_names = null
+	): array {
+		$variation_string = trim( $variation_string );
+		if ( '' === $variation_string ) {
+			return [];
+		}
+
+		// Anchor-aware split: walk the string, treating `, ` as a pair
+		// boundary only when followed by `<known_name>: `. Falls back to
+		// naive `, ` split when no anchor list is supplied or the list
+		// is empty (e.g. controller didn't have parent attributes
+		// handy).
+		$segments = self::split_variation_segments( $variation_string, $known_attribute_names );
+
+		$pairs = [];
+		foreach ( $segments as $segment ) {
+			$segment = trim( $segment );
+			if ( '' === $segment ) {
+				continue;
+			}
+			$colon_pos = strpos( $segment, ':' );
+			if ( false === $colon_pos ) {
+				// Malformed segment without a `Name: Value` shape — skip
+				// rather than emit a half-formed entry agents can't use.
+				continue;
+			}
+			$name  = trim( substr( $segment, 0, $colon_pos ) );
+			$value = trim( substr( $segment, $colon_pos + 1 ) );
+			if ( '' === $name || '' === $value ) {
+				continue;
+			}
+			$pairs[] = [
+				'attribute' => $name,
+				'value'     => $value,
+			];
+		}
+
+		return $pairs;
+	}
+
+	/**
+	 * Split a variation string into segments using the anchor list when
+	 * available. Helper for `parse_variation_string()`.
+	 *
+	 * @param string                  $variation_string
+	 * @param array<int, string>|null $known_attribute_names
+	 * @return array<int, string>
+	 */
+	private static function split_variation_segments(
+		string $variation_string,
+		?array $known_attribute_names
+	): array {
+		// Filter the anchor list to non-empty strings — handles `null`
+		// entries from a malformed parent payload without aborting the
+		// whole parse.
+		$anchors = [];
+		if ( is_array( $known_attribute_names ) ) {
+			foreach ( $known_attribute_names as $name ) {
+				if ( is_string( $name ) && '' !== trim( $name ) ) {
+					$anchors[] = trim( $name );
+				}
+			}
+		}
+
+		if ( empty( $anchors ) ) {
+			return explode( ', ', $variation_string );
+		}
+
+		// Build a regex that matches `, ` only when followed by one of
+		// the known attribute names + `: `. Anchors are quoted to escape
+		// regex metacharacters in attribute labels (e.g. an attribute
+		// literally named "Size (cm)").
+		$quoted   = array_map(
+			static fn( $a ) => preg_quote( $a, '/' ),
+			$anchors
+		);
+		$pattern  = '/, (?=(?:' . implode( '|', $quoted ) . '): )/';
+		$segments = preg_split( $pattern, $variation_string );
+
+		// preg_split returns false on regex error. Defensive fallback
+		// to naive split keeps the parser from silently emitting empty
+		// options on a pathological anchor (e.g. pattern length blew
+		// past a PCRE limit). Same shape as the no-anchor branch above.
+		if ( false === $segments ) {
+			return explode( ', ', $variation_string );
+		}
+
+		return $segments;
 	}
 
 	/**

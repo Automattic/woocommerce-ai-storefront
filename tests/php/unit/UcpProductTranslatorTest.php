@@ -824,6 +824,99 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'var_123_default', $result['variants'][0]['id'] );
 	}
 
+	public function test_parent_attribute_names_flow_to_variant_translator(): void {
+		// Issue #347: real-world variations from WC Store API leave
+		// `attributes[]` empty and put the active option set in a
+		// `variation` formatted string. The product translator must
+		// extract the parent's attribute names (so the variant
+		// translator can disambiguate comma-in-value cases) and pass
+		// them through. This integration test verifies the wiring end-
+		// to-end: parent has Color+Size, variations carry only the
+		// formatted string, and emitted variants pick up correct
+		// titles + options.
+		$product = [
+			'id'         => 999,
+			'name'       => 'Leather Shoes',
+			'type'       => 'variable',
+			'prices'     => [
+				'price'               => '15000',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+				'price_range'         => [
+					'min_amount' => '15000',
+					'max_amount' => '15000',
+				],
+			],
+			'attributes' => [
+				[
+					'name'           => 'Color',
+					'has_variations' => true,
+					'terms'          => [ [ 'name' => 'Tan' ], [ 'name' => 'Black' ] ],
+				],
+				[
+					'name'           => 'Size',
+					'has_variations' => true,
+					'terms'          => [ [ 'name' => '8' ], [ 'name' => '9' ] ],
+				],
+			],
+			'variations' => [
+				[ 'id' => 1001 ],
+				[ 'id' => 1002 ],
+			],
+		];
+
+		$variations = [
+			[
+				'id'                => 1001,
+				'name'              => 'Leather Shoes',
+				'sku'               => 'SHOE-TAN-9',
+				'is_in_stock'       => true,
+				'short_description' => '',
+				'prices'            => [
+					'price'               => '15000',
+					'currency_code'       => 'USD',
+					'currency_minor_unit' => 2,
+				],
+				// The empty-array shape WC Store API actually returns.
+				'attributes'        => [],
+				'variation'         => 'Color: Tan, Size: 9',
+			],
+			[
+				'id'                => 1002,
+				'name'              => 'Leather Shoes',
+				'sku'               => 'SHOE-BLACK-8',
+				'is_in_stock'       => true,
+				'short_description' => '',
+				'prices'            => [
+					'price'               => '15000',
+					'currency_code'       => 'USD',
+					'currency_minor_unit' => 2,
+				],
+				'attributes'        => [],
+				'variation'         => 'Color: Black, Size: 8',
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $product, $variations );
+
+		$this->assertSame( 'Tan / 9', $result['variants'][0]['title'] );
+		$this->assertSame( 'Black / 8', $result['variants'][1]['title'] );
+		$this->assertSame(
+			[
+				[ 'attribute' => 'Color', 'value' => 'Tan' ],
+				[ 'attribute' => 'Size', 'value' => '9' ],
+			],
+			$result['variants'][0]['options']
+		);
+		$this->assertSame(
+			[
+				[ 'attribute' => 'Color', 'value' => 'Black' ],
+				[ 'attribute' => 'Size', 'value' => '8' ],
+			],
+			$result['variants'][1]['options']
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// 1.8.0: description.html, tags, product attributes, ratings
 	// ------------------------------------------------------------------

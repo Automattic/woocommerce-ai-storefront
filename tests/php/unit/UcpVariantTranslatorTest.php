@@ -19,7 +19,24 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	/**
-	 * A WC Store API response for a real product variation.
+	 * A WC Store API response shape with `attributes[]` populated.
+	 *
+	 * Represents the legacy/array-shape parse path. Real WC variations
+	 * from `wc/store/v1/products/{id}` (variable products) DO NOT match
+	 * this shape — they leave `attributes[]` empty and put the active
+	 * option set in a `variation` formatted string instead. See
+	 * `realistic_variation_fixture()` below for the actual Store API
+	 * shape, and tests covering the parse path that handles it
+	 * (issue #347).
+	 *
+	 * Kept for coverage of the `attributes[]` branch, which still
+	 * applies to:
+	 *   - Simple products fed to `translate()` directly (rare but
+	 *     possible) where Store API does populate the array.
+	 *   - Future Store API versions or extensions that backfill the
+	 *     structured array.
+	 *   - Defensive: if WC ever stops emitting the formatted string,
+	 *     the array path keeps callers running.
 	 *
 	 * @return array<string, mixed>
 	 */
@@ -39,6 +56,45 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 				[ 'name' => 'Size',  'value' => 'Large' ],
 			],
 			'short_description' => '<p>A blue shirt in <strong>large</strong>.</p>',
+		];
+	}
+
+	/**
+	 * The actual WC Store API response shape for a variable-product
+	 * variation as of WC 9.x.
+	 *
+	 * Critical difference from `variation_fixture()`:
+	 *   - `attributes[]` is empty (the structured array is reserved
+	 *      but unused by the live Store API).
+	 *   - The active option set lives in `variation` as a
+	 *      human-readable formatted string ("Color: Tan, Size: 9").
+	 *
+	 * Pre-#347 the translator only consulted `attributes[]`, so all 22
+	 * variations of the Leather Shoes test product emitted identical
+	 * empty options + parent-name titles — making them
+	 * indistinguishable to UCP agents.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function realistic_variation_fixture(): array {
+		return [
+			'id'                => 3791,
+			// `name` is the parent product name, NOT a variant title.
+			// Store API behavior: every variation in the set carries the
+			// parent's name verbatim.
+			'name'              => 'Leather Shoes',
+			'sku'               => 'SHOE-TAN-9',
+			'is_in_stock'       => true,
+			'prices'            => [
+				'price'               => '15000',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+			],
+			// Empty as actually returned by WC Store API for variations.
+			'attributes'        => [],
+			// Formatted string carrying the active option set.
+			'variation'         => 'Color: Tan, Size: 9',
+			'short_description' => '<p>Tan leather shoe, size 9.</p>',
 		];
 	}
 
@@ -675,5 +731,151 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 5000, $result['list_price']['amount'] );
 		$this->assertEquals( 'JPY', $result['list_price']['currency'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Issue #347: Parse the `variation` formatted string when
+	// `attributes[]` is empty (the actual Store API shape for every
+	// variable-product variation in WC 9.x).
+	// ------------------------------------------------------------------
+
+	public function test_translate_parses_variation_string_into_options(): void {
+		// The actual Store API shape for a variation: empty
+		// `attributes[]`, populated `variation` string. Pre-#347 this
+		// emitted no `options` key at all; after #347 we parse the
+		// string into structured `[{attribute, value}]` pairs so agents
+		// can disambiguate siblings.
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate(
+			$this->realistic_variation_fixture(),
+			[ 'Color', 'Size' ]
+		);
+
+		$this->assertArrayHasKey( 'options', $result );
+		$this->assertSame(
+			[
+				[ 'attribute' => 'Color', 'value' => 'Tan' ],
+				[ 'attribute' => 'Size', 'value' => '9' ],
+			],
+			$result['options']
+		);
+	}
+
+	public function test_translate_builds_title_from_variation_string(): void {
+		// Pre-#347: `name` ("Leather Shoes") fell through unchanged for
+		// every variation in the set — 22 indistinguishable titles. With
+		// the parse path, each variant gets a meaningful "Tan / 9"-style
+		// title sourced from the same `variation` string the agent UI
+		// surfaces.
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate(
+			$this->realistic_variation_fixture(),
+			[ 'Color', 'Size' ]
+		);
+
+		$this->assertSame( 'Tan / 9', $result['title'] );
+	}
+
+	public function test_translate_parses_variation_string_without_anchor_list(): void {
+		// Anchor-free fallback: caller didn't (or couldn't) pass parent
+		// attribute names. Translator falls back to a naive `, ` split,
+		// which is correct for the overwhelming majority of WC stores
+		// (single-word values like "Tan", "9", "Large"). Keeping this
+		// path supported lets callers integrate without a parent-product
+		// dependency — they get slightly degraded handling for the
+		// pathological comma-in-value case but otherwise full parity.
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate(
+			$this->realistic_variation_fixture()
+		);
+
+		$this->assertSame(
+			[
+				[ 'attribute' => 'Color', 'value' => 'Tan' ],
+				[ 'attribute' => 'Size', 'value' => '9' ],
+			],
+			$result['options']
+		);
+		$this->assertSame( 'Tan / 9', $result['title'] );
+	}
+
+	public function test_translate_anchor_list_disambiguates_comma_in_value(): void {
+		// Edge case: a merchant defines a value that itself contains
+		// `, ` ("Red, White"). Naive split would over-count this as
+		// three pairs. With the anchor list ("Color", "Size") we know
+		// where the *real* pair boundaries are — `, ` only counts when
+		// followed by `<known_name>: `.
+		$fixture              = $this->realistic_variation_fixture();
+		$fixture['variation'] = 'Color: Red, White, Size: M';
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate(
+			$fixture,
+			[ 'Color', 'Size' ]
+		);
+
+		$this->assertSame(
+			[
+				[ 'attribute' => 'Color', 'value' => 'Red, White' ],
+				[ 'attribute' => 'Size', 'value' => 'M' ],
+			],
+			$result['options']
+		);
+	}
+
+	public function test_translate_anchor_list_with_regex_metacharacters(): void {
+		// Attribute labels with regex metacharacters ("Size (cm)")
+		// would break the anchor pattern if not properly quoted. Verify
+		// the regex escape handles them.
+		$fixture              = $this->realistic_variation_fixture();
+		$fixture['variation'] = 'Color: Tan, Size (cm): 25';
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate(
+			$fixture,
+			[ 'Color', 'Size (cm)' ]
+		);
+
+		$this->assertSame(
+			[
+				[ 'attribute' => 'Color', 'value' => 'Tan' ],
+				[ 'attribute' => 'Size (cm)', 'value' => '25' ],
+			],
+			$result['options']
+		);
+	}
+
+	public function test_translate_falls_back_to_name_when_variation_string_empty(): void {
+		// No `attributes[]`, no `variation` string. Title should fall
+		// through to `name` (the existing behavior, preserved). Options
+		// key should be omitted.
+		$fixture              = $this->realistic_variation_fixture();
+		$fixture['variation'] = '';
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Color', 'Size' ] );
+
+		$this->assertSame( 'Leather Shoes', $result['title'] );
+		$this->assertArrayNotHasKey( 'options', $result );
+	}
+
+	public function test_translate_attributes_array_takes_precedence_over_variation_string(): void {
+		// Defensive ordering: if both are populated (e.g. a future Store
+		// API version or a custom plugin backfilling the array), the
+		// structured shape wins. Avoids us re-parsing what's already
+		// parsed and keeps behavior stable when WC eventually starts
+		// emitting both.
+		$fixture                = $this->realistic_variation_fixture();
+		$fixture['attributes']  = [
+			[ 'name' => 'Color', 'value' => 'Black' ],
+			[ 'name' => 'Size', 'value' => '10' ],
+		];
+		// `variation` says "Tan / 9" — but `attributes` should win.
+		$fixture['variation']   = 'Color: Tan, Size: 9';
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Color', 'Size' ] );
+
+		$this->assertSame( 'Black / 10', $result['title'] );
+		$this->assertSame(
+			[
+				[ 'attribute' => 'Color', 'value' => 'Black' ],
+				[ 'attribute' => 'Size', 'value' => '10' ],
+			],
+			$result['options']
+		);
 	}
 }
