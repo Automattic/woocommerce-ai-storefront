@@ -62,11 +62,18 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @param array<int, array<string, mixed>> $wc_variations Optional pre-fetched Store API
 	 *                                                        variation responses. Empty = fall
 	 *                                                        back to synthesized default.
-	 * @param array<string, mixed>|null        $seller        Optional seller block to copy onto
-	 *                                                        every product. Same for every product
-	 *                                                        in a request, so the controller
-	 *                                                        computes it once and passes it in —
-	 *                                                        keeps the translator WP-unaware.
+	 * @param array<string, mixed>|null        $seller        Optional seller block, threaded
+	 *                                                        through to every emitted variant
+	 *                                                        (UCP 2026-04-08 defines `seller`
+	 *                                                        inline on `variant.json` only —
+	 *                                                        no `product.seller` field exists,
+	 *                                                        so this is NOT copied onto the
+	 *                                                        product itself). Same seller for
+	 *                                                        every product in a request, so the
+	 *                                                        controller computes it once and
+	 *                                                        passes it in — keeps the translator
+	 *                                                        WP-unaware. See `extract_variants()`
+	 *                                                        for where the seller lands.
 	 * @return array<string, mixed>                           UCP product shape.
 	 */
 	public static function translate(
