@@ -144,10 +144,48 @@ jobs:
           unzip -l "${ZIP_NAME}" | head -30
           echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
 
-      - name: Create GitHub Release
+      # Preflight: a GitHub Release must already exist for this tag
+      # before we run the upload step.
+      #
+      # Why: softprops/action-gh-release@v2 will silently CREATE a
+      # fresh Release if none exists at the tag — and because we
+      # intentionally omit `body`/`draft`/`prerelease` (release-drafter
+      # owns those), an auto-created Release would land published with
+      # an empty body and no prerelease flag. That's exactly the
+      # mismatch we just fixed in the opposite direction (release.yml
+      # was creating duplicate/conflicting Releases). Failing fast here
+      # forces the human to publish the release-drafter draft instead.
+      #
+      # The tag flows in via `$TAG` (set in env: at the job level),
+      # never expression-interpolated into shell text.
+      - name: Verify Release exists for tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::No GitHub Release exists for tag $TAG."
+            echo "::error::Don't push tags directly — publish the release-drafter draft on the Releases page, which creates the tag with the curated notes + prerelease flag intact."
+            echo "::error::If you really need a release for a manually-pushed tag, create it through the UI first, then re-run this workflow."
+            exit 1
+          fi
+          echo "::notice::Release found for tag $TAG; proceeding to upload artifact."
+
+      # Attach the built zip to the Release that release-drafter has
+      # already prepared and the human just published on the Releases
+      # page (which is what created this tag).
+      #
+      # We deliberately omit `generate_release_notes`, `body`, `draft`,
+      # and `prerelease` here. release-drafter (release-drafter.yml)
+      # owns those fields; passing them again would either overwrite
+      # the categorized notes already in the Release body or flip the
+      # just-published Release back to draft — both have happened in
+      # other repos that ran the two flows in series.
+      #
+      # softprops/action-gh-release@v2 finds the existing Release by
+      # tag and uploads `files:` to it without touching unset fields.
+      # The preflight step above guarantees the Release exists, so the
+      # action's "create-if-missing" path is never reached.
+      - name: Upload release artifact
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_NAME }}
-          generate_release_notes: true
-          draft: true  # Start as draft so human can review before publishing.
-          prerelease: true  # 0.x line ships as pre-release until 1.0.

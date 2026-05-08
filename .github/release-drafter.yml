@@ -1,0 +1,110 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+# Mark every drafted Release as a pre-release. We're pre-1.0 — every
+# 0.x release ships under the pre-release convention, and the GitHub
+# Release's UI badge ("Pre-release") signals that to consumers browsing
+# the releases page. Previously this flag lived in `release.yml` (when
+# release.yml owned Release creation); when ownership moved to
+# release-drafter in the workflow split, the flag came with it. Drop
+# once we ship 1.0.0.
+prerelease: true
+
+# How release-drafter computes the next version number.
+#
+# The resolver bumps from the **most recent published Release**:
+#   - any PR with `enhancement` / `feature` / `performance` → MINOR bump
+#   - everything else (`bug`, `documentation`, `refactor`, ...) → PATCH bump
+#
+# We omit the `major` resolver entirely because the `breaking` label
+# doesn't exist in this repo's label palette today and GitHub does NOT
+# auto-create labels on demand. If a future PR really represents a
+# breaking change, the human cutting the release can override the
+# suggested version on the draft Release page before publishing.
+# (We're pre-1.0 anyway, so even breaking changes ship as minor bumps
+# under the pre-1.0 grace convention.)
+version-resolver:
+  minor:
+    labels:
+      - 'enhancement'
+      - 'feature'
+      - 'performance'
+  patch:
+    labels:
+      - 'bug'
+      - 'documentation'
+      - 'refactor'
+      - 'tech-debt'
+      - 'architecture'
+      - 'task'
+  default: patch
+
+# Categories aligned with CHANGELOG.md section headings used in this
+# repo: Features / Fixes / Refactors / Tests / Docs / Chores
+# (`grep -E '^### ' CHANGELOG.md | sort -u` for the canonical set).
+#
+# Two intentional differences between this draft taxonomy and the
+# CHANGELOG sections:
+#
+#   1. We split out a `Performance` category in the draft because
+#      release notes can be more granular than the CHANGELOG, where
+#      perf work usually rolls up into Features or Refactors.
+#
+#   2. We do NOT have a `Tests` category here even though
+#      CHANGELOG.md has `### Tests`. The repo's label palette
+#      (`gh label list`) doesn't include a `tests` label, so
+#      release-drafter has no signal to auto-categorize PRs as
+#      Tests. The `### Tests` section in CHANGELOG.md gets
+#      populated manually in the same release-prep commit that
+#      bumps the version, listing test additions made alongside
+#      the feature/fix work in the release window. If we ever add
+#      a `tests` label, add a `Tests` category here and align the
+#      version-resolver patch list above.
+#
+# Each merged PR lands under whichever category matches its labels.
+# Every label that triggers a version bump (above) MUST have a
+# corresponding category here — otherwise a PR could bump the version
+# without appearing in the draft notes.
+categories:
+  - title: 'Features'
+    labels:
+      - 'enhancement'
+      - 'feature'
+  - title: 'Fixes'
+    labels:
+      - 'bug'
+  - title: 'Performance'
+    labels:
+      - 'performance'
+  - title: 'Refactors'
+    labels:
+      - 'refactor'
+      - 'tech-debt'
+      - 'architecture'
+  - title: 'Docs'
+    labels:
+      - 'documentation'
+  - title: 'Chores'
+    labels:
+      - 'task'
+
+# Hide PRs labelled `automated` from the draft (e.g. dependabot bumps,
+# bot-opened release PRs). Same for `duplicate`/`invalid`/`wontfix`.
+exclude-labels:
+  - 'automated'
+  - 'duplicate'
+  - 'invalid'
+  - 'wontfix'
+
+# Per-PR template line. `$AUTHOR` is auto-substituted; we omit the
+# author for first-party PRs by post-filtering with autolabeler if
+# we ever want to. Keep it simple for now.
+change-template: '- $TITLE (#$NUMBER)'
+change-title-escapes: '\<*_&'
+
+template: |
+  ## What's changed
+
+  $CHANGES
+
+  **Full diff**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION

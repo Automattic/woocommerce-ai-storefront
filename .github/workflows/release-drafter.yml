@@ -1,0 +1,53 @@
+name: Release drafter
+
+# Maintains a single draft GitHub Release that auto-updates as PRs
+# merge to main. Each merged PR is categorized into the draft based
+# on its labels (see `.github/release-drafter.yml`).
+#
+# Release responsibility split (one source of truth per field):
+#
+#   release-drafter (this workflow):
+#     - owns the Release's draft/published state
+#     - owns the body (categorized changelog from PR labels)
+#     - owns the version number and prerelease flag
+#     - never publishes on its own — a human clicks Publish on the
+#       Releases page, which also creates the git tag
+#
+#   release.yml (tag-push):
+#     - owns the zip artifact (built + version-verified + uploaded)
+#     - explicitly does NOT pass `draft`, `body`, `prerelease`, or
+#       `generate_release_notes` to softprops/action-gh-release, so it
+#       attaches the asset to the existing Release without flipping it
+#       back to draft or overwriting notes.
+#
+# This workflow does NOT bump version constants or update CHANGELOG.md
+# on its own. Those remain manual steps in the same release commit
+# that bumps `WC_AI_STOREFRONT_VERSION` etc.
+#
+# Trigger: `push: main` only. The official action README warns that
+# also triggering on `pull_request` events re-renders the draft for
+# unmerged PRs — wasted Actions minutes for no gain (the draft updates
+# when merges land, not when PRs change).
+#
+# Security note: this workflow contains no `run:` steps and no use of
+# untrusted user-controlled inputs. The only token reference is the
+# server-issued `secrets.GITHUB_TOKEN`. Workflow-injection guidance at
+# https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+# applies to `run:` blocks; nothing here is at risk.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write       # create/update the draft Release
+  pull-requests: read   # read merged PR metadata to assemble the draft
+
+jobs:
+  update_release_draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
