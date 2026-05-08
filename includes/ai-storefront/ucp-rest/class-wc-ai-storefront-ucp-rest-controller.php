@@ -86,14 +86,31 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	const MAX_LINE_ITEMS_PER_CHECKOUT = 100;
 
 	/**
-	 * Upper bound on variations fetched per variable product.
+	 * Upper bound on variations EMITTED per variable product.
 	 *
-	 * Bounds the N+1 fan-out in fetch_variations_for(). A product with
-	 * 200 variations would otherwise trigger 200 internal dispatches just
-	 * for one hit of a search response. 50 covers typical
-	 * color/size/pattern combinations; products with more are rare and
-	 * can surface via `POST /catalog/lookup` with specific variation IDs
-	 * if an agent needs fidelity.
+	 * Pre-#351 this also bounded the per-variation N+1 fan-out — fewer
+	 * IDs in the worklist meant fewer dispatches. Post-#351 variations
+	 * batch via `?type=variation&parent=<csv>`, so the cap no longer
+	 * bounds the Store API response: WC returns ALL of a parent's
+	 * variations regardless of our cap (the binner then drops
+	 * everything past the first MAX_VARIATIONS_PER_PRODUCT IDs in the
+	 * parent's declared order). The page-walk has an early-stop
+	 * optimization to avoid fetching beyond the expected set, but for
+	 * high-variation parents where the API returns the expected IDs
+	 * late in pagination, the batch can still normalize more
+	 * variations than it ultimately emits.
+	 *
+	 * What the cap DOES bound: emitted variant count, translator
+	 * workload, response payload size to the agent.
+	 *
+	 * What the cap does NOT bound: Store API response size during
+	 * fetch, normalize_store_api_data() work on the discarded tail.
+	 *
+	 * 50 covers typical color/size/pattern combinations; products with
+	 * more are rare and can surface via `POST /catalog/lookup` with
+	 * specific variation IDs if an agent needs fidelity. Cap overage
+	 * emits a `partial_variants` warning so agents see when the cap
+	 * kicks in.
 	 */
 	const MAX_VARIATIONS_PER_PRODUCT = 50;
 
@@ -583,7 +600,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * Maps UCP fields onto WC Store API query params and dispatches
 	 * `GET /wc/store/v1/products` via `rest_do_request`. Every returned
 	 * product is translated to UCP shape; variable products get their
-	 * variations pre-fetched by `fetch_variations_for()` so variant
+	 * variations batch-fetched by `fetch_variations_batched()` so variant
 	 * lists are real rather than synthesized defaults.
 	 *
 	 * Pagination: cursor + limit, per UCP v2026-04-08
@@ -1034,14 +1051,26 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$products         = array();
 		$variant_messages = array();
 
+		// Pre-fetch all variable products' variations in one (or few)
+		// batched dispatches before entering the per-product loop. For a
+		// 20-product / 30%-variable / avg-5-vars page this collapses
+		// ~30 internal `rest_do_request` dispatches to 1, saving
+		// ~700ms/request warm and ~2s+ cold-cache. See issue #351.
+		// Returns map keyed by parent ID; simple products absent.
+		$variations_by_parent = $this->fetch_variations_batched( $wc_products );
+
 		foreach ( $wc_products as $wc_product ) {
 			if ( ! is_array( $wc_product ) ) {
 				continue;
 			}
-			$variation_fetch = $this->fetch_variations_for( $wc_product );
+			$parent_id       = (int) ( $wc_product['id'] ?? 0 );
+			$variation_fetch = $variations_by_parent[ $parent_id ] ?? array(
+				'variations' => array(),
+				'skipped'    => 0,
+			);
 			if ( $variation_fetch['skipped'] > 0 ) {
 				$variant_messages[] = self::partial_variants_message(
-					(int) ( $wc_product['id'] ?? 0 ),
+					$parent_id,
 					$variation_fetch['skipped']
 				);
 			}
@@ -1566,6 +1595,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
+		// Pass 1: fetch all parent products + record not-found messages.
+		// Two-pass structure (vs. a single fetch+translate loop) lets us
+		// batch variation expansion across all variable parents in one
+		// dispatch instead of N. For a 5-ID lookup with all variable
+		// products averaging 5 variations, this collapses 25 internal
+		// `rest_do_request` dispatches to 1 — saving ~600ms warm and
+		// ~1.8s+ cold-cache. See issue #351.
+		$wc_products_by_index = array();
 		foreach ( $wc_ids as $index => $wc_id ) {
 			$id_echo   = (string) ( $inputs[ $index ] ?? '' );
 			$raw_index = (int) ( $positions[ $index ] ?? $index );
@@ -1580,16 +1617,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				continue;
 			}
 
-			// Variable products: pre-fetch each variation's full Store API
-			// response so the product translator can emit one real variant
-			// per variation rather than a synthesized default. When any
-			// variations fail to fetch, we still render the product (partial
-			// set beats synthesized fallback) but emit a `partial_variants`
-			// warning so agents know the variant list is incomplete.
-			$variation_fetch = $this->fetch_variations_for( $wc_product );
+			$wc_products_by_index[ $index ] = $wc_product;
+		}
+
+		// Pre-batch variations for all variable parents we just fetched.
+		// Map keyed by parent_id; simple products absent.
+		$variations_by_parent = $this->fetch_variations_batched(
+			array_values( $wc_products_by_index )
+		);
+
+		// Pass 2: translate each product using its pre-fetched variations.
+		foreach ( $wc_products_by_index as $index => $wc_product ) {
+			$wc_id           = (int) ( $wc_product['id'] ?? 0 );
+			$variation_fetch = $variations_by_parent[ $wc_id ] ?? array(
+				'variations' => array(),
+				'skipped'    => 0,
+			);
 			if ( $variation_fetch['skipped'] > 0 ) {
 				$messages[] = self::partial_variants_message(
-					(int) ( $wc_product['id'] ?? 0 ),
+					$wc_id,
 					$variation_fetch['skipped']
 				);
 			}
@@ -2999,102 +3045,476 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * For variable products, fetch all variations via per-ID Store API
-	 * requests and reassemble in the source order WC declared. Simple
-	 * products return empty.
+	 * Batch-fetch variations for many parent products in one (or few) Store
+	 * API dispatch(es), replacing the per-variation N+1 fan-out in
+	 * `fetch_variations_for()`.
 	 *
-	 * IMPORTANT: the collection endpoint (`/wc/store/v1/products?include=
-	 * [ids]`) cannot be used here. WC Store API's collection route filters
-	 * by `post_type='product'`, which excludes product variations (those
-	 * have `post_type='product_variation'`). Only the single-item route
-	 * (`/wc/store/v1/products/{id}`) performs a direct object lookup that
-	 * handles both post types. Per-ID fetches are handled by
-	 * fetch_store_api_product(), which also enforces the
-	 * is_product_syndicated() scope gate and memoizes results so repeated
-	 * lookups of the same variation within a request are free.
+	 * Uses `GET /wc/store/v1/products?type=variation&parent=<csv>&per_page=100`,
+	 * where `<csv>` is a comma-separated list of parent product IDs (NOT
+	 * variation IDs). Two params combine to surface variations through
+	 * the collection endpoint:
 	 *
-	 * Results not returned by the endpoint (out of scope, 404, or
-	 * cap-truncated) are silently skipped. The `skipped` count lets
-	 * callers emit a `partial_variants` warning so agents are never
-	 * silently misled about product completeness.
+	 *   - `type=variation` flips the underlying WP_Query's `post_type`
+	 *     from `'product'` (the default for this collection route) to
+	 *     `'product_variation'`. Without it, the route would never
+	 *     return any variations, since variations live under a different
+	 *     post type. (Source: WC `StoreApi/Utilities/ProductQuery.php`,
+	 *     `prepare_objects_query()` around the `if ( ProductType::VARIATION
+	 *     === $request['type'] )` branch.)
 	 *
-	 * Capped at MAX_VARIATIONS_PER_PRODUCT to bound fan-out and response
-	 * payload size. Source order is preserved by building $variations in
-	 * the original pointer-list order.
+	 *   - `parent=<csv>` populates `post_parent__in`, sanitized through
+	 *     `wp_parse_id_list` so a comma-separated string is accepted and
+	 *     normalized to an int array. (Source: same file, line `'parent'
+	 *     => $params['parent']` registers as an `array<int>` with
+	 *     `wp_parse_id_list` sanitizer; parameter schema in
+	 *     `StoreApi/Routes/V1/Products.php`.)
 	 *
-	 * @param array<string, mixed> $wc_product Store API response for the parent product.
-	 * @return array{variations: array<int, array<string, mixed>>, skipped: int}
+	 * Pagination kicks in when combined variation count across all
+	 * parents exceeds 100; we walk pages until short-page sentinel.
+	 *
+	 * For typical traffic (20-product /catalog/search, 30% variable, avg
+	 * 5 variations each), this collapses ~30 dispatches to 1. Worst real-
+	 * world case (heavy variable catalog, 60% variable × 8 vars = 96
+	 * variations) collapses to 1 dispatch (≤100) or 2 (>100).
+	 *
+	 * Failure policy: WP_Error and HTTP status >= 400 are both treated
+	 * as page-level failures (4xx and 5xx symmetrically — both mean
+	 * we can't trust the response body). Two-tier degradation by which
+	 * page failed:
+	 *
+	 *   - Page-1 failure (degenerate): nothing was collected, so every
+	 *     variable parent degrades to `variations: [], skipped:
+	 *     total_declared` and each emits one `partial_variants`
+	 *     warning. Matches the worst case for individual fetch
+	 *     failures while keeping the typical case dramatically faster.
+	 *
+	 *   - Page-N failure (partial, N > 1): pages 1..N-1 already
+	 *     succeeded, so we KEEP that collected data and let the
+	 *     per-parent `skipped = total_declared - returned` math
+	 *     compute residue. Parents whose variations were fully
+	 *     captured on earlier pages see `skipped: 0`; parents
+	 *     missing variations from the failed page see `skipped > 0`
+	 *     and emit `partial_variants`. This avoids punishing fully-
+	 *     captured parents for an unrelated later-page error.
+	 *
+	 * MAX_VARIATIONS_PER_PRODUCT cap is enforced per-parent in the
+	 * expected-set used for response binning (cap-truncated variation
+	 * IDs are never in the expected-set, so the binner drops them
+	 * even though the Store API returns ALL variations of the parent).
+	 * `skipped` is computed as `total_declared - returned`, so cap
+	 * overage DOES contribute to the partial_variants warning count —
+	 * matching `fetch_variations_for()`'s historical contract that
+	 * agents see when their product overflows the cap.
+	 *
+	 * Scope gate: variations inherit visibility from their parent. The
+	 * parent already passed `is_product_syndicated()` upstream
+	 * (search/lookup handlers gate before reaching this method), so the
+	 * per-variation `is_product_syndicated()` check that
+	 * `fetch_variations_for()` ran is redundant for variations and
+	 * intentionally omitted here.
+	 *
+	 * Returns a map keyed by parent WC ID:
+	 *
+	 *     [
+	 *       <parent_id> => [
+	 *         'variations' => [<wc_variation_response>, ...],
+	 *         'skipped'    => <int>,
+	 *       ],
+	 *       ...
+	 *     ]
+	 *
+	 * Simple products are absent from the map (no batched dispatch
+	 * needed). Empty input or all-simple input returns an empty map
+	 * without dispatching.
+	 *
+	 * @param array<int, array<string, mixed>> $wc_products Decoded Store API parent product responses.
+	 * @return array<int, array{variations: array<int, array<string, mixed>>, skipped: int}>
 	 */
-	private function fetch_variations_for( array $wc_product ): array {
-		if ( 'variable' !== ( $wc_product['type'] ?? '' ) ) {
-			return array(
-				'variations' => array(),
-				'skipped'    => 0,
-			);
-		}
-
-		$variation_refs = $wc_product['variations'] ?? array();
-		if ( ! is_array( $variation_refs ) || empty( $variation_refs ) ) {
-			return array(
-				'variations' => array(),
-				'skipped'    => 0,
-			);
-		}
-
-		$total_declared = count( $variation_refs );
-
-		if ( $total_declared > self::MAX_VARIATIONS_PER_PRODUCT ) {
-			$variation_refs = array_slice( $variation_refs, 0, self::MAX_VARIATIONS_PER_PRODUCT );
-		}
-
-		// Fetch each variation via the single-item Store API endpoint and
-		// collect results in source order. fetch_store_api_product() handles
-		// memoization (cached IDs return immediately), scope enforcement via
-		// is_product_syndicated(), and null-caching of missing/out-of-scope
-		// entries so no variation is dispatched twice in a request.
-		$variations = array();
-		foreach ( $variation_refs as $ref ) {
-			// WC Store API emits `variations` as `[{id, attributes}, ...]`
-			// (just the pointer). Fetch the full variation record.
-			$variation_id = is_array( $ref )
-				? (int) ( $ref['id'] ?? 0 )
-				: (int) $ref;
-
-			if ( $variation_id <= 0 ) {
+	private function fetch_variations_batched( array $wc_products ): array {
+		// Build the per-parent expected-set: parent_id => [variation_id, ...]
+		// (slice each parent's refs to MAX cap before adding to the work
+		// list). Track total_declared separately so cap-truncation
+		// contributes to the `skipped` count — matches the contract of
+		// the per-variation `fetch_variations_for()`: agents should see
+		// a `partial_variants` warning when their product has more
+		// variations than we'll fetch.
+		//
+		// `$expected_per_parent` only includes parents that contributed
+		// at least one valid variation ID to the dispatch worklist —
+		// the binner uses it as the source of truth for what we tried
+		// to fetch.
+		//
+		// `$declared_per_parent` tracks total_declared for ALL variable
+		// parents, including ones whose pointer lists were all
+		// malformed (zero/negative IDs). Those parents skip the
+		// dispatch worklist but still need a result entry so the
+		// `partial_variants` warning fires — pre-fix they were
+		// silently dropped, regressing the per-variation path's
+		// behavior of emitting a warning whenever the parent declared
+		// variations we couldn't surface.
+		$expected_per_parent     = array();
+		$expected_per_parent_set = array();
+		$declared_per_parent     = array();
+		foreach ( $wc_products as $wc_product ) {
+			if ( ! is_array( $wc_product ) ) {
+				continue;
+			}
+			if ( 'variable' !== ( $wc_product['type'] ?? '' ) ) {
+				continue;
+			}
+			$parent_id      = (int) ( $wc_product['id'] ?? 0 );
+			$variation_refs = $wc_product['variations'] ?? array();
+			if ( $parent_id <= 0 || ! is_array( $variation_refs ) || empty( $variation_refs ) ) {
 				continue;
 			}
 
-			$data = $this->fetch_store_api_product( $variation_id );
-			if ( null !== $data ) {
-				$variations[] = $data;
+			$total_declared = count( $variation_refs );
+			// Track declared count for every variable parent — even
+			// ones whose IDs are all malformed below — so the warning
+			// path stays consistent with the per-variation predecessor.
+			$declared_per_parent[ $parent_id ] = $total_declared;
+
+			$capped = $total_declared > self::MAX_VARIATIONS_PER_PRODUCT
+				? array_slice( $variation_refs, 0, self::MAX_VARIATIONS_PER_PRODUCT )
+				: $variation_refs;
+
+			$expected_ids = array();
+			$expected_set = array();
+			foreach ( $capped as $ref ) {
+				$variation_id = is_array( $ref )
+					? (int) ( $ref['id'] ?? 0 )
+					: (int) $ref;
+				if ( $variation_id > 0 ) {
+					$expected_ids[]                = $variation_id;
+					$expected_set[ $variation_id ] = true;
+				}
+			}
+
+			if ( ! empty( $expected_ids ) ) {
+				$expected_per_parent[ $parent_id ] = $expected_ids;
+				// Per-parent associative `[vid => true]` map for O(1)
+				// `isset()` membership checks at accumulation + binning
+				// time. Building this once here costs O(cap) per parent
+				// (cap = MAX_VARIATIONS_PER_PRODUCT, currently 50);
+				// pre-build, every page's variations cost
+				// O(returned × cap) via in_array, which compounds
+				// noticeably on >100-variation parents.
+				$expected_per_parent_set[ $parent_id ] = $expected_set;
+			}
+			// If $expected_ids is empty (all malformed), $declared_per_parent
+			// still has the entry — the result-build loop below catches
+			// it and emits skipped: total_declared.
+		}
+
+		// Edge case: no variable parents at all (no entries in
+		// `$declared_per_parent`). Skip the dispatch entirely.
+		// Note: we DON'T early-return when only `$expected_per_parent`
+		// is empty — `$declared_per_parent` may still have parents
+		// with all-malformed pointers that need a fallback result.
+		if ( empty( $declared_per_parent ) ) {
+			return array();
+		}
+
+		$parent_ids = array_keys( $expected_per_parent );
+
+		// Walk pages of `?type=variation&parent=<csv>&per_page=100`
+		// until short-page sentinel. WC Store API caps per_page at 100;
+		// for the rare pages with combined-variation > 100 we paginate.
+		//
+		// Failure handling is per-page rather than per-batch: when page N
+		// errors we KEEP whatever we've already collected (pages 1..N-1)
+		// rather than wholesale-discarding everything. The downstream
+		// per-parent `skipped = declared - returned` math then naturally
+		// surfaces the gap for parents whose variations are missing,
+		// without punishing parents whose variations were fully captured
+		// on earlier pages. `$first_page_failed` distinguishes the
+		// degenerate case (page 1 itself fails) from partial-success
+		// cases that benefit from keeping prior data.
+		//
+		// Skip the dispatch entirely when no parents contributed valid
+		// IDs to the worklist — the all-malformed-pointers parents
+		// still get `variations: [], skipped: total_declared` entries
+		// from the result-build loop below using `$declared_per_parent`.
+		$all_variations    = array();
+		$page              = 1;
+		$per_page          = 100;
+		$first_page_failed = false;
+
+		// Flat set of all expected variation IDs across parents. Used
+		// by the page-walk's early-stop check: once every expected ID
+		// has been seen on the wire, additional pages would only carry
+		// over-cap variations that the binner will drop. For a parent
+		// with 200 variations capped at MAX_VARIATIONS_PER_PRODUCT=50,
+		// pre-fix the loop walked all 200 (2 pages) before terminating
+		// on the short-page sentinel. Post-fix it stops as soon as the
+		// 50 expected IDs are collected, typically during page 1.
+		//
+		// Worst case (Store API returns expected IDs in pagination
+		// positions later than the cap's worth of unexpected ones)
+		// degrades to the prior behavior: walk every page. WC returns
+		// variations in deterministic order (menu_order then post_id),
+		// so this worst case is rare in practice.
+		$expected_remaining = array();
+		foreach ( $expected_per_parent as $expected_ids ) {
+			foreach ( $expected_ids as $vid ) {
+				$expected_remaining[ $vid ] = true;
 			}
 		}
 
-		// Skipped = everything the product declared that didn't make it
-		// into $variations. Includes cap-truncated + scope-filtered +
-		// fetch-failed + malformed-ref entries.
-		$skipped = $total_declared - count( $variations );
+		while ( ! empty( $parent_ids ) ) {
+			$store_params = array(
+				'type'     => 'variation',
+				'parent'   => implode( ',', $parent_ids ),
+				'per_page' => $per_page,
+				'page'     => $page,
+			);
 
-		if ( $skipped > 0 ) {
-			WC_AI_Storefront_Logger::debug(
-				sprintf(
-					'UCP fetch_variations_for(%d): skipped %d of %d declared variations',
-					(int) ( $wc_product['id'] ?? 0 ),
-					$skipped,
-					$total_declared
-				)
+			// Apply the same filter the search dispatch uses, with the
+			// same `/wc/store/v1/products` endpoint string. Plugins
+			// constraining the search query (e.g. catalog scope) intend
+			// to constrain the variation fetch as well.
+			$store_params_before_filter = $store_params;
+
+			/** This filter is documented in the search dispatch. */
+			$filtered = apply_filters( 'wc_ai_storefront_ucp_store_api_args', $store_params, '/wc/store/v1/products' );
+			if ( ! is_array( $filtered ) ) {
+				$filtered = $store_params_before_filter;
+			}
+			// Restore the four params we control — filters MAY override
+			// other scope keys (e.g. catalog filters) but MUST NOT
+			// override our dispatch shape, which would break either the
+			// post_type='product_variation' targeting (`type=variation`)
+			// or the page-walk invariant (`per_page`/`page`/`parent`).
+			$filtered['type']     = $store_params['type'];
+			$filtered['parent']   = $store_params['parent'];
+			$filtered['per_page'] = $per_page;
+			$filtered['page']     = $page;
+
+			$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products' );
+			foreach ( $filtered as $k => $v ) {
+				$store_request->set_param( $k, $v );
+			}
+
+			WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
+			try {
+				$store_response = rest_do_request( $store_request );
+			} finally {
+				WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
+			}
+
+			if ( $store_response instanceof WP_Error ) {
+				WC_AI_Storefront_Logger::debug(
+					'UCP fetch_variations_batched: WP_Error from Store API on page '
+					. $page . ': '
+					. $store_response->get_error_message()
+				);
+				if ( 1 === $page ) {
+					$first_page_failed = true;
+				}
+				break;
+			}
+
+			$status = $store_response->get_status();
+			if ( $status >= 400 ) {
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'UCP fetch_variations_batched: Store API returned HTTP %d on page %d',
+						$status,
+						$page
+					)
+				);
+				if ( 1 === $page ) {
+					$first_page_failed = true;
+				}
+				break;
+			}
+
+			// Internal-dispatch responses commonly nest as stdClass
+			// (the WC Store API REST controller wraps data in prepared
+			// `\WP_REST_Response` objects whose nested fields are
+			// objects, not arrays). The pre-fix `is_array($variation)`
+			// guard inside the loop silently dropped each one,
+			// degrading the batch to `variations: []` even on
+			// successful dispatch. Run the response through
+			// `normalize_store_api_data()` (the recursive stdClass→array
+			// cast already used by the per-ID path) so binning and
+			// downstream translators see uniform array shapes.
+			$normalized_data = self::normalize_store_api_data( $store_response->get_data() );
+			if ( null === $normalized_data ) {
+				// Plugin-conflict smell: response body wasn't an
+				// array or object the normalizer could reach. Mirrors
+				// fetch_store_api_product_inner()'s normalization
+				// failure log so production incidents on either path
+				// are equally diagnosable.
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'UCP fetch_variations_batched: response body on page %d could not be normalized to an array (possible plugin conflict)',
+						$page
+					)
+				);
+				if ( 1 === $page ) {
+					$first_page_failed = true;
+				}
+				break;
+			}
+
+			foreach ( $normalized_data as $variation ) {
+				if ( ! is_array( $variation ) ) {
+					continue;
+				}
+
+				// Drop non-expected variations at accumulation time —
+				// don't carry them in `$all_variations` only to drop
+				// them again at binning. WC's `?type=variation&parent=`
+				// returns ALL of a parent's variations regardless of
+				// our cap, so for a 200-variation parent capped at 50,
+				// pre-filter sheds 150 entries here that would
+				// otherwise inflate memory + CPU through the binner.
+				// Also catches orphaned variations (parent_id not in
+				// our worklist) and over-cap tail entries.
+				$variation_id = (int) ( $variation['id'] ?? 0 );
+				$parent_id    = (int) ( $variation['parent'] ?? 0 );
+				if (
+					$variation_id <= 0
+					|| $parent_id <= 0
+					|| ! isset( $expected_per_parent_set[ $parent_id ][ $variation_id ] )
+				) {
+					continue;
+				}
+
+				$all_variations[] = $variation;
+				if ( isset( $expected_remaining[ $variation_id ] ) ) {
+					unset( $expected_remaining[ $variation_id ] );
+				}
+			}
+
+			// Early-stop: every expected ID has been collected on the
+			// wire, so additional pages would only carry over-cap
+			// variations the binner will drop. This is the optimization
+			// that puts MAX_VARIATIONS_PER_PRODUCT to work as a real
+			// fetch-side bound, not just an emission-side bound.
+			if ( empty( $expected_remaining ) ) {
+				break;
+			}
+
+			// An empty page terminates pagination. Note this still
+			// requires one extra dispatch when the prior page's count
+			// landed exactly at `$per_page` — we only learn the page
+			// is empty by asking. The short-page sentinel below
+			// avoids the extra dispatch in the more common case where
+			// the final page is short of `$per_page`.
+			if ( empty( $normalized_data ) ) {
+				break;
+			}
+
+			// Short-page sentinel: fewer items returned than requested
+			// means we've reached the end. Avoids needing X-WP-TotalPages.
+			if ( count( $normalized_data ) < $per_page ) {
+				break;
+			}
+
+			++$page;
+		}
+
+		// Build the result map from `$declared_per_parent` so EVERY
+		// variable parent gets an entry — including parents whose
+		// pointer lists were all malformed (those skip the dispatch
+		// worklist via `$expected_per_parent` but still need an entry
+		// here so the `partial_variants` warning fires below).
+		//
+		// On a degenerate page-1 failure, every parent gets
+		// `variations: [], skipped: total_declared` so the warning
+		// fires for each. On partial failures (some pages succeeded,
+		// later pages errored), we preserve the page-1 data and let
+		// the per-parent `declared - returned` math compute skipped —
+		// parents whose variations were fully captured on the first
+		// page aren't punished for a later-page failure that didn't
+		// affect them.
+		$result = array();
+		foreach ( $declared_per_parent as $parent_id => $total_declared ) {
+			$result[ $parent_id ] = array(
+				'variations' => array(),
+				'skipped'    => $first_page_failed ? $total_declared : 0,
 			);
 		}
 
-		return array(
-			'variations' => $variations,
-			'skipped'    => $skipped,
-		);
+		if ( $first_page_failed ) {
+			return $result;
+		}
+
+		// Bin returned variations by `parent` field. Each variation in
+		// the Store API response carries its `parent` ID, so the binning
+		// is O(N) on the returned set. The accumulation loop above
+		// pre-filtered against `$expected_per_parent_set` so every
+		// entry here is already known to belong in the result map and
+		// have an expected variation_id — the binner just routes by
+		// parent. The defensive `isset($result[...])` guard remains
+		// because an all-malformed parent could in theory have its
+		// `parent_id` arrive in `$all_variations` if the WC dispatch
+		// ever returned out-of-scope variations (it doesn't today,
+		// but the cost of the extra isset is negligible).
+		foreach ( $all_variations as $variation ) {
+			$parent_id = (int) ( $variation['parent'] ?? 0 );
+			if ( ! isset( $result[ $parent_id ] ) ) {
+				continue;
+			}
+			$result[ $parent_id ]['variations'][] = $variation;
+		}
+
+		// Restore source order: bin order follows Store API page order,
+		// not the parent's declared order. Sort each bin to match
+		// `$expected_per_parent[$parent_id]` so callers see variations
+		// in the same sequence as the parent's `variations[]` list.
+		// Matches the per-variation `fetch_variations_for()` contract,
+		// which iterates IDs in declared order.
+		foreach ( $result as $parent_id => &$entry ) {
+			if ( ! isset( $expected_per_parent[ $parent_id ] ) || count( $entry['variations'] ) <= 1 ) {
+				continue;
+			}
+			$position = array_flip( $expected_per_parent[ $parent_id ] );
+			usort(
+				$entry['variations'],
+				static function ( array $a, array $b ) use ( $position ) {
+					$a_pos = $position[ (int) ( $a['id'] ?? 0 ) ] ?? PHP_INT_MAX;
+					$b_pos = $position[ (int) ( $b['id'] ?? 0 ) ] ?? PHP_INT_MAX;
+					return $a_pos <=> $b_pos;
+				}
+			);
+		}
+		unset( $entry );
+
+		// Compute skipped per parent: total_declared - actually_returned.
+		// Includes cap-truncated + scope-filtered + fetch-failed entries.
+		// Mirrors `fetch_variations_for()` semantics: the contract is
+		// that the agent sees a `partial_variants` warning whenever the
+		// emitted variant list is shorter than the parent's full set,
+		// regardless of why.
+		foreach ( $result as $parent_id => &$entry ) {
+			$declared_count   = $declared_per_parent[ $parent_id ];
+			$returned_count   = count( $entry['variations'] );
+			$entry['skipped'] = max( 0, $declared_count - $returned_count );
+
+			if ( $entry['skipped'] > 0 ) {
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'UCP fetch_variations_batched(parent=%d): declared %d, got %d, skipped %d',
+						$parent_id,
+						$declared_count,
+						$returned_count,
+						$entry['skipped']
+					)
+				);
+			}
+		}
+		unset( $entry );
+
+		return $result;
 	}
 
 	/**
-	 * Build a UCP `not_found` error message for an ID that did not
-	 * resolve to any known product or variant.
+	 * Build a UCP `not_found` error message for the ID at position
+	 * `$index` in the response's `inputs` array. The JSONPath-style
+	 * `path` lets agents localize which specific ID failed.
 	 *
 	 * `path` references `$.ids[...]` — the request-side field name.
 	 * Pre-0.12.0 we used `$.inputs[...]`, but the `inputs[]` envelope

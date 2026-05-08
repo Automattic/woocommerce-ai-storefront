@@ -24,11 +24,24 @@
   - **Message shape compliance.** `message_error.json` requires `content` (we omitted on `not_found`); `message_warning.json` and `message_info.json` have no `severity` field (we emitted `severity: 'advisory'` as a non-spec extension on 14 sites). Added required content; dropped severity from all warning/info emissions.
   - **Release context.** Pre-1.0 minor bump for substantive wire-format scope. Spec-conforming agents reading our responses today are already getting validation rejections; this release fixes that. No coordination needed with public agent integrations because none read our specific non-conformant keys.
 
+### Refactors
+
+- **Batched variation fetching for `/catalog/search` and `/catalog/lookup`.** Closes #351.
+  - Internal `rest_do_request` dispatches reduced from O(total_variations) to O(ceil(total_variations/100)) per request via `GET /wc/store/v1/products?type=variation&parent=<csv>&per_page=100`. Two params combine to surface variations through the collection endpoint: `type=variation` flips the underlying WP_Query's `post_type` from the default `'product'` to `'product_variation'`; `parent=<csv>` populates `post_parent__in` via WC's `wp_parse_id_list` sanitizer.
+  - For a 20-product `/catalog/search` response with 30% variable products and avg 5 variations each: dispatches collapse from 30 to 1. Heavy-variable catalogs (60% variable × 8 vars, ~96 total variations) collapse from 96 to 1. Wall-clock impact scales with `rest_do_request` cost on the host (typically 15–40ms warm, 60–100ms cold) — exact gains depend on object-cache state.
+  - For a 5-ID `/catalog/lookup` of all-variable products averaging 5 variations: dispatches collapse from 30 to 6.
+  - Lookup handler refactored to a two-pass structure: fetch all parents first, then batch their variations, then translate. Search handler pre-fetches before the per-product loop.
+  - `partial_variants` warning preserved: cap-overage and missing-variation cases still emit the warning so agents see when a product's variant list is incomplete.
+  - `MAX_VARIATIONS_PER_PRODUCT` cap (50) preserved per-parent. Cap-truncated entries contribute to `skipped` count.
+  - Per-page failure handling: a page-1 dispatch failure degrades every variable parent to `variations: [], skipped: total_declared` (degenerate fallback). Page-N failures (after one or more pages have already succeeded) keep prior-page data; only parents whose variations weren't returned see `skipped > 0`. Avoids punishing fully-captured parents for a later-page failure that didn't affect them.
+  - `wc_ai_storefront_ucp_store_api_args` filter applies to the batched dispatch with the same `/wc/store/v1/products` endpoint string for symmetry; the four dispatch-shape keys (`type`, `parent`, `page`, `per_page`) are restored after the filter so callbacks can't break the post_type targeting or the page-walk invariant.
+
 ### Tests
 
 - Added `UcpShapeTest` running JSON Schema validation against the canonical UCP `release/2026-04-08` schemas vendored at `tests/fixtures/ucp-schemas/`. 12 new tests cover all touched shapes including the `lookup_variant` allOf merge.
 - Added `opis/json-schema` v2.6 as a dev dependency — only PHP library with complete draft-2020-12 / `$defs` / cross-file `$ref` support.
 - Updated existing translator + REST controller tests for the new key names and message shapes (~15 sites). Hard-cut regression guards (`assertArrayNotHasKey`) for the old keys.
+- Added `UcpVariationBatchTest` (21 tests) covering the batched variation helper directly: empty/all-simple guards, single-/multi-parent dispatch shape (asserts both `type=variation` AND `parent=<csv>`), >100-variation pagination with early-stop optimization, source-order preservation, partial response detection, WP_Error / HTTP >= 400 degradation, MAX cap overage, all-malformed-pointer fallback, stdClass response normalization, `wc_ai_storefront_ucp_store_api_args` filter compatibility.
 
 ---
 

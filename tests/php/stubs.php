@@ -152,14 +152,50 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		}
 
 		public function get_param( string $key ) {
-			// Match WP behavior: get_param checks JSON body, then regular
-			// params, returning the first match. Handlers that call
-			// get_param('ids') should see the ids array whether it was
-			// delivered via JSON body or form body.
+			// Mirrors WP_REST_Request::get_param() behavior FOR JSON
+			// content-type requests: WP core's parameter order (per
+			// wp-includes/rest-api/class-wp-rest-request.php:361
+			// `get_parameter_order()` in WordPress 6.x) is, highest
+			// priority first:
+			//
+			//   JSON   (only when Content-Type is application/json)
+			//   POST   (only for POST/PUT/PATCH/DELETE methods)
+			//   GET
+			//   URL
+			//   defaults
+			//
+			// JSON wins for our test fixtures because they exclusively
+			// build JSON-body requests (`set_json_params()`); for those
+			// requests, JSON-first is the WP-correct order. Stub
+			// simplifies everything non-JSON into a single `$params`
+			// bucket — fine for the way tests use it.
 			if ( null !== $this->json_params && array_key_exists( $key, $this->json_params ) ) {
 				return $this->json_params[ $key ];
 			}
 			return $this->params[ $key ] ?? null;
+		}
+
+		/**
+		 * Merge of JSON body and form params, with the same precedence
+		 * `get_param()` uses: JSON-body keys win over form/query keys
+		 * — matching WP core's parameter order for JSON content-type
+		 * requests (see `get_param()` above for the citation).
+		 *
+		 * Stub simplification: WP core's `get_params()` reverses the
+		 * full priority order and merges, so JSON ends up winning when
+		 * present (same outcome as our merge here). The stub just
+		 * collapses non-JSON sources into one `$params` bucket; if a
+		 * test ever needs to distinguish URL vs GET vs POST priority,
+		 * model that explicitly rather than relying on this stub's
+		 * merge order.
+		 *
+		 * @return array<string, mixed>
+		 */
+		public function get_params(): array {
+			return array_merge(
+				$this->params,
+				$this->json_params ?? array()
+			);
 		}
 
 		public function get_header( string $key ): ?string {
