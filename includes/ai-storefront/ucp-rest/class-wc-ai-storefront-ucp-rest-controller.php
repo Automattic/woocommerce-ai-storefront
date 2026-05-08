@@ -3049,12 +3049,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * world case (heavy variable catalog, 60% variable × 8 vars = 96
 	 * variations) collapses to 1 dispatch (≤100) or 2 (>100).
 	 *
-	 * Failure policy: when the batch dispatch returns WP_Error or 5xx,
-	 * every variable parent in the input degrades to
-	 * `variations: [], skipped: total_declared` and emits one
-	 * `partial_variants` warning per parent. Matches today's worst case
-	 * for individual fetch failures while making the typical case
-	 * dramatically faster.
+	 * Failure policy: when the batch dispatch returns WP_Error or any
+	 * HTTP status >= 400 (treating 4xx and 5xx symmetrically — both
+	 * mean we can't trust the response body), every variable parent
+	 * in the input degrades to `variations: [], skipped: total_declared`
+	 * and emits one `partial_variants` warning per parent. Matches
+	 * today's worst case for individual fetch failures while making
+	 * the typical case dramatically faster.
 	 *
 	 * MAX_VARIATIONS_PER_PRODUCT cap is enforced per-parent in the
 	 * expected-set used for response binning (cap-truncated variation
@@ -3252,31 +3253,43 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				break;
 			}
 
-			$data = $store_response->get_data();
-			if ( ! is_array( $data ) ) {
+			// Internal-dispatch responses commonly nest as stdClass
+			// (the WC Store API REST controller wraps data in prepared
+			// `\WP_REST_Response` objects whose nested fields are
+			// objects, not arrays). The pre-fix `is_array($variation)`
+			// guard inside the loop silently dropped each one,
+			// degrading the batch to `variations: []` even on
+			// successful dispatch. Run the response through
+			// `normalize_store_api_data()` (the recursive stdClass→array
+			// cast already used by the per-ID path) so binning and
+			// downstream translators see uniform array shapes.
+			$normalized_data = self::normalize_store_api_data( $store_response->get_data() );
+			if ( null === $normalized_data ) {
 				if ( 1 === $page ) {
 					$first_page_failed = true;
 				}
 				break;
 			}
 
-			foreach ( $data as $variation ) {
+			foreach ( $normalized_data as $variation ) {
 				if ( is_array( $variation ) ) {
 					$all_variations[] = $variation;
 				}
 			}
 
-			// Empty response on a non-first page → done. Skip the extra
-			// dispatch that the short-page sentinel below would force
-			// when the previous page's count happened to land exactly
-			// at $per_page.
-			if ( empty( $data ) ) {
+			// An empty page terminates pagination. Note this still
+			// requires one extra dispatch when the prior page's count
+			// landed exactly at `$per_page` — we only learn the page
+			// is empty by asking. The short-page sentinel below
+			// avoids the extra dispatch in the more common case where
+			// the final page is short of `$per_page`.
+			if ( empty( $normalized_data ) ) {
 				break;
 			}
 
 			// Short-page sentinel: fewer items returned than requested
 			// means we've reached the end. Avoids needing X-WP-TotalPages.
-			if ( count( $data ) < $per_page ) {
+			if ( count( $normalized_data ) < $per_page ) {
 				break;
 			}
 

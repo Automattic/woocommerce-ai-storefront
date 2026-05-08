@@ -136,6 +136,29 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	/**
+	 * Build a variation as stdClass with stdClass-nested fields. Mimics
+	 * what the WC Store API REST controller returns over an internal
+	 * dispatch — prepared `\WP_REST_Response` objects whose nested
+	 * fields don't get array-cast unless serialized through HTTP.
+	 *
+	 * @return \stdClass
+	 */
+	private function variation_object( int $id, int $parent_id ): \stdClass {
+		$o         = new \stdClass();
+		$o->id     = $id;
+		$o->parent = $parent_id;
+		$o->name   = "Variation $id";
+		// Nested stdClass field — common in real Store API responses
+		// for `prices`, `attributes`, etc. The translator path expects
+		// arrays here, so the normalize step must reach into nested
+		// objects, not just the top-level list.
+		$o->prices               = new \stdClass();
+		$o->prices->price        = '1000';
+		$o->prices->currency     = 'USD';
+		return $o;
+	}
+
 	// ------------------------------------------------------------------
 	// Edge cases — input shape
 	// ------------------------------------------------------------------
@@ -443,6 +466,39 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertCount( 2, $result[35]['variations'] );
 		$this->assertSame( 1, $result[35]['skipped'] );
+	}
+
+	public function test_stdclass_variations_are_normalized_before_binning(): void {
+		// Internal `rest_do_request` returns prepared WP_REST_Response
+		// objects whose nested data is stdClass, not arrays. Pre-fix,
+		// the loop's `is_array($variation)` guard silently dropped each
+		// stdClass entry — leaving callers with `variations: []` even
+		// though the dispatch succeeded. Post-fix, normalize_store_api_data()
+		// recursively casts the response to arrays so binning + the
+		// downstream translators see uniform array shapes.
+		$this->canned_pages = array(
+			1 => array(
+				$this->variation_object( 101, 35 ),
+				$this->variation_object( 102, 35 ),
+			),
+		);
+
+		$result = $this->call_batched(
+			array( $this->variable_product( 35, array( 101, 102 ) ) )
+		);
+
+		$this->assertCount( 2, $result[35]['variations'] );
+		$this->assertSame( 0, $result[35]['skipped'] );
+		// Each variation is now a plain array (not stdClass) so the
+		// translator can read it without "Cannot use object of type
+		// stdClass as array" fatals.
+		$this->assertIsArray( $result[35]['variations'][0] );
+		$this->assertSame( 101, $result[35]['variations'][0]['id'] );
+		$this->assertSame( 35, $result[35]['variations'][0]['parent'] );
+		// Nested stdClass fields are also normalized — important for
+		// downstream translators that read `prices`, `attributes`, etc.
+		$this->assertIsArray( $result[35]['variations'][0]['prices'] );
+		$this->assertSame( '1000', $result[35]['variations'][0]['prices']['price'] );
 	}
 
 	public function test_orphan_variation_with_unknown_parent_is_dropped(): void {
