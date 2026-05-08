@@ -644,6 +644,104 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 10, $result[35]['skipped'] );
 	}
 
+	public function test_pagination_stops_early_once_all_expected_ids_collected(): void {
+		// Parent declares 200 variations; the cap (50) leaves the
+		// expected set as 1001..1050. Production WC would return all
+		// 200 across multiple pages (per_page caps at 100). Pre-
+		// optimization the loop walked all 200; post-optimization it
+		// stops as soon as every expected ID has been seen on the
+		// wire — the over-cap tail (1051..1200) is never fetched.
+		//
+		// In this canned scenario page 1 returns 1001..1100 (100 vars),
+		// which contains all 50 expected IDs. Page 2 (1101..1200)
+		// MUST NOT be fetched.
+		$declared_ids = array();
+		for ( $i = 1; $i <= 200; $i++ ) {
+			$declared_ids[] = 1000 + $i;
+		}
+
+		$page_1 = array();
+		for ( $i = 1; $i <= 100; $i++ ) {
+			$page_1[] = $this->variation( 1000 + $i, 35 );
+		}
+		$page_2 = array();
+		for ( $i = 101; $i <= 200; $i++ ) {
+			$page_2[] = $this->variation( 1000 + $i, 35 );
+		}
+		$this->canned_pages = array(
+			1 => $page_1,
+			2 => $page_2,
+		);
+
+		$result = $this->call_batched(
+			array( $this->variable_product( 35, $declared_ids ) )
+		);
+
+		// Single dispatch — page 2 was elided by the early-stop check.
+		$this->assertCount(
+			1,
+			$this->captured_dispatches,
+			'Early-stop should prevent fetching page 2 once all expected IDs are collected on page 1.'
+		);
+		$this->assertSame( '1', (string) $this->captured_dispatches[0]['page'] );
+
+		// Output assertions match the cap-overage behavior: 50 emitted,
+		// 150 skipped (200 declared − 50 returned).
+		$this->assertCount( 50, $result[35]['variations'] );
+		$returned_ids = array_column( $result[35]['variations'], 'id' );
+		$this->assertSame( range( 1001, 1050 ), $returned_ids );
+		$this->assertSame( 150, $result[35]['skipped'] );
+	}
+
+	public function test_no_early_stop_when_expected_ids_split_across_pages(): void {
+		// Worst-case sanity: if the API returns expected IDs late in
+		// pagination, the early-stop check shouldn't fire prematurely
+		// — we must keep walking until every expected ID is seen.
+		// Cap=50, declared=50 (no cap overage). Page 1 returns 100
+		// variations BUT only 30 of the 50 expected IDs. Page 2 must
+		// be fetched to collect the remaining 20.
+		$declared_ids = range( 1001, 1050 );
+
+		// Page 1: variations 1001..1030 (expected, 30 of 50) +
+		// 9001..9070 (unexpected, 70). Total 100 = per_page.
+		// Worst-case interleaving: the API surfaces unexpected IDs
+		// alongside expected ones, so we don't get to early-stop.
+		$page_1 = array();
+		for ( $i = 1; $i <= 30; $i++ ) {
+			$page_1[] = $this->variation( 1000 + $i, 35 );
+		}
+		for ( $i = 1; $i <= 70; $i++ ) {
+			$page_1[] = $this->variation( 9000 + $i, 35 );
+		}
+
+		// Page 2: variations 1031..1050 (expected, remaining 20).
+		$page_2 = array();
+		for ( $i = 31; $i <= 50; $i++ ) {
+			$page_2[] = $this->variation( 1000 + $i, 35 );
+		}
+
+		$this->canned_pages = array(
+			1 => $page_1,
+			2 => $page_2,
+		);
+
+		$result = $this->call_batched(
+			array( $this->variable_product( 35, $declared_ids ) )
+		);
+
+		// Two dispatches expected — page 1's count was per_page (100),
+		// not all expected IDs collected → keep walking. Page 2
+		// returns the remaining expected IDs AND is short-of-per_page
+		// (20 < 100), so the loop terminates after page 2.
+		$this->assertCount(
+			2,
+			$this->captured_dispatches,
+			'Loop must keep walking when not all expected IDs are seen by end of a page.'
+		);
+		$this->assertCount( 50, $result[35]['variations'] );
+		$this->assertSame( 0, $result[35]['skipped'] );
+	}
+
 	// ------------------------------------------------------------------
 	// Filter compatibility
 	// ------------------------------------------------------------------

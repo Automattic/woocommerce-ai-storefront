@@ -86,16 +86,31 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	const MAX_LINE_ITEMS_PER_CHECKOUT = 100;
 
 	/**
-	 * Upper bound on variations emitted per variable product.
+	 * Upper bound on variations EMITTED per variable product.
 	 *
-	 * Pre-#351 this bounded a per-variation N+1 fan-out; post-#351
-	 * variations batch via `?parent_includes=` so the cap is now about
-	 * response payload size and translator workload rather than dispatch
-	 * count. Still meaningful: 50 covers typical color/size/pattern
-	 * combinations; products with more are rare and can surface via
-	 * `POST /catalog/lookup` with specific variation IDs if an agent
-	 * needs fidelity. Cap overage emits a `partial_variants` warning so
-	 * agents see when the cap kicks in.
+	 * Pre-#351 this also bounded the per-variation N+1 fan-out — fewer
+	 * IDs in the worklist meant fewer dispatches. Post-#351 variations
+	 * batch via `?parent_includes=`, so the cap no longer bounds the
+	 * Store API response: WC returns ALL of a parent's variations
+	 * regardless of our cap (the binner then drops everything past the
+	 * first MAX_VARIATIONS_PER_PRODUCT IDs in the parent's declared
+	 * order). The page-walk has an early-stop optimization to avoid
+	 * fetching beyond the expected set, but for high-variation parents
+	 * where the API returns the expected IDs late in pagination, the
+	 * batch can still normalize more variations than it ultimately
+	 * emits.
+	 *
+	 * What the cap DOES bound: emitted variant count, translator
+	 * workload, response payload size to the agent.
+	 *
+	 * What the cap does NOT bound: Store API response size during
+	 * fetch, normalize_store_api_data() work on the discarded tail.
+	 *
+	 * 50 covers typical color/size/pattern combinations; products with
+	 * more are rare and can surface via `POST /catalog/lookup` with
+	 * specific variation IDs if an agent needs fidelity. Cap overage
+	 * emits a `partial_variants` warning so agents see when the cap
+	 * kicks in.
 	 */
 	const MAX_VARIATIONS_PER_PRODUCT = 50;
 
@@ -3201,6 +3216,27 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$per_page          = 100;
 		$first_page_failed = false;
 
+		// Flat set of all expected variation IDs across parents. Used
+		// by the page-walk's early-stop check: once every expected ID
+		// has been seen on the wire, additional pages would only carry
+		// over-cap variations that the binner will drop. For a parent
+		// with 200 variations capped at MAX_VARIATIONS_PER_PRODUCT=50,
+		// pre-fix the loop walked all 200 (2 pages) before terminating
+		// on the short-page sentinel. Post-fix it stops as soon as the
+		// 50 expected IDs are collected, typically during page 1.
+		//
+		// Worst case (Store API returns expected IDs in pagination
+		// positions later than the cap's worth of unexpected ones)
+		// degrades to the prior behavior: walk every page. WC returns
+		// variations in deterministic order (menu_order then post_id),
+		// so this worst case is rare in practice.
+		$expected_remaining = array();
+		foreach ( $expected_per_parent as $expected_ids ) {
+			foreach ( $expected_ids as $vid ) {
+				$expected_remaining[ $vid ] = true;
+			}
+		}
+
 		while ( ! empty( $parent_ids ) ) {
 			$store_params = array(
 				'parent_includes' => implode( ',', $parent_ids ),
@@ -3286,7 +3322,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			foreach ( $normalized_data as $variation ) {
 				if ( is_array( $variation ) ) {
 					$all_variations[] = $variation;
+					$variation_id     = (int) ( $variation['id'] ?? 0 );
+					if ( $variation_id > 0 && isset( $expected_remaining[ $variation_id ] ) ) {
+						unset( $expected_remaining[ $variation_id ] );
+					}
 				}
+			}
+
+			// Early-stop: every expected ID has been collected on the
+			// wire, so additional pages would only carry over-cap
+			// variations the binner will drop. This is the optimization
+			// that puts MAX_VARIATIONS_PER_PRODUCT to work as a real
+			// fetch-side bound, not just an emission-side bound.
+			if ( empty( $expected_remaining ) ) {
+				break;
 			}
 
 			// An empty page terminates pagination. Note this still
