@@ -375,18 +375,18 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 	// MAX_VARIATIONS_PER_PRODUCT cap
 	// ------------------------------------------------------------------
 
-	public function test_max_cap_truncates_expected_set_per_parent(): void {
-		// Parent declares 60 variations; cap is 50. The CSV must NOT
-		// expect IDs 51-60, and skipped count is 0 if all 50 capped
-		// IDs return — cap-truncated entries don't contribute to skipped
-		// (matches fetch_variations_for() semantics).
+	public function test_max_cap_truncates_expected_set_and_reports_overage_as_skipped(): void {
+		// Parent declares 60 variations; cap is 50. Expected-set is
+		// the first 50; only those go in the parent_includes CSV.
+		// `skipped` = declared(60) - returned(50) = 10 — cap-truncated
+		// entries DO contribute to skipped so agents see a
+		// `partial_variants` warning when their product overflows the
+		// cap. Matches fetch_variations_for() semantics.
 		$declared_ids = array();
 		for ( $i = 1; $i <= 60; $i++ ) {
 			$declared_ids[] = 1000 + $i;
 		}
 
-		// Only return the first 50 — any "expected" 51-60 would be
-		// silently included and skipped is the only way to detect it.
 		$page_1 = array();
 		for ( $i = 1; $i <= 50; $i++ ) {
 			$page_1[] = $this->variation( 1000 + $i, 35 );
@@ -398,8 +398,8 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertCount( 50, $result[35]['variations'] );
-		// No skipped — cap-truncated entries weren't expected.
-		$this->assertSame( 0, $result[35]['skipped'] );
+		// 10 over the cap → 10 skipped (the cap-truncated tail).
+		$this->assertSame( 10, $result[35]['skipped'] );
 	}
 
 	// ------------------------------------------------------------------

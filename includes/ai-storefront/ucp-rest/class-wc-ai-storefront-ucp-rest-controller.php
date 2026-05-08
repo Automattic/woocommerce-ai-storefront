@@ -1578,6 +1578,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
+		// Pass 1: fetch all parent products + record not-found messages.
+		// Two-pass structure (vs. a single fetch+translate loop) lets us
+		// batch variation expansion across all variable parents in one
+		// dispatch instead of N. For a 5-ID lookup with all variable
+		// products averaging 5 variations, this collapses 25 internal
+		// `rest_do_request` dispatches to 1 — saving ~600ms warm and
+		// ~1.8s+ cold-cache. See issue #351.
+		$wc_products_by_index = array();
 		foreach ( $wc_ids as $index => $wc_id ) {
 			$id_echo   = (string) ( $inputs[ $index ] ?? '' );
 			$raw_index = (int) ( $positions[ $index ] ?? $index );
@@ -1592,16 +1600,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				continue;
 			}
 
-			// Variable products: pre-fetch each variation's full Store API
-			// response so the product translator can emit one real variant
-			// per variation rather than a synthesized default. When any
-			// variations fail to fetch, we still render the product (partial
-			// set beats synthesized fallback) but emit a `partial_variants`
-			// warning so agents know the variant list is incomplete.
-			$variation_fetch = $this->fetch_variations_for( $wc_product );
+			$wc_products_by_index[ $index ] = $wc_product;
+		}
+
+		// Pre-batch variations for all variable parents we just fetched.
+		// Map keyed by parent_id; simple products absent.
+		$variations_by_parent = $this->fetch_variations_batched(
+			array_values( $wc_products_by_index )
+		);
+
+		// Pass 2: translate each product using its pre-fetched variations.
+		foreach ( $wc_products_by_index as $index => $wc_product ) {
+			$wc_id           = (int) ( $wc_product['id'] ?? 0 );
+			$variation_fetch = $variations_by_parent[ $wc_id ] ?? array(
+				'variations' => array(),
+				'skipped'    => 0,
+			);
 			if ( $variation_fetch['skipped'] > 0 ) {
 				$messages[] = self::partial_variants_message(
-					(int) ( $wc_product['id'] ?? 0 ),
+					$wc_id,
 					$variation_fetch['skipped']
 				);
 			}
@@ -3161,8 +3178,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	private function fetch_variations_batched( array $wc_products ): array {
 		// Build the per-parent expected-set: parent_id => [variation_id, ...]
 		// (slice each parent's refs to MAX cap before adding to the work
-		// list). Keeps cap semantics identical to fetch_variations_for().
-		$expected_per_parent = array();
+		// list). Track total_declared separately so cap-truncation
+		// contributes to the `skipped` count — matches the contract of
+		// the per-variation `fetch_variations_for()`: agents should see
+		// a `partial_variants` warning when their product has more
+		// variations than we'll fetch.
+		$expected_per_parent  = array();
+		$declared_per_parent  = array();
 		foreach ( $wc_products as $wc_product ) {
 			if ( ! is_array( $wc_product ) ) {
 				continue;
@@ -3196,6 +3218,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 
 			$expected_per_parent[ $parent_id ] = $expected_ids;
+			$declared_per_parent[ $parent_id ] = $total_declared;
 		}
 
 		// Edge case: no variable products (or all variable products have
@@ -3295,13 +3318,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		// Build the result map. On batch failure, every variable parent
-		// gets `variations: [], skipped: total_expected` so the partial-
-		// variants warning fires for each.
+		// gets `variations: [], skipped: total_declared` so the partial-
+		// variants warning fires for each. Use total_declared (not
+		// expected_capped) so cap overage still surfaces as skipped.
 		$result = array();
 		foreach ( $expected_per_parent as $parent_id => $expected_ids ) {
 			$result[ $parent_id ] = array(
 				'variations' => array(),
-				'skipped'    => $batch_failed ? count( $expected_ids ) : 0,
+				'skipped'    => $batch_failed ? $declared_per_parent[ $parent_id ] : 0,
 			);
 		}
 
@@ -3331,20 +3355,23 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$result[ $parent_id ]['variations'][] = $variation;
 		}
 
-		// Compute skipped per parent: expected - actually returned.
-		// Includes scope-filtered + fetch-failed entries that the
-		// per-variation path would have caught.
+		// Compute skipped per parent: total_declared - actually_returned.
+		// Includes cap-truncated + scope-filtered + fetch-failed entries.
+		// Mirrors `fetch_variations_for()` semantics: the contract is
+		// that the agent sees a `partial_variants` warning whenever the
+		// emitted variant list is shorter than the parent's full set,
+		// regardless of why.
 		foreach ( $result as $parent_id => &$entry ) {
-			$expected_count   = count( $expected_per_parent[ $parent_id ] );
+			$declared_count   = $declared_per_parent[ $parent_id ];
 			$returned_count   = count( $entry['variations'] );
-			$entry['skipped'] = max( 0, $expected_count - $returned_count );
+			$entry['skipped'] = max( 0, $declared_count - $returned_count );
 
 			if ( $entry['skipped'] > 0 ) {
 				WC_AI_Storefront_Logger::debug(
 					sprintf(
-						'UCP fetch_variations_batched(parent=%d): expected %d, got %d, skipped %d',
+						'UCP fetch_variations_batched(parent=%d): declared %d, got %d, skipped %d',
 						$parent_id,
-						$expected_count,
+						$declared_count,
 						$returned_count,
 						$entry['skipped']
 					)
