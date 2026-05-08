@@ -86,14 +86,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	const MAX_LINE_ITEMS_PER_CHECKOUT = 100;
 
 	/**
-	 * Upper bound on variations fetched per variable product.
+	 * Upper bound on variations emitted per variable product.
 	 *
-	 * Bounds the N+1 fan-out in fetch_variations_for(). A product with
-	 * 200 variations would otherwise trigger 200 internal dispatches just
-	 * for one hit of a search response. 50 covers typical
-	 * color/size/pattern combinations; products with more are rare and
-	 * can surface via `POST /catalog/lookup` with specific variation IDs
-	 * if an agent needs fidelity.
+	 * Pre-#351 this bounded a per-variation N+1 fan-out; post-#351
+	 * variations batch via `?parent_includes=` so the cap is now about
+	 * response payload size and translator workload rather than dispatch
+	 * count. Still meaningful: 50 covers typical color/size/pattern
+	 * combinations; products with more are rare and can surface via
+	 * `POST /catalog/lookup` with specific variation IDs if an agent
+	 * needs fidelity. Cap overage emits a `partial_variants` warning so
+	 * agents see when the cap kicks in.
 	 */
 	const MAX_VARIATIONS_PER_PRODUCT = 50;
 
@@ -583,7 +585,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * Maps UCP fields onto WC Store API query params and dispatches
 	 * `GET /wc/store/v1/products` via `rest_do_request`. Every returned
 	 * product is translated to UCP shape; variable products get their
-	 * variations pre-fetched by `fetch_variations_for()` so variant
+	 * variations batch-fetched by `fetch_variations_batched()` so variant
 	 * lists are real rather than synthesized defaults.
 	 *
 	 * Pagination: cursor + limit, per UCP v2026-04-08
@@ -3025,100 +3027,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		};
 		$result = $cast( $data );
 		return is_array( $result ) ? $result : null;
-	}
-
-	/**
-	 * For variable products, fetch all variations via per-ID Store API
-	 * requests and reassemble in the source order WC declared. Simple
-	 * products return empty.
-	 *
-	 * IMPORTANT: the collection endpoint (`/wc/store/v1/products?include=
-	 * [ids]`) cannot be used here. WC Store API's collection route filters
-	 * by `post_type='product'`, which excludes product variations (those
-	 * have `post_type='product_variation'`). Only the single-item route
-	 * (`/wc/store/v1/products/{id}`) performs a direct object lookup that
-	 * handles both post types. Per-ID fetches are handled by
-	 * fetch_store_api_product(), which also enforces the
-	 * is_product_syndicated() scope gate and memoizes results so repeated
-	 * lookups of the same variation within a request are free.
-	 *
-	 * Results not returned by the endpoint (out of scope, 404, or
-	 * cap-truncated) are silently skipped. The `skipped` count lets
-	 * callers emit a `partial_variants` warning so agents are never
-	 * silently misled about product completeness.
-	 *
-	 * Capped at MAX_VARIATIONS_PER_PRODUCT to bound fan-out and response
-	 * payload size. Source order is preserved by building $variations in
-	 * the original pointer-list order.
-	 *
-	 * @param array<string, mixed> $wc_product Store API response for the parent product.
-	 * @return array{variations: array<int, array<string, mixed>>, skipped: int}
-	 */
-	private function fetch_variations_for( array $wc_product ): array {
-		if ( 'variable' !== ( $wc_product['type'] ?? '' ) ) {
-			return array(
-				'variations' => array(),
-				'skipped'    => 0,
-			);
-		}
-
-		$variation_refs = $wc_product['variations'] ?? array();
-		if ( ! is_array( $variation_refs ) || empty( $variation_refs ) ) {
-			return array(
-				'variations' => array(),
-				'skipped'    => 0,
-			);
-		}
-
-		$total_declared = count( $variation_refs );
-
-		if ( $total_declared > self::MAX_VARIATIONS_PER_PRODUCT ) {
-			$variation_refs = array_slice( $variation_refs, 0, self::MAX_VARIATIONS_PER_PRODUCT );
-		}
-
-		// Fetch each variation via the single-item Store API endpoint and
-		// collect results in source order. fetch_store_api_product() handles
-		// memoization (cached IDs return immediately), scope enforcement via
-		// is_product_syndicated(), and null-caching of missing/out-of-scope
-		// entries so no variation is dispatched twice in a request.
-		$variations = array();
-		foreach ( $variation_refs as $ref ) {
-			// WC Store API emits `variations` as `[{id, attributes}, ...]`
-			// (just the pointer). Fetch the full variation record.
-			$variation_id = is_array( $ref )
-				? (int) ( $ref['id'] ?? 0 )
-				: (int) $ref;
-
-			if ( $variation_id <= 0 ) {
-				continue;
-			}
-
-			$data = $this->fetch_store_api_product( $variation_id );
-			if ( null !== $data ) {
-				$variations[] = $data;
-			}
-		}
-
-		// Skipped = everything the product declared that didn't make it
-		// into $variations. Includes cap-truncated + scope-filtered +
-		// fetch-failed + malformed-ref entries.
-		$skipped = $total_declared - count( $variations );
-
-		if ( $skipped > 0 ) {
-			WC_AI_Storefront_Logger::debug(
-				sprintf(
-					'UCP fetch_variations_for(%d): skipped %d of %d declared variations',
-					(int) ( $wc_product['id'] ?? 0 ),
-					$skipped,
-					$total_declared
-				)
-			);
-		}
-
-		return array(
-			'variations' => $variations,
-			'skipped'    => $skipped,
-		);
 	}
 
 	/**
