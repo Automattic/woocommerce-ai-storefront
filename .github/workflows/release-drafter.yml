@@ -4,13 +4,25 @@ name: Release drafter
 # merge to main. Each merged PR is categorized into the draft based
 # on its labels (see `.github/release-drafter.yml`).
 #
-# When you're ready to ship, go to the repo Releases page, review
-# the draft, edit if needed, and click "Publish release." That step
-# also creates the git tag — no separate `git tag` push required.
+# Release responsibility split (one source of truth per field):
 #
-# This workflow does NOT bump version constants, update CHANGELOG.md,
-# or publish on its own. Those remain manual steps in the same release
-# commit that bumps `WC_AI_STOREFRONT_VERSION` etc.
+#   release-drafter (this workflow):
+#     - owns the Release's draft/published state
+#     - owns the body (categorized changelog from PR labels)
+#     - owns the version number and prerelease flag
+#     - never publishes on its own — a human clicks Publish on the
+#       Releases page, which also creates the git tag
+#
+#   release.yml (tag-push):
+#     - owns the zip artifact (built + version-verified + uploaded)
+#     - explicitly does NOT pass `draft`, `body`, `prerelease`, or
+#       `generate_release_notes` to softprops/action-gh-release, so it
+#       attaches the asset to the existing Release without flipping it
+#       back to draft or overwriting notes.
+#
+# This workflow does NOT bump version constants or update CHANGELOG.md
+# on its own. Those remain manual steps in the same release commit
+# that bumps `WC_AI_STOREFRONT_VERSION` etc.
 #
 # Trigger: `push: main` only. The official action README warns that
 # also triggering on `pull_request` events re-renders the draft for

@@ -144,10 +144,20 @@ jobs:
           unzip -l "${ZIP_NAME}" | head -30
           echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
 
-      - name: Create GitHub Release
+      # Attach the built zip to the Release that release-drafter has
+      # already prepared and the human just published on the Releases
+      # page (which is what created this tag).
+      #
+      # We deliberately omit `generate_release_notes`, `body`, `draft`,
+      # and `prerelease` here. release-drafter (release-drafter.yml)
+      # owns those fields; passing them again would either overwrite
+      # the categorized notes already in the Release body or flip the
+      # just-published Release back to draft — both have happened in
+      # other repos that ran the two flows in series.
+      #
+      # softprops/action-gh-release@v2 finds the existing Release by
+      # tag and uploads `files:` to it without touching unset fields.
+      - name: Upload release artifact
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_NAME }}
-          generate_release_notes: true
-          draft: true  # Start as draft so human can review before publishing.
-          prerelease: true  # 0.x line ships as pre-release until 1.0.

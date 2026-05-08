@@ -30,12 +30,16 @@ version-resolver:
       - 'task'
   default: patch
 
-# Categories grouped to match the CHANGELOG.md convention used in
-# this repo (Features / Fixes / Performance / Refactors / Documentation /
-# Chores). Each merged PR lands under whichever category matches its
-# labels. Every label that triggers a version bump (above) MUST have
-# a corresponding category here — otherwise a PR could bump the
-# version without appearing in the draft notes.
+# Categories aligned with CHANGELOG.md section headings used in this
+# repo: Features / Fixes / Refactors / Docs / Chores (see existing
+# entries under [0.11.x] for the canonical heading set). One refinement:
+# we split out a `Performance` category in the draft because the
+# release notes can be more granular than the CHANGELOG, where perf
+# work usually rolls up into Features or Refactors. Each merged PR
+# lands under whichever category matches its labels. Every label that
+# triggers a version bump (above) MUST have a corresponding category
+# here — otherwise a PR could bump the version without appearing in
+# the draft notes.
 categories:
   - title: 'Features'
     labels:
@@ -52,7 +56,7 @@ categories:
       - 'refactor'
       - 'tech-debt'
       - 'architecture'
-  - title: 'Documentation'
+  - title: 'Docs'
     labels:
       - 'documentation'
   - title: 'Chores'
