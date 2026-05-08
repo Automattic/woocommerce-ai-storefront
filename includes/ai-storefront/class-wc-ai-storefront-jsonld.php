@@ -875,7 +875,49 @@ class WC_AI_Storefront_JsonLd {
 		// a real WC URL) and WC's own variation name (e.g. "Hoodie -
 		// Blue, Logo: Yes") which already encodes the differentiating
 		// attribute values per the merchant's variation form.
-		$permalink = $variation->get_permalink();
+		//
+		// Override the bare parent URL when WC's `get_permalink()` fell
+		// through. `WC_Product_Variation::get_permalink()` is gated by
+		// the parent's `is_variation` flag — when that flag is unset on
+		// every variation attribute, the method returns the bare parent
+		// URL instead of the parent + `?attribute_<slug>=value` query
+		// args. Symptom: every variant's `@id` collapses to the same
+		// URL, breaking variant-graph traversal for AI agents. Detect
+		// the fall-through by comparing the two permalinks; if equal,
+		// synthesize the URL ourselves from the same postmeta source
+		// `read_variation_core_attributes()` already reads for the
+		// override-path typed-property emission. Same scope: core
+		// slugs only. Variants differing only by an unmapped attribute
+		// keep the bare parent URL — surfacing variation noise the
+		// merchant intentionally hid would over-step the override's
+		// narrow scope. (#341)
+		// Read variation core-typed attributes once. Both the @id
+		// fall-through override below AND the per-variant typed-property
+		// emission further down consume this — calling it twice would
+		// duplicate up to 4 `get_post_meta()` reads per variation on
+		// the override path. (Postmeta hits are cache-primed by
+		// `maybe_convert_to_product_group()` upstream, so each call
+		// is fast — but redundant work on a per-variant loop adds up
+		// on stores with many variations.)
+		if ( ! method_exists( $variation, 'get_id' ) ) {
+			return;
+		}
+		$core_attrs = self::read_variation_core_attributes( (int) $variation->get_id() );
+
+		$permalink        = $variation->get_permalink();
+		$parent_permalink = $parent_product->get_permalink();
+		if (
+			is_string( $permalink ) && '' !== $permalink
+			&& $permalink === $parent_permalink
+			&& ! empty( $core_attrs )
+		) {
+			$query_args = array();
+			foreach ( $core_attrs as $slug => $value ) {
+				$query_args[ 'attribute_' . $slug ] = $value;
+			}
+			$permalink = add_query_arg( $query_args, $parent_permalink );
+		}
+
 		if ( is_string( $permalink ) && '' !== $permalink ) {
 			$entry['@id'] = $permalink;
 			$entry['url'] = $permalink;
@@ -902,21 +944,19 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		// Per-variant typed properties (color/size/material/pattern from
-		// the variation's specific attribute selections).
-		//
-		// Read meta directly via `read_variation_core_attributes()`
-		// rather than `get_variation_attributes()` — the latter is
-		// gated by the parent's "Used for variations" flag and silently
+		// the variation's specific attribute selections). Reuses
+		// `$core_attrs` read at the top of this method — the same
+		// postmeta source feeds both the @id fall-through override
+		// (via `add_query_arg`) and the typed-property emission below.
+		// Reading via `read_variation_core_attributes()` rather than
+		// `get_variation_attributes()` is the workaround for the
+		// parent's "Used for variations" flag — the WC API silently
 		// returns empty when that flag is unset, even if per-variation
-		// values exist in postmeta. The misconfigured-variable
-		// `ProductGroup` override (see `detect_varies_by()`) depends on
-		// the typed value reaching the variant entry, so the same
+		// postmeta is populated. The misconfigured-variable
+		// `ProductGroup` override (see `detect_varies_by()`) depends
+		// on the typed value reaching the variant entry, so the same
 		// fallback path is the source of truth here too.
-		if ( ! method_exists( $variation, 'get_id' ) ) {
-			return;
-		}
-		$variation_attrs = self::read_variation_core_attributes( (int) $variation->get_id() );
-		foreach ( $variation_attrs as $slug => $value ) {
+		foreach ( $core_attrs as $slug => $value ) {
 			$schema_prop = self::CORE_ATTRIBUTE_MAP[ $slug ];
 			if ( array_key_exists( $schema_prop, $entry ) ) {
 				continue;

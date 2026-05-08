@@ -499,6 +499,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// `name` is what surfaces in rich-result snippets. Regression
 		// guard for PR #338 review feedback (these went missing in the
 		// initial implementation).
+		//
+		// This fixture uses a DISTINCT variation permalink (parent +
+		// query args), exercising the common path where WC's
+		// `get_permalink()` returned the right URL on its own — the
+		// override at `add_variant_basics()` does NOT fire because
+		// `$permalink !== $parent_permalink`. See the override-path
+		// tests below for the misconfigured-variation case (#341).
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent    = $this->make_product( [ 'id' => 100 ] );
@@ -516,6 +523,87 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertSame( $entry['@id'], $entry['url'] );
 		$this->assertSame( 'Hoodie - Blue, Logo: Yes', $entry['name'] );
+	}
+
+	public function test_variant_id_synthesizes_query_args_when_permalink_falls_through(): void {
+		// The override path: WC's `WC_Product_Variation::get_permalink()`
+		// is gated by the parent's "Used for variations" flag. When
+		// that flag is unset on every variation attribute, the method
+		// returns the bare parent URL instead of the parent +
+		// `?attribute_<slug>=value` query args. Pre-#341 every variant
+		// shared the same `@id` (the parent URL), which broke
+		// variant-graph traversal for AI agents — they couldn't
+		// dereference one variant's `@id` and tell it apart from its
+		// siblings.
+		//
+		// Fix: detect the fall-through (variation permalink ===
+		// parent permalink) and synthesize the URL from the same
+		// `read_variation_core_attributes()` postmeta source the
+		// typed-property override consumes. Result: `@id` carries
+		// the variant's specific color in `?attribute_pa_color=red`
+		// form, distinct per-variant.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent_url = 'https://example.com/product/hoodie/';
+		$parent     = $this->make_product( [
+			'id'        => 100,
+			'permalink' => $parent_url,
+		] );
+		// Variation's permalink matches the parent's — simulating
+		// WC's fall-through behavior on a misconfigured variable
+		// product. Postmeta carries the variation's color value via
+		// the `variation_attributes` test override (which routes
+		// through `make_variation()` to seed the same postmeta
+		// `read_variation_core_attributes()` reads).
+		$variation = $this->make_variation( [
+			'id'                   => 101,
+			'permalink'            => $parent_url,
+			'variation_attributes' => array( 'pa_color' => 'red' ),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame(
+			'https://example.com/product/hoodie/?attribute_pa_color=red',
+			$entry['@id']
+		);
+		$this->assertSame( $entry['@id'], $entry['url'] );
+	}
+
+	public function test_variant_id_stays_at_parent_when_only_unmapped_attributes_differ(): void {
+		// Override scope-cap: when the variation's only differentiating
+		// attribute is unmapped (Logo, Style, Heel Height, etc. — not
+		// in CORE_ATTRIBUTE_MAP), `read_variation_core_attributes()`
+		// returns empty and the override doesn't fire. The variant
+		// keeps the bare parent URL. Rationale: surfacing variation
+		// noise the merchant intentionally hid (by leaving the
+		// "Used for variations" flag unset) would over-step the
+		// override's narrow scope. The override is opinionated about
+		// the four core typed slugs — those have canonical
+		// Schema.org property mappings and AI agents look for them
+		// by name. Unmapped slugs honor the merchant flag.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent_url = 'https://example.com/product/hoodie/';
+		$parent     = $this->make_product( [
+			'id'        => 100,
+			'permalink' => $parent_url,
+		] );
+		$variation = $this->make_variation( [
+			'id'                   => 101,
+			'permalink'            => $parent_url,
+			// Only unmapped attribute — `logo` is not in CORE_ATTRIBUTE_MAP.
+			'variation_attributes' => array( 'logo' => 'Yes' ),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( $parent_url, $entry['@id'] );
+		// `url` must mirror `@id` on every code path, including the
+		// scope-cap fall-through. Pins the contract that they don't
+		// diverge — a refactor that wired the override into one but
+		// not the other would fail here.
+		$this->assertSame( $entry['@id'], $entry['url'] );
 	}
 
 	public function test_variant_entry_falls_back_to_id_when_no_sku(): void {
