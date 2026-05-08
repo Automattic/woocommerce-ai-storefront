@@ -3313,6 +3313,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// downstream translators see uniform array shapes.
 			$normalized_data = self::normalize_store_api_data( $store_response->get_data() );
 			if ( null === $normalized_data ) {
+				// Plugin-conflict smell: response body wasn't an
+				// array or object the normalizer could reach. Mirrors
+				// fetch_store_api_product_inner()'s normalization
+				// failure log so production incidents on either path
+				// are equally diagnosable.
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'UCP fetch_variations_batched: response body on page %d could not be normalized to an array (possible plugin conflict)',
+						$page
+					)
+				);
 				if ( 1 === $page ) {
 					$first_page_failed = true;
 				}
