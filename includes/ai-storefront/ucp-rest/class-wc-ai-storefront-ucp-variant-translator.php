@@ -62,10 +62,32 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @return array<string, mixed>                           UCP variant shape.
 	 */
 	public static function translate( array $wc_variation, ?array $parent_attribute_names = null ): array {
-		$id      = (int) ( $wc_variation['id'] ?? 0 );
+		$id = (int) ( $wc_variation['id'] ?? 0 );
+
+		// Parse the formatted `variation` string at most once per variant
+		// and pass the result into both `extract_title()` and
+		// `extract_options()`. The naive split is cheap, but the
+		// anchor-aware regex path (`split_variation_segments()`) builds
+		// an alternation pattern from `$parent_attribute_names` — doing
+		// that twice per variant on every catalog/search response (up to
+		// ~20 products × N variations) adds up. Only parse when the
+		// fallback path will actually run: `attributes[]` is empty and a
+		// non-empty `variation` string is present.
+		$pre_parsed_pairs = null;
+		$attributes       = $wc_variation['attributes'] ?? [];
+		if ( ! is_array( $attributes ) || empty( $attributes ) ) {
+			$variation_string = $wc_variation['variation'] ?? '';
+			if ( is_string( $variation_string ) && '' !== trim( $variation_string ) ) {
+				$pre_parsed_pairs = self::parse_variation_string(
+					$variation_string,
+					$parent_attribute_names
+				);
+			}
+		}
+
 		$variant = [
 			'id'          => self::VARIANT_ID_PREFIX . $id,
-			'title'       => self::extract_title( $wc_variation, $parent_attribute_names ),
+			'title'       => self::extract_title( $wc_variation, $pre_parsed_pairs ),
 			'description' => self::extract_description( $wc_variation ),
 			// `list_price` is the UCP core name for the current
 			// purchasable price — sourced from WC's `prices.price`
@@ -85,7 +107,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		// agents that want to filter or match by attribute need them
 		// structured. UCP v2026-04-08 variant schema carries
 		// `options` exactly for this.
-		$options = self::extract_options( $wc_variation, $parent_attribute_names );
+		$options = self::extract_options( $wc_variation, $pre_parsed_pairs );
 		if ( ! empty( $options ) ) {
 			$variant['options'] = $options;
 		}
@@ -253,14 +275,20 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * 22-variation set indistinguishable. The `variation` parse path
 	 * fixes that.
 	 *
-	 * @param array<string, mixed>    $wc_variation
-	 * @param array<int, string>|null $parent_attribute_names Disambiguator for comma-in-value
-	 *                                                        cases when parsing the `variation`
-	 *                                                        string. See parse_variation_string().
+	 * The `variation` string is parsed once per variant by `translate()`
+	 * and passed in via `$pre_parsed_pairs` so this helper and
+	 * `extract_options()` share the result instead of each rebuilding
+	 * the anchor regex.
+	 *
+	 * @param array<string, mixed>                                            $wc_variation
+	 * @param array<int, array{attribute: string, value: string}>|null        $pre_parsed_pairs
+	 *        Pairs already parsed from the variation string by `translate()`,
+	 *        or null if the array path is the live one (and the parse never
+	 *        ran).
 	 */
 	private static function extract_title(
 		array $wc_variation,
-		?array $parent_attribute_names = null
+		?array $pre_parsed_pairs = null
 	): string {
 		$attributes = $wc_variation['attributes'] ?? [];
 		$values     = [];
@@ -286,13 +314,9 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			}
 		}
 
-		if ( empty( $values ) ) {
-			$variation_string = $wc_variation['variation'] ?? '';
-			if ( is_string( $variation_string ) && '' !== trim( $variation_string ) ) {
-				$pairs = self::parse_variation_string( $variation_string, $parent_attribute_names );
-				foreach ( $pairs as $pair ) {
-					$values[] = $pair['value'];
-				}
+		if ( empty( $values ) && is_array( $pre_parsed_pairs ) ) {
+			foreach ( $pre_parsed_pairs as $pair ) {
+				$values[] = $pair['value'];
 			}
 		}
 
@@ -484,15 +508,20 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * the taxonomy slug ("pa_color") because agents display this to
 	 * buyers. Empty-value or empty-label entries are skipped.
 	 *
-	 * @param array<string, mixed>    $wc_variation
-	 * @param array<int, string>|null $parent_attribute_names Disambiguator for comma-in-value
-	 *                                                        cases when parsing the `variation`
-	 *                                                        string. See parse_variation_string().
+	 * The `variation` string is parsed once per variant by `translate()`
+	 * and passed in via `$pre_parsed_pairs` so this helper and
+	 * `extract_title()` share the result instead of each rebuilding the
+	 * anchor regex.
+	 *
+	 * @param array<string, mixed>                                            $wc_variation
+	 * @param array<int, array{attribute: string, value: string}>|null        $pre_parsed_pairs
+	 *        Pairs already parsed from the variation string by `translate()`,
+	 *        or null if the array path is the live one.
 	 * @return array<int, array{attribute: string, value: string}>
 	 */
 	private static function extract_options(
 		array $wc_variation,
-		?array $parent_attribute_names = null
+		?array $pre_parsed_pairs = null
 	): array {
 		$attributes = $wc_variation['attributes'] ?? [];
 		$options    = [];
@@ -534,13 +563,11 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			return $options;
 		}
 
-		$variation_string = $wc_variation['variation'] ?? '';
-		if ( ! is_string( $variation_string ) || '' === trim( $variation_string ) ) {
+		if ( ! is_array( $pre_parsed_pairs ) ) {
 			return [];
 		}
 
-		$pairs = self::parse_variation_string( $variation_string, $parent_attribute_names );
-		foreach ( $pairs as $pair ) {
+		foreach ( $pre_parsed_pairs as $pair ) {
 			$options[] = [
 				'attribute' => $pair['attribute'],
 				'value'     => $pair['value'],
