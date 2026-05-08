@@ -113,18 +113,17 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			$variant['options'] = $options;
 		}
 
-		// Sale pricing — agents showing "was $X, now $Y" need
-		// compare_at_price alongside the canonical `list_price`. WC
-		// marks this via the `on_sale` flag plus `prices.regular_price`
-		// (higher) vs `prices.price` (the active/sale value). Only
-		// emit when actually on sale so non-sale variants stay
-		// clean. `compare_at_price` is non-spec but widely understood
-		// (Shopify convention) — retained for agents rendering
-		// strike-through pricing; spec-strict consumers ignore it.
+		// Sale pricing — agents showing "was $X, now $Y" need the
+		// pre-discount amount alongside the active `price`. WC marks
+		// this via the `on_sale` flag plus `prices.regular_price`
+		// (higher) vs `prices.price` (the active/sale value). Spec
+		// names the strikethrough field `list_price` (variant.json
+		// optional). Only emit when actually on sale so non-sale
+		// variants stay clean.
 		if ( ! empty( $wc_variation['on_sale'] ) ) {
-			$compare_at = self::extract_compare_at_price( $wc_variation );
-			if ( null !== $compare_at ) {
-				$variant['compare_at_price'] = $compare_at;
+			$list_price = self::extract_list_price( $wc_variation );
+			if ( null !== $list_price ) {
+				$variant['list_price'] = $list_price;
 			}
 		}
 
@@ -215,9 +214,9 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		// (a discounted simple product has on_sale + regular_price
 		// just like a variation).
 		if ( ! empty( $wc_product['on_sale'] ) ) {
-			$compare_at = self::extract_compare_at_price( $wc_product );
-			if ( null !== $compare_at ) {
-				$variant['compare_at_price'] = $compare_at;
+			$list_price = self::extract_list_price( $wc_product );
+			if ( null !== $list_price ) {
+				$variant['list_price'] = $list_price;
 			}
 		}
 
@@ -456,14 +455,15 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	}
 
 	/**
-	 * Extract the compare-at price (the pre-sale price), or null when
-	 * the variation isn't on sale or the regular_price isn't higher.
+	 * Extract the strikethrough `list_price` (pre-discount amount), or
+	 * null when the variation isn't on sale or the regular_price isn't
+	 * higher.
 	 *
 	 * WC sale convention: `prices.price` is the currently-charged
 	 * amount (sale price when on_sale is true, regular price otherwise).
 	 * `prices.regular_price` is the "was" value. When on_sale is true
-	 * AND regular > price, we emit `compare_at_price` so agents can
-	 * render "was $X, now $Y" or compute a savings percent.
+	 * AND regular > price, we emit `list_price` so agents can render
+	 * "was $X, now $Y" or compute a savings percent.
 	 *
 	 * Defensive against data oddities: if regular_price somehow equals
 	 * or is less than price while on_sale is flagged (inconsistent
@@ -473,7 +473,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @param array<string, mixed> $wc
 	 * @return array{amount: int, currency: string}|null
 	 */
-	private static function extract_compare_at_price( array $wc ): ?array {
+	private static function extract_list_price( array $wc ): ?array {
 		$prices  = $wc['prices'] ?? [];
 		$regular = isset( $prices['regular_price'] ) ? (int) $prices['regular_price'] : 0;
 		$current = (int) ( $prices['price'] ?? 0 );
