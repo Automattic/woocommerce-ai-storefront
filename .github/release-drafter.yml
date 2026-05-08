@@ -40,15 +40,31 @@ version-resolver:
   default: patch
 
 # Categories aligned with CHANGELOG.md section headings used in this
-# repo: Features / Fixes / Refactors / Docs / Chores (see existing
-# entries under [0.11.x] for the canonical heading set). One refinement:
-# we split out a `Performance` category in the draft because the
-# release notes can be more granular than the CHANGELOG, where perf
-# work usually rolls up into Features or Refactors. Each merged PR
-# lands under whichever category matches its labels. Every label that
-# triggers a version bump (above) MUST have a corresponding category
-# here — otherwise a PR could bump the version without appearing in
-# the draft notes.
+# repo: Features / Fixes / Refactors / Tests / Docs / Chores
+# (`grep -E '^### ' CHANGELOG.md | sort -u` for the canonical set).
+#
+# Two intentional differences between this draft taxonomy and the
+# CHANGELOG sections:
+#
+#   1. We split out a `Performance` category in the draft because
+#      release notes can be more granular than the CHANGELOG, where
+#      perf work usually rolls up into Features or Refactors.
+#
+#   2. We do NOT have a `Tests` category here even though
+#      CHANGELOG.md has `### Tests`. The repo's label palette
+#      (`gh label list`) doesn't include a `tests` label, so
+#      release-drafter has no signal to auto-categorize PRs as
+#      Tests. The `### Tests` section in CHANGELOG.md gets
+#      populated manually in the same release-prep commit that
+#      bumps the version, listing test additions made alongside
+#      the feature/fix work in the release window. If we ever add
+#      a `tests` label, add a `Tests` category here and align the
+#      version-resolver patch list above.
+#
+# Each merged PR lands under whichever category matches its labels.
+# Every label that triggers a version bump (above) MUST have a
+# corresponding category here — otherwise a PR could bump the version
+# without appearing in the draft notes.
 categories:
   - title: 'Features'
     labels:
