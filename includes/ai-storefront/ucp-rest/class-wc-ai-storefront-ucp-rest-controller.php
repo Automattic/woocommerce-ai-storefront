@@ -3140,10 +3140,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Walk pages of `parent_includes=<csv>&per_page=100` until short-
 		// page sentinel. WC Store API caps per_page at 100; for the rare
 		// pages with combined-variation > 100 we paginate.
-		$all_variations = array();
-		$page           = 1;
-		$per_page       = 100;
-		$batch_failed   = false;
+		//
+		// Failure handling is per-page rather than per-batch: when page N
+		// errors we KEEP whatever we've already collected (pages 1..N-1)
+		// rather than wholesale-discarding everything. The downstream
+		// per-parent `skipped = declared - returned` math then naturally
+		// surfaces the gap for parents whose variations are missing,
+		// without punishing parents whose variations were fully captured
+		// on earlier pages. `$first_page_failed` distinguishes the
+		// degenerate case (page 1 itself fails) from partial-success
+		// cases that benefit from keeping prior data.
+		$all_variations    = array();
+		$page              = 1;
+		$per_page          = 100;
+		$first_page_failed = false;
 
 		while ( true ) {
 			$store_params = array(
@@ -3184,10 +3194,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 			if ( $store_response instanceof WP_Error ) {
 				WC_AI_Storefront_Logger::debug(
-					'UCP fetch_variations_batched: WP_Error from Store API: '
+					'UCP fetch_variations_batched: WP_Error from Store API on page '
+					. $page . ': '
 					. $store_response->get_error_message()
 				);
-				$batch_failed = true;
+				if ( 1 === $page ) {
+					$first_page_failed = true;
+				}
 				break;
 			}
 
@@ -3200,13 +3213,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						$page
 					)
 				);
-				$batch_failed = true;
+				if ( 1 === $page ) {
+					$first_page_failed = true;
+				}
 				break;
 			}
 
 			$data = $store_response->get_data();
 			if ( ! is_array( $data ) ) {
-				$batch_failed = true;
+				if ( 1 === $page ) {
+					$first_page_failed = true;
+				}
 				break;
 			}
 
@@ -3214,6 +3231,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				if ( is_array( $variation ) ) {
 					$all_variations[] = $variation;
 				}
+			}
+
+			// Empty response on a non-first page → done. Skip the extra
+			// dispatch that the short-page sentinel below would force
+			// when the previous page's count happened to land exactly
+			// at $per_page.
+			if ( empty( $data ) ) {
+				break;
 			}
 
 			// Short-page sentinel: fewer items returned than requested
@@ -3225,19 +3250,24 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			++$page;
 		}
 
-		// Build the result map. On batch failure, every variable parent
-		// gets `variations: [], skipped: total_declared` so the partial-
-		// variants warning fires for each. Use total_declared (not
-		// expected_capped) so cap overage still surfaces as skipped.
+		// Build the result map. On a degenerate page-1 failure, every
+		// variable parent gets `variations: [], skipped: total_declared`
+		// so the partial-variants warning fires for each. On partial
+		// failures (some pages succeeded, later pages errored), we
+		// preserve the page-1 data and let the per-parent
+		// `declared - returned` math naturally compute skipped — that
+		// way parents whose variations were fully captured on the first
+		// page aren't punished for a later-page failure that didn't
+		// affect them.
 		$result = array();
 		foreach ( $expected_per_parent as $parent_id => $expected_ids ) {
 			$result[ $parent_id ] = array(
 				'variations' => array(),
-				'skipped'    => $batch_failed ? $declared_per_parent[ $parent_id ] : 0,
+				'skipped'    => $first_page_failed ? $declared_per_parent[ $parent_id ] : 0,
 			);
 		}
 
-		if ( $batch_failed ) {
+		if ( $first_page_failed ) {
 			return $result;
 		}
 

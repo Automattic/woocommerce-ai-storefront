@@ -40,10 +40,19 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 	private array $canned_pages = [];
 
 	/**
-	 * If true, the `rest_do_request` stub returns WP_Error to exercise
-	 * the batch-fail degradation policy.
+	 * If true, the `rest_do_request` stub returns WP_Error on every
+	 * page. Exercises the page-1 (degenerate) failure path.
 	 */
 	private bool $force_wp_error = false;
+
+	/**
+	 * Set of page numbers (1-indexed) where the stub should return
+	 * WP_Error. Used to exercise partial-failure paths where earlier
+	 * pages succeed and a later page errors.
+	 *
+	 * @var array<int, bool>
+	 */
+	private array $wp_error_pages = [];
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -52,20 +61,22 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 		$this->captured_dispatches = [];
 		$this->canned_pages        = [];
 		$this->force_wp_error      = false;
+		$this->wp_error_pages      = [];
 
 		// Wire rest_do_request to capture + return canned pages.
 		$captured     = &$this->captured_dispatches;
 		$pages        = &$this->canned_pages;
 		$wp_error_ref = &$this->force_wp_error;
+		$error_pages  = &$this->wp_error_pages;
 		Functions\when( 'rest_do_request' )->alias(
-			static function ( WP_REST_Request $request ) use ( &$captured, &$pages, &$wp_error_ref ) {
+			static function ( WP_REST_Request $request ) use ( &$captured, &$pages, &$wp_error_ref, &$error_pages ) {
 				$captured[] = $request->get_params();
 
-				if ( $wp_error_ref ) {
+				$page = (int) $request->get_param( 'page' );
+				if ( $wp_error_ref || ! empty( $error_pages[ $page ] ) ) {
 					return new WP_Error( 'forced_error', 'Test forced WP_Error.' );
 				}
 
-				$page = (int) $request->get_param( 'page' );
 				$body = $pages[ $page ] ?? array();
 				return new WP_REST_Response( $body, 200 );
 			}
@@ -354,7 +365,10 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 	// Batch-call failure (WP_Error / 5xx)
 	// ------------------------------------------------------------------
 
-	public function test_wp_error_degrades_all_parents_to_empty_with_skipped(): void {
+	public function test_first_page_wp_error_degrades_all_parents_to_empty_with_skipped(): void {
+		// Degenerate case: page 1 itself fails. No data was captured;
+		// every variable parent must degrade to `variations: [],
+		// skipped: declared` so the partial-variants warning fires.
 		$this->force_wp_error = true;
 
 		$result = $this->call_batched(
@@ -364,11 +378,63 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 			)
 		);
 
-		$this->assertCount( 1, $this->captured_dispatches ); // tried once, WP_Error broke the loop
+		$this->assertCount( 1, $this->captured_dispatches );
 		$this->assertSame( array(), $result[35]['variations'] );
 		$this->assertSame( 3, $result[35]['skipped'] );
 		$this->assertSame( array(), $result[36]['variations'] );
 		$this->assertSame( 2, $result[36]['skipped'] );
+	}
+
+	public function test_page_n_wp_error_keeps_prior_page_data(): void {
+		// Partial-failure case: page 1 captures 100 variations
+		// successfully, page 2 errors out. Pre-fix, the entire batch
+		// degraded — punishing parents whose variations were fully
+		// returned on page 1. After the fix, prior-page data is kept
+		// and the per-parent `declared - returned` math computes
+		// skipped naturally.
+		//
+		// Setup: parents 35 and 36 each declare 50 variations (100
+		// combined), parent 37 declares 30. Page 1 returns the 100
+		// from parents 35 + 36. Page 2 should return parent 37's 30,
+		// but errors. Result: parents 35 + 36 fully captured (skipped
+		// = 0); parent 37 fully missing (skipped = 30).
+		$page_1 = array();
+		foreach ( array( 35, 36 ) as $parent_id ) {
+			for ( $i = 1; $i <= 50; $i++ ) {
+				$page_1[] = $this->variation( ( $parent_id * 1000 ) + $i, $parent_id );
+			}
+		}
+		$this->canned_pages         = array( 1 => $page_1 );
+		$this->wp_error_pages[ 2 ]  = true;
+
+		$result = $this->call_batched(
+			array(
+				$this->variable_product(
+					35,
+					array_map( static fn( int $i ): int => 35000 + $i, range( 1, 50 ) )
+				),
+				$this->variable_product(
+					36,
+					array_map( static fn( int $i ): int => 36000 + $i, range( 1, 50 ) )
+				),
+				$this->variable_product(
+					37,
+					array_map( static fn( int $i ): int => 37000 + $i, range( 1, 30 ) )
+				),
+			)
+		);
+
+		// Page 1 succeeded for 35 + 36; page 2 errored before parent 37
+		// could be returned.
+		$this->assertCount( 50, $result[35]['variations'] );
+		$this->assertSame( 0, $result[35]['skipped'] );
+		$this->assertCount( 50, $result[36]['variations'] );
+		$this->assertSame( 0, $result[36]['skipped'] );
+		// Parent 37 has no returned variations; declared 30 → skipped 30.
+		// Parents whose data was fully returned aren't punished for the
+		// later page failure — that was the regression this test guards.
+		$this->assertCount( 0, $result[37]['variations'] );
+		$this->assertSame( 30, $result[37]['skipped'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -387,8 +453,13 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 			$declared_ids[] = 1000 + $i;
 		}
 
+		// Production WC will return ALL 60 variations because
+		// `parent_includes` filters by parent_id, not by the capped
+		// expected-set. The binning step's `in_array($variation_id,
+		// $expected_ids)` guard is the only thing dropping the
+		// over-cap tail. Returning all 60 here exercises that guard.
 		$page_1 = array();
-		for ( $i = 1; $i <= 50; $i++ ) {
+		for ( $i = 1; $i <= 60; $i++ ) {
 			$page_1[] = $this->variation( 1000 + $i, 35 );
 		}
 		$this->canned_pages = array( 1 => $page_1 );
@@ -397,7 +468,15 @@ class UcpVariationBatchTest extends \PHPUnit\Framework\TestCase {
 			array( $this->variable_product( 35, $declared_ids ) )
 		);
 
+		// Only the first 50 should appear; the IDs 1051–1060 must NOT
+		// be in the returned variations (the binner dropped them).
 		$this->assertCount( 50, $result[35]['variations'] );
+		$returned_ids = array_column( $result[35]['variations'], 'id' );
+		$this->assertSame(
+			range( 1001, 1050 ),
+			$returned_ids,
+			'Cap-truncated tail (1051..1060) must be filtered out by the binner.'
+		);
 		// 10 over the cap → 10 skipped (the cap-truncated tail).
 		$this->assertSame( 10, $result[35]['skipped'] );
 	}
