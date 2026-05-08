@@ -32,8 +32,8 @@
 
 - **JSON-LD: homepage Organization type switched from `OnlineStore` to `OnlineBusiness`.** Closes #334.
   - `OnlineStore` ("an eCommerce site") was too narrow for WC's actual install base — services, subscriptions, donations, lead-gen, and digital-download stores all emit the same homepage block. `OnlineBusiness` is the parent type in the Schema.org hierarchy (`Thing → Organization → OnlineBusiness → OnlineStore`) and accurately describes any WC merchant doing business online without claiming product retail.
-  - All existing properties (`name`, `description`, `url`, `currenciesAccepted`, `potentialAction`, `hasOfferCatalog`, `logo`, `address`, `contactPoint`) carry over via Schema.org subclass inheritance — no inherited field requires removal.
-  - `currenciesAccepted` continues to emit. Schema.org defines it on the `OnlineStore` subtype, but it's valid on the `OnlineBusiness` parent via subclass inheritance. Validators may emit a non-fatal warning for the type/property pairing — accepted tradeoff (stripping a meaningful machine-readable signal would be a regression).
+  - All previously-emitted properties except `currenciesAccepted` (`name`, `description`, `url`, `potentialAction`, `hasOfferCatalog`, `logo`, `address`, `contactPoint`) are defined on `Organization` (or `Thing`) and apply cleanly to `OnlineBusiness` via standard parent-to-child inheritance — no field requires removal.
+  - `currenciesAccepted` continues to emit despite Schema.org defining it on the `OnlineStore` subtype, not on the `OnlineBusiness` parent. (Schema.org property inheritance flows parent → child only — a property scoped to a subtype is NOT picked up by its parent.) The decision is an intentional non-domain pairing: most consumers parse `currenciesAccepted` regardless of the enclosing type, and stripping a meaningful machine-readable currency signal would be a regression. Strict validators may emit a non-fatal "unrecognized property for this type" warning — accepted tradeoff.
   - Homepage `OnlineBusiness` block now also emits `knowsAbout` as a Text array of the store's top product category names, sourced from the existing `get_catalog_summary()` 1-hour transient — no new query, no new cache. Omitted when the catalog is empty.
 
 - **JSON-LD: homepage `OnlineBusiness` block now emits `hasMerchantReturnPolicy` at Organization level.** Phase 1 of #337.
@@ -45,7 +45,7 @@
 
 ### Refactors
 
-- **`build_return_policy_block()` visibility promoted from `private` to `protected`.** Enables the new Org-level `hasMerchantReturnPolicy` call site in `output_store_jsonld()` to reuse the same builder as the existing per-Offer emission, so both call sites produce identical block shapes for the same configuration. Also unlocks anonymous-subclass test seams (same pattern used for `build_postal_address()`). Zero behavior change — visibility-only refactor.
+- **`build_return_policy_block()` visibility promoted from `private` to `protected`.** Both call sites are in the same class and could call a `private` method directly — `protected` doesn't change that. The promotion exists to unlock anonymous-subclass test seams (same pattern used for `build_postal_address()`), specifically the new `test_org_level_and_per_offer_return_policy_blocks_are_identical_for_same_config` regression guard that exposes the builder as public via inline subclass to assert the shared-shape contract. Zero behavior change — visibility-only refactor. Both call sites (Org-level in `output_store_jsonld()` and per-Offer in `add_return_policy()`) reuse the shared builder so they produce identical block shapes for the same configuration.
 
 ### Tests
 

@@ -1441,16 +1441,23 @@ class WC_AI_Storefront_JsonLd {
 	 * Schema.org parent in `Thing → Organization → OnlineBusiness →
 	 * OnlineStore` and accurately describes any WC merchant doing
 	 * business online without claiming product retail. All previously-
-	 * emitted properties (`name`, `description`, `url`,
-	 * `currenciesAccepted`, `potentialAction`, `hasOfferCatalog`,
-	 * identity fields) carry over via Schema.org subclass inheritance.
+	 * emitted properties — `name`, `description`, `url`,
+	 * `potentialAction`, `hasOfferCatalog`, identity fields — are
+	 * defined on `Organization` (or `Thing`) and apply cleanly to
+	 * `OnlineBusiness` via standard parent-to-child inheritance.
 	 *
 	 * Caveat: `currenciesAccepted` is defined on `OnlineStore` per the
-	 * Schema.org spec, not the `OnlineBusiness` parent. We continue to
-	 * emit it because the type-hierarchy inheritance makes it valid on
-	 * any subtype's parent, and stripping a meaningful machine-readable
-	 * signal would be a regression. Validators may emit a non-fatal
-	 * warning for the type/property pairing — accepted tradeoff.
+	 * Schema.org spec — not on the `OnlineBusiness` parent. (Schema.org
+	 * inheritance flows parent → child only; a property scoped to a
+	 * subtype is NOT inherited "upward" by its parent.) We continue to
+	 * emit `currenciesAccepted` despite the domain mismatch because:
+	 * (1) it carries meaningful machine-readable signal that AI agents
+	 * and search consumers parse for currency context regardless of
+	 * the enclosing type, and (2) most consumers tolerate the pairing
+	 * even when strict validators flag a non-fatal "unrecognized
+	 * property for this type" warning. This is an accepted intentional
+	 * non-domain pairing — stripping the signal to silence a warning
+	 * would be a regression.
 	 *
 	 * `knowsAbout` (the array of top product category names) emits
 	 * after the base shape and before the identity merge. It reuses
@@ -1489,7 +1496,20 @@ class WC_AI_Storefront_JsonLd {
 		// call was inlined inside the array literal; the refactor
 		// keeps both call sites pointed at one cache hit per page
 		// render.
+		//
+		// `is_array()` normalization at the source: `get_catalog_summary()`
+		// returns the raw transient value via `get_transient()`, which
+		// can in principle hand back a non-array if the cache was
+		// corrupted by external code or a stale value from a prior
+		// schema. Funneling a scalar through to either consumer would
+		// emit invalid Schema.org shape — `hasOfferCatalog.itemListElement`
+		// expects an array of OfferCatalog entries, and `array_column()`
+		// for `knowsAbout` would TypeError under PHP 8.1+. Coerce to
+		// `array()` at the source so all downstream consumers are safe.
 		$catalog = $this->get_catalog_summary();
+		if ( ! is_array( $catalog ) ) {
+			$catalog = array();
+		}
 
 		$store_data = array(
 			'@context'           => 'https://schema.org',
@@ -1528,15 +1548,9 @@ class WC_AI_Storefront_JsonLd {
 		// composition. Omitted when the catalog is empty (or when
 		// `get_catalog_summary()` returned an error WP_Error and
 		// resolved to []) — no point claiming the org "knows about"
-		// nothing.
-		//
-		// `is_array()` is a defensive guard: `get_catalog_summary()`
-		// returns the raw transient value via `get_transient()`, which
-		// can in principle hand back a non-array if the cache was
-		// corrupted by external code or a stale value from a prior
-		// schema. `array_column()` would TypeError on a non-array
-		// input under PHP 8.1+, so check the type before calling it.
-		if ( is_array( $catalog ) && ! empty( $catalog ) ) {
+		// nothing. The `is_array()` normalization above guarantees
+		// `array_column()` is type-safe here.
+		if ( ! empty( $catalog ) ) {
 			$store_data['knowsAbout'] = array_column( $catalog, 'name' );
 		}
 
