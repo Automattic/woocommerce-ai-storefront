@@ -288,8 +288,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'options', $result );
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Blue' ],
-				[ 'attribute' => 'Size', 'value' => 'Medium' ],
+				[ 'name' => 'Color', 'label' => 'Blue' ],
+				[ 'name' => 'Size', 'label' => 'Medium' ],
 			],
 			$result['options']
 		);
@@ -327,8 +327,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
 
 		$this->assertCount( 2, $result['options'] );
-		$this->assertSame( 'Color', $result['options'][0]['attribute'] );
-		$this->assertSame( 'Size', $result['options'][1]['attribute'] );
+		$this->assertSame( 'Color', $result['options'][0]['name'] );
+		$this->assertSame( 'Size', $result['options'][1]['name'] );
 	}
 
 	public function test_translate_emits_list_price_when_on_sale(): void {
@@ -759,8 +759,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'options', $result );
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Tan' ],
-				[ 'attribute' => 'Size', 'value' => '9' ],
+				[ 'name' => 'Color', 'label' => 'Tan' ],
+				[ 'name' => 'Size', 'label' => '9' ],
 			],
 			$result['options']
 		);
@@ -794,8 +794,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Tan' ],
-				[ 'attribute' => 'Size', 'value' => '9' ],
+				[ 'name' => 'Color', 'label' => 'Tan' ],
+				[ 'name' => 'Size', 'label' => '9' ],
 			],
 			$result['options']
 		);
@@ -818,8 +818,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Red, White' ],
-				[ 'attribute' => 'Size', 'value' => 'M' ],
+				[ 'name' => 'Color', 'label' => 'Red, White' ],
+				[ 'name' => 'Size', 'label' => 'M' ],
 			],
 			$result['options']
 		);
@@ -839,8 +839,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Tan' ],
-				[ 'attribute' => 'Size (cm)', 'value' => '25' ],
+				[ 'name' => 'Color', 'label' => 'Tan' ],
+				[ 'name' => 'Size (cm)', 'label' => '25' ],
 			],
 			$result['options']
 		);
@@ -881,7 +881,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( '0', $result['title'] );
 		$this->assertSame(
-			[ [ 'attribute' => 'Size', 'value' => '0' ] ],
+			[ [ 'name' => 'Size', 'label' => '0' ] ],
 			$result['options']
 		);
 	}
@@ -909,7 +909,7 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 'Leather', $result['title'] );
 		$this->assertSame(
-			[ [ 'attribute' => 'Material', 'value' => 'Leather' ] ],
+			[ [ 'name' => 'Material', 'label' => 'Leather' ] ],
 			$result['options']
 		);
 	}
@@ -939,8 +939,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Tan / 9', $result['title'] );
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Tan' ],
-				[ 'attribute' => 'Size', 'value' => '9' ],
+				[ 'name' => 'Color', 'label' => 'Tan' ],
+				[ 'name' => 'Size', 'label' => '9' ],
 			],
 			$result['options']
 		);
@@ -965,8 +965,8 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Black / 10', $result['title'] );
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Black' ],
-				[ 'attribute' => 'Size', 'value' => '10' ],
+				[ 'name' => 'Color', 'label' => 'Black' ],
+				[ 'name' => 'Size', 'label' => '10' ],
 			],
 			$result['options']
 		);

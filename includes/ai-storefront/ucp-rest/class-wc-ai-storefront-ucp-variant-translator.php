@@ -102,11 +102,11 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			'price'       => self::extract_price( $wc_variation ),
 		];
 
-		// Structured options — the {attribute, value} pairs that
+		// Structured options — the {name, label} pairs that
 		// distinguish this variant from siblings (e.g. "Color: Blue,
 		// Size: M"). Already implied by `title` for human display, but
 		// agents that want to filter or match by attribute need them
-		// structured. UCP v2026-04-08 variant schema carries
+		// structured. UCP v2026-04-08 `selected_option.json` carries
 		// `options` exactly for this.
 		$options = self::extract_options( $wc_variation, $pre_parsed_pairs );
 		if ( ! empty( $options ) ) {
@@ -516,8 +516,10 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @param array<string, mixed>                                            $wc_variation
 	 * @param array<int, array{attribute: string, value: string}>|null        $pre_parsed_pairs
 	 *        Pairs already parsed from the variation string by `translate()`,
-	 *        or null if the array path is the live one.
-	 * @return array<int, array{attribute: string, value: string}>
+	 *        or null if the array path is the live one. Parser uses the
+	 *        internal `{attribute, value}` shape; this method renames to
+	 *        the spec's `{name, label}` shape on emission.
+	 * @return array<int, array{name: string, label: string}>
 	 */
 	private static function extract_options(
 		array $wc_variation,
@@ -542,8 +544,8 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				if ( '' === $value ) {
 					continue;
 				}
-				// Skip entries missing a human-readable label. Emitting
-				// `{attribute: "", value: "Blue"}` conveys no option axis
+				// Skip entries missing a human-readable axis name. Emitting
+				// `{name: "", label: "Blue"}` conveys no option axis
 				// to the agent — worse than dropping the entry because it
 				// pollutes the options list with an unlabeled row that
 				// can't be filtered or displayed meaningfully. Parallel to
@@ -553,8 +555,8 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 					continue;
 				}
 				$options[] = [
-					'attribute' => $label,
-					'value'     => $value,
+					'name'  => $label,
+					'label' => $value,
 				];
 			}
 		}
@@ -569,8 +571,8 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 
 		foreach ( $pre_parsed_pairs as $pair ) {
 			$options[] = [
-				'attribute' => $pair['attribute'],
-				'value'     => $pair['value'],
+				'name'  => $pair['attribute'],
+				'label' => $pair['value'],
 			];
 		}
 

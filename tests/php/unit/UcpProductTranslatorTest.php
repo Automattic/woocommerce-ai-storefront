@@ -903,15 +903,15 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Black / 8', $result['variants'][1]['title'] );
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Tan' ],
-				[ 'attribute' => 'Size', 'value' => '9' ],
+				[ 'name' => 'Color', 'label' => 'Tan' ],
+				[ 'name' => 'Size', 'label' => '9' ],
 			],
 			$result['variants'][0]['options']
 		);
 		$this->assertSame(
 			[
-				[ 'attribute' => 'Color', 'value' => 'Black' ],
-				[ 'attribute' => 'Size', 'value' => '8' ],
+				[ 'name' => 'Color', 'label' => 'Black' ],
+				[ 'name' => 'Size', 'label' => '8' ],
 			],
 			$result['variants'][1]['options']
 		);
