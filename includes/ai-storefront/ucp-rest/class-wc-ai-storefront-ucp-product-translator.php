@@ -258,12 +258,21 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			// axis names, so this is O(parent.attributes), not
 			// O(variations × attributes).
 			$parent_attribute_names = self::extract_parent_attribute_names( $wc_product );
-			$variants               = array();
+
+			// Term-slug map for `selected_option.id` enrichment (issue
+			// #350). Pre-built once per product from
+			// `attributes[].terms[].{name,slug}` and threaded down to
+			// every variation. Pure-function contract preserved — same
+			// pattern as `parent_attribute_names`.
+			$term_slug_map = self::build_term_slug_map( $wc_product );
+
+			$variants = array();
 			foreach ( $wc_variations as $wc_variation ) {
 				$variants[] = WC_AI_Storefront_UCP_Variant_Translator::translate(
 					$wc_variation,
 					$parent_attribute_names,
-					$seller
+					$seller,
+					$term_slug_map
 				);
 			}
 			return $variants;
@@ -272,6 +281,83 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		return array(
 			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product, $seller ),
 		);
+	}
+
+	/**
+	 * Build the per-axis term-slug lookup map for `selected_option.id`
+	 * emission on each variant.
+	 *
+	 * Shape: `[axis_label => [value_label => slug, '__tax__' => taxonomy]]`.
+	 * Example for a Color/Size product:
+	 *
+	 *   [
+	 *     'Color' => [
+	 *       'Black'  => 'black',
+	 *       'Green'  => 'green',
+	 *       '__tax__' => 'pa_color',
+	 *     ],
+	 *     'Size'  => [
+	 *       'M' => 'm',
+	 *       'L' => 'l',
+	 *       '__tax__' => 'pa_size',
+	 *     ],
+	 *   ]
+	 *
+	 * Only included when the attribute taxonomy starts with `pa_` (i.e.
+	 * a real WC taxonomy with stable slugs). Custom inline attributes
+	 * are excluded — they have no canonical identifier, so the variant
+	 * translator omits `selected_option.id` for them per spec.
+	 *
+	 * The `__tax__` sentinel key is consumed by the variant translator's
+	 * `lookup_option_value_id()` helper to compose the spec-format
+	 * `<taxonomy>:<slug>` id string. The sentinel is illegal as a real
+	 * value label (term names cannot start/end with `__`); using a
+	 * label-namespace sentinel avoids adding a parallel data structure.
+	 *
+	 * @param array<string, mixed> $wc_product
+	 * @return array<string, array<string, string>>
+	 */
+	private static function build_term_slug_map( array $wc_product ): array {
+		$attributes = $wc_product['attributes'] ?? [];
+		if ( ! is_array( $attributes ) ) {
+			return [];
+		}
+
+		$map = [];
+		foreach ( $attributes as $attribute ) {
+			if ( ! is_array( $attribute ) ) {
+				continue;
+			}
+			$axis_label = (string) ( $attribute['name'] ?? '' );
+			$taxonomy   = (string) ( $attribute['taxonomy'] ?? '' );
+			$terms      = $attribute['terms'] ?? [];
+			if ( '' === $axis_label || '' === $taxonomy || ! str_starts_with( $taxonomy, 'pa_' ) ) {
+				continue;
+			}
+			if ( ! is_array( $terms ) || empty( $terms ) ) {
+				continue;
+			}
+
+			$entry = [ '__tax__' => $taxonomy ];
+			foreach ( $terms as $term ) {
+				if ( ! is_array( $term ) ) {
+					continue;
+				}
+				$name = (string) ( $term['name'] ?? '' );
+				$slug = (string) ( $term['slug'] ?? '' );
+				if ( '' === $name || '' === $slug ) {
+					continue;
+				}
+				$entry[ $name ] = $slug;
+			}
+
+			// Skip axes whose terms all lacked usable name/slug pairs;
+			// the bare `__tax__` entry alone has no value.
+			if ( count( $entry ) > 1 ) {
+				$map[ $axis_label ] = $entry;
+			}
+		}
+		return $map;
 	}
 
 	/**
@@ -732,7 +818,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * product contributes nothing to the agent-facing payload.
 	 *
 	 * @param array<string, mixed> $wc_product
-	 * @return array{options: array<int, array{name: string, values: array<int, array{label: string}>}>, metadata_attributes: array<int, array{name: string, values: array<int, array{label: string}>}>}
+	 * @return array{options: array<int, array{name: string, values: array<int, array{label: string, id?: string}>}>, metadata_attributes: array<int, array{name: string, values: array<int, array{label: string, id?: string}>}>}
 	 */
 	private static function extract_classified_attributes( array $wc_product ): array {
 		$attributes = $wc_product['attributes'] ?? [];
@@ -751,22 +837,42 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				continue;
 			}
 
-			$name  = (string) ( $attribute['name'] ?? '' );
-			$terms = $attribute['terms'] ?? [];
+			$name     = (string) ( $attribute['name'] ?? '' );
+			$taxonomy = (string) ( $attribute['taxonomy'] ?? '' );
+			$terms    = $attribute['terms'] ?? [];
 			if ( '' === $name || ! is_array( $terms ) || empty( $terms ) ) {
 				continue;
 			}
 
-			// Per `option_value.json` (UCP 2026-04-08), `values[]` items
-			// must be objects with a required `label` field, not bare
-			// strings. We don't yet emit the optional `id` field —
-			// that's deferred to issue #350 where it pairs with
-			// `selected_option.id` for stable cross-locale matching.
+			// Per `option_value.json` (UCP 2026-04-08): required `label`,
+			// optional `id`. We emit `id` only for taxonomy-backed
+			// attributes (slug starts with `pa_`) where each term has
+			// a stable URL-safe slug. Custom inline attributes have no
+			// taxonomy registration and no canonical identifier — omit
+			// `id` for them per the spec's optional-field semantics.
+			//
+			// `id` format: `<taxonomy>:<slug>` (e.g. `pa_color:black`).
+			// Colon separator is unambiguous because both halves are
+			// URL-safe / hyphen-delimited and never contain colons.
+			// Agents can echo the `id` back via `selected_option.id`
+			// for stable cross-locale variant matching (UCP 2026-04-08
+			// `selected_option.id` semantics: "server SHOULD use it for
+			// matching; name and label remain required for display").
+			$is_taxonomy = '' !== $taxonomy && str_starts_with( $taxonomy, 'pa_' );
+
 			$values = [];
 			foreach ( $terms as $term ) {
-				if ( is_array( $term ) && ! empty( $term['name'] ) ) {
-					$values[] = [ 'label' => (string) $term['name'] ];
+				if ( ! is_array( $term ) || empty( $term['name'] ) ) {
+					continue;
 				}
+				$value = [ 'label' => (string) $term['name'] ];
+				if ( $is_taxonomy ) {
+					$slug = $term['slug'] ?? '';
+					if ( is_string( $slug ) && '' !== $slug ) {
+						$value['id'] = $taxonomy . ':' . $slug;
+					}
+				}
+				$values[] = $value;
 			}
 			if ( empty( $values ) ) {
 				continue;
