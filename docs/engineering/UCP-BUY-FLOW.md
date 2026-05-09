@@ -67,7 +67,12 @@ The deterministic-bundle row's top-level `quantity=<N>` is the agent's bundle li
 
 Mixed/multi bundle or grouped carts produce `status: incomplete` with **one `field_required` error per offending container line item** (JSONPath-attributed to `$.line_items[N]`, `severity: recoverable`) and **no `continue_url`** — agents must split the cart into per-line `/checkout-sessions` requests.
 
-The table above is specifically about *continue_url routing when a redirect is possible*. Other validation failures — `out_of_stock`, `minimum_not_met`, malformed `line_items` shape, unrecognized ID grammar — also produce `status: incomplete` with no `continue_url`, with the specific failure surfaced as a `messages[].code` entry. See [`API-REFERENCE.md`](API-REFERENCE.md) for the full error-code catalog.
+The table above is specifically about *continue_url routing when a redirect is possible*. Other validation outcomes split into two categories:
+
+- **Per-line-item failures** (`out_of_stock`, unknown product IDs, malformed ID grammar, etc.) drop the failing line from `line_items` but don't necessarily block the redirect — when at least one line survives, the response is still `201 requires_escalation` + `continue_url` covering the survivors, with the failures surfaced as `messages[].code` entries. Only when *no* line survives does the response fall back to `incomplete`.
+- **Cart-level failures** (`minimum_not_met`, mixed/multi container carts, malformed top-level shape) block the redirect outright: `status: incomplete`, no `continue_url`.
+
+See [`API-REFERENCE.md`](API-REFERENCE.md) for the full error-code catalog and partial-validation semantics.
 
 WC Order Attribution captures `utm_source` / `utm_medium` natively. The plugin's STRICT recognition gate matches on `utm_id=woo_ucp` (the "we routed this" flag), so attribution lands regardless of which `utm_source` value the agent declares.
 
