@@ -1464,6 +1464,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			}
 
 			$pid = (int) ( $item['product_id'] ?? 0 );
+			// Bundle item without a real `product_id` is malformed —
+			// can't classify, can't fetch. Treat as a deterministic
+			// disqualifier rather than wasting a `fetch_store_api_product(0)`
+			// call (which would emit `out-of-scope`-gate debug noise
+			// and return null anyway).
+			if ( $pid <= 0 ) {
+				return null;
+			}
+
 			$qty = (int) ( $item['quantity_default'] ?? 1 );
 			if ( $qty < 1 ) {
 				$qty = 1;
