@@ -2847,8 +2847,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// one that rewrites the continue_url filter specifically; other
 		// filters keep their pass-through default by returning the
 		// original $value (third arg of apply_filters' calling shape).
+		// Variadic tail so the alias accepts whatever extra args
+		// `apply_filters()` passes to the hook (the continue_url
+		// filter passes `$processed` as a third arg). Without it,
+		// strict-mode environments may reject the extra positional
+		// args — and even where PHP itself is lenient, the explicit
+		// signature matches the `apply_filters( $hook, $value, ...$args )`
+		// shape WP core uses.
 		Functions\when( 'apply_filters' )->alias(
-			static function ( string $hook, $value ) {
+			static function ( string $hook, $value, ...$args ) {
 				if ( 'wc_ai_storefront_ucp_continue_url' === $hook ) {
 					return 'https://example.com/filtered/?from=bundle';
 				}
