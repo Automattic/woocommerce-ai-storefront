@@ -37,8 +37,12 @@ Agent maintains `line_items[]` in its conversation memory across turns. When the
 ```
 Agent maintains line_items[] in chat context
 Agent → POST /checkout-sessions { line_items: [{ item: { id }, quantity }, ...] } → continue_url
-Buyer clicks Buy → /checkout-link/?products=42:1,99:1&utm_*
-WC populates cart from URL → WC checkout
+Buyer clicks Buy → continue_url (one of):
+  /checkout-link/?products=42:1,99:1&utm_*           # simple/variation cart
+  /checkout/?add-to-cart=900&quantity=1&bundle_*=…   # deterministic bundle
+  /checkout/?add-to-cart=600&quantity[601]=1&…       # deterministic grouped
+  /product/widget-bundle/?utm_*                      # configurable bundle/grouped (PDP)
+WC populates cart (or buyer configures on PDP) → WC checkout
 ```
 
 | Cart state lives in | Agent's chat memory (transient) + the URL itself (encoded). Plugin holds nothing. |
