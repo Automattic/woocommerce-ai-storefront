@@ -33,20 +33,6 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	const PRODUCT_ID_PREFIX = 'prod_';
 
 	/**
-	 * Schema.org reserved variant attributes.
-	 *
-	 * These four names are the only WC attributes on a simple product that
-	 * signal "this product should be a variable product" — they map directly
-	 * to schema.org/Product variant properties (color, size, pattern, material).
-	 * When a simple product carries any of them, we promote the product to a
-	 * single-member product group so the UCP shape is consistent.
-	 *
-	 * Comparison is case-insensitive — see the `strtolower(...)`/`in_array(...)`
-	 * check inside `translate()` where this list is consumed.
-	 */
-	const SCHEMA_VARIANT_ATTRIBUTES = [ 'color', 'size', 'pattern', 'material' ];
-
-	/**
 	 * Translate a single WC Store API product response into a UCP product.
 	 *
 	 * Variant expansion is caller-driven. The translator stays a pure
@@ -222,81 +208,34 @@ class WC_AI_Storefront_UCP_Product_Translator {
 
 		// Attributes split:
 		//
-		//   - `options[]` — variation axes. Identified by `has_variations:
-		//      true` on variable products. On simple products, the four
-		//      schema.org reserved variant attributes (Color, Size, Pattern,
-		//      Material) are also promoted here when present — they signal
-		//      "this product should be variable" regardless of how the
-		//      merchant configured WC. Keeps the product-group shape
-		//      consistent for agents.
+		//   - `options[]` — selectable variation axes per UCP `product_option.json`
+		//     ("Options represent buyer-selectable attributes only, not
+		//     descriptive properties"). Identified by `has_variations: true`
+		//     on the WC attribute, which is set automatically by WC on
+		//     variable products. Non-variable products (simple, bundle,
+		//     grouped) by definition have no selectable axes and emit no
+		//     `options[]` — even when they carry Color/Size/Pattern/Material
+		//     attributes, those are descriptive metadata about the single
+		//     purchasable SKU, not buyer choices.
 		//   - `metadata.attributes` — everything else: informational facts
-		//      like Fabric Weight or Origin that don't narrow variant
-		//      selection.
+		//      (Fabric Weight, Origin, descriptive Color, etc.) that apply
+		//      to the product as a whole.
 		$classified = self::extract_classified_attributes( $wc_product );
-		// Promote metadata_attributes to options[] only when the product
-		// has no true variation axes (has_variations:true). A simple product
-		// with e.g. Color=White, Size=L should look like a single-member
-		// product group. Variable products (any has_variations:true axis)
-		// leave metadata_attributes in metadata — those are informational
-		// facts that apply across all variants, not selection axes.
-		$has_variation_axes = ! empty( $classified['options'] );
-		// On simple products (no has_variations:true axis), promote only the
-		// four schema.org reserved variant attributes — Color, Size, Pattern,
-		// Material — to options[]. These are the only names that signal
-		// "this product should be variable". Informational attributes like
-		// Fabric Weight or Origin stay in metadata regardless.
-		$promote_to_options = [];
-		if ( ! $has_variation_axes ) {
-			foreach ( $classified['metadata_attributes'] as $attr ) {
-				if ( in_array( strtolower( $attr['name'] ?? '' ), self::SCHEMA_VARIANT_ATTRIBUTES, true ) ) {
-					// Trim to the first non-empty value so product.options[].values[]
-					// matches the one concrete combination on the synthesized variant.
-					$first_value = null;
-					foreach ( $attr['values'] ?? [] as $v ) {
-						if ( '' !== (string) ( $v['label'] ?? '' ) ) {
-							$first_value = $v;
-							break;
-						}
-					}
-					if ( null !== $first_value ) {
-						$promote_to_options[] = [
-							'name'   => $attr['name'],
-							'values' => [ $first_value ],
-						];
-					}
-				}
-			}
-		}
 
-		// `variants` must come after attribute classification so that the
-		// promoted options can be threaded into synthesize_default().
-		$product['variants'] = self::extract_variants( $wc_product, $wc_variations, $seller, $promote_to_options );
+		$product['variants'] = self::extract_variants( $wc_product, $wc_variations, $seller );
 
 		if ( ! empty( $classified['options'] ) ) {
 			$product['options'] = $classified['options'];
-		} elseif ( ! empty( $promote_to_options ) ) {
-			// Simple product whose attributes all have has_variations:false —
-			// promote them to options[] so the product looks like a single-
-			// member product group. The synthesized default variant carries
-			// matching options[] entries (see extract_variants / synthesize_default).
-			$product['options'] = $promote_to_options;
 		}
 
-		// metadata.attributes: attributes that were NOT promoted to options[].
-		// On variable products: the non-axis (has_variations:false) attributes.
-		// On simple products: whatever didn't match SCHEMA_VARIANT_ATTRIBUTES.
-		$promoted_names    = array_map( static fn( $a ) => $a['name'], $promote_to_options );
-		$residual_metadata = $has_variation_axes
-			? $classified['metadata_attributes']
-			: array_values(
-				array_filter(
-					$classified['metadata_attributes'],
-					static fn( $a ) => ! in_array( $a['name'], $promoted_names, true )
-				)
-			);
-		$metadata          = [];
-		if ( ! empty( $residual_metadata ) ) {
-			$metadata['attributes'] = $residual_metadata;
+		// metadata.attributes carries everything that wasn't a selectable
+		// `options[]` axis — both descriptive attributes on variable
+		// products (Fabric Weight applying across all variants) and ALL
+		// attributes on non-variable products (simple/bundle/grouped),
+		// since those have no buyer-selectable axes by definition.
+		$metadata = [];
+		if ( ! empty( $classified['metadata_attributes'] ) ) {
+			$metadata['attributes'] = $classified['metadata_attributes'];
 		}
 		// Bundle structure under `metadata.bundle` (issue #358). Lets agents
 		// describe the bundle accurately and gives them the data needed to
@@ -361,14 +300,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @param array<string, mixed>             $wc_product    Decoded Store API response.
 	 * @param array<int, array<string, mixed>> $wc_variations Pre-fetched variation responses.
 	 * @param array<string, mixed>|null        $seller        Seller block threaded to each variant.
-	 * @param array<int, array<string, mixed>> $simple_options Promoted options for synthesized default.
 	 * @return array<int, array<string, mixed>>
 	 */
 	private static function extract_variants(
 		array $wc_product,
 		array $wc_variations,
-		?array $seller = null,
-		array $simple_options = []
+		?array $seller = null
 	): array {
 		if ( ! empty( $wc_variations ) ) {
 			// The variant translator can't read parent product data on
@@ -403,7 +340,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		}
 
 		return array(
-			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product, $seller, $simple_options ),
+			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product, $seller ),
 		);
 	}
 

@@ -229,26 +229,31 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	}
 
 	/**
-	 * Synthesize a default variant for a simple (non-variable) product.
+	 * Synthesize a default variant for a non-variable product (simple,
+	 * bundle, grouped, or any product where `extract_variants()` falls
+	 * back to this path).
 	 *
-	 * Simple WC products don't have variations, but UCP's schema requires
-	 * every product to emit `variants[]` with minItems 1. We satisfy that
-	 * by emitting one variant representing the product itself: same price,
-	 * same availability, id suffixed with `_default` so it's distinguishable
-	 * from a real variation.
+	 * UCP's schema requires every product to emit `variants[]` with
+	 * minItems: 1. Non-variable WC products have no variations to expand,
+	 * so we emit one variant representing the product itself: same price,
+	 * same availability, id suffixed with `_default` so it's
+	 * distinguishable from a real variation.
 	 *
-	 * @param array<string, mixed>      $wc_product     Decoded Store API response.
-	 * @param array<string, mixed>|null $seller         Seller block to attach as
-	 *                                                  `variant.seller`. See `translate()`.
-	 * @param array<int, array<string, mixed>> $simple_options Schema.org variant attributes
-	 *                                                  promoted from the parent simple product;
-	 *                                                  emitted as `options[]` on the variant.
-	 * @return array<string, mixed>                     UCP variant shape.
+	 * No `selected_option` is emitted. UCP `product_option.json` defines
+	 * options as buyer-selectable attribute axes, and a non-variable WC
+	 * product (one product ID, one SKU, one inventory pool) has no
+	 * selection to lock in. Descriptive attributes — including the
+	 * schema.org reserved Color/Size/Pattern/Material — live in the
+	 * parent product's `metadata.attributes` instead.
+	 *
+	 * @param array<string, mixed>      $wc_product Decoded Store API response.
+	 * @param array<string, mixed>|null $seller     Seller block to attach as
+	 *                                              `variant.seller`. See `translate()`.
+	 * @return array<string, mixed>                 UCP variant shape.
 	 */
 	public static function synthesize_default(
 		array $wc_product,
-		?array $seller = null,
-		array $simple_options = []
+		?array $seller = null
 	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
@@ -259,43 +264,6 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			// `price` — UCP-required active price. See translate() above.
 			'price'       => self::extract_price( $wc_product ),
 		];
-
-		// Simple products with attributes (e.g. Color=White, Size=L) are
-		// promoted to a single-member product group. The concrete option
-		// selections are emitted here so the variant fully describes the
-		// one purchasable combination — each entry is a flat `{name, label}`
-		// derived from the attribute name and its first term value.
-		if ( ! empty( $simple_options ) ) {
-			$options = [];
-			foreach ( $simple_options as $axis ) {
-				$name = (string) ( $axis['name'] ?? '' );
-				if ( '' === $name ) {
-					continue;
-				}
-				// A simple product represents exactly one concrete combination.
-				// Take only the first term value — the one WC associates with
-				// this product. Multi-value axes on a simple product are a WC
-				// data-quality issue; emitting all values would misrepresent
-				// the single purchasable item as a multi-selection.
-				foreach ( $axis['values'] ?? [] as $value ) {
-					$label = (string) ( $value['label'] ?? '' );
-					if ( '' !== $label ) {
-						$option = [
-							'name'  => $name,
-							'label' => $label,
-						];
-						if ( isset( $value['id'] ) ) {
-							$option['id'] = $value['id'];
-						}
-						$options[] = $option;
-						break;
-					}
-				}
-			}
-			if ( ! empty( $options ) ) {
-				$variant['options'] = $options;
-			}
-		}
 
 		// Sale pricing carries through the simple-product path too
 		// (a discounted simple product has on_sale + regular_price

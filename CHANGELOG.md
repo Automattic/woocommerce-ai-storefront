@@ -18,6 +18,15 @@
   - **Threading:** `process_line_item()` records `grouped_url_query` on each `$processed` entry alongside the existing `bundle_url_query`. `build_continue_url()` reads both to branch (bundle → grouped → checkout-link fallback).
 
 ### Fixes
+
+- **UCP: revert simple-product reserved-attribute promotion (#356).** Closes UCP Playground feedback "Issue C."
+  - **What changed:** simple, bundle, and grouped products with Color / Size / Pattern / Material attributes (the four schema.org reserved variant names) now emit those attributes in `metadata.attributes` instead of `product.options[]`. The synthesized default variant carries no `selected_option`. Variable products are unaffected — their `has_variations: true` axes still emit `options[]` legitimately.
+  - **Why:** UCP `product_option.json` defines `options[]` as buyer-selectable attribute axes ("Options represent buyer-selectable attributes only, not descriptive properties"). A non-variable WC product has one product ID, one SKU, one inventory pool — there is no buyer selection to make. The picker an agent renders for a single-value `options[]` axis is theatrical at best and dishonest at worst.
+  - **Concrete bug fixed:** the `$promote_to_options` block silently dropped values 2..N from multi-value reserved attributes. Production prod_24 (T-Shirt) was emitting `Color: [Beige]` and `Size: [XS]` to agents despite the merchant having declared `[Beige, Blue, Gray]` and `[XS, S, M, L, XL, XXL]`. Demoting to `metadata.attributes` emits all values without truncation.
+  - **Schema.org alignment:** schema.org's `Product` accepts `color`, `size`, `material`, `pattern` as descriptive properties without requiring `ProductGroup`. The promotion was overreach.
+  - **HTML entity decoding from #356 is preserved** — the `decode()` helper at every `name` read site stays in place. Only the simple-product → product-group promotion is reverted.
+- **`SCHEMA_VARIANT_ATTRIBUTES` constant removed** from the product translator (no longer load-bearing — kept tightly associated with the promotion logic that's now gone).
+
 ### Refactors
 
 ### Tests
