@@ -235,8 +235,8 @@ The continue_url's UTM payload (`utm_source`, `utm_medium=referral`, `utm_id=woo
 
 Other in-cart error codes the response may carry:
 
-- `out_of_stock` — **per-line-item** rejection. The OOS line is dropped from `line_items` and surfaced as a `messages[]` entry; the overall response can still be `201 requires_escalation` + `continue_url` when other lines validate. Only when *no* lines validate does the response collapse to `200 incomplete`.
-- `minimum_not_met` — **cart-level** rejection. Even when all lines validate individually, a surviving subtotal below the merchant minimum forces `status: incomplete` with no `continue_url`.
+- `out_of_stock` — **per-line-item** rejection (`severity: unrecoverable`, the default from `checkout_error_message()`). The OOS line is dropped from `line_items` and surfaced as a `messages[]` entry; the overall response can still be `201 requires_escalation` + `continue_url` when other lines validate. Only when *no* lines validate does the response collapse to `200 incomplete`.
+- `minimum_not_met` — **cart-level** rejection (`severity: requires_buyer_input`, deliberately overriding the default — the buyer can resolve by adding items, so `unrecoverable` would mislead agents into abandoning the cart). Even when all lines validate individually, a surviving subtotal below the merchant minimum forces `status: incomplete` with no `continue_url`.
 - `field_required` — path-attributed via `$.line_items[N]`; emitted for bundles and grouped products. Can appear in **either** response status:
     - `status: incomplete` (no `continue_url`) when the cart is mixed/multi bundle-or-grouped (must split and retry) or when the configurable bundle/grouped has no usable permalink (`severity: recoverable`).
     - `status: requires_escalation` (with `continue_url` pointing at the bundle/grouped PDP) when the bundle/grouped is configurable but has a permalink — buyer completes configuration on the merchant site (`severity: requires_buyer_input`).

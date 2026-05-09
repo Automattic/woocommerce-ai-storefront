@@ -69,8 +69,8 @@ Mixed/multi bundle or grouped carts produce `status: incomplete` with **one `fie
 
 The table above is specifically about *continue_url routing when a redirect is possible*. Other validation outcomes split into two categories:
 
-- **Per-line-item failures** (`out_of_stock`, unknown product IDs, malformed ID grammar, etc.) drop the failing line from `line_items` but don't necessarily block the redirect — when at least one line survives, the response is still `201 requires_escalation` + `continue_url` covering the survivors, with the failures surfaced as `messages[].code` entries. Only when *no* line survives does the response fall back to `incomplete`.
-- **Cart-level failures** (`minimum_not_met`, mixed/multi container carts, malformed top-level shape) block the redirect outright: `status: incomplete`, no `continue_url`.
+- **Per-line-item failures** (`out_of_stock`, unknown product IDs, malformed ID grammar, etc. — `severity: unrecoverable` per `checkout_error_message()` default) drop the failing line from `line_items` but don't necessarily block the redirect — when at least one line survives, the response is still `201 requires_escalation` + `continue_url` covering the survivors, with the failures surfaced as `messages[].code` entries. Only when *no* line survives does the response fall back to `incomplete`.
+- **Cart-level failures** (`minimum_not_met` with `severity: requires_buyer_input`; `field_required` on mixed/multi container carts with `severity: recoverable`; malformed top-level shape with `400 invalid_input`) block the redirect outright: `status: incomplete`, no `continue_url`.
 
 See [`API-REFERENCE.md`](API-REFERENCE.md) for the full error-code catalog and partial-validation semantics.
 
