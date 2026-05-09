@@ -1,9 +1,23 @@
 ## [Unreleased]
 
 ### Features
+
+- **UCP: WooCommerce Product Bundles plugin support.** Closes #358 (V2 deterministic-URL scope merged from #361).
+  - Detects `type === 'bundle'` and the Bundles plugin's Store API extension under `extensions.bundles`. Bundles previously emitted as flat single-variant simple products with broken `/checkout-link/?products=ID:1` continue_urls.
+  - **Catalog response enrichment:** `price_range` and `list_price_range` now come from `bundle_price.price.{min,max}` and `bundle_price.regular_price.{min,max}` — the actual buyable range spanning optional add-ons and per-child discounts (e.g. $20–$36.20 instead of flat $20). New `metadata.bundle = { min_size, max_size, items: [...] }` block exposes bundled-item structure so agents can describe the bundle accurately.
+  - **Deterministic-bundle continue_url:** when every bundled item is required (no optional toggle) and every variable child has bundle-author-set defaults via `override_default_variation_attributes` covering all axes, the controller constructs `/checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=…&bundle_attribute_<attr>_<bid>=…` directly. Buyer lands on `/checkout/` (2-step internal redirect via WC's `?add-to-cart=` form handler — buyer perceives one navigation). UTM attribution preserved via `with_woo_ucp_utm()`.
+  - **Configurable-bundle continue_url:** when any bundled item is optional or any variable child lacks pre-set defaults, the URL builder returns null and the continue_url falls back to the bundle's product permalink. The buyer configures their choices on the PDP, then completes the purchase normally. Handler emits a spec-defined `field_required` error with `severity: requires_buyer_input` (per UCP checkout error-handling spec) so agents understand the bundle-specific escalation shape.
+  - **Mixed/multi-bundle cart rejection:** when a bundle is sent alongside other line items (or multiple bundles in one cart), the handler returns `status: incomplete` with one spec-defined `field_required` error per bundle line item (path-attributed via `$.line_items[N]`) carrying `severity: recoverable` (per `message_error.json`: "platform can resolve by modifying inputs and retrying via API"). No `continue_url`. Agent must split the cart into separate `/checkout-sessions` requests. Replaces the earlier silent-drop + custom advisory message — this version aligns with `error_code.json`'s standard codes.
+  - **Threading:** `process_line_item()` records `wc_type`, `permalink`, and `bundle_url_query` on each `$processed` entry. `build_continue_url()` reads these to branch (deterministic URL → permalink → checkout-link fallback).
+
 ### Fixes
 ### Refactors
+
 ### Tests
+
+- Added 8 product-translator tests for bundle catalog handling (price_range, list_price_range, metadata.bundle structure, fallbacks).
+- Added 9 checkout-sessions tests for bundle URL handling: configurable-bundle permalink + `field_required` error emission with `severity: requires_buyer_input`, deterministic-bundle constructed `/checkout/?add-to-cart=` URL with bundle_quantity_* params, optional-bundled-item makes bundle configurable, mixed cart with bundle rejected with `field_required`, multi-bundle cart rejected with one error per bundle, deterministic bundle alongside simple still rejects (must-split rule), missing permalink defensive fallback to `/checkout-link/`, UTM attribution flows through both deterministic and permalink paths.
+
 ### Docs
 
 ---

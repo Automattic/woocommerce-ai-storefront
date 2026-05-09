@@ -2446,6 +2446,95 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$should_redirect = false;
 		}
 
+		// Bundle handling (#358). Three sub-cases, each mapped to the
+		// spec's `severity` enum from `message_error.json`:
+		//
+		//   - Mixed/multi-bundle cart: the agent can resolve this by
+		//     splitting the request into separate /checkout-sessions
+		//     calls and retrying — `severity: recoverable` ("platform
+		//     can resolve by modifying inputs and retrying via API").
+		//     Flip `should_redirect` off so status becomes `incomplete`.
+		//   - Single configurable bundle (`bundle_url_query` is null
+		//     because the bundle author left choices open): the buyer
+		//     must pick variations / optional toggles on the PDP —
+		//     choices the API can't collect programmatically — so
+		//     `severity: requires_buyer_input` ("merchant requires
+		//     information their API doesn't support collecting
+		//     programmatically"). Keep `should_redirect = true`,
+		//     continue_url goes to the bundle's product permalink.
+		//   - Single deterministic bundle (`bundle_url_query` is non-null
+		//     because every bundled-item choice was pre-set by the
+		//     bundle author): keep `should_redirect = true`,
+		//     continue_url constructs /checkout/?add-to-cart=BUNDLE&...
+		//     directly. NO additional error message — buyer has nothing
+		//     to configure; the standard buyer_handoff_required +
+		//     total_is_provisional info messages alone are correct.
+		//
+		// `field_required` code is from UCP `error_code.json` standard
+		// examples; severity values match the `message_error.json`
+		// enum. See https://ucp.dev/latest/specification/checkout/#error-handling.
+		//
+		// JSONPath uses each entry's `request_index` (the position it
+		// occupied in the agent's original `line_items[]`). Dedup may
+		// have reordered or collapsed entries, so the `$processed` index
+		// is a different number — paths must address what the agent sent.
+		$bundle_request_indices = [];
+		$bundle_processed_keys  = [];
+		foreach ( $processed as $idx => $p ) {
+			if ( 'bundle' === ( $p['wc_type'] ?? '' ) ) {
+				$bundle_request_indices[] = (int) ( $p['request_index'] ?? $idx );
+				$bundle_processed_keys[]  = $idx;
+			}
+		}
+		$has_bundle        = ! empty( $bundle_processed_keys );
+		$bundle_must_split = $has_bundle && ( count( $processed ) > 1 || count( $bundle_processed_keys ) > 1 );
+
+		if ( $bundle_must_split ) {
+			foreach ( $bundle_request_indices as $req_idx ) {
+				$messages[] = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'recoverable',
+					'path'     => '$.line_items[' . $req_idx . ']',
+					'content'  => __( 'Bundle line items must be sent in their own /checkout-sessions request, separate from other items.', 'woocommerce-ai-storefront' ),
+				];
+			}
+			$should_redirect = false;
+		} elseif ( $has_bundle ) {
+			$bundle_processed_idx = $bundle_processed_keys[0];
+			$bundle               = $processed[ $bundle_processed_idx ];
+			$is_deterministic     = is_array( $bundle['bundle_url_query'] ?? null )
+				&& ! empty( $bundle['bundle_url_query'] );
+			$has_permalink        = '' !== (string) ( $bundle['permalink'] ?? '' );
+			if ( ! $is_deterministic && $has_permalink ) {
+				// Continue_url goes to the bundle PDP; tell the agent why.
+				$messages[] = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'requires_buyer_input',
+					'path'     => '$.line_items[' . $bundle_request_indices[0] . ']',
+					'content'  => __( 'This bundle requires variation choices and/or optional add-on selections that must be made on the merchant site. Open continue_url to configure the bundle and complete the purchase.', 'woocommerce-ai-storefront' ),
+				];
+			} elseif ( ! $is_deterministic ) {
+				// No deterministic URL AND no permalink. The agent has no
+				// usable URL to send the buyer to — `/checkout-link/?products=`
+				// would attempt to add an unconfigured bundle and WC
+				// rejects that. Flip `should_redirect` off so status
+				// becomes `incomplete` with no `continue_url` (don't
+				// hand the agent a broken URL). Severity stays
+				// `recoverable` because the merchant can fix it by
+				// republishing the bundle to populate its permalink.
+				$messages[]      = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'recoverable',
+					'path'     => '$.line_items[' . $bundle_request_indices[0] . ']',
+					'content'  => __( 'This bundle cannot be added through the standard checkout flow because its product page URL is unavailable. The merchant should verify the bundle configuration.', 'woocommerce-ai-storefront' ),
+				];
+				$should_redirect = false;
+			}
+		}
+
 		$continue_url = $should_redirect
 			? self::build_continue_url( $processed, $agent_source_host, $agent_raw_host )
 			: '';
@@ -4814,6 +4903,34 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$messages[] = $drift_warning;
 		}
 
+		// Bundle deterministic-classification (#358). For type=bundle,
+		// fetch each non-optional bundled child's Store API record so
+		// the translator's `build_bundle_url_query()` can determine
+		// whether the entire bundle is configurable from server-supplied
+		// defaults alone. Result is null for configurable bundles (any
+		// optional toggle, or any variable child without bundle-author-
+		// preset defaults) — caller falls back to the bundle's product
+		// permalink. For deterministic bundles, result is the URL query
+		// param array used by `build_continue_url` to assemble the
+		// `/checkout/?add-to-cart=BUNDLE&bundle_*=...` direct-checkout URL.
+		$bundle_url_query = null;
+		if ( 'bundle' === $type ) {
+			$bundle_data = WC_AI_Storefront_UCP_Product_Translator::read_bundle_data( $wc_product );
+			if ( null !== $bundle_data ) {
+				// Lazy fetcher: `build_bundle_url_query()` walks
+				// `bundled_items[]` and short-circuits on the first
+				// disqualifier (optional flag, missing override
+				// defaults, etc.). Pass it a closure so children are
+				// fetched on demand — a bundle whose first variable
+				// child fails the deterministic check fetches only
+				// that one Store API record.
+				$bundle_url_query = WC_AI_Storefront_UCP_Product_Translator::build_bundle_url_query(
+					$bundle_data,
+					fn ( int $child_pid ): ?array => $this->fetch_store_api_product( $child_pid )
+				);
+			}
+		}
+
 		return array(
 			'processed' => array(
 				'wc_id'            => $wc_id,
@@ -4825,6 +4942,36 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'ucp_id'           => $raw_id,
 				'quantity'         => $quantity,
 				'unit_price_minor' => $unit_price_minor,
+				// WC product type — needed downstream so build_continue_url
+				// can branch for `bundle` (Product Bundles plugin product
+				// type, which can't be added via /checkout-link/?products=
+				// because each bundled item needs index-keyed config
+				// params). See #358.
+				'wc_type'          => $type,
+				// Permalink of the underlying WC product — used as the
+				// continue_url for configurable bundles (buyer must
+				// pick variations/toggles on the PDP) and as a defensive
+				// fallback for any bundle where deterministic URL
+				// construction couldn't resolve all child products.
+				'permalink'        => (string) ( $wc_product['permalink'] ?? '' ),
+				// Deterministic-bundle URL params (`bundle_quantity_<bid>`,
+				// `bundle_attribute_<attr>_<bid>`). Non-null only when the
+				// bundle's choices are fully resolvable from
+				// `extensions.bundles.bundled_items[]` defaults — see
+				// translator's `build_bundle_url_query()`. Null for
+				// non-bundle line items and configurable bundles.
+				'bundle_url_query' => $bundle_url_query,
+				// Original index in the request's `line_items[]` array.
+				// Survives the dedup pass below (which reindexes
+				// `$processed` to a 0-based array) so error messages
+				// referencing this line item via JSONPath
+				// (`$.line_items[N]`) point at the request position the
+				// agent sent, not at the post-dedup position. Without
+				// this, an agent that sent `[simple, simple_dup, bundle]`
+				// would see the bundle's `field_required` error
+				// path-attributed to `$.line_items[1]` even though the
+				// bundle was at request position `[2]`.
+				'request_index'    => $index,
 			),
 			'messages'  => $messages,
 		);
@@ -5085,23 +5232,119 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                                                      for diagnostic / graduation purposes.
 	 */
 	private static function build_continue_url( array $processed, string $source_host, string $raw_host ): string {
-		$segments = array();
+		// Bundle short-circuit (#358). WC Product Bundles aren't
+		// addressable via /checkout-link/?products=ID:QTY because each
+		// bundled item needs index-keyed config params for variation
+		// choices and optional toggles. Two paths:
+		//
+		//   - Deterministic bundle: the bundle author pre-set every
+		//     bundled-item choice (no optional toggles, every variable
+		//     child has bundle-author override defaults). The
+		//     translator's `build_bundle_url_query()` returned a non-null
+		//     params array carried on the processed entry as
+		//     `bundle_url_query`. Construct
+		//     `/checkout/?add-to-cart=<wc_id>&bundle_*=...` — buyer lands
+		//     directly on /checkout/ with the configured bundle in cart
+		//     (2-step internal redirect via WC's `?add-to-cart=` form
+		//     handler; buyer perceives one navigation).
+		//   - Configurable bundle: `bundle_url_query` is null. Fall back
+		//     to the bundle's product permalink so the buyer can pick
+		//     variations / toggle optional add-ons on the PDP. The
+		//     handler emits a spec-defined `field_required` error with
+		//     `severity: requires_buyer_input` alongside.
+		//
+		// This function is only reached for single-bundle carts — the
+		// handler rejects mixed/multi-bundle requests upstream by
+		// flipping `should_redirect` off (see the `$bundle_must_split`
+		// block).
+		// Bundle URL takes priority when present — when the line items
+		// include a single bundle, /checkout-link/ can't add it, so we
+		// route via the deterministic /checkout/?add-to-cart= URL or the
+		// bundle's product permalink. Compute the URL into
+		// `$url_with_products` and fall through to the shared UTM-stamping
+		// + filter pass below so all paths run through the same plugin
+		// extension surface. If neither bundle path produces a URL,
+		// `$url_with_products` stays null and the standard /checkout-link/
+		// path takes over.
+		$first_bundle      = null;
+		$url_with_products = null;
 		foreach ( $processed as $p ) {
-			$segments[] = $p['wc_id'] . ':' . $p['quantity'];
+			if ( 'bundle' === ( $p['wc_type'] ?? '' ) ) {
+				$first_bundle = $p;
+				break;
+			}
+		}
+		if ( null !== $first_bundle ) {
+			$bundle_query = $first_bundle['bundle_url_query'] ?? null;
+			if ( is_array( $bundle_query ) && ! empty( $bundle_query ) ) {
+				// Use WC's helper so multilingual sites and merchants
+				// who renamed their checkout page (`/pay/`, `/kasse/`,
+				// etc.) get the correct URL. `wc_get_checkout_url()`
+				// reads `woocommerce_checkout_page_id` and returns the
+				// full permalink — `home_url('/checkout/')` only works
+				// for stores that left the default page slug in place.
+				if ( function_exists( 'wc_get_checkout_url' ) ) {
+					$base = wc_get_checkout_url();
+				} elseif ( function_exists( 'home_url' ) ) {
+					$base = home_url( '/checkout/' );
+				} else {
+					$base = '/checkout/';
+				}
+				// `add_query_arg()` handles the case where `$base` already
+				// carries a query string — plain permalinks (`/?page_id=7`)
+				// or i18n plugins (`/checkout/?lang=es`) both produce
+				// `wc_get_checkout_url()` outputs with an existing `?…`,
+				// and a naive `$base . '?' . $query_string` would emit a
+				// malformed double-`?` URL.
+				//
+				// Bundle quantity propagation: `quantity=N` is the WC
+				// add-to-cart parent quantity (number of bundles). Each
+				// `bundle_quantity_<bid>` is the per-bundled-item quantity
+				// inside one bundle. Multiplying happens server-side: WC
+				// adds N bundles, each with the per-item quantities baked
+				// in, so an agent sending `{ quantity: 2 }` for one bundle
+				// line item correctly results in two configured bundles
+				// in cart.
+				$bundle_quantity   = max( 1, (int) ( $first_bundle['quantity'] ?? 1 ) );
+				$url_with_products = add_query_arg(
+					array_merge(
+						[
+							'add-to-cart' => (string) $first_bundle['wc_id'],
+							'quantity'    => (string) $bundle_quantity,
+						],
+						$bundle_query
+					),
+					$base
+				);
+			} elseif ( '' !== (string) ( $first_bundle['permalink'] ?? '' ) ) {
+				$url_with_products = (string) $first_bundle['permalink'];
+			}
+			// Else bundle without bundle_url_query AND without permalink —
+			// fall through to the standard /checkout-link/?products= path
+			// below. Defensive last resort against malformed Store API
+			// responses; WC will likely reject an unconfigured bundle, but
+			// at least the URL isn't empty.
 		}
 
-		$base = function_exists( 'home_url' )
-			? home_url( '/checkout-link/' )
-			: '/checkout-link/';
+		if ( null === $url_with_products ) {
+			$segments = array();
+			foreach ( $processed as $p ) {
+				$segments[] = $p['wc_id'] . ':' . $p['quantity'];
+			}
 
-		// `?products=` is the checkout-link-specific payload —
-		// stamped here, not in the attribution helper. The shared
-		// helper handles the `utm_source` / `utm_medium` / `utm_id` /
-		// `ai_agent_host_raw` shape so search-result product URLs
-		// and continue_urls stay byte-identical on the attribution
-		// portion. See `WC_AI_Storefront_Attribution::with_woo_ucp_utm()`
-		// for the canonical UTM contract.
-		$url_with_products = $base . '?products=' . implode( ',', $segments );
+			$base = function_exists( 'home_url' )
+				? home_url( '/checkout-link/' )
+				: '/checkout-link/';
+
+			// `?products=` is the checkout-link-specific payload —
+			// stamped here, not in the attribution helper. The shared
+			// helper handles the `utm_source` / `utm_medium` / `utm_id` /
+			// `ai_agent_host_raw` shape so search-result product URLs
+			// and continue_urls stay byte-identical on the attribution
+			// portion. See `WC_AI_Storefront_Attribution::with_woo_ucp_utm()`
+			// for the canonical UTM contract.
+			$url_with_products = $base . '?products=' . implode( ',', $segments );
+		}
 
 		$url = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
 			$url_with_products,

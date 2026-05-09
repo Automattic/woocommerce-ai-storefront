@@ -109,11 +109,22 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
+		// Bundle-product detection. WooCommerce Product Bundles (paid
+		// extension) emits `type: "bundle"` and exposes the bundle
+		// structure under `extensions.bundles`. We use the bundle's
+		// computed price range and config metadata in the catalog
+		// response so agents see the actual buyable range (which can
+		// span optional add-ons and per-child discounts) rather than
+		// the parent's flat `prices.price` value. See #358.
+		$bundle_data = self::extract_bundle_data( $wc_product );
+
 		$product = [
 			'id'          => self::PRODUCT_ID_PREFIX . $id,
 			'title'       => self::decode( (string) ( $wc_product['name'] ?? '' ) ),
 			'description' => self::extract_description( $wc_product ),
-			'price_range' => self::extract_price_range( $wc_product ),
+			'price_range' => null !== $bundle_data
+				? self::extract_bundle_price_range( $bundle_data, $wc_product )
+				: self::extract_price_range( $wc_product ),
 		];
 
 		// `list_price_range` — UCP core optional field carrying the
@@ -124,7 +135,13 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// when the variation set is partial (count mismatch between
 		// parent `variations[]` pointers and pre-fetched bodies).
 		// See `extract_list_price_range` for the full rule set.
-		$list_price_range = self::extract_list_price_range( $wc_product, $wc_variations );
+		//
+		// Bundles read from `extensions.bundles.bundle_price.regular_price`
+		// instead — the parent's `prices.regular_price` reflects only
+		// the bundle base, not the fully-configured pre-discount range.
+		$list_price_range = null !== $bundle_data
+			? self::extract_bundle_list_price_range( $bundle_data, $wc_product )
+			: self::extract_list_price_range( $wc_product, $wc_variations );
 		if ( null !== $list_price_range ) {
 			$product['list_price_range'] = $list_price_range;
 		}
@@ -269,10 +286,24 @@ class WC_AI_Storefront_UCP_Product_Translator {
 					static fn( $a ) => ! in_array( $a['name'], $promoted_names, true )
 				)
 			);
+		$metadata          = [];
 		if ( ! empty( $residual_metadata ) ) {
-			$product['metadata'] = [
-				'attributes' => $residual_metadata,
-			];
+			$metadata['attributes'] = $residual_metadata;
+		}
+		// Bundle structure under `metadata.bundle` (issue #358). Lets agents
+		// describe the bundle accurately and gives them the data needed to
+		// distinguish "deterministic bundle the buyer can complete via
+		// continue_url" from "configurable bundle requiring on-site
+		// configuration." UCP core has no typed bundle field; metadata is
+		// the spec's allowed extension surface.
+		if ( null !== $bundle_data ) {
+			$bundle_metadata = self::extract_bundle_metadata( $bundle_data );
+			if ( null !== $bundle_metadata ) {
+				$metadata['bundle'] = $bundle_metadata;
+			}
+		}
+		if ( ! empty( $metadata ) ) {
+			$product['metadata'] = $metadata;
 		}
 
 		// Rating + review count — emitted under core `product.rating`
@@ -1091,5 +1122,488 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 */
 	private static function decode( string $value ): string {
 		return wp_strip_all_tags( html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+	}
+
+	/**
+	 * Extract the WC Product Bundles plugin's bundle structure from a
+	 * Store API product response.
+	 *
+	 * The Bundles plugin (paid extension) registers a Store API
+	 * extension at `extensions.bundles` carrying:
+	 *
+	 *   - Bundle-level config: `bundle_min_size`, `bundle_max_size`,
+	 *     `bundle_stock_status`, `bundle_stock_quantity`, `bundle_price`
+	 *     (a `{price, regular_price}` object with `min` / `max` legs in
+	 *     minor units, identical shape to WC's standard `prices`).
+	 *   - Per-bundled-item array `bundled_items[]`, one entry per
+	 *     bundled child product. Each entry includes `bundled_item_id`
+	 *     (the index used in the add-to-cart URL params), `product_id`
+	 *     (the actual child WC product ID), `quantity_default`,
+	 *     `optional`, `priced_individually`, `discount`,
+	 *     `override_default_variation_attributes`, `default_variation_attributes`.
+	 *
+	 * Detection requires BOTH `type === 'bundle'` AND a non-empty
+	 * `extensions.bundles` block. If `type === 'bundle'` but the
+	 * extension didn't render (Bundles plugin deactivated, or store
+	 * misconfigured), the method returns null — the caller falls back
+	 * to the simple-product translation path so the bundle still emits
+	 * a valid (if minimal) UCP shape.
+	 *
+	 * @param  array<string, mixed>      $wc_product Store API product response.
+	 * @return array<string, mixed>|null            Bundle extension data, or
+	 *                                              null when the product is
+	 *                                              not a bundle or the
+	 *                                              extension is missing.
+	 */
+	private static function extract_bundle_data( array $wc_product ): ?array {
+		if ( 'bundle' !== ( $wc_product['type'] ?? '' ) ) {
+			return null;
+		}
+		// Defensive: a third-party `woocommerce_store_api_*` filter or a
+		// future Store API revision could set `extensions` to a non-array
+		// value. Guard before indexing so the translator doesn't raise
+		// warnings on filtered payloads.
+		$extensions = $wc_product['extensions'] ?? null;
+		if ( ! is_array( $extensions ) ) {
+			return null;
+		}
+		$bundle = $extensions['bundles'] ?? null;
+		if ( ! is_array( $bundle ) || empty( $bundle ) ) {
+			return null;
+		}
+		return $bundle;
+	}
+
+	/**
+	 * Build the `price_range` for a bundle from its `bundle_price.price`
+	 * min/max range.
+	 *
+	 * The bundle's `prices.price` (parent-level) reflects only the bundle
+	 * base before any optional add-ons or per-child discounts apply. The
+	 * accurate buyable range lives in
+	 * `extensions.bundles.bundle_price.price.{min,max}` — this is what
+	 * WC renders as "From: $20.00" on the storefront when the bundle
+	 * has optional items or priced-individually children.
+	 *
+	 * Falls back to the standard simple-product price range when
+	 * `bundle_price.price` is missing or malformed (defensive — older
+	 * Bundles plugin versions may not emit it).
+	 *
+	 * @param  array<string, mixed> $bundle_data Bundle extension data.
+	 * @param  array<string, mixed> $wc_product  Store API product response (for currency + fallback).
+	 * @return array<string, mixed>              UCP price_range shape.
+	 */
+	private static function extract_bundle_price_range( array $bundle_data, array $wc_product ): array {
+		$bundle_price = $bundle_data['bundle_price'] ?? [];
+		$price        = $bundle_price['price'] ?? [];
+		$currency     = (string) ( $bundle_price['currency_code'] ?? $wc_product['prices']['currency_code'] ?? 'USD' );
+
+		$min = isset( $price['min']['excl_tax'] ) ? (int) $price['min']['excl_tax'] : null;
+		$max = isset( $price['max']['excl_tax'] ) ? (int) $price['max']['excl_tax'] : null;
+
+		if ( null === $min ) {
+			return self::extract_price_range( $wc_product );
+		}
+
+		return [
+			'min' => [
+				'amount'   => $min,
+				'currency' => $currency,
+			],
+			'max' => [
+				'amount'   => null !== $max ? $max : $min,
+				'currency' => $currency,
+			],
+		];
+	}
+
+	/**
+	 * Build the optional `list_price_range` (pre-discount strikethrough)
+	 * for a bundle from its `bundle_price.regular_price` min/max range.
+	 *
+	 * Returns null when the regular_price range equals the live price
+	 * range (nothing on sale), when the regular_price block is missing,
+	 * or when a min could not be parsed. Same emission rule as the
+	 * non-bundle path: list_price_range is only emitted when there's
+	 * an actual pre-discount value to communicate.
+	 *
+	 * Currency fallback chain mirrors `extract_bundle_price_range()`:
+	 * `bundle_price.currency_code` → parent `prices.currency_code` →
+	 * literal `USD`. Hard-coded USD is reached only when both are
+	 * missing — defensive last resort.
+	 *
+	 * @param  array<string, mixed>      $bundle_data Bundle extension data.
+	 * @param  array<string, mixed>      $wc_product  Store API product response (for currency fallback).
+	 * @return array<string, mixed>|null              UCP price_range shape, or null.
+	 */
+	private static function extract_bundle_list_price_range( array $bundle_data, array $wc_product ): ?array {
+		$bundle_price = $bundle_data['bundle_price'] ?? [];
+		$regular      = $bundle_price['regular_price'] ?? [];
+		$live         = $bundle_price['price'] ?? [];
+		$currency     = (string) ( $bundle_price['currency_code'] ?? $wc_product['prices']['currency_code'] ?? 'USD' );
+
+		$reg_min  = isset( $regular['min']['excl_tax'] ) ? (int) $regular['min']['excl_tax'] : null;
+		$reg_max  = isset( $regular['max']['excl_tax'] ) ? (int) $regular['max']['excl_tax'] : null;
+		$live_min = isset( $live['min']['excl_tax'] ) ? (int) $live['min']['excl_tax'] : null;
+		$live_max = isset( $live['max']['excl_tax'] ) ? (int) $live['max']['excl_tax'] : null;
+
+		if ( null === $reg_min ) {
+			return null;
+		}
+
+		// Both legs of the live range must be parseable for the
+		// "nothing on sale" suppression check to be meaningful. If the
+		// extension is missing or malformed on the live side, we can't
+		// tell whether the regular range is a strikethrough or just an
+		// echo of the live range — bail rather than emit a possibly
+		// misleading list_price_range.
+		if ( null === $live_min ) {
+			return null;
+		}
+
+		// Normalize null `max` legs to their `min` counterpart, matching
+		// the way `extract_bundle_price_range()` emits flat-price bundles
+		// (`max` defaults to `min` when missing). Without this, a
+		// flat-price bundle whose `bundle_price.price.max.excl_tax` is
+		// omitted but `regular_price.max.excl_tax` is present (and equals
+		// `regular_price.min`) would skip the "nothing on sale"
+		// suppression and emit a phantom strikethrough. Apply the same
+		// normalization to `$reg_max` for symmetry — strict-equality
+		// comparison below assumes both legs are present.
+		if ( null === $live_max ) {
+			$live_max = $live_min;
+		}
+		if ( null === $reg_max ) {
+			$reg_max = $reg_min;
+		}
+
+		// Nothing on sale: regular range equals live range. Suppress
+		// the strikethrough field — same rule as non-bundle path.
+		if ( $reg_min === $live_min && $reg_max === $live_max ) {
+			return null;
+		}
+
+		// `$reg_max` was normalized to `$reg_min` above when null, so
+		// it's guaranteed int here.
+		return [
+			'min' => [
+				'amount'   => $reg_min,
+				'currency' => $currency,
+			],
+			'max' => [
+				'amount'   => $reg_max,
+				'currency' => $currency,
+			],
+		];
+	}
+
+	/**
+	 * Build the `metadata.bundle` structure exposing bundle config to
+	 * agents.
+	 *
+	 * Shape:
+	 *   {
+	 *     "min_size": int|null,           // bundle_min_size
+	 *     "max_size": int|null,           // bundle_max_size
+	 *     "items": [
+	 *       {
+	 *         "bundled_item_id": int,     // index used by URL params
+	 *         "product_id": int,          // child WC product ID
+	 *         "quantity_default": int,
+	 *         "optional": bool,
+	 *         "discount": string|null,    // percent string (e.g. "10")
+	 *         "has_default_variation": bool  // override_default_variation_attributes
+	 *       },
+	 *       ...
+	 *     ]
+	 *   }
+	 *
+	 * Lets agents:
+	 *   - Render an accurate description ("3-item bundle, 1 optional add-on")
+	 *   - Decide whether to show "Configure on merchant site" vs an
+	 *     attempt at direct purchase
+	 *   - Cross-reference `product_id`s to other catalog entries the
+	 *     agent has already cached
+	 *
+	 * Returns null when the bundled_items array is missing or empty —
+	 * a bundle with no children is a misconfiguration on the merchant
+	 * side, not something the metadata block should advertise.
+	 *
+	 * @param  array<string, mixed>      $bundle_data Bundle extension data.
+	 * @return array<string, mixed>|null              metadata.bundle shape, or null.
+	 */
+	private static function extract_bundle_metadata( array $bundle_data ): ?array {
+		$items = $bundle_data['bundled_items'] ?? [];
+		if ( ! is_array( $items ) || empty( $items ) ) {
+			return null;
+		}
+
+		$out_items = [];
+		foreach ( $items as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+			$bundled_item_id = (int) ( $item['bundled_item_id'] ?? 0 );
+			$product_id      = (int) ( $item['product_id'] ?? 0 );
+			// Skip entries with invalid identifiers. A bundled item
+			// without a `bundled_item_id` can't be addressed in the
+			// add-to-cart URL params (`bundle_quantity_<bid>` etc.),
+			// and one without a `product_id` doesn't reference a real
+			// child product. Either signals merchant misconfiguration;
+			// emitting them as `0` would mislead agents that try to
+			// cross-reference the IDs.
+			if ( $bundled_item_id <= 0 || $product_id <= 0 ) {
+				continue;
+			}
+			$out_items[] = [
+				'bundled_item_id'       => $bundled_item_id,
+				'product_id'            => $product_id,
+				'quantity_default'      => (int) ( $item['quantity_default'] ?? 1 ),
+				'optional'              => (bool) ( $item['optional'] ?? false ),
+				'discount'              => '' === (string) ( $item['discount'] ?? '' ) ? null : (string) $item['discount'],
+				'has_default_variation' => (bool) ( $item['override_default_variation_attributes'] ?? false ),
+			];
+		}
+
+		// `bundled_items` was non-empty but every entry was malformed
+		// (non-array, or missing bundled_item_id / product_id). Per the
+		// docblock contract, return null rather than emitting
+		// `metadata.bundle.items: []` — an empty list signals "merchant
+		// misconfigured a bundle with no children," which agents
+		// shouldn't try to render or describe.
+		if ( empty( $out_items ) ) {
+			return null;
+		}
+
+		return [
+			'min_size' => isset( $bundle_data['bundle_min_size'] ) && '' !== (string) $bundle_data['bundle_min_size']
+				? (int) $bundle_data['bundle_min_size']
+				: null,
+			'max_size' => isset( $bundle_data['bundle_max_size'] ) && '' !== (string) $bundle_data['bundle_max_size']
+				? (int) $bundle_data['bundle_max_size']
+				: null,
+			'items'    => $out_items,
+		];
+	}
+
+	/**
+	 * Public entry to bundle data extraction — used by the REST controller
+	 * to read the bundle's `extensions.bundles` block once, without
+	 * duplicating type-detection or empty-extension fallback logic.
+	 *
+	 * Returns the same shape as the private `extract_bundle_data()` —
+	 * the bundle extension array, or null when the product is not a
+	 * bundle or the extension is missing. Pure-function contract: no
+	 * WP API calls.
+	 *
+	 * @param  array<string, mixed>      $wc_product Decoded Store API product response.
+	 * @return array<string, mixed>|null
+	 */
+	public static function read_bundle_data( array $wc_product ): ?array {
+		return self::extract_bundle_data( $wc_product );
+	}
+
+	/**
+	 * Build the URL-query parameter array for a deterministic Product
+	 * Bundle's `/checkout/?add-to-cart=BUNDLE&...` continue_url.
+	 *
+	 * A bundle is *deterministic* when every `bundled_items[i]` satisfies
+	 * BOTH:
+	 *   1. `optional: false` — the buyer has no opt-in/opt-out toggle.
+	 *   2. The child product is `simple`, OR the child is `variable`
+	 *      AND the bundle author pre-set the variation via
+	 *      `override_default_variation_attributes: true` AND the
+	 *      `default_variation_attributes` map covers every attribute
+	 *      axis defined on the child.
+	 *
+	 * For deterministic bundles we can construct a fully-configured
+	 * `?add-to-cart=` URL server-side, so the buyer skips PDP
+	 * configuration and lands directly on `/checkout/`. The 2-step
+	 * URL-handler dance (navigate → handler intercepts → redirect to
+	 * /checkout/ with toast) is internal — buyer sees one navigation.
+	 *
+	 * Returns null when the bundle is configurable. The caller falls
+	 * back to the bundle's product permalink + the spec-defined
+	 * `field_required` error message (UCP checkout error-handling).
+	 *
+	 * Lazy I/O: the caller supplies a fetcher callable instead of a
+	 * pre-built map. Children are fetched on demand and the iteration
+	 * short-circuits on the first disqualifying entry — a 5-item bundle
+	 * whose first variable child lacks override defaults will fetch
+	 * just one Store API record (not five). The fetcher receives an
+	 * `int $product_id` and returns a Store API response array or
+	 * null when the lookup fails (which itself is a disqualifier).
+	 *
+	 * @param  array<string, mixed>                    $bundle_data    Bundle's `extensions.bundles` block.
+	 * @param  callable(int): (array<string,mixed>|null) $child_fetcher  Lazy resolver; called with `product_id`.
+	 * @return array<string, string>|null                                URL query params keyed for `http_build_query()`,
+	 *                                                                   or null when the bundle is configurable.
+	 */
+	public static function build_bundle_url_query( array $bundle_data, callable $child_fetcher ): ?array {
+		$items = $bundle_data['bundled_items'] ?? [];
+		if ( ! is_array( $items ) || empty( $items ) ) {
+			return null;
+		}
+
+		$params      = [];
+		$child_cache = [];
+
+		foreach ( $items as $item ) {
+			if ( ! is_array( $item ) ) {
+				return null;
+			}
+
+			$bid = (int) ( $item['bundled_item_id'] ?? 0 );
+			if ( $bid <= 0 ) {
+				return null;
+			}
+
+			// Optional items: configurable. Buyer must decide opt-in.
+			if ( ! empty( $item['optional'] ) ) {
+				return null;
+			}
+
+			$pid = (int) ( $item['product_id'] ?? 0 );
+			// Bundle item without a real `product_id` is malformed —
+			// can't classify, can't fetch. Treat as a deterministic
+			// disqualifier rather than wasting a `fetch_store_api_product(0)`
+			// call (which would emit `out-of-scope`-gate debug noise
+			// and return null anyway).
+			if ( $pid <= 0 ) {
+				return null;
+			}
+
+			$qty = (int) ( $item['quantity_default'] ?? 1 );
+			if ( $qty < 1 ) {
+				$qty = 1;
+			}
+
+			$params[ 'bundle_quantity_' . $bid ] = (string) $qty;
+
+			// Resolve child via the supplied fetcher; cache so a bundle
+			// that references the same product_id twice doesn't double-fetch.
+			if ( ! array_key_exists( $pid, $child_cache ) ) {
+				$child_cache[ $pid ] = $child_fetcher( $pid );
+			}
+			$child = $child_cache[ $pid ];
+			if ( ! is_array( $child ) ) {
+				// Couldn't resolve the child — can't classify. Conservative
+				// fallback to "configurable" so the buyer ends up on the
+				// PDP rather than getting a half-configured cart-add.
+				return null;
+			}
+
+			$child_type = (string) ( $child['type'] ?? '' );
+
+			if ( 'simple' === $child_type ) {
+				continue;
+			}
+
+			if ( 'variable' === $child_type ) {
+				// Bundle author must have pre-set the variation AND that
+				// pre-set must cover every attribute axis the child
+				// declares. Otherwise the buyer needs to pick something
+				// the URL doesn't carry.
+				if ( empty( $item['override_default_variation_attributes'] ) ) {
+					return null;
+				}
+				$defaults = $item['default_variation_attributes'] ?? [];
+				if ( ! is_array( $defaults ) || empty( $defaults ) ) {
+					return null;
+				}
+				$child_axes = self::axis_slugs_for_variable_child( $child );
+				if ( empty( $child_axes ) ) {
+					// Variable child with no axes is itself a misconfiguration;
+					// don't trust it for deterministic emission.
+					return null;
+				}
+
+				$default_by_slug = [];
+				foreach ( $defaults as $entry ) {
+					if ( ! is_array( $entry ) ) {
+						continue;
+					}
+					$slug  = strtolower( trim( (string) ( $entry['name'] ?? '' ) ) );
+					$value = (string) ( $entry['value'] ?? '' );
+					if ( '' === $slug || '' === $value ) {
+						continue;
+					}
+					$default_by_slug[ $slug ] = $value;
+				}
+
+				foreach ( $child_axes as $axis_slug ) {
+					if ( ! isset( $default_by_slug[ $axis_slug ] ) ) {
+						return null; // axis not covered by override
+					}
+					$params[ 'bundle_attribute_' . $axis_slug . '_' . $bid ] = $default_by_slug[ $axis_slug ];
+				}
+				continue;
+			}
+
+			// Unknown / unsupported child type (grouped, external,
+			// subscription, bundle-in-bundle, etc.). Treat as configurable
+			// to avoid emitting a URL that may produce a broken cart.
+			return null;
+		}
+
+		return $params;
+	}
+
+	/**
+	 * Lower-case attribute axis slugs declared on a variable child product.
+	 *
+	 * Used by `build_bundle_url_query()` to verify the bundle's
+	 * `default_variation_attributes` covers every axis. WC's Store API
+	 * exposes attributes as `[{name, taxonomy?, terms[]}, ...]`:
+	 *   - `pa_*` taxonomy attributes: slug is the post-`pa_` segment.
+	 *   - Inline custom attributes: slug is `sanitize_title( name )` — same
+	 *     transform WC uses when building the variation lookup key, so
+	 *     names like `Volume (mL)`, `Color & Pattern`, or `Pâte` round-trip
+	 *     to the slugs the bundle's `default_variation_attributes` keys
+	 *     are stored under.
+	 *
+	 * @param  array<string, mixed> $wc_child Child product Store API response.
+	 * @return array<int, string>             Lowercased axis slug list.
+	 */
+	private static function axis_slugs_for_variable_child( array $wc_child ): array {
+		$attributes = $wc_child['attributes'] ?? [];
+		if ( ! is_array( $attributes ) ) {
+			return [];
+		}
+
+		$slugs = [];
+		foreach ( $attributes as $attr ) {
+			if ( ! is_array( $attr ) ) {
+				continue;
+			}
+			// `has_variations` is the Store API's flag for "this attribute
+			// is a variation axis." Non-variation attributes (e.g.
+			// informational facts on a variable product) don't need
+			// defaults.
+			if ( empty( $attr['has_variations'] ) ) {
+				continue;
+			}
+
+			$taxonomy = (string) ( $attr['taxonomy'] ?? '' );
+			if ( '' !== $taxonomy && str_starts_with( $taxonomy, 'pa_' ) ) {
+				// Strip the `pa_` prefix to match the bundle defaults' slug shape.
+				$slugs[] = strtolower( substr( $taxonomy, 3 ) );
+				continue;
+			}
+
+			// Custom inline attribute — match WC's slug transform exactly.
+			// `sanitize_title()` strips parens, ampersands, slashes, accents,
+			// and other punctuation that a regex-only approximation would
+			// retain, so display names like `Volume (mL)` produce `volume-ml`
+			// (matching the bundle's stored default slug) rather than
+			// `volume-(ml)` (which would never match anything).
+			$name = (string) ( $attr['name'] ?? '' );
+			if ( '' === trim( $name ) ) {
+				continue;
+			}
+			$slugs[] = sanitize_title( $name );
+		}
+
+		return array_values( array_filter( $slugs, static fn( $s ) => '' !== $s ) );
 	}
 }
