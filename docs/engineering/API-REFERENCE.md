@@ -140,40 +140,60 @@ The exact `continue_url` shape depends on the cart contents: simple/variation ca
 
 ```json
 {
-  "items": [
-    { "variant_id": "wc_42_default", "quantity": 1 },
-    { "variant_id": "wc_56_2", "quantity": 2 }
+  "line_items": [
+    { "item": { "id": "var_42_default" }, "quantity": 1 },
+    { "item": { "id": "var_56_2" }, "quantity": 2 }
   ],
-  "shipping_address": { "country": "US", "postal_code": "94110" },
-  "context": { "currency": "USD" }
+  "context": { "locale": "en-US" }
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `items` | array | yes | `variant_id` (string), `quantity` (int >=1). Max 100 items. Duplicate entries targeting the same product ID are collapsed before validation — quantities are summed, and the response echoes one line per product. A `merged_duplicate_items` info message is included when collapsing occurs so agents can reconcile their sent payload. |
-| `shipping_address` | object | no | UCP address block. Used for shipping/tax preview. |
-| `context` | object | no | UCP context block (currency, locale). |
+| `line_items` | array | yes | Each entry: `item.id` (string product/variation ID echoed back in the response), `quantity` (int ≥1). Max 100 entries. Duplicate entries targeting the same product ID are collapsed before validation — quantities are summed, and the response echoes one line per product. A `merged_duplicate_items` info message accompanies the response when collapsing occurs so agents can reconcile. |
+| `context` | object | no | UCP context block. Currently only `context.locale` is read (BCP-47 language tag, e.g. `en-US`). |
 
-**Response — happy path (200):**
+**Response — happy path (201 Created):**
 
 ```json
 {
   "ucp": { "version": "2026-04-08", "capabilities": ["dev.ucp.shopping.checkout"], "payment_handlers": {} },
   "id": "chk_a1b2c3d4e5f6g7h8",
   "status": "requires_escalation",
-  "continue_url": "https://your-store.com/checkout-link/?products=42:1,56:2&utm_source=chatgpt.com&utm_medium=referral&utm_id=woo_ucp&ai_agent_host_raw=chatgpt.com&ai_session_id=chk_a1b2c3d4e5f6g7h8",
-  "totals": {
-    "subtotal": { "amount_minor": 38997, "currency": "USD" },
-    "shipping": { "amount_minor": 0, "currency": "USD" },
-    "tax":      { "amount_minor": 0, "currency": "USD" },
-    "total":    { "amount_minor": 38997, "currency": "USD" }
-  },
+  "currency": "USD",
+  "line_items": [
+    {
+      "item": { "id": "var_42_default" },
+      "quantity": 1,
+      "unit_price": { "amount": 12999, "currency": "USD" },
+      "line_total": { "amount": 12999, "currency": "USD" },
+      "price_includes_tax": false
+    },
+    {
+      "item": { "id": "var_56_2" },
+      "quantity": 2,
+      "unit_price": { "amount": 12999, "currency": "USD" },
+      "line_total": { "amount": 25998, "currency": "USD" },
+      "price_includes_tax": false
+    }
+  ],
+  "totals": [
+    { "type": "subtotal", "amount": 38997 },
+    { "type": "total", "amount": 38997 }
+  ],
+  "links": [],
+  "expires_at": null,
+  "continue_url": "https://your-store.com/checkout-link/?products=42:1,56:2&utm_source=chatgpt.com&utm_medium=referral&utm_id=woo_ucp&ai_agent_host_raw=chatgpt.com",
   "messages": [
     {
       "type": "info",
       "code": "buyer_handoff_required",
       "content": "Continue checkout on the merchant's site to complete your purchase."
+    },
+    {
+      "type": "info",
+      "code": "total_is_provisional",
+      "content": "Total excludes tax and shipping, which are calculated at the merchant checkout."
     }
   ]
 }
@@ -181,7 +201,9 @@ The exact `continue_url` shape depends on the cart contents: simple/variation ca
 
 The `continue_url` is the agent's signal to render a Buy CTA. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md) for the three-layer decision tree.
 
-The `buyer_handoff_required` message uses `type: info` so AI assistants render it informationally, not as an error. Per UCP `message_info.json` (release/2026-04-08), info messages carry no `severity` field — only `type: error` does. The continue_url's UTM payload matches the canonical 0.5.0+ shape — same as bare product URLs.
+The `buyer_handoff_required` message uses `type: info` so AI assistants render it informationally, not as an error. Per UCP `message_info.json` (release/2026-04-08), info messages carry no `severity` field — only `type: error` does. The accompanying `total_is_provisional` info message explains the `subtotal == total` collapse: tax and shipping are computed at the merchant checkout, not server-side here.
+
+The continue_url's UTM payload (`utm_source`, `utm_medium=referral`, `utm_id=woo_ucp`, optional `ai_agent_host_raw`) matches the canonical 0.5.0+ shape — same as bare product URLs. The plugin's stamping helper does **not** append `ai_session_id`; agents that want session-correlation can add their own `ai_session_id=chk_…` query param to the continue_url before redirecting (the plugin's order-attribution capture reads it from `$_GET` and writes it to order meta).
 
 **Response — incomplete (200, no `continue_url`):**
 
