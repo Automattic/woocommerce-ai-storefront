@@ -111,7 +111,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 
 		$product = [
 			'id'          => self::PRODUCT_ID_PREFIX . $id,
-			'title'       => self::decode( $wc_product['name'] ?? '' ),
+			'title'       => self::decode( (string) ( $wc_product['name'] ?? '' ) ),
 			'description' => self::extract_description( $wc_product ),
 			'price_range' => self::extract_price_range( $wc_product ),
 		];

@@ -254,7 +254,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 
 		$variant = [
 			'id'          => self::VARIANT_ID_PREFIX . $id . self::DEFAULT_VARIANT_SUFFIX,
-			'title'       => self::decode( $wc_product['name'] ?? '' ),
+			'title'       => self::decode( (string) ( $wc_product['name'] ?? '' ) ),
 			'description' => [ 'plain' => '' ],
 			// `price` — UCP-required active price. See translate() above.
 			'price'       => self::extract_price( $wc_product ),
@@ -418,7 +418,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			return implode( ' / ', $values );
 		}
 
-		return self::decode( $wc_variation['name'] ?? '' );
+		return self::decode( (string) ( $wc_variation['name'] ?? '' ) );
 	}
 
 	/**
