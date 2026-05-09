@@ -977,33 +977,34 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_translate_decodes_html_entities_in_attributes_array_path(): void {
-		// The WC Store API can return HTML entities in variation attribute
-		// names and values (e.g. an axis named "Coul&#233;e" or a value
-		// "Cr&#232;me"). The attributes[] array path must decode both.
+		// The WC Store API can return HTML entities in both variation attribute
+		// names (axis label) and values (selected term). Both must be decoded.
 		$fixture               = $this->variation_fixture();
 		$fixture['attributes'] = [
-			[ 'name' => 'Colour', 'value' => 'Cr&#232;me' ],
-			[ 'name' => 'Size',   'value' => 'M' ],
+			[ 'name' => 'Coul&#233;e', 'value' => 'Cr&#232;me' ],
+			[ 'name' => 'Size',        'value' => 'M' ],
 		];
 
-		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Colour', 'Size' ] );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Coulée', 'Size' ] );
 
 		$this->assertSame( 'Crème / M', $result['title'] );
-		$colour_option = array_values( array_filter( $result['options'], fn( $o ) => 'Colour' === $o['name'] ) )[0];
+		$colour_option = array_values( array_filter( $result['options'], fn( $o ) => 'Coulée' === $o['name'] ) )[0];
+		$this->assertSame( 'Coulée', $colour_option['name'] );
 		$this->assertSame( 'Crème', $colour_option['label'] );
 	}
 
 	public function test_translate_decodes_html_entities_in_variation_string_path(): void {
 		// Same decoding requirement for the `variation` formatted-string path
-		// (the live WC Store API shape). Entities in axis names and values
-		// must both be decoded before emission.
+		// (the live WC Store API shape). Entities in both axis names and values
+		// must be decoded before emission.
 		$fixture              = $this->realistic_variation_fixture();
-		$fixture['variation'] = 'Color: Cr&#232;me, Size: M';
+		$fixture['variation'] = 'Coul&#233;e: Cr&#232;me, Size: M';
 
-		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Color', 'Size' ] );
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Coulée', 'Size' ] );
 
 		$this->assertSame( 'Crème / M', $result['title'] );
-		$colour_option = array_values( array_filter( $result['options'], fn( $o ) => 'Color' === $o['name'] ) )[0];
+		$colour_option = array_values( array_filter( $result['options'], fn( $o ) => 'Coulée' === $o['name'] ) )[0];
+		$this->assertSame( 'Coulée', $colour_option['name'] );
 		$this->assertSame( 'Crème', $colour_option['label'] );
 	}
 }

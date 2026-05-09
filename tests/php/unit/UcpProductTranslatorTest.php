@@ -1337,13 +1337,14 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_translate_decodes_html_entities_in_title_and_term_labels(): void {
 		// The WC Store API returns name fields with HTML entities intact.
-		// All emitted string fields must be plain Unicode.
+		// Product title, attribute axis name, and term label must all be
+		// decoded to plain Unicode before emission.
 		$fixture         = $this->simple_product_fixture();
 		$fixture['name'] = 'Shirt &#8211; Green';
 		$fixture['attributes'] = [
 			[
-				'name'           => 'Color',
-				'taxonomy'       => 'pa_color',
+				'name'           => 'Coul&#233;e',
+				'taxonomy'       => 'pa_coulee',
 				'has_variations' => true,
 				'terms'          => [
 					[ 'id' => 1, 'name' => 'Cr&#232;me', 'slug' => 'creme' ],
@@ -1354,6 +1355,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
 		$this->assertSame( 'Shirt – Green', $result['title'] );
+		$this->assertSame( 'Coulée', $result['options'][0]['name'] );
 		$this->assertSame( 'Crème', $result['options'][0]['values'][0]['label'] );
 	}
 
