@@ -2589,7 +2589,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'requires_buyer_input',
 					'path'     => '$.line_items[' . $grouped_request_indices[0] . ']',
-					'content'  => __( 'This grouped product contains items that require variation choices the API cannot supply. Open continue_url to configure the children and complete the purchase.', 'woocommerce-ai-storefront' ),
+					'content'  => __( 'This grouped product contains items that cannot be added directly via the API — they may require buyer configuration, be currently out of stock, or be a product type unsupported in checkout-link flows. Open continue_url to complete the purchase on the merchant site.', 'woocommerce-ai-storefront' ),
 				];
 			} elseif ( ! $is_deterministic ) {
 				$messages[]      = [
