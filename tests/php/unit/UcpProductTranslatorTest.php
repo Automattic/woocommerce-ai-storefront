@@ -1789,6 +1789,39 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_category_bare_name_is_entity_decoded(): void {
+		// When no path map entry exists, the category value falls back to
+		// cat['name'] decoded via self::decode(). Entities in the bare
+		// name must be resolved to plain Unicode.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['categories'] = [
+			[ 'id' => 7, 'name' => 'Caf&#233;', 'slug' => 'cafe', 'parent' => 0 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [], null, [] );
+
+		$this->assertSame( 'Café', $result['categories'][0]['value'] );
+	}
+
+	public function test_category_path_with_entities_is_emitted_verbatim_from_map(): void {
+		// The path map is built by the controller (which now decodes entities
+		// before storing names). This test documents that the translator emits
+		// the map value as-is — decoding responsibility sits upstream.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['categories'] = [
+			[ 'id' => 8, 'name' => 'Cafe', 'slug' => 'cafe', 'parent' => 5 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$fixture,
+			[],
+			null,
+			[ 8 => 'Food & Drink > Café' ]
+		);
+
+		$this->assertSame( 'Food & Drink > Café', $result['categories'][0]['value'] );
+	}
+
 	public function test_variant_options_id_omitted_when_term_label_missing_from_map(): void {
 		// String-path variation references a value not in the map
 		// (e.g. label-case mismatch, custom-per-variation override).

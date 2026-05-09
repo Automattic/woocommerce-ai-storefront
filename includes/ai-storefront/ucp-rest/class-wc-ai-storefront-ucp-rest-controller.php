@@ -1344,7 +1344,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$leaf_ids[ $id ] = true;
 				if ( ! isset( $tree[ $id ] ) ) {
 					$tree[ $id ] = array(
-						'name'   => (string) ( $cat['name'] ?? '' ),
+						'name'   => html_entity_decode( (string) ( $cat['name'] ?? '' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
 						'parent' => (int) ( $cat['parent'] ?? 0 ),
 					);
 				}
@@ -1476,7 +1476,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					continue;
 				}
 				$out[ $id ] = array(
-					'name'   => (string) ( $term['name'] ?? '' ),
+					'name'   => html_entity_decode( (string) ( $term['name'] ?? '' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
 					'parent' => (int) ( $term['parent'] ?? 0 ),
 				);
 			}
