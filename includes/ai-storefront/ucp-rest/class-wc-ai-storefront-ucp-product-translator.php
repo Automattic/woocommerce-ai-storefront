@@ -1311,6 +1311,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			];
 		}
 
+		// `bundled_items` was non-empty but every entry was malformed
+		// (non-array). Per the docblock contract, return null rather
+		// than emitting `metadata.bundle.items: []` — an empty list
+		// signals "merchant misconfigured a bundle with no children,"
+		// which agents shouldn't try to render or describe.
+		if ( empty( $out_items ) ) {
+			return null;
+		}
+
 		return [
 			'min_size' => isset( $bundle_data['bundle_min_size'] ) && '' !== (string) $bundle_data['bundle_min_size']
 				? (int) $bundle_data['bundle_min_size']

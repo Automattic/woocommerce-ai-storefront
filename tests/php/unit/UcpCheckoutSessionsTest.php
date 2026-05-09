@@ -57,6 +57,29 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// builder. Tests that exercise renamed-checkout-page behavior
 		// can override this with their own when() call.
 		Functions\when( 'wc_get_checkout_url' )->justReturn( 'https://example.com/checkout/' );
+		// Minimal `add_query_arg()` stub mirroring WP core's behavior
+		// for the array-of-args + URL signature: parse out any existing
+		// query string on the URL, merge in the new args (later args
+		// overwrite earlier on key collision), and reassemble. WP's
+		// real implementation also handles a multi-arg signature
+		// (`add_query_arg($key, $value, $url)`) but the deterministic-
+		// bundle URL builder only ever calls it with the array form.
+		Functions\when( 'add_query_arg' )->alias(
+			static function ( $args, $url ): string {
+				$parts        = wp_parse_url( (string) $url );
+				$existing     = [];
+				if ( isset( $parts['query'] ) ) {
+					parse_str( $parts['query'], $existing );
+				}
+				$merged       = array_merge( $existing, (array) $args );
+				$query_string = http_build_query( $merged );
+				$rebuilt      = ( isset( $parts['scheme'] ) ? $parts['scheme'] . '://' : '' )
+					. ( $parts['host'] ?? '' )
+					. ( isset( $parts['port'] ) ? ':' . $parts['port'] : '' )
+					. ( $parts['path'] ?? '' );
+				return '' !== $query_string ? $rebuilt . '?' . $query_string : $rebuilt;
+			}
+		);
 		// Used by `axis_slugs_for_variable_child` to normalize inline
 		// attribute names into the slug shape WC stores in
 		// `default_variation_attributes` keys. Mirrors WP's
@@ -2767,6 +2790,78 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '/product/bundle-missing-child/', $result['data']['continue_url'] );
 		$codes = array_column( $result['data']['messages'], 'code' );
 		$this->assertContains( 'field_required', $codes );
+	}
+
+	public function test_deterministic_bundle_propagates_line_item_quantity(): void {
+		// `quantity` is the parent add-to-cart quantity (number of
+		// bundles). `bundle_quantity_<bid>` is the per-bundled-item
+		// quantity inside one bundle. Multiplying happens server-side:
+		// WC adds N bundles, each fully configured.
+		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 3 ] ] ]
+		);
+
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( 'add-to-cart=900', $url );
+		$this->assertStringContainsString( 'quantity=3', $url );
+		// Per-item quantity inside the bundle stays as the bundle author defaulted.
+		$this->assertStringContainsString( 'bundle_quantity_1=1', $url );
+	}
+
+	public function test_deterministic_bundle_url_handles_checkout_page_with_existing_query_string(): void {
+		// `wc_get_checkout_url()` may return a URL that already has a
+		// query string — plain permalinks (`/?page_id=7`) and
+		// multilingual plugins like Polylang/WPML (`/checkout/?lang=es`)
+		// both produce this. The URL builder must merge new params into
+		// the existing query string, not append `?` again.
+		Functions\when( 'wc_get_checkout_url' )->justReturn( 'https://example.com/checkout/?lang=es' );
+		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ] ] ]
+		);
+
+		$url = $result['data']['continue_url'];
+		// Existing param preserved.
+		$this->assertStringContainsString( 'lang=es', $url );
+		// Bundle params merged in.
+		$this->assertStringContainsString( 'add-to-cart=900', $url );
+		$this->assertStringContainsString( 'bundle_quantity_1=1', $url );
+		// Exactly one `?` separator in the path.
+		$this->assertSame(
+			1,
+			substr_count( wp_parse_url( $url, PHP_URL_PATH ) === '/checkout/' ? $url : 'unexpected', '?' ),
+			'continue_url must have exactly one `?` separator, even when checkout page has an existing query string.'
+		);
+	}
+
+	public function test_deterministic_bundle_url_runs_through_continue_url_filter(): void {
+		// Plugins that hook `wc_ai_storefront_ucp_continue_url` to rewrite
+		// continue URLs (e.g. for custom checkout flows or A/B tests)
+		// must see bundle URLs too — the filter should fire on every
+		// path, not just on the standard /checkout-link/ path.
+		//
+		// Override the suite-wide pass-through `apply_filters` mock with
+		// one that rewrites the continue_url filter specifically; other
+		// filters keep their pass-through default by returning the
+		// original $value (third arg of apply_filters' calling shape).
+		Functions\when( 'apply_filters' )->alias(
+			static function ( string $hook, $value ) {
+				if ( 'wc_ai_storefront_ucp_continue_url' === $hook ) {
+					return 'https://example.com/filtered/?from=bundle';
+				}
+				return $value;
+			}
+		);
+		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertStringContainsString( '/filtered/?from=bundle', $result['data']['continue_url'] );
 	}
 
 	public function test_deterministic_bundle_url_uses_merchant_configured_checkout_page(): void {
