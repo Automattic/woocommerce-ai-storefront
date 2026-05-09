@@ -1283,13 +1283,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			return null;
 		}
 
+		// `$reg_max` was normalized to `$reg_min` above when null, so
+		// it's guaranteed int here.
 		return [
 			'min' => [
 				'amount'   => $reg_min,
 				'currency' => $currency,
 			],
 			'max' => [
-				'amount'   => null !== $reg_max ? $reg_max : $reg_min,
+				'amount'   => $reg_max,
 				'currency' => $currency,
 			],
 		];
