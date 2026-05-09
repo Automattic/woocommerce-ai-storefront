@@ -346,7 +346,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			if ( ! is_array( $attribute ) ) {
 				continue;
 			}
-			$axis_label = (string) ( $attribute['name'] ?? '' );
+			$axis_label = self::decode( (string) ( $attribute['name'] ?? '' ) );
 			$taxonomy   = (string) ( $attribute['taxonomy'] ?? '' );
 			$terms      = $attribute['terms'] ?? [];
 			// Excludes custom inline attributes (no `taxonomy`) AND
@@ -364,7 +364,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				if ( ! is_array( $term ) ) {
 					continue;
 				}
-				$name = (string) ( $term['name'] ?? '' );
+				$name = self::decode( (string) ( $term['name'] ?? '' ) );
 				$slug = (string) ( $term['slug'] ?? '' );
 				if ( '' === $name || '' === $slug ) {
 					continue;

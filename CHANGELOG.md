@@ -2,6 +2,7 @@
 
 ### Features
 ### Fixes
+- **Decode HTML entities in UCP name fields.** The WC Store API returns `name` values with HTML entities intact (e.g. `Shirt &#8211; Green`). Both translators now decode at every Store API name read site — product title, variant title, category/tag/brand names, attribute axis labels, and option term labels — so UCP JSON always emits plain Unicode.
 ### Refactors
 ### Tests
 ### Docs

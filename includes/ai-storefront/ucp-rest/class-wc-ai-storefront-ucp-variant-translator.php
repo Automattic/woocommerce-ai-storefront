@@ -359,7 +359,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				// `false` (cast: "") leak through as an empty title
 				// fragment. Mirrors `extract_options()` so both helpers
 				// agree on what counts as a value.
-				$value = (string) ( $attribute['value'] ?? '' );
+				$value = self::decode( (string) ( $attribute['value'] ?? '' ) );
 				if ( '' === $value ) {
 					continue;
 				}
@@ -369,7 +369,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 
 		if ( empty( $values ) && is_array( $pre_parsed_pairs ) ) {
 			foreach ( $pre_parsed_pairs as $pair ) {
-				$values[] = $pair['value'];
+				$values[] = self::decode( $pair['value'] );
 			}
 		}
 
@@ -647,15 +647,15 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 
 		foreach ( $pre_parsed_pairs as $pair ) {
 			$option = [
-				'name'  => $pair['attribute'],
-				'label' => $pair['value'],
+				'name'  => self::decode( $pair['attribute'] ),
+				'label' => self::decode( $pair['value'] ),
 			];
 			// String path: the parsed pair carries no taxonomy info —
 			// rely entirely on the threaded $term_slug_map to lookup
 			// both the taxonomy slug and the term slug.
 			$id = self::lookup_option_value_id(
-				$pair['attribute'],
-				$pair['value'],
+				self::decode( $pair['attribute'] ),
+				self::decode( $pair['value'] ),
 				'',
 				$term_slug_map
 			);
