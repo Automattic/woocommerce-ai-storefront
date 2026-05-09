@@ -130,7 +130,9 @@ Look up specific products by ID.
 
 ### `POST /checkout-sessions`
 
-Validate a cart and return a redirect URL to WooCommerce's native Shareable Checkout. **Stateless** — never persists anything.
+Validate a cart and return a redirect URL for the buyer to complete checkout on the merchant site. **Stateless** — never persists anything.
+
+The exact `continue_url` shape depends on the cart contents: simple/variation carts get `/checkout-link/?products=ID:QTY`; deterministic bundles or grouped products get `/checkout/?add-to-cart=…` with per-bundled-item / per-child params; configurable bundles or grouped products get the merchant PDP permalink. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
 
 **Permission:** `check_agent_access`.
 
@@ -199,6 +201,8 @@ The `buyer_handoff_required` message uses `type: info` + `severity: advisory` (p
   ]
 }
 ```
+
+Other in-cart error codes that produce `status: incomplete`: `out_of_stock`, `minimum_not_met`, `field_required` (path-attributed; emitted for mixed/multi bundle/grouped carts that must be split, or for configurable bundles/grouped without a usable permalink — see [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light)). The `severity` on each error tells the agent how to recover — `recoverable` means split the request and retry via API; `requires_buyer_input` means the buyer must complete configuration on the merchant site.
 
 **Errors:** `503` `ucp_disabled`; `400` `invalid_input` for missing/empty `items` or malformed variant IDs.
 

@@ -53,11 +53,16 @@ Code: [`includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controll
 
 The accompanying `messages[]` includes a `buyer_handoff_required` entry with `type: info` + `severity: advisory` (post-PR #119) so AI assistants render the redirect informationally, not as an error. Agents that map `type: error` to red error styling will style the redirect correctly with the new shape.
 
-The `continue_url` is a WooCommerce Shareable Checkout link with the canonical 0.5.0+ UTM payload baked in:
+The `continue_url` shape depends on the cart contents. The plugin emits one of four forms, all carrying the canonical UTM payload (`utm_source`, `utm_medium=referral`, `utm_id=woo_ucp`, `ai_agent_host_raw`, optional `ai_session_id`):
 
-```
-?utm_source=<agent hostname>&utm_medium=referral&utm_id=woo_ucp&ai_agent_host_raw=<raw host>&ai_session_id=<chk_…>
-```
+| Cart contents | `continue_url` form |
+|---|---|
+| Simple / variation line items only | WooCommerce Shareable Checkout: `/checkout-link/?products=ID:QTY,…` |
+| Single deterministic bundle (all bundled items resolvable from author defaults) | `/checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=…&bundle_attribute_<attr>_<bid>=…` (PR #360) |
+| Single deterministic grouped (all children `type=simple` and in stock) | `/checkout/?add-to-cart=PARENT&quantity[CHILD]=N&…` (PR #362) |
+| Single configurable bundle/grouped | the bundle/grouped product permalink (buyer completes configuration on the merchant PDP) |
+
+Mixed/multi bundle or grouped carts produce `status: incomplete` with a `field_required` error per offending line item and **no `continue_url`** — agents must split the cart into per-line `/checkout-sessions` requests.
 
 WC Order Attribution captures `utm_source` / `utm_medium` natively. The plugin's STRICT recognition gate matches on `utm_id=woo_ucp` (the "we routed this" flag), so attribution lands regardless of which `utm_source` value the agent declares.
 

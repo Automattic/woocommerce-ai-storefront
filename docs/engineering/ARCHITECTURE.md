@@ -79,12 +79,12 @@ Module location: `includes/ai-storefront/ucp-rest/`
 | `class-wc-ai-storefront-ucp-request-context.php` | Per-request product memoization cache. Holds already-fetched `WC_Product` objects by ID so a single outer UCP request never dispatches to the Store API for the same product twice. A fresh context is created for each outer UCP request, making the controller safe under persistent-worker runtimes (Swoole, RoadRunner, FrankenPHP) where static properties survive across requests. |
 | `class-wc-ai-storefront-ucp-dispatch-context.php` | Named API around the dispatch-depth counter used by `WC_AI_Storefront_UCP_Store_API_Filter` to gate the product-selection filter. `enter()` / `exit()` / `is_active()` methods replace the former anonymous static variable; `is_in_ucp_dispatch()` on the filter class is now a thin forwarding wrapper. |
 
-**Stateless checkout pattern.** `/checkout-sessions` never persists anything. Successful responses return `status: requires_escalation` with a `continue_url` pointing at WooCommerce's native Shareable Checkout URL (`/checkout-link/?products=ID:QTY`). The `chk_…` session ID is a correlation token — no GET/PUT/PATCH/DELETE endpoints. Once the agent redirects, WooCommerce owns the rest.
+**Stateless checkout pattern.** `/checkout-sessions` never persists anything. Successful responses return `status: requires_escalation` with a `continue_url` whose shape depends on the cart contents — Shareable Checkout (`/checkout-link/?products=ID:QTY`) for simple/variation carts, `/checkout/?add-to-cart=…` direct-checkout for deterministic bundles/grouped, or the product permalink for configurable bundles/grouped (see [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full table). The `chk_…` session ID is a correlation token — no GET/PUT/PATCH/DELETE endpoints. Once the agent redirects, WooCommerce owns the rest.
 
 **Endpoint-to-WC dispatch map:**
 - `POST /catalog/search` → translates `query/filters` to Store API params → `GET /wc/store/v1/products`.
 - `POST /catalog/lookup` → `GET /wc/store/v1/products/{id}` per requested ID.
-- `POST /checkout-sessions` → `GET /wc/store/v1/products/{id}` per line item for validation → assembles Shareable Checkout URL.
+- `POST /checkout-sessions` → `GET /wc/store/v1/products/{id}` per line item for validation (plus per-bundled-item / per-child fetches for bundle and grouped parents) → assembles a continue_url whose shape depends on the cart contents.
 
 **Variable product expansion.** When search or lookup hits a variable product, the controller pre-fetches each variation's Store API record via additional `rest_do_request` calls and passes them to the translator. `WC_AI_Storefront_UCP_Request_Context` memoizes translated products within a single outer request, so a high-variation catalog (e.g. 20 products × 5 variations each = 100 inner dispatches) never fetches the same product twice.
 
@@ -240,7 +240,7 @@ woocommerce-ai-storefront/
 
 1. **No authentication.** AI agents discover via open web standards. UCP REST routes are public (`permission_callback` returns `true` unless the merchant has paused the plugin or blocked a specific brand). Merchants who want to block all access pause syndication via the admin UI.
 
-2. **Stateless redirect-only checkout.** UCP manifest declares zero `payment_handlers`. Every successful `/checkout-sessions` response returns `status: requires_escalation` with a `continue_url` pointing at WooCommerce's native Shareable Checkout URL. No cart persistence, no session tokens, no get/update/complete/cancel endpoints. Merchants keep full ownership of payment, tax, fulfillment.
+2. **Stateless redirect-only checkout.** UCP manifest declares zero `payment_handlers`. Every successful `/checkout-sessions` response returns `status: requires_escalation` with a `continue_url` pointing at a merchant-domain checkout URL — Shareable Checkout for simple/variation carts, `/checkout/?add-to-cart=…` for deterministic bundles/grouped, or the product PDP permalink for configurable bundles/grouped. No cart persistence, no session tokens, no get/update/complete/cancel endpoints. Merchants keep full ownership of payment, tax, fulfillment.
 
 3. **Data sovereignty.** Checkout happens on the merchant's domain. No delegated payments, no platform lock-in.
 

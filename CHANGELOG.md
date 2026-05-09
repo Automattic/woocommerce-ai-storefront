@@ -30,6 +30,7 @@
 ### Docs
 
 - **Removed stale `validate_product_type()` docblock claim** about a `purchase_urls.checkout_link.unsupported` UCP manifest field that doesn't exist in this plugin. Replaced with an accurate runtime-enforcement clarification (#363).
+- **Engineering-doc sweep for bundle + grouped URL routing.** `UCP-BUY-FLOW.md`, `CART-MODELS.md`, `ARCHITECTURE.md`, and `API-REFERENCE.md` all assumed `continue_url` was always WooCommerce's `/checkout-link/?products=ID:QTY` Shareable Checkout grammar. Updated to reflect the four URL shapes the controller now emits (Shareable Checkout for simple/variation; `/checkout/?add-to-cart=…` for deterministic bundle/grouped; PDP permalink for configurable bundle/grouped; no `continue_url` for mixed/multi container-type carts). Added explicit caveat to `CART-MODELS.md` Model 3 noting that agent-constructed URLs aren't viable for bundle/grouped (per-bundled-item / per-child IDs the agent doesn't have without calling `/checkout-sessions`).
 
 ---
 

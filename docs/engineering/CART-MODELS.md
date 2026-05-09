@@ -50,6 +50,8 @@ WC populates cart from URL → WC checkout
 
 This is the path most spec-aware agents take today.
 
+> **Container-product-type note (post-PR #360 / #362).** When the cart contains a WooCommerce **bundle** or **grouped** product, the returned `continue_url` is *not* `/checkout-link/?products=…`. Bundles and grouped parents carry per-child configuration the `?products=` shorthand can't express, so the controller emits one of `/checkout/?add-to-cart=BUNDLE&bundle_*=…`, `/checkout/?add-to-cart=PARENT&quantity[CHILD]=…`, or the bundle/grouped product permalink. Mixed cart (bundle/grouped alongside other items) returns `status: incomplete` with a `field_required` error and no `continue_url` — agents split the cart and retry. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
+
 ## Model 3 — Agent-constructed URL
 
 Variant of Model 2 where the agent skips the `/checkout-sessions` round-trip and constructs the cart URL itself, using the documented WooCommerce Shareable Checkout grammar.
@@ -86,6 +88,7 @@ The format:
 - No live validation. The constructed URL might point at an out-of-stock product or a price that's drifted; the agent finds out only when the buyer reaches WC's checkout page (which still validates server-side).
 - No fresh totals or shipping preview before redirect. Agent can opt back into a `/checkout-sessions` call if it needs those.
 - Format coupling. The `?products=ID:QTY` shape is WooCommerce's Shareable Checkout grammar. It's stable but it's a WC implementation choice; the engineering docs note this.
+- **Doesn't work for bundles or grouped products.** The deterministic continue_urls those types emit (`/checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=…`, `/checkout/?add-to-cart=PARENT&quantity[CHILD]=…`) require per-bundled-item / per-child IDs the agent doesn't have without calling the merchant. For carts containing bundles or grouped, agents must use Model 2 (call `/checkout-sessions`) to receive the right URL shape.
 
 **Future option:** if agents want this format published as a structured field in the UCP manifest (rather than read out of band from the engineering docs), we'd add a `purchase_url_template` to the `com.woocommerce.ai_storefront` extension block. Small lift (~30 lines + tests). Not done today; the engineering docs cover the discoverability need for the agents we work with.
 
