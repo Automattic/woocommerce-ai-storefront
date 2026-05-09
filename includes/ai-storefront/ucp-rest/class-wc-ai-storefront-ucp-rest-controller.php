@@ -2513,7 +2513,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'requires_buyer_input',
 					'path'     => '$.line_items[' . $bundle_request_indices[0] . ']',
-					'content'  => __( 'This bundle requires variation choices and optional add-on selections that must be made on the merchant site. Open continue_url to configure the bundle and complete the purchase.', 'woocommerce-ai-storefront' ),
+					'content'  => __( 'This bundle requires variation choices and/or optional add-on selections that must be made on the merchant site. Open continue_url to configure the bundle and complete the purchase.', 'woocommerce-ai-storefront' ),
 				];
 			} elseif ( ! $is_deterministic ) {
 				// No deterministic URL AND no permalink — `build_continue_url()`
@@ -4914,41 +4914,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( 'bundle' === $type ) {
 			$bundle_data = WC_AI_Storefront_UCP_Product_Translator::read_bundle_data( $wc_product );
 			if ( null !== $bundle_data ) {
-				$bundled_items = $bundle_data['bundled_items'] ?? [];
-				// Optional-item short-circuit: if any bundled item is
-				// optional, the deterministic helper will return null
-				// regardless. Skip the per-child Store API fetches in
-				// that case — they're wasted I/O on a bundle we already
-				// know is configurable.
-				$has_optional = false;
-				if ( is_array( $bundled_items ) ) {
-					foreach ( $bundled_items as $bi ) {
-						if ( is_array( $bi ) && ! empty( $bi['optional'] ) ) {
-							$has_optional = true;
-							break;
-						}
-					}
-				}
-				if ( ! $has_optional && is_array( $bundled_items ) ) {
-					$children_by_id = [];
-					foreach ( $bundled_items as $bi ) {
-						if ( ! is_array( $bi ) ) {
-							continue;
-						}
-						$child_pid = (int) ( $bi['product_id'] ?? 0 );
-						if ( $child_pid <= 0 || isset( $children_by_id[ $child_pid ] ) ) {
-							continue;
-						}
-						$child = $this->fetch_store_api_product( $child_pid );
-						if ( is_array( $child ) ) {
-							$children_by_id[ $child_pid ] = $child;
-						}
-					}
-					$bundle_url_query = WC_AI_Storefront_UCP_Product_Translator::build_bundle_url_query(
-						$bundle_data,
-						$children_by_id
-					);
-				}
+				// Lazy fetcher: `build_bundle_url_query()` walks
+				// `bundled_items[]` and short-circuits on the first
+				// disqualifier (optional flag, missing override
+				// defaults, etc.). Pass it a closure so children are
+				// fetched on demand — a bundle whose first variable
+				// child fails the deterministic check fetches only
+				// that one Store API record.
+				$bundle_url_query = WC_AI_Storefront_UCP_Product_Translator::build_bundle_url_query(
+					$bundle_data,
+					fn ( int $child_pid ): ?array => $this->fetch_store_api_product( $child_pid )
+				);
 			}
 		}
 

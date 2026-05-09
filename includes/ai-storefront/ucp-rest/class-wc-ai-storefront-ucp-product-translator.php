@@ -1243,6 +1243,16 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			return null;
 		}
 
+		// Both legs of the live range must be parseable for the
+		// "nothing on sale" suppression check to be meaningful. If the
+		// extension is missing or malformed on the live side, we can't
+		// tell whether the regular range is a strikethrough or just an
+		// echo of the live range — bail rather than emit a possibly
+		// misleading list_price_range.
+		if ( null === $live_min ) {
+			return null;
+		}
+
 		// Nothing on sale: regular range equals live range. Suppress
 		// the strikethrough field — same rule as non-bundle path.
 		if ( $reg_min === $live_min && ( null === $reg_max || $reg_max === $live_max ) ) {
@@ -1390,21 +1400,27 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * back to the bundle's product permalink + the spec-defined
 	 * `field_required` error message (UCP checkout error-handling).
 	 *
-	 * Pure function: takes pre-fetched child products by id; the
-	 * controller does the I/O.
+	 * Lazy I/O: the caller supplies a fetcher callable instead of a
+	 * pre-built map. Children are fetched on demand and the iteration
+	 * short-circuits on the first disqualifying entry — a 5-item bundle
+	 * whose first variable child lacks override defaults will fetch
+	 * just one Store API record (not five). The fetcher receives an
+	 * `int $product_id` and returns a Store API response array or
+	 * null when the lookup fails (which itself is a disqualifier).
 	 *
-	 * @param  array<string, mixed>          $bundle_data        Bundle's `extensions.bundles` block.
-	 * @param  array<int, array<string,mixed>> $children_by_id   Map of child product_id => decoded Store API response.
-	 * @return array<string, string>|null                          URL query params keyed for `http_build_query()`,
-	 *                                                              or null when the bundle is configurable.
+	 * @param  array<string, mixed>                    $bundle_data    Bundle's `extensions.bundles` block.
+	 * @param  callable(int): (array<string,mixed>|null) $child_fetcher  Lazy resolver; called with `product_id`.
+	 * @return array<string, string>|null                                URL query params keyed for `http_build_query()`,
+	 *                                                                   or null when the bundle is configurable.
 	 */
-	public static function build_bundle_url_query( array $bundle_data, array $children_by_id ): ?array {
+	public static function build_bundle_url_query( array $bundle_data, callable $child_fetcher ): ?array {
 		$items = $bundle_data['bundled_items'] ?? [];
 		if ( ! is_array( $items ) || empty( $items ) ) {
 			return null;
 		}
 
-		$params = [];
+		$params      = [];
+		$child_cache = [];
 
 		foreach ( $items as $item ) {
 			if ( ! is_array( $item ) ) {
@@ -1429,7 +1445,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 
 			$params[ 'bundle_quantity_' . $bid ] = (string) $qty;
 
-			$child = $children_by_id[ $pid ] ?? null;
+			// Resolve child via the supplied fetcher; cache so a bundle
+			// that references the same product_id twice doesn't double-fetch.
+			if ( ! array_key_exists( $pid, $child_cache ) ) {
+				$child_cache[ $pid ] = $child_fetcher( $pid );
+			}
+			$child = $child_cache[ $pid ];
 			if ( ! is_array( $child ) ) {
 				// Couldn't resolve the child — can't classify. Conservative
 				// fallback to "configurable" so the buyer ends up on the
