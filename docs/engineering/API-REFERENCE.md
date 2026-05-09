@@ -84,6 +84,12 @@ The free-text `query` is preprocessed by `WC_AI_Storefront_UCP_Store_API_Filter:
 
 The product `url` carries the canonical 0.5.0+ UTM payload (`utm_source=<hostname>`, `utm_medium=referral`, `utm_id=woo_ucp`, optional `ai_agent_host_raw`). Buyers who follow the bare product link from chat — rather than going through `/checkout-sessions` — still attribute correctly via WC Order Attribution.
 
+**Notable enrichment fields on each `product` object:**
+
+- **`categories[]`** — each entry's `value` is a `>`-delimited hierarchy string (e.g. `"Clothing > Tshirts"`) per `category.json`. Brands stay flat (no hierarchy in WC). Falls back to bare leaf name when ancestry can't be resolved.
+- **`options[].values[].id`** — stable `<taxonomy>:<slug>` identifier (e.g. `pa_color:black`) for taxonomy-backed variant attributes. Omitted for custom inline attributes and when the term slug is unavailable. Agents echo this back as `selected_option.id` for cross-locale variant matching.
+- **Simple products with schema.org reserved attributes** (Color, Size, Pattern, Material) are emitted in product-group shape — `options[]` populated, synthesized default variant included — rather than as flat products. This matches the same wire shape as variable products for those four axes.
+
 **Errors:**
 - `503` `ucp_disabled` — syndication paused.
 - `400` `invalid_input` — body fails JSON Schema validation.
