@@ -32,13 +32,17 @@ Buyer adds to cart on merchant site → WC checkout
 
 ## Model 2 — Single-shot multi-item handoff
 
-Agent maintains `items[]` in its conversation memory across turns. When the buyer commits, agent calls `POST /checkout-sessions` once with the full list, receives a `continue_url` that encodes the cart in URL params, renders one Buy button.
+Agent maintains `line_items[]` in its conversation memory across turns. When the buyer commits, agent calls `POST /checkout-sessions` once with the full list, receives a `continue_url` that encodes the cart in URL params, renders one Buy button.
 
 ```
-Agent maintains items[] in chat context
-Agent → POST /checkout-sessions { items: [...] } → continue_url
-Buyer clicks Buy → /checkout-link/?products=42:1,99:1&utm_*
-WC populates cart from URL → WC checkout
+Agent maintains line_items[] in chat context
+Agent → POST /checkout-sessions { line_items: [{ item: { id }, quantity }, ...] } → continue_url
+Buyer clicks Buy → continue_url (one of):
+  /checkout-link/?products=42:1,99:1&utm_*           # simple/variation cart
+  /checkout/?add-to-cart=900&quantity=1&bundle_*=…   # deterministic bundle
+  /checkout/?add-to-cart=600&quantity[601]=1&…       # deterministic grouped
+  /product/widget-bundle/?utm_*                      # configurable bundle/grouped (PDP)
+WC populates cart (or buyer configures on PDP) → WC checkout
 ```
 
 | Cart state lives in | Agent's chat memory (transient) + the URL itself (encoded). Plugin holds nothing. |
@@ -49,6 +53,13 @@ WC populates cart from URL → WC checkout
 **Best for:** multi-item assemblies the agent finalizes before redirecting. Works as long as the chat session survives.
 
 This is the path most spec-aware agents take today.
+
+> **Container-product-type note (post-PR #360 / #362).** When the cart contains a WooCommerce **bundle** or **grouped** product, the returned `continue_url` is *not* `/checkout-link/?products=…`. Bundles and grouped parents carry per-child configuration the `?products=` shorthand can't express, so the controller emits one of `/checkout/?add-to-cart=BUNDLE&bundle_*=…`, `/checkout/?add-to-cart=PARENT&quantity[CHILD]=…`, or the bundle/grouped product permalink. Two cases produce `status: incomplete` with `field_required` errors and **no `continue_url`** — agents split or retry depending on severity:
+>
+> - **Mixed cart** (bundle/grouped alongside other items, or multiple containers): one `field_required` error per offending container line item (JSONPath-attributed via `$.line_items[N]`) with `severity: recoverable` — agent splits the cart into per-container `/checkout-sessions` calls.
+> - **Single configurable container without permalink** (bundle/grouped where the deterministic URL helper returned null AND the parent has no usable PDP URL): one `field_required` error with `severity: recoverable` — merchant misconfiguration; the agent can't resolve via splitting and surfaces the message instead.
+>
+> See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
 
 ## Model 3 — Agent-constructed URL
 
@@ -86,6 +97,7 @@ The format:
 - No live validation. The constructed URL might point at an out-of-stock product or a price that's drifted; the agent finds out only when the buyer reaches WC's checkout page (which still validates server-side).
 - No fresh totals or shipping preview before redirect. Agent can opt back into a `/checkout-sessions` call if it needs those.
 - Format coupling. The `?products=ID:QTY` shape is WooCommerce's Shareable Checkout grammar. It's stable but it's a WC implementation choice; the engineering docs note this.
+- **Doesn't work for bundles or grouped products.** The catalog responses *do* expose the IDs an agent would need (`metadata.bundle.items[].bundled_item_id`, `metadata.grouped.children[]`) — but constructing a deterministic `/checkout/?add-to-cart=…` URL from those IDs requires replicating server-side resolution that `/checkout-sessions` already performs: per-child stock checks (a grouped parent can be `is_in_stock=true` while a child is OOS), per-child `add_to_cart.minimum` reading, bundle-author default-attribute resolution for variable children, etc. An agent that built the URL locally with naïve defaults would land on `/checkout/` with WC silently bumping/rejecting lines. For carts containing bundles or grouped, agents must use Model 2 (call `/checkout-sessions`) to receive a checkout-ready URL.
 
 **Future option:** if agents want this format published as a structured field in the UCP manifest (rather than read out of band from the engineering docs), we'd add a `purchase_url_template` to the `com.woocommerce.ai_storefront` extension block. Small lift (~30 lines + tests). Not done today; the engineering docs cover the discoverability need for the agents we work with.
 

@@ -130,7 +130,9 @@ Look up specific products by ID.
 
 ### `POST /checkout-sessions`
 
-Validate a cart and return a redirect URL to WooCommerce's native Shareable Checkout. **Stateless** — never persists anything.
+Validate a cart and return a redirect URL for the buyer to complete checkout on the merchant site. **Stateless** — never persists anything.
+
+The exact `continue_url` shape depends on the cart contents: simple/variation carts get `/checkout-link/?products=ID:QTY`; deterministic bundles or grouped products get `/checkout/?add-to-cart=…` with per-bundled-item / per-child params; configurable bundles or grouped products get the merchant PDP permalink. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
 
 **Permission:** `check_agent_access`.
 
@@ -138,41 +140,71 @@ Validate a cart and return a redirect URL to WooCommerce's native Shareable Chec
 
 ```json
 {
-  "items": [
-    { "variant_id": "wc_42_default", "quantity": 1 },
-    { "variant_id": "wc_56_2", "quantity": 2 }
+  "line_items": [
+    { "item": { "id": "var_42_default" }, "quantity": 1 },
+    { "item": { "id": "var_56" }, "quantity": 2 }
   ],
-  "shipping_address": { "country": "US", "postal_code": "94110" },
-  "context": { "currency": "USD" }
+  "context": { "locale": "en-US" }
 }
 ```
 
+UCP ID grammar accepted by the parser (`parse_ucp_id_to_wc_int()`):
+
+| ID form | Meaning |
+|---|---|
+| `prod_<digits>` | A WC product (simple, variable parent, bundle, grouped) |
+| `var_<digits>` | A real WC variation |
+| `var_<digits>_default` | A synthesized default variant for any non-variable product. UCP's `variants[] minItems: 1` requirement means every product must emit at least one variant; for simple / bundle / grouped products (or any case where variations aren't pre-fetched), the translator synthesizes one default variant whose ID carries the `_default` suffix to keep it distinguishable from real variations |
+| `<digits>` | Bare numeric IDs (e.g. `"123"`) are also accepted — the parser strips a known prefix if present but doesn't require one. Discouraged in agent-facing flows (loses the prod/var distinction); useful for round-tripping IDs from systems that don't carry the prefix |
+
+Malformed IDs — non-prefixed non-numeric strings, `var_56_2` (non-`_default` non-digit suffix), `var_abc`, etc. — parse to `0` and surface as `not_found`.
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `items` | array | yes | `variant_id` (string), `quantity` (int >=1). Max 100 items. Duplicate entries targeting the same product ID are collapsed before validation — quantities are summed, and the response echoes one line per product. A `merged_duplicate_items` info message is included when collapsing occurs so agents can reconcile their sent payload. |
-| `shipping_address` | object | no | UCP address block. Used for shipping/tax preview. |
-| `context` | object | no | UCP context block (currency, locale). |
+| `line_items` | array | yes | Each entry: `item.id` (string product/variation ID echoed back in the response), `quantity` (int ≥1). Max 100 entries. Duplicate entries targeting the same product ID are collapsed before validation — quantities are summed, and the response echoes one line per product. A `merged_duplicate_items` info message accompanies the response when collapsing occurs so agents can reconcile. |
+| `context` | object | no | UCP context block. Currently only `context.locale` is read (BCP-47 language tag, e.g. `en-US`). |
 
-**Response — happy path (200):**
+**Response — happy path (201 Created):**
 
 ```json
 {
   "ucp": { "version": "2026-04-08", "capabilities": ["dev.ucp.shopping.checkout"], "payment_handlers": {} },
   "id": "chk_a1b2c3d4e5f6g7h8",
   "status": "requires_escalation",
-  "continue_url": "https://your-store.com/checkout-link/?products=42:1,56:2&utm_source=chatgpt.com&utm_medium=referral&utm_id=woo_ucp&ai_agent_host_raw=chatgpt.com&ai_session_id=chk_a1b2c3d4e5f6g7h8",
-  "totals": {
-    "subtotal": { "amount_minor": 38997, "currency": "USD" },
-    "shipping": { "amount_minor": 0, "currency": "USD" },
-    "tax":      { "amount_minor": 0, "currency": "USD" },
-    "total":    { "amount_minor": 38997, "currency": "USD" }
-  },
+  "currency": "USD",
+  "line_items": [
+    {
+      "item": { "id": "var_42_default" },
+      "quantity": 1,
+      "unit_price": { "amount": 12999, "currency": "USD" },
+      "line_total": { "amount": 12999, "currency": "USD" },
+      "price_includes_tax": false
+    },
+    {
+      "item": { "id": "var_56" },
+      "quantity": 2,
+      "unit_price": { "amount": 12999, "currency": "USD" },
+      "line_total": { "amount": 25998, "currency": "USD" },
+      "price_includes_tax": false
+    }
+  ],
+  "totals": [
+    { "type": "subtotal", "amount": 38997 },
+    { "type": "total", "amount": 38997 }
+  ],
+  "links": [],
+  "expires_at": null,
+  "continue_url": "https://your-store.com/checkout-link/?products=42:1,56:2&utm_source=chatgpt.com&utm_medium=referral&utm_id=woo_ucp&ai_agent_host_raw=chatgpt.com",
   "messages": [
     {
       "type": "info",
       "code": "buyer_handoff_required",
-      "severity": "advisory",
-      "content": "Continue checkout on the merchant's site to complete your purchase."
+      "content": "Complete your purchase on the merchant site."
+    },
+    {
+      "type": "info",
+      "code": "total_is_provisional",
+      "content": "Total excludes tax and shipping, which are calculated at the merchant checkout."
     }
   ]
 }
@@ -180,27 +212,62 @@ Validate a cart and return a redirect URL to WooCommerce's native Shareable Chec
 
 The `continue_url` is the agent's signal to render a Buy CTA. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md) for the three-layer decision tree.
 
-The `buyer_handoff_required` message uses `type: info` + `severity: advisory` (post-PR #119) so AI assistants render it informationally, not as an error. The continue_url's UTM payload matches the canonical 0.5.0+ shape — same as bare product URLs.
+The `buyer_handoff_required` message uses `type: info` so AI assistants render it informationally, not as an error. Per UCP `message_info.json` (release/2026-04-08), info messages carry no `severity` field — only `type: error` does. The accompanying `total_is_provisional` info message explains the `subtotal == total` collapse: tax and shipping are computed at the merchant checkout, not server-side here.
+
+The continue_url's UTM payload (`utm_source`, `utm_medium=referral`, `utm_id=woo_ucp`, optional `ai_agent_host_raw`) matches the canonical 0.5.0+ shape — same as bare product URLs. The plugin's stamping helper does **not** append `ai_session_id`; agents that want session-correlation can add their own `ai_session_id=chk_…` query param to the continue_url before redirecting (the plugin's order-attribution capture reads it from `$_GET` and writes it to order meta).
 
 **Response — incomplete (200, no `continue_url`):**
 
+The standard envelope fields (`ucp`, `id`, `currency`, `line_items`, `totals`, `links`, `expires_at`) are always present; only `continue_url` is omitted in the incomplete case. The `messages[]` entries describe what failed.
+
 ```json
 {
-  "ucp": { ... },
-  "id": "chk_...",
+  "ucp": { "version": "2026-04-08", "capabilities": ["dev.ucp.shopping.checkout"], "payment_handlers": {} },
+  "id": "chk_a1b2c3d4e5f6g7h8",
   "status": "incomplete",
+  "currency": "USD",
+  "line_items": [],
+  "totals": [
+    { "type": "subtotal", "amount": 0 },
+    { "type": "total", "amount": 0 }
+  ],
+  "links": [],
+  "expires_at": null,
   "messages": [
     {
       "type": "error",
       "code": "out_of_stock",
-      "severity": "requires_buyer_input",
-      "content": "Acme Running Shoes (Size 11) is out of stock."
+      "severity": "unrecoverable",
+      "path": "$.line_items[0].item.id",
+      "content": "Product is out of stock."
     }
   ]
 }
 ```
 
-**Errors:** `503` `ucp_disabled`; `400` `invalid_input` for missing/empty `items` or malformed variant IDs.
+The `severity: unrecoverable` value above is the `checkout_error_message()` default — it's the per-line-item code's natural severity (the line itself can't be recovered without merchant restocking, even though the buyer can recover the cart by removing the line). For codes whose default is overridden (like `minimum_not_met` → `requires_buyer_input`), see the per-code list below.
+
+Other in-cart error codes the response may carry:
+
+- `out_of_stock` — **per-line-item** rejection (`severity: unrecoverable`, the default from `checkout_error_message()`). The OOS line is dropped from `line_items` and surfaced as a `messages[]` entry; the overall response can still be `201 requires_escalation` + `continue_url` when other lines validate. Only when *no* lines validate does the response collapse to `200 incomplete`.
+- `minimum_not_met` — **cart-level** rejection (`severity: requires_buyer_input`, deliberately overriding the default — the buyer can resolve by adding items, so `unrecoverable` would mislead agents into abandoning the cart). Even when all lines validate individually, a surviving subtotal below the merchant minimum forces `status: incomplete` with no `continue_url`.
+- `field_required` — path-attributed via `$.line_items[N]`; emitted for bundles and grouped products. Can appear in **either** response status:
+    - `status: incomplete` (no `continue_url`) when the cart is mixed/multi bundle-or-grouped (must split and retry) or when the configurable bundle/grouped has no usable permalink (`severity: recoverable`).
+    - `status: requires_escalation` (with `continue_url` pointing at the bundle/grouped PDP) when the bundle/grouped is configurable but has a permalink — buyer completes configuration on the merchant site (`severity: requires_buyer_input`).
+
+The `severity` field on each error tells the agent how to recover (per UCP `message_error.json`). `recoverable` means **the platform can resolve by modifying inputs and retrying via API** — for mixed/multi bundle-or-grouped carts that means splitting into per-container `/checkout-sessions` calls; for a single configurable container with no usable permalink it means the merchant must fix the underlying misconfig before retry succeeds. `requires_buyer_input` means the buyer must complete configuration on the merchant site. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
+
+**Errors:** `503` `ucp_disabled` when syndication is paused; `400` `invalid_input` when `line_items` is missing/empty or exceeds the per-request cap. Per-line-item validation failures (unrecognized ID formats outside `prod_…` / `var_…[_default]`, unknown product IDs, out-of-stock items, etc.) are surfaced as `messages[].code` entries on the standard response, not as top-level errors.
+
+The response status is `201 requires_escalation` + `continue_url` only when **both** conditions hold:
+
+1. **At least one line item validates** (survives per-line-item filtering — non-validating lines are dropped from `line_items` and surfaced via `messages[]`).
+2. **No cart-level redirect blocker fires.** Cart-level blockers force `200 incomplete` with no `continue_url` even when valid lines exist:
+   - Surviving subtotal below the merchant's minimum order amount (`minimum_not_met`).
+   - Mixed/multi bundle or grouped cart that requires splitting (`field_required` per offending container).
+   - Configurable bundle/grouped without a usable PDP permalink (`field_required` recoverable).
+
+When zero lines validate, the response is `200 incomplete` regardless of cart-level rules. Agents read `messages[].code` to surface the per-line outcome to the buyer in either response status.
 
 **Note on session IDs.** `chk_<16 hex chars>` is a correlation token for logging and attribution. There is no GET/PUT/PATCH/DELETE endpoint that operates on it — see the next section.
 
