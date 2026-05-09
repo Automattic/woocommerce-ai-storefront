@@ -3027,13 +3027,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'field_required', $codes );
 	}
 
-	public function test_bundle_without_permalink_falls_back_to_checkout_link(): void {
-		// Defensive — if the Store API response somehow omits the
-		// `permalink` field AND there's no extensions block (so no
-		// deterministic URL either), we don't have a configurable URL
-		// to redirect to. Fall back to the standard /checkout-link/?products=
-		// path. WC will likely fail to add a bundle that way, but at
-		// least we don't emit a malformed (empty) continue_url.
+	public function test_bundle_without_permalink_emits_recoverable_field_required(): void {
+		// Pathological — Store API response omits `permalink` AND no
+		// `extensions.bundles` block (so no deterministic URL either).
+		// `build_continue_url()` falls back to /checkout-link/?products=
+		// which WC rejects for bundles, so the error message must NOT
+		// tell the agent to "open continue_url" (that URL is broken).
+		// Instead emit a `recoverable` field_required pointing at the
+		// real cause (missing PDP URL on the merchant side).
 		$this->fake_store_api[ 875 ] = [
 			'id'          => 875,
 			'name'        => 'Shirt Bundle',
@@ -3050,6 +3051,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
 		);
 
+		// Defensive fallback URL is still emitted (better than empty).
 		$this->assertStringContainsString( '/checkout-link/?products=875:1', $result['data']['continue_url'] );
+
+		// The error message must reflect the broken-URL state, not the
+		// configurable-bundle state. Assert: severity=recoverable AND
+		// content does NOT instruct opening continue_url.
+		$bundle_errors = array_values( array_filter(
+			$result['data']['messages'],
+			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
+		) );
+		$this->assertCount( 1, $bundle_errors );
+		$this->assertSame( 'recoverable', $bundle_errors[0]['severity'] );
+		$this->assertStringNotContainsString( 'Open continue_url', $bundle_errors[0]['content'] );
 	}
 }

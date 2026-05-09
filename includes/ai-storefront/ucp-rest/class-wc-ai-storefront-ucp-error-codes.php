@@ -139,12 +139,23 @@ final class WC_AI_Storefront_UCP_Error_Codes {
 	const TERMS_UNCONFIGURED = 'terms_unconfigured';
 
 	/**
-	 * Spec-defined error code (`error_code.json` examples / checkout error-handling
-	 * standard codes): "merchant requires information their API doesn't support
-	 * collecting programmatically." Used for WC Product Bundles where bundled-item
-	 * variation choices and optional toggles can only be supplied on the merchant
-	 * PDP — UCP `/checkout-sessions` has no spec-defined per-line-item config field.
-	 * Pair with `severity: requires_buyer_input` per the message_error contract.
+	 * Spec-defined error code (UCP `error_code.json` examples / checkout
+	 * error-handling standard codes). Marks "a required input is
+	 * missing" without prescribing how the requestor recovers — the
+	 * recovery path is communicated via the message's `severity` field
+	 * (per `message_error.json`):
+	 *
+	 *   - `recoverable` — platform can resolve by modifying inputs and
+	 *     retrying via API. Used for the bundle mixed-cart case where
+	 *     the agent splits the request into separate /checkout-sessions
+	 *     calls.
+	 *   - `requires_buyer_input` — merchant requires information their
+	 *     API doesn't support collecting programmatically. Used for the
+	 *     configurable-single-bundle case where the buyer must pick
+	 *     variations / optional toggles on the merchant PDP.
+	 *
+	 * The same code can pair with either severity depending on the
+	 * specific failure mode.
 	 *
 	 * @see https://ucp.dev/latest/specification/checkout/#error-handling
 	 */
