@@ -971,4 +971,55 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$result['options']
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// HTML entity decoding
+	// ------------------------------------------------------------------
+
+	public function test_translate_decodes_html_entities_in_attributes_array_path(): void {
+		// The WC Store API can return HTML entities in both variation attribute
+		// names (axis label) and values (selected term). Both must be decoded.
+		$fixture               = $this->variation_fixture();
+		$fixture['attributes'] = [
+			[ 'name' => 'Coul&#233;e', 'value' => 'Cr&#232;me' ],
+			[ 'name' => 'Size',        'value' => 'M' ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Coulée', 'Size' ] );
+
+		$this->assertSame( 'Crème / M', $result['title'] );
+		$colour_option = array_values( array_filter( $result['options'], fn( $o ) => 'Coulée' === $o['name'] ) )[0];
+		$this->assertSame( 'Coulée', $colour_option['name'] );
+		$this->assertSame( 'Crème', $colour_option['label'] );
+	}
+
+	public function test_translate_decodes_html_entities_in_variation_string_path(): void {
+		// Same decoding requirement for the `variation` formatted-string path
+		// (the live WC Store API shape). Entities in both axis names and values
+		// must be decoded before emission.
+		$fixture              = $this->realistic_variation_fixture();
+		$fixture['variation'] = 'Coul&#233;e: Cr&#232;me, Size: M';
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Coulée', 'Size' ] );
+
+		$this->assertSame( 'Crème / M', $result['title'] );
+		$colour_option = array_values( array_filter( $result['options'], fn( $o ) => 'Coulée' === $o['name'] ) )[0];
+		$this->assertSame( 'Coulée', $colour_option['name'] );
+		$this->assertSame( 'Crème', $colour_option['label'] );
+	}
+
+	public function test_translate_strips_html_tags_that_survive_entity_decode(): void {
+		// html_entity_decode() turns &lt;strong&gt; back into <strong>.
+		// wp_strip_all_tags() must run after decoding so encoded markup
+		// cannot reintroduce HTML elements in UCP output.
+		$fixture               = $this->variation_fixture();
+		$fixture['attributes'] = [
+			[ 'name' => 'Color', 'value' => '&lt;em&gt;Red&lt;/em&gt;' ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Color' ] );
+
+		$colour_option = array_values( array_filter( $result['options'], fn( $o ) => 'Color' === $o['name'] ) )[0];
+		$this->assertSame( 'Red', $colour_option['label'] );
+	}
 }

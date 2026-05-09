@@ -1,7 +1,10 @@
 ## [Unreleased]
 
 ### Features
+- **Simple products with schema.org reserved attributes are promoted to product-group shape.** When a simple WC product carries any of the four reserved variant attributes — Color, Size, Pattern, or Material (case-insensitive) — the UCP translator now emits it in product-group shape: `options[]` is populated and a synthesized default variant is included, instead of treating it as a flat product with no variant axes. Non-reserved informational attributes (e.g. Fabric Weight, Origin) stay in `metadata.attributes`. Restricted to the four schema.org reserved names only; all other attributes are unaffected.
+
 ### Fixes
+- **Decode HTML entities in UCP name fields.** The WC Store API returns `name` values with HTML entities intact (e.g. `Shirt &#8211; Green`). Both translators now decode at every Store API name read site — product title, variant title, category/tag/brand names, attribute axis labels, and option term labels — so UCP JSON always emits plain Unicode.
 ### Refactors
 ### Tests
 ### Docs

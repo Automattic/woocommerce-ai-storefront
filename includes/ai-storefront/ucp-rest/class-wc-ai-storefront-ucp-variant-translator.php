@@ -237,24 +237,65 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * same availability, id suffixed with `_default` so it's distinguishable
 	 * from a real variation.
 	 *
-	 * @param array<string, mixed>      $wc_product Decoded Store API response.
-	 * @param array<string, mixed>|null $seller     Seller block to attach as
-	 *                                              `variant.seller`. See `translate()`.
-	 * @return array<string, mixed>                 UCP variant shape.
+	 * @param array<string, mixed>      $wc_product     Decoded Store API response.
+	 * @param array<string, mixed>|null $seller         Seller block to attach as
+	 *                                                  `variant.seller`. See `translate()`.
+	 * @param array<int, array<string, mixed>> $simple_options Schema.org variant attributes
+	 *                                                  promoted from the parent simple product;
+	 *                                                  emitted as `options[]` on the variant.
+	 * @return array<string, mixed>                     UCP variant shape.
 	 */
 	public static function synthesize_default(
 		array $wc_product,
-		?array $seller = null
+		?array $seller = null,
+		array $simple_options = []
 	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
 		$variant = [
 			'id'          => self::VARIANT_ID_PREFIX . $id . self::DEFAULT_VARIANT_SUFFIX,
-			'title'       => $wc_product['name'] ?? '',
+			'title'       => self::decode( (string) ( $wc_product['name'] ?? '' ) ),
 			'description' => [ 'plain' => '' ],
 			// `price` — UCP-required active price. See translate() above.
 			'price'       => self::extract_price( $wc_product ),
 		];
+
+		// Simple products with attributes (e.g. Color=White, Size=L) are
+		// promoted to a single-member product group. The concrete option
+		// selections are emitted here so the variant fully describes the
+		// one purchasable combination — each entry is a flat `{name, label}`
+		// derived from the attribute name and its first term value.
+		if ( ! empty( $simple_options ) ) {
+			$options = [];
+			foreach ( $simple_options as $axis ) {
+				$name = (string) ( $axis['name'] ?? '' );
+				if ( '' === $name ) {
+					continue;
+				}
+				// A simple product represents exactly one concrete combination.
+				// Take only the first term value — the one WC associates with
+				// this product. Multi-value axes on a simple product are a WC
+				// data-quality issue; emitting all values would misrepresent
+				// the single purchasable item as a multi-selection.
+				foreach ( $axis['values'] ?? [] as $value ) {
+					$label = (string) ( $value['label'] ?? '' );
+					if ( '' !== $label ) {
+						$option = [
+							'name'  => $name,
+							'label' => $label,
+						];
+						if ( isset( $value['id'] ) ) {
+							$option['id'] = $value['id'];
+						}
+						$options[] = $option;
+						break;
+					}
+				}
+			}
+			if ( ! empty( $options ) ) {
+				$variant['options'] = $options;
+			}
+		}
 
 		// Sale pricing carries through the simple-product path too
 		// (a discounted simple product has on_sale + regular_price
@@ -359,7 +400,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				// `false` (cast: "") leak through as an empty title
 				// fragment. Mirrors `extract_options()` so both helpers
 				// agree on what counts as a value.
-				$value = (string) ( $attribute['value'] ?? '' );
+				$value = self::decode( (string) ( $attribute['value'] ?? '' ) );
 				if ( '' === $value ) {
 					continue;
 				}
@@ -369,7 +410,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 
 		if ( empty( $values ) && is_array( $pre_parsed_pairs ) ) {
 			foreach ( $pre_parsed_pairs as $pair ) {
-				$values[] = $pair['value'];
+				$values[] = self::decode( $pair['value'] );
 			}
 		}
 
@@ -377,7 +418,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			return implode( ' / ', $values );
 		}
 
-		return $wc_variation['name'] ?? '';
+		return self::decode( (string) ( $wc_variation['name'] ?? '' ) );
 	}
 
 	/**
@@ -602,7 +643,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				// Without the upfront cast a `false` value would slip
 				// past `'' === $value` (false !== '') and emit an empty
 				// option `{value: ""}`.
-				$value = (string) ( $attribute['value'] ?? '' );
+				$value = self::decode( (string) ( $attribute['value'] ?? '' ) );
 				if ( '' === $value ) {
 					continue;
 				}
@@ -612,7 +653,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				// pollutes the options list with an unlabeled row that
 				// can't be filtered or displayed meaningfully. Parallel to
 				// the empty-value skip above.
-				$label = (string) ( $attribute['name'] ?? '' );
+				$label = self::decode( (string) ( $attribute['name'] ?? '' ) );
 				if ( '' === $label ) {
 					continue;
 				}
@@ -646,19 +687,16 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		}
 
 		foreach ( $pre_parsed_pairs as $pair ) {
+			$name   = self::decode( $pair['attribute'] );
+			$label  = self::decode( $pair['value'] );
 			$option = [
-				'name'  => $pair['attribute'],
-				'label' => $pair['value'],
+				'name'  => $name,
+				'label' => $label,
 			];
 			// String path: the parsed pair carries no taxonomy info —
 			// rely entirely on the threaded $term_slug_map to lookup
 			// both the taxonomy slug and the term slug.
-			$id = self::lookup_option_value_id(
-				$pair['attribute'],
-				$pair['value'],
-				'',
-				$term_slug_map
-			);
+			$id = self::lookup_option_value_id( $name, $label, '', $term_slug_map );
 			if ( null !== $id ) {
 				$option['id'] = $id;
 			}
@@ -935,5 +973,22 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			];
 		}
 		return $result;
+	}
+
+	/**
+	 * Decode HTML entities from Store API string fields.
+	 *
+	 * The WC Store API returns `name` values with HTML entities intact
+	 * (e.g. `Shirt &#8211; Green`). UCP JSON must emit plain Unicode.
+	 *
+	 * Tags are stripped after decoding so that encoded markup
+	 * (e.g. `&lt;strong&gt;`) cannot reintroduce HTML elements in the
+	 * output.
+	 *
+	 * @param string $value Raw string from the Store API.
+	 * @return string       Plain-text string: entities decoded, tags stripped.
+	 */
+	private static function decode( string $value ): string {
+		return wp_strip_all_tags( html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
 	}
 }

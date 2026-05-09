@@ -1164,22 +1164,157 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'metadata', $result );
 	}
 
-	public function test_translate_omits_options_when_only_informational_attributes(): void {
-		// Simple product with only has_variations:false attributes —
-		// `options[]` absent, `metadata.attributes` present.
+	public function test_translate_promotes_schema_variant_attributes_to_options(): void {
+		// Simple product with a schema.org reserved variant attribute (Color)
+		// → promoted to options[]. Non-reserved attribute (Fabric Weight)
+		// stays in metadata.attributes.
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[
-				'name'           => 'Material',
+				'name'           => 'Color',
 				'has_variations' => false,
-				'terms'          => [ [ 'id' => 10, 'name' => 'Cotton' ] ],
+				'terms'          => [ [ 'id' => 1, 'name' => 'White' ] ],
+			],
+			[
+				'name'           => 'Fabric Weight',
+				'has_variations' => false,
+				'terms'          => [ [ 'id' => 2, 'name' => '180gsm' ] ],
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayHasKey( 'options', $result );
+		$this->assertCount( 1, $result['options'] );
+		$this->assertSame( 'Color', $result['options'][0]['name'] );
+
+		$this->assertArrayHasKey( 'metadata', $result );
+		$this->assertCount( 1, $result['metadata']['attributes'] );
+		$this->assertSame( 'Fabric Weight', $result['metadata']['attributes'][0]['name'] );
+	}
+
+	public function test_translate_does_not_promote_non_reserved_attributes(): void {
+		// Simple product with only a non-reserved attribute → no promotion,
+		// stays in metadata.attributes, no options[] key emitted.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Origin',
+				'has_variations' => false,
+				'terms'          => [ [ 'id' => 10, 'name' => 'Italy' ] ],
 			],
 		];
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
 		$this->assertArrayNotHasKey( 'options', $result );
-		$this->assertArrayHasKey( 'attributes', $result['metadata'] ?? [] );
+		$this->assertArrayHasKey( 'metadata', $result );
+		$this->assertSame( 'Origin', $result['metadata']['attributes'][0]['name'] );
+	}
+
+	public function test_translate_promotes_all_four_reserved_names_case_insensitively(): void {
+		// All four schema.org names, mixed case, all promoted.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[ 'name' => 'COLOR',   'has_variations' => false, 'terms' => [ [ 'id' => 1, 'name' => 'White' ] ] ],
+			[ 'name' => 'Size',    'has_variations' => false, 'terms' => [ [ 'id' => 2, 'name' => 'M' ] ] ],
+			[ 'name' => 'Pattern', 'has_variations' => false, 'terms' => [ [ 'id' => 3, 'name' => 'Solid' ] ] ],
+			[ 'name' => 'material','has_variations' => false, 'terms' => [ [ 'id' => 4, 'name' => 'Cotton' ] ] ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayHasKey( 'options', $result );
+		$this->assertCount( 4, $result['options'] );
+		$this->assertArrayNotHasKey( 'metadata', $result );
+	}
+
+	public function test_synthesized_default_variant_carries_promoted_options(): void {
+		// When a simple product's attributes are promoted to options[], the
+		// synthesized default variant must also carry matching options[]
+		// entries so agents can identify the concrete combination.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Color',
+				'taxonomy'       => 'pa_color',
+				'has_variations' => false,
+				'terms'          => [ [ 'id' => 1, 'name' => 'White', 'slug' => 'white' ] ],
+			],
+			[
+				'name'           => 'Size',
+				'has_variations' => false,
+				'terms'          => [ [ 'id' => 0, 'name' => 'L', 'slug' => 'L' ] ],
+			],
+		];
+
+		$result  = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$variant = $result['variants'][0];
+
+		$this->assertArrayHasKey( 'options', $variant );
+		$option_names = array_column( $variant['options'], 'name' );
+		$this->assertContains( 'Color', $option_names );
+		$this->assertContains( 'Size', $option_names );
+
+		$color_option = array_values( array_filter( $variant['options'], fn( $o ) => 'Color' === $o['name'] ) )[0];
+		$this->assertSame( 'White', $color_option['label'] );
+		$this->assertSame( 'pa_color:white', $color_option['id'] );
+
+		$size_option = array_values( array_filter( $variant['options'], fn( $o ) => 'Size' === $o['name'] ) )[0];
+		$this->assertSame( 'L', $size_option['label'] );
+	}
+
+	public function test_synthesized_default_variant_takes_only_first_value_per_axis(): void {
+		// A simple product with a multi-value attribute (WC data quality issue)
+		// must emit only one options[] entry per axis — the first term value.
+		// Emitting all values would misrepresent one purchasable item as a
+		// multi-selection.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Size',
+				'has_variations' => false,
+				'terms'          => [
+					[ 'id' => 1, 'name' => 'XS', 'slug' => 'xs' ],
+					[ 'id' => 2, 'name' => 'S',  'slug' => 's' ],
+					[ 'id' => 3, 'name' => 'M',  'slug' => 'm' ],
+				],
+			],
+		];
+
+		$result  = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$variant = $result['variants'][0];
+
+		$size_options = array_values( array_filter( $variant['options'], fn( $o ) => 'Size' === $o['name'] ) );
+		$this->assertCount( 1, $size_options, 'Only one options[] entry per axis on a simple product.' );
+		$this->assertSame( 'XS', $size_options[0]['label'] );
+	}
+
+	public function test_promoted_product_options_values_trimmed_to_first_value(): void {
+		// product.options[].values[] must mirror the synthesized variant — one
+		// value per axis, not the full list of terms. Emitting all terms at
+		// the product level while the only variant carries one selection is
+		// inconsistent and misrepresents the available combinations.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Size',
+				'has_variations' => false,
+				'terms'          => [
+					[ 'id' => 1, 'name' => 'XS', 'slug' => 'xs' ],
+					[ 'id' => 2, 'name' => 'S',  'slug' => 's' ],
+					[ 'id' => 3, 'name' => 'M',  'slug' => 'm' ],
+				],
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayHasKey( 'options', $result );
+		$size_axis = $result['options'][0];
+		$this->assertSame( 'Size', $size_axis['name'] );
+		$this->assertCount( 1, $size_axis['values'], 'product.options[].values must have exactly one entry for a simple product.' );
+		$this->assertSame( 'XS', $size_axis['values'][0]['label'] );
 	}
 
 	public function test_translate_omits_metadata_attributes_when_only_variation_axes(): void {
@@ -1198,6 +1333,42 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayHasKey( 'options', $result );
 		$this->assertArrayNotHasKey( 'attributes', $result['metadata'] ?? [] );
+	}
+
+	public function test_translate_decodes_html_entities_in_title_and_term_labels(): void {
+		// The WC Store API returns name fields with HTML entities intact.
+		// Product title, attribute axis name, and term label must all be
+		// decoded to plain Unicode before emission.
+		$fixture         = $this->simple_product_fixture();
+		$fixture['name'] = 'Shirt &#8211; Green';
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Coul&#233;e',
+				'taxonomy'       => 'pa_coulee',
+				'has_variations' => true,
+				'terms'          => [
+					[ 'id' => 1, 'name' => 'Cr&#232;me', 'slug' => 'creme' ],
+				],
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame( 'Shirt – Green', $result['title'] );
+		$this->assertSame( 'Coulée', $result['options'][0]['name'] );
+		$this->assertSame( 'Crème', $result['options'][0]['values'][0]['label'] );
+	}
+
+	public function test_translate_strips_html_tags_that_survive_entity_decode(): void {
+		// html_entity_decode() turns &lt;strong&gt; back into <strong>.
+		// wp_strip_all_tags() must run after decoding so encoded markup
+		// cannot reintroduce HTML elements in the UCP output.
+		$fixture         = $this->simple_product_fixture();
+		$fixture['name'] = '&lt;strong&gt;Sale&lt;/strong&gt; Shirt';
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame( 'Sale Shirt', $result['title'] );
 	}
 
 	public function test_translate_emits_rating_under_core_when_reviews_exist(): void {
@@ -1630,6 +1801,39 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 			[ 'value' => 'NorthPeak', 'taxonomy' => 'brand' ],
 			$result['categories'][1]
 		);
+	}
+
+	public function test_category_bare_name_is_entity_decoded(): void {
+		// When no path map entry exists, the category value falls back to
+		// cat['name'] decoded via self::decode(). Entities in the bare
+		// name must be resolved to plain Unicode.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['categories'] = [
+			[ 'id' => 7, 'name' => 'Caf&#233;', 'slug' => 'cafe', 'parent' => 0 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [], null, [] );
+
+		$this->assertSame( 'Café', $result['categories'][0]['value'] );
+	}
+
+	public function test_category_path_with_entities_is_emitted_verbatim_from_map(): void {
+		// The path map is built by the controller (which now decodes entities
+		// before storing names). This test documents that the translator emits
+		// the map value as-is — decoding responsibility sits upstream.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['categories'] = [
+			[ 'id' => 8, 'name' => 'Cafe', 'slug' => 'cafe', 'parent' => 5 ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
+			$fixture,
+			[],
+			null,
+			[ 8 => 'Food & Drink > Café' ]
+		);
+
+		$this->assertSame( 'Food & Drink > Café', $result['categories'][0]['value'] );
 	}
 
 	public function test_variant_options_id_omitted_when_term_label_missing_from_map(): void {
