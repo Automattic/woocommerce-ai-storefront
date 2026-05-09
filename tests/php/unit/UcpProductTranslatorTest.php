@@ -1996,6 +1996,23 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'list_price_range', $result );
 	}
 
+	public function test_bundle_list_price_range_falls_back_to_parent_currency_when_extension_omits_it(): void {
+		// `extensions.bundles.bundle_price.currency_code` is missing —
+		// list_price_range must fall back to the parent's
+		// `prices.currency_code`, not hard-default to USD. Regression
+		// for round-2 Copilot review on a non-USD store.
+		$fixture                                                     = $this->bundle_product_fixture();
+		$fixture['prices']['currency_code']                          = 'GBP';
+		unset( $fixture['extensions']['bundles']['bundle_price']['currency_code'] );
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
+
+		$this->assertSame( 'GBP', $result['list_price_range']['min']['currency'] );
+		$this->assertSame( 'GBP', $result['list_price_range']['max']['currency'] );
+		// price_range already had this fallback; verify both helpers stay consistent.
+		$this->assertSame( 'GBP', $result['price_range']['min']['currency'] );
+	}
+
 	public function test_bundle_metadata_emitted_with_full_item_structure(): void {
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $this->bundle_product_fixture() );
 

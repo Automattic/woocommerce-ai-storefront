@@ -140,7 +140,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// instead — the parent's `prices.regular_price` reflects only
 		// the bundle base, not the fully-configured pre-discount range.
 		$list_price_range = null !== $bundle_data
-			? self::extract_bundle_list_price_range( $bundle_data )
+			? self::extract_bundle_list_price_range( $bundle_data, $wc_product )
 			: self::extract_list_price_range( $wc_product, $wc_variations );
 		if ( null !== $list_price_range ) {
 			$product['list_price_range'] = $list_price_range;
@@ -1219,14 +1219,20 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * non-bundle path: list_price_range is only emitted when there's
 	 * an actual pre-discount value to communicate.
 	 *
+	 * Currency fallback chain mirrors `extract_bundle_price_range()`:
+	 * `bundle_price.currency_code` → parent `prices.currency_code` →
+	 * literal `USD`. Hard-coded USD is reached only when both are
+	 * missing — defensive last resort.
+	 *
 	 * @param  array<string, mixed>      $bundle_data Bundle extension data.
+	 * @param  array<string, mixed>      $wc_product  Store API product response (for currency fallback).
 	 * @return array<string, mixed>|null              UCP price_range shape, or null.
 	 */
-	private static function extract_bundle_list_price_range( array $bundle_data ): ?array {
+	private static function extract_bundle_list_price_range( array $bundle_data, array $wc_product ): ?array {
 		$bundle_price = $bundle_data['bundle_price'] ?? [];
 		$regular      = $bundle_price['regular_price'] ?? [];
 		$live         = $bundle_price['price'] ?? [];
-		$currency     = (string) ( $bundle_price['currency_code'] ?? 'USD' );
+		$currency     = (string) ( $bundle_price['currency_code'] ?? $wc_product['prices']['currency_code'] ?? 'USD' );
 
 		$reg_min  = isset( $regular['min']['excl_tax'] ) ? (int) $regular['min']['excl_tax'] : null;
 		$reg_max  = isset( $regular['max']['excl_tax'] ) ? (int) $regular['max']['excl_tax'] : null;
