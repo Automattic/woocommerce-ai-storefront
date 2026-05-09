@@ -2114,7 +2114,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *   - prod_N + simple product    → includable
 	 *   - var_N  + variation         → includable
 	 *   - prod_N + variable (parent) → rejected (variation_required)
-	 *   - grouped / external / subscription / subscription_variation
+	 *   - prod_N + bundle / grouped  → includable (special URL routing in
+	 *                                  build_continue_url(); deterministic
+	 *                                  cases land at /checkout/?add-to-cart=,
+	 *                                  configurable cases require buyer input
+	 *                                  on the PDP)
+	 *   - external / subscription / subscription_variation
 	 *                                → rejected (product_type_unsupported)
 	 *   - unknown ID                 → rejected (not_found)
 	 *   - out of stock               → rejected (out_of_stock); WC's
@@ -2530,6 +2535,69 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					'severity' => 'recoverable',
 					'path'     => '$.line_items[' . $bundle_request_indices[0] . ']',
 					'content'  => __( 'This bundle cannot be added through the standard checkout flow because its product page URL is unavailable. The merchant should verify the bundle configuration.', 'woocommerce-ai-storefront' ),
+				];
+				$should_redirect = false;
+			}
+		}
+
+		// Grouped handling (#359). Mirrors the bundle block above with
+		// the same severity choices keyed to the same UCP
+		// `field_required` standard code. Four sub-cases:
+		//   - mixed/multi grouped → recoverable, must-split
+		//   - configurable + permalink → requires_buyer_input, redirect to PDP
+		//   - configurable + no permalink → recoverable, no redirect
+		//   - deterministic → no error (rides standard escalation channel)
+		//
+		// Why grouped can't ride /checkout-link/?products=: that endpoint
+		// adds each ID independently, which would add the grouped PARENT
+		// (a UX wrapper with no purchasable inventory of its own) instead
+		// of the children. WC's legacy `/checkout/?add-to-cart=PARENT&quantity[CHILD]=N`
+		// path is the only URL form that resolves a grouped parent to its
+		// child cart-adds, but it accepts only one parent per request —
+		// hence the must-split rule for mixed/multi-grouped carts.
+		$grouped_request_indices = [];
+		$grouped_processed_keys  = [];
+		foreach ( $processed as $idx => $p ) {
+			if ( 'grouped' === ( $p['wc_type'] ?? '' ) ) {
+				$grouped_request_indices[] = (int) ( $p['request_index'] ?? $idx );
+				$grouped_processed_keys[]  = $idx;
+			}
+		}
+		$has_grouped        = ! empty( $grouped_processed_keys );
+		$grouped_must_split = $has_grouped && ( count( $processed ) > 1 || count( $grouped_processed_keys ) > 1 );
+
+		if ( $grouped_must_split ) {
+			foreach ( $grouped_request_indices as $req_idx ) {
+				$messages[] = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'recoverable',
+					'path'     => '$.line_items[' . $req_idx . ']',
+					'content'  => __( 'Grouped product line items must be sent in their own /checkout-sessions request, separate from other items.', 'woocommerce-ai-storefront' ),
+				];
+			}
+			$should_redirect = false;
+		} elseif ( $has_grouped ) {
+			$grouped_processed_idx = $grouped_processed_keys[0];
+			$grouped               = $processed[ $grouped_processed_idx ];
+			$is_deterministic      = is_array( $grouped['grouped_url_query'] ?? null )
+				&& ! empty( $grouped['grouped_url_query'] );
+			$has_permalink         = '' !== (string) ( $grouped['permalink'] ?? '' );
+			if ( ! $is_deterministic && $has_permalink ) {
+				$messages[] = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'requires_buyer_input',
+					'path'     => '$.line_items[' . $grouped_request_indices[0] . ']',
+					'content'  => __( 'This grouped product contains items that cannot be added directly via the API — they may require buyer configuration, be currently out of stock, or be a product type unsupported in checkout-link flows. Open continue_url to complete the purchase on the merchant site.', 'woocommerce-ai-storefront' ),
+				];
+			} elseif ( ! $is_deterministic ) {
+				$messages[]      = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'recoverable',
+					'path'     => '$.line_items[' . $grouped_request_indices[0] . ']',
+					'content'  => __( 'This grouped product cannot be added through the standard checkout flow because its product page URL is unavailable. The merchant should verify the grouped product configuration.', 'woocommerce-ai-storefront' ),
 				];
 				$should_redirect = false;
 			}
@@ -4931,36 +4999,61 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
+		// Grouped deterministic-classification (#359). Mirrors the bundle
+		// path above. Result is null when any child is non-simple
+		// (variable / external / etc.) — caller falls back to the grouped
+		// parent's permalink so the buyer can pick variations on the PDP.
+		// For deterministic groups, result is the URL query params used
+		// by `build_continue_url` to assemble the
+		// `/checkout/?add-to-cart=PARENT&quantity[CHILD]=N` direct URL.
+		$grouped_url_query = null;
+		if ( 'grouped' === $type ) {
+			$grouped_children = WC_AI_Storefront_UCP_Product_Translator::read_grouped_data( $wc_product );
+			if ( null !== $grouped_children ) {
+				$grouped_url_query = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
+					$grouped_children,
+					fn ( int $child_pid ): ?array => $this->fetch_store_api_product( $child_pid )
+				);
+			}
+		}
+
 		return array(
 			'processed' => array(
-				'wc_id'            => $wc_id,
+				'wc_id'             => $wc_id,
 				// Preserve the agent's original ID for round-tripping —
 				// if they sent `var_456`, echo `var_456` back even though
 				// we resolved it to WC ID 456 internally. The shape
 				// check above guarantees `$raw_id` is a non-empty string
 				// by this point, so no fallback is needed.
-				'ucp_id'           => $raw_id,
-				'quantity'         => $quantity,
-				'unit_price_minor' => $unit_price_minor,
+				'ucp_id'            => $raw_id,
+				'quantity'          => $quantity,
+				'unit_price_minor'  => $unit_price_minor,
 				// WC product type — needed downstream so build_continue_url
 				// can branch for `bundle` (Product Bundles plugin product
 				// type, which can't be added via /checkout-link/?products=
 				// because each bundled item needs index-keyed config
 				// params). See #358.
-				'wc_type'          => $type,
+				'wc_type'           => $type,
 				// Permalink of the underlying WC product — used as the
 				// continue_url for configurable bundles (buyer must
 				// pick variations/toggles on the PDP) and as a defensive
 				// fallback for any bundle where deterministic URL
 				// construction couldn't resolve all child products.
-				'permalink'        => (string) ( $wc_product['permalink'] ?? '' ),
+				'permalink'         => (string) ( $wc_product['permalink'] ?? '' ),
 				// Deterministic-bundle URL params (`bundle_quantity_<bid>`,
 				// `bundle_attribute_<attr>_<bid>`). Non-null only when the
 				// bundle's choices are fully resolvable from
 				// `extensions.bundles.bundled_items[]` defaults — see
 				// translator's `build_bundle_url_query()`. Null for
 				// non-bundle line items and configurable bundles.
-				'bundle_url_query' => $bundle_url_query,
+				'bundle_url_query'  => $bundle_url_query,
+				// Deterministic-grouped URL params (`quantity[<child_id>]=N`).
+				// Non-null only when every child of the grouped parent is
+				// type === 'simple'. Null for non-grouped line items and
+				// for grouped products with any variable/external/etc. child
+				// (those need buyer input on the PDP). See translator's
+				// `build_grouped_url_query()` and #359.
+				'grouped_url_query' => $grouped_url_query,
 				// Original index in the request's `line_items[]` array.
 				// Survives the dedup pass below (which reindexes
 				// `$processed` to a 0-based array) so error messages
@@ -4971,7 +5064,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				// would see the bundle's `field_required` error
 				// path-attributed to `$.line_items[1]` even though the
 				// bundle was at request position `[2]`.
-				'request_index'    => $index,
+				'request_index'     => $index,
 			),
 			'messages'  => $messages,
 		);
@@ -5031,11 +5124,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * Incompatible types:
 	 * - `variable` / `variable-subscription`: parent sent where a concrete
 	 *   variation is required (Shareable Checkout URLs need a specific ID).
-	 * - `grouped`: multiple sub-products with independent per-child quantities.
 	 * - `external`: redirects to a third-party seller's site.
 	 * - `subscription` / `subscription_variation`: recurring billing; the
 	 *   Shareable Checkout URL treats every item as a one-off purchase, which
 	 *   mis-routes subscription sign-ups.
+	 *
+	 * `grouped` and `bundle` are supported but routed through a different
+	 * URL path than `/checkout-link/?products=…` because each requires
+	 * per-child configuration the products= shorthand can't carry. See
+	 * `build_continue_url()` for the routing decision.
 	 *
 	 * The UCP manifest's `purchase_urls.checkout_link.unsupported` list
 	 * advertises these types; this method enforces the contract at request time.
@@ -5055,7 +5152,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $path . '.item.id' );
 		}
 
-		if ( 'grouped' === $type || 'external' === $type
+		if ( 'external' === $type
 			|| 'subscription' === $type || 'subscription_variation' === $type
 		) {
 			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::PRODUCT_TYPE_UNSUPPORTED, $path . '.item.id' );
@@ -5318,12 +5415,86 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				);
 			} elseif ( '' !== (string) ( $first_bundle['permalink'] ?? '' ) ) {
 				$url_with_products = (string) $first_bundle['permalink'];
+			} else {
+				// Defensive guard: bundle without bundle_url_query AND
+				// without permalink. Handler upstream flips
+				// `should_redirect=false` for this case (see round-8 of
+				// #360 review) so this branch is unreachable today — but
+				// fall-through to /checkout-link/?products= would emit
+				// `?products=BUNDLE:N` and WC would attempt to add an
+				// unconfigured bundle (no per-item config carried in the
+				// products= shorthand). Empty string is safer than a
+				// known-broken URL.
+				$url_with_products = '';
 			}
-			// Else bundle without bundle_url_query AND without permalink —
-			// fall through to the standard /checkout-link/?products= path
-			// below. Defensive last resort against malformed Store API
-			// responses; WC will likely reject an unconfigured bundle, but
-			// at least the URL isn't empty.
+		}
+
+		// Grouped short-circuit (#359). Same routing logic as bundles —
+		// /checkout-link/?products= would add the grouped PARENT (a UX
+		// wrapper, not purchasable on its own) instead of the children, so
+		// route through WC's legacy `/checkout/?add-to-cart=PARENT&quantity[CHILD]=N`
+		// form handler for deterministic grouped products, or the parent's
+		// permalink for configurable ones. The handler already enforces
+		// single-grouped + grouped-only carts upstream, so this branch only
+		// fires for solo grouped line items.
+		if ( null === $url_with_products ) {
+			$first_grouped = null;
+			foreach ( $processed as $p ) {
+				if ( 'grouped' === ( $p['wc_type'] ?? '' ) ) {
+					$first_grouped = $p;
+					break;
+				}
+			}
+			if ( null !== $first_grouped ) {
+				$grouped_query = $first_grouped['grouped_url_query'] ?? null;
+				if ( is_array( $grouped_query ) && ! empty( $grouped_query ) ) {
+					if ( function_exists( 'wc_get_checkout_url' ) ) {
+						$base = wc_get_checkout_url();
+					} elseif ( function_exists( 'home_url' ) ) {
+						$base = home_url( '/checkout/' );
+					} else {
+						$base = '/checkout/';
+					}
+					// Grouped quantity semantics differ from bundles. The
+					// agent's top-level `quantity` is the count of "grouped
+					// purchases" (e.g. 2 = buy this group twice). WC's
+					// legacy `?add-to-cart=` form handler doesn't multiply
+					// `quantity[<child>]` by a parent quantity though — the
+					// per-child quantities are absolute. To honor an agent's
+					// `quantity: N` request, multiply each child's
+					// translator-supplied per-child default (which already
+					// honors `add_to_cart.minimum`) by N here so 2 groups of
+					// {child A: 1, child B: 2} land as {A: 2, B: 4} in cart.
+					$grouped_quantity = max( 1, (int) ( $first_grouped['quantity'] ?? 1 ) );
+					foreach ( $grouped_query['quantity'] as $child_id => $child_qty ) {
+						$grouped_query['quantity'][ $child_id ] = (string) ( ( (int) $child_qty ) * $grouped_quantity );
+					}
+					$url_with_products = add_query_arg(
+						array_merge(
+							[
+								'add-to-cart' => (string) $first_grouped['wc_id'],
+							],
+							$grouped_query
+						),
+						$base
+					);
+				} elseif ( '' !== (string) ( $first_grouped['permalink'] ?? '' ) ) {
+					$url_with_products = (string) $first_grouped['permalink'];
+				} else {
+					// Defensive guard: grouped without grouped_url_query
+					// AND without permalink. Handler upstream flips
+					// `should_redirect=false` for this case so this branch
+					// is unreachable today — but if that invariant ever
+					// flips, fall-through to /checkout-link/?products= would
+					// emit `?products=PARENT:N` and add the grouped UX
+					// wrapper parent to cart (a non-purchasable line item).
+					// Empty string is safer than a known-broken URL — the
+					// caller's UTM-stamp + filter pass treats '' as
+					// "no usable URL" and the response surfaces as
+					// `incomplete` without `continue_url`.
+					$url_with_products = '';
+				}
+			}
 		}
 
 		if ( null === $url_with_products ) {
@@ -5344,6 +5515,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// portion. See `WC_AI_Storefront_Attribution::with_woo_ucp_utm()`
 			// for the canonical UTM contract.
 			$url_with_products = $base . '?products=' . implode( ',', $segments );
+		}
+
+		// Defensive empty-URL short-circuit. The bundle and grouped
+		// branches above set `$url_with_products = ''` when neither a
+		// deterministic URL nor a product permalink is available —
+		// signalling "no usable URL." UTM-stamping `''` would yield
+		// `'?utm_source=...'` with no path, a broken URL. Return '' so
+		// the caller's `should_redirect` already-false invariant
+		// produces an `incomplete` response with no `continue_url`.
+		if ( '' === $url_with_products ) {
+			return '';
 		}
 
 		$url = WC_AI_Storefront_Attribution::with_woo_ucp_utm(

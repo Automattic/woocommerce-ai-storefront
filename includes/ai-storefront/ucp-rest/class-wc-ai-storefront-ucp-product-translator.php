@@ -118,6 +118,14 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// the parent's flat `prices.price` value. See #358.
 		$bundle_data = self::extract_bundle_data( $wc_product );
 
+		// Grouped-product detection. Grouped parents are UX wrappers
+		// around N independent children; the parent's `prices.price_range`
+		// is already aggregated by WC core so we don't override it.
+		// Just emit `metadata.grouped.children[]` so agents can
+		// cross-reference the children's individual catalog entries.
+		// See #359.
+		$grouped_children = self::extract_grouped_data( $wc_product );
+
 		$product = [
 			'id'          => self::PRODUCT_ID_PREFIX . $id,
 			'title'       => self::decode( (string) ( $wc_product['name'] ?? '' ) ),
@@ -300,6 +308,16 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			$bundle_metadata = self::extract_bundle_metadata( $bundle_data );
 			if ( null !== $bundle_metadata ) {
 				$metadata['bundle'] = $bundle_metadata;
+			}
+		}
+		// Grouped structure under `metadata.grouped` (issue #359).
+		// Mirrors `metadata.bundle` — exposes child product IDs so
+		// agents can cross-reference each child's catalog entry and
+		// describe the grouping accurately.
+		if ( null !== $grouped_children ) {
+			$grouped_metadata = self::extract_grouped_metadata( $grouped_children );
+			if ( null !== $grouped_metadata ) {
+				$metadata['grouped'] = $grouped_metadata;
 			}
 		}
 		if ( ! empty( $metadata ) ) {
@@ -1605,5 +1623,210 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		}
 
 		return array_values( array_filter( $slugs, static fn( $s ) => '' !== $s ) );
+	}
+
+	/**
+	 * Extract the WC Grouped product's child product IDs from a Store
+	 * API product response.
+	 *
+	 * Grouped products are UX wrappers around N independent children.
+	 * The Store API's `grouped_products` field on a `type === 'grouped'`
+	 * parent is a flat list of child WC product IDs:
+	 *
+	 *   "grouped_products": [26, 22, 24]
+	 *
+	 * The parent has no per-child config (unlike bundles' `bundled_items[]`
+	 * with per-item override defaults / optional flags) — buying the
+	 * grouped product means adding all listed children to cart at
+	 * `quantity[<child_id>]=N`.
+	 *
+	 * Returns null when the product is not grouped or the children list
+	 * is empty / malformed. Caller falls back to the simple-product
+	 * translation path so the grouped parent still emits a valid (if
+	 * minimal) UCP shape. See #359.
+	 *
+	 * @param  array<string, mixed>      $wc_product Store API product response.
+	 * @return array<int, int>|null                  List of child WC product IDs, or null.
+	 */
+	private static function extract_grouped_data( array $wc_product ): ?array {
+		if ( 'grouped' !== ( $wc_product['type'] ?? '' ) ) {
+			return null;
+		}
+		$children = $wc_product['grouped_products'] ?? null;
+		if ( ! is_array( $children ) || empty( $children ) ) {
+			return null;
+		}
+		// Coerce to ints + filter out invalid IDs. A `grouped_products`
+		// entry that's not a positive int is merchant misconfiguration;
+		// drop it rather than carrying it through.
+		$out = [];
+		foreach ( $children as $cid ) {
+			$cid_int = (int) $cid;
+			if ( $cid_int > 0 ) {
+				$out[] = $cid_int;
+			}
+		}
+		return empty( $out ) ? null : array_values( array_unique( $out ) );
+	}
+
+	/**
+	 * Public entry to grouped data extraction — used by the REST controller
+	 * to read the parent's `grouped_products[]` block once, without
+	 * duplicating type-detection or empty-list fallback logic.
+	 *
+	 * @param  array<string, mixed>      $wc_product Decoded Store API product response.
+	 * @return array<int, int>|null                  Validated child ID list, or null.
+	 */
+	public static function read_grouped_data( array $wc_product ): ?array {
+		return self::extract_grouped_data( $wc_product );
+	}
+
+	/**
+	 * Build the URL-query parameter array for a deterministic Grouped
+	 * product's `/checkout/?add-to-cart=PARENT&quantity[child]=N`
+	 * continue_url.
+	 *
+	 * A grouped product is *deterministic* when EVERY child satisfies all of:
+	 *   - `type === 'simple'` — variable / external / subscription / bundle
+	 *     children need per-child config the URL doesn't carry.
+	 *   - `is_in_stock !== false` — WC reports the grouped parent's
+	 *     `is_in_stock = true` if ANY child is in stock, so a parent-level
+	 *     check alone would let an OOS child slip through and produce a
+	 *     half-configured cart at /checkout/. Distinct from bundles, where
+	 *     the Bundles plugin computes parent stock from `bundled_items[]`
+	 *     and a parent-level check suffices.
+	 *
+	 * Any disqualified child → return null → caller falls back to the
+	 * parent's product permalink so the buyer can pick variations / pick
+	 * an in-stock alternative on the PDP.
+	 *
+	 * Lazy I/O via the supplied `$child_fetcher` callable: short-circuits
+	 * on the first disqualifier, so a grouped product whose first child
+	 * fails fetches just one Store API record (not all N).
+	 *
+	 * Per-child quantity comes from each child's `add_to_cart.minimum`
+	 * (the WC Store API's per-product minimum quantity from
+	 * `WC_Product::get_min_purchase_quantity()`). When unset or invalid,
+	 * defaults to 1 — the conventional WC default for grouped PDPs.
+	 * Honoring the minimum here matters because WC core will silently
+	 * bump or reject `quantity[<cid>]=1` if that child requires a higher
+	 * minimum, so the URL we emit must be checkout-ready as-is.
+	 *
+	 * Result shape uses PHP's array-in-querystring syntax:
+	 *
+	 *   [ 'quantity' => [ 23 => '1', 24 => '1', 25 => '2' ] ]
+	 *
+	 * `http_build_query()` serializes this as
+	 * `quantity%5B23%5D=1&quantity%5B24%5D=1&quantity%5B25%5D=2`
+	 * which WC's legacy `?add-to-cart=` form handler parses back into
+	 * `$_REQUEST['quantity'] = [23 => 1, 24 => 1, 25 => 2]` — the
+	 * grouped-products contract WC documents.
+	 *
+	 * @param  array<int, int>                          $children        Child product IDs. May contain duplicates;
+	 *                                                                   `extract_grouped_data()` dedupes upstream
+	 *                                                                   but this method is `public static` so
+	 *                                                                   external callers can bypass — the per-call
+	 *                                                                   `$child_cache` and the `$quantity_map`
+	 *                                                                   keying both dedupe defensively.
+	 * @param  callable(int): (array<string,mixed>|null) $child_fetcher  Lazy resolver; returns Store API product or null.
+	 * @return array<string, mixed>|null                                  URL params keyed for `http_build_query()`, or null.
+	 */
+	public static function build_grouped_url_query( array $children, callable $child_fetcher ): ?array {
+		if ( empty( $children ) ) {
+			return null;
+		}
+
+		$quantity_map = [];
+		$child_cache  = [];
+
+		foreach ( $children as $cid ) {
+			$cid = (int) $cid;
+			if ( $cid <= 0 ) {
+				return null;
+			}
+
+			if ( ! array_key_exists( $cid, $child_cache ) ) {
+				$child_cache[ $cid ] = $child_fetcher( $cid );
+			}
+			$child = $child_cache[ $cid ];
+			if ( ! is_array( $child ) ) {
+				// Couldn't resolve. Conservative fallback to "configurable"
+				// so the buyer ends up on the PDP rather than getting a
+				// half-configured cart-add.
+				return null;
+			}
+
+			$child_type = (string) ( $child['type'] ?? '' );
+			if ( 'simple' !== $child_type ) {
+				// Variable / external / subscription / bundle children
+				// can't be added via grouped's `quantity[<id>]=N` array
+				// syntax without per-child config the URL doesn't carry.
+				return null;
+			}
+
+			// Per-child stock check. WC's grouped parent reports
+			// `is_in_stock = true` if ANY child is in stock — distinct
+			// from bundles, where the Bundles plugin aggregates
+			// `bundled_items[]` stock onto the parent. A grouped parent
+			// passing the parent stock check can still have OOS children;
+			// emitting `quantity[OOS_CHILD]=N` produces a half-configured
+			// cart at /checkout/. Treat OOS-child as configurable so the
+			// buyer lands on the PDP and sees the OOS marker. Backorders
+			// are handled upstream by `is_in_stock` itself: WC's
+			// `is_in_stock()` factors the merchant's backorder setting,
+			// so a backorder-allowed child reads `is_in_stock = true`
+			// here without us re-checking backorder state.
+			if ( false === ( $child['is_in_stock'] ?? true ) ) {
+				return null;
+			}
+
+			// Per-child default quantity from `add_to_cart.minimum`. WC
+			// Store API exposes this for every product type via
+			// `WC_Product::get_min_purchase_quantity()`. Most products
+			// report `1` (the WC default); merchants who set a higher
+			// minimum (often via a quantity-input plugin) need that
+			// minimum to land in the URL or WC's add-to-cart validator
+			// rejects/bumps the line. Defensive default of 1 when the
+			// field is absent (older Store API versions or mocked
+			// fixtures) or non-positive.
+			$min_qty     = 1;
+			$add_to_cart = $child['add_to_cart'] ?? null;
+			if ( is_array( $add_to_cart ) && isset( $add_to_cart['minimum'] ) && is_numeric( $add_to_cart['minimum'] ) ) {
+				$candidate = (int) $add_to_cart['minimum'];
+				if ( $candidate > 0 ) {
+					$min_qty = $candidate;
+				}
+			}
+			$quantity_map[ $cid ] = (string) $min_qty;
+		}
+
+		return [ 'quantity' => $quantity_map ];
+	}
+
+	/**
+	 * Build the `metadata.grouped` structure exposing child IDs to agents.
+	 *
+	 * Shape:
+	 *   {
+	 *     "children": [int, int, ...]
+	 *   }
+	 *
+	 * Lets agents:
+	 *   - Cross-reference each child to the catalog entry the agent has
+	 *     already cached (children appear individually in /catalog/search).
+	 *   - Render an accurate description ("Bundle of 3 products: …").
+	 *
+	 * Returns null when the children list is missing or empty — a
+	 * grouped product with no children is a misconfiguration on the
+	 * merchant side, not something the metadata block should advertise.
+	 *
+	 * @param  array<int, int>           $children Validated child IDs.
+	 * @return array<string, mixed>|null            metadata.grouped shape, or null.
+	 */
+	private static function extract_grouped_metadata( array $children ): ?array {
+		if ( empty( $children ) ) {
+			return null;
+		}
+		return [ 'children' => array_values( array_map( 'intval', $children ) ) ];
 	}
 }
