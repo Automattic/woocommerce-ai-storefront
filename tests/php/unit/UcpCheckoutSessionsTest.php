@@ -57,6 +57,32 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// builder. Tests that exercise renamed-checkout-page behavior
 		// can override this with their own when() call.
 		Functions\when( 'wc_get_checkout_url' )->justReturn( 'https://example.com/checkout/' );
+		// Used by `axis_slugs_for_variable_child` to normalize inline
+		// attribute names into the slug shape WC stores in
+		// `default_variation_attributes` keys. Mirrors WP's
+		// `sanitize_title_with_dashes` behavior closely enough for the
+		// inline-attribute axis-slug round-trip we exercise here:
+		// strip accents → lowercase → replace whitespace and a fixed
+		// set of separators with hyphens → drop characters outside
+		// `[a-z0-9-_]` → collapse repeats → trim edges.
+		Functions\when( 'sanitize_title' )->alias(
+			static function ( $title ): string {
+				$title = (string) $title;
+				$accent_map = [
+					'à' => 'a', 'á' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a', 'å' => 'a',
+					'è' => 'e', 'é' => 'e', 'ê' => 'e', 'ë' => 'e',
+					'ì' => 'i', 'í' => 'i', 'î' => 'i', 'ï' => 'i',
+					'ò' => 'o', 'ó' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o',
+					'ù' => 'u', 'ú' => 'u', 'û' => 'u', 'ü' => 'u',
+					'ñ' => 'n', 'ç' => 'c', 'ý' => 'y', 'ÿ' => 'y',
+				];
+				$title = strtr( strtolower( $title ), $accent_map );
+				$title = preg_replace( '/[\s\/\\\\(),\[\]:;.\'"!?@#$%^&*+=<>{}|~`]+/', '-', $title );
+				$title = preg_replace( '/[^a-z0-9_-]/', '', $title );
+				$title = preg_replace( '/-+/', '-', $title );
+				return trim( (string) $title, '-' );
+			}
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy' );
 		Functions\when( 'wc_get_page_permalink' )->alias(
@@ -236,6 +262,95 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 						],
 					],
 					'bundled_items'       => $bundled_items,
+				],
+			],
+		];
+	}
+
+	/**
+	 * Seed a deterministic WC Product Bundle with a variable child whose
+	 * variation is fully specified by the bundle author via
+	 * `override_default_variation_attributes`. Covers the URL builder's
+	 * `bundle_attribute_<attr_slug>_<bid>=<value>` emission branch — the
+	 * half of #361/#358's deterministic scope that the all-simple fixture
+	 * leaves untested.
+	 *
+	 * The child product 901 carries one `pa_color` taxonomy attribute and
+	 * one inline `Volume (mL)` attribute, each marked `has_variations:
+	 * true`. The bundle's defaults specify both.
+	 */
+	private function seed_deterministic_bundle_with_variable_child( int $bundle_id, int $variable_child_id ): void {
+		$this->fake_store_api[ $variable_child_id ] = [
+			'id'          => $variable_child_id,
+			'name'        => 'Variable Child',
+			'type'        => 'variable',
+			'is_in_stock' => true,
+			'prices'      => [ 'price' => '1500', 'currency_code' => 'USD' ],
+			'attributes'  => [
+				[
+					'name'           => 'Color',
+					'taxonomy'       => 'pa_color',
+					'has_variations' => true,
+					'terms'          => [
+						[ 'name' => 'White', 'slug' => 'white' ],
+						[ 'name' => 'Black', 'slug' => 'black' ],
+					],
+				],
+				[
+					'name'           => 'Volume (mL)',
+					'taxonomy'       => '',
+					'has_variations' => true,
+					'terms'          => [
+						[ 'name' => '250', 'slug' => '250' ],
+						[ 'name' => '500', 'slug' => '500' ],
+					],
+				],
+				// Non-variation informational attribute — should be ignored
+				// by the axis-slug walk (`has_variations: false`).
+				[
+					'name'           => 'Brand',
+					'taxonomy'       => 'pa_brand',
+					'has_variations' => false,
+					'terms'          => [ [ 'name' => 'Acme', 'slug' => 'acme' ] ],
+				],
+			],
+		];
+		$this->fake_store_api[ $bundle_id ] = [
+			'id'          => $bundle_id,
+			'name'        => 'Variable-Child Bundle',
+			'type'        => 'bundle',
+			'permalink'   => 'https://example.com/product/variable-child-bundle/',
+			'is_in_stock' => true,
+			'prices'      => [ 'price' => '1500', 'currency_code' => 'USD' ],
+			'extensions'  => [
+				'bundles' => [
+					'bundle_stock_status' => 'instock',
+					'bundle_min_size'     => '',
+					'bundle_max_size'     => '',
+					'bundle_price'        => [
+						'price' => [
+							'min' => [ 'excl_tax' => '1500' ],
+							'max' => [ 'excl_tax' => '1500' ],
+						],
+					],
+					'bundled_items'       => [
+						[
+							'bundled_item_id'                       => 1,
+							'product_id'                            => $variable_child_id,
+							'quantity_default'                      => 1,
+							'optional'                              => false,
+							'override_default_variation_attributes' => true,
+							'default_variation_attributes'          => [
+								// `pa_color` axis: bundle defaults stored
+								// under the post-`pa_` slug `color`.
+								[ 'name' => 'color', 'value' => 'white' ],
+								// Inline attribute: stored under the
+								// `sanitize_title` of "Volume (mL)" =
+								// `volume-ml`.
+								[ 'name' => 'volume-ml', 'value' => '250' ],
+							],
+						],
+					],
 				],
 			],
 		];
@@ -2541,6 +2656,119 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
 	}
 
+	public function test_deterministic_bundle_with_variable_child_emits_attribute_params(): void {
+		// Variable child + bundle author's override_default_variation_attributes
+		// covers all the child's variation axes. URL builder must emit
+		// `bundle_attribute_<axis_slug>_<bid>=<value>` for each axis.
+		// Covers: `pa_*` taxonomy → post-`pa_` slug; inline attribute
+		// with parens → `sanitize_title()` of display name.
+		$this->seed_deterministic_bundle_with_variable_child( 920, 921 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_920' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( 'add-to-cart=920', $url );
+		$this->assertStringContainsString( 'bundle_quantity_1=1', $url );
+		// `pa_color` axis → slug `color`; default value `white`.
+		$this->assertStringContainsString( 'bundle_attribute_color_1=white', $url );
+		// Inline `Volume (mL)` → `sanitize_title` produces `volume-ml`;
+		// default value `250`. http_build_query encodes the underscore
+		// separator literally and the value 250 unchanged.
+		$this->assertStringContainsString( 'bundle_attribute_volume-ml_1=250', $url );
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'field_required', $codes );
+	}
+
+	public function test_variable_child_without_override_defaults_makes_bundle_configurable(): void {
+		// Same setup as above but the bundle's `override_default_variation_attributes`
+		// is false — buyer must pick variations on the PDP. URL builder
+		// returns null; handler routes to permalink + emits field_required.
+		$this->seed_deterministic_bundle_with_variable_child( 920, 921 );
+		$this->fake_store_api[ 920 ]['extensions']['bundles']['bundled_items'][0]['override_default_variation_attributes'] = false;
+		$this->fake_store_api[ 920 ]['extensions']['bundles']['bundled_items'][0]['default_variation_attributes']          = [];
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_920' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
+		$this->assertStringContainsString( '/product/variable-child-bundle/', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '/checkout/?', $result['data']['continue_url'] );
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'field_required', $codes );
+	}
+
+	public function test_variable_child_with_partial_overrides_makes_bundle_configurable(): void {
+		// Bundle has override=true but only one of two axes is specified.
+		// Strict rule: ALL axes must be covered, else fall back.
+		$this->seed_deterministic_bundle_with_variable_child( 920, 921 );
+		$this->fake_store_api[ 920 ]['extensions']['bundles']['bundled_items'][0]['default_variation_attributes'] = [
+			[ 'name' => 'color', 'value' => 'white' ],
+			// `volume-ml` deliberately missing.
+		];
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_920' ], 'quantity' => 1 ] ] ]
+		);
+
+		// Should fall back to permalink + field_required.
+		$this->assertStringContainsString( '/product/variable-child-bundle/', $result['data']['continue_url'] );
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'field_required', $codes );
+	}
+
+	public function test_deterministic_bundle_with_missing_child_falls_back_to_permalink(): void {
+		// Bundle declares a child product_id that's absent from the
+		// Store API. process_line_item fetches the bundle but
+		// `fetch_store_api_product()` returns null for the missing
+		// child → URL builder can't classify → returns null → bundle
+		// treated as configurable → permalink + field_required.
+		$this->fake_store_api[ 930 ] = [
+			'id'          => 930,
+			'name'        => 'Bundle With Missing Child',
+			'type'        => 'bundle',
+			'permalink'   => 'https://example.com/product/bundle-missing-child/',
+			'is_in_stock' => true,
+			'prices'      => [ 'price' => '1000', 'currency_code' => 'USD' ],
+			'extensions'  => [
+				'bundles' => [
+					'bundle_stock_status' => 'instock',
+					'bundle_price'        => [
+						'price' => [
+							'min' => [ 'excl_tax' => '1000' ],
+							'max' => [ 'excl_tax' => '1000' ],
+						],
+					],
+					'bundled_items'       => [
+						[
+							'bundled_item_id'                       => 1,
+							// product_id 999 is intentionally absent
+							// from $fake_store_api.
+							'product_id'                            => 999,
+							'quantity_default'                      => 1,
+							'optional'                              => false,
+							'override_default_variation_attributes' => false,
+							'default_variation_attributes'          => [],
+						],
+					],
+				],
+			],
+		];
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_930' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertStringContainsString( '/product/bundle-missing-child/', $result['data']['continue_url'] );
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'field_required', $codes );
+	}
+
 	public function test_deterministic_bundle_url_uses_merchant_configured_checkout_page(): void {
 		// Stores that rename the WC checkout page (multilingual sites,
 		// custom slugs like /pay/ or /kasse/, theme overrides) get a
@@ -2578,6 +2806,34 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$codes = array_column( $result['data']['messages'], 'code' );
 		$this->assertContains( 'field_required', $codes );
+	}
+
+	public function test_bundle_error_path_uses_original_request_index_not_post_dedup(): void {
+		// Regression: dedup collapses duplicate non-bundle line items
+		// before bundle classification runs. Agent sends
+		// [simple, simple_dup, bundle] — simples merge, leaving the
+		// bundle at post-dedup position [1] but its original request
+		// index was [2]. The error path must reference [2] (where the
+		// agent put it), not [1] (where it ended up after dedup).
+		$this->seed_simple_product( 100, 1500 );
+		$this->seed_bundle( 875 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ],
+				],
+			]
+		);
+
+		$bundle_errors = array_values( array_filter(
+			$result['data']['messages'],
+			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
+		) );
+		$this->assertCount( 1, $bundle_errors );
+		$this->assertSame( '$.line_items[2]', $bundle_errors[0]['path'] );
 	}
 
 	public function test_mixed_cart_with_bundle_rejects_with_field_required(): void {

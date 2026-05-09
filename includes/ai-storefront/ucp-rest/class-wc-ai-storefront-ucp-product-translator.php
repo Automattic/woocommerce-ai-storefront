@@ -1470,11 +1470,13 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *
 	 * Used by `build_bundle_url_query()` to verify the bundle's
 	 * `default_variation_attributes` covers every axis. WC's Store API
-	 * exposes attributes as `[{name, taxonomy?, terms[]}, ...]` — for
-	 * `pa_*` taxonomy attributes the slug is the post-`pa_` segment;
-	 * for inline custom attributes the slug is `sanitize_title(name)`.
-	 * Bundle's `default_variation_attributes` entries use this same
-	 * slug shape (lowercased, hyphenated).
+	 * exposes attributes as `[{name, taxonomy?, terms[]}, ...]`:
+	 *   - `pa_*` taxonomy attributes: slug is the post-`pa_` segment.
+	 *   - Inline custom attributes: slug is `sanitize_title( name )` — same
+	 *     transform WC uses when building the variation lookup key, so
+	 *     names like `Volume (mL)`, `Color & Pattern`, or `Pâte` round-trip
+	 *     to the slugs the bundle's `default_variation_attributes` keys
+	 *     are stored under.
 	 *
 	 * @param  array<string, mixed> $wc_child Child product Store API response.
 	 * @return array<int, string>             Lowercased axis slug list.
@@ -1505,14 +1507,17 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				continue;
 			}
 
-			// Custom inline attribute — slug derives from the display name
-			// via WP's `sanitize_title()`. Without a WP context here we
-			// approximate by lowercasing + replacing whitespace with hyphens.
-			$name = strtolower( trim( (string) ( $attr['name'] ?? '' ) ) );
-			if ( '' === $name ) {
+			// Custom inline attribute — match WC's slug transform exactly.
+			// `sanitize_title()` strips parens, ampersands, slashes, accents,
+			// and other punctuation that a regex-only approximation would
+			// retain, so display names like `Volume (mL)` produce `volume-ml`
+			// (matching the bundle's stored default slug) rather than
+			// `volume-(ml)` (which would never match anything).
+			$name = (string) ( $attr['name'] ?? '' );
+			if ( '' === trim( $name ) ) {
 				continue;
 			}
-			$slugs[] = preg_replace( '/\s+/', '-', $name );
+			$slugs[] = sanitize_title( $name );
 		}
 
 		return array_values( array_filter( $slugs, static fn( $s ) => '' !== $s ) );

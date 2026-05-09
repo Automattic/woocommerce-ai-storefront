@@ -2475,37 +2475,44 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// both UCP-spec defined; see error_code.json examples and the
 		// checkout error-handling spec
 		// (https://ucp.dev/latest/specification/checkout/#error-handling).
-		$bundle_indices = [];
+		// Walk `$processed` (post-dedup) but emit error paths using each
+		// entry's `request_index` (the position it occupied in the
+		// agent's original `line_items[]`). Dedup may have reordered or
+		// collapsed entries, so the `$processed` index is a different
+		// number — JSONPath references must address what the agent sent.
+		$bundle_request_indices = [];
+		$bundle_processed_keys  = [];
 		foreach ( $processed as $idx => $p ) {
 			if ( 'bundle' === ( $p['wc_type'] ?? '' ) ) {
-				$bundle_indices[] = $idx;
+				$bundle_request_indices[] = (int) ( $p['request_index'] ?? $idx );
+				$bundle_processed_keys[]  = $idx;
 			}
 		}
-		$has_bundle        = ! empty( $bundle_indices );
-		$bundle_must_split = $has_bundle && ( count( $processed ) > 1 || count( $bundle_indices ) > 1 );
+		$has_bundle        = ! empty( $bundle_processed_keys );
+		$bundle_must_split = $has_bundle && ( count( $processed ) > 1 || count( $bundle_processed_keys ) > 1 );
 
 		if ( $bundle_must_split ) {
-			foreach ( $bundle_indices as $bundle_idx ) {
+			foreach ( $bundle_request_indices as $req_idx ) {
 				$messages[] = [
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'requires_buyer_input',
-					'path'     => '$.line_items[' . (int) $bundle_idx . ']',
+					'path'     => '$.line_items[' . $req_idx . ']',
 					'content'  => __( 'Bundle line items must be sent in their own /checkout-sessions request, separate from other items.', 'woocommerce-ai-storefront' ),
 				];
 			}
 			$should_redirect = false;
 		} elseif ( $has_bundle ) {
-			$bundle_idx       = $bundle_indices[0];
-			$bundle           = $processed[ $bundle_idx ];
-			$is_deterministic = is_array( $bundle['bundle_url_query'] ?? null )
+			$bundle_processed_idx = $bundle_processed_keys[0];
+			$bundle               = $processed[ $bundle_processed_idx ];
+			$is_deterministic     = is_array( $bundle['bundle_url_query'] ?? null )
 				&& ! empty( $bundle['bundle_url_query'] );
 			if ( ! $is_deterministic ) {
 				$messages[] = [
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'requires_buyer_input',
-					'path'     => '$.line_items[' . (int) $bundle_idx . ']',
+					'path'     => '$.line_items[' . $bundle_request_indices[0] . ']',
 					'content'  => __( 'This bundle requires variation choices and optional add-on selections that must be made on the merchant site. Open continue_url to configure the bundle and complete the purchase.', 'woocommerce-ai-storefront' ),
 				];
 			}
@@ -4949,6 +4956,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				// translator's `build_bundle_url_query()`. Null for
 				// non-bundle line items and configurable bundles.
 				'bundle_url_query' => $bundle_url_query,
+				// Original index in the request's `line_items[]` array.
+				// Survives the dedup pass below (which reindexes
+				// `$processed` to a 0-based array) so error messages
+				// referencing this line item via JSONPath
+				// (`$.line_items[N]`) point at the request position the
+				// agent sent, not at the post-dedup position. Without
+				// this, an agent that sent `[simple, simple_dup, bundle]`
+				// would see the bundle's `field_required` error
+				// path-attributed to `$.line_items[1]` even though the
+				// bundle was at request position `[2]`.
+				'request_index'    => $index,
 			),
 			'messages'  => $messages,
 		);
