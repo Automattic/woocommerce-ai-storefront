@@ -984,10 +984,14 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * The WC Store API returns `name` values with HTML entities intact
 	 * (e.g. `Shirt &#8211; Green`). UCP JSON must emit plain Unicode.
 	 *
+	 * Tags are stripped after decoding so that encoded markup
+	 * (e.g. `&lt;strong&gt;`) cannot reintroduce HTML elements in the
+	 * output.
+	 *
 	 * @param string $value Raw string from the Store API.
-	 * @return string       Plain-text string with entities decoded.
+	 * @return string       Plain-text string: entities decoded, tags stripped.
 	 */
 	private static function decode( string $value ): string {
-		return html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		return wp_strip_all_tags( html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
 	}
 }

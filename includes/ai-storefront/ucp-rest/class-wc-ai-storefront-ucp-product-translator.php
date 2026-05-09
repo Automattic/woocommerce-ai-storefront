@@ -1081,10 +1081,14 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * responses are JSON consumed by agents and must carry plain Unicode
 	 * strings, not HTML-encoded text.
 	 *
+	 * Tags are stripped after decoding so that encoded markup
+	 * (e.g. `&lt;strong&gt;`) cannot reintroduce HTML elements in the
+	 * output.
+	 *
 	 * @param string $value Raw Store API string.
-	 * @return string       Plain-text string with entities decoded.
+	 * @return string       Plain-text string: entities decoded, tags stripped.
 	 */
 	private static function decode( string $value ): string {
-		return html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		return wp_strip_all_tags( html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
 	}
 }

@@ -1007,4 +1007,19 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Coulée', $colour_option['name'] );
 		$this->assertSame( 'Crème', $colour_option['label'] );
 	}
+
+	public function test_translate_strips_html_tags_that_survive_entity_decode(): void {
+		// html_entity_decode() turns &lt;strong&gt; back into <strong>.
+		// wp_strip_all_tags() must run after decoding so encoded markup
+		// cannot reintroduce HTML elements in UCP output.
+		$fixture               = $this->variation_fixture();
+		$fixture['attributes'] = [
+			[ 'name' => 'Color', 'value' => '&lt;em&gt;Red&lt;/em&gt;' ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Color' ] );
+
+		$colour_option = array_values( array_filter( $result['options'], fn( $o ) => 'Color' === $o['name'] ) )[0];
+		$this->assertSame( 'Red', $colour_option['label'] );
+	}
 }

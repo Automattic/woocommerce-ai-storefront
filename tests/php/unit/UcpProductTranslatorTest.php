@@ -1359,6 +1359,18 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Crème', $result['options'][0]['values'][0]['label'] );
 	}
 
+	public function test_translate_strips_html_tags_that_survive_entity_decode(): void {
+		// html_entity_decode() turns &lt;strong&gt; back into <strong>.
+		// wp_strip_all_tags() must run after decoding so encoded markup
+		// cannot reintroduce HTML elements in the UCP output.
+		$fixture         = $this->simple_product_fixture();
+		$fixture['name'] = '&lt;strong&gt;Sale&lt;/strong&gt; Shirt';
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame( 'Sale Shirt', $result['title'] );
+	}
+
 	public function test_translate_emits_rating_under_core_when_reviews_exist(): void {
 		// UCP `rating.json` shape: `{value, scale_min, scale_max, count}`.
 		// 0.12.0+ aligned to spec — `value` (the average) replaces the
