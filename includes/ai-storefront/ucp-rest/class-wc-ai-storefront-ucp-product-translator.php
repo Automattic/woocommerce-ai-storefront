@@ -97,7 +97,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 
 		$product = [
 			'id'          => self::PRODUCT_ID_PREFIX . $id,
-			'title'       => $wc_product['name'] ?? '',
+			'title'       => self::decode( $wc_product['name'] ?? '' ),
 			'description' => self::extract_description( $wc_product ),
 			'price_range' => self::extract_price_range( $wc_product ),
 			'variants'    => self::extract_variants( $wc_product, $wc_variations, $seller ),
@@ -808,7 +808,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 					continue;
 				}
 				$cat_id = (int) ( $cat['id'] ?? 0 );
-				$value  = (string) $cat['name'];
+				$value  = self::decode( (string) $cat['name'] );
 				if ( null !== $category_paths && $cat_id > 0 && isset( $category_paths[ $cat_id ] ) ) {
 					$path = (string) $category_paths[ $cat_id ];
 					if ( '' !== $path ) {
@@ -825,7 +825,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		if ( ! empty( $wc_product['tags'] ) && is_array( $wc_product['tags'] ) ) {
 			foreach ( $wc_product['tags'] as $tag ) {
 				if ( is_array( $tag ) && ! empty( $tag['name'] ) ) {
-					$tags[] = (string) $tag['name'];
+					$tags[] = self::decode( (string) $tag['name'] );
 				}
 			}
 		}
@@ -837,7 +837,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 					// (WC `product_brand` taxonomy has no native
 					// hierarchy in the data model).
 					$categories[] = [
-						'value'    => (string) $brand['name'],
+						'value'    => self::decode( (string) $brand['name'] ),
 						'taxonomy' => 'brand',
 					];
 				}
@@ -895,7 +895,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				continue;
 			}
 
-			$name     = (string) ( $attribute['name'] ?? '' );
+			$name     = self::decode( (string) ( $attribute['name'] ?? '' ) );
 			$taxonomy = (string) ( $attribute['taxonomy'] ?? '' );
 			$terms    = $attribute['terms'] ?? [];
 			if ( '' === $name || ! is_array( $terms ) || empty( $terms ) ) {
@@ -930,7 +930,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				if ( ! is_array( $term ) || empty( $term['name'] ) ) {
 					continue;
 				}
-				$value = [ 'label' => (string) $term['name'] ];
+				$value = [ 'label' => self::decode( (string) $term['name'] ) ];
 				if ( $is_taxonomy ) {
 					$slug = $term['slug'] ?? '';
 					if ( is_string( $slug ) && '' !== $slug ) {
@@ -1009,5 +1009,20 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			'scale_max' => 5,
 			'count'     => $count,
 		];
+	}
+
+	/**
+	 * Decode HTML entities from a Store API string field.
+	 *
+	 * The WC Store API returns product/term names with HTML entities
+	 * intact (e.g. `&#8211;` for en-dash, `&amp;` for ampersand). UCP
+	 * responses are JSON consumed by agents and must carry plain Unicode
+	 * strings, not HTML-encoded text.
+	 *
+	 * @param string $value Raw Store API string.
+	 * @return string       Plain-text string with entities decoded.
+	 */
+	private static function decode( string $value ): string {
+		return html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 	}
 }

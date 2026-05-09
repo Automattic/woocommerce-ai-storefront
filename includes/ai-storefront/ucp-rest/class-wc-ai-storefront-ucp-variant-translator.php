@@ -250,7 +250,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 
 		$variant = [
 			'id'          => self::VARIANT_ID_PREFIX . $id . self::DEFAULT_VARIANT_SUFFIX,
-			'title'       => $wc_product['name'] ?? '',
+			'title'       => self::decode( $wc_product['name'] ?? '' ),
 			'description' => [ 'plain' => '' ],
 			// `price` — UCP-required active price. See translate() above.
 			'price'       => self::extract_price( $wc_product ),
@@ -377,7 +377,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			return implode( ' / ', $values );
 		}
 
-		return $wc_variation['name'] ?? '';
+		return self::decode( $wc_variation['name'] ?? '' );
 	}
 
 	/**
@@ -612,7 +612,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				// pollutes the options list with an unlabeled row that
 				// can't be filtered or displayed meaningfully. Parallel to
 				// the empty-value skip above.
-				$label = (string) ( $attribute['name'] ?? '' );
+				$label = self::decode( (string) ( $attribute['name'] ?? '' ) );
 				if ( '' === $label ) {
 					continue;
 				}
@@ -935,5 +935,18 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			];
 		}
 		return $result;
+	}
+
+	/**
+	 * Decode HTML entities from Store API string fields.
+	 *
+	 * The WC Store API returns `name` values with HTML entities intact
+	 * (e.g. `Shirt &#8211; Green`). UCP JSON must emit plain Unicode.
+	 *
+	 * @param string $value Raw string from the Store API.
+	 * @return string       Plain-text string with entities decoded.
+	 */
+	private static function decode( string $value ): string {
+		return html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 	}
 }
