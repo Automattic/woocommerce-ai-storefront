@@ -244,7 +244,8 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 */
 	public static function synthesize_default(
 		array $wc_product,
-		?array $seller = null
+		?array $seller = null,
+		array $simple_options = []
 	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
@@ -255,6 +256,31 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			// `price` — UCP-required active price. See translate() above.
 			'price'       => self::extract_price( $wc_product ),
 		];
+
+		// Simple products with attributes (e.g. Color=White, Size=L) are
+		// promoted to a single-member product group. The concrete option
+		// selections are emitted here so the variant fully describes the
+		// one purchasable combination — each entry is a flat `{name, label}`
+		// derived from the attribute name and its single term value.
+		if ( ! empty( $simple_options ) ) {
+			$options = [];
+			foreach ( $simple_options as $axis ) {
+				$name = (string) ( $axis['name'] ?? '' );
+				foreach ( $axis['values'] ?? [] as $value ) {
+					$label = (string) ( $value['label'] ?? '' );
+					if ( '' !== $name && '' !== $label ) {
+						$option = [ 'name' => $name, 'label' => $label ];
+						if ( isset( $value['id'] ) ) {
+							$option['id'] = $value['id'];
+						}
+						$options[] = $option;
+					}
+				}
+			}
+			if ( ! empty( $options ) ) {
+				$variant['options'] = $options;
+			}
+		}
 
 		// Sale pricing carries through the simple-product path too
 		// (a discounted simple product has on_sale + regular_price

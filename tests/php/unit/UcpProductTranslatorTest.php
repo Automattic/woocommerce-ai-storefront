@@ -1164,9 +1164,11 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'metadata', $result );
 	}
 
-	public function test_translate_omits_options_when_only_informational_attributes(): void {
+	public function test_translate_promotes_simple_product_attributes_to_options(): void {
 		// Simple product with only has_variations:false attributes —
-		// `options[]` absent, `metadata.attributes` present.
+		// promoted to options[] (single-member product group) so the UCP
+		// shape is consistent regardless of WC data quality. metadata.attributes
+		// is absent because nothing remains to be informational.
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[
@@ -1178,8 +1180,45 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
-		$this->assertArrayNotHasKey( 'options', $result );
-		$this->assertArrayHasKey( 'attributes', $result['metadata'] ?? [] );
+		$this->assertArrayHasKey( 'options', $result );
+		$this->assertSame( 'Material', $result['options'][0]['name'] );
+		$this->assertSame( [ [ 'label' => 'Cotton' ] ], $result['options'][0]['values'] );
+		$this->assertArrayNotHasKey( 'metadata', $result );
+	}
+
+	public function test_synthesized_default_variant_carries_promoted_options(): void {
+		// When a simple product's attributes are promoted to options[], the
+		// synthesized default variant must also carry matching options[]
+		// entries so agents can identify the concrete combination.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Color',
+				'taxonomy'       => 'pa_color',
+				'has_variations' => false,
+				'terms'          => [ [ 'id' => 1, 'name' => 'White', 'slug' => 'white' ] ],
+			],
+			[
+				'name'           => 'Size',
+				'has_variations' => false,
+				'terms'          => [ [ 'id' => 0, 'name' => 'L', 'slug' => 'L' ] ],
+			],
+		];
+
+		$result  = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$variant = $result['variants'][0];
+
+		$this->assertArrayHasKey( 'options', $variant );
+		$option_names = array_column( $variant['options'], 'name' );
+		$this->assertContains( 'Color', $option_names );
+		$this->assertContains( 'Size', $option_names );
+
+		$color_option = array_values( array_filter( $variant['options'], fn( $o ) => 'Color' === $o['name'] ) )[0];
+		$this->assertSame( 'White', $color_option['label'] );
+		$this->assertSame( 'pa_color:white', $color_option['id'] );
+
+		$size_option = array_values( array_filter( $variant['options'], fn( $o ) => 'Size' === $o['name'] ) )[0];
+		$this->assertSame( 'L', $size_option['label'] );
 	}
 
 	public function test_translate_omits_metadata_attributes_when_only_variation_axes(): void {

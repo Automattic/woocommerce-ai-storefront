@@ -100,7 +100,6 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			'title'       => self::decode( $wc_product['name'] ?? '' ),
 			'description' => self::extract_description( $wc_product ),
 			'price_range' => self::extract_price_range( $wc_product ),
-			'variants'    => self::extract_variants( $wc_product, $wc_variations, $seller ),
 		];
 
 		// `list_price_range` — UCP core optional field carrying the
@@ -182,36 +181,52 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			$product['media'] = self::extract_media( $wc_product['images'] );
 		}
 
-		// Attributes split (2.0.0+):
+		// Attributes split:
 		//
-		//   - `options[]` — variation axes. Each entry advertises the
-		//      set of values the merchant has defined for a selectable
-		//      dimension ("Size: [S, M, L]"). Spec shape is
-		//      `{name, values: string[]}`. Identified in WC via the
-		//      Store API's per-attribute `has_variations: true` flag.
-		//   - `metadata.attributes` — informational. Material, origin,
-		//      fit details — things that apply uniformly across
-		//      variants (or to simple products). Spec treats these as
-		//      vendor-extension data under `metadata`, not a first-
-		//      class filterable axis.
-		//
-		// Pre-2.0.0 both shapes collapsed into `product.attributes[]`
-		// with no distinction; strict UCP consumers couldn't tell
-		// "selectable axes" from "descriptive metadata". The split
-		// enables client-side variant pickers (walk options, render
-		// select UI) and informational panels (render metadata) via
-		// different code paths.
-		$classified = self::extract_classified_attributes( $wc_product );
+		//   - `options[]` — variation axes. Identified by `has_variations:
+		//      true` on variable products. On simple products where WC
+		//      reports all attributes as `has_variations: false`, any
+		//      attributes that describe a concrete product characteristic
+		//      (e.g. Color=White, Size=L) are promoted here too — keeping
+		//      the product-group shape consistent regardless of whether WC
+		//      actually created variations. A single-combo simple product
+		//      is a product group with one member; the spec shape is the
+		//      same whether there are 1 or 18 variants.
+		//   - `metadata.attributes` — informational only when no
+		//      attributes were promoted to `options[]` on this product.
+		//      Material, origin, fit details that don't narrow variant
+		//      selection stay here.
+		$classified         = self::extract_classified_attributes( $wc_product );
+		// Promote metadata_attributes to options[] only when the product
+		// has no true variation axes (has_variations:true). A simple product
+		// with e.g. Color=White, Size=L should look like a single-member
+		// product group. Variable products (any has_variations:true axis)
+		// leave metadata_attributes in metadata — those are informational
+		// facts that apply across all variants, not selection axes.
+		$has_variation_axes = ! empty( $classified['options'] );
+		$promote_to_options = $has_variation_axes ? [] : $classified['metadata_attributes'];
+
+		// `variants` must come after attribute classification so that the
+		// promoted options can be threaded into synthesize_default().
+		$product['variants'] = self::extract_variants( $wc_product, $wc_variations, $seller, $promote_to_options );
+
 		if ( ! empty( $classified['options'] ) ) {
 			$product['options'] = $classified['options'];
+		} elseif ( ! empty( $promote_to_options ) ) {
+			// Simple product whose attributes all have has_variations:false —
+			// promote them to options[] so the product looks like a single-
+			// member product group. The synthesized default variant carries
+			// matching options[] entries (see extract_variants / synthesize_default).
+			$product['options'] = $promote_to_options;
 		}
-		if ( ! empty( $classified['metadata_attributes'] ) ) {
-			// Nothing else writes into product-level metadata today, so
-			// a straight assignment is safe. If a future field also
-			// writes under `metadata` (currently only variants do), this
-			// needs to switch to merge-style to preserve sibling keys.
+
+		// metadata.attributes: only informational attributes that were NOT
+		// promoted. On simple products with promotable attributes this is
+		// empty; on variable products it's the non-axis attributes.
+		$residual_metadata = $has_variation_axes ? $classified['metadata_attributes'] : [];
+		if ( ! empty( $residual_metadata ) ) {
 			$product['metadata'] = [
-				'attributes' => $classified['metadata_attributes'],
+				'attributes' => $residual_metadata,
 			];
 		}
 
@@ -256,7 +271,8 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	private static function extract_variants(
 		array $wc_product,
 		array $wc_variations,
-		?array $seller = null
+		?array $seller = null,
+		array $simple_options = []
 	): array {
 		if ( ! empty( $wc_variations ) ) {
 			// The variant translator can't read parent product data on
@@ -291,7 +307,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		}
 
 		return array(
-			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product, $seller ),
+			WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $wc_product, $seller, $simple_options ),
 		);
 	}
 
