@@ -1996,6 +1996,31 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'list_price_range', $result );
 	}
 
+	public function test_bundle_list_price_range_suppressed_for_flat_price_bundle_with_omitted_max(): void {
+		// Flat-price bundle: live and regular ranges are both
+		// effectively single-point (min == max). Bundles plugin may
+		// omit the `max` leg in this case. The "nothing on sale"
+		// suppression check must normalize null `max` to `min` —
+		// otherwise the comparison fails and the helper emits a
+		// phantom strikethrough range. Round-7 Copilot review caught
+		// this for `live_max=null` + `regular_max` present scenario.
+		$fixture = $this->bundle_product_fixture();
+		// Strip the `max` legs from BOTH live and regular price.
+		// Regular legs match live legs in value (no discount).
+		$fixture['extensions']['bundles']['bundle_price']['price'] = [
+			'min' => [ 'excl_tax' => '2000' ],
+			// max omitted — flat-price bundle.
+		];
+		$fixture['extensions']['bundles']['bundle_price']['regular_price'] = [
+			'min' => [ 'excl_tax' => '2000' ],
+			'max' => [ 'excl_tax' => '2000' ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
+
+		$this->assertArrayNotHasKey( 'list_price_range', $result, 'Flat-price bundle with omitted live max + matching regular range must not emit a strikethrough.' );
+	}
+
 	public function test_bundle_list_price_range_falls_back_to_parent_currency_when_extension_omits_it(): void {
 		// `extensions.bundles.bundle_price.currency_code` is missing —
 		// list_price_range must fall back to the parent's

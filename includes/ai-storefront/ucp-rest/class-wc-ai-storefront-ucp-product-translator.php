@@ -1253,9 +1253,25 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			return null;
 		}
 
+		// Normalize null `max` legs to their `min` counterpart, matching
+		// the way `extract_bundle_price_range()` emits flat-price bundles
+		// (`max` defaults to `min` when missing). Without this, a
+		// flat-price bundle whose `bundle_price.price.max.excl_tax` is
+		// omitted but `regular_price.max.excl_tax` is present (and equals
+		// `regular_price.min`) would skip the "nothing on sale"
+		// suppression and emit a phantom strikethrough. Apply the same
+		// normalization to `$reg_max` for symmetry — strict-equality
+		// comparison below assumes both legs are present.
+		if ( null === $live_max ) {
+			$live_max = $live_min;
+		}
+		if ( null === $reg_max ) {
+			$reg_max = $reg_min;
+		}
+
 		// Nothing on sale: regular range equals live range. Suppress
 		// the strikethrough field — same rule as non-bundle path.
-		if ( $reg_min === $live_min && ( null === $reg_max || $reg_max === $live_max ) ) {
+		if ( $reg_min === $live_min && $reg_max === $live_max ) {
 			return null;
 		}
 
