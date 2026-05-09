@@ -41,7 +41,8 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * When a simple product carries any of them, we promote the product to a
 	 * single-member product group so the UCP shape is consistent.
 	 *
-	 * Comparison is case-insensitive (see extract_classified_attributes).
+	 * Comparison is case-insensitive — see the `strtolower(...)`/`in_array(...)`
+	 * check inside `translate()` where this list is consumed.
 	 */
 	const SCHEMA_VARIANT_ATTRIBUTES = [ 'color', 'size', 'pattern', 'material' ];
 

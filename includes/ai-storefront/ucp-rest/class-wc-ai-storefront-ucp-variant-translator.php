@@ -687,19 +687,16 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		}
 
 		foreach ( $pre_parsed_pairs as $pair ) {
+			$name   = self::decode( $pair['attribute'] );
+			$label  = self::decode( $pair['value'] );
 			$option = [
-				'name'  => self::decode( $pair['attribute'] ),
-				'label' => self::decode( $pair['value'] ),
+				'name'  => $name,
+				'label' => $label,
 			];
 			// String path: the parsed pair carries no taxonomy info —
 			// rely entirely on the threaded $term_slug_map to lookup
 			// both the taxonomy slug and the term slug.
-			$id = self::lookup_option_value_id(
-				self::decode( $pair['attribute'] ),
-				self::decode( $pair['value'] ),
-				'',
-				$term_slug_map
-			);
+			$id = self::lookup_option_value_id( $name, $label, '', $term_slug_map );
 			if ( null !== $id ) {
 				$option['id'] = $id;
 			}
