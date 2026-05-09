@@ -264,14 +264,22 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		// promoted to a single-member product group. The concrete option
 		// selections are emitted here so the variant fully describes the
 		// one purchasable combination — each entry is a flat `{name, label}`
-		// derived from the attribute name and its single term value.
+		// derived from the attribute name and its first term value.
 		if ( ! empty( $simple_options ) ) {
 			$options = [];
 			foreach ( $simple_options as $axis ) {
 				$name = (string) ( $axis['name'] ?? '' );
+				if ( '' === $name ) {
+					continue;
+				}
+				// A simple product represents exactly one concrete combination.
+				// Take only the first term value — the one WC associates with
+				// this product. Multi-value axes on a simple product are a WC
+				// data-quality issue; emitting all values would misrepresent
+				// the single purchasable item as a multi-selection.
 				foreach ( $axis['values'] ?? [] as $value ) {
 					$label = (string) ( $value['label'] ?? '' );
-					if ( '' !== $name && '' !== $label ) {
+					if ( '' !== $label ) {
 						$option = [
 							'name'  => $name,
 							'label' => $label,
@@ -280,6 +288,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 							$option['id'] = $value['id'];
 						}
 						$options[] = $option;
+						break;
 					}
 				}
 			}

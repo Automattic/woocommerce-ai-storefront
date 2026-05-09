@@ -1264,6 +1264,32 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'L', $size_option['label'] );
 	}
 
+	public function test_synthesized_default_variant_takes_only_first_value_per_axis(): void {
+		// A simple product with a multi-value attribute (WC data quality issue)
+		// must emit only one options[] entry per axis — the first term value.
+		// Emitting all values would misrepresent one purchasable item as a
+		// multi-selection.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Size',
+				'has_variations' => false,
+				'terms'          => [
+					[ 'id' => 1, 'name' => 'XS', 'slug' => 'xs' ],
+					[ 'id' => 2, 'name' => 'S',  'slug' => 's' ],
+					[ 'id' => 3, 'name' => 'M',  'slug' => 'm' ],
+				],
+			],
+		];
+
+		$result  = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$variant = $result['variants'][0];
+
+		$size_options = array_values( array_filter( $variant['options'], fn( $o ) => 'Size' === $o['name'] ) );
+		$this->assertCount( 1, $size_options, 'Only one options[] entry per axis on a simple product.' );
+		$this->assertSame( 'XS', $size_options[0]['label'] );
+	}
+
 	public function test_translate_omits_metadata_attributes_when_only_variation_axes(): void {
 		// Variable product with only has_variations:true attributes —
 		// `options[]` present, `metadata.attributes` absent.
