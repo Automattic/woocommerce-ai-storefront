@@ -1164,25 +1164,68 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'metadata', $result );
 	}
 
-	public function test_translate_promotes_simple_product_attributes_to_options(): void {
-		// Simple product with only has_variations:false attributes —
-		// promoted to options[] (single-member product group) so the UCP
-		// shape is consistent regardless of WC data quality. metadata.attributes
-		// is absent because nothing remains to be informational.
+	public function test_translate_promotes_schema_variant_attributes_to_options(): void {
+		// Simple product with a schema.org reserved variant attribute (Color)
+		// → promoted to options[]. Non-reserved attribute (Fabric Weight)
+		// stays in metadata.attributes.
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[
-				'name'           => 'Material',
+				'name'           => 'Color',
 				'has_variations' => false,
-				'terms'          => [ [ 'id' => 10, 'name' => 'Cotton' ] ],
+				'terms'          => [ [ 'id' => 1, 'name' => 'White' ] ],
+			],
+			[
+				'name'           => 'Fabric Weight',
+				'has_variations' => false,
+				'terms'          => [ [ 'id' => 2, 'name' => '180gsm' ] ],
 			],
 		];
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
 		$this->assertArrayHasKey( 'options', $result );
-		$this->assertSame( 'Material', $result['options'][0]['name'] );
-		$this->assertSame( [ [ 'label' => 'Cotton' ] ], $result['options'][0]['values'] );
+		$this->assertCount( 1, $result['options'] );
+		$this->assertSame( 'Color', $result['options'][0]['name'] );
+
+		$this->assertArrayHasKey( 'metadata', $result );
+		$this->assertCount( 1, $result['metadata']['attributes'] );
+		$this->assertSame( 'Fabric Weight', $result['metadata']['attributes'][0]['name'] );
+	}
+
+	public function test_translate_does_not_promote_non_reserved_attributes(): void {
+		// Simple product with only a non-reserved attribute → no promotion,
+		// stays in metadata.attributes, no options[] key emitted.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Origin',
+				'has_variations' => false,
+				'terms'          => [ [ 'id' => 10, 'name' => 'Italy' ] ],
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayNotHasKey( 'options', $result );
+		$this->assertArrayHasKey( 'metadata', $result );
+		$this->assertSame( 'Origin', $result['metadata']['attributes'][0]['name'] );
+	}
+
+	public function test_translate_promotes_all_four_reserved_names_case_insensitively(): void {
+		// All four schema.org names, mixed case, all promoted.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[ 'name' => 'COLOR',   'has_variations' => false, 'terms' => [ [ 'id' => 1, 'name' => 'White' ] ] ],
+			[ 'name' => 'Size',    'has_variations' => false, 'terms' => [ [ 'id' => 2, 'name' => 'M' ] ] ],
+			[ 'name' => 'Pattern', 'has_variations' => false, 'terms' => [ [ 'id' => 3, 'name' => 'Solid' ] ] ],
+			[ 'name' => 'material','has_variations' => false, 'terms' => [ [ 'id' => 4, 'name' => 'Cotton' ] ] ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayHasKey( 'options', $result );
+		$this->assertCount( 4, $result['options'] );
 		$this->assertArrayNotHasKey( 'metadata', $result );
 	}
 

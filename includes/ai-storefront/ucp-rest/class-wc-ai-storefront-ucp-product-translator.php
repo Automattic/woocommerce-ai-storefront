@@ -33,6 +33,19 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	const PRODUCT_ID_PREFIX = 'prod_';
 
 	/**
+	 * Schema.org reserved variant attributes.
+	 *
+	 * These four names are the only WC attributes on a simple product that
+	 * signal "this product should be a variable product" — they map directly
+	 * to schema.org/Product variant properties (color, size, pattern, material).
+	 * When a simple product carries any of them, we promote the product to a
+	 * single-member product group so the UCP shape is consistent.
+	 *
+	 * Comparison is case-insensitive (see extract_classified_attributes).
+	 */
+	const SCHEMA_VARIANT_ATTRIBUTES = [ 'color', 'size', 'pattern', 'material' ];
+
+	/**
 	 * Translate a single WC Store API product response into a UCP product.
 	 *
 	 * Variant expansion is caller-driven. The translator stays a pure
@@ -184,18 +197,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// Attributes split:
 		//
 		//   - `options[]` — variation axes. Identified by `has_variations:
-		//      true` on variable products. On simple products where WC
-		//      reports all attributes as `has_variations: false`, any
-		//      attributes that describe a concrete product characteristic
-		//      (e.g. Color=White, Size=L) are promoted here too — keeping
-		//      the product-group shape consistent regardless of whether WC
-		//      actually created variations. A single-combo simple product
-		//      is a product group with one member; the spec shape is the
-		//      same whether there are 1 or 18 variants.
-		//   - `metadata.attributes` — informational only when no
-		//      attributes were promoted to `options[]` on this product.
-		//      Material, origin, fit details that don't narrow variant
-		//      selection stay here.
+		//      true` on variable products. On simple products, the four
+		//      schema.org reserved variant attributes (Color, Size, Pattern,
+		//      Material) are also promoted here when present — they signal
+		//      "this product should be variable" regardless of how the
+		//      merchant configured WC. Keeps the product-group shape
+		//      consistent for agents.
+		//   - `metadata.attributes` — everything else: informational facts
+		//      like Fabric Weight or Origin that don't narrow variant
+		//      selection.
 		$classified         = self::extract_classified_attributes( $wc_product );
 		// Promote metadata_attributes to options[] only when the product
 		// has no true variation axes (has_variations:true). A simple product
@@ -204,7 +214,19 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// leave metadata_attributes in metadata — those are informational
 		// facts that apply across all variants, not selection axes.
 		$has_variation_axes = ! empty( $classified['options'] );
-		$promote_to_options = $has_variation_axes ? [] : $classified['metadata_attributes'];
+		// On simple products (no has_variations:true axis), promote only the
+		// four schema.org reserved variant attributes — Color, Size, Pattern,
+		// Material — to options[]. These are the only names that signal
+		// "this product should be variable". Informational attributes like
+		// Fabric Weight or Origin stay in metadata regardless.
+		$promote_to_options = [];
+		if ( ! $has_variation_axes ) {
+			foreach ( $classified['metadata_attributes'] as $attr ) {
+				if ( in_array( strtolower( $attr['name'] ?? '' ), self::SCHEMA_VARIANT_ATTRIBUTES, true ) ) {
+					$promote_to_options[] = $attr;
+				}
+			}
+		}
 
 		// `variants` must come after attribute classification so that the
 		// promoted options can be threaded into synthesize_default().
@@ -220,10 +242,16 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			$product['options'] = $promote_to_options;
 		}
 
-		// metadata.attributes: only informational attributes that were NOT
-		// promoted. On simple products with promotable attributes this is
-		// empty; on variable products it's the non-axis attributes.
-		$residual_metadata = $has_variation_axes ? $classified['metadata_attributes'] : [];
+		// metadata.attributes: attributes that were NOT promoted to options[].
+		// On variable products: the non-axis (has_variations:false) attributes.
+		// On simple products: whatever didn't match SCHEMA_VARIANT_ATTRIBUTES.
+		$promoted_names    = array_map( static fn( $a ) => $a['name'], $promote_to_options );
+		$residual_metadata = $has_variation_axes
+			? $classified['metadata_attributes']
+			: array_values( array_filter(
+				$classified['metadata_attributes'],
+				static fn( $a ) => ! in_array( $a['name'], $promoted_names, true )
+			) );
 		if ( ! empty( $residual_metadata ) ) {
 			$product['metadata'] = [
 				'attributes' => $residual_metadata,
