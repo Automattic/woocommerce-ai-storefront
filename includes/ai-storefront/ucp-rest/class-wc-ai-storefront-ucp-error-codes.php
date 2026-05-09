@@ -139,12 +139,16 @@ final class WC_AI_Storefront_UCP_Error_Codes {
 	const TERMS_UNCONFIGURED = 'terms_unconfigured';
 
 	/**
-	 * A WC Product Bundle was included in a multi-item checkout, so
-	 * accompanying line items were dropped from the continue_url. The
-	 * buyer is redirected to the bundle's product page to configure
-	 * and add to cart; other items must be sent in a separate request.
+	 * Spec-defined error code (`error_code.json` examples / checkout error-handling
+	 * standard codes): "merchant requires information their API doesn't support
+	 * collecting programmatically." Used for WC Product Bundles where bundled-item
+	 * variation choices and optional toggles can only be supplied on the merchant
+	 * PDP — UCP `/checkout-sessions` has no spec-defined per-line-item config field.
+	 * Pair with `severity: requires_buyer_input` per the message_error contract.
+	 *
+	 * @see https://ucp.dev/latest/specification/checkout/#error-handling
 	 */
-	const BUNDLE_DROPPED_LINE_ITEMS = 'bundle_dropped_line_items';
+	const FIELD_REQUIRED = 'field_required';
 
 	// -----------------------------------------------------------------------
 	// Catalog codes

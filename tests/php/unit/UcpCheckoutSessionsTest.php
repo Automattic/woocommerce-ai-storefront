@@ -152,13 +152,13 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Seed a WC Product Bundles plugin product (#358).
+	 * Seed a configurable WC Product Bundle (#358).
 	 *
-	 * Bundles are accepted at /checkout-sessions but build_continue_url
-	 * routes them to the product permalink (not /checkout-link/?products=)
-	 * because each bundled item needs index-keyed config params for
-	 * variation choices and optional toggles. The permalink lets the
-	 * buyer configure on the storefront with UTM attribution preserved.
+	 * No `extensions.bundles` block, so the deterministic-classification
+	 * helper returns null and the bundle is treated as configurable —
+	 * continue_url goes to the product permalink, the handler emits a
+	 * `field_required` error with `severity: requires_buyer_input` per
+	 * the UCP checkout error-handling spec.
 	 */
 	private function seed_bundle( int $id, string $permalink = '' ): void {
 		$this->fake_store_api[ $id ] = [
@@ -170,6 +170,136 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			'prices'      => [
 				'price'         => '2000',
 				'currency_code' => 'USD',
+			],
+		];
+	}
+
+	/**
+	 * Seed a deterministic WC Product Bundle with all simple required
+	 * children (#358 / merged #361 scope).
+	 *
+	 * Every bundled item is required (`optional: false`) and each child
+	 * is `type: simple`, so the deterministic-classification helper
+	 * resolves the entire bundle from defaults — no buyer input needed.
+	 * continue_url constructs `/checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=<qty>`.
+	 *
+	 * @param int                $id        Bundle parent product ID.
+	 * @param array<int, int>    $children  [child_product_id => quantity_default, ...].
+	 */
+	private function seed_deterministic_bundle( int $id, array $children ): void {
+		$bundled_items = [];
+		$bid           = 0;
+		foreach ( $children as $child_id => $qty ) {
+			++$bid;
+			$bundled_items[]                          = [
+				'bundled_item_id'                       => $bid,
+				'product_id'                            => (int) $child_id,
+				'quantity_default'                      => (int) $qty,
+				'optional'                              => false,
+				'override_default_variation_attributes' => false,
+				'default_variation_attributes'          => [],
+			];
+			$this->fake_store_api[ (int) $child_id ] = [
+				'id'          => (int) $child_id,
+				'name'        => 'Bundled Simple #' . $child_id,
+				'type'        => 'simple',
+				'is_in_stock' => true,
+				'prices'      => [
+					'price'         => '1000',
+					'currency_code' => 'USD',
+				],
+			];
+		}
+		$this->fake_store_api[ $id ] = [
+			'id'          => $id,
+			'name'        => 'Deterministic Bundle',
+			'type'        => 'bundle',
+			'permalink'   => 'https://example.com/product/deterministic-bundle/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'         => '2000',
+				'currency_code' => 'USD',
+			],
+			'extensions'  => [
+				'bundles' => [
+					'bundle_stock_status' => 'instock',
+					'bundle_min_size'     => '',
+					'bundle_max_size'     => '',
+					'bundle_price'        => [
+						'price' => [
+							'min' => [ 'excl_tax' => '2000' ],
+							'max' => [ 'excl_tax' => '2000' ],
+						],
+					],
+					'bundled_items'       => $bundled_items,
+				],
+			],
+		];
+	}
+
+	/**
+	 * Seed a configurable WC Product Bundle that has the `extensions.bundles`
+	 * block but at least one buyer-input requirement — either an
+	 * optional toggle or a variable child without override defaults.
+	 *
+	 * Use this when the test specifically wants the deterministic helper
+	 * to inspect the structure and rule "this needs buyer input." The
+	 * bare `seed_bundle()` helper is for tests that don't need the
+	 * extension at all (helper takes the simpler "no extensions block →
+	 * not deterministic" path).
+	 */
+	private function seed_configurable_bundle_with_optional( int $id, int $required_simple_id, int $optional_simple_id ): void {
+		$this->fake_store_api[ $required_simple_id ] = [
+			'id'          => $required_simple_id,
+			'name'        => 'Required Simple',
+			'type'        => 'simple',
+			'is_in_stock' => true,
+			'prices'      => [ 'price' => '1500', 'currency_code' => 'USD' ],
+		];
+		$this->fake_store_api[ $optional_simple_id ] = [
+			'id'          => $optional_simple_id,
+			'name'        => 'Optional Simple',
+			'type'        => 'simple',
+			'is_in_stock' => true,
+			'prices'      => [ 'price' => '1000', 'currency_code' => 'USD' ],
+		];
+		$this->fake_store_api[ $id ] = [
+			'id'          => $id,
+			'name'        => 'Mixed-Required-Optional Bundle',
+			'type'        => 'bundle',
+			'permalink'   => 'https://example.com/product/mixed-bundle/',
+			'is_in_stock' => true,
+			'prices'      => [ 'price' => '2500', 'currency_code' => 'USD' ],
+			'extensions'  => [
+				'bundles' => [
+					'bundle_stock_status' => 'instock',
+					'bundle_min_size'     => '',
+					'bundle_max_size'     => '',
+					'bundle_price'        => [
+						'price' => [
+							'min' => [ 'excl_tax' => '1500' ],
+							'max' => [ 'excl_tax' => '2500' ],
+						],
+					],
+					'bundled_items'       => [
+						[
+							'bundled_item_id'                       => 1,
+							'product_id'                            => $required_simple_id,
+							'quantity_default'                      => 1,
+							'optional'                              => false,
+							'override_default_variation_attributes' => false,
+							'default_variation_attributes'          => [],
+						],
+						[
+							'bundled_item_id'                       => 2,
+							'product_id'                            => $optional_simple_id,
+							'quantity_default'                      => 1,
+							'optional'                              => true,
+							'override_default_variation_attributes' => false,
+							'default_variation_attributes'          => [],
+						],
+					],
+				],
 			],
 		];
 	}
@@ -2292,16 +2422,21 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Product Bundles plugin support (#358)
+	// Product Bundles plugin support (#358 — merged with V2 deterministic scope)
 	//
 	// Bundles can't be added via /checkout-link/?products= because each
-	// bundled item needs index-keyed config params for variation choices
-	// and optional toggles. The handler routes them to the product
-	// permalink so the buyer configures on the storefront, with UTM
-	// attribution preserved.
+	// bundled item needs index-keyed config params. Two paths:
+	//   - Deterministic bundle (every bundled-item choice pre-set by the
+	//     bundle author): construct /checkout/?add-to-cart=BUNDLE&bundle_*=
+	//     URL → buyer lands on /checkout/ (2-step internal redirect).
+	//   - Configurable bundle (any optional toggle or variable child without
+	//     override defaults): redirect to bundle PDP + emit `field_required`
+	//     error per UCP checkout error-handling spec.
+	//   - Mixed/multi-bundle cart: reject with `field_required` errors;
+	//     agent must split into separate /checkout-sessions requests.
 	// ------------------------------------------------------------------
 
-	public function test_bundle_alone_uses_product_permalink_as_continue_url(): void {
+	public function test_configurable_bundle_alone_uses_product_permalink_as_continue_url(): void {
 		$this->seed_bundle( 875, 'https://example.com/product/shirt-bundle/' );
 
 		$result = $this->call_handler(
@@ -2312,16 +2447,41 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
 		$this->assertArrayHasKey( 'continue_url', $result['data'] );
 
-		// continue_url = product permalink, NOT /checkout-link/?products=
+		// continue_url = product permalink, NOT /checkout-link/?products= or /checkout/?add-to-cart=
 		$this->assertStringContainsString( '/product/shirt-bundle/', $result['data']['continue_url'] );
 		$this->assertStringNotContainsString( '/checkout-link/', $result['data']['continue_url'] );
-		$this->assertStringNotContainsString( 'products=875:1', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '/checkout/?add-to-cart=', $result['data']['continue_url'] );
 	}
 
-	public function test_bundle_continue_url_carries_utm_attribution(): void {
-		// UTM attribution is the load-bearing signal for AI-driven
-		// orders showing up in WC Order Attribution. Permalink path
-		// must still go through `with_woo_ucp_utm()`.
+	public function test_configurable_bundle_emits_field_required_error_with_requires_buyer_input(): void {
+		// Single configurable bundle gets a spec-defined `field_required`
+		// error with `severity: requires_buyer_input` per the UCP checkout
+		// error-handling spec — agents read this as "buyer must complete
+		// configuration on merchant site" and render accordingly.
+		$this->seed_bundle( 875 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
+		);
+
+		$messages = $result['data']['messages'];
+		$found    = null;
+		foreach ( $messages as $msg ) {
+			if ( 'field_required' === ( $msg['code'] ?? '' ) ) {
+				$found = $msg;
+				break;
+			}
+		}
+		$this->assertNotNull( $found, 'Configurable bundle must emit field_required error.' );
+		$this->assertSame( 'error', $found['type'] );
+		$this->assertSame( 'requires_buyer_input', $found['severity'] );
+		$this->assertStringContainsString( '$.line_items[0]', $found['path'] );
+	}
+
+	public function test_configurable_bundle_continue_url_carries_utm_attribution(): void {
+		// UTM attribution is the load-bearing signal for AI-driven orders
+		// showing up in WC Order Attribution. Permalink path must still
+		// go through `with_woo_ucp_utm()`.
 		$this->seed_bundle( 875 );
 
 		$result = $this->call_handler(
@@ -2334,12 +2494,73 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
 	}
 
-	public function test_bundle_with_other_items_drops_simple_items_and_emits_info_message(): void {
-		// Mixed cart: one bundle + one simple product. Bundle wins —
-		// permalink redirect, simple item falls off the URL. Agent
-		// gets `bundle_dropped_line_items` info message so it can
-		// resubmit dropped items in a separate /checkout-sessions
-		// call after the buyer configures the bundle.
+	public function test_deterministic_bundle_uses_constructed_checkout_url(): void {
+		// All-simple-required bundle. Every bundled-item choice is
+		// pre-resolved (no optional toggles, no variable children),
+		// so the URL builder constructs a fully-configured
+		// /checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=N URL.
+		// Buyer lands on /checkout/ via the 2-step internal redirect
+		// (WC's `?add-to-cart=` form handler runs on /checkout/ and
+		// completes the add then renders the page).
+		$this->seed_deterministic_bundle( 900, [ 901 => 1, 902 => 2 ] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
+
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( '/checkout/?', $url );
+		$this->assertStringContainsString( 'add-to-cart=900', $url );
+		$this->assertStringContainsString( 'bundle_quantity_1=1', $url );
+		$this->assertStringContainsString( 'bundle_quantity_2=2', $url );
+
+		// No `field_required` error — deterministic bundles need no
+		// buyer configuration so they ride the standard escalation
+		// channel without an additional bundle-specific error.
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( 'field_required', $codes );
+	}
+
+	public function test_deterministic_bundle_continue_url_carries_utm_attribution(): void {
+		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ] ] ]
+		);
+
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( 'utm_source=', $url );
+		$this->assertStringContainsString( 'utm_medium=referral', $url );
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+	}
+
+	public function test_optional_bundled_item_makes_bundle_configurable(): void {
+		// Bundle has at least one optional bundled item — buyer must
+		// choose whether to include the optional. URL builder returns
+		// null (configurable); handler routes to the bundle PDP and
+		// emits `field_required`.
+		$this->seed_configurable_bundle_with_optional( 950, 951, 952 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_950' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
+		$this->assertStringContainsString( '/product/mixed-bundle/', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '/checkout/?add-to-cart=', $result['data']['continue_url'] );
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( 'field_required', $codes );
+	}
+
+	public function test_mixed_cart_with_bundle_rejects_with_field_required(): void {
+		// Mixed cart: bundle alongside other items. UCP /checkout-sessions
+		// has no spec-defined way to redirect a mixed-bundle cart cleanly,
+		// so the handler rejects with one `field_required` error per
+		// bundle line item, no continue_url, status `incomplete`.
 		$this->seed_bundle( 875 );
 		$this->seed_simple_product( 100, 1500 );
 
@@ -2352,41 +2573,78 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			]
 		);
 
-		$this->assertEquals( 201, $result['status'] );
-		// Bundle wins the URL.
-		$this->assertStringContainsString( '/product/shirt-bundle/', $result['data']['continue_url'] );
-		$this->assertStringNotContainsString( 'products=', $result['data']['continue_url'] );
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
 
-		// `bundle_dropped_line_items` info message present.
-		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::BUNDLE_DROPPED_LINE_ITEMS, $codes );
+		$bundle_errors = array_filter(
+			$result['data']['messages'],
+			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
+				&& 'requires_buyer_input' === ( $m['severity'] ?? '' )
+				&& isset( $m['path'] ) && false !== strpos( $m['path'], '$.line_items[0]' )
+		);
+		$this->assertCount( 1, $bundle_errors, 'Mixed cart must emit a field_required error path-attributed to the bundle line item.' );
 
 		// All line items are still echoed in `line_items[]` so the
-		// agent sees what was processed (the response is honest about
-		// what we accepted; the URL is honest about what survives the
-		// redirect).
+		// agent sees what was processed.
 		$this->assertCount( 2, $result['data']['line_items'] );
 	}
 
-	public function test_bundle_alone_does_not_emit_dropped_message(): void {
-		// Bundle alone: nothing was dropped, so no info message.
+	public function test_multi_bundle_cart_rejects_with_field_required_per_bundle(): void {
+		// Two bundles in one cart — same rejection as mixed-cart, but
+		// emits one error per bundle line item.
 		$this->seed_bundle( 875 );
+		$this->seed_bundle( 876, 'https://example.com/product/another-bundle/' );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_876' ], 'quantity' => 1 ],
+				],
+			]
 		);
 
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+
+		$field_required_errors = array_values( array_filter(
+			$result['data']['messages'],
+			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
+		) );
+		$this->assertCount( 2, $field_required_errors, 'One field_required error per bundle line item.' );
+	}
+
+	public function test_deterministic_bundle_alongside_simple_still_rejects_as_mixed(): void {
+		// Even when a bundle is fully deterministic, mixing it with
+		// non-bundle line items hits the must-split rule — the
+		// /checkout/?add-to-cart= URL form handles only one product
+		// at a time.
+		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ],
+				],
+			]
+		);
+
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::BUNDLE_DROPPED_LINE_ITEMS, $codes );
+		$this->assertContains( 'field_required', $codes );
 	}
 
 	public function test_bundle_without_permalink_falls_back_to_checkout_link(): void {
 		// Defensive — if the Store API response somehow omits the
-		// `permalink` field on a bundle product, we don't have a
-		// configurable URL to redirect to. Fall back to the standard
-		// /checkout-link/?products= path. WooCommerce will likely
-		// fail to add a bundle that way, but at least we don't emit
-		// a malformed (empty) continue_url.
+		// `permalink` field AND there's no extensions block (so no
+		// deterministic URL either), we don't have a configurable URL
+		// to redirect to. Fall back to the standard /checkout-link/?products=
+		// path. WC will likely fail to add a bundle that way, but at
+		// least we don't emit a malformed (empty) continue_url.
 		$this->fake_store_api[ 875 ] = [
 			'id'          => 875,
 			'name'        => 'Shirt Bundle',

@@ -1321,4 +1321,200 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			'items'    => $out_items,
 		];
 	}
+
+	/**
+	 * Public entry to bundle data extraction — used by the REST controller
+	 * to read the bundle's `extensions.bundles` block once, without
+	 * duplicating type-detection or empty-extension fallback logic.
+	 *
+	 * Returns the same shape as the private `extract_bundle_data()` —
+	 * the bundle extension array, or null when the product is not a
+	 * bundle or the extension is missing. Pure-function contract: no
+	 * WP API calls.
+	 *
+	 * @param  array<string, mixed>      $wc_product Decoded Store API product response.
+	 * @return array<string, mixed>|null
+	 */
+	public static function read_bundle_data( array $wc_product ): ?array {
+		return self::extract_bundle_data( $wc_product );
+	}
+
+	/**
+	 * Build the URL-query parameter array for a deterministic Product
+	 * Bundle's `/checkout/?add-to-cart=BUNDLE&...` continue_url.
+	 *
+	 * A bundle is *deterministic* when every `bundled_items[i]` satisfies
+	 * BOTH:
+	 *   1. `optional: false` — the buyer has no opt-in/opt-out toggle.
+	 *   2. The child product is `simple`, OR the child is `variable`
+	 *      AND the bundle author pre-set the variation via
+	 *      `override_default_variation_attributes: true` AND the
+	 *      `default_variation_attributes` map covers every attribute
+	 *      axis defined on the child.
+	 *
+	 * For deterministic bundles we can construct a fully-configured
+	 * `?add-to-cart=` URL server-side, so the buyer skips PDP
+	 * configuration and lands directly on `/checkout/`. The 2-step
+	 * URL-handler dance (navigate → handler intercepts → redirect to
+	 * /checkout/ with toast) is internal — buyer sees one navigation.
+	 *
+	 * Returns null when the bundle is configurable. The caller falls
+	 * back to the bundle's product permalink + the spec-defined
+	 * `field_required` error message (UCP checkout error-handling).
+	 *
+	 * Pure function: takes pre-fetched child products by id; the
+	 * controller does the I/O.
+	 *
+	 * @param  array<string, mixed>          $bundle_data        Bundle's `extensions.bundles` block.
+	 * @param  array<int, array<string,mixed>> $children_by_id   Map of child product_id => decoded Store API response.
+	 * @return array<string, string>|null                          URL query params keyed for `http_build_query()`,
+	 *                                                              or null when the bundle is configurable.
+	 */
+	public static function build_bundle_url_query( array $bundle_data, array $children_by_id ): ?array {
+		$items = $bundle_data['bundled_items'] ?? [];
+		if ( ! is_array( $items ) || empty( $items ) ) {
+			return null;
+		}
+
+		$params = [];
+
+		foreach ( $items as $item ) {
+			if ( ! is_array( $item ) ) {
+				return null;
+			}
+
+			$bid = (int) ( $item['bundled_item_id'] ?? 0 );
+			if ( $bid <= 0 ) {
+				return null;
+			}
+
+			// Optional items: configurable. Buyer must decide opt-in.
+			if ( ! empty( $item['optional'] ) ) {
+				return null;
+			}
+
+			$pid = (int) ( $item['product_id'] ?? 0 );
+			$qty = (int) ( $item['quantity_default'] ?? 1 );
+			if ( $qty < 1 ) {
+				$qty = 1;
+			}
+
+			$params[ 'bundle_quantity_' . $bid ] = (string) $qty;
+
+			$child = $children_by_id[ $pid ] ?? null;
+			if ( ! is_array( $child ) ) {
+				// Couldn't resolve the child — can't classify. Conservative
+				// fallback to "configurable" so the buyer ends up on the
+				// PDP rather than getting a half-configured cart-add.
+				return null;
+			}
+
+			$child_type = (string) ( $child['type'] ?? '' );
+
+			if ( 'simple' === $child_type ) {
+				continue;
+			}
+
+			if ( 'variable' === $child_type ) {
+				// Bundle author must have pre-set the variation AND that
+				// pre-set must cover every attribute axis the child
+				// declares. Otherwise the buyer needs to pick something
+				// the URL doesn't carry.
+				if ( empty( $item['override_default_variation_attributes'] ) ) {
+					return null;
+				}
+				$defaults = $item['default_variation_attributes'] ?? [];
+				if ( ! is_array( $defaults ) || empty( $defaults ) ) {
+					return null;
+				}
+				$child_axes = self::axis_slugs_for_variable_child( $child );
+				if ( empty( $child_axes ) ) {
+					// Variable child with no axes is itself a misconfiguration;
+					// don't trust it for deterministic emission.
+					return null;
+				}
+
+				$default_by_slug = [];
+				foreach ( $defaults as $entry ) {
+					if ( ! is_array( $entry ) ) {
+						continue;
+					}
+					$slug  = strtolower( trim( (string) ( $entry['name'] ?? '' ) ) );
+					$value = (string) ( $entry['value'] ?? '' );
+					if ( '' === $slug || '' === $value ) {
+						continue;
+					}
+					$default_by_slug[ $slug ] = $value;
+				}
+
+				foreach ( $child_axes as $axis_slug ) {
+					if ( ! isset( $default_by_slug[ $axis_slug ] ) ) {
+						return null; // axis not covered by override
+					}
+					$params[ 'bundle_attribute_' . $axis_slug . '_' . $bid ] = $default_by_slug[ $axis_slug ];
+				}
+				continue;
+			}
+
+			// Unknown / unsupported child type (grouped, external,
+			// subscription, bundle-in-bundle, etc.). Treat as configurable
+			// to avoid emitting a URL that may produce a broken cart.
+			return null;
+		}
+
+		return $params;
+	}
+
+	/**
+	 * Lower-case attribute axis slugs declared on a variable child product.
+	 *
+	 * Used by `build_bundle_url_query()` to verify the bundle's
+	 * `default_variation_attributes` covers every axis. WC's Store API
+	 * exposes attributes as `[{name, taxonomy?, terms[]}, ...]` — for
+	 * `pa_*` taxonomy attributes the slug is the post-`pa_` segment;
+	 * for inline custom attributes the slug is `sanitize_title(name)`.
+	 * Bundle's `default_variation_attributes` entries use this same
+	 * slug shape (lowercased, hyphenated).
+	 *
+	 * @param  array<string, mixed> $wc_child Child product Store API response.
+	 * @return array<int, string>             Lowercased axis slug list.
+	 */
+	private static function axis_slugs_for_variable_child( array $wc_child ): array {
+		$attributes = $wc_child['attributes'] ?? [];
+		if ( ! is_array( $attributes ) ) {
+			return [];
+		}
+
+		$slugs = [];
+		foreach ( $attributes as $attr ) {
+			if ( ! is_array( $attr ) ) {
+				continue;
+			}
+			// `has_variations` is the Store API's flag for "this attribute
+			// is a variation axis." Non-variation attributes (e.g.
+			// informational facts on a variable product) don't need
+			// defaults.
+			if ( empty( $attr['has_variations'] ) ) {
+				continue;
+			}
+
+			$taxonomy = (string) ( $attr['taxonomy'] ?? '' );
+			if ( '' !== $taxonomy && str_starts_with( $taxonomy, 'pa_' ) ) {
+				// Strip the `pa_` prefix to match the bundle defaults' slug shape.
+				$slugs[] = strtolower( substr( $taxonomy, 3 ) );
+				continue;
+			}
+
+			// Custom inline attribute — slug derives from the display name
+			// via WP's `sanitize_title()`. Without a WP context here we
+			// approximate by lowercasing + replacing whitespace with hyphens.
+			$name = strtolower( trim( (string) ( $attr['name'] ?? '' ) ) );
+			if ( '' === $name ) {
+				continue;
+			}
+			$slugs[] = preg_replace( '/\s+/', '-', $name );
+		}
+
+		return array_values( array_filter( $slugs, static fn( $s ) => '' !== $s ) );
+	}
 }
