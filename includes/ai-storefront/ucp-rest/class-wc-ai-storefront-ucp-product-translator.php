@@ -118,6 +118,14 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// the parent's flat `prices.price` value. See #358.
 		$bundle_data = self::extract_bundle_data( $wc_product );
 
+		// Grouped-product detection. Grouped parents are UX wrappers
+		// around N independent children; the parent's `prices.price_range`
+		// is already aggregated by WC core so we don't override it.
+		// Just emit `metadata.grouped.children[]` so agents can
+		// cross-reference the children's individual catalog entries.
+		// See #359.
+		$grouped_children = self::extract_grouped_data( $wc_product );
+
 		$product = [
 			'id'          => self::PRODUCT_ID_PREFIX . $id,
 			'title'       => self::decode( (string) ( $wc_product['name'] ?? '' ) ),
@@ -300,6 +308,16 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			$bundle_metadata = self::extract_bundle_metadata( $bundle_data );
 			if ( null !== $bundle_metadata ) {
 				$metadata['bundle'] = $bundle_metadata;
+			}
+		}
+		// Grouped structure under `metadata.grouped` (issue #359).
+		// Mirrors `metadata.bundle` — exposes child product IDs so
+		// agents can cross-reference each child's catalog entry and
+		// describe the grouping accurately.
+		if ( null !== $grouped_children ) {
+			$grouped_metadata = self::extract_grouped_metadata( $grouped_children );
+			if ( null !== $grouped_metadata ) {
+				$metadata['grouped'] = $grouped_metadata;
 			}
 		}
 		if ( ! empty( $metadata ) ) {
@@ -1605,5 +1623,158 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		}
 
 		return array_values( array_filter( $slugs, static fn( $s ) => '' !== $s ) );
+	}
+
+	/**
+	 * Extract the WC Grouped product's child product IDs from a Store
+	 * API product response.
+	 *
+	 * Grouped products are UX wrappers around N independent children.
+	 * The Store API's `grouped_products` field on a `type === 'grouped'`
+	 * parent is a flat list of child WC product IDs:
+	 *
+	 *   "grouped_products": [26, 22, 24]
+	 *
+	 * The parent has no per-child config (unlike bundles' `bundled_items[]`
+	 * with per-item override defaults / optional flags) — buying the
+	 * grouped product means adding all listed children to cart at
+	 * `quantity[<child_id>]=N`.
+	 *
+	 * Returns null when the product is not grouped or the children list
+	 * is empty / malformed. Caller falls back to the simple-product
+	 * translation path so the grouped parent still emits a valid (if
+	 * minimal) UCP shape. See #359.
+	 *
+	 * @param  array<string, mixed>      $wc_product Store API product response.
+	 * @return array<int, int>|null                  List of child WC product IDs, or null.
+	 */
+	private static function extract_grouped_data( array $wc_product ): ?array {
+		if ( 'grouped' !== ( $wc_product['type'] ?? '' ) ) {
+			return null;
+		}
+		$children = $wc_product['grouped_products'] ?? null;
+		if ( ! is_array( $children ) || empty( $children ) ) {
+			return null;
+		}
+		// Coerce to ints + filter out invalid IDs. A `grouped_products`
+		// entry that's not a positive int is merchant misconfiguration;
+		// drop it rather than carrying it through.
+		$out = [];
+		foreach ( $children as $cid ) {
+			$cid_int = (int) $cid;
+			if ( $cid_int > 0 ) {
+				$out[] = $cid_int;
+			}
+		}
+		return empty( $out ) ? null : array_values( array_unique( $out ) );
+	}
+
+	/**
+	 * Public entry to grouped data extraction — used by the REST controller
+	 * to read the parent's `grouped_products[]` block once, without
+	 * duplicating type-detection or empty-list fallback logic.
+	 *
+	 * @param  array<string, mixed>      $wc_product Decoded Store API product response.
+	 * @return array<int, int>|null                  Validated child ID list, or null.
+	 */
+	public static function read_grouped_data( array $wc_product ): ?array {
+		return self::extract_grouped_data( $wc_product );
+	}
+
+	/**
+	 * Build the URL-query parameter array for a deterministic Grouped
+	 * product's `/checkout/?add-to-cart=PARENT&quantity[child]=N`
+	 * continue_url.
+	 *
+	 * A grouped product is *deterministic* when every child is
+	 * `type === 'simple'`. Variable children require a variation pick
+	 * the URL doesn't carry — same problem as bundles' variable
+	 * children, but without the bundle author's `override_default_variation_attributes`
+	 * escape hatch (grouped has no per-child config). Variable child →
+	 * configurable → caller falls back to the parent's product permalink.
+	 *
+	 * Returns null when any child can't be resolved as simple. Lazy I/O
+	 * via the supplied `$child_fetcher` callable: short-circuits on the
+	 * first variable child, so a grouped product whose first child
+	 * fails fetches just one Store API record (not all N).
+	 *
+	 * Result shape uses PHP's array-in-querystring syntax:
+	 *
+	 *   [ 'quantity' => [ 23 => '1', 24 => '1', 25 => '1' ] ]
+	 *
+	 * `http_build_query()` serializes this as
+	 * `quantity%5B23%5D=1&quantity%5B24%5D=1&quantity%5B25%5D=1`
+	 * which WC's legacy `?add-to-cart=` form handler parses back into
+	 * `$_REQUEST['quantity'] = [23 => 1, 24 => 1, 25 => 1]` — the
+	 * grouped-products contract WC documents.
+	 *
+	 * @param  array<int, int>                          $children        Validated child product IDs.
+	 * @param  callable(int): (array<string,mixed>|null) $child_fetcher  Lazy resolver; returns Store API product or null.
+	 * @return array<string, mixed>|null                                  URL params keyed for `http_build_query()`, or null.
+	 */
+	public static function build_grouped_url_query( array $children, callable $child_fetcher ): ?array {
+		if ( empty( $children ) ) {
+			return null;
+		}
+
+		$quantity_map = [];
+		$child_cache  = [];
+
+		foreach ( $children as $cid ) {
+			$cid = (int) $cid;
+			if ( $cid <= 0 ) {
+				return null;
+			}
+
+			if ( ! array_key_exists( $cid, $child_cache ) ) {
+				$child_cache[ $cid ] = $child_fetcher( $cid );
+			}
+			$child = $child_cache[ $cid ];
+			if ( ! is_array( $child ) ) {
+				// Couldn't resolve. Conservative fallback to "configurable"
+				// so the buyer ends up on the PDP rather than getting a
+				// half-configured cart-add.
+				return null;
+			}
+
+			$child_type = (string) ( $child['type'] ?? '' );
+			if ( 'simple' !== $child_type ) {
+				// Variable / external / subscription / bundle children
+				// can't be added via grouped's `quantity[<id>]=N` array
+				// syntax without per-child config the URL doesn't carry.
+				return null;
+			}
+
+			$quantity_map[ $cid ] = '1';
+		}
+
+		return [ 'quantity' => $quantity_map ];
+	}
+
+	/**
+	 * Build the `metadata.grouped` structure exposing child IDs to agents.
+	 *
+	 * Shape:
+	 *   {
+	 *     "children": [int, int, ...]
+	 *   }
+	 *
+	 * Lets agents:
+	 *   - Cross-reference each child to the catalog entry the agent has
+	 *     already cached (children appear individually in /catalog/search).
+	 *   - Render an accurate description ("Bundle of 3 products: …").
+	 *
+	 * Returns null when the children list is missing or empty — a
+	 * grouped product with no children is a misconfiguration on the
+	 * merchant side, not something the metadata block should advertise.
+	 *
+	 * @param  array<int, int>           $children Validated child IDs.
+	 * @return array<string, mixed>|null            metadata.grouped shape, or null.
+	 */
+	private static function extract_grouped_metadata( array $children ): ?array {
+		if ( empty( $children ) ) {
+			return null;
+		}
+		return [ 'children' => array_values( array_map( 'intval', $children ) ) ];
 	}
 }

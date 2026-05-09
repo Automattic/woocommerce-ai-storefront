@@ -2178,4 +2178,154 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNull( $result['metadata']['bundle']['min_size'] );
 		$this->assertNull( $result['metadata']['bundle']['max_size'] );
 	}
+
+	/**
+	 * Grouped product fixture (#359). WC's Store API exposes the parent's
+	 * children as a flat int[] under `grouped_products`.
+	 */
+	private function grouped_product_fixture(): array {
+		return [
+			'id'               => 600,
+			'name'             => 'Grouped Parent',
+			'slug'             => 'grouped-parent',
+			'permalink'        => 'https://example.com/product/grouped-parent/',
+			'is_in_stock'      => true,
+			'prices'           => [
+				'price'         => '3000',
+				'currency_code' => 'USD',
+			],
+			'type'             => 'grouped',
+			'grouped_products' => [ 601, 602, 603 ],
+		];
+	}
+
+	public function test_grouped_metadata_emitted_with_children_list(): void {
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $this->grouped_product_fixture() );
+
+		$this->assertArrayHasKey( 'metadata', $result );
+		$this->assertArrayHasKey( 'grouped', $result['metadata'] );
+		$this->assertSame( [ 601, 602, 603 ], $result['metadata']['grouped']['children'] );
+	}
+
+	public function test_non_grouped_product_omits_grouped_metadata(): void {
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $this->simple_product_fixture() );
+
+		// Either metadata is absent entirely or grouped key is unset.
+		$this->assertTrue(
+			! isset( $result['metadata'] ) || ! array_key_exists( 'grouped', $result['metadata'] ),
+			'Simple products must not emit metadata.grouped.'
+		);
+	}
+
+	public function test_grouped_metadata_dedupes_and_filters_invalid_child_ids(): void {
+		// Merchant misconfiguration: same child listed twice + a zero ID
+		// + a negative ID. Translator dedupes via array_unique and drops
+		// non-positive IDs.
+		$fixture                       = $this->grouped_product_fixture();
+		$fixture['grouped_products']  = [ 601, 601, 0, -5, 602 ];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
+
+		$this->assertSame( [ 601, 602 ], $result['metadata']['grouped']['children'] );
+	}
+
+	public function test_grouped_metadata_omitted_when_children_empty(): void {
+		// `type === 'grouped'` but no children. Metadata block is omitted
+		// rather than emitted as `[]` so consumers can distinguish "not
+		// grouped" from "grouped with no children" (the former: omit; the
+		// latter: misconfiguration, also omit because the empty list is
+		// not actionable).
+		$fixture                      = $this->grouped_product_fixture();
+		$fixture['grouped_products']  = [];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
+
+		$this->assertTrue(
+			! isset( $result['metadata'] ) || ! array_key_exists( 'grouped', $result['metadata'] ),
+			'Grouped product with empty children must omit metadata.grouped.'
+		);
+	}
+
+	public function test_build_grouped_url_query_returns_quantity_map_when_all_children_simple(): void {
+		// Lazy fetcher returns a `simple` Store API record for every child
+		// → result is `['quantity' => [cid => '1', ...]]`.
+		$fetcher = function ( int $cid ): array {
+			return [
+				'id'   => $cid,
+				'type' => 'simple',
+			];
+		};
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
+			[ 601, 602, 603 ],
+			$fetcher
+		);
+
+		$this->assertSame(
+			[ 'quantity' => [ 601 => '1', 602 => '1', 603 => '1' ] ],
+			$result
+		);
+	}
+
+	public function test_build_grouped_url_query_returns_null_when_any_child_is_variable(): void {
+		// A single variable child poisons the whole grouped product —
+		// caller falls back to the parent permalink for buyer configuration.
+		$fetcher = function ( int $cid ): array {
+			return [
+				'id'   => $cid,
+				'type' => 601 === $cid ? 'simple' : 'variable',
+			];
+		};
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
+			[ 601, 602 ],
+			$fetcher
+		);
+
+		$this->assertNull( $result );
+	}
+
+	public function test_build_grouped_url_query_returns_null_when_child_fetch_fails(): void {
+		// Fetcher returns null (Store API miss) → conservative null return.
+		$fetcher = function ( int $cid ): ?array {
+			return null;
+		};
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
+			[ 601 ],
+			$fetcher
+		);
+
+		$this->assertNull( $result );
+	}
+
+	public function test_build_grouped_url_query_short_circuits_on_first_failure(): void {
+		// Lazy fetcher pattern: if child #1 is variable, we should fetch
+		// only child #1 (not child #2 or #3). Verifies the
+		// `return null` short-circuit inside the foreach loop.
+		$call_count = 0;
+		$fetcher    = function ( int $cid ) use ( &$call_count ): array {
+			++$call_count;
+			return [ 'id' => $cid, 'type' => 'variable' ];
+		};
+
+		WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
+			[ 601, 602, 603 ],
+			$fetcher
+		);
+
+		$this->assertSame( 1, $call_count, 'Fetcher must short-circuit after first variable child.' );
+	}
+
+	public function test_grouped_translation_omits_bundle_metadata(): void {
+		// Sanity check that grouped products don't accidentally pick up
+		// the bundle code path (similar Store API shape — both are
+		// "container" products from an agent perspective).
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $this->grouped_product_fixture() );
+
+		$this->assertTrue(
+			! isset( $result['metadata'] ) || ! array_key_exists( 'bundle', $result['metadata'] ),
+			'Grouped products must not emit metadata.bundle.'
+		);
+	}
 }

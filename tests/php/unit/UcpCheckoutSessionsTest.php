@@ -188,11 +188,92 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		];
 	}
 
-	private function seed_grouped( int $id ): void {
+	/**
+	 * Seed a configurable WC grouped product (#359).
+	 *
+	 * No `grouped_products[]` array, so the deterministic-classification
+	 * helper returns null and the grouped product is treated as configurable —
+	 * continue_url goes to the parent permalink, the handler emits a
+	 * `field_required` error with `severity: requires_buyer_input`.
+	 */
+	private function seed_grouped( int $id, string $permalink = '' ): void {
 		$this->fake_store_api[ $id ] = [
-			'id'   => $id,
-			'name' => 'Bundle',
-			'type' => 'grouped',
+			'id'          => $id,
+			'name'        => 'Grouped Parent',
+			'type'        => 'grouped',
+			'permalink'   => '' !== $permalink ? $permalink : 'https://example.com/product/grouped-parent/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'         => '3000',
+				'currency_code' => 'USD',
+			],
+		];
+	}
+
+	/**
+	 * Seed a deterministic grouped product (#359). Every child is a
+	 * `simple` product, so build_grouped_url_query() resolves the entire
+	 * group from server-supplied data — no buyer input needed.
+	 *
+	 * @param int             $id       Grouped parent product ID.
+	 * @param array<int, int> $children Child product IDs (per-child quantities default to 1).
+	 */
+	private function seed_deterministic_grouped( int $id, array $children, string $permalink = '' ): void {
+		foreach ( $children as $child_id ) {
+			$this->fake_store_api[ (int) $child_id ] = [
+				'id'          => (int) $child_id,
+				'name'        => 'Grouped Child #' . $child_id,
+				'type'        => 'simple',
+				'is_in_stock' => true,
+				'prices'      => [
+					'price'         => '1000',
+					'currency_code' => 'USD',
+				],
+			];
+		}
+		$this->fake_store_api[ $id ] = [
+			'id'               => $id,
+			'name'             => 'Deterministic Grouped',
+			'type'             => 'grouped',
+			'permalink'        => '' !== $permalink ? $permalink : 'https://example.com/product/deterministic-grouped/',
+			'is_in_stock'      => true,
+			'prices'           => [
+				'price'         => (string) ( count( $children ) * 1000 ),
+				'currency_code' => 'USD',
+			],
+			'grouped_products' => array_values( array_map( 'intval', $children ) ),
+		];
+	}
+
+	/**
+	 * Seed a grouped product with a variable child (#359). The variable
+	 * child needs a variation pick the URL doesn't carry, so the
+	 * deterministic helper returns null — continue_url falls back to the
+	 * parent's permalink (configurable case).
+	 */
+	private function seed_grouped_with_variable_child( int $id, int $simple_child_id, int $variable_child_id ): void {
+		$this->fake_store_api[ $simple_child_id ] = [
+			'id'          => $simple_child_id,
+			'name'        => 'Simple Child',
+			'type'        => 'simple',
+			'is_in_stock' => true,
+			'prices'      => [ 'price' => '1000', 'currency_code' => 'USD' ],
+		];
+		$this->fake_store_api[ $variable_child_id ] = [
+			'id'          => $variable_child_id,
+			'name'        => 'Variable Child',
+			'type'        => 'variable',
+			'is_in_stock' => true,
+			'prices'      => [ 'price' => '2000', 'currency_code' => 'USD' ],
+		];
+		$this->fake_store_api[ $id ] = [
+			'id'               => $id,
+			'name'             => 'Mixed Grouped',
+			'type'             => 'grouped',
+			'permalink'        => 'https://example.com/product/mixed-grouped/',
+			'is_in_stock'      => true,
+			'prices'           => [ 'price' => '3000', 'currency_code' => 'USD' ],
+			'grouped_products' => [ $simple_child_id, $variable_child_id ],
 		];
 	}
 
@@ -673,15 +754,260 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $codes );
 	}
 
-	public function test_grouped_product_rejected_with_unsupported_type(): void {
-		$this->seed_grouped( 555 );
+	public function test_configurable_grouped_alone_uses_product_permalink_as_continue_url(): void {
+		// Configurable grouped (variable child without resolvable variation):
+		// continue_url goes to the parent permalink so the buyer can pick
+		// the variation on the PDP. Same routing rationale as bundles.
+		$this->seed_grouped_with_variable_child( 555, 556, 557 );
 
 		$result = $this->call_handler(
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_555' ], 'quantity' => 1 ] ] ]
 		);
 
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
+		$this->assertArrayHasKey( 'continue_url', $result['data'] );
+
+		$this->assertStringContainsString( '/product/mixed-grouped/', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '/checkout-link/', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '/checkout/?add-to-cart=', $result['data']['continue_url'] );
+	}
+
+	public function test_configurable_grouped_emits_field_required_with_requires_buyer_input(): void {
+		// Single configurable grouped product gets a spec-defined
+		// `field_required` error with `severity: requires_buyer_input` so
+		// agents render "buyer must complete configuration on merchant site."
+		$this->seed_grouped_with_variable_child( 555, 556, 557 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_555' ], 'quantity' => 1 ] ] ]
+		);
+
+		$messages = $result['data']['messages'];
+		$found    = null;
+		foreach ( $messages as $msg ) {
+			if ( 'field_required' === ( $msg['code'] ?? '' ) ) {
+				$found = $msg;
+				break;
+			}
+		}
+		$this->assertNotNull( $found, 'Configurable grouped must emit field_required error.' );
+		$this->assertSame( 'error', $found['type'] );
+		$this->assertSame( 'requires_buyer_input', $found['severity'] );
+		$this->assertStringContainsString( '$.line_items[0]', $found['path'] );
+	}
+
+	public function test_configurable_grouped_continue_url_carries_utm_attribution(): void {
+		$this->seed_grouped_with_variable_child( 555, 556, 557 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_555' ], 'quantity' => 1 ] ] ]
+		);
+
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( 'utm_source=', $url );
+		$this->assertStringContainsString( 'utm_medium=referral', $url );
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+	}
+
+	public function test_deterministic_grouped_uses_constructed_checkout_url(): void {
+		// All-simple grouped: build_grouped_url_query() resolves every
+		// child quantity, URL builder emits `/checkout/?add-to-cart=PARENT&quantity[CHILD]=N`.
+		// `quantity[]=` is PHP's array-querystring syntax — WC's legacy
+		// `?add-to-cart=` form handler parses it back into
+		// `$_REQUEST['quantity'] = [child_id => qty]`.
+		$this->seed_deterministic_grouped( 600, [ 601, 602, 603 ] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
+
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( '/checkout/?', $url );
+		$this->assertStringContainsString( 'add-to-cart=600', $url );
+		// `add_query_arg` URL-encodes `[` as `%5B` and `]` as `%5D`.
+		$this->assertStringContainsString( 'quantity%5B601%5D=1', $url );
+		$this->assertStringContainsString( 'quantity%5B602%5D=1', $url );
+		$this->assertStringContainsString( 'quantity%5B603%5D=1', $url );
+
+		// No `field_required` — deterministic grouped needs no buyer input.
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'product_type_unsupported', $codes );
+		$this->assertNotContains( 'field_required', $codes );
+	}
+
+	public function test_deterministic_grouped_propagates_line_item_quantity(): void {
+		// Agent quantity=3 on a {child A: 1, child B: 1} grouped product
+		// must land as quantity[A]=3 + quantity[B]=3 (3 groups). Grouped
+		// has no parent inventory, so the multiplication happens at URL
+		// construction time (not server-side like bundles).
+		$this->seed_deterministic_grouped( 600, [ 601, 602 ] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 3 ] ] ]
+		);
+
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( 'quantity%5B601%5D=3', $url );
+		$this->assertStringContainsString( 'quantity%5B602%5D=3', $url );
+	}
+
+	public function test_deterministic_grouped_continue_url_carries_utm_attribution(): void {
+		$this->seed_deterministic_grouped( 600, [ 601 ] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+		);
+
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( 'utm_source=', $url );
+		$this->assertStringContainsString( 'utm_medium=referral', $url );
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+	}
+
+	public function test_mixed_cart_with_grouped_rejects_with_field_required(): void {
+		// Grouped + non-grouped in the same cart can't be expressed in
+		// one URL — `/checkout/?add-to-cart=` accepts a single parent ID,
+		// and `/checkout-link/?products=` would add the grouped parent
+		// (a UX wrapper) instead of its children. Reject as recoverable
+		// so the agent splits and retries.
+		$this->seed_simple_product( 100, 1500, true );
+		$this->seed_deterministic_grouped( 600, [ 601 ] );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ],
+				],
+			]
+		);
+
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+		$messages = $result['data']['messages'];
+		$found    = null;
+		foreach ( $messages as $msg ) {
+			if ( 'field_required' === ( $msg['code'] ?? '' )
+				&& 'recoverable' === ( $msg['severity'] ?? '' )
+			) {
+				$found = $msg;
+				break;
+			}
+		}
+		$this->assertNotNull( $found );
+		$this->assertStringContainsString( '$.line_items[1]', $found['path'] );
+	}
+
+	public function test_multi_grouped_cart_rejects_with_field_required_per_grouped(): void {
+		// Two grouped parents in one cart can't be combined into one
+		// `?add-to-cart=` URL. Each grouped line item gets its own
+		// recoverable error so the agent knows which to peel off and retry.
+		$this->seed_deterministic_grouped( 600, [ 601 ] );
+		$this->seed_deterministic_grouped( 700, [ 701 ] );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_700' ], 'quantity' => 1 ],
+				],
+			]
+		);
+
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+
+		$paths = [];
+		foreach ( $result['data']['messages'] as $msg ) {
+			if ( 'field_required' === ( $msg['code'] ?? '' )
+				&& 'recoverable' === ( $msg['severity'] ?? '' )
+			) {
+				$paths[] = $msg['path'];
+			}
+		}
+		$this->assertContains( '$.line_items[0]', $paths );
+		$this->assertContains( '$.line_items[1]', $paths );
+	}
+
+	public function test_grouped_without_permalink_returns_incomplete_with_no_continue_url(): void {
+		// Configurable grouped that also has no permalink. Handler flips
+		// should_redirect off (no usable URL to send the buyer to) and
+		// returns `incomplete` status — consistent with the bundle no-URL
+		// fallback. Severity stays recoverable because republishing the
+		// grouped product will populate the permalink.
+		$this->seed_grouped_with_variable_child( 555, 556, 557 );
+		$this->fake_store_api[ 555 ]['permalink'] = '';
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_555' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 200, $result['status'] );
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+
+		$found = null;
+		foreach ( $result['data']['messages'] as $msg ) {
+			if ( 'field_required' === ( $msg['code'] ?? '' )
+				&& 'recoverable' === ( $msg['severity'] ?? '' )
+			) {
+				$found = $msg;
+				break;
+			}
+		}
+		$this->assertNotNull( $found );
+	}
+
+	public function test_grouped_error_path_uses_original_request_index_not_post_dedup(): void {
+		// A grouped at request index [2] must be path-attributed to
+		// `$.line_items[2]` even after the dedup pass collapses earlier
+		// duplicates. This mirrors the bundle test: tests the
+		// `request_index` round-trip through dedup → handler.
+		$this->seed_simple_product( 100, 1500, true );
+		$this->seed_deterministic_grouped( 600, [ 601 ] );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ], // dup, collapses
+					[ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ],
+				],
+			]
+		);
+
+		$found = null;
+		foreach ( $result['data']['messages'] as $msg ) {
+			if ( 'field_required' === ( $msg['code'] ?? '' )
+				&& isset( $msg['path'] ) && '$.line_items[2]' === $msg['path']
+			) {
+				$found = $msg;
+				break;
+			}
+		}
+		$this->assertNotNull( $found, 'Error must reference original request position [2], not post-dedup [1].' );
+	}
+
+	public function test_grouped_with_missing_child_falls_back_to_permalink(): void {
+		// Child not in fake_store_api → fetcher returns null →
+		// build_grouped_url_query returns null → configurable case → permalink.
+		$this->fake_store_api[ 600 ] = [
+			'id'               => 600,
+			'name'             => 'Grouped With Missing Child',
+			'type'             => 'grouped',
+			'permalink'        => 'https://example.com/product/missing-child-grouped/',
+			'is_in_stock'      => true,
+			'prices'           => [ 'price' => '1000', 'currency_code' => 'USD' ],
+			'grouped_products' => [ 999 ], // not seeded
+		];
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertStringContainsString( '/product/missing-child-grouped/', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '/checkout/?add-to-cart=', $result['data']['continue_url'] );
 	}
 
 	public function test_external_product_rejected_with_unsupported_type(): void {
