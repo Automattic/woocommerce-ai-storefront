@@ -243,7 +243,17 @@ Other in-cart error codes the response may carry:
 
 The `severity` field on each error tells the agent how to recover (per UCP `message_error.json`). `recoverable` means **the platform can resolve by modifying inputs and retrying via API** — for mixed/multi bundle-or-grouped carts that means splitting into per-container `/checkout-sessions` calls; for a single configurable container with no usable permalink it means the merchant must fix the underlying misconfig before retry succeeds. `requires_buyer_input` means the buyer must complete configuration on the merchant site. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
 
-**Errors:** `503` `ucp_disabled` when syndication is paused; `400` `invalid_input` when `line_items` is missing/empty or exceeds the per-request cap. Per-line-item validation failures (unrecognized ID formats outside `prod_…` / `var_…[_default]`, unknown product IDs, out-of-stock items, etc.) are surfaced as `messages[].code` entries on the standard response, not as top-level errors. The response status depends on whether any line items survived validation: when **at least one** line item validates, the response is `201` with `status: requires_escalation` + `continue_url` covering the survivors; the failed lines are dropped from `line_items` and called out via `messages[]`. When **no** line items validate (or the surviving subtotal falls below the merchant minimum), the response is `200` with `status: incomplete` and no `continue_url`. Agents read `messages[].code` either way to surface the per-line outcome to the buyer.
+**Errors:** `503` `ucp_disabled` when syndication is paused; `400` `invalid_input` when `line_items` is missing/empty or exceeds the per-request cap. Per-line-item validation failures (unrecognized ID formats outside `prod_…` / `var_…[_default]`, unknown product IDs, out-of-stock items, etc.) are surfaced as `messages[].code` entries on the standard response, not as top-level errors.
+
+The response status is `201 requires_escalation` + `continue_url` only when **both** conditions hold:
+
+1. **At least one line item validates** (survives per-line-item filtering — non-validating lines are dropped from `line_items` and surfaced via `messages[]`).
+2. **No cart-level redirect blocker fires.** Cart-level blockers force `200 incomplete` with no `continue_url` even when valid lines exist:
+   - Surviving subtotal below the merchant's minimum order amount (`minimum_not_met`).
+   - Mixed/multi bundle or grouped cart that requires splitting (`field_required` per offending container).
+   - Configurable bundle/grouped without a usable PDP permalink (`field_required` recoverable).
+
+When zero lines validate, the response is `200 incomplete` regardless of cart-level rules. Agents read `messages[].code` to surface the per-line outcome to the buyer in either response status.
 
 **Note on session IDs.** `chk_<16 hex chars>` is a correlation token for logging and attribution. There is no GET/PUT/PATCH/DELETE endpoint that operates on it — see the next section.
 
