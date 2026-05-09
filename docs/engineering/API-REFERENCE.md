@@ -218,21 +218,34 @@ The continue_url's UTM payload (`utm_source`, `utm_medium=referral`, `utm_id=woo
 
 **Response — incomplete (200, no `continue_url`):**
 
+The standard envelope fields (`ucp`, `id`, `currency`, `line_items`, `totals`, `links`, `expires_at`) are always present; only `continue_url` is omitted in the incomplete case. The `messages[]` entries describe what failed.
+
 ```json
 {
-  "ucp": { ... },
-  "id": "chk_...",
+  "ucp": { "version": "2026-04-08", "capabilities": ["dev.ucp.shopping.checkout"], "payment_handlers": {} },
+  "id": "chk_a1b2c3d4e5f6g7h8",
   "status": "incomplete",
+  "currency": "USD",
+  "line_items": [],
+  "totals": [
+    { "type": "subtotal", "amount": 0 },
+    { "type": "total", "amount": 0 }
+  ],
+  "links": [],
+  "expires_at": null,
   "messages": [
     {
       "type": "error",
       "code": "out_of_stock",
-      "severity": "requires_buyer_input",
-      "content": "Acme Running Shoes (Size 11) is out of stock."
+      "severity": "unrecoverable",
+      "path": "$.line_items[0].item.id",
+      "content": "Product is out of stock."
     }
   ]
 }
 ```
+
+The `severity: unrecoverable` value above is the `checkout_error_message()` default — it's the per-line-item code's natural severity (the line itself can't be recovered without merchant restocking, even though the buyer can recover the cart by removing the line). For codes whose default is overridden (like `minimum_not_met` → `requires_buyer_input`), see the per-code list below.
 
 Other in-cart error codes the response may carry:
 
