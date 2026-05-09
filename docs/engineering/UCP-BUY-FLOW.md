@@ -53,17 +53,21 @@ Code: [`includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controll
 
 The accompanying `messages[]` includes a `buyer_handoff_required` entry with `type: info` so AI assistants render the redirect informationally, not as an error. Per UCP `message_info.json` (release/2026-04-08), info messages have no `severity` field — only `type: error` carries severity. Agents that map `type: error` to red error styling will style the redirect correctly with this shape.
 
-The `continue_url` shape depends on the cart contents. The plugin emits one of five outcomes; the three that produce a `continue_url` carry the canonical UTM payload (`utm_source`, `utm_medium=referral`, `utm_id=woo_ucp`, plus optional `ai_agent_host_raw` when the agent was identifiable). The `ai_session_id` query param is *agent-supplied* — agents append their own `ai_session_id=chk_…` if they want it captured into order meta; the plugin's server-side stamping helper does not append it:
+When the cart is otherwise valid (in stock, meets minimum, IDs resolve), the `continue_url` shape depends on the cart contents. The plugin emits one of five outcomes; the three that produce a `continue_url` carry the canonical UTM payload (`utm_source`, `utm_medium=referral`, `utm_id=woo_ucp`, plus optional `ai_agent_host_raw` when the agent was identifiable). The `ai_session_id` query param is *agent-supplied* — agents append their own `ai_session_id=chk_…` if they want it captured into order meta; the plugin's server-side stamping helper does not append it:
 
 | Cart contents | Response | `continue_url` |
 |---|---|---|
 | Simple / variation line items only | `requires_escalation` | WooCommerce Shareable Checkout: `/checkout-link/?products=ID:QTY,…` |
-| Single deterministic bundle (all bundled items resolvable from author defaults) | `requires_escalation` | `/checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=…&bundle_attribute_<attr>_<bid>=…` (PR #360) |
+| Single deterministic bundle (all bundled items resolvable from author defaults) | `requires_escalation` | `/checkout/?add-to-cart=BUNDLE&quantity=<N>&bundle_quantity_<bid>=…&bundle_attribute_<attr>_<bid>=…` (PR #360) |
 | Single deterministic grouped (all children `type=simple` and in stock) | `requires_escalation` | `/checkout/?add-to-cart=PARENT&quantity[CHILD]=N&…` (PR #362) |
 | Single configurable bundle/grouped, **with** PDP permalink | `requires_escalation` | the bundle/grouped product permalink (buyer completes configuration on the merchant PDP); `field_required` + `severity: requires_buyer_input` accompanies |
 | Single configurable bundle/grouped, **without** PDP permalink | `incomplete` | none — `field_required` + `severity: recoverable` (merchant misconfig) |
 
+The deterministic-bundle row's top-level `quantity=<N>` is the agent's bundle line-item quantity (the number of fully-configured bundles to add to cart); WC multiplies the per-bundled-item `bundle_quantity_<bid>` values by N server-side. Grouped has no parent inventory, so its `quantity[CHILD]=N` per-child entries are absolute (the controller multiplies the agent's `quantity` by each child's default at URL-construction time).
+
 Mixed/multi bundle or grouped carts produce `status: incomplete` with **one `field_required` error per offending container line item** (JSONPath-attributed to `$.line_items[N]`, `severity: recoverable`) and **no `continue_url`** — agents must split the cart into per-line `/checkout-sessions` requests.
+
+The table above is specifically about *continue_url routing when a redirect is possible*. Other validation failures — `out_of_stock`, `minimum_not_met`, malformed `line_items` shape, unrecognized ID grammar — also produce `status: incomplete` with no `continue_url`, with the specific failure surfaced as a `messages[].code` entry. See [`API-REFERENCE.md`](API-REFERENCE.md) for the full error-code catalog.
 
 WC Order Attribution captures `utm_source` / `utm_medium` natively. The plugin's STRICT recognition gate matches on `utm_id=woo_ucp` (the "we routed this" flag), so attribution lands regardless of which `utm_source` value the agent declares.
 
