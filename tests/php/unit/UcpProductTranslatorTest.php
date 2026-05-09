@@ -2040,6 +2040,58 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNull( $result['metadata']['bundle']['items'][0]['discount'] );
 	}
 
+	public function test_bundle_metadata_skips_items_with_invalid_ids(): void {
+		// Bundled-items entries missing/zero `bundled_item_id` or
+		// `product_id` are merchant misconfigurations; emitting them as
+		// `0` would mislead agents. Skip them entirely; metadata.bundle
+		// should reflect only valid items.
+		$fixture = $this->bundle_product_fixture();
+		// Inject one invalid entry (missing bundled_item_id) before the valid items.
+		array_unshift(
+			$fixture['extensions']['bundles']['bundled_items'],
+			[
+				'product_id'                            => 999,
+				'quantity_default'                      => 1,
+				'optional'                              => false,
+				'override_default_variation_attributes' => false,
+				// `bundled_item_id` deliberately absent.
+			]
+		);
+		// And one with product_id=0.
+		$fixture['extensions']['bundles']['bundled_items'][] = [
+			'bundled_item_id'                       => 4,
+			'product_id'                            => 0,
+			'quantity_default'                      => 1,
+			'optional'                              => false,
+			'override_default_variation_attributes' => false,
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
+
+		// Original fixture had 3 valid items; 2 invalid entries above
+		// must be filtered out, leaving 3.
+		$this->assertCount( 3, $result['metadata']['bundle']['items'] );
+		foreach ( $result['metadata']['bundle']['items'] as $item ) {
+			$this->assertGreaterThan( 0, $item['bundled_item_id'] );
+			$this->assertGreaterThan( 0, $item['product_id'] );
+		}
+	}
+
+	public function test_bundle_metadata_returns_null_when_all_items_invalid(): void {
+		// `bundled_items` is non-empty but every entry has invalid IDs.
+		// Per the docblock contract, emit no metadata.bundle at all
+		// rather than `metadata.bundle.items: []`.
+		$fixture = $this->bundle_product_fixture();
+		$fixture['extensions']['bundles']['bundled_items'] = [
+			[ 'product_id' => 0 ],
+			'not-an-array-at-all',
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
+
+		$this->assertFalse( isset( $result['metadata']['bundle'] ), 'metadata.bundle must not emit when no items have valid IDs.' );
+	}
+
 	public function test_non_bundle_product_omits_bundle_metadata(): void {
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $this->simple_product_fixture() );
 

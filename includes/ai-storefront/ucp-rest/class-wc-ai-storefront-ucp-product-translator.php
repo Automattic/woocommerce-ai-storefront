@@ -1307,9 +1307,21 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			if ( ! is_array( $item ) ) {
 				continue;
 			}
+			$bundled_item_id = (int) ( $item['bundled_item_id'] ?? 0 );
+			$product_id      = (int) ( $item['product_id'] ?? 0 );
+			// Skip entries with invalid identifiers. A bundled item
+			// without a `bundled_item_id` can't be addressed in the
+			// add-to-cart URL params (`bundle_quantity_<bid>` etc.),
+			// and one without a `product_id` doesn't reference a real
+			// child product. Either signals merchant misconfiguration;
+			// emitting them as `0` would mislead agents that try to
+			// cross-reference the IDs.
+			if ( $bundled_item_id <= 0 || $product_id <= 0 ) {
+				continue;
+			}
 			$out_items[] = [
-				'bundled_item_id'       => (int) ( $item['bundled_item_id'] ?? 0 ),
-				'product_id'            => (int) ( $item['product_id'] ?? 0 ),
+				'bundled_item_id'       => $bundled_item_id,
+				'product_id'            => $product_id,
 				'quantity_default'      => (int) ( $item['quantity_default'] ?? 1 ),
 				'optional'              => (bool) ( $item['optional'] ?? false ),
 				'discount'              => '' === (string) ( $item['discount'] ?? '' ) ? null : (string) $item['discount'],
@@ -1318,10 +1330,11 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		}
 
 		// `bundled_items` was non-empty but every entry was malformed
-		// (non-array). Per the docblock contract, return null rather
-		// than emitting `metadata.bundle.items: []` — an empty list
-		// signals "merchant misconfigured a bundle with no children,"
-		// which agents shouldn't try to render or describe.
+		// (non-array, or missing bundled_item_id / product_id). Per the
+		// docblock contract, return null rather than emitting
+		// `metadata.bundle.items: []` — an empty list signals "merchant
+		// misconfigured a bundle with no children," which agents
+		// shouldn't try to render or describe.
 		if ( empty( $out_items ) ) {
 			return null;
 		}

@@ -2939,10 +2939,13 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_mixed_cart_with_bundle_rejects_with_field_required(): void {
-		// Mixed cart: bundle alongside other items. UCP /checkout-sessions
-		// has no spec-defined way to redirect a mixed-bundle cart cleanly,
-		// so the handler rejects with one `field_required` error per
-		// bundle line item, no continue_url, status `incomplete`.
+		// Mixed cart: bundle alongside other items. The agent can resolve
+		// this by splitting the request into separate /checkout-sessions
+		// calls and retrying — that's `severity: recoverable` per
+		// `message_error.json` ("platform can resolve by modifying
+		// inputs and retrying via API"). Distinct from the configurable-
+		// bundle case where the buyer must pick options on the PDP
+		// (which is `severity: requires_buyer_input`).
 		$this->seed_bundle( 875 );
 		$this->seed_simple_product( 100, 1500 );
 
@@ -2961,10 +2964,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$bundle_errors = array_filter(
 			$result['data']['messages'],
 			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
-				&& 'requires_buyer_input' === ( $m['severity'] ?? '' )
+				&& 'recoverable' === ( $m['severity'] ?? '' )
 				&& isset( $m['path'] ) && false !== strpos( $m['path'], '$.line_items[0]' )
 		);
-		$this->assertCount( 1, $bundle_errors, 'Mixed cart must emit a field_required error path-attributed to the bundle line item.' );
+		$this->assertCount( 1, $bundle_errors, 'Mixed cart must emit a field_required error path-attributed to the bundle line item with severity=recoverable.' );
 
 		// All line items are still echoed in `line_items[]` so the
 		// agent sees what was processed.
@@ -2994,6 +2997,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
 		) );
 		$this->assertCount( 2, $field_required_errors, 'One field_required error per bundle line item.' );
+		// Both must be `recoverable` — the agent can split the cart and retry.
+		foreach ( $field_required_errors as $err ) {
+			$this->assertSame( 'recoverable', $err['severity'] ?? null );
+		}
 	}
 
 	public function test_deterministic_bundle_alongside_simple_still_rejects_as_mixed(): void {

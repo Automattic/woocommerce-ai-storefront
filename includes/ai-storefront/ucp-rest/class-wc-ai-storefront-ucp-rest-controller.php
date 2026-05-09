@@ -2446,40 +2446,38 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$should_redirect = false;
 		}
 
-		// Bundle handling (#358). Three sub-cases:
-		//   - Mixed/multi-bundle cart (any bundle alongside other line
-		//     items, or multiple bundles in one cart): UCP
-		//     /checkout-sessions has no spec-defined way to handle a
-		//     mixed-bundle cart in a single redirect. Reject with one
-		//     `field_required` error per bundle line item; flip
-		//     `should_redirect` off so status becomes `incomplete`.
-		//     Agent must split into separate /checkout-sessions requests.
-		//   - Single configurable bundle (only line item is a bundle, and
-		//     `bundle_url_query` is null because the bundle author left
-		//     buyer choices open): keep `should_redirect = true`,
-		//     continue_url goes to the bundle's product permalink
-		//     (build_continue_url branches on this). Emit a single
-		//     `field_required` error with `severity: requires_buyer_input`
-		//     so agents understand the escalation is bundle-config-driven
-		//     (not a generic checkout-handoff).
-		//   - Single deterministic bundle (only line item is a bundle, and
-		//     `bundle_url_query` is non-null because every bundled-item
-		//     choice was pre-set by the bundle author): keep
-		//     `should_redirect = true`, continue_url constructs
-		//     /checkout/?add-to-cart=BUNDLE&bundle_*=... directly. NO
-		//     additional error message — buyer has nothing to configure;
-		//     the standard buyer_handoff_required + total_is_provisional
-		//     info messages alone are correct.
+		// Bundle handling (#358). Three sub-cases, each mapped to the
+		// spec's `severity` enum from `message_error.json`:
 		//
-		// The `field_required` code + `requires_buyer_input` severity are
-		// both UCP-spec defined; see error_code.json examples and the
-		// checkout error-handling spec
-		// (https://ucp.dev/latest/specification/checkout/#error-handling).
-		// Walk `$processed` (post-dedup) but emit error paths using each
-		// entry's `request_index` (the position it occupied in the
-		// agent's original `line_items[]`). Dedup may have reordered or
-		// collapsed entries, so the `$processed` index is a different
-		// number — JSONPath references must address what the agent sent.
+		//   - Mixed/multi-bundle cart: the agent can resolve this by
+		//     splitting the request into separate /checkout-sessions
+		//     calls and retrying — `severity: recoverable` ("platform
+		//     can resolve by modifying inputs and retrying via API").
+		//     Flip `should_redirect` off so status becomes `incomplete`.
+		//   - Single configurable bundle (`bundle_url_query` is null
+		//     because the bundle author left choices open): the buyer
+		//     must pick variations / optional toggles on the PDP —
+		//     choices the API can't collect programmatically — so
+		//     `severity: requires_buyer_input` ("merchant requires
+		//     information their API doesn't support collecting
+		//     programmatically"). Keep `should_redirect = true`,
+		//     continue_url goes to the bundle's product permalink.
+		//   - Single deterministic bundle (`bundle_url_query` is non-null
+		//     because every bundled-item choice was pre-set by the
+		//     bundle author): keep `should_redirect = true`,
+		//     continue_url constructs /checkout/?add-to-cart=BUNDLE&...
+		//     directly. NO additional error message — buyer has nothing
+		//     to configure; the standard buyer_handoff_required +
+		//     total_is_provisional info messages alone are correct.
+		//
+		// `field_required` code is from UCP `error_code.json` standard
+		// examples; severity values match the `message_error.json`
+		// enum. See https://ucp.dev/latest/specification/checkout/#error-handling.
+		//
+		// JSONPath uses each entry's `request_index` (the position it
+		// occupied in the agent's original `line_items[]`). Dedup may
+		// have reordered or collapsed entries, so the `$processed` index
+		// is a different number — paths must address what the agent sent.
 		$bundle_request_indices = [];
 		$bundle_processed_keys  = [];
 		foreach ( $processed as $idx => $p ) {
@@ -2496,7 +2494,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$messages[] = [
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
-					'severity' => 'requires_buyer_input',
+					'severity' => 'recoverable',
 					'path'     => '$.line_items[' . $req_idx . ']',
 					'content'  => __( 'Bundle line items must be sent in their own /checkout-sessions request, separate from other items.', 'woocommerce-ai-storefront' ),
 				];
