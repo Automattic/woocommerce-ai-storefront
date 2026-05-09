@@ -1885,4 +1885,185 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Charcoal', $variant['options'][0]['label'] );
 		$this->assertArrayNotHasKey( 'id', $variant['options'][0] );
 	}
+
+	// ------------------------------------------------------------------
+	// Product Bundles plugin support (#358)
+	//
+	// WC Product Bundles emits `type: bundle` and exposes the bundle
+	// structure under `extensions.bundles`. Translator overrides the
+	// bundle's price_range, list_price_range, and adds a metadata.bundle
+	// block so agents can describe the bundle to buyers and decide
+	// whether to attempt direct purchase or hand off to the storefront.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Mirror of the live `extensions.bundles` shape for pierorocca.com
+	 * bundle 875 (Shirt Bundle): 3 bundled items, item 3 is optional
+	 * and priced individually with a 10% discount, items 1 and 2 are
+	 * required references to variable child products. Bundle's live
+	 * price range is $20 base (excl_tax: 2000 minor) up to $36.20
+	 * (excl_tax: 3620 minor) when all optional items are added at
+	 * full price; regular range is $25 (2500) to $43 (4300).
+	 */
+	private function bundle_product_fixture(): array {
+		return [
+			'id'        => 875,
+			'name'      => 'Shirt Bundle',
+			'type'      => 'bundle',
+			'permalink' => 'https://example.com/product/shirt-bundle/',
+			'prices'    => [
+				'price'         => '2000',
+				'regular_price' => '2500',
+				'currency_code' => 'USD',
+			],
+			'extensions' => [
+				'bundles' => [
+					'bundle_min_size'      => '2',
+					'bundle_max_size'      => '4',
+					'bundle_stock_status'  => 'instock',
+					'bundle_price'         => [
+						'price'         => [
+							'min' => [ 'incl_tax' => '2215', 'excl_tax' => '2000' ],
+							'max' => [ 'incl_tax' => '4009', 'excl_tax' => '3620' ],
+						],
+						'regular_price' => [
+							'min' => [ 'incl_tax' => '2769', 'excl_tax' => '2500' ],
+							'max' => [ 'incl_tax' => '4763', 'excl_tax' => '4300' ],
+						],
+						'currency_code' => 'USD',
+					],
+					'bundled_items'        => [
+						[
+							'bundled_item_id'                       => 1,
+							'product_id'                            => 77,
+							'quantity_default'                      => 1,
+							'optional'                              => false,
+							'priced_individually'                   => false,
+							'discount'                              => '',
+							'override_default_variation_attributes' => false,
+						],
+						[
+							'bundled_item_id'                       => 2,
+							'product_id'                            => 80,
+							'quantity_default'                      => 1,
+							'optional'                              => false,
+							'priced_individually'                   => false,
+							'discount'                              => '',
+							'override_default_variation_attributes' => false,
+						],
+						[
+							'bundled_item_id'                       => 3,
+							'product_id'                            => 24,
+							'quantity_default'                      => 1,
+							'optional'                              => true,
+							'priced_individually'                   => true,
+							'discount'                              => '10',
+							'override_default_variation_attributes' => false,
+						],
+					],
+				],
+			],
+		];
+	}
+
+	public function test_bundle_price_range_uses_bundle_extension_min_max(): void {
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $this->bundle_product_fixture() );
+
+		// Spans the configured bundle range, not the parent's flat
+		// `prices.price`. With optional T-Shirt at full price the max
+		// is 3620 minor; without it, min is 2000 minor.
+		$this->assertSame( 2000, $result['price_range']['min']['amount'] );
+		$this->assertSame( 3620, $result['price_range']['max']['amount'] );
+		$this->assertSame( 'USD', $result['price_range']['min']['currency'] );
+	}
+
+	public function test_bundle_list_price_range_uses_bundle_extension_regular_price(): void {
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $this->bundle_product_fixture() );
+
+		$this->assertArrayHasKey( 'list_price_range', $result );
+		$this->assertSame( 2500, $result['list_price_range']['min']['amount'] );
+		$this->assertSame( 4300, $result['list_price_range']['max']['amount'] );
+	}
+
+	public function test_bundle_list_price_range_omitted_when_no_discount(): void {
+		// Live range equals regular range — strikethrough is
+		// suppressed (same rule as non-bundle path).
+		$fixture = $this->bundle_product_fixture();
+		$fixture['extensions']['bundles']['bundle_price']['regular_price'] = $fixture['extensions']['bundles']['bundle_price']['price'];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
+
+		$this->assertArrayNotHasKey( 'list_price_range', $result );
+	}
+
+	public function test_bundle_metadata_emitted_with_full_item_structure(): void {
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $this->bundle_product_fixture() );
+
+		$this->assertArrayHasKey( 'metadata', $result );
+		$this->assertArrayHasKey( 'bundle', $result['metadata'] );
+
+		$bundle = $result['metadata']['bundle'];
+		$this->assertSame( 2, $bundle['min_size'] );
+		$this->assertSame( 4, $bundle['max_size'] );
+		$this->assertCount( 3, $bundle['items'] );
+
+		// Item 3 = optional T-Shirt with 10% discount
+		$item3 = $bundle['items'][2];
+		$this->assertSame( 3, $item3['bundled_item_id'] );
+		$this->assertSame( 24, $item3['product_id'] );
+		$this->assertTrue( $item3['optional'] );
+		$this->assertSame( '10', $item3['discount'] );
+		$this->assertFalse( $item3['has_default_variation'] );
+	}
+
+	public function test_bundle_metadata_discount_null_when_blank_string(): void {
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $this->bundle_product_fixture() );
+
+		// Item 1 has discount='' in the fixture — should normalize to null.
+		$this->assertNull( $result['metadata']['bundle']['items'][0]['discount'] );
+	}
+
+	public function test_non_bundle_product_omits_bundle_metadata(): void {
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $this->simple_product_fixture() );
+
+		// Either no metadata at all (base simple-product fixture has
+		// no residual attributes), OR metadata exists for other
+		// reasons but the bundle key is absent. Both are acceptable;
+		// what's NOT acceptable is a non-bundle product carrying
+		// `metadata.bundle`.
+		$has_bundle_metadata = isset( $result['metadata']['bundle'] );
+		$this->assertFalse( $has_bundle_metadata, 'Non-bundle product must not emit metadata.bundle' );
+	}
+
+	public function test_bundle_type_without_extension_falls_back_to_simple_path(): void {
+		// Bundles plugin deactivated mid-flight: type='bundle' but no
+		// extensions.bundles block. Emit a working (if minimal) UCP
+		// shape — agents see a simple-looking product rather than a
+		// schema-violating empty one.
+		$fixture = $this->bundle_product_fixture();
+		unset( $fixture['extensions'] );
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
+
+		// Falls back to the parent's flat `prices.price` (2000 minor).
+		$this->assertSame( 2000, $result['price_range']['min']['amount'] );
+		$this->assertSame( 2000, $result['price_range']['max']['amount'] );
+		// No bundle metadata.
+		$this->assertFalse( isset( $result['metadata']['bundle'] ), 'Bundle without extension must not emit metadata.bundle' );
+	}
+
+	public function test_bundle_min_max_size_null_when_unconfigured(): void {
+		// `bundle_min_size` / `bundle_max_size` are blank strings on a
+		// bundle the merchant hasn't constrained. Normalize to null
+		// rather than 0 so agents can distinguish "no constraint" from
+		// "constrained to 0 items".
+		$fixture = $this->bundle_product_fixture();
+		$fixture['extensions']['bundles']['bundle_min_size'] = '';
+		$fixture['extensions']['bundles']['bundle_max_size'] = '';
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
+
+		$this->assertNull( $result['metadata']['bundle']['min_size'] );
+		$this->assertNull( $result['metadata']['bundle']['max_size'] );
+	}
 }

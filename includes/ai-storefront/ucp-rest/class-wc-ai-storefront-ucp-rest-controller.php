@@ -2510,6 +2510,30 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'code'    => WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL,
 				'content' => __( 'Total excludes tax and shipping, which are calculated at the merchant checkout.', 'woocommerce-ai-storefront' ),
 			];
+
+			// `bundle_dropped_line_items` (#358) — when a bundle is
+			// included alongside other items, `build_continue_url()`
+			// redirects to the bundle's product page (bundles can't
+			// be added via /checkout-link/?products=). The non-bundle
+			// items don't survive the redirect, so notify the agent
+			// so it can resubmit them in a separate /checkout-sessions
+			// call after the buyer configures the bundle. Emitted only
+			// when there's something to report (>1 line item AND at
+			// least one bundle).
+			$has_bundle = false;
+			foreach ( $processed as $p ) {
+				if ( 'bundle' === ( $p['wc_type'] ?? '' ) ) {
+					$has_bundle = true;
+					break;
+				}
+			}
+			if ( $has_bundle && count( $processed ) > 1 ) {
+				$messages[] = [
+					'type'    => 'info',
+					'code'    => WC_AI_Storefront_UCP_Error_Codes::BUNDLE_DROPPED_LINE_ITEMS,
+					'content' => __( 'A Product Bundle was included; the buyer must configure it on the merchant site, so other line items were dropped from this redirect. Send those items in a separate /checkout-sessions request.', 'woocommerce-ai-storefront' ),
+				];
+			}
 		}
 
 		// UCP 2026-04-08 `totals` schema requires exactly one `subtotal`
@@ -4825,6 +4849,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'ucp_id'           => $raw_id,
 				'quantity'         => $quantity,
 				'unit_price_minor' => $unit_price_minor,
+				// WC product type — needed downstream so build_continue_url
+				// can branch for `bundle` (Product Bundles plugin product
+				// type, which can't be added via /checkout-link/?products=
+				// because each bundled item needs index-keyed config
+				// params). See #358.
+				'wc_type'          => $type,
+				// Permalink of the underlying WC product — only used when
+				// `wc_type === 'bundle'`, to override continue_url toward
+				// the product page so the buyer can configure the bundle
+				// (variation choices, optional toggles) on the storefront.
+				// Empty string when missing — defensive for malformed Store
+				// API responses; `build_continue_url` falls back to the
+				// standard `/checkout-link/` URL in that case.
+				'permalink'        => (string) ( $wc_product['permalink'] ?? '' ),
 			),
 			'messages'  => $messages,
 		);
@@ -5085,6 +5123,34 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                                                      for diagnostic / graduation purposes.
 	 */
 	private static function build_continue_url( array $processed, string $source_host, string $raw_host ): string {
+		// Bundle short-circuit (#358). WC Product Bundles aren't
+		// addressable via /checkout-link/?products=ID:QTY because
+		// each bundled item needs index-keyed config params
+		// (`bundle_quantity_<bid>`, `bundle_attribute_<attr>_<bid>`)
+		// for variation choices and optional toggles. We can't
+		// construct those without per-bundled-item interactive
+		// selection, so we redirect the buyer to the bundle's
+		// product permalink to configure on the storefront. UTM
+		// attribution still attaches via `with_woo_ucp_utm()`, so
+		// resulting orders attribute correctly. Mixed-cart case
+		// (bundle + simple items) drops the simple items from the
+		// URL — handler emits a `bundle_dropped_line_items` info
+		// message in that case so the agent knows.
+		$first_bundle = null;
+		foreach ( $processed as $p ) {
+			if ( 'bundle' === ( $p['wc_type'] ?? '' ) && '' !== (string) ( $p['permalink'] ?? '' ) ) {
+				$first_bundle = $p;
+				break;
+			}
+		}
+		if ( null !== $first_bundle ) {
+			return WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+				$first_bundle['permalink'],
+				$source_host,
+				$raw_host
+			);
+		}
+
 		$segments = array();
 		foreach ( $processed as $p ) {
 			$segments[] = $p['wc_id'] . ':' . $p['quantity'];

@@ -109,11 +109,22 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
+		// Bundle-product detection. WooCommerce Product Bundles (paid
+		// extension) emits `type: "bundle"` and exposes the bundle
+		// structure under `extensions.bundles`. We use the bundle's
+		// computed price range and config metadata in the catalog
+		// response so agents see the actual buyable range (which can
+		// span optional add-ons and per-child discounts) rather than
+		// the parent's flat `prices.price` value. See #358.
+		$bundle_data = self::extract_bundle_data( $wc_product );
+
 		$product = [
 			'id'          => self::PRODUCT_ID_PREFIX . $id,
 			'title'       => self::decode( (string) ( $wc_product['name'] ?? '' ) ),
 			'description' => self::extract_description( $wc_product ),
-			'price_range' => self::extract_price_range( $wc_product ),
+			'price_range' => null !== $bundle_data
+				? self::extract_bundle_price_range( $bundle_data, $wc_product )
+				: self::extract_price_range( $wc_product ),
 		];
 
 		// `list_price_range` — UCP core optional field carrying the
@@ -124,7 +135,13 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// when the variation set is partial (count mismatch between
 		// parent `variations[]` pointers and pre-fetched bodies).
 		// See `extract_list_price_range` for the full rule set.
-		$list_price_range = self::extract_list_price_range( $wc_product, $wc_variations );
+		//
+		// Bundles read from `extensions.bundles.bundle_price.regular_price`
+		// instead — the parent's `prices.regular_price` reflects only
+		// the bundle base, not the fully-configured pre-discount range.
+		$list_price_range = null !== $bundle_data
+			? self::extract_bundle_list_price_range( $bundle_data )
+			: self::extract_list_price_range( $wc_product, $wc_variations );
 		if ( null !== $list_price_range ) {
 			$product['list_price_range'] = $list_price_range;
 		}
@@ -269,10 +286,24 @@ class WC_AI_Storefront_UCP_Product_Translator {
 					static fn( $a ) => ! in_array( $a['name'], $promoted_names, true )
 				)
 			);
+		$metadata          = [];
 		if ( ! empty( $residual_metadata ) ) {
-			$product['metadata'] = [
-				'attributes' => $residual_metadata,
-			];
+			$metadata['attributes'] = $residual_metadata;
+		}
+		// Bundle structure under `metadata.bundle` (issue #358). Lets agents
+		// describe the bundle accurately and gives them the data needed to
+		// distinguish "deterministic bundle the buyer can complete via
+		// continue_url" from "configurable bundle requiring on-site
+		// configuration." UCP core has no typed bundle field; metadata is
+		// the spec's allowed extension surface.
+		if ( null !== $bundle_data ) {
+			$bundle_metadata = self::extract_bundle_metadata( $bundle_data );
+			if ( null !== $bundle_metadata ) {
+				$metadata['bundle'] = $bundle_metadata;
+			}
+		}
+		if ( ! empty( $metadata ) ) {
+			$product['metadata'] = $metadata;
 		}
 
 		// Rating + review count — emitted under core `product.rating`
@@ -1091,5 +1122,203 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 */
 	private static function decode( string $value ): string {
 		return wp_strip_all_tags( html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+	}
+
+	/**
+	 * Extract the WC Product Bundles plugin's bundle structure from a
+	 * Store API product response.
+	 *
+	 * The Bundles plugin (paid extension) registers a Store API
+	 * extension at `extensions.bundles` carrying:
+	 *
+	 *   - Bundle-level config: `bundle_min_size`, `bundle_max_size`,
+	 *     `bundle_stock_status`, `bundle_stock_quantity`, `bundle_price`
+	 *     (a `{price, regular_price}` object with `min` / `max` legs in
+	 *     minor units, identical shape to WC's standard `prices`).
+	 *   - Per-bundled-item array `bundled_items[]`, one entry per
+	 *     bundled child product. Each entry includes `bundled_item_id`
+	 *     (the index used in the add-to-cart URL params), `product_id`
+	 *     (the actual child WC product ID), `quantity_default`,
+	 *     `optional`, `priced_individually`, `discount`,
+	 *     `override_default_variation_attributes`, `default_variation_attributes`.
+	 *
+	 * Detection requires BOTH `type === 'bundle'` AND a non-empty
+	 * `extensions.bundles` block. If `type === 'bundle'` but the
+	 * extension didn't render (Bundles plugin deactivated, or store
+	 * misconfigured), the method returns null — the caller falls back
+	 * to the simple-product translation path so the bundle still emits
+	 * a valid (if minimal) UCP shape.
+	 *
+	 * @param  array<string, mixed>      $wc_product Store API product response.
+	 * @return array<string, mixed>|null            Bundle extension data, or
+	 *                                              null when the product is
+	 *                                              not a bundle or the
+	 *                                              extension is missing.
+	 */
+	private static function extract_bundle_data( array $wc_product ): ?array {
+		if ( 'bundle' !== ( $wc_product['type'] ?? '' ) ) {
+			return null;
+		}
+		$bundle = $wc_product['extensions']['bundles'] ?? null;
+		if ( ! is_array( $bundle ) || empty( $bundle ) ) {
+			return null;
+		}
+		return $bundle;
+	}
+
+	/**
+	 * Build the `price_range` for a bundle from its `bundle_price.price`
+	 * min/max range.
+	 *
+	 * The bundle's `prices.price` (parent-level) reflects only the bundle
+	 * base before any optional add-ons or per-child discounts apply. The
+	 * accurate buyable range lives in
+	 * `extensions.bundles.bundle_price.price.{min,max}` — this is what
+	 * WC renders as "From: $20.00" on the storefront when the bundle
+	 * has optional items or priced-individually children.
+	 *
+	 * Falls back to the standard simple-product price range when
+	 * `bundle_price.price` is missing or malformed (defensive — older
+	 * Bundles plugin versions may not emit it).
+	 *
+	 * @param  array<string, mixed> $bundle_data Bundle extension data.
+	 * @param  array<string, mixed> $wc_product  Store API product response (for currency + fallback).
+	 * @return array<string, mixed>              UCP price_range shape.
+	 */
+	private static function extract_bundle_price_range( array $bundle_data, array $wc_product ): array {
+		$bundle_price = $bundle_data['bundle_price'] ?? [];
+		$price        = $bundle_price['price'] ?? [];
+		$currency     = (string) ( $bundle_price['currency_code'] ?? $wc_product['prices']['currency_code'] ?? 'USD' );
+
+		$min = isset( $price['min']['excl_tax'] ) ? (int) $price['min']['excl_tax'] : null;
+		$max = isset( $price['max']['excl_tax'] ) ? (int) $price['max']['excl_tax'] : null;
+
+		if ( null === $min ) {
+			return self::extract_price_range( $wc_product );
+		}
+
+		return [
+			'min' => [
+				'amount'   => $min,
+				'currency' => $currency,
+			],
+			'max' => [
+				'amount'   => null !== $max ? $max : $min,
+				'currency' => $currency,
+			],
+		];
+	}
+
+	/**
+	 * Build the optional `list_price_range` (pre-discount strikethrough)
+	 * for a bundle from its `bundle_price.regular_price` min/max range.
+	 *
+	 * Returns null when the regular_price range equals the live price
+	 * range (nothing on sale), when the regular_price block is missing,
+	 * or when a min could not be parsed. Same emission rule as the
+	 * non-bundle path: list_price_range is only emitted when there's
+	 * an actual pre-discount value to communicate.
+	 *
+	 * @param  array<string, mixed>      $bundle_data Bundle extension data.
+	 * @return array<string, mixed>|null              UCP price_range shape, or null.
+	 */
+	private static function extract_bundle_list_price_range( array $bundle_data ): ?array {
+		$bundle_price = $bundle_data['bundle_price'] ?? [];
+		$regular      = $bundle_price['regular_price'] ?? [];
+		$live         = $bundle_price['price'] ?? [];
+		$currency     = (string) ( $bundle_price['currency_code'] ?? 'USD' );
+
+		$reg_min  = isset( $regular['min']['excl_tax'] ) ? (int) $regular['min']['excl_tax'] : null;
+		$reg_max  = isset( $regular['max']['excl_tax'] ) ? (int) $regular['max']['excl_tax'] : null;
+		$live_min = isset( $live['min']['excl_tax'] ) ? (int) $live['min']['excl_tax'] : null;
+		$live_max = isset( $live['max']['excl_tax'] ) ? (int) $live['max']['excl_tax'] : null;
+
+		if ( null === $reg_min ) {
+			return null;
+		}
+
+		// Nothing on sale: regular range equals live range. Suppress
+		// the strikethrough field — same rule as non-bundle path.
+		if ( $reg_min === $live_min && ( null === $reg_max || $reg_max === $live_max ) ) {
+			return null;
+		}
+
+		return [
+			'min' => [
+				'amount'   => $reg_min,
+				'currency' => $currency,
+			],
+			'max' => [
+				'amount'   => null !== $reg_max ? $reg_max : $reg_min,
+				'currency' => $currency,
+			],
+		];
+	}
+
+	/**
+	 * Build the `metadata.bundle` structure exposing bundle config to
+	 * agents.
+	 *
+	 * Shape:
+	 *   {
+	 *     "min_size": int|null,           // bundle_min_size
+	 *     "max_size": int|null,           // bundle_max_size
+	 *     "items": [
+	 *       {
+	 *         "bundled_item_id": int,     // index used by URL params
+	 *         "product_id": int,          // child WC product ID
+	 *         "quantity_default": int,
+	 *         "optional": bool,
+	 *         "discount": string|null,    // percent string (e.g. "10")
+	 *         "has_default_variation": bool  // override_default_variation_attributes
+	 *       },
+	 *       ...
+	 *     ]
+	 *   }
+	 *
+	 * Lets agents:
+	 *   - Render an accurate description ("3-item bundle, 1 optional add-on")
+	 *   - Decide whether to show "Configure on merchant site" vs an
+	 *     attempt at direct purchase
+	 *   - Cross-reference `product_id`s to other catalog entries the
+	 *     agent has already cached
+	 *
+	 * Returns null when the bundled_items array is missing or empty —
+	 * a bundle with no children is a misconfiguration on the merchant
+	 * side, not something the metadata block should advertise.
+	 *
+	 * @param  array<string, mixed>      $bundle_data Bundle extension data.
+	 * @return array<string, mixed>|null              metadata.bundle shape, or null.
+	 */
+	private static function extract_bundle_metadata( array $bundle_data ): ?array {
+		$items = $bundle_data['bundled_items'] ?? [];
+		if ( ! is_array( $items ) || empty( $items ) ) {
+			return null;
+		}
+
+		$out_items = [];
+		foreach ( $items as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+			$out_items[] = [
+				'bundled_item_id'       => (int) ( $item['bundled_item_id'] ?? 0 ),
+				'product_id'            => (int) ( $item['product_id'] ?? 0 ),
+				'quantity_default'      => (int) ( $item['quantity_default'] ?? 1 ),
+				'optional'              => (bool) ( $item['optional'] ?? false ),
+				'discount'              => '' === (string) ( $item['discount'] ?? '' ) ? null : (string) $item['discount'],
+				'has_default_variation' => (bool) ( $item['override_default_variation_attributes'] ?? false ),
+			];
+		}
+
+		return [
+			'min_size' => isset( $bundle_data['bundle_min_size'] ) && '' !== (string) $bundle_data['bundle_min_size']
+				? (int) $bundle_data['bundle_min_size']
+				: null,
+			'max_size' => isset( $bundle_data['bundle_max_size'] ) && '' !== (string) $bundle_data['bundle_max_size']
+				? (int) $bundle_data['bundle_max_size']
+				: null,
+			'items'    => $out_items,
+		];
 	}
 }

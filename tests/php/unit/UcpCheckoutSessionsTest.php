@@ -152,6 +152,29 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
+	 * Seed a WC Product Bundles plugin product (#358).
+	 *
+	 * Bundles are accepted at /checkout-sessions but build_continue_url
+	 * routes them to the product permalink (not /checkout-link/?products=)
+	 * because each bundled item needs index-keyed config params for
+	 * variation choices and optional toggles. The permalink lets the
+	 * buyer configure on the storefront with UTM attribution preserved.
+	 */
+	private function seed_bundle( int $id, string $permalink = '' ): void {
+		$this->fake_store_api[ $id ] = [
+			'id'          => $id,
+			'name'        => 'Shirt Bundle',
+			'type'        => 'bundle',
+			'permalink'   => '' !== $permalink ? $permalink : 'https://example.com/product/shirt-bundle/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'         => '2000',
+				'currency_code' => 'USD',
+			],
+		];
+	}
+
+	/**
 	 * @param array<string, mixed> $body
 	 */
 	private function checkout_request( array $body, ?string $ucp_agent = null ): WP_REST_Request {
@@ -2266,5 +2289,120 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$params = [];
 		parse_str( $query, $params );
 		return is_string( $params['utm_source'] ?? null ) ? $params['utm_source'] : '';
+	}
+
+	// ------------------------------------------------------------------
+	// Product Bundles plugin support (#358)
+	//
+	// Bundles can't be added via /checkout-link/?products= because each
+	// bundled item needs index-keyed config params for variation choices
+	// and optional toggles. The handler routes them to the product
+	// permalink so the buyer configures on the storefront, with UTM
+	// attribution preserved.
+	// ------------------------------------------------------------------
+
+	public function test_bundle_alone_uses_product_permalink_as_continue_url(): void {
+		$this->seed_bundle( 875, 'https://example.com/product/shirt-bundle/' );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
+		$this->assertArrayHasKey( 'continue_url', $result['data'] );
+
+		// continue_url = product permalink, NOT /checkout-link/?products=
+		$this->assertStringContainsString( '/product/shirt-bundle/', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '/checkout-link/', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( 'products=875:1', $result['data']['continue_url'] );
+	}
+
+	public function test_bundle_continue_url_carries_utm_attribution(): void {
+		// UTM attribution is the load-bearing signal for AI-driven
+		// orders showing up in WC Order Attribution. Permalink path
+		// must still go through `with_woo_ucp_utm()`.
+		$this->seed_bundle( 875 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
+		);
+
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( 'utm_source=', $url );
+		$this->assertStringContainsString( 'utm_medium=referral', $url );
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+	}
+
+	public function test_bundle_with_other_items_drops_simple_items_and_emits_info_message(): void {
+		// Mixed cart: one bundle + one simple product. Bundle wins —
+		// permalink redirect, simple item falls off the URL. Agent
+		// gets `bundle_dropped_line_items` info message so it can
+		// resubmit dropped items in a separate /checkout-sessions
+		// call after the buyer configures the bundle.
+		$this->seed_bundle( 875 );
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 2 ],
+				],
+			]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		// Bundle wins the URL.
+		$this->assertStringContainsString( '/product/shirt-bundle/', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( 'products=', $result['data']['continue_url'] );
+
+		// `bundle_dropped_line_items` info message present.
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::BUNDLE_DROPPED_LINE_ITEMS, $codes );
+
+		// All line items are still echoed in `line_items[]` so the
+		// agent sees what was processed (the response is honest about
+		// what we accepted; the URL is honest about what survives the
+		// redirect).
+		$this->assertCount( 2, $result['data']['line_items'] );
+	}
+
+	public function test_bundle_alone_does_not_emit_dropped_message(): void {
+		// Bundle alone: nothing was dropped, so no info message.
+		$this->seed_bundle( 875 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::BUNDLE_DROPPED_LINE_ITEMS, $codes );
+	}
+
+	public function test_bundle_without_permalink_falls_back_to_checkout_link(): void {
+		// Defensive — if the Store API response somehow omits the
+		// `permalink` field on a bundle product, we don't have a
+		// configurable URL to redirect to. Fall back to the standard
+		// /checkout-link/?products= path. WooCommerce will likely
+		// fail to add a bundle that way, but at least we don't emit
+		// a malformed (empty) continue_url.
+		$this->fake_store_api[ 875 ] = [
+			'id'          => 875,
+			'name'        => 'Shirt Bundle',
+			'type'        => 'bundle',
+			// permalink intentionally absent
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'         => '2000',
+				'currency_code' => 'USD',
+			],
+		];
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertStringContainsString( '/checkout-link/?products=875:1', $result['data']['continue_url'] );
 	}
 }

@@ -138,6 +138,14 @@ final class WC_AI_Storefront_UCP_Error_Codes {
 	 */
 	const TERMS_UNCONFIGURED = 'terms_unconfigured';
 
+	/**
+	 * A WC Product Bundle was included in a multi-item checkout, so
+	 * accompanying line items were dropped from the continue_url. The
+	 * buyer is redirected to the bundle's product page to configure
+	 * and add to cart; other items must be sent in a separate request.
+	 */
+	const BUNDLE_DROPPED_LINE_ITEMS = 'bundle_dropped_line_items';
+
 	// -----------------------------------------------------------------------
 	// Catalog codes
 	// -----------------------------------------------------------------------

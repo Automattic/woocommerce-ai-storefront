@@ -1,9 +1,22 @@
 ## [Unreleased]
 
 ### Features
+
+- **UCP: WooCommerce Product Bundles plugin support.** Closes #358.
+  - Detects `type === 'bundle'` and the Bundles plugin's Store API extension under `extensions.bundles`. Bundles previously emitted as flat single-variant simple products with broken `/checkout-link/?products=ID:1` continue_urls (bundles can't be added via that handler — each bundled item needs index-keyed config params for variation choices and optional toggles).
+  - **Catalog response enrichment:** `price_range` and `list_price_range` now come from `bundle_price.price.{min,max}` and `bundle_price.regular_price.{min,max}` — the actual buyable range spanning optional add-ons and per-child discounts (e.g. $20-$36.20 instead of flat $20). New `metadata.bundle = { min_size, max_size, items: [...] }` block exposes the bundled-item structure so agents can describe the bundle accurately.
+  - **`/checkout-sessions` continue_url:** when a bundle is in the line items, the URL points at the bundle's product permalink (with UTM attribution preserved via `with_woo_ucp_utm()`) instead of `/checkout-link/?products=`. Buyer configures variation choices and optional toggles on the storefront — the same flow a direct customer would use. Falls back to the standard `/checkout-link/` URL if the Store API response is missing `permalink` (defensive).
+  - **Mixed cart handling:** when a bundle is sent alongside other line items, the bundle wins the URL and the simple items are dropped from the redirect. Agent receives a new `bundle_dropped_line_items` info message explaining what happened so it can resubmit dropped items in a separate `/checkout-sessions` call.
+  - Threading: `process_line_item()` now records `wc_type` and `permalink` on each `$processed` entry; `build_continue_url()` reads these to branch.
+
 ### Fixes
 ### Refactors
+
 ### Tests
+
+- Added 8 product-translator tests for bundle handling: price_range from `bundle_price`, list_price_range from `bundle_price.regular_price`, list_price_range suppressed when nothing's on sale, full `metadata.bundle` structure including item-level fields, blank-discount-string normalized to null, non-bundle products never emit `metadata.bundle`, type=bundle without the extension falls back to simple-path translation, and blank min_size/max_size normalize to null.
+- Added 5 checkout-sessions tests covering the bundle continue_url branch: bundle alone uses product permalink, UTM attribution flows through to the permalink, mixed cart emits `bundle_dropped_line_items` and drops simples from URL while preserving them in `line_items[]`, bundle-alone doesn't emit the dropped message, missing-permalink falls back to `/checkout-link/`.
+
 ### Docs
 
 ---
