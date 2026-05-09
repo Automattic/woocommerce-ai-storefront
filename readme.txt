@@ -128,8 +128,14 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 == Changelog ==
 
 = 0.12.0 - 2026-05-08 =
+**New**
+* UCP enrichment: `option_value.id` and `selected_option.id` now emit as stable `<taxonomy>:<slug>` identifiers for taxonomy-backed variant attributes, enabling cross-locale variant matching by agents.
+* UCP enrichment: category `value` fields now emit as `>`-delimited hierarchy strings (e.g. `"Clothing > Tshirts"`) per the UCP `category.json` spec.
+* UCP: simple products with schema.org reserved variant attributes (Color, Size, Pattern, Material) now emit in product-group shape with `options[]` and a synthesized default variant.
+
 **Fixed**
 * UCP wire-format compliance with `release/2026-04-08`. Variant `price`/`list_price` renamed, `compare_at_price` removed (use `list_price`), `selected_option`/`option_value`/`rating` reshaped, seller moved from product to variant, lookup adds per-variant `inputs[]` correlation, message shapes match spec. Pre-fix, strict-validating agents were already rejecting our responses; this release aligns implementation with the protocol version we declare in the manifest.
+* UCP: HTML entities in product/variant/category name fields (e.g. `&#8211;`) are now decoded to plain Unicode before emission.
 
 = 0.11.1 - 2026-05-08 =
 **Fixed**

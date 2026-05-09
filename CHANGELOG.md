@@ -1,6 +1,16 @@
 ## [Unreleased]
 
 ### Features
+### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.12.0] – 2026-05-08
+
+### Features
 
 - **UCP enrichment: stable `option_value.id` and `selected_option.id` from WC taxonomy slugs.** Closes #350 (option_value).
   - Format: `<taxonomy>:<slug>` (e.g. `pa_color:black`). Per `option_value.json` and `selected_option.json` (release/2026-04-08), `id` is optional but "the server SHOULD use it for matching" — letting agents echo the stable identifier back via `selected_option.id` for cross-locale variant matching, instead of relying on the displayed `label` (which may be translated).
@@ -17,23 +27,6 @@
 
 ### Fixes
 
-- **Decode HTML entities in UCP name fields.** Closes #356.
-  - The WC Store API returns `name` values with HTML entities intact (e.g. `Shirt &#8211; Green`). Both translators now decode at every Store API name read site — product title, variant title, category/tag/brand names, attribute axis labels, and option term labels — so UCP JSON always emits plain Unicode.
-  - Decode order: `html_entity_decode()` first, then `wp_strip_all_tags()`. Reversing the order would miss encoded markup (`&lt;b&gt;`) that only becomes strippable after decoding.
-  - Category names decoded at both the leaf (`build_category_paths_map()`) and ancestor (`fetch_category_terms()`) fetch sites so the full `>`-delimited hierarchy string is clean Unicode end-to-end.
-
-### Tests
-
-- Added 4 enrichment tests for `option_value.id` (#354): present for taxonomy attributes, omitted for custom attributes, omitted when term slug missing, end-to-end flow through the variant translator's parsed-string path with `term_slug_map`.
-- Added 4 enrichment tests for hierarchical categories (#354): path string emission, graceful degradation when path missing, backwards-compat with no path map, brands stay flat regardless of map.
-- Added entity-decode tests to `UcpProductTranslatorTest` and `UcpVariantTranslatorTest` (#356): encoded axis labels, encoded term values, encoded category names, and HTML-tag-after-decode stripping.
-
----
-
-## [0.12.0] – 2026-05-08
-
-### Fixes
-
 - **UCP wire-format compliance with `release/2026-04-08`.** Closes #349.
   - Audit on prod_22 (simple) + prod_35 (variable, T-Shirt with Logo) found 6 critical + 5 important spec gaps. We were declaring `PROTOCOL_VERSION = "2026-04-08"` in our manifest while emitting non-conformant payloads — strict-validating agents were already rejecting our responses. This release brings the implementation in line with the spec.
   - **Variant `price` rename.** Spec `variant.json` requires `price` (current selling price); we were emitting under `list_price`. Renamed the output key in both `translate()` and `synthesize_default()`.
@@ -45,12 +38,19 @@
   - **Lookup per-variant `inputs[]` correlation.** Per `catalog_lookup.json#/$defs/lookup_variant`, every variant in a lookup response must carry `inputs: [{id, match}]` with `minItems: 1`. Top-level envelope `inputs` echo was non-spec and is dropped. Each variant now declares `[{id: <input>, match: 'featured'}]`.
   - **Message shape compliance.** `message_error.json` requires `content` (we omitted on `not_found`); `message_warning.json` and `message_info.json` have no `severity` field (we emitted `severity: 'advisory'` as a non-spec extension on 14 sites). Added required content; dropped severity from all warning/info emissions.
   - **Release context.** Pre-1.0 minor bump for substantive wire-format scope. Spec-conforming agents reading our responses today are already getting validation rejections; this release fixes that. No coordination needed with public agent integrations because none read our specific non-conformant keys.
+- **Decode HTML entities in UCP name fields.** Closes #356.
+  - The WC Store API returns `name` values with HTML entities intact (e.g. `Shirt &#8211; Green`). Both translators now decode at every Store API name read site — product title, variant title, category/tag/brand names, attribute axis labels, and option term labels — so UCP JSON always emits plain Unicode.
+  - Decode order: `html_entity_decode()` first, then `wp_strip_all_tags()`. Reversing the order would miss encoded markup (`&lt;b&gt;`) that only becomes strippable after decoding.
+  - Category names decoded at both the leaf (`build_category_paths_map()`) and ancestor (`fetch_category_terms()`) fetch sites so the full `>`-delimited hierarchy string is clean Unicode end-to-end.
 
 ### Tests
 
 - Added `UcpShapeTest` running JSON Schema validation against the canonical UCP `release/2026-04-08` schemas vendored at `tests/fixtures/ucp-schemas/`. 12 new tests cover all touched shapes including the `lookup_variant` allOf merge.
 - Added `opis/json-schema` v2.6 as a dev dependency — only PHP library with complete draft-2020-12 / `$defs` / cross-file `$ref` support.
 - Updated existing translator + REST controller tests for the new key names and message shapes (~15 sites). Hard-cut regression guards (`assertArrayNotHasKey`) for the old keys.
+- Added 4 enrichment tests for `option_value.id` (#354): present for taxonomy attributes, omitted for custom attributes, omitted when term slug missing, end-to-end flow through the variant translator's parsed-string path with `term_slug_map`.
+- Added 4 enrichment tests for hierarchical categories (#354): path string emission, graceful degradation when path missing, backwards-compat with no path map, brands stay flat regardless of map.
+- Added entity-decode tests to `UcpProductTranslatorTest` and `UcpVariantTranslatorTest` (#356): encoded axis labels, encoded term values, encoded category names, and HTML-tag-after-decode stripping.
 
 ---
 
