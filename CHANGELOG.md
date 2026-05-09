@@ -1,7 +1,6 @@
 ## [Unreleased]
 
 ### Features
-### Features
 - **Simple products with schema.org reserved attributes are promoted to product-group shape.** When a simple WC product carries any of the four reserved variant attributes — Color, Size, Pattern, or Material (case-insensitive) — the UCP translator now emits it as a `productGroup` with `options[]` and a synthesized default variant, instead of a flat simple product. Non-reserved informational attributes (e.g. Fabric Weight, Origin) stay in `metadata.attributes`. Restricted to the four schema.org reserved names only; all other attributes are unaffected.
 
 ### Fixes

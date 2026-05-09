@@ -971,4 +971,39 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 			$result['options']
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// HTML entity decoding
+	// ------------------------------------------------------------------
+
+	public function test_translate_decodes_html_entities_in_attributes_array_path(): void {
+		// The WC Store API can return HTML entities in variation attribute
+		// names and values (e.g. an axis named "Coul&#233;e" or a value
+		// "Cr&#232;me"). The attributes[] array path must decode both.
+		$fixture               = $this->variation_fixture();
+		$fixture['attributes'] = [
+			[ 'name' => 'Colour', 'value' => 'Cr&#232;me' ],
+			[ 'name' => 'Size',   'value' => 'M' ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Colour', 'Size' ] );
+
+		$this->assertSame( 'Crème / M', $result['title'] );
+		$colour_option = array_values( array_filter( $result['options'], fn( $o ) => 'Colour' === $o['name'] ) )[0];
+		$this->assertSame( 'Crème', $colour_option['label'] );
+	}
+
+	public function test_translate_decodes_html_entities_in_variation_string_path(): void {
+		// Same decoding requirement for the `variation` formatted-string path
+		// (the live WC Store API shape). Entities in axis names and values
+		// must both be decoded before emission.
+		$fixture              = $this->realistic_variation_fixture();
+		$fixture['variation'] = 'Color: Cr&#232;me, Size: M';
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture, [ 'Color', 'Size' ] );
+
+		$this->assertSame( 'Crème / M', $result['title'] );
+		$colour_option = array_values( array_filter( $result['options'], fn( $o ) => 'Color' === $o['name'] ) )[0];
+		$this->assertSame( 'Crème', $colour_option['label'] );
+	}
 }
