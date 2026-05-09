@@ -206,7 +206,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		//   - `metadata.attributes` — everything else: informational facts
 		//      like Fabric Weight or Origin that don't narrow variant
 		//      selection.
-		$classified         = self::extract_classified_attributes( $wc_product );
+		$classified = self::extract_classified_attributes( $wc_product );
 		// Promote metadata_attributes to options[] only when the product
 		// has no true variation axes (has_variations:true). A simple product
 		// with e.g. Color=White, Size=L should look like a single-member
@@ -248,10 +248,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		$promoted_names    = array_map( static fn( $a ) => $a['name'], $promote_to_options );
 		$residual_metadata = $has_variation_axes
 			? $classified['metadata_attributes']
-			: array_values( array_filter(
-				$classified['metadata_attributes'],
-				static fn( $a ) => ! in_array( $a['name'], $promoted_names, true )
-			) );
+			: array_values(
+				array_filter(
+					$classified['metadata_attributes'],
+					static fn( $a ) => ! in_array( $a['name'], $promoted_names, true )
+				)
+			);
 		if ( ! empty( $residual_metadata ) ) {
 			$product['metadata'] = [
 				'attributes' => $residual_metadata,
@@ -292,8 +294,10 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *     get a defensive fallback rather than a schema-violating empty
 	 *     array, but the `_default` suffix signals the shape is degraded.
 	 *
-	 * @param array<string, mixed>             $wc_product
+	 * @param array<string, mixed>             $wc_product    Decoded Store API response.
 	 * @param array<int, array<string, mixed>> $wc_variations Pre-fetched variation responses.
+	 * @param array<string, mixed>|null        $seller        Seller block threaded to each variant.
+	 * @param array<int, array<string, mixed>> $simple_options Promoted options for synthesized default.
 	 * @return array<int, array<string, mixed>>
 	 */
 	private static function extract_variants(

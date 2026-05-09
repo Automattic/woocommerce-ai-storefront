@@ -1282,6 +1282,28 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'attributes', $result['metadata'] ?? [] );
 	}
 
+	public function test_translate_decodes_html_entities_in_title_and_term_labels(): void {
+		// The WC Store API returns name fields with HTML entities intact.
+		// All emitted string fields must be plain Unicode.
+		$fixture         = $this->simple_product_fixture();
+		$fixture['name'] = 'Shirt &#8211; Green';
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Color',
+				'taxonomy'       => 'pa_color',
+				'has_variations' => true,
+				'terms'          => [
+					[ 'id' => 1, 'name' => 'Cr&#232;me', 'slug' => 'creme' ],
+				],
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertSame( 'Shirt – Green', $result['title'] );
+		$this->assertSame( 'Crème', $result['options'][0]['values'][0]['label'] );
+	}
+
 	public function test_translate_emits_rating_under_core_when_reviews_exist(): void {
 		// UCP `rating.json` shape: `{value, scale_min, scale_max, count}`.
 		// 0.12.0+ aligned to spec — `value` (the average) replaces the

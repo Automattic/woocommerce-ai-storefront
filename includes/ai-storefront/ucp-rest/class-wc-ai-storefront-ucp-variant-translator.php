@@ -237,10 +237,13 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * same availability, id suffixed with `_default` so it's distinguishable
 	 * from a real variation.
 	 *
-	 * @param array<string, mixed>      $wc_product Decoded Store API response.
-	 * @param array<string, mixed>|null $seller     Seller block to attach as
-	 *                                              `variant.seller`. See `translate()`.
-	 * @return array<string, mixed>                 UCP variant shape.
+	 * @param array<string, mixed>      $wc_product     Decoded Store API response.
+	 * @param array<string, mixed>|null $seller         Seller block to attach as
+	 *                                                  `variant.seller`. See `translate()`.
+	 * @param array<int, array<string, mixed>> $simple_options Schema.org variant attributes
+	 *                                                  promoted from the parent simple product;
+	 *                                                  emitted as `options[]` on the variant.
+	 * @return array<string, mixed>                     UCP variant shape.
 	 */
 	public static function synthesize_default(
 		array $wc_product,
@@ -269,7 +272,10 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				foreach ( $axis['values'] ?? [] as $value ) {
 					$label = (string) ( $value['label'] ?? '' );
 					if ( '' !== $name && '' !== $label ) {
-						$option = [ 'name' => $name, 'label' => $label ];
+						$option = [
+							'name'  => $name,
+							'label' => $label,
+						];
 						if ( isset( $value['id'] ) ) {
 							$option['id'] = $value['id'];
 						}
@@ -628,7 +634,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				// Without the upfront cast a `false` value would slip
 				// past `'' === $value` (false !== '') and emit an empty
 				// option `{value: ""}`.
-				$value = (string) ( $attribute['value'] ?? '' );
+				$value = self::decode( (string) ( $attribute['value'] ?? '' ) );
 				if ( '' === $value ) {
 					continue;
 				}
