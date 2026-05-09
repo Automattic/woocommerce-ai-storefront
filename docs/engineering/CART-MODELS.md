@@ -32,11 +32,11 @@ Buyer adds to cart on merchant site → WC checkout
 
 ## Model 2 — Single-shot multi-item handoff
 
-Agent maintains `items[]` in its conversation memory across turns. When the buyer commits, agent calls `POST /checkout-sessions` once with the full list, receives a `continue_url` that encodes the cart in URL params, renders one Buy button.
+Agent maintains `line_items[]` in its conversation memory across turns. When the buyer commits, agent calls `POST /checkout-sessions` once with the full list, receives a `continue_url` that encodes the cart in URL params, renders one Buy button.
 
 ```
-Agent maintains items[] in chat context
-Agent → POST /checkout-sessions { items: [...] } → continue_url
+Agent maintains line_items[] in chat context
+Agent → POST /checkout-sessions { line_items: [{ item: { id }, quantity }, ...] } → continue_url
 Buyer clicks Buy → /checkout-link/?products=42:1,99:1&utm_*
 WC populates cart from URL → WC checkout
 ```

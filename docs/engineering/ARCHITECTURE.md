@@ -100,9 +100,10 @@ The canonical UTM payload (0.5.0+):
 utm_source=<lowercase agent hostname, or ucp_unknown>
 utm_medium=referral
 utm_id=woo_ucp
-ai_agent_host_raw=<raw producer-side identifier>      # optional
-ai_session_id=<chk_… correlation token>               # continue_url only
+ai_agent_host_raw=<raw producer-side identifier>      # optional, only when agent was identifiable
 ```
+
+`ai_session_id=<chk_…>` is **agent-supplied**, not server-stamped. Agents that want session-correlation append their own `ai_session_id` query param to the continue_url before redirecting; the plugin's order-attribution capture reads it from `$_GET` on the WC checkout page and writes it to the `_wc_ai_storefront_session_id` order meta.
 
 Agent name is surfaced in WC core's "Origin" column (fed by `_wc_order_attribution_utm_source`).
 

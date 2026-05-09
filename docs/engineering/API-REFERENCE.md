@@ -142,11 +142,21 @@ The exact `continue_url` shape depends on the cart contents: simple/variation ca
 {
   "line_items": [
     { "item": { "id": "var_42_default" }, "quantity": 1 },
-    { "item": { "id": "var_56_2" }, "quantity": 2 }
+    { "item": { "id": "var_56" }, "quantity": 2 }
   ],
   "context": { "locale": "en-US" }
 }
 ```
+
+UCP ID grammar accepted by the parser (`parse_ucp_id_to_wc_int()`):
+
+| ID form | Meaning |
+|---|---|
+| `prod_<digits>` | A WC product (simple, variable parent, bundle, grouped) |
+| `var_<digits>` | A real WC variation |
+| `var_<digits>_default` | The synthesized default variant emitted for simple products in product-group shape (#356) |
+
+Anything else — non-prefixed strings, `var_56_2`, `var_abc`, etc. — parses to `0` and surfaces as `not_found`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -170,7 +180,7 @@ The exact `continue_url` shape depends on the cart contents: simple/variation ca
       "price_includes_tax": false
     },
     {
-      "item": { "id": "var_56_2" },
+      "item": { "id": "var_56" },
       "quantity": 2,
       "unit_price": { "amount": 12999, "currency": "USD" },
       "line_total": { "amount": 25998, "currency": "USD" },
@@ -232,7 +242,7 @@ Other in-cart error codes the response may carry:
 
 The `severity` field on each error tells the agent how to recover (per UCP `message_error.json`). `recoverable` means **the platform can resolve by modifying inputs and retrying via API** — for mixed/multi bundle-or-grouped carts that means splitting into per-container `/checkout-sessions` calls; for a single configurable container with no usable permalink it means the merchant must fix the underlying misconfig before retry succeeds. `requires_buyer_input` means the buyer must complete configuration on the merchant site. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
 
-**Errors:** `503` `ucp_disabled`; `400` `invalid_input` for missing/empty `items` or malformed variant IDs.
+**Errors:** `503` `ucp_disabled` when syndication is paused; `400` `invalid_input` when `line_items` is missing/empty or exceeds the per-request cap. Per-line-item validation failures (unrecognized ID formats outside `prod_…` / `var_…[_default]`, unknown product IDs, out-of-stock items, etc.) are surfaced as messages within a `200` response with `status: incomplete` rather than top-level errors — agents read `messages[].code` to recover.
 
 **Note on session IDs.** `chk_<16 hex chars>` is a correlation token for logging and attribution. There is no GET/PUT/PATCH/DELETE endpoint that operates on it — see the next section.
 
