@@ -53,6 +53,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'home_url' )->alias(
 			static fn( string $path = '' ): string => 'https://example.com' . $path
 		);
+		// Default checkout-page URL for the deterministic-bundle URL
+		// builder. Tests that exercise renamed-checkout-page behavior
+		// can override this with their own when() call.
+		Functions\when( 'wc_get_checkout_url' )->justReturn( 'https://example.com/checkout/' );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy' );
 		Functions\when( 'wc_get_page_permalink' )->alias(
@@ -2535,6 +2539,26 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'utm_source=', $url );
 		$this->assertStringContainsString( 'utm_medium=referral', $url );
 		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+	}
+
+	public function test_deterministic_bundle_url_uses_merchant_configured_checkout_page(): void {
+		// Stores that rename the WC checkout page (multilingual sites,
+		// custom slugs like /pay/ or /kasse/, theme overrides) get a
+		// non-default page URL from `wc_get_checkout_url()`. The URL
+		// builder must use that helper, not a hard-coded
+		// `home_url('/checkout/')` which 404s on those stores.
+		Functions\when( 'wc_get_checkout_url' )->justReturn( 'https://example.com/finalizar-compra/' );
+		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ] ] ]
+		);
+
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( '/finalizar-compra/', $url );
+		$this->assertStringNotContainsString( '/checkout/?', $url );
+		$this->assertStringContainsString( 'add-to-cart=900', $url );
+		$this->assertStringContainsString( 'bundle_quantity_1=1', $url );
 	}
 
 	public function test_optional_bundled_item_makes_bundle_configurable(): void {

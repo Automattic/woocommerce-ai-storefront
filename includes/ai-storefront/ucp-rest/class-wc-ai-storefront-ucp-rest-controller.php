@@ -5244,9 +5244,19 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		if ( null !== $first_bundle ) {
 			$bundle_query = $first_bundle['bundle_url_query'] ?? null;
 			if ( is_array( $bundle_query ) && ! empty( $bundle_query ) ) {
-				$base         = function_exists( 'home_url' )
-					? home_url( '/checkout/' )
-					: '/checkout/';
+				// Use WC's helper so multilingual sites and merchants
+				// who renamed their checkout page (`/pay/`, `/kasse/`,
+				// etc.) get the correct URL. `wc_get_checkout_url()`
+				// reads `woocommerce_checkout_page_id` and returns the
+				// full permalink — `home_url('/checkout/')` only works
+				// for stores that left the default page slug in place.
+				if ( function_exists( 'wc_get_checkout_url' ) ) {
+					$base = wc_get_checkout_url();
+				} elseif ( function_exists( 'home_url' ) ) {
+					$base = home_url( '/checkout/' );
+				} else {
+					$base = '/checkout/';
+				}
 				$query_string = http_build_query(
 					array_merge(
 						[ 'add-to-cart' => (string) $first_bundle['wc_id'] ],
