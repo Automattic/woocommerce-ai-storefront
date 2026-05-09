@@ -29,6 +29,8 @@
 
 ### Docs
 
+- **Removed stale `validate_product_type()` docblock claim** about a `purchase_urls.checkout_link.unsupported` UCP manifest field that doesn't exist in this plugin. Replaced with an accurate runtime-enforcement clarification (#363).
+
 ---
 
 ## [0.12.0] – 2026-05-08
