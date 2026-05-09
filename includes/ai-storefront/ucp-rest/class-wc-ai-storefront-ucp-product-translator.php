@@ -1159,7 +1159,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		if ( 'bundle' !== ( $wc_product['type'] ?? '' ) ) {
 			return null;
 		}
-		$bundle = $wc_product['extensions']['bundles'] ?? null;
+		// Defensive: a third-party `woocommerce_store_api_*` filter or a
+		// future Store API revision could set `extensions` to a non-array
+		// value. Guard before indexing so the translator doesn't raise
+		// warnings on filtered payloads.
+		$extensions = $wc_product['extensions'] ?? null;
+		if ( ! is_array( $extensions ) ) {
+			return null;
+		}
+		$bundle = $extensions['bundles'] ?? null;
 		if ( ! is_array( $bundle ) || empty( $bundle ) ) {
 			return null;
 		}

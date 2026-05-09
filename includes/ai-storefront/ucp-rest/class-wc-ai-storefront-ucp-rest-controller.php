@@ -2516,19 +2516,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					'content'  => __( 'This bundle requires variation choices and/or optional add-on selections that must be made on the merchant site. Open continue_url to configure the bundle and complete the purchase.', 'woocommerce-ai-storefront' ),
 				];
 			} elseif ( ! $is_deterministic ) {
-				// No deterministic URL AND no permalink — `build_continue_url()`
-				// will fall back to `/checkout-link/?products=` which WC
-				// rejects for bundles. Different content + severity:
-				// `recoverable` because the merchant could fix this by
-				// ensuring the bundle has a valid permalink. Don't tell
-				// the agent to "open continue_url" — that URL is broken.
-				$messages[] = [
+				// No deterministic URL AND no permalink. The agent has no
+				// usable URL to send the buyer to — `/checkout-link/?products=`
+				// would attempt to add an unconfigured bundle and WC
+				// rejects that. Flip `should_redirect` off so status
+				// becomes `incomplete` with no `continue_url` (don't
+				// hand the agent a broken URL). Severity stays
+				// `recoverable` because the merchant can fix it by
+				// republishing the bundle to populate its permalink.
+				$messages[]      = [
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'recoverable',
 					'path'     => '$.line_items[' . $bundle_request_indices[0] . ']',
 					'content'  => __( 'This bundle cannot be added through the standard checkout flow because its product page URL is unavailable. The merchant should verify the bundle configuration.', 'woocommerce-ai-storefront' ),
 				];
+				$should_redirect = false;
 			}
 		}
 

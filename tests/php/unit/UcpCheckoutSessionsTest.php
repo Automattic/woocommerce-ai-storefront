@@ -3027,14 +3027,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'field_required', $codes );
 	}
 
-	public function test_bundle_without_permalink_emits_recoverable_field_required(): void {
+	public function test_bundle_without_permalink_returns_incomplete_with_no_continue_url(): void {
 		// Pathological — Store API response omits `permalink` AND no
 		// `extensions.bundles` block (so no deterministic URL either).
-		// `build_continue_url()` falls back to /checkout-link/?products=
-		// which WC rejects for bundles, so the error message must NOT
-		// tell the agent to "open continue_url" (that URL is broken).
-		// Instead emit a `recoverable` field_required pointing at the
-		// real cause (missing PDP URL on the merchant side).
+		// We can't construct a working URL for the buyer, so the
+		// handler flips `should_redirect = false`: status becomes
+		// `incomplete` and `continue_url` is omitted entirely.
+		// Emitting a known-broken `/checkout-link/?products=` URL would
+		// just hand the agent something WC will reject.
 		$this->fake_store_api[ 875 ] = [
 			'id'          => 875,
 			'name'        => 'Shirt Bundle',
@@ -3051,12 +3051,9 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
 		);
 
-		// Defensive fallback URL is still emitted (better than empty).
-		$this->assertStringContainsString( '/checkout-link/?products=875:1', $result['data']['continue_url'] );
+		$this->assertSame( 'incomplete', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
 
-		// The error message must reflect the broken-URL state, not the
-		// configurable-bundle state. Assert: severity=recoverable AND
-		// content does NOT instruct opening continue_url.
 		$bundle_errors = array_values( array_filter(
 			$result['data']['messages'],
 			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )

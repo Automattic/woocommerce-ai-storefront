@@ -2129,6 +2129,24 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( $has_bundle_metadata, 'Non-bundle product must not emit metadata.bundle' );
 	}
 
+	public function test_bundle_translation_tolerates_non_array_extensions(): void {
+		// A `woocommerce_store_api_*` filter or future Store API revision
+		// could set `extensions` to a non-array value. The translator
+		// must not raise warnings on that input — it should fall back
+		// to the simple-product translation path. Round-8 Copilot
+		// review: defensive guard before indexing into ['extensions']['bundles'].
+		$fixture               = $this->bundle_product_fixture();
+		$fixture['extensions'] = 'not-an-array';
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
+
+		// Falls back to the parent's flat `prices.price` since the
+		// bundle extension is unreadable.
+		$this->assertSame( 2000, $result['price_range']['min']['amount'] );
+		// No bundle metadata (no extension to read from).
+		$this->assertFalse( isset( $result['metadata']['bundle'] ) );
+	}
+
 	public function test_bundle_type_without_extension_falls_back_to_simple_path(): void {
 		// Bundles plugin deactivated mid-flight: type='bundle' but no
 		// extensions.bundles block. Emit a working (if minimal) UCP
