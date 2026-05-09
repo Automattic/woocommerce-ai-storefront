@@ -189,45 +189,37 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Seed a configurable WC grouped product (#359).
-	 *
-	 * No `grouped_products[]` array, so the deterministic-classification
-	 * helper returns null and the grouped product is treated as configurable —
-	 * continue_url goes to the parent permalink, the handler emits a
-	 * `field_required` error with `severity: requires_buyer_input`.
-	 */
-	private function seed_grouped( int $id, string $permalink = '' ): void {
-		$this->fake_store_api[ $id ] = [
-			'id'          => $id,
-			'name'        => 'Grouped Parent',
-			'type'        => 'grouped',
-			'permalink'   => '' !== $permalink ? $permalink : 'https://example.com/product/grouped-parent/',
-			'is_in_stock' => true,
-			'prices'      => [
-				'price'         => '3000',
-				'currency_code' => 'USD',
-			],
-		];
-	}
-
-	/**
 	 * Seed a deterministic grouped product (#359). Every child is a
 	 * `simple` product, so build_grouped_url_query() resolves the entire
 	 * group from server-supplied data — no buyer input needed.
 	 *
-	 * @param int             $id       Grouped parent product ID.
-	 * @param array<int, int> $children Child product IDs (per-child quantities default to 1).
+	 * Children may be passed as either a flat int[] (each child gets the
+	 * default seed: in_stock + add_to_cart.minimum=1) OR as an associative
+	 * array `[child_id => ['is_in_stock' => bool, 'add_to_cart_minimum' => int]]`
+	 * to override per-child shape — needed for stock + minimum-quantity tests.
+	 *
+	 * @param int                                                $id       Grouped parent product ID.
+	 * @param array<int, int>|array<int, array<string, mixed>>  $children Child product IDs or per-child overrides.
 	 */
 	private function seed_deterministic_grouped( int $id, array $children, string $permalink = '' ): void {
-		foreach ( $children as $child_id ) {
-			$this->fake_store_api[ (int) $child_id ] = [
-				'id'          => (int) $child_id,
+		$child_ids = [];
+		foreach ( $children as $key => $value ) {
+			$is_assoc            = is_array( $value );
+			$child_id            = $is_assoc ? (int) $key : (int) $value;
+			$child_ids[]         = $child_id;
+			$is_in_stock         = $is_assoc ? (bool) ( $value['is_in_stock'] ?? true ) : true;
+			$add_to_cart_minimum = $is_assoc ? (int) ( $value['add_to_cart_minimum'] ?? 1 ) : 1;
+			$this->fake_store_api[ $child_id ] = [
+				'id'          => $child_id,
 				'name'        => 'Grouped Child #' . $child_id,
 				'type'        => 'simple',
-				'is_in_stock' => true,
+				'is_in_stock' => $is_in_stock,
 				'prices'      => [
 					'price'         => '1000',
 					'currency_code' => 'USD',
+				],
+				'add_to_cart' => [
+					'minimum' => $add_to_cart_minimum,
 				],
 			];
 		}
@@ -238,10 +230,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			'permalink'        => '' !== $permalink ? $permalink : 'https://example.com/product/deterministic-grouped/',
 			'is_in_stock'      => true,
 			'prices'           => [
-				'price'         => (string) ( count( $children ) * 1000 ),
+				'price'         => (string) ( count( $child_ids ) * 1000 ),
 				'currency_code' => 'USD',
 			],
-			'grouped_products' => array_values( array_map( 'intval', $children ) ),
+			'grouped_products' => $child_ids,
 		];
 	}
 
@@ -928,6 +920,97 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		}
 		$this->assertContains( '$.line_items[0]', $paths );
 		$this->assertContains( '$.line_items[1]', $paths );
+		// Pin exactly-2-errors contract — guards against a regression
+		// that emits a third error (e.g. accidentally adding a
+		// recoverable-without-path message). Two grouped line items
+		// must produce exactly two recoverable field_required errors.
+		$this->assertCount( 2, $paths );
+	}
+
+	public function test_grouped_with_out_of_stock_child_falls_back_to_permalink(): void {
+		// WC reports a grouped parent's `is_in_stock = true` if ANY child
+		// is in stock — distinct from bundles. The deterministic helper
+		// must check each child's `is_in_stock` independently and treat
+		// any OOS child as a configurable disqualifier so the buyer
+		// lands on the PDP and sees the OOS marker, rather than getting
+		// a half-configured cart-add at /checkout/.
+		$this->seed_deterministic_grouped( 600, [
+			601 => [ 'is_in_stock' => true ],
+			602 => [ 'is_in_stock' => false ],
+		] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+		);
+
+		// Falls back to permalink (configurable case), not the
+		// deterministic /checkout/?add-to-cart= URL.
+		$this->assertStringContainsString( '/product/deterministic-grouped/', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '/checkout/?add-to-cart=', $result['data']['continue_url'] );
+	}
+
+	public function test_grouped_honors_per_child_minimum_quantity(): void {
+		// Per-child `add_to_cart.minimum` (from WC Store API, surfaced
+		// from `WC_Product::get_min_purchase_quantity()`) must propagate
+		// into the URL. A merchant who set child 602's minimum to 3
+		// expects the deterministic URL to add 3 of that child — not 1.
+		// Otherwise WC's add-to-cart validator silently bumps or rejects
+		// the line and the buyer ends up with a different quantity than
+		// the URL implied.
+		$this->seed_deterministic_grouped( 600, [
+			601 => [ 'add_to_cart_minimum' => 1 ],
+			602 => [ 'add_to_cart_minimum' => 3 ],
+		] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+		);
+
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( 'quantity%5B601%5D=1', $url );
+		$this->assertStringContainsString( 'quantity%5B602%5D=3', $url );
+	}
+
+	public function test_grouped_minimum_quantity_multiplies_with_agent_quantity(): void {
+		// Minimum + agent quantity stack: child 602 minimum=2, agent
+		// quantity=3 → quantity[602]=6 (2 minimum × 3 groups).
+		$this->seed_deterministic_grouped( 600, [
+			601 => [ 'add_to_cart_minimum' => 1 ],
+			602 => [ 'add_to_cart_minimum' => 2 ],
+		] );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 3 ] ] ]
+		);
+
+		$url = $result['data']['continue_url'];
+		$this->assertStringContainsString( 'quantity%5B601%5D=3', $url );
+		$this->assertStringContainsString( 'quantity%5B602%5D=6', $url );
+	}
+
+	public function test_grouped_self_referencing_children_falls_back_to_permalink(): void {
+		// Cycle defense. If `grouped_products[]` accidentally contains
+		// the parent's own ID (corrupt DB / merchant misconfig), the
+		// fetcher returns the parent (type=grouped), the
+		// `'simple' !== $child_type` check rejects it, and the helper
+		// returns null → permalink fallback. No infinite recursion, no
+		// broken URL.
+		$this->fake_store_api[ 600 ] = [
+			'id'               => 600,
+			'name'             => 'Self-Referencing Grouped',
+			'type'             => 'grouped',
+			'permalink'        => 'https://example.com/product/self-grouped/',
+			'is_in_stock'      => true,
+			'prices'           => [ 'price' => '1000', 'currency_code' => 'USD' ],
+			'grouped_products' => [ 600 ],
+		];
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertStringContainsString( '/product/self-grouped/', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '/checkout/?add-to-cart=', $result['data']['continue_url'] );
 	}
 
 	public function test_grouped_without_permalink_returns_incomplete_with_no_continue_url(): void {

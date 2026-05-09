@@ -2272,8 +2272,9 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// caller falls back to the parent permalink for buyer configuration.
 		$fetcher = function ( int $cid ): array {
 			return [
-				'id'   => $cid,
-				'type' => 601 === $cid ? 'simple' : 'variable',
+				'id'          => $cid,
+				'type'        => 601 === $cid ? 'simple' : 'variable',
+				'is_in_stock' => true,
 			];
 		};
 
@@ -2283,6 +2284,100 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertNull( $result );
+	}
+
+	public function test_build_grouped_url_query_returns_null_when_any_child_is_external(): void {
+		// Pin the contract that *all* non-simple types disqualify, not
+		// just variable. External children (affiliate links to partner
+		// sites) are realistic in the wild.
+		$fetcher = function ( int $cid ): array {
+			return [
+				'id'          => $cid,
+				'type'        => 601 === $cid ? 'simple' : 'external',
+				'is_in_stock' => true,
+			];
+		};
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
+			[ 601, 602 ],
+			$fetcher
+		);
+
+		$this->assertNull( $result );
+	}
+
+	public function test_build_grouped_url_query_returns_null_when_any_child_is_out_of_stock(): void {
+		// WC reports the grouped parent's `is_in_stock = true` if ANY
+		// child is in stock, so a parent-level check alone lets OOS
+		// children slip through. Helper must check each child's
+		// `is_in_stock` independently.
+		$fetcher = function ( int $cid ): array {
+			return [
+				'id'          => $cid,
+				'type'        => 'simple',
+				'is_in_stock' => 601 === $cid,
+			];
+		};
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
+			[ 601, 602 ],
+			$fetcher
+		);
+
+		$this->assertNull( $result );
+	}
+
+	public function test_build_grouped_url_query_uses_per_child_minimum_quantity(): void {
+		// Per-child `add_to_cart.minimum` must propagate into the
+		// returned quantity_map. Defaults to 1 when missing or
+		// non-positive.
+		$fetcher = function ( int $cid ): array {
+			$minimums = [
+				601 => 1,
+				602 => 3,
+				603 => 0, // invalid → defaults to 1
+			];
+			return [
+				'id'          => $cid,
+				'type'        => 'simple',
+				'is_in_stock' => true,
+				'add_to_cart' => [
+					'minimum' => $minimums[ $cid ] ?? null,
+				],
+			];
+		};
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
+			[ 601, 602, 603 ],
+			$fetcher
+		);
+
+		$this->assertSame(
+			[ 'quantity' => [ 601 => '1', 602 => '3', 603 => '1' ] ],
+			$result
+		);
+	}
+
+	public function test_build_grouped_url_query_defaults_quantity_to_one_when_add_to_cart_missing(): void {
+		// Older Store API versions / mocked fixtures may omit
+		// `add_to_cart` entirely. Defensive default of 1 keeps the
+		// helper functional rather than null-returning when the field
+		// isn't present.
+		$fetcher = function ( int $cid ): array {
+			return [
+				'id'          => $cid,
+				'type'        => 'simple',
+				'is_in_stock' => true,
+				// no add_to_cart key
+			];
+		};
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
+			[ 601 ],
+			$fetcher
+		);
+
+		$this->assertSame( [ 'quantity' => [ 601 => '1' ] ], $result );
 	}
 
 	public function test_build_grouped_url_query_returns_null_when_child_fetch_fails(): void {

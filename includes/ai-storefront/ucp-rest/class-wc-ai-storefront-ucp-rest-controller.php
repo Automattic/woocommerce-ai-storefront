@@ -2540,9 +2540,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
-		// Grouped handling (#359). Mirrors the bundle block above. Same
-		// three-sub-cases pattern, with the same severity choices keyed
-		// to the same UCP `field_required` standard code.
+		// Grouped handling (#359). Mirrors the bundle block above with
+		// the same severity choices keyed to the same UCP
+		// `field_required` standard code. Four sub-cases:
+		//   - mixed/multi grouped → recoverable, must-split
+		//   - configurable + permalink → requires_buyer_input, redirect to PDP
+		//   - configurable + no permalink → recoverable, no redirect
+		//   - deterministic → no error (rides standard escalation channel)
 		//
 		// Why grouped can't ride /checkout-link/?products=: that endpoint
 		// adds each ID independently, which would add the grouped PARENT
@@ -5411,12 +5415,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				);
 			} elseif ( '' !== (string) ( $first_bundle['permalink'] ?? '' ) ) {
 				$url_with_products = (string) $first_bundle['permalink'];
+			} else {
+				// Defensive guard: bundle without bundle_url_query AND
+				// without permalink. Handler upstream flips
+				// `should_redirect=false` for this case (see round-8 of
+				// #360 review) so this branch is unreachable today — but
+				// fall-through to /checkout-link/?products= would emit
+				// `?products=BUNDLE:N` and WC would attempt to add an
+				// unconfigured bundle (no per-item config carried in the
+				// products= shorthand). Empty string is safer than a
+				// known-broken URL.
+				$url_with_products = '';
 			}
-			// Else bundle without bundle_url_query AND without permalink —
-			// fall through to the standard /checkout-link/?products= path
-			// below. Defensive last resort against malformed Store API
-			// responses; WC will likely reject an unconfigured bundle, but
-			// at least the URL isn't empty.
 		}
 
 		// Grouped short-circuit (#359). Same routing logic as bundles —
@@ -5451,14 +5461,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// legacy `?add-to-cart=` form handler doesn't multiply
 					// `quantity[<child>]` by a parent quantity though — the
 					// per-child quantities are absolute. To honor an agent's
-					// `quantity: N` request, multiply each child quantity
-					// by N here so 2 groups of {child A: 1, child B: 1}
-					// land as {A: 2, B: 2} in cart.
+					// `quantity: N` request, multiply each child's
+					// translator-supplied per-child default (which already
+					// honors `add_to_cart.minimum`) by N here so 2 groups of
+					// {child A: 1, child B: 2} land as {A: 2, B: 4} in cart.
 					$grouped_quantity = max( 1, (int) ( $first_grouped['quantity'] ?? 1 ) );
-					if ( isset( $grouped_query['quantity'] ) && is_array( $grouped_query['quantity'] ) ) {
-						foreach ( $grouped_query['quantity'] as $child_id => $child_qty ) {
-							$grouped_query['quantity'][ $child_id ] = (string) ( ( (int) $child_qty ) * $grouped_quantity );
-						}
+					foreach ( $grouped_query['quantity'] as $child_id => $child_qty ) {
+						$grouped_query['quantity'][ $child_id ] = (string) ( ( (int) $child_qty ) * $grouped_quantity );
 					}
 					$url_with_products = add_query_arg(
 						array_merge(
@@ -5471,13 +5480,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					);
 				} elseif ( '' !== (string) ( $first_grouped['permalink'] ?? '' ) ) {
 					$url_with_products = (string) $first_grouped['permalink'];
+				} else {
+					// Defensive guard: grouped without grouped_url_query
+					// AND without permalink. Handler upstream flips
+					// `should_redirect=false` for this case so this branch
+					// is unreachable today — but if that invariant ever
+					// flips, fall-through to /checkout-link/?products= would
+					// emit `?products=PARENT:N` and add the grouped UX
+					// wrapper parent to cart (a non-purchasable line item).
+					// Empty string is safer than a known-broken URL — the
+					// caller's UTM-stamp + filter pass treats '' as
+					// "no usable URL" and the response surfaces as
+					// `incomplete` without `continue_url`.
+					$url_with_products = '';
 				}
-				// Else grouped without grouped_url_query AND without
-				// permalink — fall through. Same defensive rationale as
-				// the bundle branch: handler already flipped
-				// should_redirect=false in this case, so build_continue_url
-				// won't actually be called, but the fallthrough keeps the
-				// shape symmetrical.
 			}
 		}
 
@@ -5499,6 +5515,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// portion. See `WC_AI_Storefront_Attribution::with_woo_ucp_utm()`
 			// for the canonical UTM contract.
 			$url_with_products = $base . '?products=' . implode( ',', $segments );
+		}
+
+		// Defensive empty-URL short-circuit. The bundle and grouped
+		// branches above set `$url_with_products = ''` when neither a
+		// deterministic URL nor a product permalink is available —
+		// signalling "no usable URL." UTM-stamping `''` would yield
+		// `'?utm_source=...'` with no path, a broken URL. Return '' so
+		// the caller's `should_redirect` already-false invariant
+		// produces an `incomplete` response with no `continue_url`.
+		if ( '' === $url_with_products ) {
+			return '';
 		}
 
 		$url = WC_AI_Storefront_Attribution::with_woo_ucp_utm(

@@ -1686,29 +1686,48 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * product's `/checkout/?add-to-cart=PARENT&quantity[child]=N`
 	 * continue_url.
 	 *
-	 * A grouped product is *deterministic* when every child is
-	 * `type === 'simple'`. Variable children require a variation pick
-	 * the URL doesn't carry — same problem as bundles' variable
-	 * children, but without the bundle author's `override_default_variation_attributes`
-	 * escape hatch (grouped has no per-child config). Variable child →
-	 * configurable → caller falls back to the parent's product permalink.
+	 * A grouped product is *deterministic* when EVERY child satisfies all of:
+	 *   - `type === 'simple'` — variable / external / subscription / bundle
+	 *     children need per-child config the URL doesn't carry.
+	 *   - `is_in_stock !== false` — WC reports the grouped parent's
+	 *     `is_in_stock = true` if ANY child is in stock, so a parent-level
+	 *     check alone would let an OOS child slip through and produce a
+	 *     half-configured cart at /checkout/. Distinct from bundles, where
+	 *     the Bundles plugin computes parent stock from `bundled_items[]`
+	 *     and a parent-level check suffices.
 	 *
-	 * Returns null when any child can't be resolved as simple. Lazy I/O
-	 * via the supplied `$child_fetcher` callable: short-circuits on the
-	 * first variable child, so a grouped product whose first child
+	 * Any disqualified child → return null → caller falls back to the
+	 * parent's product permalink so the buyer can pick variations / pick
+	 * an in-stock alternative on the PDP.
+	 *
+	 * Lazy I/O via the supplied `$child_fetcher` callable: short-circuits
+	 * on the first disqualifier, so a grouped product whose first child
 	 * fails fetches just one Store API record (not all N).
+	 *
+	 * Per-child quantity comes from each child's `add_to_cart.minimum`
+	 * (the WC Store API's per-product minimum quantity from
+	 * `WC_Product::get_min_purchase_quantity()`). When unset or invalid,
+	 * defaults to 1 — the conventional WC default for grouped PDPs.
+	 * Honoring the minimum here matters because WC core will silently
+	 * bump or reject `quantity[<cid>]=1` if that child requires a higher
+	 * minimum, so the URL we emit must be checkout-ready as-is.
 	 *
 	 * Result shape uses PHP's array-in-querystring syntax:
 	 *
-	 *   [ 'quantity' => [ 23 => '1', 24 => '1', 25 => '1' ] ]
+	 *   [ 'quantity' => [ 23 => '1', 24 => '1', 25 => '2' ] ]
 	 *
 	 * `http_build_query()` serializes this as
-	 * `quantity%5B23%5D=1&quantity%5B24%5D=1&quantity%5B25%5D=1`
+	 * `quantity%5B23%5D=1&quantity%5B24%5D=1&quantity%5B25%5D=2`
 	 * which WC's legacy `?add-to-cart=` form handler parses back into
-	 * `$_REQUEST['quantity'] = [23 => 1, 24 => 1, 25 => 1]` — the
+	 * `$_REQUEST['quantity'] = [23 => 1, 24 => 1, 25 => 2]` — the
 	 * grouped-products contract WC documents.
 	 *
-	 * @param  array<int, int>                          $children        Validated child product IDs.
+	 * @param  array<int, int>                          $children        Child product IDs. May contain duplicates;
+	 *                                                                   `extract_grouped_data()` dedupes upstream
+	 *                                                                   but this method is `public static` so
+	 *                                                                   external callers can bypass — the per-call
+	 *                                                                   `$child_cache` and the `$quantity_map`
+	 *                                                                   keying both dedupe defensively.
 	 * @param  callable(int): (array<string,mixed>|null) $child_fetcher  Lazy resolver; returns Store API product or null.
 	 * @return array<string, mixed>|null                                  URL params keyed for `http_build_query()`, or null.
 	 */
@@ -1745,7 +1764,40 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				return null;
 			}
 
-			$quantity_map[ $cid ] = '1';
+			// Per-child stock check. WC's grouped parent reports
+			// `is_in_stock = true` if ANY child is in stock — distinct
+			// from bundles, where the Bundles plugin aggregates
+			// `bundled_items[]` stock onto the parent. A grouped parent
+			// passing the parent stock check can still have OOS children;
+			// emitting `quantity[OOS_CHILD]=N` produces a half-configured
+			// cart at /checkout/. Treat OOS-child as configurable so the
+			// buyer lands on the PDP and sees the OOS marker. Backorders
+			// are handled upstream by `is_in_stock` itself: WC's
+			// `is_in_stock()` factors the merchant's backorder setting,
+			// so a backorder-allowed child reads `is_in_stock = true`
+			// here without us re-checking backorder state.
+			if ( false === ( $child['is_in_stock'] ?? true ) ) {
+				return null;
+			}
+
+			// Per-child default quantity from `add_to_cart.minimum`. WC
+			// Store API exposes this for every product type via
+			// `WC_Product::get_min_purchase_quantity()`. Most products
+			// report `1` (the WC default); merchants who set a higher
+			// minimum (often via a quantity-input plugin) need that
+			// minimum to land in the URL or WC's add-to-cart validator
+			// rejects/bumps the line. Defensive default of 1 when the
+			// field is absent (older Store API versions or mocked
+			// fixtures) or non-positive.
+			$min_qty     = 1;
+			$add_to_cart = $child['add_to_cart'] ?? null;
+			if ( is_array( $add_to_cart ) && isset( $add_to_cart['minimum'] ) && is_numeric( $add_to_cart['minimum'] ) ) {
+				$candidate = (int) $add_to_cart['minimum'];
+				if ( $candidate > 0 ) {
+					$min_qty = $candidate;
+				}
+			}
+			$quantity_map[ $cid ] = (string) $min_qty;
 		}
 
 		return [ 'quantity' => $quantity_map ];
