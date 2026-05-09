@@ -223,7 +223,21 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		if ( ! $has_variation_axes ) {
 			foreach ( $classified['metadata_attributes'] as $attr ) {
 				if ( in_array( strtolower( $attr['name'] ?? '' ), self::SCHEMA_VARIANT_ATTRIBUTES, true ) ) {
-					$promote_to_options[] = $attr;
+					// Trim to the first non-empty value so product.options[].values[]
+					// matches the one concrete combination on the synthesized variant.
+					$first_value = null;
+					foreach ( $attr['values'] ?? [] as $v ) {
+						if ( '' !== (string) ( $v['label'] ?? '' ) ) {
+							$first_value = $v;
+							break;
+						}
+					}
+					if ( null !== $first_value ) {
+						$promote_to_options[] = [
+							'name'   => $attr['name'],
+							'values' => [ $first_value ],
+						];
+					}
 				}
 			}
 		}

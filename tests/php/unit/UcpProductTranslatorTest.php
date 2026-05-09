@@ -1290,6 +1290,33 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'XS', $size_options[0]['label'] );
 	}
 
+	public function test_promoted_product_options_values_trimmed_to_first_value(): void {
+		// product.options[].values[] must mirror the synthesized variant — one
+		// value per axis, not the full list of terms. Emitting all terms at
+		// the product level while the only variant carries one selection is
+		// inconsistent and misrepresents the available combinations.
+		$fixture               = $this->simple_product_fixture();
+		$fixture['attributes'] = [
+			[
+				'name'           => 'Size',
+				'has_variations' => false,
+				'terms'          => [
+					[ 'id' => 1, 'name' => 'XS', 'slug' => 'xs' ],
+					[ 'id' => 2, 'name' => 'S',  'slug' => 's' ],
+					[ 'id' => 3, 'name' => 'M',  'slug' => 'm' ],
+				],
+			],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		$this->assertArrayHasKey( 'options', $result );
+		$size_axis = $result['options'][0];
+		$this->assertSame( 'Size', $size_axis['name'] );
+		$this->assertCount( 1, $size_axis['values'], 'product.options[].values must have exactly one entry for a simple product.' );
+		$this->assertSame( 'XS', $size_axis['values'][0]['label'] );
+	}
+
 	public function test_translate_omits_metadata_attributes_when_only_variation_axes(): void {
 		// Variable product with only has_variations:true attributes —
 		// `options[]` present, `metadata.attributes` absent.
