@@ -202,7 +202,14 @@ The `buyer_handoff_required` message uses `type: info` + `severity: advisory` (p
 }
 ```
 
-Other in-cart error codes that produce `status: incomplete`: `out_of_stock`, `minimum_not_met`, `field_required` (path-attributed; emitted for mixed/multi bundle/grouped carts that must be split, or for configurable bundles/grouped without a usable permalink — see [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light)). The `severity` on each error tells the agent how to recover — `recoverable` means split the request and retry via API; `requires_buyer_input` means the buyer must complete configuration on the merchant site.
+Other in-cart error codes the response may carry:
+
+- `out_of_stock`, `minimum_not_met` — both produce `status: incomplete` (no `continue_url`).
+- `field_required` — path-attributed via `$.line_items[N]`; emitted for bundles and grouped products. Can appear in **either** response status:
+    - `status: incomplete` (no `continue_url`) when the cart is mixed/multi bundle-or-grouped (must split and retry) or when the configurable bundle/grouped has no usable permalink (`severity: recoverable`).
+    - `status: requires_escalation` (with `continue_url` pointing at the bundle/grouped PDP) when the bundle/grouped is configurable but has a permalink — buyer completes configuration on the merchant site (`severity: requires_buyer_input`).
+
+The `severity` field on each error tells the agent how to recover. `recoverable` means split the request and retry via API; `requires_buyer_input` means the buyer must complete configuration on the merchant site. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
 
 **Errors:** `503` `ucp_disabled`; `400` `invalid_input` for missing/empty `items` or malformed variant IDs.
 

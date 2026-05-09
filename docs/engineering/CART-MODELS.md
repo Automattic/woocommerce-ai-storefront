@@ -50,7 +50,7 @@ WC populates cart from URL → WC checkout
 
 This is the path most spec-aware agents take today.
 
-> **Container-product-type note (post-PR #360 / #362).** When the cart contains a WooCommerce **bundle** or **grouped** product, the returned `continue_url` is *not* `/checkout-link/?products=…`. Bundles and grouped parents carry per-child configuration the `?products=` shorthand can't express, so the controller emits one of `/checkout/?add-to-cart=BUNDLE&bundle_*=…`, `/checkout/?add-to-cart=PARENT&quantity[CHILD]=…`, or the bundle/grouped product permalink. Mixed cart (bundle/grouped alongside other items) returns `status: incomplete` with a `field_required` error and no `continue_url` — agents split the cart and retry. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
+> **Container-product-type note (post-PR #360 / #362).** When the cart contains a WooCommerce **bundle** or **grouped** product, the returned `continue_url` is *not* `/checkout-link/?products=…`. Bundles and grouped parents carry per-child configuration the `?products=` shorthand can't express, so the controller emits one of `/checkout/?add-to-cart=BUNDLE&bundle_*=…`, `/checkout/?add-to-cart=PARENT&quantity[CHILD]=…`, or the bundle/grouped product permalink. Mixed cart (bundle/grouped alongside other items) returns `status: incomplete` with **one `field_required` error per offending container line item** (each JSONPath-attributed to its `$.line_items[N]`) and no `continue_url` — agents split the cart and retry. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
 
 ## Model 3 — Agent-constructed URL
 
