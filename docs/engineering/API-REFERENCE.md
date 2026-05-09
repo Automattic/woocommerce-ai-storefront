@@ -154,9 +154,10 @@ UCP ID grammar accepted by the parser (`parse_ucp_id_to_wc_int()`):
 |---|---|
 | `prod_<digits>` | A WC product (simple, variable parent, bundle, grouped) |
 | `var_<digits>` | A real WC variation |
-| `var_<digits>_default` | The synthesized default variant emitted for simple products in product-group shape (#356) |
+| `var_<digits>_default` | A synthesized default variant for any non-variable product. UCP's `variants[] minItems: 1` requirement means every product must emit at least one variant; for simple / bundle / grouped products (or any case where variations aren't pre-fetched), the translator synthesizes one default variant whose ID carries the `_default` suffix to keep it distinguishable from real variations |
+| `<digits>` | Bare numeric IDs (e.g. `"123"`) are also accepted — the parser strips a known prefix if present but doesn't require one. Discouraged in agent-facing flows (loses the prod/var distinction); useful for round-tripping IDs from systems that don't carry the prefix |
 
-Anything else — non-prefixed strings, `var_56_2`, `var_abc`, etc. — parses to `0` and surfaces as `not_found`.
+Malformed IDs — non-prefixed non-numeric strings, `var_56_2` (non-`_default` non-digit suffix), `var_abc`, etc. — parse to `0` and surface as `not_found`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
