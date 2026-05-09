@@ -5134,8 +5134,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * per-child configuration the products= shorthand can't carry. See
 	 * `build_continue_url()` for the routing decision.
 	 *
-	 * The UCP manifest's `purchase_urls.checkout_link.unsupported` list
-	 * advertises these types; this method enforces the contract at request time.
+	 * Enforcement is purely runtime: the UCP manifest doesn't currently
+	 * advertise an unsupported-types list — agents discover incompatibility
+	 * by sending a line item and reading the resulting `field_required` /
+	 * `product_type_unsupported` / `variation_required` error.
 	 *
 	 * @param  string $type WC product type string (e.g. 'simple', 'variable').
 	 * @param  string $path JSON path for error attribution.
