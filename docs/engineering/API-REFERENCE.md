@@ -173,7 +173,6 @@ The exact `continue_url` shape depends on the cart contents: simple/variation ca
     {
       "type": "info",
       "code": "buyer_handoff_required",
-      "severity": "advisory",
       "content": "Continue checkout on the merchant's site to complete your purchase."
     }
   ]
@@ -182,7 +181,7 @@ The exact `continue_url` shape depends on the cart contents: simple/variation ca
 
 The `continue_url` is the agent's signal to render a Buy CTA. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md) for the three-layer decision tree.
 
-The `buyer_handoff_required` message uses `type: info` + `severity: advisory` (post-PR #119) so AI assistants render it informationally, not as an error. The continue_url's UTM payload matches the canonical 0.5.0+ shape — same as bare product URLs.
+The `buyer_handoff_required` message uses `type: info` so AI assistants render it informationally, not as an error. Per UCP `message_info.json` (release/2026-04-08), info messages carry no `severity` field — only `type: error` does. The continue_url's UTM payload matches the canonical 0.5.0+ shape — same as bare product URLs.
 
 **Response — incomplete (200, no `continue_url`):**
 
@@ -209,7 +208,7 @@ Other in-cart error codes the response may carry:
     - `status: incomplete` (no `continue_url`) when the cart is mixed/multi bundle-or-grouped (must split and retry) or when the configurable bundle/grouped has no usable permalink (`severity: recoverable`).
     - `status: requires_escalation` (with `continue_url` pointing at the bundle/grouped PDP) when the bundle/grouped is configurable but has a permalink — buyer completes configuration on the merchant site (`severity: requires_buyer_input`).
 
-The `severity` field on each error tells the agent how to recover. `recoverable` means split the request and retry via API; `requires_buyer_input` means the buyer must complete configuration on the merchant site. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
+The `severity` field on each error tells the agent how to recover (per UCP `message_error.json`). `recoverable` means **the platform can resolve by modifying inputs and retrying via API** — for mixed/multi bundle-or-grouped carts that means splitting into per-container `/checkout-sessions` calls; for a single configurable container with no usable permalink it means the merchant must fix the underlying misconfig before retry succeeds. `requires_buyer_input` means the buyer must complete configuration on the merchant site. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
 
 **Errors:** `503` `ucp_disabled`; `400` `invalid_input` for missing/empty `items` or malformed variant IDs.
 

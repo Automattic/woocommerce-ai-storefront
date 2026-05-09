@@ -51,18 +51,19 @@ Per-cart eligibility is decided by `POST /wp-json/wc/ucp/v1/checkout-sessions`. 
 
 Code: [`includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php`](../../includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php).
 
-The accompanying `messages[]` includes a `buyer_handoff_required` entry with `type: info` + `severity: advisory` (post-PR #119) so AI assistants render the redirect informationally, not as an error. Agents that map `type: error` to red error styling will style the redirect correctly with the new shape.
+The accompanying `messages[]` includes a `buyer_handoff_required` entry with `type: info` so AI assistants render the redirect informationally, not as an error. Per UCP `message_info.json` (release/2026-04-08), info messages have no `severity` field — only `type: error` carries severity. Agents that map `type: error` to red error styling will style the redirect correctly with this shape.
 
-The `continue_url` shape depends on the cart contents. The plugin emits one of four forms, all carrying the canonical UTM payload (`utm_source`, `utm_medium=referral`, `utm_id=woo_ucp`, `ai_agent_host_raw`, optional `ai_session_id`):
+The `continue_url` shape depends on the cart contents. The plugin emits one of five outcomes, all carrying the canonical UTM payload (`utm_source`, `utm_medium=referral`, `utm_id=woo_ucp`, `ai_agent_host_raw`, optional `ai_session_id`):
 
-| Cart contents | `continue_url` form |
-|---|---|
-| Simple / variation line items only | WooCommerce Shareable Checkout: `/checkout-link/?products=ID:QTY,…` |
-| Single deterministic bundle (all bundled items resolvable from author defaults) | `/checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=…&bundle_attribute_<attr>_<bid>=…` (PR #360) |
-| Single deterministic grouped (all children `type=simple` and in stock) | `/checkout/?add-to-cart=PARENT&quantity[CHILD]=N&…` (PR #362) |
-| Single configurable bundle/grouped | the bundle/grouped product permalink (buyer completes configuration on the merchant PDP) |
+| Cart contents | Response | `continue_url` |
+|---|---|---|
+| Simple / variation line items only | `requires_escalation` | WooCommerce Shareable Checkout: `/checkout-link/?products=ID:QTY,…` |
+| Single deterministic bundle (all bundled items resolvable from author defaults) | `requires_escalation` | `/checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=…&bundle_attribute_<attr>_<bid>=…` (PR #360) |
+| Single deterministic grouped (all children `type=simple` and in stock) | `requires_escalation` | `/checkout/?add-to-cart=PARENT&quantity[CHILD]=N&…` (PR #362) |
+| Single configurable bundle/grouped, **with** PDP permalink | `requires_escalation` | the bundle/grouped product permalink (buyer completes configuration on the merchant PDP); `field_required` + `severity: requires_buyer_input` accompanies |
+| Single configurable bundle/grouped, **without** PDP permalink | `incomplete` | none — `field_required` + `severity: recoverable` (merchant misconfig) |
 
-Mixed/multi bundle or grouped carts produce `status: incomplete` with a `field_required` error per offending line item and **no `continue_url`** — agents must split the cart into per-line `/checkout-sessions` requests.
+Mixed/multi bundle or grouped carts produce `status: incomplete` with **one `field_required` error per offending container line item** (JSONPath-attributed to `$.line_items[N]`, `severity: recoverable`) and **no `continue_url`** — agents must split the cart into per-line `/checkout-sessions` requests.
 
 WC Order Attribution captures `utm_source` / `utm_medium` natively. The plugin's STRICT recognition gate matches on `utm_id=woo_ucp` (the "we routed this" flag), so attribution lands regardless of which `utm_source` value the agent declares.
 
