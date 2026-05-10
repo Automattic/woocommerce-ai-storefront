@@ -85,16 +85,18 @@ function ai_storefront_fixture_upsert( string $sku, string $type ): array {
  * pierorocca.com setup and exercises the typed-attribute path through the
  * UCP product translator.
  */
-function ai_storefront_fixture_ensure_term_taxonomy(): void {
-	$existing = wc_get_attribute_taxonomies();
-	$found    = false;
+function ai_storefront_fixture_ensure_term_taxonomy(): int {
+	global $wpdb;
+
+	$attribute_id = 0;
+	$existing     = wc_get_attribute_taxonomies();
 	foreach ( $existing as $att ) {
 		if ( $att->attribute_name === 'length' ) {
-			$found = true;
+			$attribute_id = (int) $att->attribute_id;
 			break;
 		}
 	}
-	if ( ! $found ) {
+	if ( $attribute_id <= 0 ) {
 		$attribute_id = wc_create_attribute( [
 			'name'         => 'Length',
 			'slug'         => 'length',
@@ -105,14 +107,20 @@ function ai_storefront_fixture_ensure_term_taxonomy(): void {
 		if ( is_wp_error( $attribute_id ) ) {
 			WP_CLI::error( 'Failed to create Length attribute: ' . $attribute_id->get_error_message() );
 		}
-		// Register the new taxonomy so wp_insert_term works in the same request.
-		register_taxonomy( 'pa_length', [ 'product' ], [
-			'hierarchical' => false,
-			'show_ui'      => false,
-			'query_var'    => true,
-		] );
-		WP_CLI::log( "Created global Length attribute (taxonomy: pa_length)" );
+		WP_CLI::log( "Created global Length attribute id=$attribute_id (taxonomy: pa_length)" );
 	}
+	// Always (re)register the taxonomy in this request so wp_insert_term and
+	// wp_set_object_terms below can target it. The plugin's normal init does
+	// this on every request, but the seed script runs before that hook fires.
+	register_taxonomy( 'pa_length', [ 'product' ], [
+		'hierarchical' => false,
+		'show_ui'      => false,
+		'query_var'    => true,
+	] );
+	// Bust WC's taxonomy cache so subsequent attribute-id lookups see the row.
+	delete_transient( 'wc_attribute_taxonomies' );
+	WC_Cache_Helper::invalidate_cache_group( 'woocommerce-attributes' );
+
 	foreach ( [ '1-month' => '1 month', '3-months' => '3 months', '6-months' => '6 months', '1-year' => '1 year' ] as $slug => $name ) {
 		if ( ! term_exists( $slug, 'pa_length' ) ) {
 			$res = wp_insert_term( $name, 'pa_length', [ 'slug' => $slug ] );
@@ -121,6 +129,8 @@ function ai_storefront_fixture_ensure_term_taxonomy(): void {
 			}
 		}
 	}
+
+	return (int) $attribute_id;
 }
 
 /**
@@ -154,7 +164,7 @@ WP_CLI::log( ( $simple_created ? 'Created' : 'Updated' ) . " AI-SUB-SIMPLE → I
 // 2 + 3. Variable subscriptions (with default / without default)
 // -----------------------------------------------------------------------
 
-ai_storefront_fixture_ensure_term_taxonomy();
+$length_attribute_id = ai_storefront_fixture_ensure_term_taxonomy();
 
 $variations_spec = [
 	// [ term slug, term label, price, period, interval ]
@@ -171,11 +181,17 @@ foreach ( [ 'AI-SUB-VAR-DEF' => '6-months', 'AI-SUB-VAR-NDF' => null ] as $sku =
 	);
 	$parent->set_status( 'publish' );
 
-	// Attach the global Term attribute, used for variations.
+	// Attach the global Length attribute, used for variations. The
+	// attribute id captured above is the canonical reference — WC won't
+	// store the attribute as a taxonomy-backed one without it.
+	$term_ids = array_map(
+		'intval',
+		wp_list_pluck( get_terms( [ 'taxonomy' => 'pa_length', 'hide_empty' => false ] ), 'term_id' )
+	);
 	$attribute = new WC_Product_Attribute();
-	$attribute->set_id( wc_attribute_taxonomy_id_by_name( 'term' ) );
+	$attribute->set_id( $length_attribute_id );
 	$attribute->set_name( 'pa_length' );
-	$attribute->set_options( array_map( 'intval', wp_list_pluck( get_terms( [ 'taxonomy' => 'pa_length', 'hide_empty' => false ] ), 'term_id' ) ) );
+	$attribute->set_options( $term_ids );
 	$attribute->set_position( 0 );
 	$attribute->set_visible( true );
 	$attribute->set_variation( true );

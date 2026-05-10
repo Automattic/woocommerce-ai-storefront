@@ -35,37 +35,37 @@
     "brands": [],
     "attributes": [
         {
-            "id": 0,
+            "id": 3,
             "name": "Length",
-            "taxonomy": null,
+            "taxonomy": "pa_length",
             "has_variations": true,
             "terms": [
                 {
-                    "id": 0,
-                    "name": "59",
-                    "slug": "59"
+                    "id": 59,
+                    "name": "1 month",
+                    "slug": "1-month"
                 },
                 {
-                    "id": 0,
-                    "name": "62",
-                    "slug": "62"
+                    "id": 62,
+                    "name": "1 year",
+                    "slug": "1-year"
                 },
                 {
-                    "id": 0,
-                    "name": "60",
-                    "slug": "60"
+                    "id": 60,
+                    "name": "3 months",
+                    "slug": "3-months"
                 },
                 {
-                    "id": 0,
-                    "name": "61",
-                    "slug": "61"
+                    "id": 61,
+                    "name": "6 months",
+                    "slug": "6-months"
                 }
             ]
         }
     ],
     "variations": [
         {
-            "id": 150,
+            "id": 159,
             "attributes": [
                 {
                     "name": "Length",
@@ -74,7 +74,7 @@
             ]
         },
         {
-            "id": 151,
+            "id": 160,
             "attributes": [
                 {
                     "name": "Length",
@@ -83,7 +83,7 @@
             ]
         },
         {
-            "id": 152,
+            "id": 161,
             "attributes": [
                 {
                     "name": "Length",
@@ -92,7 +92,7 @@
             ]
         },
         {
-            "id": 153,
+            "id": 162,
             "attributes": [
                 {
                     "name": "Length",
@@ -134,7 +134,7 @@
         "com-woocommerce-ai-storefront": {
             "barcodes": [],
             "date_created": "2026-05-10T21:50:10Z",
-            "date_modified": "2026-05-10T21:50:10Z"
+            "date_modified": "2026-05-10T22:05:31Z"
         }
     },
     "_links": {
