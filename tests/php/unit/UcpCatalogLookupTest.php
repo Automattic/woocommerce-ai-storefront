@@ -866,6 +866,24 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_simple_product_emits_single_featured_variant(): void {
+		// #369 regression guard: the featured-variant rewrite shouldn't
+		// disturb simple products. They emit a single synthesized
+		// default variant which IS the sole representative — `match:
+		// featured` via the sole-variant fall-through path.
+		$this->seed_simple_product( 600, 'Coffee Beans' );
+
+		$body = $this->successful_lookup( [ 'ids' => [ 'prod_600' ] ] );
+
+		$variants = $body['products'][0]['variants'];
+		$this->assertCount( 1, $variants );
+		$this->assertSame( 'var_600_default', $variants[0]['id'] );
+		$this->assertSame(
+			[ [ 'id' => 'prod_600', 'match' => 'featured' ] ],
+			$variants[0]['inputs']
+		);
+	}
+
 	public function test_variable_subscription_variations_pre_fetched_and_expanded(): void {
 		// #369 Fix #1: `fetch_variations_for()` was previously gated on
 		// strict `'variable' === $type`, which excluded WC Subscriptions'
