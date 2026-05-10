@@ -99,10 +99,20 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( [] );
 		$product->shouldReceive( 'get_upsell_ids' )->andReturn( [] );
 		$product->shouldReceive( 'get_sku' )->andReturn( '' );
-		// Default to a simple product so the BuyAction url-template
-		// builder lands on the Shareable Checkout branch. Tests in this
-		// file don't exercise the bundle/grouped permalink path.
-		$product->shouldReceive( 'is_type' )->andReturn( false );
+
+		// Argument-aware `is_type()` mock matching WC core: returns true
+		// only when the queried type matches the configured product type
+		// (default 'simple'). Tests in this file don't exercise the
+		// bundle/grouped branch, but a constant `false` stub would lie
+		// about `is_type('simple')` and silently take the wrong branch
+		// if a future call-graph change introduces a type check anywhere
+		// in the JSON-LD enrichment path.
+		$type = $overrides['type'] ?? 'simple';
+		$product->shouldReceive( 'is_type' )->andReturnUsing(
+			static function ( $check ) use ( $type ) {
+				return is_array( $check ) ? in_array( $type, $check, true ) : $type === $check;
+			}
+		);
 		return $product;
 	}
 

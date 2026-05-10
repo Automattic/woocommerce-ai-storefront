@@ -110,10 +110,20 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_sku' )->andReturn( '' );
 		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( [] );
 		$product->shouldReceive( 'get_upsell_ids' )->andReturn( [] );
-		// Default to a simple product so the BuyAction url-template
-		// builder lands on the Shareable Checkout branch. Return-policy
-		// tests don't exercise the bundle/grouped permalink path.
-		$product->shouldReceive( 'is_type' )->andReturn( false );
+
+		// Argument-aware `is_type()` mock matching WC core: returns true
+		// only when the queried type matches 'simple' (the type return-
+		// policy tests need). A constant `false` stub would lie about
+		// `is_type('simple')` and silently take the wrong branch if a
+		// future call-graph change introduces a type check anywhere in
+		// the JSON-LD enrichment path. This helper doesn't accept a
+		// type override (all return-policy tests are simple products);
+		// add an override parameter if that ever changes.
+		$product->shouldReceive( 'is_type' )->andReturnUsing(
+			static function ( $check ) {
+				return is_array( $check ) ? in_array( 'simple', $check, true ) : 'simple' === $check;
+			}
+		);
 		return $product;
 	}
 
