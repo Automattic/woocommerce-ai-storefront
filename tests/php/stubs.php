@@ -279,6 +279,14 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return $this->type;
 		}
 
+		/**
+		 * @param string|string[] $type One type, or an array of types
+		 *                              for an "any-of" check (matches WC core).
+		 */
+		public function is_type( $type ): bool {
+			return is_array( $type ) ? in_array( $this->type, $type, true ) : $this->type === $type;
+		}
+
 		public function get_permalink(): string {
 			return $this->permalink;
 		}

@@ -110,6 +110,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_sku' )->andReturn( '' );
 		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( [] );
 		$product->shouldReceive( 'get_upsell_ids' )->andReturn( [] );
+		// Default to a simple product so the BuyAction url-template
+		// builder lands on the Shareable Checkout branch. Return-policy
+		// tests don't exercise the bundle/grouped permalink path.
+		$product->shouldReceive( 'is_type' )->andReturn( false );
 		return $product;
 	}
 

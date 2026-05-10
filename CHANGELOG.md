@@ -2,6 +2,13 @@
 
 ### Features
 ### Fixes
+
+- **JSON-LD: emit product permalink for bundle and grouped `BuyAction.target.urlTemplate` and `Offer.checkoutPageURLTemplate`.** Closes the gap between the UCP REST `continue_url` (which routes bundles/grouped products to either the deterministic `/checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=…` form or the PDP permalink based on configurability) and the JSON-LD layer (which hard-coded the Shareable Checkout `?products=ID:1` shape for every product type).
+  - **What was broken:** for bundle products, `/checkout-link/?products=BUNDLE_ID:1` would route to WC's add-to-cart handler with no per-bundled-item configuration — the bundle parent isn't independently addable. For grouped products, `/checkout-link/?products=GROUPED_ID:1` would attempt to add the UX-wrapper parent which has no SKU or inventory of its own (only the children do). Both failed silently for crawlers and AI agents that consumed the JSON-LD `BuyAction`.
+  - **The fix:** `build_checkout_url_template()` now branches on `is_type('bundle')` / `is_type('grouped')` and emits the product's permalink with the canonical UTM placeholders (`utm_source={agent_id}`, `utm_medium=referral`, `utm_id=woo_ucp`, `ai_session_id={session_id}`). Buyer lands on the merchant PDP where WC's existing bundle/grouped configurator runs; UTM attribution still flows through.
+  - **Why permalink, not the deterministic `/checkout/?add-to-cart=…` form:** the deterministic shape requires runtime resolution of every bundled or grouped child against the Store API to build a configuration-complete URL. That cost profile is wrong for static JSON-LD emitted on every PDP render, and the configurable case would still need the permalink fallback. Permalink is correct for both cases.
+  - **What's preserved:** simple, variable parent, and per-variation entries under `hasVariant` continue to emit the Shareable Checkout `?products=ID:1` form (variations are never bundle/grouped, so the type branch always falls through). Pinned by regression tests.
+
 ### Refactors
 ### Tests
 ### Docs

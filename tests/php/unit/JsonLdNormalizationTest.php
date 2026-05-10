@@ -99,6 +99,10 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( [] );
 		$product->shouldReceive( 'get_upsell_ids' )->andReturn( [] );
 		$product->shouldReceive( 'get_sku' )->andReturn( '' );
+		// Default to a simple product so the BuyAction url-template
+		// builder lands on the Shareable Checkout branch. Tests in this
+		// file don't exercise the bundle/grouped permalink path.
+		$product->shouldReceive( 'is_type' )->andReturn( false );
 		return $product;
 	}
 
