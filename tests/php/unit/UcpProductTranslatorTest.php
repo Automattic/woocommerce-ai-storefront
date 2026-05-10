@@ -1240,11 +1240,13 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_synthesized_default_variant_omits_options(): void {
 		// Synthesized default variant on a simple product carries no
-		// `options[]` (no `selected_option`) — there's no buyer selection
-		// to lock in. UCP `product_option.json` reserves options for
-		// selectable axes. The variant's purpose is satisfying UCP's
-		// `variants[] minItems:1` requirement; it's not advertising a
-		// specific concrete combination because no combination was chosen.
+		// `options[]` (the array of `selected_option`-shaped entries
+		// that locks in a buyer's variant pick) — there's no buyer
+		// selection to lock in. UCP `product_option.json` reserves
+		// options for selectable axes. The variant's purpose is
+		// satisfying UCP's `variants[] minItems:1` requirement; it's
+		// not advertising a specific concrete combination because no
+		// combination was chosen.
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[
@@ -1333,7 +1335,8 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotNull( $beige );
 		$this->assertSame( 'pa_color:beige', $beige['id'] );
 
-		// Synthesized variant has no selected_option.
+		// Synthesized variant emits no `options[]` (no
+		// `selected_option`-shaped entries).
 		$this->assertArrayNotHasKey( 'options', $result['variants'][0] );
 	}
 
