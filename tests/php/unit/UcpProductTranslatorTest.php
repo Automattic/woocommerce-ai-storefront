@@ -2504,4 +2504,221 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 			'Grouped products must not emit metadata.bundle.'
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// resolve_default_variation_id() — single source of truth for the
+	// merchant's `_default_attributes` signal used by the lookup
+	// response's featured-variant assembly (#369).
+	// ------------------------------------------------------------------
+
+	/**
+	 * Build a variable-parent fixture with the Length axis (matches the
+	 * local wp-env subscription fixtures' shape — see
+	 * `reference_subscription_fixtures` memory).
+	 *
+	 * @param string $default_term_slug Slug to mark `default: true` on,
+	 *                                  or empty string for no default.
+	 */
+	private function variable_parent_with_length_axis( string $default_term_slug ): array {
+		$terms = [];
+		foreach ( [ '1-month', '3-months', '6-months', '1-year' ] as $slug ) {
+			$terms[] = [
+				'id'      => crc32( $slug ),
+				'name'    => str_replace( '-', ' ', $slug ),
+				'slug'    => $slug,
+				'default' => $slug === $default_term_slug,
+			];
+		}
+		return [
+			'id'         => 100,
+			'name'       => 'Variable Subscription',
+			'type'       => 'variable',
+			'attributes' => [
+				[
+					'id'             => 3,
+					'name'           => 'Length',
+					'taxonomy'       => 'pa_length',
+					'has_variations' => true,
+					'terms'          => $terms,
+				],
+			],
+		];
+	}
+
+	/**
+	 * Build a variation set matching the Length axis (4 entries:
+	 * 1mo/3mo/6mo/1yr). Mirrors WC Store API variation response shape.
+	 */
+	private function length_axis_variations(): array {
+		$out = [];
+		$id  = 101;
+		foreach ( [ '1-month', '3-months', '6-months', '1-year' ] as $slug ) {
+			$out[] = [
+				'id'         => $id++,
+				'attributes' => [
+					[ 'name' => 'Length', 'value' => $slug ],
+				],
+			];
+		}
+		return $out;
+	}
+
+	public function test_resolve_default_variation_id_returns_variation_when_all_axes_set(): void {
+		$parent     = $this->variable_parent_with_length_axis( '6-months' );
+		$variations = $this->length_axis_variations();
+		// Variation IDs are 101 (1-month), 102 (3-months), 103 (6-months), 104 (1-year)
+		// — so the 6-months default should resolve to ID 103.
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+			$parent,
+			$variations
+		);
+
+		$this->assertSame( 103, $result );
+	}
+
+	public function test_resolve_default_variation_id_returns_null_when_no_defaults(): void {
+		$parent     = $this->variable_parent_with_length_axis( '' ); // no slug → no term marked default
+		$variations = $this->length_axis_variations();
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+			$parent,
+			$variations
+		);
+
+		$this->assertNull( $result );
+	}
+
+	public function test_resolve_default_variation_id_returns_null_when_default_value_empty(): void {
+		// Edge case: a default term whose slug is the empty string — WC
+		// stores "any" selections this way in `_default_attributes`, and
+		// the Store API surfaces it as default: true on a term with
+		// slug: ''. That's not deterministic.
+		$parent = $this->variable_parent_with_length_axis( '' );
+		// Override: explicitly add a default-true term with empty slug.
+		$parent['attributes'][0]['terms'][] = [
+			'id'      => 999,
+			'name'    => 'Any',
+			'slug'    => '',
+			'default' => true,
+		];
+		$variations = $this->length_axis_variations();
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+			$parent,
+			$variations
+		);
+
+		$this->assertNull( $result );
+	}
+
+	public function test_resolve_default_variation_id_returns_null_when_partial_coverage(): void {
+		// Two axes: Color + Size. Color has a default, Size doesn't.
+		// Partial coverage → null.
+		$parent = [
+			'id'         => 200,
+			'name'       => 'Two-axis Variable',
+			'type'       => 'variable',
+			'attributes' => [
+				[
+					'name'           => 'Color',
+					'taxonomy'       => 'pa_color',
+					'has_variations' => true,
+					'terms'          => [
+						[ 'id' => 1, 'name' => 'Red',  'slug' => 'red',  'default' => true  ],
+						[ 'id' => 2, 'name' => 'Blue', 'slug' => 'blue', 'default' => false ],
+					],
+				],
+				[
+					'name'           => 'Size',
+					'taxonomy'       => 'pa_size',
+					'has_variations' => true,
+					'terms'          => [
+						[ 'id' => 3, 'name' => 'Small', 'slug' => 'small', 'default' => false ],
+						[ 'id' => 4, 'name' => 'Large', 'slug' => 'large', 'default' => false ],
+					],
+				],
+			],
+		];
+		$variations = [
+			[ 'id' => 201, 'attributes' => [ [ 'name' => 'Color', 'value' => 'red'  ], [ 'name' => 'Size', 'value' => 'small' ] ] ],
+			[ 'id' => 202, 'attributes' => [ [ 'name' => 'Color', 'value' => 'red'  ], [ 'name' => 'Size', 'value' => 'large' ] ] ],
+			[ 'id' => 203, 'attributes' => [ [ 'name' => 'Color', 'value' => 'blue' ], [ 'name' => 'Size', 'value' => 'small' ] ] ],
+		];
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+			$parent,
+			$variations
+		);
+
+		$this->assertNull( $result );
+	}
+
+	public function test_resolve_default_variation_id_returns_null_for_non_variable_type(): void {
+		// Simple products don't have variations — resolution is structurally
+		// undefined. Bail rather than silently returning a default.
+		$parent         = $this->variable_parent_with_length_axis( '6-months' );
+		$parent['type'] = 'simple';
+		$variations     = $this->length_axis_variations();
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+			$parent,
+			$variations
+		);
+
+		$this->assertNull( $result );
+	}
+
+	public function test_resolve_default_variation_id_returns_null_when_variations_empty(): void {
+		// Defensive against the malformed case (parent has type=variable
+		// but no variations were pre-fetched — controller fetch failed,
+		// or merchant misconfiguration like the AI-SUB-VAR-MAL fixture).
+		$parent = $this->variable_parent_with_length_axis( '6-months' );
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+			$parent,
+			[]
+		);
+
+		$this->assertNull( $result );
+	}
+
+	public function test_resolve_default_variation_id_returns_null_when_default_slug_orphaned(): void {
+		// `_default_attributes` postmeta names a slug whose term was deleted
+		// from the taxonomy after being saved on the parent. The Store API
+		// still surfaces `default: true` on a no-longer-matching term, but
+		// no variation has that value — resolution fails closed.
+		$parent = $this->variable_parent_with_length_axis( 'discontinued-term' );
+		// Inject a fake default-marked term that no variation matches.
+		$parent['attributes'][0]['terms'][] = [
+			'id'      => 9999,
+			'name'    => 'Discontinued',
+			'slug'    => 'discontinued-term',
+			'default' => true,
+		];
+		$variations = $this->length_axis_variations();
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+			$parent,
+			$variations
+		);
+
+		$this->assertNull( $result );
+	}
+
+	public function test_resolve_default_variation_id_works_for_variable_subscription_type(): void {
+		// The subscription extension's `variable-subscription` shares the
+		// shape of `variable` and uses `_default_attributes` identically.
+		// Resolution must treat it as a first-class variable type.
+		$parent         = $this->variable_parent_with_length_axis( '6-months' );
+		$parent['type'] = 'variable-subscription';
+		$variations     = $this->length_axis_variations();
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+			$parent,
+			$variations
+		);
+
+		$this->assertSame( 103, $result );
+	}
 }

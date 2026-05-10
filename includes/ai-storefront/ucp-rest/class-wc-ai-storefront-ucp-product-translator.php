@@ -1751,6 +1751,148 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	}
 
 	/**
+	 * Resolve a variable / variable-subscription parent's
+	 * `_default_attributes` postmeta to the specific variation ID it
+	 * points at, when (and only when) every variation-driving axis has
+	 * a non-empty default value covering it.
+	 *
+	 * This is the single source of truth for "did the merchant declare
+	 * a default variant for this product?" — used by the lookup
+	 * response assembly in the REST controller to decide which variant
+	 * gets `match: featured` in its `inputs[]` correlation and which
+	 * one moves to `variants[0]` (per `product.json`'s convention:
+	 * "First item is the featured variant for listings").
+	 *
+	 * Reads from the Store API response shape (the parent's
+	 * `attributes[].terms[].default` boolean — WC's Store API surfaces
+	 * `_default_attributes` postmeta through that flag). Resolution
+	 * walks the variation set looking for the variation whose
+	 * `attributes[]` exactly matches the (axis_label -> default_slug)
+	 * map built from the parent.
+	 *
+	 * Returns null when:
+	 *   - No axis has a default-marked term (merchant hasn't set any).
+	 *   - Some axes have defaults but others don't (partial coverage —
+	 *     defaults must cover ALL variation-driving axes to deterministically
+	 *     identify one variation).
+	 *   - The default values resolve to no actual variation in the set
+	 *     (defensive guard against orphaned `_default_attributes` postmeta
+	 *     that names a slug whose term was later deleted).
+	 *   - The product isn't a variable type (no variations to resolve to).
+	 *
+	 * Pure function: no DB / Store API calls. Operates entirely on the
+	 * pre-fetched parent + variation response arrays. The REST controller
+	 * already fetches both via `fetch_store_api_product()` and
+	 * `fetch_variations_for()` for every variable-parent lookup, so this
+	 * helper adds no new I/O at the call site.
+	 *
+	 * Empty-string default values are treated as "no default on this
+	 * axis" — WC stores `"any"` selections as empty strings in
+	 * `_default_attributes`, and an "any" selection doesn't
+	 * deterministically resolve to a variant.
+	 *
+	 * @param array<string, mixed>             $wc_product    Store API response for the parent.
+	 * @param array<int, array<string, mixed>> $wc_variations Pre-fetched variation responses (Store API shape).
+	 * @return int|null  The resolved variation ID, or null when no
+	 *                   deterministic default exists.
+	 */
+	public static function resolve_default_variation_id( array $wc_product, array $wc_variations ): ?int {
+		// Variable-only — variations don't exist on other types, so resolution
+		// is structurally undefined. Subscription extension's
+		// `variable-subscription` shares the same shape (extends WC_Product_Variable).
+		$type = $wc_product['type'] ?? '';
+		if ( 'variable' !== $type && 'variable-subscription' !== $type ) {
+			return null;
+		}
+
+		if ( empty( $wc_variations ) ) {
+			return null;
+		}
+
+		// Build the (axis_label -> default_slug) map from the parent's
+		// attribute defaults. Skip non-variation-driving attributes (the
+		// `has_variations` flag) since their defaults don't constrain
+		// variant identity.
+		$defaults = [];
+		foreach ( $wc_product['attributes'] ?? [] as $axis ) {
+			if ( ! is_array( $axis ) || empty( $axis['has_variations'] ) ) {
+				continue;
+			}
+			$axis_label = (string) ( $axis['name'] ?? '' );
+			if ( '' === $axis_label ) {
+				continue;
+			}
+			$default_slug = null;
+			foreach ( $axis['terms'] ?? [] as $term ) {
+				if ( ! is_array( $term ) || empty( $term['default'] ) ) {
+					continue;
+				}
+				$slug = (string) ( $term['slug'] ?? '' );
+				if ( '' === $slug ) {
+					// Empty-string slug means "any" selection in WC — not
+					// a deterministic pick. Treat as if this axis had no
+					// default, which short-circuits resolution below.
+					$default_slug = null;
+					break;
+				}
+				$default_slug = $slug;
+				break;
+			}
+			if ( null === $default_slug ) {
+				// Partial coverage: at least one axis has no default. The
+				// merchant's intent is ambiguous, so we can't pick a
+				// single variation. Bail.
+				return null;
+			}
+			$defaults[ $axis_label ] = $default_slug;
+		}
+
+		if ( empty( $defaults ) ) {
+			// Parent had no variation-driving attributes at all (every
+			// axis was excluded by the has_variations check) — nothing
+			// to resolve against.
+			return null;
+		}
+
+		// Walk variations, return the first one whose attributes[] is
+		// a superset of the defaults map (every default axis-value pair
+		// is present). Variations always have exactly one value per
+		// variation-driving axis, so superset-match == exact-match here.
+		foreach ( $wc_variations as $variation ) {
+			if ( ! is_array( $variation ) ) {
+				continue;
+			}
+			$matches = true;
+			$found_axes = 0;
+			foreach ( $variation['attributes'] ?? [] as $variation_attr ) {
+				if ( ! is_array( $variation_attr ) ) {
+					continue;
+				}
+				$name  = (string) ( $variation_attr['name'] ?? '' );
+				$value = (string) ( $variation_attr['value'] ?? '' );
+				if ( ! isset( $defaults[ $name ] ) ) {
+					continue;
+				}
+				if ( $defaults[ $name ] !== $value ) {
+					$matches = false;
+					break;
+				}
+				$found_axes++;
+			}
+			if ( $matches && $found_axes === count( $defaults ) ) {
+				$vid = (int) ( $variation['id'] ?? 0 );
+				return $vid > 0 ? $vid : null;
+			}
+		}
+
+		// No variation matched the defaults — orphaned `_default_attributes`
+		// postmeta (the default slug was deleted from the taxonomy after
+		// being saved on the parent). Defensive return null so the caller
+		// falls back to the menu_order-first behavior.
+		return null;
+	}
+
+	/**
 	 * Build the `metadata.grouped` structure exposing child IDs to agents.
 	 *
 	 * Shape:
