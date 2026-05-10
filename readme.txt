@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.13.0
+Stable tag: 0.13.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.13.1 - 2026-05-10 =
+**Fixed**
+* Fix fatal "Call to a member function add_rule() on null" on plugin upgrade. The version-mismatch detection branch was calling `add_rewrite_rule()` synchronously on `plugins_loaded`, but WordPress core instantiates `$wp_rewrite` AFTER `plugins_loaded`. The deferred init:99 flush (already present in the same block) handles this at the correct lifecycle point.
 
 = 0.13.0 - 2026-05-10 =
 **New**

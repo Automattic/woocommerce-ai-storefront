@@ -2,15 +2,20 @@
 
 ### Features
 ### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.13.1] – 2026-05-10
+
+### Fixes
 
 - **Fix fatal `Call to a member function add_rule() on null` on plugin upgrade.** The version-mismatch detection branch in `WC_AI_Storefront::register_rewrite_rules()` was calling `add_rewrite_rule()` and `flush_rewrite_rules()` synchronously on `plugins_loaded`. WordPress core instantiates `$wp_rewrite` AFTER `plugins_loaded` (in `wp-settings.php`, between `plugins_loaded` and `init`) — so the inline call dereferences a null pointer and aborts the request, taking the entire plugin and any downstream `plugins_loaded` hooks with it.
   - **Why it fired now:** the buggy branch only runs when the stored `wc_ai_storefront_version` option doesn't match `WC_AI_STOREFRONT_VERSION`. On a same-version load (no upgrade) the option already matches and the branch is skipped. On 0.12.0 → 0.13.0 upgrades the mismatch is real, the branch fires, and every site fatals on the first frontend request post-upgrade. WordPress.com's auto-revert detected this and rolled affected sites back to 0.12.0.
   - **The fix:** removed the inline `add_rewrite_rules()` + `flush_rewrite_rules(false)` calls. The deferred `add_action( 'init', 'flush_rewrite_rules', 99 )` (already present in the same block) handles the flush at the right WordPress lifecycle point — `$wp_rewrite` is initialized before `init` fires, and `init:99` completes before `parse_request` runs in `wp()` (called from `wp-blog-header.php`). The current request still resolves `/llms.txt` and `/.well-known/ucp` correctly.
-  - **Impact:** ships as a critical hotfix. All sites that hit the v0.13.0 fatal can upgrade directly to the next release without rolling back.
-
-### Refactors
-### Tests
-### Docs
+  - **Impact:** ships as a critical hotfix. All sites that hit the v0.13.0 fatal can upgrade directly to v0.13.1 without rolling back.
 
 ---
 
