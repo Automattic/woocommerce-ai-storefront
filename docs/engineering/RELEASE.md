@@ -263,26 +263,52 @@ git status                       # Confirm .pot is unchanged or commit it
 
 If `.pot` regeneration produces a diff, commit it as part of the release commit. In practice the diff is usually empty here because the `.githooks/pre-commit` hook (auto-installed via `npm install` / `composer install`) regenerates the .pot on every commit that touches translatable `.php` or `.js` source. The explicit run in this step is the belt-and-braces backstop in case the hook was bypassed with `--no-verify` or PHP wasn't on PATH at commit time.
 
-### 6. Commit and tag
+### 6. Commit the version bump (no tag yet)
 
 ```bash
 git add -A
 git commit -m "chore(release): ${NEW}"
-git tag -a "v${NEW}" -m "Release ${NEW}"
 git push origin main
-git push origin "v${NEW}"
 ```
 
-### 7. GitHub release
+**Do NOT push a `v${NEW}` tag from your terminal.** The release workflow (`.github/workflows/release.yml`) has a guard that rejects tags arriving without an existing GitHub Release — the canonical flow is to publish the release-drafter draft, which creates the tag for you with the right notes and prerelease flag intact. Pushing a tag first triggers the guard's `::error::No GitHub Release exists for tag` failure, after which you have to recover manually (see step 7's "Recovery" subsection below).
 
-The `v*` tag triggers `.github/workflows/release.yml` which builds the distribution zip and attaches it to a draft GitHub Release. Then:
+### 7. Publish the release-drafter draft
 
-```bash
-gh release edit "v${NEW}" --notes-file <(awk "/## \\[${NEW}\\]/,/^---$/" CHANGELOG.md)
-gh release edit "v${NEW}" --draft=false
-```
+`.github/workflows/release-drafter.yml` maintains a single draft GitHub Release that auto-updates whenever a PR merges to main. By the time you reach this step, a draft already exists (probably with a wrong auto-incremented version like `v0.12.1` — release-drafter defaults to PATCH, so for a MINOR/MAJOR release you need to override).
 
-(Or open the draft in the GitHub UI, paste the new CHANGELOG block into the release notes, and click Publish.)
+1. Open the draft on the Releases page (`gh release list` will show it; or visit `https://github.com/<owner>/<repo>/releases`).
+2. Edit:
+   - **Tag** → `v${NEW}` (matching what you bumped in step 2).
+   - **Title** → `v${NEW}`.
+   - **Notes** → paste the CHANGELOG section for this version verbatim:
+     ```bash
+     awk "/## \\[${NEW}\\]/,/^---\$/" CHANGELOG.md | pbcopy   # macOS
+     ```
+3. Click **Publish release**. This:
+   - Creates the `v${NEW}` git tag pointing at the current `main` HEAD.
+   - Triggers `release.yml`, which finds the existing Release, builds the distribution zip, and attaches `woocommerce-ai-storefront-v${NEW}.zip` as a Release asset.
+
+After publish, verify the asset appeared: `gh release view v${NEW} --json assets`.
+
+#### Recovery: I already pushed a tag
+
+If you (or a script) pushed `v${NEW}` directly before any Release existed, the `release.yml` workflow run will have failed with `::error::No GitHub Release exists for tag`. Recovery:
+
+1. Delete the auto-incremented release-drafter draft if it exists at a different version: `gh release delete v0.X.Y --yes`.
+2. Create the Release for the existing tag: `gh release create v${NEW} --title "v${NEW}" --notes-file <(awk "/## \\[${NEW}\\]/,/^---\$/" CHANGELOG.md)`.
+3. Re-run the failed workflow: `gh run rerun <RUN_ID>` (or push a no-op commit to re-trigger). The guard now finds the Release and proceeds to upload the zip.
+
+#### "Latest" badge vs prerelease flag
+
+GitHub's automatic "Latest" badge only considers **non-prerelease, non-draft** Releases. The project's convention is to mark pre-1.0 releases as prerelease, which means GitHub's "Latest" badge silently falls back to the most recent non-prerelease — which can lag the actual newest version (e.g. v0.11.1 stayed marked Latest after v0.12.0 shipped because v0.12.0 was prerelease).
+
+For the canonical pre-1.0 flow this is acceptable — the prerelease flag accurately signals "0.x.y is unstable" — but if you want the newest version to actually appear as Latest, you have two options:
+
+- **Drop the prerelease flag entirely:** `gh release edit v${NEW} --prerelease=false`. GitHub will then automatically pick this Release as Latest (assuming it's the most recent non-prerelease).
+- **Override Latest while keeping prerelease:** not possible — GitHub's API rejects `--latest` on prerelease/draft releases (HTTP 422 "Latest release cannot be draft or prerelease"). You must drop the prerelease flag first, then `gh release edit v${NEW} --latest`.
+
+If you choose to drop prerelease for the Latest badge, also retroactively drop it on the previous version so the Releases list isn't a mix of states (e.g. when shipping v0.13.0, drop prerelease on v0.12.0 too).
 
 ### 8. Verify the release
 

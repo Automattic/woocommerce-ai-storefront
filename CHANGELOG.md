@@ -6,6 +6,8 @@
 ### Tests
 ### Docs
 
+- **Updated `RELEASE.md` to document two gotchas surfaced during v0.13.0 release.** The release-workflow guard rejects directly-pushed tags (canonical flow is publishing the release-drafter draft, which creates the tag); GitHub's "Latest" badge silently skips prerelease releases (so pre-1.0 conventions need an explicit `--prerelease=false` toggle if you want the newest version to actually appear as Latest). Added a "Recovery: I already pushed a tag" subsection and a "Latest badge vs prerelease flag" subsection.
+
 ---
 
 ## [0.13.0] – 2026-05-10
