@@ -1167,9 +1167,9 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	public function test_simple_product_reserved_attribute_demoted_to_metadata(): void {
 		// Simple product with a schema.org reserved variant attribute (Color)
 		// emits the attribute under metadata.attributes — NOT under options[].
-		// A simple WC product has one SKU, one inventory pool, no buyer
-		// selection — Color is descriptive, not selectable. Reverts the
-		// #356 promotion.
+		// A simple WC product has no `has_variations: true` axis, so there's
+		// no buyer-selectable variation axis — Color is descriptive, not
+		// selectable. Reverts the #356 promotion.
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[
