@@ -229,26 +229,49 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	}
 
 	/**
-	 * Synthesize a default variant for a simple (non-variable) product.
+	 * Synthesize a default variant for any product where
+	 * `extract_variants()` doesn't have real variations to expand.
+	 * Two callers reach this path:
 	 *
-	 * Simple WC products don't have variations, but UCP's schema requires
-	 * every product to emit `variants[]` with minItems 1. We satisfy that
-	 * by emitting one variant representing the product itself: same price,
-	 * same availability, id suffixed with `_default` so it's distinguishable
-	 * from a real variation.
+	 *   1. **Non-variable products** (simple, bundle, grouped) — by
+	 *      definition no `has_variations: true` axes, so no real
+	 *      variations exist to expand.
+	 *   2. **Variable products without pre-fetched variations** — the
+	 *      safety-net path documented on `extract_variants()`. Real
+	 *      variations exist in WC, but the caller didn't pre-fetch
+	 *      them via `rest_do_request`, so we emit a single placeholder
+	 *      to satisfy UCP's `variants[] minItems: 1` rather than a
+	 *      schema-violating empty array.
 	 *
-	 * @param array<string, mixed>      $wc_product     Decoded Store API response.
-	 * @param array<string, mixed>|null $seller         Seller block to attach as
-	 *                                                  `variant.seller`. See `translate()`.
-	 * @param array<int, array<string, mixed>> $simple_options Schema.org variant attributes
-	 *                                                  promoted from the parent simple product;
-	 *                                                  emitted as `options[]` on the variant.
-	 * @return array<string, mixed>                     UCP variant shape.
+	 * In both cases we emit one variant representing the product
+	 * itself: same price, same availability, id suffixed with
+	 * `_default` so it's distinguishable from a real variation.
+	 *
+	 * No `options[]` is emitted on the synthesized variant. (The
+	 * `variant.options` array — whose elements conform to UCP
+	 * `selected_option.json` — locks in a specific concrete combination
+	 * of variant axes for a buyer.) The reason the synthesized variant
+	 * has no concrete combination to lock in differs by caller:
+	 *
+	 *   - Non-variable: there's no selection axis at all. UCP
+	 *     `product_option.json` characterizes options by example as
+	 *     size, color, or material — variant-selection axes a buyer
+	 *     chooses between, not descriptive properties. The schema.org
+	 *     reserved Color/Size/Pattern/Material descriptive attributes
+	 *     live in the parent product's `metadata.attributes` instead.
+	 *   - Variable + no-prefetch: selection axes exist on the parent
+	 *     `options[]`, but the synthesized fallback doesn't represent
+	 *     any one concrete combination — emitting a `selected_option`
+	 *     would be a fabrication.
+	 *
+	 * @param array<string, mixed>      $wc_product Decoded Store API response.
+	 * @param array<string, mixed>|null $seller     Seller block to attach as
+	 *                                              `variant.seller`. See `translate()`.
+	 * @return array<string, mixed>                 UCP variant shape.
 	 */
 	public static function synthesize_default(
 		array $wc_product,
-		?array $seller = null,
-		array $simple_options = []
+		?array $seller = null
 	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
@@ -259,43 +282,6 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			// `price` — UCP-required active price. See translate() above.
 			'price'       => self::extract_price( $wc_product ),
 		];
-
-		// Simple products with attributes (e.g. Color=White, Size=L) are
-		// promoted to a single-member product group. The concrete option
-		// selections are emitted here so the variant fully describes the
-		// one purchasable combination — each entry is a flat `{name, label}`
-		// derived from the attribute name and its first term value.
-		if ( ! empty( $simple_options ) ) {
-			$options = [];
-			foreach ( $simple_options as $axis ) {
-				$name = (string) ( $axis['name'] ?? '' );
-				if ( '' === $name ) {
-					continue;
-				}
-				// A simple product represents exactly one concrete combination.
-				// Take only the first term value — the one WC associates with
-				// this product. Multi-value axes on a simple product are a WC
-				// data-quality issue; emitting all values would misrepresent
-				// the single purchasable item as a multi-selection.
-				foreach ( $axis['values'] ?? [] as $value ) {
-					$label = (string) ( $value['label'] ?? '' );
-					if ( '' !== $label ) {
-						$option = [
-							'name'  => $name,
-							'label' => $label,
-						];
-						if ( isset( $value['id'] ) ) {
-							$option['id'] = $value['id'];
-						}
-						$options[] = $option;
-						break;
-					}
-				}
-			}
-			if ( ! empty( $options ) ) {
-				$variant['options'] = $options;
-			}
-		}
 
 		// Sale pricing carries through the simple-product path too
 		// (a discounted simple product has on_sale + regular_price

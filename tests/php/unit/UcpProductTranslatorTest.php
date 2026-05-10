@@ -1164,10 +1164,12 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'metadata', $result );
 	}
 
-	public function test_translate_promotes_schema_variant_attributes_to_options(): void {
+	public function test_simple_product_reserved_attribute_demoted_to_metadata(): void {
 		// Simple product with a schema.org reserved variant attribute (Color)
-		// → promoted to options[]. Non-reserved attribute (Fabric Weight)
-		// stays in metadata.attributes.
+		// emits the attribute under metadata.attributes — NOT under options[].
+		// A simple WC product has no `has_variations: true` axis, so there's
+		// no buyer-selectable variation axis — Color is descriptive, not
+		// selectable. Reverts the #356 promotion.
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[
@@ -1184,18 +1186,23 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
-		$this->assertArrayHasKey( 'options', $result );
-		$this->assertCount( 1, $result['options'] );
-		$this->assertSame( 'Color', $result['options'][0]['name'] );
+		// No options[] — non-variable product has no selectable axes.
+		$this->assertArrayNotHasKey( 'options', $result );
 
+		// Both attributes (reserved Color + non-reserved Fabric Weight) live
+		// in metadata.attributes — uniform treatment, no special-case for
+		// the four schema.org reserved names.
 		$this->assertArrayHasKey( 'metadata', $result );
-		$this->assertCount( 1, $result['metadata']['attributes'] );
-		$this->assertSame( 'Fabric Weight', $result['metadata']['attributes'][0]['name'] );
+		$attr_names = array_column( $result['metadata']['attributes'], 'name' );
+		$this->assertContains( 'Color', $attr_names );
+		$this->assertContains( 'Fabric Weight', $attr_names );
+		$this->assertCount( 2, $result['metadata']['attributes'] );
 	}
 
-	public function test_translate_does_not_promote_non_reserved_attributes(): void {
-		// Simple product with only a non-reserved attribute → no promotion,
-		// stays in metadata.attributes, no options[] key emitted.
+	public function test_simple_product_non_reserved_attribute_in_metadata(): void {
+		// Sanity: simple product with only a non-reserved attribute emits
+		// the attribute in metadata.attributes (unchanged from prior
+		// behavior — the demote-uniform rule preserves this path).
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[
@@ -1212,8 +1219,17 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Origin', $result['metadata']['attributes'][0]['name'] );
 	}
 
-	public function test_translate_promotes_all_four_reserved_names_case_insensitively(): void {
-		// All four schema.org names, mixed case, all promoted.
+	public function test_simple_product_reserved_names_get_no_special_treatment(): void {
+		// Pre-revert (#356), the four schema.org reserved names — Color,
+		// Size, Pattern, Material — were special-cased: any non-variable
+		// product carrying any of them (in any case) was promoted to
+		// product-group shape with options[]. After the revert, there's
+		// no reserved-name matching logic at all; reserved-named
+		// attributes route through the same path as Origin / Fabric
+		// Weight / etc., gated only by `has_variations: false`. This
+		// test mixes case (COLOR / Size / Pattern / material) to confirm
+		// the case-sensitivity question is moot — there's no name-based
+		// branch left to be sensitive about.
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[ 'name' => 'COLOR',   'has_variations' => false, 'terms' => [ [ 'id' => 1, 'name' => 'White' ] ] ],
@@ -1224,15 +1240,20 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
-		$this->assertArrayHasKey( 'options', $result );
-		$this->assertCount( 4, $result['options'] );
-		$this->assertArrayNotHasKey( 'metadata', $result );
+		$this->assertArrayNotHasKey( 'options', $result );
+		$this->assertArrayHasKey( 'metadata', $result );
+		$this->assertCount( 4, $result['metadata']['attributes'] );
 	}
 
-	public function test_synthesized_default_variant_carries_promoted_options(): void {
-		// When a simple product's attributes are promoted to options[], the
-		// synthesized default variant must also carry matching options[]
-		// entries so agents can identify the concrete combination.
+	public function test_synthesized_default_variant_omits_options(): void {
+		// Synthesized default variant on a simple product carries no
+		// `options[]` (the array of `selected_option`-shaped entries
+		// that locks in a buyer's variant pick) — there's no buyer
+		// selection to lock in. UCP `product_option.json` reserves
+		// options for selectable axes. The variant's purpose is
+		// satisfying UCP's `variants[] minItems:1` requirement; it's
+		// not advertising a specific concrete combination because no
+		// combination was chosen.
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[
@@ -1251,70 +1272,130 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$result  = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 		$variant = $result['variants'][0];
 
-		$this->assertArrayHasKey( 'options', $variant );
-		$option_names = array_column( $variant['options'], 'name' );
-		$this->assertContains( 'Color', $option_names );
-		$this->assertContains( 'Size', $option_names );
-
-		$color_option = array_values( array_filter( $variant['options'], fn( $o ) => 'Color' === $o['name'] ) )[0];
-		$this->assertSame( 'White', $color_option['label'] );
-		$this->assertSame( 'pa_color:white', $color_option['id'] );
-
-		$size_option = array_values( array_filter( $variant['options'], fn( $o ) => 'Size' === $o['name'] ) )[0];
-		$this->assertSame( 'L', $size_option['label'] );
+		$this->assertArrayNotHasKey( 'options', $variant );
 	}
 
-	public function test_synthesized_default_variant_takes_only_first_value_per_axis(): void {
-		// A simple product with a multi-value attribute (WC data quality issue)
-		// must emit only one options[] entry per axis — the first term value.
-		// Emitting all values would misrepresent one purchasable item as a
-		// multi-selection.
+	public function test_simple_product_multi_value_reserved_attribute_emits_all_values_in_metadata(): void {
+		// Regression for the prod_24 production bug: multi-value reserved
+		// attributes (Color=[Beige, Blue, Gray], Size=[XS, S, M, L, XL, XXL])
+		// on a simple product previously emitted ONLY the first value to
+		// options[].values[] — silently hiding the other values from agents.
+		// After the demote-uniform rule, all values are emitted under
+		// metadata.attributes (no truncation possible because there's no
+		// promote path).
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[
-				'name'           => 'Size',
+				'name'           => 'Color',
+				'taxonomy'       => 'pa_color',
 				'has_variations' => false,
 				'terms'          => [
-					[ 'id' => 1, 'name' => 'XS', 'slug' => 'xs' ],
-					[ 'id' => 2, 'name' => 'S',  'slug' => 's' ],
-					[ 'id' => 3, 'name' => 'M',  'slug' => 'm' ],
+					[ 'id' => 1, 'name' => 'Beige', 'slug' => 'beige' ],
+					[ 'id' => 2, 'name' => 'Blue',  'slug' => 'blue' ],
+					[ 'id' => 3, 'name' => 'Gray',  'slug' => 'gray' ],
 				],
 			],
-		];
-
-		$result  = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
-		$variant = $result['variants'][0];
-
-		$size_options = array_values( array_filter( $variant['options'], fn( $o ) => 'Size' === $o['name'] ) );
-		$this->assertCount( 1, $size_options, 'Only one options[] entry per axis on a simple product.' );
-		$this->assertSame( 'XS', $size_options[0]['label'] );
-	}
-
-	public function test_promoted_product_options_values_trimmed_to_first_value(): void {
-		// product.options[].values[] must mirror the synthesized variant — one
-		// value per axis, not the full list of terms. Emitting all terms at
-		// the product level while the only variant carries one selection is
-		// inconsistent and misrepresents the available combinations.
-		$fixture               = $this->simple_product_fixture();
-		$fixture['attributes'] = [
 			[
 				'name'           => 'Size',
 				'has_variations' => false,
 				'terms'          => [
-					[ 'id' => 1, 'name' => 'XS', 'slug' => 'xs' ],
-					[ 'id' => 2, 'name' => 'S',  'slug' => 's' ],
-					[ 'id' => 3, 'name' => 'M',  'slug' => 'm' ],
+					[ 'id' => 0, 'name' => 'XS',  'slug' => 'XS' ],
+					[ 'id' => 0, 'name' => 'S',   'slug' => 'S' ],
+					[ 'id' => 0, 'name' => 'M',   'slug' => 'M' ],
+					[ 'id' => 0, 'name' => 'L',   'slug' => 'L' ],
+					[ 'id' => 0, 'name' => 'XL',  'slug' => 'XL' ],
+					[ 'id' => 0, 'name' => 'XXL', 'slug' => 'XXL' ],
 				],
 			],
 		];
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
+		$this->assertArrayNotHasKey( 'options', $result );
+		$this->assertArrayHasKey( 'metadata', $result );
+
+		$attrs_by_name = [];
+		foreach ( $result['metadata']['attributes'] as $attr ) {
+			$attrs_by_name[ $attr['name'] ] = $attr;
+		}
+
+		// All three colors emitted, not just the first.
+		$color_labels = array_column( $attrs_by_name['Color']['values'], 'label' );
+		$this->assertEqualsCanonicalizing( [ 'Beige', 'Blue', 'Gray' ], $color_labels );
+
+		// All six sizes emitted, not just XS.
+		$size_labels = array_column( $attrs_by_name['Size']['values'], 'label' );
+		$this->assertEqualsCanonicalizing( [ 'XS', 'S', 'M', 'L', 'XL', 'XXL' ], $size_labels );
+
+		// pa_* taxonomy IDs survive the demote path. Color uses real
+		// `pa_color` taxonomy with slugs, so each value should carry a
+		// `<taxonomy>:<slug>` id — the same enrichment shape that
+		// `options[]` emits for variable products. Pins that demoted
+		// reserved attributes don't lose taxonomy-id provenance.
+		$beige = null;
+		foreach ( $attrs_by_name['Color']['values'] as $value ) {
+			if ( 'Beige' === ( $value['label'] ?? '' ) ) {
+				$beige = $value;
+				break;
+			}
+		}
+		$this->assertNotNull( $beige );
+		$this->assertSame( 'pa_color:beige', $beige['id'] );
+
+		// Synthesized variant emits no `options[]` (no
+		// `selected_option`-shaped entries).
+		$this->assertArrayNotHasKey( 'options', $result['variants'][0] );
+	}
+
+	public function test_synthesize_default_omits_options_for_variable_product_safety_net(): void {
+		// `extract_variants()` falls back to `synthesize_default()` when a
+		// variable product is translated without pre-fetched variations
+		// (the safety-net path documented in extract_variants()'s
+		// docblock). The "no `options[]` on synthesized default"
+		// rule must hold on this path too — a variable product has
+		// selectable axes (its `options[]` is non-empty), but the
+		// synthesized fallback variant doesn't represent any one
+		// concrete combination, so it shouldn't claim one.
+		$fixture = [
+			'id'                => 999,
+			'name'              => 'Variable T-Shirt',
+			'slug'              => 'variable-t-shirt',
+			'permalink'         => 'https://example.com/product/variable-t-shirt/',
+			'short_description' => '',
+			'is_in_stock'       => true,
+			'prices'            => [
+				'price'         => '2000',
+				'currency_code' => 'USD',
+			],
+			'attributes'        => [
+				[
+					'name'           => 'Color',
+					'taxonomy'       => 'pa_color',
+					'has_variations' => true,
+					'terms'          => [
+						[ 'id' => 1, 'name' => 'Black', 'slug' => 'black' ],
+						[ 'id' => 2, 'name' => 'White', 'slug' => 'white' ],
+					],
+				],
+			],
+		];
+
+		// Translate with empty $wc_variations (no pre-fetched variations
+		// supplied) — caller pretends the pre-fetch step was skipped.
+		// extract_variants() should fall back to synthesize_default().
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		// `options[]` is still emitted at the product level (variable
+		// product, has_variations:true axis is real) — so a future
+		// caller that does pre-fetch variations would see them.
 		$this->assertArrayHasKey( 'options', $result );
-		$size_axis = $result['options'][0];
-		$this->assertSame( 'Size', $size_axis['name'] );
-		$this->assertCount( 1, $size_axis['values'], 'product.options[].values must have exactly one entry for a simple product.' );
-		$this->assertSame( 'XS', $size_axis['values'][0]['label'] );
+
+		// But the synthesized fallback variant carries no `options[]`
+		// (no `selected_option`-shaped entries) — there's nothing
+		// concrete to lock in for this fallback variant.
+		$this->assertCount( 1, $result['variants'] );
+		$this->assertStringEndsWith( '_default', $result['variants'][0]['id'] );
+		$this->assertArrayNotHasKey( 'options', $result['variants'][0] );
 	}
 
 	public function test_translate_omits_metadata_attributes_when_only_variation_axes(): void {
