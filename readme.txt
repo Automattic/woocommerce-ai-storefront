@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.13.1
+Stable tag: 0.13.2
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.13.2 - 2026-05-10 =
+**Fixed**
+* Fix bundle and grouped products surfacing broken AI-checkout links to crawlers and AI agents. The JSON-LD `BuyAction.target.urlTemplate` and `Offer.checkoutPageURLTemplate` were emitting `/checkout-link/?products=ID:1` for every product type — a shortcut bundle parents can't satisfy (no per-bundled-item config) and grouped parents have no SKU for (only their children do). Now branches on product type: bundle and grouped emit the product permalink with UTM placeholders; simple, variable, and per-variation entries keep the existing Shareable Checkout shape.
 
 = 0.13.1 - 2026-05-10 =
 **Fixed**
