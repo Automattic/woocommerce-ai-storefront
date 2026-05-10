@@ -445,6 +445,55 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_offer_checkout_page_url_template_uses_permalink_for_grouped(): void {
+		// Symmetric coverage with the bundle Offer test: grouped travels
+		// the same `build_checkout_url_template()` branch but reaches
+		// `add_checkout_page_url_template()` via a separate code path
+		// from `add_buy_action()`. A future change that early-returns
+		// for grouped on the Offer path would otherwise regress only
+		// this signal silently.
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+		);
+		$product = $this->make_product( [
+			'id'        => 88,
+			'type'      => 'grouped',
+			'permalink' => 'https://example.com/product/dinner-set/',
+		] );
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame(
+			$result['potentialAction']['target']['urlTemplate'],
+			$result['offers'][0]['checkoutPageURLTemplate']
+		);
+		$this->assertStringStartsWith(
+			'https://example.com/product/dinner-set/',
+			$result['offers'][0]['checkoutPageURLTemplate']
+		);
+	}
+
+	public function test_buyaction_url_appends_utm_when_permalink_already_has_query_string(): void {
+		// Edge case: a custom permalink with an existing query string
+		// (uncommon for products but possible with custom rewrites or
+		// language plugins). `add_query_arg()` should append with `&`
+		// and preserve the existing parameter, not overwrite it.
+		$product = $this->make_product( [
+			'id'        => 99,
+			'type'      => 'bundle',
+			'permalink' => 'https://example.com/product/starter-kit/?lang=en',
+		] );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+		$this->assertStringContainsString( 'lang=en', $url );
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+		// One `?` only — the rest must be `&` separators.
+		$this->assertSame( 1, substr_count( $url, '?' ) );
+	}
+
 	public function test_buyaction_url_keeps_shareable_checkout_for_simple_product(): void {
 		// Regression guard: the bundle/grouped branch must NOT swallow
 		// the simple-product path that ships the deterministic
@@ -571,7 +620,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 * version which returns the SET of values across all variations).
 	 */
 	private function make_variation( array $overrides = [] ): Mockery\MockInterface {
-		$variation = $this->make_product( $overrides );
+		// Default to `type === 'variation'` for fidelity with WC core.
+		// Without this, `is_type('variation')` on the mock returns false
+		// (it falls through to `make_product`'s default of `'simple'`),
+		// so any production code path that checks for variation status
+		// via `is_type` would silently take the wrong branch in tests.
+		$overrides['type'] = $overrides['type'] ?? 'variation';
+		$variation         = $this->make_product( $overrides );
 		$variation->shouldReceive( 'get_price' )->andReturn( $overrides['price'] ?? '20.00' );
 		$variation->shouldReceive( 'is_in_stock' )->andReturn( $overrides['in_stock'] ?? true );
 

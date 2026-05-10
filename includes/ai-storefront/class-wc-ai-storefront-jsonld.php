@@ -226,12 +226,14 @@ class WC_AI_Storefront_JsonLd {
 	 *     its own — only the children do). The deterministic
 	 *     `/checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=…` form
 	 *     used by the UCP REST controller (`build_continue_url()`)
-	 *     requires runtime resolution of every bundled item against the
-	 *     Store API to produce a checkout-ready URL — too expensive for
-	 *     a per-page-render JSON-LD emit, and meaningless for the
-	 *     configurable case anyway. Permalink fallback lands the buyer
-	 *     on the merchant PDP where the existing WC configurator runs;
-	 *     UTM attribution still flows through.
+	 *     would require child-resolution plumbing not present on the
+	 *     JSON-LD path, and would still fall back to the permalink for
+	 *     the configurable case (any optional bundled item or any
+	 *     variable child without bundle-author-set defaults). Permalink
+	 *     handles both the deterministic and configurable cases with
+	 *     one shape: the buyer lands on the merchant PDP where WC's
+	 *     existing configurator runs, and UTM attribution still flows
+	 *     through.
 	 *
 	 * Canonical UTM shape (0.5.0+): `utm_medium=referral` is Google-
 	 * canonical; `utm_id=woo_ucp` flags AI-routed traffic via the
@@ -241,12 +243,12 @@ class WC_AI_Storefront_JsonLd {
 	 * Static so callers without a class instance (e.g. the per-variant
 	 * builder under `hasVariant`) can build URLs uniformly.
 	 *
-	 * @param WC_Product $product The product or variation. Variations are
-	 *                            never `bundle`/`grouped` (those types
-	 *                            don't emit child variations), so the
-	 *                            type branch always lands on the
-	 *                            Shareable Checkout form for variation
-	 *                            entries under `hasVariant`.
+	 * @param WC_Product $product The product or variation. WC core
+	 *                            variations have `type === 'variation'`,
+	 *                            distinct from `bundle`/`grouped`, so
+	 *                            variation entries under `hasVariant`
+	 *                            fall through to the Shareable Checkout
+	 *                            form.
 	 * @return string The full URL with `{agent_id}` and `{session_id}`
 	 *                placeholders ready for the agent to substitute.
 	 */
