@@ -194,7 +194,7 @@ class WC_AI_Storefront_JsonLd {
 			'@type'  => 'BuyAction',
 			'target' => array(
 				'@type'          => 'EntryPoint',
-				'urlTemplate'    => self::build_checkout_url_template( $product->get_id() ),
+				'urlTemplate'    => self::build_checkout_url_template( $product ),
 				'actionPlatform' => array(
 					'https://schema.org/DesktopWebPlatform',
 					'https://schema.org/MobileWebPlatform',
@@ -204,19 +204,36 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Build a [WooCommerce Shareable Checkout URL][1] for a product or
-	 * variation, with the canonical UTM-attribution placeholders so an
-	 * AI agent can substitute its identity at recommendation time.
+	 * Build the BuyAction / `Offer.checkoutPageURLTemplate` URL for a
+	 * product or variation, with the canonical UTM-attribution
+	 * placeholders so an AI agent or rich-result consumer can substitute
+	 * its identity at click time.
 	 *
-	 * Output shape:
-	 *   `{home}/checkout-link/?products={id}:1&utm_source={agent_id}&utm_medium=referral&utm_id=woo_ucp&ai_session_id={session_id}`
+	 * Two emission shapes, gated by WC product type:
 	 *
-	 * The `?products=ID:QUANTITY` format goes through WC's
-	 * `/checkout-link/` rewrite handler — it adds the item to the cart
-	 * and redirects directly to checkout. For variable products, the
-	 * caller passes the **variation ID** so the right SKU lands in the
-	 * cart pre-selected (no "choose your color" detour). Same construction
-	 * for both simple and variable products; only the ID varies.
+	 *   - **Simple, variable, variation** — WooCommerce Shareable Checkout
+	 *     form (`{home}/checkout-link/?products={id}:1&utm_*`). For
+	 *     variations the caller passes the variation product (so the
+	 *     specific SKU pre-selects in the cart); for simple/variable
+	 *     parents the product ID alone resolves correctly through WC's
+	 *     `/checkout-link/` rewrite handler.
+	 *   - **Bundle, grouped** — the product's permalink (`{permalink}?utm_*`).
+	 *     The `?products=ID:1` shorthand can't represent these:
+	 *     `/checkout-link/?products=BUNDLE_ID:1` would attempt to add the
+	 *     bundle parent without the per-bundled-item configuration WC
+	 *     requires; `?products=GROUPED_ID:1` would attempt to add the
+	 *     grouped UX-wrapper parent (which has no SKU or inventory of
+	 *     its own — only the children do). The deterministic
+	 *     `/checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=…` form
+	 *     used by the UCP REST controller (`build_continue_url()`)
+	 *     would require child-resolution plumbing not present on the
+	 *     JSON-LD path, and would still fall back to the permalink for
+	 *     the configurable case (any optional bundled item or any
+	 *     variable child without bundle-author-set defaults). Permalink
+	 *     handles both the deterministic and configurable cases with
+	 *     one shape: the buyer lands on the merchant PDP where WC's
+	 *     existing configurator runs, and UTM attribution still flows
+	 *     through.
 	 *
 	 * Canonical UTM shape (0.5.0+): `utm_medium=referral` is Google-
 	 * canonical; `utm_id=woo_ucp` flags AI-routed traffic via the
@@ -226,25 +243,37 @@ class WC_AI_Storefront_JsonLd {
 	 * Static so callers without a class instance (e.g. the per-variant
 	 * builder under `hasVariant`) can build URLs uniformly.
 	 *
-	 * [1]: https://woocommerce.com/document/creating-sharable-checkout-urls-in-woocommerce/
-	 *
-	 * @param int $id Product ID for simple products, variation ID for
-	 *                variable products. Quantity is fixed at 1 — the
-	 *                Shareable Checkout URL spec supports multi-product
-	 *                / multi-quantity carts but AI-shopping flows are
-	 *                single-item by convention.
+	 * @param WC_Product $product The product or variation. WC core
+	 *                            variations have `type === 'variation'`,
+	 *                            distinct from `bundle`/`grouped`, so
+	 *                            variation entries under `hasVariant`
+	 *                            fall through to the Shareable Checkout
+	 *                            form.
 	 * @return string The full URL with `{agent_id}` and `{session_id}`
 	 *                placeholders ready for the agent to substitute.
 	 */
-	private static function build_checkout_url_template( int $id ): string {
+	private static function build_checkout_url_template( $product ): string {
+		$utm_args = array(
+			'utm_source'    => '{agent_id}',
+			'utm_medium'    => 'referral',
+			'utm_id'        => WC_AI_Storefront_Attribution::WOO_UCP_ID,
+			'ai_session_id' => '{session_id}',
+		);
+
+		// Bundle and grouped: emit the product permalink with UTM
+		// attribution. See docblock for why `/checkout-link/?products=`
+		// can't represent these types.
+		if ( $product->is_type( 'bundle' ) || $product->is_type( 'grouped' ) ) {
+			return add_query_arg( $utm_args, $product->get_permalink() );
+		}
+
+		// Simple, variable, variation: WooCommerce Shareable Checkout URL
+		// — `?products=ID:QUANTITY` resolves through WC's `/checkout-link/`
+		// rewrite handler, adds the item to the cart, redirects to
+		// checkout. Quantity fixed at 1 — AI-shopping flows are
+		// single-item by convention.
 		return add_query_arg(
-			array(
-				'products'      => $id . ':1',
-				'utm_source'    => '{agent_id}',
-				'utm_medium'    => 'referral',
-				'utm_id'        => WC_AI_Storefront_Attribution::WOO_UCP_ID,
-				'ai_session_id' => '{session_id}',
-			),
+			array_merge( array( 'products' => $product->get_id() . ':1' ), $utm_args ),
 			home_url( '/checkout-link/' )
 		);
 	}
@@ -276,7 +305,7 @@ class WC_AI_Storefront_JsonLd {
 		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
 			return;
 		}
-		$markup['offers'][0]['checkoutPageURLTemplate'] = self::build_checkout_url_template( $product->get_id() );
+		$markup['offers'][0]['checkoutPageURLTemplate'] = self::build_checkout_url_template( $product );
 	}
 
 	/**

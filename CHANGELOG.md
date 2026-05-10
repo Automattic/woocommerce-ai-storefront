@@ -2,6 +2,13 @@
 
 ### Features
 ### Fixes
+
+- **Fix bundle and grouped products surfacing broken AI-checkout links to crawlers and AI agents.** The Schema.org `BuyAction.target.urlTemplate` and `Offer.checkoutPageURLTemplate` emitted on every PDP routed bundles and grouped products to a checkout shortcut they couldn't satisfy, so AI agents and rich-result consumers that followed the link saw a silent failure or a no-op cart redirect.
+  - **What was broken:** for bundle products, the emitted `/checkout-link/?products=BUNDLE_ID:1` would route to WC's add-to-cart handler with no per-bundled-item configuration — the bundle parent isn't independently addable. For grouped products, `/checkout-link/?products=GROUPED_ID:1` would try to add the UX-wrapper parent, which has no SKU or inventory of its own (only the children do).
+  - **The fix:** `build_checkout_url_template()` now branches on `is_type('bundle')` / `is_type('grouped')` and emits the product permalink with the canonical UTM placeholders (`utm_source={agent_id}`, `utm_medium=referral`, `utm_id=woo_ucp`, `ai_session_id={session_id}`). The buyer lands on the merchant PDP where WC's existing bundle/grouped configurator runs; UTM attribution still flows through.
+  - **Why permalink, not the deterministic `/checkout/?add-to-cart=…` form:** the deterministic shape used by the UCP REST `continue_url` would need child-resolution plumbing the JSON-LD path doesn't have, and would still fall back to the permalink for any configurable case (optional bundled items, variable children without bundle-author defaults). Permalink covers both cases with one shape.
+  - **What's preserved:** simple, variable parent, and per-variation entries under `hasVariant` continue to emit the Shareable Checkout `?products=ID:1` form. WC core variations have `type === 'variation'` (distinct from `bundle`/`grouped`), so the type branch always falls through.
+
 ### Refactors
 ### Tests
 ### Docs

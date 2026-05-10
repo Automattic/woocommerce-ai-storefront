@@ -219,6 +219,18 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( $overrides['cross_sell_ids'] ?? [] );
 		$product->shouldReceive( 'get_upsell_ids' )
 			->andReturn( $overrides['upsell_ids'] ?? [] );
+
+		// `is_type()` accepts a string or array per WC core. Default the
+		// product's type to 'simple' so existing tests keep working
+		// without an explicit override; bundle/grouped tests pass
+		// `'type' => 'bundle' | 'grouped'` to flip the BuyAction URL
+		// branch in `build_checkout_url_template()`.
+		$type = $overrides['type'] ?? 'simple';
+		$product->shouldReceive( 'is_type' )->andReturnUsing(
+			static function ( $check ) use ( $type ) {
+				return is_array( $check ) ? in_array( $type, $check, true ) : $type === $check;
+			}
+		);
 		return $product;
 	}
 
@@ -349,6 +361,167 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// BuyAction — bundle / grouped permalink emission (0.13.2)
+	// ------------------------------------------------------------------
+	//
+	// `?products=ID:1` can't represent a bundle (the bundled-item axes
+	// aren't expressible in the shorthand) or a grouped product (the
+	// grouped parent has no SKU of its own — only its children do).
+	// `build_checkout_url_template()` falls back to the product permalink
+	// for these types so the buyer lands on the PDP where WC's existing
+	// bundle/grouped UI handles configuration. UTM attribution still flows.
+	//
+	// The deterministic `/checkout/?add-to-cart=BUNDLE&bundle_quantity_…=…`
+	// shape used by the UCP REST `continue_url` is unsuitable here — it
+	// requires per-render runtime resolution of every bundled item via
+	// the Store API, which is the wrong cost profile for static JSON-LD.
+
+	public function test_buyaction_url_uses_permalink_for_bundle_product(): void {
+		$product = $this->make_product( [
+			'id'        => 99,
+			'type'      => 'bundle',
+			'permalink' => 'https://example.com/product/starter-kit/',
+		] );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+		// Permalink, not Shareable Checkout — the legacy `/checkout-link/`
+		// rewrite would silently strip the bundled-item config and
+		// either fail on add-to-cart or short-circuit to the PDP.
+		$this->assertStringStartsWith( 'https://example.com/product/starter-kit/', $url );
+		$this->assertStringNotContainsString( '/checkout-link/', $url );
+		$this->assertStringNotContainsString( 'products=99:1', $url );
+		// UTM attribution still flows so the merchant can attribute the
+		// PDP visit to AI-routed traffic.
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+		$this->assertStringContainsString( 'utm_medium=referral', $url );
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+		$this->assertStringContainsString( 'ai_session_id={session_id}', $url );
+	}
+
+	public function test_buyaction_url_uses_permalink_for_grouped_product(): void {
+		$product = $this->make_product( [
+			'id'        => 88,
+			'type'      => 'grouped',
+			'permalink' => 'https://example.com/product/dinner-set/',
+		] );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+		// Grouped parent has no SKU — `?products=GROUPED_ID:1` would try
+		// to add a non-purchasable wrapper. Permalink lands on the
+		// PDP-driven child-quantity selector instead.
+		$this->assertStringStartsWith( 'https://example.com/product/dinner-set/', $url );
+		$this->assertStringNotContainsString( '/checkout-link/', $url );
+		$this->assertStringNotContainsString( 'products=88:1', $url );
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+	}
+
+	public function test_offer_checkout_page_url_template_uses_permalink_for_bundle(): void {
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+		);
+		$product = $this->make_product( [
+			'id'        => 99,
+			'type'      => 'bundle',
+			'permalink' => 'https://example.com/product/starter-kit/',
+		] );
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		// Both signals must agree — different consumers key on different
+		// Schema.org paths, but they should resolve to the same URL.
+		$this->assertSame(
+			$result['potentialAction']['target']['urlTemplate'],
+			$result['offers'][0]['checkoutPageURLTemplate']
+		);
+		$this->assertStringStartsWith(
+			'https://example.com/product/starter-kit/',
+			$result['offers'][0]['checkoutPageURLTemplate']
+		);
+	}
+
+	public function test_offer_checkout_page_url_template_uses_permalink_for_grouped(): void {
+		// Symmetric coverage with the bundle Offer test: grouped travels
+		// the same `build_checkout_url_template()` branch but reaches
+		// `add_checkout_page_url_template()` via a separate code path
+		// from `add_buy_action()`. A future change that early-returns
+		// for grouped on the Offer path would otherwise regress only
+		// this signal silently.
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+		);
+		$product = $this->make_product( [
+			'id'        => 88,
+			'type'      => 'grouped',
+			'permalink' => 'https://example.com/product/dinner-set/',
+		] );
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame(
+			$result['potentialAction']['target']['urlTemplate'],
+			$result['offers'][0]['checkoutPageURLTemplate']
+		);
+		$this->assertStringStartsWith(
+			'https://example.com/product/dinner-set/',
+			$result['offers'][0]['checkoutPageURLTemplate']
+		);
+	}
+
+	public function test_buyaction_url_appends_utm_when_permalink_already_has_query_string(): void {
+		// Edge case: a custom permalink with an existing query string
+		// (uncommon for products but possible with custom rewrites or
+		// language plugins). `add_query_arg()` should append with `&`
+		// and preserve the existing parameter, not overwrite it.
+		$product = $this->make_product( [
+			'id'        => 99,
+			'type'      => 'bundle',
+			'permalink' => 'https://example.com/product/starter-kit/?lang=en',
+		] );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+		$this->assertStringContainsString( 'lang=en', $url );
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+		// One `?` only — the rest must be `&` separators.
+		$this->assertSame( 1, substr_count( $url, '?' ) );
+	}
+
+	public function test_buyaction_url_keeps_shareable_checkout_for_simple_product(): void {
+		// Regression guard: the bundle/grouped branch must NOT swallow
+		// the simple-product path that ships the deterministic
+		// `?products=ID:1` form.
+		$product = $this->make_product( [ 'id' => 42, 'type' => 'simple' ] );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+		$this->assertStringStartsWith( 'https://example.com/checkout-link/', $url );
+		$this->assertStringContainsString( 'products=42:1', $url );
+	}
+
+	public function test_buyaction_url_keeps_shareable_checkout_for_variable_parent(): void {
+		// Regression guard for the variable-parent (PDP-level) Product
+		// entry — variations themselves are covered by the per-variant
+		// tests further down. Variable parents land on the same
+		// Shareable Checkout shape with the parent ID.
+		$product = $this->make_product( [ 'id' => 100, 'type' => 'variable' ] );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+		$this->assertStringStartsWith( 'https://example.com/checkout-link/', $url );
+		$this->assertStringContainsString( 'products=100:1', $url );
+	}
+
+	// ------------------------------------------------------------------
 	// detect_varies_by() — Schema.org URLs for varying variation axes (#328)
 	// ------------------------------------------------------------------
 
@@ -447,7 +620,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 * version which returns the SET of values across all variations).
 	 */
 	private function make_variation( array $overrides = [] ): Mockery\MockInterface {
-		$variation = $this->make_product( $overrides );
+		// Default to `type === 'variation'` for fidelity with WC core.
+		// Without this, `is_type('variation')` on the mock returns false
+		// (it falls through to `make_product`'s default of `'simple'`),
+		// so any production code path that checks for variation status
+		// via `is_type` would silently take the wrong branch in tests.
+		$overrides['type'] = $overrides['type'] ?? 'variation';
+		$variation         = $this->make_product( $overrides );
 		$variation->shouldReceive( 'get_price' )->andReturn( $overrides['price'] ?? '20.00' );
 		$variation->shouldReceive( 'is_in_stock' )->andReturn( $overrides['in_stock'] ?? true );
 
