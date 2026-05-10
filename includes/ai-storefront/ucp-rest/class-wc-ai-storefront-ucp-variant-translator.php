@@ -239,12 +239,14 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * same availability, id suffixed with `_default` so it's
 	 * distinguishable from a real variation.
 	 *
-	 * No `selected_option` is emitted. UCP `product_option.json` defines
-	 * options as buyer-selectable attribute axes, and a non-variable WC
-	 * product (one product ID, one SKU, one inventory pool) has no
-	 * selection to lock in. Descriptive attributes — including the
-	 * schema.org reserved Color/Size/Pattern/Material — live in the
-	 * parent product's `metadata.attributes` instead.
+	 * No `selected_option` is emitted. UCP `product_option.json`
+	 * characterizes options by example as size, color, or material —
+	 * variant-selection axes a buyer chooses between, not descriptive
+	 * properties. A non-variable WC product (one product ID, one SKU,
+	 * one inventory pool) has no selection to lock in. Descriptive
+	 * attributes — including the schema.org reserved
+	 * Color/Size/Pattern/Material — live in the parent product's
+	 * `metadata.attributes` instead.
 	 *
 	 * @param array<string, mixed>      $wc_product Decoded Store API response.
 	 * @param array<string, mixed>|null $seller     Seller block to attach as

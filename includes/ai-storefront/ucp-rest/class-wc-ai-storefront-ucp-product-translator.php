@@ -208,18 +208,21 @@ class WC_AI_Storefront_UCP_Product_Translator {
 
 		// Attributes split:
 		//
-		//   - `options[]` — selectable variation axes per UCP `product_option.json`
-		//     ("Options represent buyer-selectable attributes only, not
-		//     descriptive properties"). Identified by `has_variations: true`
-		//     on the WC attribute, which is set automatically by WC on
-		//     variable products. Non-variable products (simple, bundle,
-		//     grouped) by definition have no selectable axes and emit no
-		//     `options[]` — even when they carry Color/Size/Pattern/Material
-		//     attributes, those are descriptive metadata about the single
-		//     purchasable SKU, not buyer choices.
+		//   - `options[]` — variation axes the buyer selects between.
+		//     Identified by `has_variations: true` on the WC attribute,
+		//     which WC sets automatically on variable products. UCP
+		//     `product_option.json` characterizes options by example
+		//     (size, color, material) — variant-selection axes, not
+		//     descriptive properties. Non-variable products (simple,
+		//     bundle, grouped) have one product ID, one SKU, no buyer
+		//     selection by definition, so they emit no `options[]` even
+		//     when they carry Color/Size/Pattern/Material attributes —
+		//     those describe the single purchasable SKU rather than
+		//     differentiating between purchasable variants.
 		//   - `metadata.attributes` — everything else: informational facts
-		//      (Fabric Weight, Origin, descriptive Color, etc.) that apply
-		//      to the product as a whole.
+		//      (Fabric Weight, Origin, single-color/single-size
+		//      descriptive data, etc.) that apply to the product as a
+		//      whole.
 		$classified = self::extract_classified_attributes( $wc_product );
 
 		$product['variants'] = self::extract_variants( $wc_product, $wc_variations, $seller );
@@ -292,10 +295,14 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *   - `$wc_variations` is empty (simple product, or variable product
 	 *     where caller did not pre-fetch): emit one synthesized default
 	 *     variant via `WC_AI_Storefront_UCP_Variant_Translator::synthesize_default()`
-	 *     so the minItems:1 constraint is still satisfied. This is the safety-
-	 *     net path — callers emitting a variable product without variations
-	 *     get a defensive fallback rather than a schema-violating empty
-	 *     array, but the `_default` suffix signals the shape is degraded.
+	 *     so the minItems:1 constraint is still satisfied. The synthesized
+	 *     variant carries no `selected_option` — non-variable products
+	 *     have no buyer-selectable axis to lock in (see
+	 *     `synthesize_default()`'s docblock for the rationale). This is
+	 *     also the safety-net path for variable products without
+	 *     pre-fetched variations: callers get a defensive fallback rather
+	 *     than a schema-violating empty array, with the `_default` suffix
+	 *     signalling the shape is degraded.
 	 *
 	 * @param array<string, mixed>             $wc_product    Decoded Store API response.
 	 * @param array<int, array<string, mixed>> $wc_variations Pre-fetched variation responses.

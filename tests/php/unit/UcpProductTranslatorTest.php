@@ -1167,10 +1167,9 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	public function test_simple_product_reserved_attribute_demoted_to_metadata(): void {
 		// Simple product with a schema.org reserved variant attribute (Color)
 		// emits the attribute under metadata.attributes — NOT under options[].
-		// UCP product_option.json: "Options represent buyer-selectable
-		// attributes only, not descriptive properties." A simple WC product
-		// has one SKU, one inventory pool, no buyer selection — Color is
-		// descriptive, not selectable. Reverts the #356 promotion.
+		// A simple WC product has one SKU, one inventory pool, no buyer
+		// selection — Color is descriptive, not selectable. Reverts the
+		// #356 promotion.
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[
@@ -1319,7 +1318,72 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$size_labels = array_column( $attrs_by_name['Size']['values'], 'label' );
 		$this->assertEqualsCanonicalizing( [ 'XS', 'S', 'M', 'L', 'XL', 'XXL' ], $size_labels );
 
+		// pa_* taxonomy IDs survive the demote path. Color uses real
+		// `pa_color` taxonomy with slugs, so each value should carry a
+		// `<taxonomy>:<slug>` id — the same enrichment shape that
+		// `options[]` emits for variable products. Pins that demoted
+		// reserved attributes don't lose taxonomy-id provenance.
+		$beige = null;
+		foreach ( $attrs_by_name['Color']['values'] as $value ) {
+			if ( 'Beige' === ( $value['label'] ?? '' ) ) {
+				$beige = $value;
+				break;
+			}
+		}
+		$this->assertNotNull( $beige );
+		$this->assertSame( 'pa_color:beige', $beige['id'] );
+
 		// Synthesized variant has no selected_option.
+		$this->assertArrayNotHasKey( 'options', $result['variants'][0] );
+	}
+
+	public function test_synthesize_default_omits_options_for_variable_product_safety_net(): void {
+		// `extract_variants()` falls back to `synthesize_default()` when a
+		// variable product is translated without pre-fetched variations
+		// (the safety-net path documented in extract_variants()'s
+		// docblock). The "no selected_option on synthesized default"
+		// rule must hold on this path too — a variable product has
+		// selectable axes (its `options[]` is non-empty), but the
+		// synthesized fallback variant doesn't represent any one
+		// concrete combination, so it shouldn't claim one.
+		$fixture = [
+			'id'                => 999,
+			'name'              => 'Variable T-Shirt',
+			'slug'              => 'variable-t-shirt',
+			'permalink'         => 'https://example.com/product/variable-t-shirt/',
+			'short_description' => '',
+			'is_in_stock'       => true,
+			'prices'            => [
+				'price'         => '2000',
+				'currency_code' => 'USD',
+			],
+			'attributes'        => [
+				[
+					'name'           => 'Color',
+					'taxonomy'       => 'pa_color',
+					'has_variations' => true,
+					'terms'          => [
+						[ 'id' => 1, 'name' => 'Black', 'slug' => 'black' ],
+						[ 'id' => 2, 'name' => 'White', 'slug' => 'white' ],
+					],
+				],
+			],
+		];
+
+		// Translate WITHOUT supplying $wc_variations — caller pretends the
+		// pre-fetch step was skipped. extract_variants() should fall
+		// back to synthesize_default().
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+
+		// `options[]` is still emitted at the product level (variable
+		// product, has_variations:true axis is real) — so a future
+		// caller that does pre-fetch variations would see them.
+		$this->assertArrayHasKey( 'options', $result );
+
+		// But the synthesized fallback variant carries no
+		// selected_option — there's nothing concrete to lock in.
+		$this->assertCount( 1, $result['variants'] );
+		$this->assertStringEndsWith( '_default', $result['variants'][0]['id'] );
 		$this->assertArrayNotHasKey( 'options', $result['variants'][0] );
 	}
 
