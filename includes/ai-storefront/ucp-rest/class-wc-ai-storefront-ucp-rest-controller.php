@@ -3417,7 +3417,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return array{variations: array<int, array<string, mixed>>, skipped: int}
 	 */
 	private function fetch_variations_for( array $wc_product ): array {
-		if ( 'variable' !== ( $wc_product['type'] ?? '' ) ) {
+		// `variable-subscription` (WC Subscriptions extension) extends
+		// `WC_Product_Variable` and exposes its variations via the same
+		// `variations[]` array on the Store API response. Treat both
+		// uniformly so subscription variants get enumerated rather than
+		// silently collapsed to a synthesized `_default` placeholder.
+		// Mirrors the type-pair pattern at `validate_product_type()`.
+		$type = $wc_product['type'] ?? '';
+		if ( 'variable' !== $type && 'variable-subscription' !== $type ) {
 			return array(
 				'variations' => array(),
 				'skipped'    => 0,

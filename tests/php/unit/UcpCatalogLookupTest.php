@@ -153,7 +153,8 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	private function seed_variable_product(
 		int $parent_id,
 		string $name,
-		array $variation_specs
+		array $variation_specs,
+		string $type = 'variable'
 	): void {
 		$variation_refs = [];
 		foreach ( $variation_specs as $spec ) {
@@ -179,7 +180,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->fake_store_api[ $parent_id ] = [
 			'id'                => $parent_id,
 			'name'              => $name,
-			'type'              => 'variable',
+			'type'              => $type,
 			'short_description' => '',
 			'prices'            => [
 				'price'               => '1000',
@@ -779,6 +780,43 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'Small', $variants[0]['title'] );
 		$this->assertSame( 1000, $variants[0]['price']['amount'] );
 		$this->assertSame( 2000, $variants[2]['price']['amount'] );
+	}
+
+	public function test_variable_subscription_variations_pre_fetched_and_expanded(): void {
+		// #369 Fix #1: `fetch_variations_for()` was previously gated on
+		// strict `'variable' === $type`, which excluded WC Subscriptions'
+		// `variable-subscription` extension type. The result: subscription
+		// variations silently collapsed to a single synthesized
+		// `_default` placeholder, breaking the agent's ability to address
+		// individual subscription terms by ID.
+		//
+		// After the widening, variable-subscription is treated as a
+		// first-class variable type — same enumeration path, same shape.
+		$this->seed_variable_product(
+			890,
+			'Subscription Plan',
+			[
+				[ 'id' => 201, 'price' => '1000', 'size' => '1 month' ],
+				[ 'id' => 202, 'price' => '2500', 'size' => '3 months' ],
+				[ 'id' => 203, 'price' => '5000', 'size' => '6 months' ],
+				[ 'id' => 204, 'price' => '7500', 'size' => '1 year' ],
+			],
+			'variable-subscription'
+		);
+
+		$body = $this->successful_lookup( [ 'ids' => [ 'prod_890' ] ] );
+
+		$this->assertCount( 1, $body['products'] );
+		$variants = $body['products'][0]['variants'];
+
+		// Pre-fix: this would have been 1 (synthesized default).
+		// Post-fix: real subscription variations enumerate identically
+		// to plain variable products.
+		$this->assertCount( 4, $variants );
+		$this->assertEquals( 'var_201', $variants[0]['id'] );
+		$this->assertEquals( '1 month', $variants[0]['title'] );
+		$this->assertSame( 1000, $variants[0]['price']['amount'] );
+		$this->assertSame( 7500, $variants[3]['price']['amount'] );
 	}
 
 	public function test_variable_product_skips_variations_that_fail_to_fetch(): void {
