@@ -1219,10 +1219,17 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Origin', $result['metadata']['attributes'][0]['name'] );
 	}
 
-	public function test_simple_product_all_four_reserved_names_demoted_case_insensitively(): void {
-		// Pin the case-insensitivity of the demote rule: all four reserved
-		// names (Color, Size, Pattern, Material) in any case go to
-		// metadata.attributes on a non-variable product. No options[].
+	public function test_simple_product_reserved_names_get_no_special_treatment(): void {
+		// Pre-revert (#356), the four schema.org reserved names — Color,
+		// Size, Pattern, Material — were special-cased: any non-variable
+		// product carrying any of them (in any case) was promoted to
+		// product-group shape with options[]. After the revert, there's
+		// no reserved-name matching logic at all; reserved-named
+		// attributes route through the same path as Origin / Fabric
+		// Weight / etc., gated only by `has_variations: false`. This
+		// test mixes case (COLOR / Size / Pattern / material) to confirm
+		// the case-sensitivity question is moot — there's no name-based
+		// branch left to be sensitive about.
 		$fixture               = $this->simple_product_fixture();
 		$fixture['attributes'] = [
 			[ 'name' => 'COLOR',   'has_variations' => false, 'terms' => [ [ 'id' => 1, 'name' => 'White' ] ] ],
@@ -1373,9 +1380,9 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 			],
 		];
 
-		// Translate WITHOUT supplying $wc_variations — caller pretends the
-		// pre-fetch step was skipped. extract_variants() should fall
-		// back to synthesize_default().
+		// Translate with empty $wc_variations (no pre-fetched variations
+		// supplied) — caller pretends the pre-fetch step was skipped.
+		// extract_variants() should fall back to synthesize_default().
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
 		// `options[]` is still emitted at the product level (variable
