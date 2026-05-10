@@ -239,11 +239,14 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * same availability, id suffixed with `_default` so it's
 	 * distinguishable from a real variation.
 	 *
-	 * No `selected_option` is emitted. UCP `product_option.json`
+	 * No `options[]` is emitted on the synthesized variant. (The
+	 * `variant.options` array — whose elements conform to UCP
+	 * `selected_option.json` — locks in a specific concrete combination
+	 * of variant axes for a buyer.) UCP `product_option.json`
 	 * characterizes options by example as size, color, or material —
 	 * variant-selection axes a buyer chooses between, not descriptive
-	 * properties. A non-variable WC product (one product ID, one SKU,
-	 * one inventory pool) has no selection to lock in. Descriptive
+	 * properties. A non-variable WC product has no `has_variations: true`
+	 * axis, so there's no buyer-selectable axis to lock in. Descriptive
 	 * attributes — including the schema.org reserved
 	 * Color/Size/Pattern/Material — live in the parent product's
 	 * `metadata.attributes` instead.

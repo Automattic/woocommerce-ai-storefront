@@ -214,10 +214,11 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		//     `product_option.json` characterizes options by example
 		//     (size, color, material) — variant-selection axes, not
 		//     descriptive properties. Non-variable products (simple,
-		//     bundle, grouped) have one product ID, one SKU, no buyer
-		//     selection by definition, so they emit no `options[]` even
-		//     when they carry Color/Size/Pattern/Material attributes —
-		//     those describe the single purchasable SKU rather than
+		//     bundle, grouped) have no `has_variations: true` axis by
+		//     definition — no buyer-selectable variant axis — so they
+		//     emit no `options[]` even when they carry Color/Size/
+		//     Pattern/Material attributes. Those describe the
+		//     non-variable product as a whole rather than
 		//     differentiating between purchasable variants.
 		//   - `metadata.attributes` — everything else: informational facts
 		//      (Fabric Weight, Origin, single-color/single-size
@@ -296,13 +297,14 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *     where caller did not pre-fetch): emit one synthesized default
 	 *     variant via `WC_AI_Storefront_UCP_Variant_Translator::synthesize_default()`
 	 *     so the minItems:1 constraint is still satisfied. The synthesized
-	 *     variant carries no `selected_option` — non-variable products
-	 *     have no buyer-selectable axis to lock in (see
-	 *     `synthesize_default()`'s docblock for the rationale). This is
-	 *     also the safety-net path for variable products without
-	 *     pre-fetched variations: callers get a defensive fallback rather
-	 *     than a schema-violating empty array, with the `_default` suffix
-	 *     signalling the shape is degraded.
+	 *     variant emits no `options[]` (no `selected_option`-shaped
+	 *     entries) — non-variable products have no buyer-selectable axis
+	 *     to lock in (see `synthesize_default()`'s docblock for the
+	 *     rationale). This is also the safety-net path for variable
+	 *     products without pre-fetched variations: callers get a
+	 *     defensive fallback rather than a schema-violating empty
+	 *     array, with the `_default` suffix signalling the shape is
+	 *     degraded.
 	 *
 	 * @param array<string, mixed>             $wc_product    Decoded Store API response.
 	 * @param array<int, array<string, mixed>> $wc_variations Pre-fetched variation responses.

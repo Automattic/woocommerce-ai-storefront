@@ -1341,7 +1341,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// `extract_variants()` falls back to `synthesize_default()` when a
 		// variable product is translated without pre-fetched variations
 		// (the safety-net path documented in extract_variants()'s
-		// docblock). The "no selected_option on synthesized default"
+		// docblock). The "no `options[]` on synthesized default"
 		// rule must hold on this path too — a variable product has
 		// selectable axes (its `options[]` is non-empty), but the
 		// synthesized fallback variant doesn't represent any one
