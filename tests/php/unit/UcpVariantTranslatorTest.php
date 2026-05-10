@@ -1022,4 +1022,59 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$colour_option = array_values( array_filter( $result['options'], fn( $o ) => 'Color' === $o['name'] ) )[0];
 		$this->assertSame( 'Red', $colour_option['label'] );
 	}
+
+	// ------------------------------------------------------------------
+	// subscription_variation smoke test (#369 Step 4) — the translator
+	// is shape-driven (reads from Store API response, not WC class
+	// hierarchy), so subscription_variation children should translate
+	// identically to regular variations. This test pins that behavior
+	// against a captured-from-live Store API response.
+	// ------------------------------------------------------------------
+
+	public function test_translate_handles_subscription_variation_shape(): void {
+		// Load the captured Store API response for product 157 — the
+		// 6-month subscription_variation under variable-subscription
+		// parent 144 (the AI-SUB-VAR-DEF fixture). Driving this directly
+		// through the variant translator confirms #369 needs no
+		// translator-side changes for subscription support: the same
+		// code path that handles `WC_Product_Variation` Store API
+		// responses handles `WC_Product_Subscription_Variation` ones too.
+		$fixture_path = dirname( __DIR__, 2 ) . '/fixtures/store-api/subscriptions/product-157.json';
+		$this->assertFileExists( $fixture_path, 'Run bin/seed-subscription-fixtures.sh to regenerate.' );
+		$variation = json_decode( file_get_contents( $fixture_path ), true );
+		$this->assertIsArray( $variation );
+		$this->assertSame( 'subscription_variation', $variation['type'] );
+
+		// The variation's Store API response has empty `attributes[]`
+		// (same WC 9.x quirk as plain variations — see #347). The active
+		// option set lives in `variation` as a formatted string, so we
+		// need the parent's axis names to parse it.
+		$parent_attribute_names = [ 'Length' ];
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate(
+			$variation,
+			$parent_attribute_names
+		);
+
+		// Smoke-level assertions — variant emerges with the right shape:
+		$this->assertStringStartsWith( 'var_', $result['id'] );
+		$this->assertSame( 'var_157', $result['id'] );
+		// price comes through correctly (5000 = $50.00 — the 6-month tier).
+		$this->assertSame( 5000, $result['price']['amount'] );
+		$this->assertSame( 'USD', $result['price']['currency'] );
+		// Options parsed from the `variation` formatted string include
+		// the Length axis. The exact label depends on the formatted
+		// string but the structural presence is what we care about here.
+		$this->assertNotEmpty( $result['options'] );
+		$length_option = array_values( array_filter(
+			$result['options'],
+			static fn( $o ) => 'Length' === ( $o['name'] ?? '' )
+		) );
+		$this->assertCount(
+			1,
+			$length_option,
+			'subscription_variation should emit a Length option (parsed from `variation` formatted string).'
+		);
+		$this->assertSame( '6 months', $length_option[0]['label'] );
+	}
 }

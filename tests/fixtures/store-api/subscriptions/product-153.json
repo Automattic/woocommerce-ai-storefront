@@ -1,7 +1,0 @@
-{
-    "code": "woocommerce_rest_product_invalid_id",
-    "message": "Invalid product ID.",
-    "data": {
-        "status": 404
-    }
-}
