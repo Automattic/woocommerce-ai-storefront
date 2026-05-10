@@ -1809,11 +1809,21 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			return null;
 		}
 
-		// Build the (axis_label -> default_slug) map from the parent's
-		// attribute defaults. Skip non-variation-driving attributes (the
-		// `has_variations` flag) since their defaults don't constrain
-		// variant identity.
-		$defaults = [];
+		// Build TWO maps per axis (defaults are needed in both slug and
+		// label form because the variation's reported selections differ
+		// in shape across WC versions):
+		//
+		//   - `$defaults_by_slug[axis_label] = default_term_slug` — matches
+		//     against the legacy/array shape (`variation['attributes'][i]['value']`).
+		//   - `$defaults_by_label[axis_label] = default_term_name` — matches
+		//     against parsed formatted-string pairs (WC 9.x quirk where
+		//     `variation['attributes']` is empty and the active option set
+		//     lives in `variation['variation']` as `"Length: 6 months"`).
+		//
+		// Per-axis tables ensure the helper accepts either shape per axis.
+		$defaults_by_slug  = [];
+		$defaults_by_label = [];
+		$attribute_names   = [];
 		foreach ( $wc_product['attributes'] ?? [] as $axis ) {
 			if ( ! is_array( $axis ) || empty( $axis['has_variations'] ) ) {
 				continue;
@@ -1822,64 +1832,74 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			if ( '' === $axis_label ) {
 				continue;
 			}
-			$default_slug = null;
+			$attribute_names[] = $axis_label;
+			$default_slug      = null;
+			$default_label     = null;
 			foreach ( $axis['terms'] ?? [] as $term ) {
 				if ( ! is_array( $term ) || empty( $term['default'] ) ) {
 					continue;
 				}
-				$slug = (string) ( $term['slug'] ?? '' );
-				if ( '' === $slug ) {
-					// Empty-string slug means "any" selection in WC — not
-					// a deterministic pick. Treat as if this axis had no
-					// default, which short-circuits resolution below.
-					$default_slug = null;
+				$slug  = (string) ( $term['slug'] ?? '' );
+				$label = (string) ( $term['name'] ?? '' );
+				if ( '' === $slug && '' === $label ) {
+					// "any" selection in WC — not deterministic. Leave
+					// both nulls; partial-coverage check below bails.
 					break;
 				}
-				$default_slug = $slug;
+				$default_slug  = '' !== $slug ? $slug : null;
+				$default_label = '' !== $label ? $label : null;
 				break;
 			}
-			if ( null === $default_slug ) {
-				// Partial coverage: at least one axis has no default. The
-				// merchant's intent is ambiguous, so we can't pick a
-				// single variation. Bail.
+			if ( null === $default_slug && null === $default_label ) {
+				// Partial coverage on this axis — merchant intent
+				// ambiguous; can't deterministically resolve.
 				return null;
 			}
-			$defaults[ $axis_label ] = $default_slug;
+			if ( null !== $default_slug ) {
+				$defaults_by_slug[ $axis_label ] = $default_slug;
+			}
+			if ( null !== $default_label ) {
+				$defaults_by_label[ $axis_label ] = $default_label;
+			}
 		}
 
-		if ( empty( $defaults ) ) {
-			// Parent had no variation-driving attributes at all (every
-			// axis was excluded by the has_variations check) — nothing
+		$axis_count = max( count( $defaults_by_slug ), count( $defaults_by_label ) );
+		if ( 0 === $axis_count ) {
+			// Parent had no variation-driving attributes at all — nothing
 			// to resolve against.
 			return null;
 		}
 
-		// Walk variations, return the first one whose attributes[] is
-		// a superset of the defaults map (every default axis-value pair
-		// is present). Variations always have exactly one value per
-		// variation-driving axis, so superset-match == exact-match here.
+		// Walk variations, return the first one whose declared selections
+		// satisfy every axis-default pair. Each variation has exactly one
+		// value per variation-driving axis, so superset-match == exact-match.
 		foreach ( $wc_variations as $variation ) {
 			if ( ! is_array( $variation ) ) {
 				continue;
 			}
+
+			$pairs = self::variation_axis_pairs( $variation, $attribute_names );
+
 			$matches = true;
-			$found_axes = 0;
-			foreach ( $variation['attributes'] ?? [] as $variation_attr ) {
-				if ( ! is_array( $variation_attr ) ) {
+			$matched = 0;
+			foreach ( $pairs as $axis_label => $value ) {
+				$has_slug_default  = isset( $defaults_by_slug[ $axis_label ] );
+				$has_label_default = isset( $defaults_by_label[ $axis_label ] );
+				if ( ! $has_slug_default && ! $has_label_default ) {
+					// Variation declared a value on an axis we don't
+					// have a default for — irrelevant to matching this
+					// axis, but doesn't disqualify.
 					continue;
 				}
-				$name  = (string) ( $variation_attr['name'] ?? '' );
-				$value = (string) ( $variation_attr['value'] ?? '' );
-				if ( ! isset( $defaults[ $name ] ) ) {
-					continue;
-				}
-				if ( $defaults[ $name ] !== $value ) {
+				$slug_match  = $has_slug_default && $defaults_by_slug[ $axis_label ] === $value;
+				$label_match = $has_label_default && $defaults_by_label[ $axis_label ] === $value;
+				if ( ! $slug_match && ! $label_match ) {
 					$matches = false;
 					break;
 				}
-				$found_axes++;
+				$matched++;
 			}
-			if ( $matches && $found_axes === count( $defaults ) ) {
+			if ( $matches && $matched === $axis_count ) {
 				$vid = (int) ( $variation['id'] ?? 0 );
 				return $vid > 0 ? $vid : null;
 			}
@@ -1890,6 +1910,69 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// being saved on the parent). Defensive return null so the caller
 		// falls back to the menu_order-first behavior.
 		return null;
+	}
+
+	/**
+	 * Extract the (axis_label -> value) selections from a single
+	 * variation Store API response, handling both shapes the API can
+	 * return:
+	 *
+	 *   - Non-empty `attributes[]` (legacy / structured array) — read
+	 *     the pairs directly. Values are typically slugs.
+	 *   - Empty `attributes[]` with a formatted `variation` string
+	 *     (WC 9.x default — see #347) — parse via the variant
+	 *     translator's anchor-aware parser. Values are labels.
+	 *
+	 * Pure helper used by `resolve_default_variation_id()`. Returned
+	 * values are slugs or labels depending on which path populated the
+	 * pairs; the caller compares each axis value against both
+	 * defaults_by_slug and defaults_by_label so matching works
+	 * regardless of which shape the variation reported.
+	 *
+	 * @param array<string, mixed>  $variation       Store API variation response.
+	 * @param array<int, string>    $attribute_names Parent's variation-driving axis labels,
+	 *                                               passed to the formatted-string parser
+	 *                                               for anchor-aware splitting.
+	 * @return array<string, string> Map of axis_label -> value (slug or label).
+	 */
+	private static function variation_axis_pairs( array $variation, array $attribute_names ): array {
+		$pairs = [];
+
+		$attributes = $variation['attributes'] ?? [];
+		if ( is_array( $attributes ) && ! empty( $attributes ) ) {
+			foreach ( $attributes as $attr ) {
+				if ( ! is_array( $attr ) ) {
+					continue;
+				}
+				$name  = (string) ( $attr['name'] ?? '' );
+				$value = (string) ( $attr['value'] ?? '' );
+				if ( '' === $name || '' === $value ) {
+					continue;
+				}
+				$pairs[ $name ] = $value;
+			}
+		}
+
+		if ( empty( $pairs ) && isset( $variation['variation'] ) && is_string( $variation['variation'] ) ) {
+			// WC 9.x quirk fallback: parse the formatted display string.
+			$parsed = WC_AI_Storefront_UCP_Variant_Translator::parse_variation_string(
+				$variation['variation'],
+				$attribute_names
+			);
+			foreach ( $parsed as $pair ) {
+				if ( ! is_array( $pair ) ) {
+					continue;
+				}
+				$name  = (string) ( $pair['attribute'] ?? '' );
+				$value = (string) ( $pair['value'] ?? '' );
+				if ( '' === $name || '' === $value ) {
+					continue;
+				}
+				$pairs[ $name ] = $value;
+			}
+		}
+
+		return $pairs;
 	}
 
 	/**

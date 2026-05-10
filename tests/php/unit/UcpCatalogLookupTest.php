@@ -477,13 +477,22 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_prod_input_against_variable_product_correlates_all_variants_as_featured(): void {
-		// Variable product, product-level input (`prod_<parent>`).
-		// Every emitted variant gets a unique `var_<vid>` id — none
-		// equal `prod_456`, so all variants are `featured`
-		// representatives the server emitted for the product-level
-		// input. Confirms the per-variant comparison's "no match
-		// anywhere" path.
+	public function test_prod_input_against_variable_product_features_first_variant_by_menu_order(): void {
+		// Variable product, product-level input (`prod_<parent>`), no
+		// merchant-set `_default_attributes`.
+		//
+		// Per #369's locked design (verified against `product.json`
+		// verbatim — "First item is the featured variant for listings"):
+		//   - Exactly ONE variant gets `match: featured` — the first
+		//     variation by menu_order, which is `variants[0]` since the
+		//     Store API returns variations in menu_order.
+		//   - Sibling variants emit with `inputs: [{id: ...}]` (no
+		//     `match` field — spec-clean per `input_correlation.json`
+		//     where match is optional).
+		//
+		// Pre-#369 behavior featured EVERY variant indiscriminately —
+		// spec-legal but goes against UCP's "one featured per product"
+		// design expectation in the operations comparison table.
 		$this->seed_variable_product(
 			456,
 			'Long Sleeve Tee',
@@ -500,13 +509,19 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $body['products'] );
 		$this->assertCount( 2, $body['products'][0]['variants'] );
 
-		foreach ( $body['products'][0]['variants'] as $variant ) {
-			$this->assertSame(
-				[ [ 'id' => 'prod_456', 'match' => 'featured' ] ],
-				$variant['inputs'],
-				"Variant {$variant['id']} should correlate as featured (no variant id equals prod_456)."
-			);
-		}
+		// variants[0] is the featured one — match: featured plus
+		// position 0 (the two signals must agree).
+		$this->assertSame(
+			[ [ 'id' => 'prod_456', 'match' => 'featured' ] ],
+			$body['products'][0]['variants'][0]['inputs'],
+			'variants[0] must carry the featured marker.'
+		);
+		// Sibling: id correlation present, no `match` field.
+		$this->assertSame(
+			[ [ 'id' => 'prod_456' ] ],
+			$body['products'][0]['variants'][1]['inputs'],
+			'Sibling variants must emit inputs[] with just `id`, no `match`.'
+		);
 	}
 
 	public function test_inputs_stamping_skips_non_array_variants_from_filter(): void {
@@ -540,14 +555,30 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertCount( 1, $body['products'] );
-		// The malformed entry is preserved as-is (no inputs[] stamped),
-		// the legitimate variant got its inputs[] correlation.
+		// The malformed entry is preserved as-is (no inputs[] stamped);
+		// the legitimate variant got its inputs[] correlation. After
+		// #369 the featured-variant reordering normally moves the
+		// featured variant to index 0 — but the malformed entry CAN'T
+		// be reordered because its id can't be read, so position layout
+		// depends on whether the legit variant happened to be featured.
+		// Locate the legitimate variant rather than depending on order.
 		$variants = $body['products'][0]['variants'];
-		$this->assertSame( 'string instead of variant array', $variants[0] );
-		$this->assertIsArray( $variants[1] );
+		$legit_variant = null;
+		$malformed_present = false;
+		foreach ( $variants as $v ) {
+			if ( is_array( $v ) ) {
+				$legit_variant = $v;
+			} elseif ( 'string instead of variant array' === $v ) {
+				$malformed_present = true;
+			}
+		}
+		$this->assertTrue( $malformed_present, 'Malformed entry should be preserved as-is.' );
+		$this->assertIsArray( $legit_variant, 'Legitimate variant should remain in variants[].' );
+		// The legit variant is the only purchasable entry — so it's
+		// the featured one (sole variant feature path).
 		$this->assertSame(
 			[ [ 'id' => 'prod_456', 'match' => 'featured' ] ],
-			$variants[1]['inputs']
+			$legit_variant['inputs']
 		);
 	}
 
@@ -780,6 +811,59 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'Small', $variants[0]['title'] );
 		$this->assertSame( 1000, $variants[0]['price']['amount'] );
 		$this->assertSame( 2000, $variants[2]['price']['amount'] );
+	}
+
+	public function test_variable_product_with_default_attributes_features_resolved_variation(): void {
+		// #369 Fix #3a: when the merchant has set `_default_attributes`
+		// covering every variation axis, the resolved variation is
+		// featured (both as `match: featured` in inputs[] AND as
+		// `variants[0]` via reordering). Siblings emit with inputs[]
+		// carrying just `id` and no `match` field.
+		$this->seed_variable_product(
+			456,
+			'Long Sleeve Tee',
+			[
+				[ 'id' => 100, 'price' => '2500', 'size' => 'S' ],
+				[ 'id' => 200, 'price' => '3000', 'size' => 'M' ],
+				[ 'id' => 300, 'price' => '3500', 'size' => 'L' ],
+			]
+		);
+		// Mark "M" as the merchant default in the parent's attributes
+		// (mirrors Store API's `default: true` on the term).
+		$this->fake_store_api[456]['attributes'] = [
+			[
+				'name'           => 'Size',
+				'taxonomy'       => 'pa_size',
+				'has_variations' => true,
+				'terms'          => [
+					[ 'name' => 'S', 'slug' => 'S', 'default' => false ],
+					[ 'name' => 'M', 'slug' => 'M', 'default' => true  ],
+					[ 'name' => 'L', 'slug' => 'L', 'default' => false ],
+				],
+			],
+		];
+
+		$body = $this->successful_lookup( [ 'ids' => [ 'prod_456' ] ] );
+
+		$variants = $body['products'][0]['variants'];
+		$this->assertCount( 3, $variants );
+		// variants[0] is the M variant (id=200), not S (id=100, first
+		// by menu_order). The merchant signal overrides the
+		// menu_order fallback.
+		$this->assertSame( 'var_200', $variants[0]['id'] );
+		$this->assertSame(
+			[ [ 'id' => 'prod_456', 'match' => 'featured' ] ],
+			$variants[0]['inputs']
+		);
+		// Siblings (S and L) emit with just `id` — no match field.
+		$this->assertSame(
+			[ [ 'id' => 'prod_456' ] ],
+			$variants[1]['inputs']
+		);
+		$this->assertSame(
+			[ [ 'id' => 'prod_456' ] ],
+			$variants[2]['inputs']
+		);
 	}
 
 	public function test_variable_subscription_variations_pre_fetched_and_expanded(): void {

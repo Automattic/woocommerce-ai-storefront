@@ -1936,35 +1936,51 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$final_product    = is_array( $filtered_product ) ? $filtered_product : $product;
 
 			// Attach per-variant `inputs[]` correlation per
-			// `catalog_lookup.json#/$defs/lookup_variant` (UCP 2026-04-08).
-			// Each emitted variant declares which request ID resolved
-			// to it.
+			// `catalog_lookup.json#/$defs/lookup_variant` (verified verbatim
+			// from `Universal-Commerce-Protocol/ucp` — see project memory
+			// `reference_ucp_spec.md`). Each emitted variant declares
+			// which request ID resolved to it.
 			//
-			// `match` per `types/input_correlation.json`:
+			// `match` semantics per `types/input_correlation.json`:
 			//   - `exact`    — input directly identifies this variant
 			//                  (variant ID, SKU, etc.).
-			//   - `featured` — server picked this variant as a
+			//   - `featured` — server picked this variant as the
 			//                  representative for a product-level input.
+			//   - (omitted)  — this variant emerged alongside the
+			//                  resolved/featured one but isn't itself
+			//                  the server's pick. `inputs[].match` is
+			//                  optional per the schema; only `id` is
+			//                  required inside an inputs entry.
 			//
-			// Per-variant comparison: `match` is `exact` only when the
-			// raw input echo equals THIS variant's emitted `id`,
-			// otherwise `featured`. Two important nuances driving
-			// the per-variant comparison (vs. a prefix-only check):
+			// Featured-variant selection rules (#369). When the input
+			// echoes a parent product (not a specific variant):
+			//   1. If `_default_attributes` covers every variation axis →
+			//      that resolved variation is featured. Single source of
+			//      truth: `WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id()`.
+			//   2. Else → first variation by `menu_order` (the Store
+			//      API already returns variations in menu_order, so
+			//      `$variation_fetch['variations'][0]` is the right pick).
 			//
-			//   1. A bare `var_<product_id>` input against a simple
-			//      product emits a synthetic default variant whose id
-			//      is `var_<product_id>_default`. Those strings differ
-			//      — the input did NOT directly identify the emitted
-			//      variant id — so the correlation is `featured`,
-			//      not `exact`. A prefix-only check ("input starts
-			//      with `var_`") would misclaim exact precision.
+			// When the input echoes a specific variant id (e.g.
+			// `var_<vid>`) → that variant is `exact` and moves to
+			// `variants[0]`; siblings emit with `inputs: [{id}]` only.
 			//
-			//   2. For a variable product where the input echoes one
-			//      specific variation's id (e.g. `var_<vid>`), only
-			//      that variant's id matches; sibling variants get
-			//      `featured` because they're representatives the
-			//      server emitted alongside the directly-requested
-			//      one.
+			// Two existing nuances preserved:
+			//   - A bare `var_<product_id>` input against a simple
+			//     product emits a synthetic default variant whose id is
+			//     `var_<product_id>_default`. Those strings differ —
+			//     no `exact` match — but the synthesized default IS the
+			//     sole variant, so it's featured via the
+			//     fall-through-to-first rule.
+			//   - For a variable product where the input echoes a
+			//     specific variation id, that variant gets `exact` and
+			//     the featured-resolution short-circuits.
+			//
+			// Per `product.json` (verbatim from the repo): _"First item
+			// is the featured variant for listings."_ Both the
+			// `inputs[].match` annotation AND the `variants[]` position
+			// must agree — we move the featured/exact variant to
+			// `variants[0]` after correlation marking.
 			//
 			// Done last (after both filters) so the spec-required
 			// transport-layer correlation isn't mutable by content
@@ -1973,35 +1989,104 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			if ( isset( $final_product['variants'] ) && is_array( $final_product['variants'] ) ) {
 				$input_echo = (string) ( $inputs[ $index ] ?? '' );
 				if ( '' !== $input_echo ) {
-					foreach ( $final_product['variants'] as $variant_idx => $variant ) {
-						// `$final_product` came through the
-						// `wc_ai_storefront_ucp_product` filter; a
-						// third-party callback could replace a
-						// variant with a non-array (string, null, etc.).
-						// Guard before reading `$variant['id']` so a
-						// malformed callback doesn't fatal the whole
-						// lookup with PHP 8+'s "Cannot access offset"
-						// error. Skipping the entry here means the
-						// malformed variant is left as-is (without an
-						// `inputs[]` correlation); the schema validator
-						// downstream will surface the bad shape via
-						// the same path it already handles for other
-						// filter-malformations.
+					// Pass 1: find an exact match (input echoes a
+					// specific variant id). Note: `$final_product` came
+					// through the `wc_ai_storefront_ucp_product` filter;
+					// a third-party callback could replace a variant
+					// with a non-array (string, null, etc.). Guard
+					// before reading `$variant['id']` so a malformed
+					// callback doesn't fatal the whole lookup with
+					// PHP 8+'s "Cannot access offset" error.
+					$exact_variant_id    = null;
+					$featured_variant_id = null;
+					foreach ( $final_product['variants'] as $variant ) {
 						if ( ! is_array( $variant ) ) {
 							continue;
 						}
+						if ( $input_echo === (string) ( $variant['id'] ?? '' ) ) {
+							$exact_variant_id = (string) $variant['id'];
+							break;
+						}
+					}
 
+					// Pass 2: no exact match — resolve featured via
+					// `_default_attributes` or menu_order fallback.
+					if ( null === $exact_variant_id ) {
+						$default_variation_id = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+							$wc_product,
+							$variation_fetch['variations']
+						);
+						if ( null !== $default_variation_id ) {
+							// Merchant signal present: feature the
+							// resolved variation.
+							$featured_variant_id = 'var_' . $default_variation_id;
+						} elseif ( ! empty( $variation_fetch['variations'] ) ) {
+							// No merchant signal: feature the first
+							// variation by menu_order (Store API
+							// already returns variations in menu_order).
+							$first_id = (int) ( $variation_fetch['variations'][0]['id'] ?? 0 );
+							if ( $first_id > 0 ) {
+								$featured_variant_id = 'var_' . $first_id;
+							}
+						} else {
+							// Simple product / synthesized-default
+							// path: feature the first variant the
+							// filter pipeline didn't munge. Covers
+							// `var_<pid>_default` IDs emitted by
+							// `synthesize_default()`. Skip non-array
+							// entries from third-party
+							// `wc_ai_storefront_ucp_product` filter
+							// callbacks that injected malformed data
+							// — those can't be featured because they
+							// have no readable `id`.
+							foreach ( $final_product['variants'] as $variant_candidate ) {
+								if ( ! is_array( $variant_candidate ) ) {
+									continue;
+								}
+								$candidate_id = (string) ( $variant_candidate['id'] ?? '' );
+								if ( '' !== $candidate_id ) {
+									$featured_variant_id = $candidate_id;
+									break;
+								}
+							}
+						}
+					}
+
+					// Pass 3: assemble each variant's inputs[] entry.
+					// Exact wins over featured; siblings get just `id`
+					// (no match field — spec-clean per `input_correlation.json`).
+					foreach ( $final_product['variants'] as $variant_idx => $variant ) {
+						if ( ! is_array( $variant ) ) {
+							continue;
+						}
 						$variant_id = (string) ( $variant['id'] ?? '' );
-						$match_type = ( '' !== $variant_id && $input_echo === $variant_id )
-							? 'exact'
-							: 'featured';
+						$entry      = [ 'id' => $input_echo ];
+						if ( $variant_id === $exact_variant_id ) {
+							$entry['match'] = 'exact';
+						} elseif ( $variant_id === $featured_variant_id ) {
+							$entry['match'] = 'featured';
+						}
+						$final_product['variants'][ $variant_idx ]['inputs'] = [ $entry ];
+					}
 
-						$final_product['variants'][ $variant_idx ]['inputs'] = [
-							[
-								'id'    => $input_echo,
-								'match' => $match_type,
-							],
-						];
+					// Pass 4: reorder `variants[]` so the featured (or
+					// exact) variant sits at index 0. Per `product.json`:
+					// "First item is the featured variant for listings."
+					$pinned_id = $exact_variant_id ?? $featured_variant_id;
+					if ( null !== $pinned_id ) {
+						$pinned_idx = null;
+						foreach ( $final_product['variants'] as $idx => $v ) {
+							if ( is_array( $v ) && (string) ( $v['id'] ?? '' ) === $pinned_id ) {
+								$pinned_idx = $idx;
+								break;
+							}
+						}
+						if ( null !== $pinned_idx && 0 !== $pinned_idx ) {
+							$pinned                    = $final_product['variants'][ $pinned_idx ];
+							unset( $final_product['variants'][ $pinned_idx ] );
+							array_unshift( $final_product['variants'], $pinned );
+							$final_product['variants'] = array_values( $final_product['variants'] );
+						}
 					}
 				}
 			}

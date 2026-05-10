@@ -2706,6 +2706,30 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNull( $result );
 	}
 
+	public function test_resolve_default_variation_id_handles_empty_attributes_via_formatted_string(): void {
+		// WC 9.x quirk: variable-product variations from the Store API
+		// have `attributes[]` empty and put the active option set in the
+		// formatted `variation` string ("Length: 6 months"). The helper
+		// must parse that string and match by LABEL since the formatted
+		// string uses labels, not slugs.
+		$parent     = $this->variable_parent_with_length_axis( '6-months' );
+		$variations = [];
+		foreach ( [ '101' => '1 month', '102' => '3 months', '103' => '6 months', '104' => '1 year' ] as $id => $label ) {
+			$variations[] = [
+				'id'         => (int) $id,
+				'attributes' => [],
+				'variation'  => "Length: $label",
+			];
+		}
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+			$parent,
+			$variations
+		);
+
+		$this->assertSame( 103, $result, 'Helper must resolve via formatted-string fallback when attributes[] is empty.' );
+	}
+
 	public function test_resolve_default_variation_id_works_for_variable_subscription_type(): void {
 		// The subscription extension's `variable-subscription` shares the
 		// shape of `variable` and uses `_default_attributes` identically.
