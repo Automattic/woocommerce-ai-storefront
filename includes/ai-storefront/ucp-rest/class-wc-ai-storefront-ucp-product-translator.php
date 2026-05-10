@@ -1897,7 +1897,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 					$matches = false;
 					break;
 				}
-				$matched++;
+				++$matched;
 			}
 			if ( $matches && $matched === $axis_count ) {
 				$vid = (int) ( $variation['id'] ?? 0 );

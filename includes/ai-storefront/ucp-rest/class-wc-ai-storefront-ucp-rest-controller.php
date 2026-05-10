@@ -2082,7 +2082,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 							}
 						}
 						if ( null !== $pinned_idx && 0 !== $pinned_idx ) {
-							$pinned                    = $final_product['variants'][ $pinned_idx ];
+							$pinned = $final_product['variants'][ $pinned_idx ];
 							unset( $final_product['variants'][ $pinned_idx ] );
 							array_unshift( $final_product['variants'], $pinned );
 							$final_product['variants'] = array_values( $final_product['variants'] );
@@ -2721,7 +2721,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 		if ( ! empty( $variable_processed_keys ) ) {
 			foreach ( $variable_processed_keys as $key_idx => $vk ) {
-				$variable     = $processed[ $vk ];
+				$variable      = $processed[ $vk ];
 				$has_permalink = '' !== (string) ( $variable['permalink'] ?? '' );
 				if ( $has_permalink ) {
 					$messages[] = [
