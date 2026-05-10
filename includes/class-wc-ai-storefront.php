@@ -269,31 +269,23 @@ class WC_AI_Storefront {
 			WC_AI_Storefront_Crawl_Logger::create_tables();
 			update_option( 'wc_ai_storefront_version', WC_AI_STOREFRONT_VERSION );
 
-			// Self-healing flush: register the rules IMMEDIATELY (at the
-			// current `plugins_loaded` hook, which is before WordPress
-			// calls `parse_request`), then flush them to the rewrite
-			// option so the active request can still resolve /llms.txt
-			// and /.well-known/ucp without a second round-trip.
+			// Schedule the rewrite-rules flush for `init` priority 99.
+			// We CANNOT call `add_rewrite_rule()` or `flush_rewrite_rules()`
+			// inline here on `plugins_loaded` — the global `$wp_rewrite`
+			// is instantiated by WordPress core in `wp-settings.php`
+			// AFTER `plugins_loaded` fires (between `plugins_loaded` and
+			// `init`). An inline call on `plugins_loaded` triggers
+			// `Call to a member function add_rule() on null` and aborts
+			// the request, taking the whole plugin (and any plugins_loaded
+			// hooks downstream of ours) with it.
 			//
-			// Before 1.1.2 we only scheduled the flush on `init` priority
-			// 99, which worked for the NEXT request but left the CURRENT
-			// one 404-ing — exactly when a merchant had just upgraded
-			// and hit the URL to verify the fix had taken effect. The
-			// inline flush eliminates that race.
-			//
-			// `flush_rewrite_rules( false )` skips the .htaccess rewrite
-			// (the in-DB option is sufficient for WP's parse_request
-			// machinery), avoiding a filesystem write during request
-			// handling.
-			$llms_txt->add_rewrite_rules();
-			$ucp->add_rewrite_rules();
-			flush_rewrite_rules( false );
-
-			// Also keep the deferred init-99 flush: if the current request
-			// is an admin page load (plugins.php after update), the
-			// rule-registration actions on `init` will run again, and this
-			// second flush ensures the DB option is fully consistent with
-			// the init-time registration path. Cheap belt-and-suspenders.
+			// The earlier `add_action( 'init', [..., 'add_rewrite_rules'] )`
+			// calls above register the rules at the right moment. Adding
+			// `flush_rewrite_rules` at init:99 ensures WP's stored rule
+			// list matches our registrations before the request reaches
+			// `parse_request` (which `wp()` invokes from the front
+			// controller AFTER `init` has fully run). The current
+			// request CAN still resolve /llms.txt and /.well-known/ucp.
 			add_action( 'init', 'flush_rewrite_rules', 99 );
 
 			// Bust content caches on code updates so fixes to generation
