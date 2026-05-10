@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.12.0
+Stable tag: 0.13.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,14 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.13.0 - 2026-05-10 =
+**New**
+* UCP: WooCommerce Product Bundles plugin support. Bundles emit accurate `price_range`/`list_price_range` and `metadata.bundle` structure; deterministic bundles get `/checkout/?add-to-cart=` direct-checkout URLs, configurable bundles fall back to the PDP permalink with spec-defined error messaging.
+* UCP: WooCommerce Grouped product support. Grouped parents emit `metadata.grouped.children[]`; deterministic grouped products (all-simple children) get `/checkout/?add-to-cart=PARENT&quantity[CHILD]=N` URLs, configurable grouped fall back to the PDP.
+
+**Fixed**
+* UCP: simple, bundle, and grouped products with Color/Size/Pattern/Material attributes now emit those attributes in `metadata.attributes` instead of `product.options[]` — fixes a bug where multi-value attributes were silently truncated to first-value-only when emitted as `options[]`.
 
 = 0.12.0 - 2026-05-08 =
 **New**

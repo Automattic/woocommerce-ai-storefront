@@ -1,6 +1,16 @@
 ## [Unreleased]
 
 ### Features
+### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.13.0] – 2026-05-10
+
+### Features
 
 - **UCP: WooCommerce Product Bundles plugin support.** Closes #358 (V2 deterministic-URL scope merged from #361).
   - Detects `type === 'bundle'` and the Bundles plugin's Store API extension under `extensions.bundles`. Bundles previously emitted as flat single-variant simple products with broken `/checkout-link/?products=ID:1` continue_urls.
