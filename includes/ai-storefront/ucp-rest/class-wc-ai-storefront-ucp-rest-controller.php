@@ -2693,6 +2693,60 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
+		// Variable / variable-subscription parent handling (#369 Fix #3b).
+		// Parent IDs at /checkout-sessions can't be served by the
+		// Shareable Checkout URL `?products=PARENT:1` form — that would
+		// add the parent without a chosen variation and the buyer would
+		// be redirected to the PDP with a "missing attributes" error.
+		// Apply the same configurable-response pattern bundle/grouped
+		// already use: continue_url goes to the parent's permalink so
+		// the buyer can pick a variation on the PDP; the response
+		// message tells the agent why.
+		//
+		// Buyer choice is preserved by design: we explicitly do NOT
+		// auto-resolve the merchant's `_default_attributes` into a
+		// specific variation URL here. The catalog response's
+		// `match: featured` marker (per Fix #3a) gives agents the
+		// merchant's hint; what to do with it (present, override,
+		// ignore) is up to the agent's UI. Server-side resolution
+		// would bypass buyer choice silently.
+		$variable_request_indices = [];
+		$variable_processed_keys  = [];
+		foreach ( $processed as $idx => $p ) {
+			$type_check = $p['wc_type'] ?? '';
+			if ( 'variable' === $type_check || 'variable-subscription' === $type_check ) {
+				$variable_request_indices[] = (int) ( $p['request_index'] ?? $idx );
+				$variable_processed_keys[]  = $idx;
+			}
+		}
+		if ( ! empty( $variable_processed_keys ) ) {
+			foreach ( $variable_processed_keys as $key_idx => $vk ) {
+				$variable     = $processed[ $vk ];
+				$has_permalink = '' !== (string) ( $variable['permalink'] ?? '' );
+				if ( $has_permalink ) {
+					$messages[] = [
+						'type'     => 'error',
+						'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+						'severity' => 'requires_buyer_input',
+						'path'     => '$.line_items[' . $variable_request_indices[ $key_idx ] . '].item.id',
+						'content'  => __( 'This product has variations; the buyer must pick a specific option on the merchant site. Open continue_url to choose and complete the purchase.', 'woocommerce-ai-storefront' ),
+					];
+				} else {
+					// No permalink (rare — merchant deleted the product
+					// page or status changed mid-fetch). Without a URL
+					// to redirect to, status becomes incomplete.
+					$messages[]      = [
+						'type'     => 'error',
+						'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+						'severity' => 'recoverable',
+						'path'     => '$.line_items[' . $variable_request_indices[ $key_idx ] . '].item.id',
+						'content'  => __( 'This product requires a specific variation selection but its product page URL is unavailable.', 'woocommerce-ai-storefront' ),
+					];
+					$should_redirect = false;
+				}
+			}
+		}
+
 		$continue_url = $should_redirect
 			? self::build_continue_url( $processed, $agent_source_host, $agent_raw_host )
 			: '';
@@ -5253,20 +5307,19 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return array|null   Error message array, or null if the type is supported.
 	 */
 	private static function validate_product_type( string $type, string $path ): ?array {
-		// Variable product PARENT sent where a specific variation is
-		// required. `variable-subscription` is the subscription-extension
-		// variant of the same kind.
-		if ( 'variable' === $type || 'variable-subscription' === $type ) {
-			// `checkout_error_message` supplies the default
-			// variation-required wording via `default_error_content`
-			// — no override needed here.
-			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $path . '.item.id' );
-		}
-
+		// External: redirects to a third-party seller's site — `/checkout-link/`
+		// can't represent that flow, and there's no useful PDP fallback
+		// (the merchant's PDP for an external product is itself just a
+		// redirect to the external URL).
 		if ( 'external' === $type ) {
 			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::PRODUCT_TYPE_UNSUPPORTED, $path . '.item.id' );
 		}
 
+		// `variable` / `variable-subscription` parents are routed through
+		// the configurable continue_url path (permalink + requires_buyer_input
+		// message) in `process_line_items()` and `build_continue_url()`.
+		// They're NOT rejected here — same pattern as configurable bundle
+		// and configurable grouped products.
 		return null;
 	}
 
@@ -5601,6 +5654,43 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// caller's UTM-stamp + filter pass treats '' as
 					// "no usable URL" and the response surfaces as
 					// `incomplete` without `continue_url`.
+					$url_with_products = '';
+				}
+			}
+		}
+
+		// Variable / variable-subscription parent short-circuit (#369 Fix #3b).
+		// Same routing reason as configurable bundle/grouped:
+		// `/checkout-link/?products=PARENT_ID:1` would attempt to add
+		// the variable parent without a chosen variation, and WC
+		// redirects to the PDP with a "missing attributes" error. Route
+		// to the parent's permalink instead so the buyer picks a
+		// variation on the PDP — `_default_attributes` pre-fills the
+		// dropdown (WC core behavior) but the buyer retains choice
+		// over the final selection.
+		//
+		// No deterministic path: we explicitly do NOT auto-resolve
+		// `_default_attributes` into a specific variation URL here
+		// (see process_line_items() block for the design rationale).
+		if ( null === $url_with_products ) {
+			$first_variable = null;
+			foreach ( $processed as $p ) {
+				$ptype = $p['wc_type'] ?? '';
+				if ( 'variable' === $ptype || 'variable-subscription' === $ptype ) {
+					$first_variable = $p;
+					break;
+				}
+			}
+			if ( null !== $first_variable ) {
+				$permalink = (string) ( $first_variable['permalink'] ?? '' );
+				if ( '' !== $permalink ) {
+					$url_with_products = $permalink;
+				} else {
+					// Defensive guard mirrors bundle/grouped: handler
+					// upstream flips should_redirect=false for the
+					// no-permalink case, so this branch is unreachable
+					// today — empty string is safer than emitting a
+					// known-broken /checkout-link/ URL.
 					$url_with_products = '';
 				}
 			}
