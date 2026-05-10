@@ -1104,17 +1104,29 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'product_type_unsupported', $codes );
 	}
 
-	public function test_subscription_product_rejected_with_unsupported_type(): void {
-		// WC Subscriptions extension's `subscription` type is for
-		// recurring billing flows. The Shareable Checkout URL treats
-		// every item as a one-off, so a subscription mis-routed
-		// through it would produce an incorrect checkout page.
-		// The manifest already declares subscription as unsupported;
-		// this enforces the contract at the handler layer.
+	public function test_subscription_product_accepted_and_emits_continue_url(): void {
+		// #369 Fix #2: `subscription` is accepted at `/checkout-sessions`
+		// because the Shareable Checkout URL DOES handle subscription
+		// sign-ups correctly — verified live in PR #367's audit:
+		//
+		//   curl -sL 'https://pierorocca.com/checkout-link/?products=2005:1'
+		//     → 302 Location: /checkout/?session=eyJ…
+		//
+		// WC's `/checkout-link/` adds the subscription to the cart; the
+		// checkout page handles recurring-billing UI. The pre-#369
+		// rejection was based on an empirically-contradicted claim that
+		// subscriptions get charged as one-off purchases.
 		$this->fake_store_api[ 888 ] = [
-			'id'   => 888,
-			'name' => 'Monthly Box',
-			'type' => 'subscription',
+			'id'          => 888,
+			'name'        => 'Monthly Box',
+			'type'        => 'subscription',
+			'permalink'   => 'http://example.com/product/monthly-box/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'               => '2500',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+			],
 		];
 
 		$result = $this->call_handler(
@@ -1122,20 +1134,34 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'product_type_unsupported', $codes );
+		$this->assertNotContains(
+			'product_type_unsupported',
+			$codes,
+			'Simple subscriptions must no longer be rejected — Shareable Checkout handles them correctly.'
+		);
+		// Continue URL emitted via the standard Shareable Checkout shape.
+		$this->assertNotEmpty( $result['data']['continue_url'] );
+		$this->assertStringContainsString( '/checkout-link/?products=888:1', $result['data']['continue_url'] );
+		$this->assertStringContainsString( 'utm_source=', $result['data']['continue_url'] );
 	}
 
-	public function test_subscription_variation_rejected_with_unsupported_type(): void {
-		// `subscription_variation` is the variation-level subscription
-		// type — distinct from `variable-subscription` (the parent).
-		// This one-line type gate is easy to drop in a refactor; the
-		// test locks it in. A leaked subscription_variation would reach
-		// the Shareable Checkout URL and be charged as a one-off,
-		// silently breaking recurring billing on the merchant's side.
+	public function test_subscription_variation_accepted_and_emits_continue_url(): void {
+		// Companion to the simple-subscription test above: specific
+		// subscription_variation IDs reach `/checkout-sessions` from
+		// agents that drilled into a variable-subscription's variants.
+		// They route through the same Shareable Checkout path as
+		// regular variation IDs — `?products=<variation_id>:1`.
 		$this->fake_store_api[ 890 ] = [
-			'id'   => 890,
-			'name' => 'Monthly Box — Annual plan',
-			'type' => 'subscription_variation',
+			'id'          => 890,
+			'name'        => 'Monthly Box — Annual plan',
+			'type'        => 'subscription_variation',
+			'permalink'   => 'http://example.com/product/monthly-box-annual/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'               => '24000',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+			],
 		];
 
 		$result = $this->call_handler(
@@ -1143,7 +1169,9 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'product_type_unsupported', $codes );
+		$this->assertNotContains( 'product_type_unsupported', $codes );
+		$this->assertNotEmpty( $result['data']['continue_url'] );
+		$this->assertStringContainsString( '/checkout-link/?products=890:1', $result['data']['continue_url'] );
 	}
 
 	public function test_variable_subscription_parent_rejected_as_variation_required(): void {

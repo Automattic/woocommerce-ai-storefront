@@ -2204,8 +2204,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                                  cases land at /checkout/?add-to-cart=,
 	 *                                  configurable cases require buyer input
 	 *                                  on the PDP)
-	 *   - external / subscription / subscription_variation
-	 *                                → rejected (product_type_unsupported)
+	 *   - prod_N / var_N + subscription / subscription_variation
+	 *                                → includable. The Shareable Checkout
+	 *                                  URL adds the subscription to the
+	 *                                  cart and WC's checkout page handles
+	 *                                  recurring billing UI correctly
+	 *                                  (verified live in PR #367 audit).
+	 *   - external                  → rejected (product_type_unsupported)
 	 *   - unknown ID                 → rejected (not_found)
 	 *   - out of stock               → rejected (out_of_stock); WC's
 	 *                                  `is_in_stock` already factors the
@@ -5216,15 +5221,27 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * Incompatible types:
 	 * - `variable` / `variable-subscription`: parent sent where a concrete
 	 *   variation is required (Shareable Checkout URLs need a specific ID).
+	 *   See `build_continue_url()` for the parent-only permalink fallback
+	 *   the call site emits before reaching this validator.
 	 * - `external`: redirects to a third-party seller's site.
-	 * - `subscription` / `subscription_variation`: recurring billing; the
-	 *   Shareable Checkout URL treats every item as a one-off purchase, which
-	 *   mis-routes subscription sign-ups.
 	 *
-	 * `grouped` and `bundle` are supported but routed through a different
-	 * URL path than `/checkout-link/?products=…` because each requires
-	 * per-child configuration the products= shorthand can't carry. See
-	 * `build_continue_url()` for the routing decision.
+	 * Supported types — pass through this validator with null:
+	 * - `simple`: standard Shareable Checkout `?products=ID:1`.
+	 * - `variation`: per-variant Shareable Checkout `?products=<vid>:1`.
+	 * - `subscription` / `subscription_variation`: empirically verified
+	 *   (PR #367 audit) that the Shareable Checkout URL adds the
+	 *   subscription to the cart and WC's checkout page handles the
+	 *   recurring-billing UI correctly — the same Shareable Checkout
+	 *   flow that works for simple/variation works for these. The
+	 *   pre-#369 docblock claimed this misroutes sign-ups; that claim
+	 *   was contradicted by live verification against pierorocca.com
+	 *   fixtures 2005 (simple sub) and 3972 (subscription_variation),
+	 *   both of which redirected to `/checkout/?session=…` and
+	 *   completed recurring sign-ups.
+	 * - `grouped` and `bundle`: routed through a different URL path
+	 *   than `/checkout-link/?products=…` because each requires
+	 *   per-child configuration the products= shorthand can't carry.
+	 *   See `build_continue_url()`.
 	 *
 	 * Enforcement is purely runtime: the UCP manifest doesn't currently
 	 * advertise an unsupported-types list — agents discover incompatibility
@@ -5246,9 +5263,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $path . '.item.id' );
 		}
 
-		if ( 'external' === $type
-			|| 'subscription' === $type || 'subscription_variation' === $type
-		) {
+		if ( 'external' === $type ) {
 			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::PRODUCT_TYPE_UNSUPPORTED, $path . '.item.id' );
 		}
 
