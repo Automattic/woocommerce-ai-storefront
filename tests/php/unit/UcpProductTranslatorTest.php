@@ -1380,8 +1380,9 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// caller that does pre-fetch variations would see them.
 		$this->assertArrayHasKey( 'options', $result );
 
-		// But the synthesized fallback variant carries no
-		// selected_option — there's nothing concrete to lock in.
+		// But the synthesized fallback variant carries no `options[]`
+		// (no `selected_option`-shaped entries) — there's nothing
+		// concrete to lock in for this fallback variant.
 		$this->assertCount( 1, $result['variants'] );
 		$this->assertStringEndsWith( '_default', $result['variants'][0]['id'] );
 		$this->assertArrayNotHasKey( 'options', $result['variants'][0] );

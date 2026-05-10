@@ -296,15 +296,16 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *   - `$wc_variations` is empty (simple product, or variable product
 	 *     where caller did not pre-fetch): emit one synthesized default
 	 *     variant via `WC_AI_Storefront_UCP_Variant_Translator::synthesize_default()`
-	 *     so the minItems:1 constraint is still satisfied. The synthesized
-	 *     variant emits no `options[]` (no `selected_option`-shaped
-	 *     entries) — non-variable products have no buyer-selectable axis
-	 *     to lock in (see `synthesize_default()`'s docblock for the
-	 *     rationale). This is also the safety-net path for variable
-	 *     products without pre-fetched variations: callers get a
-	 *     defensive fallback rather than a schema-violating empty
-	 *     array, with the `_default` suffix signalling the shape is
-	 *     degraded.
+	 *     so the minItems:1 constraint is still satisfied. The
+	 *     synthesized variant emits no `options[]` (no
+	 *     `selected_option`-shaped entries) — it doesn't represent any
+	 *     concrete combination. For non-variable products that's because
+	 *     no selection axis exists; for variable + no-prefetch (the
+	 *     safety-net case), real variations exist but the synthesized
+	 *     fallback isn't any one of them, so emitting a
+	 *     `selected_option` would be a fabrication. Either way, the
+	 *     `_default` suffix signals the shape is degraded. See
+	 *     `synthesize_default()`'s docblock for the full rationale.
 	 *
 	 * @param array<string, mixed>             $wc_product    Decoded Store API response.
 	 * @param array<int, array<string, mixed>> $wc_variations Pre-fetched variation responses.

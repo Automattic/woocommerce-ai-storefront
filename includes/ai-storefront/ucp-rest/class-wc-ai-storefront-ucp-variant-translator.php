@@ -229,27 +229,40 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	}
 
 	/**
-	 * Synthesize a default variant for a non-variable product (simple,
-	 * bundle, grouped, or any product where `extract_variants()` falls
-	 * back to this path).
+	 * Synthesize a default variant for any product where
+	 * `extract_variants()` doesn't have real variations to expand.
+	 * Two callers reach this path:
 	 *
-	 * UCP's schema requires every product to emit `variants[]` with
-	 * minItems: 1. Non-variable WC products have no variations to expand,
-	 * so we emit one variant representing the product itself: same price,
-	 * same availability, id suffixed with `_default` so it's
-	 * distinguishable from a real variation.
+	 *   1. **Non-variable products** (simple, bundle, grouped) — by
+	 *      definition no `has_variations: true` axes, so no real
+	 *      variations exist to expand.
+	 *   2. **Variable products without pre-fetched variations** — the
+	 *      safety-net path documented on `extract_variants()`. Real
+	 *      variations exist in WC, but the caller didn't pre-fetch
+	 *      them via `rest_do_request`, so we emit a single placeholder
+	 *      to satisfy UCP's `variants[] minItems: 1` rather than a
+	 *      schema-violating empty array.
+	 *
+	 * In both cases we emit one variant representing the product
+	 * itself: same price, same availability, id suffixed with
+	 * `_default` so it's distinguishable from a real variation.
 	 *
 	 * No `options[]` is emitted on the synthesized variant. (The
 	 * `variant.options` array — whose elements conform to UCP
 	 * `selected_option.json` — locks in a specific concrete combination
-	 * of variant axes for a buyer.) UCP `product_option.json`
-	 * characterizes options by example as size, color, or material —
-	 * variant-selection axes a buyer chooses between, not descriptive
-	 * properties. A non-variable WC product has no `has_variations: true`
-	 * axis, so there's no buyer-selectable axis to lock in. Descriptive
-	 * attributes — including the schema.org reserved
-	 * Color/Size/Pattern/Material — live in the parent product's
-	 * `metadata.attributes` instead.
+	 * of variant axes for a buyer.) The reason the synthesized variant
+	 * has no concrete combination to lock in differs by caller:
+	 *
+	 *   - Non-variable: there's no selection axis at all. UCP
+	 *     `product_option.json` characterizes options by example as
+	 *     size, color, or material — variant-selection axes a buyer
+	 *     chooses between, not descriptive properties. The schema.org
+	 *     reserved Color/Size/Pattern/Material descriptive attributes
+	 *     live in the parent product's `metadata.attributes` instead.
+	 *   - Variable + no-prefetch: selection axes exist on the parent
+	 *     `options[]`, but the synthesized fallback doesn't represent
+	 *     any one concrete combination — emitting a `selected_option`
+	 *     would be a fabrication.
 	 *
 	 * @param array<string, mixed>      $wc_product Decoded Store API response.
 	 * @param array<string, mixed>|null $seller     Seller block to attach as
