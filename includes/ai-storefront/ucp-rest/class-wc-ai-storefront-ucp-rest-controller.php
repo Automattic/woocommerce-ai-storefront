@@ -5354,19 +5354,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * Return an error message if a WC product type is incompatible with
-	 * Shareable Checkout URLs, or null if the type is supported.
+	 * Return an error message if a WC product type is rejected outright,
+	 * or null if the type is supported.
 	 *
-	 * Incompatible types:
-	 * - `variable` / `variable-subscription`: parent sent where a concrete
-	 *   variation is required (Shareable Checkout URLs need a specific ID).
-	 *   See `build_continue_url()` for the parent-only permalink fallback
-	 *   the call site emits before reaching this validator.
-	 * - `external`: redirects to a third-party seller's site.
+	 * Rejected types — `product_type_unsupported`:
+	 * - `external`: redirects to a third-party seller's site. The merchant's
+	 *   PDP for an external product is itself just a redirect to the external
+	 *   URL, so there's no useful permalink fallback. Hard reject.
 	 *
-	 * Supported types — pass through this validator with null:
+	 * Supported types — pass through with null (callers handle routing):
 	 * - `simple`: standard Shareable Checkout `?products=ID:1`.
 	 * - `variation`: per-variant Shareable Checkout `?products=<vid>:1`.
+	 * - `variable` / `variable-subscription`: NOT rejected here (#369).
+	 *   Routed to the configurable continue_url path — permalink fallback
+	 *   plus a `requires_buyer_input` field_required message. The routing
+	 *   logic lives in `handle_checkout_sessions_create()`'s variable-parent
+	 *   block (where the field_required messages are emitted) and
+	 *   `build_continue_url()`'s variable short-circuit (where the permalink
+	 *   becomes the continue_url). Same pattern as configurable bundle and
+	 *   configurable grouped.
 	 * - `subscription` / `subscription_variation`: empirically verified
 	 *   in PR #367's audit (see comments
 	 *   github.com/Automattic/woocommerce-ai-storefront/pull/367#issuecomment-4416019003
@@ -5387,7 +5393,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * Enforcement is purely runtime: the UCP manifest doesn't currently
 	 * advertise an unsupported-types list — agents discover incompatibility
 	 * by sending a line item and reading the resulting `field_required` /
-	 * `product_type_unsupported` / `variation_required` error.
+	 * `product_type_unsupported` error.
 	 *
 	 * @param  string $type WC product type string (e.g. 'simple', 'variable').
 	 * @param  string $path JSON path for error attribution.

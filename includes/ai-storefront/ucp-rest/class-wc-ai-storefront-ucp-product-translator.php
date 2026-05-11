@@ -1855,18 +1855,26 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				}
 				$slug  = (string) ( $term['slug'] ?? '' );
 				$label = (string) ( $term['name'] ?? '' );
-				if ( '' === $slug && '' === $label ) {
-					// Defensive: a term flagged `default: true` should
-					// always have either a slug or a label. Empty-both
-					// would be malformed Store API output. Bail this
-					// axis so the partial-coverage check below returns
-					// null rather than silently picking the wrong
-					// variation. (The "any selection" case takes a
-					// different code path — see the docblock.)
+				if ( '' === $slug || '' === $label ) {
+					// Non-deterministic default. A real WC taxonomy term
+					// always has both slug AND label; if either is empty
+					// on a `default: true` entry it's either:
+					//   - a synthesized "Any" pseudo-term (rare — WC's
+					//     Store API doesn't typically emit this, but
+					//     extensions might),
+					//   - or malformed Store API output.
+					// Either way we can't deterministically pick a
+					// variation from this signal. Bail this axis silently
+					// — the partial-coverage check below returns null
+					// without logging an "orphaned default" breadcrumb,
+					// because no orphan exists: the merchant either
+					// chose Any or sent us malformed data, neither of
+					// which is the merchant-actionable misconfiguration
+					// the orphan-log targets.
 					break;
 				}
-				$default_slug  = '' !== $slug ? $slug : null;
-				$default_label = '' !== $label ? $label : null;
+				$default_slug  = $slug;
+				$default_label = $label;
 				break;
 			}
 			if ( null === $default_slug && null === $default_label ) {
@@ -1931,7 +1939,11 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// at debug level so merchants debugging "why isn't my default
 		// variation getting featured?" can find the actionable signal in
 		// the logs — this is a merchant misconfiguration, not a code bug.
-		if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+		// `function_exists( 'apply_filters' )` keeps the helper safe for
+		// pure-function unit tests that don't bootstrap WordPress —
+		// `Logger::debug()` consults a `wc_ai_storefront_debug` filter
+		// internally, which would fatal without WP loaded.
+		if ( class_exists( 'WC_AI_Storefront_Logger' ) && function_exists( 'apply_filters' ) ) {
 			$present_defaults = array_unique(
 				array_merge( array_values( $defaults_by_slug ), array_values( $defaults_by_label ) )
 			);
