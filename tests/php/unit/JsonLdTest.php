@@ -3800,4 +3800,67 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'admin_email must NEVER be a public-facing contact fallback.'
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// Subscription signal helpers (#368 Step 1)
+	//
+	// Pure mappings — no I/O, no WC dependency. Used by the subscription
+	// signal emitter to fill `UnitPriceSpecification.billingDuration`
+	// and `Offer.eligibleDuration.unitCode`.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Invoke a private static method on `WC_AI_Storefront_JsonLd` via reflection.
+	 *
+	 * @param string $method Method name (e.g. 'period_to_iso8601_duration').
+	 * @param mixed  ...$args Positional arguments to pass through.
+	 * @return mixed
+	 */
+	private function invoke_jsonld_static( string $method, ...$args ) {
+		$ref = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, $method );
+		return $ref->invoke( null, ...$args );
+	}
+
+	public function test_period_to_iso8601_duration_maps_each_wc_period(): void {
+		$this->assertSame( 'P1D',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'day', 1 ) );
+		$this->assertSame( 'P14D', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'day', 14 ) );
+		$this->assertSame( 'P1W',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'week', 1 ) );
+		$this->assertSame( 'P2W',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'week', 2 ) );
+		$this->assertSame( 'P1M',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 1 ) );
+		$this->assertSame( 'P3M',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 3 ) );
+		$this->assertSame( 'P6M',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 6 ) );
+		$this->assertSame( 'P1Y',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'year', 1 ) );
+	}
+
+	public function test_period_to_iso8601_duration_falls_back_to_month_for_unknown_period(): void {
+		// Unknown periods get treated as months — safer to emit a
+		// slightly-wrong duration than to fatal the JSON-LD render
+		// for what is, in practice, a vanishingly rare data shape.
+		$this->assertSame( 'P1M', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'fortnight', 1 ) );
+		$this->assertSame( 'P1M', $this->invoke_jsonld_static( 'period_to_iso8601_duration', '', 1 ) );
+	}
+
+	public function test_period_to_iso8601_duration_returns_zero_duration_for_non_positive_count(): void {
+		// Zero or negative counts on a subscription period are
+		// nonsensical input — return P0D so any consumer parsing the
+		// string sees a zero duration rather than an invalid form.
+		$this->assertSame( 'P0D', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 0 ) );
+		$this->assertSame( 'P0D', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', -3 ) );
+	}
+
+	public function test_period_to_uncefact_code_maps_each_wc_period(): void {
+		// UN/CEFACT Common Code (Recommendation N°20) — what Google
+		// Merchant Center and other major consumers ingest for
+		// QuantitativeValue.unitCode.
+		$this->assertSame( 'DAY', $this->invoke_jsonld_static( 'period_to_uncefact_code', 'day' ) );
+		$this->assertSame( 'WEE', $this->invoke_jsonld_static( 'period_to_uncefact_code', 'week' ) );
+		$this->assertSame( 'MON', $this->invoke_jsonld_static( 'period_to_uncefact_code', 'month' ) );
+		$this->assertSame( 'ANN', $this->invoke_jsonld_static( 'period_to_uncefact_code', 'year' ) );
+	}
+
+	public function test_period_to_uncefact_code_falls_back_to_month_for_unknown_period(): void {
+		// Same safe-default rationale as period_to_iso8601_duration.
+		$this->assertSame( 'MON', $this->invoke_jsonld_static( 'period_to_uncefact_code', 'fortnight' ) );
+		$this->assertSame( 'MON', $this->invoke_jsonld_static( 'period_to_uncefact_code', '' ) );
+	}
 }

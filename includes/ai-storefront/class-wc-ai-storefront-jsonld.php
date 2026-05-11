@@ -279,6 +279,65 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
+	 * Map a WC subscription period ('day', 'week', 'month', 'year') and a
+	 * count to an ISO 8601 duration string (e.g., 'P1M', 'P3M', 'P14D').
+	 *
+	 * Used by the subscription-signal emitter to fill
+	 * `UnitPriceSpecification.billingDuration` and `billingStart` per
+	 * Schema.org. Both fields accept Duration values in ISO 8601 form
+	 * (verified verbatim against
+	 * `Universal-Commerce-Protocol/ucp` is unrelated — this is pure
+	 * Schema.org vocabulary, see https://schema.org/billingDuration).
+	 *
+	 * Pure mapping — no I/O, no validation beyond a strict period whitelist.
+	 * Returns 'P1M' for unknown periods as a safe default rather than
+	 * throwing; subscription products without a valid period are vanishingly
+	 * rare and we'd rather emit a slightly-wrong duration than fatal the
+	 * JSON-LD render.
+	 *
+	 * @param string $period WC period — 'day' | 'week' | 'month' | 'year'.
+	 * @param int    $count  Number of periods; must be > 0.
+	 * @return string ISO 8601 duration string.
+	 */
+	private static function period_to_iso8601_duration( string $period, int $count ): string {
+		if ( $count <= 0 ) {
+			return 'P0D';
+		}
+		$unit = [
+			'day'   => 'D',
+			'week'  => 'W',
+			'month' => 'M',
+			'year'  => 'Y',
+		][ $period ] ?? 'M';
+		return 'P' . $count . $unit;
+	}
+
+	/**
+	 * Map a WC subscription period to a UN/CEFACT unit code for
+	 * `QuantitativeValue.unitCode` on `Offer.eligibleDuration`.
+	 *
+	 * Schema.org's `QuantitativeValue.unitCode` accepts UN/CEFACT Common
+	 * Code (Recommendation N°20). The mapping used here matches what
+	 * Google Merchant Center and other major consumers use for
+	 * date/duration units.
+	 *
+	 * Unknown periods fall back to 'MON' (month) — same safe-default
+	 * rationale as `period_to_iso8601_duration()`. Logger::debug
+	 * call site is the caller's responsibility (this helper stays pure).
+	 *
+	 * @param string $period WC period — 'day' | 'week' | 'month' | 'year'.
+	 * @return string UN/CEFACT unit code — 'DAY' | 'WEE' | 'MON' | 'ANN'.
+	 */
+	private static function period_to_uncefact_code( string $period ): string {
+		return [
+			'day'   => 'DAY',
+			'week'  => 'WEE',
+			'month' => 'MON',
+			'year'  => 'ANN',
+		][ $period ] ?? 'MON';
+	}
+
+	/**
 	 * Adds `checkoutPageURLTemplate` to `offers[0]` with the same
 	 * Shareable Checkout URL as `BuyAction.urlTemplate`.
 	 *
