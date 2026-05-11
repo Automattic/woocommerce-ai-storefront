@@ -23,6 +23,7 @@ import {
 	Button,
 	Card,
 	CardBody,
+	CheckboxControl,
 	Notice,
 	SelectControl,
 	Spinner,
@@ -888,6 +889,67 @@ export const applyHandlingTimeMax = ( current, val ) => {
 	return next;
 };
 
+/**
+ * Checkout policies section — agent-facing capabilities that take
+ * effect at the `/checkout-sessions` boundary. Currently single-field
+ * (`allow_discount_codes`); add siblings here for future checkout
+ * extensions rather than scattering top-level toggles. (#376)
+ *
+ * Server-side, the discount capability is gated by BOTH this toggle
+ * AND WC's core `wc_coupons_enabled()` setting — if WC coupons are
+ * disabled in `WooCommerce → Settings → General`, the capability is
+ * never advertised regardless of this checkbox. The helper text below
+ * surfaces that dependency to the merchant; we don't grey out the
+ * checkbox itself (would require exposing WC's setting state through
+ * the admin REST surface, which is more wiring than the contract
+ * warrants for v0.14.2).
+ *
+ * @param {Object}   props
+ * @param {string}   props.allowDiscountCodes Current value (`'yes'` / `'no'`).
+ * @param {Function} props.onChange           Called with the new yes/no string when the toggle flips.
+ */
+const CheckoutPoliciesSection = ( { allowDiscountCodes, onChange } ) => {
+	return (
+		<Card>
+			<CardBody>
+				<h3
+					style={ {
+						margin: '0 0 8px',
+						fontSize: '14px',
+						fontWeight: 600,
+						color: colors.textPrimary,
+					} }
+				>
+					{ __( 'Checkout', 'woocommerce-ai-storefront' ) }
+				</h3>
+				<p
+					style={ {
+						margin: '0 0 16px',
+						color: colors.textSecondary,
+						fontSize: '13px',
+					} }
+				>
+					{ __(
+						'AI agents can supply user-entered discount codes when sending shoppers to checkout. Requires WooCommerce coupons to be enabled in WooCommerce → Settings → General.',
+						'woocommerce-ai-storefront'
+					) }
+				</p>
+				<CheckboxControl
+					label={ __(
+						'Allow discount codes through AI agents',
+						'woocommerce-ai-storefront'
+					) }
+					checked={ allowDiscountCodes === 'yes' }
+					onChange={ ( checked ) =>
+						onChange( checked ? 'yes' : 'no' )
+					}
+					__nextHasNoMarginBottom
+				/>
+			</CardBody>
+		</Card>
+	);
+};
+
 const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 	const handleMin = ( val ) =>
 		onChange( applyHandlingTimeMin( handlingTime, val ) );
@@ -1256,7 +1318,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						color: colors.textPrimary,
 					} }
 				>
-					{ __( 'Store policies', 'woocommerce-ai-storefront' ) }
+					{ __( 'Policies & checkout', 'woocommerce-ai-storefront' ) }
 				</h2>
 				<p
 					style={ {
@@ -1266,7 +1328,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 					} }
 				>
 					{ __(
-						'Policies AI agents can quote to shoppers before checkout.',
+						'Policy and capability settings AI agents use when shopping for buyers on your store.',
 						'woocommerce-ai-storefront'
 					) }
 				</p>
@@ -1292,6 +1354,17 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 				<ShippingPoliciesSection
 					handlingTime={ handlingDraft }
 					onChange={ handleHandlingTimeEdit }
+				/>
+			</div>
+
+			<div style={ { marginTop: '16px' } }>
+				<CheckoutPoliciesSection
+					allowDiscountCodes={
+						settings.allow_discount_codes ?? 'yes'
+					}
+					onChange={ ( next ) =>
+						onChange( { allow_discount_codes: next } )
+					}
 				/>
 			</div>
 
