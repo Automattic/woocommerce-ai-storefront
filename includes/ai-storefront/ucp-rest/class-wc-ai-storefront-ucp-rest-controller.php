@@ -3207,63 +3207,21 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	/**
 	 * Whether the UCP discount-extension capability is currently active.
 	 *
-	 * Two gates, AND-ed (#376):
+	 * Thin delegation to `WC_AI_Storefront_Ucp::discount_capability_active()`
+	 * — kept as a passthrough so existing controller call sites (envelope
+	 * builder, request handler, sanitizer log) don't have to switch class
+	 * names. The real implementation lives in `WC_AI_Storefront_Ucp`
+	 * because the `/.well-known/ucp` manifest is a hot discovery path
+	 * and we don't want manifest generation to autoload this 6k+ line
+	 * REST controller class just to read two settings.
 	 *
-	 *   1. WC's core `wc_coupons_enabled()` returns true (merchant has
-	 *      not turned off coupons in WC core).
-	 *   2. Our merchant toggle `allow_discount_codes` is `'yes'`
-	 *      (default).
-	 *
-	 * Either gate failing → the capability is OFF. The checkout
-	 * envelope does NOT advertise `dev.ucp.shopping.discount`, and
-	 * inbound `discounts.codes[]` are dropped from the URL build.
-	 * Agents that supplied codes see three signals:
-	 *
-	 *   - The envelope's `capabilities` map omits
-	 *     `dev.ucp.shopping.discount` — spec-compliant agents won't
-	 *     retry codes against this endpoint.
-	 *   - An `info` message `discount_codes_unsupported` appears on
-	 *     the response so the drop is visible even to agents that
-	 *     didn't inspect capabilities first (e.g. stale cache).
-	 *   - A `WC_AI_Storefront_Logger::debug` line is recorded for
-	 *     merchant-side forensics when the `wc_ai_storefront_debug`
-	 *     filter is on.
-	 *
-	 * The request still 201s — no error response — so an agent that
-	 * cached our envelope from before the toggle was flipped doesn't
-	 * get a hard failure; just a soft signal that the code wasn't
-	 * applied.
-	 *
-	 * The WC-setting gate is mandatory because advertising a discount
-	 * capability that WC's hosted checkout would silently ignore is
-	 * worse UX than not advertising at all — the agent would relay a
-	 * code to the user that has no chance of applying.
-	 *
-	 * Called by `WC_AI_Storefront_Ucp::generate_manifest()` to decide
-	 * whether to advertise the capability in the `/.well-known/ucp`
-	 * manifest — keeping discovery (manifest) and per-response envelope
-	 * in lockstep. Promoted from private to public for that cross-class
-	 * use; the contract is a pure read of settings + WC core state, no
-	 * side effects.
+	 * See `WC_AI_Storefront_Ucp::discount_capability_active()` for the
+	 * full contract (gates, side-effect-freedom, why each gate matters).
 	 *
 	 * @return bool
 	 */
 	public static function discount_capability_active(): bool {
-		// `wc_coupons_enabled()` reads the `woocommerce_enable_coupons`
-		// core option ('yes'/'no'). Guard against the function not
-		// existing (e.g. in unit tests where WC isn't loaded) — when
-		// absent, behave as if coupons are enabled so production
-		// behavior is the only authoritative gate.
-		$wc_coupons_on = function_exists( 'wc_coupons_enabled' )
-			? (bool) wc_coupons_enabled()
-			: true;
-
-		if ( ! $wc_coupons_on ) {
-			return false;
-		}
-
-		$settings = WC_AI_Storefront::get_settings();
-		return 'yes' === ( $settings['allow_discount_codes'] ?? 'yes' );
+		return WC_AI_Storefront_Ucp::discount_capability_active();
 	}
 
 	/**

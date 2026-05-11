@@ -49,12 +49,14 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		// Defensive reset — another test (in this file or earlier in
-		// the suite) may have set `$test_settings` and skipped its
-		// own tearDown on assertion failure. The posture assertion
-		// below depends on `allow_discount_codes` reading its default
-		// `'yes'`; without this reset a stale `'no'` would suppress
-		// the discount capability and produce a confusing diff.
+		// Defensive reset — `WC_AI_Storefront::$test_settings` is a
+		// static property shared across the suite. A test in a
+		// DIFFERENT test class that mutates it and lacks its own
+		// reset in tearDown leaves the polluted state visible here.
+		// The posture assertion below depends on `allow_discount_codes`
+		// reading its default `'yes'`; without this reset a stale
+		// `'no'` would suppress the discount capability and produce
+		// a confusing diff.
 		WC_AI_Storefront::$test_settings = [];
 		$this->ucp                       = new WC_AI_Storefront_Ucp();
 

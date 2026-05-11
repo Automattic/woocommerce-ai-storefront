@@ -34,11 +34,13 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		// Defensive reset — another test may have set `$test_settings`
-		// and skipped its own tearDown (e.g. assertion failure exits
-		// before tearDown runs). Without this, manifest tests below
-		// would inherit the polluted state and assert the wrong
-		// capability set.
+		// Defensive reset — `WC_AI_Storefront::$test_settings` is a
+		// static property shared across the suite, so a test in a
+		// DIFFERENT test class that mutates it and lacks its own
+		// reset in tearDown leaves the polluted state visible here.
+		// (PHPUnit DOES still run tearDown on assertion failures —
+		// only fatals/process aborts skip it — so a missing reset
+		// is the bigger risk than a skipped one.)
 		WC_AI_Storefront::$test_settings = [];
 		$this->ucp                       = new WC_AI_Storefront_Ucp();
 
@@ -394,10 +396,10 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// Optional capabilities (e.g. `dev.ucp.shopping.discount`,
 		// added in v0.14.2) are advertised conditionally and have
 		// their own dedicated tests below — turn them OFF here so this
-		// base-case assertion stays stable. Without the toggle off,
-		// `discount_capability_active()` defaults to true (yes-merchant
-		// toggle + `function_exists('wc_coupons_enabled')` false-then-
-		// true behaviour in unit env) and the set grows to 5.
+		// base-case assertion stays stable. Without this toggle-off
+		// override, both gates of `discount_capability_active()` pass
+		// (setUp() stubs `wc_coupons_enabled` to true; the merchant
+		// toggle defaults to `'yes'`) and the set grows to 5.
 		//
 		// Extensions use the `extends` field to link back to the
 		// parent capability/service; canonical capabilities have

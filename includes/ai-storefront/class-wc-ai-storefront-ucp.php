@@ -420,6 +420,72 @@ class WC_AI_Storefront_Ucp {
 	}
 
 	/**
+	 * Whether the UCP discount-extension capability is currently active.
+	 *
+	 * Two gates, AND-ed (#376):
+	 *
+	 *   1. WC's core `wc_coupons_enabled()` returns true (merchant has
+	 *      not turned off coupons in WC core).
+	 *   2. Our merchant toggle `allow_discount_codes` is `'yes'`
+	 *      (default).
+	 *
+	 * Either gate failing → the capability is OFF. The checkout
+	 * envelope does NOT advertise `dev.ucp.shopping.discount`, and
+	 * inbound `discounts.codes[]` are dropped from the URL build.
+	 * Agents that supplied codes see three signals:
+	 *
+	 *   - The envelope's `capabilities` map omits
+	 *     `dev.ucp.shopping.discount` — spec-compliant agents won't
+	 *     retry codes against this endpoint.
+	 *   - An `info` message `discount_codes_unsupported` appears on
+	 *     the response so the drop is visible even to agents that
+	 *     didn't inspect capabilities first (e.g. stale cache).
+	 *   - A `WC_AI_Storefront_Logger::debug` line is recorded for
+	 *     merchant-side forensics when the `wc_ai_storefront_debug`
+	 *     filter is on.
+	 *
+	 * The request still 201s — no error response — so an agent that
+	 * cached our envelope from before the toggle was flipped doesn't
+	 * get a hard failure; just a soft signal that the code wasn't
+	 * applied.
+	 *
+	 * The WC-setting gate is mandatory because advertising a discount
+	 * capability that WC's hosted checkout would silently ignore is
+	 * worse UX than not advertising at all — the agent would relay a
+	 * code to the user that has no chance of applying.
+	 *
+	 * Lives on `WC_AI_Storefront_Ucp` (not the REST controller) so the
+	 * hot `/.well-known/ucp` manifest path can call it without
+	 * autoloading the 6k+ line REST controller class
+	 * (`WC_AI_Storefront_UCP_REST_Controller`). The REST controller
+	 * keeps a same-named passthrough method so its envelope/handler
+	 * call sites don't have to switch class names; both paths converge
+	 * here, single source of truth for the gating logic.
+	 *
+	 * Pure read of settings + WC core state — no side effects, safe
+	 * to call from any execution context.
+	 *
+	 * @return bool
+	 */
+	public static function discount_capability_active(): bool {
+		// `wc_coupons_enabled()` reads the `woocommerce_enable_coupons`
+		// core option ('yes'/'no'). Guard against the function not
+		// existing (e.g. in unit tests where WC isn't loaded) — when
+		// absent, behave as if coupons are enabled so production
+		// behavior is the only authoritative gate.
+		$wc_coupons_on = function_exists( 'wc_coupons_enabled' )
+			? (bool) wc_coupons_enabled()
+			: true;
+
+		if ( ! $wc_coupons_on ) {
+			return false;
+		}
+
+		$settings = WC_AI_Storefront::get_settings();
+		return 'yes' === ( $settings['allow_discount_codes'] ?? 'yes' );
+	}
+
+	/**
 	 * Build the canonical UCP shopping capability declarations.
 	 *
 	 * Iterates `CANONICAL_CAPABILITIES` and constructs both the
@@ -472,21 +538,26 @@ class WC_AI_Storefront_Ucp {
 	 *
 	 * Optional capabilities are spec-defined UCP extensions (NOT
 	 * merchant-specific extensions) whose presence is conditional on
-	 * either WC core state or merchant settings. Each entry mirrors the
-	 * per-response envelope advertisement so discovery (manifest) and
-	 * runtime (response capabilities map) stay in lockstep — agents
-	 * that inspect either signal see the same set of active capabilities.
+	 * either WC core state or merchant settings. Each entry uses the
+	 * same gating as the per-response envelope advertisement — both
+	 * surfaces call `discount_capability_active()` — so discovery
+	 * (manifest) and runtime (response capabilities map) stay in
+	 * lockstep on presence/absence. The binding SHAPE differs between
+	 * surfaces (manifest carries `spec` + `schema` URLs per platform
+	 * schema; envelope carries `version` only per response schema);
+	 * the lockstep claim here is about WHEN we advertise, not WHAT
+	 * fields the binding carries.
 	 *
 	 * Currently the only optional capability is
 	 * `dev.ucp.shopping.discount`. Advertised when BOTH:
 	 *   1. WC core's `wc_coupons_enabled()` returns true.
 	 *   2. The merchant's `allow_discount_codes` setting is `'yes'`.
 	 *
-	 * Both gates are checked by
-	 * `WC_AI_Storefront_UCP_REST_Controller::discount_capability_active()`,
+	 * Both gates are checked by `self::discount_capability_active()`,
 	 * which is the single source of truth — this helper delegates to
 	 * it rather than re-deriving the conditions, so the manifest and
-	 * envelope can't drift.
+	 * envelope (which also calls the same helper via a passthrough on
+	 * `WC_AI_Storefront_UCP_REST_Controller`) can't drift.
 	 *
 	 * The discount capability's `extends` is a SINGLE string
 	 * (`dev.ucp.shopping.checkout`), not an array, because the discount
@@ -503,7 +574,7 @@ class WC_AI_Storefront_Ucp {
 	private static function build_optional_capabilities( string $spec_base ): array {
 		$capabilities = [];
 
-		if ( WC_AI_Storefront_UCP_REST_Controller::discount_capability_active() ) {
+		if ( self::discount_capability_active() ) {
 			$capabilities['dev.ucp.shopping.discount'] = [
 				[
 					'version' => self::PROTOCOL_VERSION,
