@@ -99,6 +99,9 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( [] );
 		$product->shouldReceive( 'get_upsell_ids' )->andReturn( [] );
 		$product->shouldReceive( 'get_sku' )->andReturn( '' );
+		// Default to purchasable for the JSON-LD URL gate (#373).
+		$product->shouldReceive( 'is_purchasable' )
+			->andReturn( $overrides['is_purchasable'] ?? true );
 
 		// Argument-aware `is_type()` mock matching WC core: returns true
 		// only when the queried type matches the configured product type

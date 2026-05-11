@@ -149,26 +149,33 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	// Test helpers
 	// ------------------------------------------------------------------
 
-	private function seed_simple_product( int $id, int $price_minor = 1000, bool $in_stock = true ): void {
+	private function seed_simple_product(
+		int $id,
+		int $price_minor = 1000,
+		bool $in_stock = true,
+		bool $is_purchasable = true
+	): void {
 		$this->fake_store_api[ $id ] = [
-			'id'          => $id,
-			'name'        => 'Simple #' . $id,
-			'type'        => 'simple',
-			'is_in_stock' => $in_stock,
-			'prices'      => [
+			'id'             => $id,
+			'name'           => 'Simple #' . $id,
+			'type'           => 'simple',
+			'is_in_stock'    => $in_stock,
+			'is_purchasable' => $is_purchasable,
+			'prices'         => [
 				'price'         => (string) $price_minor,
 				'currency_code' => 'USD',
 			],
 		];
 	}
 
-	private function seed_variation( int $id, int $price_minor = 1500 ): void {
+	private function seed_variation( int $id, int $price_minor = 1500, bool $is_purchasable = true ): void {
 		$this->fake_store_api[ $id ] = [
-			'id'          => $id,
-			'name'        => 'T-Shirt',
-			'type'        => 'variation',
-			'is_in_stock' => true,
-			'prices'      => [
+			'id'             => $id,
+			'name'           => 'T-Shirt',
+			'type'           => 'variation',
+			'is_in_stock'    => true,
+			'is_purchasable' => $is_purchasable,
+			'prices'         => [
 				'price'         => (string) $price_minor,
 				'currency_code' => 'USD',
 			],
@@ -1471,6 +1478,84 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertCount( 1, $oos_messages );
 		$msg = array_values( $oos_messages )[0];
+		$this->assertEquals( '$.line_items[1].item.id', $msg['path'] );
+	}
+
+	public function test_unpurchasable_item_rejected_with_distinct_code(): void {
+		// #373: an item that is `is_in_stock: true` but
+		// `is_purchasable: false` (e.g. no price set, draft, hidden
+		// from catalog) must be rejected separately from OUT_OF_STOCK
+		// so agents can distinguish "no inventory" from "merchant
+		// misconfiguration". The translator filter at
+		// `fetch_variations_for()` drops these from catalog responses,
+		// but defense-in-depth here catches stale/guessed IDs.
+		$this->seed_simple_product( 222, 1000, true, false );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_222' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 200, $result['status'] );
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+		$this->assertCount( 0, $result['data']['line_items'] );
+
+		$errors = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::ITEM_UNPURCHASABLE === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $errors );
+		$msg = array_values( $errors )[0];
+		$this->assertEquals( 'error', $msg['type'] );
+		$this->assertEquals( 'unrecoverable', $msg['severity'] );
+
+		// And NO out_of_stock error — these codes are mutually exclusive
+		// at the routing point (in-stock items don't fall through to the
+		// out-of-stock branch).
+		$oos = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::OUT_OF_STOCK === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 0, $oos );
+	}
+
+	public function test_mixed_cart_excludes_unpurchasable_from_totals_and_line_items(): void {
+		// #373: mixed cart with one purchasable and one unpurchasable
+		// item — the purchasable item must flow through cleanly while
+		// the unpurchasable item surfaces as a message and is excluded
+		// from every output field that carries chargeable items.
+		// Mirrors the OOS test pattern.
+		$this->seed_simple_product( 300, 1500, true, true );    // $15, purchasable
+		$this->seed_simple_product( 400, 2500, true, false );   // $25, NOT purchasable
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_300' ], 'quantity' => 2 ],   // $30
+					[ 'item' => [ 'id' => 'prod_400' ], 'quantity' => 1 ],   // unpurchasable — excluded
+				],
+			]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
+
+		// continue_url contains only the purchasable item.
+		$this->assertStringContainsString( '300:2', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '400', $result['data']['continue_url'] );
+
+		$this->assertCount( 1, $result['data']['line_items'] );
+		$this->assertEquals( 'prod_300', $result['data']['line_items'][0]['item']['id'] );
+
+		// Subtotal reflects ONLY the purchasable item (2 × $15 = 3000).
+		$this->assertSame( 3000, $result['data']['totals'][0]['amount'] );
+
+		$unpurchasable = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::ITEM_UNPURCHASABLE === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $unpurchasable );
+		$msg = array_values( $unpurchasable )[0];
 		$this->assertEquals( '$.line_items[1].item.id', $msg['path'] );
 	}
 

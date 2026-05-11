@@ -110,6 +110,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_sku' )->andReturn( '' );
 		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( [] );
 		$product->shouldReceive( 'get_upsell_ids' )->andReturn( [] );
+		// Default to purchasable; the JSON-LD URL gate (#373) calls
+		// `is_purchasable()` before emitting `BuyAction` /
+		// `checkoutPageURLTemplate`.
+		$product->shouldReceive( 'is_purchasable' )->andReturn( true );
 
 		// Argument-aware `is_type()` mock matching WC core: returns true
 		// only when the queried type matches 'simple' (the type return-

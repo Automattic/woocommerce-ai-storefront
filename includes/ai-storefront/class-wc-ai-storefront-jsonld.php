@@ -136,9 +136,19 @@ class WC_AI_Storefront_JsonLd {
 			return $markup;
 		}
 
-		$this->add_buy_action( $markup, $product );
-
-		$this->add_checkout_page_url_template( $markup, $product );
+		// Skip checkout action URLs when the product itself is not
+		// purchasable (no price, draft, catalog-hidden). The descriptive
+		// product entity still emits — crawlers see the product exists,
+		// just without a monetary action that would 4xx at checkout. For
+		// variable parents, `maybe_convert_to_product_group()` later
+		// overrides this by converting to ProductGroup and emitting
+		// per-variant entries under `hasVariant`, each gated
+		// independently (see `build_variant_entry`). (#373)
+		$parent_purchasable = ! method_exists( $product, 'is_purchasable' ) || $product->is_purchasable();
+		if ( $parent_purchasable ) {
+			$this->add_buy_action( $markup, $product );
+			$this->add_checkout_page_url_template( $markup, $product );
+		}
 
 		$this->add_inventory_level( $markup, $product );
 
@@ -1132,8 +1142,18 @@ class WC_AI_Storefront_JsonLd {
 		// BuyAction + checkoutPageURLTemplate both use the VARIATION ID
 		// (not the parent product ID) so the URL drops the buyer on
 		// checkout with the specific SKU.
-		$this->add_buy_action( $entry, $variation );
-		$this->add_checkout_page_url_template( $entry, $variation );
+		//
+		// Skip BOTH when the variation is not purchasable (e.g. no
+		// price set, draft, catalog-hidden). Emitting a Shareable
+		// Checkout URL for an unpurchasable SKU hands SEO crawlers and
+		// non-UCP agents a URL that WC will refuse at checkout. The
+		// descriptive variant entry (@id, name, sku, image) still
+		// emits — agents see the variant exists, just without a
+		// monetary action attached. (#373)
+		if ( ! method_exists( $variation, 'is_purchasable' ) || $variation->is_purchasable() ) {
+			$this->add_buy_action( $entry, $variation );
+			$this->add_checkout_page_url_template( $entry, $variation );
+		}
 
 		return $entry;
 	}

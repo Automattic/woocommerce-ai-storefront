@@ -2,6 +2,12 @@
 
 ### Features
 ### Fixes
+
+- **UCP / JSON-LD: unpurchasable variations no longer leak to agents.** Closes #373. A misconfigured variation (e.g. missing a price) was emitted with a usable-looking variant ID and a checkout URL that WC then refused at cart-add. Three coordinated guards:
+  - **UCP catalog/search/lookup:** `fetch_variations_for()` now drops variations where `is_purchasable: false` before they reach the product translator. If every variation of a variable parent is unpurchasable, falls through to the existing `synthesize_default()` placeholder so the schema's `variants: minItems: 1` constraint still holds.
+  - **UCP /checkout-sessions:** a stale or guessed unpurchasable variant ID is rejected with the new `item_unpurchasable` error code (distinct from `out_of_stock`) so agents can tell "no inventory" apart from "merchant misconfiguration / not for sale". Mixed carts retain purchasable line items while excluding unpurchasable ones from `continue_url`, `line_items[]`, and `totals`.
+  - **JSON-LD:** unpurchasable variant entries under `hasVariant[]` emit descriptive fields (`@id`, `name`, `sku`, `image`, `offers[].price`) but suppress `BuyAction` and `Offer.checkoutPageURLTemplate`. Same treatment for the parent shape on an unpurchasable simple/variable parent.
+
 ### Refactors
 ### Tests
 ### Docs

@@ -3697,9 +3697,30 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
+		// Drop variations that WC reports as not purchasable. A no-price
+		// or misconfigured variation still has `is_in_stock = true` in
+		// WC but `is_purchasable = false` — handing its ID to an agent
+		// would lead to a `/checkout-link/?products=<id>:1` URL that WC
+		// refuses to add to cart. Filter upstream of `extract_variants()`
+		// so all three downstream surfaces (catalog response, JSON-LD
+		// `hasVariant`, checkout-sessions `continue_url`) see the same
+		// purchasable-only set. When every variation is unpurchasable,
+		// the resulting empty array trips `extract_variants()`'s
+		// synthesize_default fallback, surfacing the parent shape
+		// (typically also unpurchasable) which downstream code already
+		// handles as a degraded entry. (#373)
+		$variations = array_values(
+			array_filter(
+				$variations,
+				static function ( $v ): bool {
+					return ! isset( $v['is_purchasable'] ) || true === $v['is_purchasable'];
+				}
+			)
+		);
+
 		// Skipped = everything the product declared that didn't make it
 		// into $variations. Includes cap-truncated + scope-filtered +
-		// fetch-failed + malformed-ref entries.
+		// fetch-failed + malformed-ref + unpurchasable entries.
 		$skipped = $total_declared - count( $variations );
 
 		if ( $skipped > 0 ) {
@@ -5194,6 +5215,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
+		// Unpurchasable rejected outright (#373). `is_purchasable` is
+		// independent from `is_in_stock`: a variation with stock but
+		// no price reads `is_in_stock=true, is_purchasable=false`. The
+		// translator filter at `fetch_variations_for()` already drops
+		// these from catalog/JSON-LD responses, but a stale or guessed
+		// variant ID could still arrive here. Reject early with a
+		// distinct code so the agent can distinguish "no inventory"
+		// from "merchant misconfiguration / not for sale".
+		$purchasable = ! isset( $wc_product['is_purchasable'] ) || true === $wc_product['is_purchasable'];
+		if ( ! $purchasable ) {
+			return array(
+				'processed' => null,
+				'messages'  => array( self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::ITEM_UNPURCHASABLE, $path . '.item.id' ) ),
+			);
+		}
+
 		$unit_price_minor = (int) ( $wc_product['prices']['price'] ?? 0 );
 
 		// --- Price-drift warning (agent opt-in) ---
@@ -5990,6 +6027,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				return __( 'Product type cannot be added via the Shareable Checkout URL; link to the product page directly.', 'woocommerce-ai-storefront' );
 			case WC_AI_Storefront_UCP_Error_Codes::OUT_OF_STOCK:
 				return __( 'Product is out of stock.', 'woocommerce-ai-storefront' );
+			case WC_AI_Storefront_UCP_Error_Codes::ITEM_UNPURCHASABLE:
+				return __( 'Product is not available for purchase.', 'woocommerce-ai-storefront' );
 			case WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED:
 				// Caller overrides with the more specific message; default
 				// here matches in case the override is ever dropped.
