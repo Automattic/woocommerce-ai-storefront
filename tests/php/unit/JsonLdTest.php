@@ -4036,10 +4036,19 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	}
 
-	public function test_subscription_signals_skipped_when_wcs_not_active(): void {
-		// Without WC Subscriptions, no product is a subscription.
-		// The stub treats absence-from-$test_data as "not a subscription"
-		// for is_subscription() — emulating wcs_is_subscription() returning false.
+	public function test_subscription_signals_skipped_for_non_subscription_product(): void {
+		// This test covers the `is_subscription( $product )` gate
+		// specifically — i.e. WC Subscriptions IS loaded (the
+		// `function_exists('wcs_is_subscription')` + `class_exists`
+		// guards pass) but THIS product isn't a subscription. Absence
+		// from the stub's `$test_data` map makes `is_subscription()`
+		// return false for the product ID.
+		//
+		// The plugin-not-active path (the outer `function_exists` /
+		// `class_exists` gates) can't be exercised in this test class
+		// because the stubs are unconditionally loaded by
+		// `tests/php/stubs.php` — that gate is covered structurally
+		// by the gates' own existence, not by a test.
 		WC_Subscriptions_Product::$test_data = []; // Explicit reset.
 
 		$product = $this->make_product();
