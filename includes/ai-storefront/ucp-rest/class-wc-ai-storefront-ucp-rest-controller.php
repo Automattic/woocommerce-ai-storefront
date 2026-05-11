@@ -3214,10 +3214,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *   2. Our merchant toggle `allow_discount_codes` is `'yes'`
 	 *      (default).
 	 *
-	 * Either gate failing → the capability is OFF: the checkout
+	 * Either gate failing → the capability is OFF. The checkout
 	 * envelope does NOT advertise `dev.ucp.shopping.discount`, and
-	 * inbound `discounts.codes[]` are silently dropped with a debug
-	 * log (no error response — tolerant of stale agent caches).
+	 * inbound `discounts.codes[]` are dropped from the URL build.
+	 * Agents that supplied codes see three signals:
+	 *
+	 *   - The envelope's `capabilities` map omits
+	 *     `dev.ucp.shopping.discount` — spec-compliant agents won't
+	 *     retry codes against this endpoint.
+	 *   - An `info` message `discount_codes_unsupported` appears on
+	 *     the response so the drop is visible even to agents that
+	 *     didn't inspect capabilities first (e.g. stale cache).
+	 *   - A `WC_AI_Storefront_Logger::debug` line is recorded for
+	 *     merchant-side forensics when the `wc_ai_storefront_debug`
+	 *     filter is on.
+	 *
+	 * The request still 201s — no error response — so an agent that
+	 * cached our envelope from before the toggle was flipped doesn't
+	 * get a hard failure; just a soft signal that the code wasn't
+	 * applied.
 	 *
 	 * The WC-setting gate is mandatory because advertising a discount
 	 * capability that WC's hosted checkout would silently ignore is

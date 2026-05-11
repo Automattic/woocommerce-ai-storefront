@@ -1571,11 +1571,12 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_discount_capability_advertised_when_toggle_on(): void {
-		// Default settings (allow_discount_codes => 'yes') + no
-		// wc_coupons_enabled stub (function absent in unit env →
-		// helper treats coupons as enabled). The capability map in
-		// the envelope MUST include `dev.ucp.shopping.discount`
-		// alongside the always-present checkout capability.
+		// Default settings (allow_discount_codes => 'yes') + the
+		// `wc_coupons_enabled` stub from setUp() returning `true`
+		// (default for tests that don't exercise the WC-disabled
+		// branch). The capability map in the envelope MUST include
+		// `dev.ucp.shopping.discount` alongside the always-present
+		// checkout capability.
 		WC_AI_Storefront::$test_settings = [
 			'enabled'              => 'yes',
 			'allow_discount_codes' => 'yes',
