@@ -54,10 +54,6 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 
 		Functions\when( '__' )->returnArg();
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
-		// `discount_capability_active()` runs on every checkout
-		// response (it gates the envelope's capability advertisement),
-		// so even the unsupported-method handler needs this stub. (#376)
-		Functions\when( 'wc_coupons_enabled' )->justReturn( true );
 	}
 
 	protected function tearDown(): void {

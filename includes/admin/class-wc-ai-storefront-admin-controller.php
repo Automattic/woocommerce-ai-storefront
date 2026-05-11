@@ -141,18 +141,6 @@ class WC_AI_Storefront_Admin_Controller {
 								),
 							),
 						),
-						// Discount-code pass-through toggle (#376). When
-						// 'yes' AND WC coupons are enabled, the
-						// /checkout-sessions response envelope advertises
-						// the `dev.ucp.shopping.discount` capability and
-						// the handler appends agent-supplied codes to
-						// `continue_url` as `coupon-code=`. Strict enum
-						// (yes/no only) — same shape as
-						// `allow_unknown_ucp_agents`.
-						'allow_discount_codes'     => array(
-							'type' => 'string',
-							'enum' => array( 'yes', 'no' ),
-						),
 					),
 				),
 			)
@@ -410,7 +398,7 @@ class WC_AI_Storefront_Admin_Controller {
 	public function update_settings( $request ) {
 		$data = array();
 
-		$fields = array( 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'return_policy', 'handling_time', 'allow_discount_codes' );
+		$fields = array( 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'return_policy', 'handling_time' );
 		foreach ( $fields as $field ) {
 			$value = $request->get_param( $field );
 			if ( null !== $value ) {

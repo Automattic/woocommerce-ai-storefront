@@ -347,38 +347,4 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 			);
 		}
 	}
-
-	// ------------------------------------------------------------------
-	// allow_discount_codes (#376) — controller-layer round-trip
-	// ------------------------------------------------------------------
-	// #380 review caught a two-layer drop bug: the admin controller's
-	// `$fields` whitelist had to include `allow_discount_codes` before
-	// the POSTed value would reach the model. The
-	// `UpdateSettingsSanitizationTest` covers the model layer (calling
-	// `WC_AI_Storefront::update_settings()` directly); these tests
-	// cover the controller layer (calling the REST handler) so a
-	// regression that re-drops the key from `$fields` is caught here.
-
-	public function test_post_persists_allow_discount_codes_no_via_controller(): void {
-		$this->post_settings( [ 'allow_discount_codes' => 'no' ] );
-
-		$this->assertSame(
-			'no',
-			WC_AI_Storefront::get_settings()['allow_discount_codes']
-		);
-	}
-
-	public function test_post_persists_allow_discount_codes_yes_via_controller(): void {
-		// First force `'no'` to detect "default-leak" (a get returning
-		// 'yes' wouldn't prove anything because 'yes' is also the
-		// default).
-		WC_AI_Storefront::update_settings( [ 'allow_discount_codes' => 'no' ] );
-
-		$this->post_settings( [ 'allow_discount_codes' => 'yes' ] );
-
-		$this->assertSame(
-			'yes',
-			WC_AI_Storefront::get_settings()['allow_discount_codes']
-		);
-	}
 }
