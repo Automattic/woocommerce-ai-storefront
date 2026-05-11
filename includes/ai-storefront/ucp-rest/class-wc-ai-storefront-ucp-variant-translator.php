@@ -278,7 +278,16 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		$variant = [
 			'id'          => self::VARIANT_ID_PREFIX . $id . self::DEFAULT_VARIANT_SUFFIX,
 			'title'       => self::decode( (string) ( $wc_product['name'] ?? '' ) ),
-			'description' => [ 'plain' => '' ],
+			// Carry the parent's short_description through to the
+			// synthesized variant (#375). For a UCP agent that drills
+			// into a variant ID directly, the variant entity IS what
+			// they see — emitting an empty description when the parent
+			// has useful copy made the variant look uninformative even
+			// though the data existed one level up. Uses the same
+			// `extract_description()` helper as the real-variation
+			// path, so a missing short_description still degrades
+			// gracefully to `description.plain = ""`.
+			'description' => self::extract_description( $wc_product ),
 			// `price` — UCP-required active price. See translate() above.
 			'price'       => self::extract_price( $wc_product ),
 		];

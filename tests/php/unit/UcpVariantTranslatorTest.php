@@ -226,16 +226,48 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'Widget', $result['title'] );
 	}
 
-	public function test_synthesize_default_emits_empty_description(): void {
-		// Simple products have their own description at the product level;
-		// we don't duplicate it onto the variant. Empty string keeps
-		// the schema-required description.plain field present but not
-		// redundant.
+	public function test_synthesize_default_emits_empty_description_when_source_has_none(): void {
+		// Source fixture has no `short_description` → synthesized variant
+		// emits `description.plain = ""`. Schema-required key present;
+		// no fabricated content. (#375 graceful-degradation path.)
 		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default(
 			$this->simple_product_fixture()
 		);
 
-		$this->assertEquals( '', $result['description']['plain'] );
+		$this->assertSame( '', $result['description']['plain'] );
+	}
+
+	public function test_synthesize_default_carries_parent_short_description_through(): void {
+		// #375: when the parent product has a `short_description`, the
+		// synthesized variant carries it through (after the same
+		// strip-tags + decode-entities treatment the real-variation path
+		// uses). For a UCP agent that drills into the variant ID directly,
+		// the variant entity IS what they see — emitting an empty
+		// description when the parent has useful copy made the variant
+		// look uninformative even though the data existed one level up.
+		$fixture                      = $this->simple_product_fixture();
+		$fixture['short_description'] = '<p>A timeless oxford-weave button-down.</p>';
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $fixture );
+
+		$this->assertSame(
+			'A timeless oxford-weave button-down.',
+			$result['description']['plain']
+		);
+	}
+
+	public function test_synthesize_default_decodes_html_entities_in_description(): void {
+		// HTML entity decoding mirrors the real-variation path: a
+		// merchant typing `Piero's` in the rich-text editor surfaces
+		// as `Piero&#039;s` in Store API output (encoded for HTML
+		// safety). After our decode, agents JSON-parsing the response
+		// get the literal apostrophe.
+		$fixture                      = $this->simple_product_fixture();
+		$fixture['short_description'] = "Piero&#039;s pick &mdash; a classic.";
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default( $fixture );
+
+		$this->assertSame( "Piero's pick — a classic.", $result['description']['plain'] );
 	}
 
 	public function test_synthesize_default_copies_price_from_product(): void {
