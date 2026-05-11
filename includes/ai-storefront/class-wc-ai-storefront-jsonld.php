@@ -152,6 +152,7 @@ class WC_AI_Storefront_JsonLd {
 		$country       = $base_location['country'] ?? '';
 
 		$this->add_currency( $markup );
+		$this->add_subscription_signals( $markup, $product );
 		$this->decode_seller_name( $markup );
 		$this->add_shipping_details( $markup, $country );
 		$this->add_handling_time( $markup, $settings );
@@ -276,6 +277,141 @@ class WC_AI_Storefront_JsonLd {
 			array_merge( array( 'products' => $product->get_id() . ':1' ), $utm_args ),
 			home_url( '/checkout-link/' )
 		);
+	}
+
+	/**
+	 * Adds subscription-billing signals to `offers[0]` when WC Subscriptions
+	 * is active and the product is a recurring-billing product.
+	 *
+	 * Emits these Schema.org fields on the Offer (per
+	 * https://schema.org/UnitPriceSpecification and related):
+	 *
+	 *   - `priceSpecification` — an array of one or more
+	 *     `UnitPriceSpecification` entries describing recurring price
+	 *     components. Each entry carries `billingDuration` (ISO 8601),
+	 *     `priceComponentType: Subscription` for the recurring price,
+	 *     and an optional `billingStart` for the trial-then-paid pattern.
+	 *     A separate entry with `priceComponentType: ActivationFee`
+	 *     carries the one-shot sign-up fee when set.
+	 *   - `addOn` — a one-shot `Offer` carrying the sign-up fee, emitted
+	 *     alongside the inline `ActivationFee` `UnitPriceSpecification`
+	 *     for backward compatibility with consumers that don't
+	 *     recognize the `priceComponentType` enumeration (which is still
+	 *     marked "new" per Schema.org's own framing).
+	 *   - `eligibleDuration` — a `QuantitativeValue` carrying the total
+	 *     duration when the merchant set a finite subscription length
+	 *     (`get_length() > 0`); omitted for indefinite subscriptions.
+	 *
+	 * Gating: `function_exists('wcs_is_subscription')` + the
+	 * `WC_Subscriptions_Product` class check are both required — the
+	 * helper is a no-op for stores without WC Subscriptions active.
+	 *
+	 * Tax handling: this helper reads raw `get_sign_up_fee()` (no
+	 * include/exclude-tax variant). Mirrors what the existing
+	 * `build_variant_offer_skeleton` does for the variant price — the
+	 * JSON-LD output stays consistent in its tax-inclusivity stance
+	 * across all fields.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product (simple subscription) or
+	 *                            variation (subscription_variation under
+	 *                            a variable-subscription parent).
+	 */
+	private function add_subscription_signals( array &$markup, $product ): void {
+		// Fail-closed if WC Subscriptions isn't active — every call to
+		// `WC_Subscriptions_Product::*` would otherwise fatal.
+		if ( ! function_exists( 'wcs_is_subscription' ) || ! class_exists( 'WC_Subscriptions_Product', false ) ) {
+			return;
+		}
+		if ( ! WC_Subscriptions_Product::is_subscription( $product ) ) {
+			return;
+		}
+		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
+			return;
+		}
+
+		$period       = WC_Subscriptions_Product::get_period( $product );
+		$interval     = WC_Subscriptions_Product::get_interval( $product );
+		$length       = WC_Subscriptions_Product::get_length( $product );
+		$signup_fee   = (float) WC_Subscriptions_Product::get_sign_up_fee( $product );
+		$trial_length = WC_Subscriptions_Product::get_trial_length( $product );
+		$trial_period = WC_Subscriptions_Product::get_trial_period( $product );
+
+		// Read currency from the already-hoisted top-level Offer field
+		// (`add_currency()` runs before this enricher). Fall back to
+		// `get_woocommerce_currency()` for the rare case where
+		// `add_currency` didn't hoist — usually because there's no
+		// price for it to read.
+		$currency = (string) ( $markup['offers'][0]['priceCurrency'] ?? '' );
+		if ( '' === $currency ) {
+			$currency = function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : 'USD';
+		}
+		$price = (string) ( $markup['offers'][0]['price'] ?? '0' );
+
+		$price_specs = array();
+
+		// Trial entry: emitted when the merchant set a trial. Free by
+		// definition — WC Subscriptions' trial period IS the free
+		// window. The recurring entry below picks up `billingStart`
+		// pointed at the end of this trial.
+		$has_trial = $trial_length > 0;
+		if ( $has_trial ) {
+			$price_specs[] = array(
+				'@type'              => 'UnitPriceSpecification',
+				'priceComponentType' => 'https://schema.org/Subscription',
+				'price'              => '0',
+				'priceCurrency'      => $currency,
+				'billingDuration'    => self::period_to_iso8601_duration( $trial_period, $trial_length ),
+			);
+		}
+
+		// Recurring entry: always present for a subscription product.
+		$recurring = array(
+			'@type'              => 'UnitPriceSpecification',
+			'priceComponentType' => 'https://schema.org/Subscription',
+			'price'              => $price,
+			'priceCurrency'      => $currency,
+			'billingDuration'    => self::period_to_iso8601_duration( $period, $interval ),
+		);
+		if ( $has_trial ) {
+			$recurring['billingStart'] = self::period_to_iso8601_duration( $trial_period, $trial_length );
+		}
+		$price_specs[] = $recurring;
+
+		// Sign-up fee: emit BOTH the inline `ActivationFee` priceComponent
+		// AND `Offer.addOn` for compat (decision #1 — "future-ready now").
+		// Inline form is semantically richer (`priceComponentType`
+		// enumeration); `addOn` uses released vocabulary that broader
+		// consumers will recognize today. Duplication is spec-legal.
+		if ( $signup_fee > 0 ) {
+			$signup_fee_str = (string) WC_Subscriptions_Product::get_sign_up_fee( $product );
+			$price_specs[]  = array(
+				'@type'              => 'UnitPriceSpecification',
+				'priceComponentType' => 'https://schema.org/ActivationFee',
+				'price'              => $signup_fee_str,
+				'priceCurrency'      => $currency,
+			);
+			$markup['offers'][0]['addOn'] = array(
+				'@type'         => 'Offer',
+				'name'          => 'Sign-up fee',
+				'price'         => $signup_fee_str,
+				'priceCurrency' => $currency,
+			);
+		}
+
+		$markup['offers'][0]['priceSpecification'] = $price_specs;
+
+		// Finite-length subscription: emit `eligibleDuration` carrying
+		// the total number of recurring periods. Indefinite
+		// subscriptions (length === 0) omit this field per
+		// QuantitativeValue's semantics — no duration to express.
+		if ( $length > 0 ) {
+			$markup['offers'][0]['eligibleDuration'] = array(
+				'@type'    => 'QuantitativeValue',
+				'value'    => $length,
+				'unitCode' => self::period_to_uncefact_code( $period ),
+			);
+		}
 	}
 
 	/**
@@ -917,6 +1053,7 @@ class WC_AI_Storefront_JsonLd {
 		// final-sale override (deferred — Pattern B in the meta-box design).
 		$this->add_inventory_level( $entry, $variation );
 		$this->add_currency( $entry );
+		$this->add_subscription_signals( $entry, $variation );
 		$this->add_shipping_details( $entry, $country );
 		$this->add_handling_time( $entry, $settings );
 		$this->add_return_policy( $entry, $parent_product, $settings, $country );

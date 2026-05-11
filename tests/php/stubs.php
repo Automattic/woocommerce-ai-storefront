@@ -690,3 +690,73 @@ if ( ! class_exists( 'WC_DateTime_Stub' ) ) {
 		}
 	}
 }
+
+// WC Subscriptions plugin stub. The plugin is optional — only present
+// when the merchant has it activated. Subscription-signal emission in
+// JSON-LD detects the plugin via `function_exists('wcs_is_subscription')`
+// and reads per-product configuration via `WC_Subscriptions_Product`
+// static getters. Tests drive the helper by writing to the public-static
+// override properties on the stub (same pattern as `WC_AI_Storefront::$test_settings`).
+if ( ! class_exists( 'WC_Subscriptions_Product' ) ) {
+	class WC_Subscriptions_Product {
+		// Per-product override map keyed by product ID. Tests set entries
+		// like `$test_data[42] = ['period' => 'month', 'interval' => 1, ...]`
+		// before invoking the JSON-LD emitter. A missing entry means "this
+		// product isn't a subscription" — is_subscription() returns false.
+		public static array $test_data = [];
+
+		public static function is_subscription( $product ): bool {
+			$id = self::id_of( $product );
+			return isset( self::$test_data[ $id ] );
+		}
+
+		public static function get_period( $product ): string {
+			$id = self::id_of( $product );
+			return (string) ( self::$test_data[ $id ]['period'] ?? 'month' );
+		}
+
+		public static function get_interval( $product ): int {
+			$id = self::id_of( $product );
+			return (int) ( self::$test_data[ $id ]['interval'] ?? 1 );
+		}
+
+		public static function get_length( $product ): int {
+			$id = self::id_of( $product );
+			return (int) ( self::$test_data[ $id ]['length'] ?? 0 );
+		}
+
+		public static function get_sign_up_fee( $product ): string {
+			$id = self::id_of( $product );
+			return (string) ( self::$test_data[ $id ]['sign_up_fee'] ?? '0' );
+		}
+
+		public static function get_trial_length( $product ): int {
+			$id = self::id_of( $product );
+			return (int) ( self::$test_data[ $id ]['trial_length'] ?? 0 );
+		}
+
+		public static function get_trial_period( $product ): string {
+			$id = self::id_of( $product );
+			return (string) ( self::$test_data[ $id ]['trial_period'] ?? 'month' );
+		}
+
+		// WC Subscriptions accepts either a product object or an ID; the
+		// real implementation does the same coercion. Tests pass mocks
+		// whose `get_id()` returns an int.
+		private static function id_of( $product ): int {
+			if ( is_int( $product ) ) {
+				return $product;
+			}
+			if ( is_object( $product ) && method_exists( $product, 'get_id' ) ) {
+				return (int) $product->get_id();
+			}
+			return 0;
+		}
+	}
+}
+
+if ( ! function_exists( 'wcs_is_subscription' ) ) {
+	function wcs_is_subscription( $product ): bool {
+		return WC_Subscriptions_Product::is_subscription( $product );
+	}
+}

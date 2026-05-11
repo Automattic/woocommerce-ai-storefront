@@ -3863,4 +3863,196 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'MON', $this->invoke_jsonld_static( 'period_to_uncefact_code', 'fortnight' ) );
 		$this->assertSame( 'MON', $this->invoke_jsonld_static( 'period_to_uncefact_code', '' ) );
 	}
+
+	// ------------------------------------------------------------------
+	// add_subscription_signals — #368 Steps 3-7
+	//
+	// Enriches `offers[0]` with `priceSpecification` (UnitPriceSpecification),
+	// `addOn` (one-shot sign-up fee), and `eligibleDuration` (finite
+	// subscription length). Reads WC Subscriptions configuration via
+	// the `WC_Subscriptions_Product` static stub.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Seed the WC_Subscriptions_Product test stub with per-product
+	 * configuration. Tests call this in setup, then invoke
+	 * `enhance_product_data` against a make_product mock whose
+	 * `get_id()` returns the same key.
+	 */
+	private function seed_subscription( int $product_id, array $overrides = [] ): void {
+		WC_Subscriptions_Product::$test_data[ $product_id ] = array_merge(
+			[
+				'period'       => 'month',
+				'interval'     => 1,
+				'length'       => 0,
+				'sign_up_fee'  => '0',
+				'trial_length' => 0,
+				'trial_period' => 'month',
+			],
+			$overrides
+		);
+	}
+
+	protected function tearDownSubscriptions(): void {
+		WC_Subscriptions_Product::$test_data = [];
+	}
+
+	public function test_simple_subscription_emits_recurring_price_specification(): void {
+		// Annual subscription at $100/year, no trial, no sign-up fee,
+		// indefinite. Should emit a single UnitPriceSpecification
+		// entry with priceComponentType=Subscription and billingDuration=P1Y.
+		$this->seed_subscription( 42, [ 'period' => 'year', 'interval' => 1 ] );
+		$product = $this->make_product();
+		$markup  = [
+			'@type'  => 'Product',
+			'offers' => [ [ '@type' => 'Offer', 'price' => '100.00', 'priceCurrency' => 'USD' ] ],
+		];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayHasKey( 'priceSpecification', $result['offers'][0] );
+		$this->assertCount( 1, $result['offers'][0]['priceSpecification'] );
+		$spec = $result['offers'][0]['priceSpecification'][0];
+		$this->assertSame( 'UnitPriceSpecification', $spec['@type'] );
+		$this->assertSame( 'https://schema.org/Subscription', $spec['priceComponentType'] );
+		$this->assertSame( '100.00', $spec['price'] );
+		$this->assertSame( 'USD', $spec['priceCurrency'] );
+		$this->assertSame( 'P1Y', $spec['billingDuration'] );
+		$this->assertArrayNotHasKey( 'billingStart', $spec, 'No trial → no billingStart.' );
+		// No fee → no addOn, no ActivationFee entry, no eligibleDuration.
+		$this->assertArrayNotHasKey( 'addOn', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'eligibleDuration', $result['offers'][0] );
+
+		$this->tearDownSubscriptions();
+	}
+
+	public function test_subscription_with_trial_emits_two_element_price_specification(): void {
+		// 14-day free trial, then $10/month recurring. Should emit:
+		// - trial entry: price=0, billingDuration=P14D
+		// - recurring entry: price=10, billingDuration=P1M, billingStart=P14D
+		$this->seed_subscription( 42, [
+			'period'       => 'month',
+			'interval'     => 1,
+			'trial_length' => 14,
+			'trial_period' => 'day',
+		] );
+		$product = $this->make_product();
+		$markup  = [
+			'@type'  => 'Product',
+			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
+		];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$specs = $result['offers'][0]['priceSpecification'];
+		$this->assertCount( 2, $specs );
+		// Trial entry — free for 14 days.
+		$this->assertSame( '0', $specs[0]['price'] );
+		$this->assertSame( 'P14D', $specs[0]['billingDuration'] );
+		$this->assertSame( 'https://schema.org/Subscription', $specs[0]['priceComponentType'] );
+		$this->assertArrayNotHasKey( 'billingStart', $specs[0] );
+		// Recurring entry — $10/month starting AFTER the trial.
+		$this->assertSame( '10.00', $specs[1]['price'] );
+		$this->assertSame( 'P1M', $specs[1]['billingDuration'] );
+		$this->assertSame( 'P14D', $specs[1]['billingStart'] );
+
+		$this->tearDownSubscriptions();
+	}
+
+	public function test_subscription_with_signup_fee_emits_both_addOn_and_inline_activation_fee(): void {
+		// $5 sign-up fee + $10/month recurring. Decision #1 "future-ready
+		// now" — emit BOTH `Offer.addOn` (released vocabulary) AND an
+		// inline UnitPriceSpecification with priceComponentType=ActivationFee
+		// (still-experimental enumeration, semantically richer).
+		// Spec-legal duplication.
+		$this->seed_subscription( 42, [
+			'period'       => 'month',
+			'interval'     => 1,
+			'sign_up_fee'  => '5.00',
+		] );
+		$product = $this->make_product();
+		$markup  = [
+			'@type'  => 'Product',
+			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
+		];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		// Inline ActivationFee priceComponent — last entry in the priceSpecification array.
+		$specs = $result['offers'][0]['priceSpecification'];
+		$this->assertCount( 2, $specs, 'Recurring + ActivationFee entries.' );
+		$activation_fee = end( $specs );
+		$this->assertSame( 'UnitPriceSpecification', $activation_fee['@type'] );
+		$this->assertSame( 'https://schema.org/ActivationFee', $activation_fee['priceComponentType'] );
+		$this->assertSame( '5.00', $activation_fee['price'] );
+
+		// Offer.addOn — compat shape for consumers that don't recognize
+		// priceComponentType.
+		$this->assertArrayHasKey( 'addOn', $result['offers'][0] );
+		$this->assertSame( 'Offer', $result['offers'][0]['addOn']['@type'] );
+		$this->assertSame( '5.00', $result['offers'][0]['addOn']['price'] );
+		$this->assertSame( 'Sign-up fee', $result['offers'][0]['addOn']['name'] );
+
+		$this->tearDownSubscriptions();
+	}
+
+	public function test_subscription_with_finite_length_emits_eligible_duration(): void {
+		// 12-month finite-length subscription. Should emit
+		// eligibleDuration as a QuantitativeValue with unitCode=MON.
+		$this->seed_subscription( 42, [
+			'period'   => 'month',
+			'interval' => 1,
+			'length'   => 12,
+		] );
+		$product = $this->make_product();
+		$markup  = [
+			'@type'  => 'Product',
+			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
+		];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayHasKey( 'eligibleDuration', $result['offers'][0] );
+		$dur = $result['offers'][0]['eligibleDuration'];
+		$this->assertSame( 'QuantitativeValue', $dur['@type'] );
+		$this->assertSame( 12, $dur['value'] );
+		$this->assertSame( 'MON', $dur['unitCode'] );
+
+		$this->tearDownSubscriptions();
+	}
+
+	public function test_subscription_signals_skipped_when_wcs_not_active(): void {
+		// Without WC Subscriptions, no product is a subscription.
+		// The stub treats absence-from-$test_data as "not a subscription"
+		// for is_subscription() — emulating wcs_is_subscription() returning false.
+		WC_Subscriptions_Product::$test_data = []; // Explicit reset.
+
+		$product = $this->make_product();
+		$markup  = [
+			'@type'  => 'Product',
+			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
+		];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayNotHasKey( 'priceSpecification', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'addOn', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'eligibleDuration', $result['offers'][0] );
+	}
+
+	public function test_subscription_signals_skipped_when_no_offers(): void {
+		// Defensive: enhance_product_data may run against a markup
+		// without offers[] (rare but possible — JSON-LD filters can
+		// strip the offer array). The enricher should no-op silently.
+		$this->seed_subscription( 42 );
+		$product = $this->make_product();
+		$markup  = [ '@type' => 'Product' ];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		// We don't care what offers[0] contains; just that no fatal occurs.
+		$this->assertIsArray( $result );
+
+		$this->tearDownSubscriptions();
+	}
 }
