@@ -410,7 +410,7 @@ class WC_AI_Storefront_Admin_Controller {
 	public function update_settings( $request ) {
 		$data = array();
 
-		$fields = array( 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'return_policy', 'handling_time' );
+		$fields = array( 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'return_policy', 'handling_time', 'allow_discount_codes' );
 		foreach ( $fields as $field ) {
 			$value = $request->get_param( $field );
 			if ( null !== $value ) {

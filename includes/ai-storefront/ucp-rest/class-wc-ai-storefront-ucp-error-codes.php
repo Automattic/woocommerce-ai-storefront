@@ -87,6 +87,24 @@ final class WC_AI_Storefront_UCP_Error_Codes {
 	const ITEM_UNPURCHASABLE = 'item_unpurchasable';
 
 	/**
+	 * Agent supplied `discounts.codes[]` but the discount-extension
+	 * capability is not currently advertised (either the merchant
+	 * toggle is off or WC core's coupons setting is off). Surfaced
+	 * as an `info`-type message so agents see their input was dropped
+	 * rather than relying on a debug log they can't read. (#376)
+	 */
+	const DISCOUNT_CODES_UNSUPPORTED = 'discount_codes_unsupported';
+
+	/**
+	 * Agent supplied `discounts.codes[]` while the capability IS
+	 * active, but no entry survived sanitization (malformed shape,
+	 * length overflow, characters outside the allowlist). Distinct
+	 * from `DISCOUNT_CODES_UNSUPPORTED` so agents can tell "we don't
+	 * accept codes" from "your code is invalid". (#376)
+	 */
+	const DISCOUNT_CODES_REJECTED = 'discount_codes_rejected';
+
+	/**
 	 * Duplicate line items targeting the same product were merged.
 	 */
 	const MERGED_DUPLICATE_ITEMS = 'merged_duplicate_items';

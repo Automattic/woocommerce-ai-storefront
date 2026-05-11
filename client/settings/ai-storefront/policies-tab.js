@@ -1318,7 +1318,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						color: colors.textPrimary,
 					} }
 				>
-					{ __( 'Store policies', 'woocommerce-ai-storefront' ) }
+					{ __( 'Policies & checkout', 'woocommerce-ai-storefront' ) }
 				</h2>
 				<p
 					style={ {
@@ -1328,7 +1328,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 					} }
 				>
 					{ __(
-						'Policies AI agents can quote to shoppers before checkout.',
+						'Policy and capability settings AI agents use when shopping for buyers on your store.',
 						'woocommerce-ai-storefront'
 					) }
 				</p>

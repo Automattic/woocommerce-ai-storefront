@@ -108,6 +108,13 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy' );
+		// Default `wc_coupons_enabled()` stub: most tests don't care
+		// about the WC coupons gate, but `discount_capability_active()`
+		// is now called on every checkout response (it gates the
+		// envelope's capability advertisement), so we need a stable
+		// default. Tests that exercise the WC-disabled gate override
+		// this with their own `Functions\when` call. (#376)
+		Functions\when( 'wc_coupons_enabled' )->justReturn( true );
 		Functions\when( 'wc_get_page_permalink' )->alias(
 			static fn( string $page ): string => 'https://example.com/terms'
 		);
@@ -1639,11 +1646,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'coupon-code=FALL_2026-VIP', $result['data']['continue_url'] );
 	}
 
-	public function test_malformed_discount_codes_filtered_out(): void {
-		// XSS-y, length-overflow, and non-ASCII codes are rejected by
-		// `sanitize_discount_codes`. The request still succeeds (we
-		// don't 400 — just silently drop) and `continue_url` carries
-		// NO coupon-code parameter.
+	public function test_malformed_discount_codes_filtered_out_and_rejected_message_emitted(): void {
+		// XSS-y, length-overflow, space-bearing, and non-ASCII codes
+		// are all rejected by `sanitize_discount_codes`. The request
+		// still succeeds (we don't 4xx) but `continue_url` carries NO
+		// coupon-code, AND a `discount_codes_rejected` info message
+		// surfaces on the response so agents can correct their input
+		// instead of staring at an unexplained absence. Distinct code
+		// from `_unsupported` so agents route remediation correctly
+		// (fix-the-input vs ask-the-merchant). (#380 review)
 		WC_AI_Storefront::$test_settings = [
 			'enabled'              => 'yes',
 			'allow_discount_codes' => 'yes',
@@ -1666,6 +1677,24 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals( 201, $result['status'] );
 		$this->assertStringNotContainsString( 'coupon-code=', $result['data']['continue_url'] );
+
+		$rejected = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::DISCOUNT_CODES_REJECTED === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $rejected, 'All-codes-rejected path must emit discount_codes_rejected message.' );
+		$msg = array_values( $rejected )[0];
+		$this->assertSame( 'info', $msg['type'] );
+		$this->assertSame( '$.discounts.codes', $msg['path'] );
+
+		// And NO `discount_codes_unsupported` — that's a different code
+		// for a different cause. Capability is ON here; the failure is
+		// the agent's input, not our merchant config.
+		$unsupported = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::DISCOUNT_CODES_UNSUPPORTED === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 0, $unsupported );
 	}
 
 	public function test_first_valid_code_wins_when_multi_code_supplied(): void {
@@ -1689,12 +1718,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'coupon-code=OTHER', $result['data']['continue_url'] );
 	}
 
-	public function test_discount_codes_silently_dropped_when_capability_disabled(): void {
-		// Capability off → request still succeeds, code is silently
-		// dropped (no 4xx), continue_url has NO coupon-code. Tolerant
-		// of stale agent caches: an agent that cached our envelope
-		// from before the toggle was flipped shouldn't get a hard
-		// error.
+	public function test_discount_codes_dropped_with_unsupported_message_when_capability_disabled(): void {
+		// Capability off → request still succeeds, code dropped from
+		// continue_url, but agents see a `discount_codes_unsupported`
+		// info message so they know their input was acknowledged but
+		// not honored. Tolerant of stale agent caches: an agent that
+		// cached our envelope from before the toggle was flipped
+		// shouldn't get a hard error, but it MUST see SOME signal —
+		// the debug log alone is filter-gated and invisible in
+		// production. (#380 review)
 		WC_AI_Storefront::$test_settings = [
 			'enabled'              => 'yes',
 			'allow_discount_codes' => 'no',
@@ -1710,12 +1742,22 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals( 201, $result['status'] );
 		$this->assertStringNotContainsString( 'coupon-code=', $result['data']['continue_url'] );
+
+		$unsupported = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::DISCOUNT_CODES_UNSUPPORTED === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $unsupported, 'Capability-off + codes supplied must emit discount_codes_unsupported message.' );
+		$msg = array_values( $unsupported )[0];
+		$this->assertSame( 'info', $msg['type'] );
+		$this->assertSame( '$.discounts.codes', $msg['path'] );
 	}
 
 	public function test_discount_codes_omitted_from_request_is_a_noop(): void {
 		// Most agents won't supply a discounts block at all. Verify
 		// the absence doesn't change anything — continue_url has no
-		// coupon-code, request succeeds normally.
+		// coupon-code, request succeeds normally, and neither discount
+		// message surfaces.
 		WC_AI_Storefront::$test_settings = [
 			'enabled'              => 'yes',
 			'allow_discount_codes' => 'yes',
@@ -1728,6 +1770,171 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals( 201, $result['status'] );
 		$this->assertStringNotContainsString( 'coupon-code=', $result['data']['continue_url'] );
+
+		// Neither message code should surface when no `discounts` block
+		// is supplied — both are reactions to agent input that isn't
+		// there.
+		foreach ( $result['data']['messages'] as $m ) {
+			$this->assertNotSame( WC_AI_Storefront_UCP_Error_Codes::DISCOUNT_CODES_UNSUPPORTED, $m['code'] ?? '' );
+			$this->assertNotSame( WC_AI_Storefront_UCP_Error_Codes::DISCOUNT_CODES_REJECTED, $m['code'] ?? '' );
+		}
+	}
+
+	public function test_discount_capability_not_advertised_when_wc_coupons_disabled(): void {
+		// Even when our merchant toggle is `'yes'`, the capability MUST
+		// NOT be advertised if WC core's `wc_coupons_enabled()` returns
+		// false — we can't honor codes WC won't accept. Stub the WC
+		// function to return false for this scenario; production
+		// `discount_capability_active()` reads through `function_exists`
+		// + cast-to-bool and respects the falsy return.
+		Functions\when( 'wc_coupons_enabled' )->justReturn( false );
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ] ]
+		);
+
+		$caps = $result['data']['ucp']['capabilities'] ?? [];
+		$this->assertArrayHasKey( 'dev.ucp.shopping.checkout', $caps );
+		$this->assertArrayNotHasKey(
+			'dev.ucp.shopping.discount',
+			$caps,
+			'WC coupons disabled must suppress the capability regardless of the merchant toggle.'
+		);
+	}
+
+	public function test_discount_codes_dropped_when_wc_coupons_disabled_even_with_toggle_on(): void {
+		// Pairs with the previous test: capability not advertised AND
+		// inbound codes go through the disabled-branch path (emit
+		// `discount_codes_unsupported`, no URL append). The WC-disabled
+		// gate is mandatory because advertising a capability WC's
+		// hosted checkout would silently ignore is worse UX than not
+		// advertising at all — the merchant gate alone is insufficient.
+		Functions\when( 'wc_coupons_enabled' )->justReturn( false );
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ],
+				'discounts'  => [ 'codes' => [ 'SUMMER20' ] ],
+			]
+		);
+
+		$this->assertStringNotContainsString( 'coupon-code=', $result['data']['continue_url'] );
+		$unsupported = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::DISCOUNT_CODES_UNSUPPORTED === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 1, $unsupported );
+	}
+
+	public function test_non_array_discounts_body_treated_as_noop(): void {
+		// `discounts: "SUMMER20"` (string instead of object) — the
+		// handler's `is_array($discounts_raw)` guard short-circuits
+		// before reaching the sanitizer. No URL append, no message,
+		// no 4xx — same as if `discounts` was absent.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ],
+				'discounts'  => 'SUMMER20',
+			]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertStringNotContainsString( 'coupon-code=', $result['data']['continue_url'] );
+		foreach ( $result['data']['messages'] as $m ) {
+			$this->assertNotSame( WC_AI_Storefront_UCP_Error_Codes::DISCOUNT_CODES_UNSUPPORTED, $m['code'] ?? '' );
+			$this->assertNotSame( WC_AI_Storefront_UCP_Error_Codes::DISCOUNT_CODES_REJECTED, $m['code'] ?? '' );
+		}
+	}
+
+	public function test_non_array_codes_treated_as_noop(): void {
+		// `discounts.codes: "SUMMER20"` (string instead of array). The
+		// handler's `is_array($discounts_raw['codes'])` guard treats
+		// this as absent (same as `discounts: {}`). No URL append,
+		// no message. Pins a defensive check that protects against
+		// future spec drift that might propose string shorthand.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ],
+				'discounts'  => [ 'codes' => 'SUMMER20' ],
+			]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertStringNotContainsString( 'coupon-code=', $result['data']['continue_url'] );
+	}
+
+	public function test_empty_codes_array_treated_as_noop(): void {
+		// Spec note: "Send empty array to clear." Our flow is
+		// stateless — no persistent cart to clear — so `codes: []`
+		// is a no-op. No URL append, no message. Pins this contract
+		// against any future "treat empty as explicit-clear and emit
+		// `coupon-code=` to clear an applied coupon" misinterpretation.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ],
+				'discounts'  => [ 'codes' => [] ],
+			]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertStringNotContainsString( 'coupon-code=', $result['data']['continue_url'] );
+	}
+
+	public function test_no_rejected_message_when_first_valid_code_survives(): void {
+		// First-valid-wins: with `["BAD CODE", "GOOD_CODE", "OTHER"]`,
+		// the sanitizer returns `["GOOD_CODE"]` (non-empty). We do NOT
+		// emit `discount_codes_rejected` even though the first input
+		// failed — the agent got what they wanted (one code applied),
+		// and surfacing a rejection message would imply nothing was
+		// applied. The rejected message is reserved for the
+		// `sanitize → empty` (all-rejected) path.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ],
+				'discounts'  => [ 'codes' => [ 'BAD CODE', 'GOOD_CODE', 'OTHER' ] ],
+			]
+		);
+
+		$this->assertStringContainsString( 'coupon-code=GOOD_CODE', $result['data']['continue_url'] );
+		$rejected = array_filter(
+			$result['data']['messages'],
+			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::DISCOUNT_CODES_REJECTED === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 0, $rejected );
 	}
 
 	// ------------------------------------------------------------------
