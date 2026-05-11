@@ -1936,35 +1936,51 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$final_product    = is_array( $filtered_product ) ? $filtered_product : $product;
 
 			// Attach per-variant `inputs[]` correlation per
-			// `catalog_lookup.json#/$defs/lookup_variant` (UCP 2026-04-08).
-			// Each emitted variant declares which request ID resolved
-			// to it.
+			// `catalog_lookup.json#/$defs/lookup_variant` (verified verbatim
+			// from `Universal-Commerce-Protocol/ucp` — see project memory
+			// `reference_ucp_spec.md`). Each emitted variant declares
+			// which request ID resolved to it.
 			//
-			// `match` per `types/input_correlation.json`:
+			// `match` semantics per `types/input_correlation.json`:
 			//   - `exact`    — input directly identifies this variant
 			//                  (variant ID, SKU, etc.).
-			//   - `featured` — server picked this variant as a
+			//   - `featured` — server picked this variant as the
 			//                  representative for a product-level input.
+			//   - (omitted)  — this variant emerged alongside the
+			//                  resolved/featured one but isn't itself
+			//                  the server's pick. `inputs[].match` is
+			//                  optional per the schema; only `id` is
+			//                  required inside an inputs entry.
 			//
-			// Per-variant comparison: `match` is `exact` only when the
-			// raw input echo equals THIS variant's emitted `id`,
-			// otherwise `featured`. Two important nuances driving
-			// the per-variant comparison (vs. a prefix-only check):
+			// Featured-variant selection rules (#369). When the input
+			// echoes a parent product (not a specific variant):
+			//   1. If `_default_attributes` covers every variation axis →
+			//      that resolved variation is featured. Single source of
+			//      truth: `WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id()`.
+			//   2. Else → first variation by `menu_order` (the Store
+			//      API already returns variations in menu_order, so
+			//      `$variation_fetch['variations'][0]` is the right pick).
 			//
-			//   1. A bare `var_<product_id>` input against a simple
-			//      product emits a synthetic default variant whose id
-			//      is `var_<product_id>_default`. Those strings differ
-			//      — the input did NOT directly identify the emitted
-			//      variant id — so the correlation is `featured`,
-			//      not `exact`. A prefix-only check ("input starts
-			//      with `var_`") would misclaim exact precision.
+			// When the input echoes a specific variant id (e.g.
+			// `var_<vid>`) → that variant is `exact` and moves to
+			// `variants[0]`; siblings emit with `inputs: [{id}]` only.
 			//
-			//   2. For a variable product where the input echoes one
-			//      specific variation's id (e.g. `var_<vid>`), only
-			//      that variant's id matches; sibling variants get
-			//      `featured` because they're representatives the
-			//      server emitted alongside the directly-requested
-			//      one.
+			// Two existing nuances preserved:
+			//   - A bare `var_<product_id>` input against a simple
+			//     product emits a synthetic default variant whose id is
+			//     `var_<product_id>_default`. Those strings differ —
+			//     no `exact` match — but the synthesized default IS the
+			//     sole variant, so it's featured via the
+			//     fall-through-to-first rule.
+			//   - For a variable product where the input echoes a
+			//     specific variation id, that variant gets `exact` and
+			//     the featured-resolution short-circuits.
+			//
+			// Per `product.json` (verbatim from the repo): _"First item
+			// is the featured variant for listings."_ Both the
+			// `inputs[].match` annotation AND the `variants[]` position
+			// must agree — we move the featured/exact variant to
+			// `variants[0]` after correlation marking.
 			//
 			// Done last (after both filters) so the spec-required
 			// transport-layer correlation isn't mutable by content
@@ -1973,35 +1989,149 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			if ( isset( $final_product['variants'] ) && is_array( $final_product['variants'] ) ) {
 				$input_echo = (string) ( $inputs[ $index ] ?? '' );
 				if ( '' !== $input_echo ) {
-					foreach ( $final_product['variants'] as $variant_idx => $variant ) {
-						// `$final_product` came through the
-						// `wc_ai_storefront_ucp_product` filter; a
-						// third-party callback could replace a
-						// variant with a non-array (string, null, etc.).
-						// Guard before reading `$variant['id']` so a
-						// malformed callback doesn't fatal the whole
-						// lookup with PHP 8+'s "Cannot access offset"
-						// error. Skipping the entry here means the
-						// malformed variant is left as-is (without an
-						// `inputs[]` correlation); the schema validator
-						// downstream will surface the bad shape via
-						// the same path it already handles for other
-						// filter-malformations.
+					// Pass 1: find an exact match (input echoes a
+					// specific variant id). Note: `$final_product` came
+					// through the `wc_ai_storefront_ucp_product` filter;
+					// a third-party callback could replace a variant
+					// with a non-array (string, null, etc.). Guard
+					// before reading `$variant['id']` so a malformed
+					// callback doesn't fatal the whole lookup with
+					// PHP 8+'s "Cannot access offset" error.
+					$exact_variant_id    = null;
+					$featured_variant_id = null;
+					foreach ( $final_product['variants'] as $variant ) {
 						if ( ! is_array( $variant ) ) {
 							continue;
 						}
+						if ( $input_echo === (string) ( $variant['id'] ?? '' ) ) {
+							$exact_variant_id = (string) $variant['id'];
+							break;
+						}
+					}
 
+					// Pass 2: no exact match — resolve featured via
+					// `_default_attributes` or menu_order fallback.
+					if ( null === $exact_variant_id ) {
+						$default_variation_id = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+							$wc_product,
+							$variation_fetch['variations']
+						);
+						if ( null !== $default_variation_id ) {
+							// Merchant signal present: feature the
+							// resolved variation.
+							$featured_variant_id = 'var_' . $default_variation_id;
+						} elseif ( ! empty( $variation_fetch['variations'] ) ) {
+							// No merchant signal: feature the first
+							// variation by menu_order (Store API
+							// already returns variations in menu_order).
+							$first_id = (int) ( $variation_fetch['variations'][0]['id'] ?? 0 );
+							if ( $first_id > 0 ) {
+								$featured_variant_id = 'var_' . $first_id;
+							}
+						} else {
+							// Simple product / synthesized-default
+							// path: feature the first variant the
+							// filter pipeline didn't munge. Covers
+							// `var_<pid>_default` IDs emitted by
+							// `synthesize_default()`. Skip non-array
+							// entries from third-party
+							// `wc_ai_storefront_ucp_product` filter
+							// callbacks that injected malformed data
+							// — those can't be featured because they
+							// have no readable `id`.
+							foreach ( $final_product['variants'] as $variant_candidate ) {
+								if ( ! is_array( $variant_candidate ) ) {
+									continue;
+								}
+								$candidate_id = (string) ( $variant_candidate['id'] ?? '' );
+								if ( '' !== $candidate_id ) {
+									$featured_variant_id = $candidate_id;
+									break;
+								}
+							}
+						}
+					}
+
+					// Pass 2.5: verify the computed featured/exact id still
+					// exists in `$final_product['variants']`. The
+					// `wc_ai_storefront_ucp_product` filter (between Pass 1
+					// and Pass 3) can mutate the variants array — including
+					// removing the variant whose id we computed in Pass 2.
+					// If the computed ID is gone, fall back to featuring
+					// the first valid (array-shaped, non-empty-id) variant
+					// so the spec's "one featured per product" expectation
+					// still holds.
+					$variant_ids_present = [];
+					foreach ( $final_product['variants'] as $v ) {
+						if ( is_array( $v ) ) {
+							$vid = (string) ( $v['id'] ?? '' );
+							if ( '' !== $vid ) {
+								$variant_ids_present[] = $vid;
+							}
+						}
+					}
+					if ( null !== $exact_variant_id && ! in_array( $exact_variant_id, $variant_ids_present, true ) ) {
+						$exact_variant_id = null;
+					}
+					if ( null !== $featured_variant_id && ! in_array( $featured_variant_id, $variant_ids_present, true ) ) {
+						$featured_variant_id = $variant_ids_present[0] ?? null;
+					}
+
+					// Pass 3: assemble each variant's inputs[] entry.
+					// Exact wins over featured; siblings get just `id`
+					// (no match field — spec-clean per `input_correlation.json`).
+					// Filter-corrupted non-array entries are skipped without
+					// an inputs[] correlation — that's a downstream schema
+					// violation (per `catalog_lookup.json#/$defs/lookup_variant`
+					// `inputs` is required with minItems:1), but we'd rather
+					// emit the malformed shape and let the schema validator
+					// surface it than fatal the whole response. Log so the
+					// merchant or plugin author can find the filter callback
+					// that's misbehaving.
+					$corrupted_count = 0;
+					foreach ( $final_product['variants'] as $variant_idx => $variant ) {
+						if ( ! is_array( $variant ) ) {
+							++$corrupted_count;
+							continue;
+						}
 						$variant_id = (string) ( $variant['id'] ?? '' );
-						$match_type = ( '' !== $variant_id && $input_echo === $variant_id )
-							? 'exact'
-							: 'featured';
+						$entry      = [ 'id' => $input_echo ];
+						if ( $variant_id === $exact_variant_id ) {
+							$entry['match'] = 'exact';
+						} elseif ( $variant_id === $featured_variant_id ) {
+							$entry['match'] = 'featured';
+						}
+						$final_product['variants'][ $variant_idx ]['inputs'] = [ $entry ];
+					}
 
-						$final_product['variants'][ $variant_idx ]['inputs'] = [
-							[
-								'id'    => $input_echo,
-								'match' => $match_type,
-							],
-						];
+					if ( $corrupted_count > 0 ) {
+						WC_AI_Storefront_Logger::debug(
+							sprintf(
+								'UCP catalog/lookup: product %d emitted %d non-array variant entries (a `wc_ai_storefront_ucp_product` filter callback replaced a variant with a non-array value). These entries violate the spec\'s inputs[] minItems:1 requirement — investigate the filter pipeline.',
+								(int) $wc_id,
+								$corrupted_count
+							)
+						);
+					}
+
+					// Pass 4: reorder `variants[]` so the featured (or
+					// exact) variant sits at index 0. Per `product.json`:
+					// "First item is the featured variant for listings."
+					$pinned_id = $exact_variant_id ?? $featured_variant_id;
+					if ( null !== $pinned_id ) {
+						$pinned_idx = null;
+						foreach ( $final_product['variants'] as $idx => $v ) {
+							if ( is_array( $v ) && (string) ( $v['id'] ?? '' ) === $pinned_id ) {
+								$pinned_idx = $idx;
+								break;
+							}
+						}
+						if ( null !== $pinned_idx && 0 !== $pinned_idx ) {
+							$pinned = $final_product['variants'][ $pinned_idx ];
+							unset( $final_product['variants'][ $pinned_idx ] );
+							array_unshift( $final_product['variants'], $pinned );
+							$final_product['variants'] = array_values( $final_product['variants'] );
+						}
 					}
 				}
 			}
@@ -2119,8 +2249,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                                  cases land at /checkout/?add-to-cart=,
 	 *                                  configurable cases require buyer input
 	 *                                  on the PDP)
-	 *   - external / subscription / subscription_variation
-	 *                                → rejected (product_type_unsupported)
+	 *   - prod_N / var_N + subscription / subscription_variation
+	 *                                → includable. The Shareable Checkout
+	 *                                  URL adds the subscription to the
+	 *                                  cart and WC's checkout page handles
+	 *                                  recurring billing UI correctly
+	 *                                  (verified live in PR #367 audit).
+	 *   - external                  → rejected (product_type_unsupported)
 	 *   - unknown ID                 → rejected (not_found)
 	 *   - out of stock               → rejected (out_of_stock); WC's
 	 *                                  `is_in_stock` already factors the
@@ -2598,6 +2733,100 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					'severity' => 'recoverable',
 					'path'     => '$.line_items[' . $grouped_request_indices[0] . ']',
 					'content'  => __( 'This grouped product cannot be added through the standard checkout flow because its product page URL is unavailable. The merchant should verify the grouped product configuration.', 'woocommerce-ai-storefront' ),
+				];
+				$should_redirect = false;
+			}
+		}
+
+		// Variable / variable-subscription parent handling (#369 Fix #3b).
+		// Parent IDs at /checkout-sessions can't be served by the
+		// Shareable Checkout URL `?products=PARENT:1` form — that would
+		// add the parent without a chosen variation and the buyer would
+		// be redirected to the PDP with a "missing attributes" error.
+		// Apply the same configurable-response pattern bundle/grouped
+		// already use: continue_url goes to the parent's permalink so
+		// the buyer can pick a variation on the PDP; the response
+		// message tells the agent why.
+		//
+		// Buyer choice is preserved by design: we explicitly do NOT
+		// auto-resolve the merchant's `_default_attributes` into a
+		// specific variation URL here. The catalog response's
+		// `match: featured` marker (per Fix #3a) gives agents the
+		// merchant's hint; what to do with it (present, override,
+		// ignore) is up to the agent's UI. Server-side resolution
+		// would bypass buyer choice silently.
+		//
+		// Mixed-cart handling mirrors bundle's must-split rule (see
+		// `$bundle_must_split` above). A variable parent's permalink
+		// fallback is the variable's own PDP — a single product page
+		// that cannot also add a sibling simple-product line item to
+		// the cart. So any cart that combines a variable parent with
+		// other line items must be split into separate /checkout-sessions
+		// requests; otherwise the simple item would be silently dropped
+		// from the destination URL. Same rationale as bundle/grouped.
+		$variable_request_indices = [];
+		$variable_processed_keys  = [];
+		foreach ( $processed as $idx => $p ) {
+			$type_check = $p['wc_type'] ?? '';
+			if ( 'variable' === $type_check || 'variable-subscription' === $type_check ) {
+				$variable_request_indices[] = (int) ( $p['request_index'] ?? $idx );
+				$variable_processed_keys[]  = $idx;
+			}
+		}
+		$has_variable        = ! empty( $variable_processed_keys );
+		$variable_must_split = $has_variable && ( count( $processed ) > 1 || count( $variable_processed_keys ) > 1 );
+
+		if ( $variable_must_split ) {
+			// One recoverable `field_required` per variable line item.
+			// Severity `recoverable` (not `requires_buyer_input`) because
+			// the agent — not the buyer — is the one that needs to act:
+			// split the cart and resend. Same severity choice as bundle
+			// and grouped must-split paths.
+			foreach ( $variable_request_indices as $req_idx ) {
+				$messages[] = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'recoverable',
+					'path'     => '$.line_items[' . $req_idx . ']',
+					'content'  => __( 'Variable product line items must be sent in their own /checkout-sessions request, separate from other items — the permalink fallback can only redirect the buyer to a single product page.', 'woocommerce-ai-storefront' ),
+				];
+			}
+			$should_redirect = false;
+		} elseif ( $has_variable ) {
+			// Single variable parent, no other line items — emit the
+			// configurable response (permalink fallback or recoverable
+			// error if no permalink). This is the path the agent gets
+			// when they correctly send one variable parent at a time.
+			$vk            = $variable_processed_keys[0];
+			$variable      = $processed[ $vk ];
+			$has_permalink = '' !== (string) ( $variable['permalink'] ?? '' );
+			if ( $has_permalink ) {
+				$messages[] = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'requires_buyer_input',
+					'path'     => '$.line_items[' . $variable_request_indices[0] . '].item.id',
+					'content'  => __( 'This product has variations; the buyer must pick a specific option on the merchant site. Open continue_url to choose and complete the purchase.', 'woocommerce-ai-storefront' ),
+				];
+			} else {
+				// No permalink — rare, but flag it so merchants can
+				// investigate: the product's `get_permalink()` returned
+				// empty (status flipped to draft mid-fetch, a permalink
+				// filter returned empty, or similar). Without a URL the
+				// buyer has nowhere to land, so status becomes
+				// `incomplete` (no `continue_url`).
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'UCP /checkout-sessions: variable parent product %d has empty permalink — no continue_url emitted.',
+						(int) ( $variable['wc_id'] ?? 0 )
+					)
+				);
+				$messages[]      = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'recoverable',
+					'path'     => '$.line_items[' . $variable_request_indices[0] . '].item.id',
+					'content'  => __( 'This product requires a specific variation selection but its product page URL is unavailable.', 'woocommerce-ai-storefront' ),
 				];
 				$should_redirect = false;
 			}
@@ -3417,7 +3646,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return array{variations: array<int, array<string, mixed>>, skipped: int}
 	 */
 	private function fetch_variations_for( array $wc_product ): array {
-		if ( 'variable' !== ( $wc_product['type'] ?? '' ) ) {
+		// `variable-subscription` (WC Subscriptions extension) extends
+		// `WC_Product_Variable` and exposes its variations via the same
+		// `variations[]` array on the Store API response. Treat both
+		// uniformly so subscription variants get enumerated rather than
+		// silently collapsed to a synthesized `_default` placeholder.
+		// Mirrors the type-pair pattern at `validate_product_type()`.
+		$type = $wc_product['type'] ?? '';
+		if ( 'variable' !== $type && 'variable-subscription' !== $type ) {
 			return array(
 				'variations' => array(),
 				'skipped'    => 0,
@@ -5118,48 +5354,67 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * Return an error message if a WC product type is incompatible with
-	 * Shareable Checkout URLs, or null if the type is supported.
+	 * Return an error message if a WC product type is rejected outright,
+	 * or null if the type is supported.
 	 *
-	 * Incompatible types:
-	 * - `variable` / `variable-subscription`: parent sent where a concrete
-	 *   variation is required (Shareable Checkout URLs need a specific ID).
-	 * - `external`: redirects to a third-party seller's site.
-	 * - `subscription` / `subscription_variation`: recurring billing; the
-	 *   Shareable Checkout URL treats every item as a one-off purchase, which
-	 *   mis-routes subscription sign-ups.
+	 * Rejected types — `product_type_unsupported`:
+	 * - `external`: redirects to a third-party seller's site. The merchant's
+	 *   PDP for an external product is itself just a redirect to the external
+	 *   URL, so there's no useful permalink fallback. Hard reject.
 	 *
-	 * `grouped` and `bundle` are supported but routed through a different
-	 * URL path than `/checkout-link/?products=…` because each requires
-	 * per-child configuration the products= shorthand can't carry. See
-	 * `build_continue_url()` for the routing decision.
+	 * Supported types — pass through with null (callers handle routing):
+	 * - `simple`: standard Shareable Checkout `?products=ID:1`.
+	 * - `variation`: per-variant Shareable Checkout `?products=<vid>:1`.
+	 * - `variable` / `variable-subscription`: NOT rejected here (#369).
+	 *   Routed to the configurable continue_url path — permalink fallback
+	 *   plus a `requires_buyer_input` field_required message. The routing
+	 *   logic lives in `handle_checkout_sessions_create()`'s variable-parent
+	 *   block (where the field_required messages are emitted) and
+	 *   `build_continue_url()`'s variable short-circuit (where the permalink
+	 *   becomes the continue_url). Same pattern as configurable bundle and
+	 *   configurable grouped.
+	 * - `subscription` / `subscription_variation`: empirically verified
+	 *   in PR #367's audit (see comments
+	 *   github.com/Automattic/woocommerce-ai-storefront/pull/367#issuecomment-4416019003
+	 *   and #issuecomment-4416036798) that the Shareable Checkout URL adds the
+	 *   subscription to the cart and WC's checkout page handles the
+	 *   recurring-billing UI correctly — the same Shareable Checkout
+	 *   flow that works for simple/variation works for these. The
+	 *   pre-#369 docblock claimed this misroutes sign-ups; that claim
+	 *   was contradicted by live verification against pierorocca.com
+	 *   fixtures 2005 (simple sub) and 3972 (subscription_variation),
+	 *   both of which redirected to `/checkout/?session=…` and
+	 *   completed recurring sign-ups.
+	 * - `grouped` and `bundle`: routed through a different URL path
+	 *   than `/checkout-link/?products=…` because each requires
+	 *   per-child configuration the products= shorthand can't carry.
+	 *   See `build_continue_url()`.
 	 *
 	 * Enforcement is purely runtime: the UCP manifest doesn't currently
 	 * advertise an unsupported-types list — agents discover incompatibility
 	 * by sending a line item and reading the resulting `field_required` /
-	 * `product_type_unsupported` / `variation_required` error.
+	 * `product_type_unsupported` error.
 	 *
 	 * @param  string $type WC product type string (e.g. 'simple', 'variable').
 	 * @param  string $path JSON path for error attribution.
 	 * @return array|null   Error message array, or null if the type is supported.
 	 */
 	private static function validate_product_type( string $type, string $path ): ?array {
-		// Variable product PARENT sent where a specific variation is
-		// required. `variable-subscription` is the subscription-extension
-		// variant of the same kind.
-		if ( 'variable' === $type || 'variable-subscription' === $type ) {
-			// `checkout_error_message` supplies the default
-			// variation-required wording via `default_error_content`
-			// — no override needed here.
-			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $path . '.item.id' );
-		}
-
-		if ( 'external' === $type
-			|| 'subscription' === $type || 'subscription_variation' === $type
-		) {
+		// External: redirects to a third-party seller's site — `/checkout-link/`
+		// can't represent that flow, and there's no useful PDP fallback
+		// (the merchant's PDP for an external product is itself just a
+		// redirect to the external URL).
+		if ( 'external' === $type ) {
 			return self::checkout_error_message( WC_AI_Storefront_UCP_Error_Codes::PRODUCT_TYPE_UNSUPPORTED, $path . '.item.id' );
 		}
 
+		// `variable` / `variable-subscription` parents are routed through
+		// the configurable continue_url path (permalink + requires_buyer_input
+		// message). The routing logic lives in `handle_checkout_sessions_create()`
+		// (the variable-parent block that emits the field_required messages)
+		// and `build_continue_url()` (the permalink short-circuit). They're
+		// NOT rejected here — same pattern as configurable bundle and
+		// configurable grouped products.
 		return null;
 	}
 
@@ -5495,6 +5750,65 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// "no usable URL" and the response surfaces as
 					// `incomplete` without `continue_url`.
 					$url_with_products = '';
+				}
+			}
+		}
+
+		// Variable / variable-subscription parent short-circuit (#369 Fix #3b).
+		// Same routing reason as configurable bundle/grouped:
+		// `/checkout-link/?products=PARENT_ID:1` would attempt to add
+		// the variable parent without a chosen variation, and WC
+		// redirects to the PDP with a "missing attributes" error. Route
+		// to the parent's permalink instead so the buyer picks a
+		// variation on the PDP — `_default_attributes` pre-fills the
+		// dropdown (WC core behavior) but the buyer retains choice
+		// over the final selection.
+		//
+		// No deterministic path: we explicitly do NOT auto-resolve
+		// `_default_attributes` into a specific variation URL here
+		// (see `handle_checkout_sessions_create()`'s variable-parent
+		// block for the design rationale).
+		//
+		// Defense-in-depth: this branch only fires when the cart
+		// consists of a SINGLE variable parent with NO other line
+		// items. Mixed/multi-variable carts are caught upstream by
+		// `$variable_must_split` which flips `$should_redirect=false`
+		// before `build_continue_url()` is ever called — so reaching
+		// this branch with `count($processed) > 1` would indicate the
+		// upstream guard broke. The single-variable check below is
+		// belt-and-suspenders: emitting the variable's permalink as a
+		// continue_url for a mixed cart would silently drop the other
+		// line items (the PDP can only host one product). Fail-closed
+		// to `''` so status becomes `incomplete` rather than handing
+		// the agent a misleading URL.
+		if ( null === $url_with_products ) {
+			$first_variable = null;
+			$variable_count = 0;
+			foreach ( $processed as $p ) {
+				$ptype = $p['wc_type'] ?? '';
+				if ( 'variable' === $ptype || 'variable-subscription' === $ptype ) {
+					if ( null === $first_variable ) {
+						$first_variable = $p;
+					}
+					++$variable_count;
+				}
+			}
+			if ( null !== $first_variable ) {
+				$is_single_variable_only = ( 1 === $variable_count ) && ( 1 === count( $processed ) );
+				if ( ! $is_single_variable_only ) {
+					// Mixed/multi-variable cart reached this branch —
+					// upstream guard should have caught it. Fail-closed.
+					$url_with_products = '';
+				} else {
+					$permalink = (string) ( $first_variable['permalink'] ?? '' );
+					if ( '' !== $permalink ) {
+						$url_with_products = $permalink;
+					} else {
+						// No-permalink case — handler upstream also
+						// flips should_redirect=false. Empty-string
+						// belt-and-suspenders.
+						$url_with_products = '';
+					}
 				}
 			}
 		}

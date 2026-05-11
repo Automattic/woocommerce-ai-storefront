@@ -786,7 +786,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 *                                                       splitting when a value contains `, `.
 	 * @return array<int, array{attribute: string, value: string}>
 	 */
-	private static function parse_variation_string(
+	public static function parse_variation_string(
 		string $variation_string,
 		?array $known_attribute_names = null
 	): array {

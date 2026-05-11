@@ -180,6 +180,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			'id'          => $id,
 			'name'        => 'T-Shirt',
 			'type'        => 'variable',
+			'permalink'   => "http://example.com/product/t-shirt-$id/",
 			'is_in_stock' => true,
 			'prices'      => [
 				'price'         => '1000',
@@ -726,24 +727,38 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	// Product type gating
 	// ------------------------------------------------------------------
 
-	public function test_variable_parent_rejected_with_variation_required(): void {
-		// Agent sent `prod_N` where N is the parent of a variable product.
-		// Shareable Checkout URLs can't add a parent to cart — need a
-		// variation ID. Reject with a specific code + explanatory content.
+	public function test_variable_parent_emits_permalink_fallback_with_field_required(): void {
+		// Pre-#369 behavior: parent of a variable product hard-failed
+		// with VARIATION_REQUIRED. Post-#369 Fix #3b: routes through
+		// the configurable-bundle/grouped pattern — permalink
+		// continue_url + `field_required` / `requires_buyer_input`
+		// message. The agent can show the message or redirect; the
+		// buyer picks a variation on the PDP.
 		$this->seed_variable_parent( 789 );
 
 		$result = $this->call_handler(
 			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_789' ], 'quantity' => 1 ] ] ]
 		);
 
-		$this->assertEquals( 200, $result['status'] );
-		$this->assertEquals( 'incomplete', $result['data']['status'] );
-		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
-		$this->assertCount( 0, $result['data']['line_items'] );
+		// 201 Created: session resource now exists (with continue_url
+		// pointing at the PDP) — replaces the pre-#369 200 OK where no
+		// session was created due to the rejection.
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
+		$this->assertNotEmpty( $result['data']['continue_url'] ?? '' );
 
 		$messages = $result['data']['messages'];
 		$codes    = array_column( $messages, 'code' );
-		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $codes );
+		// No longer VARIATION_REQUIRED — that hard-failure code is gone.
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $codes );
+		// Instead: FIELD_REQUIRED with requires_buyer_input severity.
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED, $codes );
+		foreach ( $messages as $m ) {
+			if ( WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED === ( $m['code'] ?? '' ) ) {
+				$this->assertSame( 'requires_buyer_input', $m['severity'] );
+				break;
+			}
+		}
 	}
 
 	public function test_configurable_grouped_alone_uses_product_permalink_as_continue_url(): void {
@@ -1104,17 +1119,29 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'product_type_unsupported', $codes );
 	}
 
-	public function test_subscription_product_rejected_with_unsupported_type(): void {
-		// WC Subscriptions extension's `subscription` type is for
-		// recurring billing flows. The Shareable Checkout URL treats
-		// every item as a one-off, so a subscription mis-routed
-		// through it would produce an incorrect checkout page.
-		// The manifest already declares subscription as unsupported;
-		// this enforces the contract at the handler layer.
+	public function test_subscription_product_accepted_and_emits_continue_url(): void {
+		// #369 Fix #2: `subscription` is accepted at `/checkout-sessions`
+		// because the Shareable Checkout URL DOES handle subscription
+		// sign-ups correctly — verified live in PR #367's audit:
+		//
+		//   curl -sL 'https://pierorocca.com/checkout-link/?products=2005:1'
+		//     → 302 Location: /checkout/?session=eyJ…
+		//
+		// WC's `/checkout-link/` adds the subscription to the cart; the
+		// checkout page handles recurring-billing UI. The pre-#369
+		// rejection was based on an empirically-contradicted claim that
+		// subscriptions get charged as one-off purchases.
 		$this->fake_store_api[ 888 ] = [
-			'id'   => 888,
-			'name' => 'Monthly Box',
-			'type' => 'subscription',
+			'id'          => 888,
+			'name'        => 'Monthly Box',
+			'type'        => 'subscription',
+			'permalink'   => 'http://example.com/product/monthly-box/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'               => '2500',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+			],
 		];
 
 		$result = $this->call_handler(
@@ -1122,20 +1149,34 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'product_type_unsupported', $codes );
+		$this->assertNotContains(
+			'product_type_unsupported',
+			$codes,
+			'Simple subscriptions must no longer be rejected — Shareable Checkout handles them correctly.'
+		);
+		// Continue URL emitted via the standard Shareable Checkout shape.
+		$this->assertNotEmpty( $result['data']['continue_url'] );
+		$this->assertStringContainsString( '/checkout-link/?products=888:1', $result['data']['continue_url'] );
+		$this->assertStringContainsString( 'utm_source=', $result['data']['continue_url'] );
 	}
 
-	public function test_subscription_variation_rejected_with_unsupported_type(): void {
-		// `subscription_variation` is the variation-level subscription
-		// type — distinct from `variable-subscription` (the parent).
-		// This one-line type gate is easy to drop in a refactor; the
-		// test locks it in. A leaked subscription_variation would reach
-		// the Shareable Checkout URL and be charged as a one-off,
-		// silently breaking recurring billing on the merchant's side.
+	public function test_subscription_variation_accepted_and_emits_continue_url(): void {
+		// Companion to the simple-subscription test above: specific
+		// subscription_variation IDs reach `/checkout-sessions` from
+		// agents that drilled into a variable-subscription's variants.
+		// They route through the same Shareable Checkout path as
+		// regular variation IDs — `?products=<variation_id>:1`.
 		$this->fake_store_api[ 890 ] = [
-			'id'   => 890,
-			'name' => 'Monthly Box — Annual plan',
-			'type' => 'subscription_variation',
+			'id'          => 890,
+			'name'        => 'Monthly Box — Annual plan',
+			'type'        => 'subscription_variation',
+			'permalink'   => 'http://example.com/product/monthly-box-annual/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'               => '24000',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+			],
 		];
 
 		$result = $this->call_handler(
@@ -1143,18 +1184,34 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( 'product_type_unsupported', $codes );
+		$this->assertNotContains( 'product_type_unsupported', $codes );
+		$this->assertNotEmpty( $result['data']['continue_url'] );
+		$this->assertStringContainsString( '/checkout-link/?products=890:1', $result['data']['continue_url'] );
 	}
 
-	public function test_variable_subscription_parent_rejected_as_variation_required(): void {
-		// `variable-subscription` is the Subscriptions-extension
-		// analogue of `variable`: a subscription with variations
-		// (e.g. monthly/quarterly plans). Agent must send a specific
-		// variation ID, not the parent.
+	public function test_variable_subscription_parent_emits_permalink_fallback(): void {
+		// #369 Fix #3b: parent IDs for variable / variable-subscription
+		// no longer hard-fail with VARIATION_REQUIRED. They now follow
+		// the configurable-bundle/grouped pattern: continue_url is set
+		// to the parent's permalink so the buyer can pick a variation
+		// on the PDP, and a `field_required` / `requires_buyer_input`
+		// message explains why.
+		//
+		// Buyer choice is preserved — we explicitly do NOT auto-resolve
+		// `_default_attributes` here. The merchant default pre-fills
+		// the dropdown on the PDP (WC core behavior), but the buyer
+		// can change it.
 		$this->fake_store_api[ 999 ] = [
-			'id'   => 999,
-			'name' => 'Magazine Subscription',
-			'type' => 'variable-subscription',
+			'id'          => 999,
+			'name'        => 'Magazine Subscription',
+			'type'        => 'variable-subscription',
+			'permalink'   => 'http://example.com/product/magazine-subscription/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'               => '1000',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+			],
 		];
 
 		$result = $this->call_handler(
@@ -1162,7 +1219,174 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
-		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $codes );
+		// No longer rejected with variation_required.
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $codes );
+		// New shape: field_required + requires_buyer_input.
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED, $codes );
+		$field_required_msg = null;
+		foreach ( $result['data']['messages'] as $m ) {
+			if ( WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED === ( $m['code'] ?? '' ) ) {
+				$field_required_msg = $m;
+				break;
+			}
+		}
+		$this->assertNotNull( $field_required_msg );
+		$this->assertSame( 'requires_buyer_input', $field_required_msg['severity'] );
+		// Continue_url is the parent's permalink (with UTM stamped).
+		$this->assertStringContainsString(
+			'http://example.com/product/magazine-subscription/',
+			$result['data']['continue_url']
+		);
+		// Crucially: NOT the broken /checkout-link/?products=999:1 shape.
+		$this->assertStringNotContainsString(
+			'/checkout-link/?products=999:1',
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_variable_product_parent_emits_permalink_fallback(): void {
+		// Same #369 Fix #3b behavior change applies to plain variable
+		// products too, not just subscriptions. Agents that send the
+		// parent product ID for a variable t-shirt etc. now get a
+		// permalink continue_url instead of a hard variation_required
+		// rejection.
+		$this->fake_store_api[ 850 ] = [
+			'id'          => 850,
+			'name'        => 'Variable T-Shirt',
+			'type'        => 'variable',
+			'permalink'   => 'http://example.com/product/variable-tshirt/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'               => '2000',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+			],
+		];
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_850' ], 'quantity' => 1 ] ] ]
+		);
+
+		$codes = array_column( $result['data']['messages'], 'code' );
+		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED, $codes );
+		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED, $codes );
+		$this->assertStringContainsString(
+			'http://example.com/product/variable-tshirt/',
+			$result['data']['continue_url']
+		);
+	}
+
+	public function test_mixed_cart_with_variable_parent_rejects_with_field_required(): void {
+		// #369 review-toolkit finding: pre-fix, a cart with a variable
+		// parent alongside a simple product would emit the variable's
+		// permalink as `continue_url` — silently dropping the simple
+		// line item from the buyer's destination (the variable's PDP
+		// has no way to also add the simple product).
+		//
+		// Mirrors bundle/grouped must-split: any mixed cart with a
+		// variable parent gets a `recoverable` field_required per
+		// variable line item, `should_redirect=false`, no continue_url.
+		// Agent must split the cart into separate /checkout-sessions
+		// requests and retry.
+		$this->fake_store_api[ 850 ] = [
+			'id'          => 850,
+			'name'        => 'Variable T-Shirt',
+			'type'        => 'variable',
+			'permalink'   => 'http://example.com/product/variable-tshirt/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'               => '2000',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+			],
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_850' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 2 ],
+				],
+			]
+		);
+
+		// No `continue_url` — agent must split the cart and retry.
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+
+		// Recoverable field_required path-attributed to the variable
+		// line item — same shape as bundle/grouped must-split.
+		$variable_errors = array_filter(
+			$result['data']['messages'],
+			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
+				&& 'recoverable' === ( $m['severity'] ?? '' )
+				&& isset( $m['path'] ) && false !== strpos( $m['path'], '$.line_items[0]' )
+		);
+		$this->assertCount(
+			1,
+			$variable_errors,
+			'Mixed cart with variable parent must emit a recoverable field_required path-attributed to the variable line item.'
+		);
+
+		// All line items are still echoed so the agent sees what was processed.
+		$this->assertCount( 2, $result['data']['line_items'] );
+	}
+
+	public function test_multi_variable_cart_rejects_with_field_required_per_variable(): void {
+		// Two variable parents in one cart — same rejection as
+		// mixed-with-simple, emitting one error per variable line item.
+		// Without this rule, the agent gets back ONE permalink (whichever
+		// variable wins) and the OTHER variable's intent is silently lost.
+		$this->fake_store_api[ 850 ] = [
+			'id'          => 850,
+			'name'        => 'Variable T-Shirt',
+			'type'        => 'variable',
+			'permalink'   => 'http://example.com/product/variable-tshirt/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price' => '2000', 'currency_code' => 'USD', 'currency_minor_unit' => 2,
+			],
+		];
+		$this->fake_store_api[ 860 ] = [
+			'id'          => 860,
+			'name'        => 'Variable Hoodie',
+			'type'        => 'variable',
+			'permalink'   => 'http://example.com/product/variable-hoodie/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price' => '4500', 'currency_code' => 'USD', 'currency_minor_unit' => 2,
+			],
+		];
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_850' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_860' ], 'quantity' => 1 ],
+				],
+			]
+		);
+
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+
+		// One field_required per variable line item.
+		$field_required_errors = array_values(
+			array_filter(
+				$result['data']['messages'],
+				static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
+					&& 'recoverable' === ( $m['severity'] ?? '' )
+			)
+		);
+		$this->assertCount( 2, $field_required_errors );
+		// Each error attributes its `path` to the correct line_items[i].
+		$paths = array_column( $field_required_errors, 'path' );
+		sort( $paths );
+		$this->assertSame(
+			[ '$.line_items[0]', '$.line_items[1]' ],
+			$paths
+		);
 	}
 
 	// ------------------------------------------------------------------
