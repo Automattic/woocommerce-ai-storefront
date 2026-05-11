@@ -330,12 +330,65 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
-		$period       = WC_Subscriptions_Product::get_period( $product );
-		$interval     = WC_Subscriptions_Product::get_interval( $product );
-		$length       = WC_Subscriptions_Product::get_length( $product );
-		$signup_fee   = (float) WC_Subscriptions_Product::get_sign_up_fee( $product );
-		$trial_length = WC_Subscriptions_Product::get_trial_length( $product );
-		$trial_period = WC_Subscriptions_Product::get_trial_period( $product );
+		$period         = WC_Subscriptions_Product::get_period( $product );
+		$interval       = WC_Subscriptions_Product::get_interval( $product );
+		$length         = WC_Subscriptions_Product::get_length( $product );
+		$signup_fee_str = (string) WC_Subscriptions_Product::get_sign_up_fee( $product );
+		$signup_fee     = (float) $signup_fee_str;
+		$trial_length   = WC_Subscriptions_Product::get_trial_length( $product );
+		$trial_period   = WC_Subscriptions_Product::get_trial_period( $product );
+
+		// Sanity-gate the recurring signal. A subscription product with
+		// `interval <= 0` is corrupted (no valid recurring cadence) — the
+		// trial path is symmetrically gated by `$trial_length > 0`, this
+		// branch matches that discipline. Emit nothing rather than a
+		// nonsensical `billingDuration: P0D`. Log as merchant-actionable
+		// misconfig — same pattern as `resolve_default_variation_id()`'s
+		// orphan-default breadcrumb.
+		if ( $interval <= 0 ) {
+			if ( class_exists( 'WC_AI_Storefront_Logger' ) && function_exists( 'apply_filters' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'JSON-LD add_subscription_signals(%d): subscription has interval=%d (must be > 0). Skipping subscription signal emission — fix the product configuration.',
+						(int) $product->get_id(),
+						$interval
+					)
+				);
+			}
+			return;
+		}
+
+		// Period whitelist — `period_to_iso8601_duration()` and
+		// `period_to_uncefact_code()` silently fall back to month / MON
+		// for unknown periods, which is safer than fataling but masks
+		// merchant-actionable misconfiguration (typo, WC Subscriptions
+		// extension defining a custom period, etc.). Log so debug-mode
+		// logs surface the case, then proceed with the safe defaults.
+		$known_periods = array( 'day', 'week', 'month', 'year' );
+		if ( ! in_array( $period, $known_periods, true )
+			&& class_exists( 'WC_AI_Storefront_Logger' ) && function_exists( 'apply_filters' ) ) {
+			WC_AI_Storefront_Logger::debug(
+				sprintf(
+					'JSON-LD add_subscription_signals(%d): unknown subscription period %s, falling back to month. Check the product configuration.',
+					(int) $product->get_id(),
+					wp_json_encode( $period )
+				)
+			);
+		}
+
+		// Negative sign-up fee = data-entry error. WC Subscriptions
+		// accepts negative numeric input in the field but the signal
+		// has no semantic meaning. Drop and log so the merchant can
+		// catch it.
+		if ( $signup_fee < 0 && class_exists( 'WC_AI_Storefront_Logger' ) && function_exists( 'apply_filters' ) ) {
+			WC_AI_Storefront_Logger::debug(
+				sprintf(
+					'JSON-LD add_subscription_signals(%d): negative sign-up fee %s — dropping. Likely a merchant data-entry error.',
+					(int) $product->get_id(),
+					$signup_fee_str
+				)
+			);
+		}
 
 		// Read currency from the already-hoisted top-level Offer field
 		// (`add_currency()` runs before this enricher). Fall back to
@@ -397,8 +450,7 @@ class WC_AI_Storefront_JsonLd {
 		// enumeration); `addOn` uses released vocabulary that broader
 		// consumers will recognize today. Duplication is spec-legal.
 		if ( $signup_fee > 0 ) {
-			$signup_fee_str = (string) WC_Subscriptions_Product::get_sign_up_fee( $product );
-			$price_specs[]  = array(
+			$price_specs[] = array(
 				'@type'              => 'UnitPriceSpecification',
 				'priceComponentType' => 'https://schema.org/ActivationFee',
 				'price'              => $signup_fee_str,
@@ -454,12 +506,13 @@ class WC_AI_Storefront_JsonLd {
 		if ( $count <= 0 ) {
 			return 'P0D';
 		}
-		$unit = [
+		$units = array(
 			'day'   => 'D',
 			'week'  => 'W',
 			'month' => 'M',
 			'year'  => 'Y',
-		][ $period ] ?? 'M';
+		);
+		$unit  = $units[ $period ] ?? 'M';
 		return 'P' . $count . $unit;
 	}
 
@@ -478,12 +531,13 @@ class WC_AI_Storefront_JsonLd {
 	 * @return string UN/CEFACT unit code — 'DAY' | 'WEE' | 'MON' | 'ANN'.
 	 */
 	private static function period_to_uncefact_code( string $period ): string {
-		return [
+		$codes = array(
 			'day'   => 'DAY',
 			'week'  => 'WEE',
 			'month' => 'MON',
 			'year'  => 'ANN',
-		][ $period ] ?? 'MON';
+		);
+		return $codes[ $period ] ?? 'MON';
 	}
 
 	/**

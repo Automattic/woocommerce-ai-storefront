@@ -4123,4 +4123,92 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$this->tearDownSubscriptions();
 	}
+
+	public function test_variable_subscription_does_not_leak_signals_into_non_subscription_variation(): void {
+		// Realistic edge case: a variable-subscription parent could have
+		// a mix of subscription_variation and plain (non-recurring)
+		// variation children. The enricher must no-op for each variation
+		// independently — a sibling subscription's metadata must NOT
+		// leak into a non-subscription variation's Offer.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent = $this->make_product( [ 'id' => 100 ] );
+
+		// One subscription variation, one plain variation. Only the
+		// subscription gets seeded in $test_data — the plain one
+		// returns false from is_subscription().
+		$subscription_variation = $this->make_variation( [ 'id' => 201, 'price' => '10.00' ] );
+		$plain_variation        = $this->make_variation( [ 'id' => 202, 'price' => '25.00' ] );
+		$this->seed_subscription( 201, [ 'period' => 'month', 'interval' => 1 ] );
+
+		$sub_entry   = $this->invoke_build_variant_entry( $subscription_variation, $parent );
+		$plain_entry = $this->invoke_build_variant_entry( $plain_variation, $parent );
+
+		// Subscription variation gets the subscription enrichment.
+		$this->assertArrayHasKey( 'priceSpecification', $sub_entry['offers'][0] );
+		// Plain variation gets NO subscription fields — the enricher
+		// no-oped for it. Regression guard against a refactor that
+		// would inherit period/interval from a sibling or the parent.
+		$this->assertArrayNotHasKey(
+			'priceSpecification',
+			$plain_entry['offers'][0],
+			'Non-subscription variation must not inherit subscription metadata from a sibling.'
+		);
+		$this->assertArrayNotHasKey( 'addOn', $plain_entry['offers'][0] );
+		$this->assertArrayNotHasKey( 'eligibleDuration', $plain_entry['offers'][0] );
+
+		$this->tearDownSubscriptions();
+	}
+
+	public function test_subscription_signals_skipped_when_interval_is_zero_or_negative(): void {
+		// Corrupted subscription product (interval = 0) would otherwise
+		// emit `billingDuration: P0D` — spec-legal but nonsensical
+		// ("billed every 0 days"). Mirrors the trial path's
+		// `$trial_length > 0` gate. Asymmetric defensiveness between
+		// recurring and trial paths was the silent-failure-hunter
+		// finding on PR #371's first review pass.
+		$this->seed_subscription( 42, [ 'period' => 'month', 'interval' => 0 ] );
+		$product = $this->make_product();
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		// No subscription signals emitted — corrupt config short-circuits
+		// the entire enrichment, log is the only side-effect.
+		$this->assertArrayNotHasKey( 'priceSpecification', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'addOn', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'eligibleDuration', $result['offers'][0] );
+
+		$this->tearDownSubscriptions();
+	}
+
+	public function test_subscription_signals_use_get_woocommerce_currency_when_offer_currency_missing(): void {
+		// Edge case: the upstream Offer doesn't carry `priceCurrency`
+		// (rare — `add_currency()` runs first and hoists it, but a
+		// third-party filter could strip the field). The enricher
+		// must fall back to `get_woocommerce_currency()` rather than
+		// emit an empty-string priceCurrency on the priceSpecification.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'EUR' );
+
+		$this->seed_subscription( 42, [ 'period' => 'month', 'interval' => 1 ] );
+		$product = $this->make_product();
+		// `offers[0]` deliberately lacks `priceCurrency`.
+		$markup = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '10.00' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame(
+			'EUR',
+			$result['offers'][0]['priceSpecification'][0]['priceCurrency'],
+			'priceSpecification must fall back to get_woocommerce_currency() when the Offer has no priceCurrency.'
+		);
+
+		$this->tearDownSubscriptions();
+	}
 }
