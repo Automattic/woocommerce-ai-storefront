@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.14.0
+Stable tag: 0.14.2
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,14 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.14.2 - 2026-05-11 =
+**Fixed**
+* Unpurchasable variations no longer leak to agents. A misconfigured variation (typically missing a price — `is_in_stock: true` but `is_purchasable: false` in WC) was being emitted with a usable-looking variant ID and a checkout URL that WC then refused at cart-add. Three coordinated guards: UCP `/catalog/{search,lookup}` filter the bad variations out before the product translator sees them; `/checkout-sessions` rejects a stale or guessed unpurchasable variant ID with a new `item_unpurchasable` error code (distinct from `out_of_stock` so agents can route remediation correctly); JSON-LD `hasVariant[]` and the parent-product BuyAction drop their checkout URLs while keeping descriptive fields so SEO crawlers don't get handed a URL WC would 4xx. (#373)
+* Synthesized variant entries now carry the parent's `short_description` instead of an empty string. For simple / bundle / grouped products (and the synthesize-default fallback for malformed-variable parents), agents that drill into a variant ID directly now see useful descriptive copy on the variant entity. (#375)
+
+**New**
+* UCP `product.{status, published_at, updated_at}` relocated under `metadata.lifecycle.status` and `metadata.timestamps.{published_at, updated_at}` to match the UCP spec's expected shape — these are business-defined extension fields, not first-class properties of `product.json`. Strict validators that tighten `additionalProperties` in a future spec revision now read our manifest cleanly. (#374)
 
 = 0.14.0 - 2026-05-11 =
 **New**
