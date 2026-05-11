@@ -140,26 +140,19 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			$product['list_price_range'] = $list_price_range;
 		}
 
-		// Spec metadata fields — additive, non-breaking.
-		//
-		// `status` is a fixed literal "published": our catalog handlers
-		// only emit products returned by the Store API, which already
-		// filters to published (we don't syndicate drafts/private).
-		// Emitting the key anyway communicates the posture to agents
-		// so "why didn't I find product X?" is traceable back to
-		// "its status isn't in your result set".
-		$product['status'] = 'published';
-
-		// `published_at` / `updated_at` — ISO 8601 timestamps from the
-		// Store API. Older WC versions emit a `{raw, format_to_edit}`
-		// object; 9.5+ emits the ISO string directly. Coerce both.
+		// `status` and timestamps are emitted under `metadata` rather
+		// than at the top level of the product. UCP `product.json` does
+		// not define `status`, `published_at`, or `updated_at` as
+		// first-class properties — they're business-defined extension
+		// fields, and the spec's `metadata` block is the official
+		// escape hatch for that shape of data. Strict validators that
+		// tighten `additionalProperties` in a future spec revision
+		// would silently reject the old top-level emission; the
+		// metadata path is forward-compatible. The actual block
+		// assembly happens later (alongside `metadata.attributes`,
+		// `metadata.bundle`, `metadata.grouped`) — see the
+		// `$metadata` construction below. (#374)
 		$timestamps = self::extract_timestamps( $wc_product );
-		if ( isset( $timestamps['published_at'] ) ) {
-			$product['published_at'] = $timestamps['published_at'];
-		}
-		if ( isset( $timestamps['updated_at'] ) ) {
-			$product['updated_at'] = $timestamps['updated_at'];
-		}
 
 		// Seller is no longer attached at the product level. UCP
 		// `variant.json` defines `seller` inline only on variants
@@ -238,6 +231,29 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// attributes on non-variable products (simple/bundle/grouped),
 		// since those have no buyer-selectable axes by definition.
 		$metadata = [];
+
+		// Lifecycle + timestamps under metadata (#374). `lifecycle.status`
+		// is always "published" — catalog handlers upstream only translate
+		// products the Store API returns, which already filters out
+		// drafts/private. The key is emitted unconditionally so agents
+		// can distinguish "didn't find product X" from "product X is in
+		// our index but not published". Timestamps are conditional: the
+		// Store API extension is the primary source (`extract_timestamps`
+		// above), and downgrading gracefully to omission when the source
+		// lacks them is correct — never synthesize fake dates.
+		$lifecycle = [ 'status' => 'published' ];
+		$ts_subset = [];
+		if ( isset( $timestamps['published_at'] ) ) {
+			$ts_subset['published_at'] = $timestamps['published_at'];
+		}
+		if ( isset( $timestamps['updated_at'] ) ) {
+			$ts_subset['updated_at'] = $timestamps['updated_at'];
+		}
+		$metadata['lifecycle'] = $lifecycle;
+		if ( ! empty( $ts_subset ) ) {
+			$metadata['timestamps'] = $ts_subset;
+		}
+
 		if ( ! empty( $classified['metadata_attributes'] ) ) {
 			$metadata['attributes'] = $classified['metadata_attributes'];
 		}
@@ -263,9 +279,10 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				$metadata['grouped'] = $grouped_metadata;
 			}
 		}
-		if ( ! empty( $metadata ) ) {
-			$product['metadata'] = $metadata;
-		}
+		// `metadata.lifecycle.status` is always present (#374), so the
+		// block is unconditionally non-empty — direct assignment instead
+		// of a `! empty()` guard.
+		$product['metadata'] = $metadata;
 
 		// Rating + review count — emitted under core `product.rating`
 		// (2.0.0+). Previously (1.x) under the vendor extension

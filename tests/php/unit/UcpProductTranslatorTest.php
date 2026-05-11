@@ -1151,17 +1151,19 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'attributes', $result );
 	}
 
-	public function test_translate_omits_options_and_metadata_when_source_has_no_attributes(): void {
-		// No WC attributes at all → both `options` and `metadata` keys
-		// should be absent (no empty scaffolding emitted).
+	public function test_translate_omits_options_and_metadata_attributes_when_source_has_no_attributes(): void {
+		// No WC attributes at all → no `options` key, and no
+		// `metadata.attributes` sub-block (no empty scaffolding emitted).
+		// `metadata` itself IS present post-#374 because
+		// `metadata.lifecycle.status` always emits; the assertions are
+		// scoped to the attributes-related sub-blocks only.
 		$fixture = $this->simple_product_fixture();
 		unset( $fixture['attributes'] );
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
-		$this->assertArrayNotHasKey( 'attributes', $result );
 		$this->assertArrayNotHasKey( 'options', $result );
-		$this->assertArrayNotHasKey( 'metadata', $result );
+		$this->assertArrayNotHasKey( 'attributes', $result['metadata'] ?? [] );
 	}
 
 	public function test_simple_product_reserved_attribute_demoted_to_metadata(): void {
@@ -1496,19 +1498,22 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	// Spec metadata fields (PR G)
 	// ------------------------------------------------------------------
 
-	public function test_translate_always_emits_status_published(): void {
+	public function test_translate_always_emits_status_published_under_metadata(): void {
 		// The handler upstream filters out draft/private products at
 		// the Store API layer, so anything we translate is by
 		// definition published. Emitting the `status` key explicitly
 		// communicates that posture to agents — otherwise they'd
 		// have no way to know whether missing products are drafts
-		// vs. out-of-stock vs. excluded-by-permission.
+		// vs. out-of-stock vs. excluded-by-permission. Lives under
+		// `metadata.lifecycle.status` per UCP spec (#374): top-level
+		// `status` is not in `product.json`.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
 			[]
 		);
 
-		$this->assertSame( 'published', $result['status'] );
+		$this->assertSame( 'published', $result['metadata']['lifecycle']['status'] );
+		$this->assertArrayNotHasKey( 'status', $result, 'Top-level status must not be emitted post-#374.' );
 	}
 
 	public function test_translate_reads_timestamps_from_store_api_extension_namespace(): void {
@@ -1516,7 +1521,8 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// under `extensions[com-woocommerce-ai-storefront]` as RFC
 		// 3339 / ISO 8601 UTC strings. WC 9.5+ Store API strips the
 		// top-level date fields; the extension is the only reliable
-		// path to these values.
+		// path to these values. Emitted under `metadata.timestamps`
+		// post-#374.
 		$fixture                 = $this->simple_product_fixture();
 		$fixture['extensions']   = [
 			'com-woocommerce-ai-storefront' => [
@@ -1527,8 +1533,10 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
-		$this->assertSame( '2026-01-15T10:30:00Z', $result['published_at'] );
-		$this->assertSame( '2026-04-20T14:22:31Z', $result['updated_at'] );
+		$this->assertSame( '2026-01-15T10:30:00Z', $result['metadata']['timestamps']['published_at'] );
+		$this->assertSame( '2026-04-20T14:22:31Z', $result['metadata']['timestamps']['updated_at'] );
+		$this->assertArrayNotHasKey( 'published_at', $result, 'Top-level published_at must not be emitted post-#374.' );
+		$this->assertArrayNotHasKey( 'updated_at', $result, 'Top-level updated_at must not be emitted post-#374.' );
 	}
 
 	public function test_translate_falls_back_to_top_level_date_fields_when_extension_absent(): void {
@@ -1543,8 +1551,8 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
-		$this->assertSame( '2026-01-15T10:30:00', $result['published_at'] );
-		$this->assertSame( '2026-04-20T14:22:31', $result['updated_at'] );
+		$this->assertSame( '2026-01-15T10:30:00', $result['metadata']['timestamps']['published_at'] );
+		$this->assertSame( '2026-04-20T14:22:31', $result['metadata']['timestamps']['updated_at'] );
 	}
 
 	public function test_translate_prefers_extension_over_top_level_when_both_present(): void {
@@ -1563,7 +1571,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
-		$this->assertSame( '2026-01-15T10:30:00Z', $result['published_at'] );
+		$this->assertSame( '2026-01-15T10:30:00Z', $result['metadata']['timestamps']['published_at'] );
 	}
 
 	public function test_translate_tolerates_non_array_extensions_without_fatal(): void {
@@ -1572,6 +1580,8 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// entry. Without an `is_array` guard we'd fatal on array
 		// indexing. Verify the translator degrades to the top-level
 		// fallback path (and ultimately to omission) without error.
+		// Post-#374: `metadata.timestamps` is omitted entirely when no
+		// timestamps survive (rather than emitted as an empty sub-block).
 		foreach ( [
 			'extensions-is-string' => [ 'extensions' => 'surprise string' ],
 			'extensions-is-int'    => [ 'extensions' => 42 ],
@@ -1584,8 +1594,11 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 			// (no top-level date_* either in this fixture).
 			$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
 
-			$this->assertArrayNotHasKey( 'published_at', $result, "Fatal-averted path failed: {$label}" );
-			$this->assertArrayNotHasKey( 'updated_at', $result, "Fatal-averted path failed: {$label}" );
+			$this->assertArrayNotHasKey(
+				'timestamps',
+				$result['metadata'] ?? [],
+				"Fatal-averted path failed: {$label}"
+			);
 		}
 	}
 
@@ -1594,13 +1607,16 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// translator is pure — don't synthesize fake timestamps if
 		// the input happens to lack them (e.g. a mocked response in
 		// a caller's integration test). Omission is valid per spec.
+		// Post-#374: `metadata.lifecycle.status` still emits (it's a
+		// fixed literal not sourced from input); only `timestamps` is
+		// conditional on input.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
 			[]
 		);
 
-		$this->assertArrayNotHasKey( 'published_at', $result );
-		$this->assertArrayNotHasKey( 'updated_at', $result );
+		$this->assertArrayHasKey( 'lifecycle', $result['metadata'] );
+		$this->assertArrayNotHasKey( 'timestamps', $result['metadata'] );
 	}
 
 	public function test_translate_stamps_seller_on_synthesized_default_variant(): void {
