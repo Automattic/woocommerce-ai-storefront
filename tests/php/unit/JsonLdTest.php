@@ -177,6 +177,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	protected function tearDown(): void {
 		WC_AI_Storefront::$test_settings = [];
 		WC_Shipping_Zones::$test_zones   = [];
+		// Reset the subscription stub's static state unconditionally.
+		// Subscription tests previously did this via per-test
+		// `tearDownSubscriptions()` calls, but those don't fire when an
+		// assertion throws mid-test, leaking state into later tests.
+		// PHPUnit's `tearDown()` runs after every test (pass or fail),
+		// so this is the correct cleanup site.
+		if ( class_exists( 'WC_Subscriptions_Product', false ) ) {
+			WC_Subscriptions_Product::$test_data = [];
+		}
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -3893,10 +3902,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	protected function tearDownSubscriptions(): void {
-		WC_Subscriptions_Product::$test_data = [];
-	}
-
 	public function test_simple_subscription_emits_recurring_price_specification(): void {
 		// Annual subscription at $100/year, no trial, no sign-up fee,
 		// indefinite. Should emit a single UnitPriceSpecification
@@ -3923,7 +3928,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'addOn', $result['offers'][0] );
 		$this->assertArrayNotHasKey( 'eligibleDuration', $result['offers'][0] );
 
-		$this->tearDownSubscriptions();
 	}
 
 	public function test_subscription_with_trial_emits_two_element_price_specification(): void {
@@ -3969,7 +3973,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'billingStart is Number-typed per Schema.org — must not be emitted as an ISO 8601 string.'
 		);
 
-		$this->tearDownSubscriptions();
 	}
 
 	public function test_subscription_with_signup_fee_emits_both_addOn_and_inline_activation_fee(): void {
@@ -3978,6 +3981,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// inline UnitPriceSpecification with priceComponentType=ActivationFee
 		// (still-experimental enumeration, semantically richer).
 		// Spec-legal duplication.
+		Functions\when( '__' )->returnArg();
 		$this->seed_subscription( 42, [
 			'period'       => 'month',
 			'interval'     => 1,
@@ -4006,7 +4010,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '5.00', $result['offers'][0]['addOn']['price'] );
 		$this->assertSame( 'Sign-up fee', $result['offers'][0]['addOn']['name'] );
 
-		$this->tearDownSubscriptions();
 	}
 
 	public function test_subscription_with_finite_length_emits_eligible_duration(): void {
@@ -4031,7 +4034,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 12, $dur['value'] );
 		$this->assertSame( 'MON', $dur['unitCode'] );
 
-		$this->tearDownSubscriptions();
 	}
 
 	public function test_subscription_signals_skipped_when_wcs_not_active(): void {
@@ -4066,7 +4068,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// We don't care what offers[0] contains; just that no fatal occurs.
 		$this->assertIsArray( $result );
 
-		$this->tearDownSubscriptions();
 	}
 
 	public function test_variable_subscription_emits_per_variant_price_specification(): void {
@@ -4121,7 +4122,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$yearly_entry['offers'][0]['priceSpecification'][0]['price']
 		);
 
-		$this->tearDownSubscriptions();
 	}
 
 	public function test_variable_subscription_does_not_leak_signals_into_non_subscription_variation(): void {
@@ -4157,7 +4157,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'addOn', $plain_entry['offers'][0] );
 		$this->assertArrayNotHasKey( 'eligibleDuration', $plain_entry['offers'][0] );
 
-		$this->tearDownSubscriptions();
 	}
 
 	public function test_subscription_signals_skipped_when_interval_is_zero_or_negative(): void {
@@ -4182,7 +4181,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'addOn', $result['offers'][0] );
 		$this->assertArrayNotHasKey( 'eligibleDuration', $result['offers'][0] );
 
-		$this->tearDownSubscriptions();
 	}
 
 	public function test_subscription_signals_use_get_woocommerce_currency_when_offer_currency_missing(): void {
@@ -4209,6 +4207,5 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'priceSpecification must fall back to get_woocommerce_currency() when the Offer has no priceCurrency.'
 		);
 
-		$this->tearDownSubscriptions();
 	}
 }

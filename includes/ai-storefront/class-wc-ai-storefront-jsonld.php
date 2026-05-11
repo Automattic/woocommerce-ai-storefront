@@ -288,9 +288,13 @@ class WC_AI_Storefront_JsonLd {
 	 *
 	 *   - `priceSpecification` — an array of one or more
 	 *     `UnitPriceSpecification` entries describing recurring price
-	 *     components. Each entry carries `billingDuration` (ISO 8601),
-	 *     `priceComponentType: Subscription` for the recurring price,
-	 *     and an optional `billingStart` for the trial-then-paid pattern.
+	 *     components. Each entry carries `billingDuration` (ISO 8601)
+	 *     and `priceComponentType: Subscription` for the recurring
+	 *     price. The trial-then-paid pattern is conveyed by array
+	 *     order (trial entry FIRST at `price: 0`, recurring entry
+	 *     SECOND at full price) without using `billingStart` —
+	 *     Schema.org types `billingStart` as `Number`, not Duration,
+	 *     so a `P14D` value there would violate the spec contract.
 	 *     A separate entry with `priceComponentType: ActivationFee`
 	 *     carries the one-shot sign-up fee when set.
 	 *   - `addOn` — a one-shot `Offer` carrying the sign-up fee, emitted
@@ -458,7 +462,7 @@ class WC_AI_Storefront_JsonLd {
 			);
 			$markup['offers'][0]['addOn'] = array(
 				'@type'         => 'Offer',
-				'name'          => 'Sign-up fee',
+				'name'          => __( 'Sign-up fee', 'woocommerce-ai-storefront' ),
 				'price'         => $signup_fee_str,
 				'priceCurrency' => $currency,
 			);
