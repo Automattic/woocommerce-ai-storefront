@@ -3239,9 +3239,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * worse UX than not advertising at all — the agent would relay a
 	 * code to the user that has no chance of applying.
 	 *
+	 * Called by `WC_AI_Storefront_Ucp::generate_manifest()` to decide
+	 * whether to advertise the capability in the `/.well-known/ucp`
+	 * manifest — keeping discovery (manifest) and per-response envelope
+	 * in lockstep. Promoted from private to public for that cross-class
+	 * use; the contract is a pure read of settings + WC core state, no
+	 * side effects.
+	 *
 	 * @return bool
 	 */
-	private static function discount_capability_active(): bool {
+	public static function discount_capability_active(): bool {
 		// `wc_coupons_enabled()` reads the `woocommerce_enable_coupons`
 		// core option ('yes'/'no'). Guard against the function not
 		// existing (e.g. in unit tests where WC isn't loaded) — when

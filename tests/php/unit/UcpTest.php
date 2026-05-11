@@ -34,7 +34,13 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->ucp = new WC_AI_Storefront_Ucp();
+		// Defensive reset — another test may have set `$test_settings`
+		// and skipped its own tearDown (e.g. assertion failure exits
+		// before tearDown runs). Without this, manifest tests below
+		// would inherit the polluted state and assert the wrong
+		// capability set.
+		WC_AI_Storefront::$test_settings = [];
+		$this->ucp                       = new WC_AI_Storefront_Ucp();
 
 		Functions\when( 'home_url' )->alias(
 			static fn( $path = '' ) => 'https://example.com' . ( $path ?: '/' )
@@ -59,12 +65,21 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
 		Functions\when( 'wc_prices_include_tax' )->justReturn( false );
 		Functions\when( 'wc_shipping_enabled' )->justReturn( true );
+		// `discount_capability_active()` calls `wc_coupons_enabled()`
+		// on every `generate_manifest()` invocation. Default to true
+		// so most tests don't have to think about the gate; tests that
+		// exercise the WC-disabled branch override this.
+		Functions\when( 'wc_coupons_enabled' )->justReturn( true );
 		// WC() isn't stubbed — `build_store_context()` falls through
 		// to `country => null` when the global function isn't
 		// available. Specific country-testing scenarios stub it.
 	}
 
 	protected function tearDown(): void {
+		// Reset test_settings so a test that mutates it (e.g. setting
+		// `allow_discount_codes`) doesn't leak into the next test's
+		// `WC_AI_Storefront::get_settings()` call.
+		WC_AI_Storefront::$test_settings = [];
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -369,15 +384,26 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_declared_capabilities_are_exactly_three_canonical_plus_one_extension(): void {
-		// Regression guard on the exact capability set:
+		// Regression guard on the BASE capability set (no optional
+		// extensions active):
 		//   - 3 canonical UCP capabilities we implement
 		//     (catalog.search, catalog.lookup, checkout)
 		//   - 1 merchant-specific extension carrying store_context
 		//     only (com.woocommerce.ai_storefront)
 		//
+		// Optional capabilities (e.g. `dev.ucp.shopping.discount`,
+		// added in v0.14.2) are advertised conditionally and have
+		// their own dedicated tests below — turn them OFF here so this
+		// base-case assertion stays stable. Without the toggle off,
+		// `discount_capability_active()` defaults to true (yes-merchant
+		// toggle + `function_exists('wc_coupons_enabled')` false-then-
+		// true behaviour in unit env) and the set grows to 5.
+		//
 		// Extensions use the `extends` field to link back to the
 		// parent capability/service; canonical capabilities have
 		// no `extends`. That's the structural invariant below.
+		WC_AI_Storefront::$test_settings = [ 'allow_discount_codes' => 'no' ];
+
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertEqualsCanonicalizing(
@@ -835,6 +861,95 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertEquals( 'extended', $manifest['ucp']['custom_key'] );
+	}
+
+	// ------------------------------------------------------------------
+	// dev.ucp.shopping.discount — optional capability advertisement
+	// ------------------------------------------------------------------
+	//
+	// The discount capability is conditionally advertised based on TWO
+	// gates: WC core's `wc_coupons_enabled()` AND our merchant toggle
+	// `allow_discount_codes`. Both gates checked by
+	// WC_AI_Storefront_UCP_REST_Controller::discount_capability_active(),
+	// which the manifest delegates to. These tests pin both the
+	// shape (when present) and the conditional logic (when absent).
+
+	public function test_manifest_advertises_discount_capability_when_toggle_on(): void {
+		// Default test stub `wc_coupons_enabled` is unstubbed →
+		// function_exists() returns false in unit env → helper defaults
+		// to "coupons enabled". So with the merchant toggle ON, the
+		// capability MUST appear in the manifest.
+		WC_AI_Storefront::$test_settings = [ 'allow_discount_codes' => 'yes' ];
+
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertArrayHasKey(
+			'dev.ucp.shopping.discount',
+			$manifest['ucp']['capabilities'],
+			'Discount capability must be advertised in the manifest when the toggle is on.'
+		);
+	}
+
+	public function test_manifest_omits_discount_capability_when_toggle_off(): void {
+		// Toggle off → capability suppressed regardless of WC core state.
+		WC_AI_Storefront::$test_settings = [ 'allow_discount_codes' => 'no' ];
+
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertArrayNotHasKey(
+			'dev.ucp.shopping.discount',
+			$manifest['ucp']['capabilities'],
+			'Discount capability must be omitted from the manifest when the toggle is off.'
+		);
+	}
+
+	public function test_manifest_omits_discount_capability_when_wc_coupons_disabled(): void {
+		// Even with merchant toggle ON, if WC core has coupons disabled,
+		// the capability MUST NOT be advertised. Stub `wc_coupons_enabled`
+		// to return false; helper sees coupons-off and suppresses the
+		// capability — truthful discovery.
+		Functions\when( 'wc_coupons_enabled' )->justReturn( false );
+		WC_AI_Storefront::$test_settings = [ 'allow_discount_codes' => 'yes' ];
+
+		$manifest = $this->ucp->generate_manifest( [] );
+
+		$this->assertArrayNotHasKey(
+			'dev.ucp.shopping.discount',
+			$manifest['ucp']['capabilities'],
+			'WC coupons disabled must suppress the manifest capability regardless of the merchant toggle.'
+		);
+	}
+
+	public function test_discount_capability_binding_shape(): void {
+		// Pins the exact shape of the discount capability binding —
+		// version + spec URL + schema URL + extends. Matches the
+		// per-response envelope's advertisement so manifest discovery
+		// and runtime stay in lockstep.
+		Functions\when( 'wc_coupons_enabled' )->justReturn( true );
+		WC_AI_Storefront::$test_settings = [ 'allow_discount_codes' => 'yes' ];
+
+		$manifest = $this->ucp->generate_manifest( [] );
+		$bindings = $manifest['ucp']['capabilities']['dev.ucp.shopping.discount'];
+
+		$this->assertIsArray( $bindings );
+		$this->assertCount( 1, $bindings, 'Discount capability should declare exactly one binding.' );
+
+		$binding = $bindings[0];
+		$this->assertSame( WC_AI_Storefront_Ucp::PROTOCOL_VERSION, $binding['version'] );
+		$this->assertSame(
+			'https://ucp.dev/' . WC_AI_Storefront_Ucp::PROTOCOL_VERSION . '/specification/discount',
+			$binding['spec']
+		);
+		$this->assertSame(
+			'https://ucp.dev/' . WC_AI_Storefront_Ucp::PROTOCOL_VERSION . '/schemas/shopping/discount.json',
+			$binding['schema']
+		);
+		// `extends` is a SINGLE string (not array) — discount extension
+		// applies specifically to checkout, unlike commerce-context which
+		// extends all three canonical capabilities. Both string and
+		// string[] forms are valid per the UCP capability schema's
+		// `extends` oneOf branch.
+		$this->assertSame( 'dev.ucp.shopping.checkout', $binding['extends'] );
 	}
 }
 

@@ -321,6 +321,7 @@ class WC_AI_Storefront_Ucp {
 				// SHOULD directive on business-provided continue_url.
 				'capabilities'     => array_merge(
 					self::build_canonical_capabilities( $spec_base ),
+					self::build_optional_capabilities( $spec_base ),
 					[
 						// Merchant-specific extension capability. Carries
 						// commerce context (currency, locale, tax/shipping
@@ -463,6 +464,56 @@ class WC_AI_Storefront_Ucp {
 				],
 			];
 		}
+		return $capabilities;
+	}
+
+	/**
+	 * Build the optional UCP shopping capability declarations.
+	 *
+	 * Optional capabilities are spec-defined UCP extensions (NOT
+	 * merchant-specific extensions) whose presence is conditional on
+	 * either WC core state or merchant settings. Each entry mirrors the
+	 * per-response envelope advertisement so discovery (manifest) and
+	 * runtime (response capabilities map) stay in lockstep — agents
+	 * that inspect either signal see the same set of active capabilities.
+	 *
+	 * Currently the only optional capability is
+	 * `dev.ucp.shopping.discount`. Advertised when BOTH:
+	 *   1. WC core's `wc_coupons_enabled()` returns true.
+	 *   2. The merchant's `allow_discount_codes` setting is `'yes'`.
+	 *
+	 * Both gates are checked by
+	 * `WC_AI_Storefront_UCP_REST_Controller::discount_capability_active()`,
+	 * which is the single source of truth — this helper delegates to
+	 * it rather than re-deriving the conditions, so the manifest and
+	 * envelope can't drift.
+	 *
+	 * The discount capability's `extends` is a SINGLE string
+	 * (`dev.ucp.shopping.checkout`), not an array, because the discount
+	 * extension applies specifically to the checkout capability —
+	 * unlike `com.woocommerce.ai_storefront` (commerce context) which
+	 * extends all three canonical capabilities and therefore uses the
+	 * array form. Both shapes are valid per the UCP `capability.json`
+	 * schema's `extends` oneOf branch (`string | string[]`).
+	 *
+	 * @param string $spec_base Base URL for spec/schema docs (e.g.
+	 *                          `https://ucp.dev/2026-04-08`).
+	 * @return array<string, array<int, array{version: string, spec: string, schema: string, extends: string}>>
+	 */
+	private static function build_optional_capabilities( string $spec_base ): array {
+		$capabilities = [];
+
+		if ( WC_AI_Storefront_UCP_REST_Controller::discount_capability_active() ) {
+			$capabilities['dev.ucp.shopping.discount'] = [
+				[
+					'version' => self::PROTOCOL_VERSION,
+					'spec'    => $spec_base . '/specification/discount',
+					'schema'  => $spec_base . '/schemas/shopping/discount.json',
+					'extends' => 'dev.ucp.shopping.checkout',
+				],
+			];
+		}
+
 		return $capabilities;
 	}
 

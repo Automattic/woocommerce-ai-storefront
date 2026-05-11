@@ -298,9 +298,18 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_declared_capabilities_list_is_exactly_expected(): void {
 		// Hard-pin the canonical capability set: three UCP capabilities
-		// we implement + one merchant-specific extension. Any additional
-		// key risks introducing a path we haven't reviewed for posture
-		// compliance.
+		// we implement + one merchant-specific extension + one optional
+		// spec extension (discount, conditionally advertised). Any
+		// additional key risks introducing a path we haven't reviewed
+		// for posture compliance.
+		//
+		// `dev.ucp.shopping.discount` (v0.14.2) is conditionally
+		// advertised when both `wc_coupons_enabled()` and the merchant
+		// toggle `allow_discount_codes` are on. In this test the
+		// `wc_coupons_enabled` stub returns true (default) and the
+		// merchant toggle defaults to `'yes'`, so the capability IS
+		// expected here. UcpTest covers the toggle-off and
+		// coupons-disabled branches.
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertEqualsCanonicalizing(
@@ -308,6 +317,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 				'dev.ucp.shopping.catalog.search',
 				'dev.ucp.shopping.catalog.lookup',
 				'dev.ucp.shopping.checkout',
+				'dev.ucp.shopping.discount',
 				'com.woocommerce.ai_storefront',
 			],
 			array_keys( $manifest['ucp']['capabilities'] ),
