@@ -1625,6 +1625,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals( 201, $result['status'] );
 		$this->assertStringContainsString( 'coupon-code=SUMMER20', $result['data']['continue_url'] );
+		// Regression guard against URL re-encoding (#380 review). The
+		// `products=100:1` literal `:` is the WC-checkout-link wire
+		// shape; if we ever switch from string-concat to
+		// `add_query_arg()` for the coupon-code append, the existing
+		// query string gets parsed and re-encoded into
+		// `products=100%3A1`, breaking WC core's URL handler. Pin both
+		// the positive (literal kept) and negative (no %3A) cases.
+		$this->assertStringContainsString( 'products=100:1', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '%3A', $result['data']['continue_url'] );
 	}
 
 	public function test_discount_code_with_url_safe_chars_passed_through_unchanged(): void {
@@ -1644,6 +1653,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertStringContainsString( 'coupon-code=FALL_2026-VIP', $result['data']['continue_url'] );
+		// Same URL-re-encoding regression guard as the SUMMER20 test
+		// — see that test for rationale. (#380 review)
+		$this->assertStringContainsString( 'products=100:1', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '%3A', $result['data']['continue_url'] );
 	}
 
 	public function test_malformed_discount_codes_filtered_out_and_rejected_message_emitted(): void {
@@ -1716,6 +1729,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertStringContainsString( 'coupon-code=GOOD_CODE', $result['data']['continue_url'] );
 		$this->assertStringNotContainsString( 'coupon-code=OTHER', $result['data']['continue_url'] );
+		// Same URL-re-encoding regression guard as the SUMMER20 test
+		// — see that test for rationale. (#380 review)
+		$this->assertStringContainsString( 'products=100:1', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( '%3A', $result['data']['continue_url'] );
 	}
 
 	public function test_discount_codes_dropped_with_unsupported_message_when_capability_disabled(): void {

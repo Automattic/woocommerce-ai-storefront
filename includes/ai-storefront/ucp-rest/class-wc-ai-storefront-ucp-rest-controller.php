@@ -6057,10 +6057,32 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// it natively. `rawurlencode` is defense-in-depth — the
 		// allowlist already restricts to URL-safe chars.
 		if ( ! empty( $discount_codes ) && '' !== $url ) {
-			$url = add_query_arg(
-				[ 'coupon-code' => rawurlencode( $discount_codes[0] ) ],
-				$url
-			);
+			// String-concat append (NOT `add_query_arg`) because
+			// `add_query_arg` parses + re-encodes the existing query
+			// string. Our `/checkout-link/?products=ID:QTY,...` URL
+			// carries literal `:` and `,` separators that WC's URL
+			// handler expects in their unencoded wire form —
+			// round-tripping through `parse_str` + `http_build_query`
+			// would turn `products=100:1` into `products=100%3A1` and
+			// break the contract with WC core. Mirrors the approach
+			// in `WC_AI_Storefront_Attribution::with_woo_ucp_utm()`
+			// which appends UTM params with the same constraint.
+			// (#380 review)
+			//
+			// `#fragment` strip-and-rejoin: a future merchant filter
+			// adding `#section` to the URL would otherwise produce
+			// `/checkout-link/?products=...#section&coupon-code=...`
+			// where the `&coupon-code=...` becomes part of the
+			// fragment and is never seen server-side. WC permalinks
+			// don't carry fragments today, but defensive.
+			$fragment   = '';
+			$hash_index = strpos( $url, '#' );
+			if ( false !== $hash_index ) {
+				$fragment = substr( $url, $hash_index );
+				$url      = substr( $url, 0, $hash_index );
+			}
+			$separator = str_contains( $url, '?' ) ? '&' : '?';
+			$url       = $url . $separator . 'coupon-code=' . rawurlencode( $discount_codes[0] ) . $fragment;
 		} elseif ( ! empty( $discount_codes ) ) {
 			// Valid codes were supplied + sanitized, but no
 			// `continue_url` survived upstream (e.g. all lines were
