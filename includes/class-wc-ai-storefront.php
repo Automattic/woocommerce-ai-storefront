@@ -77,15 +77,6 @@ class WC_AI_Storefront {
 				'min' => 0,
 				'max' => 0,
 			),
-			// Pass UCP-supplied discount codes through to WC's checkout URL
-			// as a `coupon-code=` query param (#376). Default `'yes'`
-			// matches merchant intent: if they already have WC coupons
-			// enabled in core, agents should be able to relay user-typed
-			// promo codes. The capability is also gated upstream on
-			// `wc_coupons_enabled()` — if WC coupons are OFF, we never
-			// advertise the capability regardless of this flag (truthful
-			// discovery). See `WC_AI_Storefront_UCP_REST_Controller::discount_capability_active()`.
-			'allow_discount_codes'     => 'yes',
 		);
 	}
 
@@ -610,19 +601,6 @@ class WC_AI_Storefront {
 			$allow_unknown = 'no';
 		}
 
-		// `allow_discount_codes` (#376) follows the same up-front-resolve
-		// pattern as `$allow_unknown` for the same reason: validation
-		// and storage must see the same value, and the `?? 'yes'`
-		// coalesce alone wouldn't protect against an explicit `null`
-		// passing the enum check while persisting the raw `null`.
-		// Default `'yes'` (opt-out posture — capability is also gated
-		// upstream by `wc_coupons_enabled()` so an opt-in default would
-		// add friction with no security benefit).
-		$allow_discount = $merged['allow_discount_codes'] ?? 'yes';
-		if ( ! in_array( $allow_discount, [ 'yes', 'no' ], true ) ) {
-			$allow_discount = 'yes';
-		}
-
 		// Map legacy mode aliases to their canonical form. Old stores may
 		// have 'categories', 'tags', or 'brands' saved before the unified
 		// by_taxonomy mode was introduced; this normalizes them at write
@@ -665,10 +643,6 @@ class WC_AI_Storefront {
 			// See `$allow_unknown` resolution above the array literal
 			// for why we don't inline this with `??` + ternary.
 			'allow_unknown_ucp_agents' => $allow_unknown,
-			// `allow_discount_codes` (#376) — see `$allow_discount`
-			// resolution above for the same explicit-null guard
-			// rationale as `$allow_unknown`.
-			'allow_discount_codes'     => $allow_discount,
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.

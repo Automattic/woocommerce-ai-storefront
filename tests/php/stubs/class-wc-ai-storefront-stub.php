@@ -71,11 +71,6 @@ class WC_AI_Storefront {
 				// production defaults, and that's the failure mode
 				// every test in this codebase is trying to avoid.
 				'allow_unknown_ucp_agents' => 'no',
-				// Mirror production default. Opt-out posture matches
-				// the merchant-friendly assumption that if WC coupons
-				// are enabled, agents should be able to relay user-
-				// typed promo codes by default. (#376)
-				'allow_discount_codes'     => 'yes',
 			],
 			self::$test_settings
 		);
@@ -270,21 +265,9 @@ class WC_AI_Storefront {
 			$sanitized_unknown = 'no';
 		}
 
-		// `allow_discount_codes` (#376) — same yes/no enum shape as
-		// `$sanitized_unknown` but defaulting to `'yes'` (opt-out
-		// posture; the capability is gated upstream by WC core's
-		// `wc_coupons_enabled()` so opt-in would add friction without
-		// security benefit). Same assign-coalesce-then-validate
-		// pattern guards against the explicit-null hole.
-		$sanitized_discount = $merged['allow_discount_codes'] ?? 'yes';
-		if ( ! in_array( $sanitized_discount, [ 'yes', 'no' ], true ) ) {
-			$sanitized_discount = 'yes';
-		}
-
 		$overrides = [
 			'product_selection_mode'   => $sanitized_mode,
 			'allow_unknown_ucp_agents' => $sanitized_unknown,
-			'allow_discount_codes'     => $sanitized_discount,
 		];
 
 		// If a return_policy was passed in, route it through the
