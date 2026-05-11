@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-11T16:15:14+00:00\n"
+"POT-Creation-Date: 2026-05-11T16:48:07+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -163,7 +163,7 @@ msgid "Request must include a non-empty \"line_items\" array."
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2355
-msgid "Discount codes were rejected by validation. Allowed characters: A–Z, 0–9, hyphen, underscore. Maximum length: 64."
+msgid "Discount codes were rejected by validation. Allowed characters: letters (A–Z, a–z), digits (0–9), hyphen, underscore. Maximum length: 64."
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2366

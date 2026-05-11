@@ -2352,7 +2352,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						'type'    => 'info',
 						'code'    => WC_AI_Storefront_UCP_Error_Codes::DISCOUNT_CODES_REJECTED,
 						'path'    => '$.discounts.codes',
-						'content' => __( 'Discount codes were rejected by validation. Allowed characters: A–Z, 0–9, hyphen, underscore. Maximum length: 64.', 'woocommerce-ai-storefront' ),
+						'content' => __( 'Discount codes were rejected by validation. Allowed characters: letters (A–Z, a–z), digits (0–9), hyphen, underscore. Maximum length: 64.', 'woocommerce-ai-storefront' ),
 					];
 				}
 			} else {
