@@ -141,6 +141,18 @@ class WC_AI_Storefront_Admin_Controller {
 								),
 							),
 						),
+						// Discount-code pass-through toggle (#376). When
+						// 'yes' AND WC coupons are enabled, the
+						// /checkout-sessions response envelope advertises
+						// the `dev.ucp.shopping.discount` capability and
+						// the handler appends agent-supplied codes to
+						// `continue_url` as `coupon-code=`. Strict enum
+						// (yes/no only) — same shape as
+						// `allow_unknown_ucp_agents`.
+						'allow_discount_codes'     => array(
+							'type' => 'string',
+							'enum' => array( 'yes', 'no' ),
+						),
 					),
 				),
 			)

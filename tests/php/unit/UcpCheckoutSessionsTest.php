@@ -1560,6 +1560,177 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// Discount-code pass-through (#376)
+	// ------------------------------------------------------------------
+
+	public function test_discount_capability_advertised_when_toggle_on(): void {
+		// Default settings (allow_discount_codes => 'yes') + no
+		// wc_coupons_enabled stub (function absent in unit env →
+		// helper treats coupons as enabled). The capability map in
+		// the envelope MUST include `dev.ucp.shopping.discount`
+		// alongside the always-present checkout capability.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ] ]
+		);
+
+		$caps = $result['data']['ucp']['capabilities'] ?? [];
+		$this->assertArrayHasKey( 'dev.ucp.shopping.checkout', $caps );
+		$this->assertArrayHasKey( 'dev.ucp.shopping.discount', $caps );
+	}
+
+	public function test_discount_capability_not_advertised_when_toggle_off(): void {
+		// Merchant turned off the toggle. Envelope MUST omit the
+		// discount capability — never lie about what we support.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'no',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ] ]
+		);
+
+		$caps = $result['data']['ucp']['capabilities'] ?? [];
+		$this->assertArrayHasKey( 'dev.ucp.shopping.checkout', $caps );
+		$this->assertArrayNotHasKey( 'dev.ucp.shopping.discount', $caps );
+	}
+
+	public function test_valid_discount_code_appended_to_continue_url(): void {
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ],
+				'discounts'  => [ 'codes' => [ 'SUMMER20' ] ],
+			]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertStringContainsString( 'coupon-code=SUMMER20', $result['data']['continue_url'] );
+	}
+
+	public function test_discount_code_with_url_safe_chars_passed_through_unchanged(): void {
+		// Allowlist accepts hyphens and underscores. Verify they reach
+		// the URL unmolested (no over-encoding, no rejection).
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ],
+				'discounts'  => [ 'codes' => [ 'FALL_2026-VIP' ] ],
+			]
+		);
+
+		$this->assertStringContainsString( 'coupon-code=FALL_2026-VIP', $result['data']['continue_url'] );
+	}
+
+	public function test_malformed_discount_codes_filtered_out(): void {
+		// XSS-y, length-overflow, and non-ASCII codes are rejected by
+		// `sanitize_discount_codes`. The request still succeeds (we
+		// don't 400 — just silently drop) and `continue_url` carries
+		// NO coupon-code parameter.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ],
+				'discounts'  => [
+					'codes' => [
+						'<script>alert(1)</script>',  // contains <, >
+						str_repeat( 'A', 65 ),         // > 64 chars
+						'CODE WITH SPACE',             // contains space
+						'CAFÉ',                        // non-ASCII
+					],
+				],
+			]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertStringNotContainsString( 'coupon-code=', $result['data']['continue_url'] );
+	}
+
+	public function test_first_valid_code_wins_when_multi_code_supplied(): void {
+		// v0.14.2 scope: single-code only. When the agent sends
+		// `codes: [malformed, valid_a, valid_b]`, the sanitizer
+		// returns the first VALID one (not the first arg).
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ],
+				'discounts'  => [ 'codes' => [ 'BAD CODE', 'GOOD_CODE', 'OTHER' ] ],
+			]
+		);
+
+		$this->assertStringContainsString( 'coupon-code=GOOD_CODE', $result['data']['continue_url'] );
+		$this->assertStringNotContainsString( 'coupon-code=OTHER', $result['data']['continue_url'] );
+	}
+
+	public function test_discount_codes_silently_dropped_when_capability_disabled(): void {
+		// Capability off → request still succeeds, code is silently
+		// dropped (no 4xx), continue_url has NO coupon-code. Tolerant
+		// of stale agent caches: an agent that cached our envelope
+		// from before the toggle was flipped shouldn't get a hard
+		// error.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'no',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ],
+				'discounts'  => [ 'codes' => [ 'SUMMER20' ] ],
+			]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertStringNotContainsString( 'coupon-code=', $result['data']['continue_url'] );
+	}
+
+	public function test_discount_codes_omitted_from_request_is_a_noop(): void {
+		// Most agents won't supply a discounts block at all. Verify
+		// the absence doesn't change anything — continue_url has no
+		// coupon-code, request succeeds normally.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'              => 'yes',
+			'allow_discount_codes' => 'yes',
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ] ] ]
+		);
+
+		$this->assertEquals( 201, $result['status'] );
+		$this->assertStringNotContainsString( 'coupon-code=', $result['data']['continue_url'] );
+	}
+
+	// ------------------------------------------------------------------
 	// Not found / malformed
 	// ------------------------------------------------------------------
 

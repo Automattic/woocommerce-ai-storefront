@@ -2318,6 +2318,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
+		// Discount-code pass-through (#376). Honored only when the
+		// capability is currently active — otherwise we silently drop
+		// inbound codes (with a debug log) so stale agent caches don't
+		// cause 4xx errors. The sanitized result is threaded to
+		// `build_continue_url()` later in the flow; if the capability
+		// is off OR no valid codes survive validation, the array stays
+		// empty and the URL builder skips the append.
+		$discount_codes = [];
+		$discounts_raw  = $request->get_param( 'discounts' );
+		if ( is_array( $discounts_raw ) && isset( $discounts_raw['codes'] ) ) {
+			if ( self::discount_capability_active() ) {
+				$discount_codes = self::sanitize_discount_codes( $discounts_raw['codes'] );
+			} else {
+				WC_AI_Storefront_Logger::debug(
+					'UCP /checkout-sessions: discounts.codes ignored (capability disabled — either merchant toggle off or WC coupons disabled).'
+				);
+			}
+		}
+
 		if ( count( $line_items_raw ) > self::MAX_LINE_ITEMS_PER_CHECKOUT ) {
 			return self::ucp_checkout_error_response(
 				sprintf(
@@ -2833,7 +2852,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		$continue_url = $should_redirect
-			? self::build_continue_url( $processed, $agent_source_host, $agent_raw_host )
+			? self::build_continue_url( $processed, $agent_source_host, $agent_raw_host, $discount_codes )
 			: '';
 
 		if ( $should_redirect ) {
@@ -2923,7 +2942,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// `$should_redirect` is false when either (a) no items
 		// validated, or (b) valid items but below the merchant minimum.
 		$response_body = [
-			'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope(),
+			'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope( self::discount_capability_active() ),
 			'id'         => 'chk_' . bin2hex( random_bytes( 8 ) ),
 			'status'     => $should_redirect ? 'requires_escalation' : 'incomplete',
 			'currency'   => $currency,
@@ -3146,6 +3165,87 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
+	 * Whether the UCP discount-extension capability is currently active.
+	 *
+	 * Two gates, AND-ed (#376):
+	 *
+	 *   1. WC's core `wc_coupons_enabled()` returns true (merchant has
+	 *      not turned off coupons in WC core).
+	 *   2. Our merchant toggle `allow_discount_codes` is `'yes'`
+	 *      (default).
+	 *
+	 * Either gate failing → the capability is OFF: the checkout
+	 * envelope does NOT advertise `dev.ucp.shopping.discount`, and
+	 * inbound `discounts.codes[]` are silently dropped with a debug
+	 * log (no error response — tolerant of stale agent caches).
+	 *
+	 * The WC-setting gate is mandatory because advertising a discount
+	 * capability that WC's hosted checkout would silently ignore is
+	 * worse UX than not advertising at all — the agent would relay a
+	 * code to the user that has no chance of applying.
+	 *
+	 * @return bool
+	 */
+	private static function discount_capability_active(): bool {
+		// `wc_coupons_enabled()` reads the `woocommerce_enable_coupons`
+		// core option ('yes'/'no'). Guard against the function not
+		// existing (e.g. in unit tests where WC isn't loaded) — when
+		// absent, behave as if coupons are enabled so production
+		// behavior is the only authoritative gate.
+		$wc_coupons_on = function_exists( 'wc_coupons_enabled' )
+			? (bool) wc_coupons_enabled()
+			: true;
+
+		if ( ! $wc_coupons_on ) {
+			return false;
+		}
+
+		$settings = WC_AI_Storefront::get_settings();
+		return 'yes' === ( $settings['allow_discount_codes'] ?? 'yes' );
+	}
+
+	/**
+	 * Sanitize agent-supplied discount codes for URL pass-through.
+	 *
+	 * Constraints (#376 v0.14.2 scope — single-code only):
+	 *   - Input must be an array of strings; non-string entries dropped.
+	 *   - Trim whitespace.
+	 *   - Reject empty / >64 chars / characters outside [A-Za-z0-9_-].
+	 *   - Take first survivor only (single-code scope; multi-code
+	 *     pass-through deferred — WC's `coupon-code=` query param
+	 *     accepts one).
+	 *
+	 * Returns an empty array when no valid code survives. Callers can
+	 * pass the result through `rawurlencode()` before appending to
+	 * the URL — the allowlist is conservative, but URL-encoding is
+	 * defense-in-depth.
+	 *
+	 * @param mixed $raw Raw value from request body (`discounts.codes`).
+	 * @return array<int, string> Sanitized single-element array, or empty.
+	 */
+	private static function sanitize_discount_codes( $raw ): array {
+		if ( ! is_array( $raw ) ) {
+			return [];
+		}
+
+		foreach ( $raw as $entry ) {
+			if ( ! is_string( $entry ) ) {
+				continue;
+			}
+			$trimmed = trim( $entry );
+			if ( '' === $trimmed || strlen( $trimmed ) > 64 ) {
+				continue;
+			}
+			if ( ! preg_match( '/^[A-Za-z0-9_-]+$/', $trimmed ) ) {
+				continue;
+			}
+			return [ $trimmed ];
+		}
+
+		return [];
+	}
+
+	/**
 	 * Build a catalog response body carrying a single UCP error message.
 	 *
 	 * Use for any failure on /catalog/search or /catalog/lookup that
@@ -3244,7 +3344,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		//     "validation failed, no session to escalate to."
 		return new WP_REST_Response(
 			[
-				'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope(),
+				'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope( self::discount_capability_active() ),
 				'id'         => 'chk_' . bin2hex( random_bytes( 8 ) ),
 				'status'     => 'incomplete',
 				'currency'   => $currency,
@@ -3352,7 +3452,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		$response = new WP_REST_Response(
 			[
-				'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope(),
+				'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope( self::discount_capability_active() ),
 				'id'         => $session_id,
 				'status'     => 'incomplete',
 				'currency'   => $currency,
@@ -5634,7 +5734,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                                                      `_wc_ai_storefront_agent_host_raw`
 	 *                                                      for diagnostic / graduation purposes.
 	 */
-	private static function build_continue_url( array $processed, string $source_host, string $raw_host ): string {
+	private static function build_continue_url(
+		array $processed,
+		string $source_host,
+		string $raw_host,
+		array $discount_codes = []
+	): string {
 		// Bundle short-circuit (#358). WC Product Bundles aren't
 		// addressable via /checkout-link/?products=ID:QTY because each
 		// bundled item needs index-keyed config params for variation
@@ -5898,6 +6003,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$source_host,
 			$raw_host
 		);
+
+		// Discount-code pass-through (#376). Append the agent-supplied
+		// (already-sanitized) coupon code to the URL as `coupon-code=`.
+		// WC's hosted checkout reads this query param and applies the
+		// matching coupon before showing the order summary — we do not
+		// validate or apply the code ourselves (no transient cart
+		// state). `$discount_codes` is the array returned by
+		// `sanitize_discount_codes()`: empty when the capability is
+		// off, when no codes were supplied, or when none passed
+		// validation. Single-code scope for v0.14.2; multi-code
+		// pass-through is out of scope until WC's URL contract supports
+		// it natively. `rawurlencode` is defense-in-depth — the
+		// allowlist already restricts to URL-safe chars.
+		if ( ! empty( $discount_codes ) && '' !== $url ) {
+			$url = add_query_arg(
+				[ 'coupon-code' => rawurlencode( $discount_codes[0] ) ],
+				$url
+			);
+		}
 
 		/**
 		 * Filter the continue_url returned in a checkout-sessions response.

@@ -77,6 +77,15 @@ class WC_AI_Storefront {
 				'min' => 0,
 				'max' => 0,
 			),
+			// Pass UCP-supplied discount codes through to WC's checkout URL
+			// as a `coupon-code=` query param (#376). Default `'yes'`
+			// matches merchant intent: if they already have WC coupons
+			// enabled in core, agents should be able to relay user-typed
+			// promo codes. The capability is also gated upstream on
+			// `wc_coupons_enabled()` — if WC coupons are OFF, we never
+			// advertise the capability regardless of this flag (truthful
+			// discovery). See `WC_AI_Storefront_UCP_REST_Controller::discount_capability_active()`.
+			'allow_discount_codes'     => 'yes',
 		);
 	}
 

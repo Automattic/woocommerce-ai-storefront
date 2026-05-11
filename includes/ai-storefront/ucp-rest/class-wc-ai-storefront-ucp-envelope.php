@@ -53,16 +53,37 @@ class WC_AI_Storefront_UCP_Envelope {
 	 * `payment_handlers` as a top-level key (even if empty — an
 	 * empty object declares "zero payment handlers exposed").
 	 *
-	 * @return array<string, mixed>    The `ucp` wrapper object.
+	 * Capability map always carries `dev.ucp.shopping.checkout`. When
+	 * `$discount_capability_active` is true, also advertises
+	 * `dev.ucp.shopping.discount` (the UCP discount extension) so
+	 * agents reading the envelope know they can supply
+	 * `discounts.codes[]` on subsequent requests. The caller is
+	 * responsible for resolving the active state — typically via the
+	 * controller's `discount_capability_active()` helper which
+	 * combines the merchant toggle with WC's
+	 * `wc_coupons_enabled()` core setting. (#376)
+	 *
+	 * @param bool $discount_capability_active Whether to advertise the
+	 *                                          UCP discount-extension
+	 *                                          capability in the envelope.
+	 * @return array<string, mixed>             The `ucp` wrapper object.
 	 */
-	public static function checkout_envelope(): array {
+	public static function checkout_envelope( bool $discount_capability_active = false ): array {
+		$capabilities = [
+			'dev.ucp.shopping.checkout' => [
+				[ 'version' => WC_AI_Storefront_Ucp::PROTOCOL_VERSION ],
+			],
+		];
+
+		if ( $discount_capability_active ) {
+			$capabilities['dev.ucp.shopping.discount'] = [
+				[ 'version' => WC_AI_Storefront_Ucp::PROTOCOL_VERSION ],
+			];
+		}
+
 		return [
 			'version'          => WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
-			'capabilities'     => [
-				'dev.ucp.shopping.checkout' => [
-					[ 'version' => WC_AI_Storefront_Ucp::PROTOCOL_VERSION ],
-				],
-			],
+			'capabilities'     => $capabilities,
 
 			// `(object) []` ensures JSON serialization as `{}` not `[]`.
 			// UCP schema requires object shape here; an empty array
