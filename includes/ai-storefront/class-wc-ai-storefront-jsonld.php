@@ -450,7 +450,7 @@ class WC_AI_Storefront_JsonLd {
 		// enumeration); `addOn` uses released vocabulary that broader
 		// consumers will recognize today. Duplication is spec-legal.
 		if ( $signup_fee > 0 ) {
-			$price_specs[] = array(
+			$price_specs[]                = array(
 				'@type'              => 'UnitPriceSpecification',
 				'priceComponentType' => 'https://schema.org/ActivationFee',
 				'price'              => $signup_fee_str,
