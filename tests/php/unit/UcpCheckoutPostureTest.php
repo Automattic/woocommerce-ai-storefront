@@ -49,7 +49,14 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->ucp = new WC_AI_Storefront_Ucp();
+		// Defensive reset — another test (in this file or earlier in
+		// the suite) may have set `$test_settings` and skipped its
+		// own tearDown on assertion failure. The posture assertion
+		// below depends on `allow_discount_codes` reading its default
+		// `'yes'`; without this reset a stale `'no'` would suppress
+		// the discount capability and produce a confusing diff.
+		WC_AI_Storefront::$test_settings = [];
+		$this->ucp                       = new WC_AI_Storefront_Ucp();
 
 		Functions\when( 'home_url' )->alias(
 			static fn( $path = '' ) => 'https://example.com' . ( $path ?: '/' )
@@ -65,9 +72,17 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
 		Functions\when( 'wc_prices_include_tax' )->justReturn( false );
 		Functions\when( 'wc_shipping_enabled' )->justReturn( true );
+		// `discount_capability_active()` calls `wc_coupons_enabled()`
+		// on every `generate_manifest()` invocation. Default to true
+		// so the posture assertion below sees both gates pass and
+		// the discount capability appears in the expected set.
+		Functions\when( 'wc_coupons_enabled' )->justReturn( true );
 	}
 
 	protected function tearDown(): void {
+		// Mirror setUp's defensive reset to clean up after this test
+		// — keeps later tests in the suite from inheriting stale state.
+		WC_AI_Storefront::$test_settings = [];
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -305,11 +320,12 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		//
 		// `dev.ucp.shopping.discount` (v0.14.2) is conditionally
 		// advertised when both `wc_coupons_enabled()` and the merchant
-		// toggle `allow_discount_codes` are on. In this test the
-		// `wc_coupons_enabled` stub returns true (default) and the
-		// merchant toggle defaults to `'yes'`, so the capability IS
-		// expected here. UcpTest covers the toggle-off and
-		// coupons-disabled branches.
+		// toggle `allow_discount_codes` are on. setUp() stubs
+		// `wc_coupons_enabled` to true and the merchant toggle
+		// defaults to `'yes'` via the test stub's settings defaults
+		// (with `$test_settings = []` resetting any per-test mutation),
+		// so both gates pass and the capability IS expected here.
+		// UcpTest covers the toggle-off and coupons-disabled branches.
 		$manifest = $this->ucp->generate_manifest( [] );
 
 		$this->assertEqualsCanonicalizing(

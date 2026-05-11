@@ -875,10 +875,11 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	// shape (when present) and the conditional logic (when absent).
 
 	public function test_manifest_advertises_discount_capability_when_toggle_on(): void {
-		// Default test stub `wc_coupons_enabled` is unstubbed →
-		// function_exists() returns false in unit env → helper defaults
-		// to "coupons enabled". So with the merchant toggle ON, the
-		// capability MUST appear in the manifest.
+		// setUp() stubs `wc_coupons_enabled` to `true` (the default
+		// for tests that don't exercise the WC-disabled branch). With
+		// the merchant toggle ALSO on, both gates of
+		// `discount_capability_active()` pass and the capability
+		// MUST appear in the manifest.
 		WC_AI_Storefront::$test_settings = [ 'allow_discount_codes' => 'yes' ];
 
 		$manifest = $this->ucp->generate_manifest( [] );
