@@ -1151,12 +1151,12 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'attributes', $result );
 	}
 
-	public function test_translate_omits_options_and_metadata_when_source_has_no_attributes(): void {
+	public function test_translate_omits_options_and_metadata_attributes_when_source_has_no_attributes(): void {
 		// No WC attributes at all → no `options` key, and no
 		// `metadata.attributes` sub-block (no empty scaffolding emitted).
 		// `metadata` itself IS present post-#374 because
-		// `metadata.lifecycle.status` always emits; the assertion is
-		// scoped to the attributes sub-block.
+		// `metadata.lifecycle.status` always emits; the assertions are
+		// scoped to the attributes-related sub-blocks only.
 		$fixture = $this->simple_product_fixture();
 		unset( $fixture['attributes'] );
 
