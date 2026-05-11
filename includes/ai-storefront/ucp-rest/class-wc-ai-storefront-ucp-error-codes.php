@@ -79,6 +79,14 @@ final class WC_AI_Storefront_UCP_Error_Codes {
 	const OUT_OF_STOCK = 'out_of_stock';
 
 	/**
+	 * A requested product is not purchasable (e.g. missing price,
+	 * misconfigured variation, hidden from catalog). Distinct from
+	 * `OUT_OF_STOCK`: the product may have inventory but WC refuses
+	 * to add it to a cart. (#373)
+	 */
+	const ITEM_UNPURCHASABLE = 'item_unpurchasable';
+
+	/**
 	 * Duplicate line items targeting the same product were merged.
 	 */
 	const MERGED_DUPLICATE_ITEMS = 'merged_duplicate_items';

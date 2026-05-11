@@ -148,7 +148,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	/**
 	 * Seed a variable product + its variations at the given IDs.
 	 *
-	 * @param array<int, array{id: int, price: string, size: string}> $variation_specs
+	 * @param array<int, array{id: int, price: string, size: string, is_purchasable?: bool}> $variation_specs
 	 */
 	private function seed_variable_product(
 		int $parent_id,
@@ -168,6 +168,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 				'name'              => $name,
 				'short_description' => '',
 				'is_in_stock'       => true,
+				'is_purchasable'    => $spec['is_purchasable'] ?? true,
 				'prices'            => [
 					'price'               => $spec['price'],
 					'currency_code'       => 'USD',
@@ -1002,6 +1003,86 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// it keeps strict validators happy.
 		$this->assertArrayNotHasKey( 'severity', $msg );
 		$this->assertArrayHasKey( 'content', $msg );
+	}
+
+	public function test_unpurchasable_variations_are_filtered_from_variants_list(): void {
+		// #373: a variation with `is_purchasable: false` (e.g. no price
+		// set by the merchant) MUST NOT appear in the catalog response.
+		// Handing its ID to an agent would lead to a checkout URL WC
+		// refuses to add to cart. Filter happens in
+		// `fetch_variations_for()` upstream of the product translator
+		// so all three surfaces (catalog response, JSON-LD, checkout-
+		// sessions) see the same purchasable-only set.
+		$this->seed_variable_product(
+			789,
+			'T-Shirt',
+			[
+				[ 'id' => 101, 'price' => '1000', 'size' => 'Small' ],
+				[ 'id' => 102, 'price' => '0', 'size' => 'Medium', 'is_purchasable' => false ],
+				[ 'id' => 103, 'price' => '2000', 'size' => 'Large' ],
+			]
+		);
+
+		$body = $this->successful_lookup( [ 'ids' => [ 'prod_789' ] ] );
+
+		$variants = $body['products'][0]['variants'];
+		$this->assertCount( 2, $variants, 'Unpurchasable variant 102 should be dropped.' );
+
+		$emitted_ids = array_map( static fn( array $v ): string => $v['id'], $variants );
+		$this->assertContains( 'var_101', $emitted_ids );
+		$this->assertContains( 'var_103', $emitted_ids );
+		$this->assertNotContains( 'var_102', $emitted_ids );
+
+		// Unpurchasable filtering must NOT emit `partial_variants` —
+		// that signal is reserved for genuine retrieval gaps (cap-
+		// truncation, fetch failures, scope-filtering). Filtering an
+		// unpurchasable variation is an intentional exclusion and the
+		// emitted variants[] set is the complete-and-correct
+		// purchasable set. (#373 review)
+		$messages = $body['messages'] ?? [];
+		$partial  = array_filter(
+			$messages,
+			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 0, $partial, 'partial_variants must not fire for purchasability-only filtering.' );
+	}
+
+	public function test_all_unpurchasable_variations_falls_through_to_synthesized_default(): void {
+		// #373: when every variation is unpurchasable, the filter
+		// produces an empty variations[] array, which trips
+		// `extract_variants()`'s synthesize_default fallback. Agents
+		// still see a single (degraded) variant rather than a
+		// schema-invalid empty list — they can read the entry but
+		// won't be handed a workable checkout URL via downstream
+		// surfaces.
+		$this->seed_variable_product(
+			791,
+			'Broken Tee',
+			[
+				[ 'id' => 201, 'price' => '0', 'size' => 'Small',  'is_purchasable' => false ],
+				[ 'id' => 202, 'price' => '0', 'size' => 'Medium', 'is_purchasable' => false ],
+			]
+		);
+
+		$body = $this->successful_lookup( [ 'ids' => [ 'prod_791' ] ] );
+
+		$variants = $body['products'][0]['variants'];
+		$this->assertCount( 1, $variants, 'Synthesized default emitted as the sole variant.' );
+		// The synthesized default carries the `_default` suffix per
+		// `synthesize_default()`'s convention — distinct from a real
+		// `var_<id>` shape so downstream consumers can tell it apart.
+		$this->assertStringEndsWith( '_default', $variants[0]['id'] );
+
+		// Even when EVERY variation is dropped, the synthesized-default
+		// fallback fires WITHOUT triggering `partial_variants` — the
+		// degraded shape is itself the signal, and a warning would be
+		// redundant noise. (#373 review)
+		$messages = $body['messages'] ?? [];
+		$partial  = array_filter(
+			$messages,
+			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 0, $partial );
 	}
 
 	/**

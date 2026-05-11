@@ -228,6 +228,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( $overrides['cross_sell_ids'] ?? [] );
 		$product->shouldReceive( 'get_upsell_ids' )
 			->andReturn( $overrides['upsell_ids'] ?? [] );
+		// Default to purchasable so existing tests don't need to set
+		// it; the unpurchasable-guard tests (#373) override this to
+		// `false` to exercise the gate.
+		$product->shouldReceive( 'is_purchasable' )
+			->andReturn( $overrides['is_purchasable'] ?? true );
 
 		// `is_type()` accepts a string or array per WC core. Default the
 		// product's type to 'simple' so existing tests keep working
@@ -875,6 +880,66 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$entry['offers'][0]['checkoutPageURLTemplate'],
 			'Per-variant BuyAction URL and checkoutPageURLTemplate must match'
 		);
+	}
+
+	public function test_variant_entry_omits_buy_action_and_url_template_when_unpurchasable(): void {
+		// #373: an unpurchasable variation (e.g. no price set) emits its
+		// descriptive fields (@id, name, sku, image, offers[].price) but
+		// MUST NOT emit `potentialAction` (BuyAction) nor
+		// `offers[0].checkoutPageURLTemplate`. SEO crawlers and non-UCP
+		// agents that only read JSON-LD must not be handed a URL that
+		// WC would refuse at checkout. The price/availability remain so
+		// the variant entry isn't a black hole — just no monetary action
+		// is attached.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent    = $this->make_product( [ 'id' => 100 ] );
+		$variation = $this->make_variation( [ 'id' => 999, 'is_purchasable' => false ] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		// Descriptive fields still emit.
+		$this->assertArrayHasKey( 'sku', $entry );
+		$this->assertArrayHasKey( 'name', $entry );
+		$this->assertArrayHasKey( 'offers', $entry );
+		$this->assertArrayHasKey( 'price', $entry['offers'][0] );
+
+		// Action URLs are suppressed.
+		$this->assertArrayNotHasKey( 'potentialAction', $entry );
+		$this->assertArrayNotHasKey( 'checkoutPageURLTemplate', $entry['offers'][0] );
+	}
+
+	public function test_enhance_product_omits_buy_action_when_parent_unpurchasable(): void {
+		// #373: an unpurchasable simple/parent product emits its
+		// descriptive markup but no BuyAction or checkoutPageURLTemplate.
+		// Variable parents that convert to ProductGroup later have their
+		// own per-variant gating; this covers the simple-product path
+		// and the variable-parent-that-doesn't-convert edge case.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->make_product( [ 'is_purchasable' => false ] );
+		$markup  = [
+			'@type'  => 'Product',
+			'name'   => 'Broken Product',
+			'offers' => [
+				[
+					'@type'         => 'Offer',
+					'price'         => '0',
+					'priceCurrency' => 'USD',
+				],
+			],
+		];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		// Descriptive shape preserved.
+		$this->assertSame( 'Product', $result['@type'] );
+		$this->assertArrayHasKey( 'offers', $result );
+
+		// Action URLs suppressed.
+		$this->assertArrayNotHasKey( 'potentialAction', $result );
+		$this->assertArrayNotHasKey( 'checkoutPageURLTemplate', $result['offers'][0] );
 	}
 
 	// ------------------------------------------------------------------
