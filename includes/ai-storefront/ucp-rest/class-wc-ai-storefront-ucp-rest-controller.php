@@ -2052,6 +2052,31 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						}
 					}
 
+					// Pass 2.5: verify the computed featured/exact id still
+					// exists in `$final_product['variants']`. The
+					// `wc_ai_storefront_ucp_product` filter (between Pass 1
+					// and Pass 3) can mutate the variants array — including
+					// removing the variant whose id we computed in Pass 2.
+					// If the computed ID is gone, fall back to featuring
+					// the first valid (array-shaped, non-empty-id) variant
+					// so the spec's "one featured per product" expectation
+					// still holds.
+					$variant_ids_present = [];
+					foreach ( $final_product['variants'] as $v ) {
+						if ( is_array( $v ) ) {
+							$vid = (string) ( $v['id'] ?? '' );
+							if ( '' !== $vid ) {
+								$variant_ids_present[] = $vid;
+							}
+						}
+					}
+					if ( null !== $exact_variant_id && ! in_array( $exact_variant_id, $variant_ids_present, true ) ) {
+						$exact_variant_id = null;
+					}
+					if ( null !== $featured_variant_id && ! in_array( $featured_variant_id, $variant_ids_present, true ) ) {
+						$featured_variant_id = $variant_ids_present[0] ?? null;
+					}
+
 					// Pass 3: assemble each variant's inputs[] entry.
 					// Exact wins over featured; siblings get just `id`
 					// (no match field — spec-clean per `input_correlation.json`).
@@ -5379,9 +5404,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		// `variable` / `variable-subscription` parents are routed through
 		// the configurable continue_url path (permalink + requires_buyer_input
-		// message) in `process_line_items()` and `build_continue_url()`.
-		// They're NOT rejected here — same pattern as configurable bundle
-		// and configurable grouped products.
+		// message). The routing logic lives in `handle_checkout_sessions_create()`
+		// (the variable-parent block that emits the field_required messages)
+		// and `build_continue_url()` (the permalink short-circuit). They're
+		// NOT rejected here — same pattern as configurable bundle and
+		// configurable grouped products.
 		return null;
 	}
 
@@ -5733,27 +5760,49 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		//
 		// No deterministic path: we explicitly do NOT auto-resolve
 		// `_default_attributes` into a specific variation URL here
-		// (see process_line_items() block for the design rationale).
+		// (see `handle_checkout_sessions_create()`'s variable-parent
+		// block for the design rationale).
+		//
+		// Defense-in-depth: this branch only fires when the cart
+		// consists of a SINGLE variable parent with NO other line
+		// items. Mixed/multi-variable carts are caught upstream by
+		// `$variable_must_split` which flips `$should_redirect=false`
+		// before `build_continue_url()` is ever called — so reaching
+		// this branch with `count($processed) > 1` would indicate the
+		// upstream guard broke. The single-variable check below is
+		// belt-and-suspenders: emitting the variable's permalink as a
+		// continue_url for a mixed cart would silently drop the other
+		// line items (the PDP can only host one product). Fail-closed
+		// to `''` so status becomes `incomplete` rather than handing
+		// the agent a misleading URL.
 		if ( null === $url_with_products ) {
-			$first_variable = null;
+			$first_variable    = null;
+			$variable_count    = 0;
 			foreach ( $processed as $p ) {
 				$ptype = $p['wc_type'] ?? '';
 				if ( 'variable' === $ptype || 'variable-subscription' === $ptype ) {
-					$first_variable = $p;
-					break;
+					if ( null === $first_variable ) {
+						$first_variable = $p;
+					}
+					++$variable_count;
 				}
 			}
 			if ( null !== $first_variable ) {
-				$permalink = (string) ( $first_variable['permalink'] ?? '' );
-				if ( '' !== $permalink ) {
-					$url_with_products = $permalink;
-				} else {
-					// Defensive guard mirrors bundle/grouped: handler
-					// upstream flips should_redirect=false for the
-					// no-permalink case, so this branch is unreachable
-					// today — empty string is safer than emitting a
-					// known-broken /checkout-link/ URL.
+				$is_single_variable_only = ( 1 === $variable_count ) && ( 1 === count( $processed ) );
+				if ( ! $is_single_variable_only ) {
+					// Mixed/multi-variable cart reached this branch —
+					// upstream guard should have caught it. Fail-closed.
 					$url_with_products = '';
+				} else {
+					$permalink = (string) ( $first_variable['permalink'] ?? '' );
+					if ( '' !== $permalink ) {
+						$url_with_products = $permalink;
+					} else {
+						// No-permalink case — handler upstream also
+						// flips should_redirect=false. Empty-string
+						// belt-and-suspenders.
+						$url_with_products = '';
+					}
 				}
 			}
 		}
