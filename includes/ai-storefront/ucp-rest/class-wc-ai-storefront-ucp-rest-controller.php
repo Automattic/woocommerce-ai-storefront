@@ -3697,6 +3697,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
+		// Compute `$skipped` BEFORE the purchasability filter (#373
+		// review). `$skipped` flows downstream into the
+		// `partial_variants` warning, which means "variants weren't
+		// fully retrievable — distrust price_range". That signal is
+		// for cap-truncation, scope-filtering, fetch failures, and
+		// malformed refs — situations where the agent should reason
+		// about an incomplete view of the variants set. Unpurchasable
+		// variations are an INTENTIONAL exclusion (merchant
+		// misconfiguration → safe to hide), not a retrieval gap, so
+		// they must not contribute to `partial_variants`. Tracked
+		// separately in `$unpurchasable_dropped` for the debug log
+		// only.
+		$skipped = $total_declared - count( $variations );
+
 		// Drop variations that WC reports as not purchasable. A no-price
 		// or misconfigured variation still has `is_in_stock = true` in
 		// WC but `is_purchasable = false` — handing its ID to an agent
@@ -3709,7 +3723,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// synthesize_default fallback, surfacing the parent shape
 		// (typically also unpurchasable) which downstream code already
 		// handles as a degraded entry. (#373)
-		$variations = array_values(
+		$pre_filter_count      = count( $variations );
+		$variations            = array_values(
 			array_filter(
 				$variations,
 				static function ( $v ): bool {
@@ -3717,19 +3732,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				}
 			)
 		);
+		$unpurchasable_dropped = $pre_filter_count - count( $variations );
 
-		// Skipped = everything the product declared that didn't make it
-		// into $variations. Includes cap-truncated + scope-filtered +
-		// fetch-failed + malformed-ref + unpurchasable entries.
-		$skipped = $total_declared - count( $variations );
-
-		if ( $skipped > 0 ) {
+		if ( $skipped > 0 || $unpurchasable_dropped > 0 ) {
 			WC_AI_Storefront_Logger::debug(
 				sprintf(
-					'UCP fetch_variations_for(%d): skipped %d of %d declared variations',
+					'UCP fetch_variations_for(%d): skipped %d of %d declared variations (fetch/cap/scope) + filtered %d unpurchasable',
 					(int) ( $wc_product['id'] ?? 0 ),
 					$skipped,
-					$total_declared
+					$total_declared,
+					$unpurchasable_dropped
 				)
 			);
 		}

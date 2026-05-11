@@ -1032,6 +1032,19 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'var_101', $emitted_ids );
 		$this->assertContains( 'var_103', $emitted_ids );
 		$this->assertNotContains( 'var_102', $emitted_ids );
+
+		// Unpurchasable filtering must NOT emit `partial_variants` —
+		// that signal is reserved for genuine retrieval gaps (cap-
+		// truncation, fetch failures, scope-filtering). Filtering an
+		// unpurchasable variation is an intentional exclusion and the
+		// emitted variants[] set is the complete-and-correct
+		// purchasable set. (#373 review)
+		$messages = $body['messages'] ?? [];
+		$partial  = array_filter(
+			$messages,
+			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 0, $partial, 'partial_variants must not fire for purchasability-only filtering.' );
 	}
 
 	public function test_all_unpurchasable_variations_falls_through_to_synthesized_default(): void {
@@ -1059,6 +1072,17 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// `synthesize_default()`'s convention — distinct from a real
 		// `var_<id>` shape so downstream consumers can tell it apart.
 		$this->assertStringEndsWith( '_default', $variants[0]['id'] );
+
+		// Even when EVERY variation is dropped, the synthesized-default
+		// fallback fires WITHOUT triggering `partial_variants` — the
+		// degraded shape is itself the signal, and a warning would be
+		// redundant noise. (#373 review)
+		$messages = $body['messages'] ?? [];
+		$partial  = array_filter(
+			$messages,
+			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
+		);
+		$this->assertCount( 0, $partial );
 	}
 
 	/**
