@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.13.2
+Stable tag: 0.14.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -126,6 +126,12 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.14.0 - 2026-05-11 =
+**New**
+* UCP: variable + variable-subscription products become first-class. Three fixes ride together: variant enumeration unlocked for `variable-subscription` (previously collapsed to a single placeholder), subscription line items accepted at `/checkout-sessions` (previously rejected with `product_type_unsupported`), and featured-variant precision driven by merchant `_default_attributes` with `variants[0]` reordering to match Schema.org's "first item is featured" convention.
+* UCP: parent-only variable + variable-subscription line items at `/checkout-sessions` now return a permalink fallback `continue_url` plus a `field_required` / `requires_buyer_input` message — same configurable pattern as bundle/grouped. Merchant `_default_attributes` pre-fills the PDP dropdown but the buyer retains the final choice (no server-side auto-resolution).
+* JSON-LD: WC Subscriptions products now emit Schema.org recurring-pricing signals on the Offer — `priceSpecification` with `UnitPriceSpecification.billingDuration` for recurring price, two-element array for trial-then-paid, inline `priceComponentType: ActivationFee` plus `Offer.addOn` for sign-up fees, and `Offer.eligibleDuration` for finite-length subscriptions. Variable-subscription parents emit per-variation `priceSpecification` blocks under `hasVariant[i].offers[0]` so each subscription term (monthly, yearly, etc.) carries its own metadata.
 
 = 0.13.2 - 2026-05-10 =
 **Fixed**

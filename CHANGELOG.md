@@ -1,6 +1,16 @@
 ## [Unreleased]
 
 ### Features
+### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.14.0] – 2026-05-11
+
+### Features
 
 - **UCP: variable + variable-subscription products become first-class.** Closes #369. Three coordinated fixes ride together; each one alone would deliver partial value.
   - **Gap #1 — variant enumeration unlocked for `variable-subscription`.** `fetch_variations_for()` had a strict `'variable' !== $type` gate that excluded the WC Subscriptions extension type. Subscriptions parents collapsed to a single synthesized `var_<pid>_default` placeholder regardless of how many real `subscription_variation` children they had. Widened to accept both types — mirrors the existing `validate_product_type()` pattern. Variable-subscription parents now enumerate one variant per child, addressable by ID for agent-driven term selection.
