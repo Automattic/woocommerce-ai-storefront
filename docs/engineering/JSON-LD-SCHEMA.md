@@ -384,6 +384,27 @@ Schema.org `ShippingDeliveryTime` → `QuantitativeValue` emitted when the merch
 - **Guard**: invalid pairs stored in the database (e.g. `{min:5, max:2}`) are silently skipped — the block is omitted rather than emitting broken structured data.
 - **Source**: `add_handling_time()`. Sanitization is enforced by `WC_AI_Storefront_Handling_Time::sanitize()` at save time (0–365 clamp, max raised to min when below).
 
+### `offers[0].priceSpecification`, `offers[0].addOn`, `offers[0].eligibleDuration` (WC Subscriptions)
+
+When WC Subscriptions is active and the product is a recurring-billing product, the plugin emits Schema.org subscription-billing signals on the Offer (#368). A subscription product's JSON-LD looks different from a one-shot purchase: AI agents and rich-result consumers can learn "this is a $10/month subscription with a 14-day free trial and a $5 sign-up fee" from the structured data alone, without needing a separate subscription discovery flow.
+
+**Gating** (fail-closed): every emission path requires `function_exists('wcs_is_subscription')` + `class_exists('WC_Subscriptions_Product', false)` + `is_subscription( $product )` to pass. Stores without WC Subscriptions installed get unchanged JSON-LD output.
+
+**Emitted fields:**
+
+- **Recurring price** — `priceSpecification: [UnitPriceSpecification, …]` carrying `priceComponentType: https://schema.org/Subscription` and an ISO 8601 `billingDuration` (e.g. `P1M` for monthly, `P1Y` for annual, `P3M` for quarterly). Period and interval come from `WC_Subscriptions_Product::get_period()` + `get_interval()`.
+- **Free trial** (when set) — expressed as a two-element `priceSpecification` array: the first entry at `price: 0` with `billingDuration` set to the trial window, the recurring entry second at full price. Array position + `price: 0` convey the trial-then-paid sequence; the plugin deliberately does NOT emit `billingStart` on the recurring entry because Schema.org types `billingStart` as `Number` (not Duration), so emitting an ISO 8601 string there would violate the spec contract. (See https://schema.org/billingStart.)
+- **Sign-up fee** (when set) — emitted as **both** an inline `UnitPriceSpecification` entry with `priceComponentType: https://schema.org/ActivationFee` AND a separate `Offer.addOn` block. Schema.org's `ActivationFee` page carries the disclaimer "This term is in the 'new' area," so `addOn` (released vocabulary) covers consumers that haven't adopted the enum yet. Duplication is intentional and spec-legal.
+- **Finite-length subscriptions** (`get_length() > 0`) — emit `Offer.eligibleDuration` as a `QuantitativeValue` with UN/CEFACT `unitCode` (`DAY` / `WEE` / `MON` / `ANN` per Recommendation N°20). Indefinite subscriptions omit the field.
+- **Per-variation emission** — `variable-subscription` parents emit per-variation `priceSpecification` blocks under each `hasVariant[i].offers[0]` because `subscription_variation` children can have different billing periods (one variant monthly, another yearly).
+
+**What's intentionally NOT emitted:**
+
+- **`variesBy` override** — Schema.org has no normalized vocabulary for naming the subscription-duration variant axis. `Product.variesBy` accepts plain text or `DefinedTerm`; we pass through the merchant's WC attribute label (e.g. "Length", "Term", "Plan") as-is rather than overriding to an invented term. Machine-readable subscription semantics live on each variation's `priceSpecification`, not on the parent's `variesBy` label.
+- **`billingStart`** — see free-trial note above. Array-position + `price: 0` is the spec-legal substitute.
+
+**Source**: `add_subscription_signals()` (line ~283), invoked from `enhance_product_data()` after `add_currency()` runs (so `priceCurrency` is hoisted before the enricher reads it) and from `build_variant_entry()` for per-variation emission. Two pure helpers (`period_to_iso8601_duration`, `period_to_uncefact_code`) handle the unit-encoding mappings.
+
 ### `offers[0].hasMerchantReturnPolicy`
 
 Schema.org `MerchantReturnPolicy` describing return rules.

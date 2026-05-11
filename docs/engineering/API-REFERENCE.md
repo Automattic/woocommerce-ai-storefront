@@ -126,13 +126,34 @@ Look up specific products by ID.
 
 **Response:** same envelope as `/catalog/search` but with `products` matching requested IDs in order. Missing or excluded products are omitted (no per-ID error — agents diff against their request). Same UTM stamping on the product `url` field.
 
+**Featured-variant precision** (#369). When an agent looks up a parent product ID (`prod_<digits>`) and the product has multiple variations, the response marks exactly one variant as `featured` in its `inputs[]` correlation, with the featured variant reordered to `variants[0]`. The selection rules:
+
+- **Merchant signal present** — if the parent has `_default_attributes` covering every variation axis, the resolved variation is featured. Single source of truth: `WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id()`.
+- **No merchant signal** — first variation by `menu_order` is featured (the Store API already orders variations by `menu_order`).
+- **Sibling variants** emit with `inputs: [{"id": <input>}]` and no `match` field (spec-clean per `input_correlation.json` where `match` is optional).
+
+Both signals must agree — `variants[0]` carries `match: featured` in its inputs entry. Per `product.json` (verbatim from `Universal-Commerce-Protocol/ucp`): _"First item is the featured variant for listings."_
+
+This applies to both `variable` and `variable-subscription` parents. The merchant's `_default_attributes` is the signal we use; we do NOT auto-resolve it server-side in `/checkout-sessions` (see Supported product types above for the design rationale).
+
 **Errors:** `503` `ucp_disabled`; `400` `invalid_input` when `products` is missing, empty, or > 100 items.
 
 ### `POST /checkout-sessions`
 
 Validate a cart and return a redirect URL for the buyer to complete checkout on the merchant site. **Stateless** — never persists anything.
 
-The exact `continue_url` shape depends on the cart contents: simple/variation carts get `/checkout-link/?products=ID:QTY`; deterministic bundles or grouped products get `/checkout/?add-to-cart=…` with per-bundled-item / per-child params; configurable bundles or grouped products get the merchant PDP permalink. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
+The exact `continue_url` shape depends on the cart contents: simple/variation/subscription carts get `/checkout-link/?products=ID:QTY`; deterministic bundles or grouped products get `/checkout/?add-to-cart=…` with per-bundled-item / per-child params; configurable bundles, grouped, or variable/variable-subscription parents get the merchant PDP permalink. See [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md#layer-3--checkout-session-the-real-green-light) for the full URL-shape table.
+
+**Supported product types** (#370):
+
+| Type | At `/checkout-sessions` |
+|---|---|
+| `simple`, `variation`, `subscription`, `subscription_variation` | Accepted directly — Shareable Checkout `/checkout-link/?products=ID:1` |
+| `bundle`, `grouped` | Accepted; deterministic shape when configurable, permalink fallback otherwise |
+| `variable`, `variable-subscription` parent (no variation chosen) | Accepted with permalink fallback to the parent's PDP + `field_required` / `requires_buyer_input` (pre-#370 this was a hard `variation_required` rejection) |
+| `external` | Rejected with `product_type_unsupported` (third-party seller's site has no permalink fallback) |
+
+For variable + variable-subscription parents, the permalink fallback does NOT auto-resolve the merchant's `_default_attributes` into a specific variation URL. WC core's PDP behavior pre-fills the dropdown with the merchant's default, but the buyer retains the final selection. The catalog response's `match: featured` marker conveys the merchant's hint at lookup time (see below).
 
 **Permission:** `check_agent_access`.
 

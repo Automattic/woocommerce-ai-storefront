@@ -118,7 +118,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | Property | In doc? | Emitted? | Source |
 |---|---|---|---|
 | `acceptedPaymentMethod` | — | — | — |
-| `addOn` | — | — | — |
+| `addOn` | — | ✓ for WC Subscriptions products with a sign-up fee | Plugin (#368) — emitted alongside an inline `UnitPriceSpecification` with `priceComponentType: ActivationFee` for max consumer reach |
 | `additionalProperty` | — | — | — |
 | `advanceBookingRequirement` | — | — | — |
 | `aggregateRating` | — | — | — *(WC core emits at Product level instead — single-merchant stores don't need per-offer rating differentiation)* |
@@ -131,7 +131,8 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `category` | — | — | — *(plugin emits at Product level; WC's `product_cat` taxonomy classifies the thing being sold, not the offer's commercial role)* |
 | `checkoutPageURLTemplate` | — | — | **In-scope for [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328)** — coexists with `BuyAction`, not a replacement. The two emit the same URL at different positions: `BuyAction` on `Product.potentialAction` (Action-vocabulary signal, with `actionPlatform`/`agent`/`result`, recognized by older consumers and cross-domain action-discovery agents); `checkoutPageURLTemplate` directly on `Offer` (newer dedicated e-commerce property, supports per-offer URLs natively — important for #328's per-variant emission). Keep BuyAction for breadth of consumer support; add checkoutPageURLTemplate for modern signal + per-variant fit. |
 | `deliveryLeadTime` | — | — | — *(handlingTime is in `shippingDetails` instead)* |
-| `eligibleCustomerType` / `eligibleDuration` / `eligibleQuantity` / `eligibleRegion` / `eligibleTransactionVolume` | — | — | — |
+| `eligibleDuration` | — | ✓ for WC Subscriptions products with a finite `get_length() > 0` | Plugin (#368) — emitted as `QuantitativeValue` with UN/CEFACT `unitCode` (DAY/WEE/MON/ANN); indefinite subscriptions omit the field |
+| `eligibleCustomerType` / `eligibleQuantity` / `eligibleRegion` / `eligibleTransactionVolume` | — | — | — |
 | `gtin` / `gtin8/12/13/14` / `mpn` | — | — | — *(emitted at Product level when set)* |
 | `hasAdultConsideration` / `hasGS1DigitalLink` / `hasMeasurement` | — | — | — |
 | `hasMerchantReturnPolicy` | ✓ §return | ✓ | Plugin |
@@ -145,7 +146,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `offeredBy` | — | — | — |
 | `price` | — | ✓ | WC core |
 | `priceCurrency` | ✓ | ✓ | Plugin (hoists from `priceSpecification[0]` to outer Offer) |
-| `priceSpecification` | — | ✓ (`UnitPriceSpecification` with sale variants) | WC core |
+| `priceSpecification` | — | ✓ (`UnitPriceSpecification` with sale variants from WC core; subscription-billing entries from plugin) | WC core + Plugin (#368). For WC Subscriptions products the plugin emits `UnitPriceSpecification` entries carrying `priceComponentType: Subscription` with ISO 8601 `billingDuration`, plus `priceComponentType: ActivationFee` for sign-up fees. Free trial uses a two-element array (trial entry at `price: 0`, recurring entry second); deliberately does NOT emit `billingStart` since Schema.org types it `Number`, not Duration |
 | `priceValidUntil` | — | ✓ when sale-end date is set | WC core |
 | `review` | — | — | — |
 | `seller` | ✓ §seller | ✓ (`Organization`) | WC core (plugin post-processes `seller.name` for HTML-entity decoding) |
