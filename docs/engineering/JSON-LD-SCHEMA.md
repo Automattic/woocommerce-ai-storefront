@@ -253,6 +253,15 @@ Override is intentionally limited to the four core typed slugs: they have canoni
 
 When a variable product has variation children but no axis qualifies — neither `get_variation_attributes()` nor the core-typed override surfaces ≥2 distinct values — the plugin falls back to simple-Product emission. With no `variesBy` to advertise, a `hasVariant` block of N near-identical entries would just confuse agents. Better to emit a working single-SKU shape and let the merchant fix the variation config in the editor.
 
+**Unpurchasable URL suppression** (#373):
+
+When a variation or parent product reads `is_purchasable: false` in WC (typically missing a price, draft, catalog-hidden, or merchant-misconfigured), the JSON-LD emission **suppresses both `BuyAction` and `Offer.checkoutPageURLTemplate`** on that entry while keeping the descriptive fields (`@id`, `name`, `sku`, `image`, `offers[].price`). SEO crawlers and non-UCP agents that only read JSON-LD therefore don't receive a URL that WC would refuse at checkout — but they still see the product/variant exists. Same suppression applies to:
+
+- A variant entry under `hasVariant[]` whose underlying variation is unpurchasable (descriptive fields emit; URLs drop).
+- A simple or variable parent product that itself reads `is_purchasable: false` (the parent's own `BuyAction` + `checkoutPageURLTemplate` are skipped).
+
+For variable parents, this is mostly defense-in-depth — `maybe_convert_to_product_group()` already drops the parent's `offers[]` and `potentialAction` when converting to ProductGroup. The per-variant gate in `build_variant_entry()` handles the in-list case.
+
 **WC core type-allow-list registration:**
 
 `WC_Structured_Data::get_structured_data()` keys the generated markup by `strtolower($value['@type'])` and intersects with the per-page allow-list returned by `get_data_type_for_page()` — which only ships `product`, `breadcrumblist`, `review`, `order`. The plugin hooks `woocommerce_structured_data_type_for_page` on single-product pages to add `productgroup` to that list; without the registration the entire ProductGroup block is silently dropped at output time.
