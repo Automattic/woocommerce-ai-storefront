@@ -4055,4 +4055,59 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$this->tearDownSubscriptions();
 	}
+
+	public function test_variable_subscription_emits_per_variant_price_specification(): void {
+		// Variable-subscription parent's hasVariant entries each carry
+		// their own priceSpecification with their own billingDuration —
+		// subscription_variations can have different periods (3972 might
+		// bill monthly, 3975 yearly). The per-variant path runs through
+		// `build_variant_entry()` which invokes `add_subscription_signals`
+		// per variation.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent = $this->make_product( [ 'id' => 100 ] );
+
+		// Two variations: 1-month at $10 and 1-year at $75.
+		$monthly = $this->make_variation( [
+			'id'    => 101,
+			'sku'   => 'sub-monthly',
+			'price' => '10.00',
+		] );
+		$yearly = $this->make_variation( [
+			'id'    => 102,
+			'sku'   => 'sub-yearly',
+			'price' => '75.00',
+		] );
+		$this->seed_subscription( 101, [ 'period' => 'month', 'interval' => 1 ] );
+		$this->seed_subscription( 102, [ 'period' => 'year',  'interval' => 1 ] );
+
+		$monthly_entry = $this->invoke_build_variant_entry( $monthly, $parent );
+		$yearly_entry  = $this->invoke_build_variant_entry( $yearly,  $parent );
+
+		// Each variant has its own priceSpecification with its own
+		// billingDuration — proves the per-variant subscription
+		// metadata flows through without crossing wires between
+		// variants.
+		$this->assertArrayHasKey( 'priceSpecification', $monthly_entry['offers'][0] );
+		$this->assertSame(
+			'P1M',
+			$monthly_entry['offers'][0]['priceSpecification'][0]['billingDuration']
+		);
+		$this->assertSame(
+			'10.00',
+			$monthly_entry['offers'][0]['priceSpecification'][0]['price']
+		);
+
+		$this->assertArrayHasKey( 'priceSpecification', $yearly_entry['offers'][0] );
+		$this->assertSame(
+			'P1Y',
+			$yearly_entry['offers'][0]['priceSpecification'][0]['billingDuration']
+		);
+		$this->assertSame(
+			'75.00',
+			$yearly_entry['offers'][0]['priceSpecification'][0]['price']
+		);
+
+		$this->tearDownSubscriptions();
+	}
 }
