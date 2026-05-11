@@ -350,10 +350,28 @@ class WC_AI_Storefront_JsonLd {
 
 		$price_specs = array();
 
-		// Trial entry: emitted when the merchant set a trial. Free by
-		// definition — WC Subscriptions' trial period IS the free
-		// window. The recurring entry below picks up `billingStart`
-		// pointed at the end of this trial.
+		// Trial entry, when set. Free by definition — WC Subscriptions'
+		// trial period IS the free window.
+		//
+		// The trial-then-paid sequence is communicated by:
+		//   1. Array order: trial entry FIRST, recurring entry SECOND.
+		//   2. The trial entry carries `price: 0` — a consumer reading
+		//      the array sees "free window for N units, then full price."
+		//
+		// We deliberately do NOT emit `billingStart` on the recurring
+		// entry. Per https://schema.org/billingStart, billingStart is
+		// typed `Number` (not Duration / ISO 8601 string), and would
+		// inherit `unitCode` from the UnitPriceSpecification's own
+		// unitCode property. Two complications make billingStart
+		// unsuitable here:
+		//   - Mixed units: a 14-day trial preceding monthly billing
+		//     forces a unit-coercion choice (14/30 = 0.47 months?) with
+		//     no clean answer.
+		//   - Schema.org accepts Duration on `billingDuration` but not
+		//     `billingStart`. Emitting `P14D` for billingStart would
+		//     violate the spec's type contract.
+		// Array semantics + price=0 are unambiguous for the trial case
+		// without needing a numeric offset.
 		$has_trial = $trial_length > 0;
 		if ( $has_trial ) {
 			$price_specs[] = array(
@@ -365,18 +383,13 @@ class WC_AI_Storefront_JsonLd {
 			);
 		}
 
-		// Recurring entry: always present for a subscription product.
-		$recurring = array(
+		$price_specs[] = array(
 			'@type'              => 'UnitPriceSpecification',
 			'priceComponentType' => 'https://schema.org/Subscription',
 			'price'              => $price,
 			'priceCurrency'      => $currency,
 			'billingDuration'    => self::period_to_iso8601_duration( $period, $interval ),
 		);
-		if ( $has_trial ) {
-			$recurring['billingStart'] = self::period_to_iso8601_duration( $trial_period, $trial_length );
-		}
-		$price_specs[] = $recurring;
 
 		// Sign-up fee: emit BOTH the inline `ActivationFee` priceComponent
 		// AND `Offer.addOn` for compat (decision #1 — "future-ready now").
@@ -419,11 +432,13 @@ class WC_AI_Storefront_JsonLd {
 	 * count to an ISO 8601 duration string (e.g., 'P1M', 'P3M', 'P14D').
 	 *
 	 * Used by the subscription-signal emitter to fill
-	 * `UnitPriceSpecification.billingDuration` and `billingStart` per
-	 * Schema.org. Both fields accept Duration values in ISO 8601 form
-	 * (verified verbatim against
-	 * `Universal-Commerce-Protocol/ucp` is unrelated — this is pure
-	 * Schema.org vocabulary, see https://schema.org/billingDuration).
+	 * `UnitPriceSpecification.billingDuration`, which accepts a Duration
+	 * value (one of three valid types per https://schema.org/billingDuration:
+	 * Duration | Number | QuantitativeValue). ISO 8601 strings like 'P1M'
+	 * are the Duration form.
+	 *
+	 * Not used for `billingStart` — that field is typed `Number` only
+	 * (https://schema.org/billingStart) and rejects ISO 8601 strings.
 	 *
 	 * Pure mapping — no I/O, no validation beyond a strict period whitelist.
 	 * Returns 'P1M' for unknown periods as a safe default rather than
@@ -452,14 +467,12 @@ class WC_AI_Storefront_JsonLd {
 	 * Map a WC subscription period to a UN/CEFACT unit code for
 	 * `QuantitativeValue.unitCode` on `Offer.eligibleDuration`.
 	 *
-	 * Schema.org's `QuantitativeValue.unitCode` accepts UN/CEFACT Common
-	 * Code (Recommendation N°20). The mapping used here matches what
-	 * Google Merchant Center and other major consumers use for
-	 * date/duration units.
+	 * UN/CEFACT Recommendation N°20 common codes: DAY (day), WEE (week),
+	 * MON (month), ANN (year). Schema.org's `QuantitativeValue.unitCode`
+	 * accepts these codes as the unit identifier.
 	 *
-	 * Unknown periods fall back to 'MON' (month) — same safe-default
-	 * rationale as `period_to_iso8601_duration()`. Logger::debug
-	 * call site is the caller's responsibility (this helper stays pure).
+	 * Unknown periods fall back to 'MON' — same safe-default rationale
+	 * as `period_to_iso8601_duration()`.
 	 *
 	 * @param string $period WC period — 'day' | 'week' | 'month' | 'year'.
 	 * @return string UN/CEFACT unit code — 'DAY' | 'WEE' | 'MON' | 'ANN'.

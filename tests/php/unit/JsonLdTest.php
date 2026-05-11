@@ -3929,7 +3929,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_subscription_with_trial_emits_two_element_price_specification(): void {
 		// 14-day free trial, then $10/month recurring. Should emit:
 		// - trial entry: price=0, billingDuration=P14D
-		// - recurring entry: price=10, billingDuration=P1M, billingStart=P14D
+		// - recurring entry: price=10, billingDuration=P1M
+		//
+		// The trial-then-paid sequence is communicated via array position
+		// (trial first, recurring second) + price=0 on the trial entry.
+		// No `billingStart` is emitted on the recurring entry — Schema.org's
+		// `billingStart` is typed `Number` (not Duration / ISO 8601 string),
+		// so emitting `P14D` there would violate the spec's type contract.
+		// Array semantics + price-discrimination convey the same intent.
 		$this->seed_subscription( 42, [
 			'period'       => 'month',
 			'interval'     => 1,
@@ -3946,15 +3953,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$specs = $result['offers'][0]['priceSpecification'];
 		$this->assertCount( 2, $specs );
-		// Trial entry — free for 14 days.
+		// Trial entry — free for 14 days, must be FIRST in the array.
 		$this->assertSame( '0', $specs[0]['price'] );
 		$this->assertSame( 'P14D', $specs[0]['billingDuration'] );
 		$this->assertSame( 'https://schema.org/Subscription', $specs[0]['priceComponentType'] );
 		$this->assertArrayNotHasKey( 'billingStart', $specs[0] );
-		// Recurring entry — $10/month starting AFTER the trial.
+		// Recurring entry — $10/month, second in the array. Crucially:
+		// NO `billingStart` field (regression guard against the spec
+		// violation flagged in PR #371 review-toolkit pass).
 		$this->assertSame( '10.00', $specs[1]['price'] );
 		$this->assertSame( 'P1M', $specs[1]['billingDuration'] );
-		$this->assertSame( 'P14D', $specs[1]['billingStart'] );
+		$this->assertArrayNotHasKey(
+			'billingStart',
+			$specs[1],
+			'billingStart is Number-typed per Schema.org — must not be emitted as an ISO 8601 string.'
+		);
 
 		$this->tearDownSubscriptions();
 	}
