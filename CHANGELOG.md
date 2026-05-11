@@ -1,6 +1,12 @@
 ## [Unreleased]
 
 ### Features
+
+- **UCP catalog: relocate `status` + timestamps under `metadata` per spec.** Closes #374. Post-repo-access audit found that `product.json` does not define `status`, `published_at`, or `updated_at` as first-class properties — they're business-defined extension fields, and the spec's `metadata` block is the official escape hatch. New shape:
+  - `metadata.lifecycle.status` — always `"published"` (catalog handlers only translate Store-API-returned products, which already filters out drafts/private).
+  - `metadata.timestamps.published_at` / `metadata.timestamps.updated_at` — ISO 8601 strings; the whole `timestamps` sub-block is omitted when no timestamps are available rather than emitted as empty scaffolding.
+  - Top-level `status`, `published_at`, `updated_at` are dropped. Hard cutover — prerelease, no merchant adoption to migrate.
+
 ### Fixes
 
 - **UCP / JSON-LD: unpurchasable variations no longer leak to agents.** Closes #373. A misconfigured variation (e.g. missing a price) was emitted with a usable-looking variant ID and a checkout URL that WC then refused at cart-add. Three coordinated guards:
