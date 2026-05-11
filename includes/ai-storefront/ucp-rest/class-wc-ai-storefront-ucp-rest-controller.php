@@ -5776,8 +5776,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// to `''` so status becomes `incomplete` rather than handing
 		// the agent a misleading URL.
 		if ( null === $url_with_products ) {
-			$first_variable    = null;
-			$variable_count    = 0;
+			$first_variable = null;
+			$variable_count = 0;
 			foreach ( $processed as $p ) {
 				$ptype = $p['wc_type'] ?? '';
 				if ( 'variable' === $ptype || 'variable-subscription' === $ptype ) {
