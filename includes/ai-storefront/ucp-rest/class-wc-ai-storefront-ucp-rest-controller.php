@@ -2055,8 +2055,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// Pass 3: assemble each variant's inputs[] entry.
 					// Exact wins over featured; siblings get just `id`
 					// (no match field — spec-clean per `input_correlation.json`).
+					// Filter-corrupted non-array entries are skipped without
+					// an inputs[] correlation — that's a downstream schema
+					// violation (per `catalog_lookup.json#/$defs/lookup_variant`
+					// `inputs` is required with minItems:1), but we'd rather
+					// emit the malformed shape and let the schema validator
+					// surface it than fatal the whole response. Log so the
+					// merchant or plugin author can find the filter callback
+					// that's misbehaving.
+					$corrupted_count = 0;
 					foreach ( $final_product['variants'] as $variant_idx => $variant ) {
 						if ( ! is_array( $variant ) ) {
+							++$corrupted_count;
 							continue;
 						}
 						$variant_id = (string) ( $variant['id'] ?? '' );
@@ -2067,6 +2077,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 							$entry['match'] = 'featured';
 						}
 						$final_product['variants'][ $variant_idx ]['inputs'] = [ $entry ];
+					}
+
+					if ( $corrupted_count > 0 ) {
+						WC_AI_Storefront_Logger::debug(
+							sprintf(
+								'UCP catalog/lookup: product %d emitted %d non-array variant entries (a `wc_ai_storefront_ucp_product` filter callback replaced a variant with a non-array value). These entries violate the spec\'s inputs[] minItems:1 requirement — investigate the filter pipeline.',
+								(int) $wc_id,
+								$corrupted_count
+							)
+						);
 					}
 
 					// Pass 4: reorder `variants[]` so the featured (or
@@ -2710,6 +2730,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// merchant's hint; what to do with it (present, override,
 		// ignore) is up to the agent's UI. Server-side resolution
 		// would bypass buyer choice silently.
+		//
+		// Mixed-cart handling mirrors bundle's must-split rule (see
+		// `$bundle_must_split` above). A variable parent's permalink
+		// fallback is the variable's own PDP — a single product page
+		// that cannot also add a sibling simple-product line item to
+		// the cart. So any cart that combines a variable parent with
+		// other line items must be split into separate /checkout-sessions
+		// requests; otherwise the simple item would be silently dropped
+		// from the destination URL. Same rationale as bundle/grouped.
 		$variable_request_indices = [];
 		$variable_processed_keys  = [];
 		foreach ( $processed as $idx => $p ) {
@@ -2719,31 +2748,62 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$variable_processed_keys[]  = $idx;
 			}
 		}
-		if ( ! empty( $variable_processed_keys ) ) {
-			foreach ( $variable_processed_keys as $key_idx => $vk ) {
-				$variable      = $processed[ $vk ];
-				$has_permalink = '' !== (string) ( $variable['permalink'] ?? '' );
-				if ( $has_permalink ) {
-					$messages[] = [
-						'type'     => 'error',
-						'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
-						'severity' => 'requires_buyer_input',
-						'path'     => '$.line_items[' . $variable_request_indices[ $key_idx ] . '].item.id',
-						'content'  => __( 'This product has variations; the buyer must pick a specific option on the merchant site. Open continue_url to choose and complete the purchase.', 'woocommerce-ai-storefront' ),
-					];
-				} else {
-					// No permalink (rare — merchant deleted the product
-					// page or status changed mid-fetch). Without a URL
-					// to redirect to, status becomes incomplete.
-					$messages[]      = [
-						'type'     => 'error',
-						'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
-						'severity' => 'recoverable',
-						'path'     => '$.line_items[' . $variable_request_indices[ $key_idx ] . '].item.id',
-						'content'  => __( 'This product requires a specific variation selection but its product page URL is unavailable.', 'woocommerce-ai-storefront' ),
-					];
-					$should_redirect = false;
-				}
+		$has_variable        = ! empty( $variable_processed_keys );
+		$variable_must_split = $has_variable && ( count( $processed ) > 1 || count( $variable_processed_keys ) > 1 );
+
+		if ( $variable_must_split ) {
+			// One recoverable `field_required` per variable line item.
+			// Severity `recoverable` (not `requires_buyer_input`) because
+			// the agent — not the buyer — is the one that needs to act:
+			// split the cart and resend. Same severity choice as bundle
+			// and grouped must-split paths.
+			foreach ( $variable_request_indices as $req_idx ) {
+				$messages[] = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'recoverable',
+					'path'     => '$.line_items[' . $req_idx . ']',
+					'content'  => __( 'Variable product line items must be sent in their own /checkout-sessions request, separate from other items — the permalink fallback can only redirect the buyer to a single product page.', 'woocommerce-ai-storefront' ),
+				];
+			}
+			$should_redirect = false;
+		} elseif ( $has_variable ) {
+			// Single variable parent, no other line items — emit the
+			// configurable response (permalink fallback or recoverable
+			// error if no permalink). This is the path the agent gets
+			// when they correctly send one variable parent at a time.
+			$vk            = $variable_processed_keys[0];
+			$variable      = $processed[ $vk ];
+			$has_permalink = '' !== (string) ( $variable['permalink'] ?? '' );
+			if ( $has_permalink ) {
+				$messages[] = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'requires_buyer_input',
+					'path'     => '$.line_items[' . $variable_request_indices[0] . '].item.id',
+					'content'  => __( 'This product has variations; the buyer must pick a specific option on the merchant site. Open continue_url to choose and complete the purchase.', 'woocommerce-ai-storefront' ),
+				];
+			} else {
+				// No permalink — rare, but flag it so merchants can
+				// investigate: the product's `get_permalink()` returned
+				// empty (status flipped to draft mid-fetch, a permalink
+				// filter returned empty, or similar). Without a URL the
+				// buyer has nowhere to land, so status becomes
+				// `incomplete` (no `continue_url`).
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'UCP /checkout-sessions: variable parent product %d has empty permalink — no continue_url emitted.',
+						(int) ( $variable['wc_id'] ?? 0 )
+					)
+				);
+				$messages[]      = [
+					'type'     => 'error',
+					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
+					'severity' => 'recoverable',
+					'path'     => '$.line_items[' . $variable_request_indices[0] . '].item.id',
+					'content'  => __( 'This product requires a specific variation selection but its product page URL is unavailable.', 'woocommerce-ai-storefront' ),
+				];
+				$should_redirect = false;
 			}
 		}
 
@@ -5283,7 +5343,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * - `simple`: standard Shareable Checkout `?products=ID:1`.
 	 * - `variation`: per-variant Shareable Checkout `?products=<vid>:1`.
 	 * - `subscription` / `subscription_variation`: empirically verified
-	 *   (PR #367 audit) that the Shareable Checkout URL adds the
+	 *   in PR #367's audit (see comments
+	 *   github.com/Automattic/woocommerce-ai-storefront/pull/367#issuecomment-4416019003
+	 *   and #issuecomment-4416036798) that the Shareable Checkout URL adds the
 	 *   subscription to the cart and WC's checkout page handles the
 	 *   recurring-billing UI correctly — the same Shareable Checkout
 	 *   flow that works for simple/variation works for these. The

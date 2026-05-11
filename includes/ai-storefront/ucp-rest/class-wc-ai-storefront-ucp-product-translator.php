@@ -1786,10 +1786,24 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * `fetch_variations_for()` for every variable-parent lookup, so this
 	 * helper adds no new I/O at the call site.
 	 *
-	 * Empty-string default values are treated as "no default on this
-	 * axis" — WC stores `"any"` selections as empty strings in
-	 * `_default_attributes`, and an "any" selection doesn't
-	 * deterministically resolve to a variant.
+	 * "Any" selections: when the merchant picks "Any" on a variation
+	 * axis (rather than a specific term), WC's Store API surfaces no
+	 * term flagged `default: true` on that axis. The outer loop simply
+	 * finds no default-marked term, leaves both `$default_*` null, and
+	 * the partial-coverage guard below returns null. Resolution
+	 * correctly fails closed on "any" without needing a special-case
+	 * branch — it's the same code path as "merchant set no default at
+	 * all."
+	 *
+	 * Extra axes on the variation: a variation may declare values on
+	 * axes the parent doesn't track defaults for (e.g. a custom inline
+	 * attribute the merchant didn't mark for variations, or a leftover
+	 * `attribute_*` postmeta from a previous configuration). These
+	 * extra axes are ignored for matching — only the parent's default-
+	 * marked axes constrain the resolution. Matching is "superset on
+	 * the defaults map," not "exact equality of all axes," because the
+	 * parent's `_default_attributes` is the authoritative signal for
+	 * which axes are relevant.
 	 *
 	 * @param array<string, mixed>             $wc_product    Store API response for the parent.
 	 * @param array<int, array<string, mixed>> $wc_variations Pre-fetched variation responses (Store API shape).
@@ -1842,8 +1856,13 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				$slug  = (string) ( $term['slug'] ?? '' );
 				$label = (string) ( $term['name'] ?? '' );
 				if ( '' === $slug && '' === $label ) {
-					// "any" selection in WC — not deterministic. Leave
-					// both nulls; partial-coverage check below bails.
+					// Defensive: a term flagged `default: true` should
+					// always have either a slug or a label. Empty-both
+					// would be malformed Store API output. Bail this
+					// axis so the partial-coverage check below returns
+					// null rather than silently picking the wrong
+					// variation. (The "any selection" case takes a
+					// different code path — see the docblock.)
 					break;
 				}
 				$default_slug  = '' !== $slug ? $slug : null;
@@ -1908,7 +1927,23 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// No variation matched the defaults — orphaned `_default_attributes`
 		// postmeta (the default slug was deleted from the taxonomy after
 		// being saved on the parent). Defensive return null so the caller
-		// falls back to the menu_order-first behavior.
+		// falls back to the menu_order-first behavior. Log a breadcrumb
+		// at debug level so merchants debugging "why isn't my default
+		// variation getting featured?" can find the actionable signal in
+		// the logs — this is a merchant misconfiguration, not a code bug.
+		if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+			$present_defaults = array_unique(
+				array_merge( array_values( $defaults_by_slug ), array_values( $defaults_by_label ) )
+			);
+			WC_AI_Storefront_Logger::debug(
+				sprintf(
+					'UCP resolve_default_variation_id(%d): merchant defaults [%s] did not match any of %d fetched variations — possibly orphaned _default_attributes postmeta (term deleted after being set as default). Falling back to menu_order-first.',
+					(int) ( $wc_product['id'] ?? 0 ),
+					implode( ',', $present_defaults ),
+					count( $wc_variations )
+				)
+			);
+		}
 		return null;
 	}
 

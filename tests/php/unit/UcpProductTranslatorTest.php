@@ -2730,6 +2730,37 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 103, $result, 'Helper must resolve via formatted-string fallback when attributes[] is empty.' );
 	}
 
+	public function test_resolve_default_variation_id_ignores_extra_axes_on_variation(): void {
+		// Variations can declare values on axes the parent doesn't have
+		// defaults for — e.g. a custom inline attribute the merchant
+		// didn't mark for variations, or leftover `attribute_*` postmeta.
+		// The helper must match on the SUBSET of axes the parent defaults
+		// declare (superset-match), not require exact axis equality.
+		// Without this, any "extra" variation axis would silently disqualify
+		// the default-matching variation.
+		$parent     = $this->variable_parent_with_length_axis( '6-months' );
+		$variations = [];
+		$id         = 101;
+		foreach ( [ '1-month', '3-months', '6-months', '1-year' ] as $slug ) {
+			$variations[] = [
+				'id'         => $id++,
+				'attributes' => [
+					[ 'name' => 'Length', 'value' => $slug ],
+					// Extra axis the parent never declared as a variation
+					// driver. Should be silently ignored during matching.
+					[ 'name' => 'WarehouseSlot', 'value' => 'A-12' ],
+				],
+			];
+		}
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+			$parent,
+			$variations
+		);
+
+		$this->assertSame( 103, $result, 'Extra non-defaulted axes on variation must not disqualify the matching variation.' );
+	}
+
 	public function test_resolve_default_variation_id_works_for_variable_subscription_type(): void {
 		// The subscription extension's `variable-subscription` shares the
 		// shape of `variable` and uses `_default_attributes` identically.

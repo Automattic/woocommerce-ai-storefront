@@ -884,6 +884,46 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_direct_variation_lookup_features_the_synthesized_default(): void {
+		// Edge case: agent passes a variation ID directly (`var_520`).
+		// The controller resolves `520` → the variation post as a
+		// standalone Store API record. `synthesize_default` emits a
+		// single variant with id `var_520_default` (the `_default`
+		// suffix is the synthesis marker). Since the input string
+		// `var_520` differs from the emitted id `var_520_default`, no
+		// `exact` match fires — the synthesized variant is featured
+		// instead (sole-variant fall-through).
+		//
+		// Pinned here because the input/output IDs differ in a subtle
+		// way that's easy to mis-implement (e.g. stripping the `_default`
+		// suffix or matching by prefix). A future refactor that
+		// "normalized" the comparison could accidentally mark the
+		// variant as `exact` when it shouldn't be — the agent didn't
+		// directly identify this variant id, they identified the
+		// underlying variation that we then re-emitted under a
+		// synthesized default id.
+		$this->seed_variable_product(
+			500,
+			'Long Sleeve Tee',
+			[
+				[ 'id' => 510, 'price' => '2500', 'size' => 'S' ],
+				[ 'id' => 520, 'price' => '3000', 'size' => 'M' ],
+				[ 'id' => 530, 'price' => '3500', 'size' => 'L' ],
+			]
+		);
+
+		$body = $this->successful_lookup( [ 'ids' => [ 'var_520' ] ] );
+
+		$variants = $body['products'][0]['variants'];
+		$this->assertCount( 1, $variants );
+		$this->assertSame( 'var_520_default', $variants[0]['id'] );
+		// Featured (not exact) — input and emitted ID differ textually.
+		$this->assertSame(
+			[ [ 'id' => 'var_520', 'match' => 'featured' ] ],
+			$variants[0]['inputs']
+		);
+	}
+
 	public function test_variable_subscription_variations_pre_fetched_and_expanded(): void {
 		// #369 Fix #1: `fetch_variations_for()` was previously gated on
 		// strict `'variable' === $type`, which excluded WC Subscriptions'

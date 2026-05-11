@@ -1276,6 +1276,119 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_mixed_cart_with_variable_parent_rejects_with_field_required(): void {
+		// #369 review-toolkit finding: pre-fix, a cart with a variable
+		// parent alongside a simple product would emit the variable's
+		// permalink as `continue_url` — silently dropping the simple
+		// line item from the buyer's destination (the variable's PDP
+		// has no way to also add the simple product).
+		//
+		// Mirrors bundle/grouped must-split: any mixed cart with a
+		// variable parent gets a `recoverable` field_required per
+		// variable line item, `should_redirect=false`, no continue_url.
+		// Agent must split the cart into separate /checkout-sessions
+		// requests and retry.
+		$this->fake_store_api[ 850 ] = [
+			'id'          => 850,
+			'name'        => 'Variable T-Shirt',
+			'type'        => 'variable',
+			'permalink'   => 'http://example.com/product/variable-tshirt/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price'               => '2000',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+			],
+		];
+		$this->seed_simple_product( 100, 1500 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_850' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 2 ],
+				],
+			]
+		);
+
+		// No `continue_url` — agent must split the cart and retry.
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+
+		// Recoverable field_required path-attributed to the variable
+		// line item — same shape as bundle/grouped must-split.
+		$variable_errors = array_filter(
+			$result['data']['messages'],
+			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
+				&& 'recoverable' === ( $m['severity'] ?? '' )
+				&& isset( $m['path'] ) && false !== strpos( $m['path'], '$.line_items[0]' )
+		);
+		$this->assertCount(
+			1,
+			$variable_errors,
+			'Mixed cart with variable parent must emit a recoverable field_required path-attributed to the variable line item.'
+		);
+
+		// All line items are still echoed so the agent sees what was processed.
+		$this->assertCount( 2, $result['data']['line_items'] );
+	}
+
+	public function test_multi_variable_cart_rejects_with_field_required_per_variable(): void {
+		// Two variable parents in one cart — same rejection as
+		// mixed-with-simple, emitting one error per variable line item.
+		// Without this rule, the agent gets back ONE permalink (whichever
+		// variable wins) and the OTHER variable's intent is silently lost.
+		$this->fake_store_api[ 850 ] = [
+			'id'          => 850,
+			'name'        => 'Variable T-Shirt',
+			'type'        => 'variable',
+			'permalink'   => 'http://example.com/product/variable-tshirt/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price' => '2000', 'currency_code' => 'USD', 'currency_minor_unit' => 2,
+			],
+		];
+		$this->fake_store_api[ 860 ] = [
+			'id'          => 860,
+			'name'        => 'Variable Hoodie',
+			'type'        => 'variable',
+			'permalink'   => 'http://example.com/product/variable-hoodie/',
+			'is_in_stock' => true,
+			'prices'      => [
+				'price' => '4500', 'currency_code' => 'USD', 'currency_minor_unit' => 2,
+			],
+		];
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_850' ], 'quantity' => 1 ],
+					[ 'item' => [ 'id' => 'prod_860' ], 'quantity' => 1 ],
+				],
+			]
+		);
+
+		$this->assertEquals( 'incomplete', $result['data']['status'] );
+		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
+
+		// One field_required per variable line item.
+		$field_required_errors = array_values(
+			array_filter(
+				$result['data']['messages'],
+				static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
+					&& 'recoverable' === ( $m['severity'] ?? '' )
+			)
+		);
+		$this->assertCount( 2, $field_required_errors );
+		// Each error attributes its `path` to the correct line_items[i].
+		$paths = array_column( $field_required_errors, 'path' );
+		sort( $paths );
+		$this->assertSame(
+			[ '$.line_items[0]', '$.line_items[1]' ],
+			$paths
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// Stock handling: warning, not rejection
 	// ------------------------------------------------------------------
