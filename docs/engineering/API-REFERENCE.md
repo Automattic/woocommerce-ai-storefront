@@ -72,10 +72,18 @@ The free-text `query` is preprocessed by `WC_AI_Storefront_UCP_Store_API_Filter:
         {
           "id": "var_42_default",
           "title": "Default",
+          "description": { "plain": "Premium running shoes designed for daily training." },
           "price": { "amount_minor": 12999, "currency": "USD" },
           "availability": "in_stock"
         }
-      ]
+      ],
+      "metadata": {
+        "lifecycle":  { "status": "published" },
+        "timestamps": {
+          "published_at": "2026-01-15T10:30:00Z",
+          "updated_at":   "2026-04-20T14:22:31Z"
+        }
+      }
     }
   ],
   "pagination": { "page": 1, "per_page": 20, "total": 142 }
@@ -89,6 +97,10 @@ The product `url` carries the canonical 0.5.0+ UTM payload (`utm_source=<hostnam
 - **`categories[]`** — each entry's `value` is a `>`-delimited hierarchy string (e.g. `"Clothing > Tshirts"`) per `category.json`. Brands stay flat (no hierarchy in WC). Falls back to bare leaf name when ancestry can't be resolved.
 - **`options[].values[].id`** — stable `<taxonomy>:<slug>` identifier (e.g. `pa_color:black`) for taxonomy-backed variant attributes. Omitted for custom inline attributes and when the term slug is unavailable. Agents echo this back as `selected_option.id` for cross-locale variant matching.
 - **Non-variable products (simple, bundle, grouped) emit no `options[]`** regardless of attribute names. UCP `product_option.json` characterizes options by example as size, color, or material — variant-selection axes the buyer chooses between. A non-variable WC product has no `has_variations: true` axis, so there's no buyer-selectable axis to lock in. Color / Size / Pattern / Material attributes on these products surface as descriptive `metadata.attributes` entries (same path as Origin, Fabric Weight, etc.), with all declared values preserved. Variable products' `has_variations: true` attributes still emit legitimate selectable `options[]`.
+- **`metadata.lifecycle.status`** (#374) — always `"published"` since the catalog handlers only translate Store-API-returned products, which already filter out drafts/private. Emitted under `metadata` (per UCP spec — `product.json` doesn't define `status` as a first-class property) so strict validators that tighten `additionalProperties` in a future spec revision won't reject it. **Pre-v0.14.2 this was a top-level `status` field; the relocation is a breaking shape change with no merchant migration since the field was only 3 days old when relocated.**
+- **`metadata.timestamps.published_at` / `metadata.timestamps.updated_at`** (#374) — ISO 8601 UTC strings sourced from our Store API extension at `extensions.com-woocommerce-ai-storefront.{date_created,date_modified}`. The whole `timestamps` sub-block is omitted when no timestamps are extracted, rather than emitted as empty scaffolding. Same relocation rationale as `lifecycle.status` above — both previously lived at the product top level.
+- **Synthesized variants carry the parent's `short_description`** (#375). For simple / bundle / grouped products (and the `synthesize_default()` fallback for malformed-variable parents), the variant's `description.plain` now carries the parent's `short_description` (strip-tags + decode-entities) instead of an empty string. Agents that drill into a variant ID directly see the variant entity with useful descriptive copy. Graceful degradation preserved: when the parent has no `short_description`, the variant still emits `description.plain = ""`.
+- **Unpurchasable variations are filtered from `variants[]`** (#373). A misconfigured variation (e.g. missing a price) reads `is_in_stock: true` but `is_purchasable: false` in WC core. `fetch_variations_for()` drops these before they reach the product translator, so the broken variant ID never leaks to agents. If *every* variation of a variable parent is unpurchasable, the response falls through to a single `synthesize_default()` placeholder rather than emitting a schema-invalid empty `variants[]` array.
 
 **Errors:**
 - `503` `ucp_disabled` — syndication paused.
@@ -271,6 +283,7 @@ The `severity: unrecoverable` value above is the `checkout_error_message()` defa
 Other in-cart error codes the response may carry:
 
 - `out_of_stock` — **per-line-item** rejection (`severity: unrecoverable`, the default from `checkout_error_message()`). The OOS line is dropped from `line_items` and surfaced as a `messages[]` entry; the overall response can still be `201 requires_escalation` + `continue_url` when other lines validate. Only when *no* lines validate does the response collapse to `200 incomplete`.
+- `item_unpurchasable` (#373) — **per-line-item** rejection (`severity: unrecoverable`). Distinct from `out_of_stock`: the variation has stock but WC reports `is_purchasable: false` (typically missing a price, draft / hidden, or merchant-misconfigured). Same routing as `out_of_stock` — line dropped from `continue_url` / `line_items[]` / `totals`; surfaced as a `messages[]` entry. Distinct code so agents can route remediation correctly ("no inventory" vs "merchant config issue"). Catalog responses already filter unpurchasable variations upstream (see "Notable enrichment fields" above), but this code defends against stale or guessed variant IDs arriving at the checkout endpoint.
 - `minimum_not_met` — **cart-level** rejection (`severity: requires_buyer_input`, deliberately overriding the default — the buyer can resolve by adding items, so `unrecoverable` would mislead agents into abandoning the cart). Even when all lines validate individually, a surviving subtotal below the merchant minimum forces `status: incomplete` with no `continue_url`.
 - `field_required` — path-attributed via `$.line_items[N]`; emitted for bundles and grouped products. Can appear in **either** response status:
     - `status: incomplete` (no `continue_url`) when the cart is mixed/multi bundle-or-grouped (must split and retry) or when the configurable bundle/grouped has no usable permalink (`severity: recoverable`).
