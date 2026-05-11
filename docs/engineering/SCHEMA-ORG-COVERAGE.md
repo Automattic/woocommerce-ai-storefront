@@ -146,7 +146,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `offeredBy` | — | — | — |
 | `price` | — | ✓ | WC core |
 | `priceCurrency` | ✓ | ✓ | Plugin (hoists from `priceSpecification[0]` to outer Offer) |
-| `priceSpecification` | — | ✓ (`UnitPriceSpecification` with sale variants from WC core; subscription-billing entries from plugin) | WC core + Plugin (#368). For WC Subscriptions products the plugin emits `UnitPriceSpecification` entries carrying `priceComponentType: Subscription` with ISO 8601 `billingDuration`, plus `priceComponentType: ActivationFee` for sign-up fees. Free trial uses a two-element array (trial entry at `price: 0`, recurring entry second); deliberately does NOT emit `billingStart` since Schema.org types it `Number`, not Duration |
+| `priceSpecification` | — | ✓ (`UnitPriceSpecification`) | WC core for non-subscription sale-window entries; for WC Subscriptions products the plugin replaces `offers[0].priceSpecification` wholesale (#368) — the subscription array overwrites any WC-core entries rather than merging. The plugin emits `UnitPriceSpecification` entries carrying `priceComponentType: Subscription` with ISO 8601 `billingDuration`, plus `priceComponentType: ActivationFee` for sign-up fees. Free trial uses a two-element array (trial entry at `price: 0`, recurring entry second); deliberately does NOT emit `billingStart` since Schema.org types it `Number`, not Duration |
 | `priceValidUntil` | — | ✓ when sale-end date is set | WC core |
 | `review` | — | — | — |
 | `seller` | ✓ §seller | ✓ (`Organization`) | WC core (plugin post-processes `seller.name` for HTML-entity decoding) |

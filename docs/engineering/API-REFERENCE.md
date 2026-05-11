@@ -64,13 +64,13 @@ The free-text `query` is preprocessed by `WC_AI_Storefront_UCP_Store_API_Filter:
   },
   "products": [
     {
-      "id": "wc_42",
+      "id": "prod_42",
       "title": "Acme Running Shoes",
       "description": "...",
       "url": "https://your-store.com/product/acme-running-shoes/?utm_source=chatgpt.com&utm_medium=referral&utm_id=woo_ucp&ai_agent_host_raw=chatgpt.com",
       "variants": [
         {
-          "id": "wc_42_default",
+          "id": "var_42_default",
           "title": "Default",
           "price": { "amount_minor": 12999, "currency": "USD" },
           "availability": "in_stock"
@@ -117,12 +117,12 @@ Look up specific products by ID.
 **Request body:**
 
 ```json
-{ "products": ["wc_42", "wc_43", "wc_99"] }
+{ "ids": ["prod_42", "prod_43", "var_99"] }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `products` | string[] | yes | Array of UCP product IDs (`wc_<post_id>` for simple, `wc_<post_id>_<variation_id>` for variations). Max 100 items. |
+| `ids` | string[] | yes | Array of UCP IDs in the standard grammar: `prod_<post_id>` for products (simple, variable parent, bundle, grouped), `var_<variation_id>` for real WC variations, `var_<post_id>_default` for synthesized default variants. Max 100 items. |
 
 **Response:** same envelope as `/catalog/search` but with `products` matching requested IDs in order. Missing or excluded products are omitted (no per-ID error — agents diff against their request). Same UTM stamping on the product `url` field.
 
@@ -134,7 +134,7 @@ Look up specific products by ID.
 
 Both signals must agree — `variants[0]` carries `match: featured` in its inputs entry. Per `product.json` (verbatim from `Universal-Commerce-Protocol/ucp`): _"First item is the featured variant for listings."_
 
-This applies to both `variable` and `variable-subscription` parents. The merchant's `_default_attributes` is the signal we use; we do NOT auto-resolve it server-side in `/checkout-sessions` (see Supported product types above for the design rationale).
+This applies to both `variable` and `variable-subscription` parents. The merchant's `_default_attributes` is the signal we use; we do NOT auto-resolve it server-side in `/checkout-sessions` (see [Supported product types](#post-checkout-sessions) below for the design rationale).
 
 **Errors:** `503` `ucp_disabled`; `400` `invalid_input` when `products` is missing, empty, or > 100 items.
 
@@ -149,7 +149,7 @@ The exact `continue_url` shape depends on the cart contents: simple/variation/su
 | Type | At `/checkout-sessions` |
 |---|---|
 | `simple`, `variation`, `subscription`, `subscription_variation` | Accepted directly — Shareable Checkout `/checkout-link/?products=ID:1` |
-| `bundle`, `grouped` | Accepted; deterministic shape when configurable, permalink fallback otherwise |
+| `bundle`, `grouped` | Accepted; deterministic shape when all defaults resolve, permalink fallback when configurable (any optional toggle, or any variable child without bundle-author-preset defaults) |
 | `variable`, `variable-subscription` parent (no variation chosen) | Accepted with permalink fallback to the parent's PDP + `field_required` / `requires_buyer_input` (pre-#370 this was a hard `variation_required` rejection) |
 | `external` | Rejected with `product_type_unsupported` (third-party seller's site has no permalink fallback) |
 
