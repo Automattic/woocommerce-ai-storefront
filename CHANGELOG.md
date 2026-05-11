@@ -21,6 +21,9 @@
   - **Disabled / rejected feedback**: when the capability is off, inbound `discounts.codes[]` are dropped AND the response carries an `info` message `discount_codes_unsupported` so agents know their input was acknowledged but not honored. When the capability is on but all supplied codes fail validation, agents get `discount_codes_rejected` instead. Distinct codes route remediation correctly (fix the input vs. ask the merchant). No 4xx for either case — tolerant of stale agent caches.
 
 ### Refactors
+
+- **Dev tooling: bump wp-env memory limit to 512M.** Local `wp-env` stack was hitting PHP `Allowed memory size of 134217728 bytes exhausted` fatals during plugin activation (WC core + WC Subscriptions + WC Payments + Jetpack + this plugin overran 128M) and on `action-scheduler run` catch-up commands. Added `WP_MEMORY_LIMIT` + `WP_MAX_MEMORY_LIMIT` set to `512M` in `.wp-env.json`'s `config` block. Dev-env-only — production / staging WP hosts configure `memory_limit` through their own php.ini or wp-config.php directly.
+
 ### Tests
 ### Docs
 
