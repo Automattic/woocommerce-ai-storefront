@@ -1,6 +1,16 @@
 ## [Unreleased]
 
 ### Features
+### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.14.2] – 2026-05-11
+
+### Features
 
 - **UCP catalog: relocate `status` + timestamps under `metadata` per spec.** Closes #374. Post-repo-access audit found that `product.json` does not define `status`, `published_at`, or `updated_at` as first-class properties — they're business-defined extension fields, and the spec's `metadata` block is the official escape hatch. New shape:
   - `metadata.lifecycle.status` — always `"published"` (catalog handlers only translate Store-API-returned products, which already filters out drafts/private).
