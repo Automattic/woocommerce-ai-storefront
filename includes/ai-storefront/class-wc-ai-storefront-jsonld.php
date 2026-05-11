@@ -152,6 +152,7 @@ class WC_AI_Storefront_JsonLd {
 		$country       = $base_location['country'] ?? '';
 
 		$this->add_currency( $markup );
+		$this->add_subscription_signals( $markup, $product );
 		$this->decode_seller_name( $markup );
 		$this->add_shipping_details( $markup, $country );
 		$this->add_handling_time( $markup, $settings );
@@ -276,6 +277,271 @@ class WC_AI_Storefront_JsonLd {
 			array_merge( array( 'products' => $product->get_id() . ':1' ), $utm_args ),
 			home_url( '/checkout-link/' )
 		);
+	}
+
+	/**
+	 * Adds subscription-billing signals to `offers[0]` when WC Subscriptions
+	 * is active and the product is a recurring-billing product.
+	 *
+	 * Emits these Schema.org fields on the Offer (per
+	 * https://schema.org/UnitPriceSpecification and related):
+	 *
+	 *   - `priceSpecification` — an array of one or more
+	 *     `UnitPriceSpecification` entries describing recurring price
+	 *     components. Each entry carries `billingDuration` (ISO 8601)
+	 *     and `priceComponentType: Subscription` for the recurring
+	 *     price. The trial-then-paid pattern is conveyed by array
+	 *     order (trial entry FIRST at `price: 0`, recurring entry
+	 *     SECOND at full price) without using `billingStart` —
+	 *     Schema.org types `billingStart` as `Number`, not Duration,
+	 *     so a `P14D` value there would violate the spec contract.
+	 *     A separate entry with `priceComponentType: ActivationFee`
+	 *     carries the one-shot sign-up fee when set.
+	 *   - `addOn` — a one-shot `Offer` carrying the sign-up fee, emitted
+	 *     alongside the inline `ActivationFee` `UnitPriceSpecification`
+	 *     for backward compatibility with consumers that don't
+	 *     recognize the `priceComponentType` enumeration (which is still
+	 *     marked "new" per Schema.org's own framing).
+	 *   - `eligibleDuration` — a `QuantitativeValue` carrying the total
+	 *     duration when the merchant set a finite subscription length
+	 *     (`get_length() > 0`); omitted for indefinite subscriptions.
+	 *
+	 * Gating: `function_exists('wcs_is_subscription')` + the
+	 * `WC_Subscriptions_Product` class check are both required — the
+	 * helper is a no-op for stores without WC Subscriptions active.
+	 *
+	 * Tax handling: this helper reads raw `get_sign_up_fee()` (no
+	 * include/exclude-tax variant). Mirrors what the existing
+	 * `build_variant_offer_skeleton` does for the variant price — the
+	 * JSON-LD output stays consistent in its tax-inclusivity stance
+	 * across all fields.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product (simple subscription) or
+	 *                            variation (subscription_variation under
+	 *                            a variable-subscription parent).
+	 */
+	private function add_subscription_signals( array &$markup, $product ): void {
+		// Fail-closed if WC Subscriptions isn't active — every call to
+		// `WC_Subscriptions_Product::*` would otherwise fatal.
+		if ( ! function_exists( 'wcs_is_subscription' ) || ! class_exists( 'WC_Subscriptions_Product', false ) ) {
+			return;
+		}
+		if ( ! WC_Subscriptions_Product::is_subscription( $product ) ) {
+			return;
+		}
+		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
+			return;
+		}
+
+		$period         = WC_Subscriptions_Product::get_period( $product );
+		$interval       = WC_Subscriptions_Product::get_interval( $product );
+		$length         = WC_Subscriptions_Product::get_length( $product );
+		$signup_fee_str = (string) WC_Subscriptions_Product::get_sign_up_fee( $product );
+		$signup_fee     = (float) $signup_fee_str;
+		$trial_length   = WC_Subscriptions_Product::get_trial_length( $product );
+		$trial_period   = WC_Subscriptions_Product::get_trial_period( $product );
+
+		// Sanity-gate the recurring signal. A subscription product with
+		// `interval <= 0` is corrupted (no valid recurring cadence) — the
+		// trial path is symmetrically gated by `$trial_length > 0`, this
+		// branch matches that discipline. Emit nothing rather than a
+		// nonsensical `billingDuration: P0D`. Log as merchant-actionable
+		// misconfig — same pattern as `resolve_default_variation_id()`'s
+		// orphan-default breadcrumb.
+		if ( $interval <= 0 ) {
+			if ( class_exists( 'WC_AI_Storefront_Logger' ) && function_exists( 'apply_filters' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'JSON-LD add_subscription_signals(%d): subscription has interval=%d (must be > 0). Skipping subscription signal emission — fix the product configuration.',
+						(int) $product->get_id(),
+						$interval
+					)
+				);
+			}
+			return;
+		}
+
+		// Period whitelist — `period_to_iso8601_duration()` and
+		// `period_to_uncefact_code()` silently fall back to month / MON
+		// for unknown periods, which is safer than fataling but masks
+		// merchant-actionable misconfiguration (typo, WC Subscriptions
+		// extension defining a custom period, etc.). Log so debug-mode
+		// logs surface the case, then proceed with the safe defaults.
+		$known_periods = array( 'day', 'week', 'month', 'year' );
+		if ( ! in_array( $period, $known_periods, true )
+			&& class_exists( 'WC_AI_Storefront_Logger' ) && function_exists( 'apply_filters' ) ) {
+			WC_AI_Storefront_Logger::debug(
+				sprintf(
+					'JSON-LD add_subscription_signals(%d): unknown subscription period %s, falling back to month. Check the product configuration.',
+					(int) $product->get_id(),
+					wp_json_encode( $period )
+				)
+			);
+		}
+
+		// Negative sign-up fee = data-entry error. WC Subscriptions
+		// accepts negative numeric input in the field but the signal
+		// has no semantic meaning. Drop and log so the merchant can
+		// catch it.
+		if ( $signup_fee < 0 && class_exists( 'WC_AI_Storefront_Logger' ) && function_exists( 'apply_filters' ) ) {
+			WC_AI_Storefront_Logger::debug(
+				sprintf(
+					'JSON-LD add_subscription_signals(%d): negative sign-up fee %s — dropping. Likely a merchant data-entry error.',
+					(int) $product->get_id(),
+					$signup_fee_str
+				)
+			);
+		}
+
+		// Read currency from the already-hoisted top-level Offer field
+		// (`add_currency()` runs before this enricher). Fall back to
+		// `get_woocommerce_currency()` for the rare case where
+		// `add_currency` didn't hoist — usually because there's no
+		// price for it to read.
+		$currency = (string) ( $markup['offers'][0]['priceCurrency'] ?? '' );
+		if ( '' === $currency ) {
+			$currency = function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : 'USD';
+		}
+		$price = (string) ( $markup['offers'][0]['price'] ?? '0' );
+
+		$price_specs = array();
+
+		// Trial entry, when set. Free by definition — WC Subscriptions'
+		// trial period IS the free window.
+		//
+		// The trial-then-paid sequence is communicated by:
+		//   1. Array order: trial entry FIRST, recurring entry SECOND.
+		//   2. The trial entry carries `price: 0` — a consumer reading
+		//      the array sees "free window for N units, then full price."
+		//
+		// We deliberately do NOT emit `billingStart` on the recurring
+		// entry. Per https://schema.org/billingStart, billingStart is
+		// typed `Number` (not Duration / ISO 8601 string), and would
+		// inherit `unitCode` from the UnitPriceSpecification's own
+		// unitCode property. Two complications make billingStart
+		// unsuitable here:
+		//   - Mixed units: a 14-day trial preceding monthly billing
+		//     forces a unit-coercion choice (14/30 = 0.47 months?) with
+		//     no clean answer.
+		//   - Schema.org accepts Duration on `billingDuration` but not
+		//     `billingStart`. Emitting `P14D` for billingStart would
+		//     violate the spec's type contract.
+		// Array semantics + price=0 are unambiguous for the trial case
+		// without needing a numeric offset.
+		$has_trial = $trial_length > 0;
+		if ( $has_trial ) {
+			$price_specs[] = array(
+				'@type'              => 'UnitPriceSpecification',
+				'priceComponentType' => 'https://schema.org/Subscription',
+				'price'              => '0',
+				'priceCurrency'      => $currency,
+				'billingDuration'    => self::period_to_iso8601_duration( $trial_period, $trial_length ),
+			);
+		}
+
+		$price_specs[] = array(
+			'@type'              => 'UnitPriceSpecification',
+			'priceComponentType' => 'https://schema.org/Subscription',
+			'price'              => $price,
+			'priceCurrency'      => $currency,
+			'billingDuration'    => self::period_to_iso8601_duration( $period, $interval ),
+		);
+
+		// Sign-up fee: emit BOTH the inline `ActivationFee` priceComponent
+		// AND `Offer.addOn` for compat (decision #1 — "future-ready now").
+		// Inline form is semantically richer (`priceComponentType`
+		// enumeration); `addOn` uses released vocabulary that broader
+		// consumers will recognize today. Duplication is spec-legal.
+		if ( $signup_fee > 0 ) {
+			$price_specs[]                = array(
+				'@type'              => 'UnitPriceSpecification',
+				'priceComponentType' => 'https://schema.org/ActivationFee',
+				'price'              => $signup_fee_str,
+				'priceCurrency'      => $currency,
+			);
+			$markup['offers'][0]['addOn'] = array(
+				'@type'         => 'Offer',
+				'name'          => __( 'Sign-up fee', 'woocommerce-ai-storefront' ),
+				'price'         => $signup_fee_str,
+				'priceCurrency' => $currency,
+			);
+		}
+
+		$markup['offers'][0]['priceSpecification'] = $price_specs;
+
+		// Finite-length subscription: emit `eligibleDuration` carrying
+		// the total number of recurring periods. Indefinite
+		// subscriptions (length === 0) omit this field per
+		// QuantitativeValue's semantics — no duration to express.
+		if ( $length > 0 ) {
+			$markup['offers'][0]['eligibleDuration'] = array(
+				'@type'    => 'QuantitativeValue',
+				'value'    => $length,
+				'unitCode' => self::period_to_uncefact_code( $period ),
+			);
+		}
+	}
+
+	/**
+	 * Map a WC subscription period ('day', 'week', 'month', 'year') and a
+	 * count to an ISO 8601 duration string (e.g., 'P1M', 'P3M', 'P14D').
+	 *
+	 * Used by the subscription-signal emitter to fill
+	 * `UnitPriceSpecification.billingDuration`, which accepts a Duration
+	 * value (one of three valid types per https://schema.org/billingDuration:
+	 * Duration | Number | QuantitativeValue). ISO 8601 strings like 'P1M'
+	 * are the Duration form.
+	 *
+	 * Not used for `billingStart` — that field is typed `Number` only
+	 * (https://schema.org/billingStart) and rejects ISO 8601 strings.
+	 *
+	 * Pure mapping — no I/O, no validation beyond a strict period whitelist.
+	 * Returns 'P1M' for unknown periods as a safe default rather than
+	 * throwing; subscription products without a valid period are vanishingly
+	 * rare and we'd rather emit a slightly-wrong duration than fatal the
+	 * JSON-LD render.
+	 *
+	 * @param string $period WC period — 'day' | 'week' | 'month' | 'year'.
+	 * @param int    $count  Number of periods; must be > 0.
+	 * @return string ISO 8601 duration string.
+	 */
+	private static function period_to_iso8601_duration( string $period, int $count ): string {
+		if ( $count <= 0 ) {
+			return 'P0D';
+		}
+		$units = array(
+			'day'   => 'D',
+			'week'  => 'W',
+			'month' => 'M',
+			'year'  => 'Y',
+		);
+		$unit  = $units[ $period ] ?? 'M';
+		return 'P' . $count . $unit;
+	}
+
+	/**
+	 * Map a WC subscription period to a UN/CEFACT unit code for
+	 * `QuantitativeValue.unitCode` on `Offer.eligibleDuration`.
+	 *
+	 * UN/CEFACT Recommendation N°20 common codes: DAY (day), WEE (week),
+	 * MON (month), ANN (year). Schema.org's `QuantitativeValue.unitCode`
+	 * accepts these codes as the unit identifier.
+	 *
+	 * Unknown periods fall back to 'MON' — same safe-default rationale
+	 * as `period_to_iso8601_duration()`.
+	 *
+	 * @param string $period WC period — 'day' | 'week' | 'month' | 'year'.
+	 * @return string UN/CEFACT unit code — 'DAY' | 'WEE' | 'MON' | 'ANN'.
+	 */
+	private static function period_to_uncefact_code( string $period ): string {
+		$codes = array(
+			'day'   => 'DAY',
+			'week'  => 'WEE',
+			'month' => 'MON',
+			'year'  => 'ANN',
+		);
+		return $codes[ $period ] ?? 'MON';
 	}
 
 	/**
@@ -858,6 +1124,7 @@ class WC_AI_Storefront_JsonLd {
 		// final-sale override (deferred — Pattern B in the meta-box design).
 		$this->add_inventory_level( $entry, $variation );
 		$this->add_currency( $entry );
+		$this->add_subscription_signals( $entry, $variation );
 		$this->add_shipping_details( $entry, $country );
 		$this->add_handling_time( $entry, $settings );
 		$this->add_return_policy( $entry, $parent_product, $settings, $country );

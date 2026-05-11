@@ -177,6 +177,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	protected function tearDown(): void {
 		WC_AI_Storefront::$test_settings = [];
 		WC_Shipping_Zones::$test_zones   = [];
+		// Reset the subscription stub's static state unconditionally.
+		// Subscription tests previously did this via per-test
+		// `tearDownSubscriptions()` calls, but those don't fire when an
+		// assertion throws mid-test, leaking state into later tests.
+		// PHPUnit's `tearDown()` runs after every test (pass or fail),
+		// so this is the correct cleanup site.
+		if ( class_exists( 'WC_Subscriptions_Product', false ) ) {
+			WC_Subscriptions_Product::$test_data = [];
+		}
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -3799,5 +3808,413 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$captured ?? [],
 			'admin_email must NEVER be a public-facing contact fallback.'
 		);
+	}
+
+	// ------------------------------------------------------------------
+	// Subscription signal helpers (#368 Step 1)
+	//
+	// Pure mappings — no I/O, no WC dependency. Used by the subscription
+	// signal emitter to fill `UnitPriceSpecification.billingDuration`
+	// and `Offer.eligibleDuration.unitCode`.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Invoke a private static method on `WC_AI_Storefront_JsonLd` via reflection.
+	 *
+	 * @param string $method Method name (e.g. 'period_to_iso8601_duration').
+	 * @param mixed  ...$args Positional arguments to pass through.
+	 * @return mixed
+	 */
+	private function invoke_jsonld_static( string $method, ...$args ) {
+		$ref = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, $method );
+		return $ref->invoke( null, ...$args );
+	}
+
+	public function test_period_to_iso8601_duration_maps_each_wc_period(): void {
+		$this->assertSame( 'P1D',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'day', 1 ) );
+		$this->assertSame( 'P14D', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'day', 14 ) );
+		$this->assertSame( 'P1W',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'week', 1 ) );
+		$this->assertSame( 'P2W',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'week', 2 ) );
+		$this->assertSame( 'P1M',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 1 ) );
+		$this->assertSame( 'P3M',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 3 ) );
+		$this->assertSame( 'P6M',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 6 ) );
+		$this->assertSame( 'P1Y',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'year', 1 ) );
+	}
+
+	public function test_period_to_iso8601_duration_falls_back_to_month_for_unknown_period(): void {
+		// Unknown periods get treated as months — safer to emit a
+		// slightly-wrong duration than to fatal the JSON-LD render
+		// for what is, in practice, a vanishingly rare data shape.
+		$this->assertSame( 'P1M', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'fortnight', 1 ) );
+		$this->assertSame( 'P1M', $this->invoke_jsonld_static( 'period_to_iso8601_duration', '', 1 ) );
+	}
+
+	public function test_period_to_iso8601_duration_returns_zero_duration_for_non_positive_count(): void {
+		// Zero or negative counts on a subscription period are
+		// nonsensical input — return P0D so any consumer parsing the
+		// string sees a zero duration rather than an invalid form.
+		$this->assertSame( 'P0D', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 0 ) );
+		$this->assertSame( 'P0D', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', -3 ) );
+	}
+
+	public function test_period_to_uncefact_code_maps_each_wc_period(): void {
+		// UN/CEFACT Common Code (Recommendation N°20) — what Google
+		// Merchant Center and other major consumers ingest for
+		// QuantitativeValue.unitCode.
+		$this->assertSame( 'DAY', $this->invoke_jsonld_static( 'period_to_uncefact_code', 'day' ) );
+		$this->assertSame( 'WEE', $this->invoke_jsonld_static( 'period_to_uncefact_code', 'week' ) );
+		$this->assertSame( 'MON', $this->invoke_jsonld_static( 'period_to_uncefact_code', 'month' ) );
+		$this->assertSame( 'ANN', $this->invoke_jsonld_static( 'period_to_uncefact_code', 'year' ) );
+	}
+
+	public function test_period_to_uncefact_code_falls_back_to_month_for_unknown_period(): void {
+		// Same safe-default rationale as period_to_iso8601_duration.
+		$this->assertSame( 'MON', $this->invoke_jsonld_static( 'period_to_uncefact_code', 'fortnight' ) );
+		$this->assertSame( 'MON', $this->invoke_jsonld_static( 'period_to_uncefact_code', '' ) );
+	}
+
+	// ------------------------------------------------------------------
+	// add_subscription_signals — #368 Steps 3-7
+	//
+	// Enriches `offers[0]` with `priceSpecification` (UnitPriceSpecification),
+	// `addOn` (one-shot sign-up fee), and `eligibleDuration` (finite
+	// subscription length). Reads WC Subscriptions configuration via
+	// the `WC_Subscriptions_Product` static stub.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Seed the WC_Subscriptions_Product test stub with per-product
+	 * configuration. Tests call this in setup, then invoke
+	 * `enhance_product_data` against a make_product mock whose
+	 * `get_id()` returns the same key.
+	 */
+	private function seed_subscription( int $product_id, array $overrides = [] ): void {
+		WC_Subscriptions_Product::$test_data[ $product_id ] = array_merge(
+			[
+				'period'       => 'month',
+				'interval'     => 1,
+				'length'       => 0,
+				'sign_up_fee'  => '0',
+				'trial_length' => 0,
+				'trial_period' => 'month',
+			],
+			$overrides
+		);
+	}
+
+	public function test_simple_subscription_emits_recurring_price_specification(): void {
+		// Annual subscription at $100/year, no trial, no sign-up fee,
+		// indefinite. Should emit a single UnitPriceSpecification
+		// entry with priceComponentType=Subscription and billingDuration=P1Y.
+		$this->seed_subscription( 42, [ 'period' => 'year', 'interval' => 1 ] );
+		$product = $this->make_product();
+		$markup  = [
+			'@type'  => 'Product',
+			'offers' => [ [ '@type' => 'Offer', 'price' => '100.00', 'priceCurrency' => 'USD' ] ],
+		];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayHasKey( 'priceSpecification', $result['offers'][0] );
+		$this->assertCount( 1, $result['offers'][0]['priceSpecification'] );
+		$spec = $result['offers'][0]['priceSpecification'][0];
+		$this->assertSame( 'UnitPriceSpecification', $spec['@type'] );
+		$this->assertSame( 'https://schema.org/Subscription', $spec['priceComponentType'] );
+		$this->assertSame( '100.00', $spec['price'] );
+		$this->assertSame( 'USD', $spec['priceCurrency'] );
+		$this->assertSame( 'P1Y', $spec['billingDuration'] );
+		$this->assertArrayNotHasKey( 'billingStart', $spec, 'No trial → no billingStart.' );
+		// No fee → no addOn, no ActivationFee entry, no eligibleDuration.
+		$this->assertArrayNotHasKey( 'addOn', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'eligibleDuration', $result['offers'][0] );
+
+	}
+
+	public function test_subscription_with_trial_emits_two_element_price_specification(): void {
+		// 14-day free trial, then $10/month recurring. Should emit:
+		// - trial entry: price=0, billingDuration=P14D
+		// - recurring entry: price=10, billingDuration=P1M
+		//
+		// The trial-then-paid sequence is communicated via array position
+		// (trial first, recurring second) + price=0 on the trial entry.
+		// No `billingStart` is emitted on the recurring entry — Schema.org's
+		// `billingStart` is typed `Number` (not Duration / ISO 8601 string),
+		// so emitting `P14D` there would violate the spec's type contract.
+		// Array semantics + price-discrimination convey the same intent.
+		$this->seed_subscription( 42, [
+			'period'       => 'month',
+			'interval'     => 1,
+			'trial_length' => 14,
+			'trial_period' => 'day',
+		] );
+		$product = $this->make_product();
+		$markup  = [
+			'@type'  => 'Product',
+			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
+		];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$specs = $result['offers'][0]['priceSpecification'];
+		$this->assertCount( 2, $specs );
+		// Trial entry — free for 14 days, must be FIRST in the array.
+		$this->assertSame( '0', $specs[0]['price'] );
+		$this->assertSame( 'P14D', $specs[0]['billingDuration'] );
+		$this->assertSame( 'https://schema.org/Subscription', $specs[0]['priceComponentType'] );
+		$this->assertArrayNotHasKey( 'billingStart', $specs[0] );
+		// Recurring entry — $10/month, second in the array. Crucially:
+		// NO `billingStart` field (regression guard against the spec
+		// violation flagged in PR #371 review-toolkit pass).
+		$this->assertSame( '10.00', $specs[1]['price'] );
+		$this->assertSame( 'P1M', $specs[1]['billingDuration'] );
+		$this->assertArrayNotHasKey(
+			'billingStart',
+			$specs[1],
+			'billingStart is Number-typed per Schema.org — must not be emitted as an ISO 8601 string.'
+		);
+
+	}
+
+	public function test_subscription_with_signup_fee_emits_both_addOn_and_inline_activation_fee(): void {
+		// $5 sign-up fee + $10/month recurring. Decision #1 "future-ready
+		// now" — emit BOTH `Offer.addOn` (released vocabulary) AND an
+		// inline UnitPriceSpecification with priceComponentType=ActivationFee
+		// (still-experimental enumeration, semantically richer).
+		// Spec-legal duplication.
+		Functions\when( '__' )->returnArg();
+		$this->seed_subscription( 42, [
+			'period'       => 'month',
+			'interval'     => 1,
+			'sign_up_fee'  => '5.00',
+		] );
+		$product = $this->make_product();
+		$markup  = [
+			'@type'  => 'Product',
+			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
+		];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		// Inline ActivationFee priceComponent — last entry in the priceSpecification array.
+		$specs = $result['offers'][0]['priceSpecification'];
+		$this->assertCount( 2, $specs, 'Recurring + ActivationFee entries.' );
+		$activation_fee = end( $specs );
+		$this->assertSame( 'UnitPriceSpecification', $activation_fee['@type'] );
+		$this->assertSame( 'https://schema.org/ActivationFee', $activation_fee['priceComponentType'] );
+		$this->assertSame( '5.00', $activation_fee['price'] );
+
+		// Offer.addOn — compat shape for consumers that don't recognize
+		// priceComponentType.
+		$this->assertArrayHasKey( 'addOn', $result['offers'][0] );
+		$this->assertSame( 'Offer', $result['offers'][0]['addOn']['@type'] );
+		$this->assertSame( '5.00', $result['offers'][0]['addOn']['price'] );
+		$this->assertSame( 'Sign-up fee', $result['offers'][0]['addOn']['name'] );
+
+	}
+
+	public function test_subscription_with_finite_length_emits_eligible_duration(): void {
+		// 12-month finite-length subscription. Should emit
+		// eligibleDuration as a QuantitativeValue with unitCode=MON.
+		$this->seed_subscription( 42, [
+			'period'   => 'month',
+			'interval' => 1,
+			'length'   => 12,
+		] );
+		$product = $this->make_product();
+		$markup  = [
+			'@type'  => 'Product',
+			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
+		];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayHasKey( 'eligibleDuration', $result['offers'][0] );
+		$dur = $result['offers'][0]['eligibleDuration'];
+		$this->assertSame( 'QuantitativeValue', $dur['@type'] );
+		$this->assertSame( 12, $dur['value'] );
+		$this->assertSame( 'MON', $dur['unitCode'] );
+
+	}
+
+	public function test_subscription_signals_skipped_for_non_subscription_product(): void {
+		// This test covers the `is_subscription( $product )` gate
+		// specifically — i.e. WC Subscriptions IS loaded (the
+		// `function_exists('wcs_is_subscription')` + `class_exists`
+		// guards pass) but THIS product isn't a subscription. Absence
+		// from the stub's `$test_data` map makes `is_subscription()`
+		// return false for the product ID.
+		//
+		// The plugin-not-active path (the outer `function_exists` /
+		// `class_exists` gates) can't be exercised in this test class
+		// because the stubs are unconditionally loaded by
+		// `tests/php/stubs.php` — that gate is covered structurally
+		// by the gates' own existence, not by a test.
+		WC_Subscriptions_Product::$test_data = []; // Explicit reset.
+
+		$product = $this->make_product();
+		$markup  = [
+			'@type'  => 'Product',
+			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
+		];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayNotHasKey( 'priceSpecification', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'addOn', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'eligibleDuration', $result['offers'][0] );
+	}
+
+	public function test_subscription_signals_skipped_when_no_offers(): void {
+		// Defensive: enhance_product_data may run against a markup
+		// without offers[] (rare but possible — JSON-LD filters can
+		// strip the offer array). The enricher should no-op silently.
+		$this->seed_subscription( 42 );
+		$product = $this->make_product();
+		$markup  = [ '@type' => 'Product' ];
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		// We don't care what offers[0] contains; just that no fatal occurs.
+		$this->assertIsArray( $result );
+
+	}
+
+	public function test_variable_subscription_emits_per_variant_price_specification(): void {
+		// Variable-subscription parent's hasVariant entries each carry
+		// their own priceSpecification with their own billingDuration —
+		// subscription_variations can have different periods (3972 might
+		// bill monthly, 3975 yearly). The per-variant path runs through
+		// `build_variant_entry()` which invokes `add_subscription_signals`
+		// per variation.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent = $this->make_product( [ 'id' => 100 ] );
+
+		// Two variations: 1-month at $10 and 1-year at $75.
+		$monthly = $this->make_variation( [
+			'id'    => 101,
+			'sku'   => 'sub-monthly',
+			'price' => '10.00',
+		] );
+		$yearly = $this->make_variation( [
+			'id'    => 102,
+			'sku'   => 'sub-yearly',
+			'price' => '75.00',
+		] );
+		$this->seed_subscription( 101, [ 'period' => 'month', 'interval' => 1 ] );
+		$this->seed_subscription( 102, [ 'period' => 'year',  'interval' => 1 ] );
+
+		$monthly_entry = $this->invoke_build_variant_entry( $monthly, $parent );
+		$yearly_entry  = $this->invoke_build_variant_entry( $yearly,  $parent );
+
+		// Each variant has its own priceSpecification with its own
+		// billingDuration — proves the per-variant subscription
+		// metadata flows through without crossing wires between
+		// variants.
+		$this->assertArrayHasKey( 'priceSpecification', $monthly_entry['offers'][0] );
+		$this->assertSame(
+			'P1M',
+			$monthly_entry['offers'][0]['priceSpecification'][0]['billingDuration']
+		);
+		$this->assertSame(
+			'10.00',
+			$monthly_entry['offers'][0]['priceSpecification'][0]['price']
+		);
+
+		$this->assertArrayHasKey( 'priceSpecification', $yearly_entry['offers'][0] );
+		$this->assertSame(
+			'P1Y',
+			$yearly_entry['offers'][0]['priceSpecification'][0]['billingDuration']
+		);
+		$this->assertSame(
+			'75.00',
+			$yearly_entry['offers'][0]['priceSpecification'][0]['price']
+		);
+
+	}
+
+	public function test_variable_subscription_does_not_leak_signals_into_non_subscription_variation(): void {
+		// Realistic edge case: a variable-subscription parent could have
+		// a mix of subscription_variation and plain (non-recurring)
+		// variation children. The enricher must no-op for each variation
+		// independently — a sibling subscription's metadata must NOT
+		// leak into a non-subscription variation's Offer.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent = $this->make_product( [ 'id' => 100 ] );
+
+		// One subscription variation, one plain variation. Only the
+		// subscription gets seeded in $test_data — the plain one
+		// returns false from is_subscription().
+		$subscription_variation = $this->make_variation( [ 'id' => 201, 'price' => '10.00' ] );
+		$plain_variation        = $this->make_variation( [ 'id' => 202, 'price' => '25.00' ] );
+		$this->seed_subscription( 201, [ 'period' => 'month', 'interval' => 1 ] );
+
+		$sub_entry   = $this->invoke_build_variant_entry( $subscription_variation, $parent );
+		$plain_entry = $this->invoke_build_variant_entry( $plain_variation, $parent );
+
+		// Subscription variation gets the subscription enrichment.
+		$this->assertArrayHasKey( 'priceSpecification', $sub_entry['offers'][0] );
+		// Plain variation gets NO subscription fields — the enricher
+		// no-oped for it. Regression guard against a refactor that
+		// would inherit period/interval from a sibling or the parent.
+		$this->assertArrayNotHasKey(
+			'priceSpecification',
+			$plain_entry['offers'][0],
+			'Non-subscription variation must not inherit subscription metadata from a sibling.'
+		);
+		$this->assertArrayNotHasKey( 'addOn', $plain_entry['offers'][0] );
+		$this->assertArrayNotHasKey( 'eligibleDuration', $plain_entry['offers'][0] );
+
+	}
+
+	public function test_subscription_signals_skipped_when_interval_is_zero_or_negative(): void {
+		// Corrupted subscription product (interval = 0) would otherwise
+		// emit `billingDuration: P0D` — spec-legal but nonsensical
+		// ("billed every 0 days"). Mirrors the trial path's
+		// `$trial_length > 0` gate. Asymmetric defensiveness between
+		// recurring and trial paths was the silent-failure-hunter
+		// finding on PR #371's first review pass.
+		$this->seed_subscription( 42, [ 'period' => 'month', 'interval' => 0 ] );
+		$product = $this->make_product();
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		// No subscription signals emitted — corrupt config short-circuits
+		// the entire enrichment, log is the only side-effect.
+		$this->assertArrayNotHasKey( 'priceSpecification', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'addOn', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'eligibleDuration', $result['offers'][0] );
+
+	}
+
+	public function test_subscription_signals_use_get_woocommerce_currency_when_offer_currency_missing(): void {
+		// Edge case: the upstream Offer doesn't carry `priceCurrency`
+		// (rare — `add_currency()` runs first and hoists it, but a
+		// third-party filter could strip the field). The enricher
+		// must fall back to `get_woocommerce_currency()` rather than
+		// emit an empty-string priceCurrency on the priceSpecification.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'EUR' );
+
+		$this->seed_subscription( 42, [ 'period' => 'month', 'interval' => 1 ] );
+		$product = $this->make_product();
+		// `offers[0]` deliberately lacks `priceCurrency`.
+		$markup = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '10.00' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame(
+			'EUR',
+			$result['offers'][0]['priceSpecification'][0]['priceCurrency'],
+			'priceSpecification must fall back to get_woocommerce_currency() when the Offer has no priceCurrency.'
+		);
+
 	}
 }
