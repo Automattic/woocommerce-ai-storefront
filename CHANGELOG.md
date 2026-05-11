@@ -18,6 +18,7 @@
 ### Refactors
 
 - **Dev tooling: bump wp-env memory limit to 512M.** Local `wp-env` stack was hitting PHP `Allowed memory size of 134217728 bytes exhausted` fatals during plugin activation (WC core + WC Subscriptions + WC Payments + Jetpack + this plugin overran 128M) and on `action-scheduler run` catch-up commands. Added `WP_MEMORY_LIMIT` + `WP_MAX_MEMORY_LIMIT` set to `512M` in `.wp-env.json`'s `config` block. Dev-env-only — production / staging WP hosts configure `memory_limit` through their own php.ini or wp-config.php directly.
+- **Revert: UCP discount-code pass-through.** Reverts #380 (issue #376). Live testing on the Jurassic Tube tunnel with Gemini 3 Flash and Gemini 3 Pro via UCPPlayground revealed a structural gap: current agent harnesses don't yet expand their tool schemas based on UCP capability advertisements. The `create_checkout` tool was hardcoded with `line_items + quantity` only, so the agent had no `discounts.codes` parameter to populate regardless of what our `/.well-known/ucp` manifest or per-response envelope advertised. A spike test that added a minimum `discounts.applied[]` response shape produced no behavior change. Rolling back rather than ship a capability advertisement compliant agents can't yet use. Issue #376 reopened with a re-shipping checklist; revisit when major harnesses (UCPPlayground at minimum, first-party agent flows as they emerge) support capability-driven tool schema expansion.
 
 ### Tests
 ### Docs
