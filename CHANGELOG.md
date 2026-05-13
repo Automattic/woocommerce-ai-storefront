@@ -1,6 +1,13 @@
 ## [Unreleased]
 
 ### Features
+
+- **Attribution: split AI orders into Agent vs Referral channels.** Closes #387. JSON-LD `PotentialAction` URL templates now emit `utm_id=woo_jsonld` (the new "Referral" channel), distinct from `/checkout-sessions` `continue_url` which keeps `utm_id=woo_ucp` ("Agent"). Both stay in the STRICT trust bucket; the split lets merchants tell convertible AI traffic (live agent shopping sessions) apart from exposure AI traffic (JSON-LD-surfaced search results that a human clicks through).
+  - New "AI Channel Mix" StatCard at the end of the Overview grid: two rows ("Agent", "Referral") with a "Top: X" footer naming the dominant channel. Row order is fixed; only the footer is dynamic.
+  - Stats payload extended with `by_channel` (per-channel orders + revenue + self-normalized share_percent) and `top_channel` (string utm_id or null). Transient cache key bumped to `_v2_` so v1-shaped cached payloads can't crash the new UI shape on rollout; `bust_stats_cache()` deletes both keys during the transition.
+  - `share_percent` self-normalizes against the channel-known subset, NOT against `ai_orders` — a store with 100 AI orders / only 10 channel-known would otherwise render "Agent 7% / Referral 3%" against an unstated 90% denominator. The card answers "which channel matters more," not "what fraction of all AI orders carry a channel signature."
+  - Transition note: existing crawler caches keep serving the old `woo_ucp` template for ~2-6 weeks post-deploy, biasing the split toward Agent during that window. Accepted as one-shot transition noise.
+
 ### Fixes
 ### Refactors
 ### Tests

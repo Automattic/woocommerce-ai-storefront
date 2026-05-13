@@ -820,12 +820,14 @@ class WC_AI_Storefront_Attribution {
 			// on a DB error (broken JOIN, table missing, query timeout,
 			// third-party plugin filtering `query` and breaking it).
 			// Coerce to [] so the aggregation loop's `if ( $channel_results )`
-			// truthy-check renders the empty state, and `error_log` so
-			// operators investigating "why is my Channel Mix card stuck
-			// on em-dash?" find a breadcrumb. Same defensive shape used
-			// for the legacy branch below.
+			// truthy-check renders the empty state, and route through
+			// `Logger::debug` so an operator investigating "why is my
+			// Channel Mix card stuck on em-dash?" finds a breadcrumb
+			// (gated by the `wc_ai_storefront_debug` filter — same
+			// pattern as every other instrumentation point in the
+			// codebase). Same defensive shape in the legacy branch below.
 			if ( false === $channel_results ) {
-				error_log( sprintf( '[ai-storefront] channel_results query failed (HPOS, period=%s): %s', $period, $wpdb->last_error ) );
+				WC_AI_Storefront_Logger::debug( 'channel_results query failed (HPOS, period=%s): %s', $period, $wpdb->last_error );
 				$channel_results = [];
 			}
 			// phpcs:enable
@@ -880,7 +882,7 @@ class WC_AI_Storefront_Attribution {
 				)
 			);
 			if ( false === $channel_results ) {
-				error_log( sprintf( '[ai-storefront] channel_results query failed (legacy, period=%s): %s', $period, $wpdb->last_error ) );
+				WC_AI_Storefront_Logger::debug( 'channel_results query failed (legacy, period=%s): %s', $period, $wpdb->last_error );
 				$channel_results = [];
 			}
 			// phpcs:enable
