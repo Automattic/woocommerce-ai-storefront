@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.14.2
+Stable tag: 0.15.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,20 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.15.0 - 2026-05-13 =
+**New**
+* Attribution: AI orders split into Agent (live UCP shopping sessions, `utm_id=woo_ucp`) vs Referral (JSON-LD-surfaced traffic, `utm_id=woo_jsonld`) channels. New Overview stat card shows the comparison (e.g. "60% / 40%") so merchants can tell convertible AI traffic apart from exposure AI traffic. Stats payload extended with `by_channel` (per-channel orders + revenue + self-normalized share_percent) and `top_channel`. (#387)
+* Admin: help menu in the PageHeader top-right with Documentation (in-product user guide), Support (woocommerce.com contact form), and Version. Built on `@wordpress/components` `DropdownMenu` for keyboard accessibility and ARIA semantics. (#388)
+* Admin: Beta status markers across PageHeader, HelpMenu version line, readme Description, and user guide intro. Single grep+delete removes them at 1.0.
+
+**Fixed**
+* HelpMenu tooltip position: tooltip on the help icon was clipping against the WP admin chrome edge. Switched to `tooltipPosition: 'middle left'` so it extends leftward and stays in the viewport.
+
+**Improved**
+* User-guide footer self-updates via build-time version injection. The footer literal ("Covers AI Storefront X.Y.Z") now reads from `package.json` at build time instead of being hand-edited (the previous literal was four releases stale).
+* User guide: new section pointing merchants at three widely-used third-party tools for verifying their UCP setup (UCPPlayground.com, UCPChecker.com, UCPRegistry.com), with a fallback to https://ucp.dev/ if any link goes stale.
+* Em-dash cleanup across merchant-facing copy (5 in user guide, 28 in readme.txt) per the AGENTS.md convention.
 
 = 0.14.2 - 2026-05-11 =
 **Fixed**

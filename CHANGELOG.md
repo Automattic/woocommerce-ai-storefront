@@ -1,6 +1,16 @@
 ## [Unreleased]
 
 ### Features
+### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.15.0] – 2026-05-13
+
+### Features
 
 - **Attribution: split AI orders into Agent vs Referral channels.** Closes #387. JSON-LD `PotentialAction` URL templates now emit `utm_id=woo_jsonld` (the new "Referral" channel), distinct from `/checkout-sessions` `continue_url` which keeps `utm_id=woo_ucp` ("Agent"). Both stay in the STRICT trust bucket; the split lets merchants tell convertible AI traffic (live agent shopping sessions) apart from exposure AI traffic (JSON-LD-surfaced search results that a human clicks through).
   - New "Agent / Referral" stat card in the Overview grid, using the existing slash-comparison shape (e.g. "60% / 40%") — same visual pattern as the "AI orders: 5 / 5" card. Both channels named in the label, both shares in the value-line; merchants read the comparison by eye.
