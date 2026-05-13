@@ -717,7 +717,14 @@ class WC_AI_Storefront_Attribution {
 		$valid_periods = array( 'day', 'week', 'month', 'quarter', 'year' );
 		$period        = in_array( $period, $valid_periods, true ) ? $period : 'month';
 
-		$transient_key = 'wc_ai_storefront_stats_' . $period;
+		// Transient key versioned to `_v2_` (0.15.0) because the
+		// payload shape grew `by_channel` and `top_channel` fields.
+		// A v1-shaped cached payload deserialized by v2 frontend code
+		// would render with `stats.by_channel === undefined` and crash
+		// the Channel Mix StatCard on first load post-deploy. Bumping
+		// the key forces a one-shot cache miss; old `_stats_<period>`
+		// transients expire naturally within 5 minutes.
+		$transient_key = 'wc_ai_storefront_stats_v2_' . $period;
 		$cached        = get_transient( $transient_key );
 		if ( false !== $cached && is_array( $cached ) ) {
 			return $cached;
@@ -780,10 +787,39 @@ class WC_AI_Storefront_Attribution {
 					$after_date
 				)
 			);
+
+			// Channel split: same period + status predicate as the
+			// agent query, plus a join on `_wc_order_attribution_utm_id`
+			// restricted to our two server-stamped channel ids. Orders
+			// without one of these ids are LENIENT-only / legacy and
+			// stay represented in $by_agent / $total_orders (they
+			// count toward "AI Orders" but don't have a channel
+			// signature to bucket).
+			$channel_results = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT id_meta.meta_value AS channel,
+							COUNT( DISTINCT o.id ) AS order_count,
+							SUM( o.total_amount ) AS revenue
+					 FROM {$orders_table} o
+					 INNER JOIN {$meta_table} agent_meta
+						ON o.id = agent_meta.order_id AND agent_meta.meta_key = %s
+					 INNER JOIN {$meta_table} id_meta
+						ON o.id = id_meta.order_id AND id_meta.meta_key = '_wc_order_attribution_utm_id'
+					 WHERE o.status IN ( 'wc-completed', 'wc-processing' )
+					   AND o.date_created_gmt >= %s
+					   AND agent_meta.meta_value <> ''
+					   AND id_meta.meta_value IN ( %s, %s )
+					 GROUP BY id_meta.meta_value",
+					self::AGENT_META_KEY,
+					$after_date,
+					self::WOO_UCP_ID,
+					self::WOO_JSONLD_ID
+				)
+			);
 			// phpcs:enable
 		} else {
 			// Legacy post-based orders.
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$results = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT pm.meta_value AS agent,
@@ -803,6 +839,34 @@ class WC_AI_Storefront_Attribution {
 					$after_date
 				)
 			);
+
+			// Legacy-branch channel split — same shape as the HPOS
+			// channel query above, swapped to post-meta joins.
+			$channel_results = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT pm_id.meta_value AS channel,
+							COUNT( DISTINCT p.ID ) AS order_count,
+							SUM( pm_total.meta_value ) AS revenue
+					 FROM {$wpdb->posts} p
+					 INNER JOIN {$wpdb->postmeta} pm
+						ON p.ID = pm.post_id AND pm.meta_key = %s
+					 INNER JOIN {$wpdb->postmeta} pm_id
+						ON p.ID = pm_id.post_id AND pm_id.meta_key = '_wc_order_attribution_utm_id'
+					 INNER JOIN {$wpdb->postmeta} pm_total
+						ON p.ID = pm_total.post_id AND pm_total.meta_key = '_order_total'
+					 WHERE p.post_type = 'shop_order'
+					   AND p.post_status IN ( 'wc-completed', 'wc-processing' )
+					   AND p.post_date_gmt >= %s
+					   AND pm.meta_value <> ''
+					   AND pm_id.meta_value IN ( %s, %s )
+					 GROUP BY pm_id.meta_value",
+					self::AGENT_META_KEY,
+					$after_date,
+					self::WOO_UCP_ID,
+					self::WOO_JSONLD_ID
+				)
+			);
+			// phpcs:enable
 		}
 
 		$total_orders  = 0;
@@ -827,6 +891,20 @@ class WC_AI_Storefront_Attribution {
 						'revenue' => $revenue,
 					];
 				}
+			}
+		}
+
+		// Aggregate the channel results. No canonicalization needed —
+		// the meta values are exactly `woo_ucp` / `woo_jsonld` because
+		// the SQL's `IN ( %s, %s )` already restricted to those two
+		// constants. Each row maps 1:1 to an entry in $by_channel.
+		$by_channel = [];
+		if ( $channel_results ) {
+			foreach ( $channel_results as $row ) {
+				$by_channel[ (string) $row->channel ] = [
+					'orders'  => (int) $row->order_count,
+					'revenue' => (float) $row->revenue,
+				];
 			}
 		}
 
@@ -876,7 +954,7 @@ class WC_AI_Storefront_Attribution {
 			// phpcs:enable
 		}
 
-		$derived = self::derive_stats( $total_orders, $total_revenue, $by_agent );
+		$derived = self::derive_stats( $total_orders, $total_revenue, $by_agent, $by_channel );
 
 		// Both currency code and symbol are exposed. The card UI uses
 		// the symbol for display ("$42.00", "€42.00"); some callers may
@@ -912,6 +990,13 @@ class WC_AI_Storefront_Attribution {
 				: '',
 			'by_agent'         => $by_agent,
 			'top_agent'        => $derived['top_agent'],
+			// Channel split (0.15.0). `by_channel` rows carry share_percent
+			// self-normalized against the channel-known subset, NOT against
+			// ai_orders — see derive_stats() docblock. `top_channel` is a
+			// string key (`woo_ucp`/`woo_jsonld`) or null. The JS layer
+			// maps these to merchant-readable labels ("Agent"/"Referral").
+			'by_channel'       => $derived['by_channel'],
+			'top_channel'      => $derived['top_channel'],
 		);
 
 		set_transient( $transient_key, $result_array, 5 * MINUTE_IN_SECONDS );
@@ -942,6 +1027,11 @@ class WC_AI_Storefront_Attribution {
 		}
 
 		foreach ( array( 'day', 'week', 'month', 'quarter', 'year' ) as $period ) {
+			// Bust both the current `_v2_` key and the legacy `_` key —
+			// the legacy key has at most a 5-minute residual lifetime
+			// post-deploy, but explicitly busting it here keeps the
+			// invalidation logic complete during the transition.
+			delete_transient( 'wc_ai_storefront_stats_v2_' . $period );
 			delete_transient( 'wc_ai_storefront_stats_' . $period );
 		}
 	}
@@ -1003,15 +1093,20 @@ class WC_AI_Storefront_Attribution {
 	 * @param int                                                              $total_orders  Total AI-attributed orders in the period.
 	 * @param float                                                            $total_revenue Total AI-attributed revenue in the period.
 	 * @param array<string, array{orders: int<0, max>, revenue: float}>        $by_agent      Per-agent breakdown. Empty-string keys are accepted but skipped during ranking (defense-in-depth alongside the SQL `meta_value <> ''` filter in `get_stats()`).
-	 * @return array{ai_aov: float, top_agent: array{name: string, orders: int, revenue: float, share_percent: float}|null}
+	 * @param array<string, array{orders: int<0, max>, revenue: float}>        $by_channel    Per-channel breakdown keyed by utm_id (`woo_ucp` / `woo_jsonld`). Empty by default; populated by `get_stats()` from a separate utm_id-grouped query. Self-normalizes share_percent against the sum of its own rows, NOT against $total_orders — `$total_orders` may include legacy LENIENT-attributed orders that lack a channel signature and aren't represented here.
+	 * @return array{ai_aov: float, top_agent: array{name: string, orders: int, revenue: float, share_percent: float}|null, by_channel: array<string, array{orders: int, revenue: float, share_percent: float}>, top_channel: string|null}
 	 */
-	public static function derive_stats( int $total_orders, float $total_revenue, array $by_agent ): array {
+	public static function derive_stats( int $total_orders, float $total_revenue, array $by_agent, array $by_channel = [] ): array {
 		// Defensive early-exit. Negative or zero totals can't yield a
-		// meaningful AOV or top-agent ranking; render empty state.
+		// meaningful AOV, top-agent ranking, or channel split; render
+		// empty state. by_channel is necessarily empty here because it's
+		// a subset of AI orders, and AI orders is zero.
 		if ( $total_orders <= 0 ) {
 			return [
-				'ai_aov'    => 0.0,
-				'top_agent' => null,
+				'ai_aov'      => 0.0,
+				'top_agent'   => null,
+				'by_channel'  => [],
+				'top_channel' => null,
 			];
 		}
 
@@ -1097,9 +1192,83 @@ class WC_AI_Storefront_Attribution {
 			}
 		}
 
+		// ----------------------------------------------------------
+		// Channel split (B1 — added 0.15.0)
+		// ----------------------------------------------------------
+		//
+		// `$by_channel` is keyed by utm_id (`woo_ucp` / `woo_jsonld`)
+		// and contains only orders whose utm_id matches our two
+		// server-stamped ids. Legacy LENIENT-attributed orders
+		// (utm_medium=ai_agent or host-match alone) aren't represented
+		// — they live only in $by_agent / $total_orders.
+		//
+		// Share percentages self-normalize: the two rows always sum to
+		// 100% of channel-known orders. If we used $total_orders as the
+		// denominator, a store with 100 AI orders / 10 channel-known
+		// would render "Agent 7% / Referral 3%" — meaningless framing
+		// for a card whose job is to answer "which channel matters
+		// more." The merchant reads the all-AI-orders count from a
+		// different card; this card answers a different question.
+		$derived_by_channel = [];
+		$top_channel        = null;
+		if ( ! empty( $by_channel ) ) {
+			$channel_total_orders = 0;
+			foreach ( $by_channel as $row ) {
+				$channel_total_orders += $row['orders'];
+			}
+
+			foreach ( $by_channel as $key => $row ) {
+				// Guard against divide-by-zero in the unlikely caller-
+				// bug case where every channel row has 0 orders. Real
+				// SQL can't produce this (INNER JOIN drops zero rows),
+				// but `derive_stats()` is public static.
+				$share = $channel_total_orders > 0
+					? round( ( $row['orders'] / $channel_total_orders ) * 100, 1 )
+					: 0.0;
+
+				$derived_by_channel[ $key ] = [
+					'orders'        => $row['orders'],
+					'revenue'       => $row['revenue'],
+					'share_percent' => $share,
+				];
+			}
+
+			// top_channel ranking mirrors top_agent: orders DESC,
+			// revenue DESC, channel key ASC for deterministic tie-
+			// break. Same `<=>` + explicit branching shape so PHPCS's
+			// short-ternary lint and `usort`-int-truncation guard
+			// stay consistent with the top_agent comparator above.
+			$ranked = [];
+			foreach ( $by_channel as $key => $row ) {
+				$ranked[] = [
+					'key'     => $key,
+					'orders'  => $row['orders'],
+					'revenue' => $row['revenue'],
+				];
+			}
+			usort(
+				$ranked,
+				static function ( $a, $b ) {
+					$primary = $b['orders'] <=> $a['orders'];
+					if ( 0 !== $primary ) {
+						return $primary;
+					}
+					$secondary = $b['revenue'] <=> $a['revenue'];
+					if ( 0 !== $secondary ) {
+						return $secondary;
+					}
+					// Tertiary: channel key ASC.
+					return $a['key'] <=> $b['key'];
+				}
+			);
+			$top_channel = $ranked[0]['key'];
+		}
+
 		return [
-			'ai_aov'    => $ai_aov,
-			'top_agent' => $top_agent,
+			'ai_aov'      => $ai_aov,
+			'top_agent'   => $top_agent,
+			'by_channel'  => $derived_by_channel,
+			'top_channel' => $top_channel,
 		];
 	}
 }
