@@ -1,6 +1,16 @@
 ## [Unreleased]
 
 ### Features
+### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.15.0] – 2026-05-13
+
+### Features
 
 - **Attribution: split AI orders into Agent vs Referral channels.** Closes #387. JSON-LD `PotentialAction` URL templates now emit `utm_id=woo_jsonld` (the new "Referral" channel), distinct from `/checkout-sessions` `continue_url` which keeps `utm_id=woo_ucp` ("Agent"). Both stay in the STRICT trust bucket; the split lets merchants tell convertible AI traffic (live agent shopping sessions) apart from exposure AI traffic (JSON-LD-surfaced search results that a human clicks through).
   - New "Agent / Referral" stat card in the Overview grid, using the existing slash-comparison shape (e.g. "60% / 40%") — same visual pattern as the "AI orders: 5 / 5" card. Both channels named in the label, both shares in the value-line; merchants read the comparison by eye.
@@ -37,6 +47,8 @@
 - **Em-dash cleanup across merchant-facing copy.** AGENTS.md forbids em-dashes in user-facing copy (rendering edge cases in CSV-split tools and ASCII renderers — the convention originates from a plugin Description: header rendering issue, and extends to readme.txt + all merchant-facing UI strings). Cleaned 5 in `docs/user-guide/USER-GUIDE.md` and 28 in `readme.txt`. Each replacement context-appropriate: colons for label-style flow, periods for sentence joins, parens for parentheticals.
 
 - **User guide: independent validation tools section.** New section 4a points merchants at three widely-used community tools for verifying their UCP setup beyond what the plugin's own UI can show: UCPPlayground.com (end-to-end agent simulation), UCPChecker.com (protocol-conformance validation), and UCPRegistry.com (optional directory submission). Framed as third-party and independent of Automattic, with a fallback pointer to https://ucp.dev/ if any link goes stale. The existing 4a "What the homepage publishes" section becomes 4b; the inbound link from the URL-verification table updated accordingly.
+
+- **User guide: broaden the "shopping assistant" framing to lead with shopper-present co-shopping.** Lead paragraph and door-1 description previously said "browse and buy on a shopper's behalf" / "agents that act on a shopper's behalf" — that's the autonomous-agent case, but it's not what UCP primarily addresses today. UCP's `/checkout-sessions` flow is explicitly designed around handing the shopper off to the merchant's web checkout, which is the dominant 2026 reality: the buyer stays in the chat to browse and compare, then walks through to the merchant's checkout when they're ready. Rewrote both surfaces to lead with that case, with on-behalf-of agents as the secondary scenario. Same plugin, more accurate framing for what merchants are actually buying into.
 
 ---
 
