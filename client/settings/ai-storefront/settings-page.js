@@ -438,54 +438,6 @@ export const formatRevenuePercent = ( stats ) => {
 	).toFixed( 1 ) }%`;
 };
 
-/**
- * Map a wire-level channel utm_id to a merchant-readable label.
- *
- * The wire values (`woo_ucp`, `woo_jsonld`) carry STRICT-gate semantics
- * for the PHP attribution layer — they're implementation details and
- * should never reach the merchant-facing UI. This helper is the
- * SINGLE SOURCE OF TRUTH for channel labels: the Channel Mix card uses
- * it for BOTH the per-row labels AND the "Top: X" footer line, so a
- * future rename ("Agent" → "AI shopping") stays consistent across both
- * surfaces with no manual sync.
- *
- * Mapping:
- *   - `woo_ucp`    → "Agent"    (live UCP shopping session)
- *   - `woo_jsonld` → "Referral" (JSON-LD scrape served via search/AI)
- *   - null / undefined → em-dash (legitimate empty-state signal from
- *     derive_stats() when no channel data is available)
- *   - anything else → em-dash + console.warn — an unrecognized id
- *     indicates PHP/JS contract drift (e.g., server adds a third
- *     channel id before the JS bundle ships). Surfacing it in the
- *     console keeps the failure debuggable instead of silently
- *     rendering "Top: —" with no breadcrumb.
- *
- * Exported so unit tests can pin the mapping without rendering the
- * full settings component.
- *
- * @param {string|null|undefined} topChannel utm_id value to translate.
- * @return {string} Localized channel name or em-dash placeholder.
- */
-export const topChannelLabel = ( topChannel ) => {
-	if ( 'woo_ucp' === topChannel ) {
-		return __( 'Agent', 'woocommerce-ai-storefront' );
-	}
-	if ( 'woo_jsonld' === topChannel ) {
-		return __( 'Referral', 'woocommerce-ai-storefront' );
-	}
-	// null and undefined are legitimate empty-state signals — silent
-	// em-dash is the contract. Any OTHER value (string, number, etc.)
-	// is unrecognized and worth surfacing for cross-layer debugging.
-	if ( null !== topChannel && undefined !== topChannel ) {
-		// eslint-disable-next-line no-console
-		console.warn(
-			'topChannelLabel: unrecognized topChannel value',
-			topChannel
-		);
-	}
-	return '—';
-};
-
 // Hand-rolled stat card for the Overview stats row. We evaluated Woo's
 // `SummaryNumber` from `@woocommerce/components` and deferred adoption —
 // see AGENTS.md "Styling" section for the rationale. In short: Woo
@@ -580,132 +532,11 @@ const StatCard = ( { label, value, reference, href, background } ) => {
 	return <div style={ cardStyle }>{ inner }</div>;
 };
 
-// AI Channel Mix card. Visually borrows StatCard's chrome (same
-// border, padding, corner radius, surface color) so it slots into
-// the existing card grid without breaking baseline alignment. The
-// body, however, is a 2-row split rather than the standard label-
-// then-value layout — the question this card answers ("which channel
-// is driving conversion?") is fundamentally comparative, so a single
-// scalar value would understate it.
-//
-// Row order is fixed (Agent above Referral) rather than ranked
-// dynamically. Fixed order keeps the merchant's scan-pattern stable
-// snapshot-to-snapshot; the winner is conveyed by the "Top: X"
-// footer line, which IS dynamic. Dynamic row ordering would cause
-// the eye to re-locate the same channel between two visits, adding
-// cognitive friction for a metric a merchant is meant to glance at.
-//
-// Empty state: when by_channel is missing or empty (typical for a
-// fresh install or pre-0.15 cached payload), the card collapses to
-// a single em-dash matching the other cards' empty-state convention.
-const ChannelMixCard = ( { byChannel, topChannel } ) => {
-	const cardStyle = {
-		padding: '14px 16px',
-		background: colors.surface,
-		border: `1px solid ${ colors.borderSubtle }`,
-		borderRadius: radii.sm,
-		display: 'block',
-		color: 'inherit',
-	};
-
-	const eyebrowStyle = {
-		...typography.eyebrowLabel,
-		color: colors.textMuted,
-		marginBottom: '6px',
-	};
-
-	const rowStyle = {
-		display: 'flex',
-		justifyContent: 'space-between',
-		alignItems: 'baseline',
-		fontSize: '14px',
-		color: colors.textPrimary,
-		lineHeight: 1.5,
-	};
-
-	const footerStyle = {
-		...typography.eyebrowLabel,
-		color: colors.textMuted,
-		marginTop: '8px',
-		paddingTop: '6px',
-		borderTop: `1px solid ${ colors.borderSubtle }`,
-	};
-
-	// `! Array.isArray` guard catches the case where PHP emits an
-	// empty `array()` for `by_channel` (which `wp_json_encode` serializes
-	// as `[]`, parsed by JS as an Array, not a plain Object). Without
-	// this, `typeof byChannel === 'object'` would pass for the array,
-	// `byChannel[ 'woo_ucp' ]` would return undefined, and the card
-	// would render "0 (0%)" rows instead of the em-dash empty state —
-	// silently miscommunicating "we have zero orders" vs "we have no
-	// data yet."
-	const hasData =
-		byChannel &&
-		typeof byChannel === 'object' &&
-		! Array.isArray( byChannel ) &&
-		Object.keys( byChannel ).length > 0;
-
-	// Fixed channel display order. Wire-keys only — the labels come
-	// from `topChannelLabel()` so this component and the footer share
-	// the same source-of-truth mapping. See the helper's docblock for
-	// rename-safety rationale.
-	const channels = [ 'woo_ucp', 'woo_jsonld' ];
-
-	return (
-		<div style={ cardStyle }>
-			<div style={ eyebrowStyle }>
-				{ __( 'AI channel mix', 'woocommerce-ai-storefront' ) }
-			</div>
-
-			{ ! hasData ? (
-				<div
-					style={ {
-						...typography.statValue,
-						color: colors.textPrimary,
-					} }
-				>
-					—
-				</div>
-			) : (
-				<>
-					{ channels.map( ( channelKey ) => {
-						const row = byChannel[ channelKey ];
-						const orders = row?.orders ?? 0;
-						// `share_percent` is already rounded to one
-						// decimal place by PHP `derive_stats()`. Render
-						// as integer here for card compactness — the
-						// full precision is visible in the raw payload
-						// for any future "view details" surface.
-						const share = Math.round( row?.share_percent ?? 0 );
-						return (
-							<div key={ channelKey } style={ rowStyle }>
-								<span>{ topChannelLabel( channelKey ) }</span>
-								<span>
-									{ orders }
-									<span
-										style={ {
-											marginLeft: '6px',
-											color: colors.textMuted,
-										} }
-									>
-										({ share }%)
-									</span>
-								</span>
-							</div>
-						);
-					} ) }
-					<div style={ footerStyle }>
-						{ sprintf(
-							/* translators: %s: name of the dominant AI traffic channel ("Agent" or "Referral"). */
-							__( 'Top: %s', 'woocommerce-ai-storefront' ),
-							topChannelLabel( topChannel )
-						) }
-					</div>
-				</>
-			) }
-		</div>
-	);
-};
+// (The bespoke ChannelMixCard component that used to live here was
+// removed in favor of a stock <StatCard /> using the existing slash-
+// reference pattern — see the "Agent / Referral" card in the grid
+// below. The multi-row layout broke visual rhythm with the other
+// single-value cards; the slash-comparison blends natively.)
 
 // ---------------------------------------------------------------------------
 // Pre-enable view (value pitch)
@@ -1402,18 +1233,65 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 							: '\u2014'
 					}
 				/>
-				{ /* AI Channel Mix (0.15.0). Splits the AI Orders count
-				     into "Agent" (UCP-session orders) vs "Referral"
-				     (JSON-LD-routed orders). Placed at the end of the
-				     grid because it's the most informationally dense
-				     card \u2014 merchants scan the simpler scalar cards
-				     first; this one rewards a longer look. The card's
-				     own layout deviates from StatCard's single-value
-				     shape; see ChannelMixCard for rationale. */ }
-				<ChannelMixCard
-					byChannel={ stats?.by_channel }
-					topChannel={ stats?.top_channel }
-				/>
+				{ /* Channel split (0.15.0). Slash-comparison card \u2014
+				     "Agent / Referral" label, "60% / 40%" value, using
+				     StatCard's existing reference-prop pattern (same
+				     visual shape as "AI orders: 5 / 5"). Both channels
+				     surface in the label and the value-line; merchants
+				     read the split by eye without an explicit winner
+				     indicator. Empty state collapses to em-dash with
+				     no reference, matching the other cards.
+
+				     `hasChannelData` guards `value` AND `reference`
+				     together so the card can't render an asymmetric
+				     "\u2014 / 40%" when only one channel happens to be
+				     populated. `! Array.isArray` catches the case
+				     where PHP's `wp_json_encode([])` round-trips as a
+				     JS Array rather than a plain Object \u2014 without it,
+				     `typeof === 'object'` would pass and the lookup
+				     would silently return `undefined`. */ }
+				{ ( () => {
+					const channelData = stats?.by_channel;
+					const hasChannelData =
+						channelData &&
+						typeof channelData === 'object' &&
+						! Array.isArray( channelData ) &&
+						Object.keys( channelData ).length > 0;
+					return (
+						<StatCard
+							label={ __(
+								'Agent / Referral',
+								'woocommerce-ai-storefront'
+							) }
+							value={
+								hasChannelData
+									? sprintf(
+											/* translators: %1$s: Agent (UCP session) share as a percentage. The literal trailing percent sign comes from `%%` in the format string. */
+											__(
+												'%1$s%%',
+												'woocommerce-ai-storefront'
+											),
+											channelData.woo_ucp
+												?.share_percent ?? 0
+									  )
+									: '\u2014'
+							}
+							reference={
+								hasChannelData
+									? sprintf(
+											/* translators: %1$s: Referral (JSON-LD scrape) share as a percentage. */
+											__(
+												'%1$s%%',
+												'woocommerce-ai-storefront'
+											),
+											channelData.woo_jsonld
+												?.share_percent ?? 0
+									  )
+									: null
+							}
+						/>
+					);
+				} )() }
 			</div>
 
 			{ /*
