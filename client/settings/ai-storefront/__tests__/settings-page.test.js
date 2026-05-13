@@ -7,7 +7,7 @@
  * covered.
  */
 
-import { formatRevenuePercent } from '../settings-page';
+import { formatRevenuePercent, topChannelLabel } from '../settings-page';
 
 describe( 'formatRevenuePercent', () => {
 	it( 'returns formatted percentage when all_revenue > 0', () => {
@@ -38,5 +38,44 @@ describe( 'formatRevenuePercent', () => {
 
 	it( 'treats missing ai_revenue as 0', () => {
 		expect( formatRevenuePercent( { all_revenue: 100 } ) ).toBe( '0.0%' );
+	} );
+} );
+
+describe( 'topChannelLabel', () => {
+	// The wire-level utm_id values (`woo_ucp` / `woo_jsonld`) are
+	// implementation details — merchants should never see those raw
+	// strings. The helper maps them to the merchant-readable labels
+	// chosen during design ("Agent" for live UCP sessions, "Referral"
+	// for JSON-LD scrape traffic). The mapping lives in one helper so
+	// future renames stay coherent across the StatCard + any other
+	// future surface that needs to translate the same value.
+
+	it( 'returns "Agent" for woo_ucp', () => {
+		expect( topChannelLabel( 'woo_ucp' ) ).toBe( 'Agent' );
+	} );
+
+	it( 'returns "Referral" for woo_jsonld', () => {
+		expect( topChannelLabel( 'woo_jsonld' ) ).toBe( 'Referral' );
+	} );
+
+	it( 'returns em dash for null', () => {
+		// Mirrors derive_stats() returning top_channel === null when
+		// by_channel is empty. The StatCard's empty-state convention
+		// is an em-dash (matches the other cards' placeholder shape).
+		expect( topChannelLabel( null ) ).toBe( '—' );
+	} );
+
+	it( 'returns em dash for undefined', () => {
+		// Defensive: pre-0.15 cached payloads lack top_channel entirely.
+		// Once the v2 transient key rolls out, undefined shouldn't
+		// arise — but the guard makes a first-load post-deploy graceful.
+		expect( topChannelLabel( undefined ) ).toBe( '—' );
+	} );
+
+	it( 'returns em dash for an unknown channel string', () => {
+		// Future-proofing: if a third channel id ever ships, the
+		// helper falls through to the em-dash rather than rendering
+		// a raw `woo_xxx` string in the merchant-facing UI.
+		expect( topChannelLabel( 'woo_future' ) ).toBe( '—' );
 	} );
 } );

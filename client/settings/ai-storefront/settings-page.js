@@ -438,6 +438,36 @@ export const formatRevenuePercent = ( stats ) => {
 	).toFixed( 1 ) }%`;
 };
 
+/**
+ * Map a wire-level `top_channel` utm_id to a merchant-readable label.
+ *
+ * The wire values (`woo_ucp`, `woo_jsonld`) carry STRICT-gate semantics
+ * for the PHP attribution layer — they're implementation details and
+ * should never reach the merchant-facing UI. This helper translates
+ * them at the presentation seam:
+ *
+ *   - `woo_ucp`    → "Agent"    (live UCP shopping session)
+ *   - `woo_jsonld` → "Referral" (JSON-LD scrape served via search/AI)
+ *   - anything else → em-dash placeholder
+ *
+ * Exported so unit tests can pin the mapping without rendering the
+ * full settings component. The Channel Mix card uses this helper for
+ * the "Top: X" footer line; the row labels themselves are computed
+ * inline against the same source-of-truth table inside the component.
+ *
+ * @param {string|null|undefined} topChannel utm_id value from stats.top_channel.
+ * @return {string} Localized channel name or em-dash placeholder.
+ */
+export const topChannelLabel = ( topChannel ) => {
+	if ( 'woo_ucp' === topChannel ) {
+		return __( 'Agent', 'woocommerce-ai-storefront' );
+	}
+	if ( 'woo_jsonld' === topChannel ) {
+		return __( 'Referral', 'woocommerce-ai-storefront' );
+	}
+	return '—';
+};
+
 // Hand-rolled stat card for the Overview stats row. We evaluated Woo's
 // `SummaryNumber` from `@woocommerce/components` and deferred adoption —
 // see AGENTS.md "Styling" section for the rationale. In short: Woo
@@ -530,6 +560,133 @@ const StatCard = ( { label, value, reference, href, background } ) => {
 	}
 
 	return <div style={ cardStyle }>{ inner }</div>;
+};
+
+// AI Channel Mix card. Visually borrows StatCard's chrome (same
+// border, padding, corner radius, surface color) so it slots into
+// the existing card grid without breaking baseline alignment. The
+// body, however, is a 2-row split rather than the standard label-
+// then-value layout — the question this card answers ("which channel
+// is driving conversion?") is fundamentally comparative, so a single
+// scalar value would understate it.
+//
+// Row order is fixed (Agent above Referral) rather than ranked
+// dynamically. Fixed order keeps the merchant's scan-pattern stable
+// snapshot-to-snapshot; the winner is conveyed by the "Top: X"
+// footer line, which IS dynamic. Dynamic row ordering would cause
+// the eye to re-locate the same channel between two visits, adding
+// cognitive friction for a metric a merchant is meant to glance at.
+//
+// Empty state: when by_channel is missing or empty (typical for a
+// fresh install or pre-0.15 cached payload), the card collapses to
+// a single em-dash matching the other cards' empty-state convention.
+const ChannelMixCard = ( { byChannel, topChannel } ) => {
+	const cardStyle = {
+		padding: '14px 16px',
+		background: colors.surface,
+		border: `1px solid ${ colors.borderSubtle }`,
+		borderRadius: radii.sm,
+		display: 'block',
+		color: 'inherit',
+	};
+
+	const eyebrowStyle = {
+		...typography.eyebrowLabel,
+		color: colors.textMuted,
+		marginBottom: '6px',
+	};
+
+	const rowStyle = {
+		display: 'flex',
+		justifyContent: 'space-between',
+		alignItems: 'baseline',
+		fontSize: '14px',
+		color: colors.textPrimary,
+		lineHeight: 1.5,
+	};
+
+	const footerStyle = {
+		...typography.eyebrowLabel,
+		color: colors.textMuted,
+		marginTop: '8px',
+		paddingTop: '6px',
+		borderTop: `1px solid ${ colors.borderSubtle }`,
+	};
+
+	const hasData =
+		byChannel &&
+		typeof byChannel === 'object' &&
+		Object.keys( byChannel ).length > 0;
+
+	// Channel display table. Wire-key first (matches stats.by_channel
+	// payload key) so the lookup is O(1) and we don't rely on JS
+	// object iteration order — `byChannel.woo_ucp` is read directly
+	// rather than `Object.entries(byChannel)[0]`.
+	const channels = [
+		{
+			key: 'woo_ucp',
+			label: __( 'Agent', 'woocommerce-ai-storefront' ),
+		},
+		{
+			key: 'woo_jsonld',
+			label: __( 'Referral', 'woocommerce-ai-storefront' ),
+		},
+	];
+
+	return (
+		<div style={ cardStyle }>
+			<div style={ eyebrowStyle }>
+				{ __( 'AI channel mix', 'woocommerce-ai-storefront' ) }
+			</div>
+
+			{ ! hasData ? (
+				<div
+					style={ {
+						...typography.statValue,
+						color: colors.textPrimary,
+					} }
+				>
+					—
+				</div>
+			) : (
+				<>
+					{ channels.map( ( ch ) => {
+						const row = byChannel[ ch.key ];
+						const orders = row?.orders ?? 0;
+						// `share_percent` is already rounded to one
+						// decimal place by PHP `derive_stats()`. Render
+						// as integer here for card compactness — the
+						// full precision is visible in the raw payload
+						// for any future "view details" surface.
+						const share = Math.round( row?.share_percent ?? 0 );
+						return (
+							<div key={ ch.key } style={ rowStyle }>
+								<span>{ ch.label }</span>
+								<span>
+									{ orders }
+									<span
+										style={ {
+											marginLeft: '6px',
+											color: colors.textMuted,
+										} }
+									>
+										({ share }%)
+									</span>
+								</span>
+							</div>
+						);
+					} ) }
+					<div style={ footerStyle }>
+						{ sprintf(
+							/* translators: %s: name of the dominant AI traffic channel ("Agent" or "Referral"). */
+							__( 'Top: %s', 'woocommerce-ai-storefront' ),
+							topChannelLabel( topChannel )
+						) }
+					</div>
+				</>
+			) }
+		</div>
+	);
 };
 
 // ---------------------------------------------------------------------------
@@ -1226,6 +1383,18 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 							  )
 							: '\u2014'
 					}
+				/>
+				{ /* AI Channel Mix (0.15.0). Splits the AI Orders count
+				     into "Agent" (UCP-session orders) vs "Referral"
+				     (JSON-LD-routed orders). Placed at the end of the
+				     grid because it's the most informationally dense
+				     card \u2014 merchants scan the simpler scalar cards
+				     first; this one rewards a longer look. The card's
+				     own layout deviates from StatCard's single-value
+				     shape; see ChannelMixCard for rationale. */ }
+				<ChannelMixCard
+					byChannel={ stats?.by_channel }
+					topChannel={ stats?.top_channel }
 				/>
 			</div>
 
