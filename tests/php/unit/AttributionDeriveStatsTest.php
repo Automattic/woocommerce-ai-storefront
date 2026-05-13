@@ -342,13 +342,16 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 	// Return shape
 	// ------------------------------------------------------------------
 
-	public function test_returns_only_ai_aov_and_top_agent_keys(): void {
+	public function test_returns_ai_aov_top_agent_by_channel_and_top_channel_keys(): void {
 		// Locks the contract — derive_stats() is the helper, not
 		// the full response shape. Adding fields here without
 		// updating get_stats() would silently expand the contract.
 		$result = WC_AI_Storefront_Attribution::derive_stats( 0, 0.0, [] );
 
-		$this->assertSame( [ 'ai_aov', 'top_agent' ], array_keys( $result ) );
+		$this->assertSame(
+			[ 'ai_aov', 'top_agent', 'by_channel', 'top_channel' ],
+			array_keys( $result )
+		);
 	}
 
 	public function test_top_agent_shape_when_present(): void {
@@ -362,5 +365,172 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 			[ 'name', 'orders', 'revenue', 'share_percent' ],
 			array_keys( $result['top_agent'] )
 		);
+	}
+
+	// ------------------------------------------------------------------
+	// by_channel & top_channel
+	// ------------------------------------------------------------------
+	//
+	// The channel split surfaces "AI Shopping" (utm_id=woo_ucp, from a
+	// live UCP session) vs. "Referral" (utm_id=woo_jsonld, from a
+	// JSON-LD scrape). Both ids trigger STRICT capture, but downstream
+	// reporting separates them so merchants can tell convertible
+	// channels from exposure-only channels.
+	//
+	// `$by_channel` is the fourth (optional) param on derive_stats.
+	// Default empty → preserves backward-compat for any caller that
+	// hasn't yet been updated.
+
+	public function test_by_channel_returns_empty_when_param_omitted(): void {
+		$by_agent = [ 'chatgpt' => [ 'orders' => 5, 'revenue' => 250.00 ] ];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 5, 250.00, $by_agent );
+
+		$this->assertSame( [], $result['by_channel'] );
+		$this->assertNull( $result['top_channel'] );
+	}
+
+	public function test_by_channel_preserves_orders_and_revenue(): void {
+		$by_agent   = [ 'chatgpt' => [ 'orders' => 10, 'revenue' => 500.00 ] ];
+		$by_channel = [
+			'woo_ucp'    => [
+				'orders'  => 7,
+				'revenue' => 350.00,
+			],
+			'woo_jsonld' => [
+				'orders'  => 3,
+				'revenue' => 150.00,
+			],
+		];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 10, 500.00, $by_agent, $by_channel );
+
+		$this->assertSame( 7, $result['by_channel']['woo_ucp']['orders'] );
+		$this->assertSame( 350.00, $result['by_channel']['woo_ucp']['revenue'] );
+		$this->assertSame( 3, $result['by_channel']['woo_jsonld']['orders'] );
+		$this->assertSame( 150.00, $result['by_channel']['woo_jsonld']['revenue'] );
+	}
+
+	public function test_by_channel_share_percent_uses_channel_total_not_overall(): void {
+		// Channel-split percentages MUST self-normalize against the
+		// sum of by_channel rows, NOT against $total_orders.
+		//
+		// Rationale: $total_orders includes legacy LENIENT-attributed
+		// orders (utm_medium=ai_agent with no utm_id, or LENIENT host
+		// match alone) that aren't represented in by_channel. If the
+		// card displayed "Agent 70%" computed against $total_orders, a
+		// store with 100 AI orders / only 10 channel-known would show
+		// "Agent 7%" — meaningless to a merchant scanning for "which
+		// channel matters more". Normalizing within the split keeps
+		// the two rows summing to a clean 100%.
+		$by_agent   = [ 'chatgpt' => [ 'orders' => 100, 'revenue' => 5000.00 ] ];
+		$by_channel = [
+			'woo_ucp'    => [
+				'orders'  => 7,
+				'revenue' => 350.00,
+			],
+			'woo_jsonld' => [
+				'orders'  => 3,
+				'revenue' => 150.00,
+			],
+		];
+		// 90 legacy/LENIENT orders are NOT in by_channel — they live
+		// only in $total_orders. Channel split is 7/10 = 70/30, not
+		// 7/100 = 7/3.
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 100, 5000.00, $by_agent, $by_channel );
+
+		$this->assertSame( 70.0, $result['by_channel']['woo_ucp']['share_percent'] );
+		$this->assertSame( 30.0, $result['by_channel']['woo_jsonld']['share_percent'] );
+	}
+
+	public function test_top_channel_picks_highest_order_count(): void {
+		// "Top channel" semantics mirror top_agent: primary-driver-by-
+		// volume, not revenue. Pinning that decision here so a future
+		// "switch to revenue-primary" refactor can't sneak in.
+		$by_agent   = [ 'chatgpt' => [ 'orders' => 10, 'revenue' => 500.00 ] ];
+		$by_channel = [
+			'woo_ucp'    => [
+				'orders'  => 7,
+				'revenue' => 350.00,
+			],
+			'woo_jsonld' => [
+				'orders'  => 3,
+				'revenue' => 150.00,
+			],
+		];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 10, 500.00, $by_agent, $by_channel );
+
+		$this->assertSame( 'woo_ucp', $result['top_channel'] );
+	}
+
+	public function test_top_channel_is_null_when_by_channel_empty(): void {
+		// Mirrors top_agent's empty-state contract: null lets the React
+		// side render an em-dash placeholder without changing the JSON
+		// key shape.
+		$by_agent = [ 'chatgpt' => [ 'orders' => 5, 'revenue' => 250.00 ] ];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 5, 250.00, $by_agent, [] );
+
+		$this->assertNull( $result['top_channel'] );
+	}
+
+	public function test_by_channel_skips_malformed_row_missing_orders_key(): void {
+		// `derive_stats()` is `public static`, so we can't assume
+		// callers always pass well-formed rows. Real SQL ALWAYS
+		// produces both `orders` and `revenue` columns, but the helper
+		// is exposed to direct test/extension callers too. A row
+		// missing the `orders` key would PHP-warn pre-8.1 and FATAL
+		// on 8.1+ ("Undefined array key" promoted to fatal under
+		// strict_types-like operator contexts). Match the existing
+		// divide-by-zero guard's defensive posture: skip the row
+		// rather than crash, so a malformed input degrades to a
+		// partial-but-honest dashboard instead of a 500.
+		$by_agent   = [ 'chatgpt' => [ 'orders' => 5, 'revenue' => 250.00 ] ];
+		$by_channel = [
+			'woo_ucp'    => [
+				'orders'  => 5,
+				'revenue' => 250.00,
+			],
+			'woo_jsonld' => [
+				'revenue' => 100.00,
+				// 'orders' deliberately missing — caller-bug simulation.
+			],
+		];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 5, 250.00, $by_agent, $by_channel );
+
+		// Malformed row dropped from `by_channel`; surviving row gets
+		// 100% share (denominator self-normalizes against included
+		// rows, matching the share_percent contract test above).
+		$this->assertArrayHasKey( 'woo_ucp', $result['by_channel'] );
+		$this->assertArrayNotHasKey( 'woo_jsonld', $result['by_channel'] );
+		$this->assertSame( 100.0, $result['by_channel']['woo_ucp']['share_percent'] );
+		$this->assertSame( 'woo_ucp', $result['top_channel'] );
+	}
+
+	public function test_top_channel_tie_break_is_deterministic(): void {
+		// Tied orders AND revenue. Without a stable tie-break the
+		// winner would flicker between snapshots — same concern as
+		// top_agent's tertiary alphabetical tie-break. We sort by
+		// channel key ASC, so `woo_jsonld` wins over `woo_ucp` on a
+		// true tie (j < u alphabetically). Tie-break choice is
+		// arbitrary but must be DETERMINISTIC.
+		$by_agent   = [ 'chatgpt' => [ 'orders' => 10, 'revenue' => 500.00 ] ];
+		$by_channel = [
+			'woo_ucp'    => [
+				'orders'  => 5,
+				'revenue' => 250.00,
+			],
+			'woo_jsonld' => [
+				'orders'  => 5,
+				'revenue' => 250.00,
+			],
+		];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 10, 500.00, $by_agent, $by_channel );
+
+		$this->assertSame( 'woo_jsonld', $result['top_channel'] );
 	}
 }

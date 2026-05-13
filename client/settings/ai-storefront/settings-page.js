@@ -532,6 +532,12 @@ const StatCard = ( { label, value, reference, href, background } ) => {
 	return <div style={ cardStyle }>{ inner }</div>;
 };
 
+// (The bespoke ChannelMixCard component that used to live here was
+// removed in favor of a stock <StatCard /> using the existing slash-
+// reference pattern — see the "Agent / Referral" card in the grid
+// below. The multi-row layout broke visual rhythm with the other
+// single-value cards; the slash-comparison blends natively.)
+
 // ---------------------------------------------------------------------------
 // Pre-enable view (value pitch)
 // ---------------------------------------------------------------------------
@@ -1227,6 +1233,65 @@ const PostEnableView = ( { settings, onChange, onSave, isSaving } ) => {
 							: '\u2014'
 					}
 				/>
+				{ /* Channel split (0.15.0). Slash-comparison card \u2014
+				     "Agent / Referral" label, "60% / 40%" value, using
+				     StatCard's existing reference-prop pattern (same
+				     visual shape as "AI orders: 5 / 5"). Both channels
+				     surface in the label and the value-line; merchants
+				     read the split by eye without an explicit winner
+				     indicator. Empty state collapses to em-dash with
+				     no reference, matching the other cards.
+
+				     `hasChannelData` guards `value` AND `reference`
+				     together so the card can't render an asymmetric
+				     "\u2014 / 40%" when only one channel happens to be
+				     populated. `! Array.isArray` catches the case
+				     where PHP's `wp_json_encode([])` round-trips as a
+				     JS Array rather than a plain Object \u2014 without it,
+				     `typeof === 'object'` would pass and the lookup
+				     would silently return `undefined`. */ }
+				{ ( () => {
+					const channelData = stats?.by_channel;
+					const hasChannelData =
+						channelData &&
+						typeof channelData === 'object' &&
+						! Array.isArray( channelData ) &&
+						Object.keys( channelData ).length > 0;
+					return (
+						<StatCard
+							label={ __(
+								'Agent / Referral',
+								'woocommerce-ai-storefront'
+							) }
+							value={
+								hasChannelData
+									? sprintf(
+											/* translators: %1$s: Agent (UCP session) share as a percentage. The literal trailing percent sign comes from `%%` in the format string. */
+											__(
+												'%1$s%%',
+												'woocommerce-ai-storefront'
+											),
+											channelData.woo_ucp
+												?.share_percent ?? 0
+									  )
+									: '\u2014'
+							}
+							reference={
+								hasChannelData
+									? sprintf(
+											/* translators: %1$s: Referral (JSON-LD scrape) share as a percentage. */
+											__(
+												'%1$s%%',
+												'woocommerce-ai-storefront'
+											),
+											channelData.woo_jsonld
+												?.share_percent ?? 0
+									  )
+									: null
+							}
+						/>
+					);
+				} )() }
 			</div>
 
 			{ /*

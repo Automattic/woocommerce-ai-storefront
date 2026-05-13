@@ -1,6 +1,14 @@
 ## [Unreleased]
 
 ### Features
+
+- **Attribution: split AI orders into Agent vs Referral channels.** Closes #387. JSON-LD `PotentialAction` URL templates now emit `utm_id=woo_jsonld` (the new "Referral" channel), distinct from `/checkout-sessions` `continue_url` which keeps `utm_id=woo_ucp` ("Agent"). Both stay in the STRICT trust bucket; the split lets merchants tell convertible AI traffic (live agent shopping sessions) apart from exposure AI traffic (JSON-LD-surfaced search results that a human clicks through).
+  - New "Agent / Referral" stat card in the Overview grid, using the existing slash-comparison shape (e.g. "60% / 40%") — same visual pattern as the "AI orders: 5 / 5" card. Both channels named in the label, both shares in the value-line; merchants read the comparison by eye.
+  - Stats payload extended with `by_channel` (per-channel orders + revenue + self-normalized share_percent) and `top_channel` (string utm_id or null). Transient cache key bumped to `_v2_` so v1-shaped cached payloads can't crash the new UI shape on rollout; `bust_stats_cache()` deletes both keys during the transition.
+  - `share_percent` self-normalizes against the channel-known subset, NOT against `ai_orders` — a store with 100 AI orders / only 10 channel-known would otherwise render "Agent 7% / Referral 3%" against an unstated 90% denominator. The card answers "which channel matters more," not "what fraction of all AI orders carry a channel signature."
+  - Transition note: existing crawler caches keep serving the old `woo_ucp` template for ~2-6 weeks post-deploy, biasing the split toward Agent during that window. Accepted as one-shot transition noise.
+  - JSON-LD `BuyAction` / `Offer.checkoutPageURLTemplate` no longer emit the `ai_session_id={session_id}` placeholder. The channel-split design makes the placeholder semantically incoherent — `woo_jsonld` exists precisely to mark stateless scrape traffic, and no realistic consumer (crawler, AI surface, search-result re-server) has a session id to substitute. Session-bound attribution remains on the `/checkout-sessions` `continue_url` path where it's authentically present.
+
 ### Fixes
 ### Refactors
 ### Tests

@@ -119,6 +119,40 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_capture_strict_gate_fires_on_woo_jsonld_utm_id_meta(): void {
+		// JSON-LD-routed traffic: an AI surface (search engine, AI
+		// overview, chat assistant) consumes our PotentialAction
+		// search-template, fills it in, and serves the URL to a user.
+		// User clicks, lands with `utm_id=woo_jsonld` on the stored
+		// attribution meta. STRICT must fire because the stamp is OUR
+		// OWN — server-issued at JSON-LD render time, same trust level
+		// as `woo_ucp` from the /checkout-sessions builder.
+		//
+		// `utm_source=mysteryagent.example` is deliberately NOT in
+		// `KNOWN_AGENT_HOSTS`, so LENIENT cannot fire — STRICT is the
+		// only path that can carry the assertion. A regression that
+		// dropped `woo_jsonld` from the STRICT gate would fail here
+		// even though the broader behavior (LENIENT, agent stamping)
+		// would still appear to work for known agent hosts.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_id', 'woo_jsonld' );
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'mysteryagent.example' );
+
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertTrue( $order->was_saved() );
+		// LENIENT didn't fire (host unknown) → "Other AI" fallback per
+		// the post-STRICT canonical-agent resolution. Same shape as the
+		// `woo_ucp` counterpart test above.
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$order->get_meta( '_wc_ai_storefront_agent' )
+		);
+	}
+
 	public function test_capture_strict_gate_ignores_get_utm_id_without_stored_meta(): void {
 		// Regression guard for issue #126: a non-AI order whose
 		// checkout URL carries utm_id=woo_ucp (e.g. a forwarded
@@ -1125,11 +1159,16 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 			'currency_symbol'  => '$',
 			'by_agent'         => array(),
 			'top_agent'        => null,
+			// Channel split fields (0.15.0+). Empty here because the
+			// fixture has no AI orders to bucket; the test pins
+			// "cache hit returns payload as-is" not the channel math.
+			'by_channel'       => array(),
+			'top_channel'      => null,
 		);
 
 		Functions\expect( 'get_transient' )
 			->once()
-			->with( 'wc_ai_storefront_stats_month' )
+			->with( 'wc_ai_storefront_stats_v2_month' )
 			->andReturn( $cached_stats );
 
 		// set_transient must NOT fire — the DB path (which would re-cache)
@@ -1149,7 +1188,11 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		global $wpdb;
 		$wpdb = \Mockery::mock( 'wpdb' );
 		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
-		$wpdb->shouldReceive( 'get_results' )->once()->andReturn( array() );
+		// Two `get_results` calls: the per-agent query AND the
+		// per-channel query (0.15.0+). Both return empty arrays so
+		// the test exercises the cache-write path without seeding
+		// fixture data.
+		$wpdb->shouldReceive( 'get_results' )->twice()->andReturn( array() );
 		$wpdb->shouldReceive( 'get_var' )->twice()->andReturn( '0' );
 		$wpdb->posts    = 'wp_posts';
 		$wpdb->postmeta = 'wp_postmeta';
@@ -1157,13 +1200,13 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 
 		Functions\expect( 'get_transient' )
 			->once()
-			->with( 'wc_ai_storefront_stats_month' )
+			->with( 'wc_ai_storefront_stats_v2_month' )
 			->andReturn( false );
 
 		Functions\expect( 'set_transient' )
 			->once()
 			->with(
-				'wc_ai_storefront_stats_month',
+				'wc_ai_storefront_stats_v2_month',
 				\Mockery::type( 'array' ),
 				5 * MINUTE_IN_SECONDS
 			);
@@ -1188,13 +1231,15 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		// test doesn't break the next time the valid-period set grows.
 		Functions\expect( 'get_transient' )
 			->once()
-			->with( 'wc_ai_storefront_stats_month' )
+			->with( 'wc_ai_storefront_stats_v2_month' )
 			->andReturn( false );
 
 		global $wpdb;
 		$wpdb = \Mockery::mock( 'wpdb' );
 		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
-		$wpdb->shouldReceive( 'get_results' )->once()->andReturn( array() );
+		// Two `get_results` calls — see the cache-miss test above for
+		// the same rationale (per-agent + per-channel queries).
+		$wpdb->shouldReceive( 'get_results' )->twice()->andReturn( array() );
 		$wpdb->shouldReceive( 'get_var' )->twice()->andReturn( '0' );
 		$wpdb->posts    = 'wp_posts';
 		$wpdb->postmeta = 'wp_postmeta';
@@ -1202,7 +1247,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 
 		Functions\expect( 'set_transient' )
 			->once()
-			->with( 'wc_ai_storefront_stats_month', \Mockery::type( 'array' ), \Mockery::type( 'int' ) );
+			->with( 'wc_ai_storefront_stats_v2_month', \Mockery::type( 'array' ), \Mockery::type( 'int' ) );
 
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		// `Automattic\WooCommerce\Utilities\OrderUtil` is not loaded in the
@@ -1252,9 +1297,14 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_bust_stats_cache_deletes_all_five_period_transients(): void {
+		// Bust deletes both the current `_v2_` key and the legacy `_`
+		// key for each of the five periods (10 calls total). The
+		// legacy keys are busted explicitly during the transition
+		// window — they expire naturally within 5 minutes but doing
+		// it here keeps invalidation behavior complete.
 		$deleted = array();
 		Functions\expect( 'delete_transient' )
-			->times( 5 )
+			->times( 10 )
 			->andReturnUsing(
 				static function ( $key ) use ( &$deleted ) {
 					$deleted[] = $key;
@@ -1264,6 +1314,13 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 
 		WC_AI_Storefront_Attribution::bust_stats_cache();
 
+		// Current keys (v2).
+		$this->assertContains( 'wc_ai_storefront_stats_v2_day', $deleted );
+		$this->assertContains( 'wc_ai_storefront_stats_v2_week', $deleted );
+		$this->assertContains( 'wc_ai_storefront_stats_v2_month', $deleted );
+		$this->assertContains( 'wc_ai_storefront_stats_v2_quarter', $deleted );
+		$this->assertContains( 'wc_ai_storefront_stats_v2_year', $deleted );
+		// Legacy keys (transition cleanup).
 		$this->assertContains( 'wc_ai_storefront_stats_day', $deleted );
 		$this->assertContains( 'wc_ai_storefront_stats_week', $deleted );
 		$this->assertContains( 'wc_ai_storefront_stats_month', $deleted );
