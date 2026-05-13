@@ -48,6 +48,8 @@
 
 - **User guide: independent validation tools section.** New section 4a points merchants at three widely-used community tools for verifying their UCP setup beyond what the plugin's own UI can show: UCPPlayground.com (end-to-end agent simulation), UCPChecker.com (protocol-conformance validation), and UCPRegistry.com (optional directory submission). Framed as third-party and independent of Automattic, with a fallback pointer to https://ucp.dev/ if any link goes stale. The existing 4a "What the homepage publishes" section becomes 4b; the inbound link from the URL-verification table updated accordingly.
 
+- **User guide: broaden the "shopping assistant" framing to lead with shopper-present co-shopping.** Lead paragraph and door-1 description previously said "browse and buy on a shopper's behalf" / "agents that act on a shopper's behalf" — that's the autonomous-agent case, but it's not what UCP primarily addresses today. UCP's `/checkout-sessions` flow is explicitly designed around handing the shopper off to the merchant's web checkout, which is the dominant 2026 reality: the buyer stays in the chat to browse and compare, then walks through to the merchant's checkout when they're ready. Rewrote both surfaces to lead with that case, with on-behalf-of agents as the secondary scenario. Same plugin, more accurate framing for what merchants are actually buying into.
+
 ---
 
 ## [0.14.2] – 2026-05-11

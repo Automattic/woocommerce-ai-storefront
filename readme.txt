@@ -141,6 +141,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 **Improved**
 * User-guide footer self-updates via build-time version injection. The footer literal ("Covers AI Storefront X.Y.Z") now reads from `package.json` at build time instead of being hand-edited (the previous literal was four releases stale).
 * User guide: new section pointing merchants at three widely-used third-party tools for verifying their UCP setup (UCPPlayground.com, UCPChecker.com, UCPRegistry.com), with a fallback to https://ucp.dev/ if any link goes stale.
+* User guide: broadened the AI shopping assistant framing to lead with shopper-present co-shopping (the dominant 2026 case where the buyer stays in chat and is handed off to your checkout), with on-behalf-of agents as the secondary scenario.
 * Em-dash cleanup across merchant-facing copy (5 in user guide, 28 in readme.txt) per the AGENTS.md convention.
 
 = 0.14.2 - 2026-05-11 =
