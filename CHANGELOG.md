@@ -2,6 +2,19 @@
 
 ### Features
 
+- **Admin: HelpMenu hairline separator between actions and Version row.** Wraps Documentation + Support in one `<MenuGroup>` and the disabled Version row in a second `<MenuGroup>`, so the rendered menu shows a single hairline between the action group and the metadata row. Same pattern as Gutenberg's More-options popovers and the WordPress.com admin user menu. Communicates the action-vs-metadata distinction structurally, so the disabled Version row reads as "info about the plugin" rather than a flat third action.
+
+### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.15.0] – 2026-05-13
+
+### Features
+
 - **Attribution: split AI orders into Agent vs Referral channels.** Closes #387. JSON-LD `PotentialAction` URL templates now emit `utm_id=woo_jsonld` (the new "Referral" channel), distinct from `/checkout-sessions` `continue_url` which keeps `utm_id=woo_ucp` ("Agent"). Both stay in the STRICT trust bucket; the split lets merchants tell convertible AI traffic (live agent shopping sessions) apart from exposure AI traffic (JSON-LD-surfaced search results that a human clicks through).
   - New "Agent / Referral" stat card in the Overview grid, using the existing slash-comparison shape (e.g. "60% / 40%") — same visual pattern as the "AI orders: 5 / 5" card. Both channels named in the label, both shares in the value-line; merchants read the comparison by eye.
   - Stats payload extended with `by_channel` (per-channel orders + revenue + self-normalized share_percent) and `top_channel` (string utm_id or null). Transient cache key bumped to `_v2_` so v1-shaped cached payloads can't crash the new UI shape on rollout; `bust_stats_cache()` deletes both keys during the transition.
@@ -15,7 +28,6 @@
   - **Version** shows the running plugin version as static text, read from `WC_AI_STOREFRONT_VERSION` via the localize-script payload.
   - Built on `@wordpress/components` `<DropdownMenu>` for keyboard accessibility, focus management, ARIA roles, and Esc / outside-click dismissal out of the box. Anchor semantics use real `<a href target="_blank">` so right-click "Open in new tab" works.
   - PageHeader's `aria-hidden` scope tightened: previously the entire header was hidden from screen readers (to avoid duplicate page-name announcement with the server-rendered `<h1>`); now only the brand-chrome wrapper is hidden, leaving the help button reachable. ARIA spec doesn't allow "unhiding" descendants of an aria-hidden ancestor, so the scope reduction was required for the help button to be accessible.
-  - Hairline separator between the action group (Documentation, Support) and the Version metadata row. Implemented by wrapping each group in `<MenuGroup>`, which renders a top border on every group except the first — same pattern as Gutenberg's More-options popovers. Communicates the action-vs-metadata distinction structurally so the disabled Version row reads as "info about the plugin" rather than a flat third action.
 
 - **Admin: Beta status markers across three surfaces.** Lightweight indicators that signal the plugin's pre-1.0 lifecycle to merchants without disruptive renames:
   - PageHeader: subtle uppercase "BETA" pill next to the "AI Storefront" title. Eyebrow-label typography with a neutral gray background that doesn't compete with the brand chrome.
@@ -38,6 +50,8 @@
 - **Em-dash cleanup across merchant-facing copy.** AGENTS.md forbids em-dashes in user-facing copy (rendering edge cases in CSV-split tools and ASCII renderers — the convention originates from a plugin Description: header rendering issue, and extends to readme.txt + all merchant-facing UI strings). Cleaned 5 in `docs/user-guide/USER-GUIDE.md` and 28 in `readme.txt`. Each replacement context-appropriate: colons for label-style flow, periods for sentence joins, parens for parentheticals.
 
 - **User guide: independent validation tools section.** New section 4a points merchants at three widely-used community tools for verifying their UCP setup beyond what the plugin's own UI can show: UCPPlayground.com (end-to-end agent simulation), UCPChecker.com (protocol-conformance validation), and UCPRegistry.com (optional directory submission). Framed as third-party and independent of Automattic, with a fallback pointer to https://ucp.dev/ if any link goes stale. The existing 4a "What the homepage publishes" section becomes 4b; the inbound link from the URL-verification table updated accordingly.
+
+- **User guide: broaden the "shopping assistant" framing to lead with shopper-present co-shopping.** Lead paragraph and door-1 description previously said "browse and buy on a shopper's behalf" / "agents that act on a shopper's behalf" — that's the autonomous-agent case, but it's not what UCP primarily addresses today. UCP's `/checkout-sessions` flow is explicitly designed around handing the shopper off to the merchant's web checkout, which is the dominant 2026 reality: the buyer stays in the chat to browse and compare, then walks through to the merchant's checkout when they're ready. Rewrote both surfaces to lead with that case, with on-behalf-of agents as the secondary scenario. Same plugin, more accurate framing for what merchants are actually buying into.
 
 ---
 

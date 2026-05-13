@@ -8,11 +8,11 @@ A step-by-step guide for store owners. Make your catalog discoverable to AI shop
 
 ## What this plugin does
 
-AI tools are changing how shoppers find products. Some assistants browse and buy on a shopper's behalf. Some AI search engines (Google AI Overviews, Perplexity, ChatGPT search) answer product questions by citing real stores. Some chat tools just need a quick orientation to talk about your business accurately. To be visible to all of these, your store needs to publish information in the formats AI tools read.
+AI tools are changing how shoppers find products. Some assistants help a shopper browse, compare, and check out with the shopper present, handing them off to the merchant's checkout when they're ready to buy. Some can also act on a shopper's behalf. Some AI search engines (Google AI Overviews, Perplexity, ChatGPT search) answer product questions by citing real stores. Some chat tools just need a quick orientation to talk about your business accurately. To be visible to all of these, your store needs to publish information in the formats AI tools read.
 
 This plugin makes your store speak three of those formats at the same time, all automatic once you turn it on:
 
-1. **A structured product feed and checkout handoff for AI shopping assistants.** AI agents (the ones that act on a shopper's behalf) can browse your catalog, check inventory and prices, and send a buyer straight to your checkout with the right items in cart. The agent handles the shopping conversation; your WooCommerce store handles the transaction. This piece uses a protocol called UCP (Universal Commerce Protocol).
+1. **A structured product feed and checkout handoff for AI shopping assistants.** AI assistants, whether they're co-shopping with the buyer in chat or acting on the buyer's behalf, can browse your catalog, check inventory and prices, and send the buyer straight to your checkout with the right items in cart. The assistant handles the shopping conversation; your WooCommerce store handles the transaction. This piece uses a protocol called UCP (Universal Commerce Protocol).
 
 2. **Enhanced structured data on every product page for AI search engines.** Search engines and AI answer engines look for machine-readable details on product pages: price, availability, shipping windows, return policy. The plugin adds these in the modern JSON-LD format (the same standard Google uses for rich snippets, extended for AI). This is the heart of "GEO" (Generative Engine Optimization): showing up accurately when an AI engine answers a shopper's question about products like yours.
 
