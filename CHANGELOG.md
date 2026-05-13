@@ -36,6 +36,8 @@
 
 - **Em-dash cleanup across merchant-facing copy.** AGENTS.md forbids em-dashes in user-facing copy (rendering edge cases in CSV-split tools and ASCII renderers — the convention originates from a plugin Description: header rendering issue, and extends to readme.txt + all merchant-facing UI strings). Cleaned 5 in `docs/user-guide/USER-GUIDE.md` and 28 in `readme.txt`. Each replacement context-appropriate: colons for label-style flow, periods for sentence joins, parens for parentheticals.
 
+- **User guide: independent validation tools section.** New section 4a points merchants at three widely-used community tools for verifying their UCP setup beyond what the plugin's own UI can show: UCPPlayground.com (end-to-end agent simulation), UCPChecker.com (protocol-conformance validation), and UCPRegistry.com (optional directory submission). Framed as third-party and independent of Automattic, with a fallback pointer to https://ucp.dev/ if any link goes stale. The existing 4a "What the homepage publishes" section becomes 4b; the inbound link from the URL-verification table updated accordingly.
+
 ---
 
 ## [0.14.2] – 2026-05-11
