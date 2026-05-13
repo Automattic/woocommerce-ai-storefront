@@ -87,7 +87,7 @@ The plugin installs in **paused** mode. Nothing publishes until you turn it on.
 
 Go to **WooCommerce → AI Storefront**. The page opens with a hero screen showing the headline "List once. Sell everywhere AI shops.", four AI agent chips (ChatGPT, Gemini, Perplexity, Copilot), and the **Enable AI Storefront** button.
 
-![AI Storefront disabled state — hero screen with enable button](screenshots/02-disabled-state.png)
+![AI Storefront disabled state: hero screen with enable button](screenshots/02-disabled-state.png)
 
 Click **Enable AI Storefront**. The hero is replaced by the section nav (Overview, Visibility, Policies, Discovery) and the plugin goes live.
 
@@ -167,7 +167,7 @@ Your homepage now publishes your store's brand details (name, logo, address, con
 | Return policy | Your plugin settings | Edit at **WooCommerce → Settings → AI Storefront → Policies**. See [section 7](#7-set-your-store-policies). Published only when you've set a policy other than "Not configured". |
 | Specialties | Auto-generated | A short list of what your store specializes in, derived from your top product categories. |
 
-**About the address.** Only your city, state, zip, and country are published to AI agents. Your street address is intentionally hidden for privacy and safety — if you use your home address for tax purposes, it stays private.
+**About the address.** Only your city, state, zip, and country are published to AI agents. Your street address is intentionally hidden for privacy and safety. If you use your home address for tax purposes, it stays private.
 
 **Customer service email.** The plugin uses your WooCommerce email settings in this order:
 
@@ -238,11 +238,11 @@ Selecting **Custom** reveals an input box directly below where you can set your 
 
 Rate limiting only affects AI crawlers. Your regular shoppers and store experience are unaffected.
 
-![Discovery tab — AI agent list and rate limit cards](screenshots/06b-rate-limits.png)
+![Discovery tab: AI agent list and rate limit cards](screenshots/06b-rate-limits.png)
 
 ### AI activity log
 
-The Discovery tab shows what AI crawlers are actually doing on your store. The plugin records every AI request to your catalog endpoints in a private log on your own server — nothing leaves your site.
+The Discovery tab shows what AI crawlers are actually doing on your store. The plugin records every AI request to your catalog endpoints in a private log on your own server. Nothing leaves your site.
 
 The period selector at the top (Day / Week / Month / Quarter) drives all three cards:
 
@@ -265,7 +265,7 @@ Stats update hourly, so today's AI traffic appears in the dashboard within an ho
 
 The **Policies** tab publishes structured signals that AI agents read when deciding what to show shoppers: return terms, shipping timelines, and more. Two cards are currently available.
 
-Your return policy publishes in two places: on each product page (so an AI agent recommending one of your products can mention the policy), AND on your homepage (so an agent that discovers your store before a specific product can learn the store-wide commitment up-front). Per-product overrides — see below — only affect the per-product copy.
+Your return policy publishes in two places: on each product page (so an AI agent recommending one of your products can mention the policy), AND on your homepage (so an agent that discovers your store before a specific product can learn the store-wide commitment up-front). Per-product overrides (see below) only affect the per-product copy.
 
 ### Return & refund policy
 
@@ -406,4 +406,4 @@ That's normal. The plugin removes its own instructions; what's left is just Word
 
 ---
 
-*Covers AI Storefront 0.10.1. Screenshots taken from a stock WordPress 6.7 + WooCommerce 9.9 install. Your store may look slightly different depending on theme and admin color scheme.*
+*Covers AI Storefront {{VERSION}}. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.*
