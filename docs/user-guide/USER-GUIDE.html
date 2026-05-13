@@ -55,6 +55,9 @@
 <h1>WooCommerce AI Storefront: Merchant User Guide</h1>
 <p>A step-by-step guide for store owners. Make your catalog discoverable to AI shopping assistants and AI search engines (ChatGPT, Gemini, Claude, Perplexity, Copilot, Google AI Overviews) without giving up checkout, customer data, or your payment processor.</p>
 <blockquote>
+<p><strong>Status: Beta.</strong> The plugin is in active development. Features and shape may change between releases. Production use is supported; your feedback shapes what ships in 1.0.</p>
+</blockquote>
+<blockquote>
 <p>Plan for 15 minutes. You&#39;ll have AI Storefront installed, configured, and verified live by the end.</p>
 </blockquote>
 <h2>What this plugin does</h2>
@@ -123,7 +126,7 @@
 <h2>3. Enable AI Storefront</h2>
 <p>The plugin installs in <strong>paused</strong> mode. Nothing publishes until you turn it on.</p>
 <p>Go to <strong>WooCommerce → AI Storefront</strong>. The page opens with a hero screen showing the headline &quot;List once. Sell everywhere AI shops.&quot;, four AI agent chips (ChatGPT, Gemini, Perplexity, Copilot), and the <strong>Enable AI Storefront</strong> button.</p>
-<p><img src="screenshots/02-disabled-state.png" alt="AI Storefront disabled state — hero screen with enable button"></p>
+<p><img src="screenshots/02-disabled-state.png" alt="AI Storefront disabled state: hero screen with enable button"></p>
 <p>Click <strong>Enable AI Storefront</strong>. The hero is replaced by the section nav (Overview, Visibility, Policies, Discovery) and the plugin goes live.</p>
 <p><img src="screenshots/02-enable-toggle.png" alt="Overview tab after enabling"></p>
 <p>Enabling does five things:</p>
@@ -250,7 +253,7 @@
 <td>A short list of what your store specializes in, derived from your top product categories.</td>
 </tr>
 </tbody></table>
-<p><strong>About the address.</strong> Only your city, state, zip, and country are published to AI agents. Your street address is intentionally hidden for privacy and safety — if you use your home address for tax purposes, it stays private.</p>
+<p><strong>About the address.</strong> Only your city, state, zip, and country are published to AI agents. Your street address is intentionally hidden for privacy and safety. If you use your home address for tax purposes, it stays private.</p>
 <p><strong>Customer service email.</strong> The plugin uses your WooCommerce email settings in this order:</p>
 <ol>
 <li><strong>Reply-to address</strong> at <strong>WooCommerce → Settings → Emails → Sender options</strong>, if enabled. This is your customer-contact email.</li>
@@ -318,9 +321,9 @@
 <p>A 2 × 2 card grid shows four preset options: <strong>Recommended</strong> (25 per minute), <strong>Conservative</strong> (10 per minute), <strong>Generous</strong> (100 per minute), and <strong>Custom</strong>. Select one to set how many times per minute each AI crawler can look up your products before being temporarily blocked.</p>
 <p>Selecting <strong>Custom</strong> reveals an input box directly below where you can set your own limit.</p>
 <p>Rate limiting only affects AI crawlers. Your regular shoppers and store experience are unaffected.</p>
-<p><img src="screenshots/06b-rate-limits.png" alt="Discovery tab — AI agent list and rate limit cards"></p>
+<p><img src="screenshots/06b-rate-limits.png" alt="Discovery tab: AI agent list and rate limit cards"></p>
 <h3>AI activity log</h3>
-<p>The Discovery tab shows what AI crawlers are actually doing on your store. The plugin records every AI request to your catalog endpoints in a private log on your own server — nothing leaves your site.</p>
+<p>The Discovery tab shows what AI crawlers are actually doing on your store. The plugin records every AI request to your catalog endpoints in a private log on your own server. Nothing leaves your site.</p>
 <p>The period selector at the top (Day / Week / Month / Quarter) drives all three cards:</p>
 <ul>
 <li><strong>Top searches.</strong> The most common product searches AI agents have asked for. If you see &quot;running shoes&quot; but don&#39;t sell shoes, the AI may be sending you the wrong shoppers. If you see &quot;hoodies&quot; and sell them but don&#39;t see many impressions, check that your category name matches what customers search for.</li>
@@ -337,7 +340,7 @@
 <hr>
 <h2>7. Set your store policies</h2>
 <p>The <strong>Policies</strong> tab publishes structured signals that AI agents read when deciding what to show shoppers: return terms, shipping timelines, and more. Two cards are currently available.</p>
-<p>Your return policy publishes in two places: on each product page (so an AI agent recommending one of your products can mention the policy), AND on your homepage (so an agent that discovers your store before a specific product can learn the store-wide commitment up-front). Per-product overrides — see below — only affect the per-product copy.</p>
+<p>Your return policy publishes in two places: on each product page (so an AI agent recommending one of your products can mention the policy), AND on your homepage (so an agent that discovers your store before a specific product can learn the store-wide commitment up-front). Per-product overrides (see below) only affect the per-product copy.</p>
 <h3>Return &amp; refund policy</h3>
 <p>When AI agents recommend your products, they often tell customers about your return window (&quot;Free returns for 30 days&quot;). This section controls what they say.</p>
 <p><img src="screenshots/07-policies-tab.png" alt="Return &amp; refund policy section"></p>
@@ -431,7 +434,7 @@
 <li><strong>General WooCommerce support:</strong> <a href="https://woocommerce.com/support/">woocommerce.com/support</a> for questions about checkout, payments, taxes, shipping, or anything else WooCommerce-core-shaped.</li>
 </ul>
 <hr>
-<p><em>Covers AI Storefront 0.10.1. Screenshots taken from a stock WordPress 6.7 + WooCommerce 9.9 install. Your store may look slightly different depending on theme and admin color scheme.</em></p>
+<p><em>Covers AI Storefront 0.14.2. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
 
 </body>
 </html>

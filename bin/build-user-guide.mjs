@@ -67,9 +67,28 @@ if ( ! fs.existsSync( inputPath ) ) {
 	process.exit( 1 );
 }
 
-// Read + render. `marked.parse()` is synchronous and produces
-// GitHub-flavored markdown HTML.
-const markdown = fs.readFileSync( inputPath, 'utf8' );
+// Read package.json to source the canonical plugin version. The
+// user guide's footer ("Covers AI Storefront X.Y.Z.") used to be
+// a hand-edited literal that drifted multiple releases before
+// anyone noticed. Reading from package.json — one of the three
+// agreeing version sources per AGENTS.md — means the footer
+// self-updates every time the version bumps for release.
+//
+// JSON.parse + fs is used here instead of `import ... with { type:
+// "json" }` because the latter is still gated behind Node flags on
+// some older Node versions and this script needs to "just work" on
+// any CI image.
+const pkgJsonPath = path.join( repoRoot, 'package.json' );
+const pkg         = JSON.parse( fs.readFileSync( pkgJsonPath, 'utf8' ) );
+const version     = pkg.version || 'unreleased';
+
+// Read + substitute + render. `marked.parse()` is synchronous and
+// produces GitHub-flavored markdown HTML. The {{VERSION}} token is
+// replaced before parsing so the rendered output never carries
+// the placeholder literally.
+const markdown = fs
+	.readFileSync( inputPath, 'utf8' )
+	.replace( /\{\{VERSION\}\}/g, version );
 const bodyHtml = marked.parse( markdown );
 
 // Minimal inline stylesheet for typography + table/code legibility.
