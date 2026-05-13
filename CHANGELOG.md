@@ -12,6 +12,8 @@
 ### Tests
 ### Docs
 
+- **User guide: new "What this plugin does not do" section.** Heads off four common merchant misconceptions before they land as disappointment: this isn't a product feed for Google Shopping / Bing / Copilot / Meta Catalog (those need merchant-center uploads, this is crawler-discovered); it isn't for in-chat agentic checkout (UCP is shopper-present handoff, not ACP-style delegated payments); it isn't an AI chatbot widget for the merchant's own site; and it doesn't write or improve product copy. Placed directly after "What this plugin does" so the boundary reads next to the positive scope — merchants forming wrong expectations don't have to scroll to §1.1 to discover the limit.
+
 ---
 
 ## [0.15.0] – 2026-05-13
