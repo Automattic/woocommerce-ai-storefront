@@ -337,12 +337,16 @@ class WC_AI_Storefront_Attribution {
 	 *
 	 * Two recognition gates (evaluated in parallel via OR):
 	 *
-	 *   1. STRICT — `utm_id === 'woo_ucp'` (canonical 0.5.0+ shape)
-	 *      OR legacy `utm_medium === 'ai_agent'` (pre-0.5.0 shape).
-	 *      Both are signals our own `build_continue_url()` emits, so
-	 *      any order placed via a link OUR /checkout-sessions
-	 *      endpoint produced lands here. This is the canonical
-	 *      "we routed this" signal.
+	 *   1. STRICT — `utm_id === 'woo_ucp'` (continue_url from
+	 *      `/checkout-sessions`, canonical 0.5.0+ shape) OR
+	 *      `utm_id === 'woo_jsonld'` (JSON-LD `PotentialAction`
+	 *      URL templates, added 0.15.0) OR legacy
+	 *      `utm_medium === 'ai_agent'` (pre-0.5.0 shape). All three
+	 *      are server-stamped signals we control, so any order placed
+	 *      via a URL OUR code produced lands here. This is the
+	 *      canonical "we routed this" signal. The two `utm_id` values
+	 *      identify which CHANNEL did the routing — see
+	 *      `WOO_JSONLD_ID` docblock for the channel-split rationale.
 	 *
 	 *   2. LENIENT — utm_source matches a known AI agent host KEY
 	 *      in `KNOWN_AGENT_HOSTS`. Agents that bypass our endpoint
@@ -378,7 +382,7 @@ class WC_AI_Storefront_Attribution {
 	 *     the raw utm_source for orders matched by STRICT but not
 	 *     LENIENT (utm_source is non-empty but isn't in
 	 *     KNOWN_AGENT_HOSTS — common for unknown agents that still
-	 *     stamped utm_id=woo_ucp).
+	 *     stamped utm_id=woo_ucp / woo_jsonld).
 	 *   - `AGENT_HOST_RAW_META_KEY` = a clean identifier value for
 	 *     "Other AI" drill-in or graduation review. Two writers:
 	 *     the strict-gate path stamps the `ai_agent_host_raw` URL
@@ -412,12 +416,15 @@ class WC_AI_Storefront_Attribution {
 		// Two ways to recognize an AI order, evaluated in parallel
 		// (OR-combined; no ordering implied):
 		//
-		//   1. STRICT: utm_id === 'woo_ucp' (canonical 0.5.0+ shape) OR
-		//      legacy utm_medium === 'ai_agent' (pre-0.5.0 shape).
-		//      Both signals were emitted by our own continue_url
-		//      builder. Dual-checking keeps already-placed orders
-		//      attributing correctly through the upgrade window; see
-		//      `AI_AGENT_MEDIUM` docblock above for the legacy-branch
+		//   1. STRICT: utm_id === 'woo_ucp' / 'woo_jsonld' (0.5.0+
+		//      canonical shapes — continue_url and JSON-LD templates
+		//      respectively) OR legacy utm_medium === 'ai_agent'
+		//      (pre-0.5.0 shape). All three signals were emitted by
+		//      our own code — continue_url builder, JSON-LD emitter,
+		//      or the pre-0.5.0 continue_url builder. The triple-check
+		//      keeps already-placed orders attributing correctly
+		//      through the upgrade window; see `AI_AGENT_MEDIUM`
+		//      docblock above for the legacy-branch
 		//      removal horizon.
 		//
 		//   2. LENIENT: utm_source is an exact match for a hostname
@@ -821,13 +828,15 @@ class WC_AI_Storefront_Attribution {
 			// third-party plugin filtering `query` and breaking it).
 			// Coerce to [] so the aggregation loop's `if ( $channel_results )`
 			// truthy-check renders the empty state, and route through
-			// `Logger::debug` so an operator investigating "why is my
-			// Channel Mix card stuck on em-dash?" finds a breadcrumb
-			// (gated by the `wc_ai_storefront_debug` filter — same
-			// pattern as every other instrumentation point in the
-			// codebase). Same defensive shape in the legacy branch below.
+			// `wc_get_logger()->warning()` so the failure surfaces in
+			// WC's standard log without requiring debug-filter opt-in.
+			// Same pattern `WC_AI_Storefront_Crawl_Logger::flush()` uses
+			// for its own DB-write failures.
 			if ( false === $channel_results ) {
-				WC_AI_Storefront_Logger::debug( 'channel_results query failed (HPOS, period=%s): %s', $period, $wpdb->last_error );
+				wc_get_logger()->warning(
+					sprintf( 'channel_results query failed (HPOS, period=%s): %s', $period, $wpdb->last_error ),
+					array( 'source' => 'wc-ai-storefront' )
+				);
 				$channel_results = [];
 			}
 			// phpcs:enable
@@ -882,7 +891,10 @@ class WC_AI_Storefront_Attribution {
 				)
 			);
 			if ( false === $channel_results ) {
-				WC_AI_Storefront_Logger::debug( 'channel_results query failed (legacy, period=%s): %s', $period, $wpdb->last_error );
+				wc_get_logger()->warning(
+					sprintf( 'channel_results query failed (legacy, period=%s): %s', $period, $wpdb->last_error ),
+					array( 'source' => 'wc-ai-storefront' )
+				);
 				$channel_results = [];
 			}
 			// phpcs:enable
