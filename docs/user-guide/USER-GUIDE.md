@@ -2,6 +2,8 @@
 
 A step-by-step guide for store owners. Make your catalog discoverable to AI shopping assistants and AI search engines (ChatGPT, Gemini, Claude, Perplexity, Copilot, Google AI Overviews) without giving up checkout, customer data, or your payment processor.
 
+> **Status: Beta.** The plugin is in active development. Features and shape may change between releases. Production use is supported; your feedback shapes what ships in 1.0.
+
 > Plan for 15 minutes. You'll have AI Storefront installed, configured, and verified live by the end.
 
 ## What this plugin does

@@ -294,6 +294,16 @@ const HelpMenu = () => {
 		<DropdownMenu
 			icon={ help }
 			label={ __( 'Help', 'woocommerce-ai-storefront' ) }
+			toggleProps={ {
+				// Tooltip anchored to the button's left edge rather
+				// than centered below it. The icon lives at the top-
+				// right of the PageHeader, so a centered "bottom"
+				// tooltip would render with its right edge against
+				// the WP admin chrome edge — awkward and partially
+				// clipped on some viewports. Leftward placement
+				// keeps the tooltip inside the page bounds.
+				tooltipPosition: 'middle left',
+			} }
 		>
 			{ ( { onClose } ) => (
 				<>
@@ -323,9 +333,9 @@ const HelpMenu = () => {
 					<MenuItem disabled>
 						{ version
 							? sprintf(
-									/* translators: %s: current plugin version, e.g. "0.15.0" */
+									/* translators: %s: current plugin version, e.g. "0.15.0 (Beta)". The "(Beta)" suffix marks the plugin's lifecycle status; remove the literal when the plugin reaches a stable 1.0 release. */
 									__(
-										'Version %s',
+										'Version %s (Beta)',
 										'woocommerce-ai-storefront'
 									),
 									version
@@ -427,6 +437,26 @@ const PageHeader = ( { withNavSlot = false } ) => (
 				>
 					{ __( 'AI Storefront', 'woocommerce-ai-storefront' ) }
 				</h2>
+				{ /* Beta pill: subtle uppercase chip next to the
+				     title, intended to set merchant expectations
+				     during active admin use. Remove this entire <span>
+				     when the plugin reaches a stable 1.0 release —
+				     same removal moment as stripping "(Beta)" from
+				     the help menu's Version line and the lead
+				     paragraph in readme.txt's Description. */ }
+				<span
+					style={ {
+						...typography.eyebrowLabel,
+						background: colors.surfaceMuted,
+						color: colors.textSecondary,
+						padding: '2px 8px',
+						borderRadius: radii.sm,
+						lineHeight: 1.2,
+						letterSpacing: '0.06em',
+					} }
+				>
+					{ __( 'Beta', 'woocommerce-ai-storefront' ) }
+				</span>
 			</div>
 			<HelpMenu />
 		</div>

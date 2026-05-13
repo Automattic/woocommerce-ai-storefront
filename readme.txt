@@ -14,17 +14,19 @@ Make your WooCommerce catalog discoverable by AI assistants (ChatGPT, Gemini, Cl
 
 == Description ==
 
-**Your store, your checkout, your data — visible to every AI assistant.**
+**Status: Beta.** This plugin is in active development. Features and shape may change between releases. Production use is supported; your feedback shapes what ships in 1.0.
 
-AI assistants are becoming a primary product discovery channel. Shoppers ask ChatGPT, Gemini, Claude, Perplexity, and Copilot for recommendations — and the agents that return the best recommendations are the ones with machine-readable access to your catalog. This plugin gives you that access without giving up anything in return.
+**Your store, your checkout, your data, visible to every AI assistant.**
+
+AI assistants are becoming a primary product discovery channel. Shoppers ask ChatGPT, Gemini, Claude, Perplexity, and Copilot for recommendations. The agents that return the best recommendations are the ones with machine-readable access to your catalog. This plugin gives you that access without giving up anything in return.
 
 = What it does =
 
 Publishes three discovery surfaces that AI agents consume:
 
-* **llms.txt** — a Markdown store guide at `/llms.txt` with categories, featured products, and attribution instructions
-* **UCP manifest** — a JSON declaration at `/.well-known/ucp` describing capabilities, checkout policy, and purchase URL templates
-* **Enhanced JSON-LD** — augmented Schema.org Product markup on product pages with BuyAction, inventory levels, and attribute properties
+* **llms.txt**: a Markdown store guide at `/llms.txt` with categories, featured products, and attribution instructions
+* **UCP manifest**: a JSON declaration at `/.well-known/ucp` describing capabilities, checkout policy, and purchase URL templates
+* **Enhanced JSON-LD**: augmented Schema.org Product markup on product pages with BuyAction, inventory levels, and attribute properties
 
 Uses WordPress's `robots.txt` to declare which AI crawlers are allowed. Uses WooCommerce's built-in Store API rate limiter to control AI crawler traffic without affecting regular customers. Uses WooCommerce's standard Order Attribution to credit AI-referred sales back to the agent that sent them.
 
@@ -74,16 +76,16 @@ No. This plugin publishes discovery surfaces that AI crawlers fetch the same way
 
 = Will AI agents respect the allowlist? =
 
-Well-behaved AI crawlers respect `robots.txt` directives. Compliance is not universal — this is a cooperative protocol, not an enforcement mechanism. All 12 crawlers on the default allowlist are from organizations that have publicly committed to honoring robots.txt. Unchecking a crawler in the Discovery tab adds a `Disallow:` directive for that user agent; there's no stronger enforcement you can do at the WordPress layer.
+Well-behaved AI crawlers respect `robots.txt` directives. Compliance is not universal; this is a cooperative protocol, not an enforcement mechanism. All 12 crawlers on the default allowlist are from organizations that have publicly committed to honoring robots.txt. Unchecking a crawler in the Discovery tab adds a `Disallow:` directive for that user agent; there's no stronger enforcement you can do at the WordPress layer.
 
 = How does attribution work? =
 
-When an AI agent links to a product page, it appends `utm_source={agent_name}&utm_medium=ai_agent&ai_session_id={session_id}` query parameters. WooCommerce's Order Attribution system (included in WooCommerce core since 8.5) captures these values into order meta and displays them in the built-in "Origin" column on the orders list — no custom column needed. The plugin surfaces per-agent revenue totals in the settings overview.
+When an AI agent links to a product page, it appends `utm_source={agent_name}&utm_medium=ai_agent&ai_session_id={session_id}` query parameters. WooCommerce's Order Attribution system (included in WooCommerce core since 8.5) captures these values into order meta and displays them in the built-in "Origin" column on the orders list. No custom column needed. The plugin surfaces per-agent revenue totals in the settings overview.
 
 = What's the difference between llms.txt, robots.txt, and the UCP manifest? =
 
 * **robots.txt** tells crawlers what they're allowed to fetch. It's a permissions document.
-* **llms.txt** gives AI agents a machine-readable summary of the store — categories, featured products, API endpoints, attribution rules. It's a discovery document written in Markdown.
+* **llms.txt** gives AI agents a machine-readable summary of the store: categories, featured products, API endpoints, attribution rules. It's a discovery document written in Markdown.
 * **UCP manifest** is a JSON document declaring the store's commerce capabilities: checkout method (web-redirect only, never delegated), purchase URL templates, rate limits, attribution parameters. It's a protocol document for agent implementers.
 
 The three work together. Agents fetch `robots.txt` to learn they're allowed, fetch `llms.txt` to learn what's available, and fetch the UCP manifest to learn how to generate purchase links.
@@ -113,7 +115,7 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 
 = Does this support MCP (Model Context Protocol)? =
 
-Not currently. MCP's tool and resource exposure pattern requires running a server surface reachable by external, non-admin clients — something neither WordPress core nor WooCommerce scaffold today. There is no first-class MCP entry point for a plugin to hook into, and running one alongside the WP stack would require auth, transport, and capability-routing infrastructure outside this plugin's scope.
+Not currently. MCP's tool and resource exposure pattern requires running a server surface reachable by external, non-admin clients, which neither WordPress core nor WooCommerce scaffold today. There is no first-class MCP entry point for a plugin to hook into, and running one alongside the WP stack would require auth, transport, and capability-routing infrastructure outside this plugin's scope.
 
 AI Storefront targets the Universal Commerce Protocol (UCP) instead, which works with the HTTP/REST surfaces WordPress and WooCommerce already expose to public clients. UCP gives AI shopping agents a stable, spec-conforming way to discover and transact against your catalog. MCP support will be evaluated if and when WP/WC grow native MCP-server primitives.
 
@@ -129,21 +131,21 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 = 0.14.2 - 2026-05-11 =
 **Fixed**
-* Unpurchasable variations no longer leak to agents. A misconfigured variation (typically missing a price — `is_in_stock: true` but `is_purchasable: false` in WC) was being emitted with a usable-looking variant ID and a checkout URL that WC then refused at cart-add. Three coordinated guards: UCP `/catalog/{search,lookup}` filter the bad variations out before the product translator sees them; `/checkout-sessions` rejects a stale or guessed unpurchasable variant ID with a new `item_unpurchasable` error code (distinct from `out_of_stock` so agents can route remediation correctly); JSON-LD `hasVariant[]` and the parent-product BuyAction drop their checkout URLs while keeping descriptive fields so SEO crawlers don't get handed a URL WC would 4xx. (#373)
+* Unpurchasable variations no longer leak to agents. A misconfigured variation (typically missing a price, where `is_in_stock: true` but `is_purchasable: false` in WC) was being emitted with a usable-looking variant ID and a checkout URL that WC then refused at cart-add. Three coordinated guards: UCP `/catalog/{search,lookup}` filter the bad variations out before the product translator sees them; `/checkout-sessions` rejects a stale or guessed unpurchasable variant ID with a new `item_unpurchasable` error code (distinct from `out_of_stock` so agents can route remediation correctly); JSON-LD `hasVariant[]` and the parent-product BuyAction drop their checkout URLs while keeping descriptive fields so SEO crawlers don't get handed a URL WC would 4xx. (#373)
 * Synthesized variant entries now carry the parent's `short_description` instead of an empty string. For simple / bundle / grouped products (and the synthesize-default fallback for malformed-variable parents), agents that drill into a variant ID directly now see useful descriptive copy on the variant entity. (#375)
 
 **New**
-* UCP `product.{status, published_at, updated_at}` relocated under `metadata.lifecycle.status` and `metadata.timestamps.{published_at, updated_at}` to match the UCP spec's expected shape — these are business-defined extension fields, not first-class properties of `product.json`. Strict validators that tighten `additionalProperties` in a future spec revision now read our manifest cleanly. (#374)
+* UCP `product.{status, published_at, updated_at}` relocated under `metadata.lifecycle.status` and `metadata.timestamps.{published_at, updated_at}` to match the UCP spec's expected shape. These are business-defined extension fields, not first-class properties of `product.json`. Strict validators that tighten `additionalProperties` in a future spec revision now read our manifest cleanly. (#374)
 
 = 0.14.0 - 2026-05-11 =
 **New**
 * UCP: variable + variable-subscription products become first-class. Three fixes ride together: variant enumeration unlocked for `variable-subscription` (previously collapsed to a single placeholder), subscription line items accepted at `/checkout-sessions` (previously rejected with `product_type_unsupported`), and featured-variant precision driven by merchant `_default_attributes` with `variants[0]` reordering to match Schema.org's "first item is featured" convention.
-* UCP: parent-only variable + variable-subscription line items at `/checkout-sessions` now return a permalink fallback `continue_url` plus a `field_required` / `requires_buyer_input` message — same configurable pattern as bundle/grouped. Merchant `_default_attributes` pre-fills the PDP dropdown but the buyer retains the final choice (no server-side auto-resolution).
-* JSON-LD: WC Subscriptions products now emit Schema.org recurring-pricing signals on the Offer — `priceSpecification` with `UnitPriceSpecification.billingDuration` for recurring price, two-element array for trial-then-paid, inline `priceComponentType: ActivationFee` plus `Offer.addOn` for sign-up fees, and `Offer.eligibleDuration` for finite-length subscriptions. Variable-subscription parents emit per-variation `priceSpecification` blocks under `hasVariant[i].offers[0]` so each subscription term (monthly, yearly, etc.) carries its own metadata.
+* UCP: parent-only variable + variable-subscription line items at `/checkout-sessions` now return a permalink fallback `continue_url` plus a `field_required` / `requires_buyer_input` message, the same configurable pattern as bundle/grouped. Merchant `_default_attributes` pre-fills the PDP dropdown but the buyer retains the final choice (no server-side auto-resolution).
+* JSON-LD: WC Subscriptions products now emit Schema.org recurring-pricing signals on the Offer: `priceSpecification` with `UnitPriceSpecification.billingDuration` for recurring price, two-element array for trial-then-paid, inline `priceComponentType: ActivationFee` plus `Offer.addOn` for sign-up fees, and `Offer.eligibleDuration` for finite-length subscriptions. Variable-subscription parents emit per-variation `priceSpecification` blocks under `hasVariant[i].offers[0]` so each subscription term (monthly, yearly, etc.) carries its own metadata.
 
 = 0.13.2 - 2026-05-10 =
 **Fixed**
-* Fix bundle and grouped products surfacing broken AI-checkout links to crawlers and AI agents. The JSON-LD `BuyAction.target.urlTemplate` and `Offer.checkoutPageURLTemplate` were emitting `/checkout-link/?products=ID:1` for every product type — a shortcut bundle parents can't satisfy (no per-bundled-item config) and grouped parents have no SKU for (only their children do). Now branches on product type: bundle and grouped emit the product permalink with UTM placeholders; simple, variable, and per-variation entries keep the existing Shareable Checkout shape.
+* Fix bundle and grouped products surfacing broken AI-checkout links to crawlers and AI agents. The JSON-LD `BuyAction.target.urlTemplate` and `Offer.checkoutPageURLTemplate` were emitting `/checkout-link/?products=ID:1` for every product type: a shortcut bundle parents can't satisfy (no per-bundled-item config) and grouped parents have no SKU for (only their children do). Now branches on product type: bundle and grouped emit the product permalink with UTM placeholders; simple, variable, and per-variation entries keep the existing Shareable Checkout shape.
 
 = 0.13.1 - 2026-05-10 =
 **Fixed**
@@ -155,7 +157,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 * UCP: WooCommerce Grouped product support. Grouped parents emit `metadata.grouped.children[]`; deterministic grouped products (all-simple children) get `/checkout/?add-to-cart=PARENT&quantity[CHILD]=N` URLs, configurable grouped fall back to the PDP.
 
 **Fixed**
-* UCP: simple, bundle, and grouped products with Color/Size/Pattern/Material attributes now emit those attributes in `metadata.attributes` instead of `product.options[]` — fixes a bug where multi-value attributes were silently truncated to first-value-only when emitted as `options[]`.
+* UCP: simple, bundle, and grouped products with Color/Size/Pattern/Material attributes now emit those attributes in `metadata.attributes` instead of `product.options[]`. Fixes a bug where multi-value attributes were silently truncated to first-value-only when emitted as `options[]`.
 
 = 0.12.0 - 2026-05-08 =
 **New**
@@ -174,7 +176,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 = 0.11.0 - 2026-05-08 =
 **New**
 * JSON-LD: known attributes now emit as typed Schema.org `Product` properties (`color`/`size`/`material`/`pattern`).
-* JSON-LD: variable products now emit as Schema.org `ProductGroup` with per-variant `hasVariant` entries — including a postmeta-direct override path for misconfigured variations.
+* JSON-LD: variable products now emit as Schema.org `ProductGroup` with per-variant `hasVariant` entries, including a postmeta-direct override path for misconfigured variations.
 * JSON-LD: cross-sells and upsells now emit as `Product.isRelatedTo` and `Product.isSimilarTo`.
 * JSON-LD: `BuyAction.target.urlTemplate` now uses the WooCommerce Shareable Checkout URL format. `Offer.checkoutPageURLTemplate` emits alongside.
 * JSON-LD: homepage `@type` switched from `OnlineStore` to `OnlineBusiness`. Now also emits `knowsAbout` (top product categories) and `hasMerchantReturnPolicy` at Organization level.
@@ -189,7 +191,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 = 0.10.2 - 2026-05-06 =
 **Fixed**
 * Comma-separated multi-category searches (e.g. "Hoodies, Belts") now return results. Commas are now treated as multi-item connectors equivalent to "and", triggering an OR join when all terms resolve to taxonomy matches.
-* "Hat or Shoes"-style queries now always OR-join — "or" is an unambiguous choice and bypasses the taxonomy-match guard required for "and"/comma queries.
+* "Hat or Shoes"-style queries now always OR-join. "Or" is an unambiguous choice and bypasses the taxonomy-match guard required for "and"/comma queries.
 
 = 0.10.1 - 2026-05-06 =
 **Fixed**
@@ -208,11 +210,11 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 = 0.9.1 - 2026-05-04 =
 **Fixed**
-* UCP manifest hits now record correctly on CDN-fronted installs (Atomic/WordPress.com). The manifest was emitting `Cache-Control: public, max-age=3600`, causing CDN edges to serve it without reaching PHP — so the crawl logger never fired and the counter always showed zero. Switched to `Cache-Control: no-store`.
+* UCP manifest hits now record correctly on CDN-fronted installs (Atomic/WordPress.com). The manifest was emitting `Cache-Control: public, max-age=3600`, causing CDN edges to serve it without reaching PHP, so the crawl logger never fired and the counter always showed zero. Switched to `Cache-Control: no-store`.
 
 = 0.9.0 - 2026-05-04 =
 **New**
-* Policies tab — new Shipping card lets merchants set minimum and maximum order handling time (business days). Emits `handlingTime` in product JSON-LD so AI agents can surface shipping timelines.
+* Policies tab: new Shipping card lets merchants set minimum and maximum order handling time (business days). Emits `handlingTime` in product JSON-LD so AI agents can surface shipping timelines.
 * JSON-LD now emits `shippingRate: 0` when unconditional free shipping is available for the store's base country, allowing AI agents to read "free shipping" as a machine-readable fact.
 
 **Fixed**
@@ -220,7 +222,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 = 0.8.8 - 2026-05-03 =
 **New**
-* Discovery tab now adds helper text clarifying that the AI crawler allowlist controls AI-specific agents only — general-purpose search engines (Google, Bing, Yandex) are managed by WordPress and SEO plugins.
+* Discovery tab now adds helper text clarifying that the AI crawler allowlist controls AI-specific agents only. General-purpose search engines (Google, Bing, Yandex) are managed by WordPress and SEO plugins.
 * Expanded AI crawler allow-list with four additional agents: YouBot (You.com), Mistralai-User (Mistral), anthropic-ai (Anthropic's older crawler), and Diffbot.
 * robots.txt opt-in block now uses a single consolidated rule (RFC 9309 §2.2.1), reducing output from ~200 lines to ~30 lines on a typical install.
 
@@ -231,26 +233,26 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 = 0.8.7 - 2026-05-03 =
 **New**
-* Discovery stats: hourly rollup. Today's AI agent activity now appears in the Discovery tab within ~1 hour, instead of waiting for the next nightly rollup. Existing sites auto-migrate on upgrade — no manual steps. Developers can switch the cadence to `twicedaily` or `daily` via the new `wc_ai_storefront_rollup_interval` filter; slower cadences fall back to `hourly` to avoid silent data loss.
+* Discovery stats: hourly rollup. Today's AI agent activity now appears in the Discovery tab within ~1 hour, instead of waiting for the next nightly rollup. Existing sites auto-migrate on upgrade; no manual steps. Developers can switch the cadence to `twicedaily` or `daily` via the new `wc_ai_storefront_rollup_interval` filter; slower cadences fall back to `hourly` to avoid silent data loss.
 * Discovery tab: the "Top searches" subtitle now reflects the live cron cadence ("Updated hourly.", "Updated every 12 hours.", "Updated daily.") instead of a generic placeholder, so merchants know exactly how fresh the data is.
 
 **Fixed**
-* Discovery tab no longer shows "No AI agent activity recorded" when raw-log traffic exists but the first rollup hasn't run yet — a brand-new install with llms.txt or UCP hits will now correctly reflect that activity in the empty-state guard.
+* Discovery tab no longer shows "No AI agent activity recorded" when raw-log traffic exists but the first rollup hasn't run yet. A brand-new install with llms.txt or UCP hits will now correctly reflect that activity in the empty-state guard.
 * Cron filter changes (`wc_ai_storefront_rollup_interval`) now take effect on the very next request without waiting for the 5-minute stats cache to expire.
-* Top searches list no longer drops today's queries — the SQL window is now lower-bound only, and the lookback for `period=quarter` (90d) is correctly clamped to the raw log's 30-day retention so the search list and the rest of the card stay internally consistent.
+* Top searches list no longer drops today's queries. The SQL window is now lower-bound only, and the lookback for `period=quarter` (90d) is correctly clamped to the raw log's 30-day retention so the search list and the rest of the card stay internally consistent.
 * Period filters now span the exact selected window (off-by-one fix): "Last 7 days" returns 7 calendar dates including today, not 8.
 
 = 0.8.6 - 2026-05-03 =
 **New**
 * Discovery tab: crawler-side visibility stats. The plugin now records every identified AI-agent request (llms.txt, UCP manifest, UCP REST, robots.txt, Store API rate limiter) into a write-buffered log and rolls it up daily. The Discovery tab surfaces total requests, unique products seen, top searches with the agents that issued them, throttle rate, and per-agent breakdowns. Raw events kept 30 days; daily aggregates kept 90 days. Tables removed on uninstall.
-* UCP product search: AI-agent natural-language queries now match across the store's own categories, tags, brands, and attributes — not just the product title. "Hoodie with logo", "Running shoes for men", and "watches" each resolve to relevant products even when the exact phrase isn't in any product title. Plural/singular morphology is handled automatically (hoodies/hoodie, watches/watch, accessories/accessory). Storefront, Cart, and Checkout product searches are unaffected.
+* UCP product search: AI-agent natural-language queries now match across the store's own categories, tags, brands, and attributes, not just the product title. "Hoodie with logo", "Running shoes for men", and "watches" each resolve to relevant products even when the exact phrase isn't in any product title. Plural/singular morphology is handled automatically (hoodies/hoodie, watches/watch, accessories/accessory). Storefront, Cart, and Checkout product searches are unaffected.
 
 **Fixed**
 * Updater: now reads `WC_AI_STOREFRONT_GITHUB_TOKEN` as a PHP constant fallback so local-development update checks against the internal GitHub repo authenticate without requiring a manual filter. Production sites using the existing `wc_ai_storefront_github_token` filter are unchanged.
 
 = 0.8.5 - 2026-05-02 =
 **New**
-* Overview tab: new AI Revenue % stat card shows AI-attributed revenue as a share of total store revenue for the selected period. Shows "—" when no store revenue exists.
+* Overview tab: new AI Revenue % stat card shows AI-attributed revenue as a share of total store revenue for the selected period. Shows an em-dash placeholder when no store revenue exists.
 
 **Fixed**
 * Recent AI Orders table: Customer column now links to the WooCommerce orders list filtered by that customer. Guest orders show the name only.
@@ -259,16 +261,16 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 = 0.8.4 - 2026-05-01 =
 **Improved**
-* Admin hero on the disabled state redesigned: rhetorical tagline is now the 28px headline ("List once. Sell everywhere AI shops."), subcopy is "Checkout stays on your store. One click.", reassurance line trimmed to "Read-only · Reversible anytime". Chip strip now in main column flow, 4 chips (ChatGPT, Gemini, Perplexity, Copilot — Claude removed from chip strip; remains in value-prop card body text). Single-column hero with a deterministic responsive chip grid (no more 4+1 orphan at narrow widths). No merchant behavior change — UI refactor.
-* Pre-commit Git hook auto-regenerates `languages/woocommerce-ai-storefront.pot` on commits that touch translatable PHP or JS source — eliminating "fix(ci): refresh .pot for line drift" filler commits. Activated automatically on `npm install` / `composer install`; bypass per-commit with `git commit --no-verify`.
+* Admin hero on the disabled state redesigned: rhetorical tagline is now the 28px headline ("List once. Sell everywhere AI shops."), subcopy is "Checkout stays on your store. One click.", reassurance line trimmed to "Read-only · Reversible anytime". Chip strip now in main column flow, 4 chips (ChatGPT, Gemini, Perplexity, Copilot; Claude removed from chip strip but remains in value-prop card body text). Single-column hero with a deterministic responsive chip grid (no more 4+1 orphan at narrow widths). No merchant behavior change; UI refactor.
+* Pre-commit Git hook auto-regenerates `languages/woocommerce-ai-storefront.pot` on commits that touch translatable PHP or JS source, eliminating "fix(ci): refresh .pot for line drift" filler commits. Activated automatically on `npm install` / `composer install`; bypass per-commit with `git commit --no-verify`.
 
 = 0.8.3 - 2026-05-01 =
 **Fixed**
-* Restored the bundled `PucReadmeParser` (and Parsedown) to the release zip. The release workflow's overly-broad `vendor/` rsync exclude was stripping `includes/lib/plugin-update-checker/vendor/` along with the project-root Composer vendor dir, fataling at `wp-admin/plugins.php` / `update-core.php` once a newer release was available. Sites on v0.8.0–v0.8.2 should upgrade to clear the fatal. No source code change.
+* Restored the bundled `PucReadmeParser` (and Parsedown) to the release zip. The release workflow's overly-broad `vendor/` rsync exclude was stripping `includes/lib/plugin-update-checker/vendor/` along with the project-root Composer vendor dir, fataling at `wp-admin/plugins.php` / `update-core.php` once a newer release was available. Sites on v0.8.0 to v0.8.2 should upgrade to clear the fatal. No source code change.
 
 = 0.8.2 - 2026-05-01 =
 **Improved**
-* Unified admin page header with inline section nav (logo + title row, tabs row, shared bottom border). Tagline shown only on the disabled state. Tab label "Product visibility" renamed to "Visibility". Two new typography tokens (`brandHeading`, `brandTagline`). No merchant behavior change — UI refactor.
+* Unified admin page header with inline section nav (logo + title row, tabs row, shared bottom border). Tagline shown only on the disabled state. Tab label "Product visibility" renamed to "Visibility". Two new typography tokens (`brandHeading`, `brandTagline`). No merchant behavior change; UI refactor.
 * Mobile fixes on the disabled-state value-prop cards (explicit 24px gap, single-column hero) and body horizontal padding for inset against the content area.
 * Updated USER-GUIDE.md (header description + tab rename) and UI-CONVENTIONS.md (new typography tokens). Nine screenshots flagged for human recapture.
 
