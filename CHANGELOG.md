@@ -16,10 +16,25 @@
   - Built on `@wordpress/components` `<DropdownMenu>` for keyboard accessibility, focus management, ARIA roles, and Esc / outside-click dismissal out of the box. Anchor semantics use real `<a href target="_blank">` so right-click "Open in new tab" works.
   - PageHeader's `aria-hidden` scope tightened: previously the entire header was hidden from screen readers (to avoid duplicate page-name announcement with the server-rendered `<h1>`); now only the brand-chrome wrapper is hidden, leaving the help button reachable. ARIA spec doesn't allow "unhiding" descendants of an aria-hidden ancestor, so the scope reduction was required for the help button to be accessible.
 
+- **Admin: Beta status markers across three surfaces.** Lightweight indicators that signal the plugin's pre-1.0 lifecycle to merchants without disruptive renames:
+  - PageHeader: subtle uppercase "BETA" pill next to the "AI Storefront" title. Eyebrow-label typography with a neutral gray background that doesn't compete with the brand chrome.
+  - HelpMenu Version line: "Version X.Y.Z" becomes "Version X.Y.Z (Beta)". Free signal when merchants are already looking up the version (usually meaning "I have a question").
+  - readme.txt Description: lead paragraph stating "Status: Beta" and framing the production-supported / feedback-shapes-1.0 expectation. Visible on wp.org plugin pages and the WP admin "View details" modal.
+  - USER-GUIDE.md intro: matching blockquote near the top.
+  - All four markers removable as a single grep+delete pass when the plugin reaches stable 1.0. No name changes, no version-tag complications, no migration.
+
 ### Fixes
+
+- **HelpMenu tooltip position.** The hover tooltip on the help icon was rendering with the default centered-below position. On a top-right-anchored button this clipped against the WP admin chrome edge. Switched to `tooltipPosition: 'middle left'` via `<DropdownMenu>`'s `toggleProps` so the tooltip extends leftward and stays inside the viewport.
+
 ### Refactors
+
+- **User-guide footer self-updates via build-time version injection.** `bin/build-user-guide.mjs` now reads `package.json`'s version and substitutes a `{{VERSION}}` placeholder in the markdown before rendering. The previous hand-edited literal ("Covers AI Storefront 0.10.1") was four releases stale. Structural fix prevents this drift category entirely going forward; also softened the WP/WC version baseline claim that came with it.
+
 ### Tests
 ### Docs
+
+- **Em-dash cleanup across merchant-facing copy.** AGENTS.md forbids em-dashes in user-facing copy (rendering edge cases in CSV-split tools and ASCII renderers — the convention originates from a plugin Description: header rendering issue, and extends to readme.txt + all merchant-facing UI strings). Cleaned 5 in `docs/user-guide/USER-GUIDE.md` and 28 in `readme.txt`. Each replacement context-appropriate: colons for label-style flow, periods for sentence joins, parens for parentheticals.
 
 ---
 
