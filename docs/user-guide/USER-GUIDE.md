@@ -136,7 +136,7 @@ Before configuring anything else, take 30 seconds to confirm the endpoints are l
 | `https://your-store.com/llms.txt` | A plain-text Markdown document starting with `# Your Store Name`, with a category list and "How AI agents should link to products" section. |
 | `https://your-store.com/.well-known/ucp` | A pretty-printed JSON document in monospace. Top-level keys: `name`, `version`, `capabilities`, `payment_handlers`, `services`. |
 | `https://your-store.com/robots.txt` | The standard WordPress `robots.txt` plus a block of `User-agent: GPTBot` / `User-agent: ChatGPT-User` / etc. each with `Allow:` lines. |
-| Homepage → "View page source" | Search for `"@type":"OnlineStore"`. This is your store's brand info available to AI shopping agents. See [section 4a](#4a-what-the-homepage-publishes-to-ai-agents). |
+| Homepage → "View page source" | Search for `"@type":"OnlineStore"`. This is your store's brand info available to AI shopping agents. See [section 4b](#4b-what-the-homepage-publishes-to-ai-agents). |
 | Any product page → "View page source" | Search for `"@type":"Product"`. You should see product details like prices and (once you set one in [section 7](#7-set-your-store-policies)) return policy information. |
 
 The Discovery tab shows the same URLs as clickable links with reachability dots. URLs render in monospace font:
@@ -153,7 +153,19 @@ A working setup returns real product names with prices and links to your store w
 
 Natural-language search queries match against your product categories, tags, brands, and attributes, not just product titles. So an agent asking for "hoodies" will find products in your "Hoodies" category even if the individual product titles use a different word, and "watches" will find products in a "Watch" category. Plural and singular forms are handled automatically.
 
-### 4a. What the homepage publishes to AI agents
+### 4a. Independent validation tools
+
+The plugin's UI shows you what the plugin THINKS it's publishing. For an independent view of what an AI agent or the UCP protocol layer actually sees, three widely-used community tools can help. They're independent of Automattic and this plugin, but maintained by people active in the UCP ecosystem (UCPPlayground's creator sits on the UCP.DEV technical council).
+
+| Tool | What it answers | When to use |
+|---|---|---|
+| **[UCPPlayground.com](https://ucpplayground.com/)** (Agent + Playground modes) | What does an AI shopping agent see when it walks your catalog and checkout? | End-to-end testing. Catches product-data issues (missing prices, unpurchasable variants, broken images) before real agents do. |
+| **[UCPChecker](https://ucpchecker.com/)** | Is your UCP manifest and catalog spec-conformant? | Protocol validation. Catches shape drift after a plugin upgrade or after touching extension filters. |
+| **[UCP Registry](https://ucpregistry.com/submit)** (optional) | A directory of UCP-enabled stores. How widely AI agents query it varies. | Submission costs nothing. Treat as opt-in rather than required. |
+
+These tools are not officially affiliated with Automattic. URLs and capabilities may change over time. If any link is dead, the UCP spec page at https://ucp.dev/ will usually point at the current validator or playground.
+
+### 4b. What the homepage publishes to AI agents
 
 Your homepage now publishes your store's brand details (name, logo, address, contact) in a format that AI agents understand. AI shopping assistants use this info to confirm they're recommending the right store.
 

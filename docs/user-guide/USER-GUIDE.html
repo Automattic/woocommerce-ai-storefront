@@ -181,7 +181,7 @@
 </tr>
 <tr>
 <td>Homepage → &quot;View page source&quot;</td>
-<td>Search for <code>&quot;@type&quot;:&quot;OnlineStore&quot;</code>. This is your store&#39;s brand info available to AI shopping agents. See <a href="#4a-what-the-homepage-publishes-to-ai-agents">section 4a</a>.</td>
+<td>Search for <code>&quot;@type&quot;:&quot;OnlineStore&quot;</code>. This is your store&#39;s brand info available to AI shopping agents. See <a href="#4b-what-the-homepage-publishes-to-ai-agents">section 4b</a>.</td>
 </tr>
 <tr>
 <td>Any product page → &quot;View page source&quot;</td>
@@ -197,7 +197,34 @@
 </blockquote>
 <p>A working setup returns real product names with prices and links to your store within 3–10 seconds. If the agent says it can&#39;t find anything, wait a few hours (most agents cache crawl results) and retry.</p>
 <p>Natural-language search queries match against your product categories, tags, brands, and attributes, not just product titles. So an agent asking for &quot;hoodies&quot; will find products in your &quot;Hoodies&quot; category even if the individual product titles use a different word, and &quot;watches&quot; will find products in a &quot;Watch&quot; category. Plural and singular forms are handled automatically.</p>
-<h3>4a. What the homepage publishes to AI agents</h3>
+<h3>4a. Independent validation tools</h3>
+<p>The plugin&#39;s UI shows you what the plugin THINKS it&#39;s publishing. For an independent view of what an AI agent or the UCP protocol layer actually sees, three widely-used community tools can help. They&#39;re independent of Automattic and this plugin, but maintained by people active in the UCP ecosystem (UCPPlayground&#39;s creator sits on the UCP.DEV technical council).</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it answers</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong><a href="https://ucpplayground.com/">UCPPlayground.com</a></strong> (Agent + Playground modes)</td>
+<td>What does an AI shopping agent see when it walks your catalog and checkout?</td>
+<td>End-to-end testing. Catches product-data issues (missing prices, unpurchasable variants, broken images) before real agents do.</td>
+</tr>
+<tr>
+<td><strong><a href="https://ucpchecker.com/">UCPChecker</a></strong></td>
+<td>Is your UCP manifest and catalog spec-conformant?</td>
+<td>Protocol validation. Catches shape drift after a plugin upgrade or after touching extension filters.</td>
+</tr>
+<tr>
+<td><strong><a href="https://ucpregistry.com/submit">UCP Registry</a></strong> (optional)</td>
+<td>A directory of UCP-enabled stores. How widely AI agents query it varies.</td>
+<td>Submission costs nothing. Treat as opt-in rather than required.</td>
+</tr>
+</tbody></table>
+<p>These tools are not officially affiliated with Automattic. URLs and capabilities may change over time. If any link is dead, the UCP spec page at <a href="https://ucp.dev/">https://ucp.dev/</a> will usually point at the current validator or playground.</p>
+<h3>4b. What the homepage publishes to AI agents</h3>
 <p>Your homepage now publishes your store&#39;s brand details (name, logo, address, contact) in a format that AI agents understand. AI shopping assistants use this info to confirm they&#39;re recommending the right store.</p>
 <table>
 <thead>
