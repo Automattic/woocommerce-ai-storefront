@@ -11,7 +11,8 @@
 	},
 	"scripts": {
 		"prepare": "node bin/install-hooks.js",
-		"build": "wp-scripts build",
+		"build": "wp-scripts build && npm run build:user-guide",
+		"build:user-guide": "node bin/build-user-guide.mjs",
 		"start": "wp-scripts start",
 		"lint:js": "wp-scripts lint-js client/",
 		"lint:js-fix": "wp-scripts lint-js --fix client/",
@@ -30,7 +31,8 @@
 		"@wordpress/env": "^11.5.0",
 		"@wordpress/scripts": "^32.1.0",
 		"copy-webpack-plugin": "^10.2.4",
-		"cross-env": "^7.0.3"
+		"cross-env": "^7.0.3",
+		"marked": "^18.0.3"
 	},
 	"dependencies": {
 		"@wordpress/api-fetch": "^7.0.0",

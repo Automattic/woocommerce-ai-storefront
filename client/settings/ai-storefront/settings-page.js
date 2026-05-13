@@ -242,21 +242,16 @@ const AISyndicationSettings = () => {
 // Shared components
 // ---------------------------------------------------------------------------
 
-// External destinations for the help menu. Hard-coded constants
-// because:
-//   - The targets are public, brand-independent URLs (the plugin's
-//     own GitHub repo); they don't drift per-install the way an
-//     option-stored setting would.
-//   - Keeping them as top-level consts lets a future filter/refactor
-//     surface them without spelunking into the JSX.
+// External destination for the help menu's Support item. Top-level
+// const so a future contact-routing change (e.g., a different support
+// portal URL or a deep-link with prefilled fields) can be swapped here
+// without touching the JSX.
 //
-// Docs link points at the repo-hosted USER-GUIDE.md as a v1 target.
-// When a hosted documentation site exists, swap the URL here without
-// touching the component.
-const HELP_DOCS_URL =
-	'https://github.com/Automattic/woocommerce-ai-storefront/blob/main/docs/user-guide/USER-GUIDE.md';
-const HELP_SUPPORT_URL =
-	'https://github.com/Automattic/woocommerce-ai-storefront/issues/new';
+// Points at woocommerce.com's authenticated support contact form,
+// which is the canonical support channel for WooCommerce-published
+// plugins. Merchants reach a human; the queue is routed by their
+// woocommerce.com account context.
+const HELP_SUPPORT_URL = 'https://woocommerce.com/my-account/contact-support/';
 
 // HelpMenu: top-right help affordance on the PageHeader.
 //
@@ -266,19 +261,29 @@ const HELP_SUPPORT_URL =
 // management, and ARIA roles out of the box.
 //
 // Three menu items:
-//   - Documentation → opens the repo-hosted USER-GUIDE.md in a new tab.
-//   - Support → opens the repo's new-issue page in a new tab.
+//   - Documentation → opens the in-product user guide (a static HTML
+//     file built from docs/user-guide/USER-GUIDE.md at npm run build
+//     time, served from the merchant's own plugin folder so the
+//     screenshots resolve via relative paths from their own host).
+//     URL comes from the server-localized `wcAiSyndicationParams.helpUrl`
+//     so the path stays canonical regardless of WP's `plugins_url()`
+//     configuration (subdirectory installs, multisite, etc.).
+//   - Support → opens the woocommerce.com support contact form.
 //   - Version → static text from `wcAiSyndicationParams.version`. The
 //     `disabled` prop on the MenuItem renders it as a non-interactive
 //     row so right-click + keyboard navigation skip it appropriately.
 //
-// Anchor semantics for the two external links use real <a href> via
-// MenuItem's `href` prop so right-click "Open in new tab" works.
-// onClick={ onClose } closes the menu after click.
-//
-// Versioned with the `version` global on `wcAiSyndicationParams`, set
-// from `WC_AI_STOREFRONT_VERSION` server-side. No new REST round-trip.
+// Anchor semantics use real <a href target="_blank"> via MenuItem's
+// `href` prop so right-click "Open in new tab" works and so the
+// merchant's admin session isn't replaced — Documentation and Support
+// both open in new tabs. `onClick={ onClose }` closes the menu
+// after click.
 const HelpMenu = () => {
+	const helpUrl =
+		typeof wcAiSyndicationParams !== 'undefined' &&
+		wcAiSyndicationParams.helpUrl
+			? wcAiSyndicationParams.helpUrl
+			: '';
 	const version =
 		typeof wcAiSyndicationParams !== 'undefined' &&
 		wcAiSyndicationParams.version
@@ -292,15 +297,20 @@ const HelpMenu = () => {
 		>
 			{ ( { onClose } ) => (
 				<>
-					<MenuItem
-						href={ HELP_DOCS_URL }
-						target="_blank"
-						rel="noopener noreferrer"
-						icon={ external }
-						onClick={ onClose }
-					>
-						{ __( 'Documentation', 'woocommerce-ai-storefront' ) }
-					</MenuItem>
+					{ helpUrl && (
+						<MenuItem
+							href={ helpUrl }
+							target="_blank"
+							rel="noopener noreferrer"
+							icon={ external }
+							onClick={ onClose }
+						>
+							{ __(
+								'Documentation',
+								'woocommerce-ai-storefront'
+							) }
+						</MenuItem>
+					) }
 					<MenuItem
 						href={ HELP_SUPPORT_URL }
 						target="_blank"

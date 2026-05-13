@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WooCommerce AI Storefront User Guide</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+    line-height: 1.6;
+    color: #1d2327;
+    max-width: 760px;
+    margin: 2rem auto;
+    padding: 0 1.5rem;
+  }
+  h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin-top: 1.5em; }
+  h1 { font-size: 1.875rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em; }
+  h2 { font-size: 1.5rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.2em; }
+  h3 { font-size: 1.25rem; }
+  h4 { font-size: 1.1rem; }
+  a { color: #2271b1; }
+  a:hover { color: #0a4b78; }
+  code {
+    background: #f6f7f7;
+    padding: 0.1em 0.4em;
+    border-radius: 3px;
+    font-family: SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
+  pre {
+    background: #f6f7f7;
+    padding: 1em;
+    border-radius: 4px;
+    overflow-x: auto;
+  }
+  pre code { background: transparent; padding: 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+  }
+  th, td { border: 1px solid #ddd; padding: 0.5em 0.75em; text-align: left; }
+  th { background: #f6f7f7; }
+  blockquote {
+    border-left: 4px solid #ddd;
+    margin: 1em 0;
+    padding: 0.1em 1em;
+    color: #50575e;
+  }
+  img { max-width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 4px; }
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 2em 0; }
+</style>
+</head>
+<body>
+<h1>WooCommerce AI Storefront: Merchant User Guide</h1>
+<p>A step-by-step guide for store owners. Make your catalog discoverable to AI shopping assistants and AI search engines (ChatGPT, Gemini, Claude, Perplexity, Copilot, Google AI Overviews) without giving up checkout, customer data, or your payment processor.</p>
+<blockquote>
+<p>Reading time: about 10 minutes. Following along: about 10 minutes plus optional verification.</p>
+</blockquote>
+<h2>What this plugin does</h2>
+<p>AI tools are changing how shoppers find products. Some assistants browse and buy on a shopper&#39;s behalf. Some AI search engines (Google AI Overviews, Perplexity, ChatGPT search) answer product questions by citing real stores. Some chat tools just need a quick orientation to talk about your business accurately. To be visible to all of these, your store needs to publish information in the formats AI tools read.</p>
+<p>This plugin makes your store speak three of those formats at the same time, all automatic once you turn it on:</p>
+<ol>
+<li><p><strong>A structured product feed and checkout handoff for AI shopping assistants.</strong> AI agents (the ones that act on a shopper&#39;s behalf) can browse your catalog, check inventory and prices, and send a buyer straight to your checkout with the right items in cart. The agent handles the shopping conversation; your WooCommerce store handles the transaction. This piece uses a protocol called UCP (Universal Commerce Protocol).</p>
+</li>
+<li><p><strong>Enhanced structured data on every product page for AI search engines.</strong> Search engines and AI answer engines look for machine-readable details on product pages: price, availability, shipping windows, return policy. The plugin adds these in the modern JSON-LD format (the same standard Google uses for rich snippets, extended for AI). This is the heart of &quot;GEO&quot; (Generative Engine Optimization): showing up accurately when an AI engine answers a shopper&#39;s question about products like yours.</p>
+</li>
+<li><p><strong>A plain-language store summary at <code>/llms.txt</code>.</strong> Any AI tool that wants quick context on your business can read this short text guide. It describes what you sell, your categories, and how to link to products. Think of it as a <code>robots.txt</code> for the AI era.</p>
+</li>
+</ol>
+<p>You can think of these as three doors into the same store: agents that close the sale walk through door 1, search engines that cite you walk through door 2, conversational tools that talk about you walk through door 3. You don&#39;t need to choose; the plugin opens all three.</p>
+<p>You do not need an AI account, an API key, or a developer.</p>
+<h2>Contents</h2>
+<ol>
+<li><a href="#1-before-you-start">Before you start</a></li>
+<li><a href="#2-install-and-activate">Install and activate</a></li>
+<li><a href="#3-enable-ai-storefront">Enable AI Storefront</a></li>
+<li><a href="#4-verify-your-discovery-endpoints">Verify your discovery endpoints</a></li>
+<li><a href="#5-choose-which-products-to-expose">Choose which products to expose</a></li>
+<li><a href="#6-configure-crawlers-and-rate-limits">Configure crawlers and rate limits</a></li>
+<li><a href="#7-set-your-store-policies">Set your store policies</a></li>
+<li><a href="#8-read-attribution-stats">Read attribution stats</a></li>
+<li><a href="#9-maintenance-and-monitoring">Maintenance and monitoring</a></li>
+<li><a href="#10-troubleshooting">Troubleshooting</a></li>
+<li><a href="#11-where-to-get-help">Where to get help</a></li>
+</ol>
+<hr>
+<h2>1. Before you start</h2>
+<p>You&#39;ll need:</p>
+<ul>
+<li>WordPress 6.7+, WooCommerce 9.9+, PHP 8.1+ (your host controls PHP; most modern hosts already meet this).</li>
+<li>An admin or Shop Manager account (anything with <code>manage_woocommerce</code>).</li>
+<li>A site reachable on the public internet. AI agents won&#39;t see a store behind a staging password or &quot;coming soon&quot; plugin.</li>
+</ul>
+<p>You <strong>don&#39;t</strong> need an AI account, an API key, or a developer.</p>
+<hr>
+<h2>2. Install and activate</h2>
+<ol>
+<li><strong>Plugins → Add New → Upload Plugin</strong>.</li>
+<li>Select <code>woocommerce-ai-storefront.zip</code> and click <strong>Install Now</strong>.</li>
+<li>Click <strong>Activate</strong>.</li>
+</ol>
+<p><img src="screenshots/01-plugins-screen.png" alt="Plugins screen with WooCommerce AI Storefront activated"></p>
+<p>A new menu item appears under <strong>WooCommerce → AI Storefront</strong> in the sidebar.</p>
+<hr>
+<h2>3. Enable AI Storefront</h2>
+<p>The plugin installs in <strong>paused</strong> mode. Nothing publishes until you turn it on.</p>
+<p>Go to <strong>WooCommerce → AI Storefront</strong>. The page opens with a hero screen showing the headline &quot;List once. Sell everywhere AI shops.&quot;, four AI agent chips (ChatGPT, Gemini, Perplexity, Copilot), and the <strong>Enable AI Storefront</strong> button.</p>
+<p><img src="screenshots/02-disabled-state.png" alt="AI Storefront disabled state — hero screen with enable button"></p>
+<p>Click <strong>Enable AI Storefront</strong>. The hero is replaced by the section nav (Overview, Visibility, Policies, Discovery) and the plugin goes live.</p>
+<p><img src="screenshots/02-enable-toggle.png" alt="Overview tab after enabling"></p>
+<p>Enabling does five things:</p>
+<ul>
+<li>Tells AI crawlers where they&#39;re allowed to look on your store.</li>
+<li>Publishes a text guide of your store at <code>/llms.txt</code> (visible to AI agents).</li>
+<li>Publishes your store&#39;s business details at <code>/.well-known/ucp</code> (visible to AI agents).</li>
+<li>Adds product details (prices, return policies, etc.) in a format AI agents understand.</li>
+<li>Starts tracking which orders came from AI shopping assistants so you can see the results.</li>
+</ul>
+<p>To pause, click <strong>Disable AI Storefront</strong> at the bottom of the page. AI agents will no longer be able to see your catalog endpoints, but existing order tracking remains in place.</p>
+<p>The Overview tab populates with stat cards once data flows in:</p>
+<ul>
+<li><strong>Products exposed</strong>: products AI agents can currently see (matches your visibility settings). Shown on a tinted background to distinguish a configuration value from the performance stats below.</li>
+<li><strong>Products seen</strong>: how many of those exposed products an AI agent has actually requested in the period, shown as <code>N / M</code> where M is the total products exposed.</li>
+<li><strong>Products seen %</strong>: what fraction of your exposed catalog AI agents have touched. Tells you reachability at a glance.</li>
+<li><strong>AI orders</strong>: AI-attributed orders in the period, shown as <code>N / M</code> where M is your total store orders for context.</li>
+<li><strong>AI order rate</strong>: percentage of all store orders that came from AI in the period.</li>
+<li><strong>AI revenue</strong>: revenue from AI-referred orders, shown as <code>$X / $Y</code> where Y is total store revenue in the period.</li>
+<li><strong>AI revenue %</strong>: AI revenue as a percentage of total store revenue.</li>
+<li><strong>AI AOV</strong>: average order value across AI-referred orders. Tells you whether AI traffic shops big or small.</li>
+<li><strong>Top agent</strong>: which AI agent drove the most orders (ChatGPT, Gemini, Perplexity, etc.).</li>
+<li><strong>Top agent share</strong>: what fraction of your AI orders the top agent represents.</li>
+<li><strong>Agent / Referral</strong>: how your AI orders split between two channels. <strong>Agent</strong> is shoppers an AI assistant walked through to checkout (a live shopping session). <strong>Referral</strong> is shoppers who clicked through after an AI search result, AI Overview, or chatbot citation mentioned your product. Shown as <code>X% / Y%</code> where X is Agent and Y is Referral. The split tells you whether AI is <strong>selling</strong> for you (Agent dominant) or <strong>referring</strong> for you (Referral dominant), which usually points to different growth investments.</li>
+</ul>
+<p><img src="screenshots/03-overview-cards.png" alt="Overview tab stat cards"></p>
+<p>A date-range strip above the stat cards lets you pick the window: <strong>Today</strong>, <strong>Last 7 days</strong>, <strong>Last 30 days</strong>, <strong>Last 90 days</strong>, <strong>Last 12 months</strong>. Each is a trailing window from the moment you click; the labels match the underlying behavior (a &quot;Last 12 months&quot; click means the last 365 days, not the previous calendar year).</p>
+<blockquote>
+<p>Stats are blank on day one. First AI traffic typically lands within a few days; meaningful aggregate volume takes weeks.</p>
+</blockquote>
+<hr>
+<h2>4. Verify your discovery endpoints</h2>
+<p>Before configuring anything else, take 30 seconds to confirm the endpoints are live.</p>
+<table>
+<thead>
+<tr>
+<th>URL</th>
+<th>What you should see</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>https://your-store.com/llms.txt</code></td>
+<td>A plain-text Markdown document starting with <code># Your Store Name</code>, with a category list and &quot;How AI agents should link to products&quot; section.</td>
+</tr>
+<tr>
+<td><code>https://your-store.com/.well-known/ucp</code></td>
+<td>A pretty-printed JSON document in monospace. Top-level keys: <code>name</code>, <code>version</code>, <code>capabilities</code>, <code>payment_handlers</code>, <code>services</code>.</td>
+</tr>
+<tr>
+<td><code>https://your-store.com/robots.txt</code></td>
+<td>The standard WordPress <code>robots.txt</code> plus a block of <code>User-agent: GPTBot</code> / <code>User-agent: ChatGPT-User</code> / etc. each with <code>Allow:</code> lines.</td>
+</tr>
+<tr>
+<td>Homepage → &quot;View page source&quot;</td>
+<td>Search for <code>&quot;@type&quot;:&quot;OnlineStore&quot;</code>. This is your store&#39;s brand info available to AI shopping agents. See <a href="#4a-what-the-homepage-publishes-to-ai-agents">section 4a</a>.</td>
+</tr>
+<tr>
+<td>Any product page → &quot;View page source&quot;</td>
+<td>Search for <code>&quot;@type&quot;:&quot;Product&quot;</code>. You should see product details like prices and (once you set one in <a href="#7-set-your-store-policies">section 7</a>) return policy information.</td>
+</tr>
+</tbody></table>
+<p>The Discovery tab shows the same URLs as clickable links with reachability dots. URLs render in monospace font:</p>
+<p><img src="screenshots/09-endpoints-info.png" alt="Discovery tab Discovery Endpoints card"></p>
+<p>If something returns 404 or shows your homepage, jump to <a href="#10-troubleshooting">Troubleshooting</a>.</p>
+<p><strong>Smoke test with an AI assistant.</strong> Once endpoints check out, ask one of the major assistants with live web browsing:</p>
+<blockquote>
+<p><em>&quot;Find products at [your-store.com] that match [some attribute, e.g. &#39;red running shoes under $100&#39;].&quot;</em></p>
+</blockquote>
+<p>A working setup returns real product names with prices and links to your store within 3–10 seconds. If the agent says it can&#39;t find anything, wait a few hours (most agents cache crawl results) and retry.</p>
+<p>Natural-language search queries match against your product categories, tags, brands, and attributes, not just product titles. So an agent asking for &quot;hoodies&quot; will find products in your &quot;Hoodies&quot; category even if the individual product titles use a different word, and &quot;watches&quot; will find products in a &quot;Watch&quot; category. Plural and singular forms are handled automatically.</p>
+<h3>4a. What the homepage publishes to AI agents</h3>
+<p>Your homepage now publishes your store&#39;s brand details (name, logo, address, contact) in a format that AI agents understand. AI shopping assistants use this info to confirm they&#39;re recommending the right store.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Store name, description, URL</td>
+<td>WordPress Site Settings</td>
+<td>Edit at <strong>Settings → General</strong>.</td>
+</tr>
+<tr>
+<td>Currency</td>
+<td>WooCommerce setting</td>
+<td>Edit at <strong>WooCommerce → Settings → General</strong>.</td>
+</tr>
+<tr>
+<td>Logo</td>
+<td>Site logo or icon</td>
+<td>Edit at <strong>Appearance → Customize → Site Identity</strong>. Used if set.</td>
+</tr>
+<tr>
+<td>Address</td>
+<td>Store location</td>
+<td>Edit at <strong>WooCommerce → Settings → General</strong>. Shows city, state, zip, country only.</td>
+</tr>
+<tr>
+<td>Email</td>
+<td>Your WooCommerce email</td>
+<td>See <strong>Customer service email</strong> below.</td>
+</tr>
+<tr>
+<td>Search</td>
+<td>Auto-generated</td>
+<td>Lets AI agents search your store.</td>
+</tr>
+<tr>
+<td>Categories</td>
+<td>Auto-generated</td>
+<td>A summary of your main product types.</td>
+</tr>
+<tr>
+<td>Return policy</td>
+<td>Your plugin settings</td>
+<td>Edit at <strong>WooCommerce → Settings → AI Storefront → Policies</strong>. See <a href="#7-set-your-store-policies">section 7</a>. Published only when you&#39;ve set a policy other than &quot;Not configured&quot;.</td>
+</tr>
+<tr>
+<td>Specialties</td>
+<td>Auto-generated</td>
+<td>A short list of what your store specializes in, derived from your top product categories.</td>
+</tr>
+</tbody></table>
+<p><strong>About the address.</strong> Only your city, state, zip, and country are published to AI agents. Your street address is intentionally hidden for privacy and safety — if you use your home address for tax purposes, it stays private.</p>
+<p><strong>Customer service email.</strong> The plugin uses your WooCommerce email settings in this order:</p>
+<ol>
+<li><strong>Reply-to address</strong> at <strong>WooCommerce → Settings → Emails → Sender options</strong>, if enabled. This is your customer-contact email.</li>
+<li><strong>From address</strong> as a backup, unless it&#39;s a noreply address (the plugin skips those to avoid routing messages into black holes).</li>
+</ol>
+<p>The plugin never publishes your WordPress admin email as a public contact. If neither address works, the email contact is omitted entirely.</p>
+<p><strong>Phone and social profiles</strong> are not published by this plugin. If you want to add them, other plugins (like Jetpack or Yoast) can help with that.</p>
+<hr>
+<h2>5. Choose which products to expose</h2>
+<p>The <strong>Visibility</strong> tab controls what AI agents can see. Three modes:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>What AI agents see</th>
+<th>Use when</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>All published products</strong></td>
+<td>Everything currently published</td>
+<td>Default. Use unless you have a reason to scope.</td>
+</tr>
+<tr>
+<td><strong>Products by category, tag, or brand</strong></td>
+<td>Only products in the selected taxonomies</td>
+<td>You want to expose evergreen lines but exclude clearance, NSFW, or out-of-region products.</td>
+</tr>
+<tr>
+<td><strong>Specific products only</strong></td>
+<td>Only products you pick individually (with typeahead search)</td>
+<td>Curated launches, B2B-restricted SKUs, limited drops.</td>
+</tr>
+</tbody></table>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>Open the <strong>Visibility</strong> tab.</li>
+<li>Pick the mode.</li>
+<li>For <strong>Products by category, tag, or brand</strong>, switch between the <strong>Categories</strong>, <strong>Tags</strong>, and <strong>Brands</strong> sub-tabs and check what you want included. The <strong>Brands</strong> sub-tab only appears if your store has a <code>product_brand</code> taxonomy registered (typically via WooCommerce Brands or a similar plugin); without one, you&#39;ll see only Categories and Tags. Taxonomies with 20+ terms have a search bar. Checkboxes render in a 2-column grid. The product-count pill updates live.</li>
+<li>For <strong>Specific products only</strong>, use the typeahead search box to find products by name or SKU. Click a match to add a chip; already-added items appear disabled with a checkmark. Chips show the product name and SKU.</li>
+<li>Click <strong>Save changes</strong> at the bottom-right.</li>
+</ol>
+<p><img src="screenshots/04-products-by-taxonomy.png" alt="Visibility tab, by-taxonomy mode"></p>
+<p><img src="screenshots/05-products-selected.png" alt="Visibility tab, specific products mode"></p>
+<p>Visibility settings apply everywhere: your store guide, your catalog endpoints, and product details. Excluded products won&#39;t show up when AI agents search your catalog.</p>
+<h3>Catalog access</h3>
+<p>The <strong>Catalog access</strong> card shows the total product count and the count exposed to AI agents. Visibility settings are enforced on the selection mode you choose.</p>
+<blockquote>
+<p><strong>Note.</strong> Visibility settings only affect AI-agent-facing surfaces. The Shop page, search, and category archives keep working exactly as before for regular shoppers.</p>
+</blockquote>
+<hr>
+<h2>6. Configure crawlers and rate limits</h2>
+<p>The <strong>Discovery</strong> tab controls which AI crawlers can read your endpoints and how aggressively. All form input fields on this tab are 32px tall.</p>
+<p><img src="screenshots/06-discovery-tab.png" alt="Discovery tab"></p>
+<h3>AI agent access</h3>
+<p>The crawler list groups 18+ AI bots into three collapsible sections, each with a count badge and chevron:</p>
+<ul>
+<li><strong>Live browsing agents</strong>: fetch pages in real time when a user asks. Default: <strong>on</strong>. These drive shopping clicks.</li>
+<li><strong>Training crawlers</strong>: feed AI providers&#39; training corpora. Default: <strong>on</strong>. Letting your catalog inform model updates is generally good for long-tail product discovery.</li>
+<li><strong>Test/validation crawlers</strong>: for protocol-compliance tools like UCPPlayground. Default: <strong>off</strong>.</li>
+</ul>
+<p>Unchecking tells that crawler to stop. Most legitimate AI crawlers will respect this; malicious bots typically ignore it anyway.</p>
+<p>A toggle labeled <strong>Other AI agents</strong> controls whether unlisted crawlers can access your store. When checked, AI agents whose brand isn&#39;t in the list can access your store.</p>
+<h3>Rate limits</h3>
+<p>A 2 × 2 card grid shows four preset options: <strong>Recommended</strong> (25 per minute), <strong>Conservative</strong> (10 per minute), <strong>Generous</strong> (100 per minute), and <strong>Custom</strong>. Select one to set how many times per minute each AI crawler can look up your products before being temporarily blocked.</p>
+<p>Selecting <strong>Custom</strong> reveals an input box directly below where you can set your own limit.</p>
+<p>Rate limiting only affects AI crawlers. Your regular shoppers and store experience are unaffected.</p>
+<p><img src="screenshots/06b-rate-limits.png" alt="Discovery tab — AI agent list and rate limit cards"></p>
+<h3>AI activity log</h3>
+<p>The Discovery tab shows what AI crawlers are actually doing on your store. The plugin records every AI request to your catalog endpoints in a private log on your own server — nothing leaves your site.</p>
+<p>The period selector at the top (Day / Week / Month / Quarter) drives all three cards:</p>
+<ul>
+<li><strong>Top searches.</strong> The most common product searches AI agents have asked for. If you see &quot;running shoes&quot; but don&#39;t sell shoes, the AI may be sending you the wrong shoppers. If you see &quot;hoodies&quot; and sell them but don&#39;t see many impressions, check that your category name matches what customers search for.</li>
+<li><strong>Products seen.</strong> A sampled list of products that have been returned to AI agents in the period, with the count of how many times each was surfaced.</li>
+<li><strong>Per-agent breakdown.</strong> Total requests grouped by AI brand (ChatGPT, Perplexity, Gemini, etc.). Useful for noticing when a new crawler starts visiting your store.</li>
+</ul>
+<p>Data starts populating automatically once you enable the plugin. Detailed event logs are kept for 30 days; summary counts are kept for 90 days. Use this log to spot trends and problems, not as permanent storage.</p>
+<p>Stats update hourly, so today&#39;s AI traffic appears in the dashboard within an hour of occurring.</p>
+<h3>Revisit cadence</h3>
+<ul>
+<li><strong>Quarterly.</strong> New AI crawlers come online; check the list. Plugin updates sync the canonical roster; stale opt-outs stay opt-out.</li>
+<li><strong>After traffic spikes.</strong> Lower the rate limit before you remove crawlers. Most spikes are first-time discovery; rates settle within a week.</li>
+</ul>
+<hr>
+<h2>7. Set your store policies</h2>
+<p>The <strong>Policies</strong> tab publishes structured signals that AI agents read when deciding what to show shoppers: return terms, shipping timelines, and more. Two cards are currently available.</p>
+<p>Your return policy publishes in two places: on each product page (so an AI agent recommending one of your products can mention the policy), AND on your homepage (so an agent that discovers your store before a specific product can learn the store-wide commitment up-front). Per-product overrides — see below — only affect the per-product copy.</p>
+<h3>Return &amp; refund policy</h3>
+<p>When AI agents recommend your products, they often tell customers about your return window (&quot;Free returns for 30 days&quot;). This section controls what they say.</p>
+<p><img src="screenshots/07-policies-tab.png" alt="Return &amp; refund policy section"></p>
+<p>Three modes:</p>
+<ul>
+<li><strong>Not configured</strong> <em>(default)</em>. AI agents won&#39;t mention a return policy. Use when your policy is complex and you&#39;d rather AI agents link to your dedicated returns page.</li>
+<li><strong>Returns accepted.</strong> Tell AI agents how many days customers have to return items, who pays for shipping, and what methods you accept.</li>
+<li><strong>Final sale.</strong> Tell AI agents that items cannot be returned.</li>
+</ul>
+<p>You can also link to an existing returns/refunds page from the dropdown. This is useful when the policy already lives on a customer-facing page.</p>
+<h4>Per-product overrides</h4>
+<p>Some merchants have a generally returnable catalog with specific final-sale items (clearance, custom, perishable). The <strong>AI: Final sale</strong> checkbox in the product editor&#39;s Inventory tab overrides the store-wide policy for that single product.</p>
+<p><img src="screenshots/08-product-final-sale.png" alt="Product editor Inventory tab with AI Final sale checkbox"></p>
+<h3>Shipping: handling time</h3>
+<p>AI agents often tell shoppers &quot;Ships in 1–2 business days&quot; when recommending your products. This section lets you specify your actual handling time.</p>
+<p><img src="screenshots/07b-handling-time.png" alt="Shipping handling time section"></p>
+<p>Set <strong>Minimum</strong> and <strong>Maximum</strong> business days using the number inputs. This is how long you need to pack and ship an order.</p>
+<ul>
+<li>Leave both at <strong>0</strong> (default) to skip this info.</li>
+<li>If you set max below min, it automatically adjusts to match min.</li>
+<li>A live preview below shows what AI agents will see.</li>
+</ul>
+<blockquote>
+<p><strong>Note:</strong> Handling time is how long you need to pack and ship. Transit time (carrier and destination) is not included here.</p>
+</blockquote>
+<hr>
+<h2>8. Read attribution stats</h2>
+<p>When a shopper finds your store through an AI assistant and makes a purchase, WooCommerce automatically records:</p>
+<ul>
+<li>Which AI agent sent them (ChatGPT, Gemini, etc.).</li>
+<li>A session ID to track the interaction (not personally identifying).</li>
+</ul>
+<h3>Reachability check</h3>
+<p>The Discovery tab shows a reachability indicator in the card intro. The note &quot;Reachability is checked from your browser&quot; confirms the endpoints are accessible to AI agents.</p>
+<h3>Where to see it</h3>
+<p><strong>WooCommerce Orders list.</strong> Open <strong>WooCommerce → Orders</strong>. The <strong>Origin</strong> column shows which AI agent sent the customer (ChatGPT, Gemini, etc.). Non-AI orders show <code>Direct</code>, <code>Unknown</code>, or the standard source.</p>
+<p><img src="screenshots/10-orders-origin.png" alt="WooCommerce Orders list with Origin column"></p>
+<p><strong>Overview tab.</strong> The stat cards aggregate AI orders, revenue, AOV, and top-agent share for the selected period.</p>
+<p><img src="screenshots/11-per-agent-stats.png" alt="Overview tab per-agent stat cards"></p>
+<p><strong>Recent AI Orders table</strong> (Overview tab). Shows your latest orders from AI referrals: order number, customer, date, status, items, which agent sent them, and total. Click an order number to see full details. Click a customer name to see all their orders. You can filter by agent or status, search, sort columns, and adjust the table view. Your table preferences are saved.</p>
+<p><img src="screenshots/12-recent-ai-orders.png" alt="Recent AI Orders table"></p>
+<h3>What attribution doesn&#39;t capture</h3>
+<p>The plugin does not record:</p>
+<ul>
+<li>The customer&#39;s conversation with the AI agent (only that they came from one).</li>
+<li>Cross-device or cross-session journeys (only the final click).</li>
+</ul>
+<p>If you want deeper multi-touch attribution, use an analytics tool that reads WooCommerce&#39;s order data.</p>
+<hr>
+<h2>9. Maintenance and monitoring</h2>
+<p>Day-to-day maintenance is minimal.</p>
+<p><strong>Weekly (5 min).</strong> Glance at the Overview tab. Sudden drops in AI orders usually mean an agent revised its crawl policy or <code>robots.txt</code> changed. If one agent dominates, dig into how that agent surfaces your products.</p>
+<p><strong>Monthly (10 min).</strong> Re-verify the four endpoint URLs from <a href="#4-verify-your-discovery-endpoints">section 4</a>. Security plugins or CDN changes can sometimes block them. Review your visibility scope too.</p>
+<p><strong>After major changes.</strong> Re-verify endpoints after a WordPress core update, a WooCommerce major version update, switching themes, installing or updating a security plugin (some block <code>/.well-known/</code> by default; allow-list <code>/.well-known/ucp</code> if so), or migrating hosts.</p>
+<p><strong>Plugin updates.</strong> AI Storefront updates often as the AI discovery protocol evolves. Check the CHANGELOG before updating. Version 0.x updates are backwards-compatible with your settings; a version 1.0 bump will include a migration guide.</p>
+<hr>
+<h2>10. Troubleshooting</h2>
+<h3><code>/llms.txt</code> returns 404</h3>
+<p>Permalinks need flushing. Go to <strong>Settings → Permalinks</strong> and click <strong>Save Changes</strong> (don&#39;t change anything, just save). Then reload <code>/llms.txt</code>. If still 404, check the plugin is enabled (it must be active, not paused).</p>
+<h3><code>/.well-known/ucp</code> returns 404 but <code>/llms.txt</code> works</h3>
+<p>A security plugin is blocking <code>/.well-known/</code>. Add <code>/.well-known/ucp</code> to its allow list.</p>
+<h3>JSON-LD doesn&#39;t include the BuyAction</h3>
+<p>Your theme or page builder may be overriding WooCommerce&#39;s product details. Try switching to the Storefront theme temporarily to confirm. If that works, contact your theme developer or try a different theme.</p>
+<h3>AI agents say they can&#39;t find your store</h3>
+<p>Check these in order:</p>
+<ol>
+<li>Wait 24–48 hours (AI crawlers take time to discover new stores).</li>
+<li>Look at the Discovery tab to see if any crawlers are allowed and working.</li>
+<li>Check that your store&#39;s public URL in <strong>Settings → General</strong> matches the address you&#39;re testing from.</li>
+<li>Visit <code>/llms.txt</code> from a fresh browser session to confirm it&#39;s live.</li>
+</ol>
+<h3>Stats are zero after a week</h3>
+<p>Check:</p>
+<ol>
+<li>The Overview tab shows &quot;Products exposed&quot; &gt; 0.</li>
+<li>At least one live-browsing crawler is enabled on the Discovery tab.</li>
+<li>The four URLs from <a href="#4-verify-your-discovery-endpoints">section 4</a> all work.</li>
+</ol>
+<p>If all are okay, AI traffic may still be building. AI agents cache your catalog, so it can take a week or more for real orders to appear.</p>
+<h3>Orders show up as AI-attributed when they shouldn&#39;t</h3>
+<p>A team member tested with a real AI assistant and clicked through. The attribution is correct: that order really was AI-referred. Use a dedicated test account or staff discounts when smoke-testing.</p>
+<h3><code>robots.txt</code> looks empty after disabling</h3>
+<p>That&#39;s normal. The plugin removes its own instructions; what&#39;s left is just WordPress&#39;s standard settings (blocking the admin area).</p>
+<hr>
+<h2>11. Where to get help</h2>
+<ul>
+<li><strong>Documentation index:</strong> <a href="../README.md"><code>docs/README.md</code></a></li>
+<li><strong>Engineering docs</strong> (for developers extending or debugging): <a href="../engineering/"><code>docs/engineering/</code></a></li>
+<li><strong>Bug reports &amp; feature requests:</strong> open an issue on GitHub.</li>
+<li><strong>Security issues:</strong> see <a href="../../SECURITY.md"><code>SECURITY.md</code></a>. <strong>Do not</strong> open a public issue for security reports.</li>
+<li><strong>General WooCommerce support:</strong> <a href="https://woocommerce.com/support/">woocommerce.com/support</a> for questions about checkout, payments, taxes, shipping, or anything else WooCommerce-core-shaped.</li>
+</ul>
+<hr>
+<p><em>Covers AI Storefront 0.10.1. Screenshots taken from a stock WordPress 6.7 + WooCommerce 9.9 install. Your store may look slightly different depending on theme and admin color scheme.</em></p>
+
+</body>
+</html>
