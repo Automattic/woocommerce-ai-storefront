@@ -146,6 +146,35 @@ class WC_AI_Storefront_Attribution {
 	const WOO_UCP_ID = 'woo_ucp';
 
 	/**
+	 * The UTM ID value stamped onto URLs emitted in JSON-LD
+	 * PotentialAction templates (search-action URL templates that
+	 * crawlers and AI surfaces consume and fill in to serve users).
+	 *
+	 * Same STRICT trust level as `WOO_UCP_ID` — both are server-issued
+	 * stamps we control. The distinction is the **channel**:
+	 *
+	 *   - `WOO_UCP_ID` (`woo_ucp`) — order originated from a live UCP
+	 *     shopping session via `/checkout-sessions` continue_url. The
+	 *     agent walked the user through to checkout.
+	 *
+	 *   - `WOO_JSONLD_ID` (`woo_jsonld`) — order originated from a
+	 *     JSON-LD scrape: an AI surface (search engine, AI overview,
+	 *     chat assistant) consumed our PotentialAction template,
+	 *     filled it in, and served the URL as a search result. The
+	 *     agent surfaced us; the user converted independently.
+	 *
+	 * Both are AI-attributed, but the merchant-facing dashboard splits
+	 * them so investment in agent partnerships (a UCP-session signal)
+	 * vs. AI-discovery SEO (a JSON-LD signal) can be told apart.
+	 *
+	 * Transition note: existing crawler caches will keep emitting the
+	 * old `WOO_UCP_ID` from JSON-LD templates for ~2-6 weeks after
+	 * the template swap ships. During that window `woo_ucp` is mildly
+	 * over-reported. Accept the noise — see PR description.
+	 */
+	const WOO_JSONLD_ID = 'woo_jsonld';
+
+	/**
 	 * Stamp our canonical attribution UTM shape onto a URL.
 	 *
 	 * Two emission surfaces share this helper so the wire shape stays
@@ -447,6 +476,7 @@ class WC_AI_Storefront_Attribution {
 		// or a previous checkout attempt would fire false-positives and
 		// inflate "Other AI" stats with non-AI orders.
 		$is_strict = self::WOO_UCP_ID === $utm_id
+			|| self::WOO_JSONLD_ID === $utm_id
 			|| self::AI_AGENT_MEDIUM === $utm_medium;
 
 		if ( ! $is_strict && ! $is_known_ai_host ) {

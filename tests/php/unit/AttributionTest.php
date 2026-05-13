@@ -119,6 +119,40 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_capture_strict_gate_fires_on_woo_jsonld_utm_id_meta(): void {
+		// JSON-LD-routed traffic: an AI surface (search engine, AI
+		// overview, chat assistant) consumes our PotentialAction
+		// search-template, fills it in, and serves the URL to a user.
+		// User clicks, lands with `utm_id=woo_jsonld` on the stored
+		// attribution meta. STRICT must fire because the stamp is OUR
+		// OWN — server-issued at JSON-LD render time, same trust level
+		// as `woo_ucp` from the /checkout-sessions builder.
+		//
+		// `utm_source=mysteryagent.example` is deliberately NOT in
+		// `KNOWN_AGENT_HOSTS`, so LENIENT cannot fire — STRICT is the
+		// only path that can carry the assertion. A regression that
+		// dropped `woo_jsonld` from the STRICT gate would fail here
+		// even though the broader behavior (LENIENT, agent stamping)
+		// would still appear to work for known agent hosts.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_id', 'woo_jsonld' );
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'mysteryagent.example' );
+
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertTrue( $order->was_saved() );
+		// LENIENT didn't fire (host unknown) → "Other AI" fallback per
+		// the post-STRICT canonical-agent resolution. Same shape as the
+		// `woo_ucp` counterpart test above.
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$order->get_meta( '_wc_ai_storefront_agent' )
+		);
+	}
+
 	public function test_capture_strict_gate_ignores_get_utm_id_without_stored_meta(): void {
 		// Regression guard for issue #126: a non-AI order whose
 		// checkout URL carries utm_id=woo_ucp (e.g. a forwarded
