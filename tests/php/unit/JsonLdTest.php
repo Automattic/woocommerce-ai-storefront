@@ -302,9 +302,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'products=42:1', $url );
 		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
 		// Canonical UTM shape (0.5.0+): medium=referral (Google-canonical),
-		// utm_id=woo_ucp flags "we routed this".
+		// utm_id=woo_jsonld flags "we routed this".
 		$this->assertStringContainsString( 'utm_medium=referral', $url );
-		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
 		$this->assertStringContainsString( 'ai_session_id={session_id}', $url );
 	}
 
@@ -371,7 +371,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringStartsWith( 'https://example.com/checkout-link/', $url );
 		$this->assertStringContainsString( 'products=42:1', $url );
 		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
-		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
 	}
 
 	// ------------------------------------------------------------------
@@ -410,7 +410,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// PDP visit to AI-routed traffic.
 		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
 		$this->assertStringContainsString( 'utm_medium=referral', $url );
-		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
 		$this->assertStringContainsString( 'ai_session_id={session_id}', $url );
 	}
 
@@ -431,7 +431,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( '/checkout-link/', $url );
 		$this->assertStringNotContainsString( 'products=88:1', $url );
 		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
-		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
 	}
 
 	public function test_offer_checkout_page_url_template_uses_permalink_for_bundle(): void {
@@ -1664,7 +1664,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$url = $captured['potentialAction']['target']['urlTemplate'];
 
 		$this->assertStringContainsString( 'utm_medium=referral', $url );
-		$this->assertStringContainsString( 'utm_id=woo_ucp', $url );
+		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
 		// Regression guard against the legacy shape leaking back in.
 		$this->assertStringNotContainsString( 'utm_medium=ai_agent', $url );
 	}

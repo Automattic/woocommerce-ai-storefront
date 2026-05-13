@@ -246,10 +246,12 @@ class WC_AI_Storefront_JsonLd {
 	 *     existing configurator runs, and UTM attribution still flows
 	 *     through.
 	 *
-	 * Canonical UTM shape (0.5.0+): `utm_medium=referral` is Google-
-	 * canonical; `utm_id=woo_ucp` flags AI-routed traffic via the
-	 * `WOO_UCP_ID` constant so a future rename stays consistent with
-	 * the attribution matcher.
+	 * Canonical UTM shape: `utm_medium=referral` is Google-canonical;
+	 * `utm_id=woo_jsonld` flags JSON-LD-routed traffic via the
+	 * `WOO_JSONLD_ID` constant so a future rename stays consistent
+	 * with the attribution matcher. The companion `woo_ucp` id is
+	 * stamped only by `/checkout-sessions` continue_url; both ids
+	 * trigger STRICT, but downstream reporting splits them.
 	 *
 	 * Static so callers without a class instance (e.g. the per-variant
 	 * builder under `hasVariant`) can build URLs uniformly.
@@ -267,7 +269,14 @@ class WC_AI_Storefront_JsonLd {
 		$utm_args = array(
 			'utm_source'    => '{agent_id}',
 			'utm_medium'    => 'referral',
-			'utm_id'        => WC_AI_Storefront_Attribution::WOO_UCP_ID,
+			// `woo_jsonld` (not `woo_ucp`): JSON-LD URL templates are
+			// crawler bait by design. Agents that fill in this template
+			// did so by consuming our structured data, not via a live
+			// UCP session through /checkout-sessions. The attribution
+			// matcher accepts both ids as STRICT, but downstream
+			// dashboards split them so merchants can tell "AI Shopping"
+			// (UCP session) from "Referral" (JSON-LD scrape).
+			'utm_id'        => WC_AI_Storefront_Attribution::WOO_JSONLD_ID,
 			'ai_session_id' => '{session_id}',
 		);
 
@@ -1884,7 +1893,13 @@ class WC_AI_Storefront_JsonLd {
 					// literal string for the same drift-prevention
 					// reason documented at the BuyAction emit site.
 					'urlTemplate' => home_url(
-						'/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=' . WC_AI_Storefront_Attribution::WOO_UCP_ID
+						// `woo_jsonld` (not `woo_ucp`): same reasoning
+						// as the BuyAction template — SearchAction is
+						// also JSON-LD, also consumed by crawlers and
+						// AI surfaces who never enter our UCP session
+						// flow. The channel-split needs both JSON-LD
+						// emission sites tagged consistently.
+						'/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=' . WC_AI_Storefront_Attribution::WOO_JSONLD_ID
 					),
 				),
 				'query-input' => 'required name=search_term',
