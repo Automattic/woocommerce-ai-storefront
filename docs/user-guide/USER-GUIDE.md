@@ -1,8 +1,24 @@
 # WooCommerce AI Storefront: Merchant User Guide
 
-A step-by-step guide for store owners. Make your catalog discoverable to AI shopping assistants (ChatGPT, Gemini, Claude, Perplexity, Copilot) without giving up checkout, customer data, or your payment processor.
+A step-by-step guide for store owners. Make your catalog discoverable to AI shopping assistants and AI search engines (ChatGPT, Gemini, Claude, Perplexity, Copilot, Google AI Overviews) without giving up checkout, customer data, or your payment processor.
 
 > Reading time: about 10 minutes. Following along: about 10 minutes plus optional verification.
+
+## What this plugin does
+
+AI tools are changing how shoppers find products. Some assistants browse and buy on a shopper's behalf. Some AI search engines (Google AI Overviews, Perplexity, ChatGPT search) answer product questions by citing real stores. Some chat tools just need a quick orientation to talk about your business accurately. To be visible to all of these, your store needs to publish information in the formats AI tools read.
+
+This plugin makes your store speak three of those formats at the same time, all automatic once you turn it on:
+
+1. **A structured product feed and checkout handoff for AI shopping assistants.** AI agents (the ones that act on a shopper's behalf) can browse your catalog, check inventory and prices, and send a buyer straight to your checkout with the right items in cart. The agent handles the shopping conversation; your WooCommerce store handles the transaction. This piece uses a protocol called UCP (Universal Commerce Protocol).
+
+2. **Enhanced structured data on every product page for AI search engines.** Search engines and AI answer engines look for machine-readable details on product pages: price, availability, shipping windows, return policy. The plugin adds these in the modern JSON-LD format (the same standard Google uses for rich snippets, extended for AI). This is the heart of "GEO" (Generative Engine Optimization): showing up accurately when an AI engine answers a shopper's question about products like yours.
+
+3. **A plain-language store summary at `/llms.txt`.** Any AI tool that wants quick context on your business can read this short text guide. It describes what you sell, your categories, and how to link to products. Think of it as a `robots.txt` for the AI era.
+
+You can think of these as three doors into the same store: agents that close the sale walk through door 1, search engines that cite you walk through door 2, conversational tools that talk about you walk through door 3. You don't need to choose; the plugin opens all three.
+
+You do not need an AI account, an API key, or a developer.
 
 ## Contents
 
@@ -69,13 +85,16 @@ To pause, click **Disable AI Storefront** at the bottom of the page. AI agents w
 The Overview tab populates with stat cards once data flows in:
 
 - **Products exposed**: products AI agents can currently see (matches your visibility settings). Shown on a tinted background to distinguish a configuration value from the performance stats below.
-- **AI orders**: AI-attributed volume in the period, shown as `N / M` where M is the total orders denominator.
-- **AI Order Rate**: percentage of all orders in the period that came from AI agents (`AI orders / all orders`). Shows `0.0%` when orders exist but none are AI-attributed.
-- **AI revenue**: gross revenue from AI-referred orders, shown as `$X / $Y` where Y is total store revenue in the period (no decimals on the denominator).
-- **AI revenue %**: AI-attributed revenue as a percentage of total store revenue (`AI revenue / all revenue`). Shows a dash placeholder when no store revenue exists in the period.
-- **AI AOV**: average order value from AI-referred orders.
-- **Top agent**: which agent drives the most AI volume.
-- **Top agent share**: what share of AI revenue the top agent represents.
+- **Products seen**: how many of those exposed products an AI agent has actually requested in the period, shown as `N / M` where M is the total products exposed.
+- **Products seen %**: what fraction of your exposed catalog AI agents have touched. Tells you reachability at a glance.
+- **AI orders**: AI-attributed orders in the period, shown as `N / M` where M is your total store orders for context.
+- **AI order rate**: percentage of all store orders that came from AI in the period.
+- **AI revenue**: revenue from AI-referred orders, shown as `$X / $Y` where Y is total store revenue in the period.
+- **AI revenue %**: AI revenue as a percentage of total store revenue.
+- **AI AOV**: average order value across AI-referred orders. Tells you whether AI traffic shops big or small.
+- **Top agent**: which AI agent drove the most orders (ChatGPT, Gemini, Perplexity, etc.).
+- **Top agent share**: what fraction of your AI orders the top agent represents.
+- **Agent / Referral**: how your AI orders split between two channels. **Agent** is shoppers an AI assistant walked through to checkout (a live shopping session). **Referral** is shoppers who clicked through after an AI search result, AI Overview, or chatbot citation mentioned your product. Shown as `X% / Y%` where X is Agent and Y is Referral. The split tells you whether AI is **selling** for you (Agent dominant) or **referring** for you (Referral dominant), which usually points to different growth investments.
 
 ![Overview tab stat cards](screenshots/03-overview-cards.png)
 

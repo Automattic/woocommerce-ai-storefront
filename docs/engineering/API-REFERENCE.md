@@ -394,7 +394,7 @@ AI-attributed order aggregates by period.
 
 | Param | Type | Default | Enum |
 |-------|------|---------|------|
-| `period` | string | `month` | `day`, `week`, `month`, `year` |
+| `period` | string | `month` | `day`, `week`, `month`, `quarter`, `year` |
 
 **Response:**
 
@@ -405,24 +405,37 @@ AI-attributed order aggregates by period.
   "ai_revenue": 5400.00,
   "ai_aov": 128.57,
   "all_orders": 100,
+  "all_revenue": 12800.00,
   "ai_share_percent": 42.0,
   "currency": "USD",
   "currency_symbol": "$",
   "by_agent": {
-    "chatgpt": { "orders": 24, "revenue": 3100.00 },
-    "perplexity": { "orders": 12, "revenue": 1500.00 },
-    "gemini": { "orders": 6, "revenue": 800.00 }
+    "ChatGPT": { "orders": 24, "revenue": 3100.00 },
+    "Perplexity": { "orders": 12, "revenue": 1500.00 },
+    "Gemini": { "orders": 6, "revenue": 800.00 }
   },
   "top_agent": {
-    "name": "chatgpt",
+    "name": "ChatGPT",
     "orders": 24,
     "revenue": 3100.00,
     "share_percent": 57.1
-  }
+  },
+  "by_channel": {
+    "woo_ucp":    { "orders": 30, "revenue": 4200.00, "share_percent": 78.9 },
+    "woo_jsonld": { "orders":  8, "revenue":  900.00, "share_percent": 21.1 }
+  },
+  "top_channel": "woo_ucp"
 }
 ```
 
-`ai_revenue` and per-agent `revenue` are floats in the store's currency. `currency_symbol` is the decoded symbol (`$`, `€`, `£`) or empty when unavailable; `currency` is always the ISO 4217 code. `top_agent` is `null` when there are no AI orders in the period. Tie-break for `top_agent` is `orders DESC, revenue DESC, name ASC` (stable across snapshots).
+**Field notes:**
+
+- `ai_revenue` and per-agent `revenue` are floats in the store's currency. `currency_symbol` is the decoded symbol (`$`, `€`, `£`) or empty when unavailable; `currency` is always the ISO 4217 code.
+- `top_agent` is `null` when there are no AI orders in the period. Tie-break: `orders DESC, revenue DESC, name ASC` (stable across snapshots).
+- `by_channel` (0.15.0+) splits AI orders by their stamped `utm_id`. Keys are limited to `woo_ucp` (orders from `/checkout-sessions` continue_url, the live-UCP-session channel) and `woo_jsonld` (orders from JSON-LD `PotentialAction` URL templates, the search-result-channel). Legacy LENIENT-attributed orders (host-match without a stamped `utm_id`) do not appear here. `share_percent` is rounded to 1 decimal and **self-normalizes against the channel-known subset**, not against `ai_orders` — the two rows always sum to 100.
+- `top_channel` (0.15.0+) is the dominant channel utm_id (`woo_ucp` or `woo_jsonld`) or `null` when `by_channel` is empty. Tie-break: `orders DESC, revenue DESC, key ASC`.
+
+**Transient cache:** results are cached for 5 minutes under the key `wc_ai_storefront_stats_v2_<period>`. The `_v2_` suffix forces a one-shot cache miss on upgrade from pre-0.15 so v1-shaped payloads can't propagate to v2 frontend reads. The cache is busted on AI-attributed order status changes via `bust_stats_cache()`, which deletes both the current `_v2_` key and the legacy `_<period>` key during the transition window.
 
 ### `GET /recent-orders`
 
