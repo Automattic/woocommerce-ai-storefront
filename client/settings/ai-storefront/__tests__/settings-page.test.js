@@ -72,10 +72,17 @@ describe( 'topChannelLabel', () => {
 		expect( topChannelLabel( undefined ) ).toBe( '—' );
 	} );
 
-	it( 'returns em dash for an unknown channel string', () => {
-		// Future-proofing: if a third channel id ever ships, the
-		// helper falls through to the em-dash rather than rendering
-		// a raw `woo_xxx` string in the merchant-facing UI.
+	it( 'returns em dash for an unknown channel string and warns to console', () => {
+		// Future-proofing: if a third channel id ever ships server-
+		// side but the JS bundle isn't updated, the helper falls
+		// through to the em-dash rather than rendering a raw
+		// `woo_xxx` string in the merchant-facing UI.
+		//
+		// It also emits a `console.warn` so the PHP/JS contract drift
+		// is debuggable. `@wordpress/jest-console` auto-fails the test
+		// on unexpected console output; we explicitly acknowledge the
+		// warning here via `toHaveWarned()` so the matcher clears it.
 		expect( topChannelLabel( 'woo_future' ) ).toBe( '—' );
+		expect( console ).toHaveWarned();
 	} );
 } );

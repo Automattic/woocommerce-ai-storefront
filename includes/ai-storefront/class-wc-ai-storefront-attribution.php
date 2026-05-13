@@ -501,7 +501,7 @@ class WC_AI_Storefront_Attribution {
 		// a different identifier than the merchant-facing display.
 		// Resolves to:
 		//   - lenient match: the canonical brand name ("ChatGPT", ...).
-		//   - STRICT-only (utm_id=woo_ucp or legacy utm_medium=ai_agent
+		//   - STRICT-only (utm_id=woo_ucp / woo_jsonld or legacy utm_medium=ai_agent
 		//     fired but utm_source is not in `KNOWN_AGENT_HOSTS`):
 		//     `OTHER_AI_BUCKET` ("Other AI"). Pre-0.5.2 we stored the
 		//     raw utm_source verbatim here, but with the canonical
@@ -816,6 +816,18 @@ class WC_AI_Storefront_Attribution {
 					self::WOO_JSONLD_ID
 				)
 			);
+			// `false` is the documented `$wpdb->get_results()` return
+			// on a DB error (broken JOIN, table missing, query timeout,
+			// third-party plugin filtering `query` and breaking it).
+			// Coerce to [] so the aggregation loop's `if ( $channel_results )`
+			// truthy-check renders the empty state, and `error_log` so
+			// operators investigating "why is my Channel Mix card stuck
+			// on em-dash?" find a breadcrumb. Same defensive shape used
+			// for the legacy branch below.
+			if ( false === $channel_results ) {
+				error_log( sprintf( '[ai-storefront] channel_results query failed (HPOS, period=%s): %s', $period, $wpdb->last_error ) );
+				$channel_results = [];
+			}
 			// phpcs:enable
 		} else {
 			// Legacy post-based orders.
@@ -840,8 +852,9 @@ class WC_AI_Storefront_Attribution {
 				)
 			);
 
-			// Legacy-branch channel split — same shape as the HPOS
-			// channel query above, swapped to post-meta joins.
+			// Legacy-branch channel split — mirrors the HPOS channel
+			// query above; see that block for the channel-split
+			// rationale and the false-on-DB-error guard pattern.
 			$channel_results = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT pm_id.meta_value AS channel,
@@ -866,6 +879,10 @@ class WC_AI_Storefront_Attribution {
 					self::WOO_JSONLD_ID
 				)
 			);
+			if ( false === $channel_results ) {
+				error_log( sprintf( '[ai-storefront] channel_results query failed (legacy, period=%s): %s', $period, $wpdb->last_error ) );
+				$channel_results = [];
+			}
 			// phpcs:enable
 		}
 
@@ -1212,12 +1229,27 @@ class WC_AI_Storefront_Attribution {
 		$derived_by_channel = [];
 		$top_channel        = null;
 		if ( ! empty( $by_channel ) ) {
+			// Filter to well-formed rows up front. `derive_stats()` is
+			// `public static`, so we can't assume callers always pass
+			// rows shaped as `array{orders: int, revenue: float}`. Real
+			// SQL always produces both columns, but a malformed extension
+			// caller would otherwise emit a PHP 8.1+ fatal on the
+			// undefined-key read below. Match the existing divide-by-
+			// zero guard's defensive posture: drop the bad row, keep the
+			// dashboard rendering, surface partial-but-honest numbers.
+			$clean_by_channel = [];
+			foreach ( $by_channel as $key => $row ) {
+				if ( isset( $row['orders'], $row['revenue'] ) ) {
+					$clean_by_channel[ $key ] = $row;
+				}
+			}
+
 			$channel_total_orders = 0;
-			foreach ( $by_channel as $row ) {
+			foreach ( $clean_by_channel as $row ) {
 				$channel_total_orders += $row['orders'];
 			}
 
-			foreach ( $by_channel as $key => $row ) {
+			foreach ( $clean_by_channel as $key => $row ) {
 				// Guard against divide-by-zero in the unlikely caller-
 				// bug case where every channel row has 0 orders. Real
 				// SQL can't produce this (INNER JOIN drops zero rows),
@@ -1239,29 +1271,34 @@ class WC_AI_Storefront_Attribution {
 			// short-ternary lint and `usort`-int-truncation guard
 			// stay consistent with the top_agent comparator above.
 			$ranked = [];
-			foreach ( $by_channel as $key => $row ) {
+			foreach ( $clean_by_channel as $key => $row ) {
 				$ranked[] = [
 					'key'     => $key,
 					'orders'  => $row['orders'],
 					'revenue' => $row['revenue'],
 				];
 			}
-			usort(
-				$ranked,
-				static function ( $a, $b ) {
-					$primary = $b['orders'] <=> $a['orders'];
-					if ( 0 !== $primary ) {
-						return $primary;
+			// `$ranked` can be empty if every input row was malformed
+			// (filtered out by the isset-guard above). Mirrors the
+			// `! empty( $ranked )` guard in the top_agent branch.
+			if ( ! empty( $ranked ) ) {
+				usort(
+					$ranked,
+					static function ( $a, $b ) {
+						$primary = $b['orders'] <=> $a['orders'];
+						if ( 0 !== $primary ) {
+							return $primary;
+						}
+						$secondary = $b['revenue'] <=> $a['revenue'];
+						if ( 0 !== $secondary ) {
+							return $secondary;
+						}
+						// Tertiary: channel key ASC.
+						return $a['key'] <=> $b['key'];
 					}
-					$secondary = $b['revenue'] <=> $a['revenue'];
-					if ( 0 !== $secondary ) {
-						return $secondary;
-					}
-					// Tertiary: channel key ASC.
-					return $a['key'] <=> $b['key'];
-				}
-			);
-			$top_channel = $ranked[0]['key'];
+				);
+				$top_channel = $ranked[0]['key'];
+			}
 		}
 
 		return [

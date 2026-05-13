@@ -476,6 +476,40 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNull( $result['top_channel'] );
 	}
 
+	public function test_by_channel_skips_malformed_row_missing_orders_key(): void {
+		// `derive_stats()` is `public static`, so we can't assume
+		// callers always pass well-formed rows. Real SQL ALWAYS
+		// produces both `orders` and `revenue` columns, but the helper
+		// is exposed to direct test/extension callers too. A row
+		// missing the `orders` key would PHP-warn pre-8.1 and FATAL
+		// on 8.1+ ("Undefined array key" promoted to fatal under
+		// strict_types-like operator contexts). Match the existing
+		// divide-by-zero guard's defensive posture: skip the row
+		// rather than crash, so a malformed input degrades to a
+		// partial-but-honest dashboard instead of a 500.
+		$by_agent   = [ 'chatgpt' => [ 'orders' => 5, 'revenue' => 250.00 ] ];
+		$by_channel = [
+			'woo_ucp'    => [
+				'orders'  => 5,
+				'revenue' => 250.00,
+			],
+			'woo_jsonld' => [
+				'revenue' => 100.00,
+				// 'orders' deliberately missing — caller-bug simulation.
+			],
+		];
+
+		$result = WC_AI_Storefront_Attribution::derive_stats( 5, 250.00, $by_agent, $by_channel );
+
+		// Malformed row dropped from `by_channel`; surviving row gets
+		// 100% share (denominator self-normalizes against included
+		// rows, matching the share_percent contract test above).
+		$this->assertArrayHasKey( 'woo_ucp', $result['by_channel'] );
+		$this->assertArrayNotHasKey( 'woo_jsonld', $result['by_channel'] );
+		$this->assertSame( 100.0, $result['by_channel']['woo_ucp']['share_percent'] );
+		$this->assertSame( 'woo_ucp', $result['top_channel'] );
+	}
+
 	public function test_top_channel_tie_break_is_deterministic(): void {
 		// Tied orders AND revenue. Without a stable tie-break the
 		// winner would flicker between snapshots — same concern as

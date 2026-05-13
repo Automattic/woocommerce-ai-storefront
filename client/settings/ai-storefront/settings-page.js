@@ -439,23 +439,31 @@ export const formatRevenuePercent = ( stats ) => {
 };
 
 /**
- * Map a wire-level `top_channel` utm_id to a merchant-readable label.
+ * Map a wire-level channel utm_id to a merchant-readable label.
  *
  * The wire values (`woo_ucp`, `woo_jsonld`) carry STRICT-gate semantics
  * for the PHP attribution layer — they're implementation details and
- * should never reach the merchant-facing UI. This helper translates
- * them at the presentation seam:
+ * should never reach the merchant-facing UI. This helper is the
+ * SINGLE SOURCE OF TRUTH for channel labels: the Channel Mix card uses
+ * it for BOTH the per-row labels AND the "Top: X" footer line, so a
+ * future rename ("Agent" → "AI shopping") stays consistent across both
+ * surfaces with no manual sync.
  *
+ * Mapping:
  *   - `woo_ucp`    → "Agent"    (live UCP shopping session)
  *   - `woo_jsonld` → "Referral" (JSON-LD scrape served via search/AI)
- *   - anything else → em-dash placeholder
+ *   - null / undefined → em-dash (legitimate empty-state signal from
+ *     derive_stats() when no channel data is available)
+ *   - anything else → em-dash + console.warn — an unrecognized id
+ *     indicates PHP/JS contract drift (e.g., server adds a third
+ *     channel id before the JS bundle ships). Surfacing it in the
+ *     console keeps the failure debuggable instead of silently
+ *     rendering "Top: —" with no breadcrumb.
  *
  * Exported so unit tests can pin the mapping without rendering the
- * full settings component. The Channel Mix card uses this helper for
- * the "Top: X" footer line; the row labels themselves are computed
- * inline against the same source-of-truth table inside the component.
+ * full settings component.
  *
- * @param {string|null|undefined} topChannel utm_id value from stats.top_channel.
+ * @param {string|null|undefined} topChannel utm_id value to translate.
  * @return {string} Localized channel name or em-dash placeholder.
  */
 export const topChannelLabel = ( topChannel ) => {
@@ -464,6 +472,16 @@ export const topChannelLabel = ( topChannel ) => {
 	}
 	if ( 'woo_jsonld' === topChannel ) {
 		return __( 'Referral', 'woocommerce-ai-storefront' );
+	}
+	// null and undefined are legitimate empty-state signals — silent
+	// em-dash is the contract. Any OTHER value (string, number, etc.)
+	// is unrecognized and worth surfacing for cross-layer debugging.
+	if ( null !== topChannel && undefined !== topChannel ) {
+		// eslint-disable-next-line no-console
+		console.warn(
+			'topChannelLabel: unrecognized topChannel value',
+			topChannel
+		);
 	}
 	return '—';
 };
@@ -613,25 +631,25 @@ const ChannelMixCard = ( { byChannel, topChannel } ) => {
 		borderTop: `1px solid ${ colors.borderSubtle }`,
 	};
 
+	// `! Array.isArray` guard catches the case where PHP emits an
+	// empty `array()` for `by_channel` (which `wp_json_encode` serializes
+	// as `[]`, parsed by JS as an Array, not a plain Object). Without
+	// this, `typeof byChannel === 'object'` would pass for the array,
+	// `byChannel[ 'woo_ucp' ]` would return undefined, and the card
+	// would render "0 (0%)" rows instead of the em-dash empty state —
+	// silently miscommunicating "we have zero orders" vs "we have no
+	// data yet."
 	const hasData =
 		byChannel &&
 		typeof byChannel === 'object' &&
+		! Array.isArray( byChannel ) &&
 		Object.keys( byChannel ).length > 0;
 
-	// Channel display table. Wire-key first (matches stats.by_channel
-	// payload key) so the lookup is O(1) and we don't rely on JS
-	// object iteration order — `byChannel.woo_ucp` is read directly
-	// rather than `Object.entries(byChannel)[0]`.
-	const channels = [
-		{
-			key: 'woo_ucp',
-			label: __( 'Agent', 'woocommerce-ai-storefront' ),
-		},
-		{
-			key: 'woo_jsonld',
-			label: __( 'Referral', 'woocommerce-ai-storefront' ),
-		},
-	];
+	// Fixed channel display order. Wire-keys only — the labels come
+	// from `topChannelLabel()` so this component and the footer share
+	// the same source-of-truth mapping. See the helper's docblock for
+	// rename-safety rationale.
+	const channels = [ 'woo_ucp', 'woo_jsonld' ];
 
 	return (
 		<div style={ cardStyle }>
@@ -650,8 +668,8 @@ const ChannelMixCard = ( { byChannel, topChannel } ) => {
 				</div>
 			) : (
 				<>
-					{ channels.map( ( ch ) => {
-						const row = byChannel[ ch.key ];
+					{ channels.map( ( channelKey ) => {
+						const row = byChannel[ channelKey ];
 						const orders = row?.orders ?? 0;
 						// `share_percent` is already rounded to one
 						// decimal place by PHP `derive_stats()`. Render
@@ -660,8 +678,8 @@ const ChannelMixCard = ( { byChannel, topChannel } ) => {
 						// for any future "view details" surface.
 						const share = Math.round( row?.share_percent ?? 0 );
 						return (
-							<div key={ ch.key } style={ rowStyle }>
-								<span>{ ch.label }</span>
+							<div key={ channelKey } style={ rowStyle }>
+								<span>{ topChannelLabel( channelKey ) }</span>
 								<span>
 									{ orders }
 									<span
