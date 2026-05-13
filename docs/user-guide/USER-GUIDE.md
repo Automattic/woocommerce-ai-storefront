@@ -46,6 +46,27 @@ You'll need:
 
 You **don't** need an AI account, an API key, or a developer.
 
+### Is this plugin a fit for your store?
+
+You'll get the most value if your store is direct-to-consumer, publicly accessible, and lists products with clear titles, prices, descriptions, and images.
+
+You may want to wait if any of these apply:
+
+- **Wholesale or B2B-only stores.** Current AI shopping assistants are oriented toward consumer purchases. B2B patterns (RFQs, contract pricing, account-based net terms) aren't in scope of the current protocol.
+- **Regulated or restricted products** (alcohol, firearms, age-gated supplements, etc.). Many AI agents have policies against recommending or transacting these categories. The plugin will publish your catalog; agents may decline to surface it.
+- **Headless or decoupled WordPress.** If your storefront is rendered by a separate frontend (React, Next.js, etc.) rather than by the WordPress template hierarchy, the JSON-LD layer won't reach AI search engines without additional integration. You lose half the discovery surface: UCP REST endpoints still work, but structured data on product pages won't appear.
+- **Multi-vendor marketplaces** (WC Vendors, Dokan, etc.). The plugin currently presents a single-store catalog. Vendor distinctions aren't surfaced to AI agents.
+
+### Known compatibility notes
+
+**Works alongside Google Merchant Center.** This plugin doesn't compete with GMC. The enhanced JSON-LD on product pages reads as legitimate Schema.org structured data to both Google and AI agents. GMC continues to drive Google Shopping; this plugin drives AI-agent discovery. Orders attributed to GMC appear in GMC's dashboard; orders attributed to AI agents appear in this plugin's Overview tab.
+
+**Plugins worth checking before you enable:**
+
+- **AI-bot blocking plugins.** Some security plugins explicitly block GPTBot, ChatGPT-User, Claude, and similar to prevent training-data scraping. If active, they will defeat the discovery layer entirely. Allowlist AI crawlers in your security plugin, or disable AI-bot blocking on this site.
+- **Other SEO plugins emitting JSON-LD** (Yoast SEO, Rank Math, Schema App, etc.). Two plugins emitting Product structured data on the same page can result in duplicate entities visible to search engines. Modern search engines handle this gracefully, but if Google Search Console flags structured-data warnings, configure one plugin to defer to the other.
+- **Custom robots.txt managers.** This plugin appends AI-crawler rules to WordPress's virtual robots.txt. If a plugin produces its own robots.txt (overriding WP's virtual one), the rules may not appear. After enabling, visit `/robots.txt` and confirm AI crawler rules are present.
+
 ---
 
 ## 2. Install and activate
