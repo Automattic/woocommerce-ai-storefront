@@ -281,7 +281,7 @@ The `v*` tag triggers `.github/workflows/release.yml` which:
 2. Builds the distribution zip.
 3. Regenerates the `.pot` translation template.
 4. Extracts the `## [${NEW}]` block from `CHANGELOG.md` as the release body.
-5. Creates the GitHub Release at the tag with the extracted notes, marks it `prerelease: true` (pre-1.0 convention), and uploads the zip.
+5. Creates the GitHub Release at the tag with the extracted notes and uploads the zip. The release is published as a full release, not a GitHub "pre-release" — Beta lifecycle status is signaled through in-product surfaces (PageHeader pill, HelpMenu, readme Description, USER-GUIDE intro) so the "Latest" badge can track the most recent shipped version. `make_latest: legacy` keeps "Latest" tied to chronological order, so hotfixes off older tags don't demote the newest release.
 
 No manual step required. If something goes wrong, the workflow logs link to the failed step from the Actions tab on the GitHub repo. Re-running the workflow is idempotent — the action updates the existing Release rather than duplicating it.
 
