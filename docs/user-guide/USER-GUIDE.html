@@ -73,6 +73,18 @@
 </ol>
 <p>You can think of these as three doors into the same store: agents that close the sale walk through door 1, search engines that cite you walk through door 2, conversational tools that talk about you walk through door 3. You don&#39;t need to choose; the plugin opens all three.</p>
 <p>You do not need an AI account, an API key, or a developer.</p>
+<h2>What this plugin does not do</h2>
+<p>A few things this plugin is intentionally not, so you can decide if it fits your goal:</p>
+<ul>
+<li><p><strong>It is not a product feed for Google Shopping, Bing Shopping, Microsoft/Copilot Commerce, or Meta Catalog.</strong> Those platforms ingest catalogs you submit through their merchant centers (Google Merchant Center, Bing Webmaster, Meta Commerce Manager). This plugin works the opposite way: it publishes open discovery surfaces on your own site that AI agents read directly. The two are complementary, not substitutes; if you already use Google Merchant Center for Google Shopping, keep it. See §1.2 below.</p>
+</li>
+<li><p><strong>It is not for in-chat agentic checkout</strong> (sometimes called &quot;delegated payments&quot; or ACP-style flows). Protocols like Stripe ACP or Google&#39;s emerging Agentic Commerce APIs hand the agent a payment token and have it complete the transaction inside the chat surface, sometimes without the shopper present. UCP, what this plugin speaks, explicitly does the opposite: the agent hands the shopper off to your checkout, where the shopper (or, in the on-behalf-of case, the agent acting under their authorization) completes the purchase using your existing payment provider. If your business model requires headless agent purchasing without a shopper-checkout step, this plugin alone won&#39;t deliver that.</p>
+</li>
+<li><p><strong>It is not an AI chatbot for your store.</strong> There&#39;s no chat widget, no conversational UI, no &quot;ask our store assistant&quot; surface added to your site. The plugin makes your catalog legible to external AI tools (ChatGPT, Gemini, Claude, etc.); it doesn&#39;t bring an AI tool into your store.</p>
+</li>
+<li><p><strong>It does not write or improve product copy.</strong> No descriptions are generated, rewritten, or summarized. The plugin reads what you&#39;ve already authored in WooCommerce and republishes it in machine-readable formats. Better-authored products yield better AI responses, but that&#39;s an upstream merchandising task, not something the plugin does for you.</p>
+</li>
+</ul>
 <h2>Contents</h2>
 <ol>
 <li><a href="#1-before-you-start">Before you start</a></li>

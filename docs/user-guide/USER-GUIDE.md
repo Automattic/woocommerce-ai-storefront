@@ -22,6 +22,18 @@ You can think of these as three doors into the same store: agents that close the
 
 You do not need an AI account, an API key, or a developer.
 
+## What this plugin does not do
+
+A few things this plugin is intentionally not, so you can decide if it fits your goal:
+
+- **It is not a product feed for Google Shopping, Bing Shopping, Microsoft/Copilot Commerce, or Meta Catalog.** Those platforms ingest catalogs you submit through their merchant centers (Google Merchant Center, Bing Webmaster, Meta Commerce Manager). This plugin works the opposite way: it publishes open discovery surfaces on your own site that AI agents read directly. The two are complementary, not substitutes; if you already use Google Merchant Center for Google Shopping, keep it. See §1.2 below.
+
+- **It is not for in-chat agentic checkout** (sometimes called "delegated payments" or ACP-style flows). Protocols like Stripe ACP or Google's emerging Agentic Commerce APIs hand the agent a payment token and have it complete the transaction inside the chat surface, sometimes without the shopper present. UCP, what this plugin speaks, explicitly does the opposite: the agent hands the shopper off to your checkout, where the shopper (or, in the on-behalf-of case, the agent acting under their authorization) completes the purchase using your existing payment provider. If your business model requires headless agent purchasing without a shopper-checkout step, this plugin alone won't deliver that.
+
+- **It is not an AI chatbot for your store.** There's no chat widget, no conversational UI, no "ask our store assistant" surface added to your site. The plugin makes your catalog legible to external AI tools (ChatGPT, Gemini, Claude, etc.); it doesn't bring an AI tool into your store.
+
+- **It does not write or improve product copy.** No descriptions are generated, rewritten, or summarized. The plugin reads what you've already authored in WooCommerce and republishes it in machine-readable formats. Better-authored products yield better AI responses, but that's an upstream merchandising task, not something the plugin does for you.
+
 ## Contents
 
 1. [Before you start](#1-before-you-start)
