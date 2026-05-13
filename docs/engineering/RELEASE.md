@@ -275,14 +275,17 @@ git push origin "v${NEW}"
 
 ### 7. GitHub release
 
-The `v*` tag triggers `.github/workflows/release.yml` which builds the distribution zip and attaches it to a draft GitHub Release. Then:
+The `v*` tag triggers `.github/workflows/release.yml` which:
 
-```bash
-gh release edit "v${NEW}" --notes-file <(awk "/## \\[${NEW}\\]/,/^---$/" CHANGELOG.md)
-gh release edit "v${NEW}" --draft=false
-```
+1. Verifies the tag version matches the plugin header constant.
+2. Builds the distribution zip.
+3. Regenerates the `.pot` translation template.
+4. Extracts the `## [${NEW}]` block from `CHANGELOG.md` as the release body.
+5. Creates the GitHub Release at the tag with the extracted notes, marks it `prerelease: true` (pre-1.0 convention), and uploads the zip.
 
-(Or open the draft in the GitHub UI, paste the new CHANGELOG block into the release notes, and click Publish.)
+No manual step required. If something goes wrong, the workflow logs link to the failed step from the Actions tab on the GitHub repo. Re-running the workflow is idempotent — the action updates the existing Release rather than duplicating it.
+
+If the CHANGELOG block is missing or empty, the workflow fails fast with a clear error and no Release is created. Add the section, force-update the tag (`git tag -f v${NEW} && git push -f origin v${NEW}`), and re-run.
 
 ### 8. Verify the release
 
@@ -353,7 +356,7 @@ The `CHANGELOG` section is the most-overlooked checkbox today; the path-based do
 Lightweight helpers worth adding once a few releases have shipped under the new process:
 
 1. **`bin/release.sh`** — encapsulates steps 2–6 above into a single command (`./bin/release.sh 0.7.0`). Reads CHANGELOG.md, validates Stable tag matches, runs the test gate, commits, tags. Refuses to run with a dirty working tree.
-2. **`/releases/draft` GitHub Action** — on every push to `main` after a release-tagged commit, auto-creates a draft Release with the new `[Unreleased]` block extracted from CHANGELOG.md.
+2. ~~**`/releases/draft` GitHub Action** — auto-create a draft Release from PR labels.~~ Tried via `release-drafter` (2024–2026); retired in 0.15.x. The draft was always wrong for MINOR cuts (it predicted PATCH from labels), drifted in formatting from the hand-curated CHANGELOG, and added a Release ownership step the actual release flow didn't need. `release.yml` now extracts the body from CHANGELOG.md at tag-push time — single source of truth.
 3. **`changelog-check` PR check** — if any file under `includes/` or `client/` changed and `CHANGELOG.md` `[Unreleased]` block didn't, fail with an annotation pointing at the missing entry. Pairs with the docs-followup workflow.
 
 Implement these incrementally — each is a half-day project. Don't pre-build them before we've shipped 5+ releases under the manual process; the automation should follow the patterns we discover, not predict them.
