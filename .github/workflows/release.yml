@@ -144,48 +144,57 @@ jobs:
           unzip -l "${ZIP_NAME}" | head -30
           echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
 
-      # Preflight: a GitHub Release must already exist for this tag
-      # before we run the upload step.
+      # Extract the version block for $TAG from CHANGELOG.md so the
+      # Release body matches the long-form headlines + sub-bullets
+      # we curate by hand. CHANGELOG.md is the source of truth for
+      # release notes; release-drafter used to maintain a parallel
+      # draft from PR labels but the two always drifted (different
+      # formatting, different scope decisions, MINOR/PATCH mismatches
+      # when the drafter predicted PATCH for a MINOR cut). Retired
+      # the drafter in favor of this single-source extraction.
       #
-      # Why: softprops/action-gh-release@v2 will silently CREATE a
-      # fresh Release if none exists at the tag — and because we
-      # intentionally omit `body`/`draft`/`prerelease` (release-drafter
-      # owns those), an auto-created Release would land published with
-      # an empty body and no prerelease flag. That's exactly the
-      # mismatch we just fixed in the opposite direction (release.yml
-      # was creating duplicate/conflicting Releases). Failing fast here
-      # forces the human to publish the release-drafter draft instead.
+      # The awk pattern walks until it hits the matching `## [X.Y.Z]`
+      # header for the tag's version (stripping the `v` prefix), then
+      # prints every line until it hits the next `---` divider that
+      # separates versioned blocks. The header line and the trailing
+      # `---` are NOT printed — `next` skips the header so the body
+      # starts at the section's first content line.
       #
-      # The tag flows in via `$TAG` (set in env: at the job level),
-      # never expression-interpolated into shell text.
-      - name: Verify Release exists for tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # `$TAG` flows in via env: (set at the job level) — safe pattern
+      # per the GitHub Actions injection guide. Same approach the
+      # version-verification step above uses.
+      #
+      # Fail-fast if the block is empty: shipping a Release with no
+      # notes is worse than blocking the workflow until the CHANGELOG
+      # gets a proper entry.
+      - name: Extract release notes from CHANGELOG.md
         run: |
-          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::No GitHub Release exists for tag $TAG."
-            echo "::error::Don't push tags directly — publish the release-drafter draft on the Releases page, which creates the tag with the curated notes + prerelease flag intact."
-            echo "::error::If you really need a release for a manually-pushed tag, create it through the UI first, then re-run this workflow."
+          TAG_VERSION="${TAG#v}"
+          awk -v ver="$TAG_VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { flag = 1; next }
+            /^---$/ && flag { exit }
+            flag
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::No CHANGELOG.md block found for version $TAG_VERSION. Add a '## [$TAG_VERSION] – YYYY-MM-DD' section before tagging."
             exit 1
           fi
-          echo "::notice::Release found for tag $TAG; proceeding to upload artifact."
+          echo "Extracted $(wc -l < release-notes.md) lines of release notes."
+          head -5 release-notes.md
 
-      # Attach the built zip to the Release that release-drafter has
-      # already prepared and the human just published on the Releases
-      # page (which is what created this tag).
+      # Create the Release and attach the zip in one step.
+      # `prerelease: true` reflects the pre-1.0 lifecycle (drop the
+      # flag at 1.0.0); `make_latest: legacy` keeps the "Latest"
+      # badge tied to chronological order rather than semver-default,
+      # which would otherwise demote pre-1.0 releases.
       #
-      # We deliberately omit `generate_release_notes`, `body`, `draft`,
-      # and `prerelease` here. release-drafter (release-drafter.yml)
-      # owns those fields; passing them again would either overwrite
-      # the categorized notes already in the Release body or flip the
-      # just-published Release back to draft — both have happened in
-      # other repos that ran the two flows in series.
-      #
-      # softprops/action-gh-release@v2 finds the existing Release by
-      # tag and uploads `files:` to it without touching unset fields.
-      # The preflight step above guarantees the Release exists, so the
-      # action's "create-if-missing" path is never reached.
-      - name: Upload release artifact
+      # softprops/action-gh-release@v2 creates the Release if it
+      # doesn't exist (the common path now that release-drafter is
+      # retired) and updates it idempotently on workflow re-runs.
+      - name: Create release and upload artifact
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_NAME }}
+          body_path: release-notes.md
+          prerelease: true
+          make_latest: legacy

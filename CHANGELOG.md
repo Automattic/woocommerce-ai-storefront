@@ -6,6 +6,9 @@
 
 ### Fixes
 ### Refactors
+
+- **CI: retire `release-drafter`, fold release-notes extraction into `release.yml`.** The drafter maintained a parallel draft Release populated from PR labels; the hand-curated `CHANGELOG.md` is the actual source of truth, so the two always drifted in formatting and scope. The drafter also auto-incremented PATCH from the last published Release, which mispredicted every MINOR cut and forced a manual UI rename of the draft. New flow: `release.yml` runs on `v*` tag push, extracts the matching `## [X.Y.Z]` block from `CHANGELOG.md` via awk, creates the Release with that body, marks it pre-release, and uploads the zip — all in one workflow run. Deleted `.github/workflows/release-drafter.yml` and `.github/release-drafter.yml`. RELEASE.md updated to reflect the simpler flow.
+
 ### Tests
 ### Docs
 
