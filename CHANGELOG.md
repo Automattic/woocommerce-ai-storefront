@@ -15,6 +15,7 @@
   - **Version** shows the running plugin version as static text, read from `WC_AI_STOREFRONT_VERSION` via the localize-script payload.
   - Built on `@wordpress/components` `<DropdownMenu>` for keyboard accessibility, focus management, ARIA roles, and Esc / outside-click dismissal out of the box. Anchor semantics use real `<a href target="_blank">` so right-click "Open in new tab" works.
   - PageHeader's `aria-hidden` scope tightened: previously the entire header was hidden from screen readers (to avoid duplicate page-name announcement with the server-rendered `<h1>`); now only the brand-chrome wrapper is hidden, leaving the help button reachable. ARIA spec doesn't allow "unhiding" descendants of an aria-hidden ancestor, so the scope reduction was required for the help button to be accessible.
+  - Hairline separator between the action group (Documentation, Support) and the Version metadata row. Implemented by wrapping each group in `<MenuGroup>`, which renders a top border on every group except the first — same pattern as Gutenberg's More-options popovers. Communicates the action-vs-metadata distinction structurally so the disabled Version row reads as "info about the plugin" rather than a flat third action.
 
 - **Admin: Beta status markers across three surfaces.** Lightweight indicators that signal the plugin's pre-1.0 lifecycle to merchants without disruptive renames:
   - PageHeader: subtle uppercase "BETA" pill next to the "AI Storefront" title. Eyebrow-label typography with a neutral gray background that doesn't compete with the brand chrome.
