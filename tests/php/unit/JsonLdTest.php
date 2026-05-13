@@ -305,7 +305,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// utm_id=woo_jsonld flags "we routed this".
 		$this->assertStringContainsString( 'utm_medium=referral', $url );
 		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
-		$this->assertStringContainsString( 'ai_session_id={session_id}', $url );
+		// Regression guard: `ai_session_id` placeholder was removed in
+		// the channel-split work — JSON-LD-routed traffic is by
+		// definition stateless (no UCP session), so asking a crawler /
+		// AI surface to substitute `{session_id}` was semantically
+		// incoherent. Sessions belong on the /checkout-sessions
+		// continue_url path, where agents actually have one to stamp.
+		$this->assertStringNotContainsString( 'ai_session_id', $url );
 	}
 
 	public function test_buyaction_url_uses_home_checkout_link_not_product_permalink(): void {
@@ -411,7 +417,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
 		$this->assertStringContainsString( 'utm_medium=referral', $url );
 		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
-		$this->assertStringContainsString( 'ai_session_id={session_id}', $url );
+		// Companion regression guard for the variation branch — see
+		// the BuyAction test above for why `ai_session_id` was dropped.
+		$this->assertStringNotContainsString( 'ai_session_id', $url );
 	}
 
 	public function test_buyaction_url_uses_permalink_for_grouped_product(): void {

@@ -7,6 +7,7 @@
   - Stats payload extended with `by_channel` (per-channel orders + revenue + self-normalized share_percent) and `top_channel` (string utm_id or null). Transient cache key bumped to `_v2_` so v1-shaped cached payloads can't crash the new UI shape on rollout; `bust_stats_cache()` deletes both keys during the transition.
   - `share_percent` self-normalizes against the channel-known subset, NOT against `ai_orders` — a store with 100 AI orders / only 10 channel-known would otherwise render "Agent 7% / Referral 3%" against an unstated 90% denominator. The card answers "which channel matters more," not "what fraction of all AI orders carry a channel signature."
   - Transition note: existing crawler caches keep serving the old `woo_ucp` template for ~2-6 weeks post-deploy, biasing the split toward Agent during that window. Accepted as one-shot transition noise.
+  - JSON-LD `BuyAction` / `Offer.checkoutPageURLTemplate` no longer emit the `ai_session_id={session_id}` placeholder. The channel-split design makes the placeholder semantically incoherent — `woo_jsonld` exists precisely to mark stateless scrape traffic, and no realistic consumer (crawler, AI surface, search-result re-server) has a session id to substitute. Session-bound attribution remains on the `/checkout-sessions` `continue_url` path where it's authentically present.
 
 ### Fixes
 ### Refactors
