@@ -726,11 +726,17 @@ class WC_AI_Storefront_Attribution {
 
 		// Transient key versioned to `_v2_` (0.15.0) because the
 		// payload shape grew `by_channel` and `top_channel` fields.
-		// A v1-shaped cached payload deserialized by v2 frontend code
-		// would render with `stats.by_channel === undefined` and crash
-		// the Channel Mix StatCard on first load post-deploy. Bumping
-		// the key forces a one-shot cache miss; old `_stats_<period>`
-		// transients expire naturally within 5 minutes.
+		// The current frontend handles a missing `by_channel`
+		// gracefully — the Channel Mix StatCard collapses to an em-
+		// dash empty state when the field is absent — so a v1 payload
+		// in flight wouldn't crash anything. Bumping the key is still
+		// the right move: it forces a one-shot cache miss so merchants
+		// see the new channel split immediately on upgrade rather than
+		// looking at "no channel data" for up to 5 minutes (the
+		// transient TTL) while waiting for the next cache rebuild.
+		// Old `_stats_<period>` transients expire naturally within
+		// that 5-minute window; `bust_stats_cache()` also deletes
+		// both keys explicitly when an order changes status.
 		$transient_key = 'wc_ai_storefront_stats_v2_' . $period;
 		$cached        = get_transient( $transient_key );
 		if ( false !== $cached && is_array( $cached ) ) {
