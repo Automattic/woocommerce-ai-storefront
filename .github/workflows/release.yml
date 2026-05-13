@@ -183,10 +183,28 @@ jobs:
           head -5 release-notes.md
 
       # Create the Release and attach the zip in one step.
-      # `prerelease: true` reflects the pre-1.0 lifecycle (drop the
-      # flag at 1.0.0); `make_latest: legacy` keeps the "Latest"
-      # badge tied to chronological order rather than semver-default,
-      # which would otherwise demote pre-1.0 releases.
+      #
+      # We deliberately do NOT set `prerelease: true` even though the
+      # plugin is still in its 0.x lifecycle. GitHub's "Pre-release"
+      # flag carries a specific semantic — "not for production use" —
+      # that contradicts what readme.txt's Description tells merchants
+      # under the Beta framing: "Production use is supported." The
+      # plugin signals its Beta lifecycle status through four
+      # in-product surfaces instead (PageHeader pill, HelpMenu Version
+      # line, readme Description, USER-GUIDE intro) — those are the
+      # right place for the soft "shape may still change" signal,
+      # because they reach the merchant where they're actually using
+      # the plugin. GitHub's hard pre-release flag would also strip
+      # the "Latest" badge from each new release in favor of the most
+      # recent non-prerelease, which during the 0.x window meant the
+      # Releases page accidentally promoted older versions to merchants
+      # who landed there directly.
+      #
+      # `make_latest: legacy` keeps the "Latest" badge tied to
+      # chronological order rather than the semver-highest default.
+      # Important for 0.x: if we ever cut a hotfix off an older tag
+      # (e.g. v0.14.3 after v0.15.0 has shipped), we don't want the
+      # hotfix demoting v0.15.0 from "Latest." Chronological wins.
       #
       # softprops/action-gh-release@v2 creates the Release if it
       # doesn't exist (the common path now that release-drafter is
@@ -196,5 +214,4 @@ jobs:
         with:
           files: ${{ env.ZIP_NAME }}
           body_path: release-notes.md
-          prerelease: true
           make_latest: legacy
