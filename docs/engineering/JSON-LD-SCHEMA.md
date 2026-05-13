@@ -85,7 +85,14 @@ Below is a representative full output for a published product after the plugin's
   // ---- Added by this plugin ----
   "potentialAction": {
     "@type": "BuyAction",
-    "target": "https://yourstore.example.com/?add-to-cart=123&utm_source={agent}&utm_medium=ai_agent&utm_id=woo_ucp&ai_session_id={session}",
+    "target": {
+      "@type": "EntryPoint",
+      "urlTemplate": "https://yourstore.example.com/checkout-link/?products=123:1&utm_source={agent_id}&utm_medium=referral&utm_id=woo_jsonld",
+      "actionPlatform": [
+        "https://schema.org/DesktopWebPlatform",
+        "https://schema.org/MobileWebPlatform"
+      ]
+    },
     "result": { "@type": "Order" }
   },
   "category": "Clothing > Hoodies",
@@ -444,7 +451,7 @@ The `@type` is [`OnlineBusiness`](https://schema.org/OnlineBusiness) — a Schem
     "@type": "SearchAction",
     "target": {
       "@type": "EntryPoint",
-      "urlTemplate": "https://yourstore.example.com/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=woo_ucp"
+      "urlTemplate": "https://yourstore.example.com/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=woo_jsonld"
     },
     "query-input": "required name=search_term"
   },
