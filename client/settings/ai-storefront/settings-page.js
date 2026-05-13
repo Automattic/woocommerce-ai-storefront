@@ -1,6 +1,12 @@
 import { useEffect, useState } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
-import { TabPanel, Spinner } from '@wordpress/components';
+import {
+	TabPanel,
+	Spinner,
+	DropdownMenu,
+	MenuItem,
+} from '@wordpress/components';
+import { help, external } from '@wordpress/icons';
 // Inline SVGs for the pre-enable value cards. Using stroke-based icons
 // from the design spec instead of @wordpress/icons — WP admin CSS can
 // force SVG fill to inherit from dark text, fighting the purple intent.
@@ -236,12 +242,117 @@ const AISyndicationSettings = () => {
 // Shared components
 // ---------------------------------------------------------------------------
 
+// External destination for the help menu's Support item. Top-level
+// const so a future contact-routing change (e.g., a different support
+// portal URL or a deep-link with prefilled fields) can be swapped here
+// without touching the JSX.
+//
+// Points at woocommerce.com's authenticated support contact form,
+// which is the canonical support channel for WooCommerce-published
+// plugins. Merchants reach a human; the queue is routed by their
+// woocommerce.com account context.
+const HELP_SUPPORT_URL = 'https://woocommerce.com/my-account/contact-support/';
+
+// HelpMenu: top-right help affordance on the PageHeader.
+//
+// Pattern decision (issue #388): popover menu on click, not hover-only
+// tooltip. Mobile-friendly, multi-destination, leverages
+// @wordpress/components <DropdownMenu> for keyboard a11y, focus
+// management, and ARIA roles out of the box.
+//
+// Three menu items:
+//   - Documentation → opens the in-product user guide (a static HTML
+//     file built from docs/user-guide/USER-GUIDE.md at npm run build
+//     time, served from the merchant's own plugin folder so the
+//     screenshots resolve via relative paths from their own host).
+//     URL comes from the server-localized `wcAiSyndicationParams.helpUrl`
+//     so the path stays canonical regardless of WP's `plugins_url()`
+//     configuration (subdirectory installs, multisite, etc.).
+//   - Support → opens the woocommerce.com support contact form.
+//   - Version → static text from `wcAiSyndicationParams.version`. The
+//     `disabled` prop on the MenuItem renders it as a non-interactive
+//     row so right-click + keyboard navigation skip it appropriately.
+//
+// Anchor semantics use real <a href target="_blank"> via MenuItem's
+// `href` prop so right-click "Open in new tab" works and so the
+// merchant's admin session isn't replaced — Documentation and Support
+// both open in new tabs. `onClick={ onClose }` closes the menu
+// after click.
+const HelpMenu = () => {
+	const helpUrl =
+		typeof wcAiSyndicationParams !== 'undefined' &&
+		wcAiSyndicationParams.helpUrl
+			? wcAiSyndicationParams.helpUrl
+			: '';
+	const version =
+		typeof wcAiSyndicationParams !== 'undefined' &&
+		wcAiSyndicationParams.version
+			? wcAiSyndicationParams.version
+			: '';
+
+	return (
+		<DropdownMenu
+			icon={ help }
+			label={ __( 'Help', 'woocommerce-ai-storefront' ) }
+		>
+			{ ( { onClose } ) => (
+				<>
+					{ helpUrl && (
+						<MenuItem
+							href={ helpUrl }
+							target="_blank"
+							rel="noopener noreferrer"
+							icon={ external }
+							onClick={ onClose }
+						>
+							{ __(
+								'Documentation',
+								'woocommerce-ai-storefront'
+							) }
+						</MenuItem>
+					) }
+					<MenuItem
+						href={ HELP_SUPPORT_URL }
+						target="_blank"
+						rel="noopener noreferrer"
+						icon={ external }
+						onClick={ onClose }
+					>
+						{ __( 'Support', 'woocommerce-ai-storefront' ) }
+					</MenuItem>
+					<MenuItem disabled>
+						{ version
+							? sprintf(
+									/* translators: %s: current plugin version, e.g. "0.15.0" */
+									__(
+										'Version %s',
+										'woocommerce-ai-storefront'
+									),
+									version
+							  )
+							: __(
+									'Version unknown',
+									'woocommerce-ai-storefront'
+							  ) }
+					</MenuItem>
+				</>
+			) }
+		</DropdownMenu>
+	);
+};
+
 // PageHeader is decorative brand chrome: a single bordered strip with
-// the Woo logo and "AI Storefront" title. The semantic page title is
-// the server-rendered screen-reader-text <h1> inside .wrap (see
-// render_admin_page() in class-wc-ai-storefront.php). aria-hidden on
-// the header keeps the visible logo + heading out of the accessibility
-// tree so screen-reader users don't hear the page name twice.
+// the Woo logo and "AI Storefront" title plus a help affordance on the
+// right. The semantic page title is the server-rendered screen-reader-
+// text <h1> inside .wrap (see render_admin_page() in
+// class-wc-ai-storefront.php).
+//
+// aria-hidden lives on the **inner brand-chrome wrapper** (the logo +
+// title group) rather than the outer <header>. That keeps the visible
+// logo + heading out of the accessibility tree (so screen-reader users
+// don't hear the page name twice) WHILE leaving the help button
+// accessible. ARIA spec doesn't allow "unhiding" a descendant of an
+// aria-hidden ancestor, so we must scope the hidden region tightly.
 //
 // `withNavSlot` controls how the strip joins the body below it:
 //   - false: own bottom border + 24px clearance to the next block.
@@ -264,7 +375,6 @@ const AISyndicationSettings = () => {
 //   colors.wooPurple50 (`#720EEC`) which is the interactive accent.
 const PageHeader = ( { withNavSlot = false } ) => (
 	<header
-		aria-hidden="true"
 		style={ {
 			padding: `8px ${ spacing.s7 } 19px`,
 			background: colors.surface,
@@ -278,36 +388,47 @@ const PageHeader = ( { withNavSlot = false } ) => (
 			style={ {
 				display: 'flex',
 				alignItems: 'center',
+				justifyContent: 'space-between',
 				gap: spacing.s2,
 			} }
 		>
-			<svg
-				width="20"
-				height="20"
-				viewBox="0 0 375 375"
-				fill="none"
-				xmlns="http://www.w3.org/2000/svg"
+			<div
 				aria-hidden="true"
-				focusable="false"
-				style={ { flexShrink: 0 } }
-			>
-				<path
-					fillRule="evenodd"
-					clipRule="evenodd"
-					d="M187.5 375C291.053 375 375 291.053 375 187.5C375 83.9466 291.053 0 187.5 0C83.9466 0 0 83.9466 0 187.5C0 291.053 83.9466 375 187.5 375ZM165.409 242.53C155.31 261.493 141.913 269.737 125.217 269.737C104.4 269.737 90.1786 257.164 90.1786 235.935V160.704H74.308C60.0863 160.704 52.2541 153.49 52.2541 140.917C52.2541 128.345 59.6741 121.543 74.308 121.543H113.057C132.019 121.543 139.851 129.581 139.851 148.544V207.491L173.448 141.742C181.074 126.902 190.967 121.543 203.334 121.543C218.998 121.543 227.449 130.2 227.449 147.925V207.491L263.106 140.505C270.938 125.871 279.595 121.543 292.992 121.543C317.932 121.543 325.97 135.971 314.634 155.139L262.9 242.53C251.152 262.523 238.991 269.737 222.502 269.737C201.479 269.737 187.875 257.164 187.875 236.141V200.484L165.409 242.53Z"
-					fill="#873EFF"
-				/>
-			</svg>
-			<h2
 				style={ {
-					...typography.brandHeading,
-					margin: 0,
-					padding: 0,
-					color: colors.textPrimary,
+					display: 'flex',
+					alignItems: 'center',
+					gap: spacing.s2,
 				} }
 			>
-				{ __( 'AI Storefront', 'woocommerce-ai-storefront' ) }
-			</h2>
+				<svg
+					width="20"
+					height="20"
+					viewBox="0 0 375 375"
+					fill="none"
+					xmlns="http://www.w3.org/2000/svg"
+					aria-hidden="true"
+					focusable="false"
+					style={ { flexShrink: 0 } }
+				>
+					<path
+						fillRule="evenodd"
+						clipRule="evenodd"
+						d="M187.5 375C291.053 375 375 291.053 375 187.5C375 83.9466 291.053 0 187.5 0C83.9466 0 0 83.9466 0 187.5C0 291.053 83.9466 375 187.5 375ZM165.409 242.53C155.31 261.493 141.913 269.737 125.217 269.737C104.4 269.737 90.1786 257.164 90.1786 235.935V160.704H74.308C60.0863 160.704 52.2541 153.49 52.2541 140.917C52.2541 128.345 59.6741 121.543 74.308 121.543H113.057C132.019 121.543 139.851 129.581 139.851 148.544V207.491L173.448 141.742C181.074 126.902 190.967 121.543 203.334 121.543C218.998 121.543 227.449 130.2 227.449 147.925V207.491L263.106 140.505C270.938 125.871 279.595 121.543 292.992 121.543C317.932 121.543 325.97 135.971 314.634 155.139L262.9 242.53C251.152 262.523 238.991 269.737 222.502 269.737C201.479 269.737 187.875 257.164 187.875 236.141V200.484L165.409 242.53Z"
+						fill="#873EFF"
+					/>
+				</svg>
+				<h2
+					style={ {
+						...typography.brandHeading,
+						margin: 0,
+						padding: 0,
+						color: colors.textPrimary,
+					} }
+				>
+					{ __( 'AI Storefront', 'woocommerce-ai-storefront' ) }
+				</h2>
+			</div>
+			<HelpMenu />
 		</div>
 	</header>
 );

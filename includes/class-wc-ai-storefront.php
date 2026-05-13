@@ -440,6 +440,13 @@ class WC_AI_Storefront {
 				'llmsTxtUrl'     => home_url( '/llms.txt' ),
 				'ucpUrl'         => home_url( '/.well-known/ucp' ),
 				'ordersUrl'      => admin_url( 'admin.php?page=wc-orders' ),
+				// In-product user guide URL. The HTML is built at
+				// `npm run build` time from docs/user-guide/USER-GUIDE.md
+				// (see bin/build-user-guide.mjs) and ships as a static
+				// asset alongside the markdown source. Served as a
+				// plain file from the plugin's own folder so screenshot
+				// images resolve correctly via relative paths.
+				'helpUrl'        => plugins_url( 'docs/user-guide/USER-GUIDE.html', WC_AI_STOREFRONT_PLUGIN_FILE ),
 				'version'        => WC_AI_STOREFRONT_VERSION,
 				// `product_brand` is a native WC taxonomy from 9.5+.
 				// We gate client-side rendering of the Brands segment

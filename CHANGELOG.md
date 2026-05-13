@@ -9,6 +9,13 @@
   - Transition note: existing crawler caches keep serving the old `woo_ucp` template for ~2-6 weeks post-deploy, biasing the split toward Agent during that window. Accepted as one-shot transition noise.
   - JSON-LD `BuyAction` / `Offer.checkoutPageURLTemplate` no longer emit the `ai_session_id={session_id}` placeholder. The channel-split design makes the placeholder semantically incoherent — `woo_jsonld` exists precisely to mark stateless scrape traffic, and no realistic consumer (crawler, AI surface, search-result re-server) has a session id to substitute. Session-bound attribution remains on the `/checkout-sessions` `continue_url` path where it's authentically present.
 
+- **Admin: help menu in the PageHeader.** Closes #388. New help icon in the top-right of the plugin's admin header opens a popover with three items:
+  - **Documentation** opens an in-product user guide in a new tab. The guide is rendered from `docs/user-guide/USER-GUIDE.md` to `USER-GUIDE.html` at `npm run build` time (new `bin/build-user-guide.mjs`, `marked` as a build-time dep) and ships co-located with the markdown source so screenshot images resolve from the merchant's own host via relative paths.
+  - **Support** opens woocommerce.com's authenticated support contact form. Canonical support channel for WooCommerce-published plugins; routes merchants to a human, contextualized by their wc.com account.
+  - **Version** shows the running plugin version as static text, read from `WC_AI_STOREFRONT_VERSION` via the localize-script payload.
+  - Built on `@wordpress/components` `<DropdownMenu>` for keyboard accessibility, focus management, ARIA roles, and Esc / outside-click dismissal out of the box. Anchor semantics use real `<a href target="_blank">` so right-click "Open in new tab" works.
+  - PageHeader's `aria-hidden` scope tightened: previously the entire header was hidden from screen readers (to avoid duplicate page-name announcement with the server-rendered `<h1>`); now only the brand-chrome wrapper is hidden, leaving the help button reachable. ARIA spec doesn't allow "unhiding" descendants of an aria-hidden ancestor, so the scope reduction was required for the help button to be accessible.
+
 ### Fixes
 ### Refactors
 ### Tests
