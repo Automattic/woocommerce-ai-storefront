@@ -16,10 +16,16 @@ Two audiences, two folders.
 4. [`API-REFERENCE.md`](engineering/API-REFERENCE.md) — UCP REST and admin REST endpoint reference. Request/response shapes, auth, errors, curl examples.
 5. [`DATA-MODEL.md`](engineering/DATA-MODEL.md) — every persisted artifact (options, transients, order meta, post meta, scheduled events). Lifetime, who writes/reads, uninstall behavior.
 6. [`JSON-LD-SCHEMA.md`](engineering/JSON-LD-SCHEMA.md) — Schema.org structured-data shapes the plugin emits on product pages and the homepage, with per-field semantics, full example output, and validation guidance.
-7. [`HOOKS.md`](engineering/HOOKS.md) — filters and actions exposed for extending plugins.
-8. [`UI-CONVENTIONS.md`](engineering/UI-CONVENTIONS.md) — React component-library precedence, styling rules, design tokens.
-9. [`TESTING.md`](engineering/TESTING.md) — PHP and JS test stacks, conventions, anti-patterns, what CI runs.
-10. [`RELEASE.md`](engineering/RELEASE.md) — versioning, CHANGELOG format, release checklist.
+7. [`SCHEMA-ORG-COVERAGE.md`](engineering/SCHEMA-ORG-COVERAGE.md) — companion audit to JSON-LD-SCHEMA.md. Enumerates what Schema.org offers, where the plugin has coverage, and where the gaps are.
+8. [`HOOKS.md`](engineering/HOOKS.md) — filters and actions exposed for extending plugins.
+9. [`UI-CONVENTIONS.md`](engineering/UI-CONVENTIONS.md) — React component-library precedence, styling rules, design tokens.
+10. [`TESTING.md`](engineering/TESTING.md) — PHP and JS test stacks, conventions, anti-patterns, what CI runs.
+11. [`RELEASE.md`](engineering/RELEASE.md) — versioning, CHANGELOG format, release checklist.
+12. [`KNOWN-GAPS.md`](engineering/KNOWN-GAPS.md) — known limitations and design choices we've consciously accepted. Read this before re-investigating a "why doesn't this work?" question from scratch.
+
+### Historical / retrospective
+
+- [`DEPENDENCY-MODERNIZATION.md`](engineering/DEPENDENCY-MODERNIZATION.md) — retrospective of the `@wordpress/scripts` 28→32 and `@wordpress/components` 28→33 upgrade cycle (PRs #215, #217, #219). Status: complete. Useful context if you're touching those dependency lines again.
 
 ## Contributing
 
