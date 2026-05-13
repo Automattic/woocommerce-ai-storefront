@@ -4,6 +4,7 @@ import {
 	TabPanel,
 	Spinner,
 	DropdownMenu,
+	MenuGroup,
 	MenuItem,
 } from '@wordpress/components';
 import { help, external } from '@wordpress/icons';
@@ -306,45 +307,55 @@ const HelpMenu = () => {
 			} }
 		>
 			{ ( { onClose } ) => (
+				// Two groups separate the actionable items (Documentation,
+				// Support) from the version metadata row. MenuGroup renders a
+				// hairline between adjacent groups, communicating "these are
+				// the things you can DO; this is just info about the plugin"
+				// without needing a visible heading. Mirrors the WP admin
+				// pattern (Gutenberg's More-options popovers, etc.).
 				<>
-					{ helpUrl && (
+					<MenuGroup>
+						{ helpUrl && (
+							<MenuItem
+								href={ helpUrl }
+								target="_blank"
+								rel="noopener noreferrer"
+								icon={ external }
+								onClick={ onClose }
+							>
+								{ __(
+									'Documentation',
+									'woocommerce-ai-storefront'
+								) }
+							</MenuItem>
+						) }
 						<MenuItem
-							href={ helpUrl }
+							href={ HELP_SUPPORT_URL }
 							target="_blank"
 							rel="noopener noreferrer"
 							icon={ external }
 							onClick={ onClose }
 						>
-							{ __(
-								'Documentation',
-								'woocommerce-ai-storefront'
-							) }
+							{ __( 'Support', 'woocommerce-ai-storefront' ) }
 						</MenuItem>
-					) }
-					<MenuItem
-						href={ HELP_SUPPORT_URL }
-						target="_blank"
-						rel="noopener noreferrer"
-						icon={ external }
-						onClick={ onClose }
-					>
-						{ __( 'Support', 'woocommerce-ai-storefront' ) }
-					</MenuItem>
-					<MenuItem disabled>
-						{ version
-							? sprintf(
-									/* translators: %s: current plugin version, e.g. "0.15.0 (Beta)". The "(Beta)" suffix marks the plugin's lifecycle status; remove the literal when the plugin reaches a stable 1.0 release. */
-									__(
-										'Version %s (Beta)',
+					</MenuGroup>
+					<MenuGroup>
+						<MenuItem disabled>
+							{ version
+								? sprintf(
+										/* translators: %s: current plugin version, e.g. "0.15.0 (Beta)". The "(Beta)" suffix marks the plugin's lifecycle status; remove the literal when the plugin reaches a stable 1.0 release. */
+										__(
+											'Version %s (Beta)',
+											'woocommerce-ai-storefront'
+										),
+										version
+								  )
+								: __(
+										'Version unknown',
 										'woocommerce-ai-storefront'
-									),
-									version
-							  )
-							: __(
-									'Version unknown',
-									'woocommerce-ai-storefront'
-							  ) }
-					</MenuItem>
+								  ) }
+						</MenuItem>
+					</MenuGroup>
 				</>
 			) }
 		</DropdownMenu>

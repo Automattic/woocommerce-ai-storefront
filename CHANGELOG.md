@@ -1,6 +1,9 @@
 ## [Unreleased]
 
 ### Features
+
+- **Admin: HelpMenu hairline separator between actions and Version row.** Wraps Documentation + Support in one `<MenuGroup>` and the disabled Version row in a second `<MenuGroup>`, so the rendered menu shows a single hairline between the action group and the metadata row. Same pattern as Gutenberg's More-options popovers and the WordPress.com admin user menu. Communicates the action-vs-metadata distinction structurally, so the disabled Version row reads as "info about the plugin" rather than a flat third action.
+
 ### Fixes
 ### Refactors
 ### Tests
