@@ -2118,7 +2118,7 @@ class WC_AI_Storefront_JsonLd {
 	 *               email).
 	 *
 	 * Visibility note (issue #398): private→public so
-	 * `WC_AI_Storefront_LLMSText::generate()` can call it directly,
+	 * `WC_AI_Storefront_Llms_Txt::generate()` can call it directly,
 	 * keeping the homepage `OnlineBusiness` JSON-LD and the new
 	 * `## Store` section in llms.txt drawing on the same single source
 	 * of truth for logo / address / support-email resolution.
@@ -2218,7 +2218,7 @@ class WC_AI_Storefront_JsonLd {
 	 * the test-subclass override in JsonLdTest had to widen too.
 	 *
 	 * Visibility note (issue #398): protected→public so
-	 * `WC_AI_Storefront_LLMSText::generate()` can call it directly to
+	 * `WC_AI_Storefront_Llms_Txt::generate()` can call it directly to
 	 * build the `## Store` location line in llms.txt from the same
 	 * source as the JSON-LD `address` field.
 	 *
@@ -2441,7 +2441,7 @@ class WC_AI_Storefront_JsonLd {
 	 * Invalidated by `WC_AI_Storefront_Cache_Invalidator::invalidate()`.
 	 *
 	 * Visibility note (issue #398): private→public so
-	 * `WC_AI_Storefront_LLMSText::generate()` can build the new
+	 * `WC_AI_Storefront_Llms_Txt::generate()` can build the new
 	 * `## Catalog` section from the same cached top-10-by-product-count
 	 * result that drives the homepage's `hasOfferCatalog` JSON-LD. One
 	 * cache miss serves both surfaces.
