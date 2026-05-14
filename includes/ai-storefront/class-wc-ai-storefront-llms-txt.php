@@ -413,22 +413,22 @@ class WC_AI_Storefront_Llms_Txt {
 		// llms.txt see the same topic signal that schema.org consumers
 		// see on the homepage.
 		if ( ! empty( $catalog_summary ) && is_array( $catalog_summary ) ) {
-			$lines[] = '## Catalog';
-			$lines[] = '';
-			$lines[] = 'Top categories by product count (sample, not exhaustive — full enumeration via the sitemaps under Browse, or `POST /wp-json/wc/ucp/v1/catalog/search`):';
-			$lines[] = '';
+			$lines[]        = '## Catalog';
+			$lines[]        = '';
+			$lines[]        = 'Top categories by product count (sample, not exhaustive — full enumeration via the sitemaps under Browse, or `POST /wp-json/wc/ucp/v1/catalog/search`):';
+			$lines[]        = '';
 			$specializes_in = [];
 			foreach ( $catalog_summary as $category ) {
 				if ( ! is_array( $category ) || empty( $category['name'] ) || empty( $category['url'] ) ) {
 					continue;
 				}
-				$cat_name   = self::sanitize_markdown_inline(
+				$cat_name         = self::sanitize_markdown_inline(
 					html_entity_decode( wp_strip_all_tags( (string) $category['name'] ), ENT_QUOTES, 'UTF-8' ),
 					true
 				);
-				$cat_count  = isset( $category['numberOfItems'] ) ? (int) $category['numberOfItems'] : 0;
-				$cat_label  = 1 === $cat_count ? 'product' : 'products';
-				$lines[]    = "- [{$cat_name}](" . esc_url( (string) $category['url'] ) . ") ({$cat_count} {$cat_label})";
+				$cat_count        = isset( $category['numberOfItems'] ) ? (int) $category['numberOfItems'] : 0;
+				$cat_label        = 1 === $cat_count ? 'product' : 'products';
+				$lines[]          = "- [{$cat_name}](" . esc_url( (string) $category['url'] ) . ") ({$cat_count} {$cat_label})";
 				$specializes_in[] = $cat_name;
 			}
 			if ( ! empty( $specializes_in ) ) {
@@ -454,13 +454,13 @@ class WC_AI_Storefront_Llms_Txt {
 			$shipping_lines[] = '- **Ships from**: ' . self::sanitize_markdown_inline( $ship_country );
 		}
 
-		$handling = isset( $settings['handling_time'] ) && is_array( $settings['handling_time'] )
+		$handling     = isset( $settings['handling_time'] ) && is_array( $settings['handling_time'] )
 			? $settings['handling_time']
 			: [];
 		$handling_min = isset( $handling['min'] ) ? (int) $handling['min'] : 0;
 		$handling_max = isset( $handling['max'] ) ? (int) $handling['max'] : 0;
 		if ( $handling_min > 0 && $handling_max > 0 ) {
-			$range = $handling_min === $handling_max
+			$range            = $handling_min === $handling_max
 				? sprintf( '%d business day%s', $handling_max, 1 === $handling_max ? '' : 's' )
 				: sprintf( '%d to %d business days', $handling_min, $handling_max );
 			$shipping_lines[] = '- **Handling time**: ' . $range;
@@ -483,7 +483,7 @@ class WC_AI_Storefront_Llms_Txt {
 				'OriginalShippingFees'             => 'original shipping non-refundable',
 				'RestockingFees'                   => 'restocking fee applies',
 			];
-			$fees = isset( $return_policy['fees'] ) ? (string) $return_policy['fees'] : '';
+			$fees     = isset( $return_policy['fees'] ) ? (string) $return_policy['fees'] : '';
 			if ( isset( $fees_map[ $fees ] ) ) {
 				$return_parts[] = $fees_map[ $fees ];
 			}
@@ -536,15 +536,15 @@ class WC_AI_Storefront_Llms_Txt {
 		// UTM params here would pollute the agent's structured
 		// response payloads (the manifest, schema, etc.) with
 		// attribution params that don't belong there.
-		$ucp_api_base    = rtrim( rest_url( 'wc/ucp/v1' ), '/' );
-		$ucp_manifest    = $site_url . '.well-known/ucp';
-		$ucp_checkout    = $ucp_api_base . '/checkout-sessions';
-		$lines[] = '## For agents';
-		$lines[] = '';
-		$lines[] = "- **UCP manifest**: `{$ucp_manifest}` — capability discovery (what the store supports)";
-		$lines[] = "- **UCP API base**: `{$ucp_api_base}` — REST root for search, lookup, checkout";
-		$lines[] = "- **Checkout API**: `POST {$ucp_checkout}` — server returns a `continue_url`; redirect the buyer there. Product-specific cart links are also available via JSON-LD `BuyAction.urlTemplate` on each product page (deterministic across product types).";
-		$lines[] = '';
+		$ucp_api_base = rtrim( rest_url( 'wc/ucp/v1' ), '/' );
+		$ucp_manifest = $site_url . '.well-known/ucp';
+		$ucp_checkout = $ucp_api_base . '/checkout-sessions';
+		$lines[]      = '## For agents';
+		$lines[]      = '';
+		$lines[]      = "- **UCP manifest**: `{$ucp_manifest}` — capability discovery (what the store supports)";
+		$lines[]      = "- **UCP API base**: `{$ucp_api_base}` — REST root for search, lookup, checkout";
+		$lines[]      = "- **Checkout API**: `POST {$ucp_checkout}` — server returns a `continue_url`; redirect the buyer there. Product-specific cart links are also available via JSON-LD `BuyAction.urlTemplate` on each product page (deterministic across product types).";
+		$lines[]      = '';
 
 		// ============================================================
 		// ## UCP Extension
@@ -708,131 +708,6 @@ class WC_AI_Storefront_Llms_Txt {
 		return $value;
 	}
 
-	private function get_syndicated_categories( $settings ) {
-		return $this->get_syndicated_terms( $settings, 'product_cat', 'selected_categories' );
-	}
-
-	private function get_syndicated_tags( $settings ) {
-		return $this->get_syndicated_terms( $settings, 'product_tag', 'selected_tags' );
-	}
-
-	private function get_syndicated_brands( $settings ) {
-		// `product_brand` is WC 9.5+. Without the taxonomy
-		// registered, return empty rather than emit a `get_terms()`
-		// call against an unknown taxonomy.
-		if ( ! taxonomy_exists( 'product_brand' ) ) {
-			// Log when the merchant has a non-empty brand
-			// selection but the taxonomy isn't registered —
-			// usually an environment change (WC downgrade or
-			// brands plugin deactivation) that orphans the
-			// stored selection. Logging makes the silent
-			// "section disappeared" symptom diagnosable.
-			if ( ! empty( $settings['selected_brands'] ?? array() ) ) {
-				WC_AI_Storefront_Logger::debug(
-					'llms.txt: selected_brands non-empty but product_brand taxonomy is not registered; brand section omitted'
-				);
-			}
-			return [];
-		}
-		return $this->get_syndicated_terms( $settings, 'product_brand', 'selected_brands' );
-	}
-
-	/**
-	 * Resolve syndicated terms for a given taxonomy + selection key.
-	 *
-	 * The three `## Product {Categories,Tags,Brands}` sections in
-	 * llms.txt are navigation hints: "here's the shape of what
-	 * this store sells." We only emit them when the merchant has
-	 * actually scoped the catalog by taxonomy — otherwise the
-	 * sections imply a restriction that isn't there.
-	 *
-	 *   - `all` → suppressed. The merchant exposed the entire
-	 *     catalog; emitting a (truncated) per-taxonomy enumeration
-	 *     would imply an "allowed list" restriction the merchant
-	 *     hasn't actually configured. Pre-0.1.10 this branch
-	 *     emitted top-N by count, which both falsely implied a
-	 *     restriction AND under-reported (the truncated 20-term
-	 *     list could miss long-tail terms agents would want to
-	 *     navigate by). Agents wanting the catalog enumerate via
-	 *     the Store API, which is the canonical source of truth.
-	 *   - `by_taxonomy` with the matching `selected_*` non-empty
-	 *     → list those selected terms. Other taxonomies in the
-	 *     UNION may widen the product set, but THIS taxonomy's
-	 *     selections are a real (sub)set of the scope and listing
-	 *     them gives agents accurate navigation. Under-reports
-	 *     rather than over-reports — agents that want precision
-	 *     enumerate via the Store API, which applies the full
-	 *     UNION filter.
-	 *   - `by_taxonomy` with the matching `selected_*` empty →
-	 *     suppressed for that taxonomy.
-	 *   - `selected` → suppressed (individual product picking;
-	 *     taxonomy aggregation doesn't describe scope shape).
-	 *
-	 * Defensive legacy-mode fallback: pre-0.1.5 stored values of
-	 * `categories` / `tags` / `brands` route through `by_taxonomy`.
-	 *
-	 * On term counts: when listing selected terms, `get_terms()`
-	 * returns the TOTAL products in each term — not the subset
-	 * matching the full UNION. The displayed count can differ
-	 * from what Store API returns. Acceptable for a navigation
-	 * hint.
-	 *
-	 * @param array  $settings      Plugin settings.
-	 * @param string $taxonomy      Taxonomy slug
-	 *                              (`product_cat` / `product_tag`
-	 *                              / `product_brand`).
-	 * @param string $selection_key Settings key holding the
-	 *                              merchant's selected term IDs
-	 *                              for this taxonomy.
-	 * @return array<int, WP_Term>
-	 */
-	private function get_syndicated_terms( $settings, $taxonomy, $selection_key ) {
-		$product_mode = $settings['product_selection_mode'] ?? 'all';
-
-		if ( in_array( $product_mode, [ 'categories', 'tags', 'brands' ], true ) ) {
-			$product_mode = 'by_taxonomy';
-		}
-
-		// Only `by_taxonomy` mode lists taxonomies — and only when the
-		// matching `selected_*` is non-empty. `all` and `selected`
-		// modes both suppress the section. Pre-0.1.10 `all` emitted a
-		// top-20 list, which falsely implied a restriction; see method
-		// docblock for full rationale.
-		if ( 'by_taxonomy' !== $product_mode ) {
-			return [];
-		}
-
-		// Normalize once: callers can pass partial settings arrays
-		// (and the test stub's defaults don't include all three
-		// `selected_*` keys), so default to [] before any reads to
-		// avoid PHP 8.1+ undefined-key warnings.
-		$selection     = (array) ( $settings[ $selection_key ] ?? [] );
-		$has_selection = ! empty( $selection );
-
-		if ( ! $has_selection ) {
-			return [];
-		}
-
-		$terms = get_terms(
-			[
-				'taxonomy'   => $taxonomy,
-				'hide_empty' => true,
-				'orderby'    => 'count',
-				'order'      => 'DESC',
-				'include'    => array_map( 'absint', $selection ),
-				'number'     => 0,
-			]
-		);
-		// Defensive: `get_terms` should return array|WP_Error per
-		// the documented contract, but a third-party `get_terms`
-		// filter could return null/false/scalar. Coerce anything
-		// non-array to [] so the caller's foreach iterates zero
-		// times rather than tripping on the unexpected type.
-		if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
-			return [];
-		}
-		return $terms;
-	}
 
 	// `get_featured_products()` was removed alongside the
 	// "Featured Products" llms.txt section. See the deletion comment
