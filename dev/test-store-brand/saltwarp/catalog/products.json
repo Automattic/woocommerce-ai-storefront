@@ -1,0 +1,118 @@
+{
+  "_meta": {
+    "brand": "Saltwarp",
+    "purpose": "On-brand product catalog for the Saltwarp test store. Replaces the default WC sample data and WC Subscriptions fixtures with products that match the premium-streetwear archetype.",
+    "voice_notes": {
+      "names": "Two- or three-word product names. First word is the form (Crew, Pant, Jacket); second word is a defining material or origin (e.g. 'Heavyweight', 'Tideline', 'Hemp'); optional third word adds tone (e.g. 'Worn-In').",
+      "descriptions": "Short, declarative, materials-first. Lead with what it's made of, then construction, then fit. No marketing copy ('experience comfort', 'be your best self'). Honest specs, terse voice.",
+      "pricing": "$48 to $280 range. Tops cluster $48-95; bottoms $120-185; knits $145-220; outerwear $185-280. Whole-dollar pricing; no $X.99 charm prices (charm prices read as fast fashion, not premium)."
+    },
+    "import_recipe": {
+      "manual_admin": "Products -> Add New for each. Categorize per the 'categories' field. Set price, stock = '0' for in-stock unlimited, status = 'publish'.",
+      "wp_cli": "Future improvement: a `bin/seed-saltwarp-catalog.sh` that POSTs to wc/v3/products. Tracked as a follow-up TODO.",
+      "json_shape": "This file is currently human-readable JSON, not yet a WC import format. To convert to WC's CSV importer format, run a transform that maps 'name' -> 'Name', 'price' -> 'Regular price', etc. The CSV importer is at Products -> All Products -> Import."
+    },
+    "categories_to_create": ["Tops", "Bottoms", "Outerwear", "Knits"]
+  },
+
+  "products": [
+    {
+      "name": "Heavyweight Crew, Bone",
+      "categories": ["Tops"],
+      "price": 88,
+      "short_description": "14oz brushed-back fleece, garment-washed for a worn-in hand. Drop-shoulder cut. Made in Los Angeles.",
+      "description": "Heavyweight 14oz cotton fleece, brushed on the inside for warmth. Garment-washed before sale so it arrives soft and pre-shrunk. Set-in raglan sleeves, ribbed cuffs and hem, no logo. Sized standard; if you're between, size up — the cut is intentionally roomy. Color: Bone. Made in Los Angeles from milled-in-USA fabric."
+    },
+    {
+      "name": "Heavyweight Crew, Ink",
+      "categories": ["Tops"],
+      "price": 88,
+      "short_description": "14oz brushed-back fleece, garment-washed for a worn-in hand. Drop-shoulder cut. Made in Los Angeles.",
+      "description": "Heavyweight 14oz cotton fleece, brushed on the inside for warmth. Garment-washed before sale so it arrives soft and pre-shrunk. Set-in raglan sleeves, ribbed cuffs and hem, no logo. Sized standard; if you're between, size up — the cut is intentionally roomy. Color: Ink. Made in Los Angeles from milled-in-USA fabric."
+    },
+    {
+      "name": "Tideline Tee, Bone",
+      "categories": ["Tops"],
+      "price": 48,
+      "short_description": "Medium-weight 7oz Supima cotton. Boxy modern cut. Pre-washed for fit consistency.",
+      "description": "7oz Supima cotton, ring-spun for a smoother hand than standard cotton. Cut with a square modern silhouette — slightly cropped, slightly boxy. Single needle stitching at the side seams. Pre-washed at the mill so the fit holds after the first wash at home. Color: Bone. Made in Portugal."
+    },
+    {
+      "name": "Tideline Tee, Ink",
+      "categories": ["Tops"],
+      "price": 48,
+      "short_description": "Medium-weight 7oz Supima cotton. Boxy modern cut. Pre-washed for fit consistency.",
+      "description": "7oz Supima cotton, ring-spun for a smoother hand than standard cotton. Cut with a square modern silhouette — slightly cropped, slightly boxy. Single needle stitching at the side seams. Pre-washed at the mill so the fit holds after the first wash at home. Color: Ink. Made in Portugal."
+    },
+    {
+      "name": "Tideline Tee, Rust",
+      "categories": ["Tops"],
+      "price": 52,
+      "short_description": "Medium-weight 7oz Supima cotton in our garment-dyed Rust. Boxy modern cut.",
+      "description": "Same 7oz Supima cotton construction as the Bone and Ink, with the body dyed after construction. The garment-dye process produces uneven tonal variation across the panel — each tee reads slightly differently. The Rust is our seasonal color, made in small batches. Color: Rust. Made in Portugal."
+    },
+    {
+      "name": "Worn-In Henley, Bone",
+      "categories": ["Tops"],
+      "price": 72,
+      "short_description": "Slub-knit 8oz cotton with a three-button placket. Sand-washed for an immediately-broken-in feel.",
+      "description": "8oz slub-knit cotton — meaning the yarn has intentional thick-and-thin variation that produces a textured, hand-loomed read. Three real buttons (corozo, not plastic) on the placket. Sand-washed at the mill so the henley arrives already broken in, not stiff. Color: Bone. Made in Los Angeles."
+    },
+    {
+      "name": "Standard Pant, Ink",
+      "categories": ["Bottoms"],
+      "price": 145,
+      "short_description": "Mid-weight 11oz cotton twill. Straight leg, tapered slightly toward the hem. Made in Portugal.",
+      "description": "11oz cotton twill, woven in Portugal at a mill that's been producing fabric for European tailored brands since the 1960s. Straight leg through the thigh, tapered slightly from knee to hem so it doesn't pool over the shoe. Five-pocket construction, brass-toned hardware, riveted stress points. Color: Ink. The Standard Pant is meant to be your default — replace it when it wears out, not before."
+    },
+    {
+      "name": "Standard Pant, Stone",
+      "categories": ["Bottoms"],
+      "price": 145,
+      "short_description": "Mid-weight 11oz cotton twill. Straight leg, tapered slightly toward the hem. Made in Portugal.",
+      "description": "11oz cotton twill, woven in Portugal at a mill that's been producing fabric for European tailored brands since the 1960s. Straight leg through the thigh, tapered slightly from knee to hem so it doesn't pool over the shoe. Five-pocket construction, brass-toned hardware, riveted stress points. Color: Stone (warm neutral). The Standard Pant is meant to be your default — replace it when it wears out, not before."
+    },
+    {
+      "name": "Hemp Trouser, Sand",
+      "categories": ["Bottoms"],
+      "price": 165,
+      "short_description": "60/40 hemp-cotton blend. Lightweight, breathable, naturally wrinkle-prone. Built for summer.",
+      "description": "60% hemp, 40% cotton — hemp gives the trouser breathability and natural antimicrobial properties; cotton softens the hand. Lightweight at 8oz. Wrinkles freely, which is part of the read — these are meant to look lived-in by mid-day. Drawstring waist with a hidden internal button. Color: Sand. Made in Japan."
+    },
+    {
+      "name": "Salt-Wash Knit, Bone",
+      "categories": ["Knits"],
+      "price": 185,
+      "short_description": "Worsted merino wool, washed in salt water during finishing. Single-knit construction.",
+      "description": "100% worsted merino wool from a mill in Biella, Italy. The 'salt wash' is a finishing step where the panels are washed in salt water before final assembly — this softens the wool's hand and produces subtle tonal mottling that develops further with each wear. Single-knit construction (lighter than double-knit, no thermal layer trapped). Color: Bone."
+    },
+    {
+      "name": "Salt-Wash Knit, Storm",
+      "categories": ["Knits"],
+      "price": 185,
+      "short_description": "Worsted merino wool, washed in salt water during finishing. Single-knit construction.",
+      "description": "100% worsted merino wool from a mill in Biella, Italy. The 'salt wash' is a finishing step where the panels are washed in salt water before final assembly — this softens the wool's hand and produces subtle tonal mottling that develops further with each wear. Single-knit construction (lighter than double-knit, no thermal layer trapped). Color: Storm (deep blue-grey)."
+    },
+    {
+      "name": "Fisherman Cardigan, Oat",
+      "categories": ["Knits"],
+      "price": 220,
+      "short_description": "Cabled lambswool. Shawl collar, horn buttons. Heavy enough to wear without a jacket on cool days.",
+      "description": "100% lambswool, knitted in a cable pattern that's been the brand's reference for the cardigan from the start. Shawl collar (not crew), real horn buttons (not plastic). Heavyweight at 32oz finished — this is meant to function as an outer layer on cool days, not a base layer. Cuffs and hem in 2x2 rib. Color: Oat (natural undyed). Made in Donegal, Ireland."
+    },
+    {
+      "name": "Watch Jacket, Ink",
+      "categories": ["Outerwear"],
+      "price": 245,
+      "short_description": "Waxed cotton canvas, snap-button placket, drawcord hem. Cut clean — no patches, no bellows pockets.",
+      "description": "12oz waxed cotton canvas, milled at Halley Stevensons in Scotland — the canonical source for waxed-cotton outerwear since 1864. Cut as a watch jacket: hip-length, straight, snap-button placket front, drawcord at the waist and hem, hand-warmer pockets at the lining. No patches, no bellows pockets, no logos. Will develop a unique patina with wear — that's the point. Color: Ink."
+    },
+    {
+      "name": "Storm Parka, Stone",
+      "categories": ["Outerwear"],
+      "price": 280,
+      "short_description": "Three-layer technical shell. Sealed seams, two-way zip, removable hood. Built for wet weather.",
+      "description": "Three-layer technical shell — face fabric, waterproof membrane, lining. Sealed seams. Two-way YKK Aquaguard zipper. Removable hood with a draw-cord adjuster. Two zippered hand pockets, one internal chest pocket. Cut roomy enough to layer a heavy knit underneath without binding. Color: Stone. The Storm Parka is the brand's only fully technical piece — the rest of the line leans on natural fibers."
+    }
+  ]
+}

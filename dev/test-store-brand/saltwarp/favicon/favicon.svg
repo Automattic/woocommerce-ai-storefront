@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Saltwarp standalone mark — monogram construction.
+  Letter S extracted from Inter 28pt SemiBold (SIL OFL 1.1),
+  centered inside a rounded-square frame.
+
+  System coherence: the wordmark and mark share the same letter S
+  (same weight, same optical-size cut), so the brand reads as one
+  family across all touchpoints.
+
+  Frame: 56×56 rounded square, stroke 4, radius 8, centered with 4px inset.
+  S: scaled to occupy ~70% of inner area height (34 of 48 units).
+-->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 64 64"
+  fill="currentColor"
+  color="#0F1213"
+  role="img"
+  aria-label="Saltwarp"
+>
+  <rect
+    x="4" y="4" width="56" height="56"
+    rx="8" ry="8"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="4"
+  />
+  <g transform="translate(16.9966,49.0000) scale(0.022819,-0.022819)">
+    <path d="M665 -24Q484 -24 352.5 35.5Q221 95 150.0 207.0Q79 319 78 475H338Q340 388 380.5 326.5Q421 265 494.0 232.5Q567 200 666 200Q759 200 827.5 226.5Q896 253 934.5 301.5Q973 350 973 415Q973 469 944.0 508.0Q915 547 854.0 575.5Q793 604 698 626L536 664Q321 714 215.5 813.5Q110 913 110 1070Q110 1204 179.0 1303.0Q248 1402 371.5 1457.5Q495 1513 657 1513Q822 1513 943.0 1456.0Q1064 1399 1131.5 1295.0Q1199 1191 1203 1048H950Q942 1161 863.0 1225.0Q784 1289 655 1289Q573 1289 509.5 1262.5Q446 1236 410.5 1190.0Q375 1144 375 1084Q375 1031 405.0 993.5Q435 956 494.5 929.5Q554 903 643 882L791 847Q900 822 983.0 785.5Q1066 749 1122.5 698.0Q1179 647 1208.0 580.0Q1237 513 1237 428Q1237 291 1168.0 189.0Q1099 87 970.5 31.5Q842 -24 665 -24Z"/>
+  </g>
+</svg>

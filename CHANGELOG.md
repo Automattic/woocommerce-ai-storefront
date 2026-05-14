@@ -11,6 +11,8 @@
 
 - **CI: drop GitHub "Pre-release" flag from releases.** GitHub's pre-release flag carries the semantic "not for production use," which contradicts what readme.txt's Description tells merchants under the Beta framing ("Production use is supported"). The Beta lifecycle status is already signaled through four in-product surfaces (PageHeader pill, HelpMenu Version line, readme Description, USER-GUIDE intro), where it reaches merchants who are actually using the plugin. Removing `prerelease: true` from `release.yml` also fixes a side effect: pre-release tags don't compete for GitHub's "Latest" badge, so the Releases page was showing v0.14.2 as "Latest" while v0.15.0 (pre-release) sat above it — actively misleading for merchants browsing direct. Also retroactively flipped `v0.15.0` to a full release so it inherits the badge. `make_latest: legacy` keeps the badge tied to chronological order, so hotfixes cut off older tags don't accidentally demote the newest release.
 
+- **CI: exclude `/dev/` from release zip.** Added `--exclude='/dev/'` to the `release.yml` rsync. The `/dev/` directory holds development-only assets (e.g. test-store brand identities used to validate AI-engine fetch behavior) that don't belong in the plugin distribution shipped to merchants. Companion entry to the new `dev/README.md` which documents what `/dev/` is and isn't.
+
 ### Tests
 ### Docs
 
