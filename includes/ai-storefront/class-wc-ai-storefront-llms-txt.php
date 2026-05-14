@@ -305,6 +305,17 @@ class WC_AI_Storefront_Llms_Txt {
 		$currency    = get_woocommerce_currency();
 		$settings    = WC_AI_Storefront::get_settings();
 
+		// Shared store-identity data (logo, postal address, contact email,
+		// catalog summary) is sourced from `WC_AI_Storefront_JsonLd`'s
+		// public helpers. Same single source feeds the homepage
+		// `OnlineBusiness` JSON-LD; both consumers share one cache hit
+		// for the catalog summary and one resolution pass for the
+		// contact-email noreply guard. See issue #398.
+		$jsonld          = new WC_AI_Storefront_JsonLd();
+		$identity_fields = $jsonld->build_identity_fields();
+		$postal_address  = $jsonld->build_postal_address();
+		$catalog_summary = $jsonld->get_catalog_summary();
+
 		$lines   = [];
 		$lines[] = "# {$site_name}";
 		$lines[] = '';
@@ -314,231 +325,242 @@ class WC_AI_Storefront_Llms_Txt {
 			$lines[] = '';
 		}
 
-		// Store metadata — trimmed to just Currency.
+		// ============================================================
+		// ## Store
+		// ============================================================
+		// Identity essentials. Currency stays from the previous
+		// `## Store Information` (the only field that section emitted).
+		// Joined by Location / Logo / Support, all sourced from the
+		// same helpers that build the homepage `OnlineBusiness`
+		// JSON-LD's `address`, `logo`, and `contactPoint.email`.
 		//
-		// Previous revisions of this section listed:
-		//   - `**URL**: {site_url}` — removed; the store URL is the
-		//     hostname of the file the agent just fetched.
-		//   - A free-text "This store accepts AI-assisted product
-		//     discovery…" sentence — removed; file existence IS the
-		//     signal per the llms.txt spec.
-		//   - `**Checkout**: On-site only (web redirect)` — removed;
-		//     `## Checkout Policy` below re-states this with far
-		//     more detail, including the exact endpoint agents must
-		//     POST to.
-		//   - `**Commerce Protocol**: {site_url}.well-known/ucp` —
-		//     removed; `## API Access` below already lists the UCP
-		//     manifest URL.
-		//
-		// Currency is the only item that doesn't duplicate a later
-		// section — spec-aware agents CAN read it from the UCP
-		// manifest's `store_context.currency`, but text-first agents
-		// benefit from a compact glanceable section.
-		$lines[] = '## Store Information';
+		// Each subline is omit-when-empty so a freshly-installed
+		// merchant (no logo uploaded, no city configured, noreply-only
+		// From address) emits a Currency-only section instead of
+		// "Logo: (not set)" placeholder lines.
+		$lines[] = '## Store';
 		$lines[] = '';
 		$lines[] = "- **Currency**: {$currency}";
-		$lines[] = '';
 
-		// API access. This plugin's AI-agent front door is the UCP REST
-		// surface at `/wp-json/wc/ucp/v1/` — a normalized commerce
-		// protocol that wraps the underlying WooCommerce Store API with
-		// agent fingerprinting, rate limiting, access control, and the
-		// shapes UCP-aware agents expect. The raw Store API is what
-		// UCP is built on but is not the surface we announce here:
-		// pointing agents at it bypasses the protections and structured
-		// shapes the UCP layer adds.
-		//
-		// The Commerce Protocol Manifest at `/.well-known/ucp` is the
-		// capability-discovery document agents read first to learn
-		// what the store supports (search, lookup, checkout) and the
-		// store_context (currency, locale, country, tax/shipping
-		// posture).
-		$lines[] = '## API Access';
-		$lines[] = '';
-		$ucp_api = rest_url( 'wc/ucp/v1' );
-		$ucp_url = $site_url . '.well-known/ucp';
-		$lines[] = "- **UCP API**: `{$ucp_api}` — Universal Commerce Protocol endpoints for product search, lookup, and checkout (no authentication required for public catalog reads)";
-		$lines[] = "- **Commerce Protocol Manifest**: `{$ucp_url}` — declares capabilities, checkout policy, and store_context (currency, locale, country, tax/shipping posture)";
-		$lines[] = '';
-
-		// Sitemaps section. Surfaces exhaustive URL enumeration
-		// paths for agents doing deep catalog discovery — parallel
-		// to robots.txt's per-bot `Allow:` sitemap entries, but
-		// in llms.txt's human+machine-readable narrative form. Unlike robots.txt (where `Allow:` for
-		// non-existent paths is harmless), here we probe each
-		// candidate via HEAD so only URLs that actually respond
-		// make it into the document. Probes are synchronous but
-		// amortized by the 1-hour transient cache in
-		// `get_cached_content()` — one round of probing per
-		// cache miss.
-		$sitemap_urls = self::discover_sitemap_urls( $site_url );
-		if ( ! empty( $sitemap_urls ) ) {
-			$lines[] = '## Sitemaps';
-			$lines[] = '';
-			$lines[] = 'Exhaustive URL lists for catalog enumeration. Agents wanting every product/category URL in one pass fetch these instead of paginating the Store API.';
-			$lines[] = '';
-			foreach ( $sitemap_urls as $sitemap_url ) {
-				$lines[] = "- {$sitemap_url}";
-			}
-			$lines[] = '';
-		}
-
-		// Per-taxonomy navigation summary. Three independent
-		// sections (categories / tags / brands) so an agent reading
-		// llms.txt sees ALL the dimensions in scope. Each section
-		// follows the same shape: a heading + a bulleted list of
-		// `[term name](term link) (N products)` entries. The same
-		// per-taxonomy gate applies (see `get_syndicated_terms()`)
-		// so a section is suppressed when its corresponding
-		// `selected_*` array is empty in `by_taxonomy` mode.
-		$taxonomy_sections = [
-			[
-				'heading' => '## Product Categories',
-				'terms'   => $this->get_syndicated_categories( $settings ),
-			],
-			[
-				'heading' => '## Product Tags',
-				'terms'   => $this->get_syndicated_tags( $settings ),
-			],
-			[
-				'heading' => '## Product Brands',
-				'terms'   => $this->get_syndicated_brands( $settings ),
-			],
-		];
-		foreach ( $taxonomy_sections as $section ) {
-			if ( empty( $section['terms'] ) ) {
-				continue;
-			}
-			$lines[] = $section['heading'];
-			$lines[] = '';
-			foreach ( $section['terms'] as $term ) {
-				$link = get_term_link( $term );
-				if ( ! is_wp_error( $link ) ) {
-					// is_link_text: true — the name is inside `[...]` in
-					// "- [{$term_name}]({$link})". A `]` in the raw name
-					// would close the link bracket early (FIND-S06).
-					$term_name   = self::sanitize_markdown_inline(
-						html_entity_decode( wp_strip_all_tags( $term->name ), ENT_QUOTES, 'UTF-8' ),
-						true
-					);
-					$count_label = 1 === (int) $term->count ? 'product' : 'products';
-					$lines[]     = "- [{$term_name}]({$link}) ({$term->count} {$count_label})";
+		if ( ! empty( $postal_address ) ) {
+			$location_parts = [];
+			foreach ( [ 'addressLocality', 'addressRegion', 'addressCountry' ] as $key ) {
+				if ( ! empty( $postal_address[ $key ] ) ) {
+					$location_parts[] = self::sanitize_markdown_inline( (string) $postal_address[ $key ] );
 				}
 			}
+			if ( ! empty( $location_parts ) ) {
+				$lines[] = '- **Location**: ' . implode( ', ', $location_parts );
+			}
+		}
+
+		if ( ! empty( $identity_fields['logo'] ) ) {
+			$lines[] = '- **Logo**: ' . esc_url( (string) $identity_fields['logo'] );
+		}
+
+		if ( ! empty( $identity_fields['contactPoint']['email'] ) ) {
+			$lines[] = '- **Support**: ' . self::sanitize_markdown_inline( (string) $identity_fields['contactPoint']['email'] );
+		}
+
+		$lines[] = '';
+
+		// ============================================================
+		// ## Browse
+		// ============================================================
+		// Catalog-discovery URLs an agent (or human via an AI surface)
+		// can follow directly. Shop archive + a search-URL template
+		// (with `{search_term}` substitution slot, parallel to the
+		// homepage `SearchAction.urlTemplate`) + the existing sitemap
+		// discovery pipeline (HEAD-probed, 24-hour transient cache).
+		//
+		// Both publicly clickable URLs carry the canonical
+		// `utm_medium=referral&utm_id=woo_llms` pair. No `utm_source`
+		// in the template — the actual referring domain populates it
+		// from `Referer` downstream. See WOO_LLMS_ID in
+		// WC_AI_Storefront_Attribution for the channel-classification
+		// rationale.
+		$browse_utm = '&utm_medium=referral&utm_id=' . WC_AI_Storefront_Attribution::WOO_LLMS_ID;
+		$shop_url   = $site_url . 'shop/?' . ltrim( $browse_utm, '&' );
+		$search_url = $site_url . '?s={search_term}&post_type=product' . $browse_utm;
+
+		$lines[] = '## Browse';
+		$lines[] = '';
+		$lines[] = "- **Shop archive**: {$shop_url}";
+		$lines[] = "- **Search**: `{$search_url}` — replace `{search_term}` with the buyer's query";
+
+		$sitemap_urls = self::discover_sitemap_urls( $site_url );
+		if ( ! empty( $sitemap_urls ) ) {
+			$lines[] = '- **Sitemaps** (exhaustive URL lists for full-catalog enumeration):';
+			foreach ( $sitemap_urls as $sitemap_url ) {
+				$lines[] = "  - {$sitemap_url}";
+			}
+		}
+		$lines[] = '';
+
+		// ============================================================
+		// ## Catalog
+		// ============================================================
+		// Top categories by product count, sampled (not exhaustive).
+		// Reuses the same `get_catalog_summary()` result that drives
+		// the homepage JSON-LD `hasOfferCatalog` — one transient hit,
+		// two surfaces. The preamble explicitly labels the list as a
+		// sample so agents wanting every product/category URL know to
+		// follow the sitemaps under `## Browse` or POST UCP
+		// `/catalog/search` for the full enumeration.
+		//
+		// `Specializes in:` mirrors JSON-LD's `Organization.knowsAbout`
+		// — the top-level category-name array — so agents reading
+		// llms.txt see the same topic signal that schema.org consumers
+		// see on the homepage.
+		if ( ! empty( $catalog_summary ) && is_array( $catalog_summary ) ) {
+			$lines[] = '## Catalog';
+			$lines[] = '';
+			$lines[] = 'Top categories by product count (sample, not exhaustive — full enumeration via the sitemaps under Browse, or `POST /wp-json/wc/ucp/v1/catalog/search`):';
+			$lines[] = '';
+			$specializes_in = [];
+			foreach ( $catalog_summary as $category ) {
+				if ( ! is_array( $category ) || empty( $category['name'] ) || empty( $category['url'] ) ) {
+					continue;
+				}
+				$cat_name   = self::sanitize_markdown_inline(
+					html_entity_decode( wp_strip_all_tags( (string) $category['name'] ), ENT_QUOTES, 'UTF-8' ),
+					true
+				);
+				$cat_count  = isset( $category['numberOfItems'] ) ? (int) $category['numberOfItems'] : 0;
+				$cat_label  = 1 === $cat_count ? 'product' : 'products';
+				$lines[]    = "- [{$cat_name}](" . esc_url( (string) $category['url'] ) . ") ({$cat_count} {$cat_label})";
+				$specializes_in[] = $cat_name;
+			}
+			if ( ! empty( $specializes_in ) ) {
+				$lines[] = '';
+				$lines[] = 'Specializes in: ' . implode( ', ', $specializes_in ) . '.';
+			}
 			$lines[] = '';
 		}
 
-		// Featured/popular products section removed: an up-to-10-product
-		// marketing teaser in a machine-readable agent document was
-		// scope creep — agents wanting products use the Store API
-		// (documented in `## API Access` above). Stale prices between
-		// llms.txt regenerations and edge cases like "Request a Quote"
-		// products (no numeric price → rendered as bare "$") made the
-		// section fragile for near-zero agent value. If we ever bring
-		// it back, it should be sourced from the Store API with a note
-		// about freshness expectations.
+		// ============================================================
+		// ## Shipping & Returns
+		// ============================================================
+		// Sourced from the same Policies-tab settings that feed the
+		// JSON-LD `OfferShippingDetails` (handling time) and
+		// `MerchantReturnPolicy` (return window / fees / country).
+		// Omit each subline when the merchant hasn't configured the
+		// corresponding setting — no "Returns: not set" placeholders.
+		$shipping_lines = [];
 
-		// Checkout policy declaration. Makes explicit the merchant-
-		// only-checkout posture that the UCP manifest already
-		// declares implicitly (by what it doesn't advertise:
-		// no payment_handlers, no ap2_mandate capability, no cart
-		// capability, REST-only transport). Redundant signaling
-		// is cheap insurance for agent trust frameworks and for
-		// human merchant-review audiences that can't parse UCP.
-		$lines[] = '## Checkout Policy';
+		$base_location = function_exists( 'wc_get_base_location' ) ? wc_get_base_location() : [];
+		$ship_country  = isset( $base_location['country'] ) ? (string) $base_location['country'] : '';
+		if ( '' !== $ship_country ) {
+			$shipping_lines[] = '- **Ships from**: ' . self::sanitize_markdown_inline( $ship_country );
+		}
+
+		$handling = isset( $settings['handling_time'] ) && is_array( $settings['handling_time'] )
+			? $settings['handling_time']
+			: [];
+		$handling_min = isset( $handling['min'] ) ? (int) $handling['min'] : 0;
+		$handling_max = isset( $handling['max'] ) ? (int) $handling['max'] : 0;
+		if ( $handling_min > 0 && $handling_max > 0 ) {
+			$range = $handling_min === $handling_max
+				? sprintf( '%d business day%s', $handling_max, 1 === $handling_max ? '' : 's' )
+				: sprintf( '%d to %d business days', $handling_min, $handling_max );
+			$shipping_lines[] = '- **Handling time**: ' . $range;
+		}
+
+		$return_policy = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
+			? $settings['return_policy']
+			: [];
+		$return_mode   = isset( $return_policy['mode'] ) ? (string) $return_policy['mode'] : 'unconfigured';
+
+		if ( 'returns_accepted' === $return_mode ) {
+			$return_parts = [];
+			$days         = isset( $return_policy['days'] ) ? (int) $return_policy['days'] : 0;
+			if ( $days > 0 ) {
+				$return_parts[] = sprintf( '%d days', $days );
+			}
+			$fees_map = [
+				'FreeReturn'                       => 'free return shipping',
+				'ReturnFeesCustomerResponsibility' => 'buyer pays return shipping',
+				'OriginalShippingFees'             => 'original shipping non-refundable',
+				'RestockingFees'                   => 'restocking fee applies',
+			];
+			$fees = isset( $return_policy['fees'] ) ? (string) $return_policy['fees'] : '';
+			if ( isset( $fees_map[ $fees ] ) ) {
+				$return_parts[] = $fees_map[ $fees ];
+			}
+			if ( ! empty( $return_policy['country'] ) ) {
+				$return_parts[] = 'applies to ' . self::sanitize_markdown_inline( (string) $return_policy['country'] );
+			}
+			if ( ! empty( $return_parts ) ) {
+				$shipping_lines[] = '- **Returns**: ' . implode( ', ', $return_parts );
+			}
+		} elseif ( 'final_sale' === $return_mode ) {
+			$shipping_lines[] = '- **Returns**: final sale, no returns accepted';
+		}
+
+		if ( ! empty( $shipping_lines ) ) {
+			$lines[] = '## Shipping & Returns';
+			$lines[] = '';
+			foreach ( $shipping_lines as $line ) {
+				$lines[] = $line;
+			}
+			$lines[] = '';
+		}
+
+		// ============================================================
+		// ## Structured data
+		// ============================================================
+		// One-line signpost. Inlining the JSON-LD itself would be
+		// token-heavy and defeat the format's purpose — agents wanting
+		// the structured payload fetch the product page directly. The
+		// BuyAction-as-deterministic-cart-link callout is load-bearing:
+		// it tells agents to read URLs from per-product JSON-LD rather
+		// than constructing cart links by hand, which is the only way
+		// to route correctly across simple / bundle / grouped /
+		// variable product types.
+		$lines[] = '## Structured data';
 		$lines[] = '';
-		$lines[] = 'All purchases complete on this site (' . $site_url . '). Agents MUST redirect buyers to the `continue_url` returned from `POST ' . rtrim( rest_url( 'wc/ucp/v1' ), '/' ) . '/checkout-sessions` to finalize transactions.';
-		$lines[] = '';
-		$lines[] = 'This store does NOT support:';
-		$lines[] = '';
-		$lines[] = '- In-chat or in-agent payment completion';
-		$lines[] = '- Embedded checkout (UCP Embedded Protocol / ECP)';
-		$lines[] = '- Agent-delegated authorization (AP2 Mandates / Verifiable Digital Credentials)';
-		$lines[] = '- Persistent agent-managed carts';
-		$lines[] = '- Payment handler tokens (Google Pay, Shop Pay, etc. via UCP)';
-		$lines[] = '';
-		// Programmatic verification: the UCP manifest is the
-		// canonical machine-readable source for the checkout
-		// posture. Earlier revisions spelled out 4 bullets
-		// duplicating `capabilities` / `payment_handlers` /
-		// `transport` / checkout-response-status from the manifest —
-		// redundant for UCP-aware agents and a drift hazard
-		// (manifest could change while this prose lagged). One
-		// pointer line does the job without the duplication.
-		$lines[] = 'See `' . $site_url . '.well-known/ucp` for the machine-readable manifest that encodes this posture (no `payment_handlers`, REST-only transport, `requires_escalation` on every checkout response).';
+		$lines[] = 'Product pages emit schema.org/Product JSON-LD with `BuyAction.urlTemplate` for the per-product cart link, plus `MerchantReturnPolicy`, `OfferShippingDetails`, brand, price, availability, SKU, and GTIN where set. The `BuyAction` URL is the canonical deterministic cart link — it routes correctly across simple, variable, bundle, and grouped product types. The homepage emits `OnlineBusiness` with `hasOfferCatalog` and `SearchAction`.';
 		$lines[] = '';
 
-		// Attribution instructions. This section is the
-		// AUTHORITATIVE merchant-facing guidance for AI-agent
-		// attribution. The UCP manifest carries the same parameter
-		// set under the `com.woocommerce.ai_storefront` extension,
-		// but UCP itself doesn't define attribution semantics —
-		// so the canonical guidance lives here in the
-		// human+machine-readable document, not in the wire-format
-		// manifest.
+		// ============================================================
+		// ## For agents
+		// ============================================================
+		// The collapsed UCP-discovery surface — what was previously
+		// spread across `## API Access`, `## Checkout Policy`, and
+		// `## Attribution`. Three bullets cover capability discovery
+		// (manifest), API base (REST root), and checkout escalation
+		// (the POST endpoint that returns a `continue_url`).
 		//
-		// Attribution is API-first: `POST /checkout-sessions`
-		// returns a `continue_url` with UTM values already
-		// attached. No URL-template examples are emitted —
-		// merchants who scope products via UCP get attribution
-		// "for free," and agents that can POST never need to
-		// construct UTMs themselves.
-		$ucp_rest_base = rtrim( rest_url( 'wc/ucp/v1' ), '/' );
-		$lines[]       = '## Attribution';
-		$lines[]       = '';
-		$lines[]       = 'The recommended purchase flow is to `POST` line items to our UCP checkout endpoint; the server returns a `continue_url` with attribution pre-attached, and the agent redirects the user there. This matches the UCP checkout specification\'s `requires_escalation` / `continue_url` contract.';
-		$lines[]       = '';
-		$lines[]       = 'Endpoint:';
-		$lines[]       = '';
-		$lines[]       = '`POST ' . $ucp_rest_base . '/checkout-sessions`';
-		$lines[]       = '';
-		$lines[]       = 'Request body (UCP Checkout schema):';
-		$lines[]       = '';
-		$lines[]       = '```json';
-		$lines[]       = '{';
-		$lines[]       = '  "line_items": [{ "item": { "id": "prod_123" }, "quantity": 1 }]';
-		$lines[]       = '}';
-		$lines[]       = '```';
-		$lines[]       = '';
-		$lines[]       = 'Set the `UCP-Agent` request header to your agent\'s discovery profile URL (preferred) or `Product/Version` form (e.g. `MyAgent/1.0`); the server extracts the hostname or product token, resolves it to a canonical hostname for known vendors, and attaches it as `utm_source` on the returned `continue_url` — so you do not need to construct UTM parameters yourself. Clients that cannot send custom headers may instead include `meta.source` in the request body as a fallback identifier.';
-		$lines[]       = '';
-		$lines[]       = 'Response includes `status: "requires_escalation"` and a `continue_url` with `utm_source={hostname}&utm_medium=referral&utm_id=woo_ucp` already attached. Redirect the user to that URL to complete the purchase on our site.';
-		$lines[]       = '';
+		// No UTMs on any of these URLs — they're machine endpoints
+		// agents call directly, not links a buyer would follow. Adding
+		// UTM params here would pollute the agent's structured
+		// response payloads (the manifest, schema, etc.) with
+		// attribution params that don't belong there.
+		$ucp_api_base    = rtrim( rest_url( 'wc/ucp/v1' ), '/' );
+		$ucp_manifest    = $site_url . '.well-known/ucp';
+		$ucp_checkout    = $ucp_api_base . '/checkout-sessions';
+		$lines[] = '## For agents';
+		$lines[] = '';
+		$lines[] = "- **UCP manifest**: `{$ucp_manifest}` — capability discovery (what the store supports)";
+		$lines[] = "- **UCP API base**: `{$ucp_api_base}` — REST root for search, lookup, checkout";
+		$lines[] = "- **Checkout API**: `POST {$ucp_checkout}` — server returns a `continue_url`; redirect the buyer there. Product-specific cart links are also available via JSON-LD `BuyAction.urlTemplate` on each product page (deterministic across product types).";
+		$lines[] = '';
 
-		// No hostname→brand mapping table is emitted. Runtime
-		// canonicalization (`KNOWN_AGENT_HOSTS` → `utm_source`)
-		// still drives display-side labels on the merchant's
-		// Orders list, but that's merchant-facing context — agents
-		// don't need the table. See `UcpAgentHeaderTest` for the
-		// runtime contract.
-
-		// UCP merchant-extension docs — referenced from the manifest's
-		// `com.woocommerce.ai_storefront` capability as the `spec`
-		// URL. Self-hosted (here, not on GitHub) so that the docs
-		// always match the running plugin version and respect the
-		// site's own access-control policy. The anchor
-		// `#ucp-extension` lets the manifest point at this section
-		// specifically. Paired with the machine-readable JSON Schema
-		// at `/wp-json/wc/ucp/v1/extension/schema`.
+		// ============================================================
+		// ## UCP Extension
+		// ============================================================
+		// Preserved from the previous structure — the UCP manifest's
+		// `spec` URL points at the `#ucp-extension` anchor below, so
+		// removing the anchor would break the manifest contract for
+		// agents that follow the spec link.
 		$ucp_schema_url = function_exists( 'rest_url' )
 			? rtrim( rest_url( 'wc/ucp/v1/extension/schema' ), '/' )
 			: '/wp-json/wc/ucp/v1/extension/schema';
 
-		// UCP Extension section trimmed to just the anchor + schema
-		// URL. The prose blurb was removed (duplicated the Attribution
-		// section's "server-side handled" statement), the
-		// `### config.store_context` field listing was removed
-		// (fully duplicated the JSON Schema at the linked URL), and
-		// the `### Product-level extension payload` subsection was
-		// removed (documented the absence of fields + a pointer to
-		// the UCP core product/variant spec agents already read
-		// from). What remains: the anchor (so the manifest's `spec`
-		// URL resolves) and the machine-readable schema URL (so
-		// agents can validate payloads).
 		$lines[] = '<a id="ucp-extension"></a>';
 		$lines[] = '## UCP Extension: com.woocommerce.ai_storefront';
 		$lines[] = '';
-		$lines[] = 'Machine-readable JSON Schema: `' . $ucp_schema_url . '`';
+		$lines[] = "Machine-readable JSON Schema: `{$ucp_schema_url}`";
 		$lines[] = '';
 
 		/**
