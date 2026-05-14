@@ -3249,7 +3249,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				$this->fixture = $fixture;
 			}
 
-			protected function build_postal_address(): array {
+			public function build_postal_address(): array {
 				return $this->fixture;
 			}
 		};

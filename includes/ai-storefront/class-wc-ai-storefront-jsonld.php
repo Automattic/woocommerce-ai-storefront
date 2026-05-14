@@ -2116,8 +2116,14 @@ class WC_AI_Storefront_JsonLd {
 	 * @return array Identity fields, possibly empty when nothing is
 	 *               configured (no logo, no WC address, no sender
 	 *               email).
+	 *
+	 * Visibility note (issue #398): private→public so
+	 * `WC_AI_Storefront_LLMSText::generate()` can call it directly,
+	 * keeping the homepage `OnlineBusiness` JSON-LD and the new
+	 * `## Store` section in llms.txt drawing on the same single source
+	 * of truth for logo / address / support-email resolution.
 	 */
-	private function build_identity_fields(): array {
+	public function build_identity_fields(): array {
 		$fields = array();
 
 		// `logo` — prefer custom-logo theme mod over site-icon. The
@@ -2206,14 +2212,20 @@ class WC_AI_Storefront_JsonLd {
 	 * emitter and override this method to inject a fixture, avoiding
 	 * the need to globally stub `WC()` (which Brain Monkey leaks
 	 * into other tests in the suite as `MissingFunctionExpectations`
-	 * once registered). The seam is package-internal; the protected
-	 * scope keeps it out of the public API while making it test-
-	 * accessible.
+	 * once registered). The seam is package-internal; subclass
+	 * overrides must match the parent's visibility (PHP LSP), so when
+	 * this method's scope was widened to `public` for issue #398
+	 * the test-subclass override in JsonLdTest had to widen too.
+	 *
+	 * Visibility note (issue #398): protected→public so
+	 * `WC_AI_Storefront_LLMSText::generate()` can call it directly to
+	 * build the `## Store` location line in llms.txt from the same
+	 * source as the JSON-LD `address` field.
 	 *
 	 * @return array<string, string> The PostalAddress block, or [] when
 	 *                               WC has no base country configured.
 	 */
-	protected function build_postal_address(): array {
+	public function build_postal_address(): array {
 		$countries = $this->get_wc_countries();
 		if ( null === $countries ) {
 			return array();
@@ -2425,12 +2437,22 @@ class WC_AI_Storefront_JsonLd {
 	 * Get a catalog summary for JSON-LD.
 	 *
 	 * Result is cached in a transient for one hour so repeated homepage/shop
-	 * page loads don't issue a get_terms() DB query on every request.
-	 * Invalidated by WC_AI_Storefront_Cache_Invalidator::invalidate().
+	 * page loads don't issue a `get_terms()` DB query on every request.
+	 * Invalidated by `WC_AI_Storefront_Cache_Invalidator::invalidate()`.
 	 *
-	 * @return array
+	 * Visibility note (issue #398): private→public so
+	 * `WC_AI_Storefront_LLMSText::generate()` can build the new
+	 * `## Catalog` section from the same cached top-10-by-product-count
+	 * result that drives the homepage's `hasOfferCatalog` JSON-LD. One
+	 * cache miss serves both surfaces.
+	 *
+	 * @return array Top 10 product categories by count, formatted as
+	 *               Schema.org OfferCatalog entries (each item is an
+	 *               array with `@type`, `name`, `numberOfItems`, `url`
+	 *               string keys). Consumers wanting only the names can
+	 *               `array_column($result, 'name')`.
 	 */
-	private function get_catalog_summary() {
+	public function get_catalog_summary() {
 		$transient_key = 'wc_ai_storefront_catalog_summary';
 		$cached        = get_transient( $transient_key );
 		if ( false !== $cached ) {
