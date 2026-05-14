@@ -117,15 +117,17 @@ Each field added by the plugin, with the rule that controls its presence.
 A Schema.org `BuyAction` pointing to a URL the AI agent can use to send the shopper to checkout with that product pre-added.
 
 - **Always emitted** for purchasable products (not draft, not out of stock when stock management is on, has a price).
-- **`target` URL** is built from `$product->add_to_cart_url()` plus `utm_*` placeholders (`{agent_id}`, `{session_id}`) the AI agent substitutes at runtime per UCP convention.
+- **`target.urlTemplate`** is built from `$product->add_to_cart_url()` with attribution UTMs attached. The product ID and quantity are concrete (each product page emits its own specific URL); for variable products, per-variant entries under `hasVariant[]` each carry their own variation-specific `urlTemplate`. Only `utm_source={agent_id}` (and the optional `{session_id}` for conversation tracking) are template slots the agent fills in.
 - **`result.@type`** is always `Order` (Schema.org's expected result type for `BuyAction`).
 - **Source**: `add_buy_action()` (line ~108 in `class-wc-ai-storefront-jsonld.php`).
 
-#### Are the UTM placeholders actually filled in by AI agents?
+#### URL contract: instructive shape, optional substitution
 
-No — not today. JSON-LD is crawled and indexed offline; AI agents query their knowledge base at recommendation time, not the live page. The `{agent_id}` and `{session_id}` placeholders are stored verbatim in the crawler's index. No AI agent currently dynamically constructs purchase URLs from `BuyAction` `urlTemplate` at recommendation time (unlike `SearchAction`'s `{search_term}`, which Google does exercise for sitelinks search boxes).
+The URL itself is fully usable verbatim. An agent that takes the literal `urlTemplate` and redirects the shopper to it lands on a working checkout page with the product pre-added — the `?products={id}:{qty}` portion is server-rendered against the specific product (or variant) the JSON-LD describes. This makes the field **instructive**: agents reading the JSON-LD learn the store's exact cart-link URL shape and get a concrete URL per product, not a generic template.
 
-The placeholders are **aspirational**: they express a machine-readable intent that allows agents to attribute traffic and correlate sessions if a future agentic standard emerges for dynamic URL construction. There is no harm in leaving them in — crawlers store the template string as-is, no session data leaks, and no broken URLs reach browsers.
+What is aspirational is **substitution** of the `{agent_id}` and `{session_id}` template slots. No AI agent currently fills them at recommendation time (Google's sitelinks searchbox does substitute `{search_term}` in `SearchAction.urlTemplate`, but no consumer exercises `{agent_id}`). When the slots are left unsubstituted, the literal `utm_source={agent_id}` string arrives at the server; attribution falls back to the LENIENT gate's `Referer` hostname match against `KNOWN_AGENT_HOSTS`, or buckets as `Other AI` when no known host is present. Crawlers store the template string as-is, no session data leaks, and no broken URLs reach browsers.
+
+Agents that DO substitute `{agent_id}` with their canonical hostname before redirecting get tighter attribution — direct STRICT-gate match on `utm_id=woo_jsonld` with a resolved `utm_source`. See [`ATTRIBUTION.md`](./ATTRIBUTION.md) for the recognition-gate logic and the full integrator contract.
 
 ### `offers[0].inventoryLevel`
 
