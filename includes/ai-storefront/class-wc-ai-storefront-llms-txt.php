@@ -345,9 +345,12 @@ class WC_AI_Storefront_Llms_Txt {
 		if ( ! empty( $postal_address ) ) {
 			$location_parts = [];
 			foreach ( [ 'addressLocality', 'addressRegion', 'addressCountry' ] as $key ) {
-				if ( ! empty( $postal_address[ $key ] ) ) {
-					$location_parts[] = self::sanitize_markdown_inline( (string) $postal_address[ $key ] );
+				if ( empty( $postal_address[ $key ] ) ) {
+					continue;
 				}
+				$raw              = (string) $postal_address[ $key ];
+				$value            = 'addressCountry' === $key ? $this->resolve_country_name( $raw ) : $raw;
+				$location_parts[] = self::sanitize_markdown_inline( $value );
 			}
 			if ( ! empty( $location_parts ) ) {
 				$lines[] = '- **Location**: ' . implode( ', ', $location_parts );
@@ -415,7 +418,7 @@ class WC_AI_Storefront_Llms_Txt {
 		if ( ! empty( $catalog_summary ) && is_array( $catalog_summary ) ) {
 			$lines[]        = '## Catalog';
 			$lines[]        = '';
-			$lines[]        = 'Top categories by product count (sample, not exhaustive — full enumeration via the sitemaps under Browse, or `POST /wp-json/wc/ucp/v1/catalog/search`):';
+			$lines[]        = 'Top categories by product count. This is a sample, not exhaustive: full enumeration via the sitemaps under Browse, or `POST /wp-json/wc/ucp/v1/catalog/search`.';
 			$lines[]        = '';
 			$specializes_in = [];
 			foreach ( $catalog_summary as $category ) {
@@ -448,10 +451,10 @@ class WC_AI_Storefront_Llms_Txt {
 		// corresponding setting — no "Returns: not set" placeholders.
 		$shipping_lines = [];
 
-		$base_location = function_exists( 'wc_get_base_location' ) ? wc_get_base_location() : [];
+		$base_location = wc_get_base_location();
 		$ship_country  = isset( $base_location['country'] ) ? (string) $base_location['country'] : '';
 		if ( '' !== $ship_country ) {
-			$shipping_lines[] = '- **Ships from**: ' . self::sanitize_markdown_inline( $ship_country );
+			$shipping_lines[] = '- **Ships from**: ' . self::sanitize_markdown_inline( $this->resolve_country_name( $ship_country ) );
 		}
 
 		$handling     = isset( $settings['handling_time'] ) && is_array( $settings['handling_time'] )
@@ -519,7 +522,7 @@ class WC_AI_Storefront_Llms_Txt {
 		// variable product types.
 		$lines[] = '## Structured data';
 		$lines[] = '';
-		$lines[] = 'Product pages emit schema.org/Product JSON-LD with `BuyAction.urlTemplate` for the per-product cart link, plus `MerchantReturnPolicy`, `OfferShippingDetails`, brand, price, availability, SKU, and GTIN where set. The `BuyAction` URL is the canonical deterministic cart link — it routes correctly across simple, variable, bundle, and grouped product types. The homepage emits `OnlineBusiness` with `hasOfferCatalog` and `SearchAction`.';
+		$lines[] = 'Product pages emit schema.org/Product JSON-LD with `BuyAction.urlTemplate` for the per-product cart link, plus `MerchantReturnPolicy`, `OfferShippingDetails`, brand, price, availability, SKU, and GTIN where set. The `BuyAction` URL is the canonical deterministic cart link: it routes correctly across simple, variable, bundle, and grouped product types. The homepage emits `OnlineBusiness` with `hasOfferCatalog` and `SearchAction`.';
 		$lines[] = '';
 
 		// ============================================================
@@ -706,6 +709,73 @@ class WC_AI_Storefront_Llms_Txt {
 		}
 
 		return $value;
+	}
+
+	/**
+	 * Resolve an ISO-3166-1 alpha-2 country code to its human-readable
+	 * English name via WC's bundled country list (e.g. `US` -> `United
+	 * States`, `GB` -> `United Kingdom`).
+	 *
+	 * Why a helper rather than inline: the same lookup runs in two
+	 * places — the `## Store` Location line (drawn from
+	 * `build_postal_address()`'s `addressCountry`) and the
+	 * `## Shipping & Returns` Ships-from line (drawn from
+	 * `wc_get_base_location()`). Keeping them in lockstep means a
+	 * merchant in the UK never sees "United Kingdom" in one place and
+	 * "GB" in the other.
+	 *
+	 * Falls back to the raw code when the country map can't be
+	 * resolved (impossible at runtime — the plugin requires WC — but
+	 * plays nicely with the unit-test path that calls generate()
+	 * without stubbing WC()). The map source comes from
+	 * `get_country_map()`, which is a protected instance seam tests
+	 * subclass to inject a fixture without globally stubbing the
+	 * `WC()` function (which would leak across the test suite).
+	 *
+	 * @param string $code ISO-3166-1 alpha-2 country code.
+	 * @return string Human-readable country name, or the raw code as
+	 *                fallback when the country map doesn't contain it.
+	 */
+	private function resolve_country_name( string $code ): string {
+		$code = strtoupper( trim( $code ) );
+		if ( '' === $code ) {
+			return '';
+		}
+
+		$map  = $this->get_country_map();
+		$name = isset( $map[ $code ] ) ? (string) $map[ $code ] : '';
+
+		if ( '' === $name ) {
+			return $code;
+		}
+
+		// WC's country names can carry HTML entities for non-ASCII
+		// letters (e.g. `Cura&ccedil;ao`). Decode so the rendered
+		// llms.txt has plain text — agents and merchants don't want
+		// to see `&ccedil;` in a "what country is this store in" line.
+		return html_entity_decode( $name, ENT_QUOTES, 'UTF-8' );
+	}
+
+	/**
+	 * Return WC's ISO country code -> human-readable English name map.
+	 *
+	 * Test seam (mirrors the `get_wc_countries()` pattern on JsonLd):
+	 * extracted into its own protected method so unit tests can
+	 * subclass and inject a country-map fixture. Globally stubbing
+	 * `WC()` via Brain Monkey leaks the function definition across
+	 * the whole test suite and breaks unrelated tests that call WC()
+	 * unstubbed; the instance-method seam avoids that entirely.
+	 *
+	 * @return array<string, string> ISO alpha-2 code -> entity-encoded
+	 *                               English name. Empty array when WC
+	 *                               is unavailable.
+	 */
+	protected function get_country_map(): array {
+		$wc = function_exists( 'WC' ) ? WC() : null;
+		if ( ! $wc || ! isset( $wc->countries ) || ! is_object( $wc->countries ) ) {
+			return [];
+		}
+		return isset( $wc->countries->countries ) ? (array) $wc->countries->countries : [];
 	}
 
 

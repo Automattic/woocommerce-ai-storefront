@@ -164,6 +164,46 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// Logo URL. Pass-through for tests is fine — real escaping is
 		// covered by WP core's own test suite.
 		Functions\when( 'esc_url' )->returnArg();
+
+		// Note: NOT stubbing `WC()` here despite the new generate()
+		// reaching into WC()->countries->countries via the
+		// `resolve_country_name()` helper. Brain Monkey-stubbing
+		// `WC()` at suite setUp() level leaks the function definition
+		// across the entire test suite, breaking UcpTest /
+		// UcpCheckoutPostureTest / others that call WC() unstubbed
+		// (see JsonLdTest's `get_wc_countries()` docblock for the
+		// same architectural concern).
+		//
+		// Instead, the production class exposes a `get_country_map()`
+		// protected seam that returns the ISO -> name array.
+		// Per-test subclasses (built via `llms_with_countries()` below)
+		// override the seam to inject a country fixture. The
+		// resolve_country_name() helper calls through the instance
+		// so the override is picked up.
+	}
+
+	/**
+	 * Build a LlmsTxt subclass that injects a country-map fixture.
+	 * Use this when a test cares about the human-readable Ships-from
+	 * or Location line rendering. The subclass overrides
+	 * `get_country_map()` to return the fixture without stubbing
+	 * the global `WC()` function (which would leak across the suite).
+	 *
+	 * @param array<string, string> $map ISO code -> human-readable name.
+	 * @return WC_AI_Storefront_Llms_Txt
+	 */
+	private function llms_with_countries( array $map ): WC_AI_Storefront_Llms_Txt {
+		return new class( $map ) extends WC_AI_Storefront_Llms_Txt {
+			private array $fixture;
+
+			public function __construct( array $fixture ) {
+				$this->fixture = $fixture;
+			}
+
+			protected function get_country_map(): array {
+				return $this->fixture;
+			}
+		};
 	}
 
 	protected function tearDown(): void {
@@ -443,7 +483,31 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_shipping_section_emits_ships_from_country(): void {
-		// Default stub sets wc_get_base_location to US.
+		// Inject a fixture country map (via the `llms_with_countries`
+		// helper that subclasses LlmsTxt and overrides
+		// `get_country_map()`). This pins the production path —
+		// `resolve_country_name()` looking up the ISO code in the map
+		// and returning the human-readable name. The default
+		// $this->llms instance has no WC() stub so it would return
+		// the raw ISO code, which is the fallback we test separately.
+		$llms = $this->llms_with_countries(
+			[
+				'US' => 'United States (US)',
+				'GB' => 'United Kingdom (UK)',
+			]
+		);
+
+		$output = $llms->generate();
+
+		$this->assertStringContainsString( '- **Ships from**: United States (US)', $output );
+	}
+
+	public function test_shipping_section_falls_back_to_iso_when_country_map_unavailable(): void {
+		// Default $this->llms doesn't inject a country fixture, so
+		// `get_country_map()` returns []. The fallback in
+		// resolve_country_name() returns the raw ISO code rather than
+		// suppressing the Ships-from line entirely — better to render
+		// `US` than to silently omit the data.
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString( '- **Ships from**: US', $output );
