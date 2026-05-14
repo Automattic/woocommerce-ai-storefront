@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.15.0
+Stable tag: 0.16.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -24,7 +24,7 @@ AI assistants are becoming a primary product discovery channel. Shoppers ask Cha
 
 Publishes three discovery surfaces that AI agents consume:
 
-* **llms.txt**: a Markdown store guide at `/llms.txt` with categories, featured products, and attribution instructions
+* **llms.txt**: a Markdown store guide at `/llms.txt` with store identity, top categories, browse and search URLs, shipping and returns policy, and pointers at the UCP manifest and REST endpoints
 * **UCP manifest**: a JSON declaration at `/.well-known/ucp` describing capabilities, checkout policy, and purchase URL templates
 * **Enhanced JSON-LD**: augmented Schema.org Product markup on product pages with BuyAction, inventory levels, and attribute properties
 
@@ -85,7 +85,7 @@ When an AI agent links to a product page, it appends `utm_source={agent_name}&ut
 = What's the difference between llms.txt, robots.txt, and the UCP manifest? =
 
 * **robots.txt** tells crawlers what they're allowed to fetch. It's a permissions document.
-* **llms.txt** gives AI agents a machine-readable summary of the store: categories, featured products, API endpoints, attribution rules. It's a discovery document written in Markdown.
+* **llms.txt** gives AI agents a machine-readable summary of the store: identity, top categories, browse/search URLs, shipping and returns policy, and pointers at the UCP manifest and REST endpoints. It's a discovery document written in Markdown.
 * **UCP manifest** is a JSON document declaring the store's commerce capabilities: checkout method (web-redirect only, never delegated), purchase URL templates, rate limits, attribution parameters. It's a protocol document for agent implementers.
 
 The three work together. Agents fetch `robots.txt` to learn they're allowed, fetch `llms.txt` to learn what's available, and fetch the UCP manifest to learn how to generate purchase links.
@@ -128,6 +128,19 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.16.0 - 2026-05-14 =
+**New**
+* `/llms.txt` restructured into seven catalog-discovery sections (Store, Browse, Catalog, Shipping & Returns, Structured data, For agents, Extension schema) sourced from the same JsonLd helpers feeding the homepage Schema.org block. Browse URLs carry the new `utm_id=woo_llms` channel marker. (#398)
+* Admin: HelpMenu hairline separator between Documentation/Support actions and the Version metadata row, matching Gutenberg's More-options popover convention.
+
+**Improved**
+* Attribution: new `WOO_LLMS_ID = 'woo_llms'` channel marker added to the STRICT recognition gate and `by_channel` SQL aggregation, slotting llms.txt-routed orders into the Referral channel alongside `woo_jsonld`.
+* User guide and engineering docs (`USER-GUIDE.md`, `ARCHITECTURE.md`, `UCP-BUY-FLOW.md`, `JSON-LD-SCHEMA.md`) refreshed to describe the new `/llms.txt` structure.
+
+**Tweaked**
+* CI: retired `release-drafter` workflow; release notes now extracted directly from `CHANGELOG.md` at tag-push time via awk inside `release.yml`. Single source of truth, no drift between hand-curated CHANGELOG and the GitHub Release body.
+* CI: dropped the GitHub "Pre-release" flag from `release.yml`. The Beta lifecycle status is already signaled through in-product surfaces (PageHeader, HelpMenu, readme Description, USER-GUIDE intro), and the pre-release flag was preventing v0.15.0 from claiming the "Latest" badge on the Releases page.
 
 = 0.15.0 - 2026-05-13 =
 **New**
