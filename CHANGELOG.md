@@ -1,21 +1,31 @@
 ## [Unreleased]
 
 ### Features
+### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.16.0] – 2026-05-14
+
+### Features
 
 - **Admin: HelpMenu hairline separator between actions and Version row.** Wraps Documentation + Support in one `<MenuGroup>` and the disabled Version row in a second `<MenuGroup>`, so the rendered menu shows a single hairline between the action group and the metadata row. Same pattern as Gutenberg's More-options popovers and the WordPress.com admin user menu. Communicates the action-vs-metadata distinction structurally, so the disabled Version row reads as "info about the plugin" rather than a flat third action.
 
-- **`/llms.txt`: restructure into seven catalog-discovery H2s.** Closes #398. The previous UCP-heavy structure (`## Store Information`, `## API Access`, `## Sitemaps`, `## Product Categories/Tags/Brands`, `## Checkout Policy`, `## Attribution`, `## UCP Extension`) becomes a discovery-first format matching the dominant 2026 ecommerce convention: `## Store`, `## Browse`, `## Catalog`, `## Shipping & Returns`, `## Structured data`, `## For agents`, `## UCP Extension`.
-  - **`## Store`** (currency + location + logo + support) draws on `WC_AI_Storefront_JsonLd::build_identity_fields()` and `::build_postal_address()` — the same single source feeding the homepage `OnlineBusiness` JSON-LD. No new merchant settings.
-  - **`## Browse`** (Shop archive URL, Search URL template, sitemap discovery) carries the new `utm_medium=referral&utm_id=woo_llms` channel marker on publicly clickable URLs. No `utm_source` in the URL — the actual referring domain populates it from `Referer` downstream.
+- **`/llms.txt`: restructure into seven catalog-discovery H2s.** Closes #398. The previous UCP-heavy structure (`## Store Information`, `## API Access`, `## Sitemaps`, `## Product Categories/Tags/Brands`, `## Checkout Policy`, `## Attribution`, `## UCP Extension`) becomes a discovery-first format matching the dominant 2026 ecommerce convention: `## Store`, `## Browse`, `## Catalog`, `## Shipping & Returns`, `## Structured data`, `## For agents`, `## Extension schema`.
+  - **`## Store`** (currency + location + logo + support) draws on `WC_AI_Storefront_JsonLd::build_identity_fields()` and `::build_postal_address()`, the same single source feeding the homepage `OnlineBusiness` JSON-LD. Country codes resolve to human-readable names ("United States" not "US") via WC's bundled country list. No new merchant settings.
+  - **`## Browse`** (Shop archive URL, Search URL template, sitemap discovery) carries the new `utm_medium=referral&utm_id=woo_llms` channel marker on publicly clickable URLs. No `utm_source` in the URL: the actual referring domain populates it from `Referer` downstream.
   - **`## Catalog`** reuses `JsonLd::get_catalog_summary()` so a single transient hit serves both surfaces. Adds a `Specializes in:` line mirroring `knowsAbout` from the homepage JSON-LD.
   - **`## Shipping & Returns`** sources from the same Policies-tab settings driving JSON-LD `OfferShippingDetails` (handling time) and `MerchantReturnPolicy` (return window / fees / country). Final-sale override preserved.
   - **`## Structured data`** explicitly directs agents at `BuyAction.urlTemplate` on product pages as the canonical deterministic cart link (handles per-type routing across simple / variable / bundle / grouped without requiring agents to memorize URL shapes).
   - **`## For agents`** collapses the previous `## API Access` + `## Checkout Policy` + `## Attribution` into three bullets covering capability discovery (manifest), API base (REST root), and checkout escalation. No UTMs on machine endpoints.
-  - **`<a id="ucp-extension">`** anchor preserved so the UCP manifest's `spec` URL still resolves.
+  - **`## Extension schema`** (renamed from `## UCP Extension: com.woocommerce.ai_storefront` — that title oversold the single-URL content beneath it and exposed package-namespace syntax to merchants reading their own llms.txt). The `<a id="ucp-extension">` anchor is preserved unchanged so the UCP manifest's `spec` URL still resolves.
   - Cart-link URL shape decision (revised from the issue body): llms.txt does NOT emit a cart-link URL template directly. Agents follow JSON-LD `BuyAction.urlTemplate` on each product page, which routes correctly across product types deterministically. Avoids committing the cart-link URL shape as a public stability contract.
   - Attribution: new `WC_AI_Storefront_Attribution::WOO_LLMS_ID = 'woo_llms'` joins `WOO_UCP_ID` and `WOO_JSONLD_ID` in the STRICT recognition gate and the `by_channel` SQL aggregation (both HPOS and legacy postmeta branches). `woo_llms` slots into the Referral channel alongside `woo_jsonld` in the merchant dashboard.
   - JsonLd visibility widening (refactor): `build_identity_fields()`, `build_postal_address()`, and `get_catalog_summary()` move from private/protected to public so the llms.txt builder can call them directly. Behavior unchanged; same data, two consumers.
-  - LlmsTxtTest overhaul: 28 obsolete test methods removed (asserting old section names), 19 new tests added covering the new sections + UTM hygiene + section ordering. Net 54 → 47 tests, file 1,453 → 858 lines. Full PHP suite stays green (1,421/1,421).
+  - LlmsTxtTest overhaul: 28 obsolete test methods removed (asserting old section names), 19 new tests added covering the new sections + UTM hygiene + section ordering. Net 54 → 48 tests, file 1,453 → 906 lines. Full PHP suite stays green (1,422/1,422).
 
 ### Fixes
 ### Refactors

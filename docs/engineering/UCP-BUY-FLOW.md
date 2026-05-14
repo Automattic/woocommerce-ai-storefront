@@ -86,7 +86,7 @@ WC Order Attribution captures `utm_source` / `utm_medium` natively. The plugin's
 For agents that don't speak UCP — typical SEO-style crawlers — the plugin still ships purchasability signals:
 
 - **Enhanced JSON-LD** on product pages with `potentialAction` of type `BuyAction`. The `urlTemplate` carries the same UTM placeholders.
-- **`/llms.txt`** lists the syndicated catalog and points at the UCP manifest and Store API.
+- **`/llms.txt`** publishes store identity, a top-categories sample, shipping/returns policy, browse/search URLs (with `utm_id=woo_llms` for channel attribution), and pointers at the UCP manifest, REST base, and checkout-sessions endpoint.
 - **`robots.txt`** allows the named AI crawlers.
 - **Bare product URLs** in `/catalog/search` and `/catalog/lookup` responses also carry the canonical UTM payload (post-PR #116), so buyers who follow the bare product link from chat — rather than going through `/checkout-sessions` — still attribute correctly.
 

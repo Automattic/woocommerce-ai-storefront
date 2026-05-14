@@ -145,7 +145,7 @@ Before configuring anything else, take 30 seconds to confirm the endpoints are l
 
 | URL | What you should see |
 |-----|---------------------|
-| `https://your-store.com/llms.txt` | A plain-text Markdown document starting with `# Your Store Name`, with a category list and "How AI agents should link to products" section. |
+| `https://your-store.com/llms.txt` | A plain-text Markdown document starting with `# Your Store Name`, with sections covering store identity (`## Store`), browse/search URLs (`## Browse`), top categories (`## Catalog`), shipping and returns (`## Shipping & Returns`), structured-data signposts, and agent-facing endpoints (`## For agents`). |
 | `https://your-store.com/.well-known/ucp` | A pretty-printed JSON document in monospace. Top-level keys: `name`, `version`, `capabilities`, `payment_handlers`, `services`. |
 | `https://your-store.com/robots.txt` | The standard WordPress `robots.txt` plus a block of `User-agent: GPTBot` / `User-agent: ChatGPT-User` / etc. each with `Allow:` lines. |
 | Homepage → "View page source" | Search for `"@type":"OnlineStore"`. This is your store's brand info available to AI shopping agents. See [section 4b](#4b-what-the-homepage-publishes-to-ai-agents). |
