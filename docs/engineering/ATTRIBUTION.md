@@ -66,7 +66,13 @@ Product pages emit a `Product.potentialAction.BuyAction` whose `target.urlTempla
 
 The homepage `OnlineBusiness.potentialAction.SearchAction` carries the same triple with `{search_term}` substitution.
 
-Key difference from the Agent channel: `utm_source` is a literal `{agent_id}` template placeholder, not a resolved hostname. The placeholder is **aspirational** — no AI agent currently substitutes it at recommendation time (Google's sitelinks searchbox does substitute `{search_term}` in `SearchAction.urlTemplate`, but no consumer exercises `{agent_id}` today). Crawlers store the template string verbatim; no session data leaks. See the [JSON-LD schema reference](./JSON-LD-SCHEMA.md#potentialaction-buyaction) for the full per-product / per-variant shape.
+Key difference from the Agent channel: `utm_source` is a literal `{agent_id}` template placeholder, not a resolved hostname.
+
+The URL itself is fully instructive. The product ID, quantity, and (for variants) `attribute_*=` axis values are all concrete — each product page emits a `urlTemplate` with that product's specific cart-link URL, and variable products emit per-variant entries under `hasVariant[]` so each variation has its own deep-link. An agent following the URL verbatim lands on a working checkout page; only the `{agent_id}` slot is left for the consumer to fill in.
+
+What is aspirational is the substitution itself: no AI agent currently fills `{agent_id}` at recommendation time (Google's sitelinks searchbox does substitute `{search_term}` in `SearchAction.urlTemplate`, but no consumer exercises `{agent_id}` today). When the slot is left unsubstituted, the literal `utm_source={agent_id}` string arrives at the server; attribution falls back to the LENIENT gate's hostname match against `Referer`, or buckets as `Other AI` when no known host is present. Crawlers store the template string verbatim; no session data leaks.
+
+See the [JSON-LD schema reference](./JSON-LD-SCHEMA.md#potentialaction-buyaction) for the full per-product / per-variant shape.
 
 Source: [`add_buy_action()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) and `output_store_jsonld()` for the homepage `SearchAction`.
 
@@ -182,7 +188,7 @@ The contract you need to follow:
 2. **POST to `/wp-json/wc/ucp/v1/checkout-sessions`** for buy intent. The response carries `status: "requires_escalation"` and a `continue_url` with attribution already attached. Redirect the shopper to that URL — do not construct UTMs yourself.
 3. **Do not modify `utm_source` on URLs we return.** The server resolved your identity from the header. If you append your own `utm_source=...`, you'll clobber the canonical one and your attribution drops to the LENIENT gate (which only fires for hostnames already in `KNOWN_AGENT_HOSTS`).
 4. **Header-less fallback**: include `meta.source` in the request body of `POST /checkout-sessions` when you cannot send custom headers. The server treats it as the identifier of last resort.
-5. **No client-side substitution of JSON-LD placeholders.** The `{agent_id}` placeholder in `BuyAction.urlTemplate` is aspirational; no AI vendor currently substitutes it. If you scrape JSON-LD and want attribution, the recommended path is to instead call the UCP endpoints with a `UCP-Agent` header.
+5. **JSON-LD URLs are usable verbatim.** Each product page's `BuyAction.urlTemplate` carries a concrete cart-link URL for that product (per-variant for variable products under `hasVariant[]`). Following the URL as-is lands on a working checkout page; attribution flows through the LENIENT gate's `Referer` hostname match. Substituting `{agent_id}` with your canonical hostname before redirecting the shopper yields tighter attribution but is not required. The preferred path (POST to `/checkout-sessions`) still produces the cleanest dashboard data — it stamps `utm_id=woo_ucp` and parses your `UCP-Agent` header server-side.
 
 If you're not in `KNOWN_AGENT_HOSTS` yet, your orders still attribute correctly via the STRICT gate's `utm_id=woo_ucp` flag — they just display under "Other AI" in the merchant dashboard. Reach out to get added to the curated map.
 
