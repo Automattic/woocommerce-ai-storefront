@@ -175,6 +175,39 @@ class WC_AI_Storefront_Attribution {
 	const WOO_JSONLD_ID = 'woo_jsonld';
 
 	/**
+	 * The UTM ID value stamped onto publicly clickable URLs emitted in
+	 * `/llms.txt` — the Shop archive and Search URL in `## Browse`.
+	 *
+	 * Same STRICT trust level as the other two channel markers
+	 * (`WOO_UCP_ID`, `WOO_JSONLD_ID`) — all three are server-issued
+	 * stamps the plugin owns. The distinction is the **channel**:
+	 *
+	 *   - `WOO_UCP_ID` (`woo_ucp`) — live UCP shopping session.
+	 *     Agent channel.
+	 *   - `WOO_JSONLD_ID` (`woo_jsonld`) — JSON-LD `urlTemplate`
+	 *     emission. Referral channel.
+	 *   - `WOO_LLMS_ID` (`woo_llms`) — browse-discovery URLs in
+	 *     `/llms.txt`. Referral channel (joins `woo_jsonld`).
+	 *
+	 * UTM shape on `woo_llms` URLs intentionally omits `utm_source` —
+	 * unlike JSON-LD's `utm_source={agent_id}` placeholder, llms.txt
+	 * URLs are followed directly from the document at request time,
+	 * so the actual referring domain populates `utm_source` from
+	 * `Referer` downstream. See `docs/engineering/ATTRIBUTION.md`'s
+	 * UTM-shape table.
+	 *
+	 * The merchant-facing channel dashboard groups `woo_llms` and
+	 * `woo_jsonld` under one Referral total — both represent
+	 * "AI surface routed a shopper here, but the shopper completed
+	 * checkout themselves" rather than a live agent walking them
+	 * through. Investment in agent partnerships shows up under
+	 * Agent (`woo_ucp`); AI-discovery SEO shows up under Referral.
+	 *
+	 * @since 0.16.0
+	 */
+	const WOO_LLMS_ID = 'woo_llms';
+
+	/**
 	 * Stamp our canonical attribution UTM shape onto a URL.
 	 *
 	 * Two emission surfaces share this helper so the wire shape stays
@@ -484,6 +517,7 @@ class WC_AI_Storefront_Attribution {
 		// inflate "Other AI" stats with non-AI orders.
 		$is_strict = self::WOO_UCP_ID === $utm_id
 			|| self::WOO_JSONLD_ID === $utm_id
+			|| self::WOO_LLMS_ID === $utm_id
 			|| self::AI_AGENT_MEDIUM === $utm_medium;
 
 		if ( ! $is_strict && ! $is_known_ai_host ) {
@@ -821,12 +855,13 @@ class WC_AI_Storefront_Attribution {
 					 WHERE o.status IN ( 'wc-completed', 'wc-processing' )
 					   AND o.date_created_gmt >= %s
 					   AND agent_meta.meta_value <> ''
-					   AND id_meta.meta_value IN ( %s, %s )
+					   AND id_meta.meta_value IN ( %s, %s, %s )
 					 GROUP BY id_meta.meta_value",
 					self::AGENT_META_KEY,
 					$after_date,
 					self::WOO_UCP_ID,
-					self::WOO_JSONLD_ID
+					self::WOO_JSONLD_ID,
+					self::WOO_LLMS_ID
 				)
 			);
 			// `false` is the documented `$wpdb->get_results()` return
@@ -888,12 +923,13 @@ class WC_AI_Storefront_Attribution {
 					   AND p.post_status IN ( 'wc-completed', 'wc-processing' )
 					   AND p.post_date_gmt >= %s
 					   AND pm.meta_value <> ''
-					   AND pm_id.meta_value IN ( %s, %s )
+					   AND pm_id.meta_value IN ( %s, %s, %s )
 					 GROUP BY pm_id.meta_value",
 					self::AGENT_META_KEY,
 					$after_date,
 					self::WOO_UCP_ID,
-					self::WOO_JSONLD_ID
+					self::WOO_JSONLD_ID,
+					self::WOO_LLMS_ID
 				)
 			);
 			if ( false === $channel_results ) {
@@ -932,9 +968,10 @@ class WC_AI_Storefront_Attribution {
 		}
 
 		// Aggregate the channel results. No canonicalization needed —
-		// the meta values are exactly `woo_ucp` / `woo_jsonld` because
-		// the SQL's `IN ( %s, %s )` already restricted to those two
-		// constants. Each row maps 1:1 to an entry in $by_channel.
+		// the meta values are exactly `woo_ucp` / `woo_jsonld` / `woo_llms`
+		// because the SQL's `IN ( %s, %s, %s )` already restricted to
+		// those three constants. Each row maps 1:1 to an entry in
+		// $by_channel.
 		$by_channel = [];
 		if ( $channel_results ) {
 			foreach ( $channel_results as $row ) {

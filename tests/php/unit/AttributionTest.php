@@ -153,6 +153,81 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_capture_strict_gate_fires_on_woo_llms_utm_id_meta(): void {
+		// llms.txt-routed traffic: an AI surface (or human via an AI
+		// answer) followed a URL we emitted in /llms.txt — the
+		// Shop archive or Search bullet under `## Browse`, both of
+		// which carry `utm_medium=referral&utm_id=woo_llms`.
+		//
+		// `utm_source` is set here to a non-empty unknown host to
+		// pin the STRICT-gate-fires-on-woo_llms behavior — the gate
+		// classifies the traffic as AI based on our own server-stamped
+		// utm_id, then the post-STRICT canonical-agent resolution
+		// buckets to "Other AI" because the host isn't in
+		// KNOWN_AGENT_HOSTS. Mirrors the parallel test for woo_jsonld
+		// above.
+		//
+		// llms.txt URLs intentionally omit utm_source on emission —
+		// the actual referring domain populates it from `Referer`
+		// downstream. The empty-utm_source path is covered by a
+		// separate test below since the canonical-agent resolution
+		// skips the stamp entirely in that case (by design — see the
+		// "Empty-utm_source edge case" comment in capture_ai_attribution).
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_id', 'woo_llms' );
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'mysteryagent.example' );
+
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertTrue( $order->was_saved() );
+		// LENIENT didn't fire (host unknown) → "Other AI" fallback per
+		// the post-STRICT canonical-agent resolution. Same shape as the
+		// `woo_ucp` and `woo_jsonld` counterpart tests above.
+		$this->assertEquals(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$order->get_meta( '_wc_ai_storefront_agent' )
+		);
+	}
+
+	public function test_capture_woo_llms_with_empty_utm_source_skips_agent_stamp(): void {
+		// llms.txt URLs emit `utm_id=woo_llms` with NO `utm_source`
+		// param — the actual referring domain populates it from
+		// `Referer` downstream. When `Referer` is missing (developer
+		// probing the URL, broken referer-stripping browser, etc.),
+		// utm_source stays empty.
+		//
+		// In that case, the STRICT gate correctly fires (we recognize
+		// the order as AI-routed because we stamped utm_id ourselves)
+		// but the canonical-agent resolution SKIPS the Other AI stamp.
+		// Rationale: without any source signal, we can't be confident
+		// the traffic is AI vs. a developer testing the llms.txt URL
+		// pattern. Better to leave the AI agent meta empty than to
+		// inflate stats with potentially non-AI traffic.
+		//
+		// The order still records the standard WC attribution meta
+		// (utm_id, utm_medium, utm_source); only the plugin's
+		// AI-specific `_wc_ai_storefront_agent` meta is suppressed.
+		// Matches the "Empty-utm_source edge case" branch in
+		// capture_ai_attribution().
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_id', 'woo_llms' );
+		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'referral' );
+		$order->set_test_meta( '_wc_order_attribution_utm_source', '' );
+
+		// do_action still fires because the STRICT gate matched —
+		// downstream listeners still see the AI-routed signal even if
+		// we don't stamp our own agent meta.
+		Functions\expect( 'do_action' )->once();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertTrue( $order->was_saved() );
+		$this->assertEquals( '', $order->get_meta( '_wc_ai_storefront_agent' ) );
+	}
+
 	public function test_capture_strict_gate_ignores_get_utm_id_without_stored_meta(): void {
 		// Regression guard for issue #126: a non-AI order whose
 		// checkout URL carries utm_id=woo_ucp (e.g. a forwarded
