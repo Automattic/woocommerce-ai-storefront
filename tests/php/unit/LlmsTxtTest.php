@@ -241,7 +241,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '## Browse', $output );
 		$this->assertStringContainsString( '## Structured data', $output );
 		$this->assertStringContainsString( '## For agents', $output );
-		$this->assertStringContainsString( '## UCP Extension', $output );
+		$this->assertStringContainsString( '## Extension schema', $output );
 	}
 
 	public function test_output_emits_sections_in_documented_order(): void {
@@ -258,7 +258,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 			'## Browse',
 			'## Structured data',
 			'## For agents',
-			'## UCP Extension',
+			'## Extension schema',
 		];
 
 		$last_pos = -1;
@@ -911,15 +911,22 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	// UCP extension docs
 	// ------------------------------------------------------------------
 
-	public function test_llms_txt_includes_ucp_extension_section(): void {
+	public function test_llms_txt_includes_ucp_extension_anchor(): void {
 		// The UCP manifest advertises the merchant-extension capability
 		// with a `spec` URL pointing at `/llms.txt#ucp-extension`. This
-		// test locks in that the anchor is present + the section is
-		// actually rendered so the manifest's URL resolves.
+		// test locks in that the anchor is present + the section header
+		// is actually rendered so the manifest's URL resolves.
+		//
+		// The H2 title is "Extension schema" rather than the previous
+		// "UCP Extension: com.woocommerce.ai_storefront" — that title
+		// oversold the single-URL content beneath it and exposed
+		// package-namespace syntax to merchants reading their own
+		// llms.txt. The anchor ID stays `ucp-extension` so the
+		// manifest's `spec` URL keeps resolving.
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString( '<a id="ucp-extension"></a>', $output );
-		$this->assertStringContainsString( '## UCP Extension: com.woocommerce.ai_storefront', $output );
+		$this->assertStringContainsString( '## Extension schema', $output );
 	}
 
 	public function test_llms_txt_extension_section_points_at_schema_endpoint(): void {

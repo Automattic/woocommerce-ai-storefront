@@ -550,20 +550,28 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[]      = '';
 
 		// ============================================================
-		// ## UCP Extension
+		// ## Extension schema
 		// ============================================================
-		// Preserved from the previous structure — the UCP manifest's
-		// `spec` URL points at the `#ucp-extension` anchor below, so
-		// removing the anchor would break the manifest contract for
-		// agents that follow the spec link.
+		// Heading title narrowed from the previous
+		// `## UCP Extension: com.woocommerce.ai_storefront` — that
+		// title oversold the single-URL content beneath it and
+		// exposed package-namespace syntax to merchants reading
+		// their own llms.txt.
+		//
+		// The `#ucp-extension` anchor is preserved (independent of
+		// heading text). The UCP manifest's `com.woocommerce.ai_storefront`
+		// capability still declares its `spec` URL as
+		// `/llms.txt#ucp-extension`, so agents following the spec
+		// link land at the correct anchor regardless of how the
+		// section header reads.
 		$ucp_schema_url = function_exists( 'rest_url' )
 			? rtrim( rest_url( 'wc/ucp/v1/extension/schema' ), '/' )
 			: '/wp-json/wc/ucp/v1/extension/schema';
 
 		$lines[] = '<a id="ucp-extension"></a>';
-		$lines[] = '## UCP Extension: com.woocommerce.ai_storefront';
+		$lines[] = '## Extension schema';
 		$lines[] = '';
-		$lines[] = "Machine-readable JSON Schema: `{$ucp_schema_url}`";
+		$lines[] = "Machine-readable JSON Schema for the `com.woocommerce.ai_storefront` UCP extension: `{$ucp_schema_url}`";
 		$lines[] = '';
 
 		/**
