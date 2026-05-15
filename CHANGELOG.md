@@ -1,6 +1,16 @@
 ## [Unreleased]
 
 ### Features
+
+- **WooPayments multi-currency exposure across UCP, JSON-LD, and llms.txt.**
+  - UCP manifest `store_context` gains an `accepted_currencies` array (base currency first).
+  - Homepage `OnlineBusiness` JSON-LD `currenciesAccepted` becomes a space-separated list on multi-currency stores.
+  - llms.txt gains an `**Accepted currencies**` line when more than one currency is enabled.
+  - UCP `continue_url` and per-product `url` fields carry `?currency=XXX` when the agent sends `context.currency` in the accepted set, activating WooPayments' page-level currency switcher on the destination.
+  - Per-product page JSON-LD already reflects `?currency=XXX` automatically (WooPayments handles the switch before our enricher runs).
+  - New filter `wc_ai_storefront_accepted_currencies` for integrators using non-WooPayments multi-currency plugins.
+  - Catalog response prices remain quoted in the store's base currency (live currency switching of UCP responses is Phase 2).
+
 ### Fixes
 ### Refactors
 ### Tests

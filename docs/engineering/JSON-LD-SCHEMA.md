@@ -361,6 +361,10 @@ ISO 4217 currency code, normalized.
 - **Always emitted**. Inherits from WC core when present; otherwise plugin synthesizes from store settings.
 - **Defensive**: covers a WC core edge case where nested `priceSpecification[0].priceCurrency` was set but top-level `priceCurrency` wasn't.
 
+**Per-page currency reflection (WooPayments multi-currency).** When a crawler fetches a single-product page with a `?currency=XXX` query parameter, WooPayments' multi-currency feature switches `get_woocommerce_currency()` for that request *before* the JSON-LD enricher runs. As a result, every `priceCurrency` field on the page's Product JSON-LD (including the variant-level Offer skeletons under `hasVariant[i].offers[0]` and the subscription `priceSpecification` entries) reflects `XXX`, and every `price` reflects the converted amount. This is a free behavior — no plugin code change required. Crawlers that need a multi-currency index can fetch each product URL once per code in `currenciesAccepted` to build the full matrix.
+
+This does NOT apply to the homepage `OnlineBusiness.currenciesAccepted` field (a store-wide list, not a per-quote currency), the UCP manifest (a discovery file served outside the storefront page render), or UCP REST responses (the `/wp-json/wc/ucp/v1/...` path does not traverse WooPayments' page-level `?currency=` handler — that's Phase 2).
+
 ### `offers[0].seller`
 
 WooCommerce core emits `seller` as `{ "@type": "Organization", "name": "...", "url": "..." }`. The plugin does not change the `@type`.
@@ -498,6 +502,23 @@ The `@type` is [`OnlineBusiness`](https://schema.org/OnlineBusiness) — a Schem
   }
 }
 ```
+
+### `currenciesAccepted` (homepage)
+
+Space-separated string of ISO-4217 currency codes (Schema.org convention). Single-currency stores emit one code; multi-currency stores emit the full accepted set with the base currency first (since 0.17.0).
+
+```jsonc
+// Single-currency store:
+"currenciesAccepted": "USD"
+
+// WooPayments multi-currency store (base USD, with EUR + GBP enabled):
+"currenciesAccepted": "USD EUR GBP"
+```
+
+- **Emitted when**: plugin is enabled and on `is_front_page() || is_shop()`.
+- **Format**: Schema.org's `Organization.currenciesAccepted` is a single `Text` field; the multi-currency convention is space-separation per the Schema.org "Use the [currenciesAccepted](https://schema.org/currenciesAccepted) property and pass the values as a list of ISO 4217 codes" guidance. Validators accept either shape.
+- **Source**: [`WC_AI_Storefront_Multi_Currency::get_accepted_currencies()`](../../includes/ai-storefront/class-wc-ai-storefront-multi-currency.php) — reads the WooPayments multi-currency enabled set when the soft dependency is present, otherwise falls back to `[ base_currency ]`. Extensible via the `wc_ai_storefront_accepted_currencies` filter (see [`HOOKS.md`](HOOKS.md#wc_ai_storefront_accepted_currencies)).
+- **Schema.org caveat**: `currenciesAccepted` is scoped to the `OnlineStore` subtype; we emit it on the `OnlineBusiness` parent for the same intentional non-domain-pairing rationale described in the parent section.
 
 ### `hasOfferCatalog` (homepage / shop)
 

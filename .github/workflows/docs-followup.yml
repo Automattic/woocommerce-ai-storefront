@@ -62,6 +62,7 @@ jobs:
             ["includes/ai-storefront/class-wc-ai-storefront-cache-invalidator.php"]="docs/engineering/DATA-MODEL.md docs/engineering/ARCHITECTURE.md"
             ["includes/ai-storefront/class-wc-ai-storefront-crawl-logger.php"]="docs/engineering/DATA-MODEL.md docs/engineering/ARCHITECTURE.md docs/engineering/API-REFERENCE.md docs/user-guide/USER-GUIDE.md"
             ["includes/ai-storefront/class-wc-ai-storefront-logger.php"]="docs/engineering/HOOKS.md"
+            ["includes/ai-storefront/class-wc-ai-storefront-multi-currency.php"]="docs/engineering/HOOKS.md docs/engineering/ARCHITECTURE.md docs/engineering/API-REFERENCE.md docs/engineering/JSON-LD-SCHEMA.md"
             ["includes/ai-storefront/class-wc-ai-storefront-return-policy.php"]="docs/engineering/DATA-MODEL.md docs/user-guide/USER-GUIDE.md"
             ["includes/admin/class-wc-ai-storefront-product-meta-box.php"]="docs/engineering/DATA-MODEL.md docs/user-guide/USER-GUIDE.md"
             ["includes/class-wc-ai-storefront.php"]="docs/engineering/DATA-MODEL.md docs/engineering/ARCHITECTURE.md"

@@ -165,6 +165,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/ai-storefront/class-wc-ai-storefront-cache-invalidator.php` | DATA-MODEL.md, ARCHITECTURE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-crawl-logger.php` | DATA-MODEL.md, ARCHITECTURE.md, API-REFERENCE.md, USER-GUIDE.md, HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-logger.php` | HOOKS.md |
+| `includes/ai-storefront/class-wc-ai-storefront-multi-currency.php` | HOOKS.md, ARCHITECTURE.md, API-REFERENCE.md, JSON-LD-SCHEMA.md |
 | `includes/ai-storefront/class-wc-ai-storefront-return-policy.php` | DATA-MODEL.md, USER-GUIDE.md |
 | `includes/admin/class-wc-ai-storefront-product-meta-box.php` | DATA-MODEL.md, USER-GUIDE.md |
 | `includes/class-wc-ai-storefront.php` | DATA-MODEL.md, ARCHITECTURE.md |
