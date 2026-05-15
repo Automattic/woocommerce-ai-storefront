@@ -344,12 +344,7 @@ class WC_AI_Storefront_Llms_Txt {
 
 		$accepted_currencies = WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
 		if ( count( $accepted_currencies ) > 1 ) {
-			$lines[] = sprintf(
-				/* translators: 1: comma-separated list of accepted ISO-4217 currency codes (base currency first), 2: base ISO-4217 currency code (also the first entry in %1$s). */
-				__( '- **Accepted currencies**: %1$s (catalog prices quoted in %2$s; checkout converts at the store\'s published rates)', 'woocommerce-ai-storefront' ),
-				implode( ', ', $accepted_currencies ),
-				$currency
-			);
+			$lines[] = '- **Accepted currencies**: ' . implode( ', ', $accepted_currencies );
 		}
 
 		if ( ! empty( $postal_address ) ) {

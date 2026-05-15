@@ -941,7 +941,7 @@ Append to `tests/php/unit/LlmsTxtTest.php`:
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString(
-			"- **Accepted currencies**: USD, EUR, GBP (catalog prices quoted in USD; checkout converts at the store's published rates)",
+			'- **Accepted currencies**: USD, EUR, GBP',
 			$output
 		);
 	}
@@ -967,16 +967,11 @@ Add immediately after it:
 ```php
 		$accepted_currencies = WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
 		if ( count( $accepted_currencies ) > 1 ) {
-			$lines[] = sprintf(
-				/* translators: 1: comma-separated list of additional ISO-4217 currency codes, 2: base ISO-4217 currency code. */
-				__( '- **Accepted currencies**: %1$s (catalog prices quoted in %2$s; checkout converts at WooPayments\' rates)', 'woocommerce-ai-storefront' ),
-				implode( ', ', $accepted_currencies ),
-				$currency
-			);
+			$lines[] = '- **Accepted currencies**: ' . implode( ', ', $accepted_currencies );
 		}
 ```
 
-The `__()` call wraps the whole line (label + qualifier) so translators can restructure the parenthetical clause for languages that need different connective grammar. The base currency interpolates as `%2$s` so the qualifier remains accurate for non-USD base stores.
+Bare line — no qualifier, no `__()` wrapping. The existing `**Currency**` line above already tells consumers the default presentation currency, and adding driver-specific commentary (e.g. "WooPayments' rates") would be wrong for non-WCPay multi-currency plugins surfaced via the filter.
 
 - [ ] **Step 6.5: Run llms.txt tests**
 
@@ -990,9 +985,10 @@ git add tests/php/unit/LlmsTxtTest.php includes/ai-storefront/class-wc-ai-storef
 git commit -m "feat(llmstxt): add Accepted currencies line for multi-currency stores
 
 Emits a sentence-case **Accepted currencies** line directly after
-**Currency** when more than one currency is enabled. Includes a
-parenthetical clarifying that catalog prices remain in the base
-currency (Phase 1 honesty signal).
+**Currency** when more than one currency is enabled. Bare
+comma-separated list (no qualifier) since multi-currency plugins
+convert prices at the catalog level, so the destination page
+prices already reflect the active currency.
 
 Refs #404"
 ```
@@ -1978,7 +1974,7 @@ Plan: [`docs/superpowers/plans/2026-05-15-woopayments-multicurrency-exposure.md`
 - New helper class `WC_AI_Storefront_Multi_Currency` (soft-dependency reader for WCPay) with two methods: `get_accepted_currencies()` and `stamp_currency_query()`.
 - UCP manifest `store_context.accepted_currencies` (always at least `[ base ]`).
 - Homepage `OnlineBusiness` JSON-LD `currenciesAccepted` becomes a space-separated list on multi-currency stores.
-- llms.txt `**Accepted currencies**` line emitted when more than one currency is enabled, with a qualifier noting catalog response prices remain in the base currency.
+- llms.txt `**Accepted currencies**` line emitted when more than one currency is enabled (bare comma-separated list).
 - UCP `continue_url` (every variant: `/checkout-link/?products=`, bundle, grouped, variable-parent) and per-product `url` in `catalog/search` / `catalog/lookup` carry `?currency=XXX` ahead of the UTM block when `context.currency` is in the accepted set.
 - New private controller helper `get_request_currency()` — single source of truth for the agent's currency hint, reused across handlers.
 - New filter `wc_ai_storefront_accepted_currencies` for integrator overrides.
@@ -2001,7 +1997,7 @@ Plan: [`docs/superpowers/plans/2026-05-15-woopayments-multicurrency-exposure.md`
 - [ ] Manual: POST a `catalog/search` request with `context.currency=EUR`; confirm each product `url` carries `?currency=EUR`.
 - [ ] Manual: POST any UCP request without `context.currency`; confirm URLs are unstamped (back-compat).
 - [ ] Manual: visit a single-product page with `?currency=EUR`; confirm the rendered JSON-LD `priceCurrency` reflects `EUR` (free win, no plugin change).
-- [ ] Manual: confirm the llms.txt qualifier is honest about base-currency catalog quoting.
+- [ ] Manual: confirm the llms.txt `**Accepted currencies**` line lists all enabled codes (no qualifier).
 
 Closes #404
 EOF
@@ -2021,4 +2017,4 @@ The `gh pr create` command prints the PR URL. Surface it to the user.
 - **WCPay class stand-in**: only `MultiCurrencyTest.php` declares the namespaced stand-in. `UcpTest.php`, `JsonLdTest.php`, and `LlmsTxtTest.php` cover the multi-currency case via the filter override path — that's cleaner and keeps the test files focused.
 - **Helper cache**: every test class that touches a code path calling `WC_AI_Storefront_Multi_Currency::get_accepted_currencies()` must reset the cache in setUp() or tearDown(). Forgetting this leaks state across tests.
 - **WP-style alignment**: PHPCS enforces aligned `=>` in array literals. When adding `accepted_currencies` to the `store_context` array, the longest key shifts — all aligned `=>` in the same block re-align. The Edit tool's exact-string matching handles this fine if you replace the full block in one operation.
-- **No em-dashes in merchant-facing copy**: the llms.txt qualifier sticks to commas and parentheses per `AGENTS.md`. Don't reintroduce em-dashes during a copy-edit pass.
+- **No em-dashes in merchant-facing copy**: the llms.txt line stays a bare comma-separated list per `AGENTS.md`. Don't reintroduce em-dashes or qualifier prose during a copy-edit pass.

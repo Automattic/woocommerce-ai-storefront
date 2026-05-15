@@ -37,7 +37,7 @@ Five surfaces gain currency awareness. Three are advertise-only (output a list);
 |---|---|---|---|
 | `includes/ai-storefront/class-wc-ai-storefront-ucp.php` (`build_store_context()`) | `store_context.accepted_currencies` | absent | array of ISO-4217 codes, base first |
 | `includes/ai-storefront/class-wc-ai-storefront-jsonld.php` (homepage `OnlineBusiness` enricher) | `currenciesAccepted` | string `"USD"` | space-separated string `"USD EUR GBP"` per Schema.org convention |
-| `includes/ai-storefront/class-wc-ai-storefront-llms-txt.php` | `**Accepted currencies**` line | absent | comma-separated codes plus a qualifier; omitted when the list has one entry |
+| `includes/ai-storefront/class-wc-ai-storefront-llms-txt.php` | `**Accepted currencies**` line | absent | comma-separated codes; omitted when the list has one entry |
 
 ### Honor on outbound URLs (stamp `?currency=XXX` when context-currency is in the set)
 
@@ -90,11 +90,11 @@ Homepage JSON-LD (`OnlineStore` node):
 { "currenciesAccepted": "USD EUR GBP" }
 ```
 
-llms.txt (multi-currency case — qualifier is required when more than one code is listed):
+llms.txt (multi-currency case — line emitted only when more than one code is listed):
 
 ```
 - **Currency**: USD
-- **Accepted currencies**: USD, EUR, GBP (catalog prices quoted in USD; checkout converts at the store's published rates)
+- **Accepted currencies**: USD, EUR, GBP
 ```
 
 llms.txt (single-currency case): the `**Accepted currencies**` line is omitted entirely. The existing `**Currency**` line is unchanged.
@@ -160,7 +160,7 @@ Five callers read from the helper. Three read `get_accepted_currencies()` (adver
 
 1. **`build_store_context()`** in `class-wc-ai-storefront-ucp.php` adds an `accepted_currencies` key alongside the existing `currency` scalar.
 2. **Homepage `OnlineBusiness` JSON-LD enricher** in `class-wc-ai-storefront-jsonld.php` (around line 1897) replaces the single-code emission with `implode( ' ', $codes )`. Schema.org documents `currenciesAccepted` as a space-separated list of currencies — that's the canonical format.
-3. **llms.txt builder** in `class-wc-ai-storefront-llms-txt.php` (around line 343, right after the existing `**Currency**` line) emits a new line only when `count( $codes ) > 1`. The qualifier string is hard-coded English; it's covered by a single `__()` call so translators can rephrase the parenthetical for other languages.
+3. **llms.txt builder** in `class-wc-ai-storefront-llms-txt.php` (around line 343, right after the existing `**Currency**` line) emits a new line only when `count( $codes ) > 1`. Bare list — no qualifier text, no `__()` wrapping — the existing `**Currency**` line already tells consumers what the default presentation currency is, and adding driver-specific commentary would be wrong for non-WCPay multi-currency plugins surfaced via the filter.
 
 **Honor callers:**
 
@@ -251,7 +251,7 @@ Additional coverage to ship in Task 3:
 
 - `tests/php/unit/UcpTest.php` — assert `store_context.accepted_currencies` is present, base-first, on both single- and multi-currency mocks.
 - `tests/php/unit/JsonLdTest.php` — assert `currenciesAccepted` is space-separated when more than one code is enabled.
-- `tests/php/unit/LlmsTxtTest.php` — assert the `**Accepted currencies**` line is present (with qualifier) when multi-currency is active and absent when only the base is enabled.
+- `tests/php/unit/LlmsTxtTest.php` — assert the `**Accepted currencies**` line is present (bare comma-separated list) when multi-currency is active and absent when only the base is enabled.
 - `tests/php/unit/UcpRestControllerTest.php` (or the relevant checkout-sessions test file) — assert `continue_url` carries `?currency=XXX` when `context.currency` is in `accepted_currencies`, and is unchanged otherwise. Test all `continue_url` variants: `/checkout-link/?products=`, bundle, grouped, variable-parent.
 - `tests/php/unit/UcpProductTranslatorTest.php` — assert per-product `permalink` carries `?currency=XXX` when the dispatch context has a request currency in the accepted set. Test that it does NOT stamp when the request currency is the base, when it's absent, or when it's outside the accepted set.
 
