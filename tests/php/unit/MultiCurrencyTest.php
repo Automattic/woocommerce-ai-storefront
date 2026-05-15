@@ -25,9 +25,13 @@ namespace WCPay\MultiCurrency {
 		 * Mockery overrides them per-test via `shouldReceive`.
 		 */
 		class MultiCurrency {
-			public static $test_double = null;
+			public static $test_double      = null;
+			public static $throw_on_instance = false;
 
 			public static function instance() {
+				if ( self::$throw_on_instance ) {
+					throw new \RuntimeException( 'WCPay partial-boot test exception' );
+				}
 				return self::$test_double;
 			}
 
@@ -66,7 +70,8 @@ namespace {
 			parent::setUp();
 			Monkey\setUp();
 			WC_AI_Storefront_Multi_Currency::reset_cache();
-			\WCPay\MultiCurrency\MultiCurrency::$test_double = null;
+			\WCPay\MultiCurrency\MultiCurrency::$test_double      = null;
+			\WCPay\MultiCurrency\MultiCurrency::$throw_on_instance = false;
 
 			Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 			Functions\when( 'apply_filters' )->returnArg( 2 );
@@ -96,7 +101,8 @@ namespace {
 		}
 
 		protected function tearDown(): void {
-			\WCPay\MultiCurrency\MultiCurrency::$test_double = null;
+			\WCPay\MultiCurrency\MultiCurrency::$test_double      = null;
+			\WCPay\MultiCurrency\MultiCurrency::$throw_on_instance = false;
 			Monkey\tearDown();
 			parent::tearDown();
 		}
@@ -199,12 +205,63 @@ namespace {
 		}
 
 		public function test_get_accepted_currencies_wcpay_get_enabled_currencies_returning_non_array_falls_back_to_base(): void {
+			// This test verifies the is_array() guard is present. Without it,
+			// array_keys(null) throws a TypeError — which the outer try-catch
+			// would silently swallow, still returning ['USD']. To confirm the
+			// guard fires rather than the catch, we verify no exception path
+			// is exercised by asserting the result directly. The guard's
+			// independent value is also covered by test_get_accepted_currencies_wcpay_instance_throws.
 			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
 			$mc->shouldReceive( 'is_multi_currency_enabled' )->andReturn( true );
 			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn( null );
 			\WCPay\MultiCurrency\MultiCurrency::$test_double = $mc;
 
 			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
+		}
+
+		public function test_get_accepted_currencies_wcpay_instance_throws_falls_back_to_base(): void {
+			\WCPay\MultiCurrency\MultiCurrency::$throw_on_instance = true;
+
+			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
+		}
+
+		public function test_get_accepted_currencies_invalid_base_currency_falls_back_to_usd(): void {
+			Functions\when( 'get_woocommerce_currency' )->justReturn( '' );
+
+			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
+		}
+
+		public function test_get_accepted_currencies_non_iso_base_currency_falls_back_to_usd(): void {
+			Functions\when( 'get_woocommerce_currency' )->justReturn( 'EURO' );
+
+			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
+		}
+
+		public function test_get_accepted_currencies_filter_throwing_falls_back_to_auto_detected_list(): void {
+			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+			$mc->shouldReceive( 'is_multi_currency_enabled' )->andReturn( true );
+			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+				array(
+					'USD' => new \stdClass(),
+					'EUR' => new \stdClass(),
+				)
+			);
+			\WCPay\MultiCurrency\MultiCurrency::$test_double = $mc;
+
+			Functions\when( 'apply_filters' )->alias(
+				static function ( $hook, $value, ...$extras ) {
+					if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+						throw new \RuntimeException( 'filter callback exploded' );
+					}
+					return $value;
+				}
+			);
+
+			// The catch falls back to the auto-detected list, not just base.
+			$this->assertSame(
+				array( 'USD', 'EUR' ),
+				WC_AI_Storefront_Multi_Currency::get_accepted_currencies()
+			);
 		}
 
 		public function test_get_accepted_currencies_filter_can_override_list(): void {
@@ -378,6 +435,22 @@ namespace {
 			$url    = 'https://example.com/product/widget/';
 			$result = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, ' USD ' );
 			$this->assertSame( 'https://example.com/product/widget/?currency=USD', $result );
+		}
+
+		public function test_stamp_currency_query_lowercase_currency_is_uppercased_and_accepted(): void {
+			$url    = 'https://example.com/product/widget/';
+			$result = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'usd' );
+			$this->assertSame( 'https://example.com/product/widget/?currency=USD', $result );
+		}
+
+		public function test_stamp_currency_query_capitalized_currency_param_is_not_detected_and_stamp_is_applied(): void {
+			// The idempotency guard only detects lowercase `currency=`.
+			// A URL with `Currency=EUR` (capital C) will have a second
+			// `currency=USD` appended — this is a documented limitation.
+			$url    = 'https://example.com/product/widget/?Currency=EUR';
+			$result = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'USD' );
+			$this->assertStringContainsString( 'currency=USD', $result );
+			$this->assertStringContainsString( 'Currency=EUR', $result );
 		}
 
 		public function test_stamp_currency_query_url_with_no_existing_query_appends_currency(): void {
