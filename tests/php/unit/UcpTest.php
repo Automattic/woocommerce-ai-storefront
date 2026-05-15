@@ -65,6 +65,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -581,6 +582,37 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNull( $this->get_store_context()['country'] );
 	}
 
+	public function test_store_context_accepted_currencies_includes_base_on_single_currency_store(): void {
+		// On a stock WC install with no WooPayments, accepted_currencies
+		// is a 1-element array containing the base currency. The shape
+		// is stable — single-currency stores get the same field as
+		// multi-currency stores.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$ctx = $this->get_store_context();
+		$this->assertSame( array( 'USD' ), $ctx['accepted_currencies'] );
+	}
+
+	public function test_store_context_accepted_currencies_reflects_filter_override(): void {
+		// Cover the multi-currency case via the filter rather than
+		// installing a WCPay stand-in here — keeps UcpTest free of
+		// WCPay namespace gymnastics. Filter-driven coverage of the
+		// detection path lives in MultiCurrencyTest.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR', 'GBP' );
+				}
+				return $value;
+			}
+		);
+
+		$ctx = $this->get_store_context();
+		$this->assertSame( array( 'USD', 'EUR', 'GBP' ), $ctx['accepted_currencies'] );
+	}
+
 	public function test_store_context_fields_are_exactly_those_documented(): void {
 		// Regression guard against field drift. If a future refactor
 		// adds a new key to store_context without also updating
@@ -588,7 +620,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// deliberate: either update this test (conscious addition)
 		// or remove the stray field.
 		$this->assertSame(
-			[ 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled' ],
+			[ 'currency', 'accepted_currencies', 'locale', 'country', 'prices_include_tax', 'shipping_enabled' ],
 			array_keys( $this->get_store_context() )
 		);
 	}
