@@ -176,8 +176,11 @@ class WC_AI_Storefront_Multi_Currency {
 	 * @return string The stamped URL, or the input URL unchanged.
 	 */
 	public static function stamp_currency_query( $url, $requested_currency ) {
-		if ( ! is_string( $url ) || '' === $url ) {
-			return is_string( $url ) ? $url : '';
+		if ( ! is_string( $url ) ) {
+			return '';
+		}
+		if ( '' === $url ) {
+			return '';
 		}
 
 		if ( ! is_string( $requested_currency ) ) {
