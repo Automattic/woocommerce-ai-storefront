@@ -175,6 +175,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
 		WC_AI_Storefront::$test_settings = [];
 		WC_Shipping_Zones::$test_zones   = [];
 		// Reset the subscription stub's static state unconditionally.
@@ -4289,5 +4290,66 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'priceSpecification must fall back to get_woocommerce_currency() when the Offer has no priceCurrency.'
 		);
 
+	}
+
+	// ------------------------------------------------------------------
+	// `currenciesAccepted` — single vs multi-currency emission.
+	// ------------------------------------------------------------------
+	//
+	// Schema.org's `currenciesAccepted` accepts a space-separated string
+	// of ISO-4217 codes. Single-currency stores must still emit one bare
+	// code (no separator). Multi-currency stores (driven by the
+	// `WC_AI_Storefront_Multi_Currency` helper, with the
+	// `wc_ai_storefront_accepted_currencies` filter as the override
+	// surface for non-WooPayments integrations) must emit the full list
+	// joined by single spaces, base currency first.
+
+	public function test_output_store_jsonld_currenciesaccepted_single_currency_emits_base(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'get_bloginfo' )->returnArg();
+		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
+		Functions\when( '__' )->returnArg( 1 );
+
+		ob_start();
+		( new WC_AI_Storefront_JsonLd() )->output_store_jsonld();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"currenciesAccepted":"USD"', $output );
+	}
+
+	public function test_output_store_jsonld_currenciesaccepted_multi_currency_emits_space_separated_list(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'get_bloginfo' )->returnArg();
+		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
+		Functions\when( '__' )->returnArg( 1 );
+		// Variadic capture: `output_store_jsonld()` also fires the
+		// `wc_ai_storefront_jsonld_store` filter with three positional
+		// args. A strict 2-arg signature would still work in PHP
+		// (extra args are silently dropped on user-defined callables),
+		// but matching the surrounding test pattern keeps the closure
+		// resilient to any future tightening of Brain Monkey's arg
+		// dispatcher.
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR', 'GBP' );
+				}
+				return $value;
+			}
+		);
+
+		ob_start();
+		( new WC_AI_Storefront_JsonLd() )->output_store_jsonld();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"currenciesAccepted":"USD EUR GBP"', $output );
 	}
 }
