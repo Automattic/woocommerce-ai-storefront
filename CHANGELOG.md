@@ -6,6 +6,16 @@
 ### Tests
 ### Docs
 
+---
+
+## [0.16.1] – 2026-05-14
+
+### Features
+### Fixes
+### Refactors
+### Tests
+### Docs
+
 - **User guide: reframe GMC compatibility, layer the smoke test, and add channel-split + sitemap diagnostics.** Reflects the January 2026 Google + Shopify UCP launch and live-fire findings from running the verification flow against a real store where Gemini hallucinated product results without ever fetching the domain.
   - **§1.2 GMC compatibility** rewritten from "doesn't compete" to "stacks with it." The Shopping Graph (retrieval, populated by GMC + Schema.org markup) and UCP (checkout handoff) are now two layers of the same Gemini agentic flow, not parallel channels. "Keep GMC if you have it" stays; "this plugin adds the layer GMC doesn't address" makes the stacking explicit. The matching bullet in "What this plugin does not do" upgrades "complementary, not substitutes" to "complementary and stacked: GMC feeds the retrieval layer, this plugin feeds the checkout-handoff layer."
   - **§4 smoke test** restructured into three verification layers, ordered most-reliable-first: Layer 1 (direct endpoint check of `/llms.txt` + `/.well-known/ucp`, deterministic), Layer 2 (UCPPlayground / UCPChecker, fetch-independent), Layer 3 (live AI assistant query, variable). The previous single-paragraph smoke test promised "real product names with prices within 3–10 seconds" — empirically too optimistic. Gemini in particular sometimes hallucinates plausible-sounding products without fetching at all. Adds the diagnostic prompt `"Did you actually fetch [your-store.com]?"` to surface hallucinations to the merchant directly. Per-engine fetch behavior (ChatGPT typically fetches, Gemini sometimes, Claude / Perplexity varies) is now stated explicitly. "If layers 1 and 2 succeed but layer 3 hallucinates, your store is correctly publishing" decouples plugin-correctness from AI-engine cooperation.
