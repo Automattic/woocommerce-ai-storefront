@@ -123,11 +123,15 @@ namespace {
 		public function test_get_accepted_currencies_duplicates_are_deduped_preserving_order(): void {
 			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
 			$mc->shouldReceive( 'is_multi_currency_enabled' )->andReturn( true );
+			// The 'eur' lowercase key is distinct from 'EUR' in the array
+			// literal (so PHP doesn't collapse it at parse time), but
+			// collapses to 'EUR' after the helper's strtoupper() — exercising
+			// the dedup branch in normalize_codes().
 			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
 				array(
 					'USD' => new \stdClass(),
 					'EUR' => new \stdClass(),
-					'EUR' => new \stdClass(),
+					'eur' => new \stdClass(),
 					'GBP' => new \stdClass(),
 				)
 			);
