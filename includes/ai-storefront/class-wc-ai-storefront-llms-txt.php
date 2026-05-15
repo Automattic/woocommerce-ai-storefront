@@ -342,6 +342,11 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = '';
 		$lines[] = "- **Currency**: {$currency}";
 
+		$accepted_currencies = WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
+		if ( count( $accepted_currencies ) > 1 ) {
+			$lines[] = '- **Accepted currencies**: ' . implode( ', ', $accepted_currencies );
+		}
+
 		if ( ! empty( $postal_address ) ) {
 			$location_parts = [];
 			foreach ( [ 'addressLocality', 'addressRegion', 'addressCountry' ] as $key ) {

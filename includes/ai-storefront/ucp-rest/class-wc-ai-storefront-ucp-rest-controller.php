@@ -723,7 +723,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$fetched['wc_products'],
 			$seller,
 			$agent_source_host,
-			$agent_raw_host
+			$agent_raw_host,
+			$request
 		);
 
 		$body = array(
@@ -1031,17 +1032,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * `partial_variants` warnings for any skipped variations, and returns
 	 * the translated list alongside any warning messages.
 	 *
-	 * @param array  $wc_products       Normalized Store API product arrays.
-	 * @param array  $seller            Seller block from build_seller().
-	 * @param string $agent_source_host Attribution host; forwarded to the translator.
-	 * @param string $agent_raw_host    Raw host header; forwarded to the translator.
+	 * @param array           $wc_products       Normalized Store API product arrays.
+	 * @param array           $seller            Seller block from build_seller().
+	 * @param string          $agent_source_host Attribution host; forwarded to the translator.
+	 * @param string          $agent_raw_host    Raw host header; forwarded to the translator.
+	 * @param WP_REST_Request $request           Incoming UCP request, used to read
+	 *                                           `context.currency` so per-product
+	 *                                           URLs can carry the agent's currency
+	 *                                           hint when it's in accepted_currencies.
 	 * @return array{products: array, variant_messages: array}
 	 */
 	private function translate_products_for_search(
 		array $wc_products,
 		array $seller,
 		string $agent_source_host,
-		string $agent_raw_host
+		string $agent_raw_host,
+		WP_REST_Request $request
 	): array {
 		$products         = array();
 		$variant_messages = array();
@@ -1075,7 +1081,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// is complete. Hoisted out of the translator to preserve its
 			// pure-function contract (see issue #176). The translator emits the
 			// bare permalink; the controller owns agent-context side-effects.
-			if ( ! empty( $product['url'] ) ) {
+			if ( ! empty( $product['url'] ) && is_string( $product['url'] ) ) {
+				// Stamp the agent's context.currency hint onto the URL before
+				// UTM attribution. No-op when the request currency is null,
+				// malformed, or not in `accepted_currencies` — so this single
+				// call covers single-currency stores (no-op), multi-currency
+				// stores where the agent didn't send a hint (no-op), and the
+				// live case where the agent's hint is honored.
+				$product['url'] = WC_AI_Storefront_Multi_Currency::stamp_currency_query(
+					$product['url'],
+					self::get_request_currency( $request )
+				);
 				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
 					$product['url'],
 					$agent_source_host,
@@ -1838,7 +1854,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// is complete. Hoisted out of the translator to preserve its
 			// pure-function contract (see issue #176). The translator emits the
 			// bare permalink; the controller owns agent-context side-effects.
-			if ( ! empty( $product['url'] ) ) {
+			if ( ! empty( $product['url'] ) && is_string( $product['url'] ) ) {
+				// Stamp the agent's context.currency hint onto the URL before
+				// UTM attribution. No-op when the request currency is null,
+				// malformed, or not in `accepted_currencies` — so this single
+				// call covers single-currency stores (no-op), multi-currency
+				// stores where the agent didn't send a hint (no-op), and the
+				// live case where the agent's hint is honored.
+				$product['url'] = WC_AI_Storefront_Multi_Currency::stamp_currency_query(
+					$product['url'],
+					self::get_request_currency( $request )
+				);
 				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
 					$product['url'],
 					$agent_source_host,
@@ -2833,7 +2859,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		$continue_url = $should_redirect
-			? self::build_continue_url( $processed, $agent_source_host, $agent_raw_host )
+			? self::build_continue_url(
+				$processed,
+				$agent_source_host,
+				$agent_raw_host,
+				self::get_request_currency( $request )
+			)
 			: '';
 
 		if ( $should_redirect ) {
@@ -5550,6 +5581,45 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
+	 * Extract and validate the agent's `context.currency` hint.
+	 *
+	 * Reads `context.currency` from the request body, trims it,
+	 * uppercases it, and validates the ISO-4217 shape (^[A-Z]{3}$).
+	 * Returns the normalized code on success, or null when the hint
+	 * is absent, malformed, or non-string.
+	 *
+	 * This is the single source of truth for "what currency did the
+	 * agent ask for?" — used by `build_continue_url()`, the per-product
+	 * URL stamper in `catalog/search` and `catalog/lookup` handlers,
+	 * and (in Phase 2) the WCPay currency-switch wrapper.
+	 *
+	 * Note: this helper does NOT check membership in
+	 * `WC_AI_Storefront_Multi_Currency::get_accepted_currencies()` —
+	 * that's `stamp_currency_query()`'s job. We pass the raw validated
+	 * hint through; the stamper decides whether to use it.
+	 *
+	 * @since 0.17.0
+	 *
+	 * @param WP_REST_Request $request The incoming UCP request.
+	 * @return string|null Normalized ISO-4217 code, or null when absent/malformed.
+	 */
+	private static function get_request_currency( WP_REST_Request $request ): ?string {
+		$context = $request->get_param( 'context' );
+		if ( ! is_array( $context ) ) {
+			return null;
+		}
+		$raw = $context['currency'] ?? null;
+		if ( ! is_string( $raw ) ) {
+			return null;
+		}
+		$normalized = strtoupper( trim( $raw ) );
+		if ( ! preg_match( '/^[A-Z]{3}$/', $normalized ) ) {
+			return null;
+		}
+		return $normalized;
+	}
+
+	/**
 	 * Construct the Shareable Checkout URL for the successful items.
 	 *
 	 * Format per WooCommerce's native /checkout-link/ feature:
@@ -5633,8 +5703,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                                                      Stored on the order as
 	 *                                                      `_wc_ai_storefront_agent_host_raw`
 	 *                                                      for diagnostic / graduation purposes.
+	 * @param string|null                      $request_currency Optional ISO-4217 currency code
+	 *                                                          from `context.currency`; stamped
+	 *                                                          onto the outbound URL ahead of the
+	 *                                                          UTM block when present and in
+	 *                                                          `accepted_currencies`. Null skips
+	 *                                                          stamping (no-op for single-currency
+	 *                                                          stores or when the agent omitted
+	 *                                                          `context.currency`).
+	 * @return string The continue_url with currency + UTM stamping, or '' when no usable URL
+	 *                could be built (bundle/grouped/variable shapes with no permalink fallback).
 	 */
-	private static function build_continue_url( array $processed, string $source_host, string $raw_host ): string {
+	private static function build_continue_url( array $processed, string $source_host, string $raw_host, ?string $request_currency = null ): string {
 		// Bundle short-circuit (#358). WC Product Bundles aren't
 		// addressable via /checkout-link/?products=ID:QTY because each
 		// bundled item needs index-keyed config params for variation
@@ -5893,8 +5973,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return '';
 		}
 
-		$url = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+		// Stamp the agent's context.currency hint onto the URL before
+		// UTM attribution stamps on top. The stamper is a no-op when
+		// the request currency is null, malformed, or not in
+		// `accepted_currencies` — so this single call covers
+		// single-currency stores (no-op), multi-currency stores
+		// where the agent didn't send a hint (no-op), and the live
+		// case where the agent's hint is honored.
+		$url_with_currency = WC_AI_Storefront_Multi_Currency::stamp_currency_query(
 			$url_with_products,
+			$request_currency
+		);
+
+		$url = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			$url_with_currency,
 			$source_host,
 			$raw_host
 		);

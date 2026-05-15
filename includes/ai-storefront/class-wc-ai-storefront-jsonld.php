@@ -1894,7 +1894,7 @@ class WC_AI_Storefront_JsonLd {
 			'name'               => get_bloginfo( 'name' ),
 			'description'        => get_bloginfo( 'description' ),
 			'url'                => home_url( '/' ),
-			'currenciesAccepted' => get_woocommerce_currency(),
+			'currenciesAccepted' => implode( ' ', WC_AI_Storefront_Multi_Currency::get_accepted_currencies() ),
 			'potentialAction'    => array(
 				'@type'       => 'SearchAction',
 				'target'      => array(

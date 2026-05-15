@@ -28,6 +28,23 @@ When syndication is paused (`enabled=no`), every UCP commerce route returns **50
 
 ---
 
+## Manifest `store_context`
+
+The `/.well-known/ucp` manifest carries a `config.store_context` block agents consult before quoting prices, picking a shipping destination, or asking for a localized response. The discovery surface itself is documented in [`ARCHITECTURE.md`](ARCHITECTURE.md#discovery-layer); the field reference below is the contract REST clients should code against.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `currency` | `string` | ISO-4217 base currency code. Sourced from `get_woocommerce_currency()`. Single source of truth for "the store's default currency." |
+| `accepted_currencies` | `array<string>` | Ordered, deduplicated list of ISO-4217 currency codes the store accepts. Always at least one element. Base currency is always first. Mirrors `store_context.currency` (one-element list) when the store is single-currency; reflects the WooPayments enabled set when multi-currency is active. Since 0.17.0. |
+| `prices_include_tax` | `bool` | Whether the catalog `price` figures already include tax. Sourced from `wc_prices_include_tax()`. |
+| `shipping_enabled` | `bool` | Whether the store offers shipping at all. Sourced from `wc_shipping_enabled()`. |
+| `country` | `string` | ISO-3166 base country code. Sourced from `WC()->countries->get_base_country()`. |
+| `locale` | `string` | BCP-47 site locale. Sourced from `determine_locale()` (admin / WP-CLI / Site Health correctness over `get_locale()`). |
+
+**Multi-currency contract.** When `accepted_currencies` carries more than one code, agents can include `context.currency` in `POST /catalog/search` / `/catalog/lookup` / `/checkout-sessions` request bodies. The returned UCP `continue_url` (every variant) and per-product `url` fields then carry a `?currency=XXX` query parameter ahead of the UTM block. See the per-endpoint notes below. Catalog response prices remain quoted in `store_context.currency` (the base currency) — live currency switching of the JSON payload is Phase 2.
+
+---
+
 ## UCP REST adapter
 
 Base URL: `https://your-store.com/wp-json/wc/ucp/v1`
@@ -92,6 +109,8 @@ The free-text `query` is preprocessed by `WC_AI_Storefront_UCP_Store_API_Filter:
 
 The product `url` carries the canonical 0.5.0+ UTM payload (`utm_source=<hostname>`, `utm_medium=referral`, `utm_id=woo_ucp`, optional `ai_agent_host_raw`). Buyers who follow the bare product link from chat — rather than going through `/checkout-sessions` — still attribute correctly via WC Order Attribution.
 
+**Multi-currency stamping (0.17.0+).** When the request body carries `context.currency` and the value is a member of `store_context.accepted_currencies`, the returned `url` carries `?currency=XXX` ahead of the UTM block. This activates WooPayments' built-in currency switcher on the destination page so the buyer sees the requested currency on the merchant's product page. When `context.currency` is absent, malformed, or outside the accepted set, the URL is unchanged. Per-product page JSON-LD automatically reflects the same `?currency=XXX` value (WooPayments switches `get_woocommerce_currency()` before the JSON-LD enricher runs); see [`JSON-LD-SCHEMA.md`](JSON-LD-SCHEMA.md#store-homepage-onlinebusiness-schema) for the free-win details.
+
 **Notable enrichment fields on each `product` object:**
 
 - **`categories[]`** — each entry's `value` is a `>`-delimited hierarchy string (e.g. `"Clothing > Tshirts"`) per `category.json`. Brands stay flat (no hierarchy in WC). Falls back to bare leaf name when ancestry can't be resolved.
@@ -136,7 +155,7 @@ Look up specific products by ID.
 |-------|------|----------|-------------|
 | `ids` | string[] | yes | Array of UCP IDs in the standard grammar: `prod_<post_id>` for products (simple, variable parent, bundle, grouped), `var_<variation_id>` for real WC variations, `var_<post_id>_default` for synthesized default variants. Max 100 items. |
 
-**Response:** same envelope as `/catalog/search` but with `products` matching requested IDs in order. Missing or excluded products are omitted (no per-ID error — agents diff against their request). Same UTM stamping on the product `url` field.
+**Response:** same envelope as `/catalog/search` but with `products` matching requested IDs in order. Missing or excluded products are omitted (no per-ID error — agents diff against their request). Same UTM stamping on the product `url` field, and the same `?currency=XXX` multi-currency stamping (0.17.0+) when the request carries `context.currency` and the value is in `store_context.accepted_currencies` — see the note under `/catalog/search` above.
 
 **Featured-variant precision** (#369). When an agent looks up a parent product ID (`prod_<digits>`) and the product has multiple variations, the response marks exactly one variant as `featured` in its `inputs[]` correlation, with the featured variant reordered to `variants[0]`. The selection rules:
 
@@ -248,6 +267,8 @@ The `continue_url` is the agent's signal to render a Buy CTA. See [`UCP-BUY-FLOW
 The `buyer_handoff_required` message uses `type: info` so AI assistants render it informationally, not as an error. Per UCP `message_info.json` (release/2026-04-08), info messages carry no `severity` field — only `type: error` does. The accompanying `total_is_provisional` info message explains the `subtotal == total` collapse: tax and shipping are computed at the merchant checkout, not server-side here.
 
 The continue_url's UTM payload (`utm_source`, `utm_medium=referral`, `utm_id=woo_ucp`, optional `ai_agent_host_raw`) matches the canonical 0.5.0+ shape — same as bare product URLs. The plugin's stamping helper does **not** append `ai_session_id`; agents that want session-correlation can add their own `ai_session_id=chk_…` query param to the continue_url before redirecting (the plugin's order-attribution capture reads it from `$_GET` and writes it to order meta).
+
+**Multi-currency stamping (0.17.0+).** When the request body carries `context.currency` and the value is a member of `store_context.accepted_currencies`, the returned `continue_url` carries `?currency=XXX` ahead of the UTM block. This activates WooPayments' built-in currency switcher on the destination page so the buyer sees the requested currency on the merchant's checkout. When `context.currency` is absent, malformed, or outside the accepted set, the URL is unchanged. Applies to every `continue_url` variant (Shareable Checkout, bundle `/checkout/?add-to-cart=…`, grouped, PDP permalink).
 
 **Response — incomplete (200, no `continue_url`):**
 

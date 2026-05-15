@@ -402,6 +402,37 @@ add_filter( 'wc_ai_storefront_search_impression_cap', '__return_zero' );
 
 ---
 
+### `wc_ai_storefront_accepted_currencies`
+
+Override the auto-detected list of ISO-4217 currency codes the store accepts. Since 0.17.0.
+
+```php
+apply_filters( 'wc_ai_storefront_accepted_currencies', array $list );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$list` | `array<int, string>` | Ordered, deduplicated list of ISO-4217 codes. Base currency first. Auto-sourced from WooPayments' multi-currency enabled set when the soft dependency is present; otherwise `[ base_currency ]`. |
+
+**Returns:** the (possibly modified) `array<int, string>`. Falls back to `[ base_currency ]` if the returned value is not an array, is empty, or contains no valid ISO-4217 codes (uppercase A–Z, three characters). Order is preserved; duplicates are removed.
+
+**When to use:** integrate with non-WooPayments multi-currency plugins (e.g. WPML Multilingual CMS, CURCY, Aelia Currency Switcher) by surfacing their enabled set to UCP / JSON-LD / llms.txt without forking the helper. The filter result drives `store_context.accepted_currencies` in the UCP manifest, the `currenciesAccepted` space-separated list on the homepage `OnlineBusiness` JSON-LD, the `**Accepted currencies**` line in `/llms.txt`, and the `?currency=XXX` URL-stamping gate on UCP `continue_url` and per-product `url` fields.
+
+**Example — bridge CURCY's enabled currencies:**
+
+```php
+add_filter( 'wc_ai_storefront_accepted_currencies', function ( $list ) {
+    if ( ! function_exists( 'wmc_get_enabled_currencies' ) ) {
+        return $list;
+    }
+    $base = get_woocommerce_currency();
+    $codes = array_merge( [ $base ], array_keys( wmc_get_enabled_currencies() ) );
+    return array_values( array_unique( $codes ) );
+} );
+```
+
+---
+
 ## Actions
 
 ### `wc_ai_storefront_attribution_captured`

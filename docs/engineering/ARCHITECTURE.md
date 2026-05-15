@@ -109,6 +109,12 @@ ai_agent_host_raw=<raw producer-side identifier>      # optional, only when agen
 
 Agent name is surfaced in WC core's "Origin" column (fed by `_wc_order_attribution_utm_source`).
 
+### Multi-currency
+
+| File | Purpose |
+|------|---------|
+| `class-wc-ai-storefront-multi-currency.php` | Pure helper. Two public methods: `get_accepted_currencies()` (returns an ordered, deduplicated ISO-4217 list with the base currency first; soft-reads the WooPayments multi-currency enabled set when present, falls back to `[ base_currency ]` otherwise) and `stamp_currency_query()` (stamps `?currency=XXX` on outbound URLs when the request currency is in the accepted set). Called by the UCP manifest (`class-wc-ai-storefront-ucp.php::build_store_context()` for `store_context.accepted_currencies`), the JSON-LD homepage emitter (`currenciesAccepted` space-separated list), the llms.txt generator (`**Accepted currencies**` line), and the UCP REST controller's `build_continue_url()` plus per-product URL stamping in `/catalog/search` / `/catalog/lookup`. Filter: `wc_ai_storefront_accepted_currencies`. Since 0.17.0. |
+
 ### Rate limiting
 
 | File | Purpose |
@@ -212,6 +218,7 @@ woocommerce-ai-storefront/
 │       ├── class-wc-ai-storefront-cache-invalidator.php
 │       ├── class-wc-ai-storefront-crawl-logger.php
 │       ├── class-wc-ai-storefront-logger.php
+│       ├── class-wc-ai-storefront-multi-currency.php
 │       ├── class-wc-ai-storefront-return-policy.php
 │       └── ucp-rest/
 │           ├── class-wc-ai-storefront-ucp-rest-controller.php

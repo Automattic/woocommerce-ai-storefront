@@ -532,11 +532,12 @@ class WC_AI_Storefront_Ucp {
 		$locale = str_replace( '_', '-', get_locale() );
 
 		return [
-			'currency'           => get_woocommerce_currency(),
-			'locale'             => $locale,
-			'country'            => $country ? $country : null,
-			'prices_include_tax' => (bool) wc_prices_include_tax(),
-			'shipping_enabled'   => (bool) wc_shipping_enabled(),
+			'currency'            => get_woocommerce_currency(),
+			'accepted_currencies' => WC_AI_Storefront_Multi_Currency::get_accepted_currencies(),
+			'locale'              => $locale,
+			'country'             => $country ? $country : null,
+			'prices_include_tax'  => (bool) wc_prices_include_tax(),
+			'shipping_enabled'    => (bool) wc_shipping_enabled(),
 		];
 	}
 
