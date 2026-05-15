@@ -96,6 +96,42 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
+		// Minimal `add_query_arg()` stub for the TWO signatures the
+		// controller exercises in this handler:
+		//
+		//   - add_query_arg( array $args, string $url )           — UTM attribution
+		//   - add_query_arg( string $key, string $value, string $url ) — stamp_currency_query
+		//
+		// In both cases: parse out any existing query string on the URL,
+		// merge in the new args (later args overwrite earlier on key
+		// collision), and reassemble. The 3-arg form is exercised by
+		// `WC_AI_Storefront_Multi_Currency::stamp_currency_query()`
+		// which appends a single `currency=XXX` pair before the UTM
+		// attribution call stamps utm_source/utm_id/etc on top.
+		Functions\when( 'add_query_arg' )->alias(
+			static function ( $arg1, $arg2 = null, $arg3 = null ): string {
+				if ( is_array( $arg1 ) ) {
+					$args = $arg1;
+					$url  = (string) $arg2;
+				} else {
+					$args = array( (string) $arg1 => (string) $arg2 );
+					$url  = (string) $arg3;
+				}
+				$parts    = wp_parse_url( $url );
+				$existing = [];
+				if ( isset( $parts['query'] ) ) {
+					parse_str( $parts['query'], $existing );
+				}
+				$merged       = array_merge( $existing, $args );
+				$query_string = http_build_query( $merged );
+				$rebuilt      = ( isset( $parts['scheme'] ) ? $parts['scheme'] . '://' : '' )
+					. ( $parts['host'] ?? '' )
+					. ( isset( $parts['port'] ) ? ':' . $parts['port'] : '' )
+					. ( $parts['path'] ?? '' );
+				return '' !== $query_string ? $rebuilt . '?' . $query_string : $rebuilt;
+			}
+		);
+
 		// Default stub for the `seller.name` in the seller block that
 		// every product emits (see build_seller()). `wp_strip_all_tags`
 		// and `html_entity_decode` aren't stubbed — the bootstrap
@@ -303,6 +339,10 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
+		// Reset the multi-currency helper's static cache so apply_filters
+		// stubs from one test don't bleed accepted-currency state into
+		// the next.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -329,6 +369,8 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		return [
 			'id'                => $id,
 			'name'              => $name,
+			'slug'              => strtolower( str_replace( ' ', '-', $name ) ),
+			'permalink'         => 'https://example.com/product/' . $id,
 			'type'              => 'simple',
 			'short_description' => '',
 			'is_in_stock'       => true,
@@ -2679,5 +2721,76 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			array_column( $impression_rows, 0 ),
 			'Defensive product_id > 0 guard skips zero/missing entries.'
 		);
+	}
+
+	// ------------------------------------------------------------------
+	// Multi-currency: product `url` stamping (Task 6c, issue #404)
+	// ------------------------------------------------------------------
+
+	public function test_catalog_search_product_url_carries_currency_when_context_currency_in_accepted_set(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		$this->fake_product_list = array(
+			$this->make_simple_product( 1, 'Alpha' ),
+		);
+
+		$body = $this->successful_search(
+			array( 'context' => array( 'currency' => 'EUR' ) )
+		);
+
+		$this->assertNotEmpty( $body['products'][0]['url'] ?? '' );
+		$this->assertStringContainsString( 'currency=EUR', $body['products'][0]['url'] );
+	}
+
+	public function test_catalog_search_product_url_unchanged_when_context_currency_absent(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		$this->fake_product_list = array(
+			$this->make_simple_product( 1, 'Alpha' ),
+		);
+
+		$body = $this->successful_search( array() );
+
+		$this->assertNotEmpty( $body['products'][0]['url'] ?? '' );
+		$this->assertStringNotContainsString( 'currency=', $body['products'][0]['url'] );
+	}
+
+	public function test_catalog_search_product_url_unchanged_when_context_currency_not_in_accepted_set(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD' );
+				}
+				return $value;
+			}
+		);
+
+		$this->fake_product_list = array(
+			$this->make_simple_product( 1, 'Alpha' ),
+		);
+
+		$body = $this->successful_search(
+			array( 'context' => array( 'currency' => 'JPY' ) )
+		);
+
+		$this->assertNotEmpty( $body['products'][0]['url'] ?? '' );
+		$this->assertStringNotContainsString( 'currency=', $body['products'][0]['url'] );
 	}
 }

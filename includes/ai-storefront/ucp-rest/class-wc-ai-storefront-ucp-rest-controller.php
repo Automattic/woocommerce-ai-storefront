@@ -723,7 +723,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$fetched['wc_products'],
 			$seller,
 			$agent_source_host,
-			$agent_raw_host
+			$agent_raw_host,
+			$request
 		);
 
 		$body = array(
@@ -1031,17 +1032,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * `partial_variants` warnings for any skipped variations, and returns
 	 * the translated list alongside any warning messages.
 	 *
-	 * @param array  $wc_products       Normalized Store API product arrays.
-	 * @param array  $seller            Seller block from build_seller().
-	 * @param string $agent_source_host Attribution host; forwarded to the translator.
-	 * @param string $agent_raw_host    Raw host header; forwarded to the translator.
+	 * @param array           $wc_products       Normalized Store API product arrays.
+	 * @param array           $seller            Seller block from build_seller().
+	 * @param string          $agent_source_host Attribution host; forwarded to the translator.
+	 * @param string          $agent_raw_host    Raw host header; forwarded to the translator.
+	 * @param WP_REST_Request $request           Incoming UCP request, used to read
+	 *                                           `context.currency` so per-product
+	 *                                           URLs can carry the agent's currency
+	 *                                           hint when it's in accepted_currencies.
 	 * @return array{products: array, variant_messages: array}
 	 */
 	private function translate_products_for_search(
 		array $wc_products,
 		array $seller,
 		string $agent_source_host,
-		string $agent_raw_host
+		string $agent_raw_host,
+		WP_REST_Request $request
 	): array {
 		$products         = array();
 		$variant_messages = array();
@@ -1076,6 +1082,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// pure-function contract (see issue #176). The translator emits the
 			// bare permalink; the controller owns agent-context side-effects.
 			if ( ! empty( $product['url'] ) ) {
+				// Stamp the agent's context.currency hint onto the URL before
+				// UTM attribution. No-op when the request currency is null,
+				// malformed, or not in `accepted_currencies` — so this single
+				// call covers single-currency stores (no-op), multi-currency
+				// stores where the agent didn't send a hint (no-op), and the
+				// live case where the agent's hint is honored.
+				$product['url'] = WC_AI_Storefront_Multi_Currency::stamp_currency_query(
+					$product['url'],
+					self::get_request_currency( $request )
+				);
 				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
 					$product['url'],
 					$agent_source_host,
@@ -1839,6 +1855,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// pure-function contract (see issue #176). The translator emits the
 			// bare permalink; the controller owns agent-context side-effects.
 			if ( ! empty( $product['url'] ) ) {
+				// Stamp the agent's context.currency hint onto the URL before
+				// UTM attribution. No-op when the request currency is null,
+				// malformed, or not in `accepted_currencies` — so this single
+				// call covers single-currency stores (no-op), multi-currency
+				// stores where the agent didn't send a hint (no-op), and the
+				// live case where the agent's hint is honored.
+				$product['url'] = WC_AI_Storefront_Multi_Currency::stamp_currency_query(
+					$product['url'],
+					self::get_request_currency( $request )
+				);
 				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
 					$product['url'],
 					$agent_source_host,
