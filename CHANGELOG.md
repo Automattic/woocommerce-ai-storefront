@@ -1,6 +1,16 @@
 ## [Unreleased]
 
 ### Features
+### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.17.0] – 2026-05-15
+
+### Features
 
 - **WooPayments multi-currency exposure across UCP, JSON-LD, and llms.txt.**
   - UCP manifest `store_context` gains an `accepted_currencies` array (base currency first).
