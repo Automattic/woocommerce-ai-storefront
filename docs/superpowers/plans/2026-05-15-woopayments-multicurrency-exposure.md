@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Publish the full list of currencies a store accepts (via WooPayments multi-currency) on the UCP manifest, homepage JSON-LD, and llms.txt. Phase 1 advertises only; catalog prices remain base-currency-quoted.
+**Goal:** Two things in one PR. (1) Advertise: publish the full list of currencies a store accepts (via WooPayments multi-currency) on the UCP manifest, homepage JSON-LD, and llms.txt. (2) Honor: stamp `?currency=XXX` on outbound UCP `continue_url` and per-product `url` responses when the agent sends `context.currency` in the accepted set, activating WooPayments' page-level currency switcher on the destination. UCP catalog response prices stay base-currency-quoted (Phase 2).
 
-**Architecture:** A new pure helper class `WC_AI_Storefront_Multi_Currency` owns currency detection. It is a soft-dependency reader — `class_exists`-guarded against WooPayments — and exposes one method, `get_accepted_currencies()`. Three existing classes (`WC_AI_Storefront_Ucp`, `WC_AI_Storefront_JsonLd`, `WC_AI_Storefront_Llms_Txt`) call into it. A new filter `wc_ai_storefront_accepted_currencies` lets integrators override the auto-detected list. Output shape is stable across single- and multi-currency states (always at least `[ base ]`).
+**Architecture:** A new pure helper class `WC_AI_Storefront_Multi_Currency` owns currency detection. It is a soft-dependency reader — `class_exists`-guarded against WooPayments — and exposes two methods: `get_accepted_currencies()` (returns the ordered ISO-4217 list, base first) and `stamp_currency_query()` (stamps `?currency=XXX` on outbound URLs when the request currency is in the accepted set). Three existing classes (`WC_AI_Storefront_Ucp`, `WC_AI_Storefront_JsonLd`, `WC_AI_Storefront_Llms_Txt`) call `get_accepted_currencies()`. The UCP REST controller adds a private `get_request_currency()` helper to extract the agent's `context.currency` hint, threads it into `build_continue_url()`, and stamps the per-product `url` at the two existing post-translation sites. A new filter `wc_ai_storefront_accepted_currencies` lets integrators override the auto-detected list. Output shape is stable across single- and multi-currency states (always at least `[ base ]`); URLs are unstamped when the agent doesn't send `context.currency`.
 
 **Tech Stack:** PHP 7.4+, WordPress + Automattic coding standards (tabs, Yoda, `array()`, `===`), PHPUnit + Brain Monkey + Mockery for tests. No real WordPress install required.
 
@@ -15,7 +15,7 @@
 ## File Structure
 
 **New files:**
-- `includes/ai-storefront/class-wc-ai-storefront-multi-currency.php` — the helper class. Single responsibility: detect WooPayments enabled currencies and return a normalized list.
+- `includes/ai-storefront/class-wc-ai-storefront-multi-currency.php` — the helper class. Two responsibilities: (1) detect WooPayments enabled currencies and return a normalized list; (2) stamp `?currency=XXX` on outbound URLs when the request currency is in the accepted set.
 - `tests/php/unit/MultiCurrencyTest.php` — PHPUnit coverage for the helper.
 
 **Modified files:**
@@ -23,12 +23,16 @@
 - `includes/ai-storefront/class-wc-ai-storefront-ucp.php` — `build_store_context()` adds `accepted_currencies`.
 - `includes/ai-storefront/class-wc-ai-storefront-jsonld.php` — `output_store_jsonld()` switches `currenciesAccepted` from a single code to a space-separated list.
 - `includes/ai-storefront/class-wc-ai-storefront-llms-txt.php` — `generate()` appends the new `**Accepted currencies**` line conditionally.
+- `includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php` — add private `get_request_currency()` helper; wire `stamp_currency_query()` into `build_continue_url()` (line ~5896 area) and into the two post-translation `with_woo_ucp_utm` call sites (lines ~1079 and ~1842).
 - `tests/php/unit/UcpTest.php` — update the strict key-set guard at line 590 and add multi-currency coverage.
 - `tests/php/unit/JsonLdTest.php` — add `currenciesAccepted` multi-currency assertions.
 - `tests/php/unit/LlmsTxtTest.php` — add accepted-currencies line assertions.
+- `tests/php/unit/UcpRestControllerTest.php` (or the closest existing checkout-sessions test file — verify during implementation) — assert `continue_url` carries `?currency=XXX` when `context.currency` is in `accepted_currencies` and is unchanged otherwise.
+- `tests/php/unit/UcpCatalogSearchTest.php` and `tests/php/unit/UcpCatalogLookupTest.php` — assert per-product `url` carries `?currency=XXX` when `context.currency` is in the accepted set.
 - `docs/engineering/HOOKS.md` — document the new filter.
-- `docs/engineering/API-REFERENCE.md` — document `accepted_currencies` on `store_context`.
-- `docs/engineering/JSON-LD-SCHEMA.md` — document the new `currenciesAccepted` shape.
+- `docs/engineering/API-REFERENCE.md` — document `accepted_currencies` on `store_context` AND the new `?currency=` query param on `continue_url` and product `url` fields.
+- `docs/engineering/UCP-BUY-FLOW.md` — document the `?currency=` stamping on `continue_url` so flow diagrams reflect the new param.
+- `docs/engineering/JSON-LD-SCHEMA.md` — document the new `currenciesAccepted` shape AND the per-page `?currency=` reflection free-win.
 - `docs/engineering/ARCHITECTURE.md` — register the new helper class.
 - `AGENTS.md` — add the new code path to the path → doc map.
 - `.github/workflows/docs-followup.yml` — mirror the AGENTS.md path map row.
@@ -995,6 +999,718 @@ Refs #404"
 
 ---
 
+## Task 6a: Add `stamp_currency_query()` to the helper
+
+**Files:**
+- Modify: `includes/ai-storefront/class-wc-ai-storefront-multi-currency.php`
+- Modify: `tests/php/unit/MultiCurrencyTest.php`
+
+TDD: nine new tests covering every branch of the new method. The method is pure: given a URL and a candidate currency, return either the URL unchanged or the URL with `?currency=XXX` appended.
+
+- [ ] **Step 6a.1: Add the test for "no request currency"**
+
+Add inside the `class MultiCurrencyTest` body in `tests/php/unit/MultiCurrencyTest.php`:
+
+```php
+		public function test_stamp_currency_query_no_request_currency_returns_url_unchanged(): void {
+			$url = 'https://example.com/checkout-link/?products=42:1';
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, null )
+			);
+		}
+```
+
+- [ ] **Step 6a.2: Run the test to confirm it fails with "method not found"**
+
+Run: `vendor/bin/phpunit --filter=MultiCurrencyTest`
+Expected: FAIL — `Method WC_AI_Storefront_Multi_Currency::stamp_currency_query does not exist`.
+
+- [ ] **Step 6a.3: Implement `stamp_currency_query()` in the helper**
+
+Edit `includes/ai-storefront/class-wc-ai-storefront-multi-currency.php`. Append a new public static method immediately after `get_accepted_currencies()` (before `normalize_codes()`):
+
+```php
+	/**
+	 * Stamp `?currency=XXX` onto an outbound buyer-facing URL when the
+	 * agent's requested currency is in the accepted-currencies set.
+	 *
+	 * Designed for `continue_url` (UCP `POST /checkout-sessions`) and
+	 * per-product `url` fields in `catalog/search` / `catalog/lookup`
+	 * responses. Honors the agent's `context.currency` hint without
+	 * changing the catalog data (Phase 1 honesty boundary): the buyer
+	 * lands on the merchant's checkout / PDP in the requested currency,
+	 * but the agent's recommendation was still computed against
+	 * base-currency catalog data.
+	 *
+	 * Fail-closed paths (URL returned unchanged):
+	 *   - $url empty, non-string, or null.
+	 *   - $requested_currency null or non-string.
+	 *   - $requested_currency fails the ISO-4217 pattern after uppercase.
+	 *   - $requested_currency is not in `get_accepted_currencies()`.
+	 *   - $url already carries a `currency=` query param (preserves any
+	 *     upstream override or filter-injected value).
+	 *
+	 * The function is idempotent: calling it twice with the same args
+	 * produces the same URL.
+	 *
+	 * @since 0.17.0
+	 *
+	 * @param string      $url               Outbound URL to stamp.
+	 * @param string|null $requested_currency Candidate ISO-4217 code from
+	 *                                        the agent's request (typically
+	 *                                        `$request->get_param('context')['currency']`).
+	 * @return string The stamped URL, or the input URL unchanged.
+	 */
+	public static function stamp_currency_query( $url, $requested_currency ) {
+		if ( ! is_string( $url ) || '' === $url ) {
+			return is_string( $url ) ? $url : '';
+		}
+
+		if ( ! is_string( $requested_currency ) ) {
+			return $url;
+		}
+
+		$normalized = strtoupper( trim( $requested_currency ) );
+		if ( ! preg_match( '/^[A-Z]{3}$/', $normalized ) ) {
+			return $url;
+		}
+
+		$accepted = self::get_accepted_currencies();
+		if ( ! in_array( $normalized, $accepted, true ) ) {
+			return $url;
+		}
+
+		// Idempotency / override-preservation guard. If the URL already
+		// carries `currency=`, leave it alone — preserves any agent-set
+		// value upstream or filter-injected override and makes double
+		// stamping a no-op.
+		$query_string = wp_parse_url( $url, PHP_URL_QUERY );
+		if ( is_string( $query_string ) && '' !== $query_string ) {
+			$params = array();
+			wp_parse_str( $query_string, $params );
+			if ( array_key_exists( 'currency', $params ) ) {
+				return $url;
+			}
+		}
+
+		return add_query_arg( 'currency', $normalized, $url );
+	}
+```
+
+- [ ] **Step 6a.4: Run the failing test to verify it now passes**
+
+Run: `vendor/bin/phpunit --filter=MultiCurrencyTest`
+Expected: PASS — 12 tests passing (11 previously + 1 new).
+
+- [ ] **Step 6a.5: Add the remaining 8 `stamp_currency_query` tests**
+
+Add inside the test class:
+
+```php
+		public function test_stamp_currency_query_request_currency_matches_base_stamps_url(): void {
+			// Base is USD (setUp default). Stamping the base is harmless
+			// redundancy that keeps the rule predictable — the WCPay
+			// page handler treats `?currency=USD` as a no-op on a USD
+			// store, and stamping consistently makes the agent's
+			// expectation match what the buyer sees.
+			$url    = 'https://example.com/checkout-link/?products=42:1';
+			$result = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'USD' );
+			$this->assertSame(
+				'https://example.com/checkout-link/?products=42%3A1&currency=USD',
+				$result
+			);
+		}
+
+		public function test_stamp_currency_query_request_currency_in_accepted_set_stamps_url(): void {
+			Functions\when( 'apply_filters' )->alias(
+				static function ( $hook, $value ) {
+					if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+						return array( 'USD', 'EUR', 'GBP' );
+					}
+					return $value;
+				}
+			);
+
+			$url    = 'https://example.com/checkout-link/?products=42:1';
+			$result = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'EUR' );
+			$this->assertSame(
+				'https://example.com/checkout-link/?products=42%3A1&currency=EUR',
+				$result
+			);
+		}
+
+		public function test_stamp_currency_query_request_currency_not_in_accepted_set_returns_url_unchanged(): void {
+			// Base-only accepted list (default setUp). 'JPY' is not in it.
+			$url = 'https://example.com/checkout-link/?products=42:1';
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'JPY' )
+			);
+		}
+
+		public function test_stamp_currency_query_malformed_request_currency_returns_url_unchanged(): void {
+			$url = 'https://example.com/checkout-link/?products=42:1';
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'usdollars' )
+			);
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, '' )
+			);
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, '12' )
+			);
+		}
+
+		public function test_stamp_currency_query_url_with_existing_currency_param_returns_url_unchanged(): void {
+			$url = 'https://example.com/checkout-link/?currency=EUR&products=42:1';
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'USD' )
+			);
+		}
+
+		public function test_stamp_currency_query_empty_url_returns_empty_string(): void {
+			$this->assertSame(
+				'',
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( '', 'USD' )
+			);
+		}
+
+		public function test_stamp_currency_query_url_with_no_existing_query_appends_currency(): void {
+			$url    = 'https://example.com/product/widget/';
+			$result = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'USD' );
+			$this->assertSame( 'https://example.com/product/widget/?currency=USD', $result );
+		}
+
+		public function test_stamp_currency_query_is_idempotent_when_called_twice(): void {
+			$url     = 'https://example.com/checkout-link/?products=42:1';
+			$first   = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'USD' );
+			$second  = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $first, 'USD' );
+			$this->assertSame( $first, $second, 'Double-stamping should be a no-op' );
+		}
+```
+
+Two Brain Monkey stubs need to exist for the `wp_parse_url` / `wp_parse_str` / `add_query_arg` calls. Check whether the test bootstrap already provides them:
+
+```bash
+grep -nE "wp_parse_url|wp_parse_str|add_query_arg" tests/php/stubs.php tests/php/bootstrap.php 2>/dev/null
+```
+
+If any of the three are absent, add aliases to `MultiCurrencyTest::setUp()` BEFORE the existing `Functions\when` calls. The drop-in stubs:
+
+```php
+		Functions\when( 'wp_parse_url' )->alias(
+			static fn( $url, $component = -1 ) => -1 === $component ? parse_url( $url ) : parse_url( $url, $component )
+		);
+		Functions\when( 'wp_parse_str' )->alias(
+			static function ( $str, &$result ) {
+				parse_str( $str, $result );
+			}
+		);
+		Functions\when( 'add_query_arg' )->alias(
+			static function ( $key, $value, $url ) {
+				$separator = ( false === strpos( $url, '?' ) ) ? '?' : '&';
+				return $url . $separator . rawurlencode( (string) $key ) . '=' . rawurlencode( (string) $value );
+			}
+		);
+		// Note: `add_query_arg()` has a 3-arg signature used here. WP also
+		// supports a 2-arg form `add_query_arg( $args_array, $url )` but
+		// this helper only uses the 3-arg form.
+```
+
+Only add stubs for the functions actually missing from `tests/php/stubs.php` — duplicate definitions error out.
+
+- [ ] **Step 6a.6: Run all helper tests**
+
+Run: `vendor/bin/phpunit --filter=MultiCurrencyTest`
+Expected: PASS — 19 tests, all green (11 original + 8 new + the Task 6a.1 test = 20 actually; phpunit count varies because some new tests have multiple assertions).
+
+Sanity-check the assertion count is consistent with the test count.
+
+- [ ] **Step 6a.7: Commit**
+
+```bash
+git add includes/ai-storefront/class-wc-ai-storefront-multi-currency.php tests/php/unit/MultiCurrencyTest.php
+git commit -m "feat(ucp): add stamp_currency_query helper for outbound URL stamping
+
+Stamps ?currency=XXX onto buyer-facing URLs when the agent's
+context.currency is in the accepted-currencies set. Fail-closed
+on every malformed input. Idempotent.
+
+Used by build_continue_url() and post-translation product URL
+stamping in catalog/search and catalog/lookup responses
+(landing in subsequent tasks).
+
+Refs #404"
+```
+
+---
+
+## Task 6b: Stamp `?currency=` on `continue_url`
+
+**Files:**
+- Modify: `includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php`
+- Modify: `tests/php/unit/UcpRestControllerTest.php` (verify exact file name during implementation — there may be a more specific checkout-sessions test file)
+
+The controller already reads `context.currency` inline in `map_ucp_search_to_store_api` (around line 4263). Lift it into a private helper, then call it in the checkout-sessions handler to thread through to `build_continue_url`.
+
+- [ ] **Step 6b.1: Write the failing test for the `/checkout-link/?products=` path**
+
+Find the relevant test file (likely `tests/php/unit/UcpCheckoutSessionsTest.php` per the convention). Add a test:
+
+```php
+	public function test_checkout_sessions_continue_url_carries_currency_when_context_currency_in_accepted_set(): void {
+		// Multi-currency accepted set (USD+EUR+GBP) via filter override.
+		// Agent sends context.currency=EUR, expects the continue_url
+		// to carry `currency=EUR` ahead of the UTM block.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR', 'GBP' );
+				}
+				if ( 'wc_ai_storefront_ucp_continue_url' === $hook ) {
+					return $value;
+				}
+				return $value;
+			}
+		);
+
+		// ... (rest of the test setup follows the established pattern in
+		// UcpCheckoutSessionsTest — POST a simple product line_item with
+		// context.currency = 'EUR' and assert response.continue_url
+		// contains 'currency=EUR' as a query param).
+
+		$response = $this->post_checkout_sessions( array(
+			'line_items' => array(
+				array( 'product_id' => 'wc:42', 'quantity' => 1, 'expected_unit_price' => array( 'amount' => 1000, 'currency' => 'EUR' ) ),
+			),
+			'context'    => array( 'currency' => 'EUR' ),
+		) );
+
+		$data = $response->get_data();
+		$this->assertArrayHasKey( 'continue_url', $data );
+		$this->assertStringContainsString( 'currency=EUR', $data['continue_url'] );
+	}
+```
+
+(The exact test scaffold — `post_checkout_sessions()` helper, fixture format — must match the surrounding test file's conventions. Read the existing checkout-sessions tests and follow their pattern. If the file doesn't yet have a helper for the "agent sends a line item, controller returns a continue_url" shape, look for the closest equivalent test and copy its structure verbatim. DO NOT invent new test infrastructure.)
+
+- [ ] **Step 6b.2: Run the test to confirm it fails**
+
+Run: `vendor/bin/phpunit --filter=test_checkout_sessions_continue_url_carries_currency_when_context_currency_in_accepted_set`
+Expected: FAIL — `continue_url` does not contain `currency=EUR` (the controller doesn't stamp yet).
+
+- [ ] **Step 6b.3: Add the private `get_request_currency()` helper to the controller**
+
+Edit `includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php`. Find a place near the other private static helpers (search for `private static function build_seller`). Add:
+
+```php
+	/**
+	 * Extract and validate the agent's `context.currency` hint.
+	 *
+	 * Reads `context.currency` from the request body, trims it,
+	 * uppercases it, and validates the ISO-4217 shape (^[A-Z]{3}$).
+	 * Returns the normalized code on success, or null when the hint
+	 * is absent, malformed, or non-string.
+	 *
+	 * This is the single source of truth for "what currency did the
+	 * agent ask for?" — used by `build_continue_url()`, the per-product
+	 * URL stamper in `translate_products_for_*`, and (in Phase 2) the
+	 * WCPay currency-switch wrapper.
+	 *
+	 * Note: this helper does NOT check membership in
+	 * `WC_AI_Storefront_Multi_Currency::get_accepted_currencies()` —
+	 * that's `stamp_currency_query()`'s job. We pass the raw validated
+	 * hint through; the stamper decides whether to use it.
+	 *
+	 * @since 0.17.0
+	 *
+	 * @param WP_REST_Request $request The incoming UCP request.
+	 * @return string|null Normalized ISO-4217 code, or null when absent/malformed.
+	 */
+	private static function get_request_currency( WP_REST_Request $request ): ?string {
+		$context = $request->get_param( 'context' );
+		if ( ! is_array( $context ) ) {
+			return null;
+		}
+		$raw = $context['currency'] ?? null;
+		if ( ! is_string( $raw ) ) {
+			return null;
+		}
+		$normalized = strtoupper( trim( $raw ) );
+		if ( ! preg_match( '/^[A-Z]{3}$/', $normalized ) ) {
+			return null;
+		}
+		return $normalized;
+	}
+```
+
+- [ ] **Step 6b.4: Thread the request currency into `build_continue_url`**
+
+Find the `build_continue_url` signature (currently around line 5637):
+
+```php
+	private static function build_continue_url( array $processed, string $source_host, string $raw_host ): string {
+```
+
+Change to:
+
+```php
+	private static function build_continue_url( array $processed, string $source_host, string $raw_host, ?string $request_currency = null ): string {
+```
+
+Find the existing call site (around line 2836):
+
+```php
+		$continue_url = $should_redirect
+			? self::build_continue_url( $processed, $agent_source_host, $agent_raw_host )
+			: '';
+```
+
+Replace with:
+
+```php
+		$continue_url = $should_redirect
+			? self::build_continue_url(
+				$processed,
+				$agent_source_host,
+				$agent_raw_host,
+				self::get_request_currency( $request )
+			)
+			: '';
+```
+
+(`$request` is the WP_REST_Request object in scope at that location. Verify by reading the surrounding method signature.)
+
+- [ ] **Step 6b.5: Stamp inside `build_continue_url` BEFORE the UTM pass**
+
+Find the existing UTM-stamping call inside `build_continue_url` (around line 5896):
+
+```php
+		$url = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			$url_with_products,
+			$source_host,
+			$raw_host
+		);
+```
+
+Replace with:
+
+```php
+		// Stamp the agent's context.currency hint onto the URL before
+		// UTM attribution stamps on top. The stamper is a no-op when
+		// the request currency is null, malformed, or not in
+		// `accepted_currencies` — so this single call covers
+		// single-currency stores (no-op), multi-currency stores
+		// where the agent didn't send a hint (no-op), and the live
+		// case where the agent's hint is honored.
+		$url_with_currency = WC_AI_Storefront_Multi_Currency::stamp_currency_query(
+			$url_with_products,
+			$request_currency
+		);
+
+		$url = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+			$url_with_currency,
+			$source_host,
+			$raw_host
+		);
+```
+
+- [ ] **Step 6b.6: Run the Task 6b.1 test to verify it now passes**
+
+Run: `vendor/bin/phpunit --filter=test_checkout_sessions_continue_url_carries_currency_when_context_currency_in_accepted_set`
+Expected: PASS.
+
+- [ ] **Step 6b.7: Add three more checkout-sessions tests**
+
+Add to the same test file:
+
+```php
+	public function test_checkout_sessions_continue_url_unchanged_when_context_currency_absent(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR', 'GBP' );
+				}
+				return $value;
+			}
+		);
+
+		$response = $this->post_checkout_sessions( array(
+			'line_items' => array(
+				array( 'product_id' => 'wc:42', 'quantity' => 1 ),
+			),
+			// No 'context' key at all.
+		) );
+
+		$data = $response->get_data();
+		$this->assertArrayHasKey( 'continue_url', $data );
+		$this->assertStringNotContainsString( 'currency=', $data['continue_url'] );
+	}
+
+	public function test_checkout_sessions_continue_url_unchanged_when_context_currency_not_in_accepted_set(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD' ); // single-currency store
+				}
+				return $value;
+			}
+		);
+
+		$response = $this->post_checkout_sessions( array(
+			'line_items' => array(
+				array( 'product_id' => 'wc:42', 'quantity' => 1 ),
+			),
+			'context'    => array( 'currency' => 'JPY' ), // not in the set
+		) );
+
+		$data = $response->get_data();
+		$this->assertArrayHasKey( 'continue_url', $data );
+		$this->assertStringNotContainsString( 'currency=', $data['continue_url'] );
+	}
+
+	public function test_checkout_sessions_continue_url_currency_precedes_utm_block(): void {
+		// Param ordering matters for readability and for any downstream
+		// filter that pattern-matches on the UTM tail. Verify that
+		// currency= appears before utm_source= in the final query string.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		$response = $this->post_checkout_sessions( array(
+			'line_items' => array(
+				array( 'product_id' => 'wc:42', 'quantity' => 1 ),
+			),
+			'context'    => array( 'currency' => 'EUR' ),
+		) );
+
+		$data = $response->get_data();
+		$url  = $data['continue_url'];
+
+		$currency_pos = strpos( $url, 'currency=' );
+		$utm_pos      = strpos( $url, 'utm_source=' );
+		$this->assertNotFalse( $currency_pos );
+		$this->assertNotFalse( $utm_pos );
+		$this->assertLessThan( $utm_pos, $currency_pos, 'currency= should precede utm_source=' );
+	}
+```
+
+- [ ] **Step 6b.8: Run all four checkout-sessions currency tests**
+
+Run: `vendor/bin/phpunit --filter=UcpCheckoutSessionsTest`
+Expected: PASS — all four new tests green, no regressions in the existing checkout-sessions suite.
+
+- [ ] **Step 6b.9: Commit**
+
+```bash
+git add includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php tests/php/unit/UcpCheckoutSessionsTest.php
+git commit -m "feat(ucp): stamp ?currency= on continue_url when context.currency in accepted set
+
+Adds a private get_request_currency() helper that reads and
+validates context.currency from the incoming UCP request. Threads
+it into build_continue_url() so every continue_url shape
+(/checkout-link/?products=, bundle, grouped, variable-parent)
+carries ?currency=XXX ahead of the UTM block when the agent's
+hint is in accepted_currencies.
+
+Fail-closed: missing hint, malformed hint, or hint outside
+accepted_currencies all return the URL unchanged.
+
+Refs #404"
+```
+
+---
+
+## Task 6c: Stamp `?currency=` on per-product `url` in catalog responses
+
+**Files:**
+- Modify: `includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php`
+- Modify: `tests/php/unit/UcpCatalogLookupTest.php`
+- Modify: `tests/php/unit/UcpCatalogSearchTest.php`
+
+The translator emits a bare `url`; the controller stamps UTM via `with_woo_ucp_utm` at two sites (lines ~1079 for catalog/lookup, ~1842 for catalog/search). Add `stamp_currency_query` immediately before the UTM call at both sites.
+
+- [ ] **Step 6c.1: Write the failing test for catalog/lookup**
+
+Add to `tests/php/unit/UcpCatalogLookupTest.php`:
+
+```php
+	public function test_catalog_lookup_product_url_carries_currency_when_context_currency_in_accepted_set(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		// Follow the existing UcpCatalogLookupTest fixture pattern:
+		// stub the Store API response for product id 42, post a UCP
+		// catalog/lookup request with context.currency = 'EUR', and
+		// assert the response's product.url contains `currency=EUR`.
+
+		$response = $this->post_catalog_lookup( array(
+			'product_ids' => array( 'wc:42' ),
+			'context'     => array( 'currency' => 'EUR' ),
+		) );
+
+		$data = $response->get_data();
+		$this->assertArrayHasKey( 'products', $data );
+		$this->assertNotEmpty( $data['products'] );
+		$this->assertArrayHasKey( 'url', $data['products'][0] );
+		$this->assertStringContainsString( 'currency=EUR', $data['products'][0]['url'] );
+	}
+```
+
+(Match the existing test's helper invocations. Read 2–3 nearby tests in the same file before writing this one to copy the exact fixture/helper pattern. DO NOT invent new test infrastructure.)
+
+- [ ] **Step 6c.2: Run the test to confirm it fails**
+
+Run: `vendor/bin/phpunit --filter=test_catalog_lookup_product_url_carries_currency_when_context_currency_in_accepted_set`
+Expected: FAIL — `url` does not contain `currency=EUR`.
+
+- [ ] **Step 6c.3: Add the stamping call at the catalog/lookup site**
+
+Find the existing post-translation stamping site (around line 1078):
+
+```php
+			if ( ! empty( $product['url'] ) ) {
+				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+					$product['url'],
+					$agent_source_host,
+					$agent_raw_host
+				);
+			}
+```
+
+Replace with:
+
+```php
+			if ( ! empty( $product['url'] ) ) {
+				$product['url'] = WC_AI_Storefront_Multi_Currency::stamp_currency_query(
+					$product['url'],
+					self::get_request_currency( $request )
+				);
+				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+					$product['url'],
+					$agent_source_host,
+					$agent_raw_host
+				);
+			}
+```
+
+`$request` is the WP_REST_Request in scope at this site. Verify by reading the enclosing method signature; if the variable name differs, use the local name.
+
+- [ ] **Step 6c.4: Run the test to confirm it passes**
+
+Run: `vendor/bin/phpunit --filter=test_catalog_lookup_product_url_carries_currency_when_context_currency_in_accepted_set`
+Expected: PASS.
+
+- [ ] **Step 6c.5: Repeat the test + implementation at the catalog/search site**
+
+Add to `tests/php/unit/UcpCatalogSearchTest.php`:
+
+```php
+	public function test_catalog_search_product_url_carries_currency_when_context_currency_in_accepted_set(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		// Match the existing search-test fixture pattern.
+		$response = $this->post_catalog_search( array(
+			'query'   => 'widget',
+			'context' => array( 'currency' => 'EUR' ),
+		) );
+
+		$data = $response->get_data();
+		$this->assertArrayHasKey( 'products', $data );
+		$this->assertNotEmpty( $data['products'] );
+		foreach ( $data['products'] as $product ) {
+			if ( ! empty( $product['url'] ) ) {
+				$this->assertStringContainsString(
+					'currency=EUR',
+					$product['url'],
+					'Every product URL in a catalog/search response should carry the request currency'
+				);
+			}
+		}
+	}
+```
+
+Run the test, confirm it fails, then update the catalog/search site (around line 1842) with the same pre-UTM `stamp_currency_query` call as Step 6c.3.
+
+- [ ] **Step 6c.6: Add the "unchanged when absent / not in set" guards**
+
+Add to both `UcpCatalogLookupTest.php` and `UcpCatalogSearchTest.php`:
+
+```php
+	public function test_catalog_lookup_product_url_unchanged_when_context_currency_absent(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		$response = $this->post_catalog_lookup( array(
+			'product_ids' => array( 'wc:42' ),
+			// No 'context' key.
+		) );
+
+		$data = $response->get_data();
+		$this->assertStringNotContainsString( 'currency=', $data['products'][0]['url'] );
+	}
+```
+
+And the corresponding test in `UcpCatalogSearchTest.php`. Run all four currency-related tests in both files:
+
+Run: `vendor/bin/phpunit --filter='UcpCatalog(Lookup|Search)Test'`
+Expected: PASS.
+
+- [ ] **Step 6c.7: Commit**
+
+```bash
+git add includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php tests/php/unit/UcpCatalogLookupTest.php tests/php/unit/UcpCatalogSearchTest.php
+git commit -m "feat(ucp): stamp ?currency= on product url in catalog/lookup and catalog/search
+
+Threads context.currency through the controller's two
+post-translation URL-stamping sites (around lines 1079 and 1842)
+so per-product url fields carry ?currency=XXX ahead of the
+existing UTM block when the agent's hint is in accepted_currencies.
+
+The translator stays a pure function — agent-context side-effects
+remain in the controller per issue #176.
+
+Refs #404"
+```
+
+---
+
 ## Task 7: Refresh the i18n .pot template
 
 **Files:**
@@ -1028,6 +1744,7 @@ Refs #404"
 **Files:**
 - Modify: `docs/engineering/HOOKS.md`
 - Modify: `docs/engineering/API-REFERENCE.md`
+- Modify: `docs/engineering/UCP-BUY-FLOW.md`
 - Modify: `docs/engineering/JSON-LD-SCHEMA.md`
 - Modify: `docs/engineering/ARCHITECTURE.md`
 - Modify: `AGENTS.md`
@@ -1045,7 +1762,7 @@ Open `docs/engineering/HOOKS.md` and find the filters table. Add a row matching 
 
 (Match the column ordering used by the existing rows in that file.)
 
-- [ ] **Step 8.2: Document `accepted_currencies` in API-REFERENCE.md**
+- [ ] **Step 8.2: Document `accepted_currencies` AND the `?currency=` query param in API-REFERENCE.md**
 
 Find the section that describes `store_context` (search for `store_context` in `docs/engineering/API-REFERENCE.md`). Add an `accepted_currencies` row to the field table:
 
@@ -1053,64 +1770,86 @@ Find the section that describes `store_context` (search for `store_context` in `
 | `accepted_currencies` | `array<string>` | Ordered, deduplicated list of ISO-4217 currency codes the store accepts. Always at least one element. Base currency is always first. Mirrors `store_context.currency` when the store is single-currency; reflects the WooPayments enabled set when multi-currency is active. |
 ```
 
-- [ ] **Step 8.3: Document the JSON-LD shape change in JSON-LD-SCHEMA.md**
+Find the sections describing `continue_url` (on `POST /checkout-sessions`) and product `url` (on `catalog/search` / `catalog/lookup` responses). Add a paragraph to each noting the `?currency=` stamping behavior:
+
+> When the request body carries `context.currency` and the value is a member of `store_context.accepted_currencies`, the returned URL carries `?currency=XXX` ahead of the UTM block. This activates WooPayments' built-in currency switcher on the destination page so the buyer sees the requested currency on the merchant's checkout / product page. When `context.currency` is absent, malformed, or outside the accepted set, the URL is unchanged.
+
+- [ ] **Step 8.3: Document the `?currency=` flow in UCP-BUY-FLOW.md**
+
+Open `docs/engineering/UCP-BUY-FLOW.md`. Find the section describing `continue_url` construction. Add a paragraph (or amend the existing one) noting that the query string carries `?currency=XXX&products=...&utm_source=...&utm_id=woo_ucp` when the agent's `context.currency` is in `accepted_currencies`. If the doc has a flow diagram, add `?currency=` as a labeled query-param.
+
+- [ ] **Step 8.4: Document the JSON-LD shape change AND the per-page free-win in JSON-LD-SCHEMA.md**
 
 Find the homepage `OnlineBusiness` / `OnlineStore` documentation (search for `currenciesAccepted`). Update the field description to note the shape change:
 
 > `currenciesAccepted` — space-separated string of ISO-4217 currency codes (Schema.org convention). Single-currency stores emit one code; multi-currency stores emit the full accepted set with the base currency first.
 
-- [ ] **Step 8.4: Register the helper class in ARCHITECTURE.md**
+Find the per-product `priceCurrency` section. Add a new subsection:
+
+> **Per-page currency reflection (WooPayments multi-currency).** When a crawler fetches a single-product page with a `?currency=XXX` query parameter, WooPayments' multi-currency feature switches `get_woocommerce_currency()` for that request before the JSON-LD enricher runs. As a result, every `priceCurrency` field on the page's Product JSON-LD (including the variant-level Offer skeletons and the subscription `priceSpecification` entries) reflects `XXX`, and every `price` reflects the converted amount. This is a free behavior — no plugin code change required. Crawlers that need a multi-currency index can fetch each product URL once per code in `currenciesAccepted` to build the full matrix.
+>
+> This does NOT apply to the homepage `OnlineBusiness.currenciesAccepted` field (a store-wide list, not a per-quote currency), the UCP manifest (a discovery file served outside the storefront page render), or UCP REST responses (the `/wp-json/wc/ucp/v1/...` path does not traverse WooPayments' page-level `?currency=` handler — that's Phase 2).
+
+- [ ] **Step 8.5: Register the helper class in ARCHITECTURE.md**
 
 Find the component overview section. Add a row for `WC_AI_Storefront_Multi_Currency`:
 
 ```markdown
-| `WC_AI_Storefront_Multi_Currency` | Pure helper. Detects WooPayments multi-currency and returns the ordered list of accepted ISO-4217 codes. Called by the UCP manifest, JSON-LD homepage emitter, and llms.txt generator. Filter: `wc_ai_storefront_accepted_currencies`. |
+| `WC_AI_Storefront_Multi_Currency` | Pure helper. Two public methods: `get_accepted_currencies()` (returns ordered ISO-4217 list, base first) and `stamp_currency_query()` (stamps `?currency=XXX` on outbound URLs when the request currency is in the accepted set). Called by the UCP manifest, JSON-LD homepage emitter, llms.txt generator, UCP REST controller (`build_continue_url` + per-product URL stamping). Filter: `wc_ai_storefront_accepted_currencies`. |
 ```
 
 (Match the format of nearby rows.)
 
-- [ ] **Step 8.5: Add the new code path to AGENTS.md's path → doc map**
+- [ ] **Step 8.6: Add the new code paths to AGENTS.md's path → doc map**
 
-In `AGENTS.md`, find the "Path → doc impact map" table (line 154). Add a row directly under the last `includes/ai-storefront/class-wc-ai-storefront-*.php` row:
+In `AGENTS.md`, find the "Path → doc impact map" table (line 154). Add two rows directly under the last `includes/ai-storefront/class-wc-ai-storefront-*.php` row:
 
 ```markdown
 | `includes/ai-storefront/class-wc-ai-storefront-multi-currency.php` | HOOKS.md, ARCHITECTURE.md, API-REFERENCE.md, JSON-LD-SCHEMA.md |
+| `includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php` (currency stamping) | API-REFERENCE.md, UCP-BUY-FLOW.md, ARCHITECTURE.md |
 ```
 
-- [ ] **Step 8.6: Mirror the row in the docs-followup workflow**
+(If the controller row already exists in the path map, extend its docs cell rather than adding a duplicate.)
 
-Open `.github/workflows/docs-followup.yml`. Find the path → doc map (it's a list of `path:` / `docs:` pairs). Add a matching entry directly mirroring AGENTS.md.
+- [ ] **Step 8.7: Mirror the rows in the docs-followup workflow**
+
+Open `.github/workflows/docs-followup.yml`. Find the path → doc map (it's a list of `path:` / `docs:` pairs). Add matching entries directly mirroring AGENTS.md.
 
 (If the YAML uses a different structure, follow the existing format — the goal is for an automated docs-followup PR to know which docs to inspect when the new file changes.)
 
-- [ ] **Step 8.7: Add a CHANGELOG `[Unreleased]` bullet**
+- [ ] **Step 8.8: Add a CHANGELOG `[Unreleased]` bullet**
 
 Open `CHANGELOG.md`. Under `[Unreleased]`, add (or extend) the `### Added` subsection following the project's bold-headline + nested-bullet convention:
 
 ```markdown
 ### Added
 
-- **WooPayments multi-currency exposure on machine-readable surfaces.**
+- **WooPayments multi-currency exposure across UCP, JSON-LD, and llms.txt.**
   - UCP manifest `store_context` gains an `accepted_currencies` array (base currency first).
   - Homepage `OnlineBusiness` JSON-LD `currenciesAccepted` becomes a space-separated list on multi-currency stores.
   - llms.txt gains an `**Accepted currencies**` line when more than one currency is enabled.
+  - UCP `continue_url` and per-product `url` fields carry `?currency=XXX` when the agent sends `context.currency` in the accepted set, activating WooPayments' page-level currency switcher on the destination.
+  - Per-product page JSON-LD already reflects `?currency=XXX` automatically (WooPayments handles the switch before our enricher runs).
   - New filter `wc_ai_storefront_accepted_currencies` for integrators using non-WooPayments multi-currency plugins.
-  - Catalog prices remain quoted in the store's base currency (live currency switching is Phase 2).
+  - Catalog response prices remain quoted in the store's base currency (live currency switching of UCP responses is Phase 2).
 ```
 
 (Per the user's memory rule, the wording will be polished in the pre-release pass. The skeleton bullet exists now to keep the `changelog-required` CI gate green.)
 
-- [ ] **Step 8.8: Commit the docs pass**
+- [ ] **Step 8.9: Commit the docs pass**
 
 ```bash
-git add docs/engineering/HOOKS.md docs/engineering/API-REFERENCE.md docs/engineering/JSON-LD-SCHEMA.md docs/engineering/ARCHITECTURE.md AGENTS.md .github/workflows/docs-followup.yml CHANGELOG.md
-git commit -m "docs: document accepted_currencies + wc_ai_storefront_accepted_currencies filter
+git add docs/engineering/HOOKS.md docs/engineering/API-REFERENCE.md docs/engineering/UCP-BUY-FLOW.md docs/engineering/JSON-LD-SCHEMA.md docs/engineering/ARCHITECTURE.md AGENTS.md .github/workflows/docs-followup.yml CHANGELOG.md
+git commit -m "docs: document accepted_currencies, ?currency= URL stamping, and filter
 
-- API-REFERENCE.md: new store_context.accepted_currencies field
+- API-REFERENCE.md: new store_context.accepted_currencies field;
+  ?currency= note on continue_url + product url
+- UCP-BUY-FLOW.md: ?currency= stamping on continue_url
 - HOOKS.md: new wc_ai_storefront_accepted_currencies filter
-- JSON-LD-SCHEMA.md: space-separated currenciesAccepted shape note
+- JSON-LD-SCHEMA.md: space-separated currenciesAccepted shape;
+  per-page ?currency= reflection free-win
 - ARCHITECTURE.md: register WC_AI_Storefront_Multi_Currency
-- AGENTS.md + docs-followup.yml: path map row for the new file
+- AGENTS.md + docs-followup.yml: path map rows
 - CHANGELOG.md: [Unreleased] skeleton bullet
 
 Refs #404"
@@ -1206,8 +1945,9 @@ Expected: all three show the same new MINOR version.
 git add woocommerce-ai-storefront.php package.json readme.txt
 git commit -m "chore: bump version to <new-version>
 
-MINOR bump for WooPayments multi-currency exposure on UCP /
-JSON-LD / llms.txt (backwards-compatible).
+MINOR bump for WooPayments multi-currency exposure: advertised
+on UCP / JSON-LD / llms.txt and honored as ?currency= on outbound
+continue_url and product url responses (backwards-compatible).
 
 Refs #404"
 ```
@@ -1225,26 +1965,30 @@ git push -u origin HEAD
 The user's memory rule says: don't auto-trigger Copilot review on new PRs. Use `gh pr create` WITHOUT `--add-reviewer copilot-pull-request-reviewer`. Per `AGENTS.md`, target `main`.
 
 ```bash
-gh pr create --base main --title "feat(ucp): expose WooPayments accepted currencies on UCP, JSON-LD, llms.txt" --body "$(cat <<'EOF'
+gh pr create --base main --title "feat(ucp): expose WooPayments accepted currencies and honor on outbound URLs" --body "$(cat <<'EOF'
 ## Summary
 
-Phase 1 of WooPayments multi-currency exposure. The plugin now advertises the full set of accepted currencies on three machine-readable surfaces — UCP manifest, homepage JSON-LD, and llms.txt — when WooPayments multi-currency is active.
+Phase 1 of WooPayments multi-currency exposure. The plugin now (1) advertises the full set of accepted currencies on three machine-readable surfaces — UCP manifest, homepage JSON-LD, llms.txt — when WooPayments multi-currency is active, and (2) honors the agent's `context.currency` hint by stamping `?currency=XXX` on outbound `continue_url` and per-product `url` responses, activating WooPayments' page-level currency switcher on the destination.
 
 Spec: [`docs/superpowers/specs/2026-05-15-woopayments-multicurrency-exposure-design.md`](docs/superpowers/specs/2026-05-15-woopayments-multicurrency-exposure-design.md)
 Plan: [`docs/superpowers/plans/2026-05-15-woopayments-multicurrency-exposure.md`](docs/superpowers/plans/2026-05-15-woopayments-multicurrency-exposure.md)
 
 ## What changed
 
-- New helper class `WC_AI_Storefront_Multi_Currency` (soft-dependency reader for WCPay).
+- New helper class `WC_AI_Storefront_Multi_Currency` (soft-dependency reader for WCPay) with two methods: `get_accepted_currencies()` and `stamp_currency_query()`.
 - UCP manifest `store_context.accepted_currencies` (always at least `[ base ]`).
 - Homepage `OnlineBusiness` JSON-LD `currenciesAccepted` becomes a space-separated list on multi-currency stores.
-- llms.txt `**Accepted currencies**` line emitted when more than one currency is enabled, with a qualifier noting catalog prices remain in the base currency.
+- llms.txt `**Accepted currencies**` line emitted when more than one currency is enabled, with a qualifier noting catalog response prices remain in the base currency.
+- UCP `continue_url` (every variant: `/checkout-link/?products=`, bundle, grouped, variable-parent) and per-product `url` in `catalog/search` / `catalog/lookup` carry `?currency=XXX` ahead of the UTM block when `context.currency` is in the accepted set.
+- New private controller helper `get_request_currency()` — single source of truth for the agent's currency hint, reused across handlers.
 - New filter `wc_ai_storefront_accepted_currencies` for integrator overrides.
+- Free win documented: single-product page JSON-LD already reflects `?currency=XXX` when WooPayments-multicurrency processes a crawler's query param.
 
 ## Out of scope (Phase 2)
 
-- Live currency switching on UCP product/checkout endpoints.
-- Quoting catalog prices in non-base currencies.
+- Quoting UCP catalog response prices in non-base currencies (`catalog/search`, `catalog/lookup`, line-item `selling_price`, etc.).
+- Loosening the `currency_conversion_unsupported` warning on `filters.price`.
+- Aligning `process_line_item` `expected_unit_price.currency` validation.
 
 ## Test plan
 
@@ -1253,7 +1997,11 @@ Plan: [`docs/superpowers/plans/2026-05-15-woopayments-multicurrency-exposure.md`
 - [ ] `vendor/bin/phpstan analyse --memory-limit=512M` — no new PHPStan errors.
 - [ ] Manual: visit `/wp-json/wc/store/v1/.well-known/ucp` on the dev environment; confirm `store_context.accepted_currencies` is present with `[ "USD" ]` on a single-currency store.
 - [ ] Manual (multi-currency): enable WooPayments multi-currency with USD + EUR + GBP; confirm the manifest, homepage JSON-LD (`currenciesAccepted`), and llms.txt all reflect the three currencies.
-- [ ] Manual: confirm the llms.txt qualifier is honest about base-currency quoting.
+- [ ] Manual: POST a `/checkout-sessions` request with `context.currency=EUR`; confirm the returned `continue_url` carries `?currency=EUR&products=...&utm_source=...&utm_id=woo_ucp`, and that opening it lands on a EUR checkout page.
+- [ ] Manual: POST a `catalog/search` request with `context.currency=EUR`; confirm each product `url` carries `?currency=EUR`.
+- [ ] Manual: POST any UCP request without `context.currency`; confirm URLs are unstamped (back-compat).
+- [ ] Manual: visit a single-product page with `?currency=EUR`; confirm the rendered JSON-LD `priceCurrency` reflects `EUR` (free win, no plugin change).
+- [ ] Manual: confirm the llms.txt qualifier is honest about base-currency catalog quoting.
 
 Closes #404
 EOF
