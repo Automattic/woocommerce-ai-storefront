@@ -12,8 +12,14 @@
  * All call sites get the same array shape regardless of detection
  * outcome, which keeps consumer code free of detection branches.
  *
- * Phase 1 of two: this class only ADVERTISES currencies. Live
- * currency switching on UCP product/checkout endpoints is Phase 2.
+ * Phase 1 ships two behaviours: (a) advertising accepted currencies on
+ * all machine-readable surfaces (UCP manifest, JSON-LD, llms.txt) and
+ * (b) stamping `?currency=XXX` on outbound buyer-facing URLs so the
+ * WooPayments page handler switches the currency at render time.
+ * Phase 2 (deferred) refers specifically to server-side price
+ * computation inside UCP catalog responses — switching the WooCommerce
+ * session currency before price lookup so the API returns prices in the
+ * requested currency rather than the store base.
  *
  * @package WooCommerce_AI_Storefront
  * @since 0.17.0
@@ -37,6 +43,7 @@ class WC_AI_Storefront_Multi_Currency {
 	 * from production code, but a public no-op is safer than a
 	 * test-only private state-reset via reflection.
 	 *
+	 * @since 0.17.0
 	 * @return void
 	 */
 	public static function reset_cache() {
@@ -81,23 +88,30 @@ class WC_AI_Storefront_Multi_Currency {
 		// part of the public WCPay API; the `is_multi_currency_enabled()`
 		// guard prevents us from reporting a multi-currency list when
 		// the merchant has the WCPay plugin installed but the feature
-		// turned off.
+		// turned off. Wrapped in try-catch because `::instance()` and
+		// its methods initialise against WC session/DB state that may
+		// not yet exist during early REST hooks or partial plugin boots.
 		if ( class_exists( '\WCPay\MultiCurrency\MultiCurrency' ) ) {
-			$mc = \WCPay\MultiCurrency\MultiCurrency::instance();
-			if ( is_object( $mc ) && method_exists( $mc, 'is_multi_currency_enabled' ) && $mc->is_multi_currency_enabled() ) {
-				if ( method_exists( $mc, 'get_enabled_currencies' ) ) {
-					$enabled = $mc->get_enabled_currencies();
-					if ( is_array( $enabled ) ) {
-						// `get_enabled_currencies()` returns an associative
-						// array keyed by ISO-4217 code (uppercase), with
-						// Currency objects as values. We read the keys to
-						// stay resilient to refactors of the Currency
-						// object's method surface.
-						foreach ( array_keys( $enabled ) as $code ) {
-							$list[] = strtoupper( (string) $code );
+			try {
+				$mc = \WCPay\MultiCurrency\MultiCurrency::instance();
+				if ( is_object( $mc ) && method_exists( $mc, 'is_multi_currency_enabled' ) && $mc->is_multi_currency_enabled() ) {
+					if ( method_exists( $mc, 'get_enabled_currencies' ) ) {
+						$enabled = $mc->get_enabled_currencies();
+						if ( is_array( $enabled ) ) {
+							// `get_enabled_currencies()` returns an associative
+							// array keyed by ISO-4217 code (uppercase), with
+							// Currency objects as values. We read the keys to
+							// stay resilient to refactors of the Currency
+							// object's method surface.
+							foreach ( array_keys( $enabled ) as $code ) {
+								$list[] = strtoupper( (string) $code );
+							}
 						}
 					}
 				}
+			} catch ( \Throwable $e ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
+				// WCPay singleton is in a partial-boot state; fall through
+				// to base-currency-only list without propagating the error.
 			}
 		}
 
@@ -114,15 +128,20 @@ class WC_AI_Storefront_Multi_Currency {
 		 * (e.g. hide a test-only currency).
 		 *
 		 * Contract: the filter MUST return an array of ISO-4217 codes
-		 * (three uppercase ASCII letters). Non-array returns, empty
-		 * arrays, and arrays whose entries all fail validation fall
-		 * back to `[ base_currency ]`.
+		 * (three uppercase ASCII letters). Malformed entries are silently
+		 * dropped; the fallback to `[ base_currency ]` only activates
+		 * when the result is a non-array, an empty array, or an array
+		 * whose entries all fail ISO-4217 validation.
 		 *
 		 * @since 0.17.0
 		 *
 		 * @param array<int, string> $list Auto-detected list, base currency first.
 		 */
-		$filtered = apply_filters( 'wc_ai_storefront_accepted_currencies', $list );
+		try {
+			$filtered = apply_filters( 'wc_ai_storefront_accepted_currencies', $list );
+		} catch ( \Throwable $e ) {
+			$filtered = $list;
+		}
 
 		if ( is_array( $filtered ) ) {
 			$filtered = self::normalize_codes( $filtered );
@@ -156,9 +175,11 @@ class WC_AI_Storefront_Multi_Currency {
 	 *     trim + uppercase → returns $url unchanged.
 	 *   - $requested_currency is not in `get_accepted_currencies()` →
 	 *     returns $url unchanged.
-	 *   - $url already carries a `currency=` query param (case-sensitive
-	 *     match per RFC 3986) → returns $url unchanged. Preserves any
-	 *     upstream override or filter-injected value.
+	 *   - $url already carries a lowercase `currency=` query param →
+	 *     returns $url unchanged. Preserves any upstream override or
+	 *     filter-injected value. Note: only the lowercase key `currency`
+	 *     is detected; a capitalised variant (e.g. `Currency=`) will not
+	 *     trigger this guard.
 	 *
 	 * Whitespace-padded currency codes (`' usd '`) are trimmed before
 	 * validation per Postel's law — accepts what the network sends,
@@ -171,8 +192,11 @@ class WC_AI_Storefront_Multi_Currency {
 	 *
 	 * @param string      $url                Outbound URL to stamp.
 	 * @param string|null $requested_currency Candidate ISO-4217 code from
-	 *                                        the agent's request (typically
-	 *                                        `$request->get_param('context')['currency']`).
+	 *                                        the agent's request. Canonical
+	 *                                        source: `self::get_request_currency( $request )`,
+	 *                                        which normalises the raw
+	 *                                        `$request->get_param('context')['currency']`
+	 *                                        value before it reaches this function.
 	 * @return string The stamped URL, or the input URL unchanged.
 	 */
 	public static function stamp_currency_query( $url, $requested_currency ) {
@@ -224,7 +248,7 @@ class WC_AI_Storefront_Multi_Currency {
 		$seen = array();
 		$out  = array();
 		foreach ( $codes as $code ) {
-			if ( ! is_string( $code ) && ! is_numeric( $code ) ) {
+			if ( ! is_string( $code ) ) {
 				continue;
 			}
 			$normalized = strtoupper( trim( (string) $code ) );

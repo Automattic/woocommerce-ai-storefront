@@ -198,6 +198,15 @@ namespace {
 			);
 		}
 
+		public function test_get_accepted_currencies_wcpay_get_enabled_currencies_returning_non_array_falls_back_to_base(): void {
+			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+			$mc->shouldReceive( 'is_multi_currency_enabled' )->andReturn( true );
+			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn( null );
+			\WCPay\MultiCurrency\MultiCurrency::$test_double = $mc;
+
+			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
+		}
+
 		public function test_get_accepted_currencies_filter_can_override_list(): void {
 			Functions\when( 'apply_filters' )->alias(
 				static function ( $hook, $value ) {
@@ -351,11 +360,24 @@ namespace {
 			);
 		}
 
+		public function test_stamp_currency_query_non_string_url_returns_empty_string(): void {
+			$this->assertSame( '', WC_AI_Storefront_Multi_Currency::stamp_currency_query( null, 'USD' ) );
+			$this->assertSame( '', WC_AI_Storefront_Multi_Currency::stamp_currency_query( 42, 'USD' ) );
+			$this->assertSame( '', WC_AI_Storefront_Multi_Currency::stamp_currency_query( array(), 'USD' ) );
+			$this->assertSame( '', WC_AI_Storefront_Multi_Currency::stamp_currency_query( false, 'USD' ) );
+		}
+
 		public function test_stamp_currency_query_empty_url_returns_empty_string(): void {
 			$this->assertSame(
 				'',
 				WC_AI_Storefront_Multi_Currency::stamp_currency_query( '', 'USD' )
 			);
+		}
+
+		public function test_stamp_currency_query_whitespace_padded_currency_is_trimmed_and_accepted(): void {
+			$url    = 'https://example.com/product/widget/';
+			$result = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, ' USD ' );
+			$this->assertSame( 'https://example.com/product/widget/?currency=USD', $result );
 		}
 
 		public function test_stamp_currency_query_url_with_no_existing_query_appends_currency(): void {

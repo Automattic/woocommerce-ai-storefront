@@ -1081,7 +1081,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// is complete. Hoisted out of the translator to preserve its
 			// pure-function contract (see issue #176). The translator emits the
 			// bare permalink; the controller owns agent-context side-effects.
-			if ( ! empty( $product['url'] ) ) {
+			if ( ! empty( $product['url'] ) && is_string( $product['url'] ) ) {
 				// Stamp the agent's context.currency hint onto the URL before
 				// UTM attribution. No-op when the request currency is null,
 				// malformed, or not in `accepted_currencies` — so this single
@@ -1854,7 +1854,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// is complete. Hoisted out of the translator to preserve its
 			// pure-function contract (see issue #176). The translator emits the
 			// bare permalink; the controller owns agent-context side-effects.
-			if ( ! empty( $product['url'] ) ) {
+			if ( ! empty( $product['url'] ) && is_string( $product['url'] ) ) {
 				// Stamp the agent's context.currency hint onto the URL before
 				// UTM attribution. No-op when the request currency is null,
 				// malformed, or not in `accepted_currencies` — so this single
