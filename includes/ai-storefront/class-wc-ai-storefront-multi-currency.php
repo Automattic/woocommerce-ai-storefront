@@ -131,13 +131,6 @@ class WC_AI_Storefront_Multi_Currency {
 			}
 		}
 
-		// Ultimate fallback: even if normalize_codes() somehow yielded
-		// an empty array (shouldn't, because base is prepended), guard
-		// against returning [] to consumers.
-		if ( empty( $list ) ) {
-			$list = array( $base );
-		}
-
 		self::$cache = $list;
 		return self::$cache;
 	}
