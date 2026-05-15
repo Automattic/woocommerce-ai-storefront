@@ -58,20 +58,31 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// can override this with their own when() call.
 		Functions\when( 'wc_get_checkout_url' )->justReturn( 'https://example.com/checkout/' );
 		// Minimal `add_query_arg()` stub mirroring WP core's behavior
-		// for the array-of-args + URL signature: parse out any existing
-		// query string on the URL, merge in the new args (later args
-		// overwrite earlier on key collision), and reassemble. WP's
-		// real implementation also handles a multi-arg signature
-		// (`add_query_arg($key, $value, $url)`) but the deterministic-
-		// bundle URL builder only ever calls it with the array form.
+		// for BOTH supported signatures:
+		//
+		//   - add_query_arg( array $args, string $url )
+		//   - add_query_arg( string $key, string $value, string $url )
+		//
+		// In both cases: parse out any existing query string on the URL,
+		// merge in the new args (later args overwrite earlier on key
+		// collision), and reassemble. The 3-arg form is exercised by
+		// `WC_AI_Storefront_Multi_Currency::stamp_currency_query()`
+		// which appends a single `currency=XXX` pair.
 		Functions\when( 'add_query_arg' )->alias(
-			static function ( $args, $url ): string {
-				$parts        = wp_parse_url( (string) $url );
-				$existing     = [];
+			static function ( $arg1, $arg2 = null, $arg3 = null ): string {
+				if ( is_array( $arg1 ) ) {
+					$args = $arg1;
+					$url  = (string) $arg2;
+				} else {
+					$args = array( (string) $arg1 => (string) $arg2 );
+					$url  = (string) $arg3;
+				}
+				$parts    = wp_parse_url( $url );
+				$existing = [];
 				if ( isset( $parts['query'] ) ) {
 					parse_str( $parts['query'], $existing );
 				}
-				$merged       = array_merge( $existing, (array) $args );
+				$merged       = array_merge( $existing, $args );
 				$query_string = http_build_query( $merged );
 				$rebuilt      = ( isset( $parts['scheme'] ) ? $parts['scheme'] . '://' : '' )
 					. ( $parts['host'] ?? '' )
@@ -141,6 +152,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -681,6 +693,120 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			'/checkout-link/?products=123:2,456:1',
 			$result['data']['continue_url']
 		);
+	}
+
+	public function test_continue_url_carries_currency_when_context_currency_in_accepted_set(): void {
+		// Multi-currency accepted set (USD+EUR+GBP) via filter override.
+		// Agent sends context.currency=EUR, expects the continue_url
+		// to carry currency=EUR ahead of the UTM block.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR', 'GBP' );
+				}
+				return $value;
+			}
+		);
+
+		$this->seed_simple_product( 123, 1000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 1 ],
+				],
+				'context'    => [ 'currency' => 'EUR' ],
+			]
+		);
+
+		$this->assertArrayHasKey( 'continue_url', $result['data'] );
+		$this->assertStringContainsString( 'currency=EUR', $result['data']['continue_url'] );
+	}
+
+	public function test_continue_url_unchanged_when_context_currency_absent(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR', 'GBP' );
+				}
+				return $value;
+			}
+		);
+
+		$this->seed_simple_product( 123, 1000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 1 ],
+				],
+				// No 'context' key.
+			]
+		);
+
+		$this->assertArrayHasKey( 'continue_url', $result['data'] );
+		$this->assertStringNotContainsString( 'currency=', $result['data']['continue_url'] );
+	}
+
+	public function test_continue_url_unchanged_when_context_currency_not_in_accepted_set(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD' ); // single-currency store
+				}
+				return $value;
+			}
+		);
+
+		$this->seed_simple_product( 123, 1000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 1 ],
+				],
+				'context'    => [ 'currency' => 'JPY' ], // not in the set
+			]
+		);
+
+		$this->assertArrayHasKey( 'continue_url', $result['data'] );
+		$this->assertStringNotContainsString( 'currency=', $result['data']['continue_url'] );
+	}
+
+	public function test_continue_url_currency_precedes_utm_block(): void {
+		// Param ordering matters for readability and for any downstream
+		// filter that pattern-matches on the UTM tail. Verify that
+		// currency= appears before utm_source= in the final query string.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		$this->seed_simple_product( 123, 1000 );
+
+		$result = $this->call_handler(
+			[
+				'line_items' => [
+					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 1 ],
+				],
+				'context'    => [ 'currency' => 'EUR' ],
+			]
+		);
+
+		$url          = $result['data']['continue_url'];
+		$currency_pos = strpos( $url, 'currency=' );
+		$utm_pos      = strpos( $url, 'utm_source=' );
+		$this->assertNotFalse( $currency_pos );
+		$this->assertNotFalse( $utm_pos );
+		$this->assertLessThan( $utm_pos, $currency_pos, 'currency= should precede utm_source=' );
 	}
 
 	public function test_response_id_has_chk_prefix_and_hex_suffix(): void {
