@@ -47,6 +47,18 @@ namespace {
 	use Brain\Monkey\Functions;
 	use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
+	// `wp_parse_str` is declared here as a real function because
+	// Brain Monkey's Patchwork-based aliasing cannot proxy a
+	// pass-by-reference second parameter — see
+	// https://github.com/Brain-WP/BrainMonkey/issues for context.
+	// Guarded so re-running the test class (or running alongside a
+	// future suite that also defines it) is safe.
+	if ( ! function_exists( 'wp_parse_str' ) ) {
+		function wp_parse_str( $str, &$result ) {
+			parse_str( (string) $str, $result );
+		}
+	}
+
 	class MultiCurrencyTest extends \PHPUnit\Framework\TestCase {
 		use MockeryPHPUnitIntegration;
 
@@ -58,6 +70,29 @@ namespace {
 
 			Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 			Functions\when( 'apply_filters' )->returnArg( 2 );
+			// `wp_parse_url` is globally stubbed in tests/php/stubs.php.
+			// `wp_parse_str` is declared as a real function above this
+			// class (pass-by-reference args can't go through Brain Monkey).
+			// `add_query_arg` mirrors WP core's parse-rebuild behavior so
+			// the existing query string gets re-encoded (`42:1` → `42%3A1`)
+			// and an existing key is replaced rather than duplicated.
+			Functions\when( 'add_query_arg' )->alias(
+				static function ( $key, $value, $url ) {
+					// The helper only uses the 3-arg form. Mirror WP core:
+					// parse the existing query, set/replace the new pair,
+					// and rebuild via http_build_query() — which RFC 3986
+					// encodes both the existing values and the new pair.
+					$parts        = explode( '?', $url, 2 );
+					$base         = $parts[0];
+					$query_string = $parts[1] ?? '';
+					$params       = array();
+					if ( '' !== $query_string ) {
+						parse_str( $query_string, $params );
+					}
+					$params[ (string) $key ] = (string) $value;
+					return $base . '?' . http_build_query( $params, '', '&', PHP_QUERY_RFC3986 );
+				}
+			);
 		}
 
 		protected function tearDown(): void {
@@ -241,6 +276,99 @@ namespace {
 			WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
 
 			$this->assertSame( 1, $call_count, 'get_woocommerce_currency should be called once per request' );
+		}
+
+		public function test_stamp_currency_query_no_request_currency_returns_url_unchanged(): void {
+			$url = 'https://example.com/checkout-link/?products=42:1';
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, null )
+			);
+		}
+
+		public function test_stamp_currency_query_request_currency_matches_base_stamps_url(): void {
+			// Base is USD (setUp default). Stamping the base is harmless
+			// redundancy that keeps the rule predictable — the WCPay
+			// page handler treats `?currency=USD` as a no-op on a USD
+			// store, and stamping consistently makes the agent's
+			// expectation match what the buyer sees.
+			$url    = 'https://example.com/checkout-link/?products=42:1';
+			$result = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'USD' );
+			$this->assertSame(
+				'https://example.com/checkout-link/?products=42%3A1&currency=USD',
+				$result
+			);
+		}
+
+		public function test_stamp_currency_query_request_currency_in_accepted_set_stamps_url(): void {
+			Functions\when( 'apply_filters' )->alias(
+				static function ( $hook, $value ) {
+					if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+						return array( 'USD', 'EUR', 'GBP' );
+					}
+					return $value;
+				}
+			);
+
+			$url    = 'https://example.com/checkout-link/?products=42:1';
+			$result = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'EUR' );
+			$this->assertSame(
+				'https://example.com/checkout-link/?products=42%3A1&currency=EUR',
+				$result
+			);
+		}
+
+		public function test_stamp_currency_query_request_currency_not_in_accepted_set_returns_url_unchanged(): void {
+			// Base-only accepted list (default setUp). 'JPY' is not in it.
+			$url = 'https://example.com/checkout-link/?products=42:1';
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'JPY' )
+			);
+		}
+
+		public function test_stamp_currency_query_malformed_request_currency_returns_url_unchanged(): void {
+			$url = 'https://example.com/checkout-link/?products=42:1';
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'usdollars' )
+			);
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, '' )
+			);
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, '12' )
+			);
+		}
+
+		public function test_stamp_currency_query_url_with_existing_currency_param_returns_url_unchanged(): void {
+			$url = 'https://example.com/checkout-link/?currency=EUR&products=42:1';
+			$this->assertSame(
+				$url,
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'USD' )
+			);
+		}
+
+		public function test_stamp_currency_query_empty_url_returns_empty_string(): void {
+			$this->assertSame(
+				'',
+				WC_AI_Storefront_Multi_Currency::stamp_currency_query( '', 'USD' )
+			);
+		}
+
+		public function test_stamp_currency_query_url_with_no_existing_query_appends_currency(): void {
+			$url    = 'https://example.com/product/widget/';
+			$result = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'USD' );
+			$this->assertSame( 'https://example.com/product/widget/?currency=USD', $result );
+		}
+
+		public function test_stamp_currency_query_is_idempotent_when_called_twice(): void {
+			$url     = 'https://example.com/checkout-link/?products=42:1';
+			$first   = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'USD' );
+			$second  = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $first, 'USD' );
+			$this->assertSame( $first, $second, 'Double-stamping should be a no-op' );
 		}
 	}
 }

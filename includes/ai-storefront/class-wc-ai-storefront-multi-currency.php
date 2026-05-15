@@ -136,6 +136,72 @@ class WC_AI_Storefront_Multi_Currency {
 	}
 
 	/**
+	 * Stamp `?currency=XXX` onto an outbound buyer-facing URL when the
+	 * agent's requested currency is in the accepted-currencies set.
+	 *
+	 * Designed for `continue_url` (UCP `POST /checkout-sessions`) and
+	 * per-product `url` fields in `catalog/search` / `catalog/lookup`
+	 * responses. Honors the agent's `context.currency` hint without
+	 * changing the catalog data (Phase 1 honesty boundary): the buyer
+	 * lands on the merchant's checkout / PDP in the requested currency,
+	 * but the agent's recommendation was still computed against
+	 * base-currency catalog data.
+	 *
+	 * Fail-closed paths (URL returned unchanged):
+	 *   - $url empty, non-string, or null.
+	 *   - $requested_currency null or non-string.
+	 *   - $requested_currency fails the ISO-4217 pattern after uppercase.
+	 *   - $requested_currency is not in `get_accepted_currencies()`.
+	 *   - $url already carries a `currency=` query param (preserves any
+	 *     upstream override or filter-injected value).
+	 *
+	 * The function is idempotent: calling it twice with the same args
+	 * produces the same URL.
+	 *
+	 * @since 0.17.0
+	 *
+	 * @param string      $url                Outbound URL to stamp.
+	 * @param string|null $requested_currency Candidate ISO-4217 code from
+	 *                                        the agent's request (typically
+	 *                                        `$request->get_param('context')['currency']`).
+	 * @return string The stamped URL, or the input URL unchanged.
+	 */
+	public static function stamp_currency_query( $url, $requested_currency ) {
+		if ( ! is_string( $url ) || '' === $url ) {
+			return is_string( $url ) ? $url : '';
+		}
+
+		if ( ! is_string( $requested_currency ) ) {
+			return $url;
+		}
+
+		$normalized = strtoupper( trim( $requested_currency ) );
+		if ( ! preg_match( '/^[A-Z]{3}$/', $normalized ) ) {
+			return $url;
+		}
+
+		$accepted = self::get_accepted_currencies();
+		if ( ! in_array( $normalized, $accepted, true ) ) {
+			return $url;
+		}
+
+		// Idempotency / override-preservation guard. If the URL already
+		// carries `currency=`, leave it alone — preserves any agent-set
+		// value upstream or filter-injected override and makes double
+		// stamping a no-op.
+		$query_string = wp_parse_url( $url, PHP_URL_QUERY );
+		if ( is_string( $query_string ) && '' !== $query_string ) {
+			$params = array();
+			wp_parse_str( $query_string, $params );
+			if ( array_key_exists( 'currency', $params ) ) {
+				return $url;
+			}
+		}
+
+		return add_query_arg( 'currency', $normalized, $url );
+	}
+
+	/**
 	 * Normalize an array of currency codes: uppercase, drop entries
 	 * that fail the ISO-4217 pattern, deduplicate preserving order.
 	 *
