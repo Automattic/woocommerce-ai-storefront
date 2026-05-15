@@ -147,13 +147,22 @@ class WC_AI_Storefront_Multi_Currency {
 	 * but the agent's recommendation was still computed against
 	 * base-currency catalog data.
 	 *
-	 * Fail-closed paths (URL returned unchanged):
-	 *   - $url empty, non-string, or null.
-	 *   - $requested_currency null or non-string.
-	 *   - $requested_currency fails the ISO-4217 pattern after uppercase.
-	 *   - $requested_currency is not in `get_accepted_currencies()`.
-	 *   - $url already carries a `currency=` query param (preserves any
-	 *     upstream override or filter-injected value).
+	 * Fail-closed paths (URL returned unchanged, except non-string $url
+	 * which is coerced to '' so consumers always get a string back):
+	 *   - $url is a non-string (null, int, array, etc.) → returns ''.
+	 *   - $url is the empty string → returns ''.
+	 *   - $requested_currency null or non-string → returns $url unchanged.
+	 *   - $requested_currency fails the ISO-4217 pattern after
+	 *     trim + uppercase → returns $url unchanged.
+	 *   - $requested_currency is not in `get_accepted_currencies()` →
+	 *     returns $url unchanged.
+	 *   - $url already carries a `currency=` query param (case-sensitive
+	 *     match per RFC 3986) → returns $url unchanged. Preserves any
+	 *     upstream override or filter-injected value.
+	 *
+	 * Whitespace-padded currency codes (`' usd '`) are trimmed before
+	 * validation per Postel's law — accepts what the network sends,
+	 * emits a strict canonical form.
 	 *
 	 * The function is idempotent: calling it twice with the same args
 	 * produces the same URL.
