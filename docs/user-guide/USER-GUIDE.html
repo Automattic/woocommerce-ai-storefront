@@ -76,7 +76,7 @@
 <h2>What this plugin does not do</h2>
 <p>A few things this plugin is intentionally not, so you can decide if it fits your goal:</p>
 <ul>
-<li><p><strong>It is not a product feed for Google Shopping, Bing Shopping, Microsoft/Copilot Commerce, or Meta Catalog.</strong> Those platforms ingest catalogs you submit through their merchant centers (Google Merchant Center, Bing Webmaster, Meta Commerce Manager). This plugin works the opposite way: it publishes open discovery surfaces on your own site that AI agents read directly. The two are complementary, not substitutes; if you already use Google Merchant Center for Google Shopping, keep it. See §1.2 below.</p>
+<li><p><strong>It is not a product feed for Google Shopping, Bing Shopping, Microsoft/Copilot Commerce, or Meta Catalog.</strong> Those platforms ingest catalogs you submit through their merchant centers (Google Merchant Center, Bing Webmaster, Meta Commerce Manager). This plugin works the opposite way: it publishes open discovery surfaces on your own site that AI agents read directly. The two are complementary and stacked: GMC feeds the retrieval layer (which products Google&#39;s AI surfaces consider), this plugin feeds the checkout-handoff layer (how AI agents send the shopper through to your store). Keep GMC if you have it; this plugin adds the layer GMC doesn&#39;t address. See §1.2 below.</p>
 </li>
 <li><p><strong>It is not for in-chat agentic checkout</strong> (sometimes called &quot;delegated payments&quot; or ACP-style flows). Protocols like Stripe ACP or Google&#39;s emerging Agentic Commerce APIs hand the agent a payment token and have it complete the transaction inside the chat surface, sometimes without the shopper present. UCP, what this plugin speaks, explicitly does the opposite: the agent hands the shopper off to your checkout, where the shopper (or, in the on-behalf-of case, the agent acting under their authorization) completes the purchase using your existing payment provider. If your business model requires headless agent purchasing without a shopper-checkout step, this plugin alone won&#39;t deliver that.</p>
 </li>
@@ -118,7 +118,7 @@
 <li><strong>Multi-vendor marketplaces</strong> (WC Vendors, Dokan, etc.). The plugin currently presents a single-store catalog. Vendor distinctions aren&#39;t surfaced to AI agents.</li>
 </ul>
 <h3>Known compatibility notes</h3>
-<p><strong>Works alongside Google Merchant Center.</strong> This plugin doesn&#39;t compete with GMC. The enhanced JSON-LD on product pages reads as legitimate Schema.org structured data to both Google and AI agents. GMC continues to drive Google Shopping; this plugin drives AI-agent discovery. Orders attributed to GMC appear in GMC&#39;s dashboard; orders attributed to AI agents appear in this plugin&#39;s Overview tab.</p>
+<p><strong>Works alongside Google Merchant Center — and stacks with it.</strong> Since January 2026, Google&#39;s Gemini agentic shopping uses two layers: the Shopping Graph (product retrieval, populated by GMC feeds and product-page Schema.org markup) and UCP (the agentic checkout handoff, the protocol Google and Shopify jointly launched). If you push to GMC, you feed the retrieval layer. If you publish via this plugin, you feed the checkout-handoff layer. You want both: GMC alone gets your products into Gemini&#39;s index, but doesn&#39;t tell Gemini how to hand the shopper off to your checkout; UCP alone doesn&#39;t help if the agent can&#39;t discover your products to begin with. Together they form the path from &quot;shopper asks Gemini&quot; to &quot;shopper checks out on your store.&quot; The enhanced JSON-LD on product pages also reads as legitimate Schema.org structured data to both Google and AI agents. Orders attributed to GMC appear in GMC&#39;s dashboard; orders attributed to AI agents appear in this plugin&#39;s Overview tab.</p>
 <p><strong>Plugins worth checking before you enable:</strong></p>
 <ul>
 <li><strong>AI-bot blocking plugins.</strong> Some security plugins explicitly block GPTBot, ChatGPT-User, Claude, and similar to prevent training-data scraping. If active, they will defeat the discovery layer entirely. Allowlist AI crawlers in your security plugin, or disable AI-bot blocking on this site.</li>
@@ -162,7 +162,7 @@
 <li><strong>AI AOV</strong>: average order value across AI-referred orders. Tells you whether AI traffic shops big or small.</li>
 <li><strong>Top agent</strong>: which AI agent drove the most orders (ChatGPT, Gemini, Perplexity, etc.).</li>
 <li><strong>Top agent share</strong>: what fraction of your AI orders the top agent represents.</li>
-<li><strong>Agent / Referral</strong>: how your AI orders split between two channels. <strong>Agent</strong> is shoppers an AI assistant walked through to checkout (a live shopping session). <strong>Referral</strong> is shoppers who clicked through after an AI search result, AI Overview, or chatbot citation mentioned your product. Shown as <code>X% / Y%</code> where X is Agent and Y is Referral. The split tells you whether AI is <strong>selling</strong> for you (Agent dominant) or <strong>referring</strong> for you (Referral dominant), which usually points to different growth investments.</li>
+<li><strong>Agent / Referral</strong>: how your AI orders split between two channels. <strong>Agent</strong> is shoppers an AI assistant walked through to checkout (a live shopping session). <strong>Referral</strong> is shoppers who clicked through after an AI search result, AI Overview, or chatbot citation mentioned your product. Shown as <code>X% / Y%</code> where X is Agent and Y is Referral. The split tells you whether AI is <strong>selling</strong> for you (Agent dominant) or <strong>referring</strong> for you (Referral dominant), which usually points to different growth investments. <strong>Diagnostic use:</strong> a near-zero Agent share when you&#39;re confident an agent like Gemini is sending traffic typically means the agent isn&#39;t discovering your UCP manifest, and is deep-linking from your Schema.org product markup instead. Re-check that <code>/.well-known/ucp</code> is reachable from outside your network (Layer 1 of the verification in §4).</li>
 </ul>
 <p><img src="screenshots/03-overview-cards.png" alt="Overview tab stat cards"></p>
 <p>A date-range strip above the stat cards lets you pick the window: <strong>Today</strong>, <strong>Last 7 days</strong>, <strong>Last 30 days</strong>, <strong>Last 90 days</strong>, <strong>Last 12 months</strong>. Each is a trailing window from the moment you click; the labels match the underlying behavior (a &quot;Last 12 months&quot; click means the last 365 days, not the previous calendar year).</p>
@@ -203,11 +203,20 @@
 <p>The Discovery tab shows the same URLs as clickable links with reachability dots. URLs render in monospace font:</p>
 <p><img src="screenshots/09-endpoints-info.png" alt="Discovery tab Discovery Endpoints card"></p>
 <p>If something returns 404 or shows your homepage, jump to <a href="#10-troubleshooting">Troubleshooting</a>.</p>
-<p><strong>Smoke test with an AI assistant.</strong> Once endpoints check out, ask one of the major assistants with live web browsing:</p>
+<p><strong>Verify your setup in three layers, most reliable first.</strong> AI engines are non-deterministic — a single chat query is not a reliable signal of whether your store is correctly published. Use layered verification to separate &quot;is the plugin working&quot; from &quot;did the AI engine cooperate.&quot;</p>
+<p><strong>Layer 1 — Direct endpoint check (deterministic).</strong> Visit <code>/llms.txt</code> and <code>/.well-known/ucp</code> on your store in a browser. If they return your store identity and protocol manifest, the plugin is working server-side, regardless of how AI engines behave. This is the load-bearing check.</p>
+<p><strong>Layer 2 — Independent validation tools (recommended).</strong> Run your domain through <a href="https://ucpplayground.com/">UCPPlayground</a> or <a href="https://ucpchecker.com/">UCPChecker</a>. They fetch your endpoints directly and report what they see, with no AI-side caching or fetch-versus-fabricate variability. See <a href="#4a-independent-validation-tools">section 4a</a>.</p>
+<p><strong>Layer 3 — Live AI assistant query (variable results).</strong> Ask an assistant with live web browsing:</p>
 <blockquote>
 <p><em>&quot;Find products at [your-store.com] that match [some attribute, e.g. &#39;red running shoes under $100&#39;].&quot;</em></p>
 </blockquote>
-<p>A working setup returns real product names with prices and links to your store within 3–10 seconds. If the agent says it can&#39;t find anything, wait a few hours (most agents cache crawl results) and retry.</p>
+<p>Expect different behavior across engines:</p>
+<ul>
+<li><strong>ChatGPT</strong> typically fetches the URL when a domain is named in the prompt; usually returns real product names within seconds.</li>
+<li><strong>Gemini</strong> sometimes fetches, sometimes doesn&#39;t. If it returns plausible-sounding products that aren&#39;t in your catalog, it&#39;s hallucinating from training data, not failing your setup. Ask <code>&quot;Did you actually fetch [your-store.com]?&quot;</code> to surface this.</li>
+<li><strong>Claude / Perplexity</strong> behavior varies by which surface you use (chat versus answer engine).</li>
+</ul>
+<p>If layers 1 and 2 succeed but layer 3 hallucinates or comes up empty, your store is correctly publishing. The AI engine hasn&#39;t fetched, or has cached an older fetch. Wait a few hours or try a different engine. Don&#39;t treat layer 3 alone as authoritative.</p>
 <p>Natural-language search queries match against your product categories, tags, brands, and attributes, not just product titles. So an agent asking for &quot;hoodies&quot; will find products in your &quot;Hoodies&quot; category even if the individual product titles use a different word, and &quot;watches&quot; will find products in a &quot;Watch&quot; category. Plural and singular forms are handled automatically.</p>
 <h3>4a. Independent validation tools</h3>
 <p>The plugin&#39;s UI shows you what the plugin THINKS it&#39;s publishing. For an independent view of what an AI agent or the UCP protocol layer actually sees, three widely-used community tools can help. They&#39;re independent of Automattic and this plugin, but maintained by people active in the UCP ecosystem (UCPPlayground&#39;s creator sits on the UCP.DEV technical council).</p>
@@ -451,6 +460,8 @@
 <li>Check that your store&#39;s public URL in <strong>Settings → General</strong> matches the address you&#39;re testing from.</li>
 <li>Visit <code>/llms.txt</code> from a fresh browser session to confirm it&#39;s live.</li>
 </ol>
+<h3><code>/llms.txt</code> doesn&#39;t list a sitemap</h3>
+<p>If your site only recently started publishing a sitemap (a fresh WordPress install, or you just enabled an SEO plugin that emits one), <code>/llms.txt</code> caches the &quot;no sitemap found&quot; result for 24 hours so it doesn&#39;t re-probe the same paths on every request. To force a refresh now, open <strong>WooCommerce → AI Storefront</strong>, change any setting and save (or save without changing anything on the Visibility / Discovery / Policies tab — the save itself busts the sitemap cache). The next <code>/llms.txt</code> fetch re-probes and picks up the sitemap.</p>
 <h3>Stats are zero after a week</h3>
 <p>Check:</p>
 <ol>
