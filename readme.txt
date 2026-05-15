@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.16.0
+Stable tag: 0.16.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.16.1 - 2026-05-14 =
+**Improved**
+* User guide refreshed: GMC compatibility (§1.2) reframed as "stacks with it" to reflect the January 2026 Google + Shopify UCP launch (Shopping Graph for retrieval, UCP for checkout handoff are now two layers of the same Gemini agentic flow). Smoke test (§4) restructured into three verification layers (direct endpoint check → UCPPlayground/UCPChecker → live AI assistant query) with per-engine fetch-behavior expectations stated explicitly. Agent/Referral stat card description (§3) picks up a diagnostic-use sentence for spotting failed UCP-manifest discovery. New troubleshooting entry (§10) for the 24h sitemap-discovery cache and how to bust it via plugin-settings save.
 
 = 0.16.0 - 2026-05-14 =
 **New**
