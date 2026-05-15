@@ -5677,6 +5677,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                                                      Stored on the order as
 	 *                                                      `_wc_ai_storefront_agent_host_raw`
 	 *                                                      for diagnostic / graduation purposes.
+	 * @param string|null                      $request_currency Optional ISO-4217 currency code
+	 *                                                          from `context.currency`; stamped
+	 *                                                          onto the outbound URL ahead of the
+	 *                                                          UTM block when present and in
+	 *                                                          `accepted_currencies`. Null skips
+	 *                                                          stamping (no-op for single-currency
+	 *                                                          stores or when the agent omitted
+	 *                                                          `context.currency`).
+	 * @return string The continue_url with currency + UTM stamping, or '' when no usable URL
+	 *                could be built (bundle/grouped/variable shapes with no permalink fallback).
 	 */
 	private static function build_continue_url( array $processed, string $source_host, string $raw_host, ?string $request_currency = null ): string {
 		// Bundle short-circuit (#358). WC Product Bundles aren't

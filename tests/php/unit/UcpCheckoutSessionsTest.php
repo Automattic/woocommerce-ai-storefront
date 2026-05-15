@@ -57,11 +57,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// builder. Tests that exercise renamed-checkout-page behavior
 		// can override this with their own when() call.
 		Functions\when( 'wc_get_checkout_url' )->justReturn( 'https://example.com/checkout/' );
-		// Minimal `add_query_arg()` stub mirroring WP core's behavior
-		// for BOTH supported signatures:
+		// Minimal `add_query_arg()` stub for the TWO signatures this
+		// test suite actually exercises:
 		//
-		//   - add_query_arg( array $args, string $url )
-		//   - add_query_arg( string $key, string $value, string $url )
+		//   - add_query_arg( array $args, string $url )           — bundle/grouped URL builders
+		//   - add_query_arg( string $key, string $value, string $url ) — stamp_currency_query
+		//
+		// WP core also supports a 1-arg form that reads $_SERVER['REQUEST_URI'];
+		// no caller in this codebase uses it, so the stub does not implement it.
+		// If a future test or production caller needs that shape, extend here.
 		//
 		// In both cases: parse out any existing query string on the URL,
 		// merge in the new args (later args overwrite earlier on key
