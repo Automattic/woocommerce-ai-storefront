@@ -320,7 +320,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString(
-			"- **Accepted currencies**: USD, EUR, GBP (catalog prices quoted in USD; checkout converts at WooPayments' rates)",
+			"- **Accepted currencies**: USD, EUR, GBP (catalog prices quoted in USD; checkout converts at the store's published rates)",
 			$output
 		);
 	}

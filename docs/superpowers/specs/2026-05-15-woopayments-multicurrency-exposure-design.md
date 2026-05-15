@@ -94,7 +94,7 @@ llms.txt (multi-currency case — qualifier is required when more than one code 
 
 ```
 - **Currency**: USD
-- **Accepted currencies**: USD, EUR, GBP (catalog prices quoted in USD; checkout converts at WooPayments' rates)
+- **Accepted currencies**: USD, EUR, GBP (catalog prices quoted in USD; checkout converts at the store's published rates)
 ```
 
 llms.txt (single-currency case): the `**Accepted currencies**` line is omitted entirely. The existing `**Currency**` line is unchanged.
