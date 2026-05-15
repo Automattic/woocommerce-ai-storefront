@@ -68,6 +68,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'wc_get_products' )->justReturn( [] );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
+		// `__()` returns its first arg (the source string). Used by
+		// generate()'s sprintf for the multi-currency Accepted-currencies
+		// line. JsonLdTest stubs the same shape via Functions\when().
+		Functions\when( '__' )->returnArg( 1 );
 
 		// `get_syndicated_brands()` consults `taxonomy_exists` to
 		// decide whether to query the `product_brand` taxonomy.
@@ -207,6 +211,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
 		WC_AI_Storefront::$test_settings = [];
 		Monkey\tearDown();
 		parent::tearDown();
@@ -288,6 +293,35 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 			'/## Store\s*\n\s*\n- \*\*Currency\*\*: USD/',
 			$output,
 			'## Store section should lead with Currency'
+		);
+	}
+
+	public function test_generate_accepted_currencies_line_omitted_on_single_currency_store(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( '**Accepted currencies**', $output );
+	}
+
+	public function test_generate_accepted_currencies_line_present_on_multi_currency_store(): void {
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR', 'GBP' );
+				}
+				return $value;
+			}
+		);
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString(
+			"- **Accepted currencies**: USD, EUR, GBP (catalog prices quoted in USD; checkout converts at WooPayments' rates)",
+			$output
 		);
 	}
 
@@ -688,7 +722,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_output_is_filterable_via_lines_hook(): void {
 		Functions\when( 'apply_filters' )->alias(
-			static function ( $hook, $lines, $settings ) {
+			// Variadic capture because generate() also fires
+			// `wc_ai_storefront_accepted_currencies` (2-arg) via the
+			// Multi_Currency helper; a strict 3-arg signature would
+			// ArgumentCountError on that 2-arg dispatch.
+			static function ( $hook, $lines, ...$extras ) {
 				if ( 'wc_ai_storefront_llms_txt_lines' === $hook ) {
 					$lines[] = '## Custom Extension';
 					$lines[] = 'Injected by third party.';

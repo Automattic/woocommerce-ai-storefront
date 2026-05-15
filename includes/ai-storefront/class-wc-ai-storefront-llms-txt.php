@@ -342,6 +342,16 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = '';
 		$lines[] = "- **Currency**: {$currency}";
 
+		$accepted_currencies = WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
+		if ( count( $accepted_currencies ) > 1 ) {
+			$lines[] = sprintf(
+				/* translators: 1: comma-separated list of additional ISO-4217 currency codes, 2: base ISO-4217 currency code. */
+				__( '- **Accepted currencies**: %1$s (catalog prices quoted in %2$s; checkout converts at WooPayments\' rates)', 'woocommerce-ai-storefront' ),
+				implode( ', ', $accepted_currencies ),
+				$currency
+			);
+		}
+
 		if ( ! empty( $postal_address ) ) {
 			$location_parts = [];
 			foreach ( [ 'addressLocality', 'addressRegion', 'addressCountry' ] as $key ) {
