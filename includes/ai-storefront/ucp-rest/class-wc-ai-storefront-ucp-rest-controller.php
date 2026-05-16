@@ -5389,10 +5389,24 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$unit_price_minor = (int) ( $wc_product['prices']['price'] ?? 0 );
 
 		// --- Price-drift warning (agent opt-in) ---
+		// Phase 2: the WCPay override may have switched the active
+		// presentment currency (see handle_checkout_sessions_create's
+		// `with_active_currency` wrap around the line-item loop). Read
+		// the active override directly so the drift comparison runs in
+		// the same currency the catalog response quoted, not the WC
+		// base. When no override is hooked (single-currency stores,
+		// or `context.currency` absent/not in accepted set), this falls
+		// through to `$store_currency` and behaves identically to Phase 1.
+		$effective_currency = $store_currency;
+		$override_currency  = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
+		if ( is_string( $override_currency ) && preg_match( '/^[A-Z]{3}$/', $override_currency ) ) {
+			$effective_currency = $override_currency;
+		}
+
 		$drift_warning = self::check_price_drift(
 			$line_item['expected_unit_price'] ?? null,
 			$unit_price_minor,
-			$store_currency,
+			$effective_currency,
 			$path
 		);
 		if ( null !== $drift_warning ) {
@@ -5637,7 +5651,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *
 	 * @param  mixed  $expected_unit_price Raw `expected_unit_price` from the request.
 	 * @param  int    $current_price_minor Current product price in minor units.
-	 * @param  string $store_currency      ISO 4217 currency code of the store.
+	 * @param  string $store_currency      ISO 4217 currency code to compare against.
+	 *                                     Pre-Phase-2 this was always the WC base
+	 *                                     currency; Phase 2 callers pass the active
+	 *                                     presentment currency when the WCPay override
+	 *                                     is hooked, so EUR-vs-EUR comparisons work.
 	 * @param  string $path                JSON path for the warning attribution.
 	 * @return array|null                  Warning message array, or null if no drift.
 	 */

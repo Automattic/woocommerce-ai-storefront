@@ -3978,4 +3978,119 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			'Override filter must be unhooked after the line-item loop completes'
 		);
 	}
+
+	public function test_check_price_drift_accepts_agent_currency_matching_context_currency(): void {
+		// expected_unit_price = 1999 EUR, current = 1999 EUR (Store API
+		// response returns EUR price under the override), context.currency = EUR.
+		// No drift warning expected.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
+		);
+		$GLOBALS['_mc_test_double'] = $mc;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+
+		$this->install_real_filter_runtime();
+
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) {
+				$response = new \WP_REST_Response( array(
+					'id'             => 1,
+					'type'           => 'simple',
+					'is_in_stock'    => true,
+					'is_purchasable' => true,
+					'prices'         => array( 'price' => '1999', 'currency_code' => 'EUR' ),
+				) );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
+		$request->set_body_params(
+			array(
+				'context'    => array( 'currency' => 'EUR' ),
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_1' ),
+						'quantity'            => 1,
+						'expected_unit_price' => array( 'amount' => 1999, 'currency' => 'EUR' ),
+					),
+				),
+			)
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_create( $request );
+
+		$body     = $response->get_data();
+		$messages = $body['messages'] ?? array();
+		foreach ( $messages as $m ) {
+			$this->assertNotSame(
+				WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED,
+				$m['code'] ?? null,
+				'No drift warning expected when expected and current both EUR with matching amounts'
+			);
+		}
+	}
+
+	public function test_check_price_drift_emits_warning_when_expected_eur_differs_from_current_eur(): void {
+		// expected_unit_price = 1999 EUR, current = 2099 EUR (price moved up).
+		// Drift warning should fire.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
+		);
+		$GLOBALS['_mc_test_double'] = $mc;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+
+		$this->install_real_filter_runtime();
+
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) {
+				$response = new \WP_REST_Response( array(
+					'id'             => 1,
+					'type'           => 'simple',
+					'is_in_stock'    => true,
+					'is_purchasable' => true,
+					'prices'         => array( 'price' => '2099', 'currency_code' => 'EUR' ),
+				) );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
+		$request->set_body_params(
+			array(
+				'context'    => array( 'currency' => 'EUR' ),
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_1' ),
+						'quantity'            => 1,
+						'expected_unit_price' => array( 'amount' => 1999, 'currency' => 'EUR' ),
+					),
+				),
+			)
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_create( $request );
+
+		$body     = $response->get_data();
+		$messages = $body['messages'] ?? array();
+		$found    = false;
+		foreach ( $messages as $m ) {
+			if ( WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED === ( $m['code'] ?? null ) ) {
+				$found = true;
+			}
+		}
+		$this->assertTrue( $found, 'Drift warning must fire when EUR amounts differ' );
+	}
 }
