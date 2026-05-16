@@ -6,9 +6,13 @@
  * store accepts. When WooPayments' multi-currency feature is active,
  * the list mirrors WCPay's enabled set with the WooCommerce base
  * currency forced into the first position. When WooPayments is
- * absent or the multi-currency feature is disabled — both cases
- * result in `function_exists('WC_Payments_Multi_Currency')` returning
- * false — the list is `[ base_currency ]` — never empty, never null.
+ * absent or the multi-currency feature is currently disabled, the
+ * list is `[ base_currency ]` — never empty, never null. The
+ * runtime gate is `\WC_Payments_Features::is_customer_multi_currency_enabled()`,
+ * not just `function_exists('WC_Payments_Multi_Currency')` — the
+ * latter persists from `plugins_loaded:12` regardless of subsequent
+ * toggle changes, and `get_enabled_currencies()` returns the
+ * historical configured set whether the feature is on or off.
  *
  * All call sites get the same array shape regardless of detection
  * outcome, which keeps consumer code free of detection branches.
@@ -85,36 +89,47 @@ class WC_AI_Storefront_Multi_Currency {
 
 		$list = array( $base );
 
-		// Soft-dependency probe. `WC_Payments_Multi_Currency` is a global
-		// function defined in WCPay's compat layer only when multi-currency
-		// is enabled and WCPay's bootstrap has fully run. Its existence is
-		// both the feature-flag check and the singleton accessor, so
-		// `function_exists()` replaces the old `class_exists()` + `::instance()`
-		// chain (which returned null before WCPay's boot sequence completed)
-		// and the `is_multi_currency_enabled()` guard (that method does not
-		// exist on the MultiCurrency class in WCPay 10.x). Wrapped in
-		// try-catch for partial-boot resilience.
-		if ( function_exists( 'WC_Payments_Multi_Currency' ) ) {
+		// Soft-dependency probe with explicit runtime feature-flag check.
+		//
+		// `function_exists('WC_Payments_Multi_Currency')` is necessary but
+		// NOT sufficient: the function is registered at boot time based on a
+		// load-time option read, and `get_enabled_currencies()` returns the
+		// historical configured set regardless of whether the feature is
+		// currently toggled on. A merchant who configured 13 currencies and
+		// then disabled the multi-currency feature would still see all 13
+		// reported via the singleton — so we must explicitly re-check the
+		// merchant-facing toggle at runtime via
+		// `WC_Payments_Features::is_customer_multi_currency_enabled()`.
+		//
+		// The entire probe — including the feature-flag read — is wrapped in
+		// try-catch. `is_customer_multi_currency_enabled()` reads a DB option
+		// via `get_option()`, which fires the `option_*` filter chain; a
+		// third-party hook on that filter can throw, so the call must be
+		// inside the catch boundary.
+		if ( function_exists( 'WC_Payments_Multi_Currency' )
+			&& class_exists( '\WC_Payments_Features' ) ) {
 			try {
-				$mc = WC_Payments_Multi_Currency();
-				if ( is_object( $mc ) && method_exists( $mc, 'get_enabled_currencies' ) ) {
-					$enabled = $mc->get_enabled_currencies();
-					if ( is_array( $enabled ) ) {
-						// `get_enabled_currencies()` returns an associative
-						// array keyed by ISO-4217 codes, with Currency
-						// objects as values. Keys are typically uppercase
-						// but we call strtoupper() unconditionally to stay
-						// resilient to non-canonical casing from future
-						// WCPay builds. We read the keys to stay resilient
-						// to refactors of the Currency object's method
-						// surface.
-						foreach ( array_keys( $enabled ) as $code ) {
-							$list[] = strtoupper( (string) $code );
+				if ( \WC_Payments_Features::is_customer_multi_currency_enabled() ) {
+					$mc = WC_Payments_Multi_Currency();
+					if ( is_object( $mc ) ) {
+						$enabled = $mc->get_enabled_currencies();
+						if ( is_array( $enabled ) ) {
+							// `get_enabled_currencies()` returns an associative
+							// array keyed by ISO-4217 codes, with Currency
+							// objects as values. Keys are typically uppercase
+							// but we call strtoupper() unconditionally to stay
+							// resilient to non-canonical casing from future
+							// WCPay builds. We read the keys to stay resilient
+							// to refactors of the Currency object's method
+							// surface.
+							foreach ( array_keys( $enabled ) as $code ) {
+								$list[] = strtoupper( (string) $code );
+							}
 						}
 					}
 				}
 			} catch ( \Throwable $e ) {
-				// WCPay function or returned object in partial-boot state;
+				// WCPay or a filter callback in partial-boot state;
 				// fall through to base-only list.
 				WC_AI_Storefront_Logger::debug(
 					'multi-currency: WC_Payments_Multi_Currency() threw %s — falling back to base-only list. Message: %s',

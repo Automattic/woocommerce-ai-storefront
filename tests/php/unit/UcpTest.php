@@ -582,16 +582,41 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNull( $this->get_store_context()['country'] );
 	}
 
-	public function test_store_context_accepted_currencies_includes_base_on_single_currency_store(): void {
-		// On a stock WC install with no WooPayments, accepted_currencies
-		// is a 1-element array containing the base currency. The shape
-		// is stable — single-currency stores get the same field as
-		// multi-currency stores.
+	public function test_store_context_accepted_currencies_omitted_on_single_currency_store(): void {
+		// On a stock WC install with no WooPayments (or WCPay's multi-currency
+		// feature toggled off), `get_accepted_currencies()` returns
+		// `[base_currency]` — a single-element array. The UCP manifest
+		// omits the `accepted_currencies` key entirely in that case,
+		// so the manifest doesn't falsely advertise multi-currency
+		// support when there is none.
 		WC_AI_Storefront_Multi_Currency::reset_cache();
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$ctx = $this->get_store_context();
-		$this->assertSame( array( 'USD' ), $ctx['accepted_currencies'] );
+		$this->assertArrayNotHasKey( 'accepted_currencies', $ctx );
+	}
+
+	public function test_store_context_accepted_currencies_omitted_when_wcpay_multi_currency_feature_disabled(): void {
+		// Integration test: even when a WCPay double is wired up with multiple
+		// currencies, the UCP manifest must NOT emit `accepted_currencies` when
+		// the feature-flag gate resolves to a single-currency list. The filter
+		// here simulates the detection path returning base-only (as it would
+		// when `is_customer_multi_currency_enabled()` is false) — the manifest
+		// omission is then exercised end-to-end through `build_store_context()`.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				// Leave accepted_currencies unmodified — the auto-detection
+				// path returns ['USD'] when the feature gate is off, which
+				// is what the default setUp produces. This confirms the
+				// UCP layer's count > 1 guard fires and omits the key.
+				return $value;
+			}
+		);
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$ctx = $this->get_store_context();
+		$this->assertArrayNotHasKey( 'accepted_currencies', $ctx );
 	}
 
 	public function test_store_context_accepted_currencies_reflects_filter_override(): void {
@@ -619,8 +644,33 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// consumer documentation, this test fires. The fix is
 		// deliberate: either update this test (conscious addition)
 		// or remove the stray field.
+		//
+		// `accepted_currencies` is conditionally emitted (only when more
+		// than the base currency is accepted) so it's not in the base
+		// shape — see test_store_context_fields_include_accepted_currencies_on_multi_currency_store.
 		$this->assertSame(
-			[ 'currency', 'accepted_currencies', 'locale', 'country', 'prices_include_tax', 'shipping_enabled' ],
+			[ 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled' ],
+			array_keys( $this->get_store_context() )
+		);
+	}
+
+	public function test_store_context_fields_include_accepted_currencies_on_multi_currency_store(): void {
+		// Multi-currency case: the conditionally-emitted
+		// `accepted_currencies` key appears when the accepted list has
+		// more than one entry. Filter-driven here for the same reason
+		// as test_store_context_accepted_currencies_reflects_filter_override.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		$this->assertSame(
+			[ 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled', 'accepted_currencies' ],
 			array_keys( $this->get_store_context() )
 		);
 	}
