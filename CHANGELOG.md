@@ -2,6 +2,15 @@
 
 ### Features
 ### Fixes
+### Refactors
+### Tests
+### Docs
+
+---
+
+## [0.17.1] – 2026-05-16
+
+### Fixes
 
 - **WooPayments multi-currency detection corrected for WCPay 10.x.**
   - Replaced the `\WCPay\MultiCurrency\MultiCurrency::instance()` probe (which returns `null` until WCPay's bootstrap completes) with `function_exists('WC_Payments_Multi_Currency')` plus a call to that global function. The global is registered by WCPay's compat layer only when the multi-currency feature is enabled, so its existence is both the feature-flag check and the singleton accessor.
@@ -9,14 +18,11 @@
 - **Observability: catch blocks in the multi-currency probe now log diagnostic messages.**
   - Both `try`/`catch` blocks (WCPay probe and `wc_ai_storefront_accepted_currencies` filter) call `WC_AI_Storefront_Logger::debug()` on exception, making silent fallback-to-base-currency detectable in debug logs.
 
-### Refactors
 ### Tests
 
 - **Two new `MultiCurrencyTest` cases.**
   - `test_get_accepted_currencies_wcpay_function_returns_non_object_falls_back_to_base`: exercises the `is_object()` guard when the WCPay function returns a non-null scalar.
   - `test_get_accepted_currencies_memoizes_wcpay_call`: verifies the WCPay probe is behind the cache guard via Mockery `->once()` assertion.
-
-### Docs
 
 ---
 
