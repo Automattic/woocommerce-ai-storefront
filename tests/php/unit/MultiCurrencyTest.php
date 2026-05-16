@@ -729,5 +729,59 @@ namespace {
 
 			$this->assertFalse( $during );
 		}
+
+		// ------------------------------------------------------------------
+		// convert_amount
+		// ------------------------------------------------------------------
+
+		public function test_convert_amount_returns_input_when_currencies_match(): void {
+			// Same-currency conversion is a no-op even without WCPay.
+			$this->assertSame(
+				1999,
+				WC_AI_Storefront_Multi_Currency::convert_amount( 1999, 'USD', 'USD' )
+			);
+		}
+
+		public function test_convert_amount_uses_wcpay_get_price_for_cross_currency(): void {
+			// Mock the WCPay singleton so get_price() applies rate + rounding + charm.
+			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+				array(
+					'USD' => new \stdClass(),
+					'EUR' => new \stdClass(),
+				)
+			);
+			// Convert 5000 (EUR minor units) to 5500 USD minor units.
+			$mc->shouldReceive( 'get_price' )
+				->with( 50.0, 'product' )
+				->andReturn( 55.00 );
+			$GLOBALS['_mc_test_double'] = $mc;
+
+			// Inside the override scope, convert_amount delegates to WCPay's
+			// get_price(). We set up the override so WCPay's "selected
+			// currency" is the source ($from), and get_price() converts to
+			// the active selected currency.
+			$converted = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'EUR',
+				static function () {
+					return WC_AI_Storefront_Multi_Currency::convert_amount( 5000, 'EUR', 'USD' );
+				}
+			);
+
+			// get_price() returned 55.00 major units; convert_amount returns
+			// minor units (rounded to int).
+			$this->assertSame( 5500, $converted );
+		}
+
+		public function test_convert_amount_throws_when_wcpay_unavailable(): void {
+			// $_mc_test_double = null → WC_Payments_Multi_Currency() returns null →
+			// is_object() guard throws. (We cannot reach the function_exists() throw
+			// because the test harness unconditionally declares the WC_Payments_Multi_Currency
+			// shim at file load — known scaffolding limitation, not a defect.)
+			$GLOBALS['_mc_test_double'] = null;
+
+			$this->expectException( \RuntimeException::class );
+			WC_AI_Storefront_Multi_Currency::convert_amount( 5000, 'EUR', 'USD' );
+		}
 	}
 }

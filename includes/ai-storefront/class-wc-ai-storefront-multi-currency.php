@@ -318,6 +318,65 @@ class WC_AI_Storefront_Multi_Currency {
 	}
 
 	/**
+	 * Convert a minor-units amount from one currency to another using
+	 * WooPayments' rate + rounding + charm logic.
+	 *
+	 * Used by the UCP filter-conversion path: agent sends
+	 * `filters.price.min = 5000` (EUR minor units), we convert to
+	 * base-currency minor units before forwarding to the Store API
+	 * `min_price` parameter.
+	 *
+	 * Delegates to `WCPay\MultiCurrency\MultiCurrency::get_price()`
+	 * which applies the merchant's per-currency settings (manual or
+	 * auto exchange rate, rounding precision, charm pricing offset).
+	 * Callers must already be inside a `with_active_currency( $from )`
+	 * scope so WCPay's `get_selected_currency()` returns the source
+	 * currency. WCPay's `get_price()` then converts the agent-supplied
+	 * amount in the source currency back into the merchant's base
+	 * currency (which is the natural denomination for downstream Store
+	 * API filter bounds).
+	 *
+	 * Same-currency conversions are short-circuited as a no-op so the
+	 * helper can be called unconditionally without a WCPay check.
+	 *
+	 * @since 0.18.0
+	 *
+	 * @param int    $minor_units Source amount in ISO 4217 minor units.
+	 * @param string $from        Source currency code (agent-supplied).
+	 * @param string $to          Target currency code.
+	 * @return int                Converted amount in target minor units.
+	 *
+	 * @throws \RuntimeException When WooPayments is unavailable.
+	 */
+	public static function convert_amount( int $minor_units, string $from, string $to ): int {
+		if ( strtoupper( $from ) === strtoupper( $to ) ) {
+			return $minor_units;
+		}
+
+		if ( ! function_exists( 'WC_Payments_Multi_Currency' ) ) {
+			throw new \RuntimeException( 'WooPayments multi-currency is not available' );
+		}
+
+		$mc = WC_Payments_Multi_Currency();
+		if ( ! is_object( $mc ) ) {
+			throw new \RuntimeException( 'WooPayments multi-currency singleton returned non-object' );
+		}
+
+		// minor → major before invoking WCPay. WCPay's get_price() expects
+		// major units (USD: dollars not cents) because its rounding and
+		// charm settings are denominated in major units — feeding minor
+		// units would multiply the charm/rounding constants by 100x.
+		$source_major    = $minor_units / 100.0;
+		$converted_major = $mc->get_price( $source_major, 'product' );
+
+		// major → minor on the way back out. UCP minor-units are integer;
+		// round to nearest. Assumes a 2-decimal target currency (the current
+		// accepted-currencies set); non-2-decimal currencies would need
+		// per-currency exponent lookup via wc_get_price_decimals().
+		return (int) round( $converted_major * 100 );
+	}
+
+	/**
 	 * Normalize an array of currency codes: uppercase, drop entries
 	 * that fail the ISO-4217 pattern, deduplicate preserving order.
 	 *
