@@ -2,8 +2,18 @@
 
 ### Features
 ### Fixes
+
+- **Multi-currency support is now correctly hidden when WooPayments' multi-currency feature is toggled off.**
+  - The probe now checks `\WC_Payments_Features::is_customer_multi_currency_enabled()` at runtime in addition to `function_exists('WC_Payments_Multi_Currency')`. The function persists from `plugins_loaded:12` and `get_enabled_currencies()` returns the historical configured set regardless of whether the feature is currently on — so without the runtime gate, merchants who toggle multi-currency off still saw their previously-configured currencies advertised.
+  - UCP manifest `store_context.accepted_currencies` is now omitted entirely on single-currency stores (instead of emitting a 1-element `[base]` list that falsely signals multi-currency support). Matches the existing llms.txt behaviour.
+
 ### Refactors
 ### Tests
+
+- **Two new test cases.**
+  - `MultiCurrencyTest::test_get_accepted_currencies_wcpay_feature_disabled_returns_base_only_even_with_configured_currencies`: covers the runtime feature-flag gate.
+  - `UcpTest::test_store_context_fields_include_accepted_currencies_on_multi_currency_store`: pins the multi-currency manifest shape now that single-currency omits the key.
+
 ### Docs
 
 ---

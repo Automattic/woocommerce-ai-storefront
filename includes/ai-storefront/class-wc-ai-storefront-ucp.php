@@ -531,14 +531,24 @@ class WC_AI_Storefront_Ucp {
 		// for those.
 		$locale = str_replace( '_', '-', get_locale() );
 
-		return [
-			'currency'            => get_woocommerce_currency(),
-			'accepted_currencies' => WC_AI_Storefront_Multi_Currency::get_accepted_currencies(),
-			'locale'              => $locale,
-			'country'             => $country ? $country : null,
-			'prices_include_tax'  => (bool) wc_prices_include_tax(),
-			'shipping_enabled'    => (bool) wc_shipping_enabled(),
+		// Only advertise `accepted_currencies` when the store actually
+		// accepts more than the base currency. A single-entry list
+		// (which is what `get_accepted_currencies()` returns when
+		// WooPayments multi-currency is absent or disabled) duplicates
+		// `currency` and falsely signals multi-currency support to
+		// agents. Omitting the key is the honest signal.
+		$accepted_currencies = WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
+		$context             = [
+			'currency'           => get_woocommerce_currency(),
+			'locale'             => $locale,
+			'country'            => $country ? $country : null,
+			'prices_include_tax' => (bool) wc_prices_include_tax(),
+			'shipping_enabled'   => (bool) wc_shipping_enabled(),
 		];
+		if ( count( $accepted_currencies ) > 1 ) {
+			$context['accepted_currencies'] = $accepted_currencies;
+		}
+		return $context;
 	}
 
 	/**

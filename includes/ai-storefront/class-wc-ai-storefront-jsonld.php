@@ -1894,6 +1894,12 @@ class WC_AI_Storefront_JsonLd {
 			'name'               => get_bloginfo( 'name' ),
 			'description'        => get_bloginfo( 'description' ),
 			'url'                => home_url( '/' ),
+			// Always emitted — even on single-currency stores — because Schema.org
+			// `currenciesAccepted` is a positive declarative claim ("this store
+			// accepts X") rather than a multi-currency advertising flag. This
+			// intentionally diverges from the UCP manifest and llms.txt, which
+			// both omit `accepted_currencies` on single-currency stores to avoid
+			// falsely advertising multi-currency support to agent consumers.
 			'currenciesAccepted' => implode( ' ', WC_AI_Storefront_Multi_Currency::get_accepted_currencies() ),
 			'potentialAction'    => array(
 				'@type'       => 'SearchAction',

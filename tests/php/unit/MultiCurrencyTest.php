@@ -26,22 +26,24 @@ namespace {
 
 	// Test stand-in for the real WCPay global function.
 	//
-	// Production code calls `function_exists('WC_Payments_Multi_Currency')`
-	// as the combined feature-flag check + singleton accessor.
+	// Production code uses `function_exists('WC_Payments_Multi_Currency')`
+	// as the first gate (proves WCPay is installed), then separately checks
+	// `\WC_Payments_Features::is_customer_multi_currency_enabled()` as the
+	// runtime feature-flag gate. The two are deliberately distinct: the
+	// function persists from boot regardless of subsequent toggle changes;
+	// the feature-flag gate reads the live option.
 	//
 	// We declare the function unconditionally here (rather than via Brain
-	// Monkey `when()`) because it needs a static $test_double slot —
+	// Monkey `when()`) because it needs a static test-double slot —
 	// Patchwork can't carry test-scoped state through an alias closure
 	// cleanly. Setting `$_mc_test_double` directly from each test controls
 	// what the function returns.
 	//
-	// To simulate "WCPay not installed / feature off" (both map to
-	// `function_exists` = false in production), tests leave `$_mc_test_double`
-	// as null; the function still exists in the test process but returns null,
-	// which is the observable equivalent — the `is_object()` guard
-	// short-circuits identically. The "function doesn't exist at all" path
-	// cannot be tested with this scaffold because the stub is declared
-	// unconditionally at file-load time.
+	// To simulate "WCPay not installed": tests cannot replicate this path
+	// exactly (the stub is declared at file-load time), but setting
+	// `$_mc_test_double = null` exercises the same observable branch — the
+	// `is_object()` guard short-circuits identically to the function not
+	// existing. The feature-flag gate is controlled via `$_mc_feature_enabled`.
 	//
 	// To simulate a partial-boot exception, tests set `$_mc_throw = true`.
 	$GLOBALS['_mc_test_double'] = null;
@@ -69,6 +71,27 @@ namespace {
 		class_alias( 'WCPay_MultiCurrency_MultiCurrency_Stub', '\WCPay\MultiCurrency\MultiCurrency' );
 	}
 
+	// Stub for WCPay's feature-flag class. Production code calls
+	// `\WC_Payments_Features::is_customer_multi_currency_enabled()` at
+	// runtime as the explicit multi-currency-feature gate (the global
+	// function being defined isn't sufficient — it persists from boot
+	// regardless of subsequent toggle changes).
+	// Tests control the return value via `$_mc_feature_enabled`:
+	//   true / false  → normal bool return
+	//   'throw'       → throws RuntimeException (simulates a bad option_* filter)
+	$GLOBALS['_mc_feature_enabled'] = true;
+
+	if ( ! class_exists( '\WC_Payments_Features' ) ) {
+		class WC_Payments_Features {
+			public static function is_customer_multi_currency_enabled() {
+				if ( 'throw' === $GLOBALS['_mc_feature_enabled'] ) {
+					throw new \RuntimeException( 'WCPay feature-flag option filter exploded' );
+				}
+				return (bool) $GLOBALS['_mc_feature_enabled'];
+			}
+		}
+	}
+
 	class MultiCurrencyTest extends \PHPUnit\Framework\TestCase {
 		use MockeryPHPUnitIntegration;
 
@@ -76,8 +99,9 @@ namespace {
 			parent::setUp();
 			Monkey\setUp();
 			WC_AI_Storefront_Multi_Currency::reset_cache();
-			$GLOBALS['_mc_test_double'] = null;
-			$GLOBALS['_mc_throw']       = false;
+			$GLOBALS['_mc_test_double']     = null;
+			$GLOBALS['_mc_throw']           = false;
+			$GLOBALS['_mc_feature_enabled'] = true;
 
 			Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 			Functions\when( 'apply_filters' )->returnArg( 2 );
@@ -107,8 +131,9 @@ namespace {
 		}
 
 		protected function tearDown(): void {
-			$GLOBALS['_mc_test_double'] = null;
-			$GLOBALS['_mc_throw']       = false;
+			$GLOBALS['_mc_test_double']     = null;
+			$GLOBALS['_mc_throw']           = false;
+			$GLOBALS['_mc_feature_enabled'] = true;
 			Monkey\tearDown();
 			parent::tearDown();
 		}
@@ -221,12 +246,38 @@ namespace {
 			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
 		}
 
+		public function test_get_accepted_currencies_wcpay_features_class_throws_falls_back_to_base(): void {
+			// Simulates a third-party `option_*` filter on the DB option that
+			// backs `is_customer_multi_currency_enabled()` throwing an exception.
+			// The entire probe — including the feature-flag read — lives inside
+			// the try-catch boundary so a bad filter hook can't 500 every request.
+			// `'throw'` sentinel triggers the stub to throw rather than return bool.
+			$GLOBALS['_mc_feature_enabled'] = 'throw';
+
+			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
+		}
+
 		public function test_get_accepted_currencies_wcpay_function_returns_non_object_falls_back_to_base(): void {
 			// Exercises the is_object() guard: function exists and returns a
 			// non-null scalar (e.g. WCPay ships a refactor where the function
 			// returns true/1 instead of the singleton). The is_object() check
 			// short-circuits cleanly without reaching get_enabled_currencies().
 			$GLOBALS['_mc_test_double'] = true;
+
+			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
+		}
+
+		public function test_get_accepted_currencies_wcpay_feature_disabled_returns_base_only_even_with_configured_currencies(): void {
+			// The merchant toggled multi-currency off in WooPayments settings,
+			// but the global function is still defined (registered at
+			// plugins_loaded:12) and get_enabled_currencies() still returns the
+			// historical configured set. The runtime feature-flag check via
+			// `\WC_Payments_Features::is_customer_multi_currency_enabled()`
+			// is what stops us advertising those currencies.
+			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+			$mc->shouldNotReceive( 'get_enabled_currencies' );
+			$GLOBALS['_mc_test_double']     = $mc;
+			$GLOBALS['_mc_feature_enabled'] = false;
 
 			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
 		}

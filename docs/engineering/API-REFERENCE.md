@@ -35,7 +35,7 @@ The `/.well-known/ucp` manifest carries a `config.store_context` block agents co
 | Field | Type | Description |
 |-------|------|-------------|
 | `currency` | `string` | ISO-4217 base currency code. Sourced from `get_woocommerce_currency()`. Single source of truth for "the store's default currency." |
-| `accepted_currencies` | `array<string>` | Ordered, deduplicated list of ISO-4217 currency codes the store accepts. Always at least one element. Base currency is always first. Mirrors `store_context.currency` (one-element list) when the store is single-currency; reflects the WooPayments enabled set when multi-currency is active. Since 0.17.0. |
+| `accepted_currencies` | `array<string>` | Ordered, deduplicated list of ISO-4217 currency codes the store accepts. **Conditionally emitted** — present only when the store accepts more than one currency (WooPayments multi-currency enabled with at least one additional currency configured). Omitted on single-currency stores so the manifest doesn't falsely advertise multi-currency support. Base currency is always first when present. Since 0.17.0. |
 | `prices_include_tax` | `bool` | Whether the catalog `price` figures already include tax. Sourced from `wc_prices_include_tax()`. |
 | `shipping_enabled` | `bool` | Whether the store offers shipping at all. Sourced from `wc_shipping_enabled()`. |
 | `country` | `string` | ISO-3166 base country code. Sourced from `WC()->countries->get_base_country()`. |
