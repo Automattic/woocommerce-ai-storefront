@@ -2963,4 +2963,60 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'min_price', $captured_params );
 		$this->assertArrayNotHasKey( 'max_price', $captured_params );
 	}
+
+	public function test_map_ucp_search_emits_warning_when_currency_conversion_throws(): void {
+		// EUR is in accepted_currencies, but WCPay's get_price throws —
+		// the convert call inside with_active_currency raises through
+		// convert_amount, the catch block fires, and the filter is dropped
+		// with a "Conversion … failed" warning. Logs at debug level.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
+		);
+		$mc->shouldReceive( 'get_price' )->andThrow( new \RuntimeException( 'WCPay rate fetch failed' ) );
+		$GLOBALS['_mc_test_double'] = $mc;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$captured_params = array();
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) use ( &$captured_params ) {
+				$captured_params['min_price'] = $req->get_param( 'min_price' );
+				$captured_params['max_price'] = $req->get_param( 'max_price' );
+				$response                     = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_body_params(
+			array(
+				'context' => array( 'currency' => 'EUR' ),
+				'filters' => array( 'price' => array( 'min' => 5000, 'max' => 10000 ) ),
+			)
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_catalog_search( $request );
+
+		$body  = $response->get_data();
+		$found = null;
+		foreach ( $body['messages'] ?? array() as $msg ) {
+			if (
+				'warning' === ( $msg['type'] ?? null )
+				&& WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED === ( $msg['code'] ?? null )
+				&& str_contains( $msg['content'] ?? '', 'Conversion of price filter from' )
+			) {
+				$found = $msg;
+			}
+		}
+		$this->assertNotNull( $found, 'Conversion-failed warning must be emitted when WCPay throws' );
+		$this->assertNull( $captured_params['min_price'], 'min_price must NOT reach the Store API on conversion failure' );
+		$this->assertNull( $captured_params['max_price'], 'max_price must NOT reach the Store API on conversion failure' );
+	}
 }

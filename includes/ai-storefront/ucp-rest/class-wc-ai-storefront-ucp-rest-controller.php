@@ -4376,8 +4376,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 							// Conversion failed (WCPay throw, partial-boot, etc.).
 							// Drop the filter + emit the standard fallback warning.
 							WC_AI_Storefront_Logger::debug(
-								'UCP catalog/search: filter conversion threw ' . get_class( $e )
-									. ' — dropping filters.price. Message: ' . $e->getMessage()
+								'UCP catalog/search: filter conversion threw %s — dropping filters.price. Message: %s',
+								get_class( $e ),
+								$e->getMessage()
 							);
 							$apply_price_filter = false;
 							$messages[]         = [
