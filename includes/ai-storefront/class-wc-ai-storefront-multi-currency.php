@@ -268,6 +268,56 @@ class WC_AI_Storefront_Multi_Currency {
 	}
 
 	/**
+	 * Run a callable with a WooPayments presentment-currency override
+	 * active for its duration. Used by UCP dispatch sites that need
+	 * catalog responses, filter math, or price comparisons to run in
+	 * the agent's requested currency.
+	 *
+	 * Mechanism: hooks `wcpay_multi_currency_override_selected_currency`
+	 * (the WCPay-sanctioned filter for "switch presentment without
+	 * touching session state") to return `$code`, runs `$callback`,
+	 * and unhooks in `finally`. No session writes; safe in stateless
+	 * UCP request handlers.
+	 *
+	 * No-op (callable runs unwrapped, no filter hooked) when `$code`
+	 * is not in `get_accepted_currencies()`. This lets callers pass
+	 * the agent's raw `context.currency` blindly; the helper itself
+	 * decides whether the override should apply.
+	 *
+	 * @since 0.18.0
+	 *
+	 * @param string   $code     Requested ISO-4217 currency code.
+	 * @param callable $callback Callable to run inside the override scope.
+	 * @return mixed             Whatever $callback returned.
+	 *
+	 * @throws \Throwable Re-throws anything $callback throws; the filter
+	 *                    is unhooked in `finally` before the exception
+	 *                    propagates.
+	 */
+	public static function with_active_currency( $code, callable $callback ) {
+		// Validate code shape + membership in accepted set. Either
+		// failure → run callable without an override hooked.
+		$normalized = is_string( $code ) ? strtoupper( trim( $code ) ) : '';
+		if ( ! preg_match( '/^[A-Z]{3}$/', $normalized ) ) {
+			return $callback();
+		}
+		if ( ! in_array( $normalized, self::get_accepted_currencies(), true ) ) {
+			return $callback();
+		}
+
+		$override = static function () use ( $normalized ) {
+			return $normalized;
+		};
+
+		add_filter( 'wcpay_multi_currency_override_selected_currency', $override, 10, 1 );
+		try {
+			return $callback();
+		} finally {
+			remove_filter( 'wcpay_multi_currency_override_selected_currency', $override, 10 );
+		}
+	}
+
+	/**
 	 * Normalize an array of currency codes: uppercase, drop entries
 	 * that fail the ISO-4217 pattern, deduplicate preserving order.
 	 *

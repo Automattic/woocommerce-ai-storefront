@@ -556,5 +556,177 @@ namespace {
 			$second = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $first, 'USD' );
 			$this->assertSame( $first, $second, 'Double-stamping should be a no-op' );
 		}
+
+		// ------------------------------------------------------------------
+		// with_active_currency
+		// ------------------------------------------------------------------
+
+		/**
+		 * Swap the default Brain Monkey filter stubs for a minimal
+		 * real-WordPress-style filter runtime: add_filter / remove_filter
+		 * store callbacks in a test-local map keyed by hook name and
+		 * apply_filters actually runs them in priority order.
+		 *
+		 * Brain Monkey's `executeApplyFilters` does NOT run callbacks
+		 * registered via `add_filter` — it only matches against
+		 * `Filters\expectApplied()` expectations and otherwise returns
+		 * the default value unchanged. For the `with_active_currency`
+		 * tests we need end-to-end hook behavior (production code
+		 * registers a hook via `add_filter`, callers verify via
+		 * `apply_filters`), so we install a real runtime here.
+		 *
+		 * Hooks for which no callback is registered fall through and
+		 * `apply_filters` returns the default value unchanged — same
+		 * behavior as the setUp default `Functions\when('apply_filters')->returnArg(2)`.
+		 */
+		private function install_real_filter_runtime(): void {
+			$GLOBALS['_mc_test_filters'] = array();
+
+			Functions\when( 'add_filter' )->alias(
+				static function ( $hook, $callback, $priority = 10, $accepted_args = 1 ) {
+					$GLOBALS['_mc_test_filters'][ $hook ][ $priority ][] = array(
+						'cb'   => $callback,
+						'args' => $accepted_args,
+					);
+					return true;
+				}
+			);
+
+			Functions\when( 'remove_filter' )->alias(
+				static function ( $hook, $callback, $priority = 10 ) {
+					if ( empty( $GLOBALS['_mc_test_filters'][ $hook ][ $priority ] ) ) {
+						return false;
+					}
+					foreach ( $GLOBALS['_mc_test_filters'][ $hook ][ $priority ] as $idx => $entry ) {
+						if ( $entry['cb'] === $callback ) {
+							unset( $GLOBALS['_mc_test_filters'][ $hook ][ $priority ][ $idx ] );
+							return true;
+						}
+					}
+					return false;
+				}
+			);
+
+			Functions\when( 'apply_filters' )->alias(
+				static function ( $hook, $value, ...$rest ) {
+					if ( empty( $GLOBALS['_mc_test_filters'][ $hook ] ) ) {
+						return $value;
+					}
+					$by_priority = $GLOBALS['_mc_test_filters'][ $hook ];
+					ksort( $by_priority );
+					foreach ( $by_priority as $entries ) {
+						foreach ( $entries as $entry ) {
+							$args   = array_merge( array( $value ), $rest );
+							$args   = array_slice( $args, 0, max( 1, (int) $entry['args'] ) );
+							$value  = call_user_func_array( $entry['cb'], $args );
+						}
+					}
+					return $value;
+				}
+			);
+		}
+
+		public function test_with_active_currency_runs_callable_and_returns_its_value(): void {
+			$result = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'USD',
+				static function () {
+					return 'callable-return-value';
+				}
+			);
+			$this->assertSame( 'callable-return-value', $result );
+		}
+
+		public function test_with_active_currency_hooks_override_filter_during_callable(): void {
+			// Inside the callable, apply_filters of the WCPay override filter
+			// should return our requested currency. Outside, it should not.
+			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+				array(
+					'USD' => new \stdClass(),
+					'EUR' => new \stdClass(),
+				)
+			);
+			$GLOBALS['_mc_test_double'] = $mc;
+
+			// Swap in a real-WordPress-style filter runtime: add_filter
+			// stores callbacks, apply_filters runs them, remove_filter
+			// pulls them out. Brain Monkey's default stubs don't run
+			// add_filter callbacks (they only verify expectations), so
+			// this helper is required for end-to-end hook tests.
+			$this->install_real_filter_runtime();
+
+			$during = null;
+			WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'EUR',
+				static function () use ( &$during ) {
+					$during = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
+				}
+			);
+			$after = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
+
+			$this->assertSame( 'EUR', $during, 'Inside the callable, the filter should return EUR' );
+			$this->assertFalse( $after, 'After the callable returns, the filter should be unhooked' );
+		}
+
+		public function test_with_active_currency_unhooks_filter_on_exception(): void {
+			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+				array(
+					'USD' => new \stdClass(),
+					'EUR' => new \stdClass(),
+				)
+			);
+			$GLOBALS['_mc_test_double'] = $mc;
+
+			$this->install_real_filter_runtime();
+
+			try {
+				WC_AI_Storefront_Multi_Currency::with_active_currency(
+					'EUR',
+					static function () {
+						throw new \RuntimeException( 'callable exploded' );
+					}
+				);
+				$this->fail( 'Expected exception to propagate' );
+			} catch ( \RuntimeException $e ) {
+				$this->assertSame( 'callable exploded', $e->getMessage() );
+			}
+
+			$after = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
+			$this->assertFalse( $after, 'Filter must be unhooked even when callable throws' );
+		}
+
+		public function test_with_active_currency_is_noop_when_code_not_in_accepted_set(): void {
+			// USD-only store (no WCPay double, no extra currencies). The
+			// callable still runs but the filter is never hooked, so the
+			// agent's request runs in base currency.
+			$this->install_real_filter_runtime();
+
+			$during = null;
+			$result = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'EUR', // not in accepted set on a USD-only store
+				static function () use ( &$during ) {
+					$during = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
+					return 'ran-anyway';
+				}
+			);
+
+			$this->assertSame( 'ran-anyway', $result );
+			$this->assertFalse( $during, 'Filter must NOT be hooked when code is not in accepted set' );
+		}
+
+		public function test_with_active_currency_is_noop_when_code_is_malformed(): void {
+			$this->install_real_filter_runtime();
+
+			$during = null;
+			WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'eu', // not ISO 4217
+				static function () use ( &$during ) {
+					$during = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
+				}
+			);
+
+			$this->assertFalse( $during );
+		}
 	}
 }
