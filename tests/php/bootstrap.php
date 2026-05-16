@@ -36,6 +36,9 @@ if ( ! defined( 'DAY_IN_SECONDS' ) ) {
 // Load the settings stub before classes that reference WC_AI_Storefront statically.
 require_once __DIR__ . '/stubs/class-wc-ai-storefront-stub.php';
 
+// Shared test traits.
+require_once __DIR__ . '/traits/WCPayMultiCurrencyTestTrait.php';
+
 // Load plugin files.
 $plugin_path = dirname( __DIR__, 2 ) . '/includes/';
 

@@ -711,7 +711,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Dispatch to Store API, handle WP_Error, branch on status class, and
 		// normalize. Returns ['error', 'wc_products', 'store_response']; see
 		// fetch_wc_products_for_search() for the full contract.
-		$fetched = self::fetch_wc_products_for_search( $store_params, $capability );
+		// Phase 2: thread the agent's requested currency through so the
+		// Store API dispatch can run inside a WCPay presentment-currency
+		// override scope. Null when context.currency is absent / malformed —
+		// `with_active_currency()` treats that as a no-op.
+		$fetched = self::fetch_wc_products_for_search(
+			$store_params,
+			$capability,
+			self::get_request_currency( $request )
+		);
 		if ( null !== $fetched['error'] ) {
 			return $fetched['error'];
 		}
@@ -890,11 +898,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * `store_response` is preserved on success so the caller can derive
 	 * pagination state from Store API's X-WP-Total / X-WP-TotalPages headers.
 	 *
-	 * @param array  $store_params Params produced by map_ucp_search_to_store_api().
-	 * @param string $capability   UCP capability string for the error envelope.
+	 * @param array       $store_params     Params produced by map_ucp_search_to_store_api().
+	 * @param string      $capability       UCP capability string for the error envelope.
+	 * @param string|null $request_currency Normalized ISO-4217 code from the
+	 *                                       agent's `context.currency`, or null when
+	 *                                       absent / malformed. Used to wrap the
+	 *                                       Store API dispatch in a WooPayments
+	 *                                       presentment-currency override scope.
 	 * @return array{error: WP_REST_Response|null, wc_products: array, store_response: WP_REST_Response|null}
 	 */
-	private static function fetch_wc_products_for_search( array $store_params, string $capability ): array {
+	private static function fetch_wc_products_for_search( array $store_params, string $capability, ?string $request_currency = null ): array {
 		/**
 		 * Filter the Store API query arguments before a catalog/search dispatch.
 		 *
@@ -945,9 +958,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		// try/finally ensures the UCP dispatch depth counter is decremented
 		// even when rest_do_request() throws. See WC_AI_Storefront_UCP_Store_API_Filter.
+		// Phase 2: dispatch runs inside `with_active_currency( $request_currency, ... )`
+		// so WCPay's per-product price hooks render response prices in the
+		// agent's requested currency (rate + rounding + charm applied per
+		// merchant settings). The helper is a no-op when context.currency
+		// is absent or not in accepted_currencies, so single-currency stores
+		// behave identically to Phase 1.
 		WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$store_response = rest_do_request( $store_request );
+			$store_response = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				(string) $request_currency,
+				static function () use ( $store_request ) {
+					return rest_do_request( $store_request );
+				}
+			);
 		} finally {
 			WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		}

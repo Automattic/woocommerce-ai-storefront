@@ -19,6 +19,7 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
 class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
+	use WCPayMultiCurrencyTestTrait;
 
 	/**
 	 * Captured params on the outgoing GET /wc/store/v1/products request.
@@ -343,6 +344,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// stubs from one test don't bleed accepted-currency state into
 		// the next.
 		WC_AI_Storefront_Multi_Currency::reset_cache();
+		// Drop any test-local filter callbacks registered by the real-runtime
+		// installer (no-op when the installer wasn't used in this test).
+		$this->tear_down_filter_runtime();
+		// Reset the WCPay-double globals so a test that built one doesn't
+		// leak into the next test's accepted-currencies probe.
+		$GLOBALS['_mc_test_double']     = null;
+		$GLOBALS['_mc_throw']           = false;
+		$GLOBALS['_mc_feature_enabled'] = true;
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -2792,5 +2801,55 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertNotEmpty( $body['products'][0]['url'] ?? '' );
 		$this->assertStringNotContainsString( 'currency=', $body['products'][0]['url'] );
+	}
+
+	public function test_handle_catalog_search_hooks_currency_override_during_dispatch(): void {
+		// Set up: USD store, EUR in accepted set. Agent sends context.currency: EUR.
+		// Inside rest_do_request, the WCPay override filter should resolve to "EUR".
+		// After dispatch, the filter should be unhooked.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
+		);
+		$GLOBALS['_mc_test_double'] = $mc;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+
+		// Swap in a real-WordPress-style filter runtime so add_filter
+		// callbacks registered by `with_active_currency()` actually fire
+		// when production code (or this test) calls apply_filters().
+		// Brain Monkey's default `apply_filters` stub doesn't run
+		// add_filter callbacks, so end-to-end hook tests require this.
+		$this->install_real_filter_runtime();
+
+		$during = null;
+		$after  = null;
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) use ( &$during ) {
+				// Capture the filter value mid-dispatch.
+				$during = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
+				// Return a minimal valid Store API response.
+				$response = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		// Use set_json_params to match the test-file's stub (and the other
+		// catalog/search tests' `search_request()` helper). The production
+		// `get_request_currency()` helper reads via `$request->get_param('context')`,
+		// which the stub resolves against the JSON body.
+		$request->set_json_params( array( 'context' => array( 'currency' => 'EUR' ) ) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search( $request );
+
+		$after = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
+
+		$this->assertSame( 'EUR', $during, 'During dispatch, override filter must return EUR' );
+		$this->assertFalse( $after, 'After dispatch returns, override filter must be unhooked' );
 	}
 }
