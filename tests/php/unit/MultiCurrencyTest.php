@@ -731,5 +731,44 @@ namespace {
 			$this->expectException( \RuntimeException::class );
 			WC_AI_Storefront_Multi_Currency::convert_amount( 5000, 'EUR', 'USD' );
 		}
+
+		// ------------------------------------------------------------------
+		// active_currency_or_null
+		// ------------------------------------------------------------------
+
+		public function test_active_currency_or_null_returns_null_when_no_override_hooked(): void {
+			$this->assertNull( WC_AI_Storefront_Multi_Currency::active_currency_or_null() );
+		}
+
+		public function test_active_currency_or_null_returns_code_when_override_hooked(): void {
+			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+				array(
+					'USD' => new \stdClass(),
+					'EUR' => new \stdClass(),
+				)
+			);
+			$GLOBALS['_mc_test_double'] = $mc;
+			$this->install_real_filter_runtime();
+
+			$result = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'EUR',
+				static function () {
+					return WC_AI_Storefront_Multi_Currency::active_currency_or_null();
+				}
+			);
+			$this->assertSame( 'EUR', $result );
+		}
+
+		public function test_active_currency_or_null_returns_null_on_malformed_override_value(): void {
+			$this->install_real_filter_runtime();
+			add_filter(
+				'wcpay_multi_currency_override_selected_currency',
+				static function () {
+					return 'eu';
+				}
+			);
+			$this->assertNull( WC_AI_Storefront_Multi_Currency::active_currency_or_null() );
+		}
 	}
 }

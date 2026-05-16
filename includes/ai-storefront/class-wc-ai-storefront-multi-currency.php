@@ -318,6 +318,34 @@ class WC_AI_Storefront_Multi_Currency {
 	}
 
 	/**
+	 * Read the currently-hooked WooPayments presentment-currency override.
+	 *
+	 * Returns the validated ISO-4217 code when an override is hooked
+	 * (typically because the caller — or an ancestor on the call stack
+	 * — is inside `with_active_currency()`), or `null` when no override
+	 * is active. Validates the filter return as a 3-letter uppercase
+	 * ASCII string so consumers can use the result without re-validating.
+	 *
+	 * This is the read-side companion to `with_active_currency()`. Use it
+	 * when downstream code needs to know "what currency is the request
+	 * currently being served in?" — for example, to compare an
+	 * agent-supplied `expected_unit_price.currency` to the price the
+	 * Store API just returned under the override.
+	 *
+	 * @since 0.18.0
+	 *
+	 * @return string|null Validated ISO-4217 code, or null when no override is hooked.
+	 */
+	public static function active_currency_or_null(): ?string {
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Reading WooPayments' own override filter; not our hook to rename.
+		$value = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
+		if ( ! is_string( $value ) ) {
+			return null;
+		}
+		return preg_match( '/^[A-Z]{3}$/', $value ) ? $value : null;
+	}
+
+	/**
 	 * Convert a minor-units amount from one currency to another using
 	 * WooPayments' rate + rounding + charm logic.
 	 *

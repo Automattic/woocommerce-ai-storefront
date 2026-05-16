@@ -5392,16 +5392,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Phase 2: the WCPay override may have switched the active
 		// presentment currency (see handle_checkout_sessions_create's
 		// `with_active_currency` wrap around the line-item loop). Read
-		// the active override directly so the drift comparison runs in
-		// the same currency the catalog response quoted, not the WC
-		// base. When no override is hooked (single-currency stores,
-		// or `context.currency` absent/not in accepted set), this falls
-		// through to `$store_currency` and behaves identically to Phase 1.
-		$effective_currency = $store_currency;
-		$override_currency  = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
-		if ( is_string( $override_currency ) && preg_match( '/^[A-Z]{3}$/', $override_currency ) ) {
-			$effective_currency = $override_currency;
-		}
+		// the active override so the drift comparison runs in the same
+		// currency the catalog response quoted, not the WC base. When
+		// no override is hooked (single-currency stores, or
+		// `context.currency` absent/not in accepted set), the helper
+		// returns null and we fall back to `$store_currency` —
+		// behaviorally identical to Phase 1.
+		$effective_currency = WC_AI_Storefront_Multi_Currency::active_currency_or_null() ?? $store_currency;
 
 		$drift_warning = self::check_price_drift(
 			$line_item['expected_unit_price'] ?? null,
@@ -5655,7 +5652,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *                                     Pre-Phase-2 this was always the WC base
 	 *                                     currency; Phase 2 callers pass the active
 	 *                                     presentment currency when the WCPay override
-	 *                                     is hooked, so EUR-vs-EUR comparisons work.
+	 *                                     is hooked (see
+	 *                                     `WC_AI_Storefront_Multi_Currency::with_active_currency()`
+	 *                                     and `active_currency_or_null()`), so
+	 *                                     EUR-vs-EUR comparisons work.
 	 * @param  string $path                JSON path for the warning attribution.
 	 * @return array|null                  Warning message array, or null if no drift.
 	 */
