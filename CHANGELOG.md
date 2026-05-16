@@ -1,10 +1,33 @@
 ## [Unreleased]
 
 ### Features
+
+- **Catalog responses are now quoted in the agent's requested currency when WooPayments multi-currency is active.**
+  - `POST /catalog/search` / `POST /catalog/lookup`: when `context.currency` is in `accepted_currencies`, every `price.currency` field in the response carries the agent's currency, with amounts converted via WooPayments' exchange rate, rounding rule, and charm pricing offset. WCPay's `wcpay_multi_currency_override_selected_currency` filter is hooked for the duration of the dispatch and removed in `finally` — no session writes, no leakage.
+  - `filters.price` bounds are converted via the same WooPayments math before the Store API query, replacing Phase 1's filter-drop + warning fallback.
+  - `POST /checkout-sessions` accepts `expected_unit_price.currency` in any currency present in `accepted_currencies`; the comparison runs in the agent's currency (e.g. EUR vs EUR).
+- **Graceful fallback paths.** When the requested currency is not in `accepted_currencies`, or WCPay throws mid-dispatch, the response degrades to base currency with a `currency_conversion_unsupported` warning at `$.context.currency` (or `$.filters.price` for the filter-only path) — never an HTTP error.
+
 ### Fixes
 ### Refactors
+
+- **New helpers on `WC_AI_Storefront_Multi_Currency`.**
+  - `with_active_currency( $code, callable )`: hooks the WCPay override filter for the duration of a callable, unhooks in `finally`.
+  - `active_currency_or_null(): ?string`: read-side companion that returns the currently-hooked presentment currency, or null when no override is active.
+  - `convert_amount( int, string, string ): int`: minor-units conversion via WCPay's `get_price()` (rate + rounding + charm).
+- **Shared `WCPayMultiCurrencyTestTrait`.** New `tests/php/traits/trait-wcpay-multi-currency-test.php` provides the WCPay soft-dependency stubs (`WC_Payments_Multi_Currency()`, `WC_Payments_Features`, etc.), a real-WordPress-style filter runtime helper, and the `wp_parse_str` shim — used by `MultiCurrencyTest`, `UcpCatalogSearchTest`, `UcpCatalogLookupTest`, and `UcpCheckoutSessionsTest`.
+
 ### Tests
+
+- **New unit coverage for every Phase 2 wrap site.**
+  - `MultiCurrencyTest`: 8 new cases covering `with_active_currency` (hooked-during-callable, unhooked-on-success, unhooked-on-exception, no-op-on-malformed-code, no-op-on-unsupported-code), `convert_amount` (same-currency short-circuit, WCPay math delegation, error on WCPay unavailable), and `active_currency_or_null` (null-when-no-override, code-when-hooked, null-on-malformed).
+  - `UcpCatalogSearchTest`: filter hooked during dispatch, filter conversion forwards converted bounds to Store API, warning emitted when currency not in accepted set, warning emitted when conversion throws.
+  - `UcpCatalogLookupTest`: single hook around the per-ID loop with explicit dispatch-count guard.
+  - `UcpCheckoutSessionsTest`: line-item resolution runs inside the override scope, `expected_unit_price` accepts the agent's currency with EUR-vs-EUR comparison both on match and on drift.
+
 ### Docs
+
+- **API-REFERENCE, ARCHITECTURE, HOOKS, USER-GUIDE updated.** API-REFERENCE documents the new currency-aware response/filter behavior. ARCHITECTURE adds a caching guardrail note (currency-aware keys required if any future cross-request cache is added). HOOKS documents the WCPay filter we consume. USER-GUIDE adds a merchant-facing "Full WooPayments multi-currency support" callout describing the integration.
 
 ---
 
