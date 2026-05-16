@@ -24,73 +24,27 @@ namespace {
 		}
 	}
 
-	// Test stand-in for the real WCPay global function.
+	// WCPay soft-dependency stubs (`WC_Payments_Multi_Currency()` global
+	// function, `\WCPay\MultiCurrency\MultiCurrency` class_alias, and
+	// `\WC_Payments_Features` feature-flag class) live in the shared
+	// trait file at `tests/php/traits/trait-wcpay-multi-currency-test.php`,
+	// loaded by bootstrap before this test file. The trait's
+	// declarations are guarded by `function_exists`/`class_exists` so
+	// loading order doesn't matter, but keeping them in one place
+	// prevents the throw-message + class-shape from drifting between
+	// the standalone-unit tests here and the wrap-site tests (Tasks 3/4/6).
 	//
-	// Production code uses `function_exists('WC_Payments_Multi_Currency')`
-	// as the first gate (proves WCPay is installed), then separately checks
-	// `\WC_Payments_Features::is_customer_multi_currency_enabled()` as the
-	// runtime feature-flag gate. The two are deliberately distinct: the
-	// function persists from boot regardless of subsequent toggle changes;
-	// the feature-flag gate reads the live option.
+	// Tests control behavior via three globals also initialized in the
+	// trait file:
+	//   $_mc_test_double     — Mockery double of MultiCurrency, or null
+	//                          (default null; `is_object()` short-circuits
+	//                          identically to "WCPay not installed").
+	//   $_mc_throw           — bool. When true, the global function
+	//                          stub throws (simulates partial-boot).
+	//   $_mc_feature_enabled — bool|'throw'. Drives the feature-flag
+	//                          stub.
 	//
-	// We declare the function unconditionally here (rather than via Brain
-	// Monkey `when()`) because it needs a static test-double slot —
-	// Patchwork can't carry test-scoped state through an alias closure
-	// cleanly. Setting `$_mc_test_double` directly from each test controls
-	// what the function returns.
-	//
-	// To simulate "WCPay not installed": tests cannot replicate this path
-	// exactly (the stub is declared at file-load time), but setting
-	// `$_mc_test_double = null` exercises the same observable branch — the
-	// `is_object()` guard short-circuits identically to the function not
-	// existing. The feature-flag gate is controlled via `$_mc_feature_enabled`.
-	//
-	// To simulate a partial-boot exception, tests set `$_mc_throw = true`.
-	$GLOBALS['_mc_test_double'] = null;
-	$GLOBALS['_mc_throw']       = false;
-
-	if ( ! function_exists( 'WC_Payments_Multi_Currency' ) ) {
-		function WC_Payments_Multi_Currency() {
-			if ( $GLOBALS['_mc_throw'] ) {
-				throw new \RuntimeException( 'WCPay partial-boot test exception' );
-			}
-			return $GLOBALS['_mc_test_double'];
-		}
-	}
-
-	// Minimal stub class so Mockery can reflect
-	// `\WCPay\MultiCurrency\MultiCurrency` when tests build doubles.
-	// Only `get_enabled_currencies()` is needed — production code no longer
-	// calls `::instance()` or `is_multi_currency_enabled()`.
-	if ( ! class_exists( '\WCPay\MultiCurrency\MultiCurrency' ) ) {
-		class WCPay_MultiCurrency_MultiCurrency_Stub {
-			public function get_enabled_currencies() {
-				return array();
-			}
-		}
-		class_alias( 'WCPay_MultiCurrency_MultiCurrency_Stub', '\WCPay\MultiCurrency\MultiCurrency' );
-	}
-
-	// Stub for WCPay's feature-flag class. Production code calls
-	// `\WC_Payments_Features::is_customer_multi_currency_enabled()` at
-	// runtime as the explicit multi-currency-feature gate (the global
-	// function being defined isn't sufficient — it persists from boot
-	// regardless of subsequent toggle changes).
-	// Tests control the return value via `$_mc_feature_enabled`:
-	//   true / false  → normal bool return
-	//   'throw'       → throws RuntimeException (simulates a bad option_* filter)
-	$GLOBALS['_mc_feature_enabled'] = true;
-
-	if ( ! class_exists( '\WC_Payments_Features' ) ) {
-		class WC_Payments_Features {
-			public static function is_customer_multi_currency_enabled() {
-				if ( 'throw' === $GLOBALS['_mc_feature_enabled'] ) {
-					throw new \RuntimeException( 'WCPay feature-flag option filter exploded' );
-				}
-				return (bool) $GLOBALS['_mc_feature_enabled'];
-			}
-		}
-	}
+	// setUp() below resets the three globals per-test.
 
 	class MultiCurrencyTest extends \PHPUnit\Framework\TestCase {
 		use MockeryPHPUnitIntegration;

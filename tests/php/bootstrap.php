@@ -37,7 +37,7 @@ if ( ! defined( 'DAY_IN_SECONDS' ) ) {
 require_once __DIR__ . '/stubs/class-wc-ai-storefront-stub.php';
 
 // Shared test traits.
-require_once __DIR__ . '/traits/WCPayMultiCurrencyTestTrait.php';
+require_once __DIR__ . '/traits/trait-wcpay-multi-currency-test.php';
 
 // Load plugin files.
 $plugin_path = dirname( __DIR__, 2 ) . '/includes/';
