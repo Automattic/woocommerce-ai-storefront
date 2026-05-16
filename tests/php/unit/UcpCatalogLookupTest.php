@@ -28,6 +28,7 @@ use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
 class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
+	use WCPayMultiCurrencyTestTrait;
 
 	/**
 	 * Map of WC ID → canned Store API response. The rest_do_request
@@ -166,6 +167,14 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// stubs from one test don't bleed accepted-currency state into
 		// the next.
 		WC_AI_Storefront_Multi_Currency::reset_cache();
+		// Drop any test-local filter callbacks registered by the real-runtime
+		// installer (no-op when the installer wasn't used in this test).
+		$this->tear_down_filter_runtime();
+		// Reset the WCPay-double globals so a test that built one doesn't
+		// leak into the next test's accepted-currencies probe.
+		$GLOBALS['_mc_test_double']     = null;
+		$GLOBALS['_mc_throw']           = false;
+		$GLOBALS['_mc_feature_enabled'] = true;
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -1555,5 +1564,58 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertNotEmpty( $body['products'][0]['url'] ?? '' );
 		$this->assertStringNotContainsString( 'currency=', $body['products'][0]['url'] );
+	}
+
+	public function test_handle_catalog_lookup_hooks_currency_override_once_across_all_ids(): void {
+		// Agent sends context.currency: EUR and 3 IDs. The override filter
+		// must be hooked exactly once around the whole loop (not per-ID),
+		// and unhooked after the loop completes.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
+		);
+		$GLOBALS['_mc_test_double'] = $mc;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+
+		$this->install_real_filter_runtime();
+
+		$hook_calls = array();
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) use ( &$hook_calls ) {
+				$hook_calls[] = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
+				$response     = new \WP_REST_Response( array( 'id' => 1, 'prices' => array( 'price' => '1999', 'currency_code' => 'EUR' ) ) );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/lookup' );
+		$request->set_body_params(
+			array(
+				'context' => array( 'currency' => 'EUR' ),
+				'ids'     => array( 'prod_1', 'prod_2', 'prod_3' ),
+			)
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_lookup( $request );
+
+		// Guard against silent degradation: if an upstream validation gate
+		// ever rejected all three IDs, $hook_calls would be empty and the
+		// foreach below would pass vacuously.
+		$this->assertCount( 3, $hook_calls, 'Three IDs must produce three Store API dispatches' );
+
+		// Every per-ID dispatch should have seen the EUR override.
+		foreach ( $hook_calls as $i => $value ) {
+			$this->assertSame( 'EUR', $value, "Dispatch #{$i} must run inside the EUR override scope" );
+		}
+		$this->assertSame(
+			false,
+			apply_filters( 'wcpay_multi_currency_override_selected_currency', false ),
+			'Override filter must be unhooked after the loop completes'
+		);
 	}
 }

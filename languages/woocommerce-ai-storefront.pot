@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-16T13:29:16+00:00\n"
+"POT-Creation-Date: 2026-05-16T13:48:00+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -135,7 +135,7 @@ msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:632
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:1719
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2354
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2373
 msgid "AI Storefront is not currently enabled on this store."
 msgstr ""
 
@@ -144,229 +144,229 @@ msgstr ""
 msgid "Unable to fetch products from the store."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2235
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2254
 msgid "Request body must include an \"ids\" array."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2245
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2264
 msgid "The \"ids\" array must contain at least one ID."
 msgstr ""
 
 #. translators: %d is the maximum number of IDs per request.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2263
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2282
 #, php-format
 msgid "The \"ids\" array exceeds the per-request limit of %d entries."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2365
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2384
 msgid "Request must include a non-empty \"line_items\" array."
 msgstr ""
 
 #. translators: %d is the maximum number of line items per request.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2375
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2394
 #, php-format
 msgid "The \"line_items\" array exceeds the per-request limit of %d entries."
 msgstr ""
 
 #. translators: 1: agent's UCP product ID, 2: summed quantity after merging duplicates, 3: maximum quantity per line item.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2489
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2508
 #, php-format
 msgid "Summed quantity %2$d for \"%1$s\" (after merging duplicate line items) exceeds the per-line cap of %3$d."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2522
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2541
 msgid "Duplicate line items targeting the same product were merged. Quantities have been summed; the response shows one line per product."
 msgstr ""
 
 #. translators: 1: current subtotal (minor units), 2: minimum order (minor units).
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2631
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2650
 #, php-format
 msgid "Order subtotal %1$d is below the merchant minimum of %2$d (minor units). Add more items to proceed."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2689
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2708
 msgid "Bundle line items must be sent in their own /checkout-sessions request, separate from other items."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2706
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2725
 msgid "This bundle requires variation choices and/or optional add-on selections that must be made on the merchant site. Open continue_url to configure the bundle and complete the purchase."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2722
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2741
 msgid "This bundle cannot be added through the standard checkout flow because its product page URL is unavailable. The merchant should verify the bundle configuration."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2761
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2780
 msgid "Grouped product line items must be sent in their own /checkout-sessions request, separate from other items."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2777
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2796
 msgid "This grouped product contains items that cannot be added directly via the API — they may require buyer configuration, be currently out of stock, or be a product type unsupported in checkout-link flows. Open continue_url to complete the purchase on the merchant site."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2785
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2804
 msgid "This grouped product cannot be added through the standard checkout flow because its product page URL is unavailable. The merchant should verify the grouped product configuration."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2841
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2860
 msgid "Variable product line items must be sent in their own /checkout-sessions request, separate from other items — the permalink fallback can only redirect the buyer to a single product page."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2859
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2878
 msgid "This product has variations; the buyer must pick a specific option on the merchant site. Open continue_url to choose and complete the purchase."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2879
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2898
 msgid "This product requires a specific variation selection but its product page URL is unavailable."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2901
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2920
 msgid "Complete your purchase on the merchant site."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2952
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:2971
 msgid "Total excludes tax and shipping, which are calculated at the merchant checkout."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3402
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3421
 msgid "This /checkout-sessions/{id} URL is stateless and supports no operations: there is no persistent session to read, replace, modify, or cancel. To start or continue a checkout, POST /checkout-sessions with the desired line_items array. The continue_url returned by that POST redirects the buyer to the merchant's native checkout, replacing any prior session."
 msgstr ""
 
 #. translators: %s: the input ID the agent submitted that didn't resolve.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3853
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3872
 #, php-format
 msgid "Input \"%s\" did not resolve to a known product or variant."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3856
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3875
 msgid "An input did not resolve to a known product or variant."
 msgstr ""
 
 #. translators: 1: number of variations missing, 2: WC product ID.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4024
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4043
 #, php-format
 msgid "%1$d variation of product %2$d is not included in the variants list; the list is incomplete."
 msgid_plural "%1$d variations of product %2$d are not included in the variants list; the list is incomplete."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4094
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4113
 msgid "pagination must be an object; using defaults."
 msgstr ""
 
 #. translators: 1: requested limit, 2: applied limit, 3: max allowed.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4124
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4143
 #, php-format
 msgid "Requested pagination.limit %1$d was clamped to %2$d (allowed range: 1–%3$d)."
 msgstr ""
 
 #. translators: %d is the applied default limit.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4143
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4162
 #, php-format
 msgid "pagination.limit must be a non-negative integer; using default %d."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4167
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4186
 msgid "Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4199
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4218
 msgid "sort.field and sort.direction must be strings; using default ordering."
 msgstr ""
 
 #. translators: %s is the unsupported sort field the agent sent.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4234
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4253
 #, php-format
 msgid "Sort field \"%s\" is not supported; using default ordering."
 msgstr ""
 
 #. translators: %s is the category slug/name the agent sent that couldn't be resolved.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4264
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4283
 #, php-format
 msgid "Category \"%s\" was not found; filter ignored for this value."
 msgstr ""
 
 #. translators: 1: agent-supplied currency, 2: store currency.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4335
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4354
 #, php-format
 msgid "context.currency \"%1$s\" does not match store currency \"%2$s\" and conversion is not supported; price filter ignored."
 msgstr ""
 
 #. translators: %s is the tag slug/name the agent sent that couldn't be resolved.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4385
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4404
 #, php-format
 msgid "Tag \"%s\" was not found; filter ignored for this value."
 msgstr ""
 
 #. translators: %s is the brand slug/name the agent sent that couldn't be resolved.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4414
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4433
 #, php-format
 msgid "Brand \"%s\" was not found; filter ignored for this value."
 msgstr ""
 
 #. translators: %s is the attribute taxonomy name the agent sent that doesn't exist on the store.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4503
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4522
 #, php-format
 msgid "Attribute taxonomy \"%s\" was not found on the store; filter ignored for this axis."
 msgstr ""
 
 #. translators: 1: filter path, 2: original count, 3: applied cap.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4741
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4760
 #, php-format
 msgid "%1$s received %2$d values; truncated to the first %3$d. Further values were ignored."
 msgstr ""
 
 #. translators: 1: filter path, 2: original count, 3: applied cap.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4775
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:4794
 #, php-format
 msgid "%1$s received %2$d keys; truncated to the first %3$d. Further keys were ignored."
 msgstr ""
 
 #. translators: 1: expected amount (minor units), 2: current amount (minor units).
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:5600
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:5619
 #, php-format
 msgid "Unit price changed from %1$d to %2$d (minor units) since the catalog was fetched."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6081
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6100
 msgid "Merchant has no privacy policy configured; agents may want to surface this caveat to buyers before proceeding."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6097
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6116
 msgid "Merchant has no terms of service configured; agents may want to surface this caveat to buyers before proceeding."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6145
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6164
 msgid "Line item must be an object with \"item.id\" and \"quantity\"."
 msgstr ""
 
 #. translators: %d is the maximum quantity per line item.
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6149
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6168
 #, php-format
 msgid "Quantity must be a positive integer up to %d."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6153
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6172
 msgid "Product not found."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6155
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6174
 msgid "Product type cannot be added via the Shareable Checkout URL; link to the product page directly."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6157
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6176
 msgid "Product is out of stock."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6159
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6178
 msgid "Product is not available for purchase."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6163
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6182
 msgid "Product is variable — specify a variation ID instead of the parent product ID."
 msgstr ""
 
-#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6165
+#: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:6184
 msgid "Line item could not be processed."
 msgstr ""
 

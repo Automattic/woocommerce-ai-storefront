@@ -1819,383 +1819,402 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
-		// Pass 1: fetch all parent products + record not-found messages.
-		// Two-pass structure (vs. a single fetch+translate loop) lets us
-		// pre-build the category-paths hierarchy map once across the
-		// full product set — needed for spec-canonical `>`-delimited
-		// `category.value` strings (issue #350).
-		$wc_products_by_index = array();
-		foreach ( $wc_ids as $index => $wc_id ) {
-			$id_echo   = (string) ( $inputs[ $index ] ?? '' );
-			$raw_index = (int) ( $positions[ $index ] ?? $index );
-			if ( $wc_id <= 0 ) {
-				$messages[] = self::not_found_message( $raw_index, $id_echo );
-				continue;
-			}
+		// Phase 2: wrap the entire per-ID dispatch + translate work in a
+		// single `with_active_currency()` scope. Hooks the WCPay override
+		// filter exactly once across both passes (Pass 1 parents and
+		// Pass 2 variations), so every internal `rest_do_request()` call
+		// the controller dispatches sees prices in the agent's requested
+		// currency. No-op when `context.currency` is absent / malformed /
+		// not in `accepted_currencies` — see WC_AI_Storefront_Multi_Currency::with_active_currency().
+		//
+		// The closure cannot be `static` because both fetch helpers
+		// (`fetch_store_api_product`, `fetch_variations_for`) are
+		// instance methods; rely on the default `$this` binding.
+		$request_currency        = self::get_request_currency( $request );
+		[ $products, $messages ] = WC_AI_Storefront_Multi_Currency::with_active_currency(
+			(string) $request_currency,
+			function () use ( $request, $wc_ids, $inputs, $positions, $seller, $agent_data, $agent_source_host, $agent_raw_host, $products, $messages ) {
+				// Pass 1: fetch all parent products + record not-found messages.
+				// Two-pass structure (vs. a single fetch+translate loop) lets us
+				// pre-build the category-paths hierarchy map once across the
+				// full product set — needed for spec-canonical `>`-delimited
+				// `category.value` strings (issue #350).
+				$wc_products_by_index = array();
+				foreach ( $wc_ids as $index => $wc_id ) {
+					$id_echo   = (string) ( $inputs[ $index ] ?? '' );
+					$raw_index = (int) ( $positions[ $index ] ?? $index );
+					if ( $wc_id <= 0 ) {
+						$messages[] = self::not_found_message( $raw_index, $id_echo );
+						continue;
+					}
 
-			$wc_product = $this->fetch_store_api_product( $wc_id );
-			if ( null === $wc_product ) {
-				$messages[] = self::not_found_message( $raw_index, $id_echo );
-				continue;
-			}
+					$wc_product = $this->fetch_store_api_product( $wc_id );
+					if ( null === $wc_product ) {
+						$messages[] = self::not_found_message( $raw_index, $id_echo );
+						continue;
+					}
 
-			$wc_products_by_index[ $index ] = $wc_product;
-		}
+					$wc_products_by_index[ $index ] = $wc_product;
+				}
 
-		// Pre-build category-paths map across all fetched products
-		// before entering the translate loop.
-		$category_paths = $this->build_category_paths_map(
-			array_values( $wc_products_by_index )
-		);
-
-		// Pass 2: translate each product using its pre-fetched parents
-		// + the shared category-paths map.
-		foreach ( $wc_products_by_index as $index => $wc_product ) {
-			$wc_id = (int) ( $wc_product['id'] ?? 0 );
-
-			// Variable products: pre-fetch each variation's full Store API
-			// response so the product translator can emit one real variant
-			// per variation rather than a synthesized default. When any
-			// variations fail to fetch, we still render the product (partial
-			// set beats synthesized fallback) but emit a `partial_variants`
-			// warning so agents know the variant list is incomplete.
-			$variation_fetch = $this->fetch_variations_for( $wc_product );
-			if ( $variation_fetch['skipped'] > 0 ) {
-				$messages[] = self::partial_variants_message(
-					$wc_id,
-					$variation_fetch['skipped']
+				// Pre-build category-paths map across all fetched products
+				// before entering the translate loop.
+				$category_paths = $this->build_category_paths_map(
+					array_values( $wc_products_by_index )
 				);
-			}
 
-			$product = WC_AI_Storefront_UCP_Product_Translator::translate(
-				$wc_product,
-				$variation_fetch['variations'],
-				$seller,
-				$category_paths
-			);
+				// Pass 2: translate each product using its pre-fetched parents
+				// + the shared category-paths map.
+				foreach ( $wc_products_by_index as $index => $wc_product ) {
+					$wc_id = (int) ( $wc_product['id'] ?? 0 );
 
-			// Stamp UTM attribution onto the product URL now that translation
-			// is complete. Hoisted out of the translator to preserve its
-			// pure-function contract (see issue #176). The translator emits the
-			// bare permalink; the controller owns agent-context side-effects.
-			if ( ! empty( $product['url'] ) && is_string( $product['url'] ) ) {
-				// Stamp the agent's context.currency hint onto the URL before
-				// UTM attribution. No-op when the request currency is null,
-				// malformed, or not in `accepted_currencies` — so this single
-				// call covers single-currency stores (no-op), multi-currency
-				// stores where the agent didn't send a hint (no-op), and the
-				// live case where the agent's hint is honored.
-				$product['url'] = WC_AI_Storefront_Multi_Currency::stamp_currency_query(
-					$product['url'],
-					self::get_request_currency( $request )
-				);
-				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
-					$product['url'],
-					$agent_source_host,
-					$agent_raw_host
-				);
-			}
+					// Variable products: pre-fetch each variation's full Store API
+					// response so the product translator can emit one real variant
+					// per variation rather than a synthesized default. When any
+					// variations fail to fetch, we still render the product (partial
+					// set beats synthesized fallback) but emit a `partial_variants`
+					// warning so agents know the variant list is incomplete.
+					$variation_fetch = $this->fetch_variations_for( $wc_product );
+					if ( $variation_fetch['skipped'] > 0 ) {
+						$messages[] = self::partial_variants_message(
+							$wc_id,
+							$variation_fetch['skipped']
+						);
+					}
 
-			// Apply the per-variant filter now that translation is complete.
-			// Moved here from UCP_Product_Translator::extract_variants() so
-			// the translator stays a pure function (no WP API calls). Fires
-			// once per variant in document order.
-			//
-			// Two sources feed this loop:
-			//   - Variable products: one real WC variation per entry; the
-			//     second arg ($second_arg) is the decoded Store API variation
-			//     response.
-			//   - Simple products: one synthesized default variant; no
-			//     per-variation object is available, so the second arg is
-			//     the parent WC Store API product response. Hooks can
-			//     distinguish these via the variant id suffix: real
-			//     variations use `var_{id}`, synthesized defaults use
-			//     `var_{id}_default`.
-			if ( isset( $product['variants'] ) && is_array( $product['variants'] ) ) {
-				$has_real_variations = ! empty( $variation_fetch['variations'] );
-				foreach ( $product['variants'] as $idx => $variant ) {
-					// For variable products pass the matching variation
-					// response; for simple products pass the parent product.
-					$second_arg = $has_real_variations
-						? ( $variation_fetch['variations'][ $idx ] ?? $wc_product )
-						: $wc_product;
+					$product = WC_AI_Storefront_UCP_Product_Translator::translate(
+						$wc_product,
+						$variation_fetch['variations'],
+						$seller,
+						$category_paths
+					);
+
+					// Stamp UTM attribution onto the product URL now that translation
+					// is complete. Hoisted out of the translator to preserve its
+					// pure-function contract (see issue #176). The translator emits the
+					// bare permalink; the controller owns agent-context side-effects.
+					if ( ! empty( $product['url'] ) && is_string( $product['url'] ) ) {
+						// Stamp the agent's context.currency hint onto the URL before
+						// UTM attribution. No-op when the request currency is null,
+						// malformed, or not in `accepted_currencies` — so this single
+						// call covers single-currency stores (no-op), multi-currency
+						// stores where the agent didn't send a hint (no-op), and the
+						// live case where the agent's hint is honored.
+						$product['url'] = WC_AI_Storefront_Multi_Currency::stamp_currency_query(
+							$product['url'],
+							self::get_request_currency( $request )
+						);
+						$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
+							$product['url'],
+							$agent_source_host,
+							$agent_raw_host
+						);
+					}
+
+					// Apply the per-variant filter now that translation is complete.
+					// Moved here from UCP_Product_Translator::extract_variants() so
+					// the translator stays a pure function (no WP API calls). Fires
+					// once per variant in document order.
+					//
+					// Two sources feed this loop:
+					//   - Variable products: one real WC variation per entry; the
+					//     second arg ($second_arg) is the decoded Store API variation
+					//     response.
+					//   - Simple products: one synthesized default variant; no
+					//     per-variation object is available, so the second arg is
+					//     the parent WC Store API product response. Hooks can
+					//     distinguish these via the variant id suffix: real
+					//     variations use `var_{id}`, synthesized defaults use
+					//     `var_{id}_default`.
+					if ( isset( $product['variants'] ) && is_array( $product['variants'] ) ) {
+						$has_real_variations = ! empty( $variation_fetch['variations'] );
+						foreach ( $product['variants'] as $idx => $variant ) {
+							// For variable products pass the matching variation
+							// response; for simple products pass the parent product.
+							$second_arg = $has_real_variations
+								? ( $variation_fetch['variations'][ $idx ] ?? $wc_product )
+								: $wc_product;
+
+							/**
+							 * Filter a translated UCP variant before it is added to a product.
+							 *
+							 * Fires once per variant after translation, in document order.
+							 * For variable products the second arg is the decoded Store API
+							 * variation response. For simple products (synthesized default
+							 * variant, id suffix `_default`) the second arg is the parent
+							 * product response — no per-variation object is available.
+							 *
+							 * @since 1.0.0
+							 *
+							 * @param array<string, mixed> $variant    The translated UCP variant shape.
+							 *                                         Required keys: `id`, `title`,
+							 *                                         `description`, `price`,
+							 *                                         `availability`. Optional: `options`,
+							 *                                         `list_price`, `sku`, `barcodes`,
+							 *                                         `media`, `metadata`, `seller`.
+							 * @param array<string, mixed> $second_arg For variable products: the raw
+							 *                                         decoded Store API variation
+							 *                                         response. For simple products:
+							 *                                         the parent product response.
+							 *
+							 * @return array<string, mixed> The (possibly modified) UCP variant shape.
+							 */
+							$filtered                    = apply_filters( 'wc_ai_storefront_ucp_variant', $variant, $second_arg );
+							$product['variants'][ $idx ] = is_array( $filtered ) ? $filtered : $variant;
+						}
+					}
 
 					/**
-					 * Filter a translated UCP variant before it is added to a product.
+					 * Filter a translated UCP product before it is added to the catalog
+					 * lookup response.
 					 *
-					 * Fires once per variant after translation, in document order.
-					 * For variable products the second arg is the decoded Store API
-					 * variation response. For simple products (synthesized default
-					 * variant, id suffix `_default`) the second arg is the parent
-					 * product response — no per-variation object is available.
+					 * Fires once per product after UTM attribution has been stamped onto
+					 * `$product['url']`. Third-party plugins can augment, override, or
+					 * strip any field of the UCP product shape without subclassing the
+					 * translator.
 					 *
 					 * @since 1.0.0
 					 *
-					 * @param array<string, mixed> $variant    The translated UCP variant shape.
+					 * @param array<string, mixed> $product    The translated UCP product shape.
 					 *                                         Required keys: `id`, `title`,
-					 *                                         `description`, `price`,
-					 *                                         `availability`. Optional: `options`,
-					 *                                         `list_price`, `sku`, `barcodes`,
-					 *                                         `media`, `metadata`, `seller`.
-					 * @param array<string, mixed> $second_arg For variable products: the raw
-					 *                                         decoded Store API variation
-					 *                                         response. For simple products:
-					 *                                         the parent product response.
+					 *                                         `description`, `price_range`,
+					 *                                         `variants`. Optional: `url`,
+					 *                                         `handle`, `status`,
+					 *                                         `categories`, `tags`, `media`,
+					 *                                         `options`, `metadata`, `rating`,
+					 *                                         `published_at`, `updated_at`.
+					 *                                         (Per UCP 2026-04-08 the `seller`
+					 *                                         block is emitted on each variant,
+					 *                                         not on the product — see the
+					 *                                         `wc_ai_storefront_ucp_variant`
+					 *                                         filter to override seller per
+					 *                                         variant.)
+					 * @param array<string, mixed> $wc_product The raw decoded Store API product
+					 *                                         response. Use this to read WC-native
+					 *                                         fields (e.g. custom meta surfaced via
+					 *                                         a Store API extension) that the
+					 *                                         translator did not map.
 					 *
-					 * @return array<string, mixed> The (possibly modified) UCP variant shape.
+					 * @return array<string, mixed> The (possibly modified) UCP product shape.
 					 */
-					$filtered                    = apply_filters( 'wc_ai_storefront_ucp_variant', $variant, $second_arg );
-					$product['variants'][ $idx ] = is_array( $filtered ) ? $filtered : $variant;
-				}
-			}
+					$filtered_product = apply_filters( 'wc_ai_storefront_ucp_product', $product, $wc_product );
+					$final_product    = is_array( $filtered_product ) ? $filtered_product : $product;
 
-			/**
-			 * Filter a translated UCP product before it is added to the catalog
-			 * lookup response.
-			 *
-			 * Fires once per product after UTM attribution has been stamped onto
-			 * `$product['url']`. Third-party plugins can augment, override, or
-			 * strip any field of the UCP product shape without subclassing the
-			 * translator.
-			 *
-			 * @since 1.0.0
-			 *
-			 * @param array<string, mixed> $product    The translated UCP product shape.
-			 *                                         Required keys: `id`, `title`,
-			 *                                         `description`, `price_range`,
-			 *                                         `variants`. Optional: `url`,
-			 *                                         `handle`, `status`,
-			 *                                         `categories`, `tags`, `media`,
-			 *                                         `options`, `metadata`, `rating`,
-			 *                                         `published_at`, `updated_at`.
-			 *                                         (Per UCP 2026-04-08 the `seller`
-			 *                                         block is emitted on each variant,
-			 *                                         not on the product — see the
-			 *                                         `wc_ai_storefront_ucp_variant`
-			 *                                         filter to override seller per
-			 *                                         variant.)
-			 * @param array<string, mixed> $wc_product The raw decoded Store API product
-			 *                                         response. Use this to read WC-native
-			 *                                         fields (e.g. custom meta surfaced via
-			 *                                         a Store API extension) that the
-			 *                                         translator did not map.
-			 *
-			 * @return array<string, mixed> The (possibly modified) UCP product shape.
-			 */
-			$filtered_product = apply_filters( 'wc_ai_storefront_ucp_product', $product, $wc_product );
-			$final_product    = is_array( $filtered_product ) ? $filtered_product : $product;
-
-			// Attach per-variant `inputs[]` correlation per
-			// `catalog_lookup.json#/$defs/lookup_variant` (verified verbatim
-			// from `Universal-Commerce-Protocol/ucp` — see project memory
-			// `reference_ucp_spec.md`). Each emitted variant declares
-			// which request ID resolved to it.
-			//
-			// `match` semantics per `types/input_correlation.json`:
-			//   - `exact`    — input directly identifies this variant
-			//                  (variant ID, SKU, etc.).
-			//   - `featured` — server picked this variant as the
-			//                  representative for a product-level input.
-			//   - (omitted)  — this variant emerged alongside the
-			//                  resolved/featured one but isn't itself
-			//                  the server's pick. `inputs[].match` is
-			//                  optional per the schema; only `id` is
-			//                  required inside an inputs entry.
-			//
-			// Featured-variant selection rules (#369). When the input
-			// echoes a parent product (not a specific variant):
-			//   1. If `_default_attributes` covers every variation axis →
-			//      that resolved variation is featured. Single source of
-			//      truth: `WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id()`.
-			//   2. Else → first variation by `menu_order` (the Store
-			//      API already returns variations in menu_order, so
-			//      `$variation_fetch['variations'][0]` is the right pick).
-			//
-			// When the input echoes a specific variant id (e.g.
-			// `var_<vid>`) → that variant is `exact` and moves to
-			// `variants[0]`; siblings emit with `inputs: [{id}]` only.
-			//
-			// Two existing nuances preserved:
-			//   - A bare `var_<product_id>` input against a simple
-			//     product emits a synthetic default variant whose id is
-			//     `var_<product_id>_default`. Those strings differ —
-			//     no `exact` match — but the synthesized default IS the
-			//     sole variant, so it's featured via the
-			//     fall-through-to-first rule.
-			//   - For a variable product where the input echoes a
-			//     specific variation id, that variant gets `exact` and
-			//     the featured-resolution short-circuits.
-			//
-			// Per `product.json` (verbatim from the repo): _"First item
-			// is the featured variant for listings."_ Both the
-			// `inputs[].match` annotation AND the `variants[]` position
-			// must agree — we move the featured/exact variant to
-			// `variants[0]` after correlation marking.
-			//
-			// Done last (after both filters) so the spec-required
-			// transport-layer correlation isn't mutable by content
-			// filters; filter authors care about variant content,
-			// not server-side request reconciliation.
-			if ( isset( $final_product['variants'] ) && is_array( $final_product['variants'] ) ) {
-				$input_echo = (string) ( $inputs[ $index ] ?? '' );
-				if ( '' !== $input_echo ) {
-					// Pass 1: find an exact match (input echoes a
-					// specific variant id). Note: `$final_product` came
-					// through the `wc_ai_storefront_ucp_product` filter;
-					// a third-party callback could replace a variant
-					// with a non-array (string, null, etc.). Guard
-					// before reading `$variant['id']` so a malformed
-					// callback doesn't fatal the whole lookup with
-					// PHP 8+'s "Cannot access offset" error.
-					$exact_variant_id    = null;
-					$featured_variant_id = null;
-					foreach ( $final_product['variants'] as $variant ) {
-						if ( ! is_array( $variant ) ) {
-							continue;
-						}
-						if ( $input_echo === (string) ( $variant['id'] ?? '' ) ) {
-							$exact_variant_id = (string) $variant['id'];
-							break;
-						}
-					}
-
-					// Pass 2: no exact match — resolve featured via
-					// `_default_attributes` or menu_order fallback.
-					if ( null === $exact_variant_id ) {
-						$default_variation_id = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
-							$wc_product,
-							$variation_fetch['variations']
-						);
-						if ( null !== $default_variation_id ) {
-							// Merchant signal present: feature the
-							// resolved variation.
-							$featured_variant_id = 'var_' . $default_variation_id;
-						} elseif ( ! empty( $variation_fetch['variations'] ) ) {
-							// No merchant signal: feature the first
-							// variation by menu_order (Store API
-							// already returns variations in menu_order).
-							$first_id = (int) ( $variation_fetch['variations'][0]['id'] ?? 0 );
-							if ( $first_id > 0 ) {
-								$featured_variant_id = 'var_' . $first_id;
-							}
-						} else {
-							// Simple product / synthesized-default
-							// path: feature the first variant the
-							// filter pipeline didn't munge. Covers
-							// `var_<pid>_default` IDs emitted by
-							// `synthesize_default()`. Skip non-array
-							// entries from third-party
-							// `wc_ai_storefront_ucp_product` filter
-							// callbacks that injected malformed data
-							// — those can't be featured because they
-							// have no readable `id`.
-							foreach ( $final_product['variants'] as $variant_candidate ) {
-								if ( ! is_array( $variant_candidate ) ) {
+					// Attach per-variant `inputs[]` correlation per
+					// `catalog_lookup.json#/$defs/lookup_variant` (verified verbatim
+					// from `Universal-Commerce-Protocol/ucp` — see project memory
+					// `reference_ucp_spec.md`). Each emitted variant declares
+					// which request ID resolved to it.
+					//
+					// `match` semantics per `types/input_correlation.json`:
+					//   - `exact`    — input directly identifies this variant
+					//                  (variant ID, SKU, etc.).
+					//   - `featured` — server picked this variant as the
+					//                  representative for a product-level input.
+					//   - (omitted)  — this variant emerged alongside the
+					//                  resolved/featured one but isn't itself
+					//                  the server's pick. `inputs[].match` is
+					//                  optional per the schema; only `id` is
+					//                  required inside an inputs entry.
+					//
+					// Featured-variant selection rules (#369). When the input
+					// echoes a parent product (not a specific variant):
+					//   1. If `_default_attributes` covers every variation axis →
+					//      that resolved variation is featured. Single source of
+					//      truth: `WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id()`.
+					//   2. Else → first variation by `menu_order` (the Store
+					//      API already returns variations in menu_order, so
+					//      `$variation_fetch['variations'][0]` is the right pick).
+					//
+					// When the input echoes a specific variant id (e.g.
+					// `var_<vid>`) → that variant is `exact` and moves to
+					// `variants[0]`; siblings emit with `inputs: [{id}]` only.
+					//
+					// Two existing nuances preserved:
+					//   - A bare `var_<product_id>` input against a simple
+					//     product emits a synthetic default variant whose id is
+					//     `var_<product_id>_default`. Those strings differ —
+					//     no `exact` match — but the synthesized default IS the
+					//     sole variant, so it's featured via the
+					//     fall-through-to-first rule.
+					//   - For a variable product where the input echoes a
+					//     specific variation id, that variant gets `exact` and
+					//     the featured-resolution short-circuits.
+					//
+					// Per `product.json` (verbatim from the repo): _"First item
+					// is the featured variant for listings."_ Both the
+					// `inputs[].match` annotation AND the `variants[]` position
+					// must agree — we move the featured/exact variant to
+					// `variants[0]` after correlation marking.
+					//
+					// Done last (after both filters) so the spec-required
+					// transport-layer correlation isn't mutable by content
+					// filters; filter authors care about variant content,
+					// not server-side request reconciliation.
+					if ( isset( $final_product['variants'] ) && is_array( $final_product['variants'] ) ) {
+						$input_echo = (string) ( $inputs[ $index ] ?? '' );
+						if ( '' !== $input_echo ) {
+							// Pass 1: find an exact match (input echoes a
+							// specific variant id). Note: `$final_product` came
+							// through the `wc_ai_storefront_ucp_product` filter;
+							// a third-party callback could replace a variant
+							// with a non-array (string, null, etc.). Guard
+							// before reading `$variant['id']` so a malformed
+							// callback doesn't fatal the whole lookup with
+							// PHP 8+'s "Cannot access offset" error.
+							$exact_variant_id    = null;
+							$featured_variant_id = null;
+							foreach ( $final_product['variants'] as $variant ) {
+								if ( ! is_array( $variant ) ) {
 									continue;
 								}
-								$candidate_id = (string) ( $variant_candidate['id'] ?? '' );
-								if ( '' !== $candidate_id ) {
-									$featured_variant_id = $candidate_id;
+								if ( $input_echo === (string) ( $variant['id'] ?? '' ) ) {
+									$exact_variant_id = (string) $variant['id'];
 									break;
 								}
 							}
-						}
-					}
 
-					// Pass 2.5: verify the computed featured/exact id still
-					// exists in `$final_product['variants']`. The
-					// `wc_ai_storefront_ucp_product` filter (between Pass 1
-					// and Pass 3) can mutate the variants array — including
-					// removing the variant whose id we computed in Pass 2.
-					// If the computed ID is gone, fall back to featuring
-					// the first valid (array-shaped, non-empty-id) variant
-					// so the spec's "one featured per product" expectation
-					// still holds.
-					$variant_ids_present = [];
-					foreach ( $final_product['variants'] as $v ) {
-						if ( is_array( $v ) ) {
-							$vid = (string) ( $v['id'] ?? '' );
-							if ( '' !== $vid ) {
-								$variant_ids_present[] = $vid;
+							// Pass 2: no exact match — resolve featured via
+							// `_default_attributes` or menu_order fallback.
+							if ( null === $exact_variant_id ) {
+								$default_variation_id = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
+									$wc_product,
+									$variation_fetch['variations']
+								);
+								if ( null !== $default_variation_id ) {
+									// Merchant signal present: feature the
+									// resolved variation.
+									$featured_variant_id = 'var_' . $default_variation_id;
+								} elseif ( ! empty( $variation_fetch['variations'] ) ) {
+									// No merchant signal: feature the first
+									// variation by menu_order (Store API
+									// already returns variations in menu_order).
+									$first_id = (int) ( $variation_fetch['variations'][0]['id'] ?? 0 );
+									if ( $first_id > 0 ) {
+										$featured_variant_id = 'var_' . $first_id;
+									}
+								} else {
+									// Simple product / synthesized-default
+									// path: feature the first variant the
+									// filter pipeline didn't munge. Covers
+									// `var_<pid>_default` IDs emitted by
+									// `synthesize_default()`. Skip non-array
+									// entries from third-party
+									// `wc_ai_storefront_ucp_product` filter
+									// callbacks that injected malformed data
+									// — those can't be featured because they
+									// have no readable `id`.
+									foreach ( $final_product['variants'] as $variant_candidate ) {
+										if ( ! is_array( $variant_candidate ) ) {
+											continue;
+										}
+										$candidate_id = (string) ( $variant_candidate['id'] ?? '' );
+										if ( '' !== $candidate_id ) {
+											$featured_variant_id = $candidate_id;
+											break;
+										}
+									}
+								}
+							}
+
+							// Pass 2.5: verify the computed featured/exact id still
+							// exists in `$final_product['variants']`. The
+							// `wc_ai_storefront_ucp_product` filter (between Pass 1
+							// and Pass 3) can mutate the variants array — including
+							// removing the variant whose id we computed in Pass 2.
+							// If the computed ID is gone, fall back to featuring
+							// the first valid (array-shaped, non-empty-id) variant
+							// so the spec's "one featured per product" expectation
+							// still holds.
+							$variant_ids_present = [];
+							foreach ( $final_product['variants'] as $v ) {
+								if ( is_array( $v ) ) {
+									$vid = (string) ( $v['id'] ?? '' );
+									if ( '' !== $vid ) {
+										$variant_ids_present[] = $vid;
+									}
+								}
+							}
+							if ( null !== $exact_variant_id && ! in_array( $exact_variant_id, $variant_ids_present, true ) ) {
+								$exact_variant_id = null;
+							}
+							if ( null !== $featured_variant_id && ! in_array( $featured_variant_id, $variant_ids_present, true ) ) {
+								$featured_variant_id = $variant_ids_present[0] ?? null;
+							}
+
+							// Pass 3: assemble each variant's inputs[] entry.
+							// Exact wins over featured; siblings get just `id`
+							// (no match field — spec-clean per `input_correlation.json`).
+							// Filter-corrupted non-array entries are skipped without
+							// an inputs[] correlation — that's a downstream schema
+							// violation (per `catalog_lookup.json#/$defs/lookup_variant`
+							// `inputs` is required with minItems:1), but we'd rather
+							// emit the malformed shape and let the schema validator
+							// surface it than fatal the whole response. Log so the
+							// merchant or plugin author can find the filter callback
+							// that's misbehaving.
+							$corrupted_count = 0;
+							foreach ( $final_product['variants'] as $variant_idx => $variant ) {
+								if ( ! is_array( $variant ) ) {
+									++$corrupted_count;
+									continue;
+								}
+								$variant_id = (string) ( $variant['id'] ?? '' );
+								$entry      = [ 'id' => $input_echo ];
+								if ( $variant_id === $exact_variant_id ) {
+									$entry['match'] = 'exact';
+								} elseif ( $variant_id === $featured_variant_id ) {
+									$entry['match'] = 'featured';
+								}
+								$final_product['variants'][ $variant_idx ]['inputs'] = [ $entry ];
+							}
+
+							if ( $corrupted_count > 0 ) {
+								WC_AI_Storefront_Logger::debug(
+									sprintf(
+										'UCP catalog/lookup: product %d emitted %d non-array variant entries (a `wc_ai_storefront_ucp_product` filter callback replaced a variant with a non-array value). These entries violate the spec\'s inputs[] minItems:1 requirement — investigate the filter pipeline.',
+										(int) $wc_id,
+										$corrupted_count
+									)
+								);
+							}
+
+							// Pass 4: reorder `variants[]` so the featured (or
+							// exact) variant sits at index 0. Per `product.json`:
+							// "First item is the featured variant for listings."
+							$pinned_id = $exact_variant_id ?? $featured_variant_id;
+							if ( null !== $pinned_id ) {
+								$pinned_idx = null;
+								foreach ( $final_product['variants'] as $idx => $v ) {
+									if ( is_array( $v ) && (string) ( $v['id'] ?? '' ) === $pinned_id ) {
+										$pinned_idx = $idx;
+										break;
+									}
+								}
+								if ( null !== $pinned_idx && 0 !== $pinned_idx ) {
+									$pinned = $final_product['variants'][ $pinned_idx ];
+									unset( $final_product['variants'][ $pinned_idx ] );
+									array_unshift( $final_product['variants'], $pinned );
+									$final_product['variants'] = array_values( $final_product['variants'] );
+								}
 							}
 						}
 					}
-					if ( null !== $exact_variant_id && ! in_array( $exact_variant_id, $variant_ids_present, true ) ) {
-						$exact_variant_id = null;
-					}
-					if ( null !== $featured_variant_id && ! in_array( $featured_variant_id, $variant_ids_present, true ) ) {
-						$featured_variant_id = $variant_ids_present[0] ?? null;
-					}
 
-					// Pass 3: assemble each variant's inputs[] entry.
-					// Exact wins over featured; siblings get just `id`
-					// (no match field — spec-clean per `input_correlation.json`).
-					// Filter-corrupted non-array entries are skipped without
-					// an inputs[] correlation — that's a downstream schema
-					// violation (per `catalog_lookup.json#/$defs/lookup_variant`
-					// `inputs` is required with minItems:1), but we'd rather
-					// emit the malformed shape and let the schema validator
-					// surface it than fatal the whole response. Log so the
-					// merchant or plugin author can find the filter callback
-					// that's misbehaving.
-					$corrupted_count = 0;
-					foreach ( $final_product['variants'] as $variant_idx => $variant ) {
-						if ( ! is_array( $variant ) ) {
-							++$corrupted_count;
-							continue;
-						}
-						$variant_id = (string) ( $variant['id'] ?? '' );
-						$entry      = [ 'id' => $input_echo ];
-						if ( $variant_id === $exact_variant_id ) {
-							$entry['match'] = 'exact';
-						} elseif ( $variant_id === $featured_variant_id ) {
-							$entry['match'] = 'featured';
-						}
-						$final_product['variants'][ $variant_idx ]['inputs'] = [ $entry ];
-					}
+					$products[] = $final_product;
 
-					if ( $corrupted_count > 0 ) {
-						WC_AI_Storefront_Logger::debug(
-							sprintf(
-								'UCP catalog/lookup: product %d emitted %d non-array variant entries (a `wc_ai_storefront_ucp_product` filter callback replaced a variant with a non-array value). These entries violate the spec\'s inputs[] minItems:1 requirement — investigate the filter pipeline.',
-								(int) $wc_id,
-								$corrupted_count
-							)
+					if ( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE !== $agent_data['name'] ) {
+						WC_AI_Storefront_Crawl_Logger::record(
+							WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SINGLE,
+							$wc_id,
+							$agent_data['name']
 						);
 					}
-
-					// Pass 4: reorder `variants[]` so the featured (or
-					// exact) variant sits at index 0. Per `product.json`:
-					// "First item is the featured variant for listings."
-					$pinned_id = $exact_variant_id ?? $featured_variant_id;
-					if ( null !== $pinned_id ) {
-						$pinned_idx = null;
-						foreach ( $final_product['variants'] as $idx => $v ) {
-							if ( is_array( $v ) && (string) ( $v['id'] ?? '' ) === $pinned_id ) {
-								$pinned_idx = $idx;
-								break;
-							}
-						}
-						if ( null !== $pinned_idx && 0 !== $pinned_idx ) {
-							$pinned = $final_product['variants'][ $pinned_idx ];
-							unset( $final_product['variants'][ $pinned_idx ] );
-							array_unshift( $final_product['variants'], $pinned );
-							$final_product['variants'] = array_values( $final_product['variants'] );
-						}
-					}
 				}
-			}
 
-			$products[] = $final_product;
-
-			if ( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE !== $agent_data['name'] ) {
-				WC_AI_Storefront_Crawl_Logger::record(
-					WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SINGLE,
-					$wc_id,
-					$agent_data['name']
-				);
+				return array( $products, $messages );
 			}
-		}
+		);
 
 		// Per `catalog_lookup.json#/$defs/lookup_response` (UCP 2026-04-08),
 		// the envelope requires only `[ucp, products]`. Per-variant
