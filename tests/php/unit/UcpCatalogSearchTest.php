@@ -2852,4 +2852,115 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'EUR', $during, 'During dispatch, override filter must return EUR' );
 		$this->assertFalse( $after, 'After dispatch returns, override filter must be unhooked' );
 	}
+
+	public function test_map_ucp_search_converts_price_filter_to_base_currency_when_context_currency_in_accepted_set(): void {
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
+		);
+		// EUR has rate 1.10. Inside with_active_currency('EUR'), WCPay's
+		// get_price() applies the EUR rate. convert_amount() does:
+		//   minor → major (5000 → 50.0)
+		//   get_price(50.0, 'product') → 50.0 * 1.10 = 55.00
+		//   major → minor → 5500
+		$mc->shouldReceive( 'get_price' )->andReturnUsing(
+			static function ( $amount, $type ) {
+				return $amount * 1.10;
+			}
+		);
+		$GLOBALS['_mc_test_double'] = $mc;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$captured_params = array();
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) use ( &$captured_params ) {
+				// The stub's WP_REST_Request unifies query/body params via
+				// get_param(), so we read each Store API key directly
+				// rather than calling a non-existent get_query_params().
+				foreach ( array( 'min_price', 'max_price' ) as $key ) {
+					$val = $req->get_param( $key );
+					if ( null !== $val ) {
+						$captured_params[ $key ] = $val;
+					}
+				}
+				$response = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_body_params(
+			array(
+				'context' => array( 'currency' => 'EUR' ),
+				'filters' => array( 'price' => array( 'min' => 5000, 'max' => 10000 ) ),
+			)
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search( $request );
+
+		$this->assertArrayHasKey( 'min_price', $captured_params, 'min_price must reach the Store API (no longer dropped)' );
+		$this->assertArrayHasKey( 'max_price', $captured_params, 'max_price must reach the Store API (no longer dropped)' );
+		// Converted minor units: 5000 EUR → 5500 USD, 10000 EUR → 11000 USD.
+		// `minor_units_to_presentment` formats with `wc_get_price_decimals`
+		// (stubbed to 2 in setUp), so 5500 → "55.00" and 11000 → "110.00".
+		$this->assertSame( '55.00', (string) $captured_params['min_price'] );
+		$this->assertSame( '110.00', (string) $captured_params['max_price'] );
+	}
+
+	public function test_map_ucp_search_emits_warning_when_context_currency_not_in_accepted_set(): void {
+		// XYZ is not in accepted set → fall back to base, emit warning,
+		// drop the filter (no min/max reaches Store API since we can't
+		// trust an unknown currency's denomination).
+		$GLOBALS['_mc_test_double'] = null;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$captured_params = array();
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) use ( &$captured_params ) {
+				foreach ( array( 'min_price', 'max_price' ) as $key ) {
+					$val = $req->get_param( $key );
+					if ( null !== $val ) {
+						$captured_params[ $key ] = $val;
+					}
+				}
+				$response = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_body_params(
+			array(
+				'context' => array( 'currency' => 'XYZ' ),
+				'filters' => array( 'price' => array( 'min' => 5000, 'max' => 10000 ) ),
+			)
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_catalog_search( $request );
+
+		$body = $response->get_data();
+		$this->assertArrayHasKey( 'messages', $body );
+		$found = false;
+		foreach ( $body['messages'] as $msg ) {
+			if (
+				'warning' === $msg['type']
+				&& WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED === $msg['code']
+			) {
+				$found = true;
+			}
+		}
+		$this->assertTrue( $found, 'currency_conversion_unsupported warning must be emitted' );
+		$this->assertArrayNotHasKey( 'min_price', $captured_params );
+		$this->assertArrayNotHasKey( 'max_price', $captured_params );
+	}
 }

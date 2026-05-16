@@ -4343,27 +4343,79 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$store_currency   = function_exists( 'get_woocommerce_currency' )
 					? strtoupper( (string) get_woocommerce_currency() )
 					: 'USD';
+
+				$min_value = $has_min ? (int) $price['min'] : null;
+				$max_value = $has_max ? (int) $price['max'] : null;
+
 				if ( null !== $ctx_currency && $ctx_currency !== $store_currency ) {
-					$apply_price_filter = false;
-					$messages[]         = [
-						'type'    => 'warning',
-						'code'    => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
-						'path'    => '$.filters.price',
-						'content' => sprintf(
-							/* translators: 1: agent-supplied currency, 2: store currency. */
-							__( 'context.currency "%1$s" does not match store currency "%2$s" and conversion is not supported; price filter ignored.', 'woocommerce-ai-storefront' ),
-							$ctx_currency,
-							$store_currency
-						),
-					];
+					// Phase 2: convert filter bounds via WCPay if the requested
+					// currency is in accepted_currencies; otherwise fall back to
+					// drop + warn (same as Phase 1). The conversion runs inside
+					// `with_active_currency( $ctx_currency )` so WCPay's
+					// `get_selected_currency()` returns the source and
+					// `get_price()` converts to the merchant's base currency
+					// using merchant-configured rate + rounding + charm.
+					$accepted = WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
+					if ( in_array( $ctx_currency, $accepted, true ) ) {
+						try {
+							$convert = static function ( $v ) use ( $ctx_currency, $store_currency ) {
+								return WC_AI_Storefront_Multi_Currency::with_active_currency(
+									$ctx_currency,
+									static function () use ( $v, $ctx_currency, $store_currency ) {
+										return WC_AI_Storefront_Multi_Currency::convert_amount( $v, $ctx_currency, $store_currency );
+									}
+								);
+							};
+							if ( null !== $min_value ) {
+								$min_value = $convert( $min_value );
+							}
+							if ( null !== $max_value ) {
+								$max_value = $convert( $max_value );
+							}
+						} catch ( \Throwable $e ) {
+							// Conversion failed (WCPay throw, partial-boot, etc.).
+							// Drop the filter + emit the standard fallback warning.
+							WC_AI_Storefront_Logger::debug(
+								'UCP catalog/search: filter conversion threw ' . get_class( $e )
+									. ' — dropping filters.price. Message: ' . $e->getMessage()
+							);
+							$apply_price_filter = false;
+							$messages[]         = [
+								'type'    => 'warning',
+								'code'    => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
+								'path'    => '$.filters.price',
+								'content' => sprintf(
+									/* translators: 1: agent-supplied currency, 2: store currency. */
+									__( 'Conversion of price filter from "%1$s" to "%2$s" failed; filter ignored.', 'woocommerce-ai-storefront' ),
+									$ctx_currency,
+									$store_currency
+								),
+							];
+						}
+					} else {
+						// Requested currency is not in accepted set — drop +
+						// warn per Phase 1 semantics.
+						$apply_price_filter = false;
+						$messages[]         = [
+							'type'    => 'warning',
+							'code'    => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
+							'path'    => '$.filters.price',
+							'content' => sprintf(
+								/* translators: 1: agent-supplied currency, 2: store currency. */
+								__( 'context.currency "%1$s" is not in the store\'s accepted-currencies set; price filter ignored.', 'woocommerce-ai-storefront' ),
+								$ctx_currency,
+								$store_currency
+							),
+						];
+					}
 				}
 
 				if ( $apply_price_filter ) {
-					if ( $has_min ) {
-						$params['min_price'] = self::minor_units_to_presentment( (int) $price['min'] );
+					if ( null !== $min_value ) {
+						$params['min_price'] = self::minor_units_to_presentment( $min_value );
 					}
-					if ( $has_max ) {
-						$params['max_price'] = self::minor_units_to_presentment( (int) $price['max'] );
+					if ( null !== $max_value ) {
+						$params['max_price'] = self::minor_units_to_presentment( $max_value );
 					}
 				}
 			}
