@@ -2430,19 +2430,34 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
-		$processed = [];
-		$messages  = [];
+		// Phase 2: line-item resolution runs inside the agent's requested
+		// currency. `process_line_item` calls `fetch_store_api_product`
+		// (Store API dispatch) and `check_price_drift` (expected_unit_price
+		// comparison). Both must see WCPay's selected currency = $request_currency
+		// so prices are quoted consistently with the agent's preceding
+		// catalog/search response, and `expected_unit_price.currency` can
+		// be compared EUR-vs-EUR (see Task 7 for the widening). The helper
+		// is a no-op when context.currency is absent or not in accepted_currencies,
+		// so single-currency stores behave identically to Phase 1.
+		$request_currency         = self::get_request_currency( $request );
+		[ $processed, $messages ] = WC_AI_Storefront_Multi_Currency::with_active_currency(
+			(string) $request_currency,
+			function () use ( $line_items_raw, $currency ) {
+				$processed = [];
+				$messages  = [];
+				foreach ( $line_items_raw as $index => $line_item ) {
+					$outcome = $this->process_line_item( $line_item, (int) $index, $currency );
 
-		foreach ( $line_items_raw as $index => $line_item ) {
-			$outcome = $this->process_line_item( $line_item, (int) $index, $currency );
-
-			foreach ( $outcome['messages'] as $message ) {
-				$messages[] = $message;
+					foreach ( $outcome['messages'] as $message ) {
+						$messages[] = $message;
+					}
+					if ( null !== $outcome['processed'] ) {
+						$processed[] = $outcome['processed'];
+					}
+				}
+				return [ $processed, $messages ];
 			}
-			if ( null !== $outcome['processed'] ) {
-				$processed[] = $outcome['processed'];
-			}
-		}
+		);
 
 		// Dedup pass: an agent that posts the same product/variation
 		// twice (e.g. an incremental cart-add pattern that re-sends an

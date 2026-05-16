@@ -26,8 +26,19 @@ use Brain\Monkey;
 use Brain\Monkey\Functions;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
+// `wp_parse_str` is declared as a real function (not a Brain Monkey
+// stub) because Patchwork-based aliasing cannot proxy a pass-by-reference
+// second parameter. Guarded so re-running alongside MultiCurrencyTest
+// (which declares the same shim) is safe.
+if ( ! function_exists( 'wp_parse_str' ) ) {
+	function wp_parse_str( $str, &$result ) {
+		parse_str( (string) $str, $result );
+	}
+}
+
 class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
+	use WCPayMultiCurrencyTestTrait;
 
 	/**
 	 * Per-ID canned Store API responses.
@@ -157,6 +168,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 	protected function tearDown(): void {
 		WC_AI_Storefront_Multi_Currency::reset_cache();
+		// Drop any test-local filter callbacks registered by the real-runtime
+		// installer (no-op when the installer wasn't used in this test).
+		$this->tear_down_filter_runtime();
+		// Reset the WCPay-double globals so a test that built one doesn't
+		// leak into the next test's accepted-currencies probe.
+		$GLOBALS['_mc_test_double']     = null;
+		$GLOBALS['_mc_throw']           = false;
+		$GLOBALS['_mc_feature_enabled'] = true;
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -3909,5 +3928,54 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $bundle_errors );
 		$this->assertSame( 'recoverable', $bundle_errors[0]['severity'] );
 		$this->assertStringNotContainsString( 'Open continue_url', $bundle_errors[0]['content'] );
+	}
+
+	public function test_handle_checkout_sessions_create_runs_line_items_inside_currency_override(): void {
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
+		);
+		$GLOBALS['_mc_test_double'] = $mc;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+
+		$this->install_real_filter_runtime();
+
+		$override_value_during_fetch = null;
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) use ( &$override_value_during_fetch ) {
+				$override_value_during_fetch = apply_filters( 'wcpay_multi_currency_override_selected_currency', false );
+				$response                    = new \WP_REST_Response( array(
+					'id'             => 1,
+					'type'           => 'simple',
+					'is_in_stock'    => true,
+					'is_purchasable' => true,
+					'prices'         => array( 'price' => '1999', 'currency_code' => 'EUR' ),
+				) );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
+		$request->set_body_params(
+			array(
+				'context'    => array( 'currency' => 'EUR' ),
+				'line_items' => array(
+					array( 'item' => array( 'id' => 'prod_1' ), 'quantity' => 1 ),
+				),
+			)
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_checkout_sessions_create( $request );
+
+		$this->assertSame(
+			'EUR',
+			$override_value_during_fetch,
+			'Line-item product fetches must run inside the EUR override scope'
+		);
 	}
 }
