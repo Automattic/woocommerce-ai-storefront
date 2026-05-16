@@ -12,17 +12,11 @@ namespace {
 	use Brain\Monkey\Functions;
 	use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
-	// `wp_parse_str` is declared here as a real function because
-	// Brain Monkey's Patchwork-based aliasing cannot proxy a
-	// pass-by-reference second parameter — see
-	// https://github.com/Brain-WP/BrainMonkey/issues for context.
-	// Guarded so re-running the test class (or running alongside a
-	// future suite that also defines it) is safe.
-	if ( ! function_exists( 'wp_parse_str' ) ) {
-		function wp_parse_str( $str, &$result ) {
-			parse_str( (string) $str, $result );
-		}
-	}
+	// `wp_parse_str` shim lives in the shared trait file
+	// `tests/php/traits/trait-wcpay-multi-currency-test.php` (loaded by
+	// bootstrap before this file). Pass-by-reference args can't go
+	// through Brain Monkey's Patchwork-based aliasing — see the trait
+	// comment for context.
 
 	// WCPay soft-dependency stubs (`WC_Payments_Multi_Currency()` global
 	// function, `\WCPay\MultiCurrency\MultiCurrency` class_alias, and
@@ -60,8 +54,8 @@ namespace {
 			Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 			Functions\when( 'apply_filters' )->returnArg( 2 );
 			// `wp_parse_url` is globally stubbed in tests/php/stubs.php.
-			// `wp_parse_str` is declared as a real function above this
-			// class (pass-by-reference args can't go through Brain Monkey).
+			// `wp_parse_str` is declared as a real function in the shared
+			// trait file (pass-by-reference args can't go through Brain Monkey).
 			// `add_query_arg` mirrors WP core's parse-rebuild behavior so
 			// the existing query string gets re-encoded (`42:1` → `42%3A1`)
 			// and an existing key is replaced rather than duplicated.

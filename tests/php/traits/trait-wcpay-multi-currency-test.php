@@ -49,6 +49,20 @@ namespace {
 	// file-load time. PHP's `function_exists` / `class_exists` guards make
 	// the duplicate declarations safe: whichever file loads first wins.
 
+	// `wp_parse_str` is declared as a real function (not a Brain Monkey
+	// stub) because Patchwork-based aliasing cannot proxy a pass-by-reference
+	// second parameter — see https://github.com/Brain-WP/BrainMonkey/issues
+	// for context. Declared here in the shared trait file so any test
+	// that loads the trait (or uses the multi-currency helper end-to-end
+	// via `stamp_currency_query`) gets a consistent shim. Guarded with
+	// `function_exists` so re-declaration across multiple test files is
+	// safe.
+	if ( ! function_exists( 'wp_parse_str' ) ) {
+		function wp_parse_str( $str, &$result ) {
+			parse_str( (string) $str, $result );
+		}
+	}
+
 	if ( ! isset( $GLOBALS['_mc_test_double'] ) ) {
 		$GLOBALS['_mc_test_double'] = null;
 	}

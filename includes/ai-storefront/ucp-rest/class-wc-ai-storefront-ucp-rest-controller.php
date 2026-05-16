@@ -2435,8 +2435,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// (Store API dispatch) and `check_price_drift` (expected_unit_price
 		// comparison). Both must see WCPay's selected currency = $request_currency
 		// so prices are quoted consistently with the agent's preceding
-		// catalog/search response, and `expected_unit_price.currency` can
-		// be compared EUR-vs-EUR (see Task 7 for the widening). The helper
+		// catalog/search response, and `expected_unit_price.currency` will
+		// be compared EUR-vs-EUR once Task 7 widens `check_price_drift` to
+		// read the active WCPay override. The helper
 		// is a no-op when context.currency is absent or not in accepted_currencies,
 		// so single-currency stores behave identically to Phase 1.
 		$request_currency         = self::get_request_currency( $request );

@@ -26,15 +26,9 @@ use Brain\Monkey;
 use Brain\Monkey\Functions;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
-// `wp_parse_str` is declared as a real function (not a Brain Monkey
-// stub) because Patchwork-based aliasing cannot proxy a pass-by-reference
-// second parameter. Guarded so re-running alongside MultiCurrencyTest
-// (which declares the same shim) is safe.
-if ( ! function_exists( 'wp_parse_str' ) ) {
-	function wp_parse_str( $str, &$result ) {
-		parse_str( (string) $str, $result );
-	}
-}
+// `wp_parse_str` shim lives in the shared trait file
+// `tests/php/traits/trait-wcpay-multi-currency-test.php` (loaded by
+// bootstrap before this file). See the trait comment for context.
 
 class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
@@ -3976,6 +3970,12 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			'EUR',
 			$override_value_during_fetch,
 			'Line-item product fetches must run inside the EUR override scope'
+		);
+
+		$this->assertSame(
+			false,
+			apply_filters( 'wcpay_multi_currency_override_selected_currency', false ),
+			'Override filter must be unhooked after the line-item loop completes'
 		);
 	}
 }
