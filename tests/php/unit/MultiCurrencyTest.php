@@ -134,6 +134,7 @@ namespace {
 			$GLOBALS['_mc_test_double']     = null;
 			$GLOBALS['_mc_throw']           = false;
 			$GLOBALS['_mc_feature_enabled'] = true;
+			unset( $GLOBALS['_mc_test_filters'] );
 			Monkey\tearDown();
 			parent::tearDown();
 		}
