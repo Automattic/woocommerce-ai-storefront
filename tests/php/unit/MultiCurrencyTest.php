@@ -7,45 +7,6 @@
  * @package WooCommerce_AI_Storefront
  */
 
-namespace WCPay\MultiCurrency {
-	if ( ! class_exists( __NAMESPACE__ . '\\MultiCurrency' ) ) {
-		/**
-		 * Test stand-in for the real WCPay class.
-		 *
-		 * Tests install a Mockery double onto `$test_double`;
-		 * `instance()` returns it. When `$test_double` is null,
-		 * `instance()` returns null and the helper falls through
-		 * the `is_object()` guard.
-		 *
-		 * The instance methods (`is_multi_currency_enabled`,
-		 * `get_enabled_currencies`) are declared with stub bodies
-		 * so the helper's defensive `method_exists()` guards report
-		 * true on Mockery doubles created via
-		 * `\Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' )`.
-		 * Mockery overrides them per-test via `shouldReceive`.
-		 */
-		class MultiCurrency {
-			public static $test_double      = null;
-			public static $throw_on_instance = false;
-
-			public static function instance() {
-				if ( self::$throw_on_instance ) {
-					throw new \RuntimeException( 'WCPay partial-boot test exception' );
-				}
-				return self::$test_double;
-			}
-
-			public function is_multi_currency_enabled() {
-				return false;
-			}
-
-			public function get_enabled_currencies() {
-				return array();
-			}
-		}
-	}
-}
-
 namespace {
 	use Brain\Monkey;
 	use Brain\Monkey\Functions;
@@ -63,6 +24,51 @@ namespace {
 		}
 	}
 
+	// Test stand-in for the real WCPay global function.
+	//
+	// Production code calls `function_exists('WC_Payments_Multi_Currency')`
+	// as the combined feature-flag check + singleton accessor.
+	//
+	// We declare the function unconditionally here (rather than via Brain
+	// Monkey `when()`) because it needs a static $test_double slot —
+	// Patchwork can't carry test-scoped state through an alias closure
+	// cleanly. Setting `$_mc_test_double` directly from each test controls
+	// what the function returns.
+	//
+	// To simulate "WCPay not installed / feature off" (both map to
+	// `function_exists` = false in production), tests leave `$_mc_test_double`
+	// as null; the function still exists in the test process but returns null,
+	// which is the observable equivalent — the `is_object()` guard
+	// short-circuits identically. The "function doesn't exist at all" path
+	// cannot be tested with this scaffold because the stub is declared
+	// unconditionally at file-load time.
+	//
+	// To simulate a partial-boot exception, tests set `$_mc_throw = true`.
+	$GLOBALS['_mc_test_double'] = null;
+	$GLOBALS['_mc_throw']       = false;
+
+	if ( ! function_exists( 'WC_Payments_Multi_Currency' ) ) {
+		function WC_Payments_Multi_Currency() {
+			if ( $GLOBALS['_mc_throw'] ) {
+				throw new \RuntimeException( 'WCPay partial-boot test exception' );
+			}
+			return $GLOBALS['_mc_test_double'];
+		}
+	}
+
+	// Minimal stub class so Mockery can reflect
+	// `\WCPay\MultiCurrency\MultiCurrency` when tests build doubles.
+	// Only `get_enabled_currencies()` is needed — production code no longer
+	// calls `::instance()` or `is_multi_currency_enabled()`.
+	if ( ! class_exists( '\WCPay\MultiCurrency\MultiCurrency' ) ) {
+		class WCPay_MultiCurrency_MultiCurrency_Stub {
+			public function get_enabled_currencies() {
+				return array();
+			}
+		}
+		class_alias( 'WCPay_MultiCurrency_MultiCurrency_Stub', '\WCPay\MultiCurrency\MultiCurrency' );
+	}
+
 	class MultiCurrencyTest extends \PHPUnit\Framework\TestCase {
 		use MockeryPHPUnitIntegration;
 
@@ -70,8 +76,8 @@ namespace {
 			parent::setUp();
 			Monkey\setUp();
 			WC_AI_Storefront_Multi_Currency::reset_cache();
-			\WCPay\MultiCurrency\MultiCurrency::$test_double      = null;
-			\WCPay\MultiCurrency\MultiCurrency::$throw_on_instance = false;
+			$GLOBALS['_mc_test_double'] = null;
+			$GLOBALS['_mc_throw']       = false;
 
 			Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 			Functions\when( 'apply_filters' )->returnArg( 2 );
@@ -101,13 +107,19 @@ namespace {
 		}
 
 		protected function tearDown(): void {
-			\WCPay\MultiCurrency\MultiCurrency::$test_double      = null;
-			\WCPay\MultiCurrency\MultiCurrency::$throw_on_instance = false;
+			$GLOBALS['_mc_test_double'] = null;
+			$GLOBALS['_mc_throw']       = false;
 			Monkey\tearDown();
 			parent::tearDown();
 		}
 
+		// ------------------------------------------------------------------
+		// get_accepted_currencies — WCPay probe
+		// ------------------------------------------------------------------
+
 		public function test_get_accepted_currencies_no_wcpay_double_returns_base_only(): void {
+			// $_mc_test_double is null → function exists but returns null →
+			// is_object() guard short-circuits → base-only list.
 			$this->assertSame(
 				array( 'USD' ),
 				WC_AI_Storefront_Multi_Currency::get_accepted_currencies()
@@ -116,7 +128,6 @@ namespace {
 
 		public function test_get_accepted_currencies_wcpay_enabled_returns_full_list_with_base_first(): void {
 			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
-			$mc->shouldReceive( 'is_multi_currency_enabled' )->andReturn( true );
 			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
 				array(
 					'USD' => new \stdClass(),
@@ -124,7 +135,7 @@ namespace {
 					'GBP' => new \stdClass(),
 				)
 			);
-			\WCPay\MultiCurrency\MultiCurrency::$test_double = $mc;
+			$GLOBALS['_mc_test_double'] = $mc;
 
 			$this->assertSame(
 				array( 'USD', 'EUR', 'GBP' ),
@@ -132,28 +143,15 @@ namespace {
 			);
 		}
 
-		public function test_get_accepted_currencies_wcpay_disabled_returns_base_only(): void {
-			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
-			$mc->shouldReceive( 'is_multi_currency_enabled' )->andReturn( false );
-			$mc->shouldNotReceive( 'get_enabled_currencies' );
-			\WCPay\MultiCurrency\MultiCurrency::$test_double = $mc;
-
-			$this->assertSame(
-				array( 'USD' ),
-				WC_AI_Storefront_Multi_Currency::get_accepted_currencies()
-			);
-		}
-
 		public function test_get_accepted_currencies_base_missing_from_wcpay_list_is_prepended(): void {
 			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
-			$mc->shouldReceive( 'is_multi_currency_enabled' )->andReturn( true );
 			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
 				array(
 					'EUR' => new \stdClass(),
 					'GBP' => new \stdClass(),
 				)
 			);
-			\WCPay\MultiCurrency\MultiCurrency::$test_double = $mc;
+			$GLOBALS['_mc_test_double'] = $mc;
 
 			$this->assertSame(
 				array( 'USD', 'EUR', 'GBP' ),
@@ -163,7 +161,6 @@ namespace {
 
 		public function test_get_accepted_currencies_duplicates_are_deduped_preserving_order(): void {
 			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
-			$mc->shouldReceive( 'is_multi_currency_enabled' )->andReturn( true );
 			// The 'eur' lowercase key is distinct from 'EUR' in the array
 			// literal (so PHP doesn't collapse it at parse time), but
 			// collapses to 'EUR' after the helper's strtoupper() — exercising
@@ -176,7 +173,7 @@ namespace {
 					'GBP' => new \stdClass(),
 				)
 			);
-			\WCPay\MultiCurrency\MultiCurrency::$test_double = $mc;
+			$GLOBALS['_mc_test_double'] = $mc;
 
 			$this->assertSame(
 				array( 'USD', 'EUR', 'GBP' ),
@@ -186,7 +183,6 @@ namespace {
 
 		public function test_get_accepted_currencies_malformed_codes_are_dropped(): void {
 			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
-			$mc->shouldReceive( 'is_multi_currency_enabled' )->andReturn( true );
 			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
 				array(
 					'EUR'  => new \stdClass(),
@@ -196,7 +192,7 @@ namespace {
 					'GBP'  => new \stdClass(),
 				)
 			);
-			\WCPay\MultiCurrency\MultiCurrency::$test_double = $mc;
+			$GLOBALS['_mc_test_double'] = $mc;
 
 			$this->assertSame(
 				array( 'USD', 'EUR', 'GBP' ),
@@ -210,20 +206,34 @@ namespace {
 			// would silently swallow, still returning ['USD']. To confirm the
 			// guard fires rather than the catch, we verify no exception path
 			// is exercised by asserting the result directly. The guard's
-			// independent value is also covered by test_get_accepted_currencies_wcpay_instance_throws.
+			// independent value is also covered by
+			// test_get_accepted_currencies_wcpay_function_throws.
 			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
-			$mc->shouldReceive( 'is_multi_currency_enabled' )->andReturn( true );
 			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn( null );
-			\WCPay\MultiCurrency\MultiCurrency::$test_double = $mc;
+			$GLOBALS['_mc_test_double'] = $mc;
 
 			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
 		}
 
-		public function test_get_accepted_currencies_wcpay_instance_throws_falls_back_to_base(): void {
-			\WCPay\MultiCurrency\MultiCurrency::$throw_on_instance = true;
+		public function test_get_accepted_currencies_wcpay_function_throws_falls_back_to_base(): void {
+			$GLOBALS['_mc_throw'] = true;
 
 			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
 		}
+
+		public function test_get_accepted_currencies_wcpay_function_returns_non_object_falls_back_to_base(): void {
+			// Exercises the is_object() guard: function exists and returns a
+			// non-null scalar (e.g. WCPay ships a refactor where the function
+			// returns true/1 instead of the singleton). The is_object() check
+			// short-circuits cleanly without reaching get_enabled_currencies().
+			$GLOBALS['_mc_test_double'] = true;
+
+			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
+		}
+
+		// ------------------------------------------------------------------
+		// get_accepted_currencies — base currency handling
+		// ------------------------------------------------------------------
 
 		public function test_get_accepted_currencies_invalid_base_currency_falls_back_to_usd(): void {
 			Functions\when( 'get_woocommerce_currency' )->justReturn( '' );
@@ -237,16 +247,19 @@ namespace {
 			$this->assertSame( array( 'USD' ), WC_AI_Storefront_Multi_Currency::get_accepted_currencies() );
 		}
 
+		// ------------------------------------------------------------------
+		// get_accepted_currencies — filter behaviour
+		// ------------------------------------------------------------------
+
 		public function test_get_accepted_currencies_filter_throwing_falls_back_to_auto_detected_list(): void {
 			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
-			$mc->shouldReceive( 'is_multi_currency_enabled' )->andReturn( true );
 			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
 				array(
 					'USD' => new \stdClass(),
 					'EUR' => new \stdClass(),
 				)
 			);
-			\WCPay\MultiCurrency\MultiCurrency::$test_double = $mc;
+			$GLOBALS['_mc_test_double'] = $mc;
 
 			Functions\when( 'apply_filters' )->alias(
 				static function ( $hook, $value, ...$extras ) {
@@ -328,6 +341,10 @@ namespace {
 			);
 		}
 
+		// ------------------------------------------------------------------
+		// get_accepted_currencies — memoization
+		// ------------------------------------------------------------------
+
 		public function test_get_accepted_currencies_memoizes_within_request(): void {
 			$call_count = 0;
 			Functions\when( 'get_woocommerce_currency' )->alias(
@@ -343,6 +360,29 @@ namespace {
 
 			$this->assertSame( 1, $call_count, 'get_woocommerce_currency should be called once per request' );
 		}
+
+		public function test_get_accepted_currencies_memoizes_wcpay_call(): void {
+			// Verify the WCPay probe is also behind the cache guard. Mockery's
+			// ->once() assertion fires in tearDown if get_enabled_currencies()
+			// is called more than once across the three get_accepted_currencies()
+			// invocations below.
+			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+			$mc->shouldReceive( 'get_enabled_currencies' )->once()->andReturn(
+				array(
+					'USD' => new \stdClass(),
+					'EUR' => new \stdClass(),
+				)
+			);
+			$GLOBALS['_mc_test_double'] = $mc;
+
+			WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
+			WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
+			WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
+		}
+
+		// ------------------------------------------------------------------
+		// stamp_currency_query
+		// ------------------------------------------------------------------
 
 		public function test_stamp_currency_query_no_request_currency_returns_url_unchanged(): void {
 			$url = 'https://example.com/checkout-link/?products=42:1';
@@ -460,9 +500,9 @@ namespace {
 		}
 
 		public function test_stamp_currency_query_is_idempotent_when_called_twice(): void {
-			$url     = 'https://example.com/checkout-link/?products=42:1';
-			$first   = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'USD' );
-			$second  = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $first, 'USD' );
+			$url    = 'https://example.com/checkout-link/?products=42:1';
+			$first  = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $url, 'USD' );
+			$second = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $first, 'USD' );
 			$this->assertSame( $first, $second, 'Double-stamping should be a no-op' );
 		}
 	}

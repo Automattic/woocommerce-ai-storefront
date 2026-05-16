@@ -6,8 +6,9 @@
  * store accepts. When WooPayments' multi-currency feature is active,
  * the list mirrors WCPay's enabled set with the WooCommerce base
  * currency forced into the first position. When WooPayments is
- * absent or the multi-currency feature is disabled, the list is
- * `[ base_currency ]` — never empty, never null.
+ * absent or the multi-currency feature is disabled — both cases
+ * result in `function_exists('WC_Payments_Multi_Currency')` returning
+ * false — the list is `[ base_currency ]` — never empty, never null.
  *
  * All call sites get the same array shape regardless of detection
  * outcome, which keeps consumer code free of detection branches.
@@ -84,34 +85,42 @@ class WC_AI_Storefront_Multi_Currency {
 
 		$list = array( $base );
 
-		// Soft-dependency probe. The class path is documented as
-		// part of the public WCPay API; the `is_multi_currency_enabled()`
-		// guard prevents us from reporting a multi-currency list when
-		// the merchant has the WCPay plugin installed but the feature
-		// turned off. Wrapped in try-catch because `::instance()` and
-		// its methods initialise against WC session/DB state that may
-		// not yet exist during early REST hooks or partial plugin boots.
-		if ( class_exists( '\WCPay\MultiCurrency\MultiCurrency' ) ) {
+		// Soft-dependency probe. `WC_Payments_Multi_Currency` is a global
+		// function defined in WCPay's compat layer only when multi-currency
+		// is enabled and WCPay's bootstrap has fully run. Its existence is
+		// both the feature-flag check and the singleton accessor, so
+		// `function_exists()` replaces the old `class_exists()` + `::instance()`
+		// chain (which returned null before WCPay's boot sequence completed)
+		// and the `is_multi_currency_enabled()` guard (that method does not
+		// exist on the MultiCurrency class in WCPay 10.x). Wrapped in
+		// try-catch for partial-boot resilience.
+		if ( function_exists( 'WC_Payments_Multi_Currency' ) ) {
 			try {
-				$mc = \WCPay\MultiCurrency\MultiCurrency::instance();
-				if ( is_object( $mc ) && method_exists( $mc, 'is_multi_currency_enabled' ) && $mc->is_multi_currency_enabled() ) {
-					if ( method_exists( $mc, 'get_enabled_currencies' ) ) {
-						$enabled = $mc->get_enabled_currencies();
-						if ( is_array( $enabled ) ) {
-							// `get_enabled_currencies()` returns an associative
-							// array keyed by ISO-4217 code (uppercase), with
-							// Currency objects as values. We read the keys to
-							// stay resilient to refactors of the Currency
-							// object's method surface.
-							foreach ( array_keys( $enabled ) as $code ) {
-								$list[] = strtoupper( (string) $code );
-							}
+				$mc = WC_Payments_Multi_Currency();
+				if ( is_object( $mc ) && method_exists( $mc, 'get_enabled_currencies' ) ) {
+					$enabled = $mc->get_enabled_currencies();
+					if ( is_array( $enabled ) ) {
+						// `get_enabled_currencies()` returns an associative
+						// array keyed by ISO-4217 codes, with Currency
+						// objects as values. Keys are typically uppercase
+						// but we call strtoupper() unconditionally to stay
+						// resilient to non-canonical casing from future
+						// WCPay builds. We read the keys to stay resilient
+						// to refactors of the Currency object's method
+						// surface.
+						foreach ( array_keys( $enabled ) as $code ) {
+							$list[] = strtoupper( (string) $code );
 						}
 					}
 				}
-			} catch ( \Throwable $e ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
-				// WCPay singleton is in a partial-boot state; fall through
-				// to base-currency-only list without propagating the error.
+			} catch ( \Throwable $e ) {
+				// WCPay function or returned object in partial-boot state;
+				// fall through to base-only list.
+				WC_AI_Storefront_Logger::debug(
+					'multi-currency: WC_Payments_Multi_Currency() threw %s — falling back to base-only list. Message: %s',
+					get_class( $e ),
+					$e->getMessage()
+				);
 			}
 		}
 
@@ -140,6 +149,12 @@ class WC_AI_Storefront_Multi_Currency {
 		try {
 			$filtered = apply_filters( 'wc_ai_storefront_accepted_currencies', $list );
 		} catch ( \Throwable $e ) {
+			// A third-party filter callback threw; fall back to auto-detected list.
+			WC_AI_Storefront_Logger::debug(
+				'multi-currency: wc_ai_storefront_accepted_currencies filter threw %s — using auto-detected list. Message: %s',
+				get_class( $e ),
+				$e->getMessage()
+			);
 			$filtered = $list;
 		}
 
