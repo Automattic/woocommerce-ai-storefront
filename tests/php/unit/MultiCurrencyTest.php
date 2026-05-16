@@ -690,35 +690,21 @@ namespace {
 			);
 		}
 
-		public function test_convert_amount_uses_wcpay_get_price_for_cross_currency(): void {
-			// Mock the WCPay singleton so get_price() applies rate + rounding + charm.
+		public function test_convert_amount_uses_wcpay_get_raw_conversion_for_cross_currency(): void {
+			// EUR → USD: agent sends 5000 minor units (€50), rate 0.85.
+			// get_raw_conversion(50.0, 'USD', 'EUR') returns 50 / 0.85 ≈ 58.82.
+			// convert_amount should return round(58.82 * 100) = 5882.
 			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
-			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
-				array(
-					'USD' => new \stdClass(),
-					'EUR' => new \stdClass(),
-				)
-			);
-			// Convert 5000 (EUR minor units) to 5500 USD minor units.
-			$mc->shouldReceive( 'get_price' )
-				->with( 50.0, 'product' )
-				->andReturn( 55.00 );
+			$mc->shouldReceive( 'get_raw_conversion' )
+				->with( 50.0, 'USD', 'EUR' )
+				->andReturn( 58.82352941 );
 			$GLOBALS['_mc_test_double'] = $mc;
 
-			// Inside the override scope, convert_amount delegates to WCPay's
-			// get_price(). We set up the override so WCPay's "selected
-			// currency" is the source ($from), and get_price() converts to
-			// the active selected currency.
-			$converted = WC_AI_Storefront_Multi_Currency::with_active_currency(
-				'EUR',
-				static function () {
-					return WC_AI_Storefront_Multi_Currency::convert_amount( 5000, 'EUR', 'USD' );
-				}
-			);
+			// convert_amount does NOT require a with_active_currency scope —
+			// it uses get_raw_conversion() with explicit from/to codes.
+			$converted = WC_AI_Storefront_Multi_Currency::convert_amount( 5000, 'EUR', 'USD' );
 
-			// get_price() returned 55.00 major units; convert_amount returns
-			// minor units (rounded to int).
-			$this->assertSame( 5500, $converted );
+			$this->assertSame( 5882, $converted );
 		}
 
 		public function test_convert_amount_throws_when_wcpay_unavailable(): void {
@@ -730,6 +716,11 @@ namespace {
 
 			$this->expectException( \RuntimeException::class );
 			WC_AI_Storefront_Multi_Currency::convert_amount( 5000, 'EUR', 'USD' );
+		}
+
+		public function test_convert_amount_throws_for_negative_input(): void {
+			$this->expectException( \InvalidArgumentException::class );
+			WC_AI_Storefront_Multi_Currency::convert_amount( -1, 'EUR', 'USD' );
 		}
 
 		// ------------------------------------------------------------------

@@ -1765,9 +1765,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return $ids_error;
 		}
 
-		$products = array();
-		$messages = array();
-
 		// Deduplicate + normalize before fetching. `wc_ids` is the
 		// work list (one per unique input, aligned positionally
 		// with `inputs`); `inputs` is the echo array we return to
@@ -1833,7 +1830,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$request_currency        = self::get_request_currency( $request );
 		[ $products, $messages ] = WC_AI_Storefront_Multi_Currency::with_active_currency(
 			(string) $request_currency,
-			function () use ( $request, $wc_ids, $inputs, $positions, $seller, $agent_data, $agent_source_host, $agent_raw_host, $products, $messages ) {
+			function () use ( $request, $wc_ids, $inputs, $positions, $seller, $agent_data, $agent_source_host, $agent_raw_host ) {
+				$products = array();
+				$messages = array();
+
 				// Pass 1: fetch all parent products + record not-found messages.
 				// Two-pass structure (vs. a single fetch+translate loop) lets us
 				// pre-build the category-paths hierarchy map once across the
@@ -4366,27 +4366,24 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				if ( null !== $ctx_currency && $ctx_currency !== $store_currency ) {
 					// Phase 2: convert filter bounds via WCPay if the requested
 					// currency is in accepted_currencies; otherwise fall back to
-					// drop + warn (same as Phase 1). The conversion runs inside
-					// `with_active_currency( $ctx_currency )` so WCPay's
-					// `get_selected_currency()` returns the source and
-					// `get_price()` converts to the merchant's base currency
-					// using merchant-configured rate + rounding + charm.
+					// drop + warn (same as Phase 1).
+					//
+					// convert_amount() uses get_raw_conversion() (explicit from/to
+					// currency codes) and therefore does NOT require being inside a
+					// with_active_currency() scope. WCPay's Store API hooks do NOT
+					// convert min_price/max_price params — they only convert product
+					// _price meta inside the outer with_active_currency() scope set
+					// in fetch_wc_products_for_search(). Sending pre-converted
+					// base-currency bounds is therefore correct and there is no
+					// risk of double conversion.
 					$accepted = WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
 					if ( in_array( $ctx_currency, $accepted, true ) ) {
 						try {
-							$convert = static function ( $v ) use ( $ctx_currency, $store_currency ) {
-								return WC_AI_Storefront_Multi_Currency::with_active_currency(
-									$ctx_currency,
-									static function () use ( $v, $ctx_currency, $store_currency ) {
-										return WC_AI_Storefront_Multi_Currency::convert_amount( $v, $ctx_currency, $store_currency );
-									}
-								);
-							};
 							if ( null !== $min_value ) {
-								$min_value = $convert( $min_value );
+								$min_value = WC_AI_Storefront_Multi_Currency::convert_amount( $min_value, $ctx_currency, $store_currency );
 							}
 							if ( null !== $max_value ) {
-								$max_value = $convert( $max_value );
+								$max_value = WC_AI_Storefront_Multi_Currency::convert_amount( $max_value, $ctx_currency, $store_currency );
 							}
 						} catch ( \Throwable $e ) {
 							// Conversion failed (WCPay throw, partial-boot, etc.).

@@ -2861,13 +2861,13 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 				'EUR' => new \stdClass(),
 			)
 		);
-		// EUR has rate 1.10. Inside with_active_currency('EUR'), WCPay's
-		// get_price() applies the EUR rate. convert_amount() does:
+		// EUR → USD rate: 1.10 (i.e. 1 EUR = 1.10 USD).
+		// convert_amount() uses get_raw_conversion($amount, $to, $from):
 		//   minor → major (5000 → 50.0)
-		//   get_price(50.0, 'product') → 50.0 * 1.10 = 55.00
+		//   get_raw_conversion(50.0, 'USD', 'EUR') → 50.0 * 1.10 = 55.00
 		//   major → minor → 5500
-		$mc->shouldReceive( 'get_price' )->andReturnUsing(
-			static function ( $amount, $type ) {
+		$mc->shouldReceive( 'get_raw_conversion' )->andReturnUsing(
+			static function ( float $amount, string $to, string $from ) {
 				return $amount * 1.10;
 			}
 		);
@@ -2965,10 +2965,9 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_map_ucp_search_emits_warning_when_currency_conversion_throws(): void {
-		// EUR is in accepted_currencies, but WCPay's get_price throws —
-		// the convert call inside with_active_currency raises through
-		// convert_amount, the catch block fires, and the filter is dropped
-		// with a "Conversion … failed" warning. Logs at debug level.
+		// EUR is in accepted_currencies, but WCPay's get_raw_conversion throws —
+		// convert_amount propagates the exception, the catch block fires, and
+		// the filter is dropped with a "Conversion … failed" warning.
 		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
 		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
 			array(
@@ -2976,7 +2975,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 				'EUR' => new \stdClass(),
 			)
 		);
-		$mc->shouldReceive( 'get_price' )->andThrow( new \RuntimeException( 'WCPay rate fetch failed' ) );
+		$mc->shouldReceive( 'get_raw_conversion' )->andThrow( new \RuntimeException( 'WCPay rate fetch failed' ) );
 		$GLOBALS['_mc_test_double'] = $mc;
 		WC_AI_Storefront_Multi_Currency::reset_cache();
 
