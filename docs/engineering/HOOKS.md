@@ -491,6 +491,12 @@ add_action( 'wc_ai_storefront_ucp_access_denied', function( $raw_id, $reason, $r
 }, 10, 3 );
 ```
 
+## External hooks consumed
+
+### `wcpay_multi_currency_override_selected_currency` (consumed)
+
+Hooked by `WC_AI_Storefront_Multi_Currency::with_active_currency()` during UCP REST dispatches when the agent's `context.currency` is in the store's accepted-currencies set. The filter is added at dispatch entry and removed in a `finally` block before the dispatch returns. Other plugins hooking this filter for their own purposes will see our value during our dispatch; outside our dispatch the filter is not hooked by us at all. The filter is WCPay's documented mechanism for switching presentment without persisting a session change.
+
 ## Hooks we consume (not exposed)
 
 For reference, the plugin hooks into these WP and WC extension points but does not re-expose them:
