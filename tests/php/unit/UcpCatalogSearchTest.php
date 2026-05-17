@@ -298,6 +298,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 						[
 							'search',
 							'category',
+							'currency',
 							'min_price',
 							'max_price',
 							'page',
@@ -2852,6 +2853,86 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$controller->handle_catalog_search( $request );
 
 		$this->assertNull( $captured_currency, 'Store API dispatch must not carry a currency param when none was requested' );
+	}
+
+	public function test_handle_catalog_search_passes_currency_param_to_variation_dispatches(): void {
+		// Regression test: catalog/search resets request_context at handler entry.
+		// Before the fix, set_currency() was never called for this handler, so
+		// variation fetches (single-item route) silently carried no currency param —
+		// only the list dispatch did. Every fetch_store_api_product() call must carry
+		// currency=EUR when the agent sent context.currency: EUR.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		$captured = array(); // route => currency param value
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $req ) use ( &$captured ) {
+				$route    = $req->get_route();
+				$currency = $req->get_param( 'currency' );
+				$captured[ $route ] = $currency;
+
+				if ( '/wc/store/v1/products' === $route ) {
+					$response = new \WP_REST_Response( array(
+						array(
+							'id'                => 789,
+							'name'              => 'T-Shirt',
+							'type'              => 'variable',
+							'short_description' => '',
+							'prices'            => array(
+								'price'         => '1000',
+								'currency_code' => 'EUR',
+								'price_range'   => array( 'min_amount' => '1000', 'max_amount' => '2000' ),
+							),
+							'variations'        => array(
+								array( 'id' => 101, 'attributes' => array( array( 'name' => 'Size', 'value' => 'Small' ) ) ),
+								array( 'id' => 102, 'attributes' => array( array( 'name' => 'Size', 'value' => 'Large' ) ) ),
+							),
+						),
+					) );
+					$response->set_status( 200 );
+					return $response;
+				}
+
+				// Single-item variation dispatches.
+				$product_id = (int) basename( $route );
+				$response   = new \WP_REST_Response( array(
+					'id'                => $product_id,
+					'name'              => 'T-Shirt',
+					'short_description' => '',
+					'is_in_stock'       => true,
+					'prices'            => array( 'price' => '1500', 'currency_code' => 'EUR' ),
+					'attributes'        => array( array( 'name' => 'Size', 'value' => 'Small' ) ),
+				) );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_json_params( array( 'context' => array( 'currency' => 'EUR' ) ) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search( $request );
+
+		// Every dispatch — list and per-variation — must carry currency=EUR.
+		$this->assertNotEmpty( $captured, 'Expected at least one Store API dispatch' );
+		foreach ( $captured as $route => $currency ) {
+			$this->assertSame(
+				'EUR',
+				$currency,
+				"Store API dispatch to $route must carry currency=EUR"
+			);
+		}
+		// Confirm we actually exercised the variation routes, not just the list.
+		$this->assertArrayHasKey( '/wc/store/v1/products/101', $captured );
+		$this->assertArrayHasKey( '/wc/store/v1/products/102', $captured );
 	}
 
 	public function test_map_ucp_search_converts_price_filter_to_base_currency_when_context_currency_in_accepted_set(): void {

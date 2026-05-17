@@ -166,6 +166,9 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// stubs from one test don't bleed accepted-currency state into
 		// the next.
 		WC_AI_Storefront_Multi_Currency::reset_cache();
+		$GLOBALS['_mc_test_double']     = null;
+		$GLOBALS['_mc_throw']           = false;
+		$GLOBALS['_mc_feature_enabled'] = true;
 		Monkey\tearDown();
 		parent::tearDown();
 	}

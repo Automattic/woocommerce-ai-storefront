@@ -160,6 +160,9 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 	protected function tearDown(): void {
 		WC_AI_Storefront_Multi_Currency::reset_cache();
+		$GLOBALS['_mc_test_double']     = null;
+		$GLOBALS['_mc_throw']           = false;
+		$GLOBALS['_mc_feature_enabled'] = true;
 		Monkey\tearDown();
 		parent::tearDown();
 	}

@@ -624,6 +624,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Clear per-request memoization so a product fetched in a
 		// prior request can't leak here (defence-in-depth reset).
 		$this->request_context->reset();
+		// Store the agent's requested currency on request_context so every
+		// downstream fetch_store_api_product() call (variations, bundles)
+		// automatically carries currency= without needing an extra param.
+		$this->request_context->set_currency( self::get_request_currency( $request ) );
 
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Storefront_Logger::debug( 'UCP catalog/search rejected: syndication disabled' );
@@ -5627,13 +5631,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @param  mixed  $expected_unit_price Raw `expected_unit_price` from the request.
 	 * @param  int    $current_price_minor Current product price in minor units.
 	 * @param  string $store_currency      ISO 4217 currency code to compare against.
-	 *                                     Pre-Phase-2 this was always the WC base
-	 *                                     currency; Phase 2 callers pass the active
-	 *                                     presentment currency when the WCPay override
-	 *                                     is hooked (see
-	 *                                     `WC_AI_Storefront_Multi_Currency::with_active_currency()`
-	 *                                     and `active_currency_or_null()`), so
-	 *                                     EUR-vs-EUR comparisons work.
+	 *                                     Base currency by default; Phase 2 callers
+	 *                                     pass `WC_AI_Storefront_UCP_Request_Context::get_currency()`
+	 *                                     so EUR-vs-EUR comparisons work when the agent
+	 *                                     requested a non-base presentment currency.
 	 * @param  string $path                JSON path for the warning attribution.
 	 * @return array|null                  Warning message array, or null if no drift.
 	 */

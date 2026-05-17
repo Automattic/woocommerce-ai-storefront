@@ -12,61 +12,8 @@ namespace {
 	use Brain\Monkey\Functions;
 	use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
-	// WCPay soft-dependency stubs.
-	//
-	// `WC_AI_Storefront_Multi_Currency::get_accepted_currencies()` probes the
-	// merchant's WCPay configuration via:
-	//   1. `function_exists( 'WC_Payments_Multi_Currency' )`
-	//   2. `class_exists( '\WC_Payments_Features' )`
-	//   3. `\WC_Payments_Features::is_customer_multi_currency_enabled()`
-	//   4. `WC_Payments_Multi_Currency()->get_enabled_currencies()`
-	//
-	// State control via globals:
-	//   $_mc_test_double     — null (default) or a Mockery double of
-	//                          `\WCPay\MultiCurrency\MultiCurrency`.
-	//   $_mc_throw           — bool. When true, the global function stub throws.
-	//   $_mc_feature_enabled — bool|'throw'. Drives the feature-flag stub.
-
-	if ( ! isset( $GLOBALS['_mc_test_double'] ) ) {
-		$GLOBALS['_mc_test_double'] = null;
-	}
-	if ( ! isset( $GLOBALS['_mc_throw'] ) ) {
-		$GLOBALS['_mc_throw'] = false;
-	}
-	if ( ! isset( $GLOBALS['_mc_feature_enabled'] ) ) {
-		$GLOBALS['_mc_feature_enabled'] = true;
-	}
-
-	if ( ! function_exists( 'WC_Payments_Multi_Currency' ) ) {
-		function WC_Payments_Multi_Currency() {
-			if ( $GLOBALS['_mc_throw'] ) {
-				throw new \RuntimeException( 'WCPay partial-boot test exception' );
-			}
-			return $GLOBALS['_mc_test_double'];
-		}
-	}
-
-	if ( ! class_exists( '\WCPay\MultiCurrency\MultiCurrency' ) ) {
-		class WCPay_MultiCurrency_MultiCurrency_Stub {
-			public function get_enabled_currencies() {
-				return array();
-			}
-		}
-		class_alias( 'WCPay_MultiCurrency_MultiCurrency_Stub', '\WCPay\MultiCurrency\MultiCurrency' );
-	}
-
-	if ( ! class_exists( '\WC_Payments_Features' ) ) {
-		class WC_Payments_Features {
-			public static function is_customer_multi_currency_enabled() {
-				if ( 'throw' === $GLOBALS['_mc_feature_enabled'] ) {
-					throw new \RuntimeException( 'WCPay feature-flag option filter exploded' );
-				}
-				return (bool) $GLOBALS['_mc_feature_enabled'];
-			}
-		}
-	}
-
-	// Tests control behavior via three globals reset per-test in setUp().
+	// WCPay soft-dependency stubs are loaded from tests/php/stubs/class-wcpay-multi-currency-stubs.php
+	// via bootstrap.php. State control and initialization for each test is done via setUp() below.
 
 	class MultiCurrencyTest extends \PHPUnit\Framework\TestCase {
 		use MockeryPHPUnitIntegration;
