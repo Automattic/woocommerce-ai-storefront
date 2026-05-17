@@ -81,6 +81,16 @@ You may want to wait if any of these apply:
 - **Other SEO plugins emitting JSON-LD** (Yoast SEO, Rank Math, Schema App, etc.). Two plugins emitting Product structured data on the same page can result in duplicate entities visible to search engines. Modern search engines handle this gracefully, but if Google Search Console flags structured-data warnings, configure one plugin to defer to the other.
 - **Custom robots.txt managers.** This plugin appends AI-crawler rules to WordPress's virtual robots.txt. If a plugin produces its own robots.txt (overriding WP's virtual one), the rules may not appear. After enabling, visit `/robots.txt` and confirm AI crawler rules are present.
 
+### Full WooPayments multi-currency support
+
+When your store uses WooPayments' multi-currency feature, the AI Storefront plugin honors every per-currency setting the merchant configures:
+
+- **Exchange rate** — manual or auto, applied to every price an AI agent sees.
+- **Rounding precision** — agents see prices rounded the same way human buyers see them.
+- **Charm pricing** — `-0.01` / `-0.05` offsets are applied to converted prices, so what the agent quotes matches what the buyer sees on the storefront.
+
+No additional configuration is required. AI agents that send `context.currency: EUR` in their UCP requests receive prices, search-result filter bounds, and checkout `expected_unit_price` comparisons all in EUR. When an agent requests a currency the store does not accept, prices fall back to the store base and the response carries a clear `currency_conversion_unsupported` warning.
+
 ---
 
 ## 2. Install and activate

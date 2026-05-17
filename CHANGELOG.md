@@ -1,10 +1,26 @@
 ## [Unreleased]
 
 ### Features
-### Fixes
-### Refactors
+
+- **Catalog responses are now quoted in the agent's requested currency when WooPayments multi-currency is active.**
+  - `POST /catalog/search` / `POST /catalog/lookup`: when `context.currency` is in `accepted_currencies`, every `price.currency` field in the response carries the agent's currency with amounts converted via WooPayments' exchange rate, rounding rule, and charm pricing. Prices are returned via the WC Store API's native `?currency=` query param — WooPayments applies its full price-mutation pipeline automatically at that layer.
+  - `filters.price` bounds are pre-converted from agent currency to base currency via WooPayments' `get_raw_conversion()` before the Store API query, replacing Phase 1's filter-drop + warning fallback.
+  - `POST /checkout-sessions` accepts `expected_unit_price.currency` in any currency present in `accepted_currencies`; the comparison runs in the agent's currency (e.g. EUR vs EUR).
+- **Graceful fallback paths.** When the requested currency is not in `accepted_currencies`, or WCPay throws mid-dispatch, the response degrades to base currency with a `currency_conversion_unsupported` warning at `$.context.currency` (or `$.filters.price` for the filter-only path) — never an HTTP error.
+- **`convert_amount()` helper added to `WC_AI_Storefront_Multi_Currency`.** Converts minor-unit price amounts between currencies via WooPayments' `get_raw_conversion()` (rate-only, no charm). Used today by the filter-bound pre-conversion path; will be dropped from that path once WooPayments adds Store API `min_price`/`max_price` conversion ([WOOPMNT-6166](https://linear.app/a8c/issue/WOOPMNT-6166) — Track B follow-up). A `TODO(WOOPMNT-6165 Track B)` breadcrumb at the call site marks the future cleanup.
+
+### Compatibility
+
+- **WCPay dependency for end-to-end filter + currency composition.** Filter bounds combined with a non-base `currency=` require a WCPay version including the [WOOPMNT-6165](https://linear.app/a8c/issue/WOOPMNT-6165) fix (Store API REST requests with `currency=` and `min_price`/`max_price` no longer redirected with bounds stripped). On older WCPay versions, `filters.price` is silently dropped for non-base-currency requests with the existing `currency_conversion_unsupported` warning — same fallback as Phase 1, no regression.
+
 ### Tests
+
+- **New `MultiCurrencyTest` coverage** for `convert_amount()`: delegation to `get_raw_conversion`, negative-input guard, same-currency short-circuit.
+- **`UcpCatalogSearchTest`, `UcpCatalogLookupTest`, `UcpCheckoutSessionsTest`** assert that the outgoing `WP_REST_Request` carries `currency=<code>` when `context.currency` is in the UCP request, and that filter bounds are pre-converted via `convert_amount` before the Store API dispatch.
+
 ### Docs
+
+- **ARCHITECTURE multi-currency entry** updated to describe the native `currency=` param mechanism and three public helpers (`get_accepted_currencies`, `stamp_currency_query`, `convert_amount`). Adds a caching guardrail note: catalog responses are currency-dependent, so any future cache layer must key on active presentment currency.
 
 ---
 
