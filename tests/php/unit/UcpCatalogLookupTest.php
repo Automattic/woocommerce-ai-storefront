@@ -1556,4 +1556,49 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotEmpty( $body['products'][0]['url'] ?? '' );
 		$this->assertStringNotContainsString( 'currency=', $body['products'][0]['url'] );
 	}
+
+	public function test_handle_catalog_lookup_passes_currency_param_to_every_store_api_dispatch(): void {
+		// Agent sends context.currency: EUR and 3 IDs. Every individual
+		// Store API dispatch (one per ID) must carry currency=EUR as a query param.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		$captured_currencies = array();
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $req ) use ( &$captured_currencies ) {
+				$captured_currencies[] = $req->get_param( 'currency' );
+				$response = new \WP_REST_Response( array(
+					'id'     => 1,
+					'name'   => 'Widget',
+					'slug'   => 'widget',
+					'type'   => 'simple',
+					'prices' => array( 'price' => '1999', 'currency_code' => 'EUR', 'currency_minor_unit' => 2 ),
+				) );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/lookup' );
+		$request->set_body_params( array(
+			'context' => array( 'currency' => 'EUR' ),
+			'ids'     => array( 'prod_1', 'prod_2', 'prod_3' ),
+		) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_lookup( $request );
+
+		$this->assertCount( 3, $captured_currencies, 'Three IDs must produce three Store API dispatches' );
+		foreach ( $captured_currencies as $i => $currency ) {
+			$this->assertSame( 'EUR', $currency, "Dispatch #{$i} must carry currency=EUR" );
+		}
+	}
+
 }

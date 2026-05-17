@@ -26,6 +26,9 @@ use Brain\Monkey;
 use Brain\Monkey\Functions;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
+// `wp_parse_str` shim is declared in MultiCurrencyTest.php at file-load time.
+// Pass-by-reference args can't go through Brain Monkey's Patchwork-based aliasing.
+
 class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
@@ -3910,4 +3913,154 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'recoverable', $bundle_errors[0]['severity'] );
 		$this->assertStringNotContainsString( 'Open continue_url', $bundle_errors[0]['content'] );
 	}
+
+	public function test_handle_checkout_sessions_passes_currency_param_to_store_api_during_line_item_fetch(): void {
+		// Agent sends context.currency: EUR. The Store API dispatch inside
+		// process_line_item must carry currency=EUR as a query param.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		$captured_currency = null;
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $req ) use ( &$captured_currency ) {
+				$captured_currency = $req->get_param( 'currency' );
+				$response = new \WP_REST_Response( array(
+					'id'             => 1,
+					'type'           => 'simple',
+					'is_in_stock'    => true,
+					'is_purchasable' => true,
+					'prices'         => array( 'price' => '1999', 'currency_code' => 'EUR', 'currency_minor_unit' => 2 ),
+				) );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
+		$request->set_body_params( array(
+			'context'    => array( 'currency' => 'EUR' ),
+			'line_items' => array(
+				array( 'item' => array( 'id' => 'prod_1' ), 'quantity' => 1 ),
+			),
+		) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_checkout_sessions_create( $request );
+
+		$this->assertSame( 'EUR', $captured_currency, 'Store API dispatch must carry currency=EUR query param' );
+	}
+
+	public function test_check_price_drift_compares_using_store_api_currency_param_response(): void {
+		// expected_unit_price = 1999 EUR, Store API (with currency=EUR) returns
+		// 1999 EUR. request_context->get_currency() == EUR, so effective_currency == EUR.
+		// No drift warning expected.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $req ) {
+				$response = new \WP_REST_Response( array(
+					'id'             => 1,
+					'type'           => 'simple',
+					'is_in_stock'    => true,
+					'is_purchasable' => true,
+					'prices'         => array( 'price' => '1999', 'currency_code' => 'EUR', 'currency_minor_unit' => 2 ),
+				) );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
+		$request->set_body_params( array(
+			'context'    => array( 'currency' => 'EUR' ),
+			'line_items' => array(
+				array(
+					'item'                => array( 'id' => 'prod_1' ),
+					'quantity'            => 1,
+					'expected_unit_price' => array( 'amount' => 1999, 'currency' => 'EUR' ),
+				),
+			),
+		) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_create( $request );
+
+		$body     = $response->get_data();
+		$messages = $body['messages'] ?? array();
+		foreach ( $messages as $m ) {
+			$this->assertNotSame(
+				WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED,
+				$m['code'] ?? null,
+				'No drift warning when EUR expected matches EUR from Store API'
+			);
+		}
+	}
+
+	public function test_check_price_drift_emits_warning_when_eur_amounts_differ(): void {
+		// expected_unit_price = 1999 EUR, Store API returns 2099 EUR. Drift warning fires.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $req ) {
+				$response = new \WP_REST_Response( array(
+					'id'             => 1,
+					'type'           => 'simple',
+					'is_in_stock'    => true,
+					'is_purchasable' => true,
+					'prices'         => array( 'price' => '2099', 'currency_code' => 'EUR', 'currency_minor_unit' => 2 ),
+				) );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
+		$request->set_body_params( array(
+			'context'    => array( 'currency' => 'EUR' ),
+			'line_items' => array(
+				array(
+					'item'                => array( 'id' => 'prod_1' ),
+					'quantity'            => 1,
+					'expected_unit_price' => array( 'amount' => 1999, 'currency' => 'EUR' ),
+				),
+			),
+		) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_create( $request );
+
+		$body     = $response->get_data();
+		$messages = $body['messages'] ?? array();
+		$found    = false;
+		foreach ( $messages as $m ) {
+			if ( WC_AI_Storefront_UCP_Error_Codes::PRICE_CHANGED === ( $m['code'] ?? null ) ) {
+				$found = true;
+			}
+		}
+		$this->assertTrue( $found, 'Drift warning must fire when EUR amounts differ' );
+	}
+
 }

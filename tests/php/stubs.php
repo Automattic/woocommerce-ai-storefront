@@ -11,6 +11,22 @@
 
 
 
+if ( ! function_exists( 'wp_parse_str' ) ) {
+	/**
+	 * Minimal wp_parse_str stub.
+	 *
+	 * Pass-by-reference second parameter cannot be proxied through Brain
+	 * Monkey's Patchwork-based aliasing, so this is declared as a real
+	 * function before any test file loads.
+	 *
+	 * @param string $str    Input query string.
+	 * @param array  $result Populated by reference.
+	 */
+	function wp_parse_str( $str, &$result ) {
+		parse_str( (string) $str, $result );
+	}
+}
+
 if ( ! function_exists( 'esc_sql' ) ) {
 	/**
 	 * Minimal esc_sql stub — uses PHP's addslashes() to escape
@@ -146,6 +162,23 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		 * @param array<string, mixed> $params
 		 */
 		public function set_query_params( array $params ): void {
+			foreach ( $params as $key => $value ) {
+				$this->params[ $key ] = $value;
+			}
+		}
+
+		/**
+		 * Mirror of WP_REST_Request::set_body_params(). In real WP this
+		 * stores into a dedicated `$body_params` slot that `get_param()`
+		 * consults alongside query / JSON / URL / file / default
+		 * sources. The stub unifies on `$this->params` for simplicity —
+		 * handlers under test access via `get_param()` regardless of
+		 * which setter populated the slot, which matches WP's observable
+		 * behavior for the param-resolution merge.
+		 *
+		 * @param array<string, mixed> $params
+		 */
+		public function set_body_params( array $params ): void {
 			foreach ( $params as $key => $value ) {
 				$this->params[ $key ] = $value;
 			}

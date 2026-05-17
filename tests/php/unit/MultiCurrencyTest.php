@@ -12,42 +12,30 @@ namespace {
 	use Brain\Monkey\Functions;
 	use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
-	// `wp_parse_str` is declared here as a real function because
-	// Brain Monkey's Patchwork-based aliasing cannot proxy a
-	// pass-by-reference second parameter — see
-	// https://github.com/Brain-WP/BrainMonkey/issues for context.
-	// Guarded so re-running the test class (or running alongside a
-	// future suite that also defines it) is safe.
-	if ( ! function_exists( 'wp_parse_str' ) ) {
-		function wp_parse_str( $str, &$result ) {
-			parse_str( (string) $str, $result );
-		}
-	}
+	// WCPay soft-dependency stubs.
+	//
+	// `WC_AI_Storefront_Multi_Currency::get_accepted_currencies()` probes the
+	// merchant's WCPay configuration via:
+	//   1. `function_exists( 'WC_Payments_Multi_Currency' )`
+	//   2. `class_exists( '\WC_Payments_Features' )`
+	//   3. `\WC_Payments_Features::is_customer_multi_currency_enabled()`
+	//   4. `WC_Payments_Multi_Currency()->get_enabled_currencies()`
+	//
+	// State control via globals:
+	//   $_mc_test_double     — null (default) or a Mockery double of
+	//                          `\WCPay\MultiCurrency\MultiCurrency`.
+	//   $_mc_throw           — bool. When true, the global function stub throws.
+	//   $_mc_feature_enabled — bool|'throw'. Drives the feature-flag stub.
 
-	// Test stand-in for the real WCPay global function.
-	//
-	// Production code uses `function_exists('WC_Payments_Multi_Currency')`
-	// as the first gate (proves WCPay is installed), then separately checks
-	// `\WC_Payments_Features::is_customer_multi_currency_enabled()` as the
-	// runtime feature-flag gate. The two are deliberately distinct: the
-	// function persists from boot regardless of subsequent toggle changes;
-	// the feature-flag gate reads the live option.
-	//
-	// We declare the function unconditionally here (rather than via Brain
-	// Monkey `when()`) because it needs a static test-double slot —
-	// Patchwork can't carry test-scoped state through an alias closure
-	// cleanly. Setting `$_mc_test_double` directly from each test controls
-	// what the function returns.
-	//
-	// To simulate "WCPay not installed": tests cannot replicate this path
-	// exactly (the stub is declared at file-load time), but setting
-	// `$_mc_test_double = null` exercises the same observable branch — the
-	// `is_object()` guard short-circuits identically to the function not
-	// existing. The feature-flag gate is controlled via `$_mc_feature_enabled`.
-	//
-	// To simulate a partial-boot exception, tests set `$_mc_throw = true`.
-	$GLOBALS['_mc_test_double'] = null;
-	$GLOBALS['_mc_throw']       = false;
+	if ( ! isset( $GLOBALS['_mc_test_double'] ) ) {
+		$GLOBALS['_mc_test_double'] = null;
+	}
+	if ( ! isset( $GLOBALS['_mc_throw'] ) ) {
+		$GLOBALS['_mc_throw'] = false;
+	}
+	if ( ! isset( $GLOBALS['_mc_feature_enabled'] ) ) {
+		$GLOBALS['_mc_feature_enabled'] = true;
+	}
 
 	if ( ! function_exists( 'WC_Payments_Multi_Currency' ) ) {
 		function WC_Payments_Multi_Currency() {
@@ -58,10 +46,6 @@ namespace {
 		}
 	}
 
-	// Minimal stub class so Mockery can reflect
-	// `\WCPay\MultiCurrency\MultiCurrency` when tests build doubles.
-	// Only `get_enabled_currencies()` is needed — production code no longer
-	// calls `::instance()` or `is_multi_currency_enabled()`.
 	if ( ! class_exists( '\WCPay\MultiCurrency\MultiCurrency' ) ) {
 		class WCPay_MultiCurrency_MultiCurrency_Stub {
 			public function get_enabled_currencies() {
@@ -70,16 +54,6 @@ namespace {
 		}
 		class_alias( 'WCPay_MultiCurrency_MultiCurrency_Stub', '\WCPay\MultiCurrency\MultiCurrency' );
 	}
-
-	// Stub for WCPay's feature-flag class. Production code calls
-	// `\WC_Payments_Features::is_customer_multi_currency_enabled()` at
-	// runtime as the explicit multi-currency-feature gate (the global
-	// function being defined isn't sufficient — it persists from boot
-	// regardless of subsequent toggle changes).
-	// Tests control the return value via `$_mc_feature_enabled`:
-	//   true / false  → normal bool return
-	//   'throw'       → throws RuntimeException (simulates a bad option_* filter)
-	$GLOBALS['_mc_feature_enabled'] = true;
 
 	if ( ! class_exists( '\WC_Payments_Features' ) ) {
 		class WC_Payments_Features {
@@ -91,6 +65,8 @@ namespace {
 			}
 		}
 	}
+
+	// Tests control behavior via three globals reset per-test in setUp().
 
 	class MultiCurrencyTest extends \PHPUnit\Framework\TestCase {
 		use MockeryPHPUnitIntegration;
@@ -106,8 +82,8 @@ namespace {
 			Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 			Functions\when( 'apply_filters' )->returnArg( 2 );
 			// `wp_parse_url` is globally stubbed in tests/php/stubs.php.
-			// `wp_parse_str` is declared as a real function above this
-			// class (pass-by-reference args can't go through Brain Monkey).
+			// `wp_parse_str` is declared as a real function at the top of this
+			// file (pass-by-reference args can't go through Brain Monkey).
 			// `add_query_arg` mirrors WP core's parse-rebuild behavior so
 			// the existing query string gets re-encoded (`42:1` → `42%3A1`)
 			// and an existing key is replaced rather than duplicated.
@@ -134,6 +110,7 @@ namespace {
 			$GLOBALS['_mc_test_double']     = null;
 			$GLOBALS['_mc_throw']           = false;
 			$GLOBALS['_mc_feature_enabled'] = true;
+			unset( $GLOBALS['_mc_test_filters'] );
 			Monkey\tearDown();
 			parent::tearDown();
 		}
@@ -556,5 +533,51 @@ namespace {
 			$second = WC_AI_Storefront_Multi_Currency::stamp_currency_query( $first, 'USD' );
 			$this->assertSame( $first, $second, 'Double-stamping should be a no-op' );
 		}
+
+		// ------------------------------------------------------------------
+		// convert_amount
+		// ------------------------------------------------------------------
+
+		public function test_convert_amount_returns_input_when_currencies_match(): void {
+			// Same-currency conversion is a no-op even without WCPay.
+			$this->assertSame(
+				1999,
+				WC_AI_Storefront_Multi_Currency::convert_amount( 1999, 'USD', 'USD' )
+			);
+		}
+
+		public function test_convert_amount_uses_wcpay_get_raw_conversion_for_cross_currency(): void {
+			// EUR → USD: agent sends 5000 minor units (€50), rate 0.85.
+			// get_raw_conversion(50.0, 'USD', 'EUR') returns 50 / 0.85 ≈ 58.82.
+			// convert_amount should return round(58.82 * 100) = 5882.
+			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+			$mc->shouldReceive( 'get_raw_conversion' )
+				->with( 50.0, 'USD', 'EUR' )
+				->andReturn( 58.82352941 );
+			$GLOBALS['_mc_test_double'] = $mc;
+
+			// convert_amount does NOT require a with_active_currency scope —
+			// it uses get_raw_conversion() with explicit from/to codes.
+			$converted = WC_AI_Storefront_Multi_Currency::convert_amount( 5000, 'EUR', 'USD' );
+
+			$this->assertSame( 5882, $converted );
+		}
+
+		public function test_convert_amount_throws_when_wcpay_unavailable(): void {
+			// $_mc_test_double = null → WC_Payments_Multi_Currency() returns null →
+			// is_object() guard throws. (We cannot reach the function_exists() throw
+			// because the test harness unconditionally declares the WC_Payments_Multi_Currency
+			// shim at file load — known scaffolding limitation, not a defect.)
+			$GLOBALS['_mc_test_double'] = null;
+
+			$this->expectException( \RuntimeException::class );
+			WC_AI_Storefront_Multi_Currency::convert_amount( 5000, 'EUR', 'USD' );
+		}
+
+		public function test_convert_amount_throws_for_negative_input(): void {
+			$this->expectException( \InvalidArgumentException::class );
+			WC_AI_Storefront_Multi_Currency::convert_amount( -1, 'EUR', 'USD' );
+		}
+
 	}
 }
