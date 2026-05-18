@@ -135,6 +135,25 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 * Documentation: MCP positioning updated to reflect WooCommerce core's native MCP support in WC 10.3.0+. Clarifies that MCP is admin-side (merchants' own AI assistants) while UCP is shopper-side (external buyers' shopping agents); the two are orthogonal audiences. AI Storefront does not register its own MCP abilities yet but the path is open via the WordPress Abilities API.
 * Engineering docs: JSON-LD-SCHEMA `Product.category` reference expanded with sourcing rules, design rationale for not normalizing to Google Product Taxonomy in the plugin (links to POC #412), and the deepest-leaf breadcrumb selection algorithm.
 
+= 0.17.2 - 2026-05-15 =
+**Fixed**
+* Multi-currency support is now correctly hidden when WooPayments' multi-currency feature is toggled off. The probe checks `\WC_Payments_Features::is_customer_multi_currency_enabled()` at runtime in addition to the function-exists check, so merchants who turn the feature off no longer see previously-configured currencies advertised.
+* UCP manifest `store_context.accepted_currencies` is now omitted entirely on single-currency stores (instead of emitting a 1-element `[base]` list that falsely signals multi-currency support). Matches the existing llms.txt behavior.
+
+= 0.17.1 - 2026-05-16 =
+**Fixed**
+* WooPayments multi-currency detection corrected for WCPay 10.x. Replaced the `\WCPay\MultiCurrency\MultiCurrency::instance()` probe (which returned `null` until WCPay's bootstrap completed) with the `WC_Payments_Multi_Currency()` global function. Also removed the `is_multi_currency_enabled()` guard, which does not exist on WCPay 10.x and caused `accepted_currencies` to always fall back to the store base currency on multi-currency-enabled stores.
+* Observability: both `try`/`catch` blocks in the multi-currency probe now log diagnostic messages, making silent fallback-to-base-currency detectable in debug logs.
+
+= 0.17.0 - 2026-05-15 =
+**New**
+* WooPayments multi-currency exposure across UCP, JSON-LD, and llms.txt: UCP manifest `store_context` gains an `accepted_currencies` array (base currency first); homepage `OnlineBusiness` JSON-LD `currenciesAccepted` becomes a space-separated list on multi-currency stores; llms.txt gains an `**Accepted currencies**` line when more than one currency is enabled.
+* UCP `continue_url` and per-product `url` fields now carry `?currency=XXX` when the agent sends `context.currency` in the accepted set, activating WooPayments' page-level currency switcher on the destination. Per-product page JSON-LD already reflects the switched currency automatically.
+* New filter `wc_ai_storefront_accepted_currencies` for integrators using non-WooPayments multi-currency plugins.
+
+**Tweaked**
+* Catalog response prices remain quoted in the store's base currency in this release; live currency switching of UCP catalog responses ships in Phase 2 (0.18+).
+
 = 0.16.1 - 2026-05-14 =
 **Improved**
 * User guide refreshed: GMC compatibility (§1.2) reframed as "stacks with it" to reflect the January 2026 Google + Shopify UCP launch (Shopping Graph for retrieval, UCP for checkout handoff are now two layers of the same Gemini agentic flow). Smoke test (§4) restructured into three verification layers (direct endpoint check → UCPPlayground/UCPChecker → live AI assistant query) with per-engine fetch-behavior expectations stated explicitly. Agent/Referral stat card description (§3) picks up a diagnostic-use sentence for spotting failed UCP-manifest discovery. New troubleshooting entry (§10) for the 24h sitemap-discovery cache and how to bust it via plugin-settings save.
