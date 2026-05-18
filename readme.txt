@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.17.1
+Stable tag: 0.17.3
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,12 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.17.3 - 2026-05-18 =
+**Improved**
+* User guide: new §5b "Shape your catalog for AI discoverability" with five principles, before/after worked example, and a step-by-step reshape recipe. Includes an optional subsection on using WooCommerce's native MCP (WC 10.3+, developer preview) to let an AI assistant help with the reshape.
+* Documentation: MCP positioning updated to reflect WooCommerce core's native MCP support in WC 10.3.0+. Clarifies that MCP is admin-side (merchants' own AI assistants) while UCP is shopper-side (external buyers' shopping agents); the two are orthogonal audiences. AI Storefront does not register its own MCP abilities yet but the path is open via the WordPress Abilities API.
+* Engineering docs: JSON-LD-SCHEMA `Product.category` reference expanded with sourcing rules, design rationale for not normalizing to Google Product Taxonomy in the plugin (links to POC #412), and the deepest-leaf breadcrumb selection algorithm.
 
 = 0.16.1 - 2026-05-14 =
 **Improved**
