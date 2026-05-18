@@ -91,7 +91,8 @@
 <li><a href="#2-install-and-activate">Install and activate</a></li>
 <li><a href="#3-enable-ai-storefront">Enable AI Storefront</a></li>
 <li><a href="#4-verify-your-discovery-endpoints">Verify your discovery endpoints</a></li>
-<li><a href="#5-choose-which-products-to-expose">Choose which products to expose</a></li>
+<li><a href="#5-choose-which-products-to-expose">Choose which products to expose</a>
+5b. <a href="#5b-shape-your-catalog-for-ai-discoverability">Shape your catalog for AI discoverability</a></li>
 <li><a href="#6-configure-crawlers-and-rate-limits">Configure crawlers and rate limits</a></li>
 <li><a href="#7-set-your-store-policies">Set your store policies</a></li>
 <li><a href="#8-read-attribution-stats">Read attribution stats</a></li>
@@ -353,6 +354,181 @@
 <p><strong>Note.</strong> Visibility settings only affect AI-agent-facing surfaces. The Shop page, search, and category archives keep working exactly as before for regular shoppers.</p>
 </blockquote>
 <hr>
+<h2>5b. Shape your catalog for AI discoverability</h2>
+<p>Beyond <em>which</em> products you expose, the <em>shape</em> of your product taxonomy is the single biggest lever for how well AI shopping agents and search engines understand your store. The plugin publishes whatever taxonomy you give WooCommerce: clean structure goes in, clean structure goes out.</p>
+<p>This section is a pragmatic playbook. Allow 30–60 minutes for a small catalog (&lt;50 products); a few hours for a larger one.</p>
+<h3>Why category structure matters more than you&#39;d think</h3>
+<p>When an AI agent answers <em>&quot;where can I buy a heavyweight cotton tee?&quot;</em>, it does three things in sequence:</p>
+<ol>
+<li><strong>Retrieves</strong> candidate products from indexed structured data on product pages and ingested feeds.</li>
+<li><strong>Filters</strong> by category, attributes, price, availability.</li>
+<li><strong>Cites</strong> specific stores back to the shopper.</li>
+</ol>
+<p>Steps 2 and 3 lean heavily on category labels. If your tees sit in a category called <em>&quot;Summer Vibes&quot;</em>, an agent matching against <em>&quot;tees&quot;</em> may miss them entirely, or surface them with a confusing context line. If your tees sit in a category called <em>&quot;Tops &gt; Tees&quot;</em>, an agent immediately knows what they are, what they&#39;re a subset of, and how to compare them to competing products.</p>
+<p>The same goes for Google AI Overviews and Merchant Center: Google increasingly maps merchant categories onto its own <strong>Google Product Taxonomy</strong> (a public hierarchy of ~5,500 standardized product types). Categories that align cleanly with that taxonomy show up better in shopping surfaces. Categories that don&#39;t (marketing-driven names, audience-driven names, seasonal labels) are guessed at or skipped.</p>
+<h3>Five principles for a strong catalog taxonomy</h3>
+<p><strong>1. Name categories for <em>what the product is</em>, not <em>who it&#39;s for</em> or <em>when it&#39;s sold</em>.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Less effective</th>
+<th>More effective</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Summer Vibes</td>
+<td>Tees, Swimwear</td>
+</tr>
+<tr>
+<td>Dad&#39;s Picks</td>
+<td>Watches, Wallets</td>
+</tr>
+<tr>
+<td>Best Sellers</td>
+<td>(use a tag, not a category)</td>
+</tr>
+<tr>
+<td>New Arrivals</td>
+<td>(use a tag, not a category)</td>
+</tr>
+<tr>
+<td>Holiday 2026</td>
+<td>(use a tag or product feature image, not a category)</td>
+</tr>
+</tbody></table>
+<p>Marketing/seasonal/audience labels are useful for store navigation; keep them as <strong>tags</strong> or product attributes. They&#39;re a poor primary taxonomy because they tell an AI agent nothing about what the product is.</p>
+<p><strong>2. Use a shallow hierarchy: 2 levels is usually enough.</strong></p>
+<p>A two-level tree (parent → leaf) is enough for most small and mid-sized catalogs. Three levels is acceptable when a parent genuinely has many distinct subtypes (e.g. <em>Apparel &gt; Tops &gt; Tees</em>). Going deeper than that with one product per leaf does more harm than good: the navigation becomes brittle and the data sparse.</p>
+<p><strong>3. Every product should sit in a <em>leaf</em>, not a <em>parent</em>.</strong></p>
+<p>If you have <code>Accessories &gt; Hats</code>, no product should be filed under bare <code>Accessories</code>. Parents are for navigation; leaves carry the taxonomy. A product directly assigned to <code>Accessories</code> is effectively saying <em>&quot;this is an accessory, but we don&#39;t know what kind&quot;</em>, which is exactly what you don&#39;t want AI agents to read.</p>
+<p><strong>4. Align category names with Google Product Taxonomy where possible.</strong></p>
+<p>Google publishes a free, public list at <a href="https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt">google.com/basepages/producttype/taxonomy-with-ids.en-US.txt</a>. It&#39;s the canonical reference for shopping surfaces (Google Merchant Center, Google AI Overviews, Gemini shopping, and many AI shopping agents that piggyback on Google&#39;s structure).</p>
+<p>You don&#39;t need to <em>be</em> Google&#39;s taxonomy. Most stores use their own names for branding reasons. But you do want your categories to <strong>map cleanly</strong> to Google nodes. A few wins from matching Google&#39;s terminology where it&#39;s unobtrusive:</p>
+<table>
+<thead>
+<tr>
+<th>Your category</th>
+<th>Closer to Google&#39;s path</th>
+<th>GPT ID</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Hoodies</code></td>
+<td><code>Hoodies &amp; Sweatshirts</code></td>
+<td>5697</td>
+</tr>
+<tr>
+<td><code>Coats</code>, <code>Jackets</code> (separate)</td>
+<td><code>Coats &amp; Jackets</code> (one)</td>
+<td>5598</td>
+</tr>
+<tr>
+<td><code>Sunglasses</code></td>
+<td><code>Sunglasses</code> (under Eyewear)</td>
+<td>178</td>
+</tr>
+<tr>
+<td><code>Notebooks</code></td>
+<td><code>Notebooks &amp; Notepads</code></td>
+<td>2419</td>
+</tr>
+</tbody></table>
+<p>Pragmatically: pick names a shopper would recognize, and where Google&#39;s name is also recognizable, use Google&#39;s. Where Google&#39;s name is awkward (<code>&quot;Apparel &amp; Accessories &gt; Clothing &gt; Shirts &amp; Tops&quot;</code>), use your own and just keep it short and unambiguous.</p>
+<p><strong>5. Tell Google what you mean: set Google Product Category per category.</strong></p>
+<p>If you have an SEO or product-feed plugin installed (Yoast SEO, RankMath, Google Listings &amp; Ads, Facebook for WooCommerce), it likely exposes a <em>&quot;Google Product Category&quot;</em> field on each product category. Setting it once per category lets every product inside inherit the correct mapping, and lets Google Merchant Center and shopping agents read your catalog without guessing. AI Storefront does not surface this field itself today, but the moment any of those plugins set it, the data is on the term where future AI Storefront versions can read it.</p>
+<h3>A worked example: before and after</h3>
+<p>Here is the shape of a small apparel store before and after a 30-minute reshape. The before column is what merchants commonly end up with after a year of organic growth; the after column is a clean two-level hierarchy that maps cleanly to Google Product Taxonomy.</p>
+<p><strong>Before (organic growth):</strong></p>
+<pre><code>- Tees           (10 products)  → &quot;tees&quot;, fine
+- Shirts         (4 products)   → &quot;shirts&quot;, fine
+- Hoodies        (5 products)   → &quot;hoodies&quot;, close to Google&#39;s &quot;Hoodies &amp; Sweatshirts&quot;
+- Knits          (1 product)    → too few products to justify own category
+- Outerwear      (3 products)   → mix of jackets and BOOTS; boots aren&#39;t outerwear
+- Accessories    (13 products)  → bucket of hats, bags, sunglasses, socks, belts,
+                                  a notebook, AND a gift card; nothing in common
+- Capsule        (4 products)   → subscription drop; merchandising, not taxonomy
+- Jackets        (0 products)   → aspirational, empty
+- Bottoms        (0 products)   → aspirational, empty
+</code></pre>
+<p><strong>After (30 minutes of reshape):</strong></p>
+<pre><code>- Tops                                     (parent, 0 products, for navigation only)
+  - Tees                                   (10 products)
+  - Shirts                                 (4 products)
+  - Knits                                  (1 product)
+- Activewear                               (parent)
+  - Hoodies &amp; Sweatshirts                  (5 products)        → matches Google name
+- Outerwear                                (parent)
+  - Coats &amp; Jackets                        (1 product)         → matches Google name
+- Footwear                                 (parent)
+  - Boots                                  (2 products)        → moved out of Outerwear
+- Accessories                              (parent)
+  - Hats                                   (4 products)
+  - Bags                                   (1 product)
+  - Eyewear                                (1 product)
+  - Belts                                  (1 product)
+  - Socks                                  (1 product)
+  - Neckwear                               (2 products)
+  - Stationery                             (1 product)         → notebook lives here,
+                                                                 not under apparel
+- Gift Cards                               (1 product)         → top-level, not under
+                                                                 Accessories
+- Capsule                                  (4 subscription products) ← kept as a
+                                                                       merchandising
+                                                                       category
+</code></pre>
+<p>Same products, same store, twenty minutes of work, and the resulting JSON-LD now carries category labels every AI agent and search engine recognizes. The <code>Bottoms</code> and empty <code>Jackets</code> were deleted; the bucket <code>Accessories</code> was preserved as a navigational parent but every product was moved to a real leaf inside it.</p>
+<h3>How to execute a reshape in WP-Admin</h3>
+<p>Step-by-step, from the WooCommerce admin:</p>
+<ol>
+<li><p><strong>Audit what you have.</strong> Open <em>Products → Categories</em>. Note the product count next to each. Empty or near-empty categories are candidates for deletion or merging. Categories with mixed product types (e.g. <em>&quot;Accessories&quot;</em> containing both apparel items and gift cards) are candidates for splitting.</p>
+</li>
+<li><p><strong>Sketch the target tree</strong> on paper or in a doc. Two levels max. Each leaf should have at least 2–3 products, ideally more. If a category has 1 product and isn&#39;t growing, fold it into its parent.</p>
+</li>
+<li><p><strong>Create new categories before reassigning products.</strong> From <em>Products → Categories</em>: add the new parents first, then the new leaves with the parent set. This way, when you reassign products, the destination already exists.</p>
+</li>
+<li><p><strong>Reassign products in bulk.</strong> From <em>Products → All Products</em>: use the <em>Filter by category</em> dropdown to find products in the old category, then bulk-edit their <em>Categories</em> field to move them. WooCommerce supports multi-category assignment; if a product genuinely belongs in two leaves (e.g. a hoodie that&#39;s also part of a kit), assign both.</p>
+</li>
+<li><p><strong>Reassign one of each variation product.</strong> Variable products and grouped products keep their existing category assignment when you reassign; no special steps needed.</p>
+</li>
+<li><p><strong>Delete old or now-empty categories last.</strong> Reassigning all products out of a category drops its count to 0; you can then delete it from <em>Products → Categories</em> without losing anything.</p>
+</li>
+<li><p><strong>Set Google Product Category per category</strong> (if you have an SEO/feed plugin that supports it). Edit each category, find the <em>Google Product Category</em> dropdown, and select the closest Google node.</p>
+</li>
+<li><p><strong>Verify the result.</strong> Visit a product page, view source, and find the <code>&lt;script type=&quot;application/ld+json&quot;&gt;</code> block. The <code>Product.category</code> field should now show your new leaf name. The breadcrumb block should show the full path.</p>
+</li>
+</ol>
+<h3>What about category names that don&#39;t map to any Google node?</h3>
+<p>Some categories are genuinely <strong>merchandising</strong>, not taxonomic: <em>&quot;Capsule&quot;</em> (subscription drops), <em>&quot;Limited Edition&quot;</em>, <em>&quot;Collab&quot;</em>. These don&#39;t have a clean Google taxonomy equivalent and that&#39;s fine. Two options:</p>
+<ol>
+<li><p><strong>Keep them as categories</strong> and also assign each product to a physical-product leaf (e.g. a hoodie in the <em>Capsule</em> drop is also assigned to <em>Activewear &gt; Hoodies &amp; Sweatshirts</em>). AI Storefront picks the deepest leaf in the longest path when emitting <code>Product.category</code>, so the physical leaf wins, and the merchandising category remains for browse navigation.</p>
+</li>
+<li><p><strong>Convert them to tags.</strong> Use <em>Products → Tags</em> to add a <code>capsule</code> tag, retag the products, and remove the category. Tags don&#39;t appear in JSON-LD <code>Product.category</code> so they don&#39;t pollute the canonical category.</p>
+</li>
+</ol>
+<p>Pick whichever preserves the navigation your shoppers expect. Either way, the AI-facing category stays clean.</p>
+<blockquote>
+<p><strong>Note on category-name search</strong>: AI Storefront does light synonym handling in agent search (singular/plural, common variants). It doesn&#39;t translate marketing names into product types. If your <code>Summer Vibes</code> category contains swimwear and an agent asks for swimwear, the agent will not find it unless the category is renamed <em>or</em> you also assign those products to a <code>Swimwear</code> category.</p>
+</blockquote>
+<h3>Optional: let an AI assistant help you with the reshape</h3>
+<p>WooCommerce <strong>core</strong> ships a built-in MCP (Model Context Protocol) integration starting in WC 10.3.0, designed for <strong>admin-side</strong> AI: it lets AI assistants like Claude or ChatGPT, running under your own credentials, read and modify your store on your behalf from inside the admin. There is no extension to install: the integration is already on your store after you update WooCommerce, gated behind a feature flag you toggle on.</p>
+<p>WooCommerce&#39;s MCP is a developer-preview feature, enabled per store. Once on, an MCP-aware assistant gets access to WooCommerce&#39;s product and order operations, including the ability to read your current <code>product_cat</code> taxonomy, propose a reshape against the principles above, and apply the changes after you approve.</p>
+<p>This is genuinely useful for the kind of work this section describes: large catalogs (hundreds of categories), legacy stores with organic-growth taxonomies, or merchants who want a second opinion on which categories are taxonomic vs. merchandising.</p>
+<p><strong>Two important notes before enabling:</strong></p>
+<ol>
+<li>The feature is in <em>developer preview</em>. WooCommerce may change behaviors and APIs between releases. Treat it accordingly: enable on a staging copy first if you can.</li>
+<li>An MCP-connected assistant can read and modify your store. Use a WooCommerce REST API key scoped to least privilege (a <em>Read/Write</em> key is enough for catalog work; you don&#39;t need to expose orders or customers if you&#39;re only reshaping categories). Revoke the key when you&#39;re done.</li>
+</ol>
+<p><strong>To enable it on your store:</strong></p>
+<ol>
+<li>Follow WooCommerce&#39;s official guide: <a href="https://github.com/woocommerce/woocommerce/blob/trunk/docs/features/mcp/README.md">Model Context Protocol (MCP) Integration</a>. It covers enabling the <code>mcp_integration</code> feature flag, generating an API key, and connecting clients like Claude Code.</li>
+<li>Once enabled, point your AI assistant at this section of the User Guide as context, and ask it to audit your current <code>product_cat</code> taxonomy and propose changes.</li>
+<li>Review and approve each batch of changes before they&#39;re applied.</li>
+</ol>
+<p>If your store is <strong>not</strong> on a host that supports the MCP setup, you can still apply the principles in this section manually via <em>Products → Categories</em> in WP-Admin, or scriptedly via <a href="https://developer.wordpress.org/cli/commands/wc/">WP-CLI</a> (<code>wp wc product_cat ...</code>) or the <a href="https://woocommerce.github.io/woocommerce-rest-api-docs/">WooCommerce REST API</a> with an <a href="https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/">Application Password</a>.</p>
+<blockquote>
+<p><strong>AI Storefront does not register its own MCP abilities yet.</strong> What WooCommerce&#39;s MCP exposes today (products, orders, and the WC Abilities API surface) is enough to do the catalog-shaping work in this section. AI Storefront-specific admin abilities (JSON-LD validation, taxonomy mapping audits, syndication-state queries) are on the plugin&#39;s roadmap and will become available once the WooCommerce MCP integration leaves developer preview. None of those would change what external shopping agents see; they&#39;d only give your own AI assistants better tools for grooming the store.</p>
+</blockquote>
+<hr>
 <h2>6. Configure crawlers and rate limits</h2>
 <p>The <strong>Discovery</strong> tab controls which AI crawlers can read your endpoints and how aggressively. All form input fields on this tab are 32px tall.</p>
 <p><img src="screenshots/06-discovery-tab.png" alt="Discovery tab"></p>
@@ -484,7 +660,7 @@
 <li><strong>General WooCommerce support:</strong> <a href="https://woocommerce.com/support/">woocommerce.com/support</a> for questions about checkout, payments, taxes, shipping, or anything else WooCommerce-core-shaped.</li>
 </ul>
 <hr>
-<p><em>Covers AI Storefront 0.17.1. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
+<p><em>Covers AI Storefront 0.17.3. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
 
 </body>
 </html>

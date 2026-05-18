@@ -6,6 +6,12 @@
 ### Tests
 ### Docs
 
+---
+
+## [0.17.3] – 2026-05-18
+
+### Docs
+
 - **Catalog taxonomy guidance for AI discoverability.**
   - New USER-GUIDE §5b walks merchants through five principles for a strong AI-friendly catalog taxonomy: naming categories by what the product is (not who/when it's for), a two-level depth ceiling, every product on a leaf (not a parent), aligning with Google Product Taxonomy, and surfacing a Google Product Category per term. Includes a before/after worked example and a step-by-step reshape recipe.
   - JSON-LD-SCHEMA `Product.category` field expanded with a new *Sourcing and merchant control* subsection explaining the passthrough principle (no name transformation, no canonical-taxonomy normalization at emission time), a *Why not normalize to Google Product Taxonomy in the plugin?* design-rationale subsection that links to the canonical-taxonomy POC in #412, and a concrete description of the deepest-leaf breadcrumb selection algorithm with a worked Capsule/Activewear example.
