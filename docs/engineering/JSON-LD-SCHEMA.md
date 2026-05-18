@@ -182,6 +182,39 @@ The primary category path as a breadcrumb string (e.g. `"Clothing > Hoodies"`).
 - **Selection rule**: deepest leaf in the longest breadcrumb path. Ties broken by category ID.
 - **Format**: " > " separator.
 
+#### Sourcing and merchant control
+
+`Product.category` is sourced directly from the WooCommerce `product_cat` taxonomy. The plugin does no name transformation, no Google Product Taxonomy mapping, and no synonym normalization at emission time. What the merchant authored in `Products → Categories` is what AI agents and search engines see. This is intentional:
+
+- **The merchant is authoritative**. The plugin's job is to publish the catalog faithfully, not to reinterpret it.
+- **Reinterpreting silently is worse than emitting unfamiliar names**. A "Summer Vibes" → "Swimwear" guess that's wrong pollutes the merchant's structured-data feed; the right answer is to surface the gap and let the merchant fix the source.
+- **Downstream behavior is testable**. With raw category names flowing through unchanged, the JSON-LD output is a 1:1 function of WC state: straightforward to diff, debug, and validate.
+
+The consequence: catalog taxonomy quality is a *merchant-facing* concern, documented in [USER-GUIDE §5b](../user-guide/USER-GUIDE.md#5b-shape-your-catalog-for-ai-discoverability). Merchants who want good AI surfacing need to author categories that read as canonical product types ("Hoodies & Sweatshirts", not "Summer Vibes"), at most two levels deep, with every product assigned to a leaf rather than a parent.
+
+#### Why not normalize to Google Product Taxonomy in the plugin?
+
+A reasonable question, since several existing plugins (Yoast WooCommerce SEO, RankMath WC, Google Listings & Ads, Facebook for WooCommerce) already let merchants set a Google Product Category (GPC) ID per term. The plugin could read that term meta and override `Product.category` with the Google path.
+
+It currently doesn't, for these reasons:
+
+1. **The Google path and the merchant's category name are different things**. `Product.category` is a free-text Schema.org field; replacing the merchant's "Hoodies" with Google's "Apparel & Accessories > Clothing > Activewear > Hoodies & Sweatshirts" would surface unfamiliar phrasing to AI agents who quote the category name back to shoppers. Better: emit the merchant's name in `Product.category` and emit the GPC separately so consumers that key on canonical IDs can use it.
+
+2. **The right field for canonical IDs is `additionalProperty`** (or a future-proposed `productCategory` Schema.org extension), not `category`. Emitting GPC alongside the human-readable category in distinct fields keeps both audiences happy.
+
+3. **Surfacing canonical IDs is on the roadmap as a follow-on**. Once we have a reliable cross-plugin reader for term-meta GPC values, the natural addition is an `additionalProperty` entry like `{ "@type": "PropertyValue", "name": "Google Product Category ID", "value": "5697", "propertyID": "GPC" }`. Tracked in [#412](https://github.com/Automattic/woocommerce-ai-storefront/issues/412), which proposes a deeper auto-mapping pipeline for merchants who haven't set GPC IDs manually.
+
+#### Breadcrumb selection algorithm
+
+The "deepest leaf in the longest breadcrumb path" rule, in concrete terms:
+
+1. Fetch all `product_cat` terms assigned to the product.
+2. For each term, compute its breadcrumb path by walking `parent` pointers to the root. The path's length is the number of segments.
+3. Pick the path with the most segments. On a tie (multiple equally-deep paths), pick the one whose leaf term has the lowest `term_id` for determinism.
+4. The leaf's name (not the full path) becomes `Product.category`, unless changed in a future revision to emit the full " > " joined path.
+
+Practical implication for merchants: when a product belongs to multiple categories of different depths, the deepest leaf wins. So a hoodie assigned to both `Activewear > Hoodies & Sweatshirts` *and* a flat top-level `Capsule` (subscription drop) emits `category: "Hoodies & Sweatshirts"`, not `"Capsule"`. The merchant's merchandising taxonomy and their canonical product taxonomy can coexist; the deeper canonical leaf wins for AI emission.
+
 ### `weight`, `depth`, `width`, `height` (dimensions)
 
 Schema.org `QuantitativeValue` blocks with `unitCode` set to UN/CEFACT codes (`KGM`, `LBR`, `CMT`, `INH`, etc.) per the store's WC unit settings.
