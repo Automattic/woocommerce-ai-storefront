@@ -24,6 +24,19 @@
 
 ---
 
+## [0.17.3] – 2026-05-18
+
+### Docs
+
+- **Catalog taxonomy guidance for AI discoverability.**
+  - New USER-GUIDE §5b walks merchants through five principles for a strong AI-friendly catalog taxonomy: naming categories by what the product is (not who/when it's for), a two-level depth ceiling, every product on a leaf (not a parent), aligning with Google Product Taxonomy, and surfacing a Google Product Category per term. Includes a before/after worked example and a step-by-step reshape recipe.
+  - JSON-LD-SCHEMA `Product.category` field expanded with a new *Sourcing and merchant control* subsection explaining the passthrough principle (no name transformation, no canonical-taxonomy normalization at emission time), a *Why not normalize to Google Product Taxonomy in the plugin?* design-rationale subsection that links to the canonical-taxonomy POC in #412, and a concrete description of the deepest-leaf breadcrumb selection algorithm with a worked Capsule/Activewear example.
+- **MCP integration positioning updated to reflect WooCommerce core's native MCP support.**
+  - README and ARCHITECTURE replace the absolute "No MCP support" stance with an accurate framing: WooCommerce core (10.3.0+) now ships native MCP behind the `mcp_integration` feature flag; AI Storefront does not register its own MCP abilities yet, but the path is open via the WordPress Abilities API. Clarifies that MCP is admin-side (merchants' own AI assistants) while UCP is shopper-side (external buyers' shopping agents) and the two are orthogonal audiences.
+  - USER-GUIDE §5b adds an optional "let an AI assistant help you with the reshape" subsection that points merchants on WC 10.3+ to WooCommerce's MCP setup guide, with a least-privilege guidance for the WC REST API key, a developer-preview caveat, and fallback paths (WP-CLI, REST + Application Password) for stores not on MCP-supporting setups.
+
+---
+
 ## [0.17.2] – 2026-05-15
 
 ### Fixes
