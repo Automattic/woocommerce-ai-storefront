@@ -36,6 +36,12 @@ if ( ! defined( 'DAY_IN_SECONDS' ) ) {
 // Load the settings stub before classes that reference WC_AI_Storefront statically.
 require_once __DIR__ . '/stubs/class-wc-ai-storefront-stub.php';
 
+// Load shared WCPay multi-currency stubs so any test can exercise
+// WC_AI_Storefront_Multi_Currency without coupling to test execution order.
+// Each test resets the controlling globals (`_mc_test_double`, `_mc_throw`,
+// `_mc_feature_enabled`) in setUp().
+require_once __DIR__ . '/stubs/class-wcpay-multi-currency-stubs.php';
+
 // Load plugin files.
 $plugin_path = dirname( __DIR__, 2 ) . '/includes/';
 

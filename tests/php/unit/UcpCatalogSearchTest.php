@@ -298,6 +298,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 						[
 							'search',
 							'category',
+							'currency',
 							'min_price',
 							'max_price',
 							'page',
@@ -343,6 +344,11 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// stubs from one test don't bleed accepted-currency state into
 		// the next.
 		WC_AI_Storefront_Multi_Currency::reset_cache();
+		// Reset the WCPay-double globals so a test that built one doesn't
+		// leak into the next test's accepted-currencies probe.
+		$GLOBALS['_mc_test_double']     = null;
+		$GLOBALS['_mc_throw']           = false;
+		$GLOBALS['_mc_feature_enabled'] = true;
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -2792,5 +2798,306 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertNotEmpty( $body['products'][0]['url'] ?? '' );
 		$this->assertStringNotContainsString( 'currency=', $body['products'][0]['url'] );
+	}
+
+	public function test_handle_catalog_search_passes_currency_param_to_store_api_when_context_currency_set(): void {
+		// Agent sends context.currency: EUR. The Store API dispatch must carry
+		// currency=EUR as a query param on the outgoing WP_REST_Request.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		$captured_currency = null;
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $req ) use ( &$captured_currency ) {
+				$captured_currency = $req->get_param( 'currency' );
+				$response = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_json_params( array( 'context' => array( 'currency' => 'EUR' ) ) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search( $request );
+
+		$this->assertSame( 'EUR', $captured_currency, 'Store API dispatch must carry currency=EUR query param' );
+	}
+
+	public function test_handle_catalog_search_omits_currency_param_when_context_currency_absent(): void {
+		// No context.currency — the Store API dispatch must NOT carry a currency param.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+
+		$captured_currency = 'NOT_SET';
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $req ) use ( &$captured_currency ) {
+				$captured_currency = $req->get_param( 'currency' );
+				$response = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_json_params( array() );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search( $request );
+
+		$this->assertNull( $captured_currency, 'Store API dispatch must not carry a currency param when none was requested' );
+	}
+
+	public function test_handle_catalog_search_passes_currency_param_to_variation_dispatches(): void {
+		// Regression test: catalog/search resets request_context at handler entry.
+		// Before the fix, set_currency() was never called for this handler, so
+		// variation fetches (single-item route) silently carried no currency param —
+		// only the list dispatch did. Every fetch_store_api_product() call must carry
+		// currency=EUR when the agent sent context.currency: EUR.
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value, ...$extras ) {
+				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
+					return array( 'USD', 'EUR' );
+				}
+				return $value;
+			}
+		);
+
+		$captured = array(); // route => currency param value
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $req ) use ( &$captured ) {
+				$route    = $req->get_route();
+				$currency = $req->get_param( 'currency' );
+				$captured[ $route ] = $currency;
+
+				if ( '/wc/store/v1/products' === $route ) {
+					$response = new \WP_REST_Response( array(
+						array(
+							'id'                => 789,
+							'name'              => 'T-Shirt',
+							'type'              => 'variable',
+							'short_description' => '',
+							'prices'            => array(
+								'price'         => '1000',
+								'currency_code' => 'EUR',
+								'price_range'   => array( 'min_amount' => '1000', 'max_amount' => '2000' ),
+							),
+							'variations'        => array(
+								array( 'id' => 101, 'attributes' => array( array( 'name' => 'Size', 'value' => 'Small' ) ) ),
+								array( 'id' => 102, 'attributes' => array( array( 'name' => 'Size', 'value' => 'Large' ) ) ),
+							),
+						),
+					) );
+					$response->set_status( 200 );
+					return $response;
+				}
+
+				// Single-item variation dispatches.
+				$product_id = (int) basename( $route );
+				$response   = new \WP_REST_Response( array(
+					'id'                => $product_id,
+					'name'              => 'T-Shirt',
+					'short_description' => '',
+					'is_in_stock'       => true,
+					'prices'            => array( 'price' => '1500', 'currency_code' => 'EUR' ),
+					'attributes'        => array( array( 'name' => 'Size', 'value' => 'Small' ) ),
+				) );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_json_params( array( 'context' => array( 'currency' => 'EUR' ) ) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search( $request );
+
+		// Every dispatch — list and per-variation — must carry currency=EUR.
+		$this->assertNotEmpty( $captured, 'Expected at least one Store API dispatch' );
+		foreach ( $captured as $route => $currency ) {
+			$this->assertSame(
+				'EUR',
+				$currency,
+				"Store API dispatch to $route must carry currency=EUR"
+			);
+		}
+		// Confirm we actually exercised the variation routes, not just the list.
+		$this->assertArrayHasKey( '/wc/store/v1/products/101', $captured );
+		$this->assertArrayHasKey( '/wc/store/v1/products/102', $captured );
+	}
+
+	public function test_map_ucp_search_converts_price_filter_to_base_currency_when_context_currency_in_accepted_set(): void {
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
+		);
+		// EUR → USD rate: 1.10 (i.e. 1 EUR = 1.10 USD).
+		// convert_amount() uses get_raw_conversion($amount, $to, $from):
+		//   minor → major (5000 → 50.0)
+		//   get_raw_conversion(50.0, 'USD', 'EUR') → 50.0 * 1.10 = 55.00
+		//   major → minor → 5500
+		$mc->shouldReceive( 'get_raw_conversion' )->andReturnUsing(
+			static function ( float $amount, string $to, string $from ) {
+				return $amount * 1.10;
+			}
+		);
+		$GLOBALS['_mc_test_double'] = $mc;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$captured_params = array();
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) use ( &$captured_params ) {
+				// The stub's WP_REST_Request unifies query/body params via
+				// get_param(), so we read each Store API key directly
+				// rather than calling a non-existent get_query_params().
+				foreach ( array( 'min_price', 'max_price' ) as $key ) {
+					$val = $req->get_param( $key );
+					if ( null !== $val ) {
+						$captured_params[ $key ] = $val;
+					}
+				}
+				$response = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_body_params(
+			array(
+				'context' => array( 'currency' => 'EUR' ),
+				'filters' => array( 'price' => array( 'min' => 5000, 'max' => 10000 ) ),
+			)
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search( $request );
+
+		$this->assertArrayHasKey( 'min_price', $captured_params, 'min_price must reach the Store API (no longer dropped)' );
+		$this->assertArrayHasKey( 'max_price', $captured_params, 'max_price must reach the Store API (no longer dropped)' );
+		// Converted minor units: 5000 EUR → 5500 USD, 10000 EUR → 11000 USD.
+		// `minor_units_to_presentment` formats with `wc_get_price_decimals`
+		// (stubbed to 2 in setUp), so 5500 → "55.00" and 11000 → "110.00".
+		$this->assertSame( '55.00', (string) $captured_params['min_price'] );
+		$this->assertSame( '110.00', (string) $captured_params['max_price'] );
+	}
+
+	public function test_map_ucp_search_emits_warning_when_context_currency_not_in_accepted_set(): void {
+		// XYZ is not in accepted set → fall back to base, emit warning,
+		// drop the filter (no min/max reaches Store API since we can't
+		// trust an unknown currency's denomination).
+		$GLOBALS['_mc_test_double'] = null;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$captured_params = array();
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) use ( &$captured_params ) {
+				foreach ( array( 'min_price', 'max_price' ) as $key ) {
+					$val = $req->get_param( $key );
+					if ( null !== $val ) {
+						$captured_params[ $key ] = $val;
+					}
+				}
+				$response = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_body_params(
+			array(
+				'context' => array( 'currency' => 'XYZ' ),
+				'filters' => array( 'price' => array( 'min' => 5000, 'max' => 10000 ) ),
+			)
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_catalog_search( $request );
+
+		$body = $response->get_data();
+		$this->assertArrayHasKey( 'messages', $body );
+		$found = false;
+		foreach ( $body['messages'] as $msg ) {
+			if (
+				'warning' === $msg['type']
+				&& WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED === $msg['code']
+			) {
+				$found = true;
+			}
+		}
+		$this->assertTrue( $found, 'currency_conversion_unsupported warning must be emitted' );
+		$this->assertArrayNotHasKey( 'min_price', $captured_params );
+		$this->assertArrayNotHasKey( 'max_price', $captured_params );
+	}
+
+	public function test_map_ucp_search_emits_warning_when_currency_conversion_throws(): void {
+		// EUR is in accepted_currencies, but WCPay's get_raw_conversion throws —
+		// convert_amount propagates the exception, the catch block fires, and
+		// the filter is dropped with a "Conversion … failed" warning.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
+		);
+		$mc->shouldReceive( 'get_raw_conversion' )->andThrow( new \RuntimeException( 'WCPay rate fetch failed' ) );
+		$GLOBALS['_mc_test_double'] = $mc;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$captured_params = array();
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) use ( &$captured_params ) {
+				$captured_params['min_price'] = $req->get_param( 'min_price' );
+				$captured_params['max_price'] = $req->get_param( 'max_price' );
+				$response                     = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_body_params(
+			array(
+				'context' => array( 'currency' => 'EUR' ),
+				'filters' => array( 'price' => array( 'min' => 5000, 'max' => 10000 ) ),
+			)
+		);
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_catalog_search( $request );
+
+		$body  = $response->get_data();
+		$found = null;
+		foreach ( $body['messages'] ?? array() as $msg ) {
+			if (
+				'warning' === ( $msg['type'] ?? null )
+				&& WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED === ( $msg['code'] ?? null )
+				&& str_contains( $msg['content'] ?? '', 'Conversion of price filter from' )
+			) {
+				$found = $msg;
+			}
+		}
+		$this->assertNotNull( $found, 'Conversion-failed warning must be emitted when WCPay throws' );
+		$this->assertNull( $captured_params['min_price'], 'min_price must NOT reach the Store API on conversion failure' );
+		$this->assertNull( $captured_params['max_price'], 'max_price must NOT reach the Store API on conversion failure' );
 	}
 }

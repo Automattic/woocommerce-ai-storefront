@@ -268,6 +268,69 @@ class WC_AI_Storefront_Multi_Currency {
 	}
 
 	/**
+	 * Convert a minor-units amount from one currency to another using
+	 * WooPayments' exchange rates.
+	 *
+	 * Used by the UCP filter-conversion path: agent sends
+	 * `filters.price.min = 5000` (EUR minor units), we convert to
+	 * base-currency minor units before forwarding to the Store API
+	 * `min_price` parameter.
+	 *
+	 * Delegates to `WCPay\MultiCurrency\MultiCurrency::get_raw_conversion()`
+	 * which applies the merchant's enabled exchange rates directly via
+	 * explicit from/to currency codes. Unlike `get_price()`, this method
+	 * does not rely on WCPay's "selected currency" state, so callers do
+	 * NOT need to be inside a `with_active_currency()` scope.
+	 *
+	 * Only 2-decimal currencies (e.g. USD, EUR, GBP) are supported.
+	 * JPY (0 decimals) and BHD/KWD (3 decimals) would require a
+	 * per-currency exponent lookup; passing them will produce wrong
+	 * magnitudes. The caller (map_ucp_search_to_store_api) only reaches
+	 * this path when the currency is in the WCPay accepted set, which
+	 * today consists of 2-decimal currencies only.
+	 *
+	 * Same-currency conversions are short-circuited as a no-op so the
+	 * helper can be called unconditionally without a WCPay check.
+	 *
+	 * @since 0.18.0
+	 *
+	 * @param int    $minor_units Non-negative source amount in ISO 4217 minor units.
+	 * @param string $from        Source currency code (agent-supplied).
+	 * @param string $to          Target currency code.
+	 * @return int                Converted amount in target minor units.
+	 *
+	 * @throws \InvalidArgumentException When $minor_units is negative.
+	 * @throws \RuntimeException         When WooPayments is unavailable.
+	 */
+	public static function convert_amount( int $minor_units, string $from, string $to ): int {
+		if ( $minor_units < 0 ) {
+			throw new \InvalidArgumentException( 'convert_amount: minor_units must be non-negative' );
+		}
+
+		if ( strtoupper( $from ) === strtoupper( $to ) ) {
+			return $minor_units;
+		}
+
+		if ( ! function_exists( 'WC_Payments_Multi_Currency' ) ) {
+			throw new \RuntimeException( 'WooPayments multi-currency is not available' );
+		}
+
+		$mc = WC_Payments_Multi_Currency();
+		if ( ! is_object( $mc ) ) {
+			throw new \RuntimeException( 'WooPayments multi-currency singleton returned non-object' );
+		}
+
+		// minor → major before invoking WCPay. get_raw_conversion() works in
+		// major units (e.g. dollars, not cents). The /100.0 and *100 assume a
+		// 2-decimal currency; JPY/BHD would require a different divisor.
+		$source_major    = $minor_units / 100.0;
+		$converted_major = $mc->get_raw_conversion( $source_major, strtoupper( $to ), strtoupper( $from ) );
+
+		// major → minor on the way back out; round to nearest integer.
+		return (int) round( $converted_major * 100 );
+	}
+
+	/**
 	 * Normalize an array of currency codes: uppercase, drop entries
 	 * that fail the ISO-4217 pattern, deduplicate preserving order.
 	 *

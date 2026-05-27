@@ -624,6 +624,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Clear per-request memoization so a product fetched in a
 		// prior request can't leak here (defence-in-depth reset).
 		$this->request_context->reset();
+		// Store the agent's requested currency on request_context so every
+		// downstream fetch_store_api_product() call (variations, bundles)
+		// automatically carries currency= without needing an extra param.
+		$this->request_context->set_currency( self::get_request_currency( $request ) );
 
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Storefront_Logger::debug( 'UCP catalog/search rejected: syndication disabled' );
@@ -711,7 +715,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Dispatch to Store API, handle WP_Error, branch on status class, and
 		// normalize. Returns ['error', 'wc_products', 'store_response']; see
 		// fetch_wc_products_for_search() for the full contract.
-		$fetched = self::fetch_wc_products_for_search( $store_params, $capability );
+		// Thread the agent's requested currency through so the Store API
+		// returns prices in the correct presentment currency. Null when
+		// context.currency is absent / malformed — treated as no-op.
+		$fetched = self::fetch_wc_products_for_search(
+			$store_params,
+			$capability,
+			self::get_request_currency( $request )
+		);
 		if ( null !== $fetched['error'] ) {
 			return $fetched['error'];
 		}
@@ -890,11 +901,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * `store_response` is preserved on success so the caller can derive
 	 * pagination state from Store API's X-WP-Total / X-WP-TotalPages headers.
 	 *
-	 * @param array  $store_params Params produced by map_ucp_search_to_store_api().
-	 * @param string $capability   UCP capability string for the error envelope.
+	 * @param array       $store_params     Params produced by map_ucp_search_to_store_api().
+	 * @param string      $capability       UCP capability string for the error envelope.
+	 * @param string|null $request_currency Normalized ISO-4217 code from the
+	 *                                       agent's `context.currency`, or null when
+	 *                                       absent / malformed. Passed as the Store
+	 *                                       API native `currency` query param so
+	 *                                       WCPay returns prices in the requested
+	 *                                       currency (rate + rounding + charm).
 	 * @return array{error: WP_REST_Response|null, wc_products: array, store_response: WP_REST_Response|null}
 	 */
-	private static function fetch_wc_products_for_search( array $store_params, string $capability ): array {
+	private static function fetch_wc_products_for_search( array $store_params, string $capability, ?string $request_currency = null ): array {
 		/**
 		 * Filter the Store API query arguments before a catalog/search dispatch.
 		 *
@@ -941,6 +958,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$store_request = new WP_REST_Request( 'GET', '/wc/store/v1/products' );
 		foreach ( $store_params as $k => $v ) {
 			$store_request->set_param( $k, $v );
+		}
+
+		// Pass the agent's requested currency to the Store API so WCPay's
+		// price-conversion hooks render product prices in the correct
+		// presentment currency (rate + rounding + charm per merchant settings).
+		// The Store API accepts a native `currency` query param and returns
+		// prices already converted — no WCPay filter override needed.
+		// No-op when $request_currency is null (single-currency stores or
+		// absent context.currency hint).
+		if ( null !== $request_currency ) {
+			$store_request->set_param( 'currency', $request_currency );
 		}
 
 		// try/finally ensures the UCP dispatch depth counter is decremented
@@ -1741,9 +1769,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return $ids_error;
 		}
 
-		$products = array();
-		$messages = array();
-
 		// Deduplicate + normalize before fetching. `wc_ids` is the
 		// work list (one per unique input, aligned positionally
 		// with `inputs`); `inputs` is the echo array we return to
@@ -1794,6 +1819,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				update_postmeta_cache( $prime_ids );
 			}
 		}
+
+		// Store the agent's requested currency on the request context so
+		// fetch_store_api_product() can pass it as the Store API native
+		// `currency` query param. The Store API returns prices already
+		// converted (rate + rounding + charm) when this param is present.
+		$request_currency = self::get_request_currency( $request );
+		$this->request_context->set_currency( $request_currency );
+
+		$products = array();
+		$messages = array();
 
 		// Pass 1: fetch all parent products + record not-found messages.
 		// Two-pass structure (vs. a single fetch+translate loop) lets us
@@ -2387,9 +2422,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
-		$processed = [];
-		$messages  = [];
+		// Store the agent's requested currency on the request context so
+		// fetch_store_api_product() passes it as the Store API native
+		// `currency` query param, returning prices already converted
+		// (rate + rounding + charm). Also used by process_line_item()
+		// for EUR-vs-EUR price drift comparison.
+		$request_currency = self::get_request_currency( $request );
+		$this->request_context->set_currency( $request_currency );
 
+		$processed = array();
+		$messages  = array();
 		foreach ( $line_items_raw as $index => $line_item ) {
 			$outcome = $this->process_line_item( $line_item, (int) $index, $currency );
 
@@ -3527,6 +3569,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		$request  = new WP_REST_Request( 'GET', '/wc/store/v1/products/' . $id );
+		$currency = $this->request_context->get_currency();
+		if ( null !== $currency ) {
+			$request->set_param( 'currency', $currency );
+		}
 		$response = rest_do_request( $request );
 
 		// Three distinct failure modes collapse to a single `null`
@@ -4300,27 +4346,81 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$store_currency   = function_exists( 'get_woocommerce_currency' )
 					? strtoupper( (string) get_woocommerce_currency() )
 					: 'USD';
+
+				$min_value = $has_min ? (int) $price['min'] : null;
+				$max_value = $has_max ? (int) $price['max'] : null;
+
 				if ( null !== $ctx_currency && $ctx_currency !== $store_currency ) {
-					$apply_price_filter = false;
-					$messages[]         = [
-						'type'    => 'warning',
-						'code'    => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
-						'path'    => '$.filters.price',
-						'content' => sprintf(
-							/* translators: 1: agent-supplied currency, 2: store currency. */
-							__( 'context.currency "%1$s" does not match store currency "%2$s" and conversion is not supported; price filter ignored.', 'woocommerce-ai-storefront' ),
-							$ctx_currency,
-							$store_currency
-						),
-					];
+					// Phase 2: convert filter bounds via WCPay if the requested
+					// currency is in accepted_currencies; otherwise fall back to
+					// drop + warn (same as Phase 1).
+					//
+					// WCPay's Store API hooks convert product price values for
+					// display (woocommerce_product_get_price priority 99) but NOT
+					// min_price / max_price filter params — Store API queries the
+					// wc_product_meta_lookup table directly with no per-row PHP
+					// intercept. Pre-converting bounds to base currency here is
+					// therefore correct, no double-conversion risk.
+					//
+					// TODO(WOOPMNT-6165 Track B): if WCPay adds Store API
+					// min_price/max_price conversion honoring the request's
+					// currency= param, drop these convert_amount() calls (pass
+					// agent-currency values directly) gated on
+					// WCPAY_VERSION_NUMBER >= <Track B release>.
+					$accepted = WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
+					if ( in_array( $ctx_currency, $accepted, true ) ) {
+						try {
+							if ( null !== $min_value ) {
+								$min_value = WC_AI_Storefront_Multi_Currency::convert_amount( $min_value, $ctx_currency, $store_currency );
+							}
+							if ( null !== $max_value ) {
+								$max_value = WC_AI_Storefront_Multi_Currency::convert_amount( $max_value, $ctx_currency, $store_currency );
+							}
+						} catch ( \Throwable $e ) {
+							// Conversion failed (WCPay throw, partial-boot, etc.).
+							// Drop the filter + emit the standard fallback warning.
+							WC_AI_Storefront_Logger::debug(
+								'UCP catalog/search: filter conversion threw %s — dropping filters.price. Message: %s',
+								get_class( $e ),
+								$e->getMessage()
+							);
+							$apply_price_filter = false;
+							$messages[]         = [
+								'type'    => 'warning',
+								'code'    => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
+								'path'    => '$.filters.price',
+								'content' => sprintf(
+									/* translators: 1: agent-supplied currency, 2: store currency. */
+									__( 'Conversion of price filter from "%1$s" to "%2$s" failed; filter ignored.', 'woocommerce-ai-storefront' ),
+									$ctx_currency,
+									$store_currency
+								),
+							];
+						}
+					} else {
+						// Requested currency is not in accepted set — drop +
+						// warn per Phase 1 semantics.
+						$apply_price_filter = false;
+						$messages[]         = [
+							'type'    => 'warning',
+							'code'    => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
+							'path'    => '$.filters.price',
+							'content' => sprintf(
+								/* translators: 1: agent-supplied currency, 2: store currency. */
+								__( 'context.currency "%1$s" is not in the store\'s accepted-currencies set; price filter ignored.', 'woocommerce-ai-storefront' ),
+								$ctx_currency,
+								$store_currency
+							),
+						];
+					}
 				}
 
 				if ( $apply_price_filter ) {
-					if ( $has_min ) {
-						$params['min_price'] = self::minor_units_to_presentment( (int) $price['min'] );
+					if ( null !== $min_value ) {
+						$params['min_price'] = self::minor_units_to_presentment( $min_value );
 					}
-					if ( $has_max ) {
-						$params['max_price'] = self::minor_units_to_presentment( (int) $price['max'] );
+					if ( null !== $max_value ) {
+						$params['max_price'] = self::minor_units_to_presentment( $max_value );
 					}
 				}
 			}
@@ -5277,10 +5377,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$unit_price_minor = (int) ( $wc_product['prices']['price'] ?? 0 );
 
 		// --- Price-drift warning (agent opt-in) ---
+		// Use the request currency (from request_context) for the drift
+		// comparison so EUR-vs-EUR checks work when the agent supplied
+		// context.currency. Falls back to store base currency when absent.
+		$effective_currency = $this->request_context->get_currency() ?? $store_currency;
+
 		$drift_warning = self::check_price_drift(
 			$line_item['expected_unit_price'] ?? null,
 			$unit_price_minor,
-			$store_currency,
+			$effective_currency,
 			$path
 		);
 		if ( null !== $drift_warning ) {
@@ -5525,7 +5630,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *
 	 * @param  mixed  $expected_unit_price Raw `expected_unit_price` from the request.
 	 * @param  int    $current_price_minor Current product price in minor units.
-	 * @param  string $store_currency      ISO 4217 currency code of the store.
+	 * @param  string $store_currency      ISO 4217 currency code to compare against.
+	 *                                     Base currency by default; Phase 2 callers
+	 *                                     pass `WC_AI_Storefront_UCP_Request_Context::get_currency()`
+	 *                                     so EUR-vs-EUR comparisons work when the agent
+	 *                                     requested a non-base presentment currency.
 	 * @param  string $path                JSON path for the warning attribution.
 	 * @return array|null                  Warning message array, or null if no drift.
 	 */

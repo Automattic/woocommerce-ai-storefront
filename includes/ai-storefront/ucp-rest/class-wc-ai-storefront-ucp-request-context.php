@@ -49,6 +49,17 @@ final class WC_AI_Storefront_UCP_Request_Context {
 	private array $product_cache_has_key = array();
 
 	/**
+	 * The validated ISO-4217 currency code for the current request,
+	 * or null when no currency hint was supplied by the agent.
+	 * Set once per handler entry via set_currency(); read by
+	 * fetch_store_api_product() to pass the native Store API
+	 * `currency` query param.
+	 *
+	 * @var string|null
+	 */
+	private ?string $currency = null;
+
+	/**
 	 * Return the cached product data for the given WC product ID.
 	 *
 	 * Callers must call `has_product()` first — this method does not
@@ -89,6 +100,24 @@ final class WC_AI_Storefront_UCP_Request_Context {
 	}
 
 	/**
+	 * Store the validated presentment currency for this request.
+	 *
+	 * @param string|null $code Validated ISO-4217 code, or null.
+	 */
+	public function set_currency( ?string $code ): void {
+		$this->currency = $code;
+	}
+
+	/**
+	 * Return the presentment currency for this request.
+	 *
+	 * @return string|null Validated ISO-4217 code, or null when absent.
+	 */
+	public function get_currency(): ?string {
+		return $this->currency;
+	}
+
+	/**
 	 * Clear all cached entries. Called at the top of each handler
 	 * entry point so data from a prior request cannot leak into the
 	 * current one.
@@ -96,5 +125,6 @@ final class WC_AI_Storefront_UCP_Request_Context {
 	public function reset(): void {
 		$this->product_cache         = array();
 		$this->product_cache_has_key = array();
+		$this->currency              = null;
 	}
 }
