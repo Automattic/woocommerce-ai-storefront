@@ -313,6 +313,13 @@ class WC_AI_Storefront {
 		// pattern used for llms.txt / UCP manifest rewrite rules.
 		$ucp_rest_controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$ucp_rest_controller->register_routes();
+
+		// MCP transport at /wp-json/wc/ucp/v1/mcp. Registered
+		// unconditionally — the server's own gate checks settings.enabled
+		// and settings.mcp_enabled, returning a JSON-RPC error rather than
+		// 404 when the transport is off. Mirrors the UCP REST adapter above.
+		$mcp_server = new WC_AI_Storefront_MCP_Server();
+		$mcp_server->register_routes();
 	}
 
 	/**
