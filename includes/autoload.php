@@ -45,6 +45,9 @@ spl_autoload_register(
 			'WC_AI_Storefront_UCP_REST_Controller'    => '/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php',
 			'WC_AI_Storefront_UCP_Store_API_Filter'   => '/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-store-api-filter.php',
 			'WC_AI_Storefront_UCP_Variant_Translator' => '/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-variant-translator.php',
+			'WC_AI_Storefront_MCP_Session'            => '/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-session.php',
+			'WC_AI_Storefront_MCP_Tools'              => '/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php',
+			'WC_AI_Storefront_MCP_Server'             => '/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php',
 		);
 
 		if ( isset( $classmap[ $class_name ] ) ) {
