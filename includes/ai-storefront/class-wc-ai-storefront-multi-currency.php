@@ -223,10 +223,10 @@ class WC_AI_Storefront_Multi_Currency {
 	 * @param string      $url                Outbound URL to stamp.
 	 * @param string|null $requested_currency Candidate ISO-4217 code from
 	 *                                        the agent's request. Canonical
-	 *                                        source: `self::get_request_currency( $request )`,
+	 *                                        source: `WC_AI_Storefront_UCP_REST_Controller::get_currency_from_context( $context )`,
 	 *                                        which normalises the raw
-	 *                                        `$request->get_param('context')['currency']`
-	 *                                        value before it reaches this function.
+	 *                                        `context['currency']` value
+	 *                                        before it reaches this function.
 	 * @return string The stamped URL, or the input URL unchanged.
 	 */
 	public static function stamp_currency_query( $url, $requested_currency ) {

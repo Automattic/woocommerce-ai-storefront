@@ -5846,39 +5846,26 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	/**
 	 * Extract and validate the agent's `context.currency` hint.
 	 *
-	 * Reads `context.currency` from the request body, trims it,
-	 * uppercases it, and validates the ISO-4217 shape (^[A-Z]{3}$).
-	 * Returns the normalized code on success, or null when the hint
-	 * is absent, malformed, or non-string.
+	 * Reads `context.currency` from a UCP request `context` array, trims it,
+	 * uppercases it, and validates the ISO-4217 shape (^[A-Z]{3}$). Returns
+	 * the normalized code on success, or null when the hint is absent,
+	 * malformed, or non-string.
 	 *
-	 * This is the single source of truth for "what currency did the
-	 * agent ask for?" — used by `build_continue_url()`, the per-product
-	 * URL stamper in `catalog/search` and `catalog/lookup` handlers,
-	 * and (in Phase 2) the WCPay currency-switch wrapper.
+	 * Transport-neutral: it takes a plain `context` array (not a
+	 * `WP_REST_Request`), so the REST handlers and non-REST transports (MCP)
+	 * resolve the agent's requested presentment currency identically.
+	 *
+	 * This is the single source of truth for "what currency did the agent
+	 * ask for?" — used by `build_continue_url()`, the per-product URL stamper
+	 * in the `catalog/search` and `catalog/lookup` cores, and the WCPay
+	 * currency-switch wrapper.
 	 *
 	 * Note: this helper does NOT check membership in
-	 * `WC_AI_Storefront_Multi_Currency::get_accepted_currencies()` —
-	 * that's `stamp_currency_query()`'s job. We pass the raw validated
-	 * hint through; the stamper decides whether to use it.
+	 * `WC_AI_Storefront_Multi_Currency::get_accepted_currencies()` — that's
+	 * `stamp_currency_query()`'s job. We pass the raw validated hint through;
+	 * the stamper decides whether to use it.
 	 *
 	 * @since 0.17.0
-	 *
-	 * @param WP_REST_Request $request The incoming UCP request.
-	 * @return string|null Normalized ISO-4217 code, or null when absent/malformed.
-	 */
-	private static function get_request_currency( WP_REST_Request $request ): ?string {
-		return self::get_currency_from_context( $request->get_param( 'context' ) );
-	}
-
-	/**
-	 * Transport-neutral currency extractor.
-	 *
-	 * Extracted from `get_request_currency()` so non-REST transports (MCP)
-	 * can resolve the agent's requested presentment currency from a plain
-	 * context array without a `WP_REST_Request`. Validation is identical:
-	 * the currency must be a string matching ISO-4217's three-letter shape;
-	 * anything else (missing context, non-string, malformed) resolves to
-	 * null and is treated downstream as "no currency hint".
 	 *
 	 * @param ?array $context The UCP request `context` object (or null).
 	 * @return string|null Normalized ISO-4217 code, or null when absent/malformed.
