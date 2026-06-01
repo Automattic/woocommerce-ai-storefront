@@ -1770,6 +1770,44 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return WP_Error|WP_REST_Response
 	 */
 	public function handle_catalog_lookup( WP_REST_Request $request ) {
+		$params = [
+			'ids'              => $request->get_param( 'ids' ),
+			'context'          => $request->get_param( 'context' ),
+			'signals'          => $request->get_param( 'signals' ),
+			'agent_data'       => self::resolve_agent_host( $request ),
+			'ucp_agent_header' => (string) $request->get_header( 'ucp-agent' ),
+			'json_body'        => (array) ( $request->get_json_params() ?? [] ),
+		];
+
+		$result = $this->run_catalog_lookup( $params );
+		return new WP_REST_Response( $result['body'], $result['status'] );
+	}
+
+	/**
+	 * Transport-neutral core for UCP catalog/lookup.
+	 *
+	 * 1:1 translation of the former `handle_catalog_lookup()` body. Reads
+	 * its inputs from a plain `$params` array (so non-REST transports such
+	 * as MCP can call it without a `WP_REST_Request`) and returns
+	 * `[ 'body' => array, 'status' => int ]` — exactly the body + status
+	 * the REST wrapper feeds into `new WP_REST_Response( $body, $status )`.
+	 * The lookup handler sets no response headers, so the wrapper is a thin
+	 * pass-through (unlike search's unknown-params header).
+	 *
+	 * @param array $params {
+	 *     Resolved request inputs.
+	 *
+	 *     @type mixed  $ids              UCP `ids` list (array|null).
+	 *     @type mixed  $context          UCP `context` object (array|null).
+	 *     @type mixed  $signals          UCP `signals` payload (array|null).
+	 *     @type array  $agent_data       resolve_agent_host() result
+	 *                                    (['name','raw_host','source_host']).
+	 *     @type string $ucp_agent_header Raw `ucp-agent` request header.
+	 *     @type array  $json_body        Decoded JSON request body.
+	 * }
+	 * @return array{body: array, status: int}
+	 */
+	public function run_catalog_lookup( array $params ): array {
 		$capability = 'dev.ucp.shopping.catalog.lookup';
 
 		// Clear per-request memoization; see handle_catalog_search.
@@ -1777,13 +1815,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup rejected: syndication disabled' );
-			return self::ucp_catalog_error_response(
+			$error = self::ucp_catalog_error_response(
 				$capability,
 				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
 				WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED,
 				null,
 				503
 			);
+			return [
+				'body'   => $error->get_data(),
+				'status' => $error->get_status(),
+			];
 		}
 
 		// Attribution: resolve calling agent. Same role as in
@@ -1795,11 +1837,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// produce "from agent: unknown" log noise. See the
 		// corresponding block in `handle_catalog_search` for full
 		// rationale; the contract is identical.
-		$agent_data        = self::resolve_agent_host( $request );
+		$agent_data        = $params['agent_data'];
 		$agent_source_host = $agent_data['source_host'];
 		$agent_raw_host    = $agent_data['raw_host'];
 
-		$agent_header = $request->get_header( 'ucp-agent' );
+		$agent_header = $params['ucp_agent_header'] ?? '';
 		if ( is_string( $agent_header ) && '' !== $agent_header ) {
 			WC_AI_Storefront_Logger::debug(
 				'UCP catalog/lookup from agent: '
@@ -1813,7 +1855,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// verified platform source. Same `is_enabled()` guard as
 		// search — keeps the sanitization walk off the hot path
 		// when debug logging is off.
-		$signals = $request->get_param( 'signals' );
+		$signals = $params['signals'] ?? null;
 		if ( is_array( $signals ) && ! empty( $signals ) && WC_AI_Storefront_Logger::is_enabled() ) {
 			WC_AI_Storefront_Logger::debug(
 				'UCP catalog/lookup: received signals (not honored): '
@@ -1821,11 +1863,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		$ids = $request->get_param( 'ids' );
+		$ids = $params['ids'] ?? null;
 
 		$ids_error = self::validate_lookup_ids_param( $ids, $capability );
 		if ( null !== $ids_error ) {
-			return $ids_error;
+			return [
+				'body'   => $ids_error->get_data(),
+				'status' => $ids_error->get_status(),
+			];
 		}
 
 		// Deduplicate + normalize before fetching. `wc_ids` is the
@@ -1883,7 +1928,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// fetch_store_api_product() can pass it as the Store API native
 		// `currency` query param. The Store API returns prices already
 		// converted (rate + rounding + charm) when this param is present.
-		$request_currency = self::get_request_currency( $request );
+		$request_currency = self::get_currency_from_context( $params['context'] ?? null );
 		$this->request_context->set_currency( $request_currency );
 
 		$products = array();
@@ -1957,7 +2002,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				// live case where the agent's hint is honored.
 				$product['url'] = WC_AI_Storefront_Multi_Currency::stamp_currency_query(
 					$product['url'],
-					self::get_request_currency( $request )
+					self::get_currency_from_context( $params['context'] ?? null )
 				);
 				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
 					$product['url'],
@@ -2283,7 +2328,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$response_body['messages'] = $messages;
 		}
 
-		return new WP_REST_Response( $response_body, 200 );
+		return [
+			'body'   => $response_body,
+			'status' => 200,
+		];
 	}
 
 	/**
