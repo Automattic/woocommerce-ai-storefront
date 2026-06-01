@@ -710,7 +710,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// filter-only requests for category browsing"). Returning 400
 		// on `{}` would be hostile to legitimate catalog enumeration.
 
-		[ $store_params, $mapping_messages ] = self::map_ucp_search_to_store_api( $request );
+		[ $store_params, $mapping_messages ] = self::map_ucp_search_to_store_api(
+			[
+				'query'      => $request->get_param( 'query' ),
+				'pagination' => $request->get_param( 'pagination' ),
+				'sort'       => $request->get_param( 'sort' ),
+				'filters'    => $request->get_param( 'filters' ),
+				'context'    => $request->get_param( 'context' ),
+			]
+		);
 
 		// Dispatch to Store API, handle WP_Error, branch on status class, and
 		// normalize. Returns ['error', 'wc_products', 'store_response']; see
@@ -4083,13 +4091,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *         of scalars for multi-value filters, and nested arrays of
 	 *         objects for structured filters such as attributes.
 	 */
-	private static function map_ucp_search_to_store_api( WP_REST_Request $request ): array {
-		$params   = [];
-		$messages = [];
+	private static function map_ucp_search_to_store_api( array $params ): array {
+		$store_params = [];
+		$messages     = [];
 
-		$query = $request->get_param( 'query' );
+		$query = $params['query'] ?? null;
 		if ( is_string( $query ) && '' !== $query ) {
-			$params['search'] = $query;
+			$store_params['search'] = $query;
 		}
 
 		// Pagination mapping. UCP uses opaque cursors + a limit;
@@ -4104,7 +4112,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// `messages[]` advisory entry. Agents that pagination-math
 		// around a clamped limit (e.g. requested 500, got 100)
 		// would otherwise miscalculate page counts silently.
-		$pagination = $request->get_param( 'pagination' );
+		$pagination = $params['pagination'] ?? null;
 		$limit      = self::DEFAULT_SEARCH_LIMIT;
 		$page       = 1;
 
@@ -4191,8 +4199,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				}
 			}
 		}
-		$params['per_page'] = $limit;
-		$params['page']     = $page;
+		$store_params['per_page'] = $limit;
+		$store_params['page']     = $page;
 
 		// Sort order — top-level `sort: {field, direction}`, not under
 		// filters because it's an ordering concern rather than a
@@ -4201,7 +4209,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// than fall through silently: a mistyped sort that returns
 		// default ordering is worse than returning default-with-a-hint,
 		// because agents otherwise assume their sort took effect.
-		$sort = $request->get_param( 'sort' );
+		$sort = $params['sort'] ?? null;
 		if ( is_array( $sort ) ) {
 			// Defensive: non-scalar field/direction (e.g. an agent
 			// sending `{sort: {field: []}}`) would coerce to "Array"
@@ -4238,13 +4246,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					'menu_order' => 'menu_order',
 				];
 				if ( isset( $orderby_map[ $field ] ) ) {
-					$params['orderby'] = $orderby_map[ $field ];
-					$params['order']   = ( 'desc' === $direction ) ? 'desc' : 'asc';
+					$store_params['orderby'] = $orderby_map[ $field ];
+					$store_params['order']   = ( 'desc' === $direction ) ? 'desc' : 'asc';
 					// `newest` implies desc regardless of caller intent
 					// — "newest ascending" is a contradiction we normalize
 					// rather than silently honor.
 					if ( 'newest' === $field ) {
-						$params['order'] = 'desc';
+						$store_params['order'] = 'desc';
 					}
 				} elseif ( '' !== $field ) {
 					$messages[] = [
@@ -4261,9 +4269,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
-		$filters = $request->get_param( 'filters' );
+		$filters = $params['filters'] ?? null;
 		if ( ! is_array( $filters ) ) {
-			return [ $params, $messages ];
+			return [ $store_params, $messages ];
 		}
 
 		if ( isset( $filters['categories'] ) && is_array( $filters['categories'] ) ) {
@@ -4274,7 +4282,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 			$category_result   = self::resolve_category_term_ids( $categories_capped );
 			if ( ! empty( $category_result['ids'] ) ) {
-				$params['category'] = implode( ',', $category_result['ids'] );
+				$store_params['category'] = implode( ',', $category_result['ids'] );
 			}
 			foreach ( $category_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
@@ -4329,7 +4337,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 			if ( $has_usable_bounds ) {
 				$apply_price_filter = true;
-				$context            = $request->get_param( 'context' );
+				$context            = $params['context'] ?? null;
 				// Validate `context.currency` as ISO 4217 — exactly 3
 				// ASCII letters after trim + uppercase. Any malformed
 				// value (empty string, too long, non-alpha) is treated
@@ -4417,10 +4425,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 				if ( $apply_price_filter ) {
 					if ( null !== $min_value ) {
-						$params['min_price'] = self::minor_units_to_presentment( $min_value );
+						$store_params['min_price'] = self::minor_units_to_presentment( $min_value );
 					}
 					if ( null !== $max_value ) {
-						$params['max_price'] = self::minor_units_to_presentment( $max_value );
+						$store_params['max_price'] = self::minor_units_to_presentment( $max_value );
 					}
 				}
 			}
@@ -4433,7 +4441,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// "true" since JSON-to-PHP boolean handling varies between
 		// REST clients.
 		if ( isset( $filters['on_sale'] ) && ( true === $filters['on_sale'] || 'true' === $filters['on_sale'] ) ) {
-			$params['on_sale'] = true;
+			$store_params['on_sale'] = true;
 		}
 
 		// Tag filter — parallel to categories but across WC's tag
@@ -4449,7 +4457,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 			$tag_result  = self::resolve_tag_term_ids( $tags_capped );
 			if ( ! empty( $tag_result['ids'] ) ) {
-				$params['tag'] = implode( ',', $tag_result['ids'] );
+				$store_params['tag'] = implode( ',', $tag_result['ids'] );
 			}
 			foreach ( $tag_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
@@ -4478,7 +4486,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 			$brand_result = self::resolve_brand_term_ids( $brand_capped );
 			if ( ! empty( $brand_result['ids'] ) ) {
-				$params['brand'] = implode( ',', $brand_result['ids'] );
+				$store_params['brand'] = implode( ',', $brand_result['ids'] );
 			}
 			foreach ( $brand_result['unresolved'] as $index => $bad ) {
 				$messages[] = [
@@ -4502,7 +4510,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// passes false or omits the filter, so the default remains
 		// "whatever the merchant configured for frontend visibility".
 		if ( isset( $filters['in_stock'] ) && ( true === $filters['in_stock'] || 'true' === $filters['in_stock'] ) ) {
-			$params['stock_status'] = [ 'instock' ];
+			$store_params['stock_status'] = [ 'instock' ];
 		}
 
 		// Featured filter — merchandising signal. Merchants flag hero
@@ -4510,7 +4518,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// a "staff picks" or "popular now" carousel can request only
 		// those with `featured: true`.
 		if ( isset( $filters['featured'] ) && ( true === $filters['featured'] || 'true' === $filters['featured'] ) ) {
-			$params['featured'] = true;
+			$store_params['featured'] = true;
 		}
 
 		// Min rating filter — agents seeking quality ("4+ stars only")
@@ -4531,7 +4539,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			for ( $r = $min; $r <= 5; $r++ ) {
 				$ratings[] = $r;
 			}
-			$params['rating'] = $ratings;
+			$store_params['rating'] = $ratings;
 		}
 
 		// Attribute filters — `filters.attributes: {color: ["red"], size: ["M"]}`.
@@ -4547,7 +4555,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$attributes_input = self::cap_filter_map( $filters['attributes'], '$.filters.attributes', $messages );
 			$attribute_result = self::build_attribute_filter_params( $attributes_input );
 			if ( ! empty( $attribute_result['filters'] ) ) {
-				$params['attributes'] = $attribute_result['filters'];
+				$store_params['attributes'] = $attribute_result['filters'];
 			}
 			foreach ( $attribute_result['unresolved'] as $bad ) {
 				// Use JSONPath bracket notation for the key — dot
@@ -4583,7 +4591,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
-		return [ $params, $messages ];
+		return [ $store_params, $messages ];
 	}
 
 	/**
