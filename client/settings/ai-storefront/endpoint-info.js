@@ -2406,6 +2406,32 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							}
 							__nextHasNoMarginBottom
 						/>
+						<p
+							style={ {
+								color: colors.textMuted,
+								fontSize: '12px',
+								marginTop: '12px',
+								marginBottom: '8px',
+							} }
+						>
+							{ __(
+								'When checked, agents can also reach the same catalog and checkout capabilities over MCP, a JSON-RPC transport, alongside the REST endpoints.',
+								'woocommerce-ai-storefront'
+							) }
+						</p>
+						<CheckboxControl
+							label={ __(
+								'Enable MCP transport for agents',
+								'woocommerce-ai-storefront'
+							) }
+							checked={ settings.mcp_enabled === 'yes' }
+							onChange={ ( checked ) =>
+								onChange( {
+									mcp_enabled: checked ? 'yes' : 'no',
+								} )
+							}
+							__nextHasNoMarginBottom
+						/>
 					</div>
 				</CardBody>
 			</Card>
