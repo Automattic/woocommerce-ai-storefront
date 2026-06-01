@@ -56,11 +56,55 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 			[
 				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
 				'ucp_agent_header' => '',
-				'json_body'        => [],
 			]
 		);
 
 		$this->assertSame( 503, $result['status'] );
+		$this->assertIsArray( $result['body'] );
+	}
+
+	public function test_run_catalog_lookup_returns_503_body_when_syndication_disabled(): void {
+		// Parity with the search 503 test: the disabled-syndication gate
+		// short-circuits before any ids validation or Store API fetch. Same
+		// $test_settings + apply_filters stubbing rationale as above.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$result     = $controller->run_catalog_lookup(
+			[
+				'ids'              => [ 'prod_1' ],
+				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+				'ucp_agent_header' => '',
+			]
+		);
+
+		$this->assertSame( 503, $result['status'] );
+		$this->assertIsArray( $result['body'] );
+	}
+
+	public function test_run_catalog_lookup_returns_ids_validation_error_for_non_array_ids(): void {
+		// Syndication enabled (stub default), so the core passes the
+		// disabled gate and reaches validate_lookup_ids_param(). A non-array
+		// `ids` triggers the INVALID_INPUT error path; the core must surface
+		// that helper response's exact status (the ucp_catalog_error_response
+		// default, 400) — not the 200 success path. apply_filters is stubbed
+		// so the Logger debug() calls on this path short-circuit.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$result     = $controller->run_catalog_lookup(
+			[
+				'ids'              => 'gibberish',
+				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+				'ucp_agent_header' => '',
+			]
+		);
+
+		$this->assertSame( 400, $result['status'] );
 		$this->assertIsArray( $result['body'] );
 	}
 }

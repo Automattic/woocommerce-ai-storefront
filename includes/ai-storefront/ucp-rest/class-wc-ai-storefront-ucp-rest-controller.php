@@ -628,7 +628,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'sort'             => $request->get_param( 'sort' ),
 			'agent_data'       => self::resolve_agent_host( $request ),
 			'ucp_agent_header' => (string) $request->get_header( 'ucp-agent' ),
-			'json_body'        => (array) ( $request->get_json_params() ?? [] ),
 		];
 
 		$result   = $this->run_catalog_search( $params );
@@ -674,7 +673,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *     @type array  $agent_data       resolve_agent_host() result
 	 *                                    (['name','raw_host','source_host']).
 	 *     @type string $ucp_agent_header Raw `ucp-agent` request header.
-	 *     @type array  $json_body        Decoded JSON request body.
 	 * }
 	 * @return array{body: array, status: int}
 	 */
@@ -1776,7 +1774,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'signals'          => $request->get_param( 'signals' ),
 			'agent_data'       => self::resolve_agent_host( $request ),
 			'ucp_agent_header' => (string) $request->get_header( 'ucp-agent' ),
-			'json_body'        => (array) ( $request->get_json_params() ?? [] ),
 		];
 
 		$result = $this->run_catalog_lookup( $params );
@@ -1803,7 +1800,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *     @type array  $agent_data       resolve_agent_host() result
 	 *                                    (['name','raw_host','source_host']).
 	 *     @type string $ucp_agent_header Raw `ucp-agent` request header.
-	 *     @type array  $json_body        Decoded JSON request body.
 	 * }
 	 * @return array{body: array, status: int}
 	 */
