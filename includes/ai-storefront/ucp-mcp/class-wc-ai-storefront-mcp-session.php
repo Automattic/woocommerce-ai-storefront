@@ -47,6 +47,17 @@ class WC_AI_Storefront_MCP_Session {
 			$canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $normalized );
 		}
 
+		// A blank or unrecognized handshake name canonicalizes to '' (empty),
+		// and both the unknown-agent policy below and is_agent_allowed( '', … )
+		// would then PASS it — that empty-means-allow rule is correct for
+		// header-less REST browser traffic, but on MCP it lets a client skip
+		// the gate entirely by sending an empty clientInfo.name. Coerce empty
+		// to the "Other AI" bucket so a nameless agent is governed by the
+		// allow_unknown_ucp_agents policy, never silently admitted.
+		if ( '' === $canonical ) {
+			$canonical = WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET;
+		}
+
 		if ( WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET === $canonical ) {
 			$allow_unknown = isset( $settings['allow_unknown_ucp_agents'] )
 				&& 'yes' === $settings['allow_unknown_ucp_agents'];

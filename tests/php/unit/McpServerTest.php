@@ -421,4 +421,55 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( -32602, $response->get_data()['error']['code'] );
 	}
+
+	public function test_initialize_is_rate_limited(): void {
+		// SECURITY: initialize must be rate-limited too — otherwise an
+		// unauthenticated caller floods it and amplifies session-transient
+		// writes. Force the outer limiter over budget for any rate-limit key.
+		Functions\when( 'get_transient' )->alias(
+			function ( $key ) {
+				if ( str_starts_with( (string) $key, 'wc_ai_ucp_rl_' ) ) {
+					return 999;
+				}
+				return $this->transients[ $key ] ?? false;
+			}
+		);
+
+		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		);
+
+		$this->assertSame( 429, $response->get_status() );
+	}
+
+	public function test_initialize_blank_client_name_blocked_when_unknown_disallowed(): void {
+		// SECURITY: a blank clientInfo.name must not bypass the merchant's
+		// "block unknown agents" gate.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                  => 'yes',
+			'mcp_enabled'              => 'yes',
+			'allow_unknown_ucp_agents' => 'no',
+			'allowed_crawlers'         => [],
+		];
+
+		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => '' ] ],
+				]
+			)
+		);
+
+		$this->assertSame( 403, $response->get_status() );
+	}
 }

@@ -103,6 +103,36 @@ class McpSessionTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'mcp_agent_blocked', $result->get_error_code() );
 	}
 
+	public function test_gate_denies_blank_client_name_when_allow_unknown_off(): void {
+		// SECURITY: a blank/whitespace clientInfo.name canonicalizes to '',
+		// which — without the empty→bucket coercion in gate_client_name —
+		// would skip the unknown-agent block and be silently admitted
+		// (is_agent_allowed( '', … ) is true). With allow_unknown off, every
+		// blank form MUST be rejected with a 403.
+		foreach ( [ '', '   ', "\t" ] as $blank ) {
+			$result = WC_AI_Storefront_MCP_Session::gate_client_name(
+				$blank,
+				$this->settings( 'no' )
+			);
+
+			$this->assertInstanceOf( WP_Error::class, $result, 'blank name must be blocked' );
+			$this->assertSame( 403, $result->get_error_data()['status'] );
+			$this->assertSame( 'mcp_agent_unknown_blocked', $result->get_error_code() );
+		}
+	}
+
+	public function test_gate_treats_blank_client_name_as_unknown_when_allowed(): void {
+		// With allow_unknown on, a blank name is admitted as the "Other AI"
+		// bucket — consistent with any other unrecognized agent — rather than
+		// as an empty-string identity.
+		$result = WC_AI_Storefront_MCP_Session::gate_client_name(
+			'',
+			$this->settings( 'yes' )
+		);
+
+		$this->assertSame( WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET, $result );
+	}
+
 	public function test_start_and_lookup_round_trip_via_transients(): void {
 		$store = [];
 		Functions\when( 'wp_generate_uuid4' )->justReturn( '11111111-2222-3333-4444-555555555555' );
