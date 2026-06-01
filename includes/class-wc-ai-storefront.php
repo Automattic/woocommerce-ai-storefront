@@ -322,9 +322,10 @@ class WC_AI_Storefront {
 		$ucp_rest_controller->register_routes();
 
 		// MCP transport at /wp-json/wc/ucp/v1/mcp. Registered
-		// unconditionally — the server's own gate checks settings.enabled
-		// and settings.mcp_enabled, returning a JSON-RPC error rather than
-		// 404 when the transport is off. Mirrors the UCP REST adapter above.
+		// unconditionally — the server's own handler checks settings.enabled
+		// and settings.mcp_enabled and returns HTTP 404 when the transport is
+		// off (the endpoint simply isn't there for agents in that state).
+		// Mirrors the unconditional UCP REST adapter registration above.
 		$mcp_server = new WC_AI_Storefront_MCP_Server();
 		$mcp_server->register_routes();
 	}

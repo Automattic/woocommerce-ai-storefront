@@ -294,6 +294,19 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_mcp_binding_omitted_when_mcp_disabled(): void {
+		// When mcp_enabled is off we must NOT advertise the /mcp endpoint —
+		// the server's handle() would 404 it, so advertising it would mislead
+		// agents into a dead call. REST stays.
+		$manifest   = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'no' ] );
+		$bindings   = $manifest['ucp']['services']['dev.ucp.shopping'];
+		$transports = array_column( $bindings, 'transport' );
+
+		$this->assertContains( 'rest', $transports, 'REST binding must remain' );
+		$this->assertNotContains( 'mcp', $transports, 'MCP binding must be omitted when disabled' );
+		$this->assertCount( 1, $bindings );
+	}
+
 	// ------------------------------------------------------------------
 	// Layer 2: Declared capabilities (catalog + checkout) + pull-model
 	// payment posture (zero handlers)

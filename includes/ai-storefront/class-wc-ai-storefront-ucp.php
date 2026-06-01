@@ -220,9 +220,9 @@ class WC_AI_Storefront_Ucp {
 	 *   - Pointers to llms.txt / sitemap: agents find llms.txt at
 	 *     `/llms.txt` (known location) and sitemap via robots.txt.
 	 *
-	 * @param array $settings AI syndication settings (unused; retained
-	 *                        in signature for the `apply_filters` hook
-	 *                        contract).
+	 * @param array $settings AI syndication settings. Read for `mcp_enabled`
+	 *                        (gates the MCP transport binding) and passed to
+	 *                        the `apply_filters` hook below.
 	 * @return array The manifest data.
 	 */
 	public function generate_manifest( $settings ) {
@@ -251,49 +251,48 @@ class WC_AI_Storefront_Ucp {
 		// trust/cache. Pattern: `https://ucp.dev/{version}/...`.
 		$spec_base = 'https://ucp.dev/' . self::PROTOCOL_VERSION;
 
+		// Build the shopping-service transport bindings. UCP's service value
+		// is an ARRAY of bindings so one service can advertise multiple
+		// transports. The REST binding is always present; its `spec` points at
+		// the UCP specification overview and `schema` at the canonical OpenAPI
+		// 3.1 contract (consumers substitute the merchant endpoint, our
+		// `$ucp_endpoint`, for the schema's `{endpoint}` placeholder).
+		$shopping_bindings = [
+			[
+				'version'   => self::PROTOCOL_VERSION,
+				'spec'      => $spec_base . '/specification/overview',
+				'schema'    => $spec_base . '/services/shopping/rest.openapi.json',
+				'transport' => 'rest',
+				'endpoint'  => $ucp_endpoint,
+			],
+		];
+
+		// Advertise the MCP transport ONLY when it is actually live. The
+		// manifest is already gated on `enabled` in serve_manifest(); this
+		// finer `mcp_enabled` check avoids advertising a `/mcp` endpoint that
+		// WC_AI_Storefront_MCP_Server::handle() would 404 when the merchant
+		// has the MCP experiment switched off. Agents that speak MCP dispatch
+		// tools/call against this binding instead of POSTing REST paths to the
+		// `rest` binding; the endpoint is registered by
+		// WC_AI_Storefront_MCP_Server::register_routes().
+		if ( 'yes' === ( $settings['mcp_enabled'] ?? 'yes' ) ) {
+			$shopping_bindings[] = [
+				'version'   => self::PROTOCOL_VERSION,
+				'transport' => 'mcp',
+				'endpoint'  => rest_url( 'wc/ucp/v1/mcp' ),
+			];
+		}
+
 		$manifest = [
 			'ucp' => [
 				'version'          => self::PROTOCOL_VERSION,
 
-				// Services — single REST binding at our UCP namespace.
-				// Under business_schema, a REST binding requires
-				// `endpoint`. The service-level `spec` points at the
-				// UCP specification overview (updated in 1.6.4 — the
-				// previous URL pointed at the GitHub schema directory
-				// listing, which isn't a "specification document" per
-				// the entity schema's intent).
-				//
-				// `schema` points at the canonical OpenAPI 3.1 spec
-				// for the UCP Shopping REST service. This gives
-				// agents a machine-readable contract for every
-				// operation exposed at our `endpoint`. The schema's
-				// own `{endpoint}` server variable is a placeholder;
-				// per the OpenAPI document's own note, consumers
-				// must substitute the merchant endpoint from the
-				// discovery profile (i.e. `$ucp_endpoint` below).
+				// Services — REST (always) plus MCP (when `mcp_enabled`)
+				// bindings for the shopping service, assembled above as
+				// `$shopping_bindings`. Under business_schema a binding
+				// requires `endpoint`.
 				'services'         => [
-					self::SERVICE_NAME => [
-						[
-							'version'   => self::PROTOCOL_VERSION,
-							'spec'      => $spec_base . '/specification/overview',
-							'schema'    => $spec_base . '/services/shopping/rest.openapi.json',
-							'transport' => 'rest',
-							'endpoint'  => $ucp_endpoint,
-						],
-						// Second binding: the same shopping service over the
-						// MCP transport (Streamable-HTTP JSON-RPC). UCP's
-						// service value is an ARRAY of bindings precisely so
-						// one service can advertise multiple transports;
-						// agents that speak MCP dispatch tools/call here
-						// instead of POSTing REST paths to the `rest`
-						// binding above. The `/mcp` endpoint is registered
-						// by `WC_AI_Storefront_MCP_Server::register_routes()`.
-						[
-							'version'   => self::PROTOCOL_VERSION,
-							'transport' => 'mcp',
-							'endpoint'  => rest_url( 'wc/ucp/v1/mcp' ),
-						],
-					],
+					self::SERVICE_NAME => $shopping_bindings,
 				],
 
 				// UCP shopping capabilities we implement. Per the
