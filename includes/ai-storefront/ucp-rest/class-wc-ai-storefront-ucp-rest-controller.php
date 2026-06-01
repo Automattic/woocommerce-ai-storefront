@@ -5713,7 +5713,23 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return string|null Normalized ISO-4217 code, or null when absent/malformed.
 	 */
 	private static function get_request_currency( WP_REST_Request $request ): ?string {
-		$context = $request->get_param( 'context' );
+		return self::get_currency_from_context( $request->get_param( 'context' ) );
+	}
+
+	/**
+	 * Transport-neutral currency extractor.
+	 *
+	 * Extracted from `get_request_currency()` so non-REST transports (MCP)
+	 * can resolve the agent's requested presentment currency from a plain
+	 * context array without a `WP_REST_Request`. Validation is identical:
+	 * the currency must be a string matching ISO-4217's three-letter shape;
+	 * anything else (missing context, non-string, malformed) resolves to
+	 * null and is treated downstream as "no currency hint".
+	 *
+	 * @param ?array $context The UCP request `context` object (or null).
+	 * @return string|null Normalized ISO-4217 code, or null when absent/malformed.
+	 */
+	public static function get_currency_from_context( ?array $context ): ?string {
 		if ( ! is_array( $context ) ) {
 			return null;
 		}
