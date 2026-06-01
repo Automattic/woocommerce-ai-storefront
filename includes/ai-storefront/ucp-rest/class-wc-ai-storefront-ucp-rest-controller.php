@@ -619,7 +619,73 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return WP_Error|WP_REST_Response
 	 */
 	public function handle_catalog_search( WP_REST_Request $request ) {
+		$params = [
+			'query'            => $request->get_param( 'query' ),
+			'context'          => $request->get_param( 'context' ),
+			'signals'          => $request->get_param( 'signals' ),
+			'filters'          => $request->get_param( 'filters' ),
+			'pagination'       => $request->get_param( 'pagination' ),
+			'sort'             => $request->get_param( 'sort' ),
+			'agent_data'       => self::resolve_agent_host( $request ),
+			'ucp_agent_header' => (string) $request->get_header( 'ucp-agent' ),
+			'json_body'        => (array) ( $request->get_json_params() ?? [] ),
+		];
+
+		$result   = $this->run_catalog_search( $params );
+		$response = new WP_REST_Response( $result['body'], $result['status'] );
+
+		// Surface unrecognized param names back to the caller via a response
+		// header so integrators can self-diagnose misnaming (e.g. `search`
+		// instead of `query`) without us returning 400 on unknown keys.
+		// REST-only concern: the neutral core has no HTTP response to carry
+		// it, so the header is computed + applied here in the transport
+		// wrapper. Read from `$request->get_json_params()` directly (not the
+		// `json_body` param) to stay byte-for-byte identical to the pre-split
+		// behavior. Value is pre-bounded in detect_unknown_search_params().
+		$unknown_params_header = self::detect_unknown_search_params( $request->get_json_params() );
+		if ( '' !== $unknown_params_header ) {
+			$response->header(
+				'X-WC-AI-Storefront-Unknown-Params',
+				$unknown_params_header
+			);
+		}
+
+		return $response;
+	}
+
+	/**
+	 * Transport-neutral core for UCP catalog/search.
+	 *
+	 * 1:1 translation of the former `handle_catalog_search()` body. Reads
+	 * its inputs from a plain `$params` array (so non-REST transports such
+	 * as MCP can call it without a `WP_REST_Request`) and returns
+	 * `[ 'body' => array, 'status' => int ]` — exactly the body + status
+	 * the REST wrapper feeds into `new WP_REST_Response( $body, $status )`.
+	 *
+	 * @param array $params {
+	 *     Resolved request inputs.
+	 *
+	 *     @type mixed  $query            UCP `query` (string|null).
+	 *     @type mixed  $context          UCP `context` object (array|null).
+	 *     @type mixed  $signals          UCP `signals` payload (array|null).
+	 *     @type mixed  $filters          UCP `filters` object (array|null).
+	 *     @type mixed  $pagination       UCP `pagination` object (array|null).
+	 *     @type mixed  $sort             UCP `sort` object (array|null).
+	 *     @type array  $agent_data       resolve_agent_host() result
+	 *                                    (['name','raw_host','source_host']).
+	 *     @type string $ucp_agent_header Raw `ucp-agent` request header.
+	 *     @type array  $json_body        Decoded JSON request body.
+	 * }
+	 * @return array{body: array, status: int}
+	 */
+	public function run_catalog_search( array $params ): array {
 		$capability = 'dev.ucp.shopping.catalog.search';
+
+		// Resolve the agent's requested presentment currency once. Used by
+		// the per-request context (so every downstream
+		// fetch_store_api_product() call carries currency=), the Store API
+		// search dispatch, and the product translator's URL stamping.
+		$currency = self::get_currency_from_context( $params['context'] ?? null );
 
 		// Clear per-request memoization so a product fetched in a
 		// prior request can't leak here (defence-in-depth reset).
@@ -627,17 +693,21 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Store the agent's requested currency on request_context so every
 		// downstream fetch_store_api_product() call (variations, bundles)
 		// automatically carries currency= without needing an extra param.
-		$this->request_context->set_currency( self::get_request_currency( $request ) );
+		$this->request_context->set_currency( $currency );
 
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Storefront_Logger::debug( 'UCP catalog/search rejected: syndication disabled' );
-			return self::ucp_catalog_error_response(
+			$error = self::ucp_catalog_error_response(
 				$capability,
 				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
 				WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED,
 				null,
 				503
 			);
+			return [
+				'body'   => $error->get_data(),
+				'status' => $error->get_status(),
+			];
 		}
 
 		// Attribution: resolve calling agent. Used for two purposes
@@ -662,11 +732,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		//     referrer header, invisible to the AI-orders dashboard.
 		//     See `WC_AI_Storefront_Attribution::with_woo_ucp_utm()`
 		//     for the wire-shape contract.
-		$agent_data        = self::resolve_agent_host( $request );
+		$agent_data        = $params['agent_data'];
 		$agent_source_host = $agent_data['source_host'];
 		$agent_raw_host    = $agent_data['raw_host'];
 
-		$agent_header = $request->get_header( 'ucp-agent' );
+		$agent_header = $params['ucp_agent_header'] ?? '';
 		if ( is_string( $agent_header ) && '' !== $agent_header ) {
 			WC_AI_Storefront_Logger::debug(
 				'UCP catalog/search from agent: '
@@ -682,7 +752,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Until then: log presence, ignore values. Compliant with the
 		// negative side of the spec (we don't misuse them) without
 		// prematurely committing to a trust decision.
-		$signals = $request->get_param( 'signals' );
+		$signals = $params['signals'] ?? null;
 		// Short-circuit on `is_enabled()` before calling
 		// `format_signal_keys_for_log` — sanitizing the keys walks
 		// every signal even though the result is thrown away when
@@ -696,11 +766,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			);
 		}
 
-		// Detect unrecognized top-level params for observability. Returns a
-		// sanitized, header-safe string (or '' if none). See
-		// detect_unknown_search_params() for the sanitization contract.
-		$unknown_params_header = self::detect_unknown_search_params( $request->get_json_params() );
-
 		// Note: spec has a MUST clause about validating that a request
 		// "contains at least one recognized input" and a SHOULD about
 		// rejecting empty ones. We satisfy the MUST (shape validation
@@ -710,15 +775,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// filter-only requests for category browsing"). Returning 400
 		// on `{}` would be hostile to legitimate catalog enumeration.
 
-		[ $store_params, $mapping_messages ] = self::map_ucp_search_to_store_api(
-			[
-				'query'      => $request->get_param( 'query' ),
-				'pagination' => $request->get_param( 'pagination' ),
-				'sort'       => $request->get_param( 'sort' ),
-				'filters'    => $request->get_param( 'filters' ),
-				'context'    => $request->get_param( 'context' ),
-			]
-		);
+		[ $store_params, $mapping_messages ] = self::map_ucp_search_to_store_api( $params );
 
 		// Dispatch to Store API, handle WP_Error, branch on status class, and
 		// normalize. Returns ['error', 'wc_products', 'store_response']; see
@@ -729,10 +786,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$fetched = self::fetch_wc_products_for_search(
 			$store_params,
 			$capability,
-			self::get_request_currency( $request )
+			$currency
 		);
 		if ( null !== $fetched['error'] ) {
-			return $fetched['error'];
+			return [
+				'body'   => $fetched['error']->get_data(),
+				'status' => $fetched['error']->get_status(),
+			];
 		}
 
 		// Translate each product to UCP shape, fetching variations where needed.
@@ -743,7 +803,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$seller,
 			$agent_source_host,
 			$agent_raw_host,
-			$request
+			$currency
 		);
 
 		$body = array(
@@ -760,19 +820,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$body['messages'] = $messages;
 		}
 
-		$response = new WP_REST_Response( $body, 200 );
-
-		// Surface unrecognized param names back to the caller via a response
-		// header so integrators can self-diagnose misnaming (e.g. `search`
-		// instead of `query`) without us returning 400 on unknown keys.
-		// Value is pre-bounded in detect_unknown_search_params().
-		if ( '' !== $unknown_params_header ) {
-			$response->header(
-				'X-WC-AI-Storefront-Unknown-Params',
-				$unknown_params_header
-			);
-		}
-
 		if ( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE !== $agent_data['name'] ) {
 			// Search REQUEST row — product_id=0, query=keyword. Counted as
 			// a Catalog query / Top search; feeds by-agent request totals.
@@ -780,7 +827,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH,
 				0,
 				$agent_data['name'],
-				is_string( $request->get_param( 'query' ) ) ? $request->get_param( 'query' ) : ''
+				is_string( $params['query'] ?? null ) ? $params['query'] : ''
 			);
 
 			// Search IMPRESSION rows — product_id=N (one per result), query=''.
@@ -831,7 +878,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
-		return $response;
+		return [
+			'body'   => $body,
+			'status' => 200,
+		];
 	}
 
 	/**
@@ -1068,14 +1118,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * `partial_variants` warnings for any skipped variations, and returns
 	 * the translated list alongside any warning messages.
 	 *
-	 * @param array           $wc_products       Normalized Store API product arrays.
-	 * @param array           $seller            Seller block from build_seller().
-	 * @param string          $agent_source_host Attribution host; forwarded to the translator.
-	 * @param string          $agent_raw_host    Raw host header; forwarded to the translator.
-	 * @param WP_REST_Request $request           Incoming UCP request, used to read
-	 *                                           `context.currency` so per-product
-	 *                                           URLs can carry the agent's currency
-	 *                                           hint when it's in accepted_currencies.
+	 * @param array       $wc_products       Normalized Store API product arrays.
+	 * @param array       $seller            Seller block from build_seller().
+	 * @param string      $agent_source_host Attribution host; forwarded to the translator.
+	 * @param string      $agent_raw_host    Raw host header; forwarded to the translator.
+	 * @param string|null $currency          Normalized ISO-4217 code from the agent's
+	 *                                       `context.currency` (or null when absent /
+	 *                                       malformed), so per-product URLs can carry the
+	 *                                       agent's currency hint when it's in
+	 *                                       accepted_currencies.
 	 * @return array{products: array, variant_messages: array}
 	 */
 	private function translate_products_for_search(
@@ -1083,7 +1134,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		array $seller,
 		string $agent_source_host,
 		string $agent_raw_host,
-		WP_REST_Request $request
+		?string $currency
 	): array {
 		$products         = array();
 		$variant_messages = array();
@@ -1126,7 +1177,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				// live case where the agent's hint is honored.
 				$product['url'] = WC_AI_Storefront_Multi_Currency::stamp_currency_query(
 					$product['url'],
-					self::get_request_currency( $request )
+					$currency
 				);
 				$product['url'] = WC_AI_Storefront_Attribution::with_woo_ucp_utm(
 					$product['url'],
