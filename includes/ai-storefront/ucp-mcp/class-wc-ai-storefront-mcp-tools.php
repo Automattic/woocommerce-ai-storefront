@@ -162,28 +162,28 @@ class WC_AI_Storefront_MCP_Tools {
 		$body   = is_array( $result['body'] ?? null ) ? $result['body'] : [];
 
 		if ( $status >= 400 ) {
-			$code    = '';
-			$message = '';
-
 			$messages = isset( $body['messages'] ) && is_array( $body['messages'] )
 				? $body['messages']
 				: [];
+
+			// Phase 1: prefer the first error-typed message.
+			$error_msg = null;
 			foreach ( $messages as $msg ) {
-				if ( ! is_array( $msg ) ) {
-					continue;
-				}
-				// Prefer the first error-typed message; fall back to the first
-				// message of any type so a non-conforming envelope still yields
-				// some detail.
-				if ( 'error' === ( $msg['type'] ?? '' ) || ( '' === $code && '' === $message ) ) {
-					$code    = (string) ( $msg['code'] ?? '' );
-					$message = (string) ( $msg['content'] ?? '' );
-					if ( 'error' === ( $msg['type'] ?? '' ) ) {
-						break;
-					}
+				if ( is_array( $msg ) && 'error' === ( $msg['type'] ?? '' ) ) {
+					$error_msg = $msg;
+					break;
 				}
 			}
 
+			// Phase 2: fall back to the first message of any type so a
+			// non-conforming envelope still yields some detail.
+			if ( null === $error_msg ) {
+				$first     = $messages[0] ?? null;
+				$error_msg = is_array( $first ) ? $first : [];
+			}
+
+			$code    = (string) ( $error_msg['code'] ?? '' );
+			$message = (string) ( $error_msg['content'] ?? '' );
 			if ( '' === $code ) {
 				$code = 'error';
 			}

@@ -240,4 +240,185 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle_get();
 		$this->assertSame( 405, $response->get_status() );
 	}
+
+	public function test_invalid_request_without_method_returns_32600(): void {
+		// Valid JSON, but not a well-formed JSON-RPC request (no `method`) —
+		// distinct from an unparseable body (which is -32700).
+		$request = new WP_REST_Request( 'POST', '/wc/ucp/v1/mcp' );
+		$request->set_body( '{"jsonrpc":"2.0","id":1}' );
+
+		$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( -32600, $response->get_data()['error']['code'] );
+	}
+
+	public function test_regate_403_when_allow_list_tightened_mid_session(): void {
+		// Mint a session while unknown agents are allowed.
+		$server  = new WC_AI_Storefront_MCP_Server();
+		$init    = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		);
+		$session = $init->get_headers()['Mcp-Session-Id'];
+
+		// Merchant tightens the allow-list AFTER the session was minted.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                  => 'yes',
+			'mcp_enabled'              => 'yes',
+			'allow_unknown_ucp_agents' => 'no',
+			'allowed_crawlers'         => [],
+		];
+
+		$response = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 2,
+					'method'  => 'tools/list',
+				],
+				[
+					'MCP-Protocol-Version' => '2025-06-18',
+					'Mcp-Session-Id'       => $session,
+				]
+			)
+		);
+
+		// The per-call re-gate denies the previously-vetted session.
+		$this->assertSame( 403, $response->get_status() );
+	}
+
+	public function test_rate_limited_request_returns_429(): void {
+		// Mint a valid session (initialize is not rate-limited).
+		$server  = new WC_AI_Storefront_MCP_Server();
+		$init    = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		);
+		$session = $init->get_headers()['Mcp-Session-Id'];
+
+		// Force the outer rate limiter over budget: return a high count for any
+		// rate-limit transient (prefix wc_ai_ucp_rl_), while still serving the
+		// session transient. Key-agnostic, so we don't reproduce the UA/IP
+		// fingerprint the limiter computes internally.
+		Functions\when( 'get_transient' )->alias(
+			function ( $key ) {
+				if ( str_starts_with( (string) $key, 'wc_ai_ucp_rl_' ) ) {
+					return 999;
+				}
+				return $this->transients[ $key ] ?? false;
+			}
+		);
+
+		$response = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 2,
+					'method'  => 'tools/list',
+				],
+				[
+					'MCP-Protocol-Version' => '2025-06-18',
+					'Mcp-Session-Id'       => $session,
+				]
+			)
+		);
+
+		$this->assertSame( 429, $response->get_status() );
+	}
+
+	public function test_tools_call_wraps_core_error_as_iserror(): void {
+		// Full tools/call through the server: session validation → re-gate →
+		// rate limit → dispatch → MCP_Tools::call → run_checkout_create →
+		// core_result_to_mcp → rpc_result wrapping. checkout_create with empty
+		// line_items is rejected with a 400 BEFORE any WooCommerce/Store-API
+		// work, so no heavy stubbing is needed. The SUCCESS branch (status<400
+		// → structuredContent) is unit-tested in McpToolsTest and live-tested
+		// via the Task 3.8 smoke test against a running store.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$server  = new WC_AI_Storefront_MCP_Server();
+		$init    = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		);
+		$session = $init->get_headers()['Mcp-Session-Id'];
+
+		$response = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 7,
+					'method'  => 'tools/call',
+					'params'  => [
+						'name'      => 'checkout_create',
+						'arguments' => [ 'line_items' => [] ],
+					],
+				],
+				[
+					'MCP-Protocol-Version' => '2025-06-18',
+					'Mcp-Session-Id'       => $session,
+				]
+			)
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$result = $response->get_data()['result'];
+		$this->assertTrue( $result['isError'] );
+		$this->assertNotEmpty( $result['content'][0]['text'] );
+	}
+
+	public function test_tools_call_unknown_tool_returns_jsonrpc_error(): void {
+		$server  = new WC_AI_Storefront_MCP_Server();
+		$init    = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		);
+		$session = $init->get_headers()['Mcp-Session-Id'];
+
+		$response = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 8,
+					'method'  => 'tools/call',
+					'params'  => [
+						'name'      => 'gibberish_tool',
+						'arguments' => [],
+					],
+				],
+				[
+					'MCP-Protocol-Version' => '2025-06-18',
+					'Mcp-Session-Id'       => $session,
+				]
+			)
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( -32602, $response->get_data()['error']['code'] );
+	}
 }

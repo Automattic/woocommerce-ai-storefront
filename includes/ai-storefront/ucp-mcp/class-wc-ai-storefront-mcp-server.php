@@ -97,8 +97,14 @@ class WC_AI_Storefront_MCP_Server {
 		}
 
 		$rpc = json_decode( (string) $request->get_body(), true );
-		if ( ! is_array( $rpc ) || ! isset( $rpc['method'] ) ) {
+		if ( null === $rpc && JSON_ERROR_NONE !== json_last_error() ) {
+			// Body was not parseable JSON at all.
 			return $this->rpc_error( null, -32700, 'Parse error', 400 );
+		}
+		if ( ! is_array( $rpc ) || ! isset( $rpc['method'] ) ) {
+			// Parsed fine but isn't a well-formed JSON-RPC request
+			// (e.g. a bare value, or an object with no `method`).
+			return $this->rpc_error( null, -32600, 'Invalid Request', 400 );
 		}
 		$id     = $rpc['id'] ?? null;
 		$method = (string) $rpc['method'];
@@ -196,6 +202,12 @@ class WC_AI_Storefront_MCP_Server {
 	 * @return bool
 	 */
 	private function origin_matches_site( string $origin ): bool {
+		// Deliberate EXACT host match (case-insensitive) as a DNS-rebinding
+		// defense: no www/non-www or subdomain loosening. Relaxing this to
+		// accept related hosts would re-open the rebinding vector that lets a
+		// malicious page in a browser drive this local MCP endpoint. Do not
+		// loosen — add a separate explicit allow-list if cross-host is ever
+		// genuinely needed.
 		$origin_host = wp_parse_url( $origin, PHP_URL_HOST );
 		$site_host   = wp_parse_url( home_url(), PHP_URL_HOST );
 		return is_string( $origin_host )
