@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-01T22:55:08+00:00\n"
+"POT-Creation-Date: 2026-06-01T22:56:24+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -107,6 +107,34 @@ msgstr ""
 
 #: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-session.php:66
 msgid "This agent is not allowed."
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:30
+msgid "Search the store catalog. Returns UCP products."
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:45
+msgid "Look up specific products by id. Max 100 ids."
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:61
+msgid "Create a stateless checkout session and get a continue_url."
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:112
+msgid "Catalog search"
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:126
+msgid "Catalog lookup"
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:139
+msgid "Checkout"
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:143
+msgid "Unknown tool."
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-store-api-extension.php:229
