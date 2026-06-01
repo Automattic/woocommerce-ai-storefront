@@ -280,6 +280,19 @@ class WC_AI_Storefront_Ucp {
 							'transport' => 'rest',
 							'endpoint'  => $ucp_endpoint,
 						],
+						// Second binding: the same shopping service over the
+						// MCP transport (Streamable-HTTP JSON-RPC). UCP's
+						// service value is an ARRAY of bindings precisely so
+						// one service can advertise multiple transports;
+						// agents that speak MCP dispatch tools/call here
+						// instead of POSTing REST paths to the `rest`
+						// binding above. The `/mcp` endpoint is registered
+						// by `WC_AI_Storefront_MCP_Server::register_routes()`.
+						[
+							'version'   => self::PROTOCOL_VERSION,
+							'transport' => 'mcp',
+							'endpoint'  => rest_url( 'wc/ucp/v1/mcp' ),
+						],
 					],
 				],
 

@@ -127,16 +127,32 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// render the business's checkout UI inline in an iframe or
 		// webview. While technically still merchant-hosted, it
 		// breaks the "user navigates to merchant site" UX pattern
-		// and enables tighter agent-mediated flows. We advertise
-		// REST transport exclusively; no EP binding is offered.
-		$manifest = $this->ucp->generate_manifest( [] );
+		// and enables tighter agent-mediated flows. We never offer it.
+		//
+		// As of 0.18.0 the service ALSO advertises an `mcp` binding
+		// (Streamable-HTTP JSON-RPC over the same neutral catalog/
+		// checkout cores). MCP does NOT render an inline checkout UI —
+		// it dispatches tools/call against the same stateless,
+		// merchant-hosted operations as the REST binding — so it
+		// preserves the same "user navigates to merchant site"
+		// boundary this test exists to protect. The forbidden set is
+		// therefore the inline/agent-mediated transports: `embedded`
+		// (EP) and `a2a`. `rest` and `mcp` are the only allowed values.
+		$allowed   = [ 'rest', 'mcp' ];
+		$forbidden = [ 'embedded', 'ep', 'a2a' ];
+		$manifest  = $this->ucp->generate_manifest( [] );
 
 		foreach ( $manifest['ucp']['services'] as $service_name => $bindings ) {
 			foreach ( $bindings as $binding ) {
-				$this->assertSame(
-					'rest',
+				$this->assertContains(
 					$binding['transport'],
-					"Service $service_name declares non-REST transport — EP/MCP/A2A risk checkout UX boundary"
+					$allowed,
+					"Service $service_name declares transport '{$binding['transport']}' outside the allowed {rest, mcp} set"
+				);
+				$this->assertNotContains(
+					$binding['transport'],
+					$forbidden,
+					"Service $service_name declares an inline/agent-mediated transport that risks the checkout UX boundary"
 				);
 			}
 		}

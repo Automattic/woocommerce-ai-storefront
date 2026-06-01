@@ -165,12 +165,13 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	public function test_service_value_is_an_array_of_bindings(): void {
 		// UCP schema: `services` is `object of string → array of service`.
 		// Each key maps to an ARRAY, not a single binding, so a service
-		// can declare multiple transport bindings in the future.
+		// can declare multiple transport bindings. As of the MCP
+		// transport work (0.18.0) we advertise TWO: `rest` + `mcp`.
 		$manifest = $this->ucp->generate_manifest( [] );
 		$bindings = $manifest['ucp']['services']['dev.ucp.shopping'];
 
 		$this->assertIsArray( $bindings );
-		$this->assertCount( 1, $bindings );
+		$this->assertCount( 2, $bindings );
 	}
 
 	public function test_service_binding_has_required_rest_fields(): void {
@@ -243,6 +244,54 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 			$binding['schema']
 		);
 		$this->assertStringEndsWith( '.openapi.json', $binding['schema'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Layer 1: MCP transport binding (0.18.0+)
+	//
+	// The `dev.ucp.shopping` service advertises a SECOND binding over the
+	// MCP transport (Streamable-HTTP JSON-RPC) alongside the `rest`
+	// binding above. Agents that speak MCP discover the `/mcp` endpoint
+	// here; the `rest` binding must remain so non-MCP agents are
+	// unaffected.
+	// ------------------------------------------------------------------
+
+	public function test_service_advertises_both_rest_and_mcp_transports(): void {
+		$manifest   = $this->ucp->generate_manifest( [] );
+		$bindings   = $manifest['ucp']['services']['dev.ucp.shopping'];
+		$transports = array_column( $bindings, 'transport' );
+
+		// Both transports present — adding MCP must not drop REST.
+		$this->assertContains( 'rest', $transports );
+		$this->assertContains( 'mcp', $transports );
+	}
+
+	public function test_mcp_binding_has_required_fields_and_endpoint(): void {
+		$manifest = $this->ucp->generate_manifest( [] );
+		$bindings = $manifest['ucp']['services']['dev.ucp.shopping'];
+
+		$mcp_binding = null;
+		foreach ( $bindings as $binding ) {
+			if ( 'mcp' === ( $binding['transport'] ?? null ) ) {
+				$mcp_binding = $binding;
+				break;
+			}
+		}
+
+		$this->assertNotNull( $mcp_binding, 'mcp binding must be present' );
+		$this->assertArrayHasKey( 'version', $mcp_binding );
+		$this->assertArrayHasKey( 'transport', $mcp_binding );
+		$this->assertArrayHasKey( 'endpoint', $mcp_binding );
+		$this->assertEquals(
+			WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
+			$mcp_binding['version']
+		);
+		// Must match the route registered by
+		// WC_AI_Storefront_MCP_Server::register_routes() (wc/ucp/v1 /mcp).
+		$this->assertEquals(
+			'https://example.com/wp-json/wc/ucp/v1/mcp',
+			$mcp_binding['endpoint']
+		);
 	}
 
 	// ------------------------------------------------------------------
