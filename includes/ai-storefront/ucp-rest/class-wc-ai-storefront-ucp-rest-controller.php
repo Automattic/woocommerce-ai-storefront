@@ -2459,31 +2459,78 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return WP_Error|WP_REST_Response
 	 */
 	public function handle_checkout_sessions_create( WP_REST_Request $request ) {
+		$params = [
+			'line_items'       => $request->get_param( 'line_items' ),
+			'context'          => $request->get_param( 'context' ),
+			'agent_data'       => self::resolve_agent_host( $request ),
+			'ucp_agent_header' => (string) $request->get_header( 'ucp-agent' ),
+		];
+
+		$result = $this->run_checkout_create( $params );
+
+		// The checkout handler sets no response headers on either the
+		// success or error paths (unlike catalog/search's unknown-params
+		// header), so the wrapper is a thin pass-through.
+		return new WP_REST_Response( $result['body'], $result['status'] );
+	}
+
+	/**
+	 * Transport-neutral core for UCP /checkout-sessions (POST).
+	 *
+	 * 1:1 translation of the former `handle_checkout_sessions_create()`
+	 * body. Reads its inputs from a plain `$params` array (so non-REST
+	 * transports such as MCP can call it without a `WP_REST_Request`) and
+	 * returns `[ 'body' => array, 'status' => int ]` — exactly the body +
+	 * status the REST wrapper feeds into
+	 * `new WP_REST_Response( $body, $status )`. The checkout handler sets
+	 * no response headers, so the wrapper is a thin pass-through (like
+	 * lookup, unlike search's unknown-params header).
+	 *
+	 * @param array $params {
+	 *     Resolved request inputs.
+	 *
+	 *     @type mixed  $line_items       UCP `line_items` array (array|null).
+	 *     @type mixed  $context          UCP `context` object (array|null).
+	 *     @type array  $agent_data       resolve_agent_host() result
+	 *                                    (['name','raw_host','source_host']).
+	 *     @type string $ucp_agent_header Raw `ucp-agent` request header.
+	 * }
+	 * @return array{body: array, status: int}
+	 */
+	public function run_checkout_create( array $params ): array {
 		// Clear per-request memoization; see handle_catalog_search.
 		$this->request_context->reset();
 
 		if ( self::is_syndication_disabled() ) {
 			WC_AI_Storefront_Logger::debug( 'UCP checkout-sessions rejected: syndication disabled' );
-			return self::ucp_checkout_error_response(
+			$error = self::ucp_checkout_error_response(
 				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
 				WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED,
 				null,
 				503
 			);
+			return [
+				'body'   => $error->get_data(),
+				'status' => $error->get_status(),
+			];
 		}
 
-		$line_items_raw = $request->get_param( 'line_items' );
+		$line_items_raw = $params['line_items'] ?? null;
 
 		if ( ! is_array( $line_items_raw ) || empty( $line_items_raw ) ) {
-			return self::ucp_checkout_error_response(
+			$error = self::ucp_checkout_error_response(
 				__( 'Request must include a non-empty "line_items" array.', 'woocommerce-ai-storefront' ),
 				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 				'$.line_items'
 			);
+			return [
+				'body'   => $error->get_data(),
+				'status' => $error->get_status(),
+			];
 		}
 
 		if ( count( $line_items_raw ) > self::MAX_LINE_ITEMS_PER_CHECKOUT ) {
-			return self::ucp_checkout_error_response(
+			$error = self::ucp_checkout_error_response(
 				sprintf(
 					/* translators: %d is the maximum number of line items per request. */
 					__( 'The "line_items" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-storefront' ),
@@ -2492,9 +2539,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 				'$.line_items'
 			);
+			return [
+				'body'   => $error->get_data(),
+				'status' => $error->get_status(),
+			];
 		}
 
-		$agent_data        = self::resolve_agent_host( $request );
+		$agent_data        = $params['agent_data'];
 		$agent_name        = $agent_data['name'];
 		$agent_raw_host    = $agent_data['raw_host'];
 		$agent_source_host = $agent_data['source_host'];
@@ -2513,7 +2564,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// shell-injection payloads. Empty string when absent or
 		// malformed — the handoff filter still runs with store-default
 		// locale.
-		$context        = $request->get_param( 'context' );
+		$context        = $params['context'] ?? null;
 		$request_locale = '';
 		if ( is_array( $context ) && isset( $context['locale'] ) && is_string( $context['locale'] ) ) {
 			$candidate = trim( $context['locale'] );
@@ -2530,7 +2581,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// `currency` query param, returning prices already converted
 		// (rate + rounding + charm). Also used by process_line_item()
 		// for EUR-vs-EUR price drift comparison.
-		$request_currency = self::get_request_currency( $request );
+		$request_currency = self::get_currency_from_context( $context );
 		$this->request_context->set_currency( $request_currency );
 
 		$processed = array();
@@ -3008,7 +3059,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$processed,
 				$agent_source_host,
 				$agent_raw_host,
-				self::get_request_currency( $request )
+				$request_currency
 			)
 			: '';
 
@@ -3131,10 +3182,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		// 201 Created when we have something to escalate to; 200 otherwise.
 		// The session ID is a correlation token only — no persistence.
-		return new WP_REST_Response(
-			$response_body,
-			$should_redirect ? 201 : 200
-		);
+		return [
+			'body'   => $response_body,
+			'status' => $should_redirect ? 201 : 200,
+		];
 	}
 
 	/**

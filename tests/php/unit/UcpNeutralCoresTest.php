@@ -107,4 +107,63 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 400, $result['status'] );
 		$this->assertIsArray( $result['body'] );
 	}
+
+	public function test_run_checkout_create_returns_503_when_syndication_disabled(): void {
+		// Parity with the search/lookup 503 tests: the disabled-syndication
+		// gate short-circuits before any line-item validation or Store API
+		// fetch. The ucp_checkout_error_response body builds from the static
+		// envelope + (function_exists-guarded) get_woocommerce_currency
+		// fallback, so no WC stubbing is needed beyond apply_filters (which
+		// keeps WC_AI_Storefront_Logger::debug() off the WordPress path).
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		// ucp_checkout_error_response calls get_woocommerce_currency under a
+		// function_exists guard. In the full suite another test mocks that
+		// function, which flips function_exists() true here too — so stub it
+		// to a deterministic value (mirrors UcpCheckoutSessionsTest).
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$result     = $controller->run_checkout_create(
+			[
+				'line_items'       => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+				'context'          => null,
+				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+				'ucp_agent_header' => '',
+			]
+		);
+
+		$this->assertSame( 503, $result['status'] );
+		$this->assertIsArray( $result['body'] );
+	}
+
+	public function test_run_checkout_create_returns_400_for_empty_line_items(): void {
+		// Syndication enabled (stub), so the core passes the disabled gate
+		// and reaches the non-empty-line_items validation. An empty array
+		// triggers the INVALID_INPUT error path; the core must surface that
+		// helper response's exact status (ucp_checkout_error_response
+		// default, 400) — not the 200/201 success path. This validation runs
+		// before resolve_agent_host / process_line_item, so no WC stubbing is
+		// needed beyond apply_filters (Logger short-circuit).
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		// See the 503 test: stub get_woocommerce_currency so the error
+		// helper's function_exists-guarded call resolves under the full suite.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$result     = $controller->run_checkout_create(
+			[
+				'line_items'       => [],
+				'context'          => null,
+				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+				'ucp_agent_header' => '',
+			]
+		);
+
+		$this->assertSame( 400, $result['status'] );
+		$this->assertIsArray( $result['body'] );
+	}
 }
