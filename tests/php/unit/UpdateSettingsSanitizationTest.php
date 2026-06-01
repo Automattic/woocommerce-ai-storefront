@@ -167,4 +167,59 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 			'explicit null'    => [ null ],
 		];
 	}
+
+	// ------------------------------------------------------------------
+	// mcp_enabled sanitization — strict yes/no enum, default 'yes'
+	// ------------------------------------------------------------------
+	//
+	// Same safety-net contract as allow_unknown_ucp_agents, but the
+	// secure default flips: MCP is an opt-OUT toggle (default 'yes')
+	// because the transport is only ever live when syndication itself
+	// (`enabled`) is on. Any value that bypasses the REST enum schema
+	// MUST resolve to the default 'yes' rather than silently disabling
+	// the transport on a malformed write.
+
+	public function test_mcp_enabled_present_in_defaults(): void {
+		// With no overrides, get_settings() must surface the key — a
+		// missing key would make the MCP gate read it as falsy and
+		// silently disable the transport on fresh installs.
+		WC_AI_Storefront::$test_settings = [];
+		$this->assertArrayHasKey( 'mcp_enabled', WC_AI_Storefront::get_settings() );
+		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['mcp_enabled'] );
+	}
+
+	public function test_mcp_enabled_yes_is_preserved(): void {
+		WC_AI_Storefront::update_settings( [ 'mcp_enabled' => 'yes' ] );
+		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['mcp_enabled'] );
+	}
+
+	public function test_mcp_enabled_no_is_preserved(): void {
+		WC_AI_Storefront::update_settings( [ 'mcp_enabled' => 'no' ] );
+		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['mcp_enabled'] );
+	}
+
+	/**
+	 * Every malformed value must fall back to the default `'yes'`.
+	 * Mirrors the allow_unknown provider's strict-comparison guard,
+	 * but the expected fallback is `'yes'` (the MCP default), not
+	 * `'no'`.
+	 *
+	 * @dataProvider mcp_enabled_invalid_value_provider
+	 */
+	public function test_mcp_enabled_invalid_value_falls_back_to_yes( $value ): void {
+		WC_AI_Storefront::update_settings( [ 'mcp_enabled' => $value ] );
+		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['mcp_enabled'] );
+	}
+
+	public static function mcp_enabled_invalid_value_provider(): array {
+		return [
+			'arbitrary string' => [ 'maybe' ],
+			'boolean true'     => [ true ],
+			'integer 1'        => [ 1 ],
+			'string 1'         => [ '1' ],
+			'uppercase YES'    => [ 'YES' ],
+			'truthy text'      => [ 'true' ],
+			'explicit null'    => [ null ],
+		];
+	}
 }
