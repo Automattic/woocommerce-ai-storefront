@@ -255,6 +255,8 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	public function test_get_handler_returns_405(): void {
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle_get();
 		$this->assertSame( 405, $response->get_status() );
+		// Body carries a human-readable hint (not blank) for browser visitors.
+		$this->assertNotEmpty( $response->get_data()['error'] ?? '' );
 	}
 
 	public function test_invalid_request_without_method_returns_32600(): void {

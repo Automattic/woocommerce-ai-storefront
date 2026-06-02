@@ -103,12 +103,22 @@ class WC_AI_Storefront_MCP_Server {
 
 	/**
 	 * GET is not supported (no server-initiated SSE stream in this minimal
-	 * transport). Respond 405 so clients fall back to POST-only.
+	 * transport). Respond 405 so MCP clients fall back to POST-only — but with a
+	 * short human-readable hint in the body, so a person who opens the URL in a
+	 * browser sees what this endpoint is instead of a blank 405 page.
 	 *
 	 * @return WP_REST_Response
 	 */
 	public function handle_get(): WP_REST_Response {
-		return new WP_REST_Response( null, 405 );
+		return new WP_REST_Response(
+			[
+				'error' => __(
+					'This is an MCP (Model Context Protocol) JSON-RPC endpoint. Send a POST request with a JSON-RPC body — e.g. {"jsonrpc":"2.0","id":1,"method":"initialize"}. GET is reserved for SSE streams, which this endpoint does not provide.',
+					'woocommerce-ai-storefront'
+				),
+			],
+			405
+		);
 	}
 
 	/**
