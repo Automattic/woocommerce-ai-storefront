@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-02T04:41:36+00:00\n"
+"POT-Creation-Date: 2026-06-02T05:00:43+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -125,139 +125,139 @@ msgstr ""
 msgid "This agent is not allowed."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:38
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:48
 msgid "Search the store catalog by keyword and/or structured filters; returns matching UCP products. Provide `query` for keyword search and/or `filters` to browse — at least one is recommended."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:44
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:54
 msgid "Keyword search, e.g. 'blue hoodie'. Optional — you may browse with filters alone — but provide it for text search."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:48
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:58
 msgid "Structured filters to narrow results. All fields optional."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:53
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:63
 msgid "Category slugs or names to match."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:58
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:68
 msgid "Tag slugs or names to match."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:63
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:73
 msgid "Brand slugs or names to match."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:67
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:77
 msgid "Price range in minor units (e.g. cents), denominated in context.currency."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:71
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:81
 msgid "Minimum price in minor units."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:75
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:85
 msgid "Maximum price in minor units."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:81
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:91
 msgid "Only products currently on sale."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:85
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:95
 msgid "Only in-stock products."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:89
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:99
 msgid "Only featured products."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:95
-msgid "Minimum average star rating, 1-5."
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:103
+msgid "Minimum average star rating, from 1 to 5."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:99
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:107
 msgid "Map of attribute slug to an array of accepted values, e.g. {\"color\":[\"blue\"],\"size\":[\"M\"]}."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:105
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:113
 msgid "Result ordering."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:110
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:118
 msgid "Field to sort by. 'newest' is an alias for date descending."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:115
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:123
 msgid "Sort direction. Defaults to 'asc'; ignored for 'newest' (always descending)."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:121
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:129
 msgid "Pagination controls."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:126
-msgid "Maximum number of products to return."
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:133
+msgid "Maximum number of products to return (a positive integer)."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:130
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:137
 msgid "Opaque cursor from a prior response's pagination.cursor, to fetch the next page."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:149
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:154
 msgid "Look up specific products by their UCP id; returns full UCP product records. Use ids returned by catalog_search."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:158
-msgid "UCP product ids to fetch, e.g. ['prod_123','var_456']. Between 1 and 100 ids."
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:161
+msgid "UCP product ids to fetch, e.g. ['prod_123','var_456']. Provide between 1 and 100 ids."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:167
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:170
 msgid "Create a stateless checkout session for one or more products and return a continue_url to redirect the shopper to. Does not place the order."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:174
-msgid "Items to purchase."
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:176
+msgid "Items to purchase (at least one)."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:180
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:182
 msgid "The product or variation to add."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:184
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:186
 msgid "UCP product or variation id, e.g. 'prod_123' or 'var_456'."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:192
-msgid "Quantity to purchase. Defaults to 1."
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:193
+msgid "Quantity to purchase (a positive integer). Defaults to 1."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:217
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:218
 msgid "Optional request context."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:221
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:222
 msgid "ISO 4217 currency code, e.g. 'USD', for price-filter denomination and price display."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:225
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:226
 msgid "BCP 47 locale, e.g. 'en-US'."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:265
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:266
 msgid "Catalog search"
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:282
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:283
 msgid "Catalog lookup"
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:295
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:296
 msgid "Checkout"
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:299
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:300
 msgid "Unknown tool."
 msgstr ""
 

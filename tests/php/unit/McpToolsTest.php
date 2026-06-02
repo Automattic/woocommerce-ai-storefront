@@ -85,6 +85,26 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		$this->fail( "Tool not found: {$name}" );
 	}
 
+	/**
+	 * Recursively collect every string array key in a nested structure.
+	 *
+	 * @param mixed $node
+	 * @return string[]
+	 */
+	private function collect_schema_keys( $node ): array {
+		if ( ! is_array( $node ) ) {
+			return [];
+		}
+		$keys = [];
+		foreach ( $node as $k => $v ) {
+			if ( is_string( $k ) ) {
+				$keys[] = $k;
+			}
+			$keys = array_merge( $keys, $this->collect_schema_keys( $v ) );
+		}
+		return $keys;
+	}
+
 	public function test_every_tool_has_a_nonempty_description(): void {
 		foreach ( WC_AI_Storefront_MCP_Tools::definitions() as $def ) {
 			$this->assertArrayHasKey( 'description', $def );
@@ -152,19 +172,28 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'id', $items['properties']['item']['required'] );
 	}
 
-	public function test_catalog_search_requires_query_or_filters(): void {
-		// catalog_search has no single required field (filters-only browse is
-		// valid), but declares an anyOf so models know a bare {} call is not
-		// intended: a valid call carries `query` and/or `filters`.
-		$schema = $this->tool( 'catalog_search' )['inputSchema'];
-		$this->assertArrayNotHasKey( 'required', $schema, 'no single hard-required field' );
-		$this->assertArrayHasKey( 'anyOf', $schema );
-		$required_sets = array_map(
-			static fn( array $branch ) => $branch['required'],
-			$schema['anyOf']
-		);
-		$this->assertContains( [ 'query' ], $required_sets );
-		$this->assertContains( [ 'filters' ], $required_sets );
+	public function test_catalog_search_guides_query_or_filters_in_description(): void {
+		// The "provide query and/or filters" constraint lives in the tool
+		// description, not a JSON-Schema anyOf — Gemini's function-calling
+		// rejects anyOf. catalog_search has no top-level `required` because
+		// filters-only browse is valid.
+		$tool = $this->tool( 'catalog_search' );
+		$this->assertArrayNotHasKey( 'required', $tool['inputSchema'] );
+		$this->assertMatchesRegularExpression( '/query/i', $tool['description'] );
+		$this->assertMatchesRegularExpression( '/filters/i', $tool['description'] );
+	}
+
+	public function test_schemas_use_only_function_calling_safe_keywords(): void {
+		// Gemini's function-declaration validator 400s on anyOf/oneOf/allOf and
+		// array/number bounds, which breaks tool registration for the whole
+		// session (not just one call). Lock every tool's inputSchema to the
+		// cross-model-safe subset so a future edit can't silently reintroduce
+		// an incompatible keyword.
+		$forbidden = [ 'anyOf', 'oneOf', 'allOf', 'minItems', 'maxItems', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum' ];
+		$keys      = $this->collect_schema_keys( array_column( WC_AI_Storefront_MCP_Tools::definitions(), 'inputSchema' ) );
+		foreach ( $forbidden as $kw ) {
+			$this->assertNotContains( $kw, $keys, "inputSchema must not use '{$kw}' — it breaks Gemini function-calling" );
+		}
 	}
 
 	public function test_core_result_to_mcp_maps_success_to_structured_content(): void {

@@ -29,6 +29,16 @@ class WC_AI_Storefront_MCP_Tools {
 	 * only invite agents to spend tokens populating a no-op. The server still
 	 * tolerates a `signals` payload if one is sent.
 	 *
+	 * Schema keywords are restricted to the lowest common denominator that
+	 * every major model's function-calling layer accepts: type, properties,
+	 * items, required, enum, and description. We deliberately avoid `anyOf`,
+	 * `minItems`/`maxItems`, and `minimum`/`maximum` — Gemini's
+	 * function-declaration validator rejects them with a hard 400 (and other
+	 * clients vary), which breaks tool registration for the WHOLE session, not
+	 * just one call. Constraints those keywords would express (e.g. "1-100
+	 * ids", "query and/or filters") live in the prose descriptions instead,
+	 * which all models tolerate.
+	 *
 	 * @return array<int,array<string,mixed>>
 	 */
 	public static function definitions(): array {
@@ -90,9 +100,7 @@ class WC_AI_Storefront_MCP_Tools {
 								],
 								'min_rating' => [
 									'type'        => 'integer',
-									'minimum'     => 1,
-									'maximum'     => 5,
-									'description' => __( 'Minimum average star rating, 1-5.', 'woocommerce-ai-storefront' ),
+									'description' => __( 'Minimum average star rating, from 1 to 5.', 'woocommerce-ai-storefront' ),
 								],
 								'attributes' => [
 									'type'        => 'object',
@@ -122,8 +130,7 @@ class WC_AI_Storefront_MCP_Tools {
 							'properties'  => [
 								'limit'  => [
 									'type'        => 'integer',
-									'minimum'     => 1,
-									'description' => __( 'Maximum number of products to return.', 'woocommerce-ai-storefront' ),
+									'description' => __( 'Maximum number of products to return (a positive integer).', 'woocommerce-ai-storefront' ),
 								],
 								'cursor' => [
 									'type'        => 'string',
@@ -133,15 +140,13 @@ class WC_AI_Storefront_MCP_Tools {
 						],
 						'context'    => self::context_schema(),
 					],
-					// A meaningful search needs a keyword or at least one filter.
-					// Expressed as anyOf (not a hard `required: [query]`) so the
-					// filters-only browse the core supports — e.g. "what's on
-					// sale?" — stays valid, while still telling models an empty
-					// {} call is not intended.
-					'anyOf'      => [
-						[ 'required' => [ 'query' ] ],
-						[ 'required' => [ 'filters' ] ],
-					],
+					// "Provide query and/or filters" is conveyed in the tool
+					// description, NOT a JSON-Schema `anyOf` constraint: Gemini's
+					// function-calling subset rejects `anyOf` (and array/number
+					// bounds) with a hard 400, so the inputSchema stays within the
+					// keywords every model tolerates (type, properties, enum,
+					// required, description) and prose carries the soft
+					// constraint. See the class docblock.
 				],
 			],
 			[
@@ -153,9 +158,7 @@ class WC_AI_Storefront_MCP_Tools {
 						'ids'     => [
 							'type'        => 'array',
 							'items'       => [ 'type' => 'string' ],
-							'minItems'    => 1,
-							'maxItems'    => 100,
-							'description' => __( "UCP product ids to fetch, e.g. ['prod_123','var_456']. Between 1 and 100 ids.", 'woocommerce-ai-storefront' ),
+							'description' => __( "UCP product ids to fetch, e.g. ['prod_123','var_456']. Provide between 1 and 100 ids.", 'woocommerce-ai-storefront' ),
 						],
 						'context' => self::context_schema(),
 					],
@@ -170,8 +173,7 @@ class WC_AI_Storefront_MCP_Tools {
 					'properties' => [
 						'line_items' => [
 							'type'        => 'array',
-							'minItems'    => 1,
-							'description' => __( 'Items to purchase.', 'woocommerce-ai-storefront' ),
+							'description' => __( 'Items to purchase (at least one).', 'woocommerce-ai-storefront' ),
 							'items'       => [
 								'type'       => 'object',
 								'properties' => [
@@ -188,8 +190,7 @@ class WC_AI_Storefront_MCP_Tools {
 									],
 									'quantity' => [
 										'type'        => 'integer',
-										'minimum'     => 1,
-										'description' => __( 'Quantity to purchase. Defaults to 1.', 'woocommerce-ai-storefront' ),
+										'description' => __( 'Quantity to purchase (a positive integer). Defaults to 1.', 'woocommerce-ai-storefront' ),
 									],
 								],
 								'required'   => [ 'item' ],
