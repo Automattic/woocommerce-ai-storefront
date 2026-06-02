@@ -152,6 +152,21 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'id', $items['properties']['item']['required'] );
 	}
 
+	public function test_catalog_search_requires_query_or_filters(): void {
+		// catalog_search has no single required field (filters-only browse is
+		// valid), but declares an anyOf so models know a bare {} call is not
+		// intended: a valid call carries `query` and/or `filters`.
+		$schema = $this->tool( 'catalog_search' )['inputSchema'];
+		$this->assertArrayNotHasKey( 'required', $schema, 'no single hard-required field' );
+		$this->assertArrayHasKey( 'anyOf', $schema );
+		$required_sets = array_map(
+			static fn( array $branch ) => $branch['required'],
+			$schema['anyOf']
+		);
+		$this->assertContains( [ 'query' ], $required_sets );
+		$this->assertContains( [ 'filters' ], $required_sets );
+	}
+
 	public function test_core_result_to_mcp_maps_success_to_structured_content(): void {
 		$result = WC_AI_Storefront_MCP_Tools::core_result_to_mcp(
 			[

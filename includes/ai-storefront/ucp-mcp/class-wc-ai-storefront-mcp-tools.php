@@ -133,6 +133,15 @@ class WC_AI_Storefront_MCP_Tools {
 						],
 						'context'    => self::context_schema(),
 					],
+					// A meaningful search needs a keyword or at least one filter.
+					// Expressed as anyOf (not a hard `required: [query]`) so the
+					// filters-only browse the core supports — e.g. "what's on
+					// sale?" — stays valid, while still telling models an empty
+					// {} call is not intended.
+					'anyOf'      => [
+						[ 'required' => [ 'query' ] ],
+						[ 'required' => [ 'filters' ] ],
+					],
 				],
 			],
 			[
