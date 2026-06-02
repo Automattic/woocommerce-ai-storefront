@@ -616,7 +616,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * fetch_store_api_product() to bound fan-out on duplicate IDs.
 	 *
 	 * @param WP_REST_Request $request UCP search request.
-	 * @return WP_Error|WP_REST_Response
+	 * @return WP_REST_Response
 	 */
 	public function handle_catalog_search( WP_REST_Request $request ) {
 		$params = [
@@ -1765,7 +1765,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * only for genuinely malformed input (missing/non-array `ids`).
 	 *
 	 * @param WP_REST_Request $request UCP lookup request.
-	 * @return WP_Error|WP_REST_Response
+	 * @return WP_REST_Response
 	 */
 	public function handle_catalog_lookup( WP_REST_Request $request ) {
 		$params = [
@@ -2456,7 +2456,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * merchant checkout.
 	 *
 	 * @param WP_REST_Request $request UCP checkout-sessions create request.
-	 * @return WP_Error|WP_REST_Response
+	 * @return WP_REST_Response
 	 */
 	public function handle_checkout_sessions_create( WP_REST_Request $request ) {
 		$params = [
@@ -4210,7 +4210,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * Translate a UCP search request's body fields onto WC Store API
+	 * Translate a UCP search request's inputs onto WC Store API
 	 * query params and surface any resolution warnings.
 	 *
 	 * The mapping covers `query`, `pagination`, `sort`, and every
@@ -4230,6 +4230,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * returned messages array so agents learn their filter/sort didn't
 	 * apply (instead of silently receiving the unfiltered catalog).
 	 *
+	 * @param array $params Resolved UCP search inputs (query, pagination, sort, filters, context).
 	 * @return array{0: array<string, mixed>, 1: array<int, array<string, mixed>>}
 	 *         [params, messages]. `params` contains Store API query
 	 *         arguments with heterogeneous value shapes depending on the
@@ -5413,6 +5414,38 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'name'        => WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
 			'raw_host'    => '',
 			'source_host' => '',
+		];
+	}
+
+	/**
+	 * Resolve a freeform MCP handshake name into the agent_data triple used for
+	 * attribution, mirroring resolve_agent_host() so MCP-originated orders land
+	 * in the same WC Order Attribution cohort as the REST transport.
+	 *
+	 * @param string $name The MCP initialize clientInfo.name (raw).
+	 * @return array{name: string, raw_host: string, source_host: string}
+	 */
+	public static function resolve_agent_data_from_name( string $name ): array {
+		$normalized = strtolower( trim( $name ) );
+		if ( '' === $normalized ) {
+			return [
+				'name'        => WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+				'raw_host'    => '',
+				'source_host' => '',
+			];
+		}
+		$canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $normalized );
+		if ( WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET === $canonical ) {
+			$host_canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $normalized );
+			if ( WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET !== $host_canonical ) {
+				$canonical = $host_canonical;
+			}
+		}
+		$source = WC_AI_Storefront_UCP_Agent_Header::PRODUCT_TO_HOSTNAME[ $normalized ] ?? $normalized;
+		return [
+			'name'        => $canonical,
+			'raw_host'    => substr( $name, 0, 253 ),
+			'source_host' => substr( $source, 0, 253 ),
 		];
 	}
 

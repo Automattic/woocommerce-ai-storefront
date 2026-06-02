@@ -253,6 +253,36 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( -32600, $response->get_data()['error']['code'] );
 	}
 
+	public function test_non_string_method_returns_32600_without_warning(): void {
+		// A non-string `method` (here an array) must be rejected as an invalid
+		// request (-32600) rather than coerced via `(string)` — which would
+		// emit an "Array to string conversion" PHP warning on a public,
+		// unauthenticated endpoint (log spam). Promote warnings to exceptions
+		// for this test so an accidental cast would fail loudly.
+		$prev = set_error_handler(
+			static function ( $errno, $errstr ) {
+				throw new \RuntimeException( $errstr, $errno );
+			},
+			E_WARNING
+		);
+
+		try {
+			$request = new WP_REST_Request( 'POST', '/wc/ucp/v1/mcp' );
+			$request->set_body( '{"jsonrpc":"2.0","id":1,"method":["x"]}' );
+
+			$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
+
+			$this->assertSame( 400, $response->get_status() );
+			$this->assertSame( -32600, $response->get_data()['error']['code'] );
+		} finally {
+			if ( null !== $prev ) {
+				set_error_handler( $prev );
+			} else {
+				restore_error_handler();
+			}
+		}
+	}
+
 	public function test_regate_403_when_allow_list_tightened_mid_session(): void {
 		// Mint a session while unknown agents are allowed.
 		$server  = new WC_AI_Storefront_MCP_Server();

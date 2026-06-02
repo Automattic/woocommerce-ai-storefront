@@ -47,13 +47,15 @@ class WC_AI_Storefront_MCP_Session {
 			$canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $normalized );
 		}
 
-		// A blank or unrecognized handshake name canonicalizes to '' (empty),
-		// and both the unknown-agent policy below and is_agent_allowed( '', … )
-		// would then PASS it — that empty-means-allow rule is correct for
-		// header-less REST browser traffic, but on MCP it lets a client skip
-		// the gate entirely by sending an empty clientInfo.name. Coerce empty
-		// to the "Other AI" bucket so a nameless agent is governed by the
-		// allow_unknown_ucp_agents policy, never silently admitted.
+		// A BLANK (empty-after-trim) handshake name canonicalizes to '' (empty)
+		// — an unrecognized non-blank name canonicalizes to OTHER_AI_BUCKET
+		// directly, not to ''. For the blank case, both the unknown-agent
+		// policy below and is_agent_allowed( '', … ) would PASS it — that
+		// empty-means-allow rule is correct for header-less REST browser
+		// traffic, but on MCP it lets a client skip the gate entirely by
+		// sending an empty clientInfo.name. Coerce empty to the "Other AI"
+		// bucket so a nameless agent is governed by the allow_unknown_ucp_agents
+		// policy, never silently admitted.
 		if ( '' === $canonical ) {
 			$canonical = WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET;
 		}
@@ -83,19 +85,30 @@ class WC_AI_Storefront_MCP_Session {
 	}
 
 	/**
-	 * Mint a session for a vetted canonical client name.
+	 * Mint a session for a vetted client name.
 	 *
-	 * @param string $canonical_name Canonical client name (gate output).
+	 * Stores the RAW handshake name (the `initialize` clientInfo.name as the
+	 * agent sent it), NOT the canonical gate output. The server re-canonicalizes
+	 * it via gate_client_name() on every post-handshake request, so the
+	 * allow/deny decision is re-derived each time and storing raw is safe.
+	 * Preserving the original identity lets the tool layer resolve the same
+	 * WC Order Attribution triple (utm_source) the REST transport produces.
+	 *
+	 * @param string $client_name Raw MCP `initialize` clientInfo.name. Already
+	 *                            gated by the caller; stored verbatim.
 	 * @return string The new Mcp-Session-Id.
 	 */
-	public static function start( string $canonical_name ): string {
+	public static function start( string $client_name ): string {
 		$id = (string) wp_generate_uuid4();
-		set_transient( self::TRANSIENT_PREFIX . $id, $canonical_name, self::TTL_SECONDS );
+		set_transient( self::TRANSIENT_PREFIX . $id, $client_name, self::TTL_SECONDS );
 		return $id;
 	}
 
 	/**
-	 * Look up the canonical client name behind a session id.
+	 * Look up the raw client name behind a session id.
+	 *
+	 * Returns the raw handshake name stored by start() (the original
+	 * clientInfo.name); the server re-gates it on each request.
 	 *
 	 * @param string $session_id Mcp-Session-Id header value.
 	 * @return string|null Client name, or null when absent/expired.

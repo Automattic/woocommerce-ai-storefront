@@ -101,9 +101,11 @@ class WC_AI_Storefront_MCP_Server {
 			// Body was not parseable JSON at all.
 			return $this->rpc_error( null, -32700, 'Parse error', 400 );
 		}
-		if ( ! is_array( $rpc ) || ! isset( $rpc['method'] ) ) {
-			// Parsed fine but isn't a well-formed JSON-RPC request
-			// (e.g. a bare value, or an object with no `method`).
+		if ( ! is_array( $rpc ) || ! isset( $rpc['method'] ) || ! is_string( $rpc['method'] ) ) {
+			// Parsed fine but isn't a well-formed JSON-RPC request (e.g. a bare
+			// value, an object with no `method`, or a non-string `method` such
+			// as an array — the latter would trigger an "Array to string
+			// conversion" warning on the (string) cast below).
 			return $this->rpc_error( null, -32600, 'Invalid Request', 400 );
 		}
 		$id     = $rpc['id'] ?? null;
@@ -157,7 +159,9 @@ class WC_AI_Storefront_MCP_Server {
 			case 'tools/list':
 				return $this->rpc_result( $id, [ 'tools' => WC_AI_Storefront_MCP_Tools::definitions() ] );
 			case 'tools/call':
-				$name   = (string) ( $params['name'] ?? '' );
+				// A non-string `name` (e.g. an array) coerces to '' → unknown
+				// tool → -32602, avoiding an "Array to string conversion" warning.
+				$name   = is_string( $params['name'] ?? null ) ? $params['name'] : '';
 				$args   = is_array( $params['arguments'] ?? null ) ? $params['arguments'] : [];
 				$result = WC_AI_Storefront_MCP_Tools::call( $name, $args, $client_name );
 				if ( is_wp_error( $result ) ) {
@@ -184,7 +188,11 @@ class WC_AI_Storefront_MCP_Server {
 		if ( is_wp_error( $gated ) ) {
 			return new WP_REST_Response( null, 403 );
 		}
-		$session_id = WC_AI_Storefront_MCP_Session::start( $gated );
+		// Store the RAW handshake name (not the canonical $gated) so the
+		// original agent identity is preserved for attribution. The server
+		// re-canonicalizes it via gate_client_name() on every post-handshake
+		// request, so the allow/deny decision is unaffected.
+		$session_id = WC_AI_Storefront_MCP_Session::start( $client_name );
 		$response   = $this->rpc_result(
 			$id,
 			[

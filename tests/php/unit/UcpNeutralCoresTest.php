@@ -166,4 +166,45 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 400, $result['status'] );
 		$this->assertIsArray( $result['body'] );
 	}
+
+	public function test_resolve_agent_data_from_name_known_product_token_resolves_hostname(): void {
+		// A product token present in PRODUCT_TO_HOSTNAME must produce its
+		// canonical brand `name` and the mapped lowercase `source_host`
+		// (utm_source), matching what resolve_agent_host() yields for the
+		// Product/Version header path. This is the MCP <-> REST attribution
+		// parity the resolver exists to guarantee.
+		$result = WC_AI_Storefront_UCP_REST_Controller::resolve_agent_data_from_name( 'UCP-Playground' );
+
+		$this->assertSame( 'UCPPlayground', $result['name'] );
+		$this->assertSame( 'UCP-Playground', $result['raw_host'] );
+		$this->assertSame( 'ucpplayground.com', $result['source_host'] );
+	}
+
+	public function test_resolve_agent_data_from_name_blank_falls_back_to_unknown(): void {
+		// A blank handshake name carries no attribution signal: name is the
+		// FALLBACK_SOURCE sentinel and source_host is empty (build_continue_url
+		// substitutes the sentinel downstream).
+		$result = WC_AI_Storefront_UCP_REST_Controller::resolve_agent_data_from_name( '   ' );
+
+		$this->assertSame(
+			WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$result['name']
+		);
+		$this->assertSame( '', $result['raw_host'] );
+		$this->assertSame( '', $result['source_host'] );
+	}
+
+	public function test_resolve_agent_data_from_name_unknown_name_buckets_as_other_ai(): void {
+		// An unknown but non-blank name is a real signal we don't recognize:
+		// name buckets under OTHER_AI_BUCKET while source_host falls back to
+		// the name itself (non-empty) so the cohort stays observable.
+		$result = WC_AI_Storefront_UCP_REST_Controller::resolve_agent_data_from_name( 'gibberish' );
+
+		$this->assertSame(
+			WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
+			$result['name']
+		);
+		$this->assertSame( 'gibberish', $result['raw_host'] );
+		$this->assertSame( 'gibberish', $result['source_host'] );
+	}
 }

@@ -79,15 +79,14 @@ class WC_AI_Storefront_MCP_Tools {
 	 *
 	 * @param string $tool_name   catalog_search|catalog_lookup|checkout_create.
 	 * @param array  $arguments   Validated tool arguments.
-	 * @param string $client_name Canonical agent name from the session.
+	 * @param string $client_name Raw agent handshake name from the session.
 	 * @return array|WP_Error MCP tools/call result, or WP_Error for unknown tool.
 	 */
 	public static function call( string $tool_name, array $arguments, string $client_name ) {
-		$agent_data = [
-			'name'        => $client_name,
-			'raw_host'    => $client_name,
-			'source_host' => '',
-		];
+		// Resolve the raw handshake name into the same attribution triple the
+		// REST transport produces (resolve_agent_host), so MCP-originated orders
+		// land in the same WC Order Attribution cohort (utm_source) as REST.
+		$agent_data = WC_AI_Storefront_UCP_REST_Controller::resolve_agent_data_from_name( $client_name );
 		$base       = [
 			'agent_data'       => $agent_data,
 			'ucp_agent_header' => '',

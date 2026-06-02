@@ -166,8 +166,10 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// UCP schema: `services` is `object of string → array of service`.
 		// Each key maps to an ARRAY, not a single binding, so a service
 		// can declare multiple transport bindings. As of the MCP
-		// transport work (0.18.0) we advertise TWO: `rest` + `mcp`.
-		$manifest = $this->ucp->generate_manifest( [] );
+		// transport work (0.18.0) we advertise TWO: `rest` + `mcp` — but
+		// only when `mcp_enabled` is on (the manifest now fails closed),
+		// so explicitly enable it to exercise the two-binding shape.
+		$manifest = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'yes' ] );
 		$bindings = $manifest['ucp']['services']['dev.ucp.shopping'];
 
 		$this->assertIsArray( $bindings );
@@ -257,7 +259,9 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_service_advertises_both_rest_and_mcp_transports(): void {
-		$manifest   = $this->ucp->generate_manifest( [] );
+		// Manifest fails closed on `mcp_enabled`, so enable it explicitly to
+		// exercise the both-transports path.
+		$manifest   = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'yes' ] );
 		$bindings   = $manifest['ucp']['services']['dev.ucp.shopping'];
 		$transports = array_column( $bindings, 'transport' );
 
@@ -267,7 +271,9 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_mcp_binding_has_required_fields_and_endpoint(): void {
-		$manifest = $this->ucp->generate_manifest( [] );
+		// Manifest fails closed on `mcp_enabled`, so enable it explicitly to
+		// produce the MCP binding under test.
+		$manifest = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'yes' ] );
 		$bindings = $manifest['ucp']['services']['dev.ucp.shopping'];
 
 		$mcp_binding = null;

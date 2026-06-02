@@ -275,7 +275,12 @@ class WC_AI_Storefront_Ucp {
 		// tools/call against this binding instead of POSTing REST paths to the
 		// `rest` binding; the endpoint is registered by
 		// WC_AI_Storefront_MCP_Server::register_routes().
-		if ( 'yes' === ( $settings['mcp_enabled'] ?? 'yes' ) ) {
+		//
+		// Default fail-CLOSED (`?? 'no'`): the server gate in
+		// WC_AI_Storefront_MCP_Server::handle() also defaults `mcp_enabled` to
+		// 'no', so both gates agree — we never advertise a binding the server
+		// would 404.
+		if ( 'yes' === ( $settings['mcp_enabled'] ?? 'no' ) ) {
 			$shopping_bindings[] = [
 				'version'   => self::PROTOCOL_VERSION,
 				'transport' => 'mcp',
