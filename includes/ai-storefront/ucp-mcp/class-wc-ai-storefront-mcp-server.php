@@ -124,6 +124,13 @@ class WC_AI_Storefront_MCP_Server {
 		$method = (string) $rpc['method'];
 		$params = is_array( $rpc['params'] ?? null ) ? $rpc['params'] : [];
 
+		// A JSON-RPC request without an `id` MEMBER is a notification (the
+		// absence of the key, not `id: null`). Notifications receive no
+		// response body — only an HTTP 202 ack — per JSON-RPC 2.0 and MCP
+		// Streamable HTTP. Enforced after the gate chain below, so an
+		// unaccepted notification still returns the appropriate HTTP error.
+		$is_notification = ! array_key_exists( 'id', $rpc );
+
 		if ( 'initialize' === $method ) {
 			return $this->do_initialize( $id, $params, $settings );
 		}
@@ -150,6 +157,13 @@ class WC_AI_Storefront_MCP_Server {
 		$regate = WC_AI_Storefront_MCP_Session::gate_client_name( $client_name, $settings );
 		if ( is_wp_error( $regate ) ) {
 			return new WP_REST_Response( null, 403 );
+		}
+
+		// Accepted notification (no `id`) → 202 ack, no body. Covers
+		// notifications/initialized and any request-method (ping / tools.*)
+		// a client sends without an id.
+		if ( $is_notification ) {
+			return new WP_REST_Response( null, 202 );
 		}
 
 		switch ( $method ) {

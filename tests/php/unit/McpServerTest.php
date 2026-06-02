@@ -596,4 +596,38 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 			'missing-ids and empty-ids must yield distinct error messages'
 		);
 	}
+
+	public function test_notification_without_id_acks_202_while_request_gets_result(): void {
+		// A request WITHOUT an `id` member is a JSON-RPC notification → 202
+		// ack with no body; the same method WITH an `id` returns a normal
+		// JSON-RPC result.
+		$server  = new WC_AI_Storefront_MCP_Server();
+		$session = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		)->get_headers()['Mcp-Session-Id'];
+
+		$headers = [
+			'MCP-Protocol-Version' => '2025-06-18',
+			'Mcp-Session-Id'       => $session,
+		];
+
+		$notification = $server->handle(
+			$this->rpc_request( [ 'jsonrpc' => '2.0', 'method' => 'ping' ], $headers )
+		);
+		$this->assertSame( 202, $notification->get_status() );
+		$this->assertNull( $notification->get_data() );
+
+		$request = $server->handle(
+			$this->rpc_request( [ 'jsonrpc' => '2.0', 'id' => 9, 'method' => 'ping' ], $headers )
+		);
+		$this->assertSame( 200, $request->get_status() );
+		$this->assertArrayHasKey( 'result', $request->get_data() );
+	}
 }
