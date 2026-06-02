@@ -51,6 +51,8 @@ class WC_AI_Storefront_MCP_Server {
 	 * return UCP-shaped errors rather than a bare WP REST 401.
 	 */
 	public function register_routes(): void {
+		$this->add_cors_support();
+
 		register_rest_route(
 			'wc/ucp/v1',
 			'/mcp',
@@ -66,6 +68,36 @@ class WC_AI_Storefront_MCP_Server {
 					'permission_callback' => '__return_true',
 				],
 			]
+		);
+	}
+
+	/**
+	 * Expose/allow the MCP HTTP headers in WordPress's REST CORS responses.
+	 *
+	 * This is a PUBLIC endpoint reached cross-origin by agent web UIs. WP's
+	 * default REST CORS already echoes the request Origin (so any origin is
+	 * permitted), but it does NOT expose the `Mcp-Session-Id` response header
+	 * nor allow the `Mcp-Session-Id` / `MCP-Protocol-Version` request headers —
+	 * without which a browser client cannot read the session id from the
+	 * `initialize` response or send it (and the protocol version) back on
+	 * subsequent requests. These filters are global to the REST API but only
+	 * matter to MCP traffic; other routes ignore the extra header names.
+	 */
+	private function add_cors_support(): void {
+		add_filter(
+			'rest_exposed_cors_headers',
+			static function ( $headers ) {
+				$headers[] = 'Mcp-Session-Id';
+				return $headers;
+			}
+		);
+		add_filter(
+			'rest_allowed_cors_headers',
+			static function ( $headers ) {
+				$headers[] = 'Mcp-Session-Id';
+				$headers[] = 'MCP-Protocol-Version';
+				return $headers;
+			}
 		);
 	}
 
@@ -91,10 +123,11 @@ class WC_AI_Storefront_MCP_Server {
 			return new WP_REST_Response( null, 404 );
 		}
 
-		$origin = (string) $request->get_header( 'origin' );
-		if ( '' !== $origin && ! $this->origin_matches_site( $origin ) ) {
-			return new WP_REST_Response( null, 403 );
-		}
+		// No Origin-based 403. This is a PUBLIC endpoint reached cross-origin by
+		// agent web UIs; the exact-host DNS-rebinding defense is a localhost
+		// concern (per the MCP spec security note) and would block legitimate
+		// cross-origin browser agents. Access is governed by the UCP allow-list
+		// gate (below) and CORS (see add_cors_support()), not the Origin header.
 
 		// Rate-limit EVERY request — BEFORE JSON parsing — so a caller can't
 		// bypass throttling by flooding malformed JSON / invalid JSON-RPC
@@ -143,25 +176,8 @@ class WC_AI_Storefront_MCP_Server {
 			return new WP_REST_Response( null, 400 );
 		}
 
-		$session_id = (string) $request->get_header( 'mcp-session-id' );
-		if ( '' === $session_id ) {
-			return new WP_REST_Response( null, 400 );
-		}
-		$client_name = WC_AI_Storefront_MCP_Session::client_name_for( $session_id );
-		if ( null === $client_name ) {
-			return new WP_REST_Response( null, 404 );
-		}
-
-		// Re-gate on every request: a merchant may have tightened the agent
-		// allow-list after the session was minted.
-		$regate = WC_AI_Storefront_MCP_Session::gate_client_name( $client_name, $settings );
-		if ( is_wp_error( $regate ) ) {
-			return new WP_REST_Response( null, 403 );
-		}
-
-		// Accepted notification (no `id`) → 202 ack, no body. Covers
-		// notifications/initialized and any request-method (ping / tools.*)
-		// a client sends without an id.
+		// Accepted notification (no `id`) → 202 ack, no body (e.g.
+		// notifications/initialized, or any method sent without an id).
 		if ( $is_notification ) {
 			return new WP_REST_Response( null, 202 );
 		}
@@ -169,20 +185,37 @@ class WC_AI_Storefront_MCP_Server {
 		switch ( $method ) {
 			case 'notifications/initialized':
 				return new WP_REST_Response( null, 202 );
+
 			case 'ping':
+				// Liveness — session-free.
 				return $this->rpc_result( $id, (object) [] );
+
 			case 'tools/list':
+				// Public discovery — session-free and ungated. The tool list is
+				// public API surface (also advertised via the UCP manifest and
+				// llms.txt), so first-contact and stateless clients can discover
+				// the tools before establishing identity. Invoking a tool (below)
+				// still requires passing the agent gate.
 				return $this->rpc_result( $id, [ 'tools' => WC_AI_Storefront_MCP_Tools::definitions() ] );
+
 			case 'tools/call':
-				// A non-string `name` (e.g. an array) coerces to '' → unknown
-				// tool → -32602, avoiding an "Array to string conversion" warning.
+				// Identity IS required to invoke a tool. Sessions are OPTIONAL: a
+				// valid Mcp-Session-Id supplies the vetted identity; without one
+				// the caller is anonymous, admitted only if the merchant allows
+				// unknown agents (allow_unknown_ucp_agents).
+				$caller = $this->resolve_caller( $request, $settings );
+				if ( is_wp_error( $caller ) ) {
+					return new WP_REST_Response( null, (int) ( $caller->get_error_data()['status'] ?? 403 ) );
+				}
+				// A non-string `name` coerces to '' → unknown tool → -32602.
 				$name   = is_string( $params['name'] ?? null ) ? $params['name'] : '';
 				$args   = is_array( $params['arguments'] ?? null ) ? $params['arguments'] : [];
-				$result = WC_AI_Storefront_MCP_Tools::call( $name, $args, $client_name );
+				$result = WC_AI_Storefront_MCP_Tools::call( $name, $args, $caller );
 				if ( is_wp_error( $result ) ) {
 					return $this->rpc_error( $id, -32602, $result->get_error_message(), 200 );
 				}
 				return $this->rpc_result( $id, $result );
+
 			default:
 				return $this->rpc_error( $id, -32601, 'Method not found', 200 );
 		}
@@ -227,24 +260,41 @@ class WC_AI_Storefront_MCP_Server {
 	}
 
 	/**
-	 * Whether an Origin header host matches the site host (DNS-rebinding
-	 * defense for browser-originated requests).
+	 * Resolve the calling agent's identity for a gated request (tools/call).
 	 *
-	 * @param string $origin Origin header value.
-	 * @return bool
+	 * Sessions are OPTIONAL. A valid Mcp-Session-Id supplies the identity the
+	 * agent established at `initialize` (re-gated here in case the allow-list
+	 * tightened since). Without a session the caller is anonymous and is
+	 * admitted only when the merchant allows unknown agents.
+	 *
+	 * @param WP_REST_Request $request  The request.
+	 * @param array           $settings Resolved plugin settings.
+	 * @return string|WP_Error Agent name to attribute the call to ('' for an
+	 *                         allowed anonymous caller); WP_Error carrying the
+	 *                         HTTP status (404 unknown/expired session, 403
+	 *                         blocked agent) otherwise.
 	 */
-	private function origin_matches_site( string $origin ): bool {
-		// Deliberate EXACT host match (case-insensitive) as a DNS-rebinding
-		// defense: no www/non-www or subdomain loosening. Relaxing this to
-		// accept related hosts would re-open the rebinding vector that lets a
-		// malicious page in a browser drive this local MCP endpoint. Do not
-		// loosen — add a separate explicit allow-list if cross-host is ever
-		// genuinely needed.
-		$origin_host = wp_parse_url( $origin, PHP_URL_HOST );
-		$site_host   = wp_parse_url( home_url(), PHP_URL_HOST );
-		return is_string( $origin_host )
-			&& is_string( $site_host )
-			&& strtolower( $origin_host ) === strtolower( $site_host );
+	private function resolve_caller( WP_REST_Request $request, array $settings ) {
+		$session_id = (string) $request->get_header( 'mcp-session-id' );
+
+		if ( '' !== $session_id ) {
+			$client_name = WC_AI_Storefront_MCP_Session::client_name_for( $session_id );
+			if ( null === $client_name ) {
+				return new WP_Error( 'mcp_session_unknown', __( 'Unknown or expired session.', 'woocommerce-ai-storefront' ), [ 'status' => 404 ] );
+			}
+			// Re-gate the stored identity (the allow-list may have tightened).
+			if ( is_wp_error( WC_AI_Storefront_MCP_Session::gate_client_name( $client_name, $settings ) ) ) {
+				return new WP_Error( 'mcp_agent_blocked', __( 'Agent is not allowed.', 'woocommerce-ai-storefront' ), [ 'status' => 403 ] );
+			}
+			return $client_name;
+		}
+
+		// No session → anonymous caller. Admitted only if unknown agents are
+		// allowed; attribute the call to the anonymous fallback ('').
+		if ( is_wp_error( WC_AI_Storefront_MCP_Session::gate_client_name( '', $settings ) ) ) {
+			return new WP_Error( 'mcp_agent_blocked', __( 'Anonymous agents are not allowed.', 'woocommerce-ai-storefront' ), [ 'status' => 403 ] );
+		}
+		return '';
 	}
 
 	/**

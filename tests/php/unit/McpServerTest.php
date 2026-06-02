@@ -102,6 +102,16 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayHasKey( '/mcp', $registered );
 		$this->assertSame( 'wc/ucp/v1', $registered['/mcp']['namespace'] );
+
+		// CORS support is wired so browser agents can read/send the MCP headers.
+		$this->assertNotFalse(
+			has_filter( 'rest_exposed_cors_headers' ),
+			'Mcp-Session-Id must be exposed via CORS'
+		);
+		$this->assertNotFalse(
+			has_filter( 'rest_allowed_cors_headers' ),
+			'MCP request headers must be allowed via CORS'
+		);
 	}
 
 	public function test_initialize_returns_session_header_and_server_info(): void {
@@ -125,7 +135,9 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'dev.ucp.shopping', $data['result']['serverInfo']['name'] );
 	}
 
-	public function test_tools_list_without_session_header_returns_400(): void {
+	public function test_tools_list_works_without_session(): void {
+		// Discovery is session-free: a first-contact / stateless client can list
+		// tools without establishing a session.
 		$request  = $this->rpc_request(
 			[
 				'jsonrpc' => '2.0',
@@ -136,10 +148,13 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		);
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
 
-		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertCount( 3, $response->get_data()['result']['tools'] );
 	}
 
-	public function test_tools_list_with_unknown_session_returns_404(): void {
+	public function test_tools_list_ignores_session_state(): void {
+		// tools/list is ungated discovery — even an unknown session id is
+		// ignored and the full tool list is returned.
 		$request  = $this->rpc_request(
 			[
 				'jsonrpc' => '2.0',
@@ -153,7 +168,8 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		);
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
 
-		$this->assertSame( 404, $response->get_status() );
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertCount( 3, $response->get_data()['result']['tools'] );
 	}
 
 	public function test_tools_list_with_valid_session_returns_tool_list(): void {
@@ -311,7 +327,8 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 				[
 					'jsonrpc' => '2.0',
 					'id'      => 2,
-					'method'  => 'tools/list',
+					'method'  => 'tools/call',
+					'params'  => [ 'name' => 'catalog_search', 'arguments' => [ 'query' => 'x' ] ],
 				],
 				[
 					'MCP-Protocol-Version' => '2025-06-18',
@@ -320,7 +337,8 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 			)
 		);
 
-		// The per-call re-gate denies the previously-vetted session.
+		// The per-call re-gate denies the previously-vetted session on tools/call
+		// (discovery via tools/list is ungated; invoking a tool is not).
 		$this->assertSame( 403, $response->get_status() );
 	}
 
@@ -629,5 +647,74 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertSame( 200, $request->get_status() );
 		$this->assertArrayHasKey( 'result', $request->get_data() );
+	}
+
+	public function test_tools_call_without_session_allowed_when_unknown_agents_allowed(): void {
+		// Sessions are optional: with allow_unknown_ucp_agents on (setUp default),
+		// a sessionless tools/call is admitted as the anonymous agent and the
+		// tool runs (here checkout_create with empty line_items → a 400 business
+		// error surfaced as isError, proving the caller passed the gate).
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'tools/call',
+					'params'  => [ 'name' => 'checkout_create', 'arguments' => [ 'line_items' => [] ] ],
+				],
+				[ 'MCP-Protocol-Version' => '2025-06-18' ]
+			)
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertTrue( $response->get_data()['result']['isError'] );
+	}
+
+	public function test_tools_call_without_session_blocked_when_unknown_agents_disallowed(): void {
+		// With allow_unknown_ucp_agents off, an anonymous (sessionless) caller is
+		// blocked at the gate → 403, before any tool runs.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                  => 'yes',
+			'mcp_enabled'              => 'yes',
+			'allow_unknown_ucp_agents' => 'no',
+			'allowed_crawlers'         => [],
+		];
+
+		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'tools/call',
+					'params'  => [ 'name' => 'catalog_search', 'arguments' => [ 'query' => 'x' ] ],
+				],
+				[ 'MCP-Protocol-Version' => '2025-06-18' ]
+			)
+		);
+
+		$this->assertSame( 403, $response->get_status() );
+	}
+
+	public function test_tools_call_with_unknown_session_returns_404(): void {
+		// A tools/call carrying an unknown/expired session id is told to
+		// re-initialize (404) — distinct from the anonymous (no-header) path.
+		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'tools/call',
+					'params'  => [ 'name' => 'catalog_search', 'arguments' => [ 'query' => 'x' ] ],
+				],
+				[
+					'MCP-Protocol-Version' => '2025-06-18',
+					'Mcp-Session-Id'       => 'no-such-session',
+				]
+			)
+		);
+
+		$this->assertSame( 404, $response->get_status() );
 	}
 }
