@@ -100,7 +100,12 @@ class WC_AI_Storefront_MCP_Session {
 	 */
 	public static function start( string $client_name ): string {
 		$id = (string) wp_generate_uuid4();
-		set_transient( self::TRANSIENT_PREFIX . $id, $client_name, self::TTL_SECONDS );
+		// Cap the stored name at 253 bytes (RFC-1035 FQDN max, matching the
+		// attribution resolver's cap). The name is an untrusted handshake
+		// value persisted to the options table via a transient; capping
+		// prevents a malicious client from bloating the DB with an oversized
+		// name even within the rate limit.
+		set_transient( self::TRANSIENT_PREFIX . $id, substr( $client_name, 0, 253 ), self::TTL_SECONDS );
 		return $id;
 	}
 

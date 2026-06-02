@@ -627,7 +627,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'pagination'       => $request->get_param( 'pagination' ),
 			'sort'             => $request->get_param( 'sort' ),
 			'agent_data'       => self::resolve_agent_host( $request ),
-			'ucp_agent_header' => (string) $request->get_header( 'ucp-agent' ),
+			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
 		];
 
 		$result   = $this->run_catalog_search( $params );
@@ -1773,7 +1773,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'context'          => $request->get_param( 'context' ),
 			'signals'          => $request->get_param( 'signals' ),
 			'agent_data'       => self::resolve_agent_host( $request ),
-			'ucp_agent_header' => (string) $request->get_header( 'ucp-agent' ),
+			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
 		];
 
 		$result = $this->run_catalog_lookup( $params );
@@ -2463,7 +2463,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'line_items'       => $request->get_param( 'line_items' ),
 			'context'          => $request->get_param( 'context' ),
 			'agent_data'       => self::resolve_agent_host( $request ),
-			'ucp_agent_header' => (string) $request->get_header( 'ucp-agent' ),
+			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
 		];
 
 		$result = $this->run_checkout_create( $params );

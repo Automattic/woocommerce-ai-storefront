@@ -157,6 +157,28 @@ class McpSessionTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_start_caps_stored_name_at_253_bytes(): void {
+		// An untrusted handshake name is persisted to a transient (options
+		// table); cap it so an oversized name can't bloat the DB.
+		$store = [];
+		Functions\when( 'wp_generate_uuid4' )->justReturn( 'cap-test-session-id' );
+		Functions\when( 'set_transient' )->alias(
+			function ( $key, $value, $ttl ) use ( &$store ) {
+				$store[ $key ] = $value;
+				return true;
+			}
+		);
+		Functions\when( 'get_transient' )->alias(
+			function ( $key ) use ( &$store ) {
+				return $store[ $key ] ?? false;
+			}
+		);
+
+		$session_id = WC_AI_Storefront_MCP_Session::start( str_repeat( 'a', 300 ) );
+
+		$this->assertSame( 253, strlen( WC_AI_Storefront_MCP_Session::client_name_for( $session_id ) ) );
+	}
+
 	public function test_client_name_for_returns_null_for_empty_id(): void {
 		// Empty session id must short-circuit before touching the transient
 		// store.
