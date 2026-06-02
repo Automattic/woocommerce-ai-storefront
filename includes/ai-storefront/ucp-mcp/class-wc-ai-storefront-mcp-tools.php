@@ -29,15 +29,22 @@ class WC_AI_Storefront_MCP_Tools {
 	 * only invite agents to spend tokens populating a no-op. The server still
 	 * tolerates a `signals` payload if one is sent.
 	 *
-	 * Schema keywords are restricted to the lowest common denominator that
-	 * every major model's function-calling layer accepts: type, properties,
-	 * items, required, enum, and description. We deliberately avoid `anyOf`,
-	 * `minItems`/`maxItems`, and `minimum`/`maximum` — Gemini's
-	 * function-declaration validator rejects them with a hard 400 (and other
-	 * clients vary), which breaks tool registration for the WHOLE session, not
-	 * just one call. Constraints those keywords would express (e.g. "1-100
-	 * ids", "query and/or filters") live in the prose descriptions instead,
-	 * which all models tolerate.
+	 * Schema keywords are kept close to the subset every major model's
+	 * function-calling layer accepts: type, properties, items, required, enum,
+	 * description — plus one `anyOf` on catalog_search. We deliberately avoid
+	 * the numeric/array bound keywords `minItems`/`maxItems` and
+	 * `minimum`/`maximum`: Gemini's function-declaration validator rejects them
+	 * with a hard 400 that breaks tool registration for the WHOLE session, and
+	 * they add little value, so those limits live in the prose descriptions
+	 * (e.g. "1-100 ids", "rating 1-5") instead.
+	 *
+	 * `anyOf` is the one structural constraint we keep — it expresses
+	 * catalog_search's "provide query and/or filters" rule, which no single
+	 * `required` entry can (filters-only browse is valid). Caveat: Gemini's
+	 * function-calling is documented to reject `anyOf` too, but we could not
+	 * verify that here (the playground 500s were its own backend, not our
+	 * schema). If a Gemini-specific tool-registration failure appears, drop
+	 * this `anyOf` first.
 	 *
 	 * @return array<int,array<string,mixed>>
 	 */
@@ -140,13 +147,14 @@ class WC_AI_Storefront_MCP_Tools {
 						],
 						'context'    => self::context_schema(),
 					],
-					// "Provide query and/or filters" is conveyed in the tool
-					// description, NOT a JSON-Schema `anyOf` constraint: Gemini's
-					// function-calling subset rejects `anyOf` (and array/number
-					// bounds) with a hard 400, so the inputSchema stays within the
-					// keywords every model tolerates (type, properties, enum,
-					// required, description) and prose carries the soft
-					// constraint. See the class docblock.
+					// A meaningful search needs a keyword or at least one filter.
+					// Expressed as anyOf (not a hard `required: [query]`) so the
+					// filters-only browse the core supports stays valid. See the
+					// class docblock re: the Gemini anyOf caveat.
+					'anyOf'      => [
+						[ 'required' => [ 'query' ] ],
+						[ 'required' => [ 'filters' ] ],
+					],
 				],
 			],
 			[

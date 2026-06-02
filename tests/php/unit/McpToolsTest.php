@@ -172,27 +172,33 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'id', $items['properties']['item']['required'] );
 	}
 
-	public function test_catalog_search_guides_query_or_filters_in_description(): void {
-		// The "provide query and/or filters" constraint lives in the tool
-		// description, not a JSON-Schema anyOf — Gemini's function-calling
-		// rejects anyOf. catalog_search has no top-level `required` because
-		// filters-only browse is valid.
-		$tool = $this->tool( 'catalog_search' );
-		$this->assertArrayNotHasKey( 'required', $tool['inputSchema'] );
+	public function test_catalog_search_requires_query_or_filters(): void {
+		// catalog_search has no single top-level required field (filters-only
+		// browse is valid), so the "query and/or filters" rule is expressed as
+		// an anyOf and reinforced in the description. (anyOf is a documented
+		// Gemini function-calling risk — see the class docblock — but it's the
+		// only machine-readable way to say "at least one of these two".)
+		$tool   = $this->tool( 'catalog_search' );
+		$schema = $tool['inputSchema'];
+		$this->assertArrayNotHasKey( 'required', $schema );
+		$this->assertArrayHasKey( 'anyOf', $schema );
+		$required_sets = array_map( static fn( array $b ) => $b['required'], $schema['anyOf'] );
+		$this->assertContains( [ 'query' ], $required_sets );
+		$this->assertContains( [ 'filters' ], $required_sets );
 		$this->assertMatchesRegularExpression( '/query/i', $tool['description'] );
 		$this->assertMatchesRegularExpression( '/filters/i', $tool['description'] );
 	}
 
-	public function test_schemas_use_only_function_calling_safe_keywords(): void {
-		// Gemini's function-declaration validator 400s on anyOf/oneOf/allOf and
-		// array/number bounds, which breaks tool registration for the whole
-		// session (not just one call). Lock every tool's inputSchema to the
-		// cross-model-safe subset so a future edit can't silently reintroduce
-		// an incompatible keyword.
-		$forbidden = [ 'anyOf', 'oneOf', 'allOf', 'minItems', 'maxItems', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum' ];
+	public function test_schemas_avoid_bounds_keywords_for_gemini_compat(): void {
+		// Gemini's function-declaration validator 400s on array/number bound
+		// keywords, breaking tool registration for the whole session. Keep them
+		// out of every inputSchema (the limits live in descriptions instead).
+		// `anyOf` is deliberately retained on catalog_search — see the dedicated
+		// test above — so it is NOT in this forbidden set.
+		$forbidden = [ 'oneOf', 'allOf', 'minItems', 'maxItems', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum' ];
 		$keys      = $this->collect_schema_keys( array_column( WC_AI_Storefront_MCP_Tools::definitions(), 'inputSchema' ) );
 		foreach ( $forbidden as $kw ) {
-			$this->assertNotContains( $kw, $keys, "inputSchema must not use '{$kw}' — it breaks Gemini function-calling" );
+			$this->assertNotContains( $kw, $keys, "inputSchema must not use '{$kw}'" );
 		}
 	}
 
