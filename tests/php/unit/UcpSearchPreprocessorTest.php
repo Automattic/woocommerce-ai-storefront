@@ -517,14 +517,43 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( true );
 
-		$filter        = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query      = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
-		$existing_join = 'LEFT JOIN wp_wc_product_meta_lookup ON wp_posts.ID = wp_wc_product_meta_lookup.product_id';
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
+		// WC core's actual JOIN form (table AS the `wc_product_meta_lookup`
+		// alias) — already present, so our filter must not add a second one.
+		$existing_join = 'LEFT JOIN wp_wc_product_meta_lookup wc_product_meta_lookup ON wp_posts.ID = wc_product_meta_lookup.product_id';
 		$args          = array( 'where' => '', 'join' => $existing_join );
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
 		$this->assertSame( $existing_join, $result['join'], 'JOIN must not be modified when already present' );
+	}
+
+	public function test_sku_join_aliases_table_for_wc_core_price_filter_compat(): void {
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( true );
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
+		$args     = array( 'where' => '', 'join' => '' );
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		// Regression: the JOIN must alias the lookup table AS
+		// `wc_product_meta_lookup` (WC core's alias). A bare
+		// `LEFT JOIN wp_wc_product_meta_lookup` (no alias) tripped core's
+		// `strstr( $join, 'wc_product_meta_lookup' )` dedup, so core skipped its
+		// own aliased JOIN and then referenced a missing alias in its price /
+		// sort WHERE clause — an "Unknown column" error that silently broke
+		// search + price-filter and search + sort-by-price.
+		$this->assertMatchesRegularExpression(
+			'/LEFT JOIN\s+wp_wc_product_meta_lookup\s+wc_product_meta_lookup\s+ON/i',
+			$result['join']
+		);
+		// The SKU clause must reference the alias, never the bare table name
+		// (which is invalid SQL once the table is aliased).
+		$this->assertStringContainsString( 'wc_product_meta_lookup.sku', $result['where'] );
+		$this->assertStringNotContainsString( 'wp_wc_product_meta_lookup.sku', $result['where'] );
 	}
 
 	public function test_no_join_when_sku_disabled(): void {

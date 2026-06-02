@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-02T03:55:25+00:00\n"
+"POT-Creation-Date: 2026-06-02T04:12:48+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -205,59 +205,59 @@ msgstr ""
 msgid "Opaque cursor from a prior response's pagination.cursor, to fetch the next page."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:140
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:149
 msgid "Look up specific products by their UCP id; returns full UCP product records. Use ids returned by catalog_search."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:149
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:158
 msgid "UCP product ids to fetch, e.g. ['prod_123','var_456']. Between 1 and 100 ids."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:158
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:167
 msgid "Create a stateless checkout session for one or more products and return a continue_url to redirect the shopper to. Does not place the order."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:165
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:174
 msgid "Items to purchase."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:171
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:180
 msgid "The product or variation to add."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:175
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:184
 msgid "UCP product or variation id, e.g. 'prod_123' or 'var_456'."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:183
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:192
 msgid "Quantity to purchase. Defaults to 1."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:208
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:217
 msgid "Optional request context."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:212
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:221
 msgid "ISO 4217 currency code, e.g. 'USD', for price-filter denomination and price display."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:216
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:225
 msgid "BCP 47 locale, e.g. 'en-US'."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:256
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:265
 msgid "Catalog search"
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:273
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:282
 msgid "Catalog lookup"
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:286
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:295
 msgid "Checkout"
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:290
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:299
 msgid "Unknown tool."
 msgstr ""
 
