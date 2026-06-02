@@ -19,7 +19,15 @@ defined( 'ABSPATH' ) || exit;
 class WC_AI_Storefront_MCP_Tools {
 
 	/**
-	 * tools/list payload. inputSchemas mirror the wc/ucp/v1 route args.
+	 * tools/list payload. inputSchemas describe exactly the parameters the
+	 * neutral cores honor (mirrored from the wc/ucp/v1 route handlers), with
+	 * descriptions and nested properties so models call the tools correctly
+	 * instead of guessing object shapes and sending empty placeholders.
+	 *
+	 * `signals` is intentionally omitted: the UCP cores accept it but MUST NOT
+	 * honor it (per spec — see run_catalog_search), so advertising it would
+	 * only invite agents to spend tokens populating a no-op. The server still
+	 * tolerates a `signals` payload if one is sent.
 	 *
 	 * @return array<int,array<string,mixed>>
 	 */
@@ -27,48 +35,185 @@ class WC_AI_Storefront_MCP_Tools {
 		return [
 			[
 				'name'        => 'catalog_search',
-				'description' => __( 'Search the store catalog. Returns UCP products.', 'woocommerce-ai-storefront' ),
+				'description' => __( 'Search the store catalog by keyword and/or structured filters; returns matching UCP products. Provide `query` for keyword search and/or `filters` to browse — at least one is recommended.', 'woocommerce-ai-storefront' ),
 				'inputSchema' => [
 					'type'       => 'object',
 					'properties' => [
-						'query'      => [ 'type' => 'string' ],
-						'context'    => [ 'type' => 'object' ],
-						'signals'    => [ 'type' => 'object' ],
-						'filters'    => [ 'type' => 'object' ],
-						'pagination' => [ 'type' => 'object' ],
-						'sort'       => [ 'type' => 'object' ],
+						'query'      => [
+							'type'        => 'string',
+							'description' => __( "Keyword search, e.g. 'blue hoodie'. Optional — you may browse with filters alone — but provide it for text search.", 'woocommerce-ai-storefront' ),
+						],
+						'filters'    => [
+							'type'        => 'object',
+							'description' => __( 'Structured filters to narrow results. All fields optional.', 'woocommerce-ai-storefront' ),
+							'properties'  => [
+								'categories' => [
+									'type'        => 'array',
+									'items'       => [ 'type' => 'string' ],
+									'description' => __( 'Category slugs or names to match.', 'woocommerce-ai-storefront' ),
+								],
+								'tags'       => [
+									'type'        => 'array',
+									'items'       => [ 'type' => 'string' ],
+									'description' => __( 'Tag slugs or names to match.', 'woocommerce-ai-storefront' ),
+								],
+								'brand'      => [
+									'type'        => 'array',
+									'items'       => [ 'type' => 'string' ],
+									'description' => __( 'Brand slugs or names to match.', 'woocommerce-ai-storefront' ),
+								],
+								'price'      => [
+									'type'        => 'object',
+									'description' => __( 'Price range in minor units (e.g. cents), denominated in context.currency.', 'woocommerce-ai-storefront' ),
+									'properties'  => [
+										'min' => [
+											'type'        => 'integer',
+											'description' => __( 'Minimum price in minor units.', 'woocommerce-ai-storefront' ),
+										],
+										'max' => [
+											'type'        => 'integer',
+											'description' => __( 'Maximum price in minor units.', 'woocommerce-ai-storefront' ),
+										],
+									],
+								],
+								'on_sale'    => [
+									'type'        => 'boolean',
+									'description' => __( 'Only products currently on sale.', 'woocommerce-ai-storefront' ),
+								],
+								'in_stock'   => [
+									'type'        => 'boolean',
+									'description' => __( 'Only in-stock products.', 'woocommerce-ai-storefront' ),
+								],
+								'featured'   => [
+									'type'        => 'boolean',
+									'description' => __( 'Only featured products.', 'woocommerce-ai-storefront' ),
+								],
+								'min_rating' => [
+									'type'        => 'integer',
+									'minimum'     => 1,
+									'maximum'     => 5,
+									'description' => __( 'Minimum average star rating, 1-5.', 'woocommerce-ai-storefront' ),
+								],
+								'attributes' => [
+									'type'        => 'object',
+									'description' => __( 'Map of attribute slug to an array of accepted values, e.g. {"color":["blue"],"size":["M"]}.', 'woocommerce-ai-storefront' ),
+								],
+							],
+						],
+						'sort'       => [
+							'type'        => 'object',
+							'description' => __( 'Result ordering.', 'woocommerce-ai-storefront' ),
+							'properties'  => [
+								'field'     => [
+									'type'        => 'string',
+									'enum'        => [ 'price', 'title', 'date', 'newest', 'popularity', 'rating', 'menu_order' ],
+									'description' => __( "Field to sort by. 'newest' is an alias for date descending.", 'woocommerce-ai-storefront' ),
+								],
+								'direction' => [
+									'type'        => 'string',
+									'enum'        => [ 'asc', 'desc' ],
+									'description' => __( "Sort direction. Defaults to 'asc'; ignored for 'newest' (always descending).", 'woocommerce-ai-storefront' ),
+								],
+							],
+						],
+						'pagination' => [
+							'type'        => 'object',
+							'description' => __( 'Pagination controls.', 'woocommerce-ai-storefront' ),
+							'properties'  => [
+								'limit'  => [
+									'type'        => 'integer',
+									'minimum'     => 1,
+									'description' => __( 'Maximum number of products to return.', 'woocommerce-ai-storefront' ),
+								],
+								'cursor' => [
+									'type'        => 'string',
+									'description' => __( "Opaque cursor from a prior response's pagination.cursor, to fetch the next page.", 'woocommerce-ai-storefront' ),
+								],
+							],
+						],
+						'context'    => self::context_schema(),
 					],
 				],
 			],
 			[
 				'name'        => 'catalog_lookup',
-				'description' => __( 'Look up specific products by id. Max 100 ids.', 'woocommerce-ai-storefront' ),
+				'description' => __( 'Look up specific products by their UCP id; returns full UCP product records. Use ids returned by catalog_search.', 'woocommerce-ai-storefront' ),
 				'inputSchema' => [
 					'type'       => 'object',
 					'properties' => [
 						'ids'     => [
-							'type'  => 'array',
-							'items' => [ 'type' => 'string' ],
+							'type'        => 'array',
+							'items'       => [ 'type' => 'string' ],
+							'minItems'    => 1,
+							'maxItems'    => 100,
+							'description' => __( "UCP product ids to fetch, e.g. ['prod_123','var_456']. Between 1 and 100 ids.", 'woocommerce-ai-storefront' ),
 						],
-						'context' => [ 'type' => 'object' ],
-						'signals' => [ 'type' => 'object' ],
+						'context' => self::context_schema(),
 					],
 					'required'   => [ 'ids' ],
 				],
 			],
 			[
 				'name'        => 'checkout_create',
-				'description' => __( 'Create a stateless checkout session and get a continue_url.', 'woocommerce-ai-storefront' ),
+				'description' => __( 'Create a stateless checkout session for one or more products and return a continue_url to redirect the shopper to. Does not place the order.', 'woocommerce-ai-storefront' ),
 				'inputSchema' => [
 					'type'       => 'object',
 					'properties' => [
 						'line_items' => [
-							'type'  => 'array',
-							'items' => [ 'type' => 'object' ],
+							'type'        => 'array',
+							'minItems'    => 1,
+							'description' => __( 'Items to purchase.', 'woocommerce-ai-storefront' ),
+							'items'       => [
+								'type'       => 'object',
+								'properties' => [
+									'item'     => [
+										'type'        => 'object',
+										'description' => __( 'The product or variation to add.', 'woocommerce-ai-storefront' ),
+										'properties'  => [
+											'id' => [
+												'type' => 'string',
+												'description' => __( "UCP product or variation id, e.g. 'prod_123' or 'var_456'.", 'woocommerce-ai-storefront' ),
+											],
+										],
+										'required'    => [ 'id' ],
+									],
+									'quantity' => [
+										'type'        => 'integer',
+										'minimum'     => 1,
+										'description' => __( 'Quantity to purchase. Defaults to 1.', 'woocommerce-ai-storefront' ),
+									],
+								],
+								'required'   => [ 'item' ],
+							],
 						],
-						'context'    => [ 'type' => 'object' ],
+						'context'    => self::context_schema(),
 					],
 					'required'   => [ 'line_items' ],
+				],
+			],
+		];
+	}
+
+	/**
+	 * Shared schema for the optional UCP `context` object, honored by every
+	 * tool (currency drives price-filter denomination + price display; locale
+	 * is advisory). Mirrors how get_currency_from_context / the price-filter
+	 * branch read context in the REST controller.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function context_schema(): array {
+		return [
+			'type'        => 'object',
+			'description' => __( 'Optional request context.', 'woocommerce-ai-storefront' ),
+			'properties'  => [
+				'currency' => [
+					'type'        => 'string',
+					'description' => __( "ISO 4217 currency code, e.g. 'USD', for price-filter denomination and price display.", 'woocommerce-ai-storefront' ),
+				],
+				'locale'   => [
+					'type'        => 'string',
+					'description' => __( "BCP 47 locale, e.g. 'en-US'.", 'woocommerce-ai-storefront' ),
 				],
 			],
 		];

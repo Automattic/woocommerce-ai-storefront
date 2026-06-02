@@ -70,6 +70,88 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'line_items', $checkout['inputSchema']['required'] );
 	}
 
+	/**
+	 * Find a tool definition by name (test helper).
+	 *
+	 * @param string $name Tool name.
+	 * @return array<string,mixed>
+	 */
+	private function tool( string $name ): array {
+		foreach ( WC_AI_Storefront_MCP_Tools::definitions() as $def ) {
+			if ( $name === $def['name'] ) {
+				return $def;
+			}
+		}
+		$this->fail( "Tool not found: {$name}" );
+	}
+
+	public function test_every_tool_has_a_nonempty_description(): void {
+		foreach ( WC_AI_Storefront_MCP_Tools::definitions() as $def ) {
+			$this->assertArrayHasKey( 'description', $def );
+			$this->assertNotEmpty( $def['description'], "{$def['name']} needs a description" );
+		}
+	}
+
+	public function test_every_top_level_parameter_has_a_description(): void {
+		// Models guess a parameter's purpose when it has no description; every
+		// advertised parameter must carry one.
+		foreach ( WC_AI_Storefront_MCP_Tools::definitions() as $def ) {
+			foreach ( $def['inputSchema']['properties'] as $param => $schema ) {
+				$this->assertNotEmpty(
+					$schema['description'] ?? '',
+					"{$def['name']}.{$param} needs a description"
+				);
+			}
+		}
+	}
+
+	public function test_object_parameters_declare_nested_properties(): void {
+		// A bare `{type:object}` tells a model nothing about what to send; every
+		// honored object parameter must expose its nested shape. `attributes`
+		// and `filters.price`-style free-form maps are exempt only where the
+		// shape is genuinely dynamic (attributes), which we assert explicitly
+		// below rather than skipping silently.
+		$search = $this->tool( 'catalog_search' )['inputSchema']['properties'];
+		foreach ( [ 'filters', 'sort', 'pagination', 'context' ] as $obj ) {
+			$this->assertSame( 'object', $search[ $obj ]['type'] );
+			$this->assertNotEmpty( $search[ $obj ]['properties'], "{$obj} needs nested properties" );
+		}
+		// attributes is a deliberately dynamic map (attribute slug => values).
+		$this->assertSame( 'object', $search['filters']['properties']['attributes']['type'] );
+	}
+
+	public function test_signals_is_not_advertised(): void {
+		// signals is accepted by the cores but never honored (UCP spec), so it
+		// is deliberately omitted from the advertised schema to avoid agents
+		// spending tokens on a no-op. The server still tolerates it if sent.
+		foreach ( WC_AI_Storefront_MCP_Tools::definitions() as $def ) {
+			$this->assertArrayNotHasKey(
+				'signals',
+				$def['inputSchema']['properties'],
+				"{$def['name']} must not advertise the no-op signals param"
+			);
+		}
+	}
+
+	public function test_sort_field_enum_matches_core_allow_list(): void {
+		// Lock the advertised sort vocabulary to the orderby_map the core
+		// honors; drift here means agents get told about fields we ignore.
+		$sort = $this->tool( 'catalog_search' )['inputSchema']['properties']['sort'];
+		$this->assertSame(
+			[ 'price', 'title', 'date', 'newest', 'popularity', 'rating', 'menu_order' ],
+			$sort['properties']['field']['enum']
+		);
+		$this->assertSame( [ 'asc', 'desc' ], $sort['properties']['direction']['enum'] );
+	}
+
+	public function test_checkout_line_item_shape_requires_item_id(): void {
+		// Mirrors process_line_item: each entry is { item: { id }, quantity }.
+		$items = $this->tool( 'checkout_create' )['inputSchema']['properties']['line_items']['items'];
+		$this->assertSame( 'object', $items['type'] );
+		$this->assertContains( 'item', $items['required'] );
+		$this->assertContains( 'id', $items['properties']['item']['required'] );
+	}
+
 	public function test_core_result_to_mcp_maps_success_to_structured_content(): void {
 		$result = WC_AI_Storefront_MCP_Tools::core_result_to_mcp(
 			[
