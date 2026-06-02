@@ -4571,11 +4571,20 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				}
 
 				if ( $apply_price_filter ) {
+					// Forward minor units unchanged. The WC Store API
+					// min_price/max_price params are denominated in the
+					// currency's minor unit (cents for USD, yen for JPY) —
+					// the SAME encoding as UCP amounts and the multi-currency
+					// convert_amount() output above. Converting to a major-unit
+					// decimal string here made the Store API read "10.00" as 10
+					// minor units ($0.10) — a 100x under-filter that silently
+					// returned the wrong products. Cast to string to match the
+					// Store API param's documented type.
 					if ( null !== $min_value ) {
-						$store_params['min_price'] = self::minor_units_to_presentment( $min_value );
+						$store_params['min_price'] = (string) $min_value;
 					}
 					if ( null !== $max_value ) {
-						$store_params['max_price'] = self::minor_units_to_presentment( $max_value );
+						$store_params['max_price'] = (string) $max_value;
 					}
 				}
 			}
@@ -5172,32 +5181,6 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		return array(
 			'ids'        => array_values( array_unique( $ids ) ),
 			'unresolved' => $unresolved,
-		);
-	}
-
-	/**
-	 * Convert integer minor units (UCP's price encoding) to a decimal
-	 * string in the store's currency presentment format.
-	 *
-	 * UCP sends `1000` meaning $10.00 (for a 2-decimal currency like
-	 * USD). WC Store API's min_price/max_price expect `"10.00"`. We
-	 * divide by 10^decimals where `decimals` is the merchant's configured
-	 * price precision (2 for USD/EUR, 0 for JPY, 3 for BHD).
-	 *
-	 * `number_format()` over raw float division sidesteps floating-point
-	 * representation quirks — 0.1 + 0.2 famously isn't 0.3, and we
-	 * don't want that kind of drift in a price string.
-	 */
-	private static function minor_units_to_presentment( int $minor_units ): string {
-		$decimals = function_exists( 'wc_get_price_decimals' )
-			? (int) wc_get_price_decimals()
-			: 2;
-
-		return number_format(
-			$minor_units / ( 10 ** $decimals ),
-			$decimals,
-			'.',
-			''
 		);
 	}
 
