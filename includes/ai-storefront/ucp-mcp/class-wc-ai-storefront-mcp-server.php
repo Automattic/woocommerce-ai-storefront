@@ -96,6 +96,18 @@ class WC_AI_Storefront_MCP_Server {
 			return new WP_REST_Response( null, 403 );
 		}
 
+		// Rate-limit EVERY request — BEFORE JSON parsing — so a caller can't
+		// bypass throttling by flooding malformed JSON / invalid JSON-RPC
+		// envelopes (whose parse / invalid-request early returns happen just
+		// below). check_outer_rate_limit() no-ops when the feature is off and
+		// keys on UA+IP, so even unparseable or unsessioned requests spend the
+		// caller's per-minute budget. `initialize` is covered too — each call
+		// mints a short-TTL session transient, which this throttles.
+		$rate_limit = WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
+		if ( is_wp_error( $rate_limit ) ) {
+			return new WP_REST_Response( null, 429 );
+		}
+
 		$rpc = json_decode( (string) $request->get_body(), true );
 		if ( null === $rpc && JSON_ERROR_NONE !== json_last_error() ) {
 			// Body was not parseable JSON at all.
@@ -111,17 +123,6 @@ class WC_AI_Storefront_MCP_Server {
 		$id     = $rpc['id'] ?? null;
 		$method = (string) $rpc['method'];
 		$params = is_array( $rpc['params'] ?? null ) ? $rpc['params'] : [];
-
-		// Rate-limit EVERY request, including `initialize`. Otherwise an
-		// unauthenticated caller could flood `initialize` — each call mints a
-		// short-TTL session transient — and amplify writes to the options
-		// table. check_outer_rate_limit() no-ops when the feature is off and
-		// keys on UA+IP, so even invalid or unsessioned requests still spend
-		// the caller's per-minute budget (which is the point — abuse counts).
-		$rate_limit = WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
-		if ( is_wp_error( $rate_limit ) ) {
-			return new WP_REST_Response( null, 429 );
-		}
 
 		if ( 'initialize' === $method ) {
 			return $this->do_initialize( $id, $params, $settings );
@@ -183,7 +184,10 @@ class WC_AI_Storefront_MCP_Server {
 	 * @return WP_REST_Response
 	 */
 	private function do_initialize( $id, array $params, array $settings ): WP_REST_Response {
-		$client_name = (string) ( $params['clientInfo']['name'] ?? '' );
+		// Extract clientInfo.name defensively: a client may send `clientInfo`
+		// as a non-object (e.g. a string), which would warn on array access.
+		$client_info = is_array( $params['clientInfo'] ?? null ) ? $params['clientInfo'] : [];
+		$client_name = is_string( $client_info['name'] ?? null ) ? $client_info['name'] : '';
 		$gated       = WC_AI_Storefront_MCP_Session::gate_client_name( $client_name, $settings );
 		if ( is_wp_error( $gated ) ) {
 			return new WP_REST_Response( null, 403 );

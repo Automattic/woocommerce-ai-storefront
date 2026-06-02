@@ -502,4 +502,98 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 403, $response->get_status() );
 	}
+
+	public function test_rate_limit_applies_to_malformed_requests(): void {
+		// Malformed JSON must be throttled too — the limiter runs BEFORE the
+		// parse early-return, so a flood of garbage can't bypass it.
+		Functions\when( 'get_transient' )->alias(
+			function ( $key ) {
+				if ( str_starts_with( (string) $key, 'wc_ai_ucp_rl_' ) ) {
+					return 999;
+				}
+				return $this->transients[ $key ] ?? false;
+			}
+		);
+
+		$request = new WP_REST_Request( 'POST', '/wc/ucp/v1/mcp' );
+		$request->set_body( 'not json at all' );
+		$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
+
+		$this->assertSame( 429, $response->get_status() );
+	}
+
+	public function test_non_array_client_info_does_not_warn(): void {
+		// A client may send clientInfo as a non-object; extracting name must
+		// not warn on illegal array access. With unknown agents allowed
+		// (setUp default), the empty name resolves to the "Other AI" bucket
+		// and is admitted.
+		set_error_handler(
+			static function ( $errno, $errstr ) {
+				throw new \RuntimeException( 'PHP warning: ' . $errstr );
+			},
+			E_WARNING
+		);
+		try {
+			$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
+				$this->rpc_request(
+					[
+						'jsonrpc' => '2.0',
+						'id'      => 1,
+						'method'  => 'initialize',
+						'params'  => [ 'clientInfo' => 'not-an-object' ],
+					]
+				)
+			);
+		} finally {
+			restore_error_handler();
+		}
+
+		$this->assertSame( 200, $response->get_status() );
+	}
+
+	public function test_catalog_lookup_missing_ids_distinct_from_empty(): void {
+		// The adapter passes null (not []) for a missing ids argument so the
+		// core's "missing array" error stays distinct from "empty array".
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$server  = new WC_AI_Storefront_MCP_Server();
+		$session = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		)->get_headers()['Mcp-Session-Id'];
+
+		$call = function ( array $arguments ) use ( $server, $session ) {
+			return $server->handle(
+				$this->rpc_request(
+					[
+						'jsonrpc' => '2.0',
+						'id'      => 2,
+						'method'  => 'tools/call',
+						'params'  => [ 'name' => 'catalog_lookup', 'arguments' => $arguments ],
+					],
+					[
+						'MCP-Protocol-Version' => '2025-06-18',
+						'Mcp-Session-Id'       => $session,
+					]
+				)
+			)->get_data()['result'];
+		};
+
+		$missing = $call( [] );
+		$empty   = $call( [ 'ids' => [] ] );
+
+		$this->assertTrue( $missing['isError'] );
+		$this->assertTrue( $empty['isError'] );
+		$this->assertNotSame(
+			$missing['content'][0]['text'],
+			$empty['content'][0]['text'],
+			'missing-ids and empty-ids must yield distinct error messages'
+		);
+	}
 }

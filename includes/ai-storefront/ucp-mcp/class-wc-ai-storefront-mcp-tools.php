@@ -115,7 +115,10 @@ class WC_AI_Storefront_MCP_Tools {
 				$params = array_merge(
 					$base,
 					[
-						'ids'     => $arguments['ids'] ?? [],
+						// Pass null (not []) when ids is absent so the core can
+						// distinguish "missing ids array" from "empty ids array"
+						// and return the accurate error message.
+						'ids'     => $arguments['ids'] ?? null,
 						'context' => $arguments['context'] ?? null,
 						'signals' => $arguments['signals'] ?? null,
 					]
