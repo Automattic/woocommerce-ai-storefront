@@ -301,7 +301,11 @@ class WC_AI_Storefront_MCP_Tools {
 				);
 				return self::core_result_to_mcp(
 					$controller->run_checkout_create( $params ),
-					__( 'Checkout', 'woocommerce-ai-storefront' )
+					__( 'Checkout', 'woocommerce-ai-storefront' ),
+					// Require a continue_url: a checkout that resolved no items
+					// returns HTTP 200 with the reason in messages[], and must
+					// surface as an MCP error rather than a silent success.
+					true
 				);
 
 			default:
@@ -322,11 +326,18 @@ class WC_AI_Storefront_MCP_Tools {
 	 * @param string $summary One-line summary label for the text block.
 	 * @return array MCP tool result.
 	 */
-	public static function core_result_to_mcp( array $result, string $summary ): array {
+	public static function core_result_to_mcp( array $result, string $summary, bool $require_continue_url = false ): array {
 		$status = (int) ( $result['status'] ?? 200 );
 		$body   = is_array( $result['body'] ?? null ) ? $result['body'] : [];
 
-		if ( $status >= 400 ) {
+		// A checkout that produced no continue_url is a total failure even when
+		// the core returns HTTP 200 with the reason in messages[] (e.g. every
+		// line item was not_found). Without this, an agent reads "Checkout" +
+		// isError:false as success. Partial success still carries a
+		// continue_url for the resolvable items and is NOT flagged.
+		$checkout_failed = $require_continue_url && empty( $body['continue_url'] );
+
+		if ( $status >= 400 || $checkout_failed ) {
 			$messages = isset( $body['messages'] ) && is_array( $body['messages'] )
 				? $body['messages']
 				: [];

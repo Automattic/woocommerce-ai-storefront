@@ -245,6 +245,65 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'structuredContent', $result );
 	}
 
+	public function test_checkout_with_no_continue_url_is_flagged_as_error(): void {
+		// A checkout where every line item failed to resolve returns HTTP 200
+		// with the reason in messages[] and NO continue_url. With
+		// require_continue_url=true the adapter must surface it as isError so a
+		// fast agent doesn't read "Checkout" + isError:false as success.
+		$result = WC_AI_Storefront_MCP_Tools::core_result_to_mcp(
+			[
+				'body'   => [
+					'status'   => 'incomplete',
+					'messages' => [
+						[ 'type' => 'error', 'code' => 'not_found', 'content' => 'Product not found.' ],
+					],
+				],
+				'status' => 200,
+			],
+			'Checkout',
+			true
+		);
+
+		$this->assertTrue( $result['isError'] );
+		$this->assertStringContainsString( 'not_found', $result['content'][0]['text'] );
+		$this->assertArrayNotHasKey( 'structuredContent', $result );
+	}
+
+	public function test_checkout_with_continue_url_is_success(): void {
+		// Full or partial success carries a continue_url for the resolvable
+		// items and must NOT be flagged, even with require_continue_url=true.
+		$result = WC_AI_Storefront_MCP_Tools::core_result_to_mcp(
+			[
+				'body'   => [
+					'status'       => 'requires_escalation',
+					'continue_url' => 'https://example.com/checkout-link/?products=15:1',
+					'messages'     => [],
+				],
+				'status' => 200,
+			],
+			'Checkout',
+			true
+		);
+
+		$this->assertArrayNotHasKey( 'isError', $result );
+		$this->assertSame( 'Checkout', $result['content'][0]['text'] );
+	}
+
+	public function test_require_continue_url_defaults_off_for_non_checkout_tools(): void {
+		// catalog_search/lookup never carry a continue_url; the default
+		// (false) must leave their 200 responses as successes.
+		$result = WC_AI_Storefront_MCP_Tools::core_result_to_mcp(
+			[
+				'body'   => [ 'products' => [] ],
+				'status' => 200,
+			],
+			'Catalog search'
+		);
+
+		$this->assertArrayNotHasKey( 'isError', $result );
+		$this->assertSame( [ 'products' => [] ], $result['structuredContent'] );
+	}
+
 	public function test_call_returns_wp_error_for_unknown_tool(): void {
 		$result = WC_AI_Storefront_MCP_Tools::call( 'gibberish_tool', [], 'ChatGPT' );
 
