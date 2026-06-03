@@ -1358,6 +1358,41 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// List-wrapped filters normalization (agent/OpenRouter serialization)
+	// ------------------------------------------------------------------
+
+	public function test_list_wrapped_filters_are_normalized_to_object(): void {
+		// Agent clients via the playground/OpenRouter path serialize `filters`
+		// as a single-element list — `[{ "in_stock": true }]` — instead of an
+		// object. Without normalization the string-keyed lookups miss and the
+		// filter is silently dropped. The list form must apply the same store
+		// param as the object form.
+		$this->successful_search(
+			[ 'filters' => [ [ 'in_stock' => true ] ] ]
+		);
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+	}
+
+	public function test_multi_element_list_filters_merge_into_one_map(): void {
+		// A list carrying several filter objects merges into one associative
+		// map so every constraint applies.
+		$this->successful_search(
+			[ 'filters' => [ [ 'in_stock' => true ], [ 'on_sale' => true ] ] ]
+		);
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+		$this->assertTrue( $this->captured_store_params['on_sale'] );
+	}
+
+	public function test_object_shaped_filters_pass_through_unchanged(): void {
+		// A correctly-shaped object (string keys) is not a list, so the
+		// normalization leaves it untouched.
+		$this->successful_search(
+			[ 'filters' => [ 'in_stock' => true ] ]
+		);
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+	}
+
+	// ------------------------------------------------------------------
 	// Price mapping (minor units forwarded unchanged to the Store API)
 	// ------------------------------------------------------------------
 

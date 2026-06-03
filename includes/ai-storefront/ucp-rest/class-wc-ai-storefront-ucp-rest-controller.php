@@ -4421,6 +4421,24 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return [ $store_params, $messages ];
 		}
 
+		// Some agent clients (observed across Gemini, Grok, and GPT through the
+		// OpenRouter tool-call path) serialize the `filters` object as a LIST —
+		// e.g. `[{ "in_stock": true }]` instead of `{ "in_stock": true }`. Left
+		// as-is, the string-keyed lookups below never match and every filter is
+		// silently dropped. Normalize a list-shaped payload by merging its array
+		// elements into one associative map so the agent's filters take effect.
+		// A correctly-shaped object has string keys (not a list) and passes
+		// through untouched; an empty array is left alone (it's a no-op anyway).
+		if ( [] !== $filters && array_is_list( $filters ) ) {
+			$merged = [];
+			foreach ( $filters as $entry ) {
+				if ( is_array( $entry ) ) {
+					$merged = array_merge( $merged, $entry );
+				}
+			}
+			$filters = $merged;
+		}
+
 		if ( isset( $filters['categories'] ) && is_array( $filters['categories'] ) ) {
 			$categories_capped = self::cap_filter_array(
 				$filters['categories'],
