@@ -89,6 +89,7 @@ WC Order Attribution captures `utm_source` / `utm_medium` natively. The plugin's
 
 For agents that don't speak UCP — typical SEO-style crawlers — the plugin still ships purchasability signals:
 
+- **`<link rel="ucp-agent">`** injected in every page `<head>` pointing at `/.well-known/ucp`. Caught by head-scraping agents (Perplexity, Bing, etc.) that read `<head>` before loading the DOM and may never reach llms.txt. Only emitted when AI Storefront is enabled.
 - **Enhanced JSON-LD** on product pages with `potentialAction` of type `BuyAction`. The `urlTemplate` carries the same UTM placeholders.
 - **`/llms.txt`** publishes store identity, a top-categories sample, shipping/returns policy, browse/search URLs (with `utm_id=woo_llms` for channel attribution), and pointers at the UCP manifest, REST base, and checkout-sessions endpoint.
 - **`robots.txt`** allows the named AI crawlers.
