@@ -65,7 +65,7 @@ jobs:
 
       - name: Checkout
         if: steps.skip_label.outputs.skip == 'false'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
 
