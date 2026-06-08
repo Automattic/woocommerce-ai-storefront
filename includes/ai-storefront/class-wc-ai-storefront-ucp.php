@@ -77,13 +77,6 @@ class WC_AI_Storefront_Ucp {
 	];
 
 	/**
-	 * Short-circuit canonical-URL redirects for the manifest endpoint.
-	 *
-	 * @param string|false $redirect_url WP's candidate canonical URL.
-	 * @return string|false               False disables the redirect;
-	 *                                   original value otherwise.
-	 */
-	/**
 	 * Inject a <link rel="ucp-agent"> tag pointing at the UCP manifest.
 	 *
 	 * Caught by head-scraping agents (Perplexity, Bing, etc.) that read
@@ -101,6 +94,13 @@ class WC_AI_Storefront_Ucp {
 		echo "\n" . '<link rel="ucp-agent" type="application/json" href="' . $manifest_url . '" />' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- esc_url applied above.
 	}
 
+	/**
+	 * Short-circuit canonical-URL redirects for the manifest endpoint.
+	 *
+	 * @param string|false $redirect_url WP's candidate canonical URL.
+	 * @return string|false               False disables the redirect;
+	 *                                   original value otherwise.
+	 */
 	public function suppress_canonical_redirect( $redirect_url ) {
 		if ( get_query_var( 'wc_ai_storefront_ucp' ) ) {
 			return false;
