@@ -77,6 +77,24 @@ class WC_AI_Storefront_Ucp {
 	];
 
 	/**
+	 * Inject a <link rel="ucp-agent"> tag pointing at the UCP manifest.
+	 *
+	 * Caught by head-scraping agents (Perplexity, Bing, etc.) that read
+	 * <head> before loading the full DOM and may never reach llms.txt.
+	 * Only emitted when the plugin is enabled — disabled stores should
+	 * not advertise discovery signals.
+	 */
+	public function inject_head_link(): void {
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			return;
+		}
+
+		$manifest_url = esc_url( home_url( '/.well-known/ucp' ) );
+		echo "\n" . '<link rel="ucp-agent" type="application/json" href="' . $manifest_url . '" />' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- esc_url applied above.
+	}
+
+	/**
 	 * Short-circuit canonical-URL redirects for the manifest endpoint.
 	 *
 	 * @param string|false $redirect_url WP's candidate canonical URL.

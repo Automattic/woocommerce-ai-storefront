@@ -121,6 +121,22 @@ The product `url` carries the canonical 0.5.0+ UTM payload (`utm_source=<hostnam
 - **Synthesized variants carry the parent's `short_description`** (#375). For simple / bundle / grouped products (and the `synthesize_default()` fallback for malformed-variable parents), the variant's `description.plain` now carries the parent's `short_description` (strip-tags + decode-entities) instead of an empty string. Agents that drill into a variant ID directly see the variant entity with useful descriptive copy. Graceful degradation preserved: when the parent has no `short_description`, the variant still emits `description.plain = ""`.
 - **Unpurchasable variations are filtered from `variants[]`** (#373). A misconfigured variation (e.g. missing a price) reads `is_in_stock: true` but `is_purchasable: false` in WC core. `fetch_variations_for()` drops these before they reach the product translator, so the broken variant ID never leaks to agents. If *every* variation of a variable parent is unpurchasable, the response falls through to a single `synthesize_default()` placeholder rather than emitting a schema-invalid empty `variants[]` array.
 
+**Zero-results hints.** When the response returns no products (`products: []`, `total_count: 0`), the body includes a `hints` object with a step-by-step recovery recipe:
+
+```json
+"hints": {
+  "zero_results": true,
+  "recovery_steps": {
+    "1_bare_query":         "Retry with a bare product noun in \"query\" only...",
+    "2_drop_filters":       "Remove one filter at a time to isolate over-restricting constraints.",
+    "3_browse_categories":  "Enumerate valid category slugs via the extension schema, then retry with filters.categories.",
+    "4_report_unavailable": "Only report unavailable after bare-noun + category-browse both return zero."
+  }
+}
+```
+
+This gives agents a recovery path at the moment they need it, without requiring a prior llms.txt or discovery-document read.
+
 **Errors:**
 - `503` `ucp_disabled` — syndication paused.
 - `400` `invalid_input` — body fails JSON Schema validation.

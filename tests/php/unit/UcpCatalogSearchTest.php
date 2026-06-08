@@ -489,6 +489,30 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'ucp', $body );
 	}
 
+	public function test_zero_results_response_includes_hints_block(): void {
+		$this->fake_product_list = [];
+
+		$body = $this->successful_search( [] );
+
+		$this->assertArrayHasKey( 'hints', $body );
+		$this->assertTrue( $body['hints']['zero_results'] );
+		$this->assertArrayHasKey( 'recovery_steps', $body['hints'] );
+		$this->assertArrayHasKey( '1_bare_query', $body['hints']['recovery_steps'] );
+		$this->assertArrayHasKey( '2_drop_filters', $body['hints']['recovery_steps'] );
+		$this->assertArrayHasKey( '3_browse_categories', $body['hints']['recovery_steps'] );
+		$this->assertArrayHasKey( '4_report_unavailable', $body['hints']['recovery_steps'] );
+	}
+
+	public function test_non_empty_results_response_has_no_hints_block(): void {
+		$this->fake_product_list = [
+			$this->make_simple_product( 1, 'Alpha' ),
+		];
+
+		$body = $this->successful_search( [] );
+
+		$this->assertArrayNotHasKey( 'hints', $body );
+	}
+
 	// ------------------------------------------------------------------
 	// Query mapping
 	// ------------------------------------------------------------------
