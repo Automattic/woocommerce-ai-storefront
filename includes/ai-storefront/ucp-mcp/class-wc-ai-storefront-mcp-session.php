@@ -105,7 +105,14 @@ class WC_AI_Storefront_MCP_Session {
 		// value persisted to the options table via a transient; capping
 		// prevents a malicious client from bloating the DB with an oversized
 		// name even within the rate limit.
-		set_transient( self::TRANSIENT_PREFIX . $id, substr( $client_name, 0, 253 ), self::TTL_SECONDS );
+		$stored = set_transient( self::TRANSIENT_PREFIX . $id, substr( $client_name, 0, 253 ), self::TTL_SECONDS );
+		if ( ! $stored ) {
+			WC_AI_Storefront_Logger::debug(
+				'MCP session transient write failed: id=%s client=%s — session will not persist',
+				$id,
+				substr( $client_name, 0, 40 )
+			);
+		}
 		return $id;
 	}
 

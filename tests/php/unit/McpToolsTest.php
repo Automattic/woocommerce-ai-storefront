@@ -304,11 +304,80 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( [ 'products' => [] ], $result['structuredContent'] );
 	}
 
+	public function test_core_result_to_mcp_phase2_fallback_non_error_typed_message(): void {
+		// When the error body has messages[] but none with type:'error', Phase 2
+		// falls back to the first message of any type. The error text must include
+		// that message's code and content so the agent gets actionable detail.
+		$result = WC_AI_Storefront_MCP_Tools::core_result_to_mcp(
+			[
+				'body'   => [
+					'messages' => [
+						[
+							'type'    => 'info',
+							'code'    => 'partial_gibberish',
+							'content' => 'Some items unavailable.',
+						],
+					],
+				],
+				'status' => 422,
+			],
+			'Catalog search'
+		);
+
+		$this->assertTrue( $result['isError'] );
+		$this->assertStringContainsString( 'partial_gibberish', $result['content'][0]['text'] );
+	}
+
+	public function test_core_result_to_mcp_empty_messages_yields_fallback_text(): void {
+		// When the error body has no messages[] at all, the fallback text must
+		// include the HTTP status so the agent has some signal — not just 'error'.
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$result = WC_AI_Storefront_MCP_Tools::core_result_to_mcp(
+			[
+				'body'   => [],
+				'status' => 500,
+			],
+			'Catalog search'
+		);
+
+		$this->assertTrue( $result['isError'] );
+		$this->assertStringContainsString( '500', $result['content'][0]['text'] );
+	}
+
 	public function test_call_returns_wp_error_for_unknown_tool(): void {
 		$result = WC_AI_Storefront_MCP_Tools::call( 'gibberish_tool', [], 'ChatGPT' );
 
 		$this->assertInstanceOf( WP_Error::class, $result );
 		$this->assertSame( 'mcp_unknown_tool', $result->get_error_code() );
+	}
+
+	public function test_call_dispatches_catalog_lookup_through_core(): void {
+		// Parity with the catalog_search dispatch test: drive the disabled-
+		// syndication gate to prove call() routes 'catalog_lookup' to the right
+		// core (not the default WP_Error unknown-tool path).
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$result = WC_AI_Storefront_MCP_Tools::call( 'catalog_lookup', [ 'ids' => [ 'prod_1' ] ], 'ChatGPT' );
+
+		$this->assertTrue( $result['isError'] );
+		$this->assertStringContainsString( 'ucp_disabled', $result['content'][0]['text'] );
+	}
+
+	public function test_call_dispatches_checkout_create_through_core(): void {
+		// Drive the empty-line_items 400 path to prove call() routes
+		// 'checkout_create' to the right core without needing WC stubbing.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$result = WC_AI_Storefront_MCP_Tools::call( 'checkout_create', [ 'line_items' => [] ], 'ChatGPT' );
+
+		$this->assertTrue( $result['isError'] );
 	}
 
 	public function test_call_dispatches_catalog_search_through_core(): void {

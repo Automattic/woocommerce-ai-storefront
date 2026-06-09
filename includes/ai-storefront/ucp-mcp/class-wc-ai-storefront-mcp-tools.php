@@ -361,7 +361,20 @@ class WC_AI_Storefront_MCP_Tools {
 			$code    = (string) ( $error_msg['code'] ?? '' );
 			$message = (string) ( $error_msg['content'] ?? '' );
 			if ( '' === $code ) {
-				$code = 'error';
+				// No messages[] at all — log so the developer can trace which
+				// core path produced an envelope without error detail.
+				WC_AI_Storefront_Logger::debug(
+					'MCP core_result_to_mcp: HTTP %d response had no messages — summary: %s',
+					$status,
+					$summary
+				);
+				$code    = 'error';
+				$message = sprintf(
+					/* translators: 1: tool name, 2: HTTP status code. */
+					__( '%1$s failed (HTTP %2$d).', 'woocommerce-ai-storefront' ),
+					$summary,
+					$status
+				);
 			}
 
 			return [

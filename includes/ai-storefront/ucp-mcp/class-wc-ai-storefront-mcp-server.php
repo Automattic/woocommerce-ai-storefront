@@ -183,7 +183,17 @@ class WC_AI_Storefront_MCP_Server {
 			$version = self::FALLBACK_PROTOCOL;
 		}
 		if ( ! in_array( $version, self::SUPPORTED, true ) ) {
-			return new WP_REST_Response( null, 400 );
+			return $this->rpc_error(
+				$id,
+				-32600,
+				sprintf(
+					/* translators: 1: unsupported MCP protocol version, 2: comma-separated list of supported versions. */
+					__( 'Unsupported MCP-Protocol-Version: %1$s. Supported: %2$s.', 'woocommerce-ai-storefront' ),
+					$version,
+					implode( ', ', self::SUPPORTED )
+				),
+				400
+			);
 		}
 
 		// Accepted notification (no `id`) → 202 ack, no body (e.g.
@@ -215,11 +225,17 @@ class WC_AI_Storefront_MCP_Server {
 				// unknown agents (allow_unknown_ucp_agents).
 				$caller = $this->resolve_caller( $request, $settings );
 				if ( is_wp_error( $caller ) ) {
-					return new WP_REST_Response( null, (int) ( $caller->get_error_data()['status'] ?? 403 ) );
+					$http = (int) ( $caller->get_error_data()['status'] ?? 403 );
+					// Map HTTP status to an application-defined JSON-RPC code so
+					// agents can distinguish session-expired (re-initialize) from
+					// agent-blocked (permanent). -32001 = session error; -32000 = blocked.
+					$rpc_code = 404 === $http ? -32001 : -32000;
+					return $this->rpc_error( $id, $rpc_code, $caller->get_error_message(), $http );
 				}
 				// A non-string `name` coerces to '' → unknown tool → -32602.
-				$name   = is_string( $params['name'] ?? null ) ? $params['name'] : '';
-				$args   = is_array( $params['arguments'] ?? null ) ? $params['arguments'] : [];
+				$name = is_string( $params['name'] ?? null ) ? $params['name'] : '';
+				$args = is_array( $params['arguments'] ?? null ) ? $params['arguments'] : [];
+				WC_AI_Storefront_Logger::debug( 'MCP tools/call: tool=%s client=%s', $name, $caller );
 				$result = WC_AI_Storefront_MCP_Tools::call( $name, $args, $caller );
 				if ( is_wp_error( $result ) ) {
 					return $this->rpc_error( $id, -32602, $result->get_error_message(), 200 );
@@ -247,8 +263,14 @@ class WC_AI_Storefront_MCP_Server {
 		$client_name = is_string( $client_info['name'] ?? null ) ? $client_info['name'] : '';
 		$gated       = WC_AI_Storefront_MCP_Session::gate_client_name( $client_name, $settings );
 		if ( is_wp_error( $gated ) ) {
-			return new WP_REST_Response( null, 403 );
+			WC_AI_Storefront_Logger::debug(
+				'MCP initialize blocked: %s — client: %s',
+				$gated->get_error_code(),
+				$client_name
+			);
+			return $this->rpc_error( $id, -32000, $gated->get_error_message(), 403 );
 		}
+		WC_AI_Storefront_Logger::debug( 'MCP initialize: client=%s', $client_name );
 		// Store the RAW handshake name (not the canonical $gated) so the
 		// original agent identity is preserved for attribution. The server
 		// re-canonicalizes it via gate_client_name() on every post-handshake
@@ -290,10 +312,12 @@ class WC_AI_Storefront_MCP_Server {
 		if ( '' !== $session_id ) {
 			$client_name = WC_AI_Storefront_MCP_Session::client_name_for( $session_id );
 			if ( null === $client_name ) {
+				WC_AI_Storefront_Logger::debug( 'MCP resolve_caller: unknown/expired session=%s', $session_id );
 				return new WP_Error( 'mcp_session_unknown', __( 'Unknown or expired session.', 'woocommerce-ai-storefront' ), [ 'status' => 404 ] );
 			}
 			// Re-gate the stored identity (the allow-list may have tightened).
 			if ( is_wp_error( WC_AI_Storefront_MCP_Session::gate_client_name( $client_name, $settings ) ) ) {
+				WC_AI_Storefront_Logger::debug( 'MCP resolve_caller: re-gate blocked client=%s', $client_name );
 				return new WP_Error( 'mcp_agent_blocked', __( 'Agent is not allowed.', 'woocommerce-ai-storefront' ), [ 'status' => 403 ] );
 			}
 			return $client_name;

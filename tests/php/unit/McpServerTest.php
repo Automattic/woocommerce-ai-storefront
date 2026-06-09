@@ -718,5 +718,183 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( 404, $response->get_status() );
+		// Must carry a JSON-RPC error envelope so the agent can distinguish
+		// session-expired (-32001) from agent-blocked (-32000).
+		$this->assertSame( -32001, $response->get_data()['error']['code'] );
+	}
+
+	public function test_tools_call_blocked_agent_returns_jsonrpc_error_envelope(): void {
+		// When the per-call re-gate blocks a previously-vetted session (allow-
+		// list tightened), the response must be a JSON-RPC error envelope so the
+		// agent knows it is blocked (-32000) vs. session-expired (-32001).
+		$server  = new WC_AI_Storefront_MCP_Server();
+		$session = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		)->get_headers()['Mcp-Session-Id'];
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                  => 'yes',
+			'mcp_enabled'              => 'yes',
+			'allow_unknown_ucp_agents' => 'no',
+			'allowed_crawlers'         => [],
+		];
+
+		$response = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 2,
+					'method'  => 'tools/call',
+					'params'  => [ 'name' => 'catalog_search', 'arguments' => [ 'query' => 'x' ] ],
+				],
+				[
+					'MCP-Protocol-Version' => '2025-06-18',
+					'Mcp-Session-Id'       => $session,
+				]
+			)
+		);
+
+		$this->assertSame( 403, $response->get_status() );
+		$this->assertSame( -32000, $response->get_data()['error']['code'] );
+	}
+
+	public function test_initialize_gate_rejection_returns_jsonrpc_error_envelope(): void {
+		// When initialize is blocked, it must return a JSON-RPC error envelope
+		// (not bare null), so the agent sees -32000 rather than a blank 403 body.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                  => 'yes',
+			'mcp_enabled'              => 'yes',
+			'allow_unknown_ucp_agents' => 'no',
+			'allowed_crawlers'         => [],
+		];
+
+		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		);
+
+		$this->assertSame( 403, $response->get_status() );
+		$this->assertSame( -32000, $response->get_data()['error']['code'] );
+	}
+
+	public function test_unsupported_protocol_version_returns_jsonrpc_error(): void {
+		// A post-handshake request with an unrecognized MCP-Protocol-Version
+		// must return a JSON-RPC error envelope (-32600 Invalid Request) so the
+		// agent gets a parseable response, not a blank 400 body.
+		$server  = new WC_AI_Storefront_MCP_Server();
+		$session = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		)->get_headers()['Mcp-Session-Id'];
+
+		$response = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 2,
+					'method'  => 'ping',
+				],
+				[
+					'MCP-Protocol-Version' => 'gibberish-version',
+					'Mcp-Session-Id'       => $session,
+				]
+			)
+		);
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( -32600, $response->get_data()['error']['code'] );
+	}
+
+	public function test_explicit_fallback_protocol_version_is_accepted(): void {
+		// Clients that explicitly send '2025-03-26' (the backward-compat version)
+		// must be admitted — it is in SUPPORTED even though LATEST is 2025-06-18.
+		$server  = new WC_AI_Storefront_MCP_Server();
+		$session = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		)->get_headers()['Mcp-Session-Id'];
+
+		$response = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 2,
+					'method'  => 'ping',
+				],
+				[
+					'MCP-Protocol-Version' => '2025-03-26',
+					'Mcp-Session-Id'       => $session,
+				]
+			)
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertArrayHasKey( 'result', $response->get_data() );
+	}
+
+	public function test_tools_list_still_succeeds_after_allow_list_tightens(): void {
+		// tools/list is ungated discovery — even after a merchant tightens the
+		// allow-list, an existing session (or no session) must still get the
+		// tool list. Only tools/call triggers the per-call re-gate.
+		$server  = new WC_AI_Storefront_MCP_Server();
+		$session = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		)->get_headers()['Mcp-Session-Id'];
+
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                  => 'yes',
+			'mcp_enabled'              => 'yes',
+			'allow_unknown_ucp_agents' => 'no',
+			'allowed_crawlers'         => [],
+		];
+
+		$response = $server->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 2,
+					'method'  => 'tools/list',
+				],
+				[
+					'MCP-Protocol-Version' => '2025-06-18',
+					'Mcp-Session-Id'       => $session,
+				]
+			)
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertCount( 3, $response->get_data()['result']['tools'] );
 	}
 }

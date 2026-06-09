@@ -167,6 +167,49 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 		$this->assertIsArray( $result['body'] );
 	}
 
+	public function test_run_catalog_lookup_returns_400_for_over_limit_ids_array(): void {
+		// The over-limit check (>100 ids) is a neutral-core guard that runs
+		// before any Store API dispatch. Pinned here so a refactor that moves
+		// it into the REST-only handler would be caught immediately.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$result     = $controller->run_catalog_lookup(
+			[
+				'ids'              => array_fill( 0, 101, 'prod_gibberish' ),
+				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+				'ucp_agent_header' => '',
+			]
+		);
+
+		$this->assertSame( 400, $result['status'] );
+		$this->assertIsArray( $result['body'] );
+	}
+
+	public function test_run_checkout_create_returns_400_for_over_limit_line_items(): void {
+		// Parity with the lookup over-limit test: the >100 line_items check is
+		// also a neutral-core guard. Pinned here so it stays in both transports.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$result     = $controller->run_checkout_create(
+			[
+				'line_items'       => array_fill( 0, 101, [ 'item' => [ 'id' => 'prod_gibberish' ], 'quantity' => 1 ] ),
+				'context'          => null,
+				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+				'ucp_agent_header' => '',
+			]
+		);
+
+		$this->assertSame( 400, $result['status'] );
+		$this->assertIsArray( $result['body'] );
+	}
+
 	public function test_resolve_agent_data_from_name_known_product_token_resolves_hostname(): void {
 		// A product token present in PRODUCT_TO_HOSTNAME must produce its
 		// canonical brand `name` and the mapped lowercase `source_host`

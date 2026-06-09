@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-03T20:16:23+00:00\n"
+"POT-Creation-Date: 2026-06-09T00:36:35+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -105,15 +105,21 @@ msgstr ""
 msgid "This is an MCP (Model Context Protocol) JSON-RPC endpoint. Send a POST request with a JSON-RPC body — e.g. {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}. GET is reserved for SSE streams, which this endpoint does not provide."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:293
+#. translators: 1: unsupported MCP protocol version, 2: comma-separated list of supported versions.
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:191
+#, php-format
+msgid "Unsupported MCP-Protocol-Version: %1$s. Supported: %2$s."
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:316
 msgid "Unknown or expired session."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:297
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:321
 msgid "Agent is not allowed."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:305
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:329
 msgid "Anonymous agents are not allowed."
 msgstr ""
 
@@ -259,6 +265,12 @@ msgstr ""
 
 #: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:312
 msgid "Unknown tool."
+msgstr ""
+
+#. translators: 1: tool name, 2: HTTP status code.
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:374
+#, php-format
+msgid "%1$s failed (HTTP %2$d)."
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-store-api-extension.php:229
