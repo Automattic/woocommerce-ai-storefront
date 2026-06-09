@@ -74,8 +74,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				foreach ( $args as $k => $v ) {
 					$pairs[] = $k . '=' . $v;
 				}
-				$query = implode( '&', $pairs );
-				$sep   = str_contains( $url, '?' ) ? '&' : '?';
+				// Replicate WordPress's real add_query_arg() behaviour:
+				// _http_build_query() uses '&amp;' as the separator, which
+				// is correct for HTML attribute values but wrong for JSON
+				// string values. Tests that verify the production code strips
+				// these entities before returning the URL will catch
+				// regressions.
+				$query = implode( '&amp;', $pairs );
+				$sep   = str_contains( $url, '?' ) ? '&amp;' : '?';
 				return $url . $sep . $query . $fragment;
 			}
 		);
@@ -379,6 +385,49 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'products=42:1', $url );
 		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
 		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
+	}
+
+	// ------------------------------------------------------------------
+	// BuyAction / checkoutPageURLTemplate — no HTML entities in JSON strings
+	// ------------------------------------------------------------------
+	//
+	// WordPress's add_query_arg() uses '&amp;' as the query-string
+	// separator — correct for HTML attribute values, wrong for JSON.
+	// Any non-browser consumer (curl, Python requests, LLM tool calls)
+	// reading the raw bytes gets literal '&amp;' and produces a broken
+	// checkout URL. The production code must call html_entity_decode()
+	// on add_query_arg()'s output before storing the value in the array
+	// that wp_json_encode() will serialise.
+
+	public function test_buyaction_url_contains_no_html_entities(): void {
+		$product = $this->make_product();
+		$result  = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+		$this->assertStringNotContainsString( '&amp;', $url );
+	}
+
+	public function test_offer_checkout_page_url_template_contains_no_html_entities(): void {
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+		);
+		$product = $this->make_product();
+		$result  = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$url = $result['offers'][0]['checkoutPageURLTemplate'];
+		$this->assertStringNotContainsString( '&amp;', $url );
+	}
+
+	public function test_buyaction_url_contains_no_html_entities_for_bundle(): void {
+		$product = $this->make_product( [
+			'type'      => 'bundle',
+			'permalink' => 'https://example.com/product/starter-kit/',
+		] );
+		$result  = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+		$this->assertStringNotContainsString( '&amp;', $url );
 	}
 
 	// ------------------------------------------------------------------

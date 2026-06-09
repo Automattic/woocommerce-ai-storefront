@@ -309,7 +309,11 @@ class WC_AI_Storefront_JsonLd {
 		// attribution. See docblock for why `/checkout-link/?products=`
 		// can't represent these types.
 		if ( $product->is_type( 'bundle' ) || $product->is_type( 'grouped' ) ) {
-			return add_query_arg( $utm_args, $product->get_permalink() );
+			// html_entity_decode() strips the '&amp;' separators that
+			// WordPress's add_query_arg() emits — correct for HTML
+			// attributes but wrong for a JSON string value read by
+			// non-browser consumers (curl, LLM tool calls, etc.).
+			return html_entity_decode( add_query_arg( $utm_args, $product->get_permalink() ) );
 		}
 
 		// Simple, variable, variation: WooCommerce Shareable Checkout URL
@@ -317,9 +321,11 @@ class WC_AI_Storefront_JsonLd {
 		// rewrite handler, adds the item to the cart, redirects to
 		// checkout. Quantity fixed at 1 — AI-shopping flows are
 		// single-item by convention.
-		return add_query_arg(
-			array_merge( array( 'products' => $product->get_id() . ':1' ), $utm_args ),
-			home_url( '/checkout-link/' )
+		return html_entity_decode(
+			add_query_arg(
+				array_merge( array( 'products' => $product->get_id() . ':1' ), $utm_args ),
+				home_url( '/checkout-link/' )
+			)
 		);
 	}
 
@@ -1265,7 +1271,7 @@ class WC_AI_Storefront_JsonLd {
 			foreach ( $core_attrs as $slug => $value ) {
 				$query_args[ 'attribute_' . $slug ] = $value;
 			}
-			$permalink = add_query_arg( $query_args, $parent_permalink );
+			$permalink = html_entity_decode( add_query_arg( $query_args, $parent_permalink ) );
 		}
 
 		if ( is_string( $permalink ) && '' !== $permalink ) {
