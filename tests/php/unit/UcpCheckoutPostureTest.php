@@ -220,16 +220,25 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_registered_rest_routes_are_the_exact_posture_set(): void {
-		// The plugin registers three commerce POST routes
-		// (catalog/search, catalog/lookup, checkout-sessions), one
-		// docs GET route (extension/schema), and one
-		// unsupported-method stub on checkout-sessions/{id}
-		// accepting GET/PUT/PATCH/DELETE — all returning 405. No
-		// Complete Checkout, no real (state-mutating) Update
-		// Checkout, no stateful read on /checkout-sessions/{id},
-		// no cart routes — those would either enable programmatic
-		// completion or imply persistent checkout state that the
-		// handoff model rejects.
+		// The plugin registers routes for each HTTP method separately:
+		//
+		// POST  catalog/search     — authenticated agent search
+		// GET   catalog/search     — public fetch-friendly search (attribute, price, in_stock, cursor)
+		// POST  catalog/lookup     — authenticated agent lookup by UCP id
+		// GET   catalog/lookup     — public fetch-friendly lookup by ?id or ?slug
+		// POST  checkout-sessions  — stateless checkout handoff
+		// GET/PUT/PATCH/DELETE checkout-sessions/{id} — 405 stub (see below)
+		// GET   extension/schema   — static JSON Schema docs
+		//
+		// The GET catalog variants are an intentional extension of the
+		// posture surface: they expose the same catalog read paths over a
+		// fetch-friendly HTTP method so agents (including Perplexity,
+		// Google, and MCP clients) can call them without needing POST
+		// bodies. They use check_agent_access as their permission_callback
+		// (same as POST), so the merchant's allowed_crawlers setting and
+		// the allow_unknown_ucp_agents toggle apply equally to GET. Agents
+		// without a UCP-Agent header pass the gate unconditionally; agents
+		// with a blocked brand are 403'd regardless of HTTP method.
 		//
 		// `extension/schema` is a read-only JSON Schema endpoint for
 		// the `com.woocommerce.ai_storefront` merchant extension —
@@ -256,6 +265,11 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// If a future change adds any route not in this whitelist,
 		// this test fires — forcing the maintainer to either legitimize
 		// the new route in the posture docs or revert.
+		//
+		// NOTE: WP REST allows multiple register_rest_route() calls for the
+		// same path with different methods; each call appears as a separate
+		// entry in $registered, hence catalog/lookup and catalog/search
+		// each appear twice (once for POST, once for GET).
 		$registered = [];
 		Functions\when( 'register_rest_route' )->alias(
 			static function ( $namespace, $route ) use ( &$registered ) {
@@ -271,6 +285,8 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame(
 			[
 				'wc/ucp/v1/catalog/lookup',
+				'wc/ucp/v1/catalog/lookup',
+				'wc/ucp/v1/catalog/search',
 				'wc/ucp/v1/catalog/search',
 				'wc/ucp/v1/checkout-sessions',
 				'wc/ucp/v1/checkout-sessions/(?P<id>[A-Za-z0-9_-]+)',

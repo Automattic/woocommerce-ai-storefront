@@ -73,11 +73,22 @@ class WC_AI_Storefront_JsonLd {
 	private const MAX_RELATED_PRODUCT_REFS = 10;
 
 	/**
+	 * Transient key for the site-wide WebSite + SearchAction JSON-LD block.
+	 *
+	 * Registered with WC_AI_Storefront_Cache_Invalidator so it is busted
+	 * on product, category, and settings changes — the block embeds the
+	 * store URL and REST endpoint which change only on settings saves, but
+	 * using the same invalidation path keeps cache lifetimes consistent.
+	 */
+	public const WEBSITE_JSONLD_CACHE_KEY = 'wc_ai_storefront_website_jsonld';
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function init() {
 		add_filter( 'woocommerce_structured_data_product', [ $this, 'enhance_product_data' ], 20, 2 );
 		add_filter( 'woocommerce_structured_data_type_for_page', [ $this, 'allow_product_group_type' ] );
+		add_action( 'wp_head', [ $this, 'output_website_jsonld' ], 4 );
 		add_action( 'wp_head', [ $this, 'output_store_jsonld' ], 5 );
 		add_action( 'wp_head', [ $this, 'output_archive_itemlist_jsonld' ], 6 );
 	}
@@ -2772,6 +2783,91 @@ class WC_AI_Storefront_JsonLd {
 			$this->weight_unit_code_cache = isset( $unit_map[ $wc_unit ] ) ? $unit_map[ $wc_unit ] : 'KGM';
 		}
 		return $this->weight_unit_code_cache;
+	}
+
+	/**
+	 * Emit a WebSite + SearchAction JSON-LD block on every page.
+	 *
+	 * Hooked to `wp_head` at priority 4 (before output_store_jsonld at 5).
+	 * Fires on every page when the plugin is enabled — agents that scan
+	 * <head> for structured data find a machine-readable search endpoint
+	 * without having to follow any discovery links.
+	 *
+	 * Two potentialAction entries:
+	 *   1. Native WP search (HTML result page).
+	 *   2. UCP GET catalog/search (REST JSON — uses the public GET route).
+	 *
+	 * The `wc_ai_storefront_jsonld_website` filter allows Yoast/RankMath to
+	 * suppress the block (return false/null) if they are already emitting
+	 * their own WebSite block, preventing duplication.
+	 *
+	 * Results are cached in a site-wide transient (1-hour TTL) because the
+	 * block content depends only on store URL and settings, not on the
+	 * current page or user.
+	 */
+	public function output_website_jsonld(): void {
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			return;
+		}
+
+		$cached = get_transient( self::WEBSITE_JSONLD_CACHE_KEY );
+		if ( false !== $cached ) {
+			$encoded = wp_json_encode( $cached, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+			if ( false !== $encoded ) {
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode output
+				echo '<script type="application/ld+json">' . $encoded . '</script>' . "\n";
+			}
+			return;
+		}
+
+		$home_url  = trailingslashit( home_url() );
+		$rest_base = home_url( '/wp-json/' . WC_AI_Storefront_UCP_REST_Controller::NAMESPACE . '/catalog/search' );
+
+		$data = array(
+			'@context'        => 'https://schema.org',
+			'@type'           => 'WebSite',
+			'url'             => $home_url,
+			'potentialAction' => array(
+				array(
+					'@type'       => 'SearchAction',
+					'target'      => array(
+						'@type'       => 'EntryPoint',
+						'urlTemplate' => $home_url . '?s={search_term}&post_type=product',
+					),
+					'query-input' => 'required name=search_term',
+				),
+				array(
+					'@type'       => 'SearchAction',
+					'name'        => 'Product catalog API',
+					'target'      => array(
+						'@type'       => 'EntryPoint',
+						'urlTemplate' => $rest_base . '?q={search_term}',
+					),
+					'query-input' => 'required name=search_term',
+				),
+			),
+		);
+
+		/**
+		 * Filter the WebSite JSON-LD data before caching and output.
+		 *
+		 * Return false or null to suppress the block entirely (e.g. when
+		 * another SEO plugin already emits a WebSite block).
+		 *
+		 * @param array $data The structured data array.
+		 */
+		$data = apply_filters( 'wc_ai_storefront_jsonld_website', $data );
+		if ( empty( $data ) ) {
+			return;
+		}
+
+		set_transient( self::WEBSITE_JSONLD_CACHE_KEY, $data, HOUR_IN_SECONDS );
+		$encoded = wp_json_encode( $data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		if ( false !== $encoded ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode output
+			echo '<script type="application/ld+json">' . $encoded . '</script>' . "\n";
+		}
 	}
 
 	/**

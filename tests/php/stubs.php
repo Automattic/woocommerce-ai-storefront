@@ -802,3 +802,9 @@ if ( ! function_exists( 'wcs_is_subscription' ) ) {
 		return WC_Subscriptions_Product::is_subscription( $product );
 	}
 }
+
+if ( ! class_exists( 'WP_Post' ) ) {
+	class WP_Post {
+		public int $ID = 0;
+	}
+}
