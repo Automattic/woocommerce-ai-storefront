@@ -38,6 +38,7 @@ class JsonLdWebsiteTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_transient' )->justReturn( false );
 		Functions\when( 'set_transient' )->justReturn( true );
 		Functions\when( 'home_url' )->alias( static fn( $path = '' ) => 'https://example.com' . $path );
+		Functions\when( 'rest_url' )->alias( static fn( $path = '' ) => 'https://example.com/wp-json/' . ltrim( $path, '/' ) );
 		Functions\when( 'trailingslashit' )->alias( static fn( $url ) => rtrim( $url, '/' ) . '/' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		Functions\when( 'wp_json_encode' )->alias( static fn( $data, $flags = 0 ) => json_encode( $data, $flags ) );

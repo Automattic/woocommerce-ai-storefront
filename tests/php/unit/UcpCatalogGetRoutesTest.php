@@ -78,11 +78,15 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	 * @param array<string, mixed> $params
 	 * @return WP_REST_Request
 	 */
-	private function make_get_request( array $params = [] ): WP_REST_Request {
+	private function make_get_request( array $params = [], array $headers = [] ): WP_REST_Request {
 		$request = Mockery::mock( 'WP_REST_Request' );
 		$request->shouldReceive( 'get_param' )->andReturnUsing(
 			static fn( string $key ) => $params[ $key ] ?? null
 		);
+		$request->shouldReceive( 'get_header' )->andReturnUsing(
+			static fn( string $key ) => $headers[ strtolower( $key ) ] ?? null
+		);
+		$request->shouldReceive( 'get_json_params' )->andReturn( null );
 		return $request;
 	}
 
@@ -174,12 +178,13 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 20, $this->controller->last_search_params['pagination']['limit'] );
 	}
 
-	public function test_get_search_anonymous_agent_data(): void {
+	public function test_get_search_no_ucp_agent_header_gives_fallback_agent_data(): void {
 		$request = $this->make_get_request( [] );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$agent = $this->controller->last_search_params['agent_data'];
-		$this->assertSame( 'anonymous', $agent['name'] );
+		// No UCP-Agent header → resolve_agent_host() returns FALLBACK_SOURCE.
+		$this->assertSame( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE, $agent['name'] );
 		$this->assertSame( '', $agent['raw_host'] );
 		$this->assertSame( '', $agent['source_host'] );
 	}
@@ -188,6 +193,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		$request = $this->make_get_request( [] );
 		$this->controller->handle_catalog_search_get( $request );
 
+		// get_header('ucp-agent') returns null → coerced to ''.
 		$this->assertSame( '', $this->controller->last_search_params['ucp_agent_header'] );
 	}
 

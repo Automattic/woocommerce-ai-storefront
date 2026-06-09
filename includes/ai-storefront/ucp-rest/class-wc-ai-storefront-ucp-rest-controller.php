@@ -767,12 +767,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'filters'          => $filters,
 			'pagination'       => $pagination,
 			'sort'             => null,
-			'agent_data'       => [
-				'name'        => 'anonymous',
-				'raw_host'    => '',
-				'source_host' => '',
-			],
-			'ucp_agent_header' => '',
+			'agent_data'       => self::resolve_agent_host( $request ),
+			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
 		];
 
 		$result = $this->run_catalog_search( $params );
@@ -797,6 +793,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$error = self::ucp_catalog_error_response(
 				'dev.ucp.shopping.catalog.lookup',
 				__( 'Provide either ?id=<product_id> or ?slug=<product_slug>.', 'woocommerce-ai-storefront' ),
+				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
+				null,
+				400
+			);
+			return new WP_REST_Response( $error->get_data(), $error->get_status() );
+		}
+
+		if ( null !== $slug_param && ( ! is_string( $slug_param ) || '' === trim( $slug_param ) ) ) {
+			$error = self::ucp_catalog_error_response(
+				'dev.ucp.shopping.catalog.lookup',
+				__( 'The ?slug parameter must be a non-empty string.', 'woocommerce-ai-storefront' ),
 				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 				null,
 				400
@@ -841,12 +848,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'ids'              => $ids,
 			'context'          => null,
 			'signals'          => null,
-			'agent_data'       => [
-				'name'        => 'anonymous',
-				'raw_host'    => '',
-				'source_host' => '',
-			],
-			'ucp_agent_header' => '',
+			'agent_data'       => self::resolve_agent_host( $request ),
+			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
 		];
 
 		$result = $this->run_catalog_lookup( $params );

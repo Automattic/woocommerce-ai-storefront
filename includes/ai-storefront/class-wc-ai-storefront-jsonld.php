@@ -80,7 +80,8 @@ class WC_AI_Storefront_JsonLd {
 	 * store URL and REST endpoint which change only on settings saves, but
 	 * using the same invalidation path keeps cache lifetimes consistent.
 	 */
-	public const WEBSITE_JSONLD_CACHE_KEY = 'wc_ai_storefront_website_jsonld';
+	public const WEBSITE_JSONLD_CACHE_KEY     = 'wc_ai_storefront_website_jsonld';
+	public const ITEMLIST_JSONLD_CACHE_PREFIX = 'wc_ai_storefront_itemlist_';
 
 	/**
 	 * Initialize hooks.
@@ -2813,7 +2814,7 @@ class WC_AI_Storefront_JsonLd {
 
 		$cached = get_transient( self::WEBSITE_JSONLD_CACHE_KEY );
 		if ( false !== $cached ) {
-			$encoded = wp_json_encode( $cached, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+			$encoded = wp_json_encode( $cached, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 			if ( false !== $encoded ) {
 				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode output
 				echo '<script type="application/ld+json">' . $encoded . '</script>' . "\n";
@@ -2822,7 +2823,7 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		$home_url  = trailingslashit( home_url() );
-		$rest_base = home_url( '/wp-json/' . WC_AI_Storefront_UCP_REST_Controller::NAMESPACE . '/catalog/search' );
+		$rest_base = rest_url( WC_AI_Storefront_UCP_REST_Controller::NAMESPACE . '/catalog/search' );
 
 		$data = array(
 			'@context'        => 'https://schema.org',
@@ -2863,7 +2864,7 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		set_transient( self::WEBSITE_JSONLD_CACHE_KEY, $data, HOUR_IN_SECONDS );
-		$encoded = wp_json_encode( $data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		$encoded = wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 		if ( false !== $encoded ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode output
 			echo '<script type="application/ld+json">' . $encoded . '</script>' . "\n";
@@ -2914,11 +2915,11 @@ class WC_AI_Storefront_JsonLd {
 		if ( $on_category || $on_tag ) {
 			$term      = get_queried_object();
 			$term_id   = ( $term && isset( $term->term_id ) ) ? (int) $term->term_id : 0;
-			$cache_key = 'wc_ai_storefront_itemlist_' . ( $on_category ? 'cat' : 'tag' ) . '_' . $term_id . '_' . $paged;
+			$cache_key = self::ITEMLIST_JSONLD_CACHE_PREFIX . ( $on_category ? 'cat' : 'tag' ) . '_' . $term_id . '_' . $paged;
 		} elseif ( $on_search ) {
-			$cache_key = 'wc_ai_storefront_itemlist_search_' . md5( get_search_query() ) . '_' . $paged;
+			$cache_key = self::ITEMLIST_JSONLD_CACHE_PREFIX . 'search_' . md5( get_search_query() ) . '_' . $paged;
 		} else {
-			$cache_key = 'wc_ai_storefront_itemlist_shop_' . $paged;
+			$cache_key = self::ITEMLIST_JSONLD_CACHE_PREFIX . 'shop_' . $paged;
 		}
 
 		$cached = get_transient( $cache_key );
@@ -2979,8 +2980,14 @@ class WC_AI_Storefront_JsonLd {
 
 		// Fall back to a count query when term->count isn't available
 		// (search + shop pages) or when $term was not resolved.
+		// Prefer wp_query->found_posts to avoid loading all IDs into memory.
 		if ( null === $total_products ) {
-			$total_products = count( wc_get_products( $count_args ) );
+			$main_query = isset( $GLOBALS['wp_query'] ) ? $GLOBALS['wp_query'] : null;
+			if ( $main_query && isset( $main_query->found_posts ) && $main_query->found_posts > 0 ) {
+				$total_products = (int) $main_query->found_posts;
+			} else {
+				$total_products = count( wc_get_products( $count_args ) );
+			}
 		}
 
 		$products = wc_get_products( $query_args );
@@ -2988,9 +2995,10 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
-		$currency = get_woocommerce_currency();
-		$items    = array();
-		$position = ( ( $paged - 1 ) * $per_page ) + 1;
+		$currency       = get_woocommerce_currency();
+		$items          = array();
+		$effective_page = min( $per_page, 100 );
+		$position       = ( ( $paged - 1 ) * $effective_page ) + 1;
 
 		foreach ( $products as $product ) {
 			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {

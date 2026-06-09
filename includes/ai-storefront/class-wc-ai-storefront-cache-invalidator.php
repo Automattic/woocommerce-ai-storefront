@@ -172,8 +172,8 @@ class WC_AI_Storefront_Cache_Invalidator {
 		$wpdb->query(
 			$wpdb->prepare(
 				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
-				$wpdb->esc_like( '_transient_wc_ai_storefront_itemlist_' ) . '%',
-				$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_itemlist_' ) . '%'
+				$wpdb->esc_like( '_transient_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%',
+				$wpdb->esc_like( '_transient_timeout_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%'
 			)
 		);
 		// phpcs:enable
@@ -222,8 +222,8 @@ class WC_AI_Storefront_Cache_Invalidator {
 						$wpdb->query(
 							$wpdb->prepare(
 								"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
-								$wpdb->esc_like( '_transient_wc_ai_storefront_itemlist_' ) . '%',
-								$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_itemlist_' ) . '%'
+								$wpdb->esc_like( '_transient_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%',
+								$wpdb->esc_like( '_transient_timeout_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%'
 							)
 						);
 						// phpcs:enable

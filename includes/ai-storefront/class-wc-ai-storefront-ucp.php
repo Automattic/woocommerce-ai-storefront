@@ -164,6 +164,7 @@ class WC_AI_Storefront_Ucp {
 
 		header( 'Content-Type: application/opensearchdescription+xml; charset=utf-8' );
 		header( 'Cache-Control: public, max-age=3600' );
+		header( 'Vary: Host' );
 		header( 'X-Robots-Tag: noindex' );
 
 		echo $this->build_opensearch_xml(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- XML built with esc_html/esc_url throughout.
@@ -179,10 +180,11 @@ class WC_AI_Storefront_Ucp {
 	 * @return string Valid OpenSearch 1.1 XML document.
 	 */
 	public function build_opensearch_xml(): string {
+		$fn         = function_exists( 'mb_substr' ) ? 'mb_substr' : 'substr';
 		$raw_name   = wp_strip_all_tags( get_bloginfo( 'name' ) );
-		$short_name = mb_substr( $raw_name, 0, 16 );
+		$short_name = $fn( $raw_name, 0, 16 );
 		if ( '' === $short_name ) {
-			$short_name = mb_substr( wp_strip_all_tags( home_url() ), 0, 16 );
+			$short_name = $fn( wp_strip_all_tags( home_url() ), 0, 16 );
 		}
 		$description = sprintf(
 			/* translators: %s: store name */
@@ -191,7 +193,7 @@ class WC_AI_Storefront_Ucp {
 		);
 
 		$html_template = esc_url( home_url( '/' ) ) . '?s={searchTerms}&amp;post_type=product';
-		$api_template  = esc_url( home_url( '/wp-json/' . WC_AI_Storefront_UCP_REST_Controller::NAMESPACE . '/catalog/search' ) ) . '?q={searchTerms}';
+		$api_template  = esc_url( rest_url( WC_AI_Storefront_UCP_REST_Controller::NAMESPACE . '/catalog/search' ) ) . '?q={searchTerms}';
 
 		$xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 		$xml .= '<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">' . "\n";

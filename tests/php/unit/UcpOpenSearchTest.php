@@ -28,6 +28,9 @@ class UcpOpenSearchTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'home_url' )->alias(
 			static fn( $path = '' ) => 'https://example.com' . ( $path ?: '/' )
 		);
+		Functions\when( 'rest_url' )->alias(
+			static fn( $path = '' ) => 'https://example.com/wp-json/' . ltrim( $path, '/' )
+		);
 		Functions\when( 'get_bloginfo' )->justReturn( 'Test Store' );
 		Functions\when( 'esc_attr' )->returnArg();
 		Functions\when( 'esc_url' )->returnArg();
