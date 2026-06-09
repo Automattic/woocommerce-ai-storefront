@@ -309,11 +309,7 @@ class WC_AI_Storefront_JsonLd {
 		// attribution. See docblock for why `/checkout-link/?products=`
 		// can't represent these types.
 		if ( $product->is_type( 'bundle' ) || $product->is_type( 'grouped' ) ) {
-			// html_entity_decode() strips the '&amp;' separators that
-			// WordPress's add_query_arg() emits — correct for HTML
-			// attributes but wrong for a JSON string value read by
-			// non-browser consumers (curl, LLM tool calls, etc.).
-			return html_entity_decode( add_query_arg( $utm_args, $product->get_permalink() ) );
+			return self::decode_query_url( $utm_args, $product->get_permalink() );
 		}
 
 		// Simple, variable, variation: WooCommerce Shareable Checkout URL
@@ -321,11 +317,9 @@ class WC_AI_Storefront_JsonLd {
 		// rewrite handler, adds the item to the cart, redirects to
 		// checkout. Quantity fixed at 1 — AI-shopping flows are
 		// single-item by convention.
-		return html_entity_decode(
-			add_query_arg(
-				array_merge( array( 'products' => $product->get_id() . ':1' ), $utm_args ),
-				home_url( '/checkout-link/' )
-			)
+		return self::decode_query_url(
+			array_merge( array( 'products' => $product->get_id() . ':1' ), $utm_args ),
+			home_url( '/checkout-link/' )
 		);
 	}
 
@@ -1271,10 +1265,13 @@ class WC_AI_Storefront_JsonLd {
 			foreach ( $core_attrs as $slug => $value ) {
 				$query_args[ 'attribute_' . $slug ] = $value;
 			}
-			$permalink = html_entity_decode( add_query_arg( $query_args, $parent_permalink ) );
+			$permalink = self::decode_query_url( $query_args, $parent_permalink );
 		}
 
 		if ( is_string( $permalink ) && '' !== $permalink ) {
+			// WC's get_permalink() may itself contain '&amp;' when a
+			// third-party filter HTML-escapes the URL before we see it.
+			$permalink    = html_entity_decode( $permalink, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 			$entry['@id'] = $permalink;
 			$entry['url'] = $permalink;
 		}
@@ -1432,6 +1429,27 @@ class WC_AI_Storefront_JsonLd {
 	 *
 	 * @param array $markup Markup array, modified by reference.
 	 */
+	/**
+	 * Appends query args to a URL and decodes any HTML entities in the result.
+	 *
+	 * WordPress's add_query_arg() returns plain '&' separators, but a
+	 * third-party filter on `the_permalink` or similar hooks may have
+	 * HTML-escaped the incoming URL (e.g. via esc_url()). That would
+	 * cause add_query_arg() to inherit '&amp;' separators and embed them
+	 * verbatim in the JSON string — non-browser consumers (curl, LLM tool
+	 * calls) would then receive broken checkout URLs. Decoding before
+	 * storing is the safe default regardless of what filters have done
+	 * upstream. Flags match the existing html_entity_decode() convention
+	 * in this class (ENT_QUOTES | ENT_HTML5, UTF-8).
+	 *
+	 * @param array  $args Query arguments.
+	 * @param string $url  Base URL.
+	 * @return string URL with query args appended, HTML entities decoded.
+	 */
+	private static function decode_query_url( array $args, string $url ): string {
+		return html_entity_decode( add_query_arg( $args, $url ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+	}
+
 	private function decode_seller_name( array &$markup ): void {
 		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
 			return;
