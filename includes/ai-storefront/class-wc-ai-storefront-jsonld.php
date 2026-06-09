@@ -92,6 +92,71 @@ class WC_AI_Storefront_JsonLd {
 		add_action( 'wp_head', [ $this, 'output_website_jsonld' ], 4 );
 		add_action( 'wp_head', [ $this, 'output_store_jsonld' ], 5 );
 		add_action( 'wp_head', [ $this, 'output_archive_itemlist_jsonld' ], 6 );
+
+		// Replace WC's structured-data serializer with our own so we can
+		// use JSON_HEX_AMP. WC's wc_esc_json() converts every literal '&'
+		// to '&amp;' after wp_json_encode(), breaking checkout URLs for
+		// non-browser consumers (curl, LLM tool calls). Our replacement
+		// skips wc_esc_json() and applies JSON_HEX_AMP instead, encoding
+		// '&' as '&' — safe for both browsers and raw consumers.
+		// WC_Structured_Data is instantiated inside WC::init() which runs
+		// on the 'init' action; we must defer until 'woocommerce_init'
+		// (fired at the end of WC::init()) to access WC()->structured_data.
+		// Note: output_email_structured_data() calls output_structured_data()
+		// directly (not via wp_footer), so email order details are unaffected.
+		add_action( 'woocommerce_init', [ $this, 'replace_wc_structured_data_output' ] );
+	}
+
+	/**
+	 * Swap WC's wp_footer serializer for ours.
+	 *
+	 * Called on 'woocommerce_init' (after WC()->structured_data exists).
+	 * Registered as a public method so it can be called by tests or removed
+	 * by merchants who want to keep WC's default output intact.
+	 */
+	public function replace_wc_structured_data_output(): void {
+		if ( ! isset( WC()->structured_data ) ) {
+			return;
+		}
+		remove_action( 'wp_footer', [ WC()->structured_data, 'output_structured_data' ], 10 );
+		add_action( 'wp_footer', [ $this, 'output_wc_structured_data' ], 10 );
+	}
+
+	/**
+	 * Re-implementation of WC_Structured_Data::output_structured_data() that
+	 * skips wc_esc_json() and uses JSON_HEX_AMP so '&' is encoded as '&'
+	 * instead of '&amp;'.
+	 *
+	 * The type-detection logic replicates WC_Structured_Data::get_data_type_for_page()
+	 * (class-wc-structured-data.php, WC 9.x/10.x, unchanged since WC 3.0.0).
+	 * If WC ever changes that method, update the conditional tree below to match.
+	 */
+	public function output_wc_structured_data(): void {
+		if ( ! isset( WC()->structured_data ) ) {
+			return;
+		}
+
+		// Mirror WC_Structured_Data::get_data_type_for_page() exactly.
+		$types   = array();
+		$types[] = is_shop() || is_product_category() || is_product() ? 'product' : '';
+		$types[] = is_shop() && is_front_page() ? 'website' : '';
+		$types[] = is_product() ? 'review' : '';
+		$types[] = 'breadcrumblist';
+		$types[] = 'order';
+		$types   = array_filter(
+			apply_filters( 'woocommerce_structured_data_type_for_page', $types )
+		);
+
+		$data = WC()->structured_data->get_structured_data( $types );
+		if ( ! $data ) {
+			return;
+		}
+
+		$encoded = wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES );
+		if ( false !== $encoded ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode with JSON_HEX_* applied
+			echo '<script type="application/ld+json">' . $encoded . '</script>' . "\n";
+		}
 	}
 
 	/**
