@@ -79,6 +79,7 @@ class WC_AI_Storefront_JsonLd {
 		add_filter( 'woocommerce_structured_data_product', [ $this, 'enhance_product_data' ], 20, 2 );
 		add_filter( 'woocommerce_structured_data_type_for_page', [ $this, 'allow_product_group_type' ] );
 		add_action( 'wp_head', [ $this, 'output_store_jsonld' ], 5 );
+		add_action( 'wp_head', [ $this, 'output_archive_itemlist_jsonld' ], 6 );
 	}
 
 	/**
@@ -2771,6 +2772,151 @@ class WC_AI_Storefront_JsonLd {
 			$this->weight_unit_code_cache = isset( $unit_map[ $wc_unit ] ) ? $unit_map[ $wc_unit ] : 'KGM';
 		}
 		return $this->weight_unit_code_cache;
+	}
+
+	/**
+	 * Emit an ItemList JSON-LD block on shop/archive/search pages.
+	 *
+	 * Hooked to `wp_head` at priority 6 (after `output_store_jsonld` at 5).
+	 * Fires on:
+	 *   - Shop front          is_shop() && ! is_front_page()
+	 *   - Category archives   is_product_category()
+	 *   - Tag archives        is_product_tag()
+	 *   - Search results      is_search() && function_exists( 'is_woocommerce' ) && is_woocommerce()
+	 *
+	 * Each itemListElement carries a ListItem with an inline Product stub
+	 * (name, SKU, URL, primary image, price, currency, availability) — enough
+	 * for an agent to present results without following individual product URLs.
+	 * Full Product enrichment (BuyAction, attributes, shipping, returns) lives
+	 * on the single-product page.
+	 *
+	 * Results are cached per [page_type]_[term_id|search_query]_[page_num]
+	 * (1-hour TTL). Cache is purged by WC_AI_Storefront_Cache_Invalidator on
+	 * any product or category change.
+	 */
+	public function output_archive_itemlist_jsonld(): void {
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			return;
+		}
+
+		// Determine page context. Homepage is excluded — it already gets
+		// OnlineBusiness + hasOfferCatalog from output_store_jsonld().
+		$on_shop     = function_exists( 'is_shop' ) && is_shop() && ! is_front_page();
+		$on_category = function_exists( 'is_product_category' ) && is_product_category();
+		$on_tag      = function_exists( 'is_product_tag' ) && is_product_tag();
+		$on_search   = is_search() && function_exists( 'is_woocommerce' ) && is_woocommerce();
+
+		if ( ! $on_shop && ! $on_category && ! $on_tag && ! $on_search ) {
+			return;
+		}
+
+		// Build a stable cache key scoped to this exact page view.
+		$paged_raw = get_query_var( 'paged' );
+		$paged     = $paged_raw ? (int) $paged_raw : 1;
+		if ( $on_category || $on_tag ) {
+			$term      = $on_category ? get_queried_object() : get_queried_object();
+			$term_id   = ( $term && isset( $term->term_id ) ) ? (int) $term->term_id : 0;
+			$cache_key = 'wc_ai_storefront_itemlist_' . ( $on_category ? 'cat' : 'tag' ) . '_' . $term_id . '_' . $paged;
+		} elseif ( $on_search ) {
+			$cache_key = 'wc_ai_storefront_itemlist_search_' . md5( get_search_query() ) . '_' . $paged;
+		} else {
+			$cache_key = 'wc_ai_storefront_itemlist_shop_' . $paged;
+		}
+
+		$cached = get_transient( $cache_key );
+		if ( is_array( $cached ) ) {
+			echo '<script type="application/ld+json">' . wp_json_encode( $cached, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE ) . '</script>' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode applied.
+			return;
+		}
+
+		// Query products for this page context.
+		$per_page   = (int) get_option( 'posts_per_page', 12 );
+		$query_args = array(
+			'status'  => 'publish',
+			'limit'   => min( $per_page, 100 ),
+			'page'    => $paged,
+			'orderby' => 'menu_order',
+			'order'   => 'ASC',
+			'return'  => 'objects',
+		);
+
+		if ( $on_category && isset( $term ) && $term ) {
+			$query_args['category'] = array( $term->slug );
+		} elseif ( $on_tag && isset( $term ) && $term ) {
+			$query_args['tag'] = array( $term->slug );
+		} elseif ( $on_search ) {
+			$query_args['s'] = get_search_query();
+		}
+
+		$products = wc_get_products( $query_args );
+		if ( empty( $products ) ) {
+			return;
+		}
+
+		$currency = get_woocommerce_currency();
+		$items    = array();
+		$position = ( ( $paged - 1 ) * $per_page ) + 1;
+
+		foreach ( $products as $product ) {
+			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
+				continue;
+			}
+
+			$price     = $product->get_price();
+			$in_stock  = $product->is_in_stock();
+			$image_id  = $product->get_image_id();
+			$image_url = $image_id ? wp_get_attachment_url( $image_id ) : '';
+
+			$product_stub = array(
+				'@type' => 'Product',
+				'name'  => $product->get_name(),
+				'url'   => get_permalink( $product->get_id() ),
+			);
+
+			$sku = $product->get_sku();
+			if ( '' !== $sku ) {
+				$product_stub['sku'] = $sku;
+			}
+
+			if ( '' !== $image_url ) {
+				$product_stub['image'] = $image_url;
+			}
+
+			if ( '' !== (string) $price ) {
+				$product_stub['offers'] = array(
+					'@type'         => 'Offer',
+					'price'         => $price,
+					'priceCurrency' => $currency,
+					'availability'  => $in_stock
+						? 'https://schema.org/InStock'
+						: 'https://schema.org/OutOfStock',
+				);
+			}
+
+			$items[] = array(
+				'@type'    => 'ListItem',
+				'position' => $position++,
+				'name'     => $product->get_name(),
+				'url'      => get_permalink( $product->get_id() ),
+				'item'     => $product_stub,
+			);
+		}
+
+		if ( empty( $items ) ) {
+			return;
+		}
+
+		$data = array(
+			'@context'        => 'https://schema.org',
+			'@type'           => 'ItemList',
+			'numberOfItems'   => count( $items ),
+			'itemListElement' => $items,
+		);
+
+		set_transient( $cache_key, $data, HOUR_IN_SECONDS );
+
+		echo '<script type="application/ld+json">' . wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE ) . '</script>' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode applied.
 	}
 
 	/**

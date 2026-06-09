@@ -276,16 +276,14 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 			static fn( $t ) => addcslashes( (string) $t, '_%\\' )
 		);
 		$wpdb->shouldReceive( 'query' )
-			->once()
-			->andReturn( 2 ); // Simulate 2 rows deleted (e.g. www + non-www).
+			->twice() // llms_txt wildcard + itemlist wildcard.
+			->andReturn( 2 );
 
 		Functions\when( 'delete_transient' )->justReturn( true );
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
 		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
 
 		$this->invalidator->invalidate();
-
-		// The Mockery expectation above asserts query() was called once.
 	}
 
 	public function test_deactivate_runs_wildcard_db_delete_for_host_keyed_variants(): void {
@@ -402,8 +400,8 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_invalidate_multisite_runs_wildcard_query_per_site(): void {
-		// Two sibling sites; each must trigger one $wpdb->query() in addition
-		// to the main site's query. Total = 3 wildcard queries.
+		// Main site runs 2 wildcard queries (llms_txt + itemlist).
+		// Each of the 2 sibling sites also runs 2. Total = 6.
 		global $wpdb;
 		$wpdb          = Mockery::mock( 'wpdb' );
 		$wpdb->options = 'wp_options';
@@ -412,7 +410,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 			static fn( $t ) => addcslashes( (string) $t, '_%\\' )
 		);
 		$wpdb->shouldReceive( 'query' )
-			->times( 3 ) // 1 current + 2 siblings.
+			->times( 6 ) // 2 main + 2 siblings × 2 each.
 			->andReturn( 0 );
 
 		Functions\when( 'is_multisite' )->justReturn( true );
