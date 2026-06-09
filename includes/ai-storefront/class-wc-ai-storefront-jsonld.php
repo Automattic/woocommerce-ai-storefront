@@ -73,12 +73,25 @@ class WC_AI_Storefront_JsonLd {
 	private const MAX_RELATED_PRODUCT_REFS = 10;
 
 	/**
+	 * Transient key for the site-wide WebSite + SearchAction JSON-LD block.
+	 *
+	 * Registered with WC_AI_Storefront_Cache_Invalidator so it is busted
+	 * on product, category, and settings changes — the block embeds the
+	 * store URL and REST endpoint which change only on settings saves, but
+	 * using the same invalidation path keeps cache lifetimes consistent.
+	 */
+	public const WEBSITE_JSONLD_CACHE_KEY     = 'wc_ai_storefront_website_jsonld';
+	public const ITEMLIST_JSONLD_CACHE_PREFIX = 'wc_ai_storefront_itemlist_';
+
+	/**
 	 * Initialize hooks.
 	 */
 	public function init() {
 		add_filter( 'woocommerce_structured_data_product', [ $this, 'enhance_product_data' ], 20, 2 );
 		add_filter( 'woocommerce_structured_data_type_for_page', [ $this, 'allow_product_group_type' ] );
+		add_action( 'wp_head', [ $this, 'output_website_jsonld' ], 4 );
 		add_action( 'wp_head', [ $this, 'output_store_jsonld' ], 5 );
+		add_action( 'wp_head', [ $this, 'output_archive_itemlist_jsonld' ], 6 );
 	}
 
 	/**
@@ -2771,6 +2784,329 @@ class WC_AI_Storefront_JsonLd {
 			$this->weight_unit_code_cache = isset( $unit_map[ $wc_unit ] ) ? $unit_map[ $wc_unit ] : 'KGM';
 		}
 		return $this->weight_unit_code_cache;
+	}
+
+	/**
+	 * Emit a WebSite + SearchAction JSON-LD block on every page.
+	 *
+	 * Hooked to `wp_head` at priority 4 (before output_store_jsonld at 5).
+	 * Fires on every page when the plugin is enabled — agents that scan
+	 * <head> for structured data find a machine-readable search endpoint
+	 * without having to follow any discovery links.
+	 *
+	 * Two potentialAction entries:
+	 *   1. Native WP search (HTML result page).
+	 *   2. UCP GET catalog/search (REST JSON — uses the public GET route).
+	 *
+	 * The `wc_ai_storefront_jsonld_website` filter allows Yoast/RankMath to
+	 * suppress the block (return false/null) if they are already emitting
+	 * their own WebSite block, preventing duplication.
+	 *
+	 * Results are cached in a site-wide transient (1-hour TTL) because the
+	 * block content depends only on store URL and settings, not on the
+	 * current page or user.
+	 */
+	public function output_website_jsonld(): void {
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			return;
+		}
+
+		$cached = get_transient( self::WEBSITE_JSONLD_CACHE_KEY );
+		if ( false !== $cached ) {
+			$encoded = wp_json_encode( $cached, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+			if ( false !== $encoded ) {
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode output
+				echo '<script type="application/ld+json">' . $encoded . '</script>' . "\n";
+			}
+			return;
+		}
+
+		$home_url  = trailingslashit( home_url() );
+		$rest_base = rest_url( WC_AI_Storefront_UCP_REST_Controller::NAMESPACE . '/catalog/search' );
+
+		$data = array(
+			'@context'        => 'https://schema.org',
+			'@type'           => 'WebSite',
+			'url'             => $home_url,
+			'potentialAction' => array(
+				array(
+					'@type'       => 'SearchAction',
+					'target'      => array(
+						'@type'       => 'EntryPoint',
+						'urlTemplate' => $home_url . '?s={search_term}&post_type=product',
+					),
+					'query-input' => 'required name=search_term',
+				),
+				array(
+					'@type'       => 'SearchAction',
+					'name'        => 'Product catalog API',
+					'target'      => array(
+						'@type'       => 'EntryPoint',
+						'urlTemplate' => $rest_base . '?q={search_term}',
+					),
+					'query-input' => 'required name=search_term',
+				),
+			),
+		);
+
+		/**
+		 * Filter the WebSite JSON-LD data before caching and output.
+		 *
+		 * Return false or null to suppress the block entirely (e.g. when
+		 * another SEO plugin already emits a WebSite block).
+		 *
+		 * @param array $data The structured data array.
+		 */
+		$data = apply_filters( 'wc_ai_storefront_jsonld_website', $data );
+		if ( empty( $data ) ) {
+			return;
+		}
+
+		set_transient( self::WEBSITE_JSONLD_CACHE_KEY, $data, HOUR_IN_SECONDS );
+		$encoded = wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		if ( false !== $encoded ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode output
+			echo '<script type="application/ld+json">' . $encoded . '</script>' . "\n";
+		}
+	}
+
+	/**
+	 * Emit an ItemList JSON-LD block on shop/archive/search pages.
+	 *
+	 * Hooked to `wp_head` at priority 6 (after `output_store_jsonld` at 5).
+	 * Fires on:
+	 *   - Shop front          is_shop() && ! is_front_page()
+	 *   - Category archives   is_product_category()
+	 *   - Tag archives        is_product_tag()
+	 *   - Search results      is_search() && function_exists( 'is_woocommerce' ) && is_woocommerce()
+	 *
+	 * Each itemListElement carries a ListItem with an inline Product stub
+	 * (name, SKU, URL, primary image, price, currency, availability) — enough
+	 * for an agent to present results without following individual product URLs.
+	 * Full Product enrichment (BuyAction, attributes, shipping, returns) lives
+	 * on the single-product page.
+	 *
+	 * Results are cached per [page_type]_[term_id|search_query]_[page_num]
+	 * (1-hour TTL). Cache is purged by WC_AI_Storefront_Cache_Invalidator on
+	 * any product or category change.
+	 */
+	public function output_archive_itemlist_jsonld(): void {
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			return;
+		}
+
+		// Determine page context. Homepage is excluded — it already gets
+		// OnlineBusiness + hasOfferCatalog from output_store_jsonld().
+		$on_shop     = function_exists( 'is_shop' ) && is_shop() && ! is_front_page();
+		$on_category = function_exists( 'is_product_category' ) && is_product_category();
+		$on_tag      = function_exists( 'is_product_tag' ) && is_product_tag();
+		// A product search is `/?s=foo&post_type=product`. is_woocommerce() is
+		// is_shop() || is_product_taxonomy() || is_product() — all false on a
+		// search results page — so gating on it would make this branch dead.
+		// Key on the searched post type instead, which is what actually
+		// distinguishes a product search from a blog/post search.
+		$on_search = is_search() && 'product' === get_query_var( 'post_type' );
+
+		if ( ! $on_shop && ! $on_category && ! $on_tag && ! $on_search ) {
+			return;
+		}
+
+		// Build a stable cache key scoped to this exact page view.
+		//
+		// Search pages are deliberately NOT cached. A search transient key is
+		// keyed on md5(get_search_query()), whose cardinality is bounded only by
+		// the distinct ?s= values an unauthenticated visitor (or scraper) sends
+		// — caching each would flood wp_options with one row-pair per unique
+		// query for the full TTL. The page itself is cheap to recompute (one
+		// wc_get_products page query). Shop/category/tag keys ARE cached because
+		// their cardinality is bounded by catalog size.
+		$cache_enabled = ! $on_search;
+		$paged_raw     = get_query_var( 'paged' );
+		$paged         = $paged_raw ? (int) $paged_raw : 1;
+		$term          = null;
+		$cache_key     = '';
+		if ( $on_category || $on_tag ) {
+			$term      = get_queried_object();
+			$term_id   = ( $term && isset( $term->term_id ) ) ? (int) $term->term_id : 0;
+			$cache_key = self::ITEMLIST_JSONLD_CACHE_PREFIX . ( $on_category ? 'cat' : 'tag' ) . '_' . $term_id . '_' . $paged;
+		} elseif ( ! $on_search ) {
+			$cache_key = self::ITEMLIST_JSONLD_CACHE_PREFIX . 'shop_' . $paged;
+		}
+
+		if ( $cache_enabled ) {
+			$cached = get_transient( $cache_key );
+			if ( is_array( $cached ) ) {
+				$encoded = wp_json_encode( $cached, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE );
+				// Guard against wp_json_encode() returning false (e.g. malformed
+				// UTF-8): emit nothing rather than an empty, invalid ld+json
+				// island. Mirrors output_website_jsonld(). On the cache-hit path
+				// a false encode means the cached payload is corrupt — return
+				// without falling through to a redundant fresh build.
+				if ( false !== $encoded ) {
+					echo '<script type="application/ld+json">' . $encoded . '</script>' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode applied.
+				}
+				return;
+			}
+		}
+
+		// Query products for this page context.
+		$per_page   = (int) get_option( 'posts_per_page', 12 );
+		$query_args = array(
+			'status'  => 'publish',
+			'limit'   => min( $per_page, 100 ),
+			'page'    => $paged,
+			'orderby' => 'menu_order',
+			'order'   => 'ASC',
+			'return'  => 'objects',
+		);
+
+		// Total-count args: same filters, no pagination, IDs only.
+		$count_args = array(
+			'status' => 'publish',
+			'limit'  => -1,
+			'return' => 'ids',
+		);
+
+		if ( $on_category && $term ) {
+			$query_args['category'] = array( $term->slug );
+			$count_args['category'] = array( $term->slug );
+			// term->count is the fastest total for categories/tags:
+			// it's stored in the term row and updated by WP on every
+			// save, so no extra DB query is needed.
+			$total_products = isset( $term->count ) ? (int) $term->count : null;
+			$list_name      = $term->name ?? '';
+			$list_url       = get_term_link( $term );
+			$list_url       = is_wp_error( $list_url ) ? '' : $list_url;
+		} elseif ( $on_tag && $term ) {
+			$query_args['tag'] = array( $term->slug );
+			$count_args['tag'] = array( $term->slug );
+			$total_products    = isset( $term->count ) ? (int) $term->count : null;
+			$list_name         = $term->name ?? '';
+			$list_url          = get_term_link( $term );
+			$list_url          = is_wp_error( $list_url ) ? '' : $list_url;
+		} elseif ( $on_search ) {
+			$search_query    = get_search_query();
+			$query_args['s'] = $search_query;
+			$count_args['s'] = $search_query;
+			$total_products  = null; // resolved below after count query.
+			$list_name       = $search_query;
+			$list_url        = home_url( '/?s=' . rawurlencode( $search_query ) . '&post_type=product' );
+		} else {
+			$total_products = null; // resolved below after count query.
+			$list_name      = (string) get_bloginfo( 'name' );
+			$shop_page_id   = function_exists( 'wc_get_page_id' ) ? wc_get_page_id( 'shop' ) : 0;
+			$list_url       = $shop_page_id > 0 ? get_permalink( $shop_page_id ) : home_url( '/' );
+			$list_url       = $list_url ? $list_url : '';
+		}
+
+		// Fall back to a count query when term->count isn't available
+		// (search + shop pages) or when $term was not resolved.
+		// Prefer wp_query->found_posts to avoid loading all IDs into memory.
+		if ( null === $total_products ) {
+			$main_query = isset( $GLOBALS['wp_query'] ) ? $GLOBALS['wp_query'] : null;
+			if ( $main_query && isset( $main_query->found_posts ) && $main_query->found_posts > 0 ) {
+				$total_products = (int) $main_query->found_posts;
+			} else {
+				$total_products = count( wc_get_products( $count_args ) );
+			}
+		}
+
+		$products = wc_get_products( $query_args );
+		if ( empty( $products ) ) {
+			return;
+		}
+
+		$currency       = get_woocommerce_currency();
+		$items          = array();
+		$effective_page = min( $per_page, 100 );
+		$position       = ( ( $paged - 1 ) * $effective_page ) + 1;
+
+		foreach ( $products as $product ) {
+			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
+				continue;
+			}
+
+			$price     = $product->get_price();
+			$in_stock  = $product->is_in_stock();
+			$image_id  = $product->get_image_id();
+			$image_url = $image_id ? wp_get_attachment_url( $image_id ) : '';
+
+			$product_stub = array(
+				'@type' => 'Product',
+				'name'  => $product->get_name(),
+				'url'   => get_permalink( $product->get_id() ),
+			);
+
+			$sku = $product->get_sku();
+			if ( '' !== $sku ) {
+				$product_stub['sku'] = $sku;
+			}
+
+			if ( '' !== $image_url ) {
+				$product_stub['image'] = $image_url;
+			}
+
+			if ( '' !== (string) $price ) {
+				$product_stub['offers'] = array(
+					'@type'         => 'Offer',
+					'price'         => $price,
+					'priceCurrency' => $currency,
+					'availability'  => $in_stock
+						? 'https://schema.org/InStock'
+						: 'https://schema.org/OutOfStock',
+				);
+			}
+
+			$items[] = array(
+				'@type'    => 'ListItem',
+				'position' => $position++,
+				'name'     => $product->get_name(),
+				'url'      => get_permalink( $product->get_id() ),
+				'item'     => $product_stub,
+			);
+		}
+
+		if ( empty( $items ) ) {
+			return;
+		}
+
+		$data = array(
+			'@context'        => 'https://schema.org',
+			'@type'           => 'ItemList',
+			'name'            => $list_name,
+			'itemListElement' => $items,
+		);
+		// numberOfItems is the count of items in THIS list. It is only honest
+		// when every queried product is syndicated — i.e. selection mode 'all'.
+		// In 'selected'/'by_taxonomy' mode the itemListElement above is a
+		// filtered subset, but $total_products counts all published products
+		// (no cheap syndication-aware count exists). Emitting that inflated
+		// figure would mislead agents paginating on numberOfItems and disclose
+		// the non-syndicated count, so omit the optional field instead.
+		$selection_mode = $settings['product_selection_mode'] ?? 'all';
+		if ( 'all' === $selection_mode ) {
+			$data['numberOfItems'] = $total_products;
+		}
+		if ( '' !== $list_url ) {
+			$data['url'] = $list_url;
+		}
+
+		$encoded = wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE );
+		// Guard against a false return (malformed UTF-8 in a product field):
+		// emit nothing, and don't cache a payload we couldn't even encode.
+		if ( false === $encoded ) {
+			WC_AI_Storefront_Logger::debug( 'ItemList JSON-LD: wp_json_encode failed for cache key ' . $cache_key . '; block suppressed.' );
+			return;
+		}
+
+		// Search pages skip the write (see $cache_enabled rationale above).
+		if ( $cache_enabled ) {
+			set_transient( $cache_key, $data, HOUR_IN_SECONDS );
+		}
+
+		echo '<script type="application/ld+json">' . $encoded . '</script>' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode applied.
 	}
 
 	/**

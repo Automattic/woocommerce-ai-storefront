@@ -167,6 +167,15 @@ class WC_AI_Storefront_Cache_Invalidator {
 				$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
 			)
 		);
+		// Purge all paged archive ItemList transients (keyed per page-type /
+		// term / page-number — too many to register individually).
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+				$wpdb->esc_like( '_transient_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%',
+				$wpdb->esc_like( '_transient_timeout_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%'
+			)
+		);
 		// phpcs:enable
 
 		// Note: SITEMAP_CACHE_KEY is intentionally NOT busted here. The 24h
@@ -208,6 +217,13 @@ class WC_AI_Storefront_Cache_Invalidator {
 								"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
 								$wpdb->esc_like( '_transient_wc_ai_storefront_llms_txt_' ) . '%',
 								$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
+							)
+						);
+						$wpdb->query(
+							$wpdb->prepare(
+								"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+								$wpdb->esc_like( '_transient_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%',
+								$wpdb->esc_like( '_transient_timeout_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%'
 							)
 						);
 						// phpcs:enable

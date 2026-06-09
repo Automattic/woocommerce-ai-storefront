@@ -115,6 +115,20 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		return null;
 	}
 
+	/**
+	 * Return all registered calls for a given path (multiple methods share a path).
+	 *
+	 * @return array<int, array{namespace: string, route: string, args: array<string, mixed>}>
+	 */
+	private function routes_for( string $path ): array {
+		return array_values(
+			array_filter(
+				$this->registered_routes,
+				static fn( array $call ): bool => $call['route'] === $path
+			)
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// Registration contract
 	// ------------------------------------------------------------------
@@ -123,17 +137,12 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
-		// Three commerce endpoints (catalog/search, catalog/lookup,
-		// checkout-sessions POST) + one unsupported-method stub
-		// (checkout-sessions/{id} accepting GET/PUT/PATCH/DELETE,
-		// returns structured 405 `unsupported_operation` so agents
-		// that try to read, replace, modify, or cancel a session
-		// don't see WP REST's generic 404) + one docs endpoint
-		// (extension/schema). The commerce endpoints are the UCP
-		// 2026-04-08 surface; the docs endpoint is our self-hosted
-		// JSON Schema for the `com.woocommerce.ai_storefront`
-		// extension.
-		$this->assertCount( 5, $this->registered_routes );
+		// POST catalog/search + GET catalog/search (public) +
+		// POST catalog/lookup + GET catalog/lookup (public) +
+		// POST checkout-sessions + GET/PUT/PATCH/DELETE checkout-sessions/{id} stub +
+		// GET extension/schema.
+		// = 7 register_rest_route() calls total.
+		$this->assertCount( 7, $this->registered_routes );
 		foreach ( $this->registered_routes as $call ) {
 			$this->assertEquals( 'wc/ucp/v1', $call['namespace'] );
 		}
@@ -168,6 +177,40 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertNotNull( $route, 'catalog/lookup route should be registered' );
 		$this->assertEquals( 'POST', $route['args']['methods'] );
+	}
+
+	public function test_get_catalog_search_route_uses_check_agent_access(): void {
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->register_routes();
+
+		$all = $this->routes_for( '/catalog/search' );
+		$get = null;
+		foreach ( $all as $r ) {
+			if ( 'GET' === $r['args']['methods'] ) {
+				$get = $r;
+				break;
+			}
+		}
+
+		$this->assertNotNull( $get, 'GET catalog/search route should be registered' );
+		$this->assertEquals( [ $controller, 'check_agent_access' ], $get['args']['permission_callback'] );
+	}
+
+	public function test_get_catalog_lookup_route_uses_check_agent_access(): void {
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->register_routes();
+
+		$all = $this->routes_for( '/catalog/lookup' );
+		$get = null;
+		foreach ( $all as $r ) {
+			if ( 'GET' === $r['args']['methods'] ) {
+				$get = $r;
+				break;
+			}
+		}
+
+		$this->assertNotNull( $get, 'GET catalog/lookup route should be registered' );
+		$this->assertEquals( [ $controller, 'check_agent_access' ], $get['args']['permission_callback'] );
 	}
 
 	public function test_checkout_sessions_route_registered(): void {

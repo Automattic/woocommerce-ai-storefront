@@ -146,6 +146,8 @@ class WC_AI_Storefront {
 		// installs that cached it and the warm-up copy written by the admin
 		// controller when syndication is toggled on.
 		WC_AI_Storefront_Cache_Invalidator::register( 'wc_ai_storefront_ucp' );
+		// Site-wide WebSite + SearchAction JSON-LD block (output_website_jsonld).
+		WC_AI_Storefront_Cache_Invalidator::register( WC_AI_Storefront_JsonLd::WEBSITE_JSONLD_CACHE_KEY );
 
 		// Crawl logger cron handlers are registered unconditionally so that
 		// WP-Cron keeps firing prune/rollup even while syndication is disabled.
@@ -237,6 +239,7 @@ class WC_AI_Storefront {
 		add_filter( 'query_vars', [ $ucp, 'add_query_vars' ] );
 		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
+		add_action( 'template_redirect', [ $ucp, 'serve_opensearch_xml' ] );
 		add_action( 'wp_head', [ $ucp, 'inject_head_link' ] );
 
 		// Suppress WordPress's trailing-slash canonical redirect for

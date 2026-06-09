@@ -33,6 +33,10 @@ if ( ! defined( 'DAY_IN_SECONDS' ) ) {
 	define( 'DAY_IN_SECONDS', 86400 );
 }
 
+if ( ! defined( 'OBJECT' ) ) {
+	define( 'OBJECT', 'OBJECT' );
+}
+
 // Load the settings stub before classes that reference WC_AI_Storefront statically.
 require_once __DIR__ . '/stubs/class-wc-ai-storefront-stub.php';
 

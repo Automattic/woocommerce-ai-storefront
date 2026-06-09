@@ -77,7 +77,18 @@ class WC_AI_Storefront_Ucp {
 	];
 
 	/**
-	 * Inject a <link rel="ucp-agent"> tag pointing at the UCP manifest.
+	 * WordPress query var name for the OpenSearch descriptor endpoint.
+	 *
+	 * Used by add_rewrite_rules(), add_query_vars(), serve_opensearch_xml(),
+	 * and suppress_canonical_redirect(). Kept as a constant so all four
+	 * callsites stay in sync if the string ever changes.
+	 */
+	const OPENSEARCH_QUERY_VAR = 'wc_ai_storefront_opensearch';
+
+	/**
+	 * Inject two discovery <link> tags into <head>:
+	 *   - rel="ucp-agent"  → the UCP manifest (/.well-known/ucp)
+	 *   - rel="search"     → the OpenSearch descriptor (/opensearch.xml)
 	 *
 	 * Caught by head-scraping agents (Perplexity, Bing, etc.) that read
 	 * <head> before loading the full DOM and may never reach llms.txt.
@@ -90,40 +101,111 @@ class WC_AI_Storefront_Ucp {
 			return;
 		}
 
-		$manifest_url = esc_url( home_url( '/.well-known/ucp' ) );
+		$manifest_url   = esc_url( home_url( '/.well-known/ucp' ) );
+		$opensearch_url = esc_url( home_url( '/opensearch.xml' ) );
+		$store_name     = esc_attr( get_bloginfo( 'name' ) );
 		echo "\n" . '<link rel="ucp-agent" type="application/json" href="' . $manifest_url . '" />' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- esc_url applied above.
+		echo '<link rel="search" type="application/opensearchdescription+xml" title="' . $store_name . '" href="' . $opensearch_url . '" />' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- esc_url and esc_attr applied above.
 	}
 
 	/**
-	 * Short-circuit canonical-URL redirects for the manifest endpoint.
+	 * Short-circuit canonical-URL redirects for the manifest and OpenSearch endpoints.
 	 *
 	 * @param string|false $redirect_url WP's candidate canonical URL.
 	 * @return string|false               False disables the redirect;
 	 *                                   original value otherwise.
 	 */
 	public function suppress_canonical_redirect( $redirect_url ) {
-		if ( get_query_var( 'wc_ai_storefront_ucp' ) ) {
+		if ( get_query_var( 'wc_ai_storefront_ucp' ) || get_query_var( self::OPENSEARCH_QUERY_VAR ) ) {
 			return false;
 		}
 		return $redirect_url;
 	}
 
 	/**
-	 * Add rewrite rule for /.well-known/ucp.
+	 * Add rewrite rules for /.well-known/ucp and /opensearch.xml.
 	 */
 	public function add_rewrite_rules() {
 		add_rewrite_rule( '^\.well-known/ucp$', 'index.php?wc_ai_storefront_ucp=1', 'top' );
+		add_rewrite_rule( '^opensearch\.xml$', 'index.php?' . self::OPENSEARCH_QUERY_VAR . '=1', 'top' );
 	}
 
 	/**
-	 * Register query var.
+	 * Register query vars.
 	 *
 	 * @param array $vars Query vars.
 	 * @return array
 	 */
 	public function add_query_vars( $vars ) {
 		$vars[] = 'wc_ai_storefront_ucp';
+		$vars[] = self::OPENSEARCH_QUERY_VAR;
 		return $vars;
+	}
+
+	/**
+	 * Serve the OpenSearch descriptor XML at /opensearch.xml.
+	 *
+	 * Advertises two search URL templates:
+	 *   - HTML: native WP product search result page.
+	 *   - JSON: UCP GET catalog/search REST endpoint.
+	 *
+	 * Only emitted when the plugin is enabled. The descriptor is short-lived
+	 * (public, max-age=3600) — unlike the UCP manifest it carries no
+	 * commerce data and CDN caching is desirable here.
+	 */
+	public function serve_opensearch_xml(): void {
+		if ( ! get_query_var( self::OPENSEARCH_QUERY_VAR ) ) {
+			return;
+		}
+
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			status_header( 404 );
+			exit;
+		}
+
+		header( 'Content-Type: application/opensearchdescription+xml; charset=utf-8' );
+		header( 'Cache-Control: public, max-age=3600' );
+		header( 'Vary: Host' );
+		header( 'X-Robots-Tag: noindex' );
+
+		echo $this->build_opensearch_xml(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- XML built with esc_html/esc_url throughout.
+		exit;
+	}
+
+	/**
+	 * Build the OpenSearch descriptor XML string.
+	 *
+	 * Extracted from serve_opensearch_xml() so the XML content is testable
+	 * without triggering the exit() call.
+	 *
+	 * @return string Valid OpenSearch 1.1 XML document.
+	 */
+	public function build_opensearch_xml(): string {
+		$fn         = function_exists( 'mb_substr' ) ? 'mb_substr' : 'substr';
+		$raw_name   = wp_strip_all_tags( get_bloginfo( 'name' ) );
+		$short_name = $fn( $raw_name, 0, 16 );
+		if ( '' === $short_name ) {
+			$short_name = $fn( wp_strip_all_tags( home_url() ), 0, 16 );
+		}
+		$description = sprintf(
+			/* translators: %s: store name */
+			__( 'Search %s products', 'woocommerce-ai-storefront' ),
+			$raw_name
+		);
+
+		$html_template = esc_url( home_url( '/' ) ) . '?s={searchTerms}&amp;post_type=product';
+		$api_template  = esc_url( rest_url( WC_AI_Storefront_UCP_REST_Controller::NAMESPACE . '/catalog/search' ) ) . '?q={searchTerms}';
+
+		$xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+		$xml .= '<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">' . "\n";
+		$xml .= '  <ShortName>' . esc_html( $short_name ) . '</ShortName>' . "\n";
+		$xml .= '  <Description>' . esc_html( $description ) . '</Description>' . "\n";
+		$xml .= '  <Url type="text/html" template="' . $html_template . '"/>' . "\n";
+		$xml .= '  <Url type="application/json" template="' . $api_template . '"/>' . "\n";
+		$xml .= '</OpenSearchDescription>' . "\n";
+
+		return $xml;
 	}
 
 	/**

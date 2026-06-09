@@ -247,12 +247,41 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			]
 		);
 
+		// Public GET surface for fetch-based agents (Perplexity, Bing, etc.)
+		// that cannot POST or don't send a UCP-Agent header. Delegates to the
+		// same run_catalog_search() neutral core as the POST route — no new
+		// filter logic, same response envelope. Uses check_agent_access so the
+		// merchant's allowed_crawlers and allow_unknown_ucp_agents settings are
+		// honoured on both GET and POST. Agents without a UCP-Agent header pass
+		// the gate unconditionally (same empty-header path as POST).
+		register_rest_route(
+			self::NAMESPACE,
+			'/catalog/search',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'handle_catalog_search_get' ],
+				'permission_callback' => [ $this, 'check_agent_access' ],
+			]
+		);
+
 		register_rest_route(
 			self::NAMESPACE,
 			'/catalog/lookup',
 			[
 				'methods'             => 'POST',
 				'callback'            => [ $this, 'handle_catalog_lookup' ],
+				'permission_callback' => [ $this, 'check_agent_access' ],
+			]
+		);
+
+		// Public GET surface for catalog/lookup — same neutral core as POST.
+		// check_agent_access applies here too; see catalog/search GET above.
+		register_rest_route(
+			self::NAMESPACE,
+			'/catalog/lookup',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'handle_catalog_lookup_get' ],
 				'permission_callback' => [ $this, 'check_agent_access' ],
 			]
 		);
@@ -650,6 +679,213 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		return $response;
+	}
+
+	/**
+	 * GET /catalog/search — public, fetch-friendly surface for AI agents.
+	 *
+	 * Maps flat query-string params to the same `$params` shape that
+	 * handle_catalog_search() builds from a POST body, then delegates to
+	 * run_catalog_search(). All filter normalization, validation, and warning
+	 * emission reuses the existing path through map_ucp_search_to_store_api().
+	 *
+	 * Supported params:
+	 *   ?q                     — query string (maps to $params['query'])
+	 *   ?category=slug         — single category slug
+	 *   ?min_price=N           — integer price lower bound (store currency)
+	 *   ?max_price=N           — integer price upper bound (store currency)
+	 *   ?in_stock=1            — '1' or 'true' → true
+	 *   ?attribute[color]=blue — attribute filter; bracket notation, one slug
+	 *                            per axis. Feeds build_attribute_filter_params().
+	 *   ?page=N                — 1-indexed page; encoded to cursor internally
+	 *   ?per_page=N            — results per page
+	 *
+	 * @param WP_REST_Request $request Incoming GET request.
+	 * @return WP_REST_Response
+	 */
+	public function handle_catalog_search_get( WP_REST_Request $request ): WP_REST_Response {
+		$filters = [];
+
+		$category = $request->get_param( 'category' );
+		if ( is_string( $category ) && '' !== $category ) {
+			$filters['categories'] = [ $category ];
+		}
+
+		// Forward the raw query-string value UNCHANGED — do not (int)-cast here.
+		// map_ucp_search_to_store_api() gates price bounds through the strict
+		// is_integer_like_non_negative() validator (digit-only string OR native
+		// int), which is what the POST path relies on. Pre-casting would collapse
+		// '?min_price=gibberish' to a native 0 (a real, accepted "price >= 0"
+		// bound) and '?min_price=19.99' to a truncated 19 — both silent, wrong,
+		// and divergent from POST. Passing the raw string lets the shared
+		// validator reject malformed input identically on GET and POST.
+		$min_price = $request->get_param( 'min_price' );
+		$max_price = $request->get_param( 'max_price' );
+		if ( null !== $min_price || null !== $max_price ) {
+			$price = [];
+			if ( null !== $min_price ) {
+				$price['min'] = $min_price;
+			}
+			if ( null !== $max_price ) {
+				$price['max'] = $max_price;
+			}
+			$filters['price'] = $price;
+		}
+
+		$in_stock_raw = $request->get_param( 'in_stock' );
+		if ( null !== $in_stock_raw ) {
+			$filters['in_stock'] = in_array( $in_stock_raw, [ '1', 'true', true, 1 ], true );
+		}
+
+		// ?attribute[color]=blue&attribute[size]=M → ['color' => ['blue'], 'size' => ['M']].
+		// build_attribute_filter_params() expects exactly this shape: string keys → array of slugs.
+		// Wrap each scalar value in an array so single-slug entries normalize correctly.
+		// Scalar ?attribute=blue (missing bracket notation) is silently ignored — log it to help
+		// agent developers debug the mismatch between their URL and the expected format.
+		$attribute_raw = $request->get_param( 'attribute' );
+		if ( null !== $attribute_raw && ! is_array( $attribute_raw ) ) {
+			WC_AI_Storefront_Logger::debug(
+				'UCP catalog/search GET: ?attribute must use bracket notation (e.g. ?attribute[color]=blue); scalar value ignored'
+			);
+		} elseif ( is_array( $attribute_raw ) && ! empty( $attribute_raw ) ) {
+			$attribute_map = [];
+			foreach ( $attribute_raw as $key => $value ) {
+				if ( ! is_string( $key ) ) {
+					continue;
+				}
+				$attribute_map[ $key ] = is_array( $value ) ? $value : [ (string) $value ];
+			}
+			if ( ! empty( $attribute_map ) ) {
+				$filters['attributes'] = $attribute_map;
+			}
+		}
+
+		$page     = max( 1, (int) ( $request->get_param( 'page' ) ?? 1 ) );
+		$per_page = $request->get_param( 'per_page' );
+
+		// Forward per_page raw (no (int) cast) for the same reason as the price
+		// bounds: map_ucp_search_to_store_api() validates pagination.limit via
+		// is_integer_like_non_negative() and emits a distinct "invalid shape"
+		// warning for non-numeric input. Pre-casting '?per_page=gibberish' to 0
+		// defeats that branch and yields a misleading "clamped from 0" message
+		// for a value the agent never sent.
+		$pagination = [ 'cursor' => self::encode_cursor( $page ) ];
+		if ( null !== $per_page ) {
+			$pagination['limit'] = $per_page;
+		}
+
+		$params = [
+			'query'            => $request->get_param( 'q' ),
+			'context'          => null,
+			'signals'          => null,
+			'filters'          => $filters,
+			'pagination'       => $pagination,
+			'sort'             => null,
+			'agent_data'       => self::resolve_agent_host( $request ),
+			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
+		];
+
+		$result = $this->run_catalog_search( $params );
+		return new WP_REST_Response( $result['body'], $result['status'] );
+	}
+
+	/**
+	 * GET /catalog/lookup — public, fetch-friendly surface for AI agents.
+	 *
+	 * Accepts ?id=42 (numeric WC product ID) or ?slug=day-hoodie.
+	 * Builds the same $params shape as handle_catalog_lookup() and delegates
+	 * to run_catalog_lookup().
+	 *
+	 * @param WP_REST_Request $request Incoming GET request.
+	 * @return WP_REST_Response
+	 */
+	public function handle_catalog_lookup_get( WP_REST_Request $request ): WP_REST_Response {
+		// Posture parity: a paused store answers 503 ("come back later")
+		// consistently and BEFORE any input validation or DB work. run_catalog_lookup()
+		// also gates on this, but the GET handler does its own id/slug validation
+		// (incl. a get_page_by_path() query) first — so without this early check a
+		// malformed/missing param on a disabled store would leak a 400 instead of
+		// the 503 the POST route returns, and would run a needless slug query.
+		if ( self::is_syndication_disabled() ) {
+			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup GET rejected: syndication disabled' );
+			$error = self::ucp_catalog_error_response(
+				'dev.ucp.shopping.catalog.lookup',
+				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
+				WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED,
+				null,
+				503
+			);
+			return new WP_REST_Response( $error->get_data(), $error->get_status() );
+		}
+
+		$id_param   = $request->get_param( 'id' );
+		$slug_param = $request->get_param( 'slug' );
+
+		if ( null === $id_param && null === $slug_param ) {
+			$error = self::ucp_catalog_error_response(
+				'dev.ucp.shopping.catalog.lookup',
+				__( 'Provide either ?id=<product_id> or ?slug=<product_slug>.', 'woocommerce-ai-storefront' ),
+				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
+				null,
+				400
+			);
+			return new WP_REST_Response( $error->get_data(), $error->get_status() );
+		}
+
+		if ( null !== $slug_param && ( ! is_string( $slug_param ) || '' === trim( $slug_param ) ) ) {
+			$error = self::ucp_catalog_error_response(
+				'dev.ucp.shopping.catalog.lookup',
+				__( 'The ?slug parameter must be a non-empty string.', 'woocommerce-ai-storefront' ),
+				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
+				null,
+				400
+			);
+			return new WP_REST_Response( $error->get_data(), $error->get_status() );
+		}
+
+		$ids = [];
+		if ( null !== $id_param ) {
+			if ( ! ctype_digit( (string) $id_param ) || '0' === (string) $id_param ) {
+				$error = self::ucp_catalog_error_response(
+					'dev.ucp.shopping.catalog.lookup',
+					__( 'The ?id parameter must be a positive integer.', 'woocommerce-ai-storefront' ),
+					WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
+					null,
+					400
+				);
+				return new WP_REST_Response( $error->get_data(), $error->get_status() );
+			}
+			$ids[] = WC_AI_Storefront_UCP_Product_Translator::PRODUCT_ID_PREFIX . (int) $id_param;
+		} else {
+			$post = get_page_by_path( $slug_param, OBJECT, 'product' );
+			if ( $post instanceof WP_Post ) {
+				$ids[] = WC_AI_Storefront_UCP_Product_Translator::PRODUCT_ID_PREFIX . $post->ID;
+			} else {
+				$error = self::ucp_catalog_error_response(
+					'dev.ucp.shopping.catalog.lookup',
+					sprintf(
+						/* translators: %s: product slug */
+						__( 'No product found with slug "%s".', 'woocommerce-ai-storefront' ),
+						esc_html( $slug_param )
+					),
+					WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND,
+					null,
+					404
+				);
+				return new WP_REST_Response( $error->get_data(), $error->get_status() );
+			}
+		}
+
+		$params = [
+			'ids'              => $ids,
+			'context'          => null,
+			'signals'          => null,
+			'agent_data'       => self::resolve_agent_host( $request ),
+			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
+		];
+
+		$result = $this->run_catalog_lookup( $params );
+		return new WP_REST_Response( $result['body'], $result['status'] );
 	}
 
 	/**
