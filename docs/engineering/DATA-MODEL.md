@@ -2,7 +2,7 @@
 
 Inventory of every persisted artifact this plugin writes — options, transients, post meta, order meta, scheduled events. For each: where it's defined, who reads/writes it, lifetime, and behavior on uninstall.
 
-The surface is deliberately small: two options, six transients, three scheduled events, one post-meta key, four order-meta keys, and two custom tables. No custom post types.
+The surface is deliberately small: two options, eight transients, three scheduled events, one post-meta key, four order-meta keys, and two custom tables. No custom post types.
 
 The two custom tables back the Discovery analytics surface. They were added in 0.8.6 alongside the crawler-side visibility stats. Pre-0.8.6 installs got both tables created on the version-bump dbDelta path; the schema is rebuildable on every version bump and the tables are dropped on uninstall.
 
@@ -161,6 +161,27 @@ Cached top-category list used by the store/home-page JSON-LD `ItemList` block in
 - **Written by:** `WC_AI_Storefront_JsonLd::get_catalog_summary()` after building the category list
 - **Invalidated by:** `WC_AI_Storefront_Cache_Invalidator` (registered via `WC_AI_Storefront_Cache_Invalidator::register()` in the main plugin class)
 - **Uninstall:** deleted by `uninstall.php`
+
+### `wc_ai_storefront_website_jsonld`
+
+Cached global `WebSite` + `SearchAction` JSON-LD block emitted on every page by `WC_AI_Storefront_JsonLd::output_website_jsonld()`. The block depends only on the store URL and settings (not the current page or user), so a single site-wide key serves every page.
+
+- **Key defined in:** `WC_AI_Storefront_JsonLd::WEBSITE_JSONLD_CACHE_KEY`
+- **TTL:** 1 hour (`HOUR_IN_SECONDS`)
+- **Written by:** `output_website_jsonld()` after the `wc_ai_storefront_jsonld_website` filter (a filter that returns falsy suppresses the block and nothing is cached)
+- **Invalidated by:** `WC_AI_Storefront_Cache_Invalidator` (registered in the main plugin class)
+- **Uninstall:** deleted by `uninstall.php`
+
+### `wc_ai_storefront_itemlist_{context}` (keyspace family)
+
+Cached archive `ItemList` blocks emitted by `WC_AI_Storefront_JsonLd::output_archive_itemlist_jsonld()`, one transient per archive page view. Like `stats_{period}`, this is a family of keys sharing a prefix rather than a single key.
+
+- **Prefix defined in:** `WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX` (`wc_ai_storefront_itemlist_`). The same constant is read by `WC_AI_Storefront_Cache_Invalidator` so the wildcard-delete pattern can't drift from the write keys.
+- **Key shapes:** `…itemlist_cat_<term_id>_<page>`, `…itemlist_tag_<term_id>_<page>`, `…itemlist_shop_<page>`. **Search pages are intentionally not cached** — a `…itemlist_search_<md5(query)>_<page>` key would have cardinality bounded only by the distinct `?s=` values unauthenticated visitors supply, which would flood `wp_options`; search blocks recompute fresh on every request instead (no read, no write).
+- **TTL:** 1 hour (`HOUR_IN_SECONDS`)
+- **Written by:** `output_archive_itemlist_jsonld()` for the shop / category / tag contexts only. An un-encodable payload (`wp_json_encode` returns `false`) is never written.
+- **Invalidated by:** `WC_AI_Storefront_Cache_Invalidator` via a `LIKE '_transient_<prefix>%' OR '_transient_timeout_<prefix>%'` wildcard delete (single-site and per-blog multisite paths) on any product or term change — the whole family is purged at once.
+- **Uninstall:** deleted by `uninstall.php` via the same prefix wildcard.
 
 ### `wc_ai_storefront_stats_{period}`
 

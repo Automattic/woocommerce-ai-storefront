@@ -99,6 +99,34 @@ add_filter( 'wc_ai_storefront_jsonld_store', function ( array $store_data, array
 
 **What you should NOT add via this filter.** `streetAddress` is deliberately suppressed by the plugin — for an `OnlineStore` (vs. a `LocalBusiness`) the field has low signal value but real privacy risk (many merchants populate WC Settings with their home address for tax purposes and don't expect it published). Re-injecting `streetAddress` via this filter undoes that privacy guard. If a merchant actually wants their street address published, they should configure that through a plugin that explicitly asks them to opt in.
 
+### `wc_ai_storefront_jsonld_website`
+
+Filter the global `WebSite` + `SearchAction` JSON-LD block emitted on every page (see [`JSON-LD-SCHEMA.md`](JSON-LD-SCHEMA.md#every-page-website--searchaction-schema)). The block advertises two search entry points: the native WP product search and the public `GET /catalog/search` REST endpoint.
+
+```php
+apply_filters( 'wc_ai_storefront_jsonld_website', array $data );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$data` | `array` | The Schema.org `WebSite` structure (`@type`, `@context`, `url`, and a two-entry `potentialAction` array of `SearchAction`s). |
+
+**Returns:** modified `array` to customize, or `false`/`null` to **suppress the block entirely**. The filter runs before the result is cached in the `WEBSITE_JSONLD_CACHE_KEY` transient, so a suppressed block is never cached.
+
+**When to use — avoiding a duplicate `WebSite` block.** Yoast SEO and Rank Math both emit their own site-level `WebSite` node with a sitelinks `SearchAction`. If one of those is active and already covers search, return falsy here so the page doesn't carry two `WebSite` nodes:
+
+```php
+add_filter( 'wc_ai_storefront_jsonld_website', function ( $data ) {
+    // Defer to Yoast's WebSite/SearchAction when Yoast is active.
+    if ( defined( 'WPSEO_VERSION' ) ) {
+        return null; // suppress this plugin's block
+    }
+    return $data;
+} );
+```
+
+**When to use — adding the REST search action to your own block instead.** If you'd rather keep your SEO plugin's `WebSite` node but still advertise the catalog API, suppress this block and append the second `SearchAction` to your own node via your SEO plugin's schema filter. The REST `urlTemplate` is `<rest_url>wc/ucp/v1/catalog/search?q={search_term}`.
+
 ### `wc_ai_storefront_ucp_manifest`
 
 Filter the `/.well-known/ucp` manifest data before it's encoded and served.

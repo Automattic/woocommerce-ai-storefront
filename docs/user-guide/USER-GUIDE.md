@@ -159,6 +159,7 @@ Before configuring anything else, take 30 seconds to confirm the endpoints are l
 | `https://your-store.com/llms.txt` | A plain-text Markdown document starting with `# Your Store Name`, with sections covering store identity (`## Store`), browse/search URLs (`## Browse`), top categories (`## Catalog`), shipping and returns (`## Shipping & Returns`), structured-data signposts, and agent-facing endpoints (`## For agents`). |
 | `https://your-store.com/.well-known/ucp` | A pretty-printed JSON document in monospace. Top-level keys: `name`, `version`, `capabilities`, `payment_handlers`, `services`. |
 | `https://your-store.com/robots.txt` | The standard WordPress `robots.txt` plus a block of `User-agent: GPTBot` / `User-agent: ChatGPT-User` / etc. each with `Allow:` lines. |
+| `https://your-store.com/opensearch.xml` | A small XML document starting with `<OpenSearchDescription>`. It tells AI agents and browsers how to search your products, pointing at both your product-search page and the catalog API. |
 | Homepage → "View page source" | Search for `"@type":"OnlineStore"`. This is your store's brand info available to AI shopping agents. See [section 4b](#4b-what-the-homepage-publishes-to-ai-agents). |
 | Any product page → "View page source" | Search for `"@type":"Product"`. You should see product details like prices and (once you set one in [section 7](#7-set-your-store-policies)) return policy information. |
 
@@ -211,7 +212,7 @@ Your homepage now publishes your store's brand details (name, logo, address, con
 | Logo | Site logo or icon | Edit at **Appearance → Customize → Site Identity**. Used if set. |
 | Address | Store location | Edit at **WooCommerce → Settings → General**. Shows city, state, zip, country only. |
 | Email | Your WooCommerce email | See **Customer service email** below. |
-| Search | Auto-generated | Lets AI agents search your store. |
+| Search | Auto-generated | Lets AI agents search your store. Advertised on every page (not just the homepage) and via the `/opensearch.xml` descriptor, so agents can find your search no matter where they land. |
 | Categories | Auto-generated | A summary of your main product types. |
 | Return policy | Your plugin settings | Edit at **WooCommerce → Settings → AI Storefront → Policies**. See [section 7](#7-set-your-store-policies). Published only when you've set a policy other than "Not configured". |
 | Specialties | Auto-generated | A short list of what your store specializes in, derived from your top product categories. |
@@ -570,9 +571,9 @@ Day-to-day maintenance is minimal.
 
 ## 10. Troubleshooting
 
-### `/llms.txt` returns 404
+### `/llms.txt` (or `/opensearch.xml`) returns 404
 
-Permalinks need flushing. Go to **Settings → Permalinks** and click **Save Changes** (don't change anything, just save). Then reload `/llms.txt`. If still 404, check the plugin is enabled (it must be active, not paused).
+Permalinks need flushing. Go to **Settings → Permalinks** and click **Save Changes** (don't change anything, just save). Then reload the URL. If still 404, check the plugin is enabled (it must be active, not paused). Both endpoints are served by the same rewrite-rule mechanism, so the same fix applies to either.
 
 ### `/.well-known/ucp` returns 404 but `/llms.txt` works
 

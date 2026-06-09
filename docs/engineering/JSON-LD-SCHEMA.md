@@ -4,14 +4,18 @@ The structured-data shapes WooCommerce AI Storefront emits, where, and what cont
 
 ## What the plugin emits
 
-Two distinct JSON-LD blocks:
+Four distinct JSON-LD blocks:
 
 | Surface | Block | Location | Source |
 |---------|-------|----------|--------|
 | Product page (single product) | Enhanced `Product` | Inside the `<head>` via `wp_head`, layered on top of WooCommerce core's existing `Product` block | [`includes/ai-storefront/class-wc-ai-storefront-jsonld.php`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) `enhance_product_data()` |
-| Store homepage / shop page | `OnlineBusiness` (an `Organization` subtype) | Inside the `<head>` via `wp_head`, on `is_front_page() || is_shop()` when the plugin is enabled | Same file, `output_store_jsonld()` |
+| Store homepage / shop page | `OnlineBusiness` (an `Organization` subtype) | Inside the `<head>` via `wp_head`, on `is_front_page() || is_shop()` when the plugin is enabled | Same file, `output_store_jsonld()` (priority 5) |
+| Every page | `WebSite` + `SearchAction` | Inside the `<head>` via `wp_head` (priority 4), on every page when the plugin is enabled | Same file, `output_website_jsonld()` |
+| Shop / category / tag / product-search archives | `ItemList` of `ListItem` → `Product` stubs | Inside the `<head>` via `wp_head` (priority 6) | Same file, `output_archive_itemlist_jsonld()` |
 
-Both blocks emit only when the plugin is enabled (`enabled === 'yes'` in `wc_ai_storefront_settings`). Disabling the plugin removes the markup entirely; the underlying WooCommerce core JSON-LD (basic Product, Offer, AggregateRating) continues to render unchanged.
+All blocks emit only when the plugin is enabled (`enabled === 'yes'` in `wc_ai_storefront_settings`). Disabling the plugin removes the markup entirely; the underlying WooCommerce core JSON-LD (basic Product, Offer, AggregateRating) continues to render unchanged.
+
+The three `wp_head` priorities are ordered so the global `WebSite` block (4) precedes the homepage `OnlineBusiness` block (5), which precedes the archive `ItemList` block (6). The homepage is excluded from the `ItemList` block (it already carries `OnlineBusiness` + `hasOfferCatalog`), so the two never collide on one page.
 
 The plugin **does not replace** WC core's JSON-LD. It registers a `woocommerce_structured_data_product` filter that runs after WC has built its base markup and merges enhancement fields into the existing array.
 
@@ -626,14 +630,105 @@ WC's "From" address is often set to `noreply@store.com` to avoid bounce-handling
 
 The `hasOfferCatalog.itemListElement` is built by `get_catalog_summary()` and respects the plugin's product visibility setting — categories with zero exposed products are omitted.
 
+## Every page: `WebSite` + `SearchAction` schema
+
+Emitted on **every** front-end page (priority 4, before the homepage block) by `output_website_jsonld()`. It advertises the store's two search entry points so an agent that lands on any page — not just the homepage — can discover how to search without following a discovery link. The block is cached site-wide in a 1-hour transient (`WEBSITE_JSONLD_CACHE_KEY`); its content depends only on the store URL and settings, not on the current page or user.
+
+```jsonc
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "url": "https://your-store.com/",
+  "potentialAction": [
+    {
+      "@type": "SearchAction",
+      "target": {
+        "@type": "EntryPoint",
+        "urlTemplate": "https://your-store.com/?s={search_term}&post_type=product"
+      },
+      "query-input": "required name=search_term"
+    },
+    {
+      "@type": "SearchAction",
+      "name": "Product catalog API",
+      "target": {
+        "@type": "EntryPoint",
+        "urlTemplate": "https://your-store.com/wp-json/wc/ucp/v1/catalog/search?q={search_term}"
+      },
+      "query-input": "required name=search_term"
+    }
+  ]
+}
+```
+
+- **First action** — the native WP product search results page (HTML). This is the `SearchAction` shape Google exercises for sitelinks search boxes, with `{search_term}` filled in at query time.
+- **Second action** — the public [`GET /catalog/search`](API-REFERENCE.md#get-catalogsearch) REST endpoint (JSON). Points agents at the machine-readable surface the same way the OpenSearch descriptor and the manifest do.
+- **REST URL** uses `rest_url()`, so it resolves correctly under both pretty-permalink and `?rest_route=` configurations.
+- **`wc_ai_storefront_jsonld_website` filter** — return `false`/`null` to suppress the block entirely (e.g. when Yoast or Rank Math already emits a `WebSite` block), preventing duplication. The filter runs before the result is cached. See [`HOOKS.md`](HOOKS.md).
+
+## Archive pages: `ItemList` schema
+
+Emitted on shop / category / tag / product-search archive pages (priority 6, after the homepage block) by `output_archive_itemlist_jsonld()`. Each `itemListElement` carries a `ListItem` wrapping an inline `Product` stub — enough for an agent to present results without following each product URL. Full `Product` enrichment (BuyAction, attributes, shipping, returns) stays on the single-product page.
+
+```jsonc
+{
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "name": "Hoodies",
+  "numberOfItems": 42,
+  "url": "https://your-store.com/product-category/hoodies/",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Classic Hoodie",
+      "url": "https://your-store.com/product/classic-hoodie/",
+      "item": {
+        "@type": "Product",
+        "name": "Classic Hoodie",
+        "url": "https://your-store.com/product/classic-hoodie/",
+        "sku": "HOOD-001",
+        "image": "https://your-store.com/wp-content/uploads/classic-hoodie.jpg",
+        "offers": {
+          "@type": "Offer",
+          "price": "39.00",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock"
+        }
+      }
+    }
+  ]
+}
+```
+
+**Firing contexts** (each `wp_head` render checks these in order):
+
+| Context | Condition | `name` | `url` |
+|---------|-----------|--------|-------|
+| Shop front | `is_shop() && ! is_front_page()` | Site name | Shop page permalink |
+| Category archive | `is_product_category()` | Term name | Term link |
+| Tag archive | `is_product_tag()` | Term name | Term link |
+| Product search | `is_search() && 'product' === get_query_var('post_type')` | Search query | `/?s=<query>&post_type=product` |
+
+The product-search context keys on the searched **post type**, not `is_woocommerce()` — the latter is `is_shop() || is_product_taxonomy() || is_product()`, all false on a search results page, so gating on it would make the search block never fire.
+
+**`numberOfItems` honesty.** The field is emitted **only when the merchant's visibility mode is `all`**. In that mode every queried product is syndicated, so the catalog-wide count (`term->count` → `$wp_query->found_posts` → a `wc_get_products` count query, in that fallback order) equals the visible list. In `selected` / `by_taxonomy` mode the `itemListElement` is a syndication-filtered subset with no cheap accurate count, so `numberOfItems` is **omitted** rather than published as an inflated total that would mislead an agent paginating on it (and would disclose the non-syndicated count). Skipped products are filtered before positions are assigned, so the surviving items always carry contiguous `position` values.
+
+**Pagination.** On paged archives, `position` starts at `((paged - 1) * effective_page) + 1` where `effective_page = min(posts_per_page, 100)` matches the query's clamped page size, so item positions stay globally correct across pages.
+
+**Caching.** Shop / category / tag blocks are cached per page view in 1-hour transients keyed `ITEMLIST_JSONLD_CACHE_PREFIX . <type>_<term-id|page>` (e.g. `wc_ai_storefront_itemlist_cat_7_1`). **Search pages are deliberately not cached** (no read, no write): a search transient key is `…_search_<md5(query)>_<page>`, whose cardinality is bounded only by the distinct `?s=` values an unauthenticated visitor supplies — caching each would flood `wp_options`. Search pages recompute cheaply instead. All cached blocks are purged by [`WC_AI_Storefront_Cache_Invalidator`](../../includes/ai-storefront/class-wc-ai-storefront-cache-invalidator.php) on any product or term change via a `LIKE` wildcard on the shared prefix; see [`DATA-MODEL.md`](DATA-MODEL.md).
+
+**Output safety.** Both blocks encode with `wp_json_encode( …, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | … )` so a `</script>` sequence in a product field can't break out of the inline `<script>`. If encoding returns `false` (e.g. malformed UTF-8 in a product name), the block is suppressed entirely rather than emitted as an empty, invalid `ld+json` island — and the un-encodable payload is never written to the cache.
+
 ## Public filters
 
-Both blocks expose filters for theme and extension authors to customize:
+The blocks expose filters for theme and extension authors to customize:
 
 - `wc_ai_storefront_jsonld_product` -- runs at the end of `enhance_product_data()`. Receives the enhanced markup, the WC_Product, and a minimal safe subset of plugin settings (`enabled`, `product_selection_mode`, `return_policy`). Security-sensitive fields (rate limits, crawler allow-lists) are intentionally excluded.
 - `wc_ai_storefront_jsonld_store` -- runs at the end of `output_store_jsonld()`. Same safe-subset settings.
+- `wc_ai_storefront_jsonld_website` -- runs in `output_website_jsonld()` before the block is cached and output. Receives the `WebSite` data array. Return a modified array to customize, or `false`/`null` to suppress the block entirely (e.g. when another SEO plugin already emits a `WebSite` block).
 
-Both filters return arrays. Returning a partial array replaces only those keys; existing keys not in the return value persist.
+The `_product` and `_store` filters return arrays; returning a partial array replaces only those keys. The `_website` filter additionally treats an empty/falsy return as "suppress this block". See [`HOOKS.md`](HOOKS.md) for signatures.
 
 ## Validation
 
