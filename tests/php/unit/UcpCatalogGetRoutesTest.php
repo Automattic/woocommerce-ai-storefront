@@ -115,9 +115,40 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		$request = $this->make_get_request( [ 'min_price' => '20', 'max_price' => '60' ] );
 		$this->controller->handle_catalog_search_get( $request );
 
+		// The handler forwards the raw query-string value unchanged; the
+		// downstream is_integer_like_non_negative() validator (shared with the
+		// POST path) owns the int coercion. Asserting the raw string here pins
+		// the no-pre-cast contract — a future re-introduction of (int) casting
+		// would change these to native ints and fail.
 		$price = $this->controller->last_search_params['filters']['price'];
-		$this->assertSame( 20, $price['min'] );
-		$this->assertSame( 60, $price['max'] );
+		$this->assertSame( '20', $price['min'] );
+		$this->assertSame( '60', $price['max'] );
+	}
+
+	public function test_get_search_non_numeric_min_price_is_forwarded_not_coerced_to_zero(): void {
+		// Regression: a prior version cast (int) '$min_price' in the handler,
+		// turning '?min_price=gibberish' into a native 0 that the downstream
+		// validator accepts as a real "price >= 0" bound (a silent wrong-but-200
+		// filter, diverging from POST which rejects non-integer price input).
+		// The handler must forward the raw value so the shared validator can
+		// reject it exactly as it does on the POST path.
+		$request = $this->make_get_request( [ 'min_price' => 'gibberish' ] );
+		$this->controller->handle_catalog_search_get( $request );
+
+		$price = $this->controller->last_search_params['filters']['price'];
+		$this->assertSame( 'gibberish', $price['min'] );
+		$this->assertNotSame( 0, $price['min'] );
+	}
+
+	public function test_get_search_decimal_min_price_is_forwarded_not_truncated(): void {
+		// '?min_price=19.99' must not silently truncate to 19. Forwarding the
+		// raw '19.99' lets is_integer_like_non_negative() drop it (UCP amounts
+		// are integer minor units), matching POST.
+		$request = $this->make_get_request( [ 'min_price' => '19.99' ] );
+		$this->controller->handle_catalog_search_get( $request );
+
+		$price = $this->controller->last_search_params['filters']['price'];
+		$this->assertSame( '19.99', $price['min'] );
 	}
 
 	public function test_get_search_in_stock_true_maps_to_filter(): void {
@@ -146,7 +177,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		$this->controller->handle_catalog_search_get( $request );
 
 		$price = $this->controller->last_search_params['filters']['price'];
-		$this->assertSame( 20, $price['min'] );
+		$this->assertSame( '20', $price['min'] );
 		$this->assertArrayNotHasKey( 'max', $price );
 	}
 
@@ -175,7 +206,23 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		$request = $this->make_get_request( [ 'per_page' => '20' ] );
 		$this->controller->handle_catalog_search_get( $request );
 
-		$this->assertSame( 20, $this->controller->last_search_params['pagination']['limit'] );
+		// Raw value forwarded; map_ucp_search_to_store_api() coerces + clamps.
+		// Same no-pre-cast contract as the price bounds.
+		$this->assertSame( '20', $this->controller->last_search_params['pagination']['limit'] );
+	}
+
+	public function test_get_search_non_numeric_per_page_is_forwarded_not_coerced_to_zero(): void {
+		// Regression: a (int) cast in the handler turned '?per_page=gibberish'
+		// into 0, which is_integer_like_non_negative() accepts, so the agent
+		// got a misleading "pagination.limit 0 was clamped to 1" warning for a
+		// value it never sent. Forwarding the raw string routes it to the
+		// validator's "invalid shape" branch, which emits the truthful
+		// "must be a non-negative integer" message.
+		$request = $this->make_get_request( [ 'per_page' => 'gibberish' ] );
+		$this->controller->handle_catalog_search_get( $request );
+
+		$this->assertSame( 'gibberish', $this->controller->last_search_params['pagination']['limit'] );
+		$this->assertNotSame( 0, $this->controller->last_search_params['pagination']['limit'] );
 	}
 
 	public function test_get_search_no_ucp_agent_header_gives_fallback_agent_data(): void {
@@ -303,5 +350,58 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		$result  = $real->handle_catalog_lookup_get( $request );
 
 		$this->assertSame( 503, $result->get_status() );
+	}
+
+	public function test_get_lookup_paused_store_returns_503_even_for_invalid_id(): void {
+		// Posture parity: a paused store must answer 503 ("come back later")
+		// consistently, BEFORE id/slug validation. Previously the handler ran
+		// its own validation first, so '?id=gibberish' on a disabled store
+		// leaked a 400 INVALID_INPUT instead of the 503 the POST route and the
+		// neutral core return.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$real    = new WC_AI_Storefront_UCP_REST_Controller();
+		$request = $this->make_get_request( [ 'id' => 'gibberish' ] );
+		$result  = $real->handle_catalog_lookup_get( $request );
+
+		$this->assertSame( 503, $result->get_status() );
+	}
+
+	public function test_get_lookup_paused_store_returns_503_even_with_missing_params(): void {
+		// Same parity: neither ?id nor ?slug on a paused store → 503, not 400.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$real    = new WC_AI_Storefront_UCP_REST_Controller();
+		$request = $this->make_get_request( [] );
+		$result  = $real->handle_catalog_lookup_get( $request );
+
+		$this->assertSame( 503, $result->get_status() );
+	}
+
+	public function test_get_lookup_paused_store_does_not_query_slug(): void {
+		// The disabled gate must short-circuit BEFORE get_page_by_path() runs —
+		// a paused store should not execute a DB lookup for an agent's slug.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$queried = false;
+		Functions\when( 'get_page_by_path' )->alias(
+			static function () use ( &$queried ) {
+				$queried = true;
+				return null;
+			}
+		);
+
+		$real    = new WC_AI_Storefront_UCP_REST_Controller();
+		$request = $this->make_get_request( [ 'slug' => 'day-hoodie' ] );
+		$result  = $real->handle_catalog_lookup_get( $request );
+
+		$this->assertSame( 503, $result->get_status() );
+		$this->assertFalse( $queried, 'paused store must not run get_page_by_path()' );
 	}
 }

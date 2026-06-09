@@ -711,15 +711,23 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$filters['categories'] = [ $category ];
 		}
 
+		// Forward the raw query-string value UNCHANGED — do not (int)-cast here.
+		// map_ucp_search_to_store_api() gates price bounds through the strict
+		// is_integer_like_non_negative() validator (digit-only string OR native
+		// int), which is what the POST path relies on. Pre-casting would collapse
+		// '?min_price=gibberish' to a native 0 (a real, accepted "price >= 0"
+		// bound) and '?min_price=19.99' to a truncated 19 — both silent, wrong,
+		// and divergent from POST. Passing the raw string lets the shared
+		// validator reject malformed input identically on GET and POST.
 		$min_price = $request->get_param( 'min_price' );
 		$max_price = $request->get_param( 'max_price' );
 		if ( null !== $min_price || null !== $max_price ) {
 			$price = [];
 			if ( null !== $min_price ) {
-				$price['min'] = (int) $min_price;
+				$price['min'] = $min_price;
 			}
 			if ( null !== $max_price ) {
-				$price['max'] = (int) $max_price;
+				$price['max'] = $max_price;
 			}
 			$filters['price'] = $price;
 		}
@@ -755,9 +763,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$page     = max( 1, (int) ( $request->get_param( 'page' ) ?? 1 ) );
 		$per_page = $request->get_param( 'per_page' );
 
+		// Forward per_page raw (no (int) cast) for the same reason as the price
+		// bounds: map_ucp_search_to_store_api() validates pagination.limit via
+		// is_integer_like_non_negative() and emits a distinct "invalid shape"
+		// warning for non-numeric input. Pre-casting '?per_page=gibberish' to 0
+		// defeats that branch and yields a misleading "clamped from 0" message
+		// for a value the agent never sent.
 		$pagination = [ 'cursor' => self::encode_cursor( $page ) ];
 		if ( null !== $per_page ) {
-			$pagination['limit'] = (int) $per_page;
+			$pagination['limit'] = $per_page;
 		}
 
 		$params = [
@@ -786,6 +800,24 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function handle_catalog_lookup_get( WP_REST_Request $request ): WP_REST_Response {
+		// Posture parity: a paused store answers 503 ("come back later")
+		// consistently and BEFORE any input validation or DB work. run_catalog_lookup()
+		// also gates on this, but the GET handler does its own id/slug validation
+		// (incl. a get_page_by_path() query) first — so without this early check a
+		// malformed/missing param on a disabled store would leak a 400 instead of
+		// the 503 the POST route returns, and would run a needless slug query.
+		if ( self::is_syndication_disabled() ) {
+			WC_AI_Storefront_Logger::debug( 'UCP catalog/lookup GET rejected: syndication disabled' );
+			$error = self::ucp_catalog_error_response(
+				'dev.ucp.shopping.catalog.lookup',
+				__( 'AI Storefront is not currently enabled on this store.', 'woocommerce-ai-storefront' ),
+				WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED,
+				null,
+				503
+			);
+			return new WP_REST_Response( $error->get_data(), $error->get_status() );
+		}
+
 		$id_param   = $request->get_param( 'id' );
 		$slug_param = $request->get_param( 'slug' );
 

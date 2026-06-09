@@ -86,7 +86,9 @@ class WC_AI_Storefront_Ucp {
 	const OPENSEARCH_QUERY_VAR = 'wc_ai_storefront_opensearch';
 
 	/**
-	 * Inject a <link rel="ucp-agent"> tag pointing at the UCP manifest.
+	 * Inject two discovery <link> tags into <head>:
+	 *   - rel="ucp-agent"  → the UCP manifest (/.well-known/ucp)
+	 *   - rel="search"     → the OpenSearch descriptor (/opensearch.xml)
 	 *
 	 * Caught by head-scraping agents (Perplexity, Bing, etc.) that read
 	 * <head> before loading the full DOM and may never reach llms.txt.

@@ -143,6 +143,37 @@ class UcpOpenSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'http://a9.com/-/spec/opensearch/1.1/', $xml );
 	}
 
+	public function test_opensearch_short_name_falls_back_to_home_url_when_blogname_empty(): void {
+		// A blank store name would produce an empty <ShortName>, which is an
+		// invalid OpenSearch descriptor (consumers reject it). The builder must
+		// fall back to a truncated home_url(). Exercises the empty-name branch.
+		Functions\when( 'esc_html' )->returnArg();
+		Functions\when( 'get_bloginfo' )->justReturn( '' );
+		Functions\when( 'home_url' )->alias(
+			static fn( $path = '' ) => 'https://my-store.example.com' . ( $path ?: '/' )
+		);
+
+		$xml = $this->ucp->build_opensearch_xml();
+
+		// Capture the ShortName content and assert it's the truncated host, not empty.
+		$this->assertMatchesRegularExpression( '#<ShortName>.+</ShortName>#', $xml );
+		preg_match( '#<ShortName>(.*)</ShortName>#', $xml, $m );
+		$this->assertNotSame( '', $m[1] );
+		$this->assertSame( 'https://my-store', $m[1] ); // home_url() truncated to 16 chars.
+	}
+
+	public function test_opensearch_short_name_truncated_to_16_chars(): void {
+		// ShortName has a 16-char ceiling. A long store name must be truncated.
+		Functions\when( 'esc_html' )->returnArg();
+		Functions\when( 'get_bloginfo' )->justReturn( 'Supercalifragilistic Emporium' );
+
+		$xml = $this->ucp->build_opensearch_xml();
+
+		preg_match( '#<ShortName>(.*)</ShortName>#', $xml, $m );
+		$this->assertSame( 'Supercalifragil', mb_substr( $m[1], 0, 15 ) ); // sanity: prefix preserved.
+		$this->assertLessThanOrEqual( 16, mb_strlen( $m[1] ) );
+	}
+
 	// ------------------------------------------------------------------
 	// serve_opensearch_xml() early-return paths (no exit)
 	// ------------------------------------------------------------------
@@ -155,5 +186,35 @@ class UcpOpenSearchTest extends \PHPUnit\Framework\TestCase {
 		$output = (string) ob_get_clean();
 
 		$this->assertSame( '', $output );
+	}
+
+	/**
+	 * Disabled store → 404 (then exit). We stub status_header() to throw a
+	 * sentinel so we can assert the 404 branch ran WITHOUT reaching the real
+	 * exit(). Runs in a separate process so a stray exit() (if the stub ever
+	 * fails to intercept) ends only the forked child, not the whole suite.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_serve_returns_404_when_plugin_disabled(): void {
+		Functions\when( 'get_query_var' )->justReturn( 1 ); // descriptor requested.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+
+		$captured_status = null;
+		Functions\when( 'status_header' )->alias(
+			static function ( $code ) use ( &$captured_status ) {
+				$captured_status = $code;
+				throw new \RuntimeException( 'status_header:' . $code );
+			}
+		);
+
+		try {
+			$this->ucp->serve_opensearch_xml();
+			$this->fail( 'Expected serve_opensearch_xml() to emit a 404 status on a disabled store.' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertSame( 404, $captured_status );
+			$this->assertSame( 'status_header:404', $e->getMessage() );
+		}
 	}
 }
