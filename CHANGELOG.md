@@ -1,5 +1,35 @@
 ## [Unreleased]
 
+### Features
+
+- **Archive `ItemList` JSON-LD on shop, category, tag, and product-search pages.** Every WooCommerce archive page now emits an `ItemList` schema block (priority 6 on `wp_head`) so agents can read the product listing without following each individual product URL.
+  - Each item carries `@type: ListItem`, a 1-based `position` (globally correct across pages), a nested `Product` stub with `name`, `url`, `sku`, `image`, and a `Offer` with `price` and `priceCurrency`.
+  - `numberOfItems` is emitted only in `all` syndication mode (where every queried product is syndicated) to avoid inflated or misleading counts in `selected`/`by_taxonomy` modes.
+  - Positions are globally offset by page: page 2 with `per_page=12` starts at position 13.
+  - Cache keyed on `wc_ai_storefront_itemlist_{context}_{page}` (TTL 1 hour); **search pages are intentionally never cached** to prevent attacker-controlled query strings from flooding the options table with transients.
+  - Output is guarded by `wp_json_encode` false-check — malformed UTF-8 suppresses the block rather than emitting broken JSON-LD or poisoning the cache.
+
+- **`GET /catalog/search` and `GET /catalog/lookup` — public, query-string catalog endpoints.** Fetch-based agents that cannot POST a JSON body can now query the catalog directly via query-string parameters. Both routes are permissionless (`__return_true`) and share the exact same validation, filter, and response logic as the existing POST routes via shared transport-neutral cores.
+  - `GET /catalog/search` — `?q`, `?category`, `?min_price`, `?max_price`, `?in_stock`, `?attribute[color]=blue`, `?page`, `?per_page`
+  - `GET /catalog/lookup` — `?id=42` or `?slug=day-hoodie`; slug resolves via `get_page_by_path()`; both missing → 400; slug not found → empty result set
+  - Both return a 503 envelope immediately when syndication is disabled, before any validation or DB query (parity with POST 503 behaviour).
+
+- **Global `WebSite` + `SearchAction` JSON-LD on every page** (priority 4, before product and archive blocks). Advertises two search entry points to agents — the native HTML product-search URL and the new `GET /catalog/search` REST endpoint — using the `SearchAction` shape Google already exercises for sitelinks search boxes.
+
+- **OpenSearch descriptor at `/opensearch.xml`** and `<link rel="search">` in every page `<head>`. Agents that scan `<head>` for a search interface find a machine-readable pointer to both the HTML search page and the REST catalog endpoint. The descriptor includes both a `text/html` URL template and an `application/json` REST URL template.
+
+### Bug fixes
+
+- **Validation-parity fix for `GET /catalog/search` numeric params.** The `(int)` pre-cast on `$min_price`, `$max_price`, and `$per_page` previously coerced non-numeric strings (e.g. `"abc"`) to `0` before they reached the shared `is_integer_like_non_negative()` validator — effectively bypassing rejection. Raw values are now forwarded to the validator unchanged.
+- **Dead `is_woocommerce()` branch on search pages fixed.** `is_woocommerce()` is defined as `is_shop() || is_product_taxonomy() || is_product()`, all of which are false on WordPress search results pages, so the ItemList block was never emitted for product searches. The gate is now `'product' === get_query_var('post_type')`.
+
+### Tests
+
+- **`UcpCatalogGetRoutesTest`** — full coverage of GET search and lookup handlers: query-param mapping, non-numeric param forwarding (not coerced to zero), 503 parity, slug resolution, and missing-param 400 responses.
+- **`JsonLdArchiveItemListTest`** — product-search gate, non-product-search exclusion, search-page cache skip (spy pattern), `wp_json_encode` false guard, `numberOfItems` mode guard, `found_posts` total count, page-offset position math, and contiguous positions when a product is filtered out.
+- **`UcpOpenSearchTest`** — empty blogname fallback, 16-char truncation, and plugin-disabled 404 (with `@runInSeparateProcess`).
+- **`uninstall.php`** — `wc_ai_storefront_website_jsonld` fixed-key transient and `wc_ai_storefront_itemlist_*` key-family wildcard deletions added to both single-site and multisite uninstall paths.
+
 ---
 
 ## [0.18.0] – 2026-06-09
