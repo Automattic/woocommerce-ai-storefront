@@ -115,10 +115,11 @@ class WC_AI_Storefront_JsonLd {
 	 * by merchants who want to keep WC's default output intact.
 	 */
 	public function replace_wc_structured_data_output(): void {
-		if ( ! isset( WC()->structured_data ) ) {
+		$wc = function_exists( 'WC' ) ? WC() : null;
+		if ( ! $wc || ! isset( $wc->structured_data ) ) {
 			return;
 		}
-		remove_action( 'wp_footer', [ WC()->structured_data, 'output_structured_data' ], 10 );
+		remove_action( 'wp_footer', [ $wc->structured_data, 'output_structured_data' ], 10 );
 		add_action( 'wp_footer', [ $this, 'output_wc_structured_data' ], 10 );
 	}
 
@@ -132,22 +133,27 @@ class WC_AI_Storefront_JsonLd {
 	 * If WC ever changes that method, update the conditional tree below to match.
 	 */
 	public function output_wc_structured_data(): void {
-		if ( ! isset( WC()->structured_data ) ) {
+		$wc = function_exists( 'WC' ) ? WC() : null;
+		if ( ! $wc || ! isset( $wc->structured_data ) ) {
 			return;
 		}
 
 		// Mirror WC_Structured_Data::get_data_type_for_page() exactly.
+		// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 		$types   = array();
-		$types[] = is_shop() || is_product_category() || is_product() ? 'product' : '';
-		$types[] = is_shop() && is_front_page() ? 'website' : '';
-		$types[] = is_product() ? 'review' : '';
+		$types[] = ( function_exists( 'is_shop' ) && is_shop() )
+			|| ( function_exists( 'is_product_category' ) && is_product_category() )
+			|| ( function_exists( 'is_product' ) && is_product() ) ? 'product' : '';
+		$types[] = ( function_exists( 'is_shop' ) && is_shop() ) && is_front_page() ? 'website' : '';
+		$types[] = ( function_exists( 'is_product' ) && is_product() ) ? 'review' : '';
 		$types[] = 'breadcrumblist';
 		$types[] = 'order';
 		$types   = array_filter(
 			apply_filters( 'woocommerce_structured_data_type_for_page', $types )
 		);
+		// phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 
-		$data = WC()->structured_data->get_structured_data( $types );
+		$data = $wc->structured_data->get_structured_data( $types );
 		if ( ! $data ) {
 			return;
 		}

@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Bug Fixes
+
+- **`&amp;` in JSON-LD checkout URLs breaks non-browser consumers.** WooCommerce's `wc_esc_json()` serializer HTML-encodes every `&` to `&amp;` at print time, after all data filters run — meaning `checkoutPageURLTemplate`, `BuyAction.urlTemplate`, and variation `@id` URLs all contained literal `&amp;` in the raw HTTP response. `curl`, Python `requests`, and LLM tool calls would receive broken URLs. Fixed by replacing WC's `wp_footer` structured-data callback with our own that uses `wp_json_encode` with `JSON_HEX_AMP` (encoding `&` as `&`) and skips `wc_esc_json` entirely. Email order details are unaffected.
+
 ---
 
 ## [0.19.0] – 2026-06-08
