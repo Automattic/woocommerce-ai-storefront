@@ -201,6 +201,10 @@
 <td>The standard WordPress <code>robots.txt</code> plus a block of <code>User-agent: GPTBot</code> / <code>User-agent: ChatGPT-User</code> / etc. each with <code>Allow:</code> lines.</td>
 </tr>
 <tr>
+<td><code>https://your-store.com/opensearch.xml</code></td>
+<td>A small XML document starting with <code>&lt;OpenSearchDescription&gt;</code>. It tells AI agents and browsers how to search your products, pointing at both your product-search page and the catalog API.</td>
+</tr>
+<tr>
 <td>Homepage → &quot;View page source&quot;</td>
 <td>Search for <code>&quot;@type&quot;:&quot;OnlineStore&quot;</code>. This is your store&#39;s brand info available to AI shopping agents. See <a href="#4b-what-the-homepage-publishes-to-ai-agents">section 4b</a>.</td>
 </tr>
@@ -292,7 +296,7 @@
 <tr>
 <td>Search</td>
 <td>Auto-generated</td>
-<td>Lets AI agents search your store.</td>
+<td>Lets AI agents search your store. Advertised on every page (not just the homepage) and via the <code>/opensearch.xml</code> descriptor, so agents can find your search no matter where they land.</td>
 </tr>
 <tr>
 <td>Categories</td>
@@ -630,8 +634,8 @@
 <p><strong>Plugin updates.</strong> AI Storefront updates often as the AI discovery protocol evolves. Check the CHANGELOG before updating. Version 0.x updates are backwards-compatible with your settings; a version 1.0 bump will include a migration guide.</p>
 <hr>
 <h2>10. Troubleshooting</h2>
-<h3><code>/llms.txt</code> returns 404</h3>
-<p>Permalinks need flushing. Go to <strong>Settings → Permalinks</strong> and click <strong>Save Changes</strong> (don&#39;t change anything, just save). Then reload <code>/llms.txt</code>. If still 404, check the plugin is enabled (it must be active, not paused).</p>
+<h3><code>/llms.txt</code> (or <code>/opensearch.xml</code>) returns 404</h3>
+<p>Permalinks need flushing. Go to <strong>Settings → Permalinks</strong> and click <strong>Save Changes</strong> (don&#39;t change anything, just save). Then reload the URL. If still 404, check the plugin is enabled (it must be active, not paused). Both endpoints are served by the same rewrite-rule mechanism, so the same fix applies to either.</p>
 <h3><code>/.well-known/ucp</code> returns 404 but <code>/llms.txt</code> works</h3>
 <p>A security plugin is blocking <code>/.well-known/</code>. Add <code>/.well-known/ucp</code> to its allow list.</p>
 <h3>JSON-LD doesn&#39;t include the BuyAction</h3>
@@ -668,7 +672,7 @@
 <li><strong>General WooCommerce support:</strong> <a href="https://woocommerce.com/support/">woocommerce.com/support</a> for questions about checkout, payments, taxes, shipping, or anything else WooCommerce-core-shaped.</li>
 </ul>
 <hr>
-<p><em>Covers AI Storefront 0.17.3. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
+<p><em>Covers AI Storefront 0.18.0. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
 
 </body>
 </html>

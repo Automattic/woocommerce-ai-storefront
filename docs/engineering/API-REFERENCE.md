@@ -5,7 +5,7 @@ Endpoint-level reference for the two REST surfaces this plugin exposes:
 - **UCP REST adapter** — `/wp-json/wc/ucp/v1/*`. Public; called by AI agents.
 - **Admin REST API** — `/wp-json/wc/v3/ai-storefront/admin/*`. Authenticated; called by the React admin UI.
 
-Discovery surfaces (`/llms.txt`, `/.well-known/ucp`, `/robots.txt`) aren't REST in the conventional sense — they're rewrite-rule-served virtual paths. They're documented in [`ARCHITECTURE.md`](ARCHITECTURE.md#discovery-layer).
+Discovery surfaces (`/llms.txt`, `/.well-known/ucp`, `/robots.txt`, `/opensearch.xml`) aren't REST in the conventional sense — they're rewrite-rule-served virtual paths. They're documented in [`ARCHITECTURE.md`](ARCHITECTURE.md#discovery-layer).
 
 ## Conventions
 
@@ -153,6 +153,67 @@ curl -X POST https://your-store.com/wp-json/wc/ucp/v1/catalog/search \
     "filters": { "price": { "max": 15000 } },
     "pagination": { "per_page": 10 }
   }'
+```
+
+### `GET /catalog/search`
+
+Public, fetch-friendly variant of `POST /catalog/search` for agents (Perplexity, Bing, fetch-based crawlers) that cannot POST a JSON body or scan `<head>` for a discovery document. It translates flat query-string params into the same `$params` shape the POST handler builds, then delegates to the identical `run_catalog_search()` neutral core — so normalization, validation, warning emission, and the response envelope are all shared. There is no new filter logic.
+
+**Permission:** `check_agent_access` — the same gate as POST, so the merchant's `allowed_crawlers` and `allow_unknown_ucp_agents` settings apply equally to GET and POST. A request with no `UCP-Agent` header passes the gate on the same empty-header path as POST and is attributed to the fallback agent (`ucp_unknown`).
+
+**Query params:**
+
+| Param | Maps to | Description |
+|-------|---------|-------------|
+| `q` | `query` | Free-text search term. |
+| `category` | `filters.categories[0]` | A single category slug. |
+| `min_price` | `filters.price.min` | Integer lower bound, store currency (minor unit per the price filter contract). |
+| `max_price` | `filters.price.max` | Integer upper bound. |
+| `in_stock` | `filters.in_stock` | `1` or `true` → `true`; any other value → `false`. |
+| `attribute[<axis>]` | `filters.attributes.<axis>` | Bracket notation, one slug per axis: `?attribute[color]=blue&attribute[size]=M`. Each key maps to a single term slug. A scalar `?attribute=blue` (no brackets) is logged at debug level and ignored — multi-value per axis is POST-only. |
+| `page` | `pagination.cursor` | 1-indexed page; encoded to the opaque cursor internally (`encode_cursor()`). |
+| `per_page` | `pagination.limit` | Results per page. Clamped to `[1, 100]` downstream. |
+
+**Validation parity.** Price and `per_page` params are forwarded as their **raw string values**, not pre-cast to `int`. The shared `is_integer_like_non_negative()` validator (digit-only string or native int) then gates them exactly as on the POST path: `?min_price=abc` is rejected (the filter is dropped, not silently applied as `min=0`), `?min_price=19.99` is rejected rather than truncated to `19`, and `?per_page=abc` produces the validator's truthful "must be a non-negative integer" warning rather than a misleading "clamped from 0". This keeps GET and POST behaviorally identical for malformed numeric input.
+
+**Response:** identical body + status to `POST /catalog/search`. The `X-WC-AI-Storefront-Unknown-Params` advisory header is not emitted on GET (there's no JSON body to inspect for unknown keys).
+
+**Errors:** same as `POST /catalog/search` — `503 ucp_disabled` (the neutral core 503s before any work when syndication is paused), `429 ucp_rate_limit_exceeded`.
+
+**Curl:**
+
+```bash
+# Bare query
+curl 'https://your-store.com/wp-json/wc/ucp/v1/catalog/search?q=hoodie'
+
+# Filtered: blue hoodies under 60 (store currency minor units)
+curl 'https://your-store.com/wp-json/wc/ucp/v1/catalog/search?q=hoodie&attribute[color]=blue&max_price=6000&per_page=10'
+```
+
+### `GET /catalog/lookup`
+
+Public, fetch-friendly variant of `POST /catalog/lookup`. Accepts exactly one of `?id=<numeric_wc_id>` or `?slug=<product_slug>`, builds the same `$params` shape as the POST handler, and delegates to `run_catalog_lookup()`.
+
+**Permission:** `check_agent_access` (see GET `/catalog/search` above).
+
+**Query params:**
+
+| Param | Maps to | Description |
+|-------|---------|-------------|
+| `id` | `ids[0]` = `prod_<id>` | A positive integer WC product ID. `0`, negative, non-numeric → `400 invalid_input`. |
+| `slug` | `ids[0]` = `prod_<resolved_id>` | A product slug, resolved via `get_page_by_path( $slug, OBJECT, 'product' )`. Must be a non-empty string. A slug that resolves to no published product → `404 not_found` (the resolved ID is dispatched through the Store API, which 404s drafts/private — so a non-public slug behaves identically to a nonexistent one, leaking no draft data). |
+
+`?id` takes precedence when both are supplied.
+
+**Response:** same envelope as `POST /catalog/lookup`.
+
+**Errors:** `503 ucp_disabled` — returned **before** id/slug validation when syndication is paused, so a paused store answers a malformed or missing-param GET lookup with a consistent `503` (matching POST) rather than leaking a `400`, and runs no `get_page_by_path()` query. `400 invalid_input` — neither `?id` nor `?slug` present, or a malformed value. `404 not_found` — slug resolves to no published product.
+
+**Curl:**
+
+```bash
+curl 'https://your-store.com/wp-json/wc/ucp/v1/catalog/lookup?id=42'
+curl 'https://your-store.com/wp-json/wc/ucp/v1/catalog/lookup?slug=day-hoodie'
 ```
 
 ### `POST /catalog/lookup`

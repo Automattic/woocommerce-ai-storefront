@@ -90,7 +90,10 @@ WC Order Attribution captures `utm_source` / `utm_medium` natively. The plugin's
 For agents that don't speak UCP — typical SEO-style crawlers — the plugin still ships purchasability signals:
 
 - **`<link rel="ucp-agent">`** injected in every page `<head>` pointing at `/.well-known/ucp`. Caught by head-scraping agents (Perplexity, Bing, etc.) that read `<head>` before loading the DOM and may never reach llms.txt. Only emitted when AI Storefront is enabled.
-- **Enhanced JSON-LD** on product pages with `potentialAction` of type `BuyAction`. The `urlTemplate` carries the same UTM placeholders.
+- **`<link rel="search">`** injected alongside it in every page `<head>`, pointing at the `/opensearch.xml` OpenSearch descriptor — a machine-readable pointer to both the HTML product-search page and the `GET /catalog/search` REST endpoint, for agents that scan `<head>` for a search interface.
+- **Global `WebSite` + `SearchAction` JSON-LD** on every page, advertising the same two search entry points (native search + `GET /catalog/search`). This is the `SearchAction` shape Google already exercises for sitelinks search boxes, now also pointing agents at the catalog API.
+- **Enhanced JSON-LD** on product pages with `potentialAction` of type `BuyAction`. The `urlTemplate` carries the same UTM placeholders. Archive pages (shop/category/tag/product-search) additionally emit an `ItemList` of product stubs so an agent can read a results page without following each product URL.
+- **Public GET catalog endpoints** — `GET /catalog/search` and `GET /catalog/lookup` give fetch-based agents that can't POST a JSON body a way to query the catalog directly with query-string params. Same gate, same response envelope as the POST routes.
 - **`/llms.txt`** publishes store identity, a top-categories sample, shipping/returns policy, browse/search URLs (with `utm_id=woo_llms` for channel attribution), and pointers at the UCP manifest, REST base, and checkout-sessions endpoint.
 - **`robots.txt`** allows the named AI crawlers.
 - **Bare product URLs** in `/catalog/search` and `/catalog/lookup` responses also carry the canonical UTM payload (post-PR #116), so buyers who follow the bare product link from chat — rather than going through `/checkout-sessions` — still attribute correctly.
