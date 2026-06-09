@@ -2814,8 +2814,9 @@ class WC_AI_Storefront_JsonLd {
 		// Build a stable cache key scoped to this exact page view.
 		$paged_raw = get_query_var( 'paged' );
 		$paged     = $paged_raw ? (int) $paged_raw : 1;
+		$term      = null;
 		if ( $on_category || $on_tag ) {
-			$term      = $on_category ? get_queried_object() : get_queried_object();
+			$term      = get_queried_object();
 			$term_id   = ( $term && isset( $term->term_id ) ) ? (int) $term->term_id : 0;
 			$cache_key = 'wc_ai_storefront_itemlist_' . ( $on_category ? 'cat' : 'tag' ) . '_' . $term_id . '_' . $paged;
 		} elseif ( $on_search ) {
@@ -2841,12 +2842,49 @@ class WC_AI_Storefront_JsonLd {
 			'return'  => 'objects',
 		);
 
-		if ( $on_category && isset( $term ) && $term ) {
+		// Total-count args: same filters, no pagination, IDs only.
+		$count_args = array(
+			'status' => 'publish',
+			'limit'  => -1,
+			'return' => 'ids',
+		);
+
+		if ( $on_category && $term ) {
 			$query_args['category'] = array( $term->slug );
-		} elseif ( $on_tag && isset( $term ) && $term ) {
+			$count_args['category'] = array( $term->slug );
+			// term->count is the fastest total for categories/tags:
+			// it's stored in the term row and updated by WP on every
+			// save, so no extra DB query is needed.
+			$total_products = isset( $term->count ) ? (int) $term->count : null;
+			$list_name      = $term->name ?? '';
+			$list_url       = get_term_link( $term );
+			$list_url       = is_wp_error( $list_url ) ? '' : $list_url;
+		} elseif ( $on_tag && $term ) {
 			$query_args['tag'] = array( $term->slug );
+			$count_args['tag'] = array( $term->slug );
+			$total_products    = isset( $term->count ) ? (int) $term->count : null;
+			$list_name         = $term->name ?? '';
+			$list_url          = get_term_link( $term );
+			$list_url          = is_wp_error( $list_url ) ? '' : $list_url;
 		} elseif ( $on_search ) {
-			$query_args['s'] = get_search_query();
+			$search_query    = get_search_query();
+			$query_args['s'] = $search_query;
+			$count_args['s'] = $search_query;
+			$total_products  = null; // resolved below after count query.
+			$list_name       = $search_query;
+			$list_url        = home_url( '/?s=' . rawurlencode( $search_query ) . '&post_type=product' );
+		} else {
+			$total_products = null; // resolved below after count query.
+			$list_name      = (string) get_bloginfo( 'name' );
+			$shop_page_id   = function_exists( 'wc_get_page_id' ) ? wc_get_page_id( 'shop' ) : 0;
+			$list_url       = $shop_page_id > 0 ? get_permalink( $shop_page_id ) : home_url( '/' );
+			$list_url       = $list_url ? $list_url : '';
+		}
+
+		// Fall back to a count query when term->count isn't available
+		// (search + shop pages) or when $term was not resolved.
+		if ( null === $total_products ) {
+			$total_products = count( wc_get_products( $count_args ) );
 		}
 
 		$products = wc_get_products( $query_args );
@@ -2910,9 +2948,13 @@ class WC_AI_Storefront_JsonLd {
 		$data = array(
 			'@context'        => 'https://schema.org',
 			'@type'           => 'ItemList',
-			'numberOfItems'   => count( $items ),
+			'name'            => $list_name,
+			'numberOfItems'   => $total_products,
 			'itemListElement' => $items,
 		);
+		if ( '' !== $list_url ) {
+			$data['url'] = $list_url;
+		}
 
 		set_transient( $cache_key, $data, HOUR_IN_SECONDS );
 

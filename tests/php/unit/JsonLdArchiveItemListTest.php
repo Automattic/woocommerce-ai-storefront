@@ -42,6 +42,9 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_option' )->justReturn( 12 ); // posts_per_page
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'wc_get_products' )->justReturn( [] );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Test Store' );
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		Functions\when( 'home_url' )->alias( static fn( $path = '' ) => 'https://example.com' . $path );
 
 		// Default: none of the archive conditionals fire.
 		Functions\when( 'is_shop' )->justReturn( false );
@@ -142,6 +145,9 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 		];
+		// shop page: count query returns same products as page query in tests.
+		// wc_get_products already stubs to [] by default; individual tests
+		// override it — the count call returns ids (same stub, returns []).
 	}
 
 	public function test_itemlist_emitted_on_shop_page(): void {
@@ -161,7 +167,10 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'https://schema.org', $data['@context'] );
 		$this->assertSame( 'ItemList', $data['@type'] );
 		$this->assertCount( 1, $data['itemListElement'] );
+		// numberOfItems = total across all pages; stub returns 1 product for
+		// both the count query and the page query, so total = 1.
 		$this->assertSame( 1, $data['numberOfItems'] );
+		$this->assertSame( 'Test Store', $data['name'] );
 
 		$item = $data['itemListElement'][0];
 		$this->assertSame( 'ListItem', $item['@type'] );
@@ -177,12 +186,15 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_itemlist_emitted_on_category_page(): void {
-		$term          = new stdClass();
-		$term->term_id = 7;
-		$term->slug    = 'hoodies';
+		$term           = new stdClass();
+		$term->term_id  = 7;
+		$term->slug     = 'hoodies';
+		$term->name     = 'Hoodies';
+		$term->count    = 42; // total products in category (stored in term row).
 
 		Functions\when( 'is_product_category' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn( $term );
+		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/product-category/hoodies/' );
 		Functions\when( 'get_permalink' )->alias( static fn( $id ) => "https://example.com/?p={$id}" );
 		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
@@ -200,8 +212,10 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 			true
 		);
 		$this->assertSame( 'https://schema.org/OutOfStock', $data['itemListElement'][0]['item']['offers']['availability'] );
-		// Category-page cache key should include the term ID.
-		$this->assertStringContainsString( 'Zip Hoodie', $output );
+		// numberOfItems must be the term total (42), not just this page's count (1).
+		$this->assertSame( 42, $data['numberOfItems'] );
+		$this->assertSame( 'Hoodies', $data['name'] );
+		$this->assertSame( 'https://example.com/product-category/hoodies/', $data['url'] );
 	}
 
 	public function test_itemlist_emitted_on_search_page(): void {
@@ -218,7 +232,15 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
 
 		$output = $this->capture();
-		$this->assertStringContainsString( 'ItemList', $output );
+		$data   = json_decode(
+			trim( substr( $output, strlen( '<script type="application/ld+json">' ), -strlen( '</script>' . "\n" ) ) ),
+			true
+		);
+		$this->assertSame( 'ItemList', $data['@type'] );
+		$this->assertSame( 'hoodie', $data['name'] ); // list name = search query
+		$this->assertStringContainsString( 'hoodie', $data['url'] );
+		// count query + page query both hit stub returning [$product] → total = 1.
+		$this->assertSame( 1, $data['numberOfItems'] );
 	}
 
 	// -------------------------------------------------------------------------
