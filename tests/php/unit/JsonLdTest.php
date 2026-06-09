@@ -74,8 +74,16 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				foreach ( $args as $k => $v ) {
 					$pairs[] = $k . '=' . $v;
 				}
-				$query = implode( '&', $pairs );
-				$sep   = str_contains( $url, '?' ) ? '&' : '?';
+				// Simulate a URL that has been HTML-escaped before reaching
+				// add_query_arg() — e.g. a third-party filter that passes
+				// the permalink through esc_url(). Real WordPress
+				// add_query_arg() itself returns plain '&', but an
+				// escaped incoming URL causes it to inherit '&amp;'
+				// separators in the output. Using '&amp;' here ensures
+				// tests that assert html_entity_decode() is applied will
+				// actually fail if the decode is ever removed.
+				$query = implode( '&amp;', $pairs );
+				$sep   = str_contains( $url, '?' ) ? '&amp;' : '?';
 				return $url . $sep . $query . $fragment;
 			}
 		);
@@ -379,6 +387,96 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'products=42:1', $url );
 		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
 		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
+	}
+
+	// ------------------------------------------------------------------
+	// BuyAction / checkoutPageURLTemplate — no HTML entities in JSON strings
+	// ------------------------------------------------------------------
+	//
+	// A product permalink may arrive HTML-escaped if a filter passed it
+	// through esc_url() or similar before our code runs. When
+	// add_query_arg() receives a URL with '&amp;' already in it, those
+	// entities propagate into the query string. Any non-browser consumer
+	// (curl, Python requests, LLM tool calls) reading the raw JSON then
+	// gets literal '&amp;' and produces a broken checkout URL. The
+	// production code calls html_entity_decode() on add_query_arg()'s
+	// output before storing it, so the JSON string always carries
+	// plain '&'.
+
+	public function test_buyaction_url_contains_no_html_entities(): void {
+		$product = $this->make_product();
+		$result  = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+		$this->assertStringNotContainsString( '&amp;', $url );
+	}
+
+	public function test_offer_checkout_page_url_template_contains_no_html_entities(): void {
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+		);
+		$product = $this->make_product();
+		$result  = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$url = $result['offers'][0]['checkoutPageURLTemplate'];
+		$this->assertStringNotContainsString( '&amp;', $url );
+	}
+
+	public function test_buyaction_url_contains_no_html_entities_for_bundle(): void {
+		$product = $this->make_product( [
+			'type'      => 'bundle',
+			'permalink' => 'https://example.com/product/starter-kit/',
+		] );
+		$result  = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+		$this->assertStringNotContainsString( '&amp;', $url );
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+	}
+
+	public function test_buyaction_url_contains_no_html_entities_for_grouped(): void {
+		$product = $this->make_product( [
+			'type'      => 'grouped',
+			'permalink' => 'https://example.com/product/dinner-set/',
+		] );
+		$result  = $this->jsonld->enhance_product_data( [], $product );
+
+		$url = $result['potentialAction']['target']['urlTemplate'];
+		$this->assertStringNotContainsString( '&amp;', $url );
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+	}
+
+	public function test_offer_checkout_page_url_template_contains_no_html_entities_for_bundle(): void {
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+		);
+		$product = $this->make_product( [
+			'type'      => 'bundle',
+			'permalink' => 'https://example.com/product/starter-kit/',
+		] );
+		$result  = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$url = $result['offers'][0]['checkoutPageURLTemplate'];
+		$this->assertStringNotContainsString( '&amp;', $url );
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+	}
+
+	public function test_offer_checkout_page_url_template_contains_no_html_entities_for_grouped(): void {
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+		);
+		$product = $this->make_product( [
+			'type'      => 'grouped',
+			'permalink' => 'https://example.com/product/dinner-set/',
+		] );
+		$result  = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$url = $result['offers'][0]['checkoutPageURLTemplate'];
+		$this->assertStringNotContainsString( '&amp;', $url );
+		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
 	}
 
 	// ------------------------------------------------------------------
@@ -769,6 +867,35 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'https://example.com/product/hoodie/?attribute_pa_color=red',
 			$entry['@id']
 		);
+		$this->assertSame( $entry['@id'], $entry['url'] );
+	}
+
+	public function test_variant_id_synthesized_fallthrough_contains_no_html_entities(): void {
+		// Multi-attribute fall-through: when a variation has two or more
+		// core-typed attributes and the parent's permalink === variation's
+		// permalink, the synthesized @id contains at least one '&'
+		// separator. The '&amp;' in the stub's implode() output exercises
+		// the html_entity_decode() call at line 1274. A single-attribute
+		// case never produces a separator and therefore never fails without
+		// the fix.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent_url = 'https://example.com/product/hoodie/';
+		$parent     = $this->make_product( [
+			'id'        => 100,
+			'permalink' => $parent_url,
+		] );
+		$variation  = $this->make_variation( [
+			'id'                   => 101,
+			'permalink'            => $parent_url,
+			'variation_attributes' => array( 'pa_color' => 'blue', 'pa_size' => 'L' ),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertStringNotContainsString( '&amp;', $entry['@id'] );
+		$this->assertStringContainsString( 'attribute_pa_color=blue', $entry['@id'] );
+		$this->assertStringContainsString( 'attribute_pa_size=L', $entry['@id'] );
 		$this->assertSame( $entry['@id'], $entry['url'] );
 	}
 

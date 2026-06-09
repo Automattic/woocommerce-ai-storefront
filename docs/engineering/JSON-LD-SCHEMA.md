@@ -720,6 +720,10 @@ The product-search context keys on the searched **post type**, not `is_woocommer
 
 **Output safety.** Both blocks encode with `wp_json_encode( …, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | … )` so a `</script>` sequence in a product field can't break out of the inline `<script>`. If encoding returns `false` (e.g. malformed UTF-8 in a product name), the block is suppressed entirely rather than emitted as an empty, invalid `ld+json` island — and the un-encodable payload is never written to the cache.
 
+**WooCommerce serializer interception.** WooCommerce's own `WC_Structured_Data::output_structured_data()` callback — hooked to `wp_footer` at priority 10 — passes the JSON string through `wc_esc_json()`, which calls `_wp_specialchars` with `ENT_NOQUOTES` and converts every `&` to `&amp;`. This happens *after* all PHP data filters run, so there is no hook available to clean the output. The result is that `checkoutPageURLTemplate`, `BuyAction.urlTemplate`, and variation `@id` URLs all contain literal `&amp;` entities in the raw HTTP response — breaking `curl`, Python `requests`, and LLM tool calls that don't HTML-decode JSON.
+
+To avoid this, the plugin replaces WC's callback on `woocommerce_init` (fired at the end of `WC::init()`, after `WC()->structured_data` is instantiated) via `replace_wc_structured_data_output()`. The replacement callback, `output_wc_structured_data()`, calls `wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES )` directly — skipping `wc_esc_json` entirely. `JSON_HEX_AMP` encodes `&` as `&`, which is safe in `<script>` contexts and does not alter the decoded string value for any JSON consumer. Email order details are unaffected: `output_email_structured_data()` calls `output_structured_data()` directly, not via the `wp_footer` hook.
+
 ## Public filters
 
 The blocks expose filters for theme and extension authors to customize:

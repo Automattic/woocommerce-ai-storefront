@@ -92,6 +92,77 @@ class WC_AI_Storefront_JsonLd {
 		add_action( 'wp_head', [ $this, 'output_website_jsonld' ], 4 );
 		add_action( 'wp_head', [ $this, 'output_store_jsonld' ], 5 );
 		add_action( 'wp_head', [ $this, 'output_archive_itemlist_jsonld' ], 6 );
+
+		// Replace WC's structured-data serializer with our own so we can
+		// use JSON_HEX_AMP. WC's wc_esc_json() converts every literal '&'
+		// to '&amp;' after wp_json_encode(), breaking checkout URLs for
+		// non-browser consumers (curl, LLM tool calls). Our replacement
+		// skips wc_esc_json() and applies JSON_HEX_AMP instead, encoding
+		// '&' as '&' — safe for both browsers and raw consumers.
+		// WC_Structured_Data is instantiated inside WC::init() which runs
+		// on the 'init' action; we must defer until 'woocommerce_init'
+		// (fired at the end of WC::init()) to access WC()->structured_data.
+		// Note: output_email_structured_data() calls output_structured_data()
+		// directly (not via wp_footer), so email order details are unaffected.
+		add_action( 'woocommerce_init', [ $this, 'replace_wc_structured_data_output' ] );
+	}
+
+	/**
+	 * Swap WC's wp_footer serializer for ours.
+	 *
+	 * Called on 'woocommerce_init' (after WC()->structured_data exists).
+	 * Registered as a public method so it can be called by tests or removed
+	 * by merchants who want to keep WC's default output intact.
+	 */
+	public function replace_wc_structured_data_output(): void {
+		$wc = function_exists( 'WC' ) ? WC() : null;
+		if ( ! $wc || ! isset( $wc->structured_data ) ) {
+			return;
+		}
+		remove_action( 'wp_footer', [ $wc->structured_data, 'output_structured_data' ], 10 );
+		add_action( 'wp_footer', [ $this, 'output_wc_structured_data' ], 10 );
+	}
+
+	/**
+	 * Re-implementation of WC_Structured_Data::output_structured_data() that
+	 * skips wc_esc_json() and uses JSON_HEX_AMP so '&' is encoded as '&'
+	 * instead of '&amp;'.
+	 *
+	 * The type-detection logic replicates WC_Structured_Data::get_data_type_for_page()
+	 * (class-wc-structured-data.php, WC 9.x/10.x, unchanged since WC 3.0.0).
+	 * If WC ever changes that method, update the conditional tree below to match.
+	 */
+	public function output_wc_structured_data(): void {
+		$wc = function_exists( 'WC' ) ? WC() : null;
+		if ( ! $wc || ! isset( $wc->structured_data ) ) {
+			return;
+		}
+
+		// Mirror WC_Structured_Data::get_data_type_for_page() exactly.
+		// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+		$types   = array();
+		$types[] = ( function_exists( 'is_shop' ) && is_shop() )
+			|| ( function_exists( 'is_product_category' ) && is_product_category() )
+			|| ( function_exists( 'is_product' ) && is_product() ) ? 'product' : '';
+		$types[] = ( function_exists( 'is_shop' ) && is_shop() ) && is_front_page() ? 'website' : '';
+		$types[] = ( function_exists( 'is_product' ) && is_product() ) ? 'review' : '';
+		$types[] = 'breadcrumblist';
+		$types[] = 'order';
+		$types   = array_filter(
+			apply_filters( 'woocommerce_structured_data_type_for_page', $types )
+		);
+		// phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+
+		$data = $wc->structured_data->get_structured_data( $types );
+		if ( ! $data ) {
+			return;
+		}
+
+		$encoded = wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES );
+		if ( false !== $encoded ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode with JSON_HEX_* applied
+			echo '<script type="application/ld+json">' . $encoded . '</script>' . "\n";
+		}
 	}
 
 	/**
@@ -309,7 +380,7 @@ class WC_AI_Storefront_JsonLd {
 		// attribution. See docblock for why `/checkout-link/?products=`
 		// can't represent these types.
 		if ( $product->is_type( 'bundle' ) || $product->is_type( 'grouped' ) ) {
-			return add_query_arg( $utm_args, $product->get_permalink() );
+			return self::decode_query_url( $utm_args, $product->get_permalink() );
 		}
 
 		// Simple, variable, variation: WooCommerce Shareable Checkout URL
@@ -317,7 +388,7 @@ class WC_AI_Storefront_JsonLd {
 		// rewrite handler, adds the item to the cart, redirects to
 		// checkout. Quantity fixed at 1 — AI-shopping flows are
 		// single-item by convention.
-		return add_query_arg(
+		return self::decode_query_url(
 			array_merge( array( 'products' => $product->get_id() . ':1' ), $utm_args ),
 			home_url( '/checkout-link/' )
 		);
@@ -1265,10 +1336,13 @@ class WC_AI_Storefront_JsonLd {
 			foreach ( $core_attrs as $slug => $value ) {
 				$query_args[ 'attribute_' . $slug ] = $value;
 			}
-			$permalink = add_query_arg( $query_args, $parent_permalink );
+			$permalink = self::decode_query_url( $query_args, $parent_permalink );
 		}
 
 		if ( is_string( $permalink ) && '' !== $permalink ) {
+			// WC's get_permalink() may itself contain '&amp;' when a
+			// third-party filter HTML-escapes the URL before we see it.
+			$permalink    = html_entity_decode( $permalink, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 			$entry['@id'] = $permalink;
 			$entry['url'] = $permalink;
 		}
@@ -1426,6 +1500,27 @@ class WC_AI_Storefront_JsonLd {
 	 *
 	 * @param array $markup Markup array, modified by reference.
 	 */
+	/**
+	 * Appends query args to a URL and decodes any HTML entities in the result.
+	 *
+	 * WordPress's add_query_arg() returns plain '&' separators, but a
+	 * third-party filter on `the_permalink` or similar hooks may have
+	 * HTML-escaped the incoming URL (e.g. via esc_url()). That would
+	 * cause add_query_arg() to inherit '&amp;' separators and embed them
+	 * verbatim in the JSON string — non-browser consumers (curl, LLM tool
+	 * calls) would then receive broken checkout URLs. Decoding before
+	 * storing is the safe default regardless of what filters have done
+	 * upstream. Flags match the existing html_entity_decode() convention
+	 * in this class (ENT_QUOTES | ENT_HTML5, UTF-8).
+	 *
+	 * @param array  $args Query arguments.
+	 * @param string $url  Base URL.
+	 * @return string URL with query args appended, HTML entities decoded.
+	 */
+	private static function decode_query_url( array $args, string $url ): string {
+		return html_entity_decode( add_query_arg( $args, $url ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+	}
+
 	private function decode_seller_name( array &$markup ): void {
 		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
 			return;

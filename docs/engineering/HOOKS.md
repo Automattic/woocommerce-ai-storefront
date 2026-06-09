@@ -526,6 +526,8 @@ For reference, the plugin hooks into these WP and WC extension points but does n
 - `woocommerce_checkout_order_created`, `woocommerce_store_api_checkout_order_processed` — capture attribution on order creation.
 - `woocommerce_admin_order_data_after_billing_address` — render the AI Agent Attribution section in the admin order edit screen.
 - `woocommerce_structured_data_product`, `wp_head` — emit enhanced JSON-LD.
+- `woocommerce_init` — replace WC's `wp_footer` structured-data callback with the plugin's own `output_wc_structured_data()` (see "WooCommerce serializer interception" in [`JSON-LD-SCHEMA.md`](JSON-LD-SCHEMA.md)). Must defer to `woocommerce_init` because `WC()->structured_data` is not instantiated until `WC::init()` completes.
+- `wp_footer` at priority 10 (replacing WC's default) — emit WC's structured data via `output_wc_structured_data()` using `JSON_HEX_AMP`-flagged `wp_json_encode`, bypassing `wc_esc_json`.
 - `woocommerce_store_api_rate_limit_options`, `woocommerce_store_api_rate_limit_id` — apply rate limits to AI-bot user-agents.
 - `woocommerce_update_product`, `_new_product`, `_trash_product`, `_delete_product`, `_product_set_stock_status` — invalidate the `/llms.txt` and UCP-manifest caches.
 - `woocommerce_blocks_loaded` — register the `barcodes` Store API extension.
