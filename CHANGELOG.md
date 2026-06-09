@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.19.0] – 2026-06-08
+
 ### Features
 
 - **Archive `ItemList` JSON-LD on shop, category, tag, and product-search pages.** Every WooCommerce archive page now emits an `ItemList` schema block (priority 6 on `wp_head`) so agents can read the product listing without following each individual product URL.
