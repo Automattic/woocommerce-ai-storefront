@@ -31,7 +31,7 @@ jobs:
       impact: ${{ steps.classify.outputs.impact }}
       docs:   ${{ steps.classify.outputs.docs }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 2  # need HEAD~1 for the diff
 
@@ -106,11 +106,11 @@ jobs:
     if: needs.detect-impact.outputs.impact == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 2
 
-      - uses: anthropics/claude-code-base-action@v0.0.63
+      - uses: anthropics/claude-code-base-action@e8132bc5e637a42c27763fc757faa37e1ee43b34 # v0.0.63
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

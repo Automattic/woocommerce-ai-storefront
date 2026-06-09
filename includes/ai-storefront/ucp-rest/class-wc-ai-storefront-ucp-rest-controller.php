@@ -818,6 +818,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$body['messages'] = $messages;
 		}
 
+		// Zero-results inline guidance. Agents that skip llms.txt and hit
+		// the endpoint cold get a recovery recipe at the moment they need it,
+		// without requiring a prior discovery-document read.
+		$total_count = $body['pagination']['total_count'] ?? null;
+		if ( 0 === count( $translated['products'] ) && ( null === $total_count || 0 === (int) $total_count ) ) {
+			$body['hints'] = array(
+				'zero_results'   => true,
+				'recovery_steps' => array(
+					'1_bare_query'         => 'Retry with a bare product noun in "query" only (e.g. "shirt", not "blue shirt men"). Move every attribute — category, color, gender, price — into their dedicated filter fields.',
+					'2_drop_filters'       => 'If still zero: remove one filter at a time (start with price range, then color/gender) to isolate which constraint is over-restricting.',
+					'3_browse_categories'  => 'GET /wp-json/wc/ucp/v1/extension/schema or use the catalog taxonomy to enumerate valid category slugs, then retry with "filters.categories".',
+					'4_report_unavailable' => 'Only report the product as unavailable after bare-noun + category-browse both return zero results.',
+				),
+			);
+		}
+
 		if ( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE !== $agent_data['name'] ) {
 			// Search REQUEST row — product_id=0, query=keyword. Counted as
 			// a Catalog query / Top search; feeds by-agent request totals.

@@ -2,6 +2,15 @@
 
 ### Features
 
+- **`<link rel="ucp-agent">` injected in every page `<head>` pointing at `/.well-known/ucp`.** Caught by head-scraping agents (Perplexity, Bing, etc.) that read `<head>` before loading the DOM and may never reach `llms.txt`. Only emitted when AI Storefront is enabled.
+- **Zero-results `hints` block in `/catalog/search` responses.** When a search returns no products, the response body now includes a `hints.zero_results` flag and `hints.recovery_steps` — a four-step recipe instructing agents to retry with a bare product noun, drop over-restricting filters one at a time, browse category slugs via the extension schema, and only then report unavailability. Agents that skip `llms.txt` cold-call recovery guidance at exactly the moment they need it.
+
+### Docs
+
+- **`docs/engineering/UCP-BUY-FLOW.md`** — added `<link rel="ucp-agent">` to the "Belt-and-suspenders surfaces" section.
+- **`docs/engineering/ARCHITECTURE.md`** — updated discovery layer table to note `<head>` injection via `wp_head`.
+- **`docs/engineering/API-REFERENCE.md`** — documented the `hints.zero_results` / `hints.recovery_steps` response shape under `POST /catalog/search`.
+
 - **Catalog responses are now quoted in the agent's requested currency when WooPayments multi-currency is active.**
   - `POST /catalog/search` / `POST /catalog/lookup`: when `context.currency` is in `accepted_currencies`, every `price.currency` field in the response carries the agent's currency with amounts converted via WooPayments' exchange rate, rounding rule, and charm pricing. Prices are returned via the WC Store API's native `?currency=` query param — WooPayments applies its full price-mutation pipeline automatically at that layer.
   - `filters.price` bounds are pre-converted from agent currency to base currency via WooPayments' `get_raw_conversion()` before the Store API query, replacing Phase 1's filter-drop + warning fallback.

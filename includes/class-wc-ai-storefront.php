@@ -237,6 +237,7 @@ class WC_AI_Storefront {
 		add_filter( 'query_vars', [ $ucp, 'add_query_vars' ] );
 		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
+		add_action( 'wp_head', [ $ucp, 'inject_head_link' ] );
 
 		// Suppress WordPress's trailing-slash canonical redirect for
 		// the discovery endpoints. On sites with trailing-slash
