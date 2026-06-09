@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.19.0
+Stable tag: 0.19.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.19.1 - 2026-06-09 =
+**Fixed**
+* JSON-LD checkout URLs (`checkoutPageURLTemplate`, `BuyAction.urlTemplate`, variation `@id`) contained literal `&amp;` entities in the raw HTTP response due to WooCommerce's `wc_esc_json()` serializer running after all data filters. Fixed by replacing WC's `wp_footer` structured-data callback with a plugin-owned one that uses `JSON_HEX_AMP`-flagged `wp_json_encode`, bypassing `wc_esc_json` entirely. `curl`, Python `requests`, and LLM tool calls now receive clean URLs.
 
 = 0.17.3 - 2026-05-18 =
 **Improved**
