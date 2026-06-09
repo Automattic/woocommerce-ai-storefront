@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.18.0] – 2026-06-09
+
 ### Features
 
 - **`<link rel="ucp-agent">` injected in every page `<head>` pointing at `/.well-known/ucp`.** Caught by head-scraping agents (Perplexity, Bing, etc.) that read `<head>` before loading the DOM and may never reach `llms.txt`. Only emitted when AI Storefront is enabled.
