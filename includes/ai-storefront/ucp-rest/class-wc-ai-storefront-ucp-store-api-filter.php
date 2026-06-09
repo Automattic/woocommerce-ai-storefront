@@ -431,12 +431,25 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 
 		$posts_table = $wpdb->prefix . 'posts';
 		$meta_table  = $wpdb->prefix . 'wc_product_meta_lookup';
+		// Reference the lookup table through the SAME alias WooCommerce core
+		// uses (WC_Query::append_product_sorting_table_join joins it AS
+		// `wc_product_meta_lookup`, then its price/sort filters reference that
+		// alias). Core dedups the JOIN with `strstr( $join, 'wc_product_meta_lookup' )`.
+		// If we instead joined the bare prefixed table name, that substring
+		// check would false-positive on our `wp_wc_product_meta_lookup`, core
+		// would skip adding its aliased JOIN, and its
+		// `wc_product_meta_lookup.max_price` clause would hit a non-existent
+		// alias — an "Unknown column" DB error that silently breaks
+		// search + price-filter (and search + sort-by-price) combinations.
+		// Aliasing identically guarantees exactly one JOIN (whichever filter
+		// runs first adds it; the other skips) and both sides resolve the alias.
+		$meta_alias  = 'wc_product_meta_lookup';
 		$tr_table    = $wpdb->prefix . 'term_relationships';
 		$tt_table    = $wpdb->prefix . 'term_taxonomy';
 		$sku_enabled = function_exists( 'wc_product_sku_enabled' ) && wc_product_sku_enabled();
 
-		if ( $sku_enabled && false === strpos( $args['join'], $meta_table ) ) {
-			$args['join'] .= " LEFT JOIN {$meta_table} ON {$posts_table}.ID = {$meta_table}.product_id ";
+		if ( $sku_enabled && false === strpos( $args['join'], $meta_alias ) ) {
+			$args['join'] .= " LEFT JOIN {$meta_table} {$meta_alias} ON {$posts_table}.ID = {$meta_alias}.product_id ";
 		}
 
 		// Resolve which signal terms have matching taxonomy term IDs.
@@ -479,7 +492,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 
 			if ( $sku_enabled ) {
 				$title_clause = $wpdb->prepare(
-					"( {$title_like_sql} OR {$meta_table}.sku LIKE %s )",
+					"( {$title_like_sql} OR {$meta_alias}.sku LIKE %s )",
 					$like
 				);
 			} else {

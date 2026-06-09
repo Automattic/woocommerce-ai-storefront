@@ -62,6 +62,13 @@ class WC_AI_Storefront {
 			// See `WC_AI_Storefront_UCP_REST_Controller::check_agent_access()`
 			// for the gate's full rationale + trade-off.
 			'allow_unknown_ucp_agents' => 'no',
+			// MCP transport toggle. Default `'yes'` so the Streamable-HTTP
+			// JSON-RPC endpoint is available out of the box — but the MCP
+			// server ALSO requires `enabled === 'yes'`, so the transport is
+			// only actually live once syndication itself is switched on.
+			// Lets a merchant keep REST syndication on while opting out of
+			// the MCP surface specifically.
+			'mcp_enabled'              => 'yes',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
 			// `unconfigured` mode emits NO policy block — until a
@@ -314,6 +321,14 @@ class WC_AI_Storefront {
 		// pattern used for llms.txt / UCP manifest rewrite rules.
 		$ucp_rest_controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$ucp_rest_controller->register_routes();
+
+		// MCP transport at /wp-json/wc/ucp/v1/mcp. Registered
+		// unconditionally — the server's own handler checks settings.enabled
+		// and settings.mcp_enabled and returns HTTP 404 when the transport is
+		// off (the endpoint simply isn't there for agents in that state).
+		// Mirrors the unconditional UCP REST adapter registration above.
+		$mcp_server = new WC_AI_Storefront_MCP_Server();
+		$mcp_server->register_routes();
 	}
 
 	/**
@@ -609,6 +624,15 @@ class WC_AI_Storefront {
 			$allow_unknown = 'no';
 		}
 
+		// MCP transport toggle. Same strict yes/no enum + resolve-once
+		// pattern as `$allow_unknown` above. Default `'yes'` (opt-out, not
+		// opt-in) — the MCP server's own gate still requires
+		// `enabled === 'yes'`, so this only matters once syndication is on.
+		$mcp_enabled = $merged['mcp_enabled'] ?? 'yes';
+		if ( ! in_array( $mcp_enabled, [ 'yes', 'no' ], true ) ) {
+			$mcp_enabled = 'yes';
+		}
+
 		// Map legacy mode aliases to their canonical form. Old stores may
 		// have 'categories', 'tags', or 'brands' saved before the unified
 		// by_taxonomy mode was introduced; this normalizes them at write
@@ -651,6 +675,8 @@ class WC_AI_Storefront {
 			// See `$allow_unknown` resolution above the array literal
 			// for why we don't inline this with `??` + ternary.
 			'allow_unknown_ucp_agents' => $allow_unknown,
+			// See `$mcp_enabled` resolution above the array literal.
+			'mcp_enabled'              => $mcp_enabled,
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.

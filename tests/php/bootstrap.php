@@ -70,6 +70,13 @@ require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-store-api-filter.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-store-api-extension.php';
 require_once $ucp_rest_path . 'class-wc-ai-storefront-ucp-rest-controller.php';
 
+// UCP MCP transport module (0.18.0+). Exposes the neutral run_* cores as
+// MCP tools over a Streamable-HTTP JSON-RPC endpoint.
+$ucp_mcp_path = $plugin_path . 'ai-storefront/ucp-mcp/';
+require_once $ucp_mcp_path . 'class-wc-ai-storefront-mcp-session.php';
+require_once $ucp_mcp_path . 'class-wc-ai-storefront-mcp-tools.php';
+require_once $ucp_mcp_path . 'class-wc-ai-storefront-mcp-server.php';
+
 // Admin REST controller. Covers admin-surface endpoints (settings,
 // stats, recent-orders) — exercised by AdminRecentOrdersTest.
 require_once $plugin_path . 'admin/class-wc-ai-storefront-admin-controller.php';

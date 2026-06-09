@@ -85,6 +85,13 @@ class WC_AI_Storefront_Admin_Controller {
 							'type' => 'string',
 							'enum' => array( 'yes', 'no' ),
 						),
+						// MCP transport toggle. Yes/no enum mirroring
+						// `allow_unknown_ucp_agents`. Sanitization lives in
+						// `WC_AI_Storefront::update_settings()`.
+						'mcp_enabled'              => array(
+							'type' => 'string',
+							'enum' => array( 'yes', 'no' ),
+						),
 						// Return policy schema is intentionally type-only:
 						// no `enum`, no `minimum/maximum`. The canonical
 						// validation/normalization rules live in
@@ -398,7 +405,7 @@ class WC_AI_Storefront_Admin_Controller {
 	public function update_settings( $request ) {
 		$data = array();
 
-		$fields = array( 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'return_policy', 'handling_time' );
+		$fields = array( 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'mcp_enabled', 'return_policy', 'handling_time' );
 		foreach ( $fields as $field ) {
 			$value = $request->get_param( $field );
 			if ( null !== $value ) {

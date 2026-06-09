@@ -165,12 +165,15 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	public function test_service_value_is_an_array_of_bindings(): void {
 		// UCP schema: `services` is `object of string → array of service`.
 		// Each key maps to an ARRAY, not a single binding, so a service
-		// can declare multiple transport bindings in the future.
-		$manifest = $this->ucp->generate_manifest( [] );
+		// can declare multiple transport bindings. As of the MCP
+		// transport work (0.18.0) we advertise TWO: `rest` + `mcp` — but
+		// only when `mcp_enabled` is on (the manifest now fails closed),
+		// so explicitly enable it to exercise the two-binding shape.
+		$manifest = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'yes' ] );
 		$bindings = $manifest['ucp']['services']['dev.ucp.shopping'];
 
 		$this->assertIsArray( $bindings );
-		$this->assertCount( 1, $bindings );
+		$this->assertCount( 2, $bindings );
 	}
 
 	public function test_service_binding_has_required_rest_fields(): void {
@@ -243,6 +246,71 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 			$binding['schema']
 		);
 		$this->assertStringEndsWith( '.openapi.json', $binding['schema'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Layer 1: MCP transport binding (0.18.0+)
+	//
+	// The `dev.ucp.shopping` service advertises a SECOND binding over the
+	// MCP transport (Streamable-HTTP JSON-RPC) alongside the `rest`
+	// binding above. Agents that speak MCP discover the `/mcp` endpoint
+	// here; the `rest` binding must remain so non-MCP agents are
+	// unaffected.
+	// ------------------------------------------------------------------
+
+	public function test_service_advertises_both_rest_and_mcp_transports(): void {
+		// Manifest fails closed on `mcp_enabled`, so enable it explicitly to
+		// exercise the both-transports path.
+		$manifest   = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'yes' ] );
+		$bindings   = $manifest['ucp']['services']['dev.ucp.shopping'];
+		$transports = array_column( $bindings, 'transport' );
+
+		// Both transports present — adding MCP must not drop REST.
+		$this->assertContains( 'rest', $transports );
+		$this->assertContains( 'mcp', $transports );
+	}
+
+	public function test_mcp_binding_has_required_fields_and_endpoint(): void {
+		// Manifest fails closed on `mcp_enabled`, so enable it explicitly to
+		// produce the MCP binding under test.
+		$manifest = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'yes' ] );
+		$bindings = $manifest['ucp']['services']['dev.ucp.shopping'];
+
+		$mcp_binding = null;
+		foreach ( $bindings as $binding ) {
+			if ( 'mcp' === ( $binding['transport'] ?? null ) ) {
+				$mcp_binding = $binding;
+				break;
+			}
+		}
+
+		$this->assertNotNull( $mcp_binding, 'mcp binding must be present' );
+		$this->assertArrayHasKey( 'version', $mcp_binding );
+		$this->assertArrayHasKey( 'transport', $mcp_binding );
+		$this->assertArrayHasKey( 'endpoint', $mcp_binding );
+		$this->assertEquals(
+			WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
+			$mcp_binding['version']
+		);
+		// Must match the route registered by
+		// WC_AI_Storefront_MCP_Server::register_routes() (wc/ucp/v1 /mcp).
+		$this->assertEquals(
+			'https://example.com/wp-json/wc/ucp/v1/mcp',
+			$mcp_binding['endpoint']
+		);
+	}
+
+	public function test_mcp_binding_omitted_when_mcp_disabled(): void {
+		// When mcp_enabled is off we must NOT advertise the /mcp endpoint —
+		// the server's handle() would 404 it, so advertising it would mislead
+		// agents into a dead call. REST stays.
+		$manifest   = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'no' ] );
+		$bindings   = $manifest['ucp']['services']['dev.ucp.shopping'];
+		$transports = array_column( $bindings, 'transport' );
+
+		$this->assertContains( 'rest', $transports, 'REST binding must remain' );
+		$this->assertNotContains( 'mcp', $transports, 'MCP binding must be omitted when disabled' );
+		$this->assertCount( 1, $bindings );
 	}
 
 	// ------------------------------------------------------------------

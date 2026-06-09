@@ -1382,25 +1382,61 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Price mapping (minor units → presentment units)
+	// List-wrapped filters normalization (agent/OpenRouter serialization)
 	// ------------------------------------------------------------------
 
-	public function test_min_price_converts_minor_units_to_decimal_string(): void {
-		// UCP 1000 minor units at 2 decimals → "10.00" presentment.
-		// WC Store API expects the decimal-string format.
+	public function test_list_wrapped_filters_are_normalized_to_object(): void {
+		// Agent clients via the playground/OpenRouter path serialize `filters`
+		// as a single-element list — `[{ "in_stock": true }]` — instead of an
+		// object. Without normalization the string-keyed lookups miss and the
+		// filter is silently dropped. The list form must apply the same store
+		// param as the object form.
+		$this->successful_search(
+			[ 'filters' => [ [ 'in_stock' => true ] ] ]
+		);
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+	}
+
+	public function test_multi_element_list_filters_merge_into_one_map(): void {
+		// A list carrying several filter objects merges into one associative
+		// map so every constraint applies.
+		$this->successful_search(
+			[ 'filters' => [ [ 'in_stock' => true ], [ 'on_sale' => true ] ] ]
+		);
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+		$this->assertTrue( $this->captured_store_params['on_sale'] );
+	}
+
+	public function test_object_shaped_filters_pass_through_unchanged(): void {
+		// A correctly-shaped object (string keys) is not a list, so the
+		// normalization leaves it untouched.
+		$this->successful_search(
+			[ 'filters' => [ 'in_stock' => true ] ]
+		);
+		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Price mapping (minor units forwarded unchanged to the Store API)
+	// ------------------------------------------------------------------
+
+	public function test_min_price_forwarded_as_minor_units(): void {
+		// UCP minor units == WC Store API minor units (cents for USD), so
+		// 1000 is forwarded unchanged. Regression: converting to "10.00"
+		// made the Store API read it as 10 cents ($0.10) — a 100x under-filter.
 		$this->successful_search(
 			[ 'filters' => [ 'price' => [ 'min' => 1000 ] ] ]
 		);
 
-		$this->assertEquals( '10.00', $this->captured_store_params['min_price'] );
+		$this->assertSame( '1000', (string) $this->captured_store_params['min_price'] );
 	}
 
-	public function test_max_price_converts_to_decimal_string(): void {
+	public function test_max_price_forwarded_as_minor_units(): void {
 		$this->successful_search(
 			[ 'filters' => [ 'price' => [ 'max' => 5000 ] ] ]
 		);
 
-		$this->assertEquals( '50.00', $this->captured_store_params['max_price'] );
+		$this->assertSame( '5000', (string) $this->captured_store_params['max_price'] );
 	}
 
 	public function test_price_range_with_min_and_max_forwards_both(): void {
@@ -1408,21 +1444,22 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			[ 'filters' => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ] ]
 		);
 
-		$this->assertEquals( '10.00', $this->captured_store_params['min_price'] );
-		$this->assertEquals( '50.00', $this->captured_store_params['max_price'] );
+		$this->assertSame( '1000', (string) $this->captured_store_params['min_price'] );
+		$this->assertSame( '5000', (string) $this->captured_store_params['max_price'] );
 	}
 
-	public function test_zero_decimal_currency_produces_integer_string(): void {
-		// JPY has 0 decimals. UCP 5000 at 0 decimals → "5000" (no
-		// trailing decimal point). Verifies number_format() behaves
-		// under zero-decimal currencies.
+	public function test_price_forwarded_unchanged_regardless_of_currency_decimals(): void {
+		// Both UCP and the Store API denominate price in the currency's
+		// minor unit, so the merchant's display-decimals setting is
+		// irrelevant to the filter param — 5000 is forwarded as 5000
+		// whether the currency has 0 decimals (JPY) or 2 (USD).
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 0 );
 
 		$this->successful_search(
 			[ 'filters' => [ 'price' => [ 'min' => 5000 ] ] ]
 		);
 
-		$this->assertEquals( '5000', $this->captured_store_params['min_price'] );
+		$this->assertSame( '5000', (string) $this->captured_store_params['min_price'] );
 	}
 
 	public function test_negative_prices_are_ignored(): void {
@@ -1434,7 +1471,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertArrayNotHasKey( 'min_price', $this->captured_store_params );
-		$this->assertEquals( '50.00', $this->captured_store_params['max_price'] );
+		$this->assertSame( '5000', (string) $this->captured_store_params['max_price'] );
 	}
 
 	public function test_non_numeric_price_is_ignored(): void {
@@ -3013,11 +3050,10 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayHasKey( 'min_price', $captured_params, 'min_price must reach the Store API (no longer dropped)' );
 		$this->assertArrayHasKey( 'max_price', $captured_params, 'max_price must reach the Store API (no longer dropped)' );
-		// Converted minor units: 5000 EUR → 5500 USD, 10000 EUR → 11000 USD.
-		// `minor_units_to_presentment` formats with `wc_get_price_decimals`
-		// (stubbed to 2 in setUp), so 5500 → "55.00" and 11000 → "110.00".
-		$this->assertSame( '55.00', (string) $captured_params['min_price'] );
-		$this->assertSame( '110.00', (string) $captured_params['max_price'] );
+		// Converted minor units forwarded unchanged: 5000 EUR → 5500 USD,
+		// 10000 EUR → 11000 USD (convert_amount returns target minor units).
+		$this->assertSame( '5500', (string) $captured_params['min_price'] );
+		$this->assertSame( '11000', (string) $captured_params['max_price'] );
 	}
 
 	public function test_map_ucp_search_emits_warning_when_context_currency_not_in_accepted_set(): void {

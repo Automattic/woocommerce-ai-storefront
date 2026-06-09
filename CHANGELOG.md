@@ -17,6 +17,11 @@
   - `POST /checkout-sessions` accepts `expected_unit_price.currency` in any currency present in `accepted_currencies`; the comparison runs in the agent's currency (e.g. EUR vs EUR).
 - **Graceful fallback paths.** When the requested currency is not in `accepted_currencies`, or WCPay throws mid-dispatch, the response degrades to base currency with a `currency_conversion_unsupported` warning at `$.context.currency` (or `$.filters.price` for the filter-only path) — never an HTTP error.
 - **`convert_amount()` helper added to `WC_AI_Storefront_Multi_Currency`.** Converts minor-unit price amounts between currencies via WooPayments' `get_raw_conversion()` (rate-only, no charm). Used today by the filter-bound pre-conversion path; will be dropped from that path once WooPayments adds Store API `min_price`/`max_price` conversion ([WOOPMNT-6166](https://linear.app/a8c/issue/WOOPMNT-6166) — Track B follow-up). A `TODO(WOOPMNT-6165 Track B)` breadcrumb at the call site marks the future cleanup.
+- **Public MCP (Model Context Protocol) transport for external shopping agents.** A new JSON-RPC 2.0 / Streamable-HTTP endpoint at `POST /wp-json/wc/ucp/v1/mcp` exposes the same shopping capabilities as MCP tools, for agents that engage with MCP but not the UCP REST transport ([#418](https://github.com/Automattic/woocommerce-ai-storefront/issues/418)).
+  - Three tools — `catalog_search`, `catalog_lookup`, `checkout_create` — wrap the **same** logic as the UCP REST endpoints through shared transport-neutral cores (one code path, two transports; the REST handlers were refactored into thin wrappers over those cores with no behavior change).
+  - Public, gated by the existing UCP agent allow-list. Tool *discovery* (`tools/list`, `ping`) is open; *invoking* a tool requires an allowed identity — supplied by an optional MCP session (`clientInfo.name` from `initialize`, re-checked per call) or, sessionless, treated as an anonymous agent subject to the `allow_unknown_ucp_agents` policy. CORS is configured so cross-origin browser agents can read/echo `Mcp-Session-Id`; `initialize` is rate-limited. Checkout stays stateless — a `continue_url` handoff, never an inline order. MCP-originated orders resolve the same WC Order Attribution `agent_data` as the REST transport.
+  - New **`mcp_enabled`** setting (default on when syndication is enabled) with an admin toggle; the `/.well-known/ucp` manifest advertises the `mcp` transport binding only when the endpoint is live.
+  - Hand-rolled deliberately to preserve the plugin's zero-runtime-dependency design and WP 6.7 floor; the intent is to standardize on the official `wordpress/mcp-adapter` (the WordPress Abilities API + MCP Adapter stack WooCommerce core's `mcp_integration` uses) once it reaches 1.0 and the engagement hypothesis is validated.
 
 ### Compatibility
 
@@ -26,6 +31,7 @@
 
 - **New `MultiCurrencyTest` coverage** for `convert_amount()`: delegation to `get_raw_conversion`, negative-input guard, same-currency short-circuit.
 - **`UcpCatalogSearchTest`, `UcpCatalogLookupTest`, `UcpCheckoutSessionsTest`** assert that the outgoing `WP_REST_Request` carries `currency=<code>` when `context.currency` is in the UCP request, and that filter bounds are pre-converted via `convert_amount` before the Store API dispatch.
+- **MCP transport coverage** — `McpSessionTest` (identity gate: allow / deny / blank-name / known-brand), `McpToolsTest` (tool definitions + UCP-envelope → MCP result mapping), and `McpServerTest` (JSON-RPC dispatch, the full status taxonomy `400`/`403`/`404`/`429` and `-32700`/`-32600`/`-32601`/`-32602`, per-call re-gate, `initialize` rate-limit). `UcpNeutralCoresTest` proves the REST-handler refactor is behavior-preserving and that MCP attribution resolves the same `agent_data` as REST.
 
 ### Docs
 

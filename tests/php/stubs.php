@@ -139,6 +139,7 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		private array $headers = [];
 		private string $route = '';
 		private string $method = '';
+		private string $body = '';
 
 		/**
 		 * Parsed JSON body. Distinct from form-encoded params so
@@ -203,6 +204,14 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		public function set_header( string $key, string $value ): void {
 			$normalized = strtolower( str_replace( '-', '_', $key ) );
 			$this->headers[ $normalized ] = $value;
+		}
+
+		public function set_body( string $body ): void {
+			$this->body = $body;
+		}
+
+		public function get_body(): string {
+			return $this->body;
 		}
 
 		public function set_route( string $route ): void {
