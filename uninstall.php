@@ -54,18 +54,24 @@ delete_transient( 'wc_ai_storefront_ucp' );
 delete_transient( 'wc_ai_storefront_flush_rewrite' );
 delete_transient( 'wc_ai_storefront_catalog_summary' );
 delete_transient( 'wc_ai_storefront_sitemap_urls' );
+delete_transient( 'wc_ai_storefront_website_jsonld' );
 
-// Also purge all host-keyed llms.txt transient variants
-// (wc_ai_storefront_llms_txt_<md5(host)>) introduced in 0.6.6.
-// The plugin classes are not loaded during uninstall, so we can't
-// call host_cache_key() — a direct $wpdb delete is the only option.
+// Also purge prefix-keyed transient families with a direct $wpdb delete:
+//   - host-keyed llms.txt variants (wc_ai_storefront_llms_txt_<md5(host)>, since 0.6.6)
+//   - per-page archive ItemList JSON-LD (wc_ai_storefront_itemlist_<context>_<page>)
+// The plugin classes are not loaded during uninstall, so we can't call
+// host_cache_key() or read the prefix constant — direct deletes are the only
+// option. (Object-cache-backed transients on these dynamic keys are reaped by
+// their 1h TTL; same limitation as the existing llms.txt wildcard.)
 // phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
 global $wpdb;
 $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 	$wpdb->prepare(
-		"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+		"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
 		$wpdb->esc_like( '_transient_wc_ai_storefront_llms_txt_' ) . '%',
-		$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
+		$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%',
+		$wpdb->esc_like( '_transient_wc_ai_storefront_itemlist_' ) . '%',
+		$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_itemlist_' ) . '%'
 	)
 );
 // phpcs:enable
@@ -128,6 +134,7 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );
 			delete_transient( 'wc_ai_storefront_catalog_summary' );
 			delete_transient( 'wc_ai_storefront_sitemap_urls' );
+			delete_transient( 'wc_ai_storefront_website_jsonld' );
 			foreach ( array( 'day', 'week', 'month', 'year' ) as $_period ) {
 				delete_transient( 'wc_ai_storefront_stats_' . $_period );
 			}
@@ -140,15 +147,18 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 			wp_clear_scheduled_hook( 'wc_ai_storefront_prune_crawl_log' );
 			wp_clear_scheduled_hook( 'wc_ai_storefront_rollup_crawl_log' );
 
-			// Also purge all host-keyed llms.txt transient variants for
-			// this site's table. Same rationale as the single-site block above.
+			// Also purge prefix-keyed transient families for this site's table
+			// (host-keyed llms.txt + per-page archive ItemList JSON-LD). Same
+			// rationale as the single-site block above.
 			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
 			global $wpdb;
 			$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 				$wpdb->prepare(
-					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
 					$wpdb->esc_like( '_transient_wc_ai_storefront_llms_txt_' ) . '%',
-					$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
+					$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%',
+					$wpdb->esc_like( '_transient_wc_ai_storefront_itemlist_' ) . '%',
+					$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_itemlist_' ) . '%'
 				)
 			);
 
