@@ -602,13 +602,29 @@ class WC_AI_Storefront {
 	 * seconds to propagate. 300s absorbs the sub-second bursts that trip
 	 * the limit while bounding that staleness to five minutes.
 	 *
+	 * Return semantics: defaults to 300s. A non-numeric filter return
+	 * (e.g. `false` from a mis-wired `get_option`) falls back to the 300s
+	 * default and logs a warning, rather than silently coercing to 0 and
+	 * disabling edge caching. The resolved value is clamped to
+	 * [0, DAY_IN_SECONDS] — never negative, and never beyond a day, since
+	 * with no edge-purge hook an absurd value would pin staleness for
+	 * that long.
+	 *
 	 * @return string e.g. "public, max-age=300".
 	 */
 	public static function discovery_cache_control(): string {
-		$max_age = (int) apply_filters( 'wc_ai_storefront_discovery_cache_max_age', 300 );
-		if ( $max_age < 0 ) {
-			$max_age = 0;
+		$raw = apply_filters( 'wc_ai_storefront_discovery_cache_max_age', 300 );
+		if ( ! is_numeric( $raw ) ) {
+			wc_get_logger()->warning(
+				'wc_ai_storefront_discovery_cache_max_age returned a non-numeric value; falling back to the 300s default.',
+				array( 'source' => 'wc-ai-storefront' )
+			);
+			$raw = 300;
 		}
+		// Clamp both ends. Never negative; never beyond a day: with no
+		// edge-purge hook, max-age is the freshness SLA, so an absurd value
+		// would pin staleness for that long.
+		$max_age = max( 0, min( (int) $raw, DAY_IN_SECONDS ) );
 		return 'public, max-age=' . $max_age;
 	}
 
