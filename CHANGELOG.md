@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Features
+
+- **`GET /catalog/lookup?ids=` batch lookup.** Fetch-only agents (that can't POST) can now look up many products in one request by passing the comma-separated UCP ids they got from `catalog/search` (e.g. `?ids=prod_22,var_4079`), instead of one request per product. Reuses the existing batch core: partial results, `not_found` messages for unresolved ids, capped at 100. The single `?id=`/`?slug=` forms are unchanged; a non-string `?ids[]=` returns 400. Over-cap requests now return the UCP-conformant `request_too_large` (was `invalid_input`) on both GET and POST.
+
 ---
 
 ## [0.19.1] – 2026-06-09
