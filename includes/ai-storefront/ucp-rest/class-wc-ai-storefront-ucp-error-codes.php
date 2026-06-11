@@ -45,6 +45,13 @@ final class WC_AI_Storefront_UCP_Error_Codes {
 	const INVALID_INPUT = 'invalid_input';
 
 	/**
+	 * Batch request exceeds the implementation's per-request size limit
+	 * (e.g. catalog/lookup `ids` over MAX_IDS_PER_LOOKUP). UCP REST
+	 * conformance maps this to HTTP 400.
+	 */
+	const REQUEST_TOO_LARGE = 'request_too_large';
+
+	/**
 	 * The caller has exceeded the configured request rate limit.
 	 */
 	const UCP_RATE_LIMIT_EXCEEDED = 'ucp_rate_limit_exceeded';

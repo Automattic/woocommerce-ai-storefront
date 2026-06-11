@@ -2629,7 +2629,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					__( 'The "ids" array exceeds the per-request limit of %d entries.', 'woocommerce-ai-storefront' ),
 					self::MAX_IDS_PER_LOOKUP
 				),
-				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
+				WC_AI_Storefront_UCP_Error_Codes::REQUEST_TOO_LARGE,
 				'$.ids'
 			);
 		}

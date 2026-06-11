@@ -362,6 +362,16 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $body['products'] );
 	}
 
+	/**
+	 * UCP conformance: a batch over the per-request limit MUST be rejected with
+	 * `request_too_large` (HTTP 400), not generic invalid_input. MAX_IDS_PER_LOOKUP
+	 * is 100; the validator runs on the raw ids before dedupe.
+	 */
+	public function test_post_lookup_over_cap_returns_request_too_large(): void {
+		$ids = array_map( static fn( int $i ) => 'prod_' . $i, range( 1, 101 ) );
+		$this->error_lookup( [ 'ids' => $ids ], 400, 'request_too_large' );
+	}
+
 	// ------------------------------------------------------------------
 	// Happy path: simple products
 	// ------------------------------------------------------------------
@@ -1241,7 +1251,8 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			$ids[] = 'prod_' . ( 1000 + $i );
 		}
 
-		$this->error_lookup( [ 'ids' => $ids ], 400, 'invalid_input' );
+		// UCP REST conformance: over-cap is request_too_large, not invalid_input.
+		$this->error_lookup( [ 'ids' => $ids ], 400, 'request_too_large' );
 	}
 
 	public function test_accepts_ids_array_at_exactly_the_limit(): void {
