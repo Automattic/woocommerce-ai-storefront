@@ -586,6 +586,33 @@ class WC_AI_Storefront {
 	}
 
 	/**
+	 * Cache-Control header value for the public discovery surfaces
+	 * (`/.well-known/ucp` and `/llms.txt`).
+	 *
+	 * Served from non-`/wp-json/` rewrite endpoints, which the
+	 * WordPress.com / Atomic CDN edge caches (unlike `/wp-json/`, which it
+	 * bypasses). `public, max-age=N` lets the edge absorb agent discovery
+	 * bursts as cache HITs instead of every fetch booting WordPress and
+	 * counting against the platform's per-origin request rate limit (429
+	 * once a burst exceeds ~10 requests in a short window).
+	 *
+	 * There is no edge-purge hook — the cache invalidator only clears
+	 * transients, which live behind origin — so `max-age` IS the freshness
+	 * SLA: a settings or syndication-state change takes up to `max-age`
+	 * seconds to propagate. 300s absorbs the sub-second bursts that trip
+	 * the limit while bounding that staleness to five minutes.
+	 *
+	 * @return string e.g. "public, max-age=300".
+	 */
+	public static function discovery_cache_control(): string {
+		$max_age = (int) apply_filters( 'wc_ai_storefront_discovery_cache_max_age', 300 );
+		if ( $max_age < 0 ) {
+			$max_age = 0;
+		}
+		return 'public, max-age=' . $max_age;
+	}
+
+	/**
 	 * Update plugin settings.
 	 *
 	 * @param array $settings Settings to save.

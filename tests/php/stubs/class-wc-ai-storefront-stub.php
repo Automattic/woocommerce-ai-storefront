@@ -89,6 +89,26 @@ class WC_AI_Storefront {
 	}
 
 	/**
+	 * Cache-Control header value for the public discovery surfaces.
+	 *
+	 * Byte-for-byte mirror of the production
+	 * `WC_AI_Storefront::discovery_cache_control()` in
+	 * `includes/class-wc-ai-storefront.php`. The unit-test harness loads
+	 * this stub instead of the real (WordPress-coupled) class, so the
+	 * logic lives in both places. Keep in sync — see the stub doc above
+	 * (lines 8–12) on drift avoidance.
+	 *
+	 * @return string e.g. "public, max-age=300".
+	 */
+	public static function discovery_cache_control(): string {
+		$max_age = (int) apply_filters( 'wc_ai_storefront_discovery_cache_max_age', 300 );
+		if ( $max_age < 0 ) {
+			$max_age = 0;
+		}
+		return 'public, max-age=' . $max_age;
+	}
+
+	/**
 	 * Stub of `is_product_syndicated()` mirroring the production
 	 * UNION logic for 0.1.5+. Legacy modes (`categories`/`tags`/
 	 * `brands`) route through `by_taxonomy` via the same defensive
