@@ -897,4 +897,58 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertCount( 3, $response->get_data()['result']['tools'] );
 	}
+
+	public function test_initialize_echoes_supported_requested_protocol_version(): void {
+		// Per the MCP lifecycle spec, when the client requests a protocol version
+		// the server supports, the server MUST echo that same version — not blindly
+		// return its own latest.
+		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [
+						'protocolVersion' => '2025-03-26',
+						'clientInfo'      => [ 'name' => 'gibberish-agent' ],
+					],
+				]
+			)
+		);
+
+		$this->assertSame( '2025-03-26', $response->get_data()['result']['protocolVersion'] );
+	}
+
+	public function test_initialize_falls_back_to_latest_for_unsupported_version(): void {
+		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [
+						'protocolVersion' => '1999-01-01',
+						'clientInfo'      => [ 'name' => 'gibberish-agent' ],
+					],
+				]
+			)
+		);
+
+		$this->assertSame( '2025-06-18', $response->get_data()['result']['protocolVersion'] );
+	}
+
+	public function test_initialize_defaults_to_latest_when_version_omitted(): void {
+		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
+			$this->rpc_request(
+				[
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
+				]
+			)
+		);
+
+		$this->assertSame( '2025-06-18', $response->get_data()['result']['protocolVersion'] );
+	}
 }

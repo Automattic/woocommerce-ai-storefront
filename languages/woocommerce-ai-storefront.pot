@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-11T22:29:38+00:00\n"
+"POT-Creation-Date: 2026-06-11T23:41:42+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -117,15 +117,15 @@ msgstr ""
 msgid "Unsupported MCP-Protocol-Version: %1$s. Supported: %2$s."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:316
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:325
 msgid "Unknown or expired session."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:321
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:330
 msgid "Agent is not allowed."
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:329
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:338
 msgid "Anonymous agents are not allowed."
 msgstr ""
 
@@ -261,22 +261,90 @@ msgstr ""
 msgid "Catalog search"
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:291
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:293
 msgid "Catalog lookup"
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:304
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:308
 msgid "Checkout"
 msgstr ""
 
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:312
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:317
 msgid "Unknown tool."
 msgstr ""
 
 #. translators: 1: tool name, 2: HTTP status code.
-#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:374
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:392
 #, php-format
 msgid "%1$s failed (HTTP %2$d)."
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:473
+msgid "No products matched."
+msgstr ""
+
+#. translators: 1: products returned in this page, 2: total matching products.
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:483
+#, php-format
+msgid "%1$d of %2$d products"
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:492
+msgid "More available — pass pagination.cursor for the next page."
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:510
+msgid "No products found for the given ids (see messages)."
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:511
+msgid "No products found for the given ids."
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:518
+msgid "Note: some ids were not found (see messages)."
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:535
+msgid "Checkout created."
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:540
+msgid "Checkout ready."
+msgstr ""
+
+#. translators: %d: number of line items in the checkout.
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:544
+#, php-format
+msgid "Checkout ready for %d item."
+msgid_plural "Checkout ready for %d items."
+msgstr[0] ""
+msgstr[1] ""
+
+#. translators: %s: URL to continue the purchase on the merchant site.
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:551
+#, php-format
+msgid "Continue at %s"
+msgstr ""
+
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:556
+msgid "Note: some items were skipped (see messages)."
+msgstr ""
+
+#. translators: %d: number of products.
+#. translators: %d: number of products exposed to AI
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:613
+#: client/settings/ai-storefront/settings-page.js:1052
+#, php-format,js-format
+msgid "%d product"
+msgid_plural "%d products"
+msgstr[0] ""
+msgstr[1] ""
+
+#. translators: %d: number of additional products not individually listed.
+#: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:633
+#, php-format
+msgid "…and %d more"
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-store-api-extension.php:229
@@ -1384,14 +1452,6 @@ msgstr ""
 #: client/settings/ai-storefront/settings-page.js:1043
 msgid "Couldn’t load"
 msgstr ""
-
-#. translators: %d: number of products exposed to AI
-#: client/settings/ai-storefront/settings-page.js:1052
-#, js-format
-msgid "%d product"
-msgid_plural "%d products"
-msgstr[0] ""
-msgstr[1] ""
 
 #: client/settings/ai-storefront/settings-page.js:1088
 msgid "AI traffic and orders"

@@ -271,7 +271,9 @@ class WC_AI_Storefront_MCP_Tools {
 				);
 				return self::core_result_to_mcp(
 					$controller->run_catalog_search( $params ),
-					__( 'Catalog search', 'woocommerce-ai-storefront' )
+					__( 'Catalog search', 'woocommerce-ai-storefront' ),
+					false,
+					[ self::class, 'summarize_search' ]
 				);
 
 			case 'catalog_lookup':
@@ -288,7 +290,9 @@ class WC_AI_Storefront_MCP_Tools {
 				);
 				return self::core_result_to_mcp(
 					$controller->run_catalog_lookup( $params ),
-					__( 'Catalog lookup', 'woocommerce-ai-storefront' )
+					__( 'Catalog lookup', 'woocommerce-ai-storefront' ),
+					false,
+					[ self::class, 'summarize_lookup' ]
 				);
 
 			case 'checkout_create':
@@ -305,7 +309,8 @@ class WC_AI_Storefront_MCP_Tools {
 					// Require a continue_url: a checkout that resolved no items
 					// returns HTTP 200 with the reason in messages[], and must
 					// surface as an MCP error rather than a silent success.
-					true
+					true,
+					[ self::class, 'summarize_checkout' ]
 				);
 
 			default:
@@ -322,11 +327,24 @@ class WC_AI_Storefront_MCP_Tools {
 	 * NOT under a top-level `error` key. We read that real shape: the first
 	 * `error`-typed message's `code` + `content` form the MCP error text.
 	 *
-	 * @param array  $result  ['body'=>array,'status'=>int].
-	 * @param string $summary One-line summary label for the text block.
+	 * @param array         $result             ['body'=>array,'status'=>int].
+	 * @param string        $summary            Fallback one-line label for the text
+	 *                                          block when no summarizer is supplied.
+	 * @param bool          $require_continue_url Treat a 200 with no continue_url as
+	 *                                          an error (checkout only).
+	 * @param callable|null $summarize_success  Optional fn(array $body):string that
+	 *                                          builds the success text block from the
+	 *                                          response body. Runs ONLY on the success
+	 *                                          path; the error path always derives its
+	 *                                          text from messages[]. Falls back to
+	 *                                          $summary when null. This is what surfaces
+	 *                                          results into the model-visible `content`
+	 *                                          channel (clients may not read
+	 *                                          structuredContent), per the MCP spec's
+	 *                                          "also return serialized text" guidance.
 	 * @return array MCP tool result.
 	 */
-	public static function core_result_to_mcp( array $result, string $summary, bool $require_continue_url = false ): array {
+	public static function core_result_to_mcp( array $result, string $summary, bool $require_continue_url = false, ?callable $summarize_success = null ): array {
 		$status = (int) ( $result['status'] ?? 200 );
 		$body   = is_array( $result['body'] ?? null ) ? $result['body'] : [];
 
@@ -388,14 +406,289 @@ class WC_AI_Storefront_MCP_Tools {
 			];
 		}
 
+		$text = null !== $summarize_success
+			? (string) call_user_func( $summarize_success, $body )
+			: $summary;
+
 		return [
 			'content'           => [
 				[
 					'type' => 'text',
-					'text' => $summary,
+					'text' => $text,
 				],
 			],
 			'structuredContent' => $body,
 		];
+	}
+
+	/**
+	 * Maximum products enumerated in a result's text summary before the
+	 * remainder collapses into an "…and N more" note. Bounds the token cost
+	 * of the model-facing text channel on large lookups (up to 100 ids).
+	 */
+	const SUMMARY_MAX_ITEMS = 10;
+
+	/**
+	 * ISO 4217 currencies with no minor unit — the stored minor-unit amount
+	 * IS the major value (no division). Anything not listed here or in
+	 * THREE_DECIMAL_CURRENCIES is treated as 2-decimal.
+	 *
+	 * @var string[]
+	 */
+	private const ZERO_DECIMAL_CURRENCIES = [
+		'BIF',
+		'CLP',
+		'DJF',
+		'GNF',
+		'JPY',
+		'KMF',
+		'KRW',
+		'MGA',
+		'PYG',
+		'RWF',
+		'UGX',
+		'VND',
+		'VUV',
+		'XAF',
+		'XOF',
+		'XPF',
+	];
+
+	/**
+	 * ISO 4217 currencies whose minor unit has three digits.
+	 *
+	 * @var string[]
+	 */
+	private const THREE_DECIMAL_CURRENCIES = [ 'BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND' ];
+
+	/**
+	 * Build the `content` text for a successful catalog_search result.
+	 *
+	 * @param array $body Search response body (`products`, `pagination`).
+	 * @return string
+	 */
+	public static function summarize_search( array $body ): string {
+		$products = self::products_of( $body );
+		if ( empty( $products ) ) {
+			return __( 'No products matched.', 'woocommerce-ai-storefront' );
+		}
+
+		$count      = count( $products );
+		$pagination = is_array( $body['pagination'] ?? null ) ? $body['pagination'] : [];
+		$total      = isset( $pagination['total_count'] ) ? (int) $pagination['total_count'] : null;
+
+		$head = ( null !== $total && $total > $count )
+			? sprintf(
+				/* translators: 1: products returned in this page, 2: total matching products. */
+				__( '%1$d of %2$d products', 'woocommerce-ai-storefront' ),
+				$count,
+				$total
+			)
+			: self::product_count_label( $count );
+
+		$text = $head . ' — ' . implode( '; ', self::product_lines( $products ) ) . '.';
+
+		if ( ! empty( $pagination['has_next_page'] ) ) {
+			$text .= ' ' . __( 'More available — pass pagination.cursor for the next page.', 'woocommerce-ai-storefront' );
+		}
+
+		return $text;
+	}
+
+	/**
+	 * Build the `content` text for a successful catalog_lookup result.
+	 *
+	 * @param array $body Lookup response body (`products`, optional `messages`).
+	 * @return string
+	 */
+	public static function summarize_lookup( array $body ): string {
+		$products     = self::products_of( $body );
+		$has_messages = ! empty( $body['messages'] ) && is_array( $body['messages'] );
+
+		if ( empty( $products ) ) {
+			return $has_messages
+				? __( 'No products found for the given ids (see messages).', 'woocommerce-ai-storefront' )
+				: __( 'No products found for the given ids.', 'woocommerce-ai-storefront' );
+		}
+
+		$text = self::product_count_label( count( $products ) )
+			. ' — ' . implode( '; ', self::product_lines( $products ) ) . '.';
+
+		if ( $has_messages ) {
+			$text .= ' ' . __( 'Note: some ids were not found (see messages).', 'woocommerce-ai-storefront' );
+		}
+
+		return $text;
+	}
+
+	/**
+	 * Build the `content` text for a successful checkout_create result.
+	 *
+	 * @param array $body Checkout response body (`continue_url`, `line_items`).
+	 * @return string
+	 */
+	public static function summarize_checkout( array $body ): string {
+		$url = is_string( $body['continue_url'] ?? null ) ? $body['continue_url'] : '';
+		if ( '' === $url ) {
+			// Defensive: the require_continue_url path already routes empty-url
+			// checkouts to the error branch, so a success summary always has one.
+			return __( 'Checkout created.', 'woocommerce-ai-storefront' );
+		}
+
+		$items = is_array( $body['line_items'] ?? null ) ? count( $body['line_items'] ) : 0;
+		if ( $items < 1 ) {
+			$lead = __( 'Checkout ready.', 'woocommerce-ai-storefront' );
+		} else {
+			$lead = sprintf(
+				/* translators: %d: number of line items in the checkout. */
+				_n( 'Checkout ready for %d item.', 'Checkout ready for %d items.', $items, 'woocommerce-ai-storefront' ),
+				$items
+			);
+		}
+
+		$text = $lead . ' ' . sprintf(
+			/* translators: %s: URL to continue the purchase on the merchant site. */
+			__( 'Continue at %s', 'woocommerce-ai-storefront' ),
+			$url
+		);
+
+		if ( ! empty( $body['messages'] ) && is_array( $body['messages'] ) ) {
+			$text .= ' ' . __( 'Note: some items were skipped (see messages).', 'woocommerce-ai-storefront' );
+		}
+
+		return $text;
+	}
+
+	/**
+	 * Format a minor-unit amount with its currency's correct decimal places.
+	 *
+	 * @param int    $amount_minor Amount in the currency's minor units.
+	 * @param string $currency     ISO 4217 code (defaults to USD when blank).
+	 * @return string e.g. "USD 48.00", "JPY 4800".
+	 */
+	public static function format_money( int $amount_minor, string $currency ): string {
+		$currency = '' !== $currency ? strtoupper( $currency ) : 'USD';
+		$decimals = self::decimals_for( $currency );
+		return $currency . ' ' . number_format( $amount_minor / ( 10 ** $decimals ), $decimals );
+	}
+
+	/**
+	 * Decimal places for a currency code.
+	 *
+	 * @param string $currency Uppercase ISO 4217 code.
+	 * @return int 0, 2, or 3.
+	 */
+	private static function decimals_for( string $currency ): int {
+		if ( in_array( $currency, self::ZERO_DECIMAL_CURRENCIES, true ) ) {
+			return 0;
+		}
+		if ( in_array( $currency, self::THREE_DECIMAL_CURRENCIES, true ) ) {
+			return 3;
+		}
+		return 2;
+	}
+
+	/**
+	 * Extract the `products` array from a response body, keeping only the
+	 * array-shaped entries (defensive against a malformed envelope).
+	 *
+	 * @param array $body Response body.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private static function products_of( array $body ): array {
+		$products = is_array( $body['products'] ?? null ) ? $body['products'] : [];
+		return array_values( array_filter( $products, 'is_array' ) );
+	}
+
+	/**
+	 * "%d product" / "%d products" with manual pluralization (the test
+	 * bootstrap stubs __ but not _n).
+	 *
+	 * @param int $count Product count.
+	 * @return string
+	 */
+	private static function product_count_label( int $count ): string {
+		return sprintf(
+			/* translators: %d: number of products. */
+			_n( '%d product', '%d products', $count, 'woocommerce-ai-storefront' ),
+			$count
+		);
+	}
+
+	/**
+	 * Render up to SUMMARY_MAX_ITEMS products as "Title (id) PRICE" lines,
+	 * collapsing any remainder into an "…and N more" entry.
+	 *
+	 * @param array<int,array<string,mixed>> $products Array-shaped products.
+	 * @return string[]
+	 */
+	private static function product_lines( array $products ): array {
+		$shown = array_slice( $products, 0, self::SUMMARY_MAX_ITEMS );
+		$lines = array_map( [ self::class, 'product_line' ], $shown );
+
+		$extra = count( $products ) - count( $shown );
+		if ( $extra > 0 ) {
+			$lines[] = sprintf(
+				/* translators: %d: number of additional products not individually listed. */
+				__( '…and %d more', 'woocommerce-ai-storefront' ),
+				$extra
+			);
+		}
+
+		return $lines;
+	}
+
+	/**
+	 * Render one product as "Title (id) PRICE" (price omitted when absent).
+	 *
+	 * @param array<string,mixed> $product UCP product shape.
+	 * @return string
+	 */
+	private static function product_line( array $product ): string {
+		$id    = is_string( $product['id'] ?? null ) ? $product['id'] : '';
+		$title = is_string( $product['title'] ?? null ) ? trim( $product['title'] ) : '';
+		$label = '' !== $title ? sprintf( '%s (%s)', $title, $id ) : $id;
+		$price = self::format_price_range( $product['price_range'] ?? null );
+
+		return '' !== $price ? trim( $label . ' ' . $price ) : $label;
+	}
+
+	/**
+	 * Format a UCP `price_range` ({min,max} money objects) for display.
+	 * A single price when min == max; a "LO–HI" range otherwise (the second
+	 * currency code is elided when both bounds share one). Returns '' when the
+	 * shape can't be read cleanly, so price is simply omitted rather than wrong.
+	 *
+	 * @param mixed $range The product's price_range value.
+	 * @return string
+	 */
+	private static function format_price_range( $range ): string {
+		if ( ! is_array( $range ) ) {
+			return '';
+		}
+		$min = is_array( $range['min'] ?? null ) ? $range['min'] : null;
+		$max = is_array( $range['max'] ?? null ) ? $range['max'] : null;
+		if ( null === $min || ! isset( $min['amount'] ) ) {
+			return '';
+		}
+
+		$min_amount   = (int) $min['amount'];
+		$max_amount   = isset( $max['amount'] ) ? (int) $max['amount'] : $min_amount;
+		$min_currency = is_string( $min['currency'] ?? null ) ? strtoupper( $min['currency'] ) : 'USD';
+		$max_currency = is_string( $max['currency'] ?? null ) ? strtoupper( $max['currency'] ) : $min_currency;
+
+		if ( $max_amount === $min_amount ) {
+			return self::format_money( $min_amount, $min_currency );
+		}
+
+		if ( $max_currency === $min_currency ) {
+			$decimals = self::decimals_for( $min_currency );
+			return $min_currency . ' '
+				. number_format( $min_amount / ( 10 ** $decimals ), $decimals )
+				. '–'
+				. number_format( $max_amount / ( 10 ** $decimals ), $decimals );
+		}
+
+		return self::format_money( $min_amount, $min_currency ) . '–' . self::format_money( $max_amount, $max_currency );
 	}
 }

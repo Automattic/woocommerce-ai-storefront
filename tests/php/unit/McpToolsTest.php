@@ -16,6 +16,10 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		parent::setUp();
 		Monkey\setUp();
 		Functions\when( '__' )->returnArg();
+		// _n returns the singular or plural format string by count; callers sprintf it.
+		Functions\when( '_n' )->alias(
+			static fn( $single, $plural, $number ) => 1 === (int) $number ? $single : $plural
+		);
 	}
 
 	protected function tearDown(): void {
@@ -394,5 +398,166 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertTrue( $result['isError'] );
 		$this->assertStringContainsString( 'ucp_disabled', $result['content'][0]['text'] );
+	}
+
+	/**
+	 * Build a minimal UCP product shape for summary tests.
+	 *
+	 * @param string $id       UCP product id.
+	 * @param string $title    Product title.
+	 * @param int    $min      Min price in minor units.
+	 * @param int    $max      Max price in minor units (defaults to $min).
+	 * @param string $currency ISO 4217 code.
+	 * @return array<string,mixed>
+	 */
+	private function product( string $id, string $title, int $min = 0, int $max = 0, string $currency = 'USD' ): array {
+		return [
+			'id'          => $id,
+			'title'       => $title,
+			'price_range' => [
+				'min' => [ 'amount' => $min, 'currency' => $currency ],
+				'max' => [ 'amount' => 0 !== $max ? $max : $min, 'currency' => $currency ],
+			],
+		];
+	}
+
+	public function test_summarize_search_lists_products_with_count_and_cursor_hint(): void {
+		$text = WC_AI_Storefront_MCP_Tools::summarize_search(
+			[
+				'products'   => [
+					$this->product( 'prod_22', 'Day Hoodie', 4800 ),
+					$this->product( 'prod_31', 'Night Tee', 2400 ),
+				],
+				'pagination' => [ 'has_next_page' => true ],
+			]
+		);
+
+		$this->assertStringContainsString( '2 products', $text );
+		$this->assertStringContainsString( 'Day Hoodie (prod_22)', $text );
+		$this->assertStringContainsString( 'USD 48.00', $text );
+		$this->assertStringContainsString( 'pagination.cursor', $text );
+	}
+
+	public function test_summarize_search_reports_total_when_known(): void {
+		$text = WC_AI_Storefront_MCP_Tools::summarize_search(
+			[
+				'products'   => [ $this->product( 'prod_1', 'Cap', 1800 ) ],
+				'pagination' => [ 'total_count' => 42 ],
+			]
+		);
+
+		$this->assertStringContainsString( '1 of 42 products', $text );
+	}
+
+	public function test_summarize_search_empty_returns_no_match(): void {
+		$text = WC_AI_Storefront_MCP_Tools::summarize_search( [ 'products' => [] ] );
+
+		$this->assertStringContainsString( 'No products matched', $text );
+	}
+
+	public function test_summarize_search_caps_long_lists_with_overflow_note(): void {
+		$products = [];
+		for ( $i = 0; $i < 15; $i++ ) {
+			$products[] = $this->product( 'prod_' . $i, 'Item ' . $i, 100 );
+		}
+
+		$text = WC_AI_Storefront_MCP_Tools::summarize_search( [ 'products' => $products ] );
+
+		// Only the first 10 are enumerated; the remaining 5 collapse to a note.
+		$this->assertStringContainsString( 'Item 9 (prod_9)', $text );
+		$this->assertStringNotContainsString( 'Item 10 (prod_10)', $text );
+		$this->assertStringContainsString( '…and 5 more', $text );
+	}
+
+	public function test_summarize_search_formats_a_price_range(): void {
+		$text = WC_AI_Storefront_MCP_Tools::summarize_search(
+			[ 'products' => [ $this->product( 'prod_5', 'Variable', 4800, 6000 ) ] ]
+		);
+
+		$this->assertStringContainsString( 'USD 48.00–60.00', $text );
+	}
+
+	public function test_summarize_lookup_notes_unresolved_ids(): void {
+		$text = WC_AI_Storefront_MCP_Tools::summarize_lookup(
+			[
+				'products' => [ $this->product( 'prod_22', 'Day Hoodie', 4800 ) ],
+				'messages' => [ [ 'type' => 'info', 'code' => 'not_found', 'content' => 'var_999 missing.' ] ],
+			]
+		);
+
+		$this->assertStringContainsString( '1 product', $text );
+		$this->assertStringContainsString( 'Day Hoodie (prod_22)', $text );
+		$this->assertStringContainsString( 'not found', $text );
+	}
+
+	public function test_summarize_lookup_empty_with_messages(): void {
+		$text = WC_AI_Storefront_MCP_Tools::summarize_lookup(
+			[ 'products' => [], 'messages' => [ [ 'type' => 'error', 'code' => 'not_found', 'content' => 'x' ] ] ]
+		);
+
+		$this->assertStringContainsString( 'No products found', $text );
+	}
+
+	public function test_summarize_checkout_includes_item_count_and_url(): void {
+		$text = WC_AI_Storefront_MCP_Tools::summarize_checkout(
+			[
+				'continue_url' => 'https://store.example/checkout-link/?products=22:1,45:1',
+				'line_items'   => [ [ 'x' => 1 ], [ 'y' => 2 ] ],
+			]
+		);
+
+		$this->assertStringContainsString( 'Checkout ready for 2 items', $text );
+		$this->assertStringContainsString( 'https://store.example/checkout-link/?products=22:1,45:1', $text );
+	}
+
+	public function test_summarize_checkout_notes_skipped_items(): void {
+		$text = WC_AI_Storefront_MCP_Tools::summarize_checkout(
+			[
+				'continue_url' => 'https://store.example/x',
+				'line_items'   => [ [ 'x' => 1 ] ],
+				'messages'     => [ [ 'type' => 'info', 'code' => 'not_found', 'content' => 'skipped' ] ],
+			]
+		);
+
+		$this->assertStringContainsString( 'Checkout ready for 1 item.', $text );
+		$this->assertStringContainsString( 'skipped', $text );
+	}
+
+	public function test_format_money_respects_currency_decimals(): void {
+		$this->assertSame( 'USD 48.00', WC_AI_Storefront_MCP_Tools::format_money( 4800, 'USD' ) );
+		// JPY is a zero-decimal currency: the minor-unit amount IS the major value
+		// (and number_format adds a thousands separator for readability).
+		$this->assertSame( 'JPY 4,800', WC_AI_Storefront_MCP_Tools::format_money( 4800, 'JPY' ) );
+	}
+
+	public function test_core_result_to_mcp_uses_success_summarizer_when_provided(): void {
+		$result = WC_AI_Storefront_MCP_Tools::core_result_to_mcp(
+			[ 'body' => [ 'products' => [ $this->product( 'prod_1', 'Hat', 1800 ) ] ], 'status' => 200 ],
+			'Catalog search',
+			false,
+			[ WC_AI_Storefront_MCP_Tools::class, 'summarize_search' ]
+		);
+
+		$this->assertArrayNotHasKey( 'isError', $result );
+		$this->assertStringContainsString( 'Hat (prod_1)', $result['content'][0]['text'] );
+		// structuredContent is untouched — the full body still rides along.
+		$this->assertArrayHasKey( 'products', $result['structuredContent'] );
+	}
+
+	public function test_core_result_to_mcp_summarizer_is_ignored_on_error_path(): void {
+		// On an error result the summarizer must NOT run; the error text comes
+		// from messages[] as before.
+		$result = WC_AI_Storefront_MCP_Tools::core_result_to_mcp(
+			[
+				'body'   => [ 'messages' => [ [ 'type' => 'error', 'code' => 'boom', 'content' => 'Bang' ] ] ],
+				'status' => 400,
+			],
+			'Catalog search',
+			false,
+			[ WC_AI_Storefront_MCP_Tools::class, 'summarize_search' ]
+		);
+
+		$this->assertTrue( $result['isError'] );
+		$this->assertStringContainsString( 'boom', $result['content'][0]['text'] );
 	}
 }
