@@ -1071,24 +1071,6 @@ const CrawlerActivityCard = () => {
 						<div style={ { background: colors.surface } }>
 							<StatTile
 								label={ __(
-									'llms.txt hits',
-									'woocommerce-ai-storefront'
-								) }
-								value={ fmt( crawlStats.llms_txt_hits ) }
-							/>
-						</div>
-						<div style={ { background: colors.surface } }>
-							<StatTile
-								label={ __(
-									'UCP manifest hits',
-									'woocommerce-ai-storefront'
-								) }
-								value={ fmt( crawlStats.ucp_hits ) }
-							/>
-						</div>
-						<div style={ { background: colors.surface } }>
-							<StatTile
-								label={ __(
 									'Throttle rate',
 									'woocommerce-ai-storefront'
 								) }
