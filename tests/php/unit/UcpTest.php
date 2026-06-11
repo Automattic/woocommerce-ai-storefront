@@ -986,6 +986,24 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertEquals( 'extended', $manifest['ucp']['custom_key'] );
 	}
+
+	// ------------------------------------------------------------------
+	// Edge-cache wiring guard (source inspection)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Guards the edge-cache wiring: serve_manifest() must emit the shared
+	 * discovery cache header and must NOT re-introduce no-store or per-hit
+	 * crawl-logging (either would defeat the rate-limit fix). The serve method
+	 * emits headers + exit() so it can't be unit-tested directly; this pins
+	 * the source instead, mirroring ActivationTest's approach.
+	 */
+	public function test_manifest_stays_wired_to_discovery_cache_helper(): void {
+		$source = file_get_contents( dirname( __DIR__, 3 ) . '/includes/ai-storefront/class-wc-ai-storefront-ucp.php' );
+		$this->assertStringContainsString( 'WC_AI_Storefront::discovery_cache_control()', $source );
+		$this->assertStringNotContainsString( 'Cache-Control: no-store', $source );
+		$this->assertStringNotContainsString( 'Crawl_Logger::record(', $source );
+	}
 }
 
 /**

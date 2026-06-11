@@ -1093,4 +1093,22 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// When not in link-text mode, brackets are preserved verbatim.
 		$this->assertSame( '[click here]', self::sanitize_inline( '[click here]', false ) );
 	}
+
+	// ------------------------------------------------------------------
+	// Edge-cache wiring guard (source inspection)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Guards the edge-cache wiring: serve_llms_txt() must emit the shared
+	 * discovery cache header and must NOT re-introduce no-store or per-hit
+	 * crawl-logging (either would defeat the rate-limit fix). The serve method
+	 * emits headers + exit() so it can't be unit-tested directly; this pins
+	 * the source instead, mirroring ActivationTest's approach.
+	 */
+	public function test_llms_txt_stays_wired_to_discovery_cache_helper(): void {
+		$source = file_get_contents( dirname( __DIR__, 3 ) . '/includes/ai-storefront/class-wc-ai-storefront-llms-txt.php' );
+		$this->assertStringContainsString( 'WC_AI_Storefront::discovery_cache_control()', $source );
+		$this->assertStringNotContainsString( 'Cache-Control: no-store', $source );
+		$this->assertStringNotContainsString( 'Crawl_Logger::record(', $source );
+	}
 }

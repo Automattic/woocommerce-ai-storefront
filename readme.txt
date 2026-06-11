@@ -129,6 +129,14 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
+= Unreleased =
+**New**
+* Discovery surfaces (/.well-known/ucp, /llms.txt) are now edge-cacheable to survive platform rate limiting.
+* Retired the "UCP manifest hits" and "llms.txt hits" stat cards (cached hits cannot be counted in PHP).
+
+**Tweaked**
+* AI agent activity totals (requests, per-agent counts, throttle rate) no longer count edge-cached /.well-known/ucp and /llms.txt fetches, so those figures may drop after this update.
+
 = 0.19.1 - 2026-06-09 =
 **Fixed**
 * JSON-LD checkout URLs (`checkoutPageURLTemplate`, `BuyAction.urlTemplate`, variation `@id`) contained literal `&amp;` entities in the raw HTTP response due to WooCommerce's `wc_esc_json()` serializer running after all data filters. Fixed by replacing WC's `wp_footer` structured-data callback with a plugin-owned one that uses `JSON_HEX_AMP`-flagged `wp_json_encode`, bypassing `wc_esc_json` entirely. `curl`, Python `requests`, and LLM tool calls now receive clean URLs.

@@ -120,18 +120,20 @@ class WC_AI_Storefront_Llms_Txt {
 	 *   mis-classifying the response (e.g. as HTML if the merchant's
 	 *   content happens to begin with an `<` character). Small hardening.
 	 *
-	 * - `Cache-Control: no-store`: prevents CDN/proxy caches from absorbing
-	 *   requests before they reach PHP. The body itself is cheap (a
-	 *   transient lookup or a regenerate behind a single-flight guard) so
-	 *   per-origin serving has negligible cost — and skipping the edge
-	 *   cache restores accurate hit recording. A CDN HIT means PHP never
-	 *   runs, so the crawl-logger `record()` call is never reached and
-	 *   llms.txt hits show zero even when crawlers actively fetch the
-	 *   file. This mirrors the same fix applied to the UCP manifest in
-	 *   0.9.1 (closes #283); llms.txt had been left on the original
-	 *   `public, max-age=3600` policy and exhibited the identical
-	 *   under-counting symptom on Atomic / WordPress.com CDN-fronted
-	 *   installs.
+	 * - `Cache-Control: public, max-age=N` (via
+	 *   WC_AI_Storefront::discovery_cache_control()): makes the file
+	 *   edge-cacheable. As a non-`/wp-json/` rewrite endpoint the
+	 *   WordPress.com / Atomic edge caches it, so agent discovery bursts are
+	 *   served as cache HITs instead of every fetch booting WordPress and
+	 *   counting against the platform per-origin rate limit (429 past ~10
+	 *   requests in a short window). Trade-off: a CDN HIT never reaches PHP,
+	 *   so per-request hit logging is no longer accurate — the "llms.txt
+	 *   hits" stat card is retired in the same change, and accurate
+	 *   counting for cached surfaces will move to edge logs later. This
+	 *   reverses the no-store decision made for llms.txt in 0.10.1
+	 *   (#307), itself a follow-up to the 0.9.1/#283 manifest fix, now
+	 *   that the under-counting it avoided is outweighed by the
+	 *   rate-limit cost.
 	 *
 	 * (No `X-Robots-Tag: noindex`): earlier revisions set noindex to
 	 * keep llms.txt out of human-facing search results, but 1.4.4
@@ -155,15 +157,12 @@ class WC_AI_Storefront_Llms_Txt {
 		}
 
 		header( 'Content-Type: text/plain; charset=utf-8' );
-		header( 'Cache-Control: no-store' );
-		// `Vary: Host` is defence-in-depth alongside `Cache-Control:
-		// no-store`. With no-store in place no cache should be storing
-		// the response at all, but if an intermediate proxy ignores
-		// no-store and caches anyway, Vary: Host prevents cross-host
-		// poisoning: the body contains URLs derived from `home_url()` /
-		// `rest_url()`, which are Host-derived on loose-vhost / multisite
-		// installs, so a URL-keyed cache could otherwise serve a body
-		// whose endpoint URLs point at a different virtual host.
+		header( 'Cache-Control: ' . WC_AI_Storefront::discovery_cache_control() );
+		// `Vary: Host` matters now that the response is edge-cached: the body
+		// contains URLs derived from `home_url()` / `rest_url()`, which are
+		// Host-derived on loose-vhost / multisite installs, so the cache must
+		// key on Host or it could serve a body whose endpoint URLs point at a
+		// different virtual host.
 		header( 'Vary: Host' );
 		header( 'X-Content-Type-Options: nosniff' );
 		header( 'Access-Control-Allow-Origin: *' );
@@ -175,11 +174,6 @@ class WC_AI_Storefront_Llms_Txt {
 		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- REQUEST_METHOD is validated against a constant, no sanitization required.
 			status_header( 204 );
 			exit;
-		}
-
-		$crawler = WC_AI_Storefront_Robots::detect_crawler_from_ua();
-		if ( '' !== $crawler ) {
-			WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_LLMS_TXT, 0, $crawler );
 		}
 
 		echo $this->get_cached_content(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markdown content.

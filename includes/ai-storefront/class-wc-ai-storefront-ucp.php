@@ -223,16 +223,17 @@ class WC_AI_Storefront_Ucp {
 		}
 
 		header( 'Content-Type: application/json; charset=utf-8' );
-		// `no-store` prevents CDN/proxy caches from absorbing requests before
-		// they reach PHP. The manifest is generated per-request (cheap — one
-		// settings read + JSON encode, no external calls) and hit-logging
-		// happens inside serve_manifest(). A CDN HIT means PHP never runs,
-		// so the crawl-logger record() call is never reached and UCP manifest
-		// hits show zero even when crawlers are actively fetching the manifest.
-		// The Vary: Host defence is no longer needed once the response is
-		// not cached at all, but we keep it as defence-in-depth for any
-		// intermediate proxy that ignores Cache-Control: no-store.
-		header( 'Cache-Control: no-store' );
+		// Cacheable at the CDN edge. This is a non-`/wp-json/` rewrite
+		// endpoint, which the WordPress.com / Atomic edge caches (unlike
+		// `/wp-json/`, which it bypasses). `public, max-age` lets the edge
+		// absorb agent discovery bursts as cache HITs instead of every fetch
+		// booting WordPress and counting against the platform per-origin rate
+		// limit (429 past ~10 requests in a short window). No edge-purge hook
+		// exists, so `max-age` is the freshness SLA — see
+		// WC_AI_Storefront::discovery_cache_control(). `Vary: Host` below now
+		// genuinely matters: the body carries Host-derived URLs, so the cache
+		// must key on Host to avoid cross-host poisoning on multisite.
+		header( 'Cache-Control: ' . WC_AI_Storefront::discovery_cache_control() );
 		header( 'Vary: Host' );
 		header( 'Access-Control-Allow-Origin: *' );
 		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
@@ -264,11 +265,6 @@ class WC_AI_Storefront_Ucp {
 		// even though the manifest is served as `application/json`.
 		WC_AI_Storefront_Logger::debug( 'UCP manifest — generating per-request' );
 		$body = wp_json_encode( $this->generate_manifest( $settings ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT );
-
-		$crawler = WC_AI_Storefront_Robots::detect_crawler_from_ua();
-		if ( '' !== $crawler ) {
-			WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP, 0, $crawler );
-		}
 
 		echo $body; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON content.
 		exit;
