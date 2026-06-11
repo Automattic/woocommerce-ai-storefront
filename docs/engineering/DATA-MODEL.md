@@ -298,7 +298,7 @@ Two MySQL tables back the Discovery analytics surface. Both are scoped to the si
 Raw event log — one row per identified AI-agent request. Written from a static pending-array buffer that flushes on WordPress's `shutdown` action, so the latency added to any individual AI request is one batched INSERT at the end of the response.
 
 - **Defined in:** `WC_AI_Storefront_Crawl_Logger::TABLE_LOG` ([`includes/ai-storefront/class-wc-ai-storefront-crawl-logger.php`](../../includes/ai-storefront/class-wc-ai-storefront-crawl-logger.php))
-- **Written by:** `WC_AI_Storefront_Crawl_Logger::record()` calls from `WC_AI_Storefront_Attribution`, `WC_AI_Storefront_Robots`, `WC_AI_Storefront_UCP_REST_Controller`, `WC_AI_Storefront_Store_API_Rate_Limiter`. The `/.well-known/ucp` manifest and `/llms.txt` surfaces are no longer recorded — they are now edge-cached (`Cache-Control: public, max-age`), so a CDN HIT never reaches PHP; `WC_AI_Storefront_UCP` and `WC_AI_Storefront_Llms_Txt` no longer call `record()`.
+- **Written by:** `WC_AI_Storefront_Crawl_Logger::record()` calls from `WC_AI_Storefront_Robots`, `WC_AI_Storefront_UCP_REST_Controller`, `WC_AI_Storefront_Store_API_Rate_Limiter`. The `/.well-known/ucp` manifest and `/llms.txt` surfaces are no longer recorded — they are now edge-cached (`Cache-Control: public, max-age`), so a CDN HIT never reaches PHP; `WC_AI_Storefront_UCP` and `WC_AI_Storefront_Llms_Txt` no longer call `record()`.
 - **Retention:** `WC_AI_Storefront_Crawl_Logger::RAW_RETENTION_DAYS = 30`. Pruned by the daily cron `wc_ai_storefront_prune_crawl_log`.
 - **Uninstall:** dropped via `DROP TABLE` in `uninstall.php`
 
