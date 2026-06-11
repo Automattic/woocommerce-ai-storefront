@@ -2,7 +2,7 @@
 
 Filters and actions exposed by WooCommerce AI Storefront for extending plugins.
 
-The plugin exposes a deliberately small surface — twelve filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
+The plugin exposes a deliberately small surface — sixteen filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
 
 ## Filters
 
@@ -162,6 +162,22 @@ apply_filters( 'wc_ai_storefront_llms_txt_lines', array $lines, array $settings 
 **Returns:** modified `string[]`.
 
 **When to use:** prepend a brand intro, append store-specific instructions for AI agents, splice in a featured-collections section, or strip lines you don't want crawlers to see. Modifications survive cache invalidation — the filter runs at generation time and the result is cached as the `wc_ai_storefront_llms_txt` transient.
+
+### `wc_ai_storefront_discovery_cache_max_age`
+
+Tune the `max-age` (seconds) on the `Cache-Control: public` header for the discovery surfaces `/.well-known/ucp` and `/llms.txt`.
+
+```php
+apply_filters( 'wc_ai_storefront_discovery_cache_max_age', int $seconds );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$seconds` | `int` | The `max-age` in seconds. Default `300`. |
+
+**Returns:** the effective `max-age` in seconds; negative returns are clamped to `0`.
+
+**When to use:** Because there is no edge-purge hook, this value is the freshness SLA — a settings or syndication-state change takes up to this many seconds to propagate through the CDN edge. Lower it on stores that toggle syndication often; raise it for maximum burst absorption.
 
 ### `wc_ai_storefront_robots_txt`
 

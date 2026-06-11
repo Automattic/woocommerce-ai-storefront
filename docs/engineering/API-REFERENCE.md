@@ -611,8 +611,6 @@ Aggregated crawler-visibility stats for the Discovery tab. Reads from the summar
   "total_requests":    12483,
   "unique_products":   147,
   "store_api_queries": 4521,
-  "llms_txt_hits":     2104,
-  "ucp_hits":          5872,
   "throttle_count":    14,
   "throttle_rate":     0.1,
   "by_agent": [
@@ -634,7 +632,7 @@ Aggregated crawler-visibility stats for the Discovery tab. Reads from the summar
 
 `top_queries_window_days` is the effective lookback for `top_queries` (always `min(period_days, RAW_RETENTION_DAYS=30)`). Top searches read from the raw log (query strings aren't aggregated into the summary table), and the raw log retains only 30 days, so for `period=quarter` (90d) this value is `30` while every other field reflects the full 90-day period.
 
-`raw_event_count` is `COUNT(*)` over the raw log (`{prefix}wc_ai_storefront_crawl_log`) for the requested period. This field is **not cached** — it runs on every response, before the transient cache check, so brand-new traffic (llms.txt, UCP, product-page hits) becomes visible immediately even if the rollup hasn't fired yet. The Discovery tab's empty-state guard checks this in addition to `total_requests` and `top_queries`, so a fresh install that already has raw activity doesn't falsely render "no AI agent activity recorded".
+`raw_event_count` is `COUNT(*)` over the raw log (`{prefix}wc_ai_storefront_crawl_log`) for the requested period. This field is **not cached** — it runs on every response, before the transient cache check, so brand-new traffic (product-page hits, Store API queries) becomes visible immediately even if the rollup hasn't fired yet. (The `/.well-known/ucp` and `/llms.txt` discovery surfaces are edge-cached and no longer logged per request, so they don't contribute raw events.) The Discovery tab's empty-state guard checks this in addition to `total_requests` and `top_queries`, so a fresh install that already has raw activity doesn't falsely render "no AI agent activity recorded".
 
 `rollup_interval` is the validated cron recurrence slug currently in use: one of `"hourly"` (default), `"twicedaily"`, or `"daily"`. This is the value returned by `WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval()` — the same logic used by `schedule_crons()`. Like `raw_event_count`, this field is **not cached** in the transient — it's injected live on every response (cache-hit and fresh paths alike) so a `wc_ai_storefront_rollup_interval` filter change is reflected on the very next request. Clients use this to render a specific subtitle ("Updated hourly.", "Updated every 12 hours.", "Updated daily.") rather than a generic fallback.
 

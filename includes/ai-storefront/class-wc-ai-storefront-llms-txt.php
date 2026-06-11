@@ -128,7 +128,7 @@ class WC_AI_Storefront_Llms_Txt {
 	 *   counting against the platform per-origin rate limit (429 past ~10
 	 *   requests in a short window). Trade-off: a CDN HIT never reaches PHP,
 	 *   so per-request hit logging is no longer accurate — the "llms.txt
-	 *   hits" stat card was retired alongside this change, and accurate
+	 *   hits" stat card is retired in the same change, and accurate
 	 *   counting for cached surfaces will move to edge logs later. This
 	 *   reverses the 0.9.1 (#283) no-store decision now that the
 	 *   under-counting it avoided is outweighed by the rate-limit cost.
