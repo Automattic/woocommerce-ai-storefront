@@ -192,7 +192,7 @@ curl 'https://your-store.com/wp-json/wc/ucp/v1/catalog/search?q=hoodie&attribute
 
 ### `GET /catalog/lookup`
 
-Public, fetch-friendly variant of `POST /catalog/lookup`. Accepts exactly one of `?id=<numeric_wc_id>` or `?slug=<product_slug>`, builds the same `$params` shape as the POST handler, and delegates to `run_catalog_lookup()`.
+Public, fetch-friendly variant of `POST /catalog/lookup`. Accepts `?ids=` (a comma-separated batch) **or** exactly one of `?id=<numeric_wc_id>` / `?slug=<product_slug>`, builds the same `$params` shape as the POST handler, and delegates to `run_catalog_lookup()`.
 
 **Permission:** `check_agent_access` (see GET `/catalog/search` above).
 
@@ -200,18 +200,20 @@ Public, fetch-friendly variant of `POST /catalog/lookup`. Accepts exactly one of
 
 | Param | Maps to | Description |
 |-------|---------|-------------|
+| `ids` | `ids[]` | A comma-separated list of opaque UCP product/variant IDs (`prod_*`, `var_*`) — the same IDs `/catalog/search` returns — for batch lookup, e.g. `?ids=prod_1,var_2`. Whitespace around each ID is trimmed and empty entries dropped. Unresolved IDs come back as `not_found` messages in a partial-results envelope (HTTP 200), not a hard error. Capped at `MAX_IDS_PER_LOOKUP` (100); over the cap → `400 request_too_large`. A non-string value (e.g. array-style `?ids[]=`) → `400 invalid_input`; an empty/whitespace-only list → `400 invalid_input`. Takes precedence over `?id` / `?slug`. |
 | `id` | `ids[0]` = `prod_<id>` | A positive integer WC product ID. `0`, negative, non-numeric → `400 invalid_input`. |
 | `slug` | `ids[0]` = `prod_<resolved_id>` | A product slug, resolved via `get_page_by_path( $slug, OBJECT, 'product' )`. Must be a non-empty string. A slug that resolves to no published product → `404 not_found` (the resolved ID is dispatched through the Store API, which 404s drafts/private — so a non-public slug behaves identically to a nonexistent one, leaking no draft data). |
 
-`?id` takes precedence when both are supplied.
+`?ids` takes precedence over both; `?id` takes precedence over `?slug`.
 
 **Response:** same envelope as `POST /catalog/lookup`.
 
-**Errors:** `503 ucp_disabled` — returned **before** id/slug validation when syndication is paused, so a paused store answers a malformed or missing-param GET lookup with a consistent `503` (matching POST) rather than leaking a `400`, and runs no `get_page_by_path()` query. `400 invalid_input` — neither `?id` nor `?slug` present, or a malformed value. `404 not_found` — slug resolves to no published product.
+**Errors:** `503 ucp_disabled` — returned **before** any param validation when syndication is paused, so a paused store answers a malformed or missing-param GET lookup with a consistent `503` (matching POST) rather than leaking a `400`, and runs no `get_page_by_path()` query. `400 invalid_input` — `?ids` is non-string or empty, or neither `?id` nor `?slug` present, or a malformed `?id`/`?slug` value. `400 request_too_large` — `?ids` exceeds `MAX_IDS_PER_LOOKUP`. `404 not_found` — slug resolves to no published product. (Unresolved entries in a `?ids` batch are reported as `not_found` messages inside an HTTP 200 partial-results envelope, not a top-level error.)
 
 **Curl:**
 
 ```bash
+curl 'https://your-store.com/wp-json/wc/ucp/v1/catalog/lookup?ids=prod_42,var_99'
 curl 'https://your-store.com/wp-json/wc/ucp/v1/catalog/lookup?id=42'
 curl 'https://your-store.com/wp-json/wc/ucp/v1/catalog/lookup?slug=day-hoodie'
 ```
