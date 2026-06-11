@@ -6,6 +6,8 @@
 
 - **Retired the "UCP manifest hits" and "llms.txt hits" stat cards** (and their `ucp_hits` / `llms_txt_hits` crawl-stats API fields). Once those endpoints are edge-cached, a cache hit never reaches PHP, so per-request counting is no longer accurate. Accurate counting for cached surfaces will move to edge logs in a later change. Note: because those endpoints are no longer logged per request, the surviving `total_requests`, per-agent request counts, and `throttle_rate` metrics no longer include `/.well-known/ucp` and `/llms.txt` fetches, so those numbers will step down after upgrade (expected, not a regression); per-agent discovery attribution will return via the planned edge-logs work.
 
+- **`GET /catalog/lookup?ids=` batch lookup.** Fetch-only agents (that can't POST) can now look up many products in one request by passing the comma-separated UCP ids they got from `catalog/search` (e.g. `?ids=prod_22,var_4079`), instead of one request per product. Reuses the existing batch core: partial results, `not_found` messages for unresolved ids, capped at 100. The single `?id=`/`?slug=` forms are unchanged; a non-string `?ids[]=` returns 400. Over-cap requests now return the UCP-conformant `request_too_large` (was `invalid_input`) on both GET and POST.
+
 ---
 
 ## [0.19.1] – 2026-06-09

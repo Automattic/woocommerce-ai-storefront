@@ -545,6 +545,7 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[]      = '';
 		$lines[]      = "- **UCP manifest**: `{$ucp_manifest}` — capability discovery (what the store supports)";
 		$lines[]      = "- **UCP API base**: `{$ucp_api_base}` — REST root for search, lookup, checkout";
+		$lines[]      = "- **Batch lookup**: `GET {$ucp_api_base}/catalog/lookup?ids=prod_1,prod_2,…` — fetch up to " . WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP . ' products in one request (or `POST /catalog/lookup`). Prefer this over many single lookups.';
 		$lines[]      = "- **Checkout API**: `POST {$ucp_checkout}` — server returns a `continue_url`; redirect the buyer there. Product-specific cart links are also available via JSON-LD `BuyAction.urlTemplate` on each product page (deterministic across product types).";
 		$lines[]      = '';
 

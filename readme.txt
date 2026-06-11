@@ -133,6 +133,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 **New**
 * Discovery surfaces (/.well-known/ucp, /llms.txt) are now edge-cacheable to survive platform rate limiting.
 * Retired the "UCP manifest hits" and "llms.txt hits" stat cards (cached hits cannot be counted in PHP).
+* AI agents can fetch multiple products in one request via GET /catalog/lookup?ids=, reducing request volume.
 
 **Tweaked**
 * AI agent activity totals (requests, per-agent counts, throttle rate) no longer count edge-cached /.well-known/ucp and /llms.txt fetches, so those figures may drop after this update.
