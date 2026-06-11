@@ -130,8 +130,10 @@ class WC_AI_Storefront_Llms_Txt {
 	 *   so per-request hit logging is no longer accurate — the "llms.txt
 	 *   hits" stat card is retired in the same change, and accurate
 	 *   counting for cached surfaces will move to edge logs later. This
-	 *   reverses the 0.9.1 (#283) no-store decision now that the
-	 *   under-counting it avoided is outweighed by the rate-limit cost.
+	 *   reverses the no-store decision made for llms.txt in 0.10.1
+	 *   (#307), itself a follow-up to the 0.9.1/#283 manifest fix, now
+	 *   that the under-counting it avoided is outweighed by the
+	 *   rate-limit cost.
 	 *
 	 * (No `X-Robots-Tag: noindex`): earlier revisions set noindex to
 	 * keep llms.txt out of human-facing search results, but 1.4.4
