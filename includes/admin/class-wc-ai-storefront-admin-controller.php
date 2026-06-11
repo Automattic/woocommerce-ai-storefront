@@ -1254,8 +1254,6 @@ class WC_AI_Storefront_Admin_Controller {
 	 *                            an AI seen" rather than just "what products did an AI click."
 	 *   store_api_queries      — requests to store_api_product + store_api_search.
 	 *                            (search_hit impression rows are not counted as queries.)
-	 *   llms_txt_hits          — requests to the llms.txt endpoint.
-	 *   ucp_hits               — requests to the UCP manifest endpoint.
 	 *   throttle_count         — SUM(throttle_count) across all REQUEST endpoints (excludes
 	 *                            search_hit, which can never be throttled — it's a side-effect
 	 *                            of the parent search request).
@@ -1482,8 +1480,6 @@ class WC_AI_Storefront_Admin_Controller {
 			'total_requests'          => $total_requests,
 			'unique_products'         => $unique_products,
 			'store_api_queries'       => $store_api_queries,
-			'llms_txt_hits'           => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_LLMS_TXT ] ?? 0,
-			'ucp_hits'                => $by_endpoint[ WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP ] ?? 0,
 			'throttle_count'          => $total_throttles,
 			'throttle_rate'           => $total_requests > 0 ? round( ( $total_throttles / $total_requests ) * 100, 1 ) : 0.0,
 			'by_agent'                => $by_agent,

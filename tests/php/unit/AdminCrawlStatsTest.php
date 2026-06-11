@@ -378,4 +378,32 @@ class AdminCrawlStatsTest extends \PHPUnit\Framework\TestCase {
 			'unique_products must NOT filter by endpoint — search_hit rows feed it intentionally.'
 		);
 	}
+
+	/**
+	 * The "UCP manifest hits" and "llms.txt hits" cards were sunset when those
+	 * endpoints became edge-cacheable (a cache HIT never reaches PHP, so the
+	 * count is unreliable). The API must no longer surface those fields.
+	 */
+	public function test_response_omits_sunset_manifest_and_llms_fields(): void {
+		Functions\when( 'apply_filters' )->alias( static fn( string $hook, $default ) => $default );
+
+		global $wpdb;
+		$wpdb             = Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->last_error = '';
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'PREPARED' );
+		$wpdb->shouldReceive( 'get_results' )->andReturn( array() );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( '0' );
+
+		$req = new WP_REST_Request();
+		$req->set_param( 'period', 'day' );
+
+		$data = $this->controller->get_crawl_stats( $req )->get_data();
+
+		$this->assertArrayNotHasKey( 'ucp_hits', $data );
+		$this->assertArrayNotHasKey( 'llms_txt_hits', $data );
+		// Sibling fields are untouched.
+		$this->assertArrayHasKey( 'store_api_queries', $data );
+		$this->assertArrayHasKey( 'throttle_rate', $data );
+	}
 }
