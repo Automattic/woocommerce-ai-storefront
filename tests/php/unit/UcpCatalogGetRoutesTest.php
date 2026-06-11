@@ -404,4 +404,62 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 503, $result->get_status() );
 		$this->assertFalse( $queried, 'paused store must not run get_page_by_path()' );
 	}
+
+	// ------------------------------------------------------------------
+	// catalog/lookup GET — batch ?ids=
+	// ------------------------------------------------------------------
+
+	public function test_get_lookup_ids_passes_split_array_to_core(): void {
+		$request = $this->make_get_request( [ 'ids' => 'prod_22,var_4079,prod_99' ] );
+		$this->controller->handle_catalog_lookup_get( $request );
+		$this->assertSame(
+			[ 'prod_22', 'var_4079', 'prod_99' ],
+			$this->controller->last_lookup_params['ids']
+		);
+	}
+
+	public function test_get_lookup_ids_trims_and_drops_empty_tokens(): void {
+		$request = $this->make_get_request( [ 'ids' => ' prod_1 ,, prod_2 ,' ] );
+		$this->controller->handle_catalog_lookup_get( $request );
+		$this->assertSame(
+			[ 'prod_1', 'prod_2' ],
+			$this->controller->last_lookup_params['ids']
+		);
+	}
+
+	public function test_get_lookup_ids_takes_precedence_over_id_and_slug(): void {
+		$request = $this->make_get_request( [ 'ids' => 'prod_5', 'id' => '9', 'slug' => 'whatever' ] );
+		$this->controller->handle_catalog_lookup_get( $request );
+		$this->assertSame( [ 'prod_5' ], $this->controller->last_lookup_params['ids'] );
+	}
+
+	public function test_get_lookup_empty_ids_returns_400(): void {
+		$real    = new WC_AI_Storefront_UCP_REST_Controller();
+		$request = $this->make_get_request( [ 'ids' => ',,' ] );
+		$result  = $real->handle_catalog_lookup_get( $request );
+		$this->assertSame( 400, $result->get_status() );
+	}
+
+	public function test_get_lookup_ids_array_input_returns_400(): void {
+		$real    = new WC_AI_Storefront_UCP_REST_Controller();
+		$request = $this->make_get_request( [ 'ids' => [ 'prod_1', 'prod_2' ] ] );
+		$result  = $real->handle_catalog_lookup_get( $request );
+		$this->assertSame( 400, $result->get_status() );
+	}
+
+	public function test_get_lookup_empty_string_ids_returns_400(): void {
+		$real    = new WC_AI_Storefront_UCP_REST_Controller();
+		$request = $this->make_get_request( [ 'ids' => '' ] );
+		$result  = $real->handle_catalog_lookup_get( $request );
+		$this->assertSame( 400, $result->get_status() );
+	}
+
+	public function test_get_lookup_ids_over_cap_returns_request_too_large(): void {
+		$real    = new WC_AI_Storefront_UCP_REST_Controller();
+		$ids     = implode( ',', array_map( static fn( int $i ) => 'prod_' . $i, range( 1, 101 ) ) );
+		$request = $this->make_get_request( [ 'ids' => $ids ] );
+		$result  = $real->handle_catalog_lookup_get( $request );
+		$this->assertSame( 400, $result->get_status() );
+		$this->assertSame( 'request_too_large', $result->get_data()['messages'][0]['code'] );
+	}
 }

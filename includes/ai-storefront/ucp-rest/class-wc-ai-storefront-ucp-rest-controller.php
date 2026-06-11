@@ -818,6 +818,59 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return new WP_REST_Response( $error->get_data(), $error->get_status() );
 		}
 
+		// Batch lookup: comma-separated opaque UCP ids (`prod_*`, `var_*`),
+		// the exact ids agents receive from catalog/search results. Hand them
+		// straight to run_catalog_lookup(), which validates, caps, dedupes,
+		// resolves (products AND variants), and emits `not_found` messages for
+		// unresolved ids — so a garbage token returns as not_found (HTTP 200),
+		// not a 400. Takes precedence over the single ?id= / ?slug= paths.
+		$ids_param = $request->get_param( 'ids' );
+		if ( null !== $ids_param ) {
+			// `?ids` must be a comma-separated string. Reject array-style
+			// `?ids[]=` explicitly rather than (string)-casting it (which
+			// collapses to "Array" and silently destroys the real ids).
+			// Mirrors the is_array() guard in handle_catalog_search_get().
+			if ( ! is_string( $ids_param ) ) {
+				$error = self::ucp_catalog_error_response(
+					'dev.ucp.shopping.catalog.lookup',
+					__( 'The ?ids parameter must be a comma-separated string, e.g. ?ids=prod_1,prod_2.', 'woocommerce-ai-storefront' ),
+					WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
+					null,
+					400
+				);
+				return new WP_REST_Response( $error->get_data(), $error->get_status() );
+			}
+
+			$ids = array_values(
+				array_filter(
+					array_map( 'trim', explode( ',', $ids_param ) ),
+					static fn( string $id ) => '' !== $id
+				)
+			);
+
+			if ( empty( $ids ) ) {
+				$error = self::ucp_catalog_error_response(
+					'dev.ucp.shopping.catalog.lookup',
+					__( 'The ?ids parameter must contain at least one non-empty identifier.', 'woocommerce-ai-storefront' ),
+					WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
+					null,
+					400
+				);
+				return new WP_REST_Response( $error->get_data(), $error->get_status() );
+			}
+
+			$params = [
+				'ids'              => $ids,
+				'context'          => null,
+				'signals'          => null,
+				'agent_data'       => self::resolve_agent_host( $request ),
+				'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
+			];
+
+			$result = $this->run_catalog_lookup( $params );
+			return new WP_REST_Response( $result['body'], $result['status'] );
+		}
+
 		$id_param   = $request->get_param( 'id' );
 		$slug_param = $request->get_param( 'slug' );
 

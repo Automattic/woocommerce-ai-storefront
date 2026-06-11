@@ -48,6 +48,8 @@ final class WC_AI_Storefront_UCP_Error_Codes {
 	 * Batch request exceeds the implementation's per-request size limit
 	 * (e.g. catalog/lookup `ids` over MAX_IDS_PER_LOOKUP). UCP REST
 	 * conformance maps this to HTTP 400.
+	 *
+	 * @see https://ucp.dev/latest/specification/catalog/ (UCP catalog REST conformance).
 	 */
 	const REQUEST_TOO_LARGE = 'request_too_large';
 
