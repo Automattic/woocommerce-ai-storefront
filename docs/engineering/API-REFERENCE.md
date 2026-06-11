@@ -246,7 +246,7 @@ Both signals must agree — `variants[0]` carries `match: featured` in its input
 
 This applies to both `variable` and `variable-subscription` parents. The merchant's `_default_attributes` is the signal we use; we do NOT auto-resolve it server-side in `/checkout-sessions` (see [Supported product types](#post-checkout-sessions) below for the design rationale).
 
-**Errors:** `503` `ucp_disabled`; `400` `invalid_input` when `products` is missing, empty, or > 100 items.
+**Errors:** `503` `ucp_disabled`; `400` `invalid_input` when `ids` is missing or empty; `400` `request_too_large` when `ids` exceeds 100 items.
 
 ### `POST /checkout-sessions`
 

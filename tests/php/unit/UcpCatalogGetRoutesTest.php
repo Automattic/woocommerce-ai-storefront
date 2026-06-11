@@ -445,6 +445,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		$request = $this->make_get_request( [ 'ids' => [ 'prod_1', 'prod_2' ] ] );
 		$result  = $real->handle_catalog_lookup_get( $request );
 		$this->assertSame( 400, $result->get_status() );
+		$this->assertSame( 'invalid_input', $result->get_data()['messages'][0]['code'] );
 	}
 
 	public function test_get_lookup_empty_string_ids_returns_400(): void {

@@ -829,7 +829,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// `?ids` must be a comma-separated string. Reject array-style
 			// `?ids[]=` explicitly rather than (string)-casting it (which
 			// collapses to "Array" and silently destroys the real ids).
-			// Mirrors the is_array() guard in handle_catalog_search_get().
+			// Analogous to the is_array() guard in handle_catalog_search_get()
+			// (which logs-and-ignores); here we reject with 400 since there is
+			// no safe fallback for a corrupted id list.
 			if ( ! is_string( $ids_param ) ) {
 				$error = self::ucp_catalog_error_response(
 					'dev.ucp.shopping.catalog.lookup',
