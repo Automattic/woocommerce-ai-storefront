@@ -560,4 +560,78 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue( $result['isError'] );
 		$this->assertStringContainsString( 'boom', $result['content'][0]['text'] );
 	}
+
+	public function test_format_money_three_decimal_currency(): void {
+		// BHD is a three-decimal currency: 4800 minor units = 4.800. Guards
+		// against a regression that dropped the three-decimal list or hard-coded
+		// /100 (which would 10x the displayed price).
+		$this->assertSame( 'BHD 4.800', WC_AI_Storefront_MCP_Tools::format_money( 4800, 'BHD' ) );
+	}
+
+	public function test_summarize_search_formats_cross_currency_range(): void {
+		// The min != max AND differing-currency branch formats each bound with
+		// its own currency + decimals (no code elision).
+		$text = WC_AI_Storefront_MCP_Tools::summarize_search(
+			[
+				'products' => [
+					[
+						'id'          => 'prod_5',
+						'title'       => 'Imported',
+						'price_range' => [
+							'min' => [ 'amount' => 4800, 'currency' => 'USD' ],
+							'max' => [ 'amount' => 6000, 'currency' => 'EUR' ],
+						],
+					],
+				],
+			]
+		);
+
+		$this->assertStringContainsString( 'USD 48.00–EUR 60.00', $text );
+	}
+
+	public function test_summarize_search_omits_price_when_range_absent(): void {
+		// A product with no price_range renders "Title (id)" with no price
+		// fragment — never a fabricated "USD 0.00".
+		$text = WC_AI_Storefront_MCP_Tools::summarize_search(
+			[ 'products' => [ [ 'id' => 'prod_22', 'title' => 'Day Hoodie' ] ] ]
+		);
+
+		$this->assertStringContainsString( 'Day Hoodie (prod_22)', $text );
+		$this->assertStringNotContainsString( 'USD', $text );
+		$this->assertStringNotContainsString( '–', $text );
+	}
+
+	public function test_summarize_search_omits_price_when_amount_non_numeric(): void {
+		// A non-numeric amount (here a nested array from a hypothetical malformed
+		// envelope) must omit the price rather than (int)-coerce it to a wrong
+		// value. The omission is debug-logged (apply_filters drives the logger).
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		WC_AI_Storefront_Logger::reset_cache();
+
+		$text = WC_AI_Storefront_MCP_Tools::summarize_search(
+			[
+				'products' => [
+					[
+						'id'          => 'prod_9',
+						'title'       => 'Glitched',
+						'price_range' => [ 'min' => [ 'amount' => [ 'nested' => 1 ], 'currency' => 'USD' ] ],
+					],
+				],
+			]
+		);
+
+		$this->assertStringContainsString( 'Glitched (prod_9)', $text );
+		$this->assertStringNotContainsString( 'USD', $text );
+	}
+
+	public function test_product_line_falls_back_to_id_when_title_is_empty(): void {
+		// An empty title renders the bare id — no dangling " (id)" with a blank
+		// leading title.
+		$text = WC_AI_Storefront_MCP_Tools::summarize_search(
+			[ 'products' => [ [ 'id' => 'prod_22', 'title' => '' ] ] ]
+		);
+
+		$this->assertStringContainsString( 'prod_22', $text );
+		$this->assertStringNotContainsString( '(prod_22)', $text );
+	}
 }

@@ -564,7 +564,8 @@ class WC_AI_Storefront_MCP_Tools {
 	 *
 	 * @param int    $amount_minor Amount in the currency's minor units.
 	 * @param string $currency     ISO 4217 code (defaults to USD when blank).
-	 * @return string e.g. "USD 48.00", "JPY 4800".
+	 * @return string e.g. "USD 48.00", "JPY 4,800" (number_format adds a
+	 *                thousands separator).
 	 */
 	public static function format_money( int $amount_minor, string $currency ): string {
 		$currency = '' !== $currency ? strtoupper( $currency ) : 'USD';
@@ -601,8 +602,7 @@ class WC_AI_Storefront_MCP_Tools {
 	}
 
 	/**
-	 * "%d product" / "%d products" with manual pluralization (the test
-	 * bootstrap stubs __ but not _n).
+	 * "%d product" / "%d products", pluralized via _n().
 	 *
 	 * @param int $count Product count.
 	 * @return string
@@ -671,9 +671,23 @@ class WC_AI_Storefront_MCP_Tools {
 		if ( null === $min || ! isset( $min['amount'] ) ) {
 			return '';
 		}
+		// A non-numeric `amount` (e.g. a nested array, or a non-numeric string from
+		// a filter that mutated the envelope) would (int)-coerce to a plausible but
+		// WRONG price. Omit the price instead — honoring this method's "omit rather
+		// than wrong" contract — and debug-log so the upstream shape bug is traceable
+		// (mirrors the missing-messages[] log in core_result_to_mcp).
+		if ( ! is_numeric( $min['amount'] ) ) {
+			WC_AI_Storefront_Logger::debug(
+				'MCP summary: price_range.min.amount was non-numeric (%s) — price omitted.',
+				gettype( $min['amount'] )
+			);
+			return '';
+		}
 
-		$min_amount   = (int) $min['amount'];
-		$max_amount   = isset( $max['amount'] ) ? (int) $max['amount'] : $min_amount;
+		$min_amount = (int) $min['amount'];
+		// A non-numeric max degrades to the min (rendered as a single price), never
+		// a fabricated range bound.
+		$max_amount   = ( isset( $max['amount'] ) && is_numeric( $max['amount'] ) ) ? (int) $max['amount'] : $min_amount;
 		$min_currency = is_string( $min['currency'] ?? null ) ? strtoupper( $min['currency'] ) : 'USD';
 		$max_currency = is_string( $max['currency'] ?? null ) ? strtoupper( $max['currency'] ) : $min_currency;
 
