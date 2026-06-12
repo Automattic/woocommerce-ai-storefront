@@ -8,6 +8,10 @@
 
 - **`GET /catalog/lookup?ids=` batch lookup.** Fetch-only agents (that can't POST) can now look up many products in one request by passing the comma-separated UCP ids they got from `catalog/search` (e.g. `?ids=prod_22,var_4079`), instead of one request per product. Reuses the existing batch core: partial results, `not_found` messages for unresolved ids, capped at 100. The single `?id=`/`?slug=` forms are unchanged; a non-string `?ids[]=` returns 400. Over-cap requests now return the UCP-conformant `request_too_large` (was `invalid_input`) on both GET and POST.
 
+- **MCP tool results now put the data in the model-visible text channel.** `catalog_search`, `catalog_lookup`, and `checkout_create` previously returned all product data only under `structuredContent`, with a bare label (e.g. "Catalog search") in the `content` text block — so MCP clients that surface only `content` to the model showed it no results. The `content` text now carries a compact, bounded summary (result count, `Title (id) PRICE` lines capped at 10 with an "…and N more" note, pagination/not-found hints, and the checkout `continue_url`); `structuredContent` is unchanged for clients that consume it. Prices render with the correct minor-unit decimals per currency.
+
+- **MCP `initialize` echoes the client's requested protocol version.** When a client handshakes with a supported version (e.g. `2025-03-26`), the server now responds with that same version per the MCP lifecycle spec, instead of always returning its latest (`2025-06-18`).
+
 ---
 
 ## [0.19.1] – 2026-06-09

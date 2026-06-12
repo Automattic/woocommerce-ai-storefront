@@ -271,6 +271,15 @@ class WC_AI_Storefront_MCP_Server {
 			return $this->rpc_error( $id, -32000, $gated->get_error_message(), 403 );
 		}
 		WC_AI_Storefront_Logger::debug( 'MCP initialize: client=%s', $client_name );
+
+		// Echo the client's requested protocol version when we support it; only
+		// fall back to our latest when the request is absent or unsupported. Per
+		// the MCP lifecycle spec the server MUST respond with the same version
+		// the client asked for if it can — blindly returning LATEST can make a
+		// strict 2025-03-26 client disconnect on a version it never requested.
+		$requested = is_string( $params['protocolVersion'] ?? null ) ? $params['protocolVersion'] : '';
+		$protocol  = in_array( $requested, self::SUPPORTED, true ) ? $requested : self::LATEST_PROTOCOL;
+
 		// Store the RAW handshake name (not the canonical $gated) so the
 		// original agent identity is preserved for attribution. The server
 		// re-canonicalizes it via gate_client_name() on every post-handshake
@@ -279,7 +288,7 @@ class WC_AI_Storefront_MCP_Server {
 		$response   = $this->rpc_result(
 			$id,
 			[
-				'protocolVersion' => self::LATEST_PROTOCOL,
+				'protocolVersion' => $protocol,
 				'capabilities'    => [ 'tools' => (object) [] ],
 				'serverInfo'      => [
 					'name'    => 'dev.ucp.shopping',

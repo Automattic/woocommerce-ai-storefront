@@ -134,9 +134,11 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 * Discovery surfaces (/.well-known/ucp, /llms.txt) are now edge-cacheable to survive platform rate limiting.
 * Retired the "UCP manifest hits" and "llms.txt hits" stat cards (cached hits cannot be counted in PHP).
 * AI agents can fetch multiple products in one request via GET /catalog/lookup?ids=, reducing request volume.
+* MCP shopping tool results now include a readable text summary of the products/checkout (not just structured data), so AI clients that ignore structured content still see results.
 
 **Tweaked**
 * AI agent activity totals (requests, per-agent counts, throttle rate) no longer count edge-cached /.well-known/ucp and /llms.txt fetches, so those figures may drop after this update.
+* MCP initialize now echoes the client's requested protocol version when supported, instead of always returning the server's latest.
 
 = 0.19.1 - 2026-06-09 =
 **Fixed**
