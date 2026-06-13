@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.20.0] – 2026-06-13
+
 ### Features
 
 - **Discovery surfaces (`/.well-known/ucp`, `/llms.txt`) are now edge-cacheable.** Both were served `Cache-Control: no-store` to preserve per-request hit logging, which meant every AI-agent discovery fetch booted WordPress and counted against the WordPress.com/Atomic platform's per-origin request rate limit (HTTP 429 once a burst exceeds ~10 requests in a short window). They now send `Cache-Control: public, max-age=300` (filterable via the new `wc_ai_storefront_discovery_cache_max_age` filter); `Vary: Host` is retained. Because there is no edge-purge hook, `max-age` is the freshness SLA — a settings change propagates within that window.

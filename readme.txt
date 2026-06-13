@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.19.1
+Stable tag: 0.20.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -129,7 +129,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
-= Unreleased =
+= 0.20.0 - 2026-06-13 =
 **New**
 * Discovery surfaces (/.well-known/ucp, /llms.txt) are now edge-cacheable to survive platform rate limiting.
 * Retired the "UCP manifest hits" and "llms.txt hits" stat cards (cached hits cannot be counted in PHP).
