@@ -98,6 +98,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			[ 'country' => 'US', 'state' => 'CA' ]
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
+		// `do_shortcode()` is called when formatting a variation's OWN
+		// description for variant-field inheritance (mirroring WC core's
+		// description formatting). Pass the content through unchanged so
+		// tests don't need a shortcode registry; the description-format
+		// tests assert on `wp_strip_all_tags( do_shortcode( ... ) )`.
+		Functions\when( 'do_shortcode' )->returnArg( 1 );
 
 		// get_catalog_summary() now uses a transient cache. Stub both
 		// functions globally so all tests that invoke output_store_jsonld()
@@ -750,6 +756,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$variation         = $this->make_product( $overrides );
 		$variation->shouldReceive( 'get_price' )->andReturn( $overrides['price'] ?? '20.00' );
 		$variation->shouldReceive( 'is_in_stock' )->andReturn( $overrides['in_stock'] ?? true );
+		// Variations carry their own (usually empty) description. The
+		// inheritance step in `maybe_convert_to_product_group()` reads
+		// `get_description()` to decide whether to keep the variation's
+		// own copy or fall back to the parent's. Default empty so the
+		// common case (no per-variation description) exercises the
+		// parent-inheritance branch; tests that want the override branch
+		// pass a non-empty `description` override.
+		$variation->shouldReceive( 'get_description' )->andReturn( $overrides['description'] ?? '' );
 
 		// `add_variant_basics()` reads typed-property values directly
 		// from variation postmeta (`attribute_<slug>`) — see the doc in
@@ -1328,6 +1342,163 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 'Product', $result['@type'] );
 		$this->assertArrayNotHasKey( 'hasVariant', $result );
+	}
+
+	// ------------------------------------------------------------------
+	// add_inherited_variant_fields — variant nodes inherit the parent
+	// ProductGroup's WC-core base markup (description, brand, category,
+	// offer seller/priceValidUntil) that the from-scratch variant
+	// builder would otherwise drop. Google flags variants with "no
+	// description" / missing priceValidUntil otherwise. (#variant-completeness)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Build a variable parent + single-variation fixture whose parent
+	 * markup already carries the WC-core base fields a simple product
+	 * keeps. Returns the enhanced result so each inheritance test can
+	 * assert on `hasVariant[0]`.
+	 *
+	 * @param array $parent_markup_overrides Extra/replacement parent markup keys.
+	 * @param array $variation_overrides     Passed to make_variation().
+	 * @return array Enhanced markup (a ProductGroup).
+	 */
+	private function enhance_variable_with_parent_markup(
+		array $parent_markup_overrides = array(),
+		array $variation_overrides = array()
+	): array {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$variation = $this->make_variation(
+			array_merge( [ 'id' => 101, 'sku' => 'tee-w' ], $variation_overrides )
+		);
+		$this->setup_wc_get_product_for_variations( [ 101 => $variation ] );
+
+		$parent = $this->make_product( [
+			'id'                   => 100,
+			'sku'                  => 'tee-parent',
+			'children'             => [ 101 ],
+			'variation_attributes' => array( 'pa_color' => array( 'navy', 'white' ) ),
+		] );
+
+		// The parent markup mirrors WooCommerce core's full base shape:
+		// description, brand, category, and an offer carrying
+		// seller/priceValidUntil. These are exactly the fields the
+		// from-scratch variant builder drops.
+		$markup = array_merge(
+			array(
+				'@type'       => 'Product',
+				'name'        => 'V-Neck T-Shirt',
+				'description' => 'Parent description from WooCommerce core.',
+				'brand'       => array( '@type' => 'Brand', 'name' => 'Acme' ),
+				'category'    => 'Tops',
+				'offers'      => array(
+					array(
+						'@type'           => 'Offer',
+						'price'           => '20.00',
+						'seller'          => array( '@type' => 'Organization', 'name' => 'Acme Store' ),
+						'priceValidUntil' => '2027-01-01',
+					),
+				),
+			),
+			$parent_markup_overrides
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $parent );
+		$this->assertSame( 'ProductGroup', $result['@type'], 'fixture should convert to ProductGroup' );
+		$this->assertArrayHasKey( 'hasVariant', $result );
+		return $result;
+	}
+
+	public function test_variant_inherits_description_from_parent_when_variation_has_none(): void {
+		// The variation has no description of its own (make_variation
+		// defaults `get_description()` to ''), so the variant node must
+		// inherit the parent ProductGroup's WC-core-formatted
+		// description. Without inheritance Google reports the variant as
+		// having "no description".
+		$result  = $this->enhance_variable_with_parent_markup();
+		$variant = $result['hasVariant'][0];
+
+		$this->assertSame(
+			'Parent description from WooCommerce core.',
+			$variant['description']
+		);
+	}
+
+	public function test_variant_uses_own_description_overriding_parent(): void {
+		// When the variation carries its own description, the variant
+		// node keeps it (formatted exactly like WC core:
+		// wp_strip_all_tags( do_shortcode( ... ) )) and does NOT fall
+		// back to the parent's. The fixture's variation description has
+		// surrounding whitespace + HTML to prove the formatting runs.
+		$result  = $this->enhance_variable_with_parent_markup(
+			array(),
+			array( 'description' => "  <strong>White</strong> tee, slim fit.  " )
+		);
+		$variant = $result['hasVariant'][0];
+
+		$this->assertSame( 'White tee, slim fit.', $variant['description'] );
+	}
+
+	public function test_variant_inherits_brand_and_category_from_parent(): void {
+		$result  = $this->enhance_variable_with_parent_markup();
+		$variant = $result['hasVariant'][0];
+
+		$this->assertSame(
+			array( '@type' => 'Brand', 'name' => 'Acme' ),
+			$variant['brand']
+		);
+		$this->assertSame( 'Tops', $variant['category'] );
+	}
+
+	public function test_variant_offer_inherits_seller_and_price_valid_until(): void {
+		$result = $this->enhance_variable_with_parent_markup();
+		$offer  = $result['hasVariant'][0]['offers'][0];
+
+		$this->assertSame(
+			array( '@type' => 'Organization', 'name' => 'Acme Store' ),
+			$offer['seller']
+		);
+		$this->assertSame( '2027-01-01', $offer['priceValidUntil'] );
+	}
+
+	public function test_variant_offer_url_is_set_from_entry_url(): void {
+		// The from-scratch variant offer skeleton has no `url`; the
+		// inheritance step copies the variant entry's own url onto the
+		// offer so agents reading `offers[0].url` land on the variant.
+		$result = $this->enhance_variable_with_parent_markup();
+		$entry  = $result['hasVariant'][0];
+
+		$this->assertArrayHasKey( 'url', $entry['offers'][0] );
+		$this->assertSame( $entry['url'], $entry['offers'][0]['url'] );
+	}
+
+	public function test_variant_omits_inherited_fields_when_parent_lacks_them(): void {
+		// Regression guard: a minimal parent markup (no description,
+		// brand, category, seller, or priceValidUntil) must not trigger
+		// PHP warnings and must not synthesize empty inherited fields on
+		// the variant. The variant simply omits what the parent never had.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$variation = $this->make_variation( [ 'id' => 101, 'sku' => 'tee-w' ] );
+		$this->setup_wc_get_product_for_variations( [ 101 => $variation ] );
+
+		$parent = $this->make_product( [
+			'id'                   => 100,
+			'children'             => [ 101 ],
+			'variation_attributes' => array( 'pa_color' => array( 'navy', 'white' ) ),
+		] );
+
+		// Bare-minimum input markup — none of the inheritable base fields.
+		$result  = $this->jsonld->enhance_product_data( [], $parent );
+		$variant = $result['hasVariant'][0];
+
+		$this->assertArrayNotHasKey( 'description', $variant );
+		$this->assertArrayNotHasKey( 'brand', $variant );
+		$this->assertArrayNotHasKey( 'category', $variant );
+		// The variant offer still exists (built from scratch) but carries
+		// no inherited seller/priceValidUntil.
+		$this->assertArrayNotHasKey( 'seller', $variant['offers'][0] );
+		$this->assertArrayNotHasKey( 'priceValidUntil', $variant['offers'][0] );
 	}
 
 	// ------------------------------------------------------------------

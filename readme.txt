@@ -129,6 +129,10 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
+= Unreleased =
+**Fixed**
+* Variable-product structured data: variation entries now include description, brand, category, and offer seller/priceValidUntil (previously dropped, which Google flagged as "no description").
+
 = 0.20.0 - 2026-06-13 =
 **New**
 * Discovery surfaces (/.well-known/ucp, /llms.txt) are now edge-cacheable to survive platform rate limiting.

@@ -357,6 +357,18 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return 'Test Product';
 		}
 
+		/**
+		 * Product/variation description. Declared so
+		 * `method_exists( $variation, 'get_description' )` resolves true
+		 * in the variant-field-inheritance path
+		 * (`WC_AI_Storefront_JsonLd::add_inherited_variant_fields()`) and
+		 * so PHPStan sees the signature. Tests override the return value
+		 * via Mockery (`make_variation([ 'description' => ... ])`).
+		 */
+		public function get_description(): string {
+			return '';
+		}
+
 		public function get_price(): string {
 			return '19.99';
 		}

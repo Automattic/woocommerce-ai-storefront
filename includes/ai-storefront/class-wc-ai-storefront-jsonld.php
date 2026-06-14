@@ -1159,7 +1159,14 @@ class WC_AI_Storefront_JsonLd {
 			if ( null === $variation ) {
 				continue;
 			}
-			$has_variant[] = $this->build_variant_entry( $variation, $product, $settings, $country );
+			$entry = $this->build_variant_entry( $variation, $product, $settings, $country );
+			// Inherit the parent ProductGroup's WC-core base fields
+			// (description, brand, category, offer seller/priceValidUntil)
+			// onto the from-scratch variant node. MUST run while
+			// `$markup` still holds the parent `offers` block — the
+			// `unset()` below drops it. (#variant-completeness)
+			$this->add_inherited_variant_fields( $entry, $variation, $markup );
+			$has_variant[] = $entry;
 		}
 		if ( empty( $has_variant ) ) {
 			return;
@@ -1261,6 +1268,106 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		return $entry;
+	}
+
+	/**
+	 * Inherit the parent ProductGroup's WC-core base fields onto a
+	 * from-scratch variant `Product` node.
+	 *
+	 * WHY this exists: {@see build_variant_entry()} rebuilds each variant
+	 * node from scratch (`@id`, `url`, `name`, `sku`, `image`, typed
+	 * properties, a fresh `offers[0]`, `potentialAction`). That rebuild
+	 * deliberately ignores the parent markup — but the parent markup is
+	 * the full WooCommerce-core Product shape, carrying `description`,
+	 * `brand`, `category`, and an `offers[0]` with `seller` and
+	 * `priceValidUntil`. A SIMPLE product keeps all of those (it never
+	 * goes through the rebuild). Variants, going through the rebuild,
+	 * silently DROP them. Symptom observed live: Google Search Console
+	 * reports every variant as having "no description" and missing
+	 * `priceValidUntil`, and the variant nodes lack `brand`/`category`
+	 * and the offer's `seller`. This method is the variant counterpart
+	 * to the simple-product path: it copies those WC-core base fields
+	 * from the parent onto the variant so variants reach feed parity
+	 * with simple products.
+	 *
+	 * Must be called from {@see maybe_convert_to_product_group()} while
+	 * the parent `$markup` still holds its `offers` block — that method
+	 * later `unset()`s `$markup['offers']`, so reading the parent offer
+	 * here is order-dependent.
+	 *
+	 * Robustness: every read is guarded with `isset()`/`empty()`. A
+	 * parent markup that lacks any of these fields (minimal input,
+	 * unconfigured store) produces no PHP warnings and simply leaves the
+	 * variant without that field — never an empty or synthesized value.
+	 * A value the variant already set is never overwritten.
+	 *
+	 * Field-by-field:
+	 *
+	 *   - `description`: prefer the variation's OWN description, formatted
+	 *     exactly like WC core (`wp_strip_all_tags( do_shortcode( ... ) )`)
+	 *     so rich-text-editor markup and shortcodes resolve identically
+	 *     to a simple product's. If the variation has none (the common
+	 *     case — most merchants leave per-variation descriptions blank),
+	 *     fall back to the parent's already-WC-core-formatted
+	 *     `description`. Only emitted when non-empty.
+	 *   - `brand` / `category`: copied verbatim from the parent when set
+	 *     and not already present on the variant.
+	 *   - offer `seller` / `priceValidUntil`: copied from the parent
+	 *     `offers[0]` when present and not already on the variant offer.
+	 *   - offer `url`: set to the variant entry's own `url` when the
+	 *     offer has none — so an agent reading `offers[0].url` lands on
+	 *     the specific variant rather than nowhere.
+	 *
+	 * @param array      $entry         Variant markup, modified by reference.
+	 * @param WC_Product $variation     The variation (for its own description).
+	 * @param array      $parent_markup The parent ProductGroup markup (source of inherited fields; still carrying `offers`).
+	 */
+	private function add_inherited_variant_fields( array &$entry, $variation, array $parent_markup ): void {
+		// description: variation's own first, parent's as fallback.
+		if ( ! isset( $entry['description'] ) || '' === $entry['description'] ) {
+			$own_description = '';
+			if ( method_exists( $variation, 'get_description' ) ) {
+				// Format identically to WC core's simple-product path so
+				// shortcodes resolve and markup is stripped the same way.
+				$own_description = wp_strip_all_tags( do_shortcode( (string) $variation->get_description() ) );
+			}
+			if ( '' !== $own_description ) {
+				$entry['description'] = $own_description;
+			} elseif ( ! empty( $parent_markup['description'] ) ) {
+				// Parent's description is already WC-core-formatted.
+				$entry['description'] = $parent_markup['description'];
+			}
+		}
+
+		// brand / category: copy from parent when present and absent here.
+		if ( ! isset( $entry['brand'] ) && ! empty( $parent_markup['brand'] ) ) {
+			$entry['brand'] = $parent_markup['brand'];
+		}
+		if ( ! isset( $entry['category'] ) && ! empty( $parent_markup['category'] ) ) {
+			$entry['category'] = $parent_markup['category'];
+		}
+
+		// Offer-level inheritance operates on the variant's own
+		// `offers[0]` only. Bail when the variant has no offer (e.g. an
+		// unpurchasable variation whose builder still emitted no offer
+		// shape) — there's nothing to enrich.
+		if ( ! isset( $entry['offers'][0] ) || ! is_array( $entry['offers'][0] ) ) {
+			return;
+		}
+		$parent_offer = ( isset( $parent_markup['offers'][0] ) && is_array( $parent_markup['offers'][0] ) )
+			? $parent_markup['offers'][0]
+			: array();
+
+		if ( ! isset( $entry['offers'][0]['seller'] ) && ! empty( $parent_offer['seller'] ) ) {
+			$entry['offers'][0]['seller'] = $parent_offer['seller'];
+		}
+		if ( ! isset( $entry['offers'][0]['priceValidUntil'] ) && ! empty( $parent_offer['priceValidUntil'] ) ) {
+			$entry['offers'][0]['priceValidUntil'] = $parent_offer['priceValidUntil'];
+		}
+		// Point the offer at the variant's own URL when it has none.
+		if ( ! isset( $entry['offers'][0]['url'] ) && ! empty( $entry['url'] ) ) {
+			$entry['offers'][0]['url'] = $entry['url'];
+		}
 	}
 
 	/**
