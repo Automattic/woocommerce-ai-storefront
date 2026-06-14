@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.20.1] – 2026-06-13
+
 ### Fixes
 
 - **Variable-product JSON-LD variants were missing `description` (plus `brand`, `category`, and offer `seller` / `priceValidUntil`). Closes #443.**

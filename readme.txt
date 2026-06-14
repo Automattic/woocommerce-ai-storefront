@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.20.0
+Stable tag: 0.20.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -129,7 +129,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
-= Unreleased =
+= 0.20.1 - 2026-06-13 =
 **Fixed**
 * Variable-product structured data: variation entries now include description, brand, category, and offer seller/priceValidUntil (previously dropped; Google flagged variants as having "no description" and missing priceValidUntil).
 
