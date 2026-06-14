@@ -357,6 +357,35 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return 'Test Product';
 		}
 
+		/**
+		 * Product/variation description. Declared so
+		 * `method_exists( $variation, 'get_description' )` resolves true
+		 * in the variant-field-inheritance path
+		 * (`WC_AI_Storefront_JsonLd::add_inherited_variant_fields()`) and
+		 * so PHPStan sees the signature. Tests override the return value
+		 * via Mockery (`make_variation([ 'description' => ... ])`).
+		 */
+		public function get_description(): string {
+			return '';
+		}
+
+		/**
+		 * Variation/product sale-end date. Declared so
+		 * `method_exists( $variation, 'get_date_on_sale_to' )` resolves
+		 * true in the per-variant `priceValidUntil` derivation in
+		 * `WC_AI_Storefront_JsonLd::add_inherited_variant_fields()` and so
+		 * PHPStan sees the signature. Typed `?\DateTimeInterface` (real WC
+		 * returns a `WC_DateTime`, a `DateTime`/`DateTimeInterface`
+		 * subclass, or null) so the production `instanceof
+		 * \DateTimeInterface` guard reads as a meaningful nullable-object
+		 * narrowing rather than always-false. Returns `null` by default
+		 * (no sale window). Tests override via Mockery
+		 * (`make_variation([ 'date_on_sale_to' => $datetime ])`).
+		 */
+		public function get_date_on_sale_to(): ?\DateTimeInterface {
+			return null;
+		}
+
 		public function get_price(): string {
 			return '19.99';
 		}

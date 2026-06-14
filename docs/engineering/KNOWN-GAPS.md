@@ -93,6 +93,25 @@ Wire `ENDPOINT_PRODUCT_PAGE` recording into a `template_redirect` hook on single
 
 ---
 
+## JSON-LD variants: shared-attribute `additionalProperty` + offer `priceSpecification` shape
+
+### What
+
+`add_inherited_variant_fields()` (#443) brought variation `Product` nodes to parity with simple products on `description`, `brand`, `category`, and offer `seller` / `priceValidUntil`. Two lower-value differences were deliberately deferred:
+
+- **Shared non-varying attributes** are not re-emitted as `additionalProperty` on each variant. A simple product surfaces its custom attributes (Style, Heel Height, Logo) under `additionalProperty`; a variant carries only the *varying* typed axis (`color` / `size` / …). Attributes shared across all variations live on the parent `ProductGroup`, not duplicated onto each variant.
+- The variant offer uses a flat `price`, whereas the simple-product path emits a `priceSpecification` (`UnitPriceSpecification`). Both are valid Schema.org / Google offer shapes, so this is a consistency nit, not a missing field.
+
+### Impact
+
+Neither is Google-flagged. An agent reading a variant gets the varying axis but not the shared attributes inline (they're one hop up on the parent `ProductGroup`), and sees a flat `price` rather than a `priceSpecification`. Low practical impact.
+
+### Future work
+
+If a real consumer needs shared attributes inline per variant, copy the parent's `additionalProperty` into each variant in `add_inherited_variant_fields()` (same guarded-copy pattern). Unifying the offer price shape would mean teaching `build_variant_offer_skeleton()` to emit `priceSpecification` — defer until there's a reason to converge the two paths.
+
+---
+
 ## References (external)
 
 - [OpenAI bot docs](https://platform.openai.com/docs/bots) — current GPTBot / ChatGPT-User / OAI-SearchBot UA tokens and behavior.
