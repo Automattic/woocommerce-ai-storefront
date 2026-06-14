@@ -131,7 +131,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 = Unreleased =
 **Fixed**
-* Variable-product structured data: variation entries now include description, brand, category, and offer seller/priceValidUntil (previously dropped, which Google flagged as "no description").
+* Variable-product structured data: variation entries now include description, brand, category, and offer seller/priceValidUntil (previously dropped; Google flagged variants as having "no description" and missing priceValidUntil).
 
 = 0.20.0 - 2026-06-13 =
 **New**

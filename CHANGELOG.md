@@ -2,7 +2,7 @@
 
 ### Fixes
 
-- **Variable-product JSON-LD variants were missing `description` (plus `brand`, `category`, and offer `seller` / `priceValidUntil`).**
+- **Variable-product JSON-LD variants were missing `description` (plus `brand`, `category`, and offer `seller` / `priceValidUntil`). Closes #443.**
   - The `ProductGroup` conversion rebuilds each variation `Product` node from scratch and dropped the WooCommerce-core base fields that simple products keep — so Google Search Console reported every variant as having "no description," and variants also lacked `priceValidUntil` (a common Google "missing field" warning), `brand`, `category`, and the offer's `seller`.
   - Variants now inherit those fields from the parent: `description` (or the variation's own, if set, formatted identically to WC core), `brand`, `category`, and the offer's `seller` / `priceValidUntil`, plus an offer `url` pointing at the specific variation. Brings variants to structured-data parity with simple products.
 

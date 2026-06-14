@@ -1312,8 +1312,15 @@ class WC_AI_Storefront_JsonLd {
 	 *     `description`. Only emitted when non-empty.
 	 *   - `brand` / `category`: copied verbatim from the parent when set
 	 *     and not already present on the variant.
-	 *   - offer `seller` / `priceValidUntil`: copied from the parent
-	 *     `offers[0]` when present and not already on the variant offer.
+	 *   - offer `seller`: copied from the parent `offers[0]` when present
+	 *     and not already on the variant offer (the seller IS store-level).
+	 *   - offer `priceValidUntil`: NOT store-level. WC core derives the
+	 *     parent's from the parent product's sale-end date (or a store
+	 *     default end-of-next-year when there's no sale window), and each
+	 *     variation can carry its OWN sale window. So prefer the
+	 *     variation's own sale-end date; fall back to the parent's value
+	 *     (the store default, in the common no-per-variation-sale case)
+	 *     only when the variation has no sale window of its own.
 	 *   - offer `url`: set to the variant entry's own `url` when the
 	 *     offer has none — so an agent reading `offers[0].url` lands on
 	 *     the specific variant rather than nowhere.
@@ -1361,8 +1368,32 @@ class WC_AI_Storefront_JsonLd {
 		if ( ! isset( $entry['offers'][0]['seller'] ) && ! empty( $parent_offer['seller'] ) ) {
 			$entry['offers'][0]['seller'] = $parent_offer['seller'];
 		}
-		if ( ! isset( $entry['offers'][0]['priceValidUntil'] ) && ! empty( $parent_offer['priceValidUntil'] ) ) {
-			$entry['offers'][0]['priceValidUntil'] = $parent_offer['priceValidUntil'];
+		// priceValidUntil is NOT store-level: WC core derives the PARENT's from the
+		// parent product's sale-end date (or a store default end-of-next-year when
+		// there's no sale window). Each variation can carry its OWN sale window, so
+		// copying the parent's verbatim would emit a wrong-but-plausible date on a
+		// variation whose sale differs. Prefer the variation's own sale-end; fall back
+		// to the parent's value (the store default in the common no-per-variation-sale
+		// case) only when the variation has no sale window of its own.
+		if ( ! isset( $entry['offers'][0]['priceValidUntil'] ) ) {
+			$variant_valid_until = '';
+			if ( method_exists( $variation, 'get_date_on_sale_to' ) ) {
+				// `get_date_on_sale_to()` returns a `WC_DateTime` (a
+				// `DateTime`/`DateTimeInterface` subclass) or null. Guard
+				// with `instanceof \DateTimeInterface` — the same
+				// PHPStan-clean idiom used for `get_date_created()` in the
+				// Store API extension — before reading the timestamp.
+				$sale_to = $variation->get_date_on_sale_to();
+				if ( $sale_to instanceof \DateTimeInterface ) {
+					$variant_valid_until = gmdate( 'Y-m-d', $sale_to->getTimestamp() );
+				}
+			}
+			if ( '' === $variant_valid_until && ! empty( $parent_offer['priceValidUntil'] ) ) {
+				$variant_valid_until = $parent_offer['priceValidUntil'];
+			}
+			if ( '' !== $variant_valid_until ) {
+				$entry['offers'][0]['priceValidUntil'] = $variant_valid_until;
+			}
 		}
 		// Point the offer at the variant's own URL when it has none.
 		if ( ! isset( $entry['offers'][0]['url'] ) && ! empty( $entry['url'] ) ) {

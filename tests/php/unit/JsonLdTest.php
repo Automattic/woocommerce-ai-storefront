@@ -764,6 +764,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// parent-inheritance branch; tests that want the override branch
 		// pass a non-empty `description` override.
 		$variation->shouldReceive( 'get_description' )->andReturn( $overrides['description'] ?? '' );
+		// `priceValidUntil` derivation prefers the variation's OWN
+		// sale-end date over the inherited parent value. Default null (no
+		// per-variation sale window) so the common case exercises the
+		// parent-fallback branch; tests pass a `date_on_sale_to`
+		// WC_DateTime-shaped mock (with a `getTimestamp()`) to exercise
+		// the own-sale-end branch.
+		$variation->shouldReceive( 'get_date_on_sale_to' )->andReturn( $overrides['date_on_sale_to'] ?? null );
 
 		// `add_variant_basics()` reads typed-property values directly
 		// from variation postmeta (`attribute_<slug>`) — see the doc in
@@ -793,6 +800,27 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			[ 'enabled' => 'yes', 'return_policy' => [ 'mode' => 'unconfigured' ] ],
 			'US'
 		);
+	}
+
+	/**
+	 * Directly invoke the private `add_inherited_variant_fields()` so the
+	 * no-clobber guards (unreachable via the public path, since
+	 * `build_variant_entry()` never sets description/brand/category or
+	 * offer seller/priceValidUntil/url) can be exercised. Mirrors the
+	 * `invoke_build_variant_entry()` ReflectionMethod pattern above. The
+	 * `$entry` is passed by reference and mutated in place.
+	 *
+	 * @param array $entry         Variant entry, mutated in place.
+	 * @param array $parent_markup Parent ProductGroup markup.
+	 */
+	private function invoke_add_inherited_variant_fields(
+		array &$entry,
+		Mockery\MockInterface $variation,
+		array $parent_markup
+	): void {
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'add_inherited_variant_fields' );
+		$args   = array( &$entry, $variation, $parent_markup );
+		$method->invokeArgs( $this->jsonld, $args );
 	}
 
 	public function test_variant_entry_has_product_type_and_sku(): void {
@@ -1499,6 +1527,103 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// no inherited seller/priceValidUntil.
 		$this->assertArrayNotHasKey( 'seller', $variant['offers'][0] );
 		$this->assertArrayNotHasKey( 'priceValidUntil', $variant['offers'][0] );
+	}
+
+	public function test_variant_price_valid_until_prefers_variation_own_sale_end(): void {
+		// priceValidUntil is NOT store-level. WC core derives the parent's
+		// from the parent's sale-end (or a store default), but each
+		// variation can run its own sale. When the variation carries its
+		// OWN sale-end date, the variant offer must reflect THAT date, not
+		// blindly inherit the parent's — otherwise a variation on a
+		// different sale window advertises a wrong-but-plausible expiry.
+		//
+		// The variation's `get_date_on_sale_to()` returns a
+		// `DateTimeInterface` (real WC returns `WC_DateTime`, a DateTime
+		// subclass); the production guard narrows on `instanceof
+		// \DateTimeInterface`, so a real immutable DateTime is the
+		// faithful fixture. 2026-08-01 differs from the parent's
+		// 2027-12-31 so the assertion proves the own-date won, not the
+		// fallback.
+		$sale_to = new \DateTimeImmutable( '2026-08-01T00:00:00+00:00' );
+
+		$result = $this->enhance_variable_with_parent_markup(
+			// Parent offer carries a DIFFERENT (store-default) expiry.
+			array(
+				'offers' => array(
+					array(
+						'@type'           => 'Offer',
+						'price'           => '20.00',
+						'priceValidUntil' => '2027-12-31',
+					),
+				),
+			),
+			array( 'date_on_sale_to' => $sale_to )
+		);
+		$offer = $result['hasVariant'][0]['offers'][0];
+
+		$this->assertSame( '2026-08-01', $offer['priceValidUntil'] );
+	}
+
+	public function test_inherited_variant_fields_never_overwrite_existing_variant_values(): void {
+		// Lock the no-clobber contract. The guards in
+		// `add_inherited_variant_fields()` are unreachable via the public
+		// ProductGroup path today (build_variant_entry() never sets
+		// description/brand/category or offer seller/priceValidUntil/url),
+		// so they'd otherwise be untested. Invoke the private method
+		// directly with an `$entry` that ALREADY carries sentinel values
+		// for every guarded field, plus a `$parent_markup` carrying
+		// DIFFERENT values, and assert none of the parent's values bleed
+		// over the variant's own.
+		$variation = $this->make_variation( [
+			'id'              => 101,
+			'description'     => 'VARIATION OWN DESC',
+			// Even with an own sale-end, the offer already has a
+			// priceValidUntil sentinel, so the guard must skip derivation.
+			'date_on_sale_to' => null,
+		] );
+
+		$entry = array(
+			'@type'       => 'Product',
+			'url'         => 'https://example.com/variant/sentinel/',
+			'description' => 'VARIANT SENTINEL DESC',
+			'brand'       => array( '@type' => 'Brand', 'name' => 'VariantBrand' ),
+			'category'    => 'VariantCategory',
+			'offers'      => array(
+				array(
+					'@type'           => 'Offer',
+					'seller'          => array( '@type' => 'Organization', 'name' => 'VariantSeller' ),
+					'priceValidUntil' => '2025-05-05',
+					'url'             => 'https://example.com/offer/sentinel/',
+				),
+			),
+		);
+
+		$parent_markup = array(
+			'@type'       => 'ProductGroup',
+			'description' => 'PARENT DESC SHOULD NOT WIN',
+			'brand'       => array( '@type' => 'Brand', 'name' => 'ParentBrand' ),
+			'category'    => 'ParentCategory',
+			'offers'      => array(
+				array(
+					'@type'           => 'Offer',
+					'seller'          => array( '@type' => 'Organization', 'name' => 'ParentSeller' ),
+					'priceValidUntil' => '2099-09-09',
+				),
+			),
+		);
+
+		$this->invoke_add_inherited_variant_fields( $entry, $variation, $parent_markup );
+
+		// Every variant-set field is untouched; no parent value copied over.
+		$this->assertSame( 'VARIANT SENTINEL DESC', $entry['description'] );
+		$this->assertSame( array( '@type' => 'Brand', 'name' => 'VariantBrand' ), $entry['brand'] );
+		$this->assertSame( 'VariantCategory', $entry['category'] );
+		$this->assertSame(
+			array( '@type' => 'Organization', 'name' => 'VariantSeller' ),
+			$entry['offers'][0]['seller']
+		);
+		$this->assertSame( '2025-05-05', $entry['offers'][0]['priceValidUntil'] );
+		$this->assertSame( 'https://example.com/offer/sentinel/', $entry['offers'][0]['url'] );
 	}
 
 	// ------------------------------------------------------------------
