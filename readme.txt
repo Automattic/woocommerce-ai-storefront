@@ -129,6 +129,10 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
+= Unreleased =
+**New**
+* Discovery enrichment: /llms.txt now links your real Privacy, Terms, and Refunds pages and lists clear rules for AI agents, and your homepage structured data auto-publishes your social profiles (sourced from Jetpack, Yoast, or RankMath).
+
 = 0.20.1 - 2026-06-13 =
 **Fixed**
 * Variable-product structured data: variation entries now include description, brand, category, and offer seller/priceValidUntil (previously dropped; Google flagged variants as having "no description" and missing priceValidUntil).

@@ -354,7 +354,7 @@ The plugin emits `@type: OnlineStore` (deepest in the chain — see hierarchy se
 | `description` | — | ✓ (uses `get_bloginfo('description')`) | Plugin |
 | `url` | — | ✓ (uses `home_url('/')`) | Plugin |
 | `image` | — | — | — |
-| `sameAs` | — | — | — *(see "Recommended follow-ups")* |
+| `sameAs` | — | ✓ (auto-sourced from Jetpack Publicize / Yoast / RankMath) | Plugin (`collect_same_as()`) |
 | `potentialAction` | — | ✓ (`SearchAction`) | Plugin |
 | Others (Thing-inherited) | — | — | — |
 
@@ -430,7 +430,7 @@ For now, conservatism wins: the broader `OnlineBusiness` type accurately covers 
 
 4. **High-coverage areas**: shipping (`shippingDetails`, `handlingTime`, `shippingRate`), returns (`hasMerchantReturnPolicy`), pricing (`priceCurrency`, `priceSpecification`, `priceValidUntil`), inventory (`inventoryLevel`), reviews (`Review[]`, `aggregateRating`), and identity (`logo`, `address`, `contactPoint`, `currenciesAccepted`).
 
-5. **Biggest uncovered surface**: organizational metadata. `Organization` has 50+ direct properties. We emit a handful (logo, address, contactPoint, hasOfferCatalog, name, description, url). Most are niche or B2B-specific (DUNS, VAT ID, NAICS), but a few are broad-interest gaps — see follow-ups.
+5. **Biggest uncovered surface**: organizational metadata. `Organization` has 50+ direct properties. We emit a handful (logo, address, contactPoint, hasOfferCatalog, sameAs, knowsAbout, name, description, url). Most of the rest are niche or B2B-specific (DUNS, VAT ID, NAICS), but a few are broad-interest gaps — see follow-ups.
 
 6. **Audience scope: not just AI**. The plugin's JSON-LD enhancements are read by *both* AI agents AND traditional search crawlers (Google, Bing, Yandex) — the same Schema.org Product/Offer/Organization output is consumed by both audiences. This is worth reflecting in merchant-facing copy throughout the settings UI; current strings (`"Products available to AI agents"`, `"Control which products AI agents can see and recommend"`) are AI-only and undersell the SEO value. Tracked as a separate UX/copy issue, not in this audit's coverage table.
 
@@ -438,7 +438,7 @@ For now, conservatism wins: the broader `OnlineBusiness` type accurately covers 
 
 In rough priority order:
 
-1. **`Organization.sameAs`** — array of merchant social-profile URLs (Twitter, Facebook, Instagram). Filterable per-merchant in admin settings or auto-detected from common SEO plugins.
+1. ~~**`Organization.sameAs`** — array of merchant social-profile URLs (Twitter, Facebook, Instagram).~~ **Implemented in #445.** Auto-sourced from common providers (Jetpack Publicize connections, Yoast `wpseo_social`, RankMath social settings) by [`collect_same_as()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php), each provider independently guarded; URLs are sanitized, restricted to `http`/`https`, and de-duplicated. The `wc_ai_storefront_jsonld_store` filter remains the per-merchant override/augment seam.
 2. **`Product.itemCondition`** — new vs refurbished. Useful for resale stores; merchant-config required.
 3. **`Product.gtin8` / `gtin12` / `gtin13` / `gtin14`** — more specific GTIN forms when WC's GTIN field has a value with the right length.
 4. **`Organization.telephone`** — currently suppressed by default. Worth a per-merchant opt-in toggle.

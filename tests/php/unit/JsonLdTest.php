@@ -19,6 +19,27 @@ use Brain\Monkey;
 use Brain\Monkey\Functions;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
+// Minimal stand-in for Jetpack Publicize's Connections class so the
+// `class_exists( '\Automattic\Jetpack\Publicize\Connections' )` guard in
+// `collect_same_as()` engages and the Jetpack extraction body actually
+// runs under test. The real connection data is supplied per-test via the
+// `get_transient( 'jetpack_social_connections_list' )` stub — this class
+// only needs to EXIST. Defined via class_alias (mirroring the pattern in
+// tests/php/stubs/class-wcpay-multi-currency-stubs.php) and guarded so the
+// definition is idempotent across the suite.
+if ( ! class_exists( '\Automattic\Jetpack\Publicize\Connections' ) ) {
+	// phpcs:ignore Squiz.Commenting.ClassComment.Missing -- inline test double
+	class WC_AI_Storefront_Jetpack_Publicize_Connections_Stub {
+		public static function get_all( $args = array() ) {
+			return array();
+		}
+	}
+	class_alias(
+		'WC_AI_Storefront_Jetpack_Publicize_Connections_Stub',
+		'Automattic\Jetpack\Publicize\Connections'
+	);
+}
+
 class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
@@ -167,6 +188,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_site_icon_url' )->justReturn( '' );
 		Functions\when( 'get_option' )->justReturn( '' );
 		Functions\when( 'sanitize_email' )->returnArg();
+		// `esc_url_raw` is called by `collect_same_as()` (issue #445) to
+		// sanitize each auto-sourced social-profile URL before it lands
+		// in `sameAs`. Pass-through for tests; the http/https allow-list
+		// filtering is done in PHP (testable), and real URL escaping is
+		// WP core's concern. Default `get_option` returns '' for the
+		// `wpseo_social` / `rank-math-options-titles` reads, so without a
+		// per-test override no `sameAs` is collected.
+		Functions\when( 'esc_url_raw' )->returnArg();
 		// Structural validity check rather than a hardcoded `false`
 		// return. WP's real `is_email()` accepts anything that has an
 		// `@` somewhere with non-empty local- and domain-parts; that's
@@ -4305,6 +4334,384 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$captured ?? [],
 			'admin_email must NEVER be a public-facing contact fallback.'
 		);
+	}
+
+	// ------------------------------------------------------------------
+	// sameAs — auto-sourced social-profile URLs (issue #445)
+	//
+	// `output_store_jsonld()` now auto-sources `sameAs` from common
+	// providers (Jetpack Publicize, Yoast `wpseo_social`, RankMath
+	// titles options) via `collect_same_as()`, set BEFORE the
+	// `wc_ai_storefront_jsonld_store` filter so a merchant's filter still
+	// overrides/augments. Each provider is independently guarded — an
+	// absent or differently-shaped provider is skipped silently.
+	//
+	// These tests drive the Yoast path (the most stable, option-only
+	// source), confirm dedup + provider priority order across providers,
+	// confirm omission when no provider yields URLs, and confirm the filter
+	// still wins. Both Jetpack paths are covered: the happy path (transient
+	// present → `profile_link` → sameAs) and the empty-transient path. The
+	// dummy `\Automattic\Jetpack\Publicize\Connections` stand-in defined at
+	// the top of this file makes the `class_exists` guard engage; the
+	// connection data itself comes from the `get_transient` stub per test.
+	// ------------------------------------------------------------------
+
+	public function test_store_jsonld_sameas_omitted_when_no_provider_yields_urls(): void {
+		// Default stub environment: `get_transient` returns false (no
+		// Jetpack connections cached) and `get_option` returns '' for
+		// `wpseo_social` and `rank-math-options-titles`. With nothing to
+		// collect, the `sameAs` key must be absent.
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayNotHasKey( 'sameAs', $captured ?? array() );
+	}
+
+	public function test_store_jsonld_sameas_sourced_from_yoast_wpseo_social(): void {
+		// Yoast stores social config under the `wpseo_social` option.
+		// `facebook_site` is already a full URL; `twitter_site` is a bare
+		// handle that must be expanded to `https://twitter.com/{handle}`.
+		// (`twitter` is a boolean card toggle in Yoast, NOT the handle.)
+		$this->stub_options(
+			array(
+				'wpseo_social' => array(
+					'facebook_site' => 'https://facebook.com/saltwarp',
+					'twitter_site'  => 'saltwarp',
+					'instagram_url' => 'https://instagram.com/saltwarp',
+				),
+			)
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+		$same_as  = $captured['sameAs'] ?? null;
+
+		$this->assertIsArray( $same_as );
+		$this->assertContains( 'https://facebook.com/saltwarp', $same_as );
+		$this->assertContains( 'https://twitter.com/saltwarp', $same_as );
+		$this->assertContains( 'https://instagram.com/saltwarp', $same_as );
+	}
+
+	public function test_store_jsonld_sameas_ignores_yoast_twitter_boolean_toggle(): void {
+		// Regression guard for the wrong-key bug: Yoast's `twitter` key is a
+		// boolean card toggle (default true), NOT a handle. Reading it as a
+		// handle must NOT produce a bogus `https://twitter.com/1` URL — the
+		// handle is `twitter_site`, absent here, so no Twitter URL emits.
+		$this->stub_options(
+			array(
+				'wpseo_social' => array(
+					'twitter'       => true,
+					'facebook_site' => 'https://facebook.com/saltwarp',
+				),
+			)
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+		$same_as  = $captured['sameAs'] ?? array();
+
+		$this->assertContains( 'https://facebook.com/saltwarp', $same_as );
+		$this->assertNotContains( 'https://twitter.com/1', $same_as );
+		$this->assertSame(
+			array(),
+			array_values( array_filter( $same_as, static fn( $u ) => str_contains( $u, 'twitter.com' ) ) ),
+			'The Twitter boolean toggle must never be read as a handle.'
+		);
+	}
+
+	public function test_store_jsonld_sameas_includes_yoast_mastodon_url(): void {
+		// `mastodon_url` is a full URL Yoast added for the fediverse; it
+		// must be picked up alongside the other URL keys.
+		$this->stub_options(
+			array(
+				'wpseo_social' => array( 'mastodon_url' => 'https://mastodon.example/@saltwarp' ),
+			)
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+		$same_as  = $captured['sameAs'] ?? array();
+
+		$this->assertContains( 'https://mastodon.example/@saltwarp', $same_as );
+	}
+
+	public function test_store_jsonld_sameas_expands_yoast_twitter_handle_to_url(): void {
+		// `twitter_site` is a handle, not a URL, and Yoast stores it with a
+		// leading `@`. Regression guard: emitting the bare handle would be
+		// an invalid `sameAs` value, and the `@` must be stripped from the
+		// expanded URL.
+		$this->stub_options(
+			array(
+				'wpseo_social' => array( 'twitter_site' => '@saltwarp' ),
+			)
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+		$same_as  = $captured['sameAs'] ?? array();
+
+		$this->assertContains( 'https://twitter.com/saltwarp', $same_as );
+		$this->assertNotContains( 'saltwarp', $same_as );
+		$this->assertNotContains( 'https://twitter.com/@saltwarp', $same_as );
+	}
+
+	public function test_store_jsonld_sameas_handles_yoast_other_social_urls_array(): void {
+		// Yoast's `other_social_urls` is an array of extra profile URLs.
+		// Each non-empty entry should be included.
+		$this->stub_options(
+			array(
+				'wpseo_social' => array(
+					'other_social_urls' => array(
+						'https://example.com/tiktok',
+						'https://example.com/threads',
+						'', // empty entry must be skipped
+					),
+				),
+			)
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+		$same_as  = $captured['sameAs'] ?? array();
+
+		$this->assertContains( 'https://example.com/tiktok', $same_as );
+		$this->assertContains( 'https://example.com/threads', $same_as );
+	}
+
+	public function test_store_jsonld_sameas_dedupes_across_providers(): void {
+		// When two providers report the same profile URL, `sameAs` must
+		// carry it once. Here Yoast lists Facebook under both
+		// `facebook_site` and again inside `other_social_urls`.
+		$this->stub_options(
+			array(
+				'wpseo_social' => array(
+					'facebook_site'     => 'https://facebook.com/saltwarp',
+					'other_social_urls' => array( 'https://facebook.com/saltwarp' ),
+				),
+			)
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+		$same_as  = $captured['sameAs'] ?? array();
+
+		$this->assertSame(
+			array( 'https://facebook.com/saltwarp' ),
+			array_values( array_filter( $same_as, static fn( $u ) => str_contains( $u, 'facebook.com/saltwarp' ) ) ),
+			'Duplicate profile URLs across providers must be deduped.'
+		);
+	}
+
+	public function test_store_jsonld_sameas_rejects_non_http_urls(): void {
+		// Only http/https URLs are valid `sameAs` targets. A
+		// `javascript:` or `mailto:` value (e.g. a misconfigured Yoast
+		// field) must be filtered out.
+		$this->stub_options(
+			array(
+				'wpseo_social' => array(
+					'facebook_site' => 'https://facebook.com/saltwarp',
+					'instagram_url' => 'javascript:alert(1)',
+				),
+			)
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+		$same_as  = $captured['sameAs'] ?? array();
+
+		$this->assertContains( 'https://facebook.com/saltwarp', $same_as );
+		$this->assertNotContains( 'javascript:alert(1)', $same_as );
+	}
+
+	public function test_store_jsonld_sameas_sourced_from_rankmath_titles_option(): void {
+		// RankMath stores per-network social URLs under the
+		// `rank-math-options-titles` option with `social_url_*` keys (e.g.
+		// `social_url_facebook`). There is NO `social_url_twitter` — the
+		// handle lives under `twitter_author_names` and is expanded.
+		$this->stub_options(
+			array(
+				'rank-math-options-titles' => array(
+					'social_url_facebook' => 'https://facebook.com/rankmathshop',
+					'twitter_author_names' => '@rankmathshop',
+				),
+			)
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+		$same_as  = $captured['sameAs'] ?? array();
+
+		$this->assertContains( 'https://facebook.com/rankmathshop', $same_as );
+		$this->assertContains( 'https://twitter.com/rankmathshop', $same_as );
+	}
+
+	public function test_store_jsonld_sameas_sourced_from_rankmath_additional_profiles(): void {
+		// RankMath's `social_additional_profiles` is the field it
+		// explicitly designates for the schema `sameAs` property — a
+		// newline-separated list of profile URLs. Each line must be
+		// collected.
+		$this->stub_options(
+			array(
+				'rank-math-options-titles' => array(
+					'social_additional_profiles' => "https://example.com/rm-tiktok\nhttps://example.com/rm-threads\n",
+				),
+			)
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+		$same_as  = $captured['sameAs'] ?? array();
+
+		$this->assertContains( 'https://example.com/rm-tiktok', $same_as );
+		$this->assertContains( 'https://example.com/rm-threads', $same_as );
+	}
+
+	public function test_store_jsonld_sameas_sourced_from_jetpack_publicize_connections(): void {
+		// Jetpack happy path: the Publicize Connections class exists (dummy
+		// stand-in at top of file), and Jetpack's cached connection list
+		// transient holds connection rows. Each row's `profile_link` is a
+		// public profile URL that must land in `sameAs`; a malformed row
+		// with no `profile_link` is skipped silently.
+		$this->stub_store_jsonld_environment();
+		Functions\when( 'get_terms' )->justReturn( array() );
+		Functions\when( 'get_transient' )->alias(
+			static function ( $key ) {
+				if ( 'jetpack_social_connections_list' === $key ) {
+					return array(
+						array( 'profile_link' => 'https://mastodon.example/@store' ),
+						array( 'connection_data' => 'x' ), // malformed: no profile_link
+					);
+				}
+				return false;
+			}
+		);
+
+		$captured = $this->run_store_jsonld_capture();
+		$same_as  = $captured['sameAs'] ?? array();
+
+		$this->assertContains( 'https://mastodon.example/@store', $same_as );
+		$this->assertCount( 1, $same_as, 'The malformed connection row must be skipped.' );
+	}
+
+	public function test_store_jsonld_sameas_jetpack_empty_transient_yields_no_error_no_urls(): void {
+		// Jetpack present but no connections cached (`get_transient` →
+		// false, the setUp default): collection completes without error
+		// and emits no `sameAs` key. Pins the defensive guard on the
+		// empty/cold-cache path.
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertIsArray( $captured );
+		$this->assertArrayNotHasKey( 'sameAs', $captured );
+	}
+
+	public function test_store_jsonld_sameas_dedupes_and_orders_across_all_providers(): void {
+		// Same Facebook URL reported by Jetpack, Yoast, AND RankMath →
+		// exactly one entry. Provider priority is Jetpack → Yoast →
+		// RankMath, and dedup keeps the first occurrence, so the resulting
+		// array order must reflect that precedence (Jetpack's Mastodon
+		// first, then the shared Facebook URL from Jetpack's position,
+		// then Yoast's Instagram, then RankMath's LinkedIn).
+		$this->stub_store_jsonld_environment();
+		Functions\when( 'get_terms' )->justReturn( array() );
+		Functions\when( 'get_transient' )->alias(
+			static function ( $key ) {
+				if ( 'jetpack_social_connections_list' === $key ) {
+					return array(
+						array( 'profile_link' => 'https://mastodon.example/@store' ),
+						array( 'profile_link' => 'https://facebook.com/shared' ),
+					);
+				}
+				return false;
+			}
+		);
+		$this->stub_options(
+			array(
+				'wpseo_social'             => array(
+					'facebook_site' => 'https://facebook.com/shared', // dup of Jetpack
+					'instagram_url' => 'https://instagram.com/shared',
+				),
+				'rank-math-options-titles' => array(
+					'social_url_facebook' => 'https://facebook.com/shared', // dup again
+					'social_url_linkedin' => 'https://linkedin.com/company/shared',
+				),
+			)
+		);
+
+		$captured = $this->run_store_jsonld_capture();
+		$same_as  = $captured['sameAs'] ?? array();
+
+		// Facebook appears exactly once despite three providers reporting it.
+		$this->assertSame(
+			1,
+			count( array_filter( $same_as, static fn( $u ) => 'https://facebook.com/shared' === $u ) ),
+			'Cross-provider duplicate must collapse to one entry.'
+		);
+		// Provider precedence Jetpack → Yoast → RankMath, first occurrence wins.
+		$this->assertSame(
+			array(
+				'https://mastodon.example/@store',
+				'https://facebook.com/shared',
+				'https://instagram.com/shared',
+				'https://linkedin.com/company/shared',
+			),
+			$same_as
+		);
+	}
+
+	public function test_store_jsonld_sameas_tolerates_malformed_provider_shapes(): void {
+		// Defensive-guard test: a non-array `wpseo_social` (sentinel
+		// `gibberish`) and a URL key set to an int must not warn or throw,
+		// and must not produce a `sameAs` key. Uses obviously-fake
+		// sentinels per repo convention.
+		$this->stub_options(
+			array(
+				'wpseo_social'             => 'gibberish', // not an array
+				'rank-math-options-titles' => array(
+					'social_url_facebook' => 424242, // int, not a string
+				),
+			)
+		);
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertIsArray( $captured );
+		$this->assertArrayNotHasKey( 'sameAs', $captured );
+	}
+
+	public function test_store_jsonld_sameas_filter_still_overrides_auto_sourced(): void {
+		// The auto-sourced `sameAs` is set BEFORE the
+		// `wc_ai_storefront_jsonld_store` filter, so a merchant filter
+		// can replace it wholesale. Seed Yoast data (so auto-source
+		// produces a value), then have the filter overwrite `sameAs`
+		// with its own list and assert the filter's value wins.
+		$this->stub_store_jsonld_environment();
+		Functions\when( 'get_terms' )->justReturn( array() );
+		$this->stub_options(
+			array(
+				'wpseo_social' => array( 'facebook_site' => 'https://facebook.com/auto-sourced' ),
+			)
+		);
+
+		$captured = null;
+		Functions\when( 'apply_filters' )->alias(
+			static function ( string $tag, $value, ...$extras ) use ( &$captured ) {
+				if ( 'wc_ai_storefront_jsonld_store' === $tag ) {
+					// Confirm the plugin auto-sourced a value before the
+					// filter ran (the override is meaningful only if there
+					// was something to override).
+					$captured              = $value;
+					$value['sameAs']       = array( 'https://merchant.example/override' );
+				}
+				return $value;
+			}
+		);
+
+		ob_start();
+		try {
+			$this->jsonld->output_store_jsonld();
+		} finally {
+			$output = (string) ob_get_clean();
+		}
+
+		// Decode the emitted JSON-LD so slash-escaping in the raw script
+		// string (`https:\/\/...`) doesn't trip substring assertions.
+		preg_match( '/<script[^>]*>(.*?)<\/script>/s', $output, $m );
+		$emitted = json_decode( $m[1] ?? '{}', true );
+
+		// The plugin auto-sourced the Yoast URL pre-filter...
+		$this->assertContains( 'https://facebook.com/auto-sourced', $captured['sameAs'] ?? array() );
+		// ...and the merchant filter's override is the only thing emitted.
+		$this->assertSame( array( 'https://merchant.example/override' ), $emitted['sameAs'] ?? null );
 	}
 
 	// ------------------------------------------------------------------

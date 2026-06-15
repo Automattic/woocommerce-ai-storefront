@@ -51,23 +51,27 @@ apply_filters( 'wc_ai_storefront_jsonld_store', array $store_data, array $settin
 
 **Returns:** modified `array`.
 
-**When to use:** add organization-level metadata that AI agents read once per crawl. The plugin **does not** capture `sameAs` (social profiles) or `contactPoint.telephone` itself, because neither has a canonical WP/WC source — ecosystem plugins (Jetpack, Yoast, custom merchant code) own that capture and inject via this filter.
+**When to use:** add organization-level metadata that AI agents read once per crawl. `sameAs` (social profiles) is **auto-sourced** by the plugin from the providers a Woo merchant most likely already has (Jetpack Publicize connections, Yoast `wpseo_social`, RankMath social settings); the filter is the **override** seam on top of that. `contactPoint.telephone` is still not captured (WC has no canonical phone source) and remains a pure filter-injection field.
 
-**Common pattern: injecting social profiles.** Plugins that already manage merchant social URLs (Jetpack's "Social Profiles" module, Yoast's "Knowledge Graph" config, etc.) can publish them as `sameAs` in one filter:
+**Auto-sourced `sameAs`.** The plugin gathers profile URLs in `collect_same_as()` (each provider independently guarded, absent/odd-shaped provider skipped silently), sanitizes via `esc_url_raw`, keeps only `http`/`https` URLs, and de-duplicates. The result is merged into `$store_data['sameAs']` **before** this filter fires, so a merchant filter can replace, extend, or clear it. To **add** a profile without dropping the auto-sourced ones:
 
 ```php
 add_filter( 'wc_ai_storefront_jsonld_store', function ( array $store_data, array $settings ): array {
-    // Replace with whatever your plugin / theme exposes:
-    $profiles = array_filter( [
+    $profiles   = $store_data['sameAs'] ?? [];           // keep what the plugin found
+    $profiles[] = 'https://mastodon.example/@mystore';   // add your own
+    $store_data['sameAs'] = array_values( array_unique( $profiles ) );
+    return $store_data;
+}, 10, 2 );
+```
+
+To **override** the auto-sourced set entirely, assign `$store_data['sameAs']` directly (the plugin's value is discarded):
+
+```php
+add_filter( 'wc_ai_storefront_jsonld_store', function ( array $store_data, array $settings ): array {
+    $store_data['sameAs'] = array_values( array_filter( [
         get_option( 'my_plugin_twitter_url' ),
         get_option( 'my_plugin_instagram_url' ),
-        get_option( 'my_plugin_linkedin_url' ),
-    ] );
-
-    if ( ! empty( $profiles ) ) {
-        $store_data['sameAs'] = array_values( $profiles );
-    }
-
+    ] ) );
     return $store_data;
 }, 10, 2 );
 ```

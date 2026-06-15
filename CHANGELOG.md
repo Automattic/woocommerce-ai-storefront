@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Features
+
+- **Tier 1 discovery enrichment: real policy links and agent rules in `/llms.txt`, plus auto-sourced `sameAs` social profiles in homepage JSON-LD. Closes #445.**
+  - **`/llms.txt` `## Policies` section** (after `## Shipping & Returns`): links the store's actual Privacy (`get_privacy_policy_url()`), Terms (`wc_terms_and_conditions_page_id()`), and Refunds & returns (`woocommerce_refund_returns_page_id`) pages. Each line is emitted only when that page is configured, and the whole section is omitted when none are — no placeholders, matching the existing convention.
+  - **`/llms.txt` `## Rules for agents` section**: three static rules in the store's terse voice — pace requests and back off on HTTP 429, checkout is buyer-confirmed (no delegated/in-chat payment; send the buyer the `continue_url`), and send `context.currency` (ISO 4217) for accurate pricing.
+  - **Homepage `OnlineBusiness.sameAs` is now auto-sourced** from Jetpack Publicize connections, Yoast (`wpseo_social`, including handle-to-URL expansion for Twitter/X), and RankMath (`social_url_*`). Each provider is independently guarded; values are sanitized, restricted to `http`/`https`, and de-duplicated. The existing `wc_ai_storefront_jsonld_store` filter still runs after, so merchants can override or augment the result. The Jetpack read uses Jetpack's own cached connection transient (never a blocking remote fetch on the page-render path).
+
 ---
 
 ## [0.20.1] – 2026-06-13

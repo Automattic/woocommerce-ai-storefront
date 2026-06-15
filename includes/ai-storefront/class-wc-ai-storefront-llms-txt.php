@@ -509,6 +509,70 @@ class WC_AI_Storefront_Llms_Txt {
 		}
 
 		// ============================================================
+		// ## Policies
+		// ============================================================
+		// Direct links to the store's real policy pages, sourced from
+		// WP core / WC settings — never placeholders. Each line is
+		// emitted only when its page is actually configured (resolves to
+		// a non-empty URL), mirroring the omit-when-empty convention the
+		// `## Store` and `## Shipping & Returns` sections use. The whole
+		// section is suppressed when none of the three resolve, so a
+		// freshly-installed merchant doesn't publish an empty heading.
+		//
+		// Sources:
+		//   - Privacy: `get_privacy_policy_url()` (WP core; returns '' when
+		//     no privacy page is set OR when the configured page isn't
+		//     published — core self-heals against a trashed privacy page).
+		//   - Terms: `get_permalink( wc_terms_and_conditions_page_id() )`,
+		//     guarded on a positive page id, `function_exists` (WC may be
+		//     loaded without the page-id helper in odd bootstraps), AND a
+		//     `publish` status check (see below).
+		//   - Refunds & returns: `get_permalink()` of the WC
+		//     `woocommerce_refund_returns_page_id` option, guarded on a
+		//     positive id and the same `publish` status check.
+		//
+		// The `'publish' === get_post_status( $id )` gate on the two
+		// page-backed links is load-bearing: unlike `get_privacy_policy_url()`,
+		// `get_permalink()` happily returns a live-looking URL for a TRASHED
+		// page, and the WC option keeps pointing at it after the merchant
+		// trashes it — so without the status check we'd publish a 404 link
+		// to every agent. `get_post_status()` also returns false for a
+		// hard-deleted id, so the same check hardens the dangling-id case.
+		$policy_lines = array();
+
+		$privacy_url = get_privacy_policy_url();
+		if ( is_string( $privacy_url ) && '' !== $privacy_url ) {
+			$policy_lines[] = '- **Privacy**: ' . esc_url_raw( $privacy_url );
+		}
+
+		if ( function_exists( 'wc_terms_and_conditions_page_id' ) ) {
+			$terms_page_id = (int) wc_terms_and_conditions_page_id();
+			if ( $terms_page_id > 0 && 'publish' === get_post_status( $terms_page_id ) ) {
+				$terms_url = get_permalink( $terms_page_id );
+				if ( is_string( $terms_url ) && '' !== $terms_url ) {
+					$policy_lines[] = '- **Terms**: ' . esc_url_raw( $terms_url );
+				}
+			}
+		}
+
+		$refunds_page_id = (int) get_option( 'woocommerce_refund_returns_page_id' );
+		if ( $refunds_page_id > 0 && 'publish' === get_post_status( $refunds_page_id ) ) {
+			$refunds_url = get_permalink( $refunds_page_id );
+			if ( is_string( $refunds_url ) && '' !== $refunds_url ) {
+				$policy_lines[] = '- **Refunds & returns**: ' . esc_url_raw( $refunds_url );
+			}
+		}
+
+		if ( ! empty( $policy_lines ) ) {
+			$lines[] = '## Policies';
+			$lines[] = '';
+			foreach ( $policy_lines as $line ) {
+				$lines[] = $line;
+			}
+			$lines[] = '';
+		}
+
+		// ============================================================
 		// ## Structured data
 		// ============================================================
 		// One-line signpost. Inlining the JSON-LD itself would be
@@ -538,6 +602,29 @@ class WC_AI_Storefront_Llms_Txt {
 		// UTM params here would pollute the agent's structured
 		// response payloads (the manifest, schema, etc.) with
 		// attribution params that don't belong there.
+		// ============================================================
+		// ## Rules for agents
+		// ============================================================
+		// Static behavioural guidance in the store's terse voice — no
+		// settings, no dynamic data. Three rules cover the three things
+		// an agent most needs to get right against this store: pace
+		// (the store is rate-limited), checkout model (buyer-confirmed,
+		// no delegated/in-chat payment — send the buyer the
+		// `continue_url`), and currency (`context.currency` for accurate
+		// pricing). Placed right before `## For agents` so the rules sit
+		// next to the machine endpoints they govern.
+		//
+		// NO em-dashes in this copy (hyphens/periods only) — it's
+		// merchant-facing and follows the readme/UI convention. The lines
+		// remain mergeable with the `wc_ai_storefront_llms_txt_lines`
+		// filter applied at the end of generate().
+		$lines[] = '## Rules for agents';
+		$lines[] = '';
+		$lines[] = '- **Pace requests.** This store is rate-limited; on HTTP 429, back off and retry after a short delay.';
+		$lines[] = '- **Checkout is buyer-confirmed on this store.** There is no delegated or in-chat payment. Create a checkout session (or follow a product BuyAction link) and send the buyer the `continue_url` to complete payment on the merchant\'s own checkout.';
+		$lines[] = '- **Send `context.currency`** (ISO 4217) on catalog and checkout requests for accurate pricing. Accepted currencies are listed under Store.';
+		$lines[] = '';
+
 		$ucp_api_base = rtrim( rest_url( 'wc/ucp/v1' ), '/' );
 		$ucp_manifest = $site_url . '.well-known/ucp';
 		$ucp_checkout = $ucp_api_base . '/checkout-sessions';

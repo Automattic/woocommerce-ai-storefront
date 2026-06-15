@@ -168,6 +168,28 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// Logo URL. Pass-through for tests is fine — real escaping is
 		// covered by WP core's own test suite.
 		Functions\when( 'esc_url' )->returnArg();
+		// `esc_url_raw` is used by the `## Policies` section (issue #445)
+		// to sanitize the resolved policy-page URLs. Pass-through for
+		// tests; real escaping is WP core's responsibility.
+		Functions\when( 'esc_url_raw' )->returnArg();
+
+		// `## Policies` section sources (issue #445). Defaults: no policy
+		// pages configured, so the section is omitted unless a test
+		// overrides these. `get_privacy_policy_url()` returns '' when
+		// unset; `wc_terms_and_conditions_page_id()` returns 0;
+		// `get_permalink()` returns false for an unknown/zero id. The
+		// refunds-page id comes from the `woocommerce_refund_returns_page_id`
+		// option, which the default `get_option` stub above resolves to ''
+		// (→ 0) so no Refunds line renders by default.
+		Functions\when( 'get_privacy_policy_url' )->justReturn( '' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
+		Functions\when( 'get_permalink' )->justReturn( false );
+		// The Terms / Refunds links are additionally gated on a `publish`
+		// status check so a trashed page never emits a dead 404 link.
+		// Default to `'publish'` so tests that configure a page id render
+		// its line; the trashed/deleted-page tests override this to
+		// `'trash'` / `false`.
+		Functions\when( 'get_post_status' )->justReturn( 'publish' );
 
 		// Note: NOT stubbing `WC()` here despite the new generate()
 		// reaching into WC()->countries->countries via the
@@ -619,6 +641,327 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$output = $this->llms->generate();
 
 		$this->assertStringNotContainsString( '## Shipping & Returns', $output );
+	}
+
+	// ------------------------------------------------------------------
+	// ## Policies section (issue #445)
+	//
+	// Links the store's real policy pages, each line emitted only when
+	// the corresponding page is actually configured (non-empty URL) —
+	// matching the existing "no placeholders / no 'not set'" convention.
+	// Sources: WP core `get_privacy_policy_url()`, WC's
+	// `wc_terms_and_conditions_page_id()`, and the
+	// `woocommerce_refund_returns_page_id` option.
+	// ------------------------------------------------------------------
+
+	public function test_policies_section_omitted_when_no_pages_configured(): void {
+		// Default fixtures: privacy URL empty, no terms page, no refunds
+		// page. With nothing resolvable, the whole `## Policies` section
+		// is suppressed rather than rendered with an empty bullet list.
+		Functions\when( 'get_privacy_policy_url' )->justReturn( '' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
+		Functions\when( 'get_permalink' )->justReturn( false );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( '## Policies', $output );
+	}
+
+	public function test_policies_section_emits_privacy_when_configured(): void {
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
+		Functions\when( 'get_permalink' )->justReturn( false );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringContainsString( '- **Privacy**: https://example.com/privacy-policy/', $output );
+	}
+
+	public function test_policies_section_omits_privacy_when_url_empty(): void {
+		// WP core's `get_privacy_policy_url()` returns '' when no privacy
+		// page is set. The Privacy line must be omitted in that case (not
+		// rendered as `- **Privacy**: `).
+		Functions\when( 'get_privacy_policy_url' )->justReturn( '' );
+		// But a terms page IS set, so the section still renders (proving
+		// it's the Privacy line specifically that's omitted, not the
+		// whole section).
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 12 );
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 12 === (int) $id ? 'https://example.com/terms/' : false
+		);
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringNotContainsString( '- **Privacy**:', $output );
+	}
+
+	public function test_policies_section_emits_terms_when_page_id_positive(): void {
+		Functions\when( 'get_privacy_policy_url' )->justReturn( '' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 12 );
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 12 === (int) $id ? 'https://example.com/terms/' : false
+		);
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '- **Terms**: https://example.com/terms/', $output );
+	}
+
+	public function test_policies_section_omits_terms_when_page_trashed(): void {
+		// A merchant who trashes their Terms page leaves the WC setting
+		// pointing at it, and `get_permalink()` still returns a live-looking
+		// URL — so without the `publish` gate we'd publish a 404 link.
+		// `get_post_status()` returns `'trash'` for a trashed page.
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 12 );
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 12 === (int) $id ? 'https://example.com/terms/' : false
+		);
+		Functions\when( 'get_post_status' )->justReturn( 'trash' );
+
+		$output = $this->llms->generate();
+
+		// Section still renders (Privacy is set) but the Terms line is gone.
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringNotContainsString( '- **Terms**:', $output );
+	}
+
+	public function test_policies_section_omits_terms_when_page_deleted(): void {
+		// Hard-deleted page id: `get_post_status()` returns false. The
+		// `'publish' === ...` gate also covers this dangling-id case.
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 12 );
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 12 === (int) $id ? 'https://example.com/terms/' : false
+		);
+		Functions\when( 'get_post_status' )->justReturn( false );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringNotContainsString( '- **Terms**:', $output );
+	}
+
+	public function test_policies_section_omits_terms_when_page_id_zero(): void {
+		// `wc_terms_and_conditions_page_id()` returns 0 when no T&C page
+		// is selected in WC settings. A non-positive id must skip the
+		// Terms line without calling get_permalink(0).
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
+		Functions\when( 'get_permalink' )->justReturn( false );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringNotContainsString( '- **Terms**:', $output );
+	}
+
+	public function test_policies_section_emits_refunds_when_option_positive(): void {
+		Functions\when( 'get_privacy_policy_url' )->justReturn( '' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
+		Functions\when( 'get_option' )->alias(
+			static function ( $option, $default = '' ) {
+				switch ( $option ) {
+					case 'siteurl':
+						return 'https://example.com';
+					case 'woocommerce_refund_returns_page_id':
+						return 77;
+					default:
+						return $default;
+				}
+			}
+		);
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 77 === (int) $id ? 'https://example.com/refunds/' : false
+		);
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '- **Refunds & returns**: https://example.com/refunds/', $output );
+	}
+
+	public function test_policies_section_omits_refunds_when_page_trashed(): void {
+		// Same dead-link guard as Terms: a trashed WC refunds page keeps
+		// the option id and a live-looking permalink. `'publish'` gate omits it.
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
+		Functions\when( 'get_option' )->alias(
+			static function ( $option, $default = '' ) {
+				switch ( $option ) {
+					case 'siteurl':
+						return 'https://example.com';
+					case 'woocommerce_refund_returns_page_id':
+						return 77;
+					default:
+						return $default;
+				}
+			}
+		);
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 77 === (int) $id ? 'https://example.com/refunds/' : false
+		);
+		Functions\when( 'get_post_status' )->justReturn( 'trash' );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringNotContainsString( '- **Refunds & returns**:', $output );
+	}
+
+	public function test_policies_section_omits_refunds_when_page_deleted(): void {
+		// Hard-deleted refunds page id → `get_post_status()` false → omit.
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
+		Functions\when( 'get_option' )->alias(
+			static function ( $option, $default = '' ) {
+				switch ( $option ) {
+					case 'siteurl':
+						return 'https://example.com';
+					case 'woocommerce_refund_returns_page_id':
+						return 77;
+					default:
+						return $default;
+				}
+			}
+		);
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 77 === (int) $id ? 'https://example.com/refunds/' : false
+		);
+		Functions\when( 'get_post_status' )->justReturn( false );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringNotContainsString( '- **Refunds & returns**:', $output );
+	}
+
+	public function test_policies_section_omits_refunds_when_option_zero(): void {
+		// The `woocommerce_refund_returns_page_id` option is 0 / unset on
+		// stores that never created the WC refunds page. Non-positive →
+		// no Refunds line.
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
+		// Default `get_option` stub returns '' (→ 0) for the refunds id.
+		Functions\when( 'get_permalink' )->justReturn( false );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringNotContainsString( '- **Refunds & returns**:', $output );
+	}
+
+	public function test_policies_section_emits_all_three_when_configured(): void {
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 12 );
+		Functions\when( 'get_option' )->alias(
+			static function ( $option, $default = '' ) {
+				switch ( $option ) {
+					case 'siteurl':
+						return 'https://example.com';
+					case 'woocommerce_refund_returns_page_id':
+						return 77;
+					default:
+						return $default;
+				}
+			}
+		);
+		Functions\when( 'get_permalink' )->alias(
+			static function ( $id ) {
+				$map = array(
+					12 => 'https://example.com/terms/',
+					77 => 'https://example.com/refunds/',
+				);
+				return $map[ (int) $id ] ?? false;
+			}
+		);
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringContainsString( '- **Privacy**: https://example.com/privacy-policy/', $output );
+		$this->assertStringContainsString( '- **Terms**: https://example.com/terms/', $output );
+		$this->assertStringContainsString( '- **Refunds & returns**: https://example.com/refunds/', $output );
+	}
+
+	public function test_policies_section_appears_after_shipping_and_returns(): void {
+		// Document hierarchy: `## Policies` is placed right after
+		// `## Shipping & Returns`. Configure both so they render, then
+		// assert ordering.
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => array( 'mode' => 'final_sale' ),
+		);
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
+		Functions\when( 'get_permalink' )->justReturn( false );
+
+		$output = $this->llms->generate();
+
+		$shipping_pos = strpos( $output, '## Shipping & Returns' );
+		$policies_pos = strpos( $output, '## Policies' );
+
+		$this->assertNotFalse( $shipping_pos );
+		$this->assertNotFalse( $policies_pos );
+		$this->assertGreaterThan(
+			$shipping_pos,
+			$policies_pos,
+			'## Policies must appear after ## Shipping & Returns.'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// ## Rules for agents section (issue #445)
+	//
+	// Static guidance lines (no settings). Three bullets covering
+	// rate-limit back-off, buyer-confirmed checkout (no delegated/in-chat
+	// payment), and the `context.currency` requirement. No em-dashes.
+	// ------------------------------------------------------------------
+
+	public function test_rules_for_agents_section_present(): void {
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Rules for agents', $output );
+	}
+
+	public function test_rules_for_agents_section_has_three_bullets(): void {
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '**Pace requests.**', $output );
+		$this->assertStringContainsString( '**Checkout is buyer-confirmed on this store.**', $output );
+		$this->assertStringContainsString( '**Send `context.currency`**', $output );
+	}
+
+	public function test_rules_for_agents_section_mentions_429_backoff(): void {
+		// The rate-limit bullet must tell agents to back off on HTTP 429.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'HTTP 429', $output );
+	}
+
+	public function test_rules_for_agents_section_mentions_continue_url(): void {
+		// The checkout bullet routes agents to send the buyer the
+		// continue_url for buyer-confirmed payment on the merchant's
+		// own checkout.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'continue_url', $output );
+	}
+
+	public function test_rules_for_agents_section_uses_no_em_dashes(): void {
+		// Merchant-facing copy convention: no em-dashes anywhere in the
+		// Rules-for-agents block. Slice the section out and assert.
+		$output = $this->llms->generate();
+
+		$start = strpos( $output, '## Rules for agents' );
+		$this->assertNotFalse( $start );
+		// Section ends at the next `## ` heading (or end of doc).
+		$end     = strpos( $output, "\n## ", $start + 1 );
+		$section = false === $end ? substr( $output, $start ) : substr( $output, $start, $end - $start );
+
+		$this->assertStringNotContainsString( "\u{2014}", $section, 'Rules-for-agents copy must not use em-dashes.' );
 	}
 
 	// ------------------------------------------------------------------
