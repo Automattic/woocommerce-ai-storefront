@@ -98,8 +98,8 @@ WC → Shopify field map:
 | `title` | product name |
 | `handle` | slug |
 | `body_html` | long description (post_content) |
-| `vendor` | first `product_brand` term (else store name) |
-| `product_type` | primary `product_cat` term |
+| `vendor` | first `product_brand` term, else `null` |
+| `product_type` | a single string synthesized from the product's categories — see [`product_type` mapping](#product_type-mapping) below |
 | `tags` | comma-joined `product_tag` terms (Shopify emits a string) |
 | `variants[]` | WC variations; simple product → one default variant |
 | `variants[].option1/2/3` | variation attribute values, in `options[]` order |
@@ -109,6 +109,22 @@ WC → Shopify field map:
 | `options[]` | variation attributes (`name`, `position`, distinct `values`) |
 
 `null` for fields with no WC value (e.g. unused `option2/3`). Simple products emit a single variant with `option1: "Default Title"` (Shopify convention) and no `options[]`.
+
+### `product_type` mapping
+
+Shopify's `product_type` is a **single free-text string** naming the product's specific type (e.g. "Hoodie"). It is *not* the same as Shopify **collections** — a product's many groupings, which map to WC categories and surface via the deferred `/collections/*` endpoints. Two WC mismatches make this non-trivial:
+
+- WC has no single "product type" text field. (WC's own `product_type` means simple / variable / grouped — an unrelated concept; do **not** use it.)
+- A WC product can belong to several `product_cat` terms, so there is no 1:1 source.
+
+We therefore synthesize a single string from the product's categories, in this priority order (data-sourcing-first, mirroring how `sameAs` reuses SEO-plugin data):
+
+1. **Merchant-designated primary category**, if an SEO plugin set one — Yoast `_yoast_wpseo_primary_product_cat` meta or RankMath `rank_math_primary_product_cat` meta (guarded; absent on most stores). Respects explicit merchant intent.
+2. Else the **most-specific assigned category** — the `product_cat` term with the greatest hierarchy depth (prefer "Hoodies" over its parent "Tops"), which best mimics Shopify's specific-type convention. Ties broken by `menu_order`, then term ID.
+3. Else the **first assigned** `product_cat` term.
+4. Else `""` (Shopify permits an empty `product_type`).
+
+The chosen term name is decoded to plain text (no HTML entities), matching the other text fields. Note this deliberately diverges from the `vendor`/null choice: `product_type` falls back to `""` (not `null`) because Shopify always emits the key as a string, whereas `vendor` is genuinely absent when there is no brand.
 
 ### Gating
 
@@ -124,6 +140,19 @@ WC → Shopify field map:
 ### Settings
 
 Add `products_json_enabled` to the settings schema (default `'yes'`, validated to `'yes'|'no'`) and a Discovery-tab checkbox: "Serve a Shopify-compatible `/products.json` catalog feed (helps AI agents that probe that endpoint find your catalog)."
+
+## Documentation
+
+The implementation plan must include a dedicated documentation task covering:
+
+- `docs/engineering/API-REFERENCE.md` — the new `/products.json` + `/collections/all/products.json` endpoints: params (`limit`/`page` + caps), the Shopify response shape, gating, and caching.
+- `docs/engineering/ARCHITECTURE.md` — the `WC_AI_Storefront_Products_Feed` component and its place in the discovery-surfaces list.
+- The **discovery-surfaces enumeration** (wherever `/llms.txt`, `/.well-known/ucp`, `/agents.md`, `/opensearch.xml` are listed) — add `/products.json`, clearly flagged as a non-UCP Shopify-compat surface.
+- `docs/engineering/DATA-MODEL.md` — the `products_json_enabled` setting and the `products_feed_version` invalidation option.
+- `docs/engineering/HOOKS.md` — any new filter (a per-product `wc_ai_storefront_products_feed_product` override is likely worth adding, mirroring `wc_ai_storefront_ucp_product`; confirm in the plan).
+- `docs/user-guide/USER-GUIDE.md` — the merchant-facing Discovery-tab toggle (what it does, why an agent benefits).
+- `CHANGELOG.md` + `readme.txt` — the `### Features` / `**New**` entry, ending `Closes #449.`
+- `docs/engineering/KNOWN-GAPS.md` — record the deferred v2 endpoints and the proprietary-format-tracking caveat.
 
 ## Testing
 
