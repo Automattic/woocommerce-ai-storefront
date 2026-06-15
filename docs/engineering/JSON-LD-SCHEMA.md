@@ -624,10 +624,34 @@ For an `OnlineBusiness` (vs. a `LocalBusiness`), street address has low signal v
 
 WC's "From" address is often set to `noreply@store.com` to avoid bounce-handling on outgoing transactional emails. Publishing that as `contactPoint.email` would route legitimate customer questions into a black hole. The `is_noreply_email()` heuristic matches the four canonical noreply local-parts (`noreply`, `no-reply`, `donotreply`, `do-not-reply`) case-insensitively, including their RFC 5233 plus-addressing variants (`noreply+orders@…`, `do-not-reply+billing@…`) which route to the same underlying mailbox at most providers. Local-part-only matching prevents false positives on legitimate mailboxes hosted on a `noreply.*` subdomain (e.g. `support@noreply.example.com` stays publishable). The guard only applies to the From-address fallback path; the merchant's explicit reply-to address (when enabled in WC settings) is trusted as-is.
 
+### `sameAs` (social profiles)
+
+Schema.org [`Organization.sameAs`](https://schema.org/sameAs) — an array of URLs that point to the merchant's official presence on other sites (social profiles, etc.). Auto-sourced (since #445) from the providers a Woo merchant most likely already has configured, so the store doesn't need a plugin-owned settings UI for it.
+
+```jsonc
+"sameAs": [
+  "https://facebook.com/yourstore",
+  "https://twitter.com/yourstore",
+  "https://instagram.com/yourstore"
+]
+```
+
+- **Emitted when**: at least one provider yields a usable `http`/`https` profile URL. Omitted entirely otherwise (omit-when-empty, like the identity fields).
+- **Providers** (dedup keeps the first occurrence; each block is independently guarded, an absent or odd-shaped provider is skipped silently):
+
+  | Provider | Source | Notes |
+  |----------|--------|-------|
+  | Jetpack Publicize | The already-cached `jetpack_social_connections_list` transient (`profile_link` per connection), gated on `Automattic\Jetpack\Publicize\Connections` existing. | The transient is read directly rather than calling `Connections::get_all()` — on a self-hosted site that method can trigger a **blocking WordPress.com REST fetch** on a cold cache, which is unacceptable on the `wp_head` render path. Reading the transient gives live data when Jetpack has populated it, at zero network cost. |
+  | Yoast SEO | `get_option( 'wpseo_social' )`. `facebook_site` / `instagram_url` / `linkedin_url` / `youtube_url` / `pinterest_url` / `wikipedia_url` / `myspace_url` are URLs; `twitter` is a bare handle expanded to `https://twitter.com/{handle}`; `other_social_urls` is an array of extra URLs. | Non-empty values only. |
+  | RankMath | `get_option( 'rank-math-options-titles' )`, any `social_url_*` key. | Best-effort, guarded. |
+
+- **Sanitization**: every candidate passes `esc_url_raw`, then a scheme filter that keeps only `http`/`https` (a stray `javascript:`/`mailto:` from a misconfigured field is dropped), then `array_unique`.
+- **Override**: the array is set **before** the `wc_ai_storefront_jsonld_store` filter, so a merchant filter can replace, extend, or clear it. See [`HOOKS.md`](HOOKS.md#wc_ai_storefront_jsonld_store) for add-vs-override examples.
+- **Source**: `collect_same_as()` in [`class-wc-ai-storefront-jsonld.php`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php).
+
 ### What this plugin does NOT emit
 
-- **`sameAs`** (social profile URLs). WC has no canonical storage for these; ecosystem plugins (Jetpack Social, Yoast Knowledge Graph, etc.) own the merchant capture and can inject via the `wc_ai_storefront_jsonld_store` filter. See [`HOOKS.md`](HOOKS.md) for a worked example.
-- **`contactPoint.telephone`**. Same reason: WC has no phone option, so the plugin can't auto-source. Plugins that capture a merchant phone number can inject via the same filter.
+- **`contactPoint.telephone`**. WC has no phone option, so the plugin can't auto-source it. Plugins that capture a merchant phone number can inject via the `wc_ai_storefront_jsonld_store` filter. (Social `sameAs` IS auto-sourced — see the `sameAs` section above.)
 
 The `hasOfferCatalog.itemListElement` is built by `get_catalog_summary()` and respects the plugin's product visibility setting — categories with zero exposed products are omitted.
 

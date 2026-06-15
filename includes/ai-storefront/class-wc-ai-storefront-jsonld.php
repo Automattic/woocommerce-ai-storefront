@@ -2097,11 +2097,16 @@ class WC_AI_Storefront_JsonLd {
 	 * before, plus the new `@type`. A merchant whose underlying
 	 * WP/WC data is filled in gets the additional keys.
 	 *
-	 * `sameAs` (social profiles) and `contactPoint.telephone` are NOT
-	 * emitted from this method — neither has a canonical WP/WC source
-	 * today. Ecosystem plugins (Jetpack, Yoast, etc.) that capture
-	 * those fields can inject them via the `wc_ai_storefront_jsonld_store`
-	 * filter applied below; see the filter docblock for an example.
+	 * `sameAs` (social profiles) is auto-sourced from common providers —
+	 * Jetpack Publicize connections, Yoast `wpseo_social`, and RankMath
+	 * social settings — by `collect_same_as()` and set before the
+	 * `wc_ai_storefront_jsonld_store` filter, so a merchant's filter still
+	 * overrides or augments it. Each provider is independently guarded
+	 * (absent/odd-shaped provider → skipped silently). Omitted when no
+	 * provider yields a usable URL. `contactPoint.telephone` is still NOT
+	 * emitted (WC has no canonical phone source) — ecosystem plugins can
+	 * inject it via the same filter; see the filter docblock for an
+	 * example.
 	 */
 	public function output_store_jsonld() {
 		if ( ! is_front_page() && ! is_shop() ) {
@@ -2236,24 +2241,38 @@ class WC_AI_Storefront_JsonLd {
 			$store_data['hasMerchantReturnPolicy'] = $org_policy_block;
 		}
 
+		// `sameAs` (social profile URLs) — auto-sourced from common
+		// providers (Jetpack Publicize, Yoast, RankMath). Set BEFORE the
+		// `wc_ai_storefront_jsonld_store` filter below so a merchant's
+		// filter still has the final say: it can replace the array
+		// wholesale, append to it, or clear it. Omitted entirely when no
+		// provider yields a usable URL (omit-when-empty, like the
+		// identity fields). See `collect_same_as()` for the per-provider
+		// guards and sourcing rationale.
+		$same_as = $this->collect_same_as();
+		if ( ! empty( $same_as ) ) {
+			$store_data['sameAs'] = $same_as;
+		}
+
 		/**
 		 * Filter the store-level JSON-LD data.
 		 *
-		 * Plugins that capture social profile URLs (Jetpack, Yoast,
-		 * etc.) can inject `sameAs` here without the plugin owning a
-		 * UI for it:
+		 * `sameAs` (social profile URLs) is already auto-sourced by the
+		 * plugin from Jetpack Publicize, Yoast, and RankMath (see
+		 * `collect_same_as()`), and merged in BEFORE this filter runs —
+		 * so a merchant can override or extend it here. Replace the array
+		 * wholesale, append to it, or clear it:
 		 *
 		 *     add_filter( 'wc_ai_storefront_jsonld_store', function( $data ) {
-		 *         $profiles = jetpack_get_social_profiles(); // hypothetical
-		 *         if ( ! empty( $profiles ) ) {
-		 *             $data['sameAs'] = array_values( $profiles );
-		 *         }
+		 *         $existing      = $data['sameAs'] ?? array();
+		 *         $existing[]    = 'https://mastodon.example/@store';
+		 *         $data['sameAs'] = array_values( array_unique( $existing ) );
 		 *         return $data;
 		 *     } );
 		 *
-		 * Same hook works for `contactPoint.telephone` and any other
-		 * Schema.org Organization field a plugin in the ecosystem
-		 * already captures.
+		 * The same hook is the injection point for `contactPoint.telephone`
+		 * (which the plugin does NOT auto-source) and any other Schema.org
+		 * Organization field a plugin in the ecosystem already captures.
 		 *
 		 * @since 1.0.0
 		 * @param array $store_data      The store structured data.
@@ -2357,13 +2376,14 @@ class WC_AI_Storefront_JsonLd {
 	 *     notifications) and merchants do not expect it to be
 	 *     published in JSON-LD.
 	 *
-	 * Phone (`contactPoint.telephone`) and social profiles (`sameAs`)
-	 * are intentionally NOT emitted from this method. Neither has a
-	 * canonical WP/WC source today, and ecosystem plugins (Jetpack,
-	 * Yoast, etc.) already capture them via their own settings. The
-	 * `wc_ai_storefront_jsonld_store` filter is the documented
-	 * injection point — see the filter docblock at the call site for
-	 * an example.
+	 * Phone (`contactPoint.telephone`) is intentionally NOT emitted from
+	 * this method — WC has no canonical phone source, so ecosystem
+	 * plugins inject it via the `wc_ai_storefront_jsonld_store` filter
+	 * (see the filter docblock at the call site for an example). Social
+	 * profiles (`sameAs`) are NOT built here either, but they ARE
+	 * auto-sourced — by the sibling `collect_same_as()` method (Jetpack
+	 * Publicize / Yoast / RankMath), merged into the store data before
+	 * the same filter so a merchant override still wins.
 	 *
 	 * @return array Identity fields, possibly empty when nothing is
 	 *               configured (no logo, no WC address, no sender
@@ -2426,6 +2446,147 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		return $fields;
+	}
+
+	/**
+	 * Collect social-profile URLs for the homepage `OnlineBusiness`
+	 * `sameAs` array, auto-sourced from the social/SEO plugins a Woo
+	 * merchant is most likely to already have configured.
+	 *
+	 * Each provider lives in its OWN defensively-guarded block: a
+	 * provider that isn't installed, isn't configured, or stores its
+	 * data in a different shape than expected is skipped silently — it
+	 * never warns, throws, or short-circuits the other providers. The
+	 * homepage JSON-LD runs on `wp_head` on every front-page/shop render,
+	 * so this method must stay cheap and side-effect-free.
+	 *
+	 * Providers (in priority order; dedup keeps the first occurrence):
+	 *
+	 *   1. Jetpack Publicize. Jetpack stores the merchant's connected
+	 *      social accounts (each with a public `profile_link`) via
+	 *      `Automattic\Jetpack\Publicize\Connections`. We read the
+	 *      ALREADY-CACHED connection list from Jetpack's own transient
+	 *      (`jetpack_social_connections_list`) rather than calling
+	 *      `Connections::get_all()` directly: on a self-hosted (non-WPCOM)
+	 *      site `get_all()` falls through to `fetch_and_cache_connections()`,
+	 *      which makes a BLOCKING WordPress.com REST API call on a cold
+	 *      cache. Triggering a remote fetch inside `wp_head` would add
+	 *      unbounded latency to every homepage render — unacceptable on a
+	 *      page-render hook. Reading the transient gives live data
+	 *      whenever Jetpack has already populated it (Jetpack refreshes it
+	 *      on its own schedule and on connection changes) with zero
+	 *      network cost here. The `class_exists` guard ties the behaviour
+	 *      to Jetpack Publicize actually being present, and every field
+	 *      read is shape-checked. If Jetpack ever ships a synchronous,
+	 *      no-remote local accessor we can switch to it; until then the
+	 *      transient read is the stable, render-safe seam.
+	 *
+	 *   2. Yoast SEO — the `wpseo_social` option (an array). Yoast keeps
+	 *      `facebook_site` (a URL), `twitter` (a bare handle, expanded to
+	 *      `https://twitter.com/{handle}`), and `*_url` keys for the other
+	 *      networks, plus an `other_social_urls` array for extras.
+	 *
+	 *   3. RankMath — the `rank-math-options-titles` option (an array)
+	 *      with `social_url_*` keys. Best-effort: any value under a
+	 *      `social_url_*` key that looks like a URL is included.
+	 *
+	 * After collection every candidate is run through `esc_url_raw`,
+	 * filtered to `http`/`https` schemes only (a `sameAs` must be a real
+	 * web URL — a stray `javascript:`/`mailto:` value from a
+	 * misconfigured field is dropped), and de-duplicated. Returns `[]`
+	 * when nothing usable was found, so the caller omits the `sameAs`
+	 * key entirely.
+	 *
+	 * @return array<int, string> Unique http/https profile URLs, possibly
+	 *                            empty.
+	 */
+	private function collect_same_as(): array {
+		$candidates = array();
+
+		// ---- Provider 1: Jetpack Publicize (render-safe transient read) ----
+		// Guard on the Publicize Connections class so we only engage when
+		// Jetpack's social module is actually loaded. We deliberately do
+		// NOT call Connections::get_all() (it can trigger a blocking
+		// WPCOM REST fetch on a cold cache — see method docblock); we
+		// read Jetpack's own already-populated transient instead.
+		if ( class_exists( '\Automattic\Jetpack\Publicize\Connections' ) ) {
+			$connections = get_transient( 'jetpack_social_connections_list' );
+			if ( is_array( $connections ) ) {
+				foreach ( $connections as $connection ) {
+					if ( is_array( $connection ) && ! empty( $connection['profile_link'] ) && is_string( $connection['profile_link'] ) ) {
+						$candidates[] = $connection['profile_link'];
+					}
+				}
+			}
+		}
+
+		// ---- Provider 2: Yoast SEO (`wpseo_social` option array) ----
+		$wpseo_social = get_option( 'wpseo_social' );
+		if ( is_array( $wpseo_social ) ) {
+			// Keys that already hold a full URL.
+			$url_keys = array(
+				'facebook_site',
+				'instagram_url',
+				'linkedin_url',
+				'youtube_url',
+				'pinterest_url',
+				'wikipedia_url',
+				'myspace_url',
+			);
+			foreach ( $url_keys as $key ) {
+				if ( ! empty( $wpseo_social[ $key ] ) && is_string( $wpseo_social[ $key ] ) ) {
+					$candidates[] = $wpseo_social[ $key ];
+				}
+			}
+
+			// `twitter` is a bare handle, not a URL — expand it. Strip a
+			// leading `@` if the merchant typed one.
+			if ( ! empty( $wpseo_social['twitter'] ) && is_string( $wpseo_social['twitter'] ) ) {
+				$handle = ltrim( trim( $wpseo_social['twitter'] ), '@' );
+				if ( '' !== $handle ) {
+					$candidates[] = 'https://twitter.com/' . $handle;
+				}
+			}
+
+			// `other_social_urls` is an array of additional profile URLs.
+			if ( ! empty( $wpseo_social['other_social_urls'] ) && is_array( $wpseo_social['other_social_urls'] ) ) {
+				foreach ( $wpseo_social['other_social_urls'] as $other_url ) {
+					if ( ! empty( $other_url ) && is_string( $other_url ) ) {
+						$candidates[] = $other_url;
+					}
+				}
+			}
+		}
+
+		// ---- Provider 3: RankMath (`rank-math-options-titles` option) ----
+		// RankMath stores knowledge-graph social URLs under `social_url_*`
+		// keys (e.g. `social_url_facebook`, `social_url_twitter`). Iterate
+		// the option array and accept any `social_url_*` value that is a
+		// non-empty string — best-effort, fully guarded.
+		$rankmath = get_option( 'rank-math-options-titles' );
+		if ( is_array( $rankmath ) ) {
+			foreach ( $rankmath as $key => $value ) {
+				if ( is_string( $key ) && 0 === strpos( $key, 'social_url_' ) && ! empty( $value ) && is_string( $value ) ) {
+					$candidates[] = $value;
+				}
+			}
+		}
+
+		// Sanitize, keep only http/https, and de-duplicate (first wins).
+		$clean = array();
+		foreach ( $candidates as $candidate ) {
+			$url = esc_url_raw( $candidate );
+			if ( '' === $url ) {
+				continue;
+			}
+			$scheme = strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) );
+			if ( 'http' !== $scheme && 'https' !== $scheme ) {
+				continue;
+			}
+			$clean[] = $url;
+		}
+
+		return array_values( array_unique( $clean ) );
 	}
 
 	/**
