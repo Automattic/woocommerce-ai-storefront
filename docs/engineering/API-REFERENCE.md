@@ -5,7 +5,7 @@ Endpoint-level reference for the two REST surfaces this plugin exposes:
 - **UCP REST adapter** — `/wp-json/wc/ucp/v1/*`. Public; called by AI agents.
 - **Admin REST API** — `/wp-json/wc/v3/ai-storefront/admin/*`. Authenticated; called by the React admin UI.
 
-Discovery surfaces (`/llms.txt`, `/.well-known/ucp`, `/robots.txt`, `/opensearch.xml`) aren't REST in the conventional sense — they're rewrite-rule-served virtual paths. They're documented in [`ARCHITECTURE.md`](ARCHITECTURE.md#discovery-layer).
+Discovery surfaces (`/llms.txt`, `/agents.md`, `/.well-known/ucp`, `/robots.txt`, `/opensearch.xml`) aren't REST in the conventional sense — they're rewrite-rule-served virtual paths. They're documented in [`ARCHITECTURE.md`](ARCHITECTURE.md#discovery-layer). (`/agents.md` is a byte-identical mirror of `/llms.txt` — same generator, same cache.)
 
 ## Conventions
 

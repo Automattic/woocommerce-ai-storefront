@@ -40,6 +40,22 @@ class WC_AI_Storefront_Llms_Txt {
 	const SITEMAP_CACHE_KEY = 'wc_ai_storefront_sitemap_urls';
 
 	/**
+	 * Query var for the /agents.md mirror endpoint.
+	 *
+	 * `/agents.md` serves a byte-identical mirror of `/llms.txt` (the
+	 * emerging canonical agent-doc path — some storefronts, e.g.
+	 * Allbirds, publish both). It shares the SAME generator and the SAME
+	 * cached content (`get_cached_content()`), so the two surfaces can
+	 * never drift, and the existing cache invalidation already covers it.
+	 *
+	 * Kept as a constant so the four callsites that reference it
+	 * (`add_rewrite_rules()`, `add_query_vars()`, `serve_agents_md()`,
+	 * `suppress_canonical_redirect()`) stay in sync — mirroring the
+	 * `WC_AI_Storefront_Ucp::OPENSEARCH_QUERY_VAR` pattern.
+	 */
+	const AGENTS_MD_QUERY_VAR = 'wc_ai_storefront_agents_md';
+
+	/**
 	 * Return a Host-specific transient key for the llms.txt cache.
 	 *
 	 * llms.txt body contains URLs derived from `home_url()` and
@@ -62,7 +78,8 @@ class WC_AI_Storefront_Llms_Txt {
 	}
 
 	/**
-	 * Short-circuit canonical-URL redirects for the llms.txt endpoint.
+	 * Short-circuit canonical-URL redirects for the llms.txt and
+	 * agents.md endpoints.
 	 *
 	 * @param string|false $redirect_url The candidate canonical URL
 	 *                                   WordPress wants to redirect to.
@@ -70,27 +87,29 @@ class WC_AI_Storefront_Llms_Txt {
 	 *                                   original value otherwise.
 	 */
 	public function suppress_canonical_redirect( $redirect_url ) {
-		if ( get_query_var( 'wc_ai_storefront_llms_txt' ) ) {
+		if ( get_query_var( 'wc_ai_storefront_llms_txt' ) || get_query_var( self::AGENTS_MD_QUERY_VAR ) ) {
 			return false;
 		}
 		return $redirect_url;
 	}
 
 	/**
-	 * Add rewrite rule for /llms.txt.
+	 * Add rewrite rules for /llms.txt and its /agents.md mirror.
 	 */
 	public function add_rewrite_rules() {
 		add_rewrite_rule( '^llms\.txt$', 'index.php?wc_ai_storefront_llms_txt=1', 'top' );
+		add_rewrite_rule( '^agents\.md$', 'index.php?' . self::AGENTS_MD_QUERY_VAR . '=1', 'top' );
 	}
 
 	/**
-	 * Register query var.
+	 * Register query vars.
 	 *
 	 * @param array $vars Query vars.
 	 * @return array
 	 */
 	public function add_query_vars( $vars ) {
 		$vars[] = 'wc_ai_storefront_llms_txt';
+		$vars[] = self::AGENTS_MD_QUERY_VAR;
 		return $vars;
 	}
 
@@ -176,6 +195,64 @@ class WC_AI_Storefront_Llms_Txt {
 			exit;
 		}
 
+		echo $this->get_cached_content(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markdown content.
+		exit;
+	}
+
+	/**
+	 * Serve the /agents.md response — a byte-identical mirror of
+	 * /llms.txt.
+	 *
+	 * `agents.md` is the emerging canonical path for agent-facing store
+	 * documentation (some storefronts, e.g. Allbirds, publish both
+	 * `/llms.txt` and `/agents.md`). Serving both from ONE generator and
+	 * ONE cache guarantees they can never drift: this handler reuses the
+	 * exact same `get_cached_content()` the llms.txt handler echoes, with
+	 * NO separate cache key — so the existing content-cache invalidation
+	 * (product/settings changes, plugin updates) already covers both
+	 * surfaces with zero extra wiring.
+	 *
+	 * Every response header matches `serve_llms_txt()` so the two
+	 * surfaces behave identically at the edge — in particular the shared
+	 * `WC_AI_Storefront::discovery_cache_control()` header, which is what
+	 * makes this a CDN-cacheable surface (a non-`/wp-json/` rewrite
+	 * endpoint the WordPress.com / Atomic edge caches), and `Vary: Host`
+	 * so the cache keys on Host (the body contains Host-derived URLs).
+	 * The single intentional difference is the Content-Type:
+	 * `text/markdown` here vs `text/plain` for llms.txt, because this URL
+	 * carries a `.md` extension and consumers/browsers key off it. See
+	 * `serve_llms_txt()` for the full header rationale.
+	 */
+	public function serve_agents_md() {
+		if ( ! get_query_var( self::AGENTS_MD_QUERY_VAR ) ) {
+			return;
+		}
+
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			status_header( 404 );
+			exit;
+		}
+
+		// The one intentional divergence from serve_llms_txt(): a `.md`
+		// URL advertises Markdown rather than plain text. Every other
+		// header below is identical so both surfaces edge-cache and CORS
+		// the same way.
+		header( 'Content-Type: text/markdown; charset=utf-8' );
+		header( 'Cache-Control: ' . WC_AI_Storefront::discovery_cache_control() );
+		header( 'Vary: Host' );
+		header( 'X-Content-Type-Options: nosniff' );
+		header( 'Access-Control-Allow-Origin: *' );
+		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
+
+		// Respond to CORS preflights without a body, mirroring llms.txt.
+		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- REQUEST_METHOD is validated against a constant, no sanitization required.
+			status_header( 204 );
+			exit;
+		}
+
+		// REUSE the exact same cached content as llms.txt — same single
+		// source of truth, so the two endpoints are always byte-identical.
 		echo $this->get_cached_content(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markdown content.
 		exit;
 	}
@@ -628,13 +705,20 @@ class WC_AI_Storefront_Llms_Txt {
 		$ucp_api_base = rtrim( rest_url( 'wc/ucp/v1' ), '/' );
 		$ucp_manifest = $site_url . '.well-known/ucp';
 		$ucp_checkout = $ucp_api_base . '/checkout-sessions';
-		$lines[]      = '## For agents';
-		$lines[]      = '';
-		$lines[]      = "- **UCP manifest**: `{$ucp_manifest}` — capability discovery (what the store supports)";
-		$lines[]      = "- **UCP API base**: `{$ucp_api_base}` — REST root for search, lookup, checkout";
-		$lines[]      = "- **Batch lookup**: `GET {$ucp_api_base}/catalog/lookup?ids=prod_1,prod_2,…` — fetch up to " . WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP . ' products in one request (or `POST /catalog/lookup`). Prefer this over many single lookups.';
-		$lines[]      = "- **Checkout API**: `POST {$ucp_checkout}` — server returns a `continue_url`; redirect the buyer there. Product-specific cart links are also available via JSON-LD `BuyAction.urlTemplate` on each product page (deterministic across product types).";
-		$lines[]      = '';
+		// `agents.md` is the emerging canonical agent-doc path; this same
+		// document is served byte-identically at both `/llms.txt` and
+		// `/agents.md`. The line is self-referential on `/agents.md`
+		// (which is correct) and a pointer from `/llms.txt`, so an agent
+		// that found either one knows the canonical name of the other.
+		$agents_md_url = $site_url . 'agents.md';
+		$lines[]       = '## For agents';
+		$lines[]       = '';
+		$lines[]       = "- **Agent doc**: `{$agents_md_url}` (canonical; this `/llms.txt` mirrors it)";
+		$lines[]       = "- **UCP manifest**: `{$ucp_manifest}` — capability discovery (what the store supports)";
+		$lines[]       = "- **UCP API base**: `{$ucp_api_base}` — REST root for search, lookup, checkout";
+		$lines[]       = "- **Batch lookup**: `GET {$ucp_api_base}/catalog/lookup?ids=prod_1,prod_2,…` — fetch up to " . WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP . ' products in one request (or `POST /catalog/lookup`). Prefer this over many single lookups.';
+		$lines[]       = "- **Checkout API**: `POST {$ucp_checkout}` — server returns a `continue_url`; redirect the buyer there. Product-specific cart links are also available via JSON-LD `BuyAction.urlTemplate` on each product page (deterministic across product types).";
+		$lines[]       = '';
 
 		// ============================================================
 		// ## Extension schema

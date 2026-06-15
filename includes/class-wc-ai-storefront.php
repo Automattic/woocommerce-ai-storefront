@@ -238,6 +238,9 @@ class WC_AI_Storefront {
 		add_filter( 'query_vars', [ $llms_txt, 'add_query_vars' ] );
 		add_filter( 'query_vars', [ $ucp, 'add_query_vars' ] );
 		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
+		// /agents.md is a byte-identical mirror of /llms.txt (same
+		// generator, same cache) — registered on the same hook.
+		add_action( 'template_redirect', [ $llms_txt, 'serve_agents_md' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_opensearch_xml' ] );
 		add_action( 'wp_head', [ $ucp, 'inject_head_link' ] );
