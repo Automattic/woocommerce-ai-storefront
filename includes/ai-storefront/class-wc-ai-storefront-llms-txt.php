@@ -521,13 +521,23 @@ class WC_AI_Storefront_Llms_Txt {
 		//
 		// Sources:
 		//   - Privacy: `get_privacy_policy_url()` (WP core; returns '' when
-		//     no privacy page is set).
+		//     no privacy page is set OR when the configured page isn't
+		//     published — core self-heals against a trashed privacy page).
 		//   - Terms: `get_permalink( wc_terms_and_conditions_page_id() )`,
-		//     guarded on a positive page id and `function_exists` (WC may
-		//     be loaded without the page-id helper in odd bootstraps).
+		//     guarded on a positive page id, `function_exists` (WC may be
+		//     loaded without the page-id helper in odd bootstraps), AND a
+		//     `publish` status check (see below).
 		//   - Refunds & returns: `get_permalink()` of the WC
 		//     `woocommerce_refund_returns_page_id` option, guarded on a
-		//     positive id.
+		//     positive id and the same `publish` status check.
+		//
+		// The `'publish' === get_post_status( $id )` gate on the two
+		// page-backed links is load-bearing: unlike `get_privacy_policy_url()`,
+		// `get_permalink()` happily returns a live-looking URL for a TRASHED
+		// page, and the WC option keeps pointing at it after the merchant
+		// trashes it — so without the status check we'd publish a 404 link
+		// to every agent. `get_post_status()` also returns false for a
+		// hard-deleted id, so the same check hardens the dangling-id case.
 		$policy_lines = array();
 
 		$privacy_url = get_privacy_policy_url();
@@ -537,7 +547,7 @@ class WC_AI_Storefront_Llms_Txt {
 
 		if ( function_exists( 'wc_terms_and_conditions_page_id' ) ) {
 			$terms_page_id = (int) wc_terms_and_conditions_page_id();
-			if ( $terms_page_id > 0 ) {
+			if ( $terms_page_id > 0 && 'publish' === get_post_status( $terms_page_id ) ) {
 				$terms_url = get_permalink( $terms_page_id );
 				if ( is_string( $terms_url ) && '' !== $terms_url ) {
 					$policy_lines[] = '- **Terms**: ' . esc_url_raw( $terms_url );
@@ -546,7 +556,7 @@ class WC_AI_Storefront_Llms_Txt {
 		}
 
 		$refunds_page_id = (int) get_option( 'woocommerce_refund_returns_page_id' );
-		if ( $refunds_page_id > 0 ) {
+		if ( $refunds_page_id > 0 && 'publish' === get_post_status( $refunds_page_id ) ) {
 			$refunds_url = get_permalink( $refunds_page_id );
 			if ( is_string( $refunds_url ) && '' !== $refunds_url ) {
 				$policy_lines[] = '- **Refunds & returns**: ' . esc_url_raw( $refunds_url );

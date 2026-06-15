@@ -184,6 +184,12 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_privacy_policy_url' )->justReturn( '' );
 		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
 		Functions\when( 'get_permalink' )->justReturn( false );
+		// The Terms / Refunds links are additionally gated on a `publish`
+		// status check so a trashed page never emits a dead 404 link.
+		// Default to `'publish'` so tests that configure a page id render
+		// its line; the trashed/deleted-page tests override this to
+		// `'trash'` / `false`.
+		Functions\when( 'get_post_status' )->justReturn( 'publish' );
 
 		// Note: NOT stubbing `WC()` here despite the new generate()
 		// reaching into WC()->countries->countries via the
@@ -703,6 +709,41 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '- **Terms**: https://example.com/terms/', $output );
 	}
 
+	public function test_policies_section_omits_terms_when_page_trashed(): void {
+		// A merchant who trashes their Terms page leaves the WC setting
+		// pointing at it, and `get_permalink()` still returns a live-looking
+		// URL — so without the `publish` gate we'd publish a 404 link.
+		// `get_post_status()` returns `'trash'` for a trashed page.
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 12 );
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 12 === (int) $id ? 'https://example.com/terms/' : false
+		);
+		Functions\when( 'get_post_status' )->justReturn( 'trash' );
+
+		$output = $this->llms->generate();
+
+		// Section still renders (Privacy is set) but the Terms line is gone.
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringNotContainsString( '- **Terms**:', $output );
+	}
+
+	public function test_policies_section_omits_terms_when_page_deleted(): void {
+		// Hard-deleted page id: `get_post_status()` returns false. The
+		// `'publish' === ...` gate also covers this dangling-id case.
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 12 );
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 12 === (int) $id ? 'https://example.com/terms/' : false
+		);
+		Functions\when( 'get_post_status' )->justReturn( false );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringNotContainsString( '- **Terms**:', $output );
+	}
+
 	public function test_policies_section_omits_terms_when_page_id_zero(): void {
 		// `wc_terms_and_conditions_page_id()` returns 0 when no T&C page
 		// is selected in WC settings. A non-positive id must skip the
@@ -739,6 +780,61 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString( '- **Refunds & returns**: https://example.com/refunds/', $output );
+	}
+
+	public function test_policies_section_omits_refunds_when_page_trashed(): void {
+		// Same dead-link guard as Terms: a trashed WC refunds page keeps
+		// the option id and a live-looking permalink. `'publish'` gate omits it.
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
+		Functions\when( 'get_option' )->alias(
+			static function ( $option, $default = '' ) {
+				switch ( $option ) {
+					case 'siteurl':
+						return 'https://example.com';
+					case 'woocommerce_refund_returns_page_id':
+						return 77;
+					default:
+						return $default;
+				}
+			}
+		);
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 77 === (int) $id ? 'https://example.com/refunds/' : false
+		);
+		Functions\when( 'get_post_status' )->justReturn( 'trash' );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringNotContainsString( '- **Refunds & returns**:', $output );
+	}
+
+	public function test_policies_section_omits_refunds_when_page_deleted(): void {
+		// Hard-deleted refunds page id → `get_post_status()` false → omit.
+		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
+		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
+		Functions\when( 'get_option' )->alias(
+			static function ( $option, $default = '' ) {
+				switch ( $option ) {
+					case 'siteurl':
+						return 'https://example.com';
+					case 'woocommerce_refund_returns_page_id':
+						return 77;
+					default:
+						return $default;
+				}
+			}
+		);
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 77 === (int) $id ? 'https://example.com/refunds/' : false
+		);
+		Functions\when( 'get_post_status' )->justReturn( false );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Policies', $output );
+		$this->assertStringNotContainsString( '- **Refunds & returns**:', $output );
 	}
 
 	public function test_policies_section_omits_refunds_when_option_zero(): void {

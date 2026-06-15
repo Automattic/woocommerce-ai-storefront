@@ -2482,13 +2482,18 @@ class WC_AI_Storefront_JsonLd {
 	 *      transient read is the stable, render-safe seam.
 	 *
 	 *   2. Yoast SEO — the `wpseo_social` option (an array). Yoast keeps
-	 *      `facebook_site` (a URL), `twitter` (a bare handle, expanded to
-	 *      `https://twitter.com/{handle}`), and `*_url` keys for the other
-	 *      networks, plus an `other_social_urls` array for extras.
+	 *      `facebook_site` / `instagram_url` / `linkedin_url` /
+	 *      `youtube_url` / `pinterest_url` / `wikipedia_url` /
+	 *      `myspace_url` / `mastodon_url` (all full URLs), `twitter_site`
+	 *      (a bare handle, expanded to `https://twitter.com/{handle}` —
+	 *      note `twitter` itself is a boolean card toggle, NOT the handle),
+	 *      plus an `other_social_urls` array for extras.
 	 *
-	 *   3. RankMath — the `rank-math-options-titles` option (an array)
-	 *      with `social_url_*` keys. Best-effort: any value under a
-	 *      `social_url_*` key that looks like a URL is included.
+	 *   3. RankMath — the `rank-math-options-titles` option (an array).
+	 *      Dedicated per-network URL fields (`social_url_facebook`, etc.;
+	 *      there is no `social_url_twitter`), the Twitter/X handle under
+	 *      `twitter_author_names`, and the merchant's explicit `sameAs`
+	 *      set under `social_additional_profiles` (newline-separated URLs).
 	 *
 	 * After collection every candidate is run through `esc_url_raw`,
 	 * filtered to `http`/`https` schemes only (a `sameAs` must be a real
@@ -2523,7 +2528,12 @@ class WC_AI_Storefront_JsonLd {
 		// ---- Provider 2: Yoast SEO (`wpseo_social` option array) ----
 		$wpseo_social = get_option( 'wpseo_social' );
 		if ( is_array( $wpseo_social ) ) {
-			// Keys that already hold a full URL.
+			// Keys that already hold a full URL. NOTE: the Twitter/X handle
+			// is NOT under `twitter` — that key is a boolean toggle (Twitter
+			// card on/off, default true) in Yoast's `wpseo_social` schema, so
+			// reading it as a handle never works. The handle lives under
+			// `twitter_site` and is expanded below. `mastodon_url` is a full
+			// URL Yoast added for the fediverse.
 			$url_keys = array(
 				'facebook_site',
 				'instagram_url',
@@ -2532,6 +2542,7 @@ class WC_AI_Storefront_JsonLd {
 				'pinterest_url',
 				'wikipedia_url',
 				'myspace_url',
+				'mastodon_url',
 			);
 			foreach ( $url_keys as $key ) {
 				if ( ! empty( $wpseo_social[ $key ] ) && is_string( $wpseo_social[ $key ] ) ) {
@@ -2539,10 +2550,10 @@ class WC_AI_Storefront_JsonLd {
 				}
 			}
 
-			// `twitter` is a bare handle, not a URL — expand it. Strip a
+			// `twitter_site` is a bare handle, not a URL — expand it. Strip a
 			// leading `@` if the merchant typed one.
-			if ( ! empty( $wpseo_social['twitter'] ) && is_string( $wpseo_social['twitter'] ) ) {
-				$handle = ltrim( trim( $wpseo_social['twitter'] ), '@' );
+			if ( ! empty( $wpseo_social['twitter_site'] ) && is_string( $wpseo_social['twitter_site'] ) ) {
+				$handle = ltrim( trim( $wpseo_social['twitter_site'] ), '@' );
 				if ( '' !== $handle ) {
 					$candidates[] = 'https://twitter.com/' . $handle;
 				}
@@ -2560,14 +2571,46 @@ class WC_AI_Storefront_JsonLd {
 
 		// ---- Provider 3: RankMath (`rank-math-options-titles` option) ----
 		// RankMath stores knowledge-graph social URLs under `social_url_*`
-		// keys (e.g. `social_url_facebook`, `social_url_twitter`). Iterate
-		// the option array and accept any `social_url_*` value that is a
-		// non-empty string — best-effort, fully guarded.
+		// keys, but ONLY for the networks it ships a dedicated field for
+		// (e.g. `social_url_facebook`). There is NO `social_url_twitter` —
+		// the Twitter/X handle lives under `twitter_author_names`, and the
+		// merchant's canonical extra profiles (the set RankMath explicitly
+		// designates for the schema `sameAs` property) live under
+		// `social_additional_profiles` (newline-separated URLs). All three
+		// sources are read, best-effort and fully guarded.
 		$rankmath = get_option( 'rank-math-options-titles' );
 		if ( is_array( $rankmath ) ) {
+			// Dedicated per-network URL fields (`social_url_facebook`, etc.).
 			foreach ( $rankmath as $key => $value ) {
 				if ( is_string( $key ) && 0 === strpos( $key, 'social_url_' ) && ! empty( $value ) && is_string( $value ) ) {
 					$candidates[] = $value;
+				}
+			}
+
+			// `twitter_author_names` is a bare handle — expand like Yoast.
+			if ( ! empty( $rankmath['twitter_author_names'] ) && is_string( $rankmath['twitter_author_names'] ) ) {
+				$rm_handle = ltrim( trim( $rankmath['twitter_author_names'] ), '@' );
+				if ( '' !== $rm_handle ) {
+					$candidates[] = 'https://twitter.com/' . $rm_handle;
+				}
+			}
+
+			// `social_additional_profiles` is the merchant's explicit
+			// `sameAs` list. RankMath stores it as a newline-separated
+			// string in the option, but tolerate an already-split array
+			// too (some versions / programmatic writes). Each line/entry
+			// is a profile URL.
+			if ( ! empty( $rankmath['social_additional_profiles'] ) ) {
+				$additional = $rankmath['social_additional_profiles'];
+				if ( is_string( $additional ) ) {
+					$additional = preg_split( '/[\r\n]+/', $additional );
+				}
+				if ( is_array( $additional ) ) {
+					foreach ( $additional as $profile_url ) {
+						if ( ! empty( $profile_url ) && is_string( $profile_url ) ) {
+							$candidates[] = trim( $profile_url );
+						}
+					}
 				}
 			}
 		}
