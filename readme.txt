@@ -132,6 +132,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 = Unreleased =
 **New**
 * Discovery enrichment: /llms.txt now links your real Privacy, Terms, and Refunds pages and lists clear rules for AI agents, and your homepage structured data auto-publishes your social profiles (sourced from Jetpack, Yoast, or RankMath).
+* Your store now also answers /agents.md (the emerging canonical agent doc path) with the same content as /llms.txt, so agents that look for either one find your store.
 
 = 0.20.1 - 2026-06-13 =
 **Fixed**

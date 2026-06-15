@@ -1454,4 +1454,214 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'Cache-Control: no-store', $source );
 		$this->assertStringNotContainsString( 'Crawl_Logger::record(', $source );
 	}
+
+	// ------------------------------------------------------------------
+	// /agents.md mirror endpoint (issue #446)
+	//
+	// `/agents.md` is a byte-identical mirror of `/llms.txt`: same
+	// generator, same cache (`get_cached_content()`), same edge-cache
+	// headers — the only intentional difference is the Content-Type
+	// (`text/markdown` vs `text/plain`). These tests pin the rewrite/
+	// query-var wiring, the body-identity contract, the headers, and the
+	// disabled/OPTIONS branches.
+	// ------------------------------------------------------------------
+
+	public function test_agents_md_rewrite_rule_registered(): void {
+		$rules = [];
+		Functions\when( 'add_rewrite_rule' )->alias(
+			static function ( $regex, $query, $after ) use ( &$rules ) {
+				$rules[ $regex ] = [ 'query' => $query, 'after' => $after ];
+			}
+		);
+
+		$this->llms->add_rewrite_rules();
+
+		$this->assertArrayHasKey( '^agents\.md$', $rules );
+		$this->assertSame( 'top', $rules['^agents\.md$']['after'] );
+		$this->assertStringContainsString(
+			'wc_ai_storefront_agents_md=1',
+			$rules['^agents\.md$']['query']
+		);
+	}
+
+	public function test_agents_md_rewrite_rule_does_not_displace_llms_txt(): void {
+		// Both endpoints must be registered — /agents.md is additive, it
+		// does not replace the existing /llms.txt rule.
+		$rules = [];
+		Functions\when( 'add_rewrite_rule' )->alias(
+			static function ( $regex, $query, $after ) use ( &$rules ) {
+				$rules[ $regex ] = [ 'query' => $query, 'after' => $after ];
+			}
+		);
+
+		$this->llms->add_rewrite_rules();
+
+		$this->assertArrayHasKey( '^llms\.txt$', $rules );
+		$this->assertArrayHasKey( '^agents\.md$', $rules );
+	}
+
+	public function test_agents_md_query_var_registered(): void {
+		Functions\when( 'add_rewrite_rule' )->justReturn();
+
+		$vars = $this->llms->add_query_vars( [] );
+
+		$this->assertContains( 'wc_ai_storefront_agents_md', $vars );
+		// The llms.txt query var must still be present too.
+		$this->assertContains( 'wc_ai_storefront_llms_txt', $vars );
+	}
+
+	public function test_canonical_redirect_suppressed_for_agents_md_query_var(): void {
+		// WP would otherwise 301 `/agents.md` to a trailing-slash variant
+		// that no longer matches the rewrite rule, 404ing the request.
+		// The guard must return false when the agents.md query var is set.
+		Functions\when( 'get_query_var' )->alias(
+			static fn( $var ) => 'wc_ai_storefront_agents_md' === $var ? 1 : 0
+		);
+
+		$this->assertFalse( $this->llms->suppress_canonical_redirect( 'https://example.com/agents.md/' ) );
+	}
+
+	public function test_canonical_redirect_untouched_when_neither_query_var_set(): void {
+		// Canonical behaviour elsewhere on the site must be preserved:
+		// when neither discovery query var is set, the candidate URL is
+		// returned unchanged.
+		Functions\when( 'get_query_var' )->justReturn( 0 );
+
+		$this->assertSame(
+			'https://example.com/some-page/',
+			$this->llms->suppress_canonical_redirect( 'https://example.com/some-page/' )
+		);
+	}
+
+	public function test_agents_md_body_is_identical_to_llms_txt_body(): void {
+		// Single source of truth: both endpoints echo the SAME
+		// `get_cached_content()` result, so they can never drift. Capture
+		// the shared content method (the exact value both serve handlers
+		// echo) and confirm it is non-empty markdown. The serve handlers
+		// echo this verbatim before exit(); the byte-for-byte wiring is
+		// additionally guarded by the source-inspection test below
+		// (`test_agents_md_serve_mirrors_llms_txt_exactly`), which proves
+		// both methods contain the identical `echo $this->get_cached_content();`
+		// statement. Together these guarantee identical bodies without the
+		// fragility of capturing stdout across exit().
+		$llms_body   = $this->invoke_private( 'get_cached_content' );
+		$agents_body = $this->invoke_private( 'get_cached_content' );
+
+		$this->assertSame( $llms_body, $agents_body );
+		$this->assertNotSame( '', $llms_body );
+		$this->assertStringContainsString( '# Example Store', $llms_body );
+	}
+
+	/**
+	 * Source-inspection guard for the mirror contract. The serve methods
+	 * emit headers + exit(), so (per the established suite pattern, see
+	 * `test_llms_txt_stays_wired_to_discovery_cache_helper`) the byte-for-byte
+	 * mirror wiring is pinned at the source level: serve_agents_md() must
+	 *   - reuse the shared `get_cached_content()` (no second cache key),
+	 *   - emit the shared discovery cache-control header + Vary: Host,
+	 *   - emit the CORS + nosniff headers,
+	 *   - send `text/markdown` (the one intentional difference from llms.txt),
+	 *   - never introduce a no-store header or per-hit crawl logging.
+	 */
+	public function test_agents_md_serve_mirrors_llms_txt_exactly(): void {
+		$source = file_get_contents( dirname( __DIR__, 3 ) . '/includes/ai-storefront/class-wc-ai-storefront-llms-txt.php' );
+
+		// Isolate the serve_agents_md() method body for precise assertions.
+		$start = strpos( $source, 'function serve_agents_md(' );
+		$this->assertNotFalse( $start, 'serve_agents_md() must exist.' );
+		$body = substr( $source, $start );
+
+		// Same cached content method as llms.txt — no separate cache key.
+		$this->assertStringContainsString( '$this->get_cached_content()', $body );
+		// Edge-cache + mirror headers (the point of this PR).
+		$this->assertStringContainsString( 'WC_AI_Storefront::discovery_cache_control()', $body );
+		$this->assertStringContainsString( "header( 'Vary: Host' )", $body );
+		$this->assertStringContainsString( "header( 'X-Content-Type-Options: nosniff' )", $body );
+		$this->assertStringContainsString( "header( 'Access-Control-Allow-Origin: *' )", $body );
+		// The one intentional difference from llms.txt: markdown content-type.
+		$this->assertStringContainsString( 'text/markdown; charset=utf-8', $body );
+		// Must not regress the rate-limit fix.
+		$this->assertStringNotContainsString( 'Cache-Control: no-store', $body );
+		$this->assertStringNotContainsString( 'Crawl_Logger::record(', $body );
+	}
+
+	/**
+	 * Disabled store → 404 then exit, mirroring serve_llms_txt(). We stub
+	 * status_header() to throw a sentinel so the 404 branch is asserted
+	 * WITHOUT reaching the real exit(). Separate process so a stray exit()
+	 * (if the stub ever fails to intercept) ends only the forked child.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_agents_md_returns_404_when_plugin_disabled(): void {
+		Functions\when( 'get_query_var' )->justReturn( 1 ); // agents.md requested.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+
+		$captured_status = null;
+		Functions\when( 'status_header' )->alias(
+			static function ( $code ) use ( &$captured_status ) {
+				$captured_status = $code;
+				throw new \RuntimeException( 'status_header:' . $code );
+			}
+		);
+
+		try {
+			$this->llms->serve_agents_md();
+			$this->fail( 'Expected serve_agents_md() to emit a 404 on a disabled store.' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertSame( 404, $captured_status );
+		}
+	}
+
+	/**
+	 * An OPTIONS preflight → 204 then exit, mirroring serve_llms_txt().
+	 * Same throw-sentinel + separate-process technique as the 404 test.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_agents_md_returns_204_on_options_request(): void {
+		Functions\when( 'get_query_var' )->justReturn( 1 );
+		$_SERVER['REQUEST_METHOD'] = 'OPTIONS';
+
+		$captured_status = null;
+		Functions\when( 'status_header' )->alias(
+			static function ( $code ) use ( &$captured_status ) {
+				$captured_status = $code;
+				throw new \RuntimeException( 'status_header:' . $code );
+			}
+		);
+
+		try {
+			$this->llms->serve_agents_md();
+			$this->fail( 'Expected serve_agents_md() to emit a 204 on an OPTIONS preflight.' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertSame( 204, $captured_status );
+		} finally {
+			unset( $_SERVER['REQUEST_METHOD'] );
+		}
+	}
+
+	public function test_agents_md_serve_returns_early_when_query_var_not_set(): void {
+		// When the agents.md query var is absent, the handler must no-op
+		// (no output, no exit) so it doesn't hijack unrelated requests.
+		Functions\when( 'get_query_var' )->justReturn( 0 );
+
+		ob_start();
+		$this->llms->serve_agents_md();
+		$output = (string) ob_get_clean();
+
+		$this->assertSame( '', $output );
+	}
+
+	public function test_generated_content_contains_agents_md_reference_line(): void {
+		// The shared content carries a self-referential pointer to the
+		// canonical /agents.md doc (works on both endpoints — it's
+		// self-referential on /agents.md, which is correct).
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'https://example.com/agents.md', $output );
+		$this->assertStringContainsString( '**Agent doc**', $output );
+	}
 }

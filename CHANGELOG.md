@@ -7,6 +7,12 @@
   - **`/llms.txt` `## Rules for agents` section**: three static rules in the store's terse voice — pace requests and back off on HTTP 429, checkout is buyer-confirmed (no delegated/in-chat payment; send the buyer the `continue_url`), and send `context.currency` (ISO 4217) for accurate pricing.
   - **Homepage `OnlineBusiness.sameAs` is now auto-sourced** from Jetpack Publicize connections, Yoast (`wpseo_social`, including handle-to-URL expansion for Twitter/X), and RankMath (`social_url_*`). Each provider is independently guarded; values are sanitized, restricted to `http`/`https`, and de-duplicated. The existing `wc_ai_storefront_jsonld_store` filter still runs after, so merchants can override or augment the result. The Jetpack read uses Jetpack's own cached connection transient (never a blocking remote fetch on the page-render path).
 
+- **`/agents.md` mirror endpoint — serves the agent doc at the emerging canonical path. Closes #446.**
+  - The store now answers `/agents.md` with a byte-identical copy of `/llms.txt` (some storefronts, e.g. Allbirds, publish both). One generator, one host-keyed content cache (no second cache key), so the two surfaces can never drift and the existing cache invalidation covers both.
+  - Same edge-cache and CORS headers as `/llms.txt` (`Cache-Control` via `discovery_cache_control()`, `Vary: Host`, `X-Content-Type-Options: nosniff`, `Access-Control-Allow-Origin: *`), so agent discovery bursts are absorbed by the CDN. The one intentional difference is `Content-Type: text/markdown` (vs `text/plain`) because the URL carries a `.md` extension.
+  - The shared document gains an **Agent doc** line under `## For agents` pointing at the canonical `/agents.md` URL.
+  - The new rewrite rule rides the existing `add_rewrite_rules()`, so it is registered after the next rewrite flush (which the plugin already performs on activation and on plugin-version bump).
+
 ---
 
 ## [0.20.1] – 2026-06-13
