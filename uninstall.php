@@ -64,6 +64,11 @@ delete_transient( 'wc_ai_storefront_website_jsonld' );
 //   - host-keyed llms.txt variants (wc_ai_storefront_llms_txt_<md5(host)>, since 0.6.6)
 //   - per-page archive ItemList JSON-LD (wc_ai_storefront_itemlist_<context>_<page>)
 //   - Shopify /products.json feed pages (wc_ai_sf_pjson_<md5(host|version|limit|page)>)
+//   - v2 scoped feed families: single product (wc_ai_sf_prod_),
+//     per-collection (wc_ai_sf_coll_), collection list (wc_ai_sf_colls_).
+//     NOTE: coll_ and colls_ need separate patterns — esc_like() escapes the
+//     trailing underscore to a literal, so `wc_ai_sf_coll_%` does NOT match a
+//     `wc_ai_sf_colls_` key (the char after `coll` differs).
 // The plugin classes are not loaded during uninstall, so we can't call
 // host_cache_key() or read the prefix constant — direct deletes are the only
 // option. (Object-cache-backed transients on these dynamic keys are reaped by
@@ -72,13 +77,19 @@ delete_transient( 'wc_ai_storefront_website_jsonld' );
 global $wpdb;
 $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 	$wpdb->prepare(
-		"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
+		"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
 		$wpdb->esc_like( '_transient_wc_ai_storefront_llms_txt_' ) . '%',
 		$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%',
 		$wpdb->esc_like( '_transient_wc_ai_storefront_itemlist_' ) . '%',
 		$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_itemlist_' ) . '%',
 		$wpdb->esc_like( '_transient_wc_ai_sf_pjson_' ) . '%',
-		$wpdb->esc_like( '_transient_timeout_wc_ai_sf_pjson_' ) . '%'
+		$wpdb->esc_like( '_transient_timeout_wc_ai_sf_pjson_' ) . '%',
+		$wpdb->esc_like( '_transient_wc_ai_sf_prod_' ) . '%',
+		$wpdb->esc_like( '_transient_timeout_wc_ai_sf_prod_' ) . '%',
+		$wpdb->esc_like( '_transient_wc_ai_sf_coll_' ) . '%',
+		$wpdb->esc_like( '_transient_timeout_wc_ai_sf_coll_' ) . '%',
+		$wpdb->esc_like( '_transient_wc_ai_sf_colls_' ) . '%',
+		$wpdb->esc_like( '_transient_timeout_wc_ai_sf_colls_' ) . '%'
 	)
 );
 // phpcs:enable
@@ -157,19 +168,28 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 
 			// Also purge prefix-keyed transient families for this site's table
 			// (host-keyed llms.txt + per-page archive ItemList JSON-LD +
-			// Shopify /products.json feed pages). Same rationale as the
-			// single-site block above.
+			// Shopify /products.json bulk feed pages + the v2 scoped feed
+			// families: single product wc_ai_sf_prod_, per-collection
+			// wc_ai_sf_coll_, collection list wc_ai_sf_colls_). coll_ and
+			// colls_ need separate patterns (esc_like escapes the trailing
+			// underscore literal). Same rationale as the single-site block.
 			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
 			global $wpdb;
 			$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 				$wpdb->prepare(
-					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
+					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
 					$wpdb->esc_like( '_transient_wc_ai_storefront_llms_txt_' ) . '%',
 					$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%',
 					$wpdb->esc_like( '_transient_wc_ai_storefront_itemlist_' ) . '%',
 					$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_itemlist_' ) . '%',
 					$wpdb->esc_like( '_transient_wc_ai_sf_pjson_' ) . '%',
-					$wpdb->esc_like( '_transient_timeout_wc_ai_sf_pjson_' ) . '%'
+					$wpdb->esc_like( '_transient_timeout_wc_ai_sf_pjson_' ) . '%',
+					$wpdb->esc_like( '_transient_wc_ai_sf_prod_' ) . '%',
+					$wpdb->esc_like( '_transient_timeout_wc_ai_sf_prod_' ) . '%',
+					$wpdb->esc_like( '_transient_wc_ai_sf_coll_' ) . '%',
+					$wpdb->esc_like( '_transient_timeout_wc_ai_sf_coll_' ) . '%',
+					$wpdb->esc_like( '_transient_wc_ai_sf_colls_' ) . '%',
+					$wpdb->esc_like( '_transient_timeout_wc_ai_sf_colls_' ) . '%'
 				)
 			);
 
