@@ -33,6 +33,12 @@ class WC_AI_Storefront_Products_Feed {
 	const QUERY_VAR_PRODUCT = 'wc_ai_storefront_product_json';
 
 	/**
+	 * Query var carrying the category slug for the v2 per-collection endpoint
+	 * `/collections/{handle}/products.json`.
+	 */
+	const QUERY_VAR_COLLECTION = 'wc_ai_storefront_collection_json';
+
+	/**
 	 * Option holding the monotonically-increasing feed cache version. Bumped
 	 * by the cache invalidator on product/settings change; because the cache
 	 * key embeds it, a single bump orphans every cached page at once.
@@ -56,6 +62,16 @@ class WC_AI_Storefront_Products_Feed {
 		// slug (hyphens included). Distinct prefix from the bulk
 		// `^products\.json$` rule, so no precedence collision here.
 		add_rewrite_rule( '^products/([^/]+)\.json$', 'index.php?' . self::QUERY_VAR_PRODUCT . '=$matches[1]', 'top' );
+		// v2 per-collection: /collections/{handle}/products.json. The
+		// `(?!all/)` negative lookahead is load-bearing: without it `([^/]+)`
+		// would capture `all` and route /collections/all/products.json (the
+		// bulk alias above) into THIS per-collection handler, which would then
+		// look up a product_cat literally slugged `all` and 404. The lookahead
+		// makes this rule structurally incapable of matching `all/`, so the
+		// bulk alias wins regardless of WP's 'top'-prepend rule ordering. A
+		// category genuinely slugged e.g. `all-weather` is unaffected (the
+		// lookahead matches only the exact `all/` segment).
+		add_rewrite_rule( '^collections/(?!all/)([^/]+)/products\.json$', 'index.php?' . self::QUERY_VAR_COLLECTION . '=$matches[1]', 'top' );
 	}
 
 	/**
@@ -67,6 +83,7 @@ class WC_AI_Storefront_Products_Feed {
 	public function add_query_vars( $vars ) {
 		$vars[] = self::QUERY_VAR;
 		$vars[] = self::QUERY_VAR_PRODUCT;
+		$vars[] = self::QUERY_VAR_COLLECTION;
 		return $vars;
 	}
 
@@ -87,7 +104,7 @@ class WC_AI_Storefront_Products_Feed {
 	 *                                   original value otherwise.
 	 */
 	public function suppress_canonical_redirect( $redirect_url ) {
-		foreach ( [ self::QUERY_VAR, self::QUERY_VAR_PRODUCT ] as $var ) {
+		foreach ( [ self::QUERY_VAR, self::QUERY_VAR_PRODUCT, self::QUERY_VAR_COLLECTION ] as $var ) {
 			if ( get_query_var( $var ) ) {
 				return false;
 			}
@@ -159,6 +176,36 @@ class WC_AI_Storefront_Products_Feed {
 		}
 
 		echo $json; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-encoded JSON.
+		exit;
+	}
+
+	/**
+	 * Serve the v2 per-collection endpoint /collections/{handle}/products.json.
+	 *
+	 * Same gate/header/OPTIONS preamble, then emits the syndicated products in
+	 * the named category as `{ "products": [ … ] }`, paginated like the bulk
+	 * feed. Unlike the single-product endpoint, an unknown OR empty-after-gate
+	 * category returns `200 { "products": [] }` (a uniform empty body, never a
+	 * 404) — only the global gate (plugin/feed off) 404s. Uniform empties
+	 * avoid leaking which category slugs exist.
+	 */
+	public function serve_collection_products(): void {
+		$handle = (string) get_query_var( self::QUERY_VAR_COLLECTION );
+		if ( '' === $handle ) {
+			return;
+		}
+		if ( ! $this->feed_enabled() ) {
+			status_header( 404 );
+			exit;
+		}
+
+		$this->send_feed_headers();
+		if ( $this->is_options_request() ) {
+			status_header( 204 );
+			exit;
+		}
+
+		echo $this->get_cached_collection_products( $handle, $this->request_limit(), $this->request_page() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-encoded JSON.
 		exit;
 	}
 
@@ -290,6 +337,83 @@ class WC_AI_Storefront_Products_Feed {
 			return null;
 		}
 		return (string) wp_json_encode( [ 'product' => self::map_product( $product ) ] );
+	}
+
+	/**
+	 * Return the per-collection page body, going through the cache. Key family
+	 * `wc_ai_sf_coll_` embeds the slug AND limit+page (paginated bodies must
+	 * not collide) plus the shared version integer, so one global bump orphans
+	 * it with every other family. An empty result is a valid body and is
+	 * cached; a category that doesn't exist yet refreshes on the version bump
+	 * the invalidator fires when a product_cat term is created.
+	 *
+	 * @param string $handle Category slug.
+	 * @param int    $limit  Per-page count.
+	 * @param int    $page   1-based page.
+	 * @return string JSON.
+	 */
+	private function get_cached_collection_products( string $handle, int $limit, int $page ): string {
+		$version = (int) get_option( self::VERSION_OPTION, 1 );
+		$host    = isset( $_SERVER['HTTP_HOST'] ) ? (string) wp_unslash( $_SERVER['HTTP_HOST'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- used only inside an md5 cache key.
+		$key     = 'wc_ai_sf_coll_' . md5( $host . "|{$version}|{$handle}|{$limit}|{$page}" );
+
+		$cached = get_transient( $key );
+		if ( is_string( $cached ) ) {
+			return $cached;
+		}
+
+		$json = $this->build_collection_products_json( $handle, $limit, $page );
+		set_transient( $key, $json, self::CACHE_TTL );
+		return $json;
+	}
+
+	/**
+	 * Build `{ "products": [ … ] }` for the products in one category.
+	 *
+	 * Unknown category slug → empty products (the caller serves it 200). The
+	 * same leak-proof gate as every other endpoint: `visibility => 'catalog'`
+	 * drops Hidden / Search-only products at the query and is_product_syndicated()
+	 * applies syndication scope — so a hidden product assigned to a visible
+	 * category never appears here.
+	 *
+	 * @param string $handle Category slug.
+	 * @param int    $limit  Per-page count.
+	 * @param int    $page   1-based page.
+	 * @return string JSON.
+	 */
+	private function build_collection_products_json( string $handle, int $limit, int $page ): string {
+		$empty = (string) wp_json_encode( [ 'products' => [] ] );
+
+		$term = get_term_by( 'slug', $handle, 'product_cat' );
+		if ( ! $term instanceof WP_Term ) {
+			return $empty;
+		}
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return $empty;
+		}
+
+		$settings = WC_AI_Storefront::get_settings();
+		$products = wc_get_products(
+			[
+				'status'     => 'publish',
+				'visibility' => 'catalog',
+				'category'   => [ $term->slug ],
+				'limit'      => $limit,
+				'page'       => $page,
+				'paginate'   => false,
+				'return'     => 'objects',
+			]
+		);
+
+		$mapped = [];
+		foreach ( (array) $products as $product ) {
+			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
+				continue;
+			}
+			$mapped[] = self::map_product( $product );
+		}
+
+		return (string) wp_json_encode( [ 'products' => $mapped ] );
 	}
 
 	/**
