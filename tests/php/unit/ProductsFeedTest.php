@@ -253,18 +253,19 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Source-inspection guard for the serve handler's edge-cache + CORS
-	 * wiring. serve_products_feed() emits headers + exit(), so (per the
-	 * established suite pattern, see LlmsTxtTest's
-	 * test_agents_md_serve_mirrors_llms_txt_exactly) the header wiring is
-	 * pinned at source level rather than by capturing output across exit().
+	 * Source-inspection guard for the shared edge-cache + CORS header wiring.
+	 * The handlers emit headers + exit(), so (per the established suite
+	 * pattern, see LlmsTxtTest's test_agents_md_serve_mirrors_llms_txt_exactly)
+	 * the wiring is pinned at source level. Every feed endpoint routes through
+	 * send_feed_headers(), so the header literals live there now; this guard
+	 * inspects that helper plus confirms serve_products_feed() calls it.
 	 */
 	public function test_serve_emits_discovery_cache_and_cors_headers(): void {
 		$source = file_get_contents( dirname( __DIR__, 3 ) . '/includes/ai-storefront/class-wc-ai-storefront-products-feed.php' );
 
-		$start = strpos( $source, 'function serve_products_feed(' );
-		$this->assertNotFalse( $start, 'serve_products_feed() must exist.' );
-		$body = substr( $source, $start );
+		$start = strpos( $source, 'function send_feed_headers(' );
+		$this->assertNotFalse( $start, 'send_feed_headers() must exist.' );
+		$body = substr( $source, $start, 600 );
 
 		// Content type is JSON.
 		$this->assertStringContainsString( 'application/json; charset=utf-8', $body );
@@ -278,8 +279,14 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( "header( 'Access-Control-Allow-Origin: *' )", $body );
 		// Must not regress the edge-cache rate-limit fix with a no-store.
 		$this->assertStringNotContainsString( 'Cache-Control: no-store', $body );
-		// The cached path is used (Task 5) — not the raw builder.
-		$this->assertStringContainsString( 'get_cached_feed_json(', $body );
+
+		// serve_products_feed() must route through the shared header helper
+		// and the cached path (not the raw builder).
+		$serve_start = strpos( $source, 'function serve_products_feed(' );
+		$this->assertNotFalse( $serve_start, 'serve_products_feed() must exist.' );
+		$serve_body = substr( $source, $serve_start, 600 );
+		$this->assertStringContainsString( 'send_feed_headers()', $serve_body );
+		$this->assertStringContainsString( 'get_cached_feed_json(', $serve_body );
 	}
 
 	// ------------------------------------------------------------------

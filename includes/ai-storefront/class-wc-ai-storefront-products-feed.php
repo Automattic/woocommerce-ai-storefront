@@ -27,6 +27,12 @@ class WC_AI_Storefront_Products_Feed {
 	const QUERY_VAR = 'wc_ai_storefront_products_json';
 
 	/**
+	 * Query var carrying the product slug for the v2 single-product endpoint
+	 * `/products/{handle}.json`.
+	 */
+	const QUERY_VAR_PRODUCT = 'wc_ai_storefront_product_json';
+
+	/**
 	 * Option holding the monotonically-increasing feed cache version. Bumped
 	 * by the cache invalidator on product/settings change; because the cache
 	 * key embeds it, a single bump orphans every cached page at once.
@@ -46,6 +52,10 @@ class WC_AI_Storefront_Products_Feed {
 	public function add_rewrite_rules(): void {
 		add_rewrite_rule( '^products\.json$', 'index.php?' . self::QUERY_VAR . '=1', 'top' );
 		add_rewrite_rule( '^collections/all/products\.json$', 'index.php?' . self::QUERY_VAR . '=1', 'top' );
+		// v2 single-product: /products/{handle}.json. `([^/]+)` matches any
+		// slug (hyphens included). Distinct prefix from the bulk
+		// `^products\.json$` rule, so no precedence collision here.
+		add_rewrite_rule( '^products/([^/]+)\.json$', 'index.php?' . self::QUERY_VAR_PRODUCT . '=$matches[1]', 'top' );
 	}
 
 	/**
@@ -56,6 +66,7 @@ class WC_AI_Storefront_Products_Feed {
 	 */
 	public function add_query_vars( $vars ) {
 		$vars[] = self::QUERY_VAR;
+		$vars[] = self::QUERY_VAR_PRODUCT;
 		return $vars;
 	}
 
@@ -76,8 +87,10 @@ class WC_AI_Storefront_Products_Feed {
 	 *                                   original value otherwise.
 	 */
 	public function suppress_canonical_redirect( $redirect_url ) {
-		if ( get_query_var( self::QUERY_VAR ) ) {
-			return false;
+		foreach ( [ self::QUERY_VAR, self::QUERY_VAR_PRODUCT ] as $var ) {
+			if ( get_query_var( $var ) ) {
+				return false;
+			}
 		}
 		return $redirect_url;
 	}
@@ -95,30 +108,92 @@ class WC_AI_Storefront_Products_Feed {
 		if ( ! get_query_var( self::QUERY_VAR ) ) {
 			return;
 		}
-
-		$settings = WC_AI_Storefront::get_settings();
-		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) || 'yes' !== ( $settings['products_json_enabled'] ?? 'no' ) ) {
+		if ( ! $this->feed_enabled() ) {
 			status_header( 404 );
 			exit;
 		}
 
-		header( 'Content-Type: application/json; charset=utf-8' );
-		header( 'Cache-Control: ' . WC_AI_Storefront::discovery_cache_control() );
-		header( 'Vary: Host' );
-		header( 'X-Content-Type-Options: nosniff' );
-		// Machine surface, not a landing page — keep it out of search indexes,
-		// matching the sibling /opensearch.xml endpoint.
-		header( 'X-Robots-Tag: noindex' );
-		header( 'Access-Control-Allow-Origin: *' );
-		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
-
-		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared to a constant.
+		$this->send_feed_headers();
+		if ( $this->is_options_request() ) {
 			status_header( 204 );
 			exit;
 		}
 
 		echo $this->get_cached_feed_json( $this->request_limit(), $this->request_page() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-encoded JSON.
 		exit;
+	}
+
+	/**
+	 * Serve the v2 single-product endpoint /products/{handle}.json.
+	 *
+	 * Same gate/header/OPTIONS preamble as serve_products_feed(), then
+	 * resolves the slug to a catalog-visible, syndicated, published product
+	 * and emits `{ "product": { … } }` — Shopify's SINGULAR `product` key
+	 * holding an OBJECT, not the bulk `{ "products": [ … ] }`. A slug that
+	 * doesn't resolve (unknown, or resolving only to a hidden/unsyndicated
+	 * product) 404s rather than leaking the product.
+	 */
+	public function serve_single_product(): void {
+		$handle = (string) get_query_var( self::QUERY_VAR_PRODUCT );
+		if ( '' === $handle ) {
+			return;
+		}
+		if ( ! $this->feed_enabled() ) {
+			status_header( 404 );
+			exit;
+		}
+
+		$this->send_feed_headers();
+		if ( $this->is_options_request() ) {
+			status_header( 204 );
+			exit;
+		}
+
+		// Resolved AFTER headers so OPTIONS/gate are uniform with the other
+		// endpoints; a handle miss returns a bodyless 404 (the json
+		// content-type header is harmless on an empty 404).
+		$json = $this->get_cached_single_product( $handle );
+		if ( null === $json ) {
+			status_header( 404 );
+			exit;
+		}
+
+		echo $json; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-encoded JSON.
+		exit;
+	}
+
+	/**
+	 * Whether the feed is servable: plugin enabled AND the products.json
+	 * toggle on. The shared 404 gate for every feed endpoint.
+	 */
+	private function feed_enabled(): bool {
+		$settings = WC_AI_Storefront::get_settings();
+		return 'yes' === ( $settings['enabled'] ?? 'no' ) && 'yes' === ( $settings['products_json_enabled'] ?? 'no' );
+	}
+
+	/**
+	 * Emit the edge-cache + CORS + content-type headers every feed endpoint
+	 * sends. Rewrite path + discovery cache-control + Vary: Host make the
+	 * response edge-cacheable so the platform rate-limiter never sees the
+	 * uncached burst that throttles /wp-json discovery probes. The
+	 * `X-Robots-Tag: noindex` keeps the machine surface out of search
+	 * indexes, matching the sibling /opensearch.xml endpoint.
+	 */
+	private function send_feed_headers(): void {
+		header( 'Content-Type: application/json; charset=utf-8' );
+		header( 'Cache-Control: ' . WC_AI_Storefront::discovery_cache_control() );
+		header( 'Vary: Host' );
+		header( 'X-Content-Type-Options: nosniff' );
+		header( 'X-Robots-Tag: noindex' );
+		header( 'Access-Control-Allow-Origin: *' );
+		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
+	}
+
+	/**
+	 * Whether the current request is a CORS preflight (OPTIONS).
+	 */
+	private function is_options_request(): bool {
+		return isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === wp_unslash( $_SERVER['REQUEST_METHOD'] ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared to a constant.
 	}
 
 	/**
@@ -147,6 +222,74 @@ class WC_AI_Storefront_Products_Feed {
 		$json = $this->get_feed_json( $limit, $page );
 		set_transient( $key, $json, self::CACHE_TTL );
 		return $json;
+	}
+
+	/**
+	 * Return the single-product body, going through the cache. Null (a 404,
+	 * NOT cached) when the slug doesn't resolve to a servable product.
+	 *
+	 * Key family `wc_ai_sf_prod_` is distinct from the paginated bulk feed's
+	 * `wc_ai_sf_pjson_`, but embeds the SAME version integer — so the single
+	 * global version bump (on product/settings change) orphans single-product
+	 * entries along with every other family at once. No pagination component.
+	 *
+	 * @param string $handle Product slug.
+	 * @return string|null JSON, or null to 404.
+	 */
+	private function get_cached_single_product( string $handle ): ?string {
+		$version = (int) get_option( self::VERSION_OPTION, 1 );
+		$host    = isset( $_SERVER['HTTP_HOST'] ) ? (string) wp_unslash( $_SERVER['HTTP_HOST'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- used only inside an md5 cache key.
+		$key     = 'wc_ai_sf_prod_' . md5( $host . "|{$version}|{$handle}" );
+
+		$cached = get_transient( $key );
+		if ( is_string( $cached ) ) {
+			return $cached;
+		}
+
+		$json = $this->build_single_product_json( $handle );
+		if ( null === $json ) {
+			return null;
+		}
+		set_transient( $key, $json, self::CACHE_TTL );
+		return $json;
+	}
+
+	/**
+	 * Resolve a slug to a servable product and build `{ "product": { … } }`,
+	 * or null when it doesn't resolve.
+	 *
+	 * The leak-proof gate: `visibility => 'catalog'` makes WC drop Hidden /
+	 * Search-only products at the query, and is_product_syndicated() then
+	 * applies the merchant's syndication scope. A slug that exists but points
+	 * at a hidden or unsyndicated product returns null (404) — it must never
+	 * 200 with the product body. WC enforces unique product slugs, so
+	 * `limit => 1` is exact.
+	 *
+	 * @param string $handle Product slug.
+	 * @return string|null
+	 */
+	private function build_single_product_json( string $handle ): ?string {
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return null;
+		}
+		$products = wc_get_products(
+			[
+				'slug'       => $handle,
+				'status'     => 'publish',
+				'visibility' => 'catalog',
+				'limit'      => 1,
+				'paginate'   => false,
+				'return'     => 'objects',
+			]
+		);
+		$product  = is_array( $products ) && ! empty( $products ) ? $products[0] : null;
+		if ( null === $product ) {
+			return null;
+		}
+		if ( ! WC_AI_Storefront::is_product_syndicated( $product, WC_AI_Storefront::get_settings() ) ) {
+			return null;
+		}
+		return (string) wp_json_encode( [ 'product' => self::map_product( $product ) ] );
 	}
 
 	/**
