@@ -339,7 +339,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_init_registers_all_expected_hooks(): void {
 		Functions\expect( 'add_action' )
-			->times( 15 ); // 4 product + 1 stock + 3 category + 1 settings + 1 sitemap-settings + 1 cron + 4 products-feed-version = 15.
+			->times( 18 ); // 4 product + 1 stock + 3 category + 1 settings + 1 sitemap-settings + 1 cron + 7 products-feed-version (4 product/settings + 3 product_cat term events) = 18.
 
 		$this->invalidator->init();
 	}
