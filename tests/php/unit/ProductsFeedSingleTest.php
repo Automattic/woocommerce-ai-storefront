@@ -186,6 +186,33 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_serve_single_404s_on_handle_miss_after_headers(): void {
+		// The serve-level seam: a slug resolving to nothing reaches the
+		// POST-header 404 (status_header(404) after send_feed_headers()). This
+		// is distinct from the gate-404 — the feed is enabled here; the 404
+		// comes from the miss, and the resolve happens after headers by design.
+		Functions\when( 'get_query_var' )->justReturn( 'ghost' );
+		Functions\when( 'get_option' )->justReturn( 1 );
+		Functions\when( 'get_transient' )->justReturn( false );
+		Functions\when( 'wc_get_products' )->justReturn( [] ); // handle miss → null → 404.
+		Functions\when( 'status_header' )->alias(
+			static function ( $code ) {
+				throw new \RuntimeException( 'status_header:' . $code );
+			}
+		);
+
+		try {
+			$this->feed->serve_single_product();
+			$this->fail( 'Expected serve_single_product() to 404 on a handle miss.' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertSame( 'status_header:404', $e->getMessage() );
+		}
+	}
+
 	// ------------------------------------------------------------------
 	// build_single_product_json() — shape, 404, and leak paths
 	// ------------------------------------------------------------------

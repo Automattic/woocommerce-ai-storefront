@@ -133,7 +133,7 @@ Monotonically-increasing integer that versions the Shopify `/products.json` feed
 - **Defined in:** `WC_AI_Storefront_Products_Feed::VERSION_OPTION` ([`includes/ai-storefront/class-wc-ai-storefront-products-feed.php`](../../includes/ai-storefront/class-wc-ai-storefront-products-feed.php))
 - **Written by:** `WC_AI_Storefront_Cache_Invalidator::bump_products_feed_version()`
 - **Bumped on:** `save_post_product`, `woocommerce_update_product`, `woocommerce_delete_product`, `update_option_<SETTINGS_OPTION>`, and — for the v2 `/collections.json` and per-collection feeds — the `product_cat` term events `created_product_cat`, `edited_product_cat`, and `delete_product_cat` (a renamed or deleted category must refresh the collection list and its per-collection pages). Tag/brand term edits still flow through `woocommerce_update_product` on the affected products, so they don't need separate hooks.
-- **Read by:** `WC_AI_Storefront_Products_Feed::get_cached_feed_json()` when assembling the cache key
+- **Read by:** all four feed cache getters when assembling their keys — `get_cached_feed_json()` (bulk), `get_cached_single_product()`, `get_cached_collection_products()`, and `get_cached_collections()` — so a single bump orphans every family at once
 - **Uninstall:** deleted by `uninstall.php` (single-site and per-blog multisite paths)
 
 ---

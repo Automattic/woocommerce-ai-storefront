@@ -74,14 +74,17 @@ class WC_AI_Storefront_Products_Feed {
 		// `^products\.json$` rule, so no precedence collision here.
 		add_rewrite_rule( '^products/([^/]+)\.json$', 'index.php?' . self::QUERY_VAR_PRODUCT . '=$matches[1]', 'top' );
 		// v2 per-collection: /collections/{handle}/products.json. The
-		// `(?!all/)` negative lookahead is load-bearing: without it `([^/]+)`
-		// would capture `all` and route /collections/all/products.json (the
-		// bulk alias above) into THIS per-collection handler, which would then
-		// look up a product_cat literally slugged `all` and 404. The lookahead
-		// makes this rule structurally incapable of matching `all/`, so the
-		// bulk alias wins regardless of WP's 'top'-prepend rule ordering. A
-		// category genuinely slugged e.g. `all-weather` is unaffected (the
-		// lookahead matches only the exact `all/` segment).
+		// `(?!all/)` negative lookahead is load-bearing. `add_rewrite_rule(…,
+		// 'top')` PREPENDS, so this rule is actually matched BEFORE the bulk
+		// `^collections/all/products\.json$` alias above — source-line position
+		// does NOT protect the alias. Without the lookahead, `([^/]+)` would
+		// capture `all` and route /collections/all/products.json into THIS
+		// per-collection handler, which would then look up a product_cat
+		// literally slugged `all` and 404. The lookahead makes this rule
+		// structurally unable to match `all/`, so the alias is reached
+		// regardless of ordering. A category genuinely slugged e.g.
+		// `all-weather` is unaffected (the lookahead rejects only the exact
+		// `all/` segment).
 		add_rewrite_rule( '^collections/(?!all/)([^/]+)/products\.json$', 'index.php?' . self::QUERY_VAR_COLLECTION . '=$matches[1]', 'top' );
 		// v2 collection list: /collections.json.
 		add_rewrite_rule( '^collections\.json$', 'index.php?' . self::QUERY_VAR_COLLECTIONS . '=1', 'top' );
@@ -447,8 +450,9 @@ class WC_AI_Storefront_Products_Feed {
 			]
 		);
 
-		$mapped = [];
-		foreach ( (array) $products as $product ) {
+		$mapped   = [];
+		$products = is_array( $products ) ? $products : [];
+		foreach ( $products as $product ) {
 			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 				continue;
 			}
@@ -621,8 +625,9 @@ class WC_AI_Storefront_Products_Feed {
 		];
 		$products = function_exists( 'wc_get_products' ) ? wc_get_products( $query ) : [];
 
-		$mapped = [];
-		foreach ( (array) $products as $product ) {
+		$mapped   = [];
+		$products = is_array( $products ) ? $products : [];
+		foreach ( $products as $product ) {
 			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 				continue;
 			}

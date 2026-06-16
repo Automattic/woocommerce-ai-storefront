@@ -289,6 +289,35 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'get_cached_feed_json(', $serve_body );
 	}
 
+	/**
+	 * uninstall.php hardcodes the cache-key prefixes (the plugin classes are
+	 * not loaded at uninstall, so it can't read the constants). Guard that
+	 * every `wc_ai_sf_*_` family the feed class writes is also purged on
+	 * uninstall — a renamed prefix that isn't mirrored would silently orphan
+	 * transients forever, with no other test failing. Source-inspection since
+	 * uninstall.php has no runtime harness.
+	 */
+	public function test_uninstall_purges_every_feed_cache_key_family(): void {
+		$root          = dirname( __DIR__, 3 );
+		$feed_src      = (string) file_get_contents( $root . '/includes/ai-storefront/class-wc-ai-storefront-products-feed.php' );
+		$uninstall_src = (string) file_get_contents( $root . '/uninstall.php' );
+
+		// Every distinct 'wc_ai_sf_<family>_' string literal in the feed class.
+		preg_match_all( "/'(wc_ai_sf_[a-z]+_)'/", $feed_src, $matches );
+		$prefixes = array_values( array_unique( $matches[1] ) );
+
+		// Sanity: all four families (pjson/prod/coll/colls) must be present.
+		$this->assertGreaterThanOrEqual( 4, count( $prefixes ), 'expected the four feed cache-key prefixes' );
+
+		foreach ( $prefixes as $prefix ) {
+			$this->assertStringContainsString(
+				'_transient_' . $prefix,
+				$uninstall_src,
+				"uninstall.php must purge the {$prefix} transient family"
+			);
+		}
+	}
+
 	// ------------------------------------------------------------------
 	// get_feed_json() — body shape + syndication gate
 	// ------------------------------------------------------------------

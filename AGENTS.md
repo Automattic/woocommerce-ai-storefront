@@ -159,6 +159,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/ai-storefront/class-wc-ai-storefront-ucp.php` | API-REFERENCE.md, UCP-BUY-FLOW.md, CART-MODELS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-llms-txt.php` | ARCHITECTURE.md, HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-jsonld.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md, JSON-LD-SCHEMA.md |
+| `includes/ai-storefront/class-wc-ai-storefront-products-feed.php` | API-REFERENCE.md, ARCHITECTURE.md, DATA-MODEL.md, KNOWN-GAPS.md, HOOKS.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-handling-time.php` | JSON-LD-SCHEMA.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-robots.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php` | ARCHITECTURE.md, USER-GUIDE.md |
