@@ -21,6 +21,12 @@ class WC_AI_Storefront_Products_Feed {
 	const PRODUCT_FILTER = 'wc_ai_storefront_products_feed_product';
 
 	/**
+	 * Filter applied to one mapped collection (category) before it enters the
+	 * /collections.json list. Mirrors PRODUCT_FILTER.
+	 */
+	const COLLECTION_FILTER = 'wc_ai_storefront_products_feed_collection';
+
+	/**
 	 * Query var both rewrite rules resolve to. WP routes /products.json and
 	 * the /collections/all/products.json alias through the same handler.
 	 */
@@ -37,6 +43,11 @@ class WC_AI_Storefront_Products_Feed {
 	 * `/collections/{handle}/products.json`.
 	 */
 	const QUERY_VAR_COLLECTION = 'wc_ai_storefront_collection_json';
+
+	/**
+	 * Flag query var for the v2 collection-list endpoint `/collections.json`.
+	 */
+	const QUERY_VAR_COLLECTIONS = 'wc_ai_storefront_collections_json';
 
 	/**
 	 * Option holding the monotonically-increasing feed cache version. Bumped
@@ -72,6 +83,8 @@ class WC_AI_Storefront_Products_Feed {
 		// category genuinely slugged e.g. `all-weather` is unaffected (the
 		// lookahead matches only the exact `all/` segment).
 		add_rewrite_rule( '^collections/(?!all/)([^/]+)/products\.json$', 'index.php?' . self::QUERY_VAR_COLLECTION . '=$matches[1]', 'top' );
+		// v2 collection list: /collections.json.
+		add_rewrite_rule( '^collections\.json$', 'index.php?' . self::QUERY_VAR_COLLECTIONS . '=1', 'top' );
 	}
 
 	/**
@@ -84,6 +97,7 @@ class WC_AI_Storefront_Products_Feed {
 		$vars[] = self::QUERY_VAR;
 		$vars[] = self::QUERY_VAR_PRODUCT;
 		$vars[] = self::QUERY_VAR_COLLECTION;
+		$vars[] = self::QUERY_VAR_COLLECTIONS;
 		return $vars;
 	}
 
@@ -104,7 +118,7 @@ class WC_AI_Storefront_Products_Feed {
 	 *                                   original value otherwise.
 	 */
 	public function suppress_canonical_redirect( $redirect_url ) {
-		foreach ( [ self::QUERY_VAR, self::QUERY_VAR_PRODUCT, self::QUERY_VAR_COLLECTION ] as $var ) {
+		foreach ( [ self::QUERY_VAR, self::QUERY_VAR_PRODUCT, self::QUERY_VAR_COLLECTION, self::QUERY_VAR_COLLECTIONS ] as $var ) {
 			if ( get_query_var( $var ) ) {
 				return false;
 			}
@@ -206,6 +220,34 @@ class WC_AI_Storefront_Products_Feed {
 		}
 
 		echo $this->get_cached_collection_products( $handle, $this->request_limit(), $this->request_page() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-encoded JSON.
+		exit;
+	}
+
+	/**
+	 * Serve the v2 collection-list endpoint /collections.json.
+	 *
+	 * Same gate/header/OPTIONS preamble, then emits the store's categories as
+	 * `{ "collections": [ … ] }`. Only categories with at least one
+	 * catalog-visible, syndicated product are listed, and `products_count` is
+	 * that post-gate count — so /collections.json and the per-collection
+	 * endpoint stay mutually consistent (no advertised-but-empty categories).
+	 */
+	public function serve_collections(): void {
+		if ( ! get_query_var( self::QUERY_VAR_COLLECTIONS ) ) {
+			return;
+		}
+		if ( ! $this->feed_enabled() ) {
+			status_header( 404 );
+			exit;
+		}
+
+		$this->send_feed_headers();
+		if ( $this->is_options_request() ) {
+			status_header( 204 );
+			exit;
+		}
+
+		echo $this->get_cached_collections(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-encoded JSON.
 		exit;
 	}
 
@@ -414,6 +456,141 @@ class WC_AI_Storefront_Products_Feed {
 		}
 
 		return (string) wp_json_encode( [ 'products' => $mapped ] );
+	}
+
+	/**
+	 * Return the collection-list body, going through the cache. Key family
+	 * `wc_ai_sf_colls_` is host + the shared version integer (no pagination —
+	 * the list is unpaginated). The per-category visible/syndicated count is
+	 * the expensive part, so it's computed once per version bump and reused.
+	 *
+	 * @return string JSON.
+	 */
+	private function get_cached_collections(): string {
+		$version = (int) get_option( self::VERSION_OPTION, 1 );
+		$host    = isset( $_SERVER['HTTP_HOST'] ) ? (string) wp_unslash( $_SERVER['HTTP_HOST'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- used only inside an md5 cache key.
+		$key     = 'wc_ai_sf_colls_' . md5( $host . "|{$version}" );
+
+		$cached = get_transient( $key );
+		if ( is_string( $cached ) ) {
+			return $cached;
+		}
+
+		$json = $this->build_collections_json();
+		set_transient( $key, $json, self::CACHE_TTL );
+		return $json;
+	}
+
+	/**
+	 * Build `{ "collections": [ … ] }`.
+	 *
+	 * Lists only product_cat terms with at least one catalog-visible,
+	 * syndicated product, so the list never advertises a category the
+	 * per-collection endpoint would return empty for. `hide_empty => true`
+	 * pre-filters terms with zero products; the post-gate count then drops any
+	 * remaining category whose products are all hidden/unsyndicated.
+	 *
+	 * @return string JSON.
+	 */
+	private function build_collections_json(): string {
+		$terms = get_terms(
+			[
+				'taxonomy'   => 'product_cat',
+				'hide_empty' => true,
+			]
+		);
+		if ( ! is_array( $terms ) ) {
+			return (string) wp_json_encode( [ 'collections' => [] ] );
+		}
+
+		$settings    = WC_AI_Storefront::get_settings();
+		$collections = [];
+		foreach ( $terms as $term ) {
+			if ( ! $term instanceof WP_Term ) {
+				continue;
+			}
+			$count = $this->syndicated_count_for_category( $term->slug, $settings );
+			if ( $count < 1 ) {
+				continue;
+			}
+			$collections[] = self::map_collection( $term, $count );
+		}
+
+		return (string) wp_json_encode( [ 'collections' => $collections ] );
+	}
+
+	/**
+	 * Count the catalog-visible, syndicated products in one category — the
+	 * post-gate count that `products_count` and category inclusion key on.
+	 * Uses `return => 'ids'` (cheap) + prime_syndication_cache() so by_taxonomy
+	 * mode doesn't issue an N+1 of term-relationship queries.
+	 *
+	 * @param string $slug     Category slug.
+	 * @param array  $settings Plugin settings.
+	 * @return int
+	 */
+	private function syndicated_count_for_category( string $slug, array $settings ): int {
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return 0;
+		}
+		$ids = wc_get_products(
+			[
+				'status'     => 'publish',
+				'visibility' => 'catalog',
+				'category'   => [ $slug ],
+				'limit'      => -1,
+				'paginate'   => false,
+				'return'     => 'ids',
+			]
+		);
+		if ( ! is_array( $ids ) || empty( $ids ) ) {
+			return 0;
+		}
+		$ids = array_map( 'intval', $ids );
+		WC_AI_Storefront::prime_syndication_cache( $ids, $settings );
+
+		$count = 0;
+		foreach ( $ids as $id ) {
+			if ( WC_AI_Storefront::is_product_syndicated( $id, $settings ) ) {
+				++$count;
+			}
+		}
+		return $count;
+	}
+
+	/**
+	 * Map one product_cat term to the Shopify collection shape.
+	 *
+	 * `published_at` / `updated_at` are null: the `wp_terms` table carries no
+	 * created/modified dates, and fabricating one (e.g. "now") would poison
+	 * agent diff-sync. Shopify always emits the keys, so they're present as
+	 * null rather than omitted. `body_html` is the raw term description
+	 * (Shopify's collection description slot).
+	 *
+	 * @param WP_Term $term           The category term.
+	 * @param int     $products_count Post-gate visible/syndicated count.
+	 * @return array
+	 */
+	private static function map_collection( WP_Term $term, int $products_count ): array {
+		$data = [
+			'id'             => (int) $term->term_id,
+			'handle'         => (string) $term->slug,
+			'title'          => self::decode( (string) $term->name ),
+			'body_html'      => (string) $term->description,
+			'published_at'   => null,
+			'updated_at'     => null,
+			'products_count' => $products_count,
+		];
+
+		/**
+		 * Filter a single mapped collection before it enters /collections.json.
+		 *
+		 * @param array   $data The mapped collection.
+		 * @param WP_Term $term The source product_cat term.
+		 */
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- COLLECTION_FILTER is the literal 'wc_ai_storefront_products_feed_collection'; the sniff can't resolve the constant to see the prefix.
+		$filtered = apply_filters( self::COLLECTION_FILTER, $data, $term );
+		return is_array( $filtered ) ? $filtered : $data;
 	}
 
 	/**
