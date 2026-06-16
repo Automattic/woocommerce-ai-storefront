@@ -666,20 +666,6 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = '';
 
 		// ============================================================
-		// ## For agents
-		// ============================================================
-		// The collapsed UCP-discovery surface — what was previously
-		// spread across `## API Access`, `## Checkout Policy`, and
-		// `## Attribution`. Three bullets cover capability discovery
-		// (manifest), API base (REST root), and checkout escalation
-		// (the POST endpoint that returns a `continue_url`).
-		//
-		// No UTMs on any of these URLs — they're machine endpoints
-		// agents call directly, not links a buyer would follow. Adding
-		// UTM params here would pollute the agent's structured
-		// response payloads (the manifest, schema, etc.) with
-		// attribution params that don't belong there.
-		// ============================================================
 		// ## Rules for agents
 		// ============================================================
 		// Static behavioural guidance in the store's terse voice — no
@@ -702,18 +688,36 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = '- **Send `context.currency`** (ISO 4217) on catalog and checkout requests for accurate pricing. Accepted currencies are listed under Store.';
 		$lines[] = '';
 
+		// ============================================================
+		// ## For agents
+		// ============================================================
+		// The collapsed UCP-discovery surface — what was previously
+		// spread across `## API Access`, `## Checkout Policy`, and
+		// `## Attribution`. Five bullets cover the canonical agent-doc
+		// path, capability discovery (manifest), API base (REST root),
+		// batch catalog lookup, and checkout escalation (the POST
+		// endpoint that returns a `continue_url`).
+		//
+		// No UTMs on any of these URLs — they're machine endpoints
+		// agents call directly, not links a buyer would follow. Adding
+		// UTM params here would pollute the agent's structured
+		// response payloads (the manifest, schema, etc.) with
+		// attribution params that don't belong there.
 		$ucp_api_base = rtrim( rest_url( 'wc/ucp/v1' ), '/' );
 		$ucp_manifest = $site_url . '.well-known/ucp';
 		$ucp_checkout = $ucp_api_base . '/checkout-sessions';
 		// `agents.md` is the emerging canonical agent-doc path; this same
 		// document is served byte-identically at both `/llms.txt` and
-		// `/agents.md`. The line is self-referential on `/agents.md`
-		// (which is correct) and a pointer from `/llms.txt`, so an agent
-		// that found either one knows the canonical name of the other.
+		// `/agents.md`. The line names `agents.md` as canonical and notes
+		// the document is also served at `/llms.txt`, so it reads correctly
+		// whichever path delivered it — a self-reference on `/agents.md`,
+		// a pointer from `/llms.txt`. (The earlier wording, "this `/llms.txt`
+		// mirrors it", was wrong when served on `/agents.md`, where "this"
+		// document IS the canonical agents.md, not the mirror.)
 		$agents_md_url = $site_url . 'agents.md';
 		$lines[]       = '## For agents';
 		$lines[]       = '';
-		$lines[]       = "- **Agent doc**: `{$agents_md_url}` (canonical; this `/llms.txt` mirrors it)";
+		$lines[]       = "- **Agent doc**: `{$agents_md_url}` (canonical agent doc; the same document is served at `/llms.txt`)";
 		$lines[]       = "- **UCP manifest**: `{$ucp_manifest}` — capability discovery (what the store supports)";
 		$lines[]       = "- **UCP API base**: `{$ucp_api_base}` — REST root for search, lookup, checkout";
 		$lines[]       = "- **Batch lookup**: `GET {$ucp_api_base}/catalog/lookup?ids=prod_1,prod_2,…` — fetch up to " . WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP . ' products in one request (or `POST /catalog/lookup`). Prefer this over many single lookups.';
