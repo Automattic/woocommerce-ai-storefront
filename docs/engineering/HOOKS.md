@@ -2,7 +2,7 @@
 
 Filters and actions exposed by WooCommerce AI Storefront for extending plugins.
 
-The plugin exposes a deliberately small surface — sixteen filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
+The plugin exposes a deliberately small surface — seventeen filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
 
 ## Filters
 
@@ -286,6 +286,42 @@ add_filter( 'wc_ai_storefront_ucp_product', function( $product, $wc_product ) {
         );
     }
     return $product;
+}, 10, 2 );
+```
+
+---
+
+### `wc_ai_storefront_products_feed_product`
+
+Filter a single mapped Shopify-shaped product before it enters the **non-UCP `/products.json` feed** (and its `/collections/all/products.json` alias). Mirrors `wc_ai_storefront_ucp_product`, but for the Shopify-compat surface rather than the UCP REST adapter.
+
+```php
+apply_filters( 'wc_ai_storefront_products_feed_product', array $data, WC_Product $product );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$data` | `array` | The mapped product in Shopify product shape. Keys: `id`, `title`, `handle`, `body_html`, `vendor` (string or `null`), `product_type` (string, may be `""`), `tags` (comma-joined string), `variants` (each with `id`, `title`, `option1/2/3`, `sku`, `price`, `compare_at_price`, `available`, `requires_shipping`), `images` (each `{ id, src }`), and — **for variable products only** — `options` (each `{ name, position, values }`). Note: `options` is absent on simple/bundle/grouped products. |
+| `$product` | `WC_Product` | The source WooCommerce product object (not a Store API array — this feed maps directly from WC product objects, unlike the UCP translator). Use it to read WC-native fields (meta, attributes, taxonomy terms) the mapper didn't surface. |
+
+**Returns:** the (possibly modified) `array`. A non-array return is ignored and the pre-filter `$data` is used (so a buggy callback can't blank a product out of the feed).
+
+**When to use:** add a Shopify field the mapper omits (e.g. a `barcode` on each variant from `global_unique_id`), override `vendor` / `product_type` from a custom taxonomy, or strip a field a particular agent integration mis-parses. Because this is a Shopify-shape contract, keep additions to fields real Shopify feeds emit — agents parse this shape zero-shot and unexpected keys add no value.
+
+Fires once per product, inside `WC_AI_Storefront_Products_Feed::map_product()`, after the WC→Shopify mapping completes. The mapper is upstream of this filter and runs first; modifications made here are not visible to the mapper.
+
+**Example — add a per-variant barcode from WC core's `global_unique_id`:**
+
+```php
+add_filter( 'wc_ai_storefront_products_feed_product', function( $data, $product ) {
+    $gtin = $product->get_global_unique_id();
+    if ( $gtin ) {
+        foreach ( $data['variants'] as &$variant ) {
+            $variant['barcode'] = $gtin;
+        }
+        unset( $variant );
+    }
+    return $data;
 }, 10, 2 );
 ```
 

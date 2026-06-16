@@ -89,7 +89,35 @@ If an AI crawls product pages directly (reading the rendered HTML and the embedd
 
 ### Future work
 
-Wire `ENDPOINT_PRODUCT_PAGE` recording into a `template_redirect` hook on single-product templates with the existing `detect_crawler_from_ua()` gate. Add a "Product page hits" tile on the Discovery tab. Probably worth doing alongside the bulk-catalog `feed.json` work, since both surfaces represent "ingestion-shaped" traffic distinct from search/lookup.
+Wire `ENDPOINT_PRODUCT_PAGE` recording into a `template_redirect` hook on single-product templates with the existing `detect_crawler_from_ua()` gate. Add a "Product page hits" tile on the Discovery tab. Worth doing alongside hit-logging for the Shopify `/products.json` feed (shipped, #449) — both surfaces represent "ingestion-shaped" traffic distinct from search/lookup, and the feed is currently edge-cached and not logged per request (the same reason the discovery surfaces aren't).
+
+---
+
+## Shopify-compatible feed: v2 endpoints deferred
+
+### What
+
+The Shopify-compatible `/products.json` feed (#449) ships only the two highest-value probe paths: `/products.json` (the #1 catalog probe) and `/collections/all/products.json` (the #2, aliased to the same all-products handler). Three further Shopify endpoints AI agents sometimes probe are **not** implemented:
+
+- `/collections.json` — the store's collection (category) list.
+- `/products/{handle}.json` — a single product by handle.
+- `/collections/{handle}/products.json` — products within a specific collection.
+
+### Why it exists
+
+v1 deliberately scoped to the two endpoints validated as the agents' actual first reaches (ChatGPT, asked for "the full catalog as raw JSON," returned `/products.json?limit=250` then `/collections/all/products.json?limit=250` in priority order). The per-collection and per-handle endpoints are a second tier — useful, but not where the zero-shot catalog probe lands first. Shipping the two highest-value paths first keeps the surface small while the hypothesis (agents probe Shopify shapes against non-Shopify stores) proves out.
+
+### Impact
+
+An agent that, after fetching `/products.json`, drills into `/collections/{handle}/products.json` to scope a category, or `/products/{handle}.json` for one item, gets a 404 on those paths. It can still get the same data: the full catalog is in `/products.json` (paginated), and the UCP REST adapter offers `GET /catalog/search` (with a `category` filter) and `GET /catalog/lookup?slug=` for the per-category and per-product cases. So there's no data gap, only a Shopify-path-shape gap for agents that hard-code the deeper Shopify URLs.
+
+### Future work
+
+Add the three endpoints behind the same `products_json_enabled` toggle when there's evidence agents probe them against non-Shopify stores often enough to matter. `/collections.json` maps to `product_cat` terms; `/products/{handle}.json` maps to a slug lookup (the mapper already exists — it's `map_product()` on a single product); `/collections/{handle}/products.json` maps to a category-filtered `wc_get_products()`. All three reuse the existing `WC_AI_Storefront_Products_Feed` mapper and cache machinery.
+
+### Caveat: proprietary-format tracking
+
+Shopify's `products.json` shape is **stable but external** — it's a de-facto convention created by Shopify's scale, not a published standard we can pin a version to. We track it best-effort. The mitigation is the "pragmatic full" subset already shipped: we populate the fields a trained parser actually keys on (`variants[].price`, `available`, `images[].src`, `handle`, `body_html`, `vendor`, `option1/2/3`) and omit Shopify-internal fields with no WC meaning (`admin_graphql_api_id`, `template_suffix`, `published_scope`). If Shopify changes the shape in a way agents come to depend on, we'd need to follow — there's no contract forcing them to keep it stable, and no notification channel when they change it. This is an accepted risk, not a bug: the same data is available through the UCP surfaces (which *are* spec-pinned), so the feed degrading would not strand agents that also speak UCP.
 
 ---
 

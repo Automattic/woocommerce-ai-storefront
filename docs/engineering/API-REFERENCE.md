@@ -1,11 +1,12 @@
 # REST API Reference
 
-Endpoint-level reference for the two REST surfaces this plugin exposes:
+Endpoint-level reference for the REST surfaces this plugin exposes:
 
 - **UCP REST adapter** — `/wp-json/wc/ucp/v1/*`. Public; called by AI agents.
+- **Shopify-compatible products feed** — `/products.json` + `/collections/all/products.json`. Public; **non-UCP, additive Shopify-compat surface** (see below).
 - **Admin REST API** — `/wp-json/wc/v3/ai-storefront/admin/*`. Authenticated; called by the React admin UI.
 
-Discovery surfaces (`/llms.txt`, `/agents.md`, `/.well-known/ucp`, `/robots.txt`, `/opensearch.xml`) aren't REST in the conventional sense — they're rewrite-rule-served virtual paths. They're documented in [`ARCHITECTURE.md`](ARCHITECTURE.md#discovery-layer). (`/agents.md` is a byte-identical mirror of `/llms.txt` — same generator, same cache.)
+Discovery surfaces (`/llms.txt`, `/agents.md`, `/.well-known/ucp`, `/robots.txt`, `/opensearch.xml`) aren't REST in the conventional sense — they're rewrite-rule-served virtual paths. They're documented in [`ARCHITECTURE.md`](ARCHITECTURE.md#discovery-layer). (`/agents.md` is a byte-identical mirror of `/llms.txt` — same generator, same cache.) The `/products.json` feed is also a rewrite-rule-served virtual path, but because it returns a JSON catalog body REST clients code against, it's documented here.
 
 ## Conventions
 
@@ -431,6 +432,104 @@ Returns the JSON Schema for our `com.woocommerce.ai_storefront` extension capabi
 **Permission:** `__return_true`.
 
 **Response:** `200 OK`, `application/json`. Per-site so the schema matches the running plugin version exactly.
+
+---
+
+## Shopify-compatible products feed
+
+> **Non-UCP, additive compatibility surface.** This feed is **not** part of UCP. It does not touch the UCP manifest, the UCP REST adapter, `/llms.txt`, `/agents.md`, or JSON-LD. It exists because AI agents are trained to probe Shopify's `/products.json` as the de-facto "give me the catalog as JSON" endpoint — so we answer that probe in the shape those agents parse zero-shot. The data is the same syndicated catalog the UCP surfaces expose, re-shaped. Design rationale: [`../superpowers/specs/2026-06-15-products-json-feed-design.md`](../superpowers/specs/2026-06-15-products-json-feed-design.md).
+
+Class: [`WC_AI_Storefront_Products_Feed`](../../includes/ai-storefront/class-wc-ai-storefront-products-feed.php). Served on `template_redirect` via a rewrite rule (not `/wp-json`), so it is **edge-cacheable** — agent discovery bursts are absorbed by the CDN instead of tripping the platform per-origin rate limit, the same posture as the other discovery surfaces.
+
+### `GET /products.json`
+### `GET /collections/all/products.json`
+
+Both URLs resolve to the **same all-products feed** (the second is an alias — Shopify's #2 catalog-probe path — pointing at the same query var and handler). There is no per-collection filtering in v1; `/collections/all/products.json` returns the identical body to `/products.json`.
+
+**Permission:** none — public read. The feed honors the merchant's syndication/visibility gate (only exposed products appear), but there is no agent allow-list check (unlike the UCP REST adapter). It's a public catalog mirror.
+
+**Gating.** Returns **404** (`status_header(404)`) unless **all** of:
+
+- `enabled === 'yes'` (plugin not paused), **and**
+- `products_json_enabled === 'yes'` (the Discovery-tab toggle, default `'yes'`), **and**
+- per product, the existing `WC_AI_Storefront::is_product_syndicated()` visibility/syndication gate — the same rule UCP and JSON-LD use. Non-syndicated products are silently dropped from the array.
+
+**Query params:**
+
+| Param | Type | Default | Notes |
+|-------|------|---------|-------|
+| `limit` | int | `30` | Per-page product count, Shopify-style. Clamped to a max of **250** (values above 250 → 250); `≤ 0` or non-numeric → the `30` default. |
+| `page` | int | `1` | 1-based page number. `< 1` → `1`. An out-of-range page returns `{ "products": [] }` (Shopify behavior). |
+
+**Response (200):** `application/json`. Shopify product shape (pragmatic full — the fields a trained parser keys on; Shopify-internal fields like `admin_graphql_api_id`, `template_suffix`, `published_scope` are omitted):
+
+```json
+{
+  "products": [
+    {
+      "id": 22,
+      "title": "Day Hoodie",
+      "handle": "day-hoodie",
+      "body_html": "<p>Heavyweight French terry.</p>",
+      "vendor": "Saltwarp",
+      "product_type": "Hoodies & Sweatshirts",
+      "tags": "fleece, French terry",
+      "variants": [
+        {
+          "id": 456,
+          "title": "M",
+          "option1": "M",
+          "option2": null,
+          "option3": null,
+          "sku": "DH-M",
+          "price": "48.00",
+          "compare_at_price": null,
+          "available": true,
+          "requires_shipping": true
+        }
+      ],
+      "images": [ { "id": 789, "src": "https://your-store.com/wp-content/uploads/day-hoodie.jpg" } ],
+      "options": [ { "name": "Size", "position": 1, "values": ["S", "M", "L"] } ]
+    }
+  ]
+}
+```
+
+**Field map (WC → Shopify):**
+
+| Shopify field | WC source / rule |
+|---|---|
+| `id` | Product ID (int). |
+| `title` | Product name, HTML-entity-decoded. |
+| `handle` | Product slug. |
+| `body_html` | Long description (`post_content`). |
+| `vendor` | First `product_brand` term name, else **`null`** (genuinely absent when there's no brand). |
+| `product_type` | A single string synthesized from the product's categories, in priority order: SEO-plugin primary category (Yoast `_yoast_wpseo_primary_product_cat` / RankMath `rank_math_primary_product_cat`) → deepest (most-specific) assigned `product_cat` term → first assigned term → **`""`** (Shopify always emits the key as a string). Note the deliberate divergence from `vendor`: empty string, not `null`. |
+| `tags` | Comma-joined `product_tag` term names (Shopify emits a string, not an array). `""` when none. |
+| `variants[]` | WC variations for a variable product; a **single default variant** for any non-variable product (simple / bundle / grouped), with `option1: "Default Title"` (Shopify convention). |
+| `variants[].option1/2/3` | Variation attribute values in `options[]` order; unused slots `null`. Shopify supports exactly 3 option positions. |
+| `variants[].sku` | Variation/product SKU. |
+| `variants[].price` | Active price as a 2-decimal string (e.g. `"48.00"`); non-numeric → `"0.00"`. |
+| `variants[].compare_at_price` | Regular price (2-decimal string) **when the product is on sale**, else `null`. |
+| `variants[].available` | `is_in_stock() && is_purchasable()`. |
+| `variants[].requires_shipping` | `needs_shipping()` (defaults `true` when the method is unavailable). |
+| `images[]` | Featured image + gallery, de-duplicated, each `{ id, src }` (`src` from `wp_get_attachment_image_url( $id, 'full' )`); entries with no resolvable URL are dropped. |
+| `options[]` | Variation attributes only — `{ name, position, values }` with distinct decoded values. **Omitted entirely** for non-variable products (a simple product has no `options` key at all). |
+
+Per-product output can be overridden via the [`wc_ai_storefront_products_feed_product`](HOOKS.md#wc_ai_storefront_products_feed_product) filter (mirrors `wc_ai_storefront_ucp_product`).
+
+**Headers.** `Content-Type: application/json; charset=utf-8`, `Cache-Control: public, max-age=N` (via `WC_AI_Storefront::discovery_cache_control()`, tunable through the [`wc_ai_storefront_discovery_cache_max_age`](HOOKS.md#wc_ai_storefront_discovery_cache_max_age) filter — shared with the other discovery surfaces), `Vary: Host`, `X-Content-Type-Options: nosniff`, and CORS (`Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, OPTIONS`). An `OPTIONS` preflight returns `204`.
+
+**Caching.** Origin computes each `(limit, page)` page once and stores it in a host-scoped transient keyed by `md5( host | version | limit | page )` (TTL 1 hour). The `version` component is the `wc_ai_storefront_products_feed_version` option, bumped by `WC_AI_Storefront_Cache_Invalidator` on product save/delete and settings change — a single bump orphans every cached page at once, no key enumeration. See [`DATA-MODEL.md`](DATA-MODEL.md#wc_ai_storefront_products_feed_version).
+
+**Deferred (v2).** `/collections.json`, `/products/{handle}.json`, and `/collections/{handle}/products.json` are not implemented. See [`KNOWN-GAPS.md`](KNOWN-GAPS.md#shopify-compatible-feed-v2-endpoints-deferred).
+
+**Curl:**
+
+```bash
+curl 'https://your-store.com/products.json?limit=2'
+curl 'https://your-store.com/collections/all/products.json?limit=2'   # same body
+```
 
 ---
 
