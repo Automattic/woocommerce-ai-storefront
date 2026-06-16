@@ -128,6 +128,21 @@ class WC_AI_Storefront_Cache_Invalidator {
 		// regeneration.
 		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, [ $this, 'invalidate_sitemap_cache' ] );
 
+		// Shopify-compatible /products.json feed cache busting. Its cache is a
+		// versioned key prefix (not a registered transient), so it rides its
+		// own bump rather than the delete_transient() path above. Hooked to:
+		//   - save_post_product / woocommerce_update_product: product edits
+		//     that change the published catalogue shape.
+		//   - woocommerce_delete_product: removals.
+		//   - update_option_<SETTINGS>: syndication/feed settings changes that
+		//     alter which products the feed includes.
+		// Category/tag/brand term edits flow through woocommerce_update_product
+		// on the affected products, so they don't need separate hooks here.
+		add_action( 'save_post_product', [ $this, 'bump_products_feed_version' ] );
+		add_action( 'woocommerce_update_product', [ $this, 'bump_products_feed_version' ] );
+		add_action( 'woocommerce_delete_product', [ $this, 'bump_products_feed_version' ] );
+		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, [ $this, 'bump_products_feed_version' ] );
+
 		// Cron handler for background warm-up.
 		add_action( self::WARMUP_CRON_HOOK, [ $this, 'warm_cache' ] );
 	}
@@ -289,6 +304,19 @@ class WC_AI_Storefront_Cache_Invalidator {
 				$fetched_count = count( $blog_ids );
 			} while ( $fetched_count === $batch );
 		}
+	}
+
+	/**
+	 * Bump the Shopify /products.json feed cache version.
+	 *
+	 * The feed caches each page under a key that embeds this version, so a
+	 * single increment orphans every cached page at once — no key enumeration,
+	 * no wildcard DB delete. Stored with autoload disabled (the value is only
+	 * read inside the feed serve path, never on a general page load).
+	 */
+	public function bump_products_feed_version(): void {
+		$current = (int) get_option( WC_AI_Storefront_Products_Feed::VERSION_OPTION, 1 );
+		update_option( WC_AI_Storefront_Products_Feed::VERSION_OPTION, $current + 1, false );
 	}
 
 	/**

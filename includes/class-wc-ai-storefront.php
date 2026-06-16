@@ -69,6 +69,13 @@ class WC_AI_Storefront {
 			// Lets a merchant keep REST syndication on while opting out of
 			// the MCP surface specifically.
 			'mcp_enabled'              => 'yes',
+			// Shopify-compatible /products.json catalog feed toggle.
+			// Default `'yes'` so the feed is served out of the box — but
+			// the serve handler ALSO requires `enabled === 'yes'`, so the
+			// feed is only actually live once syndication itself is on.
+			// Lets a merchant keep syndication on while opting out of the
+			// Shopify-compat surface specifically.
+			'products_json_enabled'    => 'yes',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
 			// `unconfigured` mode emits NO policy block — until a
@@ -228,21 +235,27 @@ class WC_AI_Storefront {
 	 * check the enabled setting and return 404 when syndication is off.
 	 */
 	private function register_rewrite_rules() {
-		$llms_txt = new WC_AI_Storefront_Llms_Txt();
-		$ucp      = new WC_AI_Storefront_Ucp();
+		$llms_txt      = new WC_AI_Storefront_Llms_Txt();
+		$ucp           = new WC_AI_Storefront_Ucp();
+		$products_feed = new WC_AI_Storefront_Products_Feed();
 
 		// Register rewrite rules on init (plugins_loaded fires before init).
 		add_action( 'init', [ $llms_txt, 'add_rewrite_rules' ] );
 		add_action( 'init', [ $ucp, 'add_rewrite_rules' ] );
+		add_action( 'init', [ $products_feed, 'add_rewrite_rules' ] );
 
 		add_filter( 'query_vars', [ $llms_txt, 'add_query_vars' ] );
 		add_filter( 'query_vars', [ $ucp, 'add_query_vars' ] );
+		add_filter( 'query_vars', [ $products_feed, 'add_query_vars' ] );
 		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
 		// /agents.md is a byte-identical mirror of /llms.txt (same
 		// generator, same cache) — registered on the same hook.
 		add_action( 'template_redirect', [ $llms_txt, 'serve_agents_md' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_opensearch_xml' ] );
+		// Shopify-compatible /products.json + /collections/all/products.json
+		// alias (non-UCP catalog feed for agents trained on that endpoint).
+		add_action( 'template_redirect', [ $products_feed, 'serve_products_feed' ] );
 		add_action( 'wp_head', [ $ucp, 'inject_head_link' ] );
 
 		// Suppress WordPress's trailing-slash canonical redirect for
@@ -257,6 +270,7 @@ class WC_AI_Storefront {
 		// untouched.
 		add_filter( 'redirect_canonical', [ $llms_txt, 'suppress_canonical_redirect' ], 10, 1 );
 		add_filter( 'redirect_canonical', [ $ucp, 'suppress_canonical_redirect' ], 10, 1 );
+		add_filter( 'redirect_canonical', [ $products_feed, 'suppress_canonical_redirect' ], 10, 1 );
 
 		// Flush rewrite rules and bust content caches when needed:
 		//
@@ -682,6 +696,16 @@ class WC_AI_Storefront {
 			$mcp_enabled = 'yes';
 		}
 
+		// Shopify-compatible /products.json feed toggle. Same strict
+		// yes/no enum + resolve-once pattern as `$mcp_enabled` above.
+		// Default `'yes'` (opt-out) — the feed's serve handler still
+		// requires `enabled === 'yes'`, so this only matters once
+		// syndication is on.
+		$products_json_enabled = $merged['products_json_enabled'] ?? 'yes';
+		if ( ! in_array( $products_json_enabled, [ 'yes', 'no' ], true ) ) {
+			$products_json_enabled = 'yes';
+		}
+
 		// Map legacy mode aliases to their canonical form. Old stores may
 		// have 'categories', 'tags', or 'brands' saved before the unified
 		// by_taxonomy mode was introduced; this normalizes them at write
@@ -726,6 +750,8 @@ class WC_AI_Storefront {
 			'allow_unknown_ucp_agents' => $allow_unknown,
 			// See `$mcp_enabled` resolution above the array literal.
 			'mcp_enabled'              => $mcp_enabled,
+			// See `$products_json_enabled` resolution above the array literal.
+			'products_json_enabled'    => $products_json_enabled,
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.

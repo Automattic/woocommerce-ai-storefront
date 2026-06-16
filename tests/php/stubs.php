@@ -398,6 +398,48 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return 0;
 		}
 
+		// Methods below are consumed by WC_AI_Storefront_Products_Feed's
+		// WC->Shopify mapper. Declared on the base stub purely so PHPStan
+		// resolves the call sites (the mapper takes a generic WC_Product);
+		// ProductsFeedMapperTest overrides every return value via Mockery.
+
+		public function get_slug(): string {
+			return 'test-product';
+		}
+
+		public function get_regular_price(): string {
+			return '19.99';
+		}
+
+		public function is_on_sale(): bool {
+			return false;
+		}
+
+		public function needs_shipping(): bool {
+			return true;
+		}
+
+		/**
+		 * @return int[]
+		 */
+		public function get_category_ids(): array {
+			return [];
+		}
+
+		/**
+		 * @return int[]
+		 */
+		public function get_tag_ids(): array {
+			return [];
+		}
+
+		/**
+		 * @return int[]
+		 */
+		public function get_gallery_image_ids(): array {
+			return [];
+		}
+
 		/**
 		 * Real WC_Product returns variation IDs for variable products,
 		 * grouped product IDs for grouped products, empty array for
@@ -836,5 +878,37 @@ if ( ! class_exists( 'WP_Post' ) ) {
 	class WP_Post {
 		public int    $ID         = 0;
 		public string $post_title = '';
+	}
+}
+
+if ( ! class_exists( 'WP_Term' ) ) {
+	/**
+	 * WP_Term stub mirroring core's full public property surface.
+	 *
+	 * Exists so the production `$term instanceof WP_Term` guards in
+	 * `WC_AI_Storefront_Products_Feed` (product_type / tags resolution) read
+	 * as meaningful type narrowing under unit test. Tests build term doubles
+	 * via `Mockery::mock( 'WP_Term' )` and set properties directly; Mockery
+	 * only satisfies `instanceof WP_Term` when the class is defined.
+	 *
+	 * IMPORTANT: `phpstan.neon.dist` lists this file under `scanFiles`, so
+	 * PHPStan binds every `WP_Term` reference in the codebase to THIS class
+	 * (a scanned definition shadows the vendor wordpress-stubs one). It must
+	 * therefore declare the complete real WP_Term public surface — otherwise
+	 * unrelated production files that read e.g. `$term->slug` / `->count` /
+	 * `->parent` fail static analysis with `property.notFound`. The surface
+	 * has been frozen in core since WP 4.4, so this is maintenance-free.
+	 */
+	class WP_Term {
+		public int    $term_id          = 0;
+		public string $name             = '';
+		public string $slug             = '';
+		public int    $term_group       = 0;
+		public int    $term_taxonomy_id = 0;
+		public string $taxonomy         = '';
+		public string $description      = '';
+		public int    $parent           = 0;
+		public int    $count            = 0;
+		public string $filter           = 'raw';
 	}
 }
