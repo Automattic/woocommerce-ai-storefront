@@ -4496,14 +4496,24 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_store_jsonld_sameas_rejects_non_http_urls(): void {
-		// Only http/https URLs are valid `sameAs` targets. A
-		// `javascript:` or `mailto:` value (e.g. a misconfigured Yoast
-		// field) must be filtered out.
+		// Only http/https URLs are valid `sameAs` targets. Every other
+		// scheme and every scheme-less value — a `javascript:`/`mailto:`/
+		// `data:` payload, an `ftp:` link, a protocol-relative `//host`,
+		// or a bare handle that never got expanded to a URL — must be
+		// dropped by the scheme guard, while a legitimate https profile in
+		// the same provider survives. `esc_url_raw` is stubbed to a
+		// pass-through (see setUp), so this isolates collect_same_as()'s
+		// own http/https scheme check rather than WP core's escaping.
 		$this->stub_options(
 			array(
 				'wpseo_social' => array(
 					'facebook_site' => 'https://facebook.com/saltwarp',
 					'instagram_url' => 'javascript:alert(1)',
+					'linkedin_url'  => 'mailto:hi@saltwarp.shop',
+					'youtube_url'   => 'data:text/html;base64,PHNjcmlwdD4=',
+					'pinterest_url' => 'ftp://files.saltwarp.shop',
+					'myspace_url'   => '//evil.example/profile',
+					'wikipedia_url' => 'saltwarp',
 				),
 			)
 		);
@@ -4511,8 +4521,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$captured = $this->capture_store_jsonld_filter_value();
 		$same_as  = $captured['sameAs'] ?? array();
 
+		// The one valid https profile survives.
 		$this->assertContains( 'https://facebook.com/saltwarp', $same_as );
+		// Every non-http(s) / scheme-less value is rejected.
 		$this->assertNotContains( 'javascript:alert(1)', $same_as );
+		$this->assertNotContains( 'mailto:hi@saltwarp.shop', $same_as );
+		$this->assertNotContains( 'data:text/html;base64,PHNjcmlwdD4=', $same_as );
+		$this->assertNotContains( 'ftp://files.saltwarp.shop', $same_as );
+		$this->assertNotContains( '//evil.example/profile', $same_as );
+		$this->assertNotContains( 'saltwarp', $same_as );
 	}
 
 	public function test_store_jsonld_sameas_sourced_from_rankmath_titles_option(): void {

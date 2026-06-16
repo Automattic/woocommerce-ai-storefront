@@ -272,18 +272,27 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_output_emits_sections_in_documented_order(): void {
-		// The seven H2s should appear in this order in the rendered
-		// output. Section order matters because llms.txt readers (both
-		// human and machine) scan top-to-bottom and the order reflects
-		// the document's information hierarchy: identity → discovery →
-		// catalog → fulfilment → structured-data signpost → agent
+		// The always-present H2s must appear in this documented order.
+		// Section order matters because llms.txt readers (both human and
+		// machine) scan top-to-bottom and the order reflects the
+		// document's information hierarchy: identity → discovery →
+		// structured-data signpost → agent behavioural rules → agent
 		// machine interface → extension schema.
+		//
+		// `## Catalog`, `## Shipping & Returns`, and `## Policies` are
+		// conditionally omitted when their data isn't configured (see
+		// test_output_includes_core_sections), so they're not pinned
+		// here. The full documented order, with every section present,
+		// is: Store → Browse → Catalog → Shipping & Returns → Policies →
+		// Structured data → Rules for agents → For agents → Extension
+		// schema.
 		$output = $this->llms->generate();
 
 		$expected_order = [
 			'## Store',
 			'## Browse',
 			'## Structured data',
+			'## Rules for agents',
 			'## For agents',
 			'## Extension schema',
 		];
@@ -1656,12 +1665,18 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_generated_content_contains_agents_md_reference_line(): void {
-		// The shared content carries a self-referential pointer to the
-		// canonical /agents.md doc (works on both endpoints — it's
-		// self-referential on /agents.md, which is correct).
+		// The shared content carries a pointer to the canonical /agents.md
+		// doc. The wording is surface-neutral so it reads correctly on
+		// BOTH endpoints: it names agents.md as canonical and notes that
+		// /llms.txt serves the same document. It must NOT say "/llms.txt
+		// mirrors it" — that demonstrative is wrong when this byte-identical
+		// content is served on /agents.md, where "this" document IS the
+		// canonical agents.md, not the mirror.
 		$output = $this->llms->generate();
 
 		$this->assertStringContainsString( 'https://example.com/agents.md', $output );
 		$this->assertStringContainsString( '**Agent doc**', $output );
+		$this->assertStringContainsString( 'canonical agent doc', $output );
+		$this->assertStringNotContainsString( 'mirrors it', $output );
 	}
 }
