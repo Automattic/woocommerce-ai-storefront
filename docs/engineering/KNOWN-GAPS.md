@@ -93,31 +93,41 @@ Wire `ENDPOINT_PRODUCT_PAGE` recording into a `template_redirect` hook on single
 
 ---
 
-## Shopify-compatible feed: v2 endpoints deferred
+## Shopify-compatible feed: proprietary-format tracking
 
 ### What
 
-The Shopify-compatible `/products.json` feed (#449) ships only the two highest-value probe paths: `/products.json` (the primary catalog probe we observe) and `/collections/all/products.json` (the secondary, aliased to the same all-products handler). Three further Shopify endpoints AI agents sometimes probe are **not** implemented:
+The Shopify-compatible feed now ships all five probe paths AI agents reach for: `/products.json` and `/collections/all/products.json` (#449, the bulk feed and its alias) plus the v2 scoped endpoints `/products/{handle}.json`, `/collections/{handle}/products.json`, and `/collections.json`. All five sit behind the same `products_json_enabled` toggle and reuse the `WC_AI_Storefront_Products_Feed` mapper and cache machinery. See [`API-REFERENCE.md`](API-REFERENCE.md#shopify-compatible-products-feed). The remaining gap is not a missing endpoint but the format itself.
 
-- `/collections.json` — the store's collection (category) list.
-- `/products/{handle}.json` — a single product by handle.
-- `/collections/{handle}/products.json` — products within a specific collection.
-
-### Why it exists
-
-v1 deliberately scoped to the two endpoints validated as the agents' actual first reaches (ChatGPT, asked for "the full catalog as raw JSON," returned `/products.json?limit=250` then `/collections/all/products.json?limit=250` in priority order). The per-collection and per-handle endpoints are a second tier — useful, but not where the zero-shot catalog probe lands first. Shipping the two highest-value paths first keeps the surface small while the hypothesis (agents probe Shopify shapes against non-Shopify stores) proves out.
+Shopify's `products.json` / `collections.json` shape is **stable but external** — a de-facto convention created by Shopify's scale, not a published standard we can pin a version to. We track it best-effort.
 
 ### Impact
 
-An agent that, after fetching `/products.json`, drills into `/collections/{handle}/products.json` to scope a category, or `/products/{handle}.json` for one item, gets a 404 on those paths. It can still get the same data: the full catalog is in `/products.json` (paginated), and the UCP REST adapter offers `GET /catalog/search` (with a `category` filter) and `GET /catalog/lookup?slug=` for the per-category and per-product cases. So there's no data gap, only a Shopify-path-shape gap for agents that hard-code the deeper Shopify URLs.
+If Shopify changes the shape in a way agents come to depend on, we'd need to follow — there's no contract forcing them to keep it stable, and no notification channel when they change it.
+
+### Mitigations available today
+
+The "pragmatic full" subset already shipped: we populate the fields a trained parser actually keys on (`variants[].price`, `available`, `images[].src`, `handle`, `body_html`, `vendor`, `option1/2/3`) and omit Shopify-internal fields with no WC meaning (`admin_graphql_api_id`, `template_suffix`, `published_scope`). This is an accepted risk, not a bug: the same data is available through the UCP surfaces (which *are* spec-pinned), so the feed degrading would not strand agents that also speak UCP.
+
+---
+
+## Shopify-compatible feed: `/collections.json` timestamps are always `null`
+
+### What
+
+The v2 `/collections.json` endpoint emits each collection's `published_at` and `updated_at` as `null`. The keys are present (Shopify always emits them) but never carry a value.
+
+### Why it exists
+
+A Shopify collection is a WooCommerce `product_cat` term, and the `wp_terms` table carries no created/modified timestamps — there is no source date to map. Fabricating one (e.g. the request time, or "now") would actively mislead an agent that diffs `updated_at` across crawls to decide what to re-sync, so we emit `null` rather than a plausible-but-wrong value. (The per-product feeds *do* carry real `published_at`/`created_at`/`updated_at` from the product's WC created/modified dates — only the collection list lacks a timestamp source.)
+
+### Impact
+
+An agent that wants to incrementally sync collections can't use `updated_at` to detect changes to a category's name, description, or membership; it has to re-read `/collections.json` in full. Low practical impact — the list is small, unpaginated, and edge-cached, and product-level diffing (which *does* have timestamps) covers the higher-churn surface.
 
 ### Future work
 
-Add the three endpoints behind the same `products_json_enabled` toggle when there's evidence agents probe them against non-Shopify stores often enough to matter. `/collections.json` maps to `product_cat` terms; `/products/{handle}.json` maps to a slug lookup (the mapper already exists — it's `map_product()` on a single product); `/collections/{handle}/products.json` maps to a category-filtered `wc_get_products()`. All three reuse the existing `WC_AI_Storefront_Products_Feed` mapper and cache machinery.
-
-### Caveat: proprietary-format tracking
-
-Shopify's `products.json` shape is **stable but external** — it's a de-facto convention created by Shopify's scale, not a published standard we can pin a version to. We track it best-effort. The mitigation is the "pragmatic full" subset already shipped: we populate the fields a trained parser actually keys on (`variants[].price`, `available`, `images[].src`, `handle`, `body_html`, `vendor`, `option1/2/3`) and omit Shopify-internal fields with no WC meaning (`admin_graphql_api_id`, `template_suffix`, `published_scope`). If Shopify changes the shape in a way agents come to depend on, we'd need to follow — there's no contract forcing them to keep it stable, and no notification channel when they change it. This is an accepted risk, not a bug: the same data is available through the UCP surfaces (which *are* spec-pinned), so the feed degrading would not strand agents that also speak UCP.
+If a real consumer needs collection change-detection, the term's last-modified could be approximated from the most-recently-modified product in the category (a `MAX(post_modified)` over the category's products) — but that conflates "category changed" with "a product in it changed," so it's deferred until there's a concrete need.
 
 ---
 

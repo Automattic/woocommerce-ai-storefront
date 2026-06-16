@@ -132,6 +132,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 = Unreleased =
 **New**
 * Shopify-compatible product feed: your store now answers /products.json (and /collections/all/products.json) with your catalog in the JSON shape many AI shopping assistants are trained to read, so an assistant that probes that common address finds your products in one request. On by default; respects your Visibility settings; toggle it off in the Discovery tab if you prefer not to publish a bulk catalog file.
+* Shopify-compatible feed now also answers the scoped paths assistants drill into next: a single product at /products/{handle}.json, one category's products at /collections/{handle}/products.json, and your category list at /collections.json. Same Discovery-tab toggle, same Visibility settings, and each product now carries created and updated dates.
 * Discovery enrichment: /llms.txt now links your real Privacy, Terms, and Refunds pages and lists clear rules for AI agents, and your homepage structured data auto-publishes your social profiles (sourced from Jetpack, Yoast, or RankMath).
 * Your store now also answers /agents.md (the emerging canonical agent doc path) with the same content as /llms.txt, so agents that look for either one find your store.
 
