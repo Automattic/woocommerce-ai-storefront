@@ -2429,7 +2429,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						</p>
 						<CheckboxControl
 							label={ __(
-								'Serve a Shopify-compatible /products.json catalog feed',
+								'Serve a catalog feed at /products.json',
 								'woocommerce-ai-storefront'
 							) }
 							checked={ settings.products_json_enabled === 'yes' }
