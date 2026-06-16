@@ -343,6 +343,138 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// get_cached_feed_json() — versioned-key cache (Task 5)
+	// ------------------------------------------------------------------
+
+	public function test_version_option_and_ttl_constants_defined(): void {
+		$this->assertSame(
+			'wc_ai_storefront_products_feed_version',
+			WC_AI_Storefront_Products_Feed::VERSION_OPTION
+		);
+		$this->assertSame( HOUR_IN_SECONDS, WC_AI_Storefront_Products_Feed::CACHE_TTL );
+	}
+
+	public function test_cached_feed_computes_once_then_serves_from_cache(): void {
+		$_SERVER['HTTP_HOST'] = 'shop.example.com';
+
+		$product = $this->simple_product( 7, 'lucky-seven' );
+
+		// Counter stub: prove the expensive query runs exactly once across
+		// two get_cached_feed_json() calls — the second call must hit cache.
+		$query_calls = 0;
+		Functions\when( 'wc_get_products' )->alias(
+			static function () use ( &$query_calls, $product ) {
+				++$query_calls;
+				return [ $product ];
+			}
+		);
+
+		// In-memory transient store driving the cache round-trip.
+		$store = [];
+		Functions\when( 'get_transient' )->alias(
+			static function ( $key ) use ( &$store ) {
+				return $store[ $key ] ?? false;
+			}
+		);
+		Functions\when( 'set_transient' )->alias(
+			static function ( $key, $value ) use ( &$store ) {
+				$store[ $key ] = $value;
+				return true;
+			}
+		);
+		// Stable version → both calls compute the same cache key.
+		Functions\when( 'get_option' )->justReturn( 1 );
+
+		$first  = $this->invoke_private( 'get_cached_feed_json', 30, 1 );
+		$second = $this->invoke_private( 'get_cached_feed_json', 30, 1 );
+
+		$this->assertSame( 1, $query_calls, 'wc_get_products must run once; the 2nd call is a cache hit.' );
+		$this->assertSame( $first, $second, 'Cache hit must return the byte-identical first body.' );
+		$this->assertStringContainsString( '"handle":"lucky-seven"', $first );
+
+		unset( $_SERVER['HTTP_HOST'] );
+	}
+
+	public function test_cached_feed_version_bump_orphans_old_page(): void {
+		$_SERVER['HTTP_HOST'] = 'shop.example.com';
+
+		$product = $this->simple_product( 7, 'lucky-seven' );
+		$query_calls = 0;
+		Functions\when( 'wc_get_products' )->alias(
+			static function () use ( &$query_calls, $product ) {
+				++$query_calls;
+				return [ $product ];
+			}
+		);
+
+		$store = [];
+		Functions\when( 'get_transient' )->alias(
+			static function ( $key ) use ( &$store ) {
+				return $store[ $key ] ?? false;
+			}
+		);
+		Functions\when( 'set_transient' )->alias(
+			static function ( $key, $value ) use ( &$store ) {
+				$store[ $key ] = $value;
+				return true;
+			}
+		);
+
+		// Version flips from 1 to 2 between the two calls: the second call
+		// computes a NEW cache key (the old page is orphaned), so the query
+		// runs again. This is how the invalidator's bump busts every page.
+		$version = 1;
+		Functions\when( 'get_option' )->alias(
+			static function () use ( &$version ) {
+				return $version;
+			}
+		);
+
+		$this->invoke_private( 'get_cached_feed_json', 30, 1 );
+		$version = 2;
+		$this->invoke_private( 'get_cached_feed_json', 30, 1 );
+
+		$this->assertSame( 2, $query_calls, 'A version bump must orphan the cached page and force a recompute.' );
+
+		unset( $_SERVER['HTTP_HOST'] );
+	}
+
+	public function test_cached_feed_keys_separately_per_page(): void {
+		$_SERVER['HTTP_HOST'] = 'shop.example.com';
+
+		$product = $this->simple_product( 7, 'lucky-seven' );
+		$query_calls = 0;
+		Functions\when( 'wc_get_products' )->alias(
+			static function () use ( &$query_calls, $product ) {
+				++$query_calls;
+				return [ $product ];
+			}
+		);
+
+		$store = [];
+		Functions\when( 'get_transient' )->alias(
+			static function ( $key ) use ( &$store ) {
+				return $store[ $key ] ?? false;
+			}
+		);
+		Functions\when( 'set_transient' )->alias(
+			static function ( $key, $value ) use ( &$store ) {
+				$store[ $key ] = $value;
+				return true;
+			}
+		);
+		Functions\when( 'get_option' )->justReturn( 1 );
+
+		// Page 1 and page 2 are distinct cache keys → two computes.
+		$this->invoke_private( 'get_cached_feed_json', 30, 1 );
+		$this->invoke_private( 'get_cached_feed_json', 30, 2 );
+
+		$this->assertSame( 2, $query_calls, 'Each page must key separately so paginated bodies do not collide.' );
+
+		unset( $_SERVER['HTTP_HOST'] );
+	}
+
+	// ------------------------------------------------------------------
 	// Helpers
 	// ------------------------------------------------------------------
 

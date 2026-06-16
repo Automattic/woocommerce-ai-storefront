@@ -27,6 +27,19 @@ class WC_AI_Storefront_Products_Feed {
 	const QUERY_VAR = 'wc_ai_storefront_products_json';
 
 	/**
+	 * Option holding the monotonically-increasing feed cache version. Bumped
+	 * by the cache invalidator on product/settings change; because the cache
+	 * key embeds it, a single bump orphans every cached page at once.
+	 */
+	const VERSION_OPTION = 'wc_ai_storefront_products_feed_version';
+
+	/**
+	 * Per-page cache lifetime. The version key handles correctness on change;
+	 * the TTL is just a backstop so untouched pages don't live forever.
+	 */
+	const CACHE_TTL = HOUR_IN_SECONDS;
+
+	/**
 	 * Register the /products.json and /collections/all/products.json rewrites.
 	 * Both resolve to the same all-products feed query var.
 	 */
@@ -85,16 +98,29 @@ class WC_AI_Storefront_Products_Feed {
 	/**
 	 * Return the page body, going through the cache.
 	 *
-	 * Uncached passthrough for now; the versioned, host-scoped transient
-	 * cache is layered in by the caching task. Keeping the indirection here
-	 * means serve_products_feed() never needs to change when caching lands.
+	 * Key = host + feed version + limit + page. The version component means a
+	 * single bump (on product/settings change, via the cache invalidator)
+	 * orphans every cached page at once without enumerating keys. Host-scoping
+	 * keeps multi-domain installs (www vs apex, alias domains) from serving
+	 * one host's body under another's Vary: Host edge entry.
 	 *
 	 * @param int $limit Per-page count.
 	 * @param int $page  1-based page.
 	 * @return string JSON.
 	 */
 	private function get_cached_feed_json( int $limit, int $page ): string {
-		return $this->get_feed_json( $limit, $page );
+		$version = (int) get_option( self::VERSION_OPTION, 1 );
+		$host    = isset( $_SERVER['HTTP_HOST'] ) ? (string) wp_unslash( $_SERVER['HTTP_HOST'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- used only inside an md5 cache key.
+		$key     = 'wc_ai_sf_pjson_' . md5( $host . "|{$version}|{$limit}|{$page}" );
+
+		$cached = get_transient( $key );
+		if ( is_string( $cached ) ) {
+			return $cached;
+		}
+
+		$json = $this->get_feed_json( $limit, $page );
+		set_transient( $key, $json, self::CACHE_TTL );
+		return $json;
 	}
 
 	/**

@@ -339,7 +339,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_init_registers_all_expected_hooks(): void {
 		Functions\expect( 'add_action' )
-			->times( 11 ); // 4 product + 1 stock + 3 category + 1 settings + 1 sitemap-settings + 1 cron = 11.
+			->times( 15 ); // 4 product + 1 stock + 3 category + 1 settings + 1 sitemap-settings + 1 cron + 4 products-feed-version = 15.
 
 		$this->invalidator->init();
 	}
@@ -475,5 +475,79 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_clear_scheduled_hook' )->justReturn( true );
 
 		WC_AI_Storefront_Cache_Invalidator::deactivate();
+	}
+
+	// ------------------------------------------------------------------
+	// bump_products_feed_version() — Shopify /products.json cache busting
+	// ------------------------------------------------------------------
+
+	public function test_bump_products_feed_version_increments_option(): void {
+		// Current version is 4; the bump must persist 5 under the feed's
+		// VERSION_OPTION, with autoload disabled (third update_option arg false).
+		Functions\when( 'get_option' )->alias(
+			static function ( $option, $default = false ) {
+				return WC_AI_Storefront_Products_Feed::VERSION_OPTION === $option ? 4 : $default;
+			}
+		);
+
+		$captured = null;
+		Functions\expect( 'update_option' )
+			->once()
+			->andReturnUsing(
+				function ( $option, $value, $autoload ) use ( &$captured ) {
+					$captured = compact( 'option', 'value', 'autoload' );
+					return true;
+				}
+			);
+
+		$this->invalidator->bump_products_feed_version();
+
+		$this->assertSame( WC_AI_Storefront_Products_Feed::VERSION_OPTION, $captured['option'] );
+		$this->assertSame( 5, $captured['value'] );
+		$this->assertFalse( $captured['autoload'], 'Feed version must not autoload.' );
+	}
+
+	public function test_bump_products_feed_version_starts_at_2_from_unset(): void {
+		// Unset option resolves to the default 1, so the first bump writes 2.
+		Functions\when( 'get_option' )->alias(
+			static fn( $option, $default = false ) => $default
+		);
+
+		$captured_value = null;
+		Functions\expect( 'update_option' )
+			->once()
+			->andReturnUsing(
+				function ( $option, $value ) use ( &$captured_value ) {
+					$captured_value = $value;
+					return true;
+				}
+			);
+
+		$this->invalidator->bump_products_feed_version();
+
+		$this->assertSame( 2, $captured_value );
+	}
+
+	public function test_init_registers_products_feed_version_bump_hooks(): void {
+		// The four triggers that orphan the /products.json cache: product
+		// post save, WC product update, WC product delete, and a settings
+		// change. Capture every hook→callback pair and assert the bump is
+		// wired to each.
+		$hooked = array();
+		Functions\when( 'add_action' )->alias(
+			static function ( $hook, $callback ) use ( &$hooked ) {
+				if ( is_array( $callback ) && isset( $callback[1] ) && 'bump_products_feed_version' === $callback[1] ) {
+					$hooked[] = $hook;
+				}
+				return true;
+			}
+		);
+
+		$this->invalidator->init();
+
+		$this->assertContains( 'save_post_product', $hooked );
+		$this->assertContains( 'woocommerce_update_product', $hooked );
+		$this->assertContains( 'woocommerce_delete_product', $hooked );
+		$this->assertContains( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, $hooked );
 	}
 }
