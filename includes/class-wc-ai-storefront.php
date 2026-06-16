@@ -235,21 +235,27 @@ class WC_AI_Storefront {
 	 * check the enabled setting and return 404 when syndication is off.
 	 */
 	private function register_rewrite_rules() {
-		$llms_txt = new WC_AI_Storefront_Llms_Txt();
-		$ucp      = new WC_AI_Storefront_Ucp();
+		$llms_txt      = new WC_AI_Storefront_Llms_Txt();
+		$ucp           = new WC_AI_Storefront_Ucp();
+		$products_feed = new WC_AI_Storefront_Products_Feed();
 
 		// Register rewrite rules on init (plugins_loaded fires before init).
 		add_action( 'init', [ $llms_txt, 'add_rewrite_rules' ] );
 		add_action( 'init', [ $ucp, 'add_rewrite_rules' ] );
+		add_action( 'init', [ $products_feed, 'add_rewrite_rules' ] );
 
 		add_filter( 'query_vars', [ $llms_txt, 'add_query_vars' ] );
 		add_filter( 'query_vars', [ $ucp, 'add_query_vars' ] );
+		add_filter( 'query_vars', [ $products_feed, 'add_query_vars' ] );
 		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
 		// /agents.md is a byte-identical mirror of /llms.txt (same
 		// generator, same cache) — registered on the same hook.
 		add_action( 'template_redirect', [ $llms_txt, 'serve_agents_md' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_opensearch_xml' ] );
+		// Shopify-compatible /products.json + /collections/all/products.json
+		// alias (non-UCP catalog feed for agents trained on that endpoint).
+		add_action( 'template_redirect', [ $products_feed, 'serve_products_feed' ] );
 		add_action( 'wp_head', [ $ucp, 'inject_head_link' ] );
 
 		// Suppress WordPress's trailing-slash canonical redirect for

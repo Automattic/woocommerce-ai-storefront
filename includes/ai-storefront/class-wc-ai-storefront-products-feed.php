@@ -21,6 +21,138 @@ class WC_AI_Storefront_Products_Feed {
 	const PRODUCT_FILTER = 'wc_ai_storefront_products_feed_product';
 
 	/**
+	 * Query var both rewrite rules resolve to. WP routes /products.json and
+	 * the /collections/all/products.json alias through the same handler.
+	 */
+	const QUERY_VAR = 'wc_ai_storefront_products_json';
+
+	/**
+	 * Register the /products.json and /collections/all/products.json rewrites.
+	 * Both resolve to the same all-products feed query var.
+	 */
+	public function add_rewrite_rules(): void {
+		add_rewrite_rule( '^products\.json$', 'index.php?' . self::QUERY_VAR . '=1', 'top' );
+		add_rewrite_rule( '^collections/all/products\.json$', 'index.php?' . self::QUERY_VAR . '=1', 'top' );
+	}
+
+	/**
+	 * Register the query var so WP keeps it through the rewrite.
+	 *
+	 * @param array $vars Registered query vars.
+	 * @return array
+	 */
+	public function add_query_vars( $vars ) {
+		$vars[] = self::QUERY_VAR;
+		return $vars;
+	}
+
+	/**
+	 * Serve the Shopify-compatible products.json feed.
+	 *
+	 * Gate (enabled + products_json_enabled) → headers → OPTIONS preflight
+	 * → echo the cached JSON body → exit. Mirrors serve_llms_txt()/
+	 * serve_agents_md(): rewrite path + discovery cache-control + Vary: Host
+	 * make it edge-cacheable, so the platform rate-limiter never sees the
+	 * uncached burst that throttles /wp-json discovery probes.
+	 */
+	public function serve_products_feed(): void {
+		if ( ! get_query_var( self::QUERY_VAR ) ) {
+			return;
+		}
+
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) || 'yes' !== ( $settings['products_json_enabled'] ?? 'no' ) ) {
+			status_header( 404 );
+			exit;
+		}
+
+		header( 'Content-Type: application/json; charset=utf-8' );
+		header( 'Cache-Control: ' . WC_AI_Storefront::discovery_cache_control() );
+		header( 'Vary: Host' );
+		header( 'X-Content-Type-Options: nosniff' );
+		header( 'Access-Control-Allow-Origin: *' );
+		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
+
+		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared to a constant.
+			status_header( 204 );
+			exit;
+		}
+
+		echo $this->get_cached_feed_json( $this->request_limit(), $this->request_page() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-encoded JSON.
+		exit;
+	}
+
+	/**
+	 * Return the page body, going through the cache.
+	 *
+	 * Uncached passthrough for now; the versioned, host-scoped transient
+	 * cache is layered in by the caching task. Keeping the indirection here
+	 * means serve_products_feed() never needs to change when caching lands.
+	 *
+	 * @param int $limit Per-page count.
+	 * @param int $page  1-based page.
+	 * @return string JSON.
+	 */
+	private function get_cached_feed_json( int $limit, int $page ): string {
+		return $this->get_feed_json( $limit, $page );
+	}
+
+	/**
+	 * Build the JSON body for one page. Only syndicated products are
+	 * included; the syndication settings are resolved once and reused for
+	 * every product to avoid redundant option reads.
+	 *
+	 * @param int $limit Per-page count.
+	 * @param int $page  1-based page.
+	 * @return string JSON.
+	 */
+	private function get_feed_json( int $limit, int $page ): string {
+		$settings = WC_AI_Storefront::get_settings();
+
+		$query    = [
+			'status'   => 'publish',
+			'limit'    => $limit,
+			'page'     => $page,
+			'paginate' => false,
+			'return'   => 'objects',
+		];
+		$products = function_exists( 'wc_get_products' ) ? wc_get_products( $query ) : [];
+
+		$mapped = [];
+		foreach ( (array) $products as $product ) {
+			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
+				continue;
+			}
+			$mapped[] = self::map_product( $product );
+		}
+
+		return (string) wp_json_encode( [ 'products' => $mapped ] );
+	}
+
+	/**
+	 * Resolve ?limit (default 30, max 250, Shopify-style).
+	 *
+	 * @return int
+	 */
+	private function request_limit(): int {
+		$raw = isset( $_GET['limit'] ) ? absint( wp_unslash( $_GET['limit'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- public read endpoint.
+		if ( $raw < 1 ) {
+			return 30;
+		}
+		return min( $raw, 250 );
+	}
+
+	/**
+	 * Resolve ?page (1-based, default 1).
+	 *
+	 * @return int
+	 */
+	private function request_page(): int {
+		$raw = isset( $_GET['page'] ) ? absint( wp_unslash( $_GET['page'] ) ) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- public read endpoint.
+		return max( 1, $raw );
+	}
+
+	/**
 	 * Map one WC product to the Shopify product JSON shape (pragmatic full —
 	 * the fields a trained parser keys on; Shopify-internal fields omitted).
 	 *
