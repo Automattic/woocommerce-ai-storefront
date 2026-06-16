@@ -60,6 +60,29 @@ class WC_AI_Storefront_Products_Feed {
 	}
 
 	/**
+	 * Short-circuit WordPress's canonical-URL redirect for the feed endpoint.
+	 *
+	 * On trailing-slash permalink structures (the WordPress.com / Atomic
+	 * default) core would 301 `/products.json` to a slashed variant that no
+	 * longer matches the rewrite rule — the redirected request falls through
+	 * to a 404 and probing agents give up. Mirrors
+	 * WC_AI_Storefront_Llms_Txt::suppress_canonical_redirect(): return false
+	 * only when our query var is set, leaving canonical behaviour elsewhere
+	 * on the site untouched.
+	 *
+	 * @param string|false $redirect_url The candidate canonical URL WordPress
+	 *                                   wants to redirect to.
+	 * @return string|false              False disables the redirect; the
+	 *                                   original value otherwise.
+	 */
+	public function suppress_canonical_redirect( $redirect_url ) {
+		if ( get_query_var( self::QUERY_VAR ) ) {
+			return false;
+		}
+		return $redirect_url;
+	}
+
+	/**
 	 * Serve the Shopify-compatible products.json feed.
 	 *
 	 * Gate (enabled + products_json_enabled) → headers → OPTIONS preflight
@@ -83,6 +106,9 @@ class WC_AI_Storefront_Products_Feed {
 		header( 'Cache-Control: ' . WC_AI_Storefront::discovery_cache_control() );
 		header( 'Vary: Host' );
 		header( 'X-Content-Type-Options: nosniff' );
+		// Machine surface, not a landing page — keep it out of search indexes,
+		// matching the sibling /opensearch.xml endpoint.
+		header( 'X-Robots-Tag: noindex' );
 		header( 'Access-Control-Allow-Origin: *' );
 		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
 
@@ -136,11 +162,18 @@ class WC_AI_Storefront_Products_Feed {
 		$settings = WC_AI_Storefront::get_settings();
 
 		$query    = [
-			'status'   => 'publish',
-			'limit'    => $limit,
-			'page'     => $page,
-			'paginate' => false,
-			'return'   => 'objects',
+			'status'     => 'publish',
+			// Only products that appear in catalog listings. Excludes the WC
+			// "Hidden" and "Search results only" catalog-visibility states
+			// (both carry the `exclude-from-catalog` term). is_product_syndicated()
+			// gates SCOPE (which products the merchant opted into syndicating),
+			// NOT catalog visibility — without this a Hidden product would leak
+			// into the public feed, contradicting the spec and the toggle copy.
+			'visibility' => 'catalog',
+			'limit'      => $limit,
+			'page'       => $page,
+			'paginate'   => false,
+			'return'     => 'objects',
 		];
 		$products = function_exists( 'wc_get_products' ) ? wc_get_products( $query ) : [];
 

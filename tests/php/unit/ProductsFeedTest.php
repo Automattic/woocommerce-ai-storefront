@@ -121,6 +121,34 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// suppress_canonical_redirect() — trailing-slash 301 defense
+	// ------------------------------------------------------------------
+
+	public function test_canonical_redirect_suppressed_for_feed_query_var(): void {
+		// WP would otherwise 301 `/products.json` to a trailing-slash variant
+		// that no longer matches the rewrite rule, 404ing the request. The
+		// guard must return false when the feed query var is set.
+		Functions\when( 'get_query_var' )->alias(
+			static fn( $var ) => WC_AI_Storefront_Products_Feed::QUERY_VAR === $var ? 1 : 0
+		);
+
+		$this->assertFalse(
+			$this->feed->suppress_canonical_redirect( 'https://example.com/products.json/' )
+		);
+	}
+
+	public function test_canonical_redirect_untouched_when_query_var_not_set(): void {
+		// Canonical behaviour elsewhere on the site must be preserved: when
+		// the feed query var is absent, the candidate URL is returned unchanged.
+		Functions\when( 'get_query_var' )->justReturn( 0 );
+
+		$this->assertSame(
+			'https://example.com/some-page/',
+			$this->feed->suppress_canonical_redirect( 'https://example.com/some-page/' )
+		);
+	}
+
+	// ------------------------------------------------------------------
 	// serve_products_feed() — early-return + gate branches
 	// ------------------------------------------------------------------
 
@@ -245,6 +273,8 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'WC_AI_Storefront::discovery_cache_control()', $body );
 		$this->assertStringContainsString( "header( 'Vary: Host' )", $body );
 		$this->assertStringContainsString( "header( 'X-Content-Type-Options: nosniff' )", $body );
+		// Machine surface: keep it out of search indexes, matching /opensearch.xml.
+		$this->assertStringContainsString( "header( 'X-Robots-Tag: noindex' )", $body );
 		$this->assertStringContainsString( "header( 'Access-Control-Allow-Origin: *' )", $body );
 		// Must not regress the edge-cache rate-limit fix with a no-store.
 		$this->assertStringNotContainsString( 'Cache-Control: no-store', $body );
@@ -301,6 +331,56 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 		$decoded = json_decode( $json, true );
 
 		$this->assertSame( [ 'products' => [] ], $decoded );
+	}
+
+	public function test_get_feed_json_query_restricts_to_catalog_visibility(): void {
+		// The product query MUST carry visibility => 'catalog' so WC excludes
+		// "Hidden" and "Search results only" products at the source. The
+		// syndication gate only scopes WHICH products the merchant opted into,
+		// not catalog visibility — without this arg a Hidden product leaks
+		// into the public feed (the CRITICAL review finding).
+		$captured_query = null;
+		Functions\when( 'wc_get_products' )->alias(
+			static function ( $query ) use ( &$captured_query ) {
+				$captured_query = $query;
+				return [];
+			}
+		);
+
+		$this->invoke_private( 'get_feed_json', 30, 1 );
+
+		$this->assertIsArray( $captured_query );
+		$this->assertArrayHasKey( 'visibility', $captured_query );
+		$this->assertSame( 'catalog', $captured_query['visibility'] );
+	}
+
+	public function test_get_feed_json_excludes_catalog_hidden_product(): void {
+		// Behavioural proof of the leak fix: a product the syndication gate
+		// would pass ('all' mode) but that WC marks catalog-hidden must NOT
+		// appear. Drive it through a wc_get_products stub that honours the
+		// visibility arg the way WC core does — returning only the visible
+		// product when visibility => 'catalog' is requested.
+		$visible = $this->simple_product( 1, 'visible' );
+		$hidden  = $this->simple_product( 2, 'hidden' );
+
+		Functions\when( 'wc_get_products' )->alias(
+			static function ( $query ) use ( $visible, $hidden ) {
+				$all = [ 1 => $visible, 2 => $hidden ];
+				if ( isset( $query['visibility'] ) && 'catalog' === $query['visibility'] ) {
+					// Product 2 is catalog-hidden, so WC drops it.
+					unset( $all[2] );
+				}
+				return array_values( $all );
+			}
+		);
+
+		$json    = $this->invoke_private( 'get_feed_json', 30, 1 );
+		$decoded = json_decode( $json, true );
+
+		$this->assertCount( 1, $decoded['products'], 'A catalog-hidden product must not appear in the feed.' );
+		$this->assertSame( 1, $decoded['products'][0]['id'] );
+		$handles = array_column( $decoded['products'], 'handle' );
+		$this->assertNotContains( 'hidden', $handles );
 	}
 
 	// ------------------------------------------------------------------
