@@ -97,7 +97,7 @@ Wire `ENDPOINT_PRODUCT_PAGE` recording into a `template_redirect` hook on single
 
 ### What
 
-The Shopify-compatible `/products.json` feed (#449) ships only the two highest-value probe paths: `/products.json` (the #1 catalog probe) and `/collections/all/products.json` (the #2, aliased to the same all-products handler). Three further Shopify endpoints AI agents sometimes probe are **not** implemented:
+The Shopify-compatible `/products.json` feed (#449) ships only the two highest-value probe paths: `/products.json` (the primary catalog probe we observe) and `/collections/all/products.json` (the secondary, aliased to the same all-products handler). Three further Shopify endpoints AI agents sometimes probe are **not** implemented:
 
 - `/collections.json` — the store's collection (category) list.
 - `/products/{handle}.json` — a single product by handle.

@@ -444,7 +444,7 @@ Class: [`WC_AI_Storefront_Products_Feed`](../../includes/ai-storefront/class-wc-
 ### `GET /products.json`
 ### `GET /collections/all/products.json`
 
-Both URLs resolve to the **same all-products feed** (the second is an alias — Shopify's #2 catalog-probe path — pointing at the same query var and handler). There is no per-collection filtering in v1; `/collections/all/products.json` returns the identical body to `/products.json`.
+Both URLs resolve to the **same all-products feed** (the second is an alias — the secondary catalog-probe path we observe — pointing at the same query var and handler). There is no per-collection filtering in v1; `/collections/all/products.json` returns the identical body to `/products.json`.
 
 **Permission:** none — public read. The feed honors the merchant's syndication/visibility gate (only exposed products appear), but there is no agent allow-list check (unlike the UCP REST adapter). It's a public catalog mirror.
 

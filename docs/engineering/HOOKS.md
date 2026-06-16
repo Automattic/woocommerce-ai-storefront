@@ -310,7 +310,9 @@ apply_filters( 'wc_ai_storefront_products_feed_product', array $data, WC_Product
 
 Fires once per product, inside `WC_AI_Storefront_Products_Feed::map_product()`, after the WC→Shopify mapping completes. The mapper is upstream of this filter and runs first; modifications made here are not visible to the mapper.
 
-**Example — add a per-variant barcode from WC core's `global_unique_id`:**
+**Example — add a per-variant barcode from WC core's `global_unique_id` (WooCommerce 9.2+):**
+
+`WC_Product::get_global_unique_id()` was added in WooCommerce 9.2; guard with `method_exists( $product, 'get_global_unique_id' )` if your store may run an older version.
 
 ```php
 add_filter( 'wc_ai_storefront_products_feed_product', function( $data, $product ) {
