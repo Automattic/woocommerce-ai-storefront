@@ -883,18 +883,32 @@ if ( ! class_exists( 'WP_Post' ) ) {
 
 if ( ! class_exists( 'WP_Term' ) ) {
 	/**
-	 * Minimal WP_Term stub.
+	 * WP_Term stub mirroring core's full public property surface.
 	 *
-	 * Exists purely so the production `$term instanceof WP_Term` guards in
+	 * Exists so the production `$term instanceof WP_Term` guards in
 	 * `WC_AI_Storefront_Products_Feed` (product_type / tags resolution) read
 	 * as meaningful type narrowing under unit test. Tests build term doubles
-	 * via `Mockery::mock( 'WP_Term' )` and set the `name` / `term_id`
-	 * properties directly; Mockery only satisfies `instanceof WP_Term` when
-	 * the class is defined. Mirrors the WC_Product stub's "declare just the
-	 * surface the code touches" posture.
+	 * via `Mockery::mock( 'WP_Term' )` and set properties directly; Mockery
+	 * only satisfies `instanceof WP_Term` when the class is defined.
+	 *
+	 * IMPORTANT: `phpstan.neon.dist` lists this file under `scanFiles`, so
+	 * PHPStan binds every `WP_Term` reference in the codebase to THIS class
+	 * (a scanned definition shadows the vendor wordpress-stubs one). It must
+	 * therefore declare the complete real WP_Term public surface — otherwise
+	 * unrelated production files that read e.g. `$term->slug` / `->count` /
+	 * `->parent` fail static analysis with `property.notFound`. The surface
+	 * has been frozen in core since WP 4.4, so this is maintenance-free.
 	 */
 	class WP_Term {
-		public int    $term_id = 0;
-		public string $name    = '';
+		public int    $term_id          = 0;
+		public string $name             = '';
+		public string $slug             = '';
+		public int    $term_group       = 0;
+		public int    $term_taxonomy_id = 0;
+		public string $taxonomy         = '';
+		public string $description      = '';
+		public int    $parent           = 0;
+		public int    $count            = 0;
+		public string $filter           = 'raw';
 	}
 }
