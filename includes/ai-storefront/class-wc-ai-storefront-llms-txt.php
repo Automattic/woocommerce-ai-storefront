@@ -688,10 +688,10 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = '- **Send `context.currency`** (ISO 4217) on catalog and checkout requests for accurate pricing. Accepted currencies are listed under Store.';
 		$lines[] = '';
 
-		// UCP endpoint bases — reused by ## Typical agent flow, ## For agents,
-		// and ## Read-only browsing below. NO UTMs on any of these: they're
-		// machine endpoints agents call directly, not links a buyer follows;
-		// UTM params would pollute the structured response payloads.
+		// UCP endpoint bases — collectively reused across ## Typical agent
+		// flow, ## For agents, and ## Read-only browsing below. NO UTMs on any
+		// of these: they're machine endpoints agents call directly, not links a
+		// buyer follows; UTM params would pollute the structured response payloads.
 		$ucp_api_base = rtrim( rest_url( 'wc/ucp/v1' ), '/' );
 		$ucp_manifest = $site_url . '.well-known/ucp';
 		$ucp_checkout = $ucp_api_base . '/checkout-sessions';
@@ -708,8 +708,8 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = '## Typical agent flow';
 		$lines[] = '';
 		$lines[] = "1. **Discover** — `GET {$ucp_manifest}` confirms capabilities and the supported UCP version, and advertises the REST API base (`{$ucp_api_base}`)" . ( $mcp_enabled ? " plus the MCP transport (`{$ucp_api_base}/mcp`)" : '' ) . '.';
-		$lines[] = "2. **Search** — `POST {$ucp_api_base}/catalog/search` (or `GET {$ucp_api_base}/catalog/search?q=…`) to find products matching the buyer's intent. Send `context.currency` for accurate pricing.";
-		$lines[] = "3. **Look up** — `POST {$ucp_api_base}/catalog/lookup` (or `GET {$ucp_api_base}/catalog/lookup?ids=…`) for full details on the ids you selected.";
+		$lines[] = "2. **Search** — `POST {$ucp_api_base}/catalog/search` (or `GET {$ucp_api_base}/catalog/search?q={query}`) to find products matching the buyer's intent. Send `context.currency` for accurate pricing.";
+		$lines[] = "3. **Look up** — `POST {$ucp_api_base}/catalog/lookup` (or `GET {$ucp_api_base}/catalog/lookup?ids={ids}`) for full details on the ids you selected.";
 		$lines[] = "4. **Create a checkout session** — `POST {$ucp_checkout}` with the line items; the response returns a `continue_url`.";
 		$lines[] = '5. **Hand off to the buyer** — redirect the buyer to that `continue_url` to review and pay on the store\'s own checkout. This store is buyer-confirmed: there is no delegated or in-chat payment to complete programmatically.';
 		if ( $mcp_enabled ) {

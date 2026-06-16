@@ -1696,6 +1696,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '2. **Search**', $output );
 		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/catalog/search', $output );
 		$this->assertStringContainsString( '3. **Look up**', $output );
+		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/catalog/lookup', $output );
 		$this->assertStringContainsString( '4. **Create a checkout session**', $output );
 		$this->assertStringContainsString( '/checkout-sessions', $output );
 		// Culminates in the buyer-confirmed continue_url handoff.
@@ -1731,6 +1732,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'MCP-capable agents', $output );
 		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/mcp', $output );
 		$this->assertStringContainsString( '`catalog_search`', $output );
+		$this->assertStringContainsString( '`catalog_lookup`', $output );
 		$this->assertStringContainsString( '`checkout_create`', $output );
 	}
 
