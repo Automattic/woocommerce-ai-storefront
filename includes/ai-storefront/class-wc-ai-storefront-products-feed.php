@@ -21,10 +21,33 @@ class WC_AI_Storefront_Products_Feed {
 	const PRODUCT_FILTER = 'wc_ai_storefront_products_feed_product';
 
 	/**
+	 * Filter applied to one mapped collection (category) before it enters the
+	 * /collections.json list. Mirrors PRODUCT_FILTER.
+	 */
+	const COLLECTION_FILTER = 'wc_ai_storefront_products_feed_collection';
+
+	/**
 	 * Query var both rewrite rules resolve to. WP routes /products.json and
 	 * the /collections/all/products.json alias through the same handler.
 	 */
 	const QUERY_VAR = 'wc_ai_storefront_products_json';
+
+	/**
+	 * Query var carrying the product slug for the v2 single-product endpoint
+	 * `/products/{handle}.json`.
+	 */
+	const QUERY_VAR_PRODUCT = 'wc_ai_storefront_product_json';
+
+	/**
+	 * Query var carrying the category slug for the v2 per-collection endpoint
+	 * `/collections/{handle}/products.json`.
+	 */
+	const QUERY_VAR_COLLECTION = 'wc_ai_storefront_collection_json';
+
+	/**
+	 * Flag query var for the v2 collection-list endpoint `/collections.json`.
+	 */
+	const QUERY_VAR_COLLECTIONS = 'wc_ai_storefront_collections_json';
 
 	/**
 	 * Option holding the monotonically-increasing feed cache version. Bumped
@@ -46,6 +69,25 @@ class WC_AI_Storefront_Products_Feed {
 	public function add_rewrite_rules(): void {
 		add_rewrite_rule( '^products\.json$', 'index.php?' . self::QUERY_VAR . '=1', 'top' );
 		add_rewrite_rule( '^collections/all/products\.json$', 'index.php?' . self::QUERY_VAR . '=1', 'top' );
+		// v2 single-product: /products/{handle}.json. `([^/]+)` matches any
+		// slug (hyphens included). Distinct prefix from the bulk
+		// `^products\.json$` rule, so no precedence collision here.
+		add_rewrite_rule( '^products/([^/]+)\.json$', 'index.php?' . self::QUERY_VAR_PRODUCT . '=$matches[1]', 'top' );
+		// v2 per-collection: /collections/{handle}/products.json. The
+		// `(?!all/)` negative lookahead is load-bearing. `add_rewrite_rule(…,
+		// 'top')` PREPENDS, so this rule is actually matched BEFORE the bulk
+		// `^collections/all/products\.json$` alias above — source-line position
+		// does NOT protect the alias. Without the lookahead, `([^/]+)` would
+		// capture `all` and route /collections/all/products.json into THIS
+		// per-collection handler, which would then look up a product_cat
+		// literally slugged `all` and 404. The lookahead makes this rule
+		// structurally unable to match `all/`, so the alias is reached
+		// regardless of ordering. A category genuinely slugged e.g.
+		// `all-weather` is unaffected (the lookahead rejects only the exact
+		// `all/` segment).
+		add_rewrite_rule( '^collections/(?!all/)([^/]+)/products\.json$', 'index.php?' . self::QUERY_VAR_COLLECTION . '=$matches[1]', 'top' );
+		// v2 collection list: /collections.json.
+		add_rewrite_rule( '^collections\.json$', 'index.php?' . self::QUERY_VAR_COLLECTIONS . '=1', 'top' );
 	}
 
 	/**
@@ -56,6 +98,9 @@ class WC_AI_Storefront_Products_Feed {
 	 */
 	public function add_query_vars( $vars ) {
 		$vars[] = self::QUERY_VAR;
+		$vars[] = self::QUERY_VAR_PRODUCT;
+		$vars[] = self::QUERY_VAR_COLLECTION;
+		$vars[] = self::QUERY_VAR_COLLECTIONS;
 		return $vars;
 	}
 
@@ -76,8 +121,10 @@ class WC_AI_Storefront_Products_Feed {
 	 *                                   original value otherwise.
 	 */
 	public function suppress_canonical_redirect( $redirect_url ) {
-		if ( get_query_var( self::QUERY_VAR ) ) {
-			return false;
+		foreach ( [ self::QUERY_VAR, self::QUERY_VAR_PRODUCT, self::QUERY_VAR_COLLECTION, self::QUERY_VAR_COLLECTIONS ] as $var ) {
+			if ( get_query_var( $var ) ) {
+				return false;
+			}
 		}
 		return $redirect_url;
 	}
@@ -95,30 +142,150 @@ class WC_AI_Storefront_Products_Feed {
 		if ( ! get_query_var( self::QUERY_VAR ) ) {
 			return;
 		}
-
-		$settings = WC_AI_Storefront::get_settings();
-		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) || 'yes' !== ( $settings['products_json_enabled'] ?? 'no' ) ) {
+		if ( ! $this->feed_enabled() ) {
 			status_header( 404 );
 			exit;
 		}
 
-		header( 'Content-Type: application/json; charset=utf-8' );
-		header( 'Cache-Control: ' . WC_AI_Storefront::discovery_cache_control() );
-		header( 'Vary: Host' );
-		header( 'X-Content-Type-Options: nosniff' );
-		// Machine surface, not a landing page — keep it out of search indexes,
-		// matching the sibling /opensearch.xml endpoint.
-		header( 'X-Robots-Tag: noindex' );
-		header( 'Access-Control-Allow-Origin: *' );
-		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
-
-		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared to a constant.
+		$this->send_feed_headers();
+		if ( $this->is_options_request() ) {
 			status_header( 204 );
 			exit;
 		}
 
 		echo $this->get_cached_feed_json( $this->request_limit(), $this->request_page() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-encoded JSON.
 		exit;
+	}
+
+	/**
+	 * Serve the v2 single-product endpoint /products/{handle}.json.
+	 *
+	 * Same gate/header/OPTIONS preamble as serve_products_feed(), then
+	 * resolves the slug to a catalog-visible, syndicated, published product
+	 * and emits `{ "product": { … } }` — Shopify's SINGULAR `product` key
+	 * holding an OBJECT, not the bulk `{ "products": [ … ] }`. A slug that
+	 * doesn't resolve (unknown, or resolving only to a hidden/unsyndicated
+	 * product) 404s rather than leaking the product.
+	 */
+	public function serve_single_product(): void {
+		$handle = (string) get_query_var( self::QUERY_VAR_PRODUCT );
+		if ( '' === $handle ) {
+			return;
+		}
+		if ( ! $this->feed_enabled() ) {
+			status_header( 404 );
+			exit;
+		}
+
+		$this->send_feed_headers();
+		if ( $this->is_options_request() ) {
+			status_header( 204 );
+			exit;
+		}
+
+		// Resolved AFTER headers so OPTIONS/gate are uniform with the other
+		// endpoints; a handle miss returns a bodyless 404 (the json
+		// content-type header is harmless on an empty 404).
+		$json = $this->get_cached_single_product( $handle );
+		if ( null === $json ) {
+			status_header( 404 );
+			exit;
+		}
+
+		echo $json; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-encoded JSON.
+		exit;
+	}
+
+	/**
+	 * Serve the v2 per-collection endpoint /collections/{handle}/products.json.
+	 *
+	 * Same gate/header/OPTIONS preamble, then emits the syndicated products in
+	 * the named category as `{ "products": [ … ] }`, paginated like the bulk
+	 * feed. Unlike the single-product endpoint, an unknown OR empty-after-gate
+	 * category returns `200 { "products": [] }` (a uniform empty body, never a
+	 * 404) — only the global gate (plugin/feed off) 404s. Uniform empties
+	 * avoid leaking which category slugs exist.
+	 */
+	public function serve_collection_products(): void {
+		$handle = (string) get_query_var( self::QUERY_VAR_COLLECTION );
+		if ( '' === $handle ) {
+			return;
+		}
+		if ( ! $this->feed_enabled() ) {
+			status_header( 404 );
+			exit;
+		}
+
+		$this->send_feed_headers();
+		if ( $this->is_options_request() ) {
+			status_header( 204 );
+			exit;
+		}
+
+		echo $this->get_cached_collection_products( $handle, $this->request_limit(), $this->request_page() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-encoded JSON.
+		exit;
+	}
+
+	/**
+	 * Serve the v2 collection-list endpoint /collections.json.
+	 *
+	 * Same gate/header/OPTIONS preamble, then emits the store's categories as
+	 * `{ "collections": [ … ] }`. Only categories with at least one
+	 * catalog-visible, syndicated product are listed, and `products_count` is
+	 * that post-gate count — so /collections.json and the per-collection
+	 * endpoint stay mutually consistent (no advertised-but-empty categories).
+	 */
+	public function serve_collections(): void {
+		if ( ! get_query_var( self::QUERY_VAR_COLLECTIONS ) ) {
+			return;
+		}
+		if ( ! $this->feed_enabled() ) {
+			status_header( 404 );
+			exit;
+		}
+
+		$this->send_feed_headers();
+		if ( $this->is_options_request() ) {
+			status_header( 204 );
+			exit;
+		}
+
+		echo $this->get_cached_collections(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-encoded JSON.
+		exit;
+	}
+
+	/**
+	 * Whether the feed is servable: plugin enabled AND the products.json
+	 * toggle on. The shared 404 gate for every feed endpoint.
+	 */
+	private function feed_enabled(): bool {
+		$settings = WC_AI_Storefront::get_settings();
+		return 'yes' === ( $settings['enabled'] ?? 'no' ) && 'yes' === ( $settings['products_json_enabled'] ?? 'no' );
+	}
+
+	/**
+	 * Emit the edge-cache + CORS + content-type headers every feed endpoint
+	 * sends. Rewrite path + discovery cache-control + Vary: Host make the
+	 * response edge-cacheable so the platform rate-limiter never sees the
+	 * uncached burst that throttles /wp-json discovery probes. The
+	 * `X-Robots-Tag: noindex` keeps the machine surface out of search
+	 * indexes, matching the sibling /opensearch.xml endpoint.
+	 */
+	private function send_feed_headers(): void {
+		header( 'Content-Type: application/json; charset=utf-8' );
+		header( 'Cache-Control: ' . WC_AI_Storefront::discovery_cache_control() );
+		header( 'Vary: Host' );
+		header( 'X-Content-Type-Options: nosniff' );
+		header( 'X-Robots-Tag: noindex' );
+		header( 'Access-Control-Allow-Origin: *' );
+		header( 'Access-Control-Allow-Methods: GET, OPTIONS' );
+	}
+
+	/**
+	 * Whether the current request is a CORS preflight (OPTIONS).
+	 */
+	private function is_options_request(): bool {
+		return isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === wp_unslash( $_SERVER['REQUEST_METHOD'] ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared to a constant.
 	}
 
 	/**
@@ -150,6 +317,287 @@ class WC_AI_Storefront_Products_Feed {
 	}
 
 	/**
+	 * Return the single-product body, going through the cache. Null (a 404,
+	 * NOT cached) when the slug doesn't resolve to a servable product.
+	 *
+	 * Key family `wc_ai_sf_prod_` is distinct from the paginated bulk feed's
+	 * `wc_ai_sf_pjson_`, but embeds the SAME version integer — so the single
+	 * global version bump (on product/settings change) orphans single-product
+	 * entries along with every other family at once. No pagination component.
+	 *
+	 * @param string $handle Product slug.
+	 * @return string|null JSON, or null to 404.
+	 */
+	private function get_cached_single_product( string $handle ): ?string {
+		$version = (int) get_option( self::VERSION_OPTION, 1 );
+		$host    = isset( $_SERVER['HTTP_HOST'] ) ? (string) wp_unslash( $_SERVER['HTTP_HOST'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- used only inside an md5 cache key.
+		$key     = 'wc_ai_sf_prod_' . md5( $host . "|{$version}|{$handle}" );
+
+		$cached = get_transient( $key );
+		if ( is_string( $cached ) ) {
+			return $cached;
+		}
+
+		$json = $this->build_single_product_json( $handle );
+		if ( null === $json ) {
+			return null;
+		}
+		set_transient( $key, $json, self::CACHE_TTL );
+		return $json;
+	}
+
+	/**
+	 * Resolve a slug to a servable product and build `{ "product": { … } }`,
+	 * or null when it doesn't resolve.
+	 *
+	 * The leak-proof gate: `visibility => 'catalog'` makes WC drop Hidden /
+	 * Search-only products at the query, and is_product_syndicated() then
+	 * applies the merchant's syndication scope. A slug that exists but points
+	 * at a hidden or unsyndicated product returns null (404) — it must never
+	 * 200 with the product body. WC enforces unique product slugs, so
+	 * `limit => 1` is exact.
+	 *
+	 * @param string $handle Product slug.
+	 * @return string|null
+	 */
+	private function build_single_product_json( string $handle ): ?string {
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return null;
+		}
+		$products = wc_get_products(
+			[
+				'slug'       => $handle,
+				'status'     => 'publish',
+				'visibility' => 'catalog',
+				'limit'      => 1,
+				'paginate'   => false,
+				'return'     => 'objects',
+			]
+		);
+		$product  = is_array( $products ) && ! empty( $products ) ? $products[0] : null;
+		if ( null === $product ) {
+			return null;
+		}
+		if ( ! WC_AI_Storefront::is_product_syndicated( $product, WC_AI_Storefront::get_settings() ) ) {
+			return null;
+		}
+		return (string) wp_json_encode( [ 'product' => self::map_product( $product ) ] );
+	}
+
+	/**
+	 * Return the per-collection page body, going through the cache. Key family
+	 * `wc_ai_sf_coll_` embeds the slug AND limit+page (paginated bodies must
+	 * not collide) plus the shared version integer, so one global bump orphans
+	 * it with every other family. An empty result is a valid body and is
+	 * cached; a category that doesn't exist yet refreshes on the version bump
+	 * the invalidator fires when a product_cat term is created.
+	 *
+	 * @param string $handle Category slug.
+	 * @param int    $limit  Per-page count.
+	 * @param int    $page   1-based page.
+	 * @return string JSON.
+	 */
+	private function get_cached_collection_products( string $handle, int $limit, int $page ): string {
+		$version = (int) get_option( self::VERSION_OPTION, 1 );
+		$host    = isset( $_SERVER['HTTP_HOST'] ) ? (string) wp_unslash( $_SERVER['HTTP_HOST'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- used only inside an md5 cache key.
+		$key     = 'wc_ai_sf_coll_' . md5( $host . "|{$version}|{$handle}|{$limit}|{$page}" );
+
+		$cached = get_transient( $key );
+		if ( is_string( $cached ) ) {
+			return $cached;
+		}
+
+		$json = $this->build_collection_products_json( $handle, $limit, $page );
+		set_transient( $key, $json, self::CACHE_TTL );
+		return $json;
+	}
+
+	/**
+	 * Build `{ "products": [ … ] }` for the products in one category.
+	 *
+	 * Unknown category slug → empty products (the caller serves it 200). The
+	 * same leak-proof gate as every other endpoint: `visibility => 'catalog'`
+	 * drops Hidden / Search-only products at the query and is_product_syndicated()
+	 * applies syndication scope — so a hidden product assigned to a visible
+	 * category never appears here.
+	 *
+	 * @param string $handle Category slug.
+	 * @param int    $limit  Per-page count.
+	 * @param int    $page   1-based page.
+	 * @return string JSON.
+	 */
+	private function build_collection_products_json( string $handle, int $limit, int $page ): string {
+		$empty = (string) wp_json_encode( [ 'products' => [] ] );
+
+		$term = get_term_by( 'slug', $handle, 'product_cat' );
+		if ( ! $term instanceof WP_Term ) {
+			return $empty;
+		}
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return $empty;
+		}
+
+		$settings = WC_AI_Storefront::get_settings();
+		$products = wc_get_products(
+			[
+				'status'     => 'publish',
+				'visibility' => 'catalog',
+				'category'   => [ $term->slug ],
+				'limit'      => $limit,
+				'page'       => $page,
+				'paginate'   => false,
+				'return'     => 'objects',
+			]
+		);
+
+		$mapped   = [];
+		$products = is_array( $products ) ? $products : [];
+		foreach ( $products as $product ) {
+			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
+				continue;
+			}
+			$mapped[] = self::map_product( $product );
+		}
+
+		return (string) wp_json_encode( [ 'products' => $mapped ] );
+	}
+
+	/**
+	 * Return the collection-list body, going through the cache. Key family
+	 * `wc_ai_sf_colls_` is host + the shared version integer (no pagination —
+	 * the list is unpaginated). The per-category visible/syndicated count is
+	 * the expensive part, so it's computed once per version bump and reused.
+	 *
+	 * @return string JSON.
+	 */
+	private function get_cached_collections(): string {
+		$version = (int) get_option( self::VERSION_OPTION, 1 );
+		$host    = isset( $_SERVER['HTTP_HOST'] ) ? (string) wp_unslash( $_SERVER['HTTP_HOST'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- used only inside an md5 cache key.
+		$key     = 'wc_ai_sf_colls_' . md5( $host . "|{$version}" );
+
+		$cached = get_transient( $key );
+		if ( is_string( $cached ) ) {
+			return $cached;
+		}
+
+		$json = $this->build_collections_json();
+		set_transient( $key, $json, self::CACHE_TTL );
+		return $json;
+	}
+
+	/**
+	 * Build `{ "collections": [ … ] }`.
+	 *
+	 * Lists only product_cat terms with at least one catalog-visible,
+	 * syndicated product, so the list never advertises a category the
+	 * per-collection endpoint would return empty for. `hide_empty => true`
+	 * pre-filters terms with zero products; the post-gate count then drops any
+	 * remaining category whose products are all hidden/unsyndicated.
+	 *
+	 * @return string JSON.
+	 */
+	private function build_collections_json(): string {
+		$terms = get_terms(
+			[
+				'taxonomy'   => 'product_cat',
+				'hide_empty' => true,
+			]
+		);
+		if ( ! is_array( $terms ) ) {
+			return (string) wp_json_encode( [ 'collections' => [] ] );
+		}
+
+		$settings    = WC_AI_Storefront::get_settings();
+		$collections = [];
+		foreach ( $terms as $term ) {
+			if ( ! $term instanceof WP_Term ) {
+				continue;
+			}
+			$count = $this->syndicated_count_for_category( $term->slug, $settings );
+			if ( $count < 1 ) {
+				continue;
+			}
+			$collections[] = self::map_collection( $term, $count );
+		}
+
+		return (string) wp_json_encode( [ 'collections' => $collections ] );
+	}
+
+	/**
+	 * Count the catalog-visible, syndicated products in one category — the
+	 * post-gate count that `products_count` and category inclusion key on.
+	 * Uses `return => 'ids'` (cheap) + prime_syndication_cache() so by_taxonomy
+	 * mode doesn't issue an N+1 of term-relationship queries.
+	 *
+	 * @param string $slug     Category slug.
+	 * @param array  $settings Plugin settings.
+	 * @return int
+	 */
+	private function syndicated_count_for_category( string $slug, array $settings ): int {
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return 0;
+		}
+		$ids = wc_get_products(
+			[
+				'status'     => 'publish',
+				'visibility' => 'catalog',
+				'category'   => [ $slug ],
+				'limit'      => -1,
+				'paginate'   => false,
+				'return'     => 'ids',
+			]
+		);
+		if ( ! is_array( $ids ) || empty( $ids ) ) {
+			return 0;
+		}
+		$ids = array_map( 'intval', $ids );
+		WC_AI_Storefront::prime_syndication_cache( $ids, $settings );
+
+		$count = 0;
+		foreach ( $ids as $id ) {
+			if ( WC_AI_Storefront::is_product_syndicated( $id, $settings ) ) {
+				++$count;
+			}
+		}
+		return $count;
+	}
+
+	/**
+	 * Map one product_cat term to the Shopify collection shape.
+	 *
+	 * `published_at` / `updated_at` are null: the `wp_terms` table carries no
+	 * created/modified dates, and fabricating one (e.g. "now") would poison
+	 * agent diff-sync. Shopify always emits the keys, so they're present as
+	 * null rather than omitted. `body_html` is the raw term description
+	 * (Shopify's collection description slot).
+	 *
+	 * @param WP_Term $term           The category term.
+	 * @param int     $products_count Post-gate visible/syndicated count.
+	 * @return array
+	 */
+	private static function map_collection( WP_Term $term, int $products_count ): array {
+		$data = [
+			'id'             => (int) $term->term_id,
+			'handle'         => (string) $term->slug,
+			'title'          => self::decode( (string) $term->name ),
+			'body_html'      => (string) $term->description,
+			'published_at'   => null,
+			'updated_at'     => null,
+			'products_count' => $products_count,
+		];
+
+		/**
+		 * Filter a single mapped collection before it enters /collections.json.
+		 *
+		 * @param array   $data The mapped collection.
+		 * @param WP_Term $term The source product_cat term.
+		 */
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- COLLECTION_FILTER is the literal 'wc_ai_storefront_products_feed_collection'; the sniff can't resolve the constant to see the prefix.
+		$filtered = apply_filters( self::COLLECTION_FILTER, $data, $term );
+		return is_array( $filtered ) ? $filtered : $data;
+	}
+
+	/**
 	 * Build the JSON body for one page. Only syndicated products are
 	 * included; the syndication settings are resolved once and reused for
 	 * every product to avoid redundant option reads.
@@ -177,8 +625,9 @@ class WC_AI_Storefront_Products_Feed {
 		];
 		$products = function_exists( 'wc_get_products' ) ? wc_get_products( $query ) : [];
 
-		$mapped = [];
-		foreach ( (array) $products as $product ) {
+		$mapped   = [];
+		$products = is_array( $products ) ? $products : [];
+		foreach ( $products as $product ) {
 			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 				continue;
 			}
@@ -221,11 +670,24 @@ class WC_AI_Storefront_Products_Feed {
 	public static function map_product( $product ): array {
 		$is_variable = method_exists( $product, 'is_type' ) && $product->is_type( 'variable' );
 
+		// Shopify emits published_at/created_at/updated_at as RFC 3339 UTC
+		// strings. WC has only created/modified dates, so published_at and
+		// created_at both map to created (WC has no separate publish date).
+		// The method_exists guard keeps Mockery doubles of the date-less
+		// WC_Product stub from tripping (and PHPStan honors it), and the
+		// `$ts > 0` guard in iso_date() drops an uninitialized WC_DateTime
+		// rather than rendering a 1970 date that would poison diff-sync.
+		$created  = method_exists( $product, 'get_date_created' ) ? $product->get_date_created() : null;
+		$modified = method_exists( $product, 'get_date_modified' ) ? $product->get_date_modified() : null;
+
 		$data = [
 			'id'           => (int) $product->get_id(),
 			'title'        => self::decode( (string) $product->get_name() ),
 			'handle'       => (string) $product->get_slug(),
 			'body_html'    => (string) $product->get_description(),
+			'published_at' => self::iso_date( $created ),
+			'created_at'   => self::iso_date( $created ),
+			'updated_at'   => self::iso_date( $modified ),
 			'vendor'       => self::resolve_vendor( $product ),
 			'product_type' => self::resolve_product_type( $product ),
 			'tags'         => self::resolve_tags( $product ),
@@ -250,6 +712,26 @@ class WC_AI_Storefront_Products_Feed {
 		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- PRODUCT_FILTER is the literal 'wc_ai_storefront_products_feed_product'; the sniff can't resolve the constant to see the prefix.
 		$filtered = apply_filters( self::PRODUCT_FILTER, $data, $product );
 		return is_array( $filtered ) ? $filtered : $data;
+	}
+
+	/**
+	 * Format a WC date getter result as an RFC 3339 UTC (`Z`) string, or
+	 * null. Mirrors the proven idiom in the Store API extension: a real
+	 * WC_DateTime is a \DateTimeInterface; `$ts > 0` drops an uninitialized
+	 * (epoch-0) or pre-epoch value that would otherwise render as a
+	 * misleading 1970 timestamp.
+	 *
+	 * @param mixed $dt The get_date_created()/get_date_modified() result.
+	 * @return string|null
+	 */
+	private static function iso_date( $dt ): ?string {
+		if ( $dt instanceof \DateTimeInterface ) {
+			$ts = $dt->getTimestamp();
+			if ( $ts > 0 ) {
+				return gmdate( 'Y-m-d\TH:i:s\Z', $ts );
+			}
+		}
+		return null;
 	}
 
 	/**

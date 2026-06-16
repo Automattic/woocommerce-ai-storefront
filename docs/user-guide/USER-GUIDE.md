@@ -448,7 +448,7 @@ A toggle labeled **Other AI agents** controls whether unlisted crawlers can acce
 
 ### Shopify-compatible product feed
 
-A toggle labeled **Serve a Shopify-compatible /products.json catalog feed** controls whether your store answers requests at `/products.json` (and the `/collections/all/products.json` alias). It is **on by default**.
+A toggle labeled **Serve a Shopify-compatible /products.json catalog feed** controls whether your store answers requests at `/products.json` (and the `/collections/all/products.json` alias). The same toggle also serves the scoped paths assistants drill into next: a single product at `/products/{handle}.json`, one category's products at `/collections/{handle}/products.json`, and your category list at `/collections.json`. It is **on by default**.
 
 Here is why it helps. Many AI shopping assistants learned to read catalogs from Shopify stores, which publish their products as JSON at `/products.json`. When one of these assistants meets a store it doesn't recognize, the first thing it often tries is that same address. If your store answers in the format it expects, the assistant can read your whole catalog in one request and start recommending your products right away. If your store returns nothing, the assistant may move on.
 

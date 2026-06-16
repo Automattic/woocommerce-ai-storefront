@@ -2,7 +2,7 @@
 
 Filters and actions exposed by WooCommerce AI Storefront for extending plugins.
 
-The plugin exposes a deliberately small surface — seventeen filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
+The plugin exposes a deliberately small surface — eighteen filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
 
 ## Filters
 
@@ -322,6 +322,39 @@ add_filter( 'wc_ai_storefront_products_feed_product', function( $data, $product 
             $variant['barcode'] = $gtin;
         }
         unset( $variant );
+    }
+    return $data;
+}, 10, 2 );
+```
+
+---
+
+### `wc_ai_storefront_products_feed_collection`
+
+Filter a single mapped Shopify-shaped collection before it enters the **non-UCP `/collections.json` list**. Mirrors `wc_ai_storefront_products_feed_product`, but for the v2 collection-list endpoint rather than the per-product feed.
+
+```php
+apply_filters( 'wc_ai_storefront_products_feed_collection', array $data, WP_Term $term );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$data` | `array` | The mapped collection in Shopify collection shape. Keys: `id` (term ID), `handle` (slug), `title` (decoded term name), `body_html` (term description), `published_at` (always `null` — `wp_terms` has no timestamps), `updated_at` (always `null`), and `products_count` (the post-gate count of catalog-visible, syndicated products in the category). |
+| `$term` | `WP_Term` | The source `product_cat` term. Use it to read term meta or taxonomy data the mapper didn't surface. |
+
+**Returns:** the (possibly modified) `array`. A non-array return is ignored and the pre-filter `$data` is used (so a buggy callback can't blank a collection out of the list).
+
+**When to use:** add a Shopify field the mapper omits (e.g. a collection `image`), override `title` / `body_html` from term meta, or backfill `published_at` / `updated_at` from a source the plugin can't reach (the plugin emits `null` because `wp_terms` carries no timestamps — see [`KNOWN-GAPS.md`](KNOWN-GAPS.md#shopify-compatible-feed-collectionsjson-timestamps-are-always-null)). Because this is a Shopify-shape contract, keep additions to fields real Shopify feeds emit — agents parse this shape zero-shot.
+
+Fires once per included collection, inside `WC_AI_Storefront_Products_Feed::map_collection()`, after the WC→Shopify mapping completes. Only categories with at least one catalog-visible, syndicated product reach this filter (empty categories are dropped upstream). The mapper is upstream of this filter and runs first; modifications made here are not visible to the mapper.
+
+**Example — backfill `updated_at` from a term-meta timestamp your store maintains:**
+
+```php
+add_filter( 'wc_ai_storefront_products_feed_collection', function( $data, $term ) {
+    $modified = get_term_meta( $term->term_id, 'my_collection_modified_gmt', true );
+    if ( $modified ) {
+        $data['updated_at'] = gmdate( 'Y-m-d\TH:i:s\Z', (int) $modified );
     }
     return $data;
 }, 10, 2 );

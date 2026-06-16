@@ -339,7 +339,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_init_registers_all_expected_hooks(): void {
 		Functions\expect( 'add_action' )
-			->times( 15 ); // 4 product + 1 stock + 3 category + 1 settings + 1 sitemap-settings + 1 cron + 4 products-feed-version = 15.
+			->times( 18 ); // 4 product + 1 stock + 3 category + 1 settings + 1 sitemap-settings + 1 cron + 7 products-feed-version (4 product/settings + 3 product_cat term events) = 18.
 
 		$this->invalidator->init();
 	}
@@ -529,10 +529,12 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_init_registers_products_feed_version_bump_hooks(): void {
-		// The four triggers that orphan the /products.json cache: product
-		// post save, WC product update, WC product delete, and a settings
-		// change. Capture every hook→callback pair and assert the bump is
-		// wired to each.
+		// The triggers that orphan the /products.json feed cache: product post
+		// save, WC product update/delete, a settings change, AND the
+		// product_cat term events (create/edit/delete) — the v2 collection
+		// endpoints read term data directly, and a term rename/add/delete
+		// fires NO product hook, so it must bump the version itself. Capture
+		// every hook→callback pair and assert the bump is wired to each.
 		$hooked = array();
 		Functions\when( 'add_action' )->alias(
 			static function ( $hook, $callback ) use ( &$hooked ) {
@@ -549,5 +551,10 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'woocommerce_update_product', $hooked );
 		$this->assertContains( 'woocommerce_delete_product', $hooked );
 		$this->assertContains( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, $hooked );
+		// v2: category term changes must refresh /collections.json and the
+		// category-derived product_type.
+		$this->assertContains( 'created_product_cat', $hooked );
+		$this->assertContains( 'edited_product_cat', $hooked );
+		$this->assertContains( 'delete_product_cat', $hooked );
 	}
 }

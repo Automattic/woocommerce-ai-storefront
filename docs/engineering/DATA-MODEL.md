@@ -132,8 +132,8 @@ Monotonically-increasing integer that versions the Shopify `/products.json` feed
 - **Autoload:** `no` — written with `update_option( …, $current + 1, false )`; the value is read only inside the feed serve path, never on a general page load
 - **Defined in:** `WC_AI_Storefront_Products_Feed::VERSION_OPTION` ([`includes/ai-storefront/class-wc-ai-storefront-products-feed.php`](../../includes/ai-storefront/class-wc-ai-storefront-products-feed.php))
 - **Written by:** `WC_AI_Storefront_Cache_Invalidator::bump_products_feed_version()`
-- **Bumped on:** `save_post_product`, `woocommerce_update_product`, `woocommerce_delete_product`, and `update_option_<SETTINGS_OPTION>`. Category/tag/brand term edits flow through `woocommerce_update_product` on the affected products, so they don't need separate hooks.
-- **Read by:** `WC_AI_Storefront_Products_Feed::get_cached_feed_json()` when assembling the cache key
+- **Bumped on:** `save_post_product`, `woocommerce_update_product`, `woocommerce_delete_product`, `update_option_<SETTINGS_OPTION>`, and — for the v2 `/collections.json` and per-collection feeds — the `product_cat` term events `created_product_cat`, `edited_product_cat`, and `delete_product_cat` (a renamed or deleted category must refresh the collection list and its per-collection pages). Tag/brand term edits still flow through `woocommerce_update_product` on the affected products, so they don't need separate hooks.
+- **Read by:** all four feed cache getters when assembling their keys — `get_cached_feed_json()` (bulk), `get_cached_single_product()`, `get_cached_collection_products()`, and `get_cached_collections()` — so a single bump orphans every family at once
 - **Uninstall:** deleted by `uninstall.php` (single-site and per-blog multisite paths)
 
 ---
@@ -209,6 +209,36 @@ Cached Shopify `/products.json` feed page bodies, one transient per `(host, feed
 - **Written by:** `WC_AI_Storefront_Products_Feed::get_cached_feed_json()` on a cache miss.
 - **Invalidated by:** version bump (not deletion) — `WC_AI_Storefront_Cache_Invalidator::bump_products_feed_version()` increments the embedded version so old keys become unreachable and expire via TTL. Unlike the `llms_txt_` / `itemlist_` families, there is **no wildcard DB delete** on content change; the versioned key prefix makes one stale.
 - **Uninstall:** purged by `uninstall.php` via a `LIKE '_transient_wc_ai_sf_pjson_%' OR '_transient_timeout_wc_ai_sf_pjson_%'` wildcard delete (single-site and per-blog multisite paths). Object-cache-backed transients on these dynamic keys are reaped by their 1h TTL (same limitation as the `llms_txt_` wildcard).
+
+### `wc_ai_sf_prod_{md5}` (keyspace family)
+
+Cached v2 single-product bodies for `GET /products/{handle}.json`, one transient per `(host, feed version, handle)` tuple.
+
+- **Key shape:** `wc_ai_sf_prod_<md5( host | version | handle )>` — host-scoped and version-scoped (no pagination component; a single product is one body). Embeds the **same** `wc_ai_storefront_products_feed_version` integer as `wc_ai_sf_pjson_`, so one bump orphans this family along with every other at once.
+- **TTL:** 1 hour (`WC_AI_Storefront_Products_Feed::CACHE_TTL`).
+- **Written by:** `WC_AI_Storefront_Products_Feed::get_cached_single_product()` on a cache miss — **only for a resolved product**. A handle that doesn't resolve to a catalog-visible, syndicated product returns `null` (a 404) and is **not cached**, so a later-published product isn't shadowed by a cached 404.
+- **Invalidated by:** version bump (not deletion) — same mechanism as `wc_ai_sf_pjson_`.
+- **Uninstall:** purged by `uninstall.php` via a `LIKE '_transient_wc_ai_sf_prod_%' OR '_transient_timeout_wc_ai_sf_prod_%'` wildcard delete (single-site and per-blog multisite paths).
+
+### `wc_ai_sf_coll_{md5}` (keyspace family)
+
+Cached v2 per-collection page bodies for `GET /collections/{handle}/products.json`, one transient per `(host, feed version, handle, limit, page)` tuple.
+
+- **Key shape:** `wc_ai_sf_coll_<md5( host | version | handle | limit | page )>` — host-scoped, version-scoped, and slug+pagination-scoped (paginated bodies must not collide). The trailing `_` distinguishes this prefix from `wc_ai_sf_colls_` below (the char after `coll` differs), so the two wildcard patterns don't cross-match.
+- **TTL:** 1 hour (`WC_AI_Storefront_Products_Feed::CACHE_TTL`).
+- **Written by:** `WC_AI_Storefront_Products_Feed::get_cached_collection_products()` on a cache miss. An empty result (`{ "products": [] }` for an unknown or empty-after-gate category) **is** a valid body and is cached; the version bump fired when a `product_cat` term is created refreshes a previously-missing category.
+- **Invalidated by:** version bump (not deletion) — same mechanism as `wc_ai_sf_pjson_`.
+- **Uninstall:** purged by `uninstall.php` via a `LIKE '_transient_wc_ai_sf_coll_%' OR '_transient_timeout_wc_ai_sf_coll_%'` wildcard delete (single-site and per-blog multisite paths).
+
+### `wc_ai_sf_colls_{md5}` (keyspace family)
+
+Cached v2 collection-list bodies for `GET /collections.json`, one transient per `(host, feed version)` tuple.
+
+- **Key shape:** `wc_ai_sf_colls_<md5( host | version )>` — host-scoped and version-scoped, **no pagination component** (the collection list is unpaginated). The per-category visible/syndicated count is the expensive part, so it's computed once per version bump and reused.
+- **TTL:** 1 hour (`WC_AI_Storefront_Products_Feed::CACHE_TTL`).
+- **Written by:** `WC_AI_Storefront_Products_Feed::get_cached_collections()` on a cache miss.
+- **Invalidated by:** version bump (not deletion) — including on the `created_product_cat` / `edited_product_cat` / `delete_product_cat` term events, so a renamed or deleted category refreshes the list.
+- **Uninstall:** purged by `uninstall.php` via a `LIKE '_transient_wc_ai_sf_colls_%' OR '_transient_timeout_wc_ai_sf_colls_%'` wildcard delete (single-site and per-blog multisite paths).
 
 ### `wc_ai_storefront_stats_{period}`
 
@@ -382,7 +412,7 @@ Hourly cron that rolls yesterday's and today's raw log into the summary table, k
 When activated network-wide, options and transients are per-site (each site has its own `wp_options` row). `uninstall.php` loops through `get_sites()` and deletes from each:
 
 - `wc_ai_storefront_settings`, `wc_ai_storefront_version`, `wc_ai_storefront_products_feed_version`
-- `wc_ai_storefront_llms_txt`, `wc_ai_storefront_ucp`, `wc_ai_storefront_flush_rewrite`, `wc_ai_storefront_catalog_summary`, `wc_ai_storefront_stats_{day,week,month,year}`, `wc_ai_storefront_crawl_stats_{day,week,month,quarter}`, `wc_ai_sf_pjson_*` (transients)
+- `wc_ai_storefront_llms_txt`, `wc_ai_storefront_ucp`, `wc_ai_storefront_flush_rewrite`, `wc_ai_storefront_catalog_summary`, `wc_ai_storefront_stats_{day,week,month,year}`, `wc_ai_storefront_crawl_stats_{day,week,month,quarter}`, `wc_ai_sf_pjson_*`, `wc_ai_sf_prod_*`, `wc_ai_sf_coll_*`, `wc_ai_sf_colls_*` (transients)
 - `wc_ai_storefront_warm_llms_txt_cache`, `wc_ai_storefront_prune_crawl_log`, `wc_ai_storefront_rollup_crawl_log` (cron)
 - `{prefix}wc_ai_storefront_crawl_log`, `{prefix}wc_ai_storefront_crawl_summary` (custom tables, dropped via `DROP TABLE`)
 

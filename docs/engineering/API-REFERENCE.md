@@ -3,7 +3,7 @@
 Endpoint-level reference for the REST surfaces this plugin exposes:
 
 - **UCP REST adapter** — `/wp-json/wc/ucp/v1/*`. Public; called by AI agents.
-- **Shopify-compatible products feed** — `/products.json` + `/collections/all/products.json`. Public; **non-UCP, additive Shopify-compat surface** (see below).
+- **Shopify-compatible products feed** — `/products.json`, `/collections/all/products.json`, `/products/{handle}.json`, `/collections/{handle}/products.json`, `/collections.json`. Public; **non-UCP, additive Shopify-compat surface** (see below).
 - **Admin REST API** — `/wp-json/wc/v3/ai-storefront/admin/*`. Authenticated; called by the React admin UI.
 
 Discovery surfaces (`/llms.txt`, `/agents.md`, `/.well-known/ucp`, `/robots.txt`, `/opensearch.xml`) aren't REST in the conventional sense — they're rewrite-rule-served virtual paths. They're documented in [`ARCHITECTURE.md`](ARCHITECTURE.md#discovery-layer). (`/agents.md` is a byte-identical mirror of `/llms.txt` — same generator, same cache.) The `/products.json` feed is also a rewrite-rule-served virtual path, but because it returns a JSON catalog body REST clients code against, it's documented here.
@@ -471,6 +471,9 @@ Both URLs resolve to the **same all-products feed** (the second is an alias — 
       "title": "Day Hoodie",
       "handle": "day-hoodie",
       "body_html": "<p>Heavyweight French terry.</p>",
+      "published_at": "2026-01-15T10:30:00Z",
+      "created_at": "2026-01-15T10:30:00Z",
+      "updated_at": "2026-04-20T14:22:31Z",
       "vendor": "Saltwarp",
       "product_type": "Hoodies & Sweatshirts",
       "tags": "fleece, French terry",
@@ -503,6 +506,8 @@ Both URLs resolve to the **same all-products feed** (the second is an alias — 
 | `title` | Product name, HTML-entity-decoded. |
 | `handle` | Product slug. |
 | `body_html` | Long description (`post_content`). |
+| `published_at` / `created_at` | RFC 3339 UTC (`…Z`) string of the product's WC created date. Both carry the created date — WC has no separate publish date distinct from creation. **`null`** when the date is unset (an uninitialized / epoch-0 `WC_DateTime` is dropped rather than rendered as a misleading 1970 timestamp). |
+| `updated_at` | RFC 3339 UTC string of the product's WC modified date; **`null`** when unset. |
 | `vendor` | First `product_brand` term name, else **`null`** (genuinely absent when there's no brand). |
 | `product_type` | A single string synthesized from the product's categories, in priority order: SEO-plugin primary category (Yoast `_yoast_wpseo_primary_product_cat` / RankMath `rank_math_primary_product_cat`) → deepest (most-specific) assigned `product_cat` term → first assigned term → **`""`** (Shopify always emits the key as a string). Note the deliberate divergence from `vendor`: empty string, not `null`. |
 | `tags` | Comma-joined `product_tag` term names (Shopify emits a string, not an array). `""` when none. |
@@ -518,17 +523,114 @@ Both URLs resolve to the **same all-products feed** (the second is an alias — 
 
 Per-product output can be overridden via the [`wc_ai_storefront_products_feed_product`](HOOKS.md#wc_ai_storefront_products_feed_product) filter (mirrors `wc_ai_storefront_ucp_product`).
 
-**Headers.** `Content-Type: application/json; charset=utf-8`, `Cache-Control: public, max-age=N` (via `WC_AI_Storefront::discovery_cache_control()`, tunable through the [`wc_ai_storefront_discovery_cache_max_age`](HOOKS.md#wc_ai_storefront_discovery_cache_max_age) filter — shared with the other discovery surfaces), `Vary: Host`, `X-Content-Type-Options: nosniff`, and CORS (`Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, OPTIONS`). An `OPTIONS` preflight returns `204`.
+**Headers.** `Content-Type: application/json; charset=utf-8`, `Cache-Control: public, max-age=N` (via `WC_AI_Storefront::discovery_cache_control()`, tunable through the [`wc_ai_storefront_discovery_cache_max_age`](HOOKS.md#wc_ai_storefront_discovery_cache_max_age) filter — shared with the other discovery surfaces), `Vary: Host`, `X-Content-Type-Options: nosniff`, `X-Robots-Tag: noindex` (keeps the machine surface out of search indexes, matching `/opensearch.xml`), and CORS (`Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, OPTIONS`). An `OPTIONS` preflight returns `204`. The same header set is sent by all five feed endpoints (`send_feed_headers()`).
 
 **Caching.** Origin computes each `(limit, page)` page once and stores it in a host-scoped transient keyed by `md5( host | version | limit | page )` (TTL 1 hour). The `version` component is the `wc_ai_storefront_products_feed_version` option, bumped by `WC_AI_Storefront_Cache_Invalidator` on product save/delete and settings change — a single bump orphans every cached page at once, no key enumeration. See [`DATA-MODEL.md`](DATA-MODEL.md#wc_ai_storefront_products_feed_version).
-
-**Deferred (v2).** `/collections.json`, `/products/{handle}.json`, and `/collections/{handle}/products.json` are not implemented. See [`KNOWN-GAPS.md`](KNOWN-GAPS.md#shopify-compatible-feed-v2-endpoints-deferred).
 
 **Curl:**
 
 ```bash
 curl 'https://your-store.com/products.json?limit=2'
 curl 'https://your-store.com/collections/all/products.json?limit=2'   # same body
+```
+
+### `GET /products/{handle}.json`
+
+A single product by slug. Same gating, headers, and OPTIONS preflight as the bulk feed.
+
+**Response (200):** `application/json`. Note the **singular `product` key holding an OBJECT** — not the bulk feed's `{ "products": [array] }`. The object is the identical shape as one item in the bulk feed (same `map_product()` mapper, same field map and timestamp fields above):
+
+```json
+{
+  "product": {
+    "id": 22,
+    "title": "Day Hoodie",
+    "handle": "day-hoodie",
+    "body_html": "<p>Heavyweight French terry.</p>",
+    "published_at": "2026-01-15T10:30:00Z",
+    "created_at": "2026-01-15T10:30:00Z",
+    "updated_at": "2026-04-20T14:22:31Z",
+    "vendor": "Saltwarp",
+    "product_type": "Hoodies & Sweatshirts",
+    "tags": "fleece, French terry",
+    "variants": [ … ],
+    "images": [ … ],
+    "options": [ … ]
+  }
+}
+```
+
+**Resolution & 404.** The slug is resolved via `wc_get_products( slug, status=publish, visibility=catalog )` (so WC drops Hidden / Search-only products at the query) plus the per-product `is_product_syndicated()` gate. WC enforces unique product slugs, so the match is exact. The endpoint **404s** when the slug is unknown **OR** resolves only to a hidden/unsyndicated product — it must never `200` with a product body it would otherwise hide, so a hidden product's existence never leaks. A 404 is **not cached** (only a resolved body is).
+
+**Caching.** A resolved body is cached under a host-scoped transient keyed `wc_ai_sf_prod_<md5( host | version | handle )>` (TTL 1 hour). No pagination component. Same shared `wc_ai_storefront_products_feed_version` integer as the bulk feed, so one bump orphans this family along with every other at once. See [`DATA-MODEL.md`](DATA-MODEL.md#wc_ai_sf_prod_md5-keyspace-family).
+
+**Curl:**
+
+```bash
+curl 'https://your-store.com/products/day-hoodie.json'
+```
+
+### `GET /collections/{handle}/products.json`
+
+The products in one `product_cat` category (by slug), in the bulk Shopify shape `{ "products": [ … ] }`. Same gating, headers, and OPTIONS preflight as the bulk feed.
+
+**Query params:** `?limit` (default 30, max 250) and `?page` (1-based) — identical clamps to the bulk feed.
+
+**Empty vs 404 rule.** Unlike the single-product endpoint, an unknown **OR** empty-after-gate category returns **`200 { "products": [] }`** (a uniform empty body), never a 404 — only the global gate (plugin/feed off) 404s. Uniform empties avoid leaking which category slugs exist. The same `visibility=catalog` + `is_product_syndicated()` gate applies per product, so a hidden product assigned to a visible category never appears here.
+
+> The `^collections/(?!all/)…` rewrite uses a negative lookahead so `/collections/all/products.json` keeps resolving to the **bulk** feed (above), not this per-collection handler. A category genuinely slugged `all-weather` is unaffected — the lookahead matches only the exact `all/` segment.
+
+**Caching.** Each `(handle, limit, page)` page is cached under a host-scoped transient keyed `wc_ai_sf_coll_<md5( host | version | handle | limit | page )>` (TTL 1 hour). An empty result is a valid, cached body; the shared version bump refreshes it (including when a previously-missing category is created). See [`DATA-MODEL.md`](DATA-MODEL.md#wc_ai_sf_coll_md5-keyspace-family).
+
+**Curl:**
+
+```bash
+curl 'https://your-store.com/collections/hoodies/products.json?limit=2'
+```
+
+### `GET /collections.json`
+
+The store's category list, in Shopify's collection shape `{ "collections": [ … ] }`. Same gating, headers, and OPTIONS preflight as the bulk feed. Unpaginated.
+
+**Response (200):**
+
+```json
+{
+  "collections": [
+    {
+      "id": 15,
+      "handle": "hoodies",
+      "title": "Hoodies",
+      "body_html": "Heavyweight everyday hoodies.",
+      "published_at": null,
+      "updated_at": null,
+      "products_count": 4
+    }
+  ]
+}
+```
+
+**Field map (WC `product_cat` term → Shopify collection):**
+
+| Shopify field | WC source / rule |
+|---|---|
+| `id` | Term ID (int). |
+| `handle` | Term slug. |
+| `title` | Term name, HTML-entity-decoded. |
+| `body_html` | Term description (Shopify's collection-description slot). |
+| `published_at` / `updated_at` | Always **`null`**. The `wp_terms` table carries no created/modified timestamps, and fabricating one (e.g. "now") would poison agent diff-sync — so the keys are present (Shopify always emits them) but null. |
+| `products_count` | The **post-gate** count: catalog-visible **and** syndicated products in the category. |
+
+**Inclusion rule.** Only categories with at least one catalog-visible, syndicated product are listed, and `products_count` is that same post-gate count — so `/collections.json` never advertises a category the per-collection endpoint would return empty for. (`get_terms( hide_empty => true )` pre-filters zero-product terms; the post-gate count then drops any remaining category whose products are all hidden/unsyndicated.)
+
+Each collection can be overridden via the [`wc_ai_storefront_products_feed_collection`](HOOKS.md#wc_ai_storefront_products_feed_collection) filter (mirrors `wc_ai_storefront_products_feed_product`).
+
+**Caching.** Cached under a host-scoped transient keyed `wc_ai_sf_colls_<md5( host | version )>` (TTL 1 hour, unpaginated). The per-category visible/syndicated count is the expensive part, so it's computed once per version bump and reused. See [`DATA-MODEL.md`](DATA-MODEL.md#wc_ai_sf_colls_md5-keyspace-family).
+
+**Curl:**
+
+```bash
+curl 'https://your-store.com/collections.json'
 ```
 
 ---

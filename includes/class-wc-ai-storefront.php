@@ -256,6 +256,14 @@ class WC_AI_Storefront {
 		// Shopify-compatible /products.json + /collections/all/products.json
 		// alias (non-UCP catalog feed for agents trained on that endpoint).
 		add_action( 'template_redirect', [ $products_feed, 'serve_products_feed' ] );
+		// v2 scoped JSON endpoints — same feed class, same toggle/cache. Each
+		// no-ops unless its own query var is set, so stacking them on the one
+		// hook is safe. The new rewrite rules + query vars + canonical
+		// suppression are already covered by the add_rewrite_rules /
+		// add_query_vars / suppress_canonical_redirect registrations above.
+		add_action( 'template_redirect', [ $products_feed, 'serve_single_product' ] );
+		add_action( 'template_redirect', [ $products_feed, 'serve_collection_products' ] );
+		add_action( 'template_redirect', [ $products_feed, 'serve_collections' ] );
 		add_action( 'wp_head', [ $ucp, 'inject_head_link' ] );
 
 		// Suppress WordPress's trailing-slash canonical redirect for
