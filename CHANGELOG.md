@@ -2,6 +2,10 @@
 
 ### Features
 
+- **`/llms.txt` (and its `/agents.md` mirror) now narrate the agent flow and a read-only-browsing surface.**
+  - **`## Typical agent flow`** — a numbered sequence grounded in this store's real UCP endpoints: discover `/.well-known/ucp` → search → look up → create a checkout-session → hand the buyer the `continue_url` to pay on the store's own checkout (buyer-confirmed; no delegated or in-chat payment). A closing line points MCP-capable agents at the `catalog_search` / `catalog_lookup` / `checkout_create` tools — emitted only when the MCP transport is enabled.
+  - **`## Read-only browsing`** — for agents that only read: the UCP catalog endpoints lead (structured, currency-aware), and the scoped `/products/{handle}.json`, `/collections/{handle}/products.json`, `/collections.json` paths follow as a Shopify-compatible convenience (only when the feed toggle is on). The bulk `/products.json` is deliberately not listed — it stays a silent catch for agents that blind-probe it, while `llms.txt` readers are steered to the structured interface.
+
 - **Scoped v2 endpoints for the Shopify-compatible feed — per-product, per-collection, and collection-list paths agents drill into after the bulk feed.**
   - **`GET /products/{handle}.json`** — a single product by slug. Returns `{ "product": { … } }` (a **singular `product` object**, not the bulk feed's `{ "products": [array] }`), the identical shape as one bulk-feed item. **404s** when the slug is unknown or resolves only to a hidden/unsyndicated product (never leaks; the 404 isn't cached).
   - **`GET /collections/{handle}/products.json`** — the products in one category (by slug), in the bulk `{ "products": [ … ] }` shape, paginated via `?limit` (default 30, max 250) and `?page`. An unknown or empty-after-gate category returns a uniform `200 { "products": [] }`, never a 404, so it can't leak which category slugs exist. A rewrite lookahead keeps `/collections/all/products.json` resolving to the bulk feed.
