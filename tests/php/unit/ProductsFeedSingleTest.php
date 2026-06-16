@@ -198,7 +198,8 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_query_var' )->justReturn( 'ghost' );
 		Functions\when( 'get_option' )->justReturn( 1 );
 		Functions\when( 'get_transient' )->justReturn( false );
-		Functions\when( 'wc_get_products' )->justReturn( [] ); // handle miss → null → 404.
+		Functions\when( 'get_page_by_path' )->justReturn( false ); // handle miss → null → 404.
+		Functions\when( 'wc_get_product' )->justReturn( false );
 		Functions\when( 'status_header' )->alias(
 			static function ( $code ) {
 				throw new \RuntimeException( 'status_header:' . $code );
@@ -219,7 +220,8 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_build_single_emits_singular_product_object(): void {
 		$product = $this->simple_product( 22, 'day-hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'get_page_by_path' )->justReturn( $this->wp_post( 22 ) );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
 
 		$json    = $this->invoke_private( 'build_single_product_json', 'day-hoodie' );
 		$decoded = json_decode( (string) $json, true );
@@ -235,19 +237,77 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'title', $decoded['product'] );
 	}
 
+	public function test_build_single_resolves_by_slug_via_get_page_by_path(): void {
+		// REGRESSION (the live bug): the slug MUST be resolved via
+		// get_page_by_path( handle, OBJECT, 'product' ), NOT
+		// wc_get_products([ 'slug' => … ]). `slug` is not a supported
+		// wc_get_products arg — it is silently ignored and the query returns
+		// the FIRST product for EVERY handle. Assert the resolver is called
+		// with the exact handle + 'product' post type. (Also asserts we do NOT
+		// fall back to wc_get_products with a slug filter.)
+		$captured = [];
+		Functions\when( 'get_page_by_path' )->alias(
+			static function ( $path, $output, $post_type ) use ( &$captured ) {
+				$captured = [ 'path' => $path, 'post_type' => $post_type ];
+				return false; // resolution miss — we only assert the call shape here.
+			}
+		);
+		Functions\when( 'wc_get_product' )->justReturn( false ); // satisfy the top function_exists guard.
+		Functions\when( 'wc_get_products' )->alias(
+			static function () {
+				throw new \LogicException( 'build_single_product_json must NOT call wc_get_products to resolve a slug.' );
+			}
+		);
+
+		$this->invoke_private( 'build_single_product_json', 'day-hoodie' );
+
+		$this->assertSame( 'day-hoodie', $captured['path'] ?? null );
+		$this->assertSame( 'product', $captured['post_type'] ?? null );
+	}
+
 	public function test_build_single_returns_null_for_unknown_handle(): void {
-		// wc_get_products finds nothing for the slug → 404 (null), not cached.
-		Functions\when( 'wc_get_products' )->justReturn( [] );
+		// get_page_by_path finds no product for the slug → 404 (null), not cached.
+		Functions\when( 'get_page_by_path' )->justReturn( false );
+		Functions\when( 'wc_get_product' )->justReturn( false );
 
 		$this->assertNull( $this->invoke_private( 'build_single_product_json', 'ghost' ) );
 	}
 
+	public function test_build_single_returns_null_for_non_published_product(): void {
+		// A slug that resolves to a draft/private/pending product must 404 —
+		// get_page_by_path returns posts of any status, so the publish check
+		// is the guard.
+		$post              = $this->wp_post( 5 );
+		$post->post_status = 'draft';
+		Functions\when( 'get_page_by_path' )->justReturn( $post );
+		Functions\when( 'wc_get_product' )->justReturn( $this->simple_product( 5, 'draft-product' ) );
+
+		$this->assertNull( $this->invoke_private( 'build_single_product_json', 'draft-product' ) );
+	}
+
+	public function test_build_single_404s_catalog_hidden_or_search_only_product(): void {
+		// LEAK GUARD: get_page_by_path does NOT filter catalog visibility, so a
+		// published product that is Hidden or Search-only must 404 via the
+		// explicit get_catalog_visibility() check — never leak its body.
+		foreach ( [ 'hidden', 'search' ] as $vis ) {
+			$product = $this->simple_product( 9, 'stealth', $vis );
+			Functions\when( 'get_page_by_path' )->justReturn( $this->wp_post( 9 ) );
+			Functions\when( 'wc_get_product' )->justReturn( $product );
+
+			$this->assertNull(
+				$this->invoke_private( 'build_single_product_json', 'stealth' ),
+				"catalog visibility '{$vis}' must 404"
+			);
+		}
+	}
+
 	public function test_build_single_returns_null_for_unsyndicated_product(): void {
-		// LEAK GUARD: a slug that resolves to a real product the merchant has
-		// NOT syndicated must 404, never 200 with the body. Drive the real
-		// gate: 'selected' mode without this product id selected.
+		// LEAK GUARD: a slug that resolves to a real, catalog-visible product
+		// the merchant has NOT syndicated must 404. Drive the real gate:
+		// 'selected' mode without this product id selected.
 		$product = $this->simple_product( 7, 'secret' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'get_page_by_path' )->justReturn( $this->wp_post( 7 ) );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
 		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
 			'products_json_enabled'  => 'yes',
@@ -258,39 +318,35 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNull( $this->invoke_private( 'build_single_product_json', 'secret' ) );
 	}
 
-	public function test_build_single_resolve_query_restricts_to_catalog_visibility(): void {
-		// LEAK GUARD: the resolve query MUST carry visibility => 'catalog' and
-		// status => 'publish' so WC drops Hidden / Search-only / unpublished
-		// products at the source — a hidden product's slug must never 200.
-		$captured = null;
-		Functions\when( 'wc_get_products' )->alias(
-			static function ( $query ) use ( &$captured ) {
-				$captured = $query;
-				return [];
-			}
-		);
-
-		$this->invoke_private( 'build_single_product_json', 'maybe-hidden' );
-
-		$this->assertIsArray( $captured );
-		$this->assertSame( 'catalog', $captured['visibility'] ?? null );
-		$this->assertSame( 'publish', $captured['status'] ?? null );
-		$this->assertSame( 'maybe-hidden', $captured['slug'] ?? null );
-		$this->assertSame( 1, $captured['limit'] ?? null );
+	/**
+	 * A product WP_Post double for get_page_by_path(). Published 'product' by
+	 * default; tests override post_status for the non-published case.
+	 *
+	 * @param int $id Post ID.
+	 * @return \WP_Post
+	 */
+	private function wp_post( int $id ): \WP_Post {
+		$post              = new \WP_Post();
+		$post->ID          = $id;
+		$post->post_status = 'publish';
+		$post->post_type   = 'product';
+		return $post;
 	}
 
 	/**
-	 * Mockery WC_Product fully wired for map_product(). The date-less
-	 * WC_Product stub means method_exists(get_date_created) is false, so the
-	 * timestamp fields resolve to null without stubbing.
+	 * Mockery WC_Product fully wired for map_product() + the single-product
+	 * resolver. The date-less WC_Product stub means method_exists(get_date_created)
+	 * is false, so the timestamp fields resolve to null without stubbing.
 	 *
-	 * @param int    $id     Product id.
-	 * @param string $handle Slug.
+	 * @param int    $id         Product id.
+	 * @param string $handle     Slug.
+	 * @param string $visibility Catalog visibility (visible|catalog|search|hidden).
 	 * @return \Mockery\MockInterface
 	 */
-	private function simple_product( int $id, string $handle ) {
+	private function simple_product( int $id, string $handle, string $visibility = 'visible' ) {
 		$p = \Mockery::mock( 'WC_Product' );
 		$p->shouldReceive( 'get_id' )->andReturn( $id );
+		$p->shouldReceive( 'get_catalog_visibility' )->andReturn( $visibility );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Product ' . $id );
 		$p->shouldReceive( 'get_slug' )->andReturn( $handle );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
