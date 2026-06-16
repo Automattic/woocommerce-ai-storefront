@@ -75,6 +75,10 @@ class WC_AI_Storefront {
 				// with the same `'yes' ===` strictness as the production
 				// gate. See the stub doc (lines 8–12) on drift avoidance.
 				'mcp_enabled'              => 'yes',
+				// Mirror production default. The /products.json serve handler
+				// reads this with the same `'yes' ===` strictness as the
+				// production gate. See the stub doc (lines 8–12) on drift.
+				'products_json_enabled'    => 'yes',
 			],
 			self::$test_settings
 		);
@@ -307,10 +311,19 @@ class WC_AI_Storefront {
 			$sanitized_mcp_enabled = 'yes';
 		}
 
+		// Mirror production: strict yes/no enum, default `'yes'`, anything
+		// else falls back to `'yes'`. See
+		// `includes/class-wc-ai-storefront.php::update_settings()`.
+		$sanitized_products_json_enabled = $merged['products_json_enabled'] ?? 'yes';
+		if ( ! in_array( $sanitized_products_json_enabled, [ 'yes', 'no' ], true ) ) {
+			$sanitized_products_json_enabled = 'yes';
+		}
+
 		$overrides = [
 			'product_selection_mode'   => $sanitized_mode,
 			'allow_unknown_ucp_agents' => $sanitized_unknown,
 			'mcp_enabled'              => $sanitized_mcp_enabled,
+			'products_json_enabled'    => $sanitized_products_json_enabled,
 		];
 
 		// If a return_policy was passed in, route it through the

@@ -69,6 +69,13 @@ class WC_AI_Storefront {
 			// Lets a merchant keep REST syndication on while opting out of
 			// the MCP surface specifically.
 			'mcp_enabled'              => 'yes',
+			// Shopify-compatible /products.json catalog feed toggle.
+			// Default `'yes'` so the feed is served out of the box — but
+			// the serve handler ALSO requires `enabled === 'yes'`, so the
+			// feed is only actually live once syndication itself is on.
+			// Lets a merchant keep syndication on while opting out of the
+			// Shopify-compat surface specifically.
+			'products_json_enabled'    => 'yes',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
 			// `unconfigured` mode emits NO policy block — until a
@@ -682,6 +689,16 @@ class WC_AI_Storefront {
 			$mcp_enabled = 'yes';
 		}
 
+		// Shopify-compatible /products.json feed toggle. Same strict
+		// yes/no enum + resolve-once pattern as `$mcp_enabled` above.
+		// Default `'yes'` (opt-out) — the feed's serve handler still
+		// requires `enabled === 'yes'`, so this only matters once
+		// syndication is on.
+		$products_json_enabled = $merged['products_json_enabled'] ?? 'yes';
+		if ( ! in_array( $products_json_enabled, [ 'yes', 'no' ], true ) ) {
+			$products_json_enabled = 'yes';
+		}
+
 		// Map legacy mode aliases to their canonical form. Old stores may
 		// have 'categories', 'tags', or 'brands' saved before the unified
 		// by_taxonomy mode was introduced; this normalizes them at write
@@ -726,6 +743,8 @@ class WC_AI_Storefront {
 			'allow_unknown_ucp_agents' => $allow_unknown,
 			// See `$mcp_enabled` resolution above the array literal.
 			'mcp_enabled'              => $mcp_enabled,
+			// See `$products_json_enabled` resolution above the array literal.
+			'products_json_enabled'    => $products_json_enabled,
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.
