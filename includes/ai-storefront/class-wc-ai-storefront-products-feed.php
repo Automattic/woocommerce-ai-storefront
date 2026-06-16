@@ -361,21 +361,31 @@ class WC_AI_Storefront_Products_Feed {
 	 * @return string|null
 	 */
 	private function build_single_product_json( string $handle ): ?string {
-		if ( ! function_exists( 'wc_get_products' ) ) {
+		if ( ! function_exists( 'get_page_by_path' ) || ! function_exists( 'wc_get_product' ) ) {
 			return null;
 		}
-		$products = wc_get_products(
-			[
-				'slug'       => $handle,
-				'status'     => 'publish',
-				'visibility' => 'catalog',
-				'limit'      => 1,
-				'paginate'   => false,
-				'return'     => 'objects',
-			]
-		);
-		$product  = is_array( $products ) && ! empty( $products ) ? $products[0] : null;
-		if ( null === $product ) {
+
+		// Resolve the slug to a product via get_page_by_path() — NOT
+		// wc_get_products( [ 'slug' => … ] ): `slug` is not a supported
+		// wc_get_products arg (unlike `category`), so it is silently ignored
+		// and the query returns the FIRST product for every handle. This is the
+		// same resolver the UCP catalog/lookup `?slug=` path uses.
+		$post = get_page_by_path( $handle, OBJECT, 'product' );
+		if ( ! $post instanceof WP_Post || 'publish' !== $post->post_status ) {
+			return null;
+		}
+
+		$product = wc_get_product( $post->ID );
+		if ( ! $product instanceof WC_Product ) {
+			return null;
+		}
+
+		// Catalog-visibility leak guard — the equivalent of the bulk feed's
+		// `visibility => 'catalog'` query arg (which get_page_by_path can't
+		// express). Only products that appear in catalog listings qualify:
+		// 'visible' (shop + search) and 'catalog' (shop only). 'search'
+		// (search-only) and 'hidden' must 404, never leak.
+		if ( ! in_array( $product->get_catalog_visibility(), [ 'visible', 'catalog' ], true ) ) {
 			return null;
 		}
 		if ( ! WC_AI_Storefront::is_product_syndicated( $product, WC_AI_Storefront::get_settings() ) ) {

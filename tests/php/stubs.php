@@ -353,6 +353,17 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return true;
 		}
 
+		/**
+		 * Catalog visibility: 'visible' | 'catalog' | 'search' | 'hidden'.
+		 * Declared so the single-product endpoint's leak-guard
+		 * (`get_catalog_visibility()` in `WC_AI_Storefront_Products_Feed`) is
+		 * PHPStan-resolvable and Mockery-overridable. Tests set it via
+		 * `shouldReceive( 'get_catalog_visibility' )`.
+		 */
+		public function get_catalog_visibility(): string {
+			return 'visible';
+		}
+
 		public function get_name(): string {
 			return 'Test Product';
 		}
@@ -876,8 +887,10 @@ if ( ! function_exists( 'wcs_is_subscription' ) ) {
 
 if ( ! class_exists( 'WP_Post' ) ) {
 	class WP_Post {
-		public int    $ID         = 0;
-		public string $post_title = '';
+		public int    $ID          = 0;
+		public string $post_title  = '';
+		public string $post_status = 'publish';
+		public string $post_type   = 'product';
 	}
 }
 
