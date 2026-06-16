@@ -688,24 +688,45 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = '- **Send `context.currency`** (ISO 4217) on catalog and checkout requests for accurate pricing. Accepted currencies are listed under Store.';
 		$lines[] = '';
 
-		// ============================================================
-		// ## For agents
-		// ============================================================
-		// The collapsed UCP-discovery surface — what was previously
-		// spread across `## API Access`, `## Checkout Policy`, and
-		// `## Attribution`. Five bullets cover the canonical agent-doc
-		// path, capability discovery (manifest), API base (REST root),
-		// batch catalog lookup, and checkout escalation (the POST
-		// endpoint that returns a `continue_url`).
-		//
-		// No UTMs on any of these URLs — they're machine endpoints
-		// agents call directly, not links a buyer would follow. Adding
-		// UTM params here would pollute the agent's structured
-		// response payloads (the manifest, schema, etc.) with
-		// attribution params that don't belong there.
+		// UCP endpoint bases — reused by ## Typical agent flow, ## For agents,
+		// and ## Read-only browsing below. NO UTMs on any of these: they're
+		// machine endpoints agents call directly, not links a buyer follows;
+		// UTM params would pollute the structured response payloads.
 		$ucp_api_base = rtrim( rest_url( 'wc/ucp/v1' ), '/' );
 		$ucp_manifest = $site_url . '.well-known/ucp';
 		$ucp_checkout = $ucp_api_base . '/checkout-sessions';
+		$mcp_enabled  = 'yes' === ( $settings['mcp_enabled'] ?? 'no' );
+
+		// ============================================================
+		// ## Typical agent flow
+		// ============================================================
+		// The numbered orchestration an agent follows to transact, grounded in
+		// this store's REAL UCP endpoints (not copied from another store — our
+		// REST verbs differ). Culminates in the buyer-confirmed `continue_url`
+		// handoff. The MCP closing line is emitted only when the MCP transport
+		// is enabled (otherwise that endpoint 404s).
+		$lines[] = '## Typical agent flow';
+		$lines[] = '';
+		$lines[] = "1. **Discover** — `GET {$ucp_manifest}` confirms capabilities and the supported UCP version, and advertises the REST API base (`{$ucp_api_base}`)" . ( $mcp_enabled ? " plus the MCP transport (`{$ucp_api_base}/mcp`)" : '' ) . '.';
+		$lines[] = "2. **Search** — `POST {$ucp_api_base}/catalog/search` (or `GET {$ucp_api_base}/catalog/search?q=…`) to find products matching the buyer's intent. Send `context.currency` for accurate pricing.";
+		$lines[] = "3. **Look up** — `POST {$ucp_api_base}/catalog/lookup` (or `GET {$ucp_api_base}/catalog/lookup?ids=…`) for full details on the ids you selected.";
+		$lines[] = "4. **Create a checkout session** — `POST {$ucp_checkout}` with the line items; the response returns a `continue_url`.";
+		$lines[] = '5. **Hand off to the buyer** — redirect the buyer to that `continue_url` to review and pay on the store\'s own checkout. This store is buyer-confirmed: there is no delegated or in-chat payment to complete programmatically.';
+		if ( $mcp_enabled ) {
+			$lines[] = '';
+			$lines[] = "MCP-capable agents can drive the same flow over the MCP transport (`POST {$ucp_api_base}/mcp`) using the `catalog_search`, `catalog_lookup`, and `checkout_create` tools (call `tools/list` to discover their schemas).";
+		}
+		$lines[] = '';
+
+		// ============================================================
+		// ## For agents
+		// ============================================================
+		// The collapsed UCP-discovery surface — what was previously spread
+		// across `## API Access`, `## Checkout Policy`, and `## Attribution`.
+		// Five bullets cover the canonical agent-doc path, capability discovery
+		// (manifest), API base (REST root), batch catalog lookup, and checkout
+		// escalation (the POST endpoint that returns a `continue_url`). URL
+		// bases are defined above.
 		// `agents.md` is the emerging canonical agent-doc path; this same
 		// document is served byte-identically at both `/llms.txt` and
 		// `/agents.md`. The line names `agents.md` as canonical and notes
@@ -723,6 +744,31 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[]       = "- **Batch lookup**: `GET {$ucp_api_base}/catalog/lookup?ids=prod_1,prod_2,…` — fetch up to " . WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP . ' products in one request (or `POST /catalog/lookup`). Prefer this over many single lookups.';
 		$lines[]       = "- **Checkout API**: `POST {$ucp_checkout}` — server returns a `continue_url`; redirect the buyer there. Product-specific cart links are also available via JSON-LD `BuyAction.urlTemplate` on each product page (deterministic across product types).";
 		$lines[]       = '';
+
+		// ============================================================
+		// ## Read-only browsing
+		// ============================================================
+		// For agents that only need to READ the catalog without transacting.
+		// Steer-to-structured: the UCP catalog endpoints lead (structured,
+		// currency-aware), and the Shopify-compatible `*.json` paths follow as
+		// a convenience — emitted only when the products.json feed is enabled.
+		// The bulk `/products.json` is deliberately NOT listed (it stays a
+		// silent catch for agents that blind-probe it; llms.txt readers are
+		// pointed at the structured endpoints + scoped paths instead).
+		$lines[] = '## Read-only browsing';
+		$lines[] = '';
+		$lines[] = 'For agents that only need to read catalog data without transacting:';
+		$lines[] = '';
+		$lines[] = "- **Search** — `GET {$ucp_api_base}/catalog/search?q={query}` (UCP, structured, currency-aware)";
+		$lines[] = "- **Look up** — `GET {$ucp_api_base}/catalog/lookup?ids={ids}` or `?slug={handle}` (UCP, structured)";
+		if ( 'yes' === ( $settings['products_json_enabled'] ?? 'no' ) ) {
+			$lines[] = "- **Product JSON** — `GET {$site_url}products/{handle}.json` (Shopify-compatible)";
+			$lines[] = "- **Collection JSON** — `GET {$site_url}collections/{handle}/products.json`";
+			$lines[] = "- **Collection list** — `GET {$site_url}collections.json`";
+		}
+		$lines[] = '';
+		$lines[] = 'Prefer the UCP catalog endpoints for structured, currency-aware access; the `*.json` paths are a Shopify-compatible convenience.';
+		$lines[] = '';
 
 		// ============================================================
 		// ## Extension schema

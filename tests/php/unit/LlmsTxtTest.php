@@ -284,8 +284,8 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// test_output_includes_core_sections), so they're not pinned
 		// here. The full documented order, with every section present,
 		// is: Store → Browse → Catalog → Shipping & Returns → Policies →
-		// Structured data → Rules for agents → For agents → Extension
-		// schema.
+		// Structured data → Rules for agents → Typical agent flow →
+		// For agents → Read-only browsing → Extension schema.
 		$output = $this->llms->generate();
 
 		$expected_order = [
@@ -293,7 +293,9 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 			'## Browse',
 			'## Structured data',
 			'## Rules for agents',
+			'## Typical agent flow',
 			'## For agents',
+			'## Read-only browsing',
 			'## Extension schema',
 		];
 
@@ -1678,5 +1680,118 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '**Agent doc**', $output );
 		$this->assertStringContainsString( 'canonical agent doc', $output );
 		$this->assertStringNotContainsString( 'mirrors it', $output );
+	}
+
+	// ------------------------------------------------------------------
+	// ## Typical agent flow
+	// ------------------------------------------------------------------
+
+	public function test_typical_agent_flow_emits_five_numbered_steps_ending_in_continue_url(): void {
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Typical agent flow', $output );
+		// Five numbered steps, grounded in our real endpoints.
+		$this->assertStringContainsString( '1. **Discover**', $output );
+		$this->assertStringContainsString( '/.well-known/ucp', $output );
+		$this->assertStringContainsString( '2. **Search**', $output );
+		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/catalog/search', $output );
+		$this->assertStringContainsString( '3. **Look up**', $output );
+		$this->assertStringContainsString( '4. **Create a checkout session**', $output );
+		$this->assertStringContainsString( '/checkout-sessions', $output );
+		// Culminates in the buyer-confirmed continue_url handoff.
+		$this->assertStringContainsString( '5. **Hand off to the buyer**', $output );
+		$this->assertStringContainsString( '`continue_url`', $output );
+	}
+
+	public function test_typical_agent_flow_omits_mcp_line_when_mcp_disabled(): void {
+		// When the MCP transport is OFF, the flow must not advertise it (the
+		// endpoint would 404). mcp_enabled defaults to 'yes', so set it off.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'mcp_enabled'            => 'no',
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Typical agent flow', $output );
+		$this->assertStringNotContainsString( 'MCP-capable agents', $output );
+		$this->assertStringNotContainsString( '/wp-json/wc/ucp/v1/mcp', $output );
+	}
+
+	public function test_typical_agent_flow_includes_mcp_line_when_mcp_enabled(): void {
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'mcp_enabled'            => 'yes',
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'MCP-capable agents', $output );
+		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/mcp', $output );
+		$this->assertStringContainsString( '`catalog_search`', $output );
+		$this->assertStringContainsString( '`checkout_create`', $output );
+	}
+
+	// ------------------------------------------------------------------
+	// ## Read-only browsing (steer-to-structured)
+	// ------------------------------------------------------------------
+
+	public function test_read_only_browsing_leads_with_structured_endpoints(): void {
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '## Read-only browsing', $output );
+		// Structured UCP catalog reads lead.
+		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/catalog/search?q=', $output );
+		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/catalog/lookup?ids=', $output );
+		$this->assertStringContainsString( 'Prefer the UCP catalog endpoints', $output );
+	}
+
+	public function test_read_only_browsing_never_lists_bulk_products_json(): void {
+		// Steer-to-structured: the bulk /products.json is deliberately NOT
+		// advertised even when the feed is on — it stays a silent catch for
+		// blind-probers while llms.txt readers are pointed at structured +
+		// scoped paths. Enable the feed so the scoped paths ARE listed, then
+		// assert the bulk path still isn't.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'products_json_enabled'  => 'yes',
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'products/{handle}.json', $output );
+		// The bulk feed path (a /products.json not preceded by a handle
+		// segment) must be absent. `{$site_url}products.json` would render as
+		// `https://example.com/products.json`.
+		$this->assertStringNotContainsString( 'https://example.com/products.json', $output );
+		$this->assertStringNotContainsString( 'collections/all/products.json', $output );
+	}
+
+	public function test_read_only_browsing_scoped_json_gated_on_feed_toggle(): void {
+		// Feed OFF → no .json bullets, just the structured UCP reads.
+		// products_json_enabled defaults to 'yes', so set it off explicitly.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'products_json_enabled'  => 'no',
+		];
+		$off = $this->llms->generate();
+		$this->assertStringContainsString( '## Read-only browsing', $off );
+		$this->assertStringNotContainsString( 'products/{handle}.json', $off );
+		$this->assertStringNotContainsString( 'collections.json', $off );
+
+		// Feed ON → the three scoped paths appear.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'products_json_enabled'  => 'yes',
+		];
+		$on = $this->llms->generate();
+		$this->assertStringContainsString( 'products/{handle}.json', $on );
+		$this->assertStringContainsString( 'collections/{handle}/products.json', $on );
+		$this->assertStringContainsString( 'https://example.com/collections.json', $on );
 	}
 }
