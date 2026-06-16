@@ -221,11 +221,24 @@ class WC_AI_Storefront_Products_Feed {
 	public static function map_product( $product ): array {
 		$is_variable = method_exists( $product, 'is_type' ) && $product->is_type( 'variable' );
 
+		// Shopify emits published_at/created_at/updated_at as RFC 3339 UTC
+		// strings. WC has only created/modified dates, so published_at and
+		// created_at both map to created (WC has no separate publish date).
+		// The method_exists guard keeps Mockery doubles of the date-less
+		// WC_Product stub from tripping (and PHPStan honors it), and the
+		// `$ts > 0` guard in iso_date() drops an uninitialized WC_DateTime
+		// rather than rendering a 1970 date that would poison diff-sync.
+		$created  = method_exists( $product, 'get_date_created' ) ? $product->get_date_created() : null;
+		$modified = method_exists( $product, 'get_date_modified' ) ? $product->get_date_modified() : null;
+
 		$data = [
 			'id'           => (int) $product->get_id(),
 			'title'        => self::decode( (string) $product->get_name() ),
 			'handle'       => (string) $product->get_slug(),
 			'body_html'    => (string) $product->get_description(),
+			'published_at' => self::iso_date( $created ),
+			'created_at'   => self::iso_date( $created ),
+			'updated_at'   => self::iso_date( $modified ),
 			'vendor'       => self::resolve_vendor( $product ),
 			'product_type' => self::resolve_product_type( $product ),
 			'tags'         => self::resolve_tags( $product ),
@@ -250,6 +263,26 @@ class WC_AI_Storefront_Products_Feed {
 		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- PRODUCT_FILTER is the literal 'wc_ai_storefront_products_feed_product'; the sniff can't resolve the constant to see the prefix.
 		$filtered = apply_filters( self::PRODUCT_FILTER, $data, $product );
 		return is_array( $filtered ) ? $filtered : $data;
+	}
+
+	/**
+	 * Format a WC date getter result as an RFC 3339 UTC (`Z`) string, or
+	 * null. Mirrors the proven idiom in the Store API extension: a real
+	 * WC_DateTime is a \DateTimeInterface; `$ts > 0` drops an uninitialized
+	 * (epoch-0) or pre-epoch value that would otherwise render as a
+	 * misleading 1970 timestamp.
+	 *
+	 * @param mixed $dt The get_date_created()/get_date_modified() result.
+	 * @return string|null
+	 */
+	private static function iso_date( $dt ): ?string {
+		if ( $dt instanceof \DateTimeInterface ) {
+			$ts = $dt->getTimestamp();
+			if ( $ts > 0 ) {
+				return gmdate( 'Y-m-d\TH:i:s\Z', $ts );
+			}
+		}
+		return null;
 	}
 
 	/**

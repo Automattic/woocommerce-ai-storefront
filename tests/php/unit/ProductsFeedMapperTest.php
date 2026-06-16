@@ -369,4 +369,138 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 
 		return $p;
 	}
+
+	// ------------------------------------------------------------------
+	// map_product() — timestamp fields (published_at/created_at/updated_at)
+	// ------------------------------------------------------------------
+
+	public function test_map_product_emits_rfc3339_utc_timestamps_when_present(): void {
+		// Shopify's shape always carries published_at/created_at/updated_at
+		// as RFC 3339 UTC (`Z`) strings. WC has only created/modified, so
+		// published_at and created_at both map to created; updated_at maps
+		// to modified. A trained parser keys on these for freshness/sort.
+		$created  = new \DateTimeImmutable( '@1737017400' ); // 2025-01-16T08:50:00Z
+		$modified = new \DateTimeImmutable( '@1740000000' ); // 2025-02-19T21:20:00Z
+
+		$out = WC_AI_Storefront_Products_Feed::map_product(
+			$this->product_with_dates( $created, $modified )
+		);
+
+		$this->assertSame( '2025-01-16T08:50:00Z', $out['published_at'] );
+		$this->assertSame( '2025-01-16T08:50:00Z', $out['created_at'] );
+		$this->assertSame( '2025-02-19T21:20:00Z', $out['updated_at'] );
+	}
+
+	public function test_map_product_emits_null_timestamps_when_getters_absent(): void {
+		// A product object lacking the date getters (the method_exists guard
+		// fails) must still emit the keys — Shopify always emits them — as
+		// null, never omitted and never fabricated.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_simple_product() );
+
+		$this->assertArrayHasKey( 'published_at', $out );
+		$this->assertArrayHasKey( 'created_at', $out );
+		$this->assertArrayHasKey( 'updated_at', $out );
+		$this->assertNull( $out['published_at'] );
+		$this->assertNull( $out['created_at'] );
+		$this->assertNull( $out['updated_at'] );
+	}
+
+	public function test_map_product_treats_epoch_zero_date_as_null(): void {
+		// getTimestamp() returns 0 for an uninitialized WC_DateTime. Emitting
+		// "1970-01-01" would poison agent diff-sync cursors (always older than
+		// any real sync), so the $ts > 0 guard must drop it to null.
+		$epoch = new \DateTimeImmutable( '@0' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product(
+			$this->product_with_dates( $epoch, $epoch )
+		);
+
+		$this->assertNull( $out['published_at'] );
+		$this->assertNull( $out['created_at'] );
+		$this->assertNull( $out['updated_at'] );
+	}
+
+	/**
+	 * A WC_Product whose get_date_created()/get_date_modified() resolve via
+	 * method_exists (a real subclass, not a Mockery double — Mockery doubles
+	 * of the date-less WC_Product stub fail method_exists). All other getters
+	 * return benign empty/default values so map_product's vendor/type/tags/
+	 * image paths take their empty branches.
+	 *
+	 * @param ?\DateTimeInterface $created  Created date (or null).
+	 * @param ?\DateTimeInterface $modified Modified date (or null).
+	 * @return \WC_Product
+	 */
+	private function product_with_dates( ?\DateTimeInterface $created, ?\DateTimeInterface $modified ): \WC_Product {
+		// Uncategorized/untagged so resolve_* take empty branches without
+		// needing get_post_meta/wp_get_post_terms function stubs.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+
+		return new class( $created, $modified ) extends \WC_Product {
+			private ?\DateTimeInterface $created;
+			private ?\DateTimeInterface $modified;
+
+			public function __construct( ?\DateTimeInterface $created, ?\DateTimeInterface $modified ) {
+				$this->created  = $created;
+				$this->modified = $modified;
+			}
+
+			public function get_date_created() {
+				return $this->created;
+			}
+
+			public function get_date_modified() {
+				return $this->modified;
+			}
+
+			public function get_slug(): string {
+				return 'dated-product';
+			}
+
+			/** @return int[] */
+			public function get_category_ids(): array {
+				return [];
+			}
+
+			/** @return int[] */
+			public function get_tag_ids(): array {
+				return [];
+			}
+
+			public function get_image_id(): int {
+				return 0;
+			}
+
+			/** @return int[] */
+			public function get_gallery_image_ids(): array {
+				return [];
+			}
+
+			public function get_sku(): string {
+				return 'DATED';
+			}
+
+			public function get_price(): string {
+				return '20';
+			}
+
+			public function get_regular_price(): string {
+				return '20';
+			}
+
+			public function is_on_sale(): bool {
+				return false;
+			}
+
+			public function needs_shipping(): bool {
+				return true;
+			}
+		};
+	}
 }
