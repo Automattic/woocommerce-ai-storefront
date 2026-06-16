@@ -28,6 +28,7 @@ spl_autoload_register(
 			'WC_AI_Storefront_Crawl_Logger'           => '/ai-storefront/class-wc-ai-storefront-crawl-logger.php',
 			'WC_AI_Storefront_JsonLd'                 => '/ai-storefront/class-wc-ai-storefront-jsonld.php',
 			'WC_AI_Storefront_Llms_Txt'               => '/ai-storefront/class-wc-ai-storefront-llms-txt.php',
+			'WC_AI_Storefront_Products_Feed'          => '/ai-storefront/class-wc-ai-storefront-products-feed.php',
 			'WC_AI_Storefront_Logger'                 => '/ai-storefront/class-wc-ai-storefront-logger.php',
 			'WC_AI_Storefront_Multi_Currency'         => '/ai-storefront/class-wc-ai-storefront-multi-currency.php',
 			'WC_AI_Storefront_Handling_Time'          => '/ai-storefront/class-wc-ai-storefront-handling-time.php',
