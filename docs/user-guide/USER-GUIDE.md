@@ -446,6 +446,16 @@ Unchecking tells that crawler to stop. Most legitimate AI crawlers will respect 
 
 A toggle labeled **Other AI agents** controls whether unlisted crawlers can access your store. When checked, AI agents whose brand isn't in the list can access your store.
 
+### Shopify-compatible product feed
+
+A toggle labeled **Serve a Shopify-compatible /products.json catalog feed** controls whether your store answers requests at `/products.json` (and the `/collections/all/products.json` alias). It is **on by default**.
+
+Here is why it helps. Many AI shopping assistants learned to read catalogs from Shopify stores, which publish their products as JSON at `/products.json`. When one of these assistants meets a store it doesn't recognize, the first thing it often tries is that same address. If your store answers in the format it expects, the assistant can read your whole catalog in one request and start recommending your products right away. If your store returns nothing, the assistant may move on.
+
+This feed publishes the same products you already expose to AI agents (it respects your Visibility settings exactly like every other surface), just in the shape these assistants are trained to read: product titles, descriptions, prices, variants, images, and stock status. Nothing new is exposed. The same product data is already public on your storefront and through your other discovery endpoints; this is one more door into it, shaped for a common type of shopping assistant.
+
+Leave it on unless you have a specific reason not to publish a bulk catalog file. You might switch it off if you prefer AI assistants to discover products one at a time through search rather than pulling your entire catalog at once. Turning it off makes `/products.json` return "not found"; it does not affect any of your other endpoints, your UCP manifest, or your product-page structured data.
+
 ### Rate limits
 
 A 2 × 2 card grid shows four preset options: **Recommended** (25 per minute), **Conservative** (10 per minute), **Generous** (100 per minute), and **Custom**. Select one to set how many times per minute each AI crawler can look up your products before being temporarily blocked.

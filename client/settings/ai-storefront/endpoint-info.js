@@ -2414,6 +2414,34 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 							}
 							__nextHasNoMarginBottom
 						/>
+						<p
+							style={ {
+								color: colors.textMuted,
+								fontSize: '12px',
+								marginTop: '12px',
+								marginBottom: '8px',
+							} }
+						>
+							{ __(
+								'Lets AI assistants that probe the common /products.json endpoint find your catalog. The data is already public via your storefront.',
+								'woocommerce-ai-storefront'
+							) }
+						</p>
+						<CheckboxControl
+							label={ __(
+								'Serve a Shopify-compatible /products.json catalog feed',
+								'woocommerce-ai-storefront'
+							) }
+							checked={ settings.products_json_enabled === 'yes' }
+							onChange={ ( checked ) =>
+								onChange( {
+									products_json_enabled: checked
+										? 'yes'
+										: 'no',
+								} )
+							}
+							__nextHasNoMarginBottom
+						/>
 					</div>
 				</CardBody>
 			</Card>

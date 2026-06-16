@@ -53,6 +53,7 @@ require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-logger.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-crawl-logger.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-return-policy.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-llms-txt.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-products-feed.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-ucp.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-robots.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php';

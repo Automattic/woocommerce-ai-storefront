@@ -2,7 +2,7 @@
 
 Inventory of every persisted artifact this plugin writes — options, transients, post meta, order meta, scheduled events. For each: where it's defined, who reads/writes it, lifetime, and behavior on uninstall.
 
-The surface is deliberately small: two options, eight transients, three scheduled events, one post-meta key, four order-meta keys, and two custom tables. No custom post types.
+The surface is deliberately small: three options, nine transients, three scheduled events, one post-meta key, four order-meta keys, and two custom tables. No custom post types.
 
 The two custom tables back the Discovery analytics surface. They were added in 0.8.6 alongside the crawler-side visibility stats. Pre-0.8.6 installs got both tables created on the version-bump dbDelta path; the schema is rebuildable on every version bump and the tables are dropped on uninstall.
 
@@ -86,6 +86,7 @@ Single source of truth for all runtime settings.
     'rate_limit_rpm'           => int,                                   // 1-1000, default 25
     'allowed_crawlers'         => string[],                              // subset of WC_AI_Storefront_Robots::AI_CRAWLERS
     'allow_unknown_ucp_agents' => 'yes' | 'no',                          // default 'no' (secure-by-default)
+    'products_json_enabled'    => 'yes' | 'no',                          // default 'yes' (Shopify /products.json feed)
     'return_policy'            => [
         'mode'    => 'unconfigured' | 'returns_accepted' | 'final_sale', // default 'unconfigured'
         'page_id' => int|null,                                           // optional: link to a policy page
@@ -95,6 +96,10 @@ Single source of truth for all runtime settings.
     ],
 ]
 ```
+
+#### `products_json_enabled`
+
+The Discovery-tab toggle for the Shopify-compatible `/products.json` feed. Default `'yes'` (the feed works out of the box for syndicated stores; a merchant who doesn't want a bulk catalog mirror switches it off). Validated to the `'yes' | 'no'` enum in `update_settings()` exactly like `mcp_enabled` — any other value resolves to `'yes'`. Read by `WC_AI_Storefront_Products_Feed::serve_products_feed()` as the second gate after `enabled` (both must be `'yes'` or the feed 404s). See [`API-REFERENCE.md`](API-REFERENCE.md#shopify-compatible-products-feed).
 
 #### Silent migrations
 
@@ -118,6 +123,18 @@ Tracks the currently-installed plugin version. Used to detect upgrades and trigg
 - **Uninstall:** deleted by `uninstall.php`
 
 The version check runs in the rewrite path (not the activation hook) because WordPress fires `register_activation_hook` only on fresh activation, not on in-place zip upgrades. To catch upgrades reliably the check has to run on every boot.
+
+### `wc_ai_storefront_products_feed_version`
+
+Monotonically-increasing integer that versions the Shopify `/products.json` feed page cache. It is embedded in every feed cache key (`wc_ai_sf_pjson_<md5(host|version|limit|page)>`), so incrementing it orphans **every** cached `(limit, page)` page at once — no key enumeration, no wildcard DB delete. This is the only practical way to invalidate a paginated, unbounded key space.
+
+- **Type:** int (starts at `1`)
+- **Autoload:** `no` — written with `update_option( …, $current + 1, false )`; the value is read only inside the feed serve path, never on a general page load
+- **Defined in:** `WC_AI_Storefront_Products_Feed::VERSION_OPTION` ([`includes/ai-storefront/class-wc-ai-storefront-products-feed.php`](../../includes/ai-storefront/class-wc-ai-storefront-products-feed.php))
+- **Written by:** `WC_AI_Storefront_Cache_Invalidator::bump_products_feed_version()`
+- **Bumped on:** `save_post_product`, `woocommerce_update_product`, `woocommerce_delete_product`, and `update_option_<SETTINGS_OPTION>`. Category/tag/brand term edits flow through `woocommerce_update_product` on the affected products, so they don't need separate hooks.
+- **Read by:** `WC_AI_Storefront_Products_Feed::get_cached_feed_json()` when assembling the cache key
+- **Uninstall:** deleted by `uninstall.php` (single-site and per-blog multisite paths)
 
 ---
 
@@ -182,6 +199,16 @@ Cached archive `ItemList` blocks emitted by `WC_AI_Storefront_JsonLd::output_arc
 - **Written by:** `output_archive_itemlist_jsonld()` for the shop / category / tag contexts only. An un-encodable payload (`wp_json_encode` returns `false`) is never written.
 - **Invalidated by:** `WC_AI_Storefront_Cache_Invalidator` via a `LIKE '_transient_<prefix>%' OR '_transient_timeout_<prefix>%'` wildcard delete (single-site and per-blog multisite paths) on any product or term change — the whole family is purged at once.
 - **Uninstall:** deleted by `uninstall.php` via the same prefix wildcard.
+
+### `wc_ai_sf_pjson_{md5}` (keyspace family)
+
+Cached Shopify `/products.json` feed page bodies, one transient per `(host, feed version, limit, page)` tuple. Like the `itemlist_` family, this is a family of keys sharing a prefix rather than a single key.
+
+- **Key shape:** `wc_ai_sf_pjson_<md5( host | version | limit | page )>` — host-scoped (so multi-domain installs with `Vary: Host` edge entries never cross-pollinate) and version-scoped (so a single `wc_ai_storefront_products_feed_version` bump orphans the whole family).
+- **TTL:** 1 hour (`WC_AI_Storefront_Products_Feed::CACHE_TTL = HOUR_IN_SECONDS`) — a backstop; correctness on change is handled by the version key, not the TTL.
+- **Written by:** `WC_AI_Storefront_Products_Feed::get_cached_feed_json()` on a cache miss.
+- **Invalidated by:** version bump (not deletion) — `WC_AI_Storefront_Cache_Invalidator::bump_products_feed_version()` increments the embedded version so old keys become unreachable and expire via TTL. Unlike the `llms_txt_` / `itemlist_` families, there is **no wildcard DB delete** on content change; the versioned key prefix makes one stale.
+- **Uninstall:** purged by `uninstall.php` via a `LIKE '_transient_wc_ai_sf_pjson_%' OR '_transient_timeout_wc_ai_sf_pjson_%'` wildcard delete (single-site and per-blog multisite paths). Object-cache-backed transients on these dynamic keys are reaped by their 1h TTL (same limitation as the `llms_txt_` wildcard).
 
 ### `wc_ai_storefront_stats_{period}`
 
@@ -354,8 +381,8 @@ Hourly cron that rolls yesterday's and today's raw log into the summary table, k
 
 When activated network-wide, options and transients are per-site (each site has its own `wp_options` row). `uninstall.php` loops through `get_sites()` and deletes from each:
 
-- `wc_ai_storefront_settings`, `wc_ai_storefront_version`
-- `wc_ai_storefront_llms_txt`, `wc_ai_storefront_ucp`, `wc_ai_storefront_flush_rewrite`, `wc_ai_storefront_catalog_summary`, `wc_ai_storefront_stats_{day,week,month,year}`, `wc_ai_storefront_crawl_stats_{day,week,month,quarter}` (transients)
+- `wc_ai_storefront_settings`, `wc_ai_storefront_version`, `wc_ai_storefront_products_feed_version`
+- `wc_ai_storefront_llms_txt`, `wc_ai_storefront_ucp`, `wc_ai_storefront_flush_rewrite`, `wc_ai_storefront_catalog_summary`, `wc_ai_storefront_stats_{day,week,month,year}`, `wc_ai_storefront_crawl_stats_{day,week,month,quarter}`, `wc_ai_sf_pjson_*` (transients)
 - `wc_ai_storefront_warm_llms_txt_cache`, `wc_ai_storefront_prune_crawl_log`, `wc_ai_storefront_rollup_crawl_log` (cron)
 - `{prefix}wc_ai_storefront_crawl_log`, `{prefix}wc_ai_storefront_crawl_summary` (custom tables, dropped via `DROP TABLE`)
 

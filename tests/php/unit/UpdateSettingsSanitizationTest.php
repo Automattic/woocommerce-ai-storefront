@@ -222,4 +222,59 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 			'explicit null'    => [ null ],
 		];
 	}
+
+	// ------------------------------------------------------------------
+	// products_json_enabled sanitization — strict yes/no enum, default
+	// 'yes'.
+	// ------------------------------------------------------------------
+	//
+	// Same safety-net contract as mcp_enabled: the Shopify-compatible
+	// /products.json feed is an opt-OUT toggle (default 'yes') gated by
+	// syndication (`enabled`), so the serve handler only emits the feed
+	// once syndication itself is on. Any value that bypasses the REST
+	// enum schema MUST resolve to the default 'yes' rather than silently
+	// disabling the feed on a malformed write.
+
+	public function test_products_json_enabled_present_in_defaults(): void {
+		// With no overrides, get_settings() must surface the key — a
+		// missing key would make the feed gate read it as falsy and
+		// silently 404 the endpoint on fresh installs.
+		WC_AI_Storefront::$test_settings = [];
+		$this->assertArrayHasKey( 'products_json_enabled', WC_AI_Storefront::get_settings() );
+		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['products_json_enabled'] );
+	}
+
+	public function test_products_json_enabled_defaults_to_yes_and_validates(): void {
+		WC_AI_Storefront::update_settings( [ 'enabled' => 'yes' ] );
+		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['products_json_enabled'] );
+
+		WC_AI_Storefront::update_settings( [ 'products_json_enabled' => 'no' ] );
+		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['products_json_enabled'] );
+
+		WC_AI_Storefront::update_settings( [ 'products_json_enabled' => 'gibberish' ] );
+		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['products_json_enabled'] );
+	}
+
+	/**
+	 * Every malformed value must fall back to the default `'yes'`.
+	 * Mirrors the mcp_enabled provider's strict-comparison guard.
+	 *
+	 * @dataProvider products_json_enabled_invalid_value_provider
+	 */
+	public function test_products_json_enabled_invalid_value_falls_back_to_yes( $value ): void {
+		WC_AI_Storefront::update_settings( [ 'products_json_enabled' => $value ] );
+		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['products_json_enabled'] );
+	}
+
+	public static function products_json_enabled_invalid_value_provider(): array {
+		return [
+			'arbitrary string' => [ 'maybe' ],
+			'boolean true'     => [ true ],
+			'integer 1'        => [ 1 ],
+			'string 1'         => [ '1' ],
+			'uppercase YES'    => [ 'YES' ],
+			'truthy text'      => [ 'true' ],
+			'explicit null'    => [ null ],
+		];
+	}
 }
