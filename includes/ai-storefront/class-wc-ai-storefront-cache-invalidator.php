@@ -136,11 +136,18 @@ class WC_AI_Storefront_Cache_Invalidator {
 		//   - woocommerce_delete_product: removals.
 		//   - update_option_<SETTINGS>: syndication/feed settings changes that
 		//     alter which products the feed includes.
-		// Category/tag/brand term edits flow through woocommerce_update_product
-		// on the affected products, so they don't need separate hooks here.
+		//   - created/edited/delete_product_cat: the v2 /collections.json and
+		//     /collections/{handle}/products.json endpoints read category term
+		//     data DIRECTLY (id/handle/title/products_count), and map_product's
+		//     product_type is derived from category names — none of which fire
+		//     a product-save hook on a term rename/add/delete, so the term
+		//     events must bump the version themselves.
 		add_action( 'save_post_product', [ $this, 'bump_products_feed_version' ] );
 		add_action( 'woocommerce_update_product', [ $this, 'bump_products_feed_version' ] );
 		add_action( 'woocommerce_delete_product', [ $this, 'bump_products_feed_version' ] );
+		add_action( 'created_product_cat', [ $this, 'bump_products_feed_version' ] );
+		add_action( 'edited_product_cat', [ $this, 'bump_products_feed_version' ] );
+		add_action( 'delete_product_cat', [ $this, 'bump_products_feed_version' ] );
 		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, [ $this, 'bump_products_feed_version' ] );
 
 		// Cron handler for background warm-up.
