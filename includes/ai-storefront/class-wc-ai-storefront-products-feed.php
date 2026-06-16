@@ -461,20 +461,24 @@ class WC_AI_Storefront_Products_Feed {
 	public static function resolve_product_type( $product ): string {
 		$product_id = (int) $product->get_id();
 
-		// 1. SEO-plugin primary category.
+		$term_ids = $product->get_category_ids();
+		if ( empty( $term_ids ) || ! is_array( $term_ids ) ) {
+			return '';
+		}
+
+		// 1. SEO-plugin primary category — but only when the product is STILL
+		// assigned to it. The Yoast/RankMath meta is not cleared when a
+		// category is unassigned, so a stale id would otherwise emit a
+		// product_type the product no longer belongs to.
+		$assigned = array_map( 'intval', (array) $term_ids );
 		foreach ( [ '_yoast_wpseo_primary_product_cat', 'rank_math_primary_product_cat' ] as $meta_key ) {
 			$primary_id = (int) get_post_meta( $product_id, $meta_key, true );
-			if ( $primary_id > 0 ) {
+			if ( $primary_id > 0 && in_array( $primary_id, $assigned, true ) ) {
 				$term = get_term( $primary_id, 'product_cat' );
 				if ( $term instanceof WP_Term ) {
 					return self::decode( $term->name );
 				}
 			}
-		}
-
-		$term_ids = $product->get_category_ids();
-		if ( empty( $term_ids ) || ! is_array( $term_ids ) ) {
-			return '';
 		}
 
 		$terms = array_filter(

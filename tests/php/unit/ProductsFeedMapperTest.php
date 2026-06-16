@@ -186,4 +186,187 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'HD-M-RED', $v['sku'] );
 		$this->assertTrue( $v['available'] );
 	}
+
+	// ------------------------------------------------------------------
+	// map_product() — variant pricing + availability edge cases
+	// ------------------------------------------------------------------
+
+	public function test_map_simple_product_on_sale_sets_compare_at_price(): void {
+		// On sale: compare_at_price is the (higher) regular price, money-formatted;
+		// price is the current (sale) price.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+
+		$p = $this->mappable_simple_product(
+			[
+				'price'         => '40',
+				'regular_price' => '60',
+				'on_sale'       => true,
+			]
+		);
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p );
+
+		$this->assertSame( '40.00', $out['variants'][0]['price'] );
+		$this->assertSame( '60.00', $out['variants'][0]['compare_at_price'] );
+	}
+
+	public function test_map_simple_product_out_of_stock_is_unavailable(): void {
+		// Out of stock -> available:false even if purchasable, because
+		// available = is_in_stock() && is_purchasable().
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+
+		$p = $this->mappable_simple_product( [ 'in_stock' => false ] );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p );
+
+		$this->assertFalse( $out['variants'][0]['available'] );
+	}
+
+	public function test_map_simple_product_resolves_vendor_from_brand_term(): void {
+		// First product_brand term name becomes the Shopify `vendor`.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [ 'Gizmonic' ] );
+
+		$p = $this->mappable_simple_product();
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p );
+
+		$this->assertSame( 'Gizmonic', $out['vendor'] );
+	}
+
+	// ------------------------------------------------------------------
+	// resolve_product_type() — deepest-category + RankMath + stale meta
+	// ------------------------------------------------------------------
+
+	public function test_product_type_prefers_deepest_assigned_category(): void {
+		// No SEO primary meta -> fall through to the deepest (most-specific)
+		// assigned category. get_ancestors returns a longer chain for the
+		// deeper term so the usort depth comparator actually runs.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->alias(
+			static function ( $id ) {
+				$names      = [
+					10 => 'Apparel',     // Shallow (no ancestors).
+					20 => 'Pullovers',   // Deepest (two ancestors).
+					30 => 'Tops',        // Mid (one ancestor).
+				];
+				$t          = \Mockery::mock( 'WP_Term' );
+				$t->name    = $names[ $id ] ?? 'Unknown';
+				$t->term_id = $id;
+				return $t;
+			}
+		);
+		Functions\when( 'get_ancestors' )->alias(
+			static function ( $term_id ) {
+				$depth = [
+					10 => [],            // 0 ancestors.
+					20 => [ 30, 10 ],    // 2 ancestors -> deepest.
+					30 => [ 10 ],        // 1 ancestor.
+				];
+				return $depth[ $term_id ] ?? [];
+			}
+		);
+
+		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, [ 10, 20, 30 ] ) );
+		$this->assertSame( 'Pullovers', $type );
+	}
+
+	public function test_product_type_uses_rank_math_primary_when_assigned(): void {
+		// Yoast meta absent; RankMath primary set AND assigned (per the
+		// stale-meta cross-check) -> that term wins over the category fallback.
+		Functions\when( 'get_post_meta' )->alias(
+			static function ( $id, $key ) {
+				return 'rank_math_primary_product_cat' === $key ? 77 : '';
+			}
+		);
+		Functions\when( 'get_term' )->alias(
+			static function ( $id ) {
+				$t          = \Mockery::mock( 'WP_Term' );
+				$t->name    = 77 === $id ? 'Outerwear' : 'Other';
+				$t->term_id = $id;
+				return $t;
+			}
+		);
+
+		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, [ 12, 77 ] ) );
+		$this->assertSame( 'Outerwear', $type );
+	}
+
+	public function test_product_type_ignores_stale_unassigned_primary_meta(): void {
+		// Regression guard for the stale-SEO-meta fix: the primary-category id
+		// points at a term the product is NO LONGER assigned to (99 not in the
+		// assigned list). It must be ignored, falling through to the assigned
+		// category instead of emitting the wrong type.
+		Functions\when( 'get_post_meta' )->alias(
+			static function ( $id, $key ) {
+				return '_yoast_wpseo_primary_product_cat' === $key ? 99 : '';
+			}
+		);
+		Functions\when( 'get_term' )->alias(
+			static function ( $id ) {
+				$names      = [
+					42 => 'Accessories', // The one the product IS assigned to.
+					99 => 'Footwear',    // Stale primary — product no longer in it.
+				];
+				$t          = \Mockery::mock( 'WP_Term' );
+				$t->name    = $names[ $id ] ?? 'Unknown';
+				$t->term_id = $id;
+				return $t;
+			}
+		);
+
+		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, [ 42 ] ) );
+		$this->assertSame( 'Accessories', $type );
+		$this->assertNotSame( 'Footwear', $type );
+	}
+
+	/**
+	 * Build a simple WC_Product mock fully wired for map_product(), with
+	 * overridable price/stock/sale fields. Uncategorized + untagged + no
+	 * images so the type/vendor/image paths take their empty branches unless
+	 * the caller stubs otherwise.
+	 *
+	 * @param array $overrides price|regular_price|on_sale|in_stock|purchasable.
+	 * @return \Mockery\MockInterface
+	 */
+	private function mappable_simple_product( array $overrides = [] ) {
+		$o = array_merge(
+			[
+				'price'         => '20',
+				'regular_price' => '20',
+				'on_sale'       => false,
+				'in_stock'      => true,
+				'purchasable'   => true,
+			],
+			$overrides
+		);
+
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( 500 );
+		$p->shouldReceive( 'get_name' )->andReturn( 'Gadget' );
+		$p->shouldReceive( 'get_slug' )->andReturn( 'gadget' );
+		$p->shouldReceive( 'get_description' )->andReturn( '' );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
+		$p->shouldReceive( 'get_sku' )->andReturn( 'GAD' );
+		$p->shouldReceive( 'get_price' )->andReturn( $o['price'] );
+		$p->shouldReceive( 'get_regular_price' )->andReturn( $o['regular_price'] );
+		$p->shouldReceive( 'is_on_sale' )->andReturn( $o['on_sale'] );
+		$p->shouldReceive( 'is_in_stock' )->andReturn( $o['in_stock'] );
+		$p->shouldReceive( 'is_purchasable' )->andReturn( $o['purchasable'] );
+		$p->shouldReceive( 'needs_shipping' )->andReturn( true );
+
+		return $p;
+	}
 }
