@@ -73,6 +73,13 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'A Product' );
 		$p->shouldReceive( 'is_type' )->andReturnUsing( fn( $t ) => 'simple' === $t );
 		$p->shouldReceive( 'is_purchasable' )->andReturn( $purchasable );
+		// Empty children is how the variable-branch capability gate
+		// (`method_exists( …, 'get_variation_attributes' ) && get_children()`)
+		// distinguishes a simple product: the `WC_Product` test stub declares
+		// `get_variation_attributes()` on the base (so `method_exists` is
+		// always true in stub-land), so `get_children()` is the real
+		// discriminator — empty here means "fall through to the simple branch".
+		$p->shouldReceive( 'get_children' )->andReturn( [] );
 		$p->shouldReceive( 'get_permalink' )->andReturn( "https://example.com/product/{$slug}/" );
 		return $p;
 	}
@@ -288,5 +295,156 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertStringNotContainsString( '/products/nofeed.json', $html );
 		$this->assertStringContainsString( 'products=401:1', $html ); // concrete link still emitted (<=4)
+	}
+
+	/**
+	 * A `WC_Product_Variable` subclass (variable-subscription) whose
+	 * `is_type()` returns its own slug — NOT 'variable'. The body anchor
+	 * must route it through the variation branch (matching the `<script>`
+	 * BuyAction's capability gate) and emit per-variant variation-ID links,
+	 * never a single parent-ID `/checkout-link/?products=<parent_id>:1`
+	 * link WC rejects at checkout.
+	 *
+	 * @param string $type The product-type slug `is_type()` returns true for.
+	 * @dataProvider variable_subclass_type_provider
+	 */
+	public function test_variable_subclass_routes_through_variation_branch( string $type ): void {
+		$vars   = [
+			801 => $this->variation( 801, 'Monthly' ),
+			802 => $this->variation( 802, 'Yearly' ),
+		];
+		$parent = $this->variable_subclass_product( 800, 'sub-plan', [ 801, 802 ], $type );
+		$html   = $this->render_for( $parent, $vars );
+
+		// Per-variant variation-ID links present.
+		$this->assertStringContainsString( 'products=801:1', $html );
+		$this->assertStringContainsString( 'products=802:1', $html );
+		// Construct kit present.
+		$this->assertStringContainsString( 'products={variation_id}:1', $html );
+		$this->assertStringContainsString( 'https://example.com/products/sub-plan.json', $html );
+		// MUST NOT emit a parent-ID checkout link (the broken fall-through).
+		$this->assertStringNotContainsString( 'products=800:1', $html );
+	}
+
+	public static function variable_subclass_type_provider(): array {
+		return [
+			// is_type('variable') is FALSE for both; only the subclass slug
+			// matches. Proves the gate no longer depends on is_type('variable').
+			'variable-subscription' => [ 'variable-subscription' ],
+			'variable-bundle'       => [ 'variable-bundle' ],
+		];
+	}
+
+	/**
+	 * Boundary: exactly CHECKOUT_ANCHOR_VARIANT_MAX (4) purchasable
+	 * variations renders all four concrete links + the construct kit.
+	 * Pins the `<=` boundary so an off-by-one (`<`) would fail here.
+	 */
+	public function test_variable_exactly_four_renders_all_concrete_links(): void {
+		$ids  = [ 701, 702, 703, 704 ]; // exactly 4 == CHECKOUT_ANCHOR_VARIANT_MAX
+		$vars = [];
+		foreach ( $ids as $i => $vid ) {
+			$vars[ $vid ] = $this->variation( $vid, "Opt {$i}" );
+		}
+		$html = $this->render_for( $this->variable_product( 700, 'four-var', $ids ), $vars );
+
+		$this->assertStringContainsString( 'products=701:1', $html );
+		$this->assertStringContainsString( 'products=702:1', $html );
+		$this->assertStringContainsString( 'products=703:1', $html );
+		$this->assertStringContainsString( 'products=704:1', $html );
+		// Construct kit also present.
+		$this->assertStringContainsString( 'products={variation_id}:1', $html );
+		$this->assertStringContainsString( 'https://example.com/products/four-var.json', $html );
+	}
+
+	/**
+	 * Boundary: exactly 5 purchasable variations (> CHECKOUT_ANCHOR_VARIANT_MAX)
+	 * emits NO concrete `products=<id>:1` links, only the construct kit +
+	 * `.json` feed. Pins the `<=` boundary so an off-by-one (`<=5`) would
+	 * fail here.
+	 */
+	public function test_variable_exactly_five_omits_concrete_links(): void {
+		$ids  = [ 711, 712, 713, 714, 715 ]; // exactly 5 > CHECKOUT_ANCHOR_VARIANT_MAX
+		$vars = [];
+		foreach ( $ids as $i => $vid ) {
+			$vars[ $vid ] = $this->variation( $vid, "Opt {$i}" );
+		}
+		$html = $this->render_for( $this->variable_product( 710, 'five-var', $ids ), $vars );
+
+		// No concrete per-variant links at the 5-variation boundary.
+		$this->assertStringNotContainsString( 'products=711:1', $html );
+		$this->assertStringNotContainsString( 'products=712:1', $html );
+		$this->assertStringNotContainsString( 'products=713:1', $html );
+		$this->assertStringNotContainsString( 'products=714:1', $html );
+		$this->assertStringNotContainsString( 'products=715:1', $html );
+		// Construct kit + feed remain.
+		$this->assertStringContainsString( 'products={variation_id}:1', $html );
+		$this->assertStringContainsString( 'https://example.com/products/five-var.json', $html );
+	}
+
+	/**
+	 * Cardinal invariant: the rendered concrete-variant href is
+	 * byte-identical to {@see WC_AI_Storefront_JsonLd::checkout_url_template()}
+	 * (and therefore the `<script>` BuyAction). Extract the href from the
+	 * rendered anchor and assertSame against the accessor so any divergence
+	 * on the concrete path fails — substring checks alone can't catch a
+	 * trailing/ordering drift.
+	 */
+	public function test_concrete_variant_href_is_byte_identical_to_accessor(): void {
+		$variation = $this->variation( 901, 'Tall' );
+		$vars      = [ 901 => $variation ];
+		$html      = $this->render_for( $this->variable_product( 900, 'one-var', [ 901 ] ), $vars );
+
+		$this->assertSame( 1, preg_match( '/Tall: <a href="([^"]+)">checkout<\/a>/', $html, $m ) );
+		$rendered_href = $m[1];
+		$expected_href = WC_AI_Storefront_JsonLd::checkout_url_template( $variation );
+
+		$this->assertSame( $expected_href, $rendered_href );
+	}
+
+	/**
+	 * Cardinal invariant on the construct-kit `<code>` template: assert the
+	 * FULL UTM tail, not just the `products={variation_id}:1` head. The
+	 * construct-kit line is hand-built from a literal `utm_id=woo_jsonld`,
+	 * while the accessor derives `utm_id` from
+	 * `WC_AI_Storefront_Attribution::WOO_JSONLD_ID`. Asserting the whole
+	 * tail catches a drift between the hand-built literal and the
+	 * constant-derived shape.
+	 */
+	public function test_construct_kit_emits_full_utm_tail(): void {
+		$vars = [ 911 => $this->variation( 911, 'X' ) ];
+		$html = $this->render_for( $this->variable_product( 910, 'kit-var', [ 911 ] ), $vars );
+
+		$this->assertStringContainsString(
+			'products={variation_id}:1&utm_source={agent_id}&utm_medium=referral&utm_id=woo_jsonld',
+			$html
+		);
+		// The literal must match the constant the accessor uses.
+		$this->assertSame( 'woo_jsonld', WC_AI_Storefront_Attribution::WOO_JSONLD_ID );
+	}
+
+	/**
+	 * Variable-subscription-shaped parent: `is_type()` returns true only for
+	 * the given subclass slug (e.g. 'variable-subscription'), and crucially
+	 * `is_type('variable')` is FALSE. The capability gate
+	 * (`method_exists( …, 'get_variation_attributes' ) && get_children()`)
+	 * is what routes it through the variation branch.
+	 *
+	 * @param int      $id            Parent product ID.
+	 * @param string   $slug          Parent slug.
+	 * @param int[]    $variation_ids Child variation IDs.
+	 * @param string   $type          The subclass type slug.
+	 */
+	private function variable_subclass_product( int $id, string $slug, array $variation_ids, string $type ) {
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( $id );
+		$p->shouldReceive( 'get_slug' )->andReturn( $slug );
+		$p->shouldReceive( 'get_name' )->andReturn( ucfirst( $slug ) );
+		// is_type('variable') is FALSE — only the subclass slug matches.
+		$p->shouldReceive( 'is_type' )->andReturnUsing( fn( $t ) => $type === $t );
+		$p->shouldReceive( 'is_purchasable' )->andReturn( true );
+		$p->shouldReceive( 'get_children' )->andReturn( $variation_ids );
+		$p->shouldReceive( 'get_permalink' )->andReturn( "https://example.com/product/{$slug}/" );
+		return $p;
 	}
 }

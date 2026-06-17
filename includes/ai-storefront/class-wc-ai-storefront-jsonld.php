@@ -478,7 +478,20 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		// Variable: construct kit + concrete links when small.
-		if ( $product->is_type( 'variable' ) ) {
+		//
+		// Capability gate, NOT `is_type( 'variable' )`: a bare type-string
+		// check misses `WC_Product_Variable` subclasses (variable-subscription,
+		// variable-bundle) whose `is_type()` returns their own slug. Those
+		// would fall through to the simple branch below and emit a single
+		// parent-ID `/checkout-link/?products=<parent_id>:1` link WC rejects
+		// at checkout (the parent of a variable product is not purchasable).
+		// `method_exists( …, 'get_variation_attributes' )` + non-empty
+		// `get_children()` is the exact gate the JSON-LD ProductGroup path
+		// uses (`maybe_convert_to_product_group()` /
+		// `get_variation_attribute_slugs()`), so the body anchor and the
+		// `<script>` BuyAction agree on what counts as variable and emit
+		// per-variant variation-ID links uniformly.
+		if ( method_exists( $product, 'get_variation_attributes' ) && $product->get_children() ) {
 			$variations = array();
 			foreach ( (array) $product->get_children() as $child_id ) {
 				$variation = $this->resolve_variation( (int) $child_id );
