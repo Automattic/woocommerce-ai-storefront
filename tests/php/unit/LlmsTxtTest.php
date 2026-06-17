@@ -1773,15 +1773,18 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// Structured UCP catalog reads lead.
 		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/catalog/search?q=', $output );
 		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/catalog/lookup?ids=', $output );
+		// Pin the Read-only section's own Look up bullet, which now leads
+		// with the `?slug=` form (the `?ids=` assertion above is satisfied
+		// by other sections, so it no longer pins this bullet).
+		$this->assertStringContainsString( 'catalog/lookup?slug=', $output );
 		$this->assertStringContainsString( 'Prefer the UCP catalog endpoints', $output );
 	}
 
-	public function test_read_only_browsing_never_lists_bulk_products_json(): void {
-		// Steer-to-structured: the bulk /products.json is deliberately NOT
-		// advertised even when the feed is on — it stays a silent catch for
-		// blind-probers while llms.txt readers are pointed at structured +
-		// scoped paths. Enable the feed so the scoped paths ARE listed, then
-		// assert the bulk path still isn't.
+	public function test_read_only_browsing_lists_bulk_products_json_when_feed_on(): void {
+		// Allowlist-based fetch tools cannot issue POST (catalog/search) and
+		// snap to seen query strings, but CAN fetch one parameterless URL.
+		// The bulk /products.json is the simplest whole-catalog surface for
+		// them, so it IS listed in Read-only browsing when the feed is on.
 		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
@@ -1790,11 +1793,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 		$output = $this->llms->generate();
 
+		$this->assertStringContainsString( 'https://example.com/products.json', $output );
+		// Scoped per-product path stays listed too.
 		$this->assertStringContainsString( 'products/{handle}.json', $output );
-		// The bulk feed path (a /products.json not preceded by a handle
-		// segment) must be absent. `{$site_url}products.json` would render as
-		// `https://example.com/products.json`.
-		$this->assertStringNotContainsString( 'https://example.com/products.json', $output );
+		// The /collections/all alias is still NOT advertised (only the bare feed).
 		$this->assertStringNotContainsString( 'collections/all/products.json', $output );
 	}
 
@@ -1810,6 +1812,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '## Read-only browsing', $off );
 		$this->assertStringNotContainsString( 'products/{handle}.json', $off );
 		$this->assertStringNotContainsString( 'collections.json', $off );
+		$this->assertStringNotContainsString( 'https://example.com/products.json', $off );
 
 		// Feed ON → the three scoped paths appear.
 		WC_AI_Storefront::$test_settings = [
@@ -1821,5 +1824,6 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'products/{handle}.json', $on );
 		$this->assertStringContainsString( 'collections/{handle}/products.json', $on );
 		$this->assertStringContainsString( 'https://example.com/collections.json', $on );
+		$this->assertStringContainsString( 'https://example.com/products.json', $on );
 	}
 }

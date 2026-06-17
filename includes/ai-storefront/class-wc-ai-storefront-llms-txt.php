@@ -756,19 +756,20 @@ class WC_AI_Storefront_Llms_Txt {
 		// ## Read-only browsing
 		// ============================================================
 		// For agents that only need to READ the catalog without transacting.
-		// Steer-to-structured: the UCP catalog endpoints lead (structured,
-		// currency-aware), and the Shopify-compatible `*.json` paths follow as
-		// a convenience — emitted only when the products.json feed is enabled.
-		// The bulk `/products.json` is deliberately NOT listed (it stays a
-		// silent catch for agents that blind-probe it; llms.txt readers are
-		// pointed at the structured endpoints + scoped paths instead).
+		// Structured UCP catalog reads lead (currency-aware). The bulk
+		// `/products.json` is listed for fetch-only agents that cannot issue
+		// POST (catalog/search) and cannot reliably append query params
+		// (allowlist fetch tools snap to seen query strings): one parameterless
+		// URL returns the whole catalog. The Shopify-compatible `*.json` paths
+		// (bulk + scoped) are emitted only when the products.json feed is on.
 		$lines[] = '## Read-only browsing';
 		$lines[] = '';
 		$lines[] = 'For agents that only need to read catalog data without transacting:';
 		$lines[] = '';
 		$lines[] = "- **Search** — `GET {$ucp_api_base}/catalog/search?q={query}` (UCP, structured, currency-aware)";
-		$lines[] = "- **Look up** — `GET {$ucp_api_base}/catalog/lookup?ids={ids}` or `?slug={handle}` (UCP, structured)";
+		$lines[] = "- **Look up** — `GET {$ucp_api_base}/catalog/lookup?slug={$example_handle}` (UCP, structured, by product handle) or `?ids={ids}` for batch";
 		if ( 'yes' === ( $settings['products_json_enabled'] ?? 'no' ) ) {
+			$lines[] = "- **All products (one file)** — `GET {$site_url}products.json` (Shopify-compatible; whole catalog, no params, no POST — simplest for fetch-only agents)";
 			$lines[] = "- **Product JSON** — `GET {$site_url}products/{handle}.json` (Shopify-compatible)";
 			$lines[] = "- **Collection JSON** — `GET {$site_url}collections/{handle}/products.json`";
 			$lines[] = "- **Collection list** — `GET {$site_url}collections.json`";
