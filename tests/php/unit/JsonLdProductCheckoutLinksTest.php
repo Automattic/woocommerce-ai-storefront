@@ -84,4 +84,114 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
 		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
 	}
+
+	private function variable_product( int $id, string $slug, array $variation_ids ) {
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( $id );
+		$p->shouldReceive( 'get_slug' )->andReturn( $slug );
+		$p->shouldReceive( 'get_name' )->andReturn( ucfirst( $slug ) );
+		$p->shouldReceive( 'is_type' )->andReturnUsing( fn( $t ) => 'variable' === $t );
+		$p->shouldReceive( 'is_purchasable' )->andReturn( true );
+		$p->shouldReceive( 'get_children' )->andReturn( $variation_ids );
+		$p->shouldReceive( 'get_permalink' )->andReturn( "https://example.com/product/{$slug}/" );
+		return $p;
+	}
+
+	private function variation( int $id, string $label, bool $purchasable = true ) {
+		$v = \Mockery::mock( 'WC_Product' );
+		$v->shouldReceive( 'get_id' )->andReturn( $id );
+		$v->shouldReceive( 'get_name' )->andReturn( $label );
+		$v->shouldReceive( 'is_type' )->andReturnUsing( fn( $t ) => 'variation' === $t );
+		$v->shouldReceive( 'is_purchasable' )->andReturn( $purchasable );
+		return $v;
+	}
+
+	/** Render the footer block for $product as the current single-product page, return the HTML. */
+	private function render_for( $product, array $variations = [] ): string {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( $product->get_id() );
+		Functions\when( 'wc_get_product' )->alias(
+			function ( $id ) use ( $product, $variations ) {
+				if ( (int) $id === $product->get_id() ) {
+					return $product;
+				}
+				return $variations[ (int) $id ] ?? null;
+			}
+		);
+		ob_start();
+		$this->jsonld->render_product_checkout_links();
+		return (string) ob_get_clean();
+	}
+
+	public function test_simple_product_renders_one_checkout_link(): void {
+		$html = $this->render_for( $this->simple_product( 42, 'a-product' ) );
+
+		$this->assertStringContainsString( 'wc-ai-storefront-agent-checkout', $html );
+		$this->assertStringContainsString( 'https://example.com/checkout-link/?products=42:1', $html );
+	}
+
+	public function test_variable_small_renders_concrete_variant_links(): void {
+		$vars = [
+			101 => $this->variation( 101, 'Belt - S/M' ),
+			102 => $this->variation( 102, 'Belt - L/XL' ),
+		];
+		$html = $this->render_for( $this->variable_product( 100, 'canvas-belt', [ 101, 102 ] ), $vars );
+
+		$this->assertStringContainsString( 'products=101:1', $html );
+		$this->assertStringContainsString( 'products=102:1', $html );
+		$this->assertStringContainsString( 'Belt - S/M', $html );
+		// Construct kit always present for variable products:
+		$this->assertStringContainsString( 'https://example.com/products/canvas-belt.json', $html );
+		$this->assertStringContainsString( 'products={variation_id}:1', $html );
+	}
+
+	public function test_variable_large_omits_concrete_links_keeps_construct_kit(): void {
+		$ids  = range( 201, 207 ); // 7 variations > 4
+		$vars = [];
+		foreach ( $ids as $i => $vid ) {
+			$vars[ $vid ] = $this->variation( $vid, "Opt {$i}" );
+		}
+		$html = $this->render_for( $this->variable_product( 200, 'big-shirt', $ids ), $vars );
+
+		$this->assertStringNotContainsString( 'products=201:1', $html );           // no concrete links
+		$this->assertStringContainsString( 'https://example.com/products/big-shirt.json', $html ); // construct kit
+		$this->assertStringContainsString( 'products={variation_id}:1', $html );
+	}
+
+	public function test_unpurchasable_variation_skipped_from_concrete_links(): void {
+		$vars = [
+			301 => $this->variation( 301, 'Live', true ),
+			302 => $this->variation( 302, 'Dead', false ),
+		];
+		$html = $this->render_for( $this->variable_product( 300, 'two-var', [ 301, 302 ] ), $vars );
+
+		$this->assertStringContainsString( 'products=301:1', $html );
+		$this->assertStringNotContainsString( 'products=302:1', $html );
+	}
+
+	public function test_renders_nothing_when_disabled(): void {
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		$html                            = $this->render_for( $this->simple_product( 42 ) );
+		$this->assertSame( '', $html );
+	}
+
+	public function test_renders_nothing_when_not_product_page(): void {
+		Functions\when( 'is_product' )->justReturn( false );
+		ob_start();
+		$this->jsonld->render_product_checkout_links();
+		$this->assertSame( '', (string) ob_get_clean() );
+	}
+
+	public function test_variable_omits_json_link_when_feed_disabled(): void {
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'products_json_enabled'  => 'no',
+		];
+		$vars = [ 401 => $this->variation( 401, 'X' ) ];
+		$html = $this->render_for( $this->variable_product( 400, 'nofeed', [ 401 ] ), $vars );
+
+		$this->assertStringNotContainsString( '/products/nofeed.json', $html );
+		$this->assertStringContainsString( 'products=401:1', $html ); // concrete link still emitted (<=4)
+	}
 }

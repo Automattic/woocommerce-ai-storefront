@@ -73,6 +73,13 @@ class WC_AI_Storefront_JsonLd {
 	private const MAX_RELATED_PRODUCT_REFS = 10;
 
 	/**
+	 * Max purchasable variations for which the product-page checkout anchor
+	 * emits concrete per-variant links. Above this, it emits just the URL
+	 * template + the `/products/{handle}.json` construct source (no flood).
+	 */
+	private const CHECKOUT_ANCHOR_VARIANT_MAX = 4;
+
+	/**
 	 * Transient key for the site-wide WebSite + SearchAction JSON-LD block.
 	 *
 	 * Registered with WC_AI_Storefront_Cache_Invalidator so it is busted
@@ -407,6 +414,109 @@ class WC_AI_Storefront_JsonLd {
 	 */
 	public static function checkout_url_template( $product ): string {
 		return self::build_checkout_url_template( $product );
+	}
+
+	/**
+	 * Print a visible per-product "agent checkout" block in the footer of
+	 * single-product pages.
+	 *
+	 * Markdown-extraction fetch tools strip the `<script>` JSON-LD where the
+	 * BuyAction lives, so the deterministic checkout link is unreachable to
+	 * them. This renders the SAME URL (via {@see checkout_url_template()}) as
+	 * a visible body anchor they can extract and hand to the buyer. The
+	 * per-product counterpart to the `/llms.txt` footer anchor.
+	 *
+	 * Variable products get a construct kit (template + a link to the
+	 * uncapped `/products/{handle}.json`), plus concrete labeled variant
+	 * links when there are <= CHECKOUT_ANCHOR_VARIANT_MAX purchasable
+	 * variations. Gated on `enabled` + `is_product_syndicated()`; skips
+	 * non-purchasable variations (#373).
+	 */
+	public function render_product_checkout_links(): void {
+		if ( ! function_exists( 'is_product' ) || ! is_product() || ! function_exists( 'wc_get_product' ) ) {
+			return;
+		}
+		$product = wc_get_product( get_queried_object_id() );
+		if ( ! $product instanceof WC_Product ) {
+			return;
+		}
+
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			return;
+		}
+		if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
+			return;
+		}
+
+		$lines = $this->build_checkout_anchor_lines( $product, $settings );
+		if ( empty( $lines ) ) {
+			return;
+		}
+
+		printf(
+			'<div class="wc-ai-storefront-agent-checkout" style="font-size:12px;opacity:0.55;margin:1.5em 0;">%s</div>',
+			implode( '<br>', $lines ) // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Each line is built from esc_url()/esc_html() in build_checkout_anchor_lines().
+		);
+	}
+
+	/**
+	 * Build the inner HTML lines for the product-page checkout anchor.
+	 *
+	 * @param WC_Product $product  The current product.
+	 * @param array      $settings Plugin settings.
+	 * @return string[] Escaped HTML lines (may be empty when nothing is purchasable).
+	 */
+	private function build_checkout_anchor_lines( $product, array $settings ): array {
+		$lines   = array();
+		$feed_on = 'yes' === ( $settings['products_json_enabled'] ?? 'no' );
+
+		// Bundle / grouped: one permalink-based link.
+		if ( $product->is_type( 'bundle' ) || $product->is_type( 'grouped' ) ) {
+			$lines[] = 'Agent checkout: <a href="' . esc_url( self::checkout_url_template( $product ) ) . '">' . esc_html( $product->get_name() ) . '</a>';
+			return $lines;
+		}
+
+		// Variable: construct kit + concrete links when small.
+		if ( $product->is_type( 'variable' ) ) {
+			$variations = array();
+			foreach ( (array) $product->get_children() as $child_id ) {
+				$variation = $this->resolve_variation( (int) $child_id );
+				if ( ! $variation instanceof WC_Product ) {
+					continue;
+				}
+				// #373: skip non-purchasable variations so the anchor never
+				// hands out a SKU WC would reject at checkout. The
+				// `instanceof WC_Product` guard above already proves
+				// `is_purchasable()` exists, so no `method_exists()` probe
+				// (which PHPStan would flag as always-true here).
+				if ( ! $variation->is_purchasable() ) {
+					continue;
+				}
+				$variations[] = $variation;
+			}
+			if ( empty( $variations ) ) {
+				return array();
+			}
+
+			$lines[] = 'Agent checkout (per variation): <code>' . esc_html( home_url( '/checkout-link/' ) . '?products={variation_id}:1&utm_source={agent_id}&utm_medium=referral&utm_id=woo_jsonld' ) . '</code>';
+			if ( $feed_on ) {
+				$lines[] = 'All variations + ids: <a href="' . esc_url( home_url( '/products/' . $product->get_slug() . '.json' ) ) . '">' . esc_html( $product->get_slug() . '.json' ) . '</a>';
+			}
+			if ( count( $variations ) <= self::CHECKOUT_ANCHOR_VARIANT_MAX ) {
+				foreach ( $variations as $variation ) {
+					$lines[] = esc_html( $variation->get_name() ) . ': <a href="' . esc_url( self::checkout_url_template( $variation ) ) . '">checkout</a>';
+				}
+			}
+			return $lines;
+		}
+
+		// Simple (and any other purchasable single SKU): one direct link.
+		if ( method_exists( $product, 'is_purchasable' ) && ! $product->is_purchasable() ) {
+			return array();
+		}
+		$lines[] = 'Agent checkout: <a href="' . esc_url( self::checkout_url_template( $product ) ) . '">buy this item</a>';
+		return $lines;
 	}
 
 	/**
