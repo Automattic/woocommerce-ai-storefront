@@ -395,6 +395,21 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
+	 * Public accessor for the deterministic per-product checkout URL.
+	 *
+	 * Thin wrapper over {@see build_checkout_url_template()} so callers
+	 * outside the JSON-LD assembly (e.g. the visible product-page checkout
+	 * anchor) emit byte-identical URLs to the `<script>` BuyAction without
+	 * duplicating the per-product-type branching.
+	 *
+	 * @param WC_Product $product A product or variation.
+	 * @return string The checkout URL with the `{agent_id}` placeholder.
+	 */
+	public static function checkout_url_template( $product ): string {
+		return self::build_checkout_url_template( $product );
+	}
+
+	/**
 	 * Adds subscription-billing signals to `offers[0]` when WC Subscriptions
 	 * is active and the product is a recurring-billing product.
 	 *
