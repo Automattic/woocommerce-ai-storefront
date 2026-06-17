@@ -361,15 +361,26 @@ class WC_AI_Storefront_Robots {
 	 * Empty UA returns '' — call sites use that as the "do not record"
 	 * signal for malformed/anonymous requests.
 	 *
+	 * @param string|null $ua Optional explicit User-Agent string. When null
+	 *                        (the default), the value is read from
+	 *                        $_SERVER['HTTP_USER_AGENT'] as before. Pass an
+	 *                        explicit value for testability or when the UA
+	 *                        has already been extracted via WP_REST_Request.
 	 * @return string Recordable token (canonical AI_CRAWLERS match,
 	 *                extracted product name for unknown UAs, or '' when
 	 *                the UA is empty).
 	 */
-	public static function detect_crawler_from_ua(): string {
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$ua = isset( $_SERVER['HTTP_USER_AGENT'] )
-			? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) )
-			: '';
+	public static function detect_crawler_from_ua( ?string $ua = null ): string {
+		if ( null === $ua ) {
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$ua = isset( $_SERVER['HTTP_USER_AGENT'] )
+				? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) )
+				: '';
+		}
+		// An explicitly-passed $ua is the caller's already-extracted header
+		// value (e.g. WP_REST_Request::get_header( 'user-agent' )); it is used
+		// only for substring matching + charset-bounded token extraction and is
+		// never echoed raw, so it needs no further sanitization here.
 
 		if ( '' === $ua ) {
 			return '';
