@@ -512,7 +512,11 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		// Simple (and any other purchasable single SKU): one direct link.
-		if ( method_exists( $product, 'is_purchasable' ) && ! $product->is_purchasable() ) {
+		// `$product` is proven `instanceof WC_Product` at the top of
+		// render_product_checkout_links(), so `is_purchasable()` exists —
+		// no `method_exists()` probe (consistent with the variable branch,
+		// which PHPStan would flag such a probe as always-true).
+		if ( ! $product->is_purchasable() ) {
 			return array();
 		}
 		$lines[] = 'Agent checkout: <a href="' . esc_url( self::checkout_url_template( $product ) ) . '">buy this item</a>';

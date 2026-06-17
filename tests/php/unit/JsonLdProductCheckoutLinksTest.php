@@ -66,12 +66,28 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 		parent::tearDown();
 	}
 
-	private function simple_product( int $id, string $slug = 'a-product' ) {
+	private function simple_product( int $id, string $slug = 'a-product', bool $purchasable = true ) {
 		$p = \Mockery::mock( 'WC_Product' );
 		$p->shouldReceive( 'get_id' )->andReturn( $id );
 		$p->shouldReceive( 'get_slug' )->andReturn( $slug );
 		$p->shouldReceive( 'get_name' )->andReturn( 'A Product' );
 		$p->shouldReceive( 'is_type' )->andReturnUsing( fn( $t ) => 'simple' === $t );
+		$p->shouldReceive( 'is_purchasable' )->andReturn( $purchasable );
+		$p->shouldReceive( 'get_permalink' )->andReturn( "https://example.com/product/{$slug}/" );
+		return $p;
+	}
+
+	/**
+	 * Bundle or grouped product. These types take the permalink-based
+	 * checkout branch (get_permalink() + UTM), never the
+	 * `/checkout-link/?products=` Shareable Checkout URL form.
+	 */
+	private function bundle_or_grouped_product( int $id, string $type, string $slug, string $name ) {
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( $id );
+		$p->shouldReceive( 'get_slug' )->andReturn( $slug );
+		$p->shouldReceive( 'get_name' )->andReturn( $name );
+		$p->shouldReceive( 'is_type' )->andReturnUsing( fn( $t ) => $type === $t );
 		$p->shouldReceive( 'is_purchasable' )->andReturn( true );
 		$p->shouldReceive( 'get_permalink' )->andReturn( "https://example.com/product/{$slug}/" );
 		return $p;
@@ -169,6 +185,65 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'products=302:1', $html );
 	}
 
+	/**
+	 * Spec Testing: "Bundle / grouped -> the permalink-based link."
+	 *
+	 * Bundle and grouped products take the get_permalink() + UTM branch
+	 * (lines 475-478), NOT the `/checkout-link/?products=` Shareable
+	 * Checkout URL form that simple/variable/variation use.
+	 *
+	 * @dataProvider permalink_based_type_provider
+	 */
+	public function test_bundle_or_grouped_renders_permalink_based_link( string $type ): void {
+		$html = $this->render_for(
+			$this->bundle_or_grouped_product( 500, $type, "a-{$type}", "A {$type} Product" )
+		);
+
+		// Permalink-based checkout URL surfaces with UTM attribution.
+		$this->assertStringContainsString(
+			"https://example.com/product/a-{$type}/?utm_source={agent_id}",
+			$html
+		);
+		$this->assertStringContainsString( 'utm_id=woo_jsonld', $html );
+		// Product name surfaces as the anchor text.
+		$this->assertStringContainsString( "A {$type} Product", $html );
+		// Must NOT fall through to the Shareable Checkout URL shape.
+		$this->assertStringNotContainsString( '/checkout-link/?products=', $html );
+	}
+
+	public static function permalink_based_type_provider(): array {
+		return [
+			'bundle'  => [ 'bundle' ],
+			'grouped' => [ 'grouped' ],
+		];
+	}
+
+	/**
+	 * Spec Edge cases: "unpurchasable simple product -> emit nothing" (#373).
+	 *
+	 * Exercises the simple-branch guard (lines 514-517): a non-purchasable
+	 * simple product must render nothing rather than hand out a SKU WC
+	 * would reject at checkout.
+	 */
+	public function test_unpurchasable_simple_product_renders_nothing(): void {
+		$html = $this->render_for( $this->simple_product( 42, 'dead-product', false ) );
+		$this->assertSame( '', $html );
+	}
+
+	/**
+	 * Spec Edge cases: "No purchasable variations -> emit nothing"
+	 * (lines 498-500). When every variation is non-purchasable the
+	 * variable branch collects an empty set and emits nothing.
+	 */
+	public function test_variable_all_variations_unpurchasable_renders_nothing(): void {
+		$vars = [
+			601 => $this->variation( 601, 'Dead A', false ),
+			602 => $this->variation( 602, 'Dead B', false ),
+		];
+		$html = $this->render_for( $this->variable_product( 600, 'all-dead', [ 601, 602 ] ), $vars );
+		$this->assertSame( '', $html );
+	}
+
 	public function test_renders_nothing_when_disabled(): void {
 		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
 		$html                            = $this->render_for( $this->simple_product( 42 ) );
@@ -180,6 +255,26 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 		ob_start();
 		$this->jsonld->render_product_checkout_links();
 		$this->assertSame( '', (string) ob_get_clean() );
+	}
+
+	/**
+	 * Spec Testing gating: "renders nothing when ... is_product_syndicated()
+	 * is false." Exercises the syndication gate (lines 448-450) which the
+	 * enabled=no and !is_product() tests leave untouched.
+	 *
+	 * `product_selection_mode='selected'` with an empty `selected_products`
+	 * list makes the stub's is_product_syndicated() return false, so the
+	 * anchor must render nothing even though enabled=yes and we are on a
+	 * product page.
+	 */
+	public function test_renders_nothing_when_not_syndicated(): void {
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'selected',
+			'selected_products'      => [],
+		];
+		$html = $this->render_for( $this->simple_product( 42 ) );
+		$this->assertSame( '', $html );
 	}
 
 	public function test_variable_omits_json_link_when_feed_disabled(): void {
