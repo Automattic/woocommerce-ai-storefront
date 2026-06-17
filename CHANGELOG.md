@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.22.0] – 2026-06-17
+
 ### Features
 
 - **Product pages now expose the deterministic checkout link as a visible, agent-readable footer anchor (#472).** Markdown-extraction AI agents (e.g. claude.ai `web_fetch`) strip the `<script>` JSON-LD where the `BuyAction` lives; this re-exposes the same checkout URL in the rendered page body so those agents can hand the buyer a working link. The per-product counterpart to the `/llms.txt` body anchor — closes the discover→handoff loop that previously broke at the BuyAction step.

@@ -118,12 +118,13 @@ Click **Enable AI Storefront**. The hero is replaced by the section nav (Overvie
 
 ![Overview tab after enabling](screenshots/02-enable-toggle.png)
 
-Enabling does five things:
+Enabling does six things:
 
 - Tells AI crawlers where they're allowed to look on your store.
 - Publishes a text guide of your store at `/llms.txt` (visible to AI agents), and adds a small link to it in the footer of every page so AI tools that only read the visible page can find it.
 - Publishes your store's business details at `/.well-known/ucp` (visible to AI agents).
 - Adds product details (prices, return policies, etc.) in a format AI agents understand.
+- Adds a small "Agent checkout" link at the bottom of each product page, so AI assistants that only read the visible page text can grab a ready-to-use checkout link to hand your buyer (the same link they'd otherwise read from the hidden product data).
 - Starts tracking which orders came from AI shopping assistants so you can see the results.
 
 To pause, click **Disable AI Storefront** at the bottom of the page. AI agents will no longer be able to see your catalog endpoints, but existing order tracking remains in place.
