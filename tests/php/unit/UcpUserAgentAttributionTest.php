@@ -133,4 +133,87 @@ class UcpUserAgentAttributionTest extends \PHPUnit\Framework\TestCase {
 		}
 		return $cases;
 	}
+
+	// ---- REST resolver wiring (resolve_agent_host, private static) ----
+
+	private function invoke_resolve_agent_host( $request ): array {
+		$method = new \ReflectionMethod( WC_AI_Storefront_UCP_REST_Controller::class, 'resolve_agent_host' );
+		$method->setAccessible( true );
+		return $method->invoke( null, $request );
+	}
+
+	public function test_rest_resolver_falls_back_to_user_agent(): void {
+		// No UCP-Agent, no meta.source → the UA fallback resolves the agent.
+		$request = \Mockery::mock( 'WP_REST_Request' );
+		$request->shouldReceive( 'get_header' )->with( 'ucp-agent' )->andReturn( '' );
+		$request->shouldReceive( 'get_json_params' )->andReturn( null );
+		$request->shouldReceive( 'get_header' )->with( 'user-agent' )
+			->andReturn( 'Mozilla/5.0 (compatible; ChatGPT-User/1.0; +https://openai.com/bot)' );
+
+		$result = $this->invoke_resolve_agent_host( $request );
+
+		$this->assertSame( 'ChatGPT', $result['name'] );
+		$this->assertSame( 'chatgpt.com', $result['source_host'] );
+		$this->assertSame( 'ChatGPT-User', $result['raw_host'] );
+	}
+
+	public function test_rest_resolver_explicit_ucp_agent_wins_over_user_agent(): void {
+		// UCP-Agent profile present → it wins; the (different) UA is ignored.
+		$request = \Mockery::mock( 'WP_REST_Request' );
+		$request->shouldReceive( 'get_header' )->with( 'ucp-agent' )
+			->andReturn( 'profile="https://chatgpt.com/ucp.json"' );
+		$request->shouldReceive( 'get_json_params' )->andReturn( null );
+		$request->shouldNotReceive( 'get_header' )->with( 'user-agent' );
+
+		$result = $this->invoke_resolve_agent_host( $request );
+
+		$this->assertSame( 'ChatGPT', $result['name'] );
+		$this->assertSame( 'chatgpt.com', $result['raw_host'] );
+		$this->assertSame( 'chatgpt.com', $result['source_host'] );
+	}
+
+	public function test_rest_resolver_unmapped_ua_stays_ucp_unknown(): void {
+		$request = \Mockery::mock( 'WP_REST_Request' );
+		$request->shouldReceive( 'get_header' )->with( 'ucp-agent' )->andReturn( '' );
+		$request->shouldReceive( 'get_json_params' )->andReturn( null );
+		$request->shouldReceive( 'get_header' )->with( 'user-agent' )
+			->andReturn( 'Mozilla/5.0 (compatible; Bingbot/2.0)' );
+
+		$result = $this->invoke_resolve_agent_host( $request );
+
+		$this->assertSame( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE, $result['name'] );
+		$this->assertSame( '', $result['source_host'] );
+	}
+
+	// ---- MCP resolver wiring (resolve_agent_data_from_name, public static) ----
+
+	public function test_mcp_resolver_empty_name_falls_back_to_user_agent(): void {
+		$_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)';
+
+		$result = WC_AI_Storefront_UCP_REST_Controller::resolve_agent_data_from_name( '' );
+
+		$this->assertSame( 'Claude', $result['name'] );
+		$this->assertSame( 'claude.ai', $result['source_host'] );
+		$this->assertSame( 'ClaudeBot', $result['raw_host'] );
+	}
+
+	public function test_mcp_resolver_nonempty_name_ignores_user_agent(): void {
+		// A declared (even if unknown) MCP name outranks the UA per precedence.
+		$_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (compatible; ChatGPT-User/1.0)';
+
+		$result = WC_AI_Storefront_UCP_REST_Controller::resolve_agent_data_from_name( 'gibberish-agent' );
+
+		$this->assertSame( WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET, $result['name'] );
+		$this->assertNotSame( 'ChatGPT', $result['name'] );
+		$this->assertSame( 'gibberish-agent', $result['raw_host'] );
+	}
+
+	public function test_mcp_resolver_empty_name_unmapped_ua_stays_ucp_unknown(): void {
+		$_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (compatible; Bingbot/2.0)';
+
+		$result = WC_AI_Storefront_UCP_REST_Controller::resolve_agent_data_from_name( '' );
+
+		$this->assertSame( WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE, $result['name'] );
+		$this->assertSame( '', $result['source_host'] );
+	}
 }

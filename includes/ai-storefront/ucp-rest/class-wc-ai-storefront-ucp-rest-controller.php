@@ -5715,6 +5715,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			];
 		}
 
+		// Path 3.5: User-Agent fallback. No explicit UCP-Agent / meta.source
+		// signal resolved the agent, but many answer-agents self-identify in
+		// the User-Agent header. Derive the agent from it before giving up to
+		// FALLBACK_SOURCE. Attribution only — never an access signal.
+		// get_header() may return null (absent header); classify_user_agent() then reads $_SERVER as its own fallback.
+		$ua_data = WC_AI_Storefront_UCP_Agent_Header::classify_user_agent( $request->get_header( 'user-agent' ) );
+		if ( null !== $ua_data ) {
+			return $ua_data;
+		}
+
 		// Path 4: nothing identified the agent. Empty source_host —
 		// `build_continue_url()` substitutes the FALLBACK_SOURCE
 		// sentinel so the cohort stays observable in stats.
@@ -5736,6 +5746,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	public static function resolve_agent_data_from_name( string $name ): array {
 		$normalized = strtolower( trim( $name ) );
 		if ( '' === $normalized ) {
+			// No MCP client name declared. Try the User-Agent header (reads
+			// $_SERVER — no request object here) before FALLBACK_SOURCE.
+			$ua_data = WC_AI_Storefront_UCP_Agent_Header::classify_user_agent();
+			if ( null !== $ua_data ) {
+				return $ua_data;
+			}
 			return [
 				'name'        => WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
 				'raw_host'    => '',
