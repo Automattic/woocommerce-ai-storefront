@@ -73,6 +73,14 @@ class WC_AI_Storefront_JsonLd {
 	private const MAX_RELATED_PRODUCT_REFS = 10;
 
 	/**
+	 * Max purchasable variations for which the product-page checkout anchor
+	 * emits concrete per-variant links. Above this, it emits just the URL
+	 * template (plus the `/products/{handle}.json` construct source when the
+	 * products.json feed is enabled) — no flood.
+	 */
+	private const CHECKOUT_ANCHOR_VARIANT_MAX = 4;
+
+	/**
 	 * Transient key for the site-wide WebSite + SearchAction JSON-LD block.
 	 *
 	 * Registered with WC_AI_Storefront_Cache_Invalidator so it is busted
@@ -340,18 +348,26 @@ class WC_AI_Storefront_JsonLd {
 	 * Static so callers without a class instance (e.g. the per-variant
 	 * builder under `hasVariant`) can build URLs uniformly.
 	 *
-	 * @param WC_Product $product The product or variation. WC core
-	 *                            variations have `type === 'variation'`,
-	 *                            distinct from `bundle`/`grouped`, so
-	 *                            variation entries under `hasVariant`
-	 *                            fall through to the Shareable Checkout
-	 *                            form.
-	 * @return string The full URL with the `{agent_id}` placeholder
-	 *                ready for the consumer (crawler / AI surface) to
-	 *                substitute. No session-id placeholder — see the
+	 * @param WC_Product $product      The product or variation. WC core
+	 *                                 variations have `type === 'variation'`,
+	 *                                 distinct from `bundle`/`grouped`, so
+	 *                                 variation entries under `hasVariant`
+	 *                                 fall through to the Shareable Checkout
+	 *                                 form.
+	 * @param string     $agent_source Value for `utm_source`. Defaults to the
+	 *                                 `{agent_id}` placeholder — the urlTemplate
+	 *                                 shape the `<script>` BuyAction advertises
+	 *                                 for agents to substitute. Callers that
+	 *                                 emit a *directly clickable* `<a href>`
+	 *                                 must pass a real, esc_url-safe source
+	 *                                 (e.g. `ucp_unknown`): `esc_url()` strips
+	 *                                 the `{}` from a placeholder, which would
+	 *                                 both desync from the BuyAction and stamp
+	 *                                 a broken literal into order attribution.
+	 * @return string The full checkout URL. No session-id placeholder — see the
 	 *                inline comment in the function body.
 	 */
-	private static function build_checkout_url_template( $product ): string {
+	private static function build_checkout_url_template( $product, string $agent_source = '{agent_id}' ): string {
 		// No `ai_session_id` placeholder — JSON-LD URL templates are
 		// stateless by definition (the `woo_jsonld` channel exists
 		// precisely because there's no UCP session here). The
@@ -364,7 +380,7 @@ class WC_AI_Storefront_JsonLd {
 		// Session-bound attribution remains on the `/checkout-sessions`
 		// continue_url path where it's authentically present.
 		$utm_args = array(
-			'utm_source' => '{agent_id}',
+			'utm_source' => $agent_source,
 			'utm_medium' => 'referral',
 			// `woo_jsonld` (not `woo_ucp`): JSON-LD URL templates are
 			// crawler bait by design. Agents that fill in this template
@@ -392,6 +408,172 @@ class WC_AI_Storefront_JsonLd {
 			array_merge( array( 'products' => $product->get_id() . ':1' ), $utm_args ),
 			home_url( '/checkout-link/' )
 		);
+	}
+
+	/**
+	 * Public accessor for the deterministic per-product checkout URL.
+	 *
+	 * Thin wrapper over {@see build_checkout_url_template()} so callers
+	 * outside the JSON-LD assembly (e.g. the visible product-page checkout
+	 * anchor) emit the same URL shape as the `<script>` BuyAction without
+	 * duplicating the per-product-type branching. With the default
+	 * `{agent_id}` source the output is byte-identical to the BuyAction's
+	 * urlTemplate; clickable callers pass a real source (see `$agent_source`).
+	 *
+	 * @param WC_Product $product      A product or variation.
+	 * @param string     $agent_source `utm_source` value; defaults to the
+	 *                                 `{agent_id}` placeholder. See
+	 *                                 {@see build_checkout_url_template()}.
+	 * @return string The checkout URL.
+	 */
+	public static function checkout_url_template( $product, string $agent_source = '{agent_id}' ): string {
+		return self::build_checkout_url_template( $product, $agent_source );
+	}
+
+	/**
+	 * Print a visible per-product "agent checkout" block in the footer of
+	 * single-product pages.
+	 *
+	 * Markdown-extraction fetch tools strip the `<script>` JSON-LD where the
+	 * BuyAction lives, so the deterministic checkout link is unreachable to
+	 * them. This renders the SAME URL (via {@see checkout_url_template()}) as
+	 * a visible body anchor they can extract and hand to the buyer. The
+	 * per-product counterpart to the `/llms.txt` footer anchor.
+	 *
+	 * Variable products get a construct kit (the URL template, plus a link to
+	 * the uncapped `/products/{handle}.json` when the products.json feed is
+	 * enabled), plus concrete labeled variant links when there are <=
+	 * CHECKOUT_ANCHOR_VARIANT_MAX purchasable variations. Gated on `enabled`
+	 * + `is_product_syndicated()`; skips non-purchasable variations (#373).
+	 */
+	public function render_product_checkout_links(): void {
+		if ( ! function_exists( 'is_product' ) || ! is_product() || ! function_exists( 'wc_get_product' ) ) {
+			return;
+		}
+		$product = wc_get_product( get_queried_object_id() );
+		if ( ! $product instanceof WC_Product ) {
+			return;
+		}
+
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			return;
+		}
+		if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
+			return;
+		}
+
+		$lines = $this->build_checkout_anchor_lines( $product, $settings );
+		if ( empty( $lines ) ) {
+			return;
+		}
+
+		printf(
+			'<div class="wc-ai-storefront-agent-checkout" style="font-size:12px;opacity:0.55;margin:1.5em 0;">%s</div>',
+			implode( '<br>', $lines ) // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Each line is built from esc_url()/esc_html() in build_checkout_anchor_lines().
+		);
+	}
+
+	/**
+	 * Build the inner HTML lines for the product-page checkout anchor.
+	 *
+	 * @param WC_Product $product  The current product.
+	 * @param array      $settings Plugin settings.
+	 * @return string[] Escaped HTML lines (may be empty when nothing is purchasable).
+	 */
+	private function build_checkout_anchor_lines( $product, array $settings ): array {
+		$lines   = array();
+		$feed_on = 'yes' === ( $settings['products_json_enabled'] ?? 'no' );
+
+		// Directly-clickable `<a href>` links carry a real, esc_url-safe
+		// `utm_source` (the no-identity sentinel) instead of the `{agent_id}`
+		// placeholder: `esc_url()` strips the `{}` from a placeholder, which
+		// would desync the rendered link from the `<script>` BuyAction AND
+		// stamp a broken `agent_id` literal into order attribution. The
+		// `{agent_id}` placeholder survives only on the non-clickable
+		// construct-kit `<code>` template below, where `esc_html` preserves it
+		// for agents to substitute (the faithful BuyAction urlTemplate mirror).
+		$click_source = WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
+
+		// Bundle / grouped: one permalink-based link.
+		if ( $product->is_type( 'bundle' ) || $product->is_type( 'grouped' ) ) {
+			$lines[] = 'Agent checkout: <a href="' . esc_url( self::checkout_url_template( $product, $click_source ) ) . '">' . esc_html( $product->get_name() ) . '</a>';
+			return $lines;
+		}
+
+		// Variable: construct kit + concrete links when small.
+		//
+		// Capability gate, NOT `is_type( 'variable' )`: a bare type-string
+		// check misses `WC_Product_Variable` subclasses (variable-subscription,
+		// variable-bundle) whose `is_type()` returns their own slug. Those
+		// would fall through to the simple branch below and emit a single
+		// parent-ID `/checkout-link/?products=<parent_id>:1` link WC rejects
+		// at checkout (the parent of a variable product is not purchasable).
+		// `method_exists( …, 'get_variation_attributes' )` + non-empty
+		// `get_children()` is the same *capability entry-gate* the JSON-LD
+		// ProductGroup conversion uses (`maybe_convert_to_product_group()`).
+		// The anchor deliberately does NOT replicate that path's stricter
+		// `detect_varies_by()` fallback: a misconfigured variable product with
+		// no "used for variations" axis makes the `<script>` keep a parent
+		// BuyAction, whereas the anchor still emits per-variation-ID links —
+		// the safe shape, since the parent isn't purchasable. The two surfaces
+		// emit byte-identical URLs for every link they BOTH produce; they
+		// differ only on which surface that no-axis edge case falls back to.
+		if ( method_exists( $product, 'get_variation_attributes' ) && $product->get_children() ) {
+			$variations = array();
+			foreach ( (array) $product->get_children() as $child_id ) {
+				$variation = $this->resolve_variation( (int) $child_id );
+				if ( ! $variation instanceof WC_Product ) {
+					continue;
+				}
+				// #373: skip non-purchasable variations so the anchor never
+				// hands out a SKU WC would reject at checkout. The
+				// `instanceof WC_Product` guard above already proves
+				// `is_purchasable()` exists, so no `method_exists()` probe
+				// (which PHPStan would flag as always-true here).
+				if ( ! $variation->is_purchasable() ) {
+					continue;
+				}
+				$variations[] = $variation;
+			}
+			if ( empty( $variations ) ) {
+				return array();
+			}
+
+			// Construct-kit template: the per-variation checkout URL with a
+			// `{variation_id}` placeholder for the agent to fill in. Derived
+			// from the SAME accessor the concrete links use — take a real
+			// variation's URL and swap its concrete id back to the placeholder
+			// — so the template's UTM tail can never drift from the `<script>`
+			// BuyAction. A bare literal would silently desync on a constant rename.
+			$sample        = $variations[0];
+			$template_href = str_replace(
+				'products=' . $sample->get_id() . ':1',
+				'products={variation_id}:1',
+				self::checkout_url_template( $sample )
+			);
+			$lines[]       = 'Agent checkout (per variation): <code>' . esc_html( $template_href ) . '</code>';
+			if ( $feed_on ) {
+				$lines[] = 'All variations + ids: <a href="' . esc_url( home_url( '/products/' . $product->get_slug() . '.json' ) ) . '">' . esc_html( $product->get_slug() . '.json' ) . '</a>';
+			}
+			if ( count( $variations ) <= self::CHECKOUT_ANCHOR_VARIANT_MAX ) {
+				foreach ( $variations as $variation ) {
+					$lines[] = esc_html( $variation->get_name() ) . ': <a href="' . esc_url( self::checkout_url_template( $variation, $click_source ) ) . '">checkout</a>';
+				}
+			}
+			return $lines;
+		}
+
+		// Simple (and any other purchasable single SKU): one direct link.
+		// `$product` is proven `instanceof WC_Product` at the top of
+		// render_product_checkout_links(), so `is_purchasable()` exists —
+		// no `method_exists()` probe (consistent with the variable branch,
+		// which PHPStan would flag such a probe as always-true).
+		if ( ! $product->is_purchasable() ) {
+			return array();
+		}
+		$lines[] = 'Agent checkout: <a href="' . esc_url( self::checkout_url_template( $product, $click_source ) ) . '">buy this item</a>';
+		return $lines;
 	}
 
 	/**

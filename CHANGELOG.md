@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Features
+
+- **Product pages now expose the deterministic checkout link as a visible, agent-readable footer anchor (#472).** Markdown-extraction AI agents (e.g. claude.ai `web_fetch`) strip the `<script>` JSON-LD where the `BuyAction` lives; this re-exposes the same checkout URL in the rendered page body so those agents can hand the buyer a working link. The per-product counterpart to the `/llms.txt` body anchor — closes the discover→handoff loop that previously broke at the BuyAction step.
+  - **Simple products** render one direct checkout link; **bundle/grouped** render the permalink-based link.
+  - **Variable products** render a construct kit — the per-variation URL template plus a link to `/products/{handle}.json` (when the products.json feed is enabled) — and concrete labeled per-variant links when there are ≤4 purchasable variations (above that, just the template, to avoid flooding).
+  - Clickable links carry the esc_url-safe `ucp_unknown` attribution source; the `{agent_id}` placeholder stays on the non-clickable `<code>` template (the faithful `BuyAction` urlTemplate mirror) for agents that substitute their own id. Gated on `enabled` + product syndication; non-purchasable variations/products are skipped.
+
 ---
 
 ## [0.21.0] – 2026-06-17
