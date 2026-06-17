@@ -82,3 +82,12 @@ Mirror `JsonLdTest.php` (Brain Monkey + Mockery):
 - Per-variant links for products with >4 variations (the `.json` construct path covers them; emitting all would flood).
 - A merchant toggle to hide the block (it's `enabled`-gated; revisit only if a merchant asks).
 - Surfacing the same per-product link inside `/llms.txt` (llms.txt already documents the BuyAction approach generally).
+
+## Implementation note (post-build, 2026-06-17)
+
+Live smoke against the rendered page revealed a constraint the design above missed: **`esc_url()` strips `{` `}` from a clickable `<a href>`**, so a directly-clickable link can never carry the `{agent_id}` placeholder (and `esc_url` is mandatory). Rendering the placeholder into an `<a href>` produced `utm_source=agent_id` — both a divergence from the `<script>` BuyAction and a broken literal in order attribution. Resolution (locked with user):
+
+- **Clickable surfaces** (simple link, bundle/grouped link, ≤4 concrete variant links) carry a real, `esc_url`-safe source — the no-identity sentinel `ucp_unknown` (`WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE`), the same fallback the rest of the attribution system uses. Honest, working, and clickable.
+- **The construct-kit `<code>` template** keeps the `{agent_id}` placeholder (`esc_html` preserves the braces) and remains the faithful byte-identical mirror of the BuyAction `urlTemplate` for agents that substitute their own id.
+
+So the "can never diverge" invariant is scoped precisely: the **`<code>` template** is byte-identical to the BuyAction; the **clickable links** intentionally carry `ucp_unknown` (a placeholder in a clickable href is impossible), reusing `build_checkout_url_template()` via a new `$agent_source` parameter so URL *shape* still flows from a single source.
