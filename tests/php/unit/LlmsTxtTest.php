@@ -545,6 +545,32 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'BuyAction', $output );
 	}
 
+	public function test_for_agents_batch_lookup_uses_real_ids_when_products_exist(): void {
+		// Two syndicated products are available → the batch-lookup example
+		// must use their real UCP ids (prod_<id>), never the prod_1,prod_2
+		// placeholder that traps allowlist-based fetch tools into not_found.
+		$p1 = \Mockery::mock( 'WC_Product' );
+		$p1->shouldReceive( 'get_id' )->andReturn( 30 );
+		$p1->shouldReceive( 'get_slug' )->andReturn( 'half-zip-hoodie' );
+		$p2 = \Mockery::mock( 'WC_Product' );
+		$p2->shouldReceive( 'get_id' )->andReturn( 22 );
+		$p2->shouldReceive( 'get_slug' )->andReturn( 'day-hoodie' );
+		Functions\when( 'wc_get_products' )->justReturn( [ $p1, $p2 ] );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'catalog/lookup?ids=prod_30,prod_22', $output );
+		$this->assertStringNotContainsString( 'prod_1,prod_2', $output );
+	}
+
+	public function test_for_agents_batch_lookup_falls_back_to_placeholder_on_empty_catalog(): void {
+		// No products (default stub returns []) → keep a syntactic placeholder
+		// rather than emitting a broken/empty ?ids= example.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'catalog/lookup?ids=prod_1,prod_2,…', $output );
+	}
+
 	// ------------------------------------------------------------------
 	// ## Shipping & Returns section (issue #398)
 	// ------------------------------------------------------------------
@@ -1747,15 +1773,18 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// Structured UCP catalog reads lead.
 		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/catalog/search?q=', $output );
 		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/catalog/lookup?ids=', $output );
+		// Pin the Read-only section's own Look up bullet, which now leads
+		// with the `?slug=` form (the `?ids=` assertion above is satisfied
+		// by other sections, so it no longer pins this bullet).
+		$this->assertStringContainsString( 'catalog/lookup?slug=', $output );
 		$this->assertStringContainsString( 'Prefer the UCP catalog endpoints', $output );
 	}
 
-	public function test_read_only_browsing_never_lists_bulk_products_json(): void {
-		// Steer-to-structured: the bulk /products.json is deliberately NOT
-		// advertised even when the feed is on — it stays a silent catch for
-		// blind-probers while llms.txt readers are pointed at structured +
-		// scoped paths. Enable the feed so the scoped paths ARE listed, then
-		// assert the bulk path still isn't.
+	public function test_read_only_browsing_lists_bulk_products_json_when_feed_on(): void {
+		// Allowlist-based fetch tools cannot issue POST (catalog/search) and
+		// snap to seen query strings, but CAN fetch one parameterless URL.
+		// The bulk /products.json is the simplest whole-catalog surface for
+		// them, so it IS listed in Read-only browsing when the feed is on.
 		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
@@ -1764,11 +1793,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 		$output = $this->llms->generate();
 
+		$this->assertStringContainsString( 'https://example.com/products.json', $output );
+		// Scoped per-product path stays listed too.
 		$this->assertStringContainsString( 'products/{handle}.json', $output );
-		// The bulk feed path (a /products.json not preceded by a handle
-		// segment) must be absent. `{$site_url}products.json` would render as
-		// `https://example.com/products.json`.
-		$this->assertStringNotContainsString( 'https://example.com/products.json', $output );
+		// The /collections/all alias is still NOT advertised (only the bare feed).
 		$this->assertStringNotContainsString( 'collections/all/products.json', $output );
 	}
 
@@ -1784,6 +1812,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '## Read-only browsing', $off );
 		$this->assertStringNotContainsString( 'products/{handle}.json', $off );
 		$this->assertStringNotContainsString( 'collections.json', $off );
+		$this->assertStringNotContainsString( 'https://example.com/products.json', $off );
 
 		// Feed ON → the three scoped paths appear.
 		WC_AI_Storefront::$test_settings = [
@@ -1795,5 +1824,37 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'products/{handle}.json', $on );
 		$this->assertStringContainsString( 'collections/{handle}/products.json', $on );
 		$this->assertStringContainsString( 'https://example.com/collections.json', $on );
+		$this->assertStringContainsString( 'https://example.com/products.json', $on );
+	}
+
+	// ------------------------------------------------------------------
+	// render_discovery_link() — followable footer anchor (Task 3)
+	// ------------------------------------------------------------------
+
+	public function test_render_discovery_link_outputs_followable_anchor_when_enabled(): void {
+		// Markdown-extraction fetch tools strip <head> <link rel> and <script>
+		// JSON-LD, but keep visible <a> anchors. A body anchor to /llms.txt
+		// makes the whole discovery chain reachable on any page fetch.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+
+		ob_start();
+		$this->llms->render_discovery_link();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( '<a ', $html );
+		$this->assertStringContainsString( 'href="https://example.com/llms.txt"', $html );
+		$this->assertStringContainsString( 'llms.txt', $html );
+		$this->assertStringContainsString( 'rel="alternate"', $html );
+		$this->assertStringContainsString( 'type="text/markdown"', $html );
+	}
+
+	public function test_render_discovery_link_silent_when_disabled(): void {
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+
+		ob_start();
+		$this->llms->render_discovery_link();
+		$html = ob_get_clean();
+
+		$this->assertSame( '', $html );
 	}
 }

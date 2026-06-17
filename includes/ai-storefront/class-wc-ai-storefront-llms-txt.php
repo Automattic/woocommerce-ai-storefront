@@ -258,6 +258,32 @@ class WC_AI_Storefront_Llms_Txt {
 	}
 
 	/**
+	 * Print a single, visible body link to /llms.txt in the site footer.
+	 *
+	 * Markdown-extraction fetch tools (e.g. claude.ai web_fetch) strip
+	 * `<head>` `<link rel>` tags and `<script>` JSON-LD, and only fetch URLs
+	 * that have appeared as literal text in prior fetched content. A visible
+	 * `<a>` anchor in the body survives extraction and makes /llms.txt
+	 * reachable on any page fetch — and llms.txt enumerates every other
+	 * endpoint, so one anchor bootstraps the whole discovery chain. The
+	 * companion `<head>` link (UCP `inject_head_link`) stays for crawlers that
+	 * read head links; this is its body-visible counterpart for the fetchers
+	 * that don't. Gated on the master `enabled` setting, mirroring the serve
+	 * handlers.
+	 */
+	public function render_discovery_link() {
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			return;
+		}
+
+		printf( // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Static HTML; the only dynamic value is the esc_url'd href.
+			'<p class="wc-ai-storefront-agent-discovery" style="text-align:center;font-size:12px;opacity:0.55;margin:1em 0;">Machine-readable store data for AI agents: <a href="%s" rel="alternate" type="text/markdown">llms.txt</a></p>',
+			esc_url( home_url( '/llms.txt' ) )
+		);
+	}
+
+	/**
 	 * Get cached llms.txt content, regenerating if expired.
 	 *
 	 * Cache-hit detection must exclude both `false` (the transient
@@ -697,6 +723,13 @@ class WC_AI_Storefront_Llms_Txt {
 		$ucp_checkout = $ucp_api_base . '/checkout-sessions';
 		$mcp_enabled  = 'yes' === ( $settings['mcp_enabled'] ?? 'no' );
 
+		// Real catalog refs for the lookup examples below — a real id/handle
+		// keeps allowlist-based fetch tools (which snap to the literal example
+		// query string) on a working endpoint instead of a not_found stub.
+		$example_refs   = $this->get_example_catalog_refs( $settings );
+		$example_ids    = ! empty( $example_refs['ids'] ) ? implode( ',', $example_refs['ids'] ) : 'prod_1,prod_2,…';
+		$example_handle = '' !== $example_refs['slug'] ? $example_refs['slug'] : '{handle}';
+
 		// ============================================================
 		// ## Typical agent flow
 		// ============================================================
@@ -741,7 +774,7 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[]       = "- **Agent doc**: `{$agents_md_url}` (canonical agent doc; the same document is served at `/llms.txt`)";
 		$lines[]       = "- **UCP manifest**: `{$ucp_manifest}` — capability discovery (what the store supports)";
 		$lines[]       = "- **UCP API base**: `{$ucp_api_base}` — REST root for search, lookup, checkout";
-		$lines[]       = "- **Batch lookup**: `GET {$ucp_api_base}/catalog/lookup?ids=prod_1,prod_2,…` — fetch up to " . WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP . ' products in one request (or `POST /catalog/lookup`). Prefer this over many single lookups.';
+		$lines[]       = "- **Batch lookup**: `GET {$ucp_api_base}/catalog/lookup?ids={$example_ids}` — fetch up to " . WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP . ' products in one request (or `POST /catalog/lookup`). Prefer this over many single lookups.';
 		$lines[]       = "- **Checkout API**: `POST {$ucp_checkout}` — server returns a `continue_url`; redirect the buyer there. Product-specific cart links are also available via JSON-LD `BuyAction.urlTemplate` on each product page (deterministic across product types).";
 		$lines[]       = '';
 
@@ -749,19 +782,20 @@ class WC_AI_Storefront_Llms_Txt {
 		// ## Read-only browsing
 		// ============================================================
 		// For agents that only need to READ the catalog without transacting.
-		// Steer-to-structured: the UCP catalog endpoints lead (structured,
-		// currency-aware), and the Shopify-compatible `*.json` paths follow as
-		// a convenience — emitted only when the products.json feed is enabled.
-		// The bulk `/products.json` is deliberately NOT listed (it stays a
-		// silent catch for agents that blind-probe it; llms.txt readers are
-		// pointed at the structured endpoints + scoped paths instead).
+		// Structured UCP catalog reads lead (currency-aware). The bulk
+		// `/products.json` is listed for fetch-only agents that cannot issue
+		// POST (catalog/search) and cannot reliably append query params
+		// (allowlist fetch tools snap to seen query strings): one parameterless
+		// URL returns the whole catalog. The Shopify-compatible `*.json` paths
+		// (bulk + scoped) are emitted only when the products.json feed is on.
 		$lines[] = '## Read-only browsing';
 		$lines[] = '';
 		$lines[] = 'For agents that only need to read catalog data without transacting:';
 		$lines[] = '';
 		$lines[] = "- **Search** — `GET {$ucp_api_base}/catalog/search?q={query}` (UCP, structured, currency-aware)";
-		$lines[] = "- **Look up** — `GET {$ucp_api_base}/catalog/lookup?ids={ids}` or `?slug={handle}` (UCP, structured)";
+		$lines[] = "- **Look up** — `GET {$ucp_api_base}/catalog/lookup?slug={$example_handle}` (UCP, structured, by product handle) or `?ids={ids}` for batch";
 		if ( 'yes' === ( $settings['products_json_enabled'] ?? 'no' ) ) {
+			$lines[] = "- **All products (one file)** — `GET {$site_url}products.json` (Shopify-compatible; whole catalog, no params, no POST — simplest for fetch-only agents)";
 			$lines[] = "- **Product JSON** — `GET {$site_url}products/{handle}.json` (Shopify-compatible)";
 			$lines[] = "- **Collection JSON** — `GET {$site_url}collections/{handle}/products.json`";
 			$lines[] = "- **Collection list** — `GET {$site_url}collections.json`";
@@ -808,11 +842,59 @@ class WC_AI_Storefront_Llms_Txt {
 	}
 
 	/**
-	 * Get categories available for syndication.
+	 * Source a real syndicated product for the llms.txt lookup examples.
 	 *
-	 * @param array $settings AI syndication settings.
-	 * @return WP_Term[]
+	 * The catalog/lookup endpoint is the one a fetch tool is most likely to
+	 * call from llms.txt, and allowlist-based tools (e.g. claude.ai web_fetch)
+	 * snap to the literal example query string they have seen — so a
+	 * placeholder like `?ids=prod_1,prod_2` resolves to a `not_found` stub.
+	 * Emitting a REAL id / handle makes the documented example return real
+	 * product data instead. Queries up to 10 published, catalog-visible
+	 * products and returns the first two that pass the syndication gate.
+	 *
+	 * @param array $settings Plugin settings (for the syndication gate).
+	 * @return array{ids: string[], slug: string} UCP ids (`prod_<id>`) and the
+	 *               first product's slug; empty when no syndicated product exists.
 	 */
+	private function get_example_catalog_refs( array $settings ): array {
+		$result = [
+			'ids'  => [],
+			'slug' => '',
+		];
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return $result;
+		}
+
+		$products = wc_get_products(
+			[
+				'status'     => 'publish',
+				'visibility' => 'catalog',
+				'limit'      => 10,
+				'orderby'    => 'date',
+				'order'      => 'DESC',
+				'return'     => 'objects',
+			]
+		);
+
+		foreach ( $products as $product ) {
+			if ( ! $product instanceof WC_Product ) {
+				continue;
+			}
+			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
+				continue;
+			}
+			$result['ids'][] = WC_AI_Storefront_UCP_Product_Translator::PRODUCT_ID_PREFIX . $product->get_id();
+			if ( '' === $result['slug'] ) {
+				$result['slug'] = (string) $product->get_slug();
+			}
+			if ( count( $result['ids'] ) >= 2 ) {
+				break;
+			}
+		}
+
+		return $result;
+	}
+
 	/**
 	 * Discover sitemap URLs by probing known paths + WP core's helper.
 	 *
