@@ -130,6 +130,39 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	];
 
 	/**
+	 * Map: User-Agent crawler token (as returned by
+	 * WC_AI_Storefront_Robots::detect_crawler_from_ua()) → representative
+	 * hostname for attribution.
+	 *
+	 * Used as the LAST-RESORT attribution signal: when no UCP-Agent header or
+	 * meta.source resolved the agent, we derive it from the User-Agent so the
+	 * order attributes to a brand instead of `ucp_unknown`. ANSWER-AGENTS ONLY:
+	 * every value here must already be a key in KNOWN_AGENT_HOSTS so
+	 * canonicalize_host() yields a real brand (never OTHER_AI_BUCKET). Generic
+	 * indexers (Bingbot, Googlebot, Applebot) and training crawlers are
+	 * intentionally absent — they index broadly and aren't a buying agent, so
+	 * they stay `ucp_unknown`. This is an ATTRIBUTION signal only; it never
+	 * grants access.
+	 *
+	 * @var array<string, string>
+	 */
+	const UA_AGENT_HOSTS = [
+		// OpenAI.
+		'ChatGPT-User'     => 'chatgpt.com',
+		'GPTBot'           => 'chatgpt.com',
+		'OAI-SearchBot'    => 'chatgpt.com',
+
+		// Anthropic.
+		'Claude-User'      => 'claude.ai',
+		'ClaudeBot'        => 'claude.ai',
+		'Claude-SearchBot' => 'claude.ai',
+
+		// Perplexity.
+		'Perplexity-User'  => 'perplexity.ai',
+		'PerplexityBot'    => 'perplexity.ai',
+	];
+
+	/**
 	 * Map: UCP-Agent product-name token → canonical brand name.
 	 *
 	 * Some UCP clients send the header in `Product/Version` form
@@ -369,6 +402,34 @@ class WC_AI_Storefront_UCP_Agent_Header {
 
 		$lower = strtolower( $host );
 		return self::KNOWN_AGENT_HOSTS[ $lower ] ?? self::OTHER_AI_BUCKET;
+	}
+
+	/**
+	 * Classify a User-Agent string into the attribution triple, or null.
+	 *
+	 * Detects the crawler token (WC_AI_Storefront_Robots::detect_crawler_from_ua),
+	 * looks it up in UA_AGENT_HOSTS, and — on a hit — returns the same
+	 * {name, source_host, raw_host} shape the REST/MCP resolvers produce, so an
+	 * inferred agent merges into the SAME brand/utm_source bucket as a declared
+	 * one. `raw_host` carries the UA token as provenance (a declared agent shows
+	 * a hostname there; an inferred one shows a UA token). Returns null when the
+	 * UA isn't a mapped answer-agent, so the caller falls through to ucp_unknown.
+	 *
+	 * @param string|null $ua Explicit User-Agent, or null to read $_SERVER.
+	 * @return array{name: string, source_host: string, raw_host: string}|null
+	 */
+	public static function classify_user_agent( ?string $ua = null ): ?array {
+		$token = WC_AI_Storefront_Robots::detect_crawler_from_ua( $ua );
+		$host  = self::UA_AGENT_HOSTS[ $token ] ?? '';
+		if ( '' === $host ) {
+			return null;
+		}
+
+		return [
+			'name'        => self::canonicalize_host( $host ),
+			'source_host' => self::normalize_host_string( $host ),
+			'raw_host'    => $token,
+		];
 	}
 
 	/**

@@ -1103,6 +1103,25 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'UCPScanner', WC_AI_Storefront_Robots::detect_crawler_from_ua() );
 	}
 
+	public function test_detect_crawler_from_ua_uses_explicit_arg_over_server(): void {
+		// An explicit UA argument is used directly and does NOT read $_SERVER.
+		$_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (compatible; Bingbot/2.0)';
+
+		$this->assertSame(
+			'ChatGPT-User',
+			WC_AI_Storefront_Robots::detect_crawler_from_ua(
+				'Mozilla/5.0 (compatible; ChatGPT-User/1.0; +https://openai.com/bot)'
+			)
+		);
+	}
+
+	public function test_detect_crawler_from_ua_null_arg_reads_server(): void {
+		// Passing null (the default) preserves the original $_SERVER behavior.
+		$_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)';
+
+		$this->assertSame( 'ClaudeBot', WC_AI_Storefront_Robots::detect_crawler_from_ua( null ) );
+	}
+
 	public function test_cors_headers_method_is_hooked_on_do_robotstxt(): void {
 		// Can't test the actual `header()` calls without process
 		// isolation (PHP headers-sent state leaks between tests).
