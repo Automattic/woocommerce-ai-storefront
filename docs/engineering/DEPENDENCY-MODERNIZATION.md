@@ -75,15 +75,17 @@ The three above, plus three more transitive build-tool deps — all surfaced by 
 
 This clears the CRITICAL `shell-quote` (a `@wordpress/env` dev dep that never reached plugin users anyway) plus two moderates — `npm audit` drops from 73 → 66 with no critical remaining.
 
-**Still deferred to the toolchain round** — pinned *inside* `@wordpress/scripts` / `@wordpress/components` (not a direct dep we can bump), and Strategy A already proved overriding them breaks the build (ESM-only / dev-server-API cascades):
+**Round 2 (2026-06-17):** two more within-major advisories cleared via override — `js-yaml` (→ 4.2.0) and `@babel/core` (→ 7.29.6, deliberately staying on 7.x, not the 8.0 major). Verified against the full gate (build unchanged, 302 jest tests / 14 suites pass, eslint clean). Production-scoped audit stays at 0.
+
+**Still deferred** — three resist a clean local fix. Recon (2026-06-17) confirmed the upstream situation:
 
 | Package | Scope | Patched at | Why it can't clear locally |
 |---------|-------|------------|----------------------------|
-| `serialize-javascript` | dev | 7.0.5 | Bumping the direct `copy-webpack-plugin` to 14 clears *its* copy, but `@wordpress/scripts` ships a separate `serialize-javascript@6.0.2` the advisory still flags. |
-| `webpack-dev-server` | dev | 5.2.4 | `@wordpress/scripts` still pins 4.x; v5 has a different dev-server API. Local dev server only. |
-| `uuid` | runtime | 11.1.1 | `@wordpress/components` ships uuid@9; the fix is a uuid major (ESM-only, breaks CJS imports). The advisory (v3/v5/v6 with `buf`) is not reachable through WP's v4-only usage. |
+| `serialize-javascript` | dev | 7.0.5 | Comes via `@wordpress/scripts`' own `copy-webpack-plugin@10` chain. The **latest** `@wordpress/scripts` (32.4.1) still pins `copy-webpack-plugin ^10.2.0` — there is no upstream version to bump to. |
+| `webpack-dev-server` | dev | 5.2.4 | The **latest** `@wordpress/scripts` (32.4.1) still pins `webpack-dev-server ^4.15.1`; v5 has a different dev-server API. Local dev server only. |
+| `uuid` | runtime | 11.1.1 | `@wordpress/components@33.1` *does* adopt the patched `uuid@14`, clearing the runtime copy — **but `uuid@14` is ESM-only, and every patched uuid (≥11) ships ESM-only**, so jest's `node_modules` transform chokes (`SyntaxError: Unexpected token 'export'` via `@wordpress/components/style-provider`). Fixing it needs a `jest.config.js` + `--config` + hand-tuned `transformIgnorePatterns` (the fragile surgery Strategy A warns against) plus a bundle change — verified, then reverted. Not exploitable as used (WP's uuid usage is v4-only, no `buf`). |
 
-These need the next `@wordpress/scripts` / `@wordpress/components` major-bump round.
+`serialize-javascript` and `webpack-dev-server` are blocked on WordPress upstream; `uuid` is blocked on the ESM/jest cascade. All three are dev-tooling or non-exploitable runtime, never shipped, and the production-scoped CI audit stays green.
 
 ## Lessons learned
 
