@@ -258,6 +258,32 @@ class WC_AI_Storefront_Llms_Txt {
 	}
 
 	/**
+	 * Print a single, visible body link to /llms.txt in the site footer.
+	 *
+	 * Markdown-extraction fetch tools (e.g. claude.ai web_fetch) strip
+	 * `<head>` `<link rel>` tags and `<script>` JSON-LD, and only fetch URLs
+	 * that have appeared as literal text in prior fetched content. A visible
+	 * `<a>` anchor in the body survives extraction and makes /llms.txt
+	 * reachable on any page fetch — and llms.txt enumerates every other
+	 * endpoint, so one anchor bootstraps the whole discovery chain. The
+	 * companion `<head>` link (UCP `inject_head_link`) stays for crawlers that
+	 * read head links; this is its body-visible counterpart for the fetchers
+	 * that don't. Gated on the master `enabled` setting, mirroring the serve
+	 * handlers.
+	 */
+	public function render_discovery_link() {
+		$settings = WC_AI_Storefront::get_settings();
+		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
+			return;
+		}
+
+		printf( // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Static HTML; the only dynamic value is the esc_url'd href.
+			'<p class="wc-ai-storefront-agent-discovery" style="text-align:center;font-size:12px;opacity:0.55;margin:1em 0;">Machine-readable store data for AI agents: <a href="%s" rel="alternate" type="text/markdown">llms.txt</a></p>',
+			esc_url( home_url( '/llms.txt' ) )
+		);
+	}
+
+	/**
 	 * Get cached llms.txt content, regenerating if expired.
 	 *
 	 * Cache-hit detection must exclude both `false` (the transient
@@ -831,7 +857,10 @@ class WC_AI_Storefront_Llms_Txt {
 	 *               first product's slug; empty when no syndicated product exists.
 	 */
 	private function get_example_catalog_refs( array $settings ): array {
-		$result = [ 'ids' => [], 'slug' => '' ];
+		$result = [
+			'ids'  => [],
+			'slug' => '',
+		];
 		if ( ! function_exists( 'wc_get_products' ) ) {
 			return $result;
 		}

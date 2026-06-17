@@ -265,6 +265,11 @@ class WC_AI_Storefront {
 		add_action( 'template_redirect', [ $products_feed, 'serve_collection_products' ] );
 		add_action( 'template_redirect', [ $products_feed, 'serve_collections' ] );
 		add_action( 'wp_head', [ $ucp, 'inject_head_link' ] );
+		// Visible body counterpart to the <head> UCP link: a followable
+		// /llms.txt anchor in the footer, so markdown-extraction fetch tools
+		// (which strip <head>/<script>) can reach llms.txt and bootstrap
+		// discovery. Self-gates on the enabled setting.
+		add_action( 'wp_footer', [ $llms_txt, 'render_discovery_link' ] );
 
 		// Suppress WordPress's trailing-slash canonical redirect for
 		// the discovery endpoints. On sites with trailing-slash

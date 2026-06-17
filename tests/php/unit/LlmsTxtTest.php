@@ -1826,4 +1826,35 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'https://example.com/collections.json', $on );
 		$this->assertStringContainsString( 'https://example.com/products.json', $on );
 	}
+
+	// ------------------------------------------------------------------
+	// render_discovery_link() — followable footer anchor (Task 3)
+	// ------------------------------------------------------------------
+
+	public function test_render_discovery_link_outputs_followable_anchor_when_enabled(): void {
+		// Markdown-extraction fetch tools strip <head> <link rel> and <script>
+		// JSON-LD, but keep visible <a> anchors. A body anchor to /llms.txt
+		// makes the whole discovery chain reachable on any page fetch.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+
+		ob_start();
+		$this->llms->render_discovery_link();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( '<a ', $html );
+		$this->assertStringContainsString( 'href="https://example.com/llms.txt"', $html );
+		$this->assertStringContainsString( 'llms.txt', $html );
+		$this->assertStringContainsString( 'rel="alternate"', $html );
+		$this->assertStringContainsString( 'type="text/markdown"', $html );
+	}
+
+	public function test_render_discovery_link_silent_when_disabled(): void {
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+
+		ob_start();
+		$this->llms->render_discovery_link();
+		$html = ob_get_clean();
+
+		$this->assertSame( '', $html );
+	}
 }
