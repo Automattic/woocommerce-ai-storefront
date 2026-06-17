@@ -75,7 +75,8 @@ class WC_AI_Storefront_JsonLd {
 	/**
 	 * Max purchasable variations for which the product-page checkout anchor
 	 * emits concrete per-variant links. Above this, it emits just the URL
-	 * template + the `/products/{handle}.json` construct source (no flood).
+	 * template (plus the `/products/{handle}.json` construct source when the
+	 * products.json feed is enabled) — no flood.
 	 */
 	private const CHECKOUT_ANCHOR_VARIANT_MAX = 4;
 
@@ -439,11 +440,11 @@ class WC_AI_Storefront_JsonLd {
 	 * a visible body anchor they can extract and hand to the buyer. The
 	 * per-product counterpart to the `/llms.txt` footer anchor.
 	 *
-	 * Variable products get a construct kit (template + a link to the
-	 * uncapped `/products/{handle}.json`), plus concrete labeled variant
-	 * links when there are <= CHECKOUT_ANCHOR_VARIANT_MAX purchasable
-	 * variations. Gated on `enabled` + `is_product_syndicated()`; skips
-	 * non-purchasable variations (#373).
+	 * Variable products get a construct kit (the URL template, plus a link to
+	 * the uncapped `/products/{handle}.json` when the products.json feed is
+	 * enabled), plus concrete labeled variant links when there are <=
+	 * CHECKOUT_ANCHOR_VARIANT_MAX purchasable variations. Gated on `enabled`
+	 * + `is_product_syndicated()`; skips non-purchasable variations (#373).
 	 */
 	public function render_product_checkout_links(): void {
 		if ( ! function_exists( 'is_product' ) || ! is_product() || ! function_exists( 'wc_get_product' ) ) {

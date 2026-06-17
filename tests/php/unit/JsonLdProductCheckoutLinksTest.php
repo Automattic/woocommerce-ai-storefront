@@ -203,11 +203,45 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
+	 * A `get_children()` id that `wc_get_product()` can't resolve (a stale
+	 * entry pointing at a trashed/deleted variation) must be skipped, never
+	 * fataled on `null->is_purchasable()`. The resolvable sibling still
+	 * renders. Pins the `! $variation instanceof WC_Product` guard, which is
+	 * otherwise invisible to the suite (mutating its `continue` to a no-op
+	 * leaves every other test green).
+	 */
+	public function test_unresolvable_variation_child_is_skipped(): void {
+		// 502 is intentionally absent from the variations map, so the
+		// render_for() wc_get_product() stub returns null for that id.
+		$vars = [ 501 => $this->variation( 501, 'Live' ) ];
+		$html = $this->render_for( $this->variable_product( 503, 'stale-child', [ 501, 502 ] ), $vars );
+
+		$this->assertStringContainsString( 'products=501:1', $html );
+		$this->assertStringNotContainsString( 'products=502:1', $html );
+	}
+
+	/**
+	 * `is_product()` is true but `wc_get_product( get_queried_object_id() )`
+	 * returns null (the queried object isn't a product, or it was deleted) —
+	 * the anchor must render nothing, never fatal on a null product. Pins the
+	 * top-level `! $product instanceof WC_Product` guard.
+	 */
+	public function test_renders_nothing_when_product_unresolvable(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 999 );
+		Functions\when( 'wc_get_product' )->justReturn( null );
+
+		ob_start();
+		$this->jsonld->render_product_checkout_links();
+		$this->assertSame( '', (string) ob_get_clean() );
+	}
+
+	/**
 	 * Spec Testing: "Bundle / grouped -> the permalink-based link."
 	 *
-	 * Bundle and grouped products take the get_permalink() + UTM branch
-	 * (lines 475-478), NOT the `/checkout-link/?products=` Shareable
-	 * Checkout URL form that simple/variable/variation use.
+	 * Bundle and grouped products take the get_permalink() + UTM branch,
+	 * NOT the `/checkout-link/?products=` Shareable Checkout URL form that
+	 * simple/variable/variation use.
 	 *
 	 * @dataProvider permalink_based_type_provider
 	 */
@@ -239,9 +273,9 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 	/**
 	 * Spec Edge cases: "unpurchasable simple product -> emit nothing" (#373).
 	 *
-	 * Exercises the simple-branch guard (lines 514-517): a non-purchasable
-	 * simple product must render nothing rather than hand out a SKU WC
-	 * would reject at checkout.
+	 * Exercises the `! $product->is_purchasable()` simple-branch guard: a
+	 * non-purchasable simple product must render nothing rather than hand
+	 * out a SKU WC would reject at checkout.
 	 */
 	public function test_unpurchasable_simple_product_renders_nothing(): void {
 		$html = $this->render_for( $this->simple_product( 42, 'dead-product', false ) );
@@ -249,9 +283,9 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Spec Edge cases: "No purchasable variations -> emit nothing"
-	 * (lines 498-500). When every variation is non-purchasable the
-	 * variable branch collects an empty set and emits nothing.
+	 * Spec Edge cases: "No purchasable variations -> emit nothing". When
+	 * every variation is non-purchasable the variable branch collects an
+	 * empty set (the `empty( $variations )` guard) and emits nothing.
 	 */
 	public function test_variable_all_variations_unpurchasable_renders_nothing(): void {
 		$vars = [
@@ -277,7 +311,7 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 
 	/**
 	 * Spec Testing gating: "renders nothing when ... is_product_syndicated()
-	 * is false." Exercises the syndication gate (lines 448-450) which the
+	 * is false." Exercises the `is_product_syndicated()` gate which the
 	 * enabled=no and !is_product() tests leave untouched.
 	 *
 	 * `product_selection_mode='selected'` with an empty `selected_products`
