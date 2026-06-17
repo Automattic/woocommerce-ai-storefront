@@ -151,10 +151,16 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 		$html    = $this->render_for( $product );
 
 		$this->assertStringContainsString( 'wc-ai-storefront-agent-checkout', $html );
-		// Byte-identical to the accessor (and therefore the `<script>`
-		// BuyAction) — not just a substring, so a trailing/ordering drift fails.
+		// Clickable link byte-identical to the accessor's no-identity-source
+		// output — the esc_url-safe `ucp_unknown`, NOT the `{agent_id}`
+		// placeholder esc_url would strip. assertSame so any drift fails.
 		$this->assertSame( 1, preg_match( '/<a href="([^"]+)">buy this item<\/a>/', $html, $m ) );
-		$this->assertSame( WC_AI_Storefront_JsonLd::checkout_url_template( $product ), $m[1] );
+		$this->assertSame(
+			WC_AI_Storefront_JsonLd::checkout_url_template( $product, WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE ),
+			$m[1]
+		);
+		$this->assertStringContainsString( 'utm_source=ucp_unknown', $m[1] );
+		$this->assertStringNotContainsString( '{agent_id}', $m[1] );
 	}
 
 	public function test_variable_small_renders_concrete_variant_links(): void {
@@ -209,11 +215,15 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 		$product = $this->bundle_or_grouped_product( 500, $type, "a-{$type}", "A {$type} Product" );
 		$html    = $this->render_for( $product );
 
-		// Byte-identical to the accessor's permalink-based URL — the product
-		// name is the anchor text, so this also pins that. Not a substring
-		// check, so a trailing/ordering drift on this path fails too.
+		// Byte-identical to the accessor's no-identity-source permalink URL —
+		// the product name is the anchor text, so this pins that too. Not a
+		// substring check, so a trailing/ordering drift on this path fails.
 		$this->assertSame( 1, preg_match( '/<a href="([^"]+)">A ' . $type . ' Product<\/a>/', $html, $m ) );
-		$this->assertSame( WC_AI_Storefront_JsonLd::checkout_url_template( $product ), $m[1] );
+		$this->assertSame(
+			WC_AI_Storefront_JsonLd::checkout_url_template( $product, WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE ),
+			$m[1]
+		);
+		$this->assertStringContainsString( 'utm_source=ucp_unknown', $m[1] );
 		$this->assertStringContainsString( 'utm_id=woo_jsonld', $html );
 		// Must NOT fall through to the Shareable Checkout URL shape.
 		$this->assertStringNotContainsString( '/checkout-link/?products=', $html );
@@ -398,9 +408,13 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 1, preg_match( '/Tall: <a href="([^"]+)">checkout<\/a>/', $html, $m ) );
 		$rendered_href = $m[1];
-		$expected_href = WC_AI_Storefront_JsonLd::checkout_url_template( $variation );
+		$expected_href = WC_AI_Storefront_JsonLd::checkout_url_template( $variation, WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE );
 
 		$this->assertSame( $expected_href, $rendered_href );
+		// Clickable link uses the esc_url-safe no-identity source, never the
+		// `{agent_id}` placeholder (which esc_url strips from an href).
+		$this->assertStringContainsString( 'utm_source=ucp_unknown', $rendered_href );
+		$this->assertStringNotContainsString( '{agent_id}', $rendered_href );
 	}
 
 	/**

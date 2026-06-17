@@ -347,18 +347,26 @@ class WC_AI_Storefront_JsonLd {
 	 * Static so callers without a class instance (e.g. the per-variant
 	 * builder under `hasVariant`) can build URLs uniformly.
 	 *
-	 * @param WC_Product $product The product or variation. WC core
-	 *                            variations have `type === 'variation'`,
-	 *                            distinct from `bundle`/`grouped`, so
-	 *                            variation entries under `hasVariant`
-	 *                            fall through to the Shareable Checkout
-	 *                            form.
-	 * @return string The full URL with the `{agent_id}` placeholder
-	 *                ready for the consumer (crawler / AI surface) to
-	 *                substitute. No session-id placeholder — see the
+	 * @param WC_Product $product      The product or variation. WC core
+	 *                                 variations have `type === 'variation'`,
+	 *                                 distinct from `bundle`/`grouped`, so
+	 *                                 variation entries under `hasVariant`
+	 *                                 fall through to the Shareable Checkout
+	 *                                 form.
+	 * @param string     $agent_source Value for `utm_source`. Defaults to the
+	 *                                 `{agent_id}` placeholder — the urlTemplate
+	 *                                 shape the `<script>` BuyAction advertises
+	 *                                 for agents to substitute. Callers that
+	 *                                 emit a *directly clickable* `<a href>`
+	 *                                 must pass a real, esc_url-safe source
+	 *                                 (e.g. `ucp_unknown`): `esc_url()` strips
+	 *                                 the `{}` from a placeholder, which would
+	 *                                 both desync from the BuyAction and stamp
+	 *                                 a broken literal into order attribution.
+	 * @return string The full checkout URL. No session-id placeholder — see the
 	 *                inline comment in the function body.
 	 */
-	private static function build_checkout_url_template( $product ): string {
+	private static function build_checkout_url_template( $product, string $agent_source = '{agent_id}' ): string {
 		// No `ai_session_id` placeholder — JSON-LD URL templates are
 		// stateless by definition (the `woo_jsonld` channel exists
 		// precisely because there's no UCP session here). The
@@ -371,7 +379,7 @@ class WC_AI_Storefront_JsonLd {
 		// Session-bound attribution remains on the `/checkout-sessions`
 		// continue_url path where it's authentically present.
 		$utm_args = array(
-			'utm_source' => '{agent_id}',
+			'utm_source' => $agent_source,
 			'utm_medium' => 'referral',
 			// `woo_jsonld` (not `woo_ucp`): JSON-LD URL templates are
 			// crawler bait by design. Agents that fill in this template
@@ -406,14 +414,19 @@ class WC_AI_Storefront_JsonLd {
 	 *
 	 * Thin wrapper over {@see build_checkout_url_template()} so callers
 	 * outside the JSON-LD assembly (e.g. the visible product-page checkout
-	 * anchor) emit byte-identical URLs to the `<script>` BuyAction without
-	 * duplicating the per-product-type branching.
+	 * anchor) emit the same URL shape as the `<script>` BuyAction without
+	 * duplicating the per-product-type branching. With the default
+	 * `{agent_id}` source the output is byte-identical to the BuyAction's
+	 * urlTemplate; clickable callers pass a real source (see `$agent_source`).
 	 *
-	 * @param WC_Product $product A product or variation.
-	 * @return string The checkout URL with the `{agent_id}` placeholder.
+	 * @param WC_Product $product      A product or variation.
+	 * @param string     $agent_source `utm_source` value; defaults to the
+	 *                                 `{agent_id}` placeholder. See
+	 *                                 {@see build_checkout_url_template()}.
+	 * @return string The checkout URL.
 	 */
-	public static function checkout_url_template( $product ): string {
-		return self::build_checkout_url_template( $product );
+	public static function checkout_url_template( $product, string $agent_source = '{agent_id}' ): string {
+		return self::build_checkout_url_template( $product, $agent_source );
 	}
 
 	/**
@@ -471,9 +484,19 @@ class WC_AI_Storefront_JsonLd {
 		$lines   = array();
 		$feed_on = 'yes' === ( $settings['products_json_enabled'] ?? 'no' );
 
+		// Directly-clickable `<a href>` links carry a real, esc_url-safe
+		// `utm_source` (the no-identity sentinel) instead of the `{agent_id}`
+		// placeholder: `esc_url()` strips the `{}` from a placeholder, which
+		// would desync the rendered link from the `<script>` BuyAction AND
+		// stamp a broken `agent_id` literal into order attribution. The
+		// `{agent_id}` placeholder survives only on the non-clickable
+		// construct-kit `<code>` template below, where `esc_html` preserves it
+		// for agents to substitute (the faithful BuyAction urlTemplate mirror).
+		$click_source = WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
+
 		// Bundle / grouped: one permalink-based link.
 		if ( $product->is_type( 'bundle' ) || $product->is_type( 'grouped' ) ) {
-			$lines[] = 'Agent checkout: <a href="' . esc_url( self::checkout_url_template( $product ) ) . '">' . esc_html( $product->get_name() ) . '</a>';
+			$lines[] = 'Agent checkout: <a href="' . esc_url( self::checkout_url_template( $product, $click_source ) ) . '">' . esc_html( $product->get_name() ) . '</a>';
 			return $lines;
 		}
 
@@ -534,7 +557,7 @@ class WC_AI_Storefront_JsonLd {
 			}
 			if ( count( $variations ) <= self::CHECKOUT_ANCHOR_VARIANT_MAX ) {
 				foreach ( $variations as $variation ) {
-					$lines[] = esc_html( $variation->get_name() ) . ': <a href="' . esc_url( self::checkout_url_template( $variation ) ) . '">checkout</a>';
+					$lines[] = esc_html( $variation->get_name() ) . ': <a href="' . esc_url( self::checkout_url_template( $variation, $click_source ) ) . '">checkout</a>';
 				}
 			}
 			return $lines;
@@ -548,7 +571,7 @@ class WC_AI_Storefront_JsonLd {
 		if ( ! $product->is_purchasable() ) {
 			return array();
 		}
-		$lines[] = 'Agent checkout: <a href="' . esc_url( self::checkout_url_template( $product ) ) . '">buy this item</a>';
+		$lines[] = 'Agent checkout: <a href="' . esc_url( self::checkout_url_template( $product, $click_source ) ) . '">buy this item</a>';
 		return $lines;
 	}
 
