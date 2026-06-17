@@ -65,16 +65,25 @@ The honest read: all three need upstream maintenance, not local action.
 
 The three above, plus three more transitive build-tool deps — all surfaced by Dependabot. None are in the shipped plugin artifact, and none fail the production-scoped CI gate (`npm audit --omit=dev --audit-level=high`), which is why "Security audit (composer + npm)" stays green.
 
-| Package | Scope | Patched at | Pinned by / why it can't clear locally |
-|---------|-------|------------|----------------------------------------|
-| `shell-quote` (CRITICAL) | dev | 1.8.4 | `@wordpress/env`; the non-breaking fix needs `@wordpress/env@0.4.0` (breaking). Build tooling, never shipped. |
-| `webpack-dev-server` | dev | 5.2.4 | `@wordpress/scripts` (still pins 4.x). Local dev server only. |
-| `serialize-javascript` | dev | 7.0.5 | `copy-webpack-plugin` (via `@wordpress/scripts`); the fix needs `copy-webpack-plugin@14` (breaking). |
-| `markdown-it` | dev | 14.2.0 | Build tooling. Never shipped. |
-| `qs` | dev | 6.15.2 | Build tooling. Never shipped. |
-| `uuid` | runtime | 11.1.1 | `@wordpress/components` (still ships uuid@9); the fix is a uuid major. The advisory (v3/v5/v6 with `buf`) is not reachable through WP's v4-only usage. |
+**Cleared via flat `overrides` (this PR):** three of the six pin cleanly without breaking the gate (build + jest + eslint all pass; markdownlint still runs under markdown-it 14):
 
-Same conclusion as the original three: clear these in the next `@wordpress/scripts` / `@wordpress/env` / `copy-webpack-plugin` major-bump round, not via local `overrides` — Strategy A already proved the `uuid` and `serialize-javascript` overrides break the build (ESM-only / API-shape cascades). The CRITICAL `shell-quote` severity is alarming on the security tab but is a `@wordpress/env` dev dependency that never reaches plugin users.
+| Package | Scope | Override | Was → now |
+|---------|-------|----------|-----------|
+| `shell-quote` (was CRITICAL) | dev | `^1.8.4` | 1.8.3 → 1.8.4 (patch) |
+| `markdown-it` | dev | `^14.2.0` | 12.3.2 → 14.2.0 (only consumer is `markdownlint-cli`, not run in CI/build) |
+| `qs` | dev | `^6.15.2` | 6.14.2 → 6.15.2 (patch) |
+
+This clears the CRITICAL `shell-quote` (a `@wordpress/env` dev dep that never reached plugin users anyway) plus two moderates — `npm audit` drops from 73 → 66 with no critical remaining.
+
+**Still deferred to the toolchain round** — pinned *inside* `@wordpress/scripts` / `@wordpress/components` (not a direct dep we can bump), and Strategy A already proved overriding them breaks the build (ESM-only / dev-server-API cascades):
+
+| Package | Scope | Patched at | Why it can't clear locally |
+|---------|-------|------------|----------------------------|
+| `serialize-javascript` | dev | 7.0.5 | Bumping the direct `copy-webpack-plugin` to 14 clears *its* copy, but `@wordpress/scripts` ships a separate `serialize-javascript@6.0.2` the advisory still flags. |
+| `webpack-dev-server` | dev | 5.2.4 | `@wordpress/scripts` still pins 4.x; v5 has a different dev-server API. Local dev server only. |
+| `uuid` | runtime | 11.1.1 | `@wordpress/components` ships uuid@9; the fix is a uuid major (ESM-only, breaks CJS imports). The advisory (v3/v5/v6 with `buf`) is not reachable through WP's v4-only usage. |
+
+These need the next `@wordpress/scripts` / `@wordpress/components` major-bump round.
 
 ## Lessons learned
 
