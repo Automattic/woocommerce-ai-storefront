@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.20.1
+Stable tag: 0.21.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -129,7 +129,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
-= Unreleased =
+= 0.21.0 - 2026-06-17 =
 **New**
 * Easier for AI assistants to find and read your store: /llms.txt (and its /agents.md mirror) now show real example product lookups from your own catalog instead of placeholders, list your bulk /products.json catalog file for read-only assistants (while still pointing structured assistants at the preferred UCP catalog endpoints), and your store now prints a small visible link to /llms.txt at the bottom of every page so assistants that only read page text can find it and discover everything else.
 * AI agent attribution from the User-Agent header: when an order arrives from a known answer assistant (ChatGPT, Claude, or Perplexity) that did not otherwise identify itself, the plugin now credits the order to that assistant based on its User-Agent, and records the exact agent name in order meta. General search crawlers (Bing, Google, Apple) are left unattributed. This only affects sales credit, not access, so a faked User-Agent earns no extra access to your store.
