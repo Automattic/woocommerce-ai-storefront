@@ -486,11 +486,15 @@ class WC_AI_Storefront_JsonLd {
 		// parent-ID `/checkout-link/?products=<parent_id>:1` link WC rejects
 		// at checkout (the parent of a variable product is not purchasable).
 		// `method_exists( …, 'get_variation_attributes' )` + non-empty
-		// `get_children()` is the exact gate the JSON-LD ProductGroup path
-		// uses (`maybe_convert_to_product_group()` /
-		// `get_variation_attribute_slugs()`), so the body anchor and the
-		// `<script>` BuyAction agree on what counts as variable and emit
-		// per-variant variation-ID links uniformly.
+		// `get_children()` is the same *capability entry-gate* the JSON-LD
+		// ProductGroup conversion uses (`maybe_convert_to_product_group()`).
+		// The anchor deliberately does NOT replicate that path's stricter
+		// `detect_varies_by()` fallback: a misconfigured variable product with
+		// no "used for variations" axis makes the `<script>` keep a parent
+		// BuyAction, whereas the anchor still emits per-variation-ID links —
+		// the safe shape, since the parent isn't purchasable. The two surfaces
+		// emit byte-identical URLs for every link they BOTH produce; they
+		// differ only on which surface that no-axis edge case falls back to.
 		if ( method_exists( $product, 'get_variation_attributes' ) && $product->get_children() ) {
 			$variations = array();
 			foreach ( (array) $product->get_children() as $child_id ) {
@@ -512,7 +516,19 @@ class WC_AI_Storefront_JsonLd {
 				return array();
 			}
 
-			$lines[] = 'Agent checkout (per variation): <code>' . esc_html( home_url( '/checkout-link/' ) . '?products={variation_id}:1&utm_source={agent_id}&utm_medium=referral&utm_id=woo_jsonld' ) . '</code>';
+			// Construct-kit template: the per-variation checkout URL with a
+			// `{variation_id}` placeholder for the agent to fill in. Derived
+			// from the SAME accessor the concrete links use — take a real
+			// variation's URL and swap its concrete id back to the placeholder
+			// — so the template's UTM tail can never drift from the `<script>`
+			// BuyAction. A bare literal would silently desync on a constant rename.
+			$sample        = $variations[0];
+			$template_href = str_replace(
+				'products=' . $sample->get_id() . ':1',
+				'products={variation_id}:1',
+				self::checkout_url_template( $sample )
+			);
+			$lines[]       = 'Agent checkout (per variation): <code>' . esc_html( $template_href ) . '</code>';
 			if ( $feed_on ) {
 				$lines[] = 'All variations + ids: <a href="' . esc_url( home_url( '/products/' . $product->get_slug() . '.json' ) ) . '">' . esc_html( $product->get_slug() . '.json' ) . '</a>';
 			}

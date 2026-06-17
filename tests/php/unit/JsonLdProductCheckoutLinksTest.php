@@ -147,10 +147,14 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_simple_product_renders_one_checkout_link(): void {
-		$html = $this->render_for( $this->simple_product( 42, 'a-product' ) );
+		$product = $this->simple_product( 42, 'a-product' );
+		$html    = $this->render_for( $product );
 
 		$this->assertStringContainsString( 'wc-ai-storefront-agent-checkout', $html );
-		$this->assertStringContainsString( 'https://example.com/checkout-link/?products=42:1', $html );
+		// Byte-identical to the accessor (and therefore the `<script>`
+		// BuyAction) — not just a substring, so a trailing/ordering drift fails.
+		$this->assertSame( 1, preg_match( '/<a href="([^"]+)">buy this item<\/a>/', $html, $m ) );
+		$this->assertSame( WC_AI_Storefront_JsonLd::checkout_url_template( $product ), $m[1] );
 	}
 
 	public function test_variable_small_renders_concrete_variant_links(): void {
@@ -202,18 +206,15 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 	 * @dataProvider permalink_based_type_provider
 	 */
 	public function test_bundle_or_grouped_renders_permalink_based_link( string $type ): void {
-		$html = $this->render_for(
-			$this->bundle_or_grouped_product( 500, $type, "a-{$type}", "A {$type} Product" )
-		);
+		$product = $this->bundle_or_grouped_product( 500, $type, "a-{$type}", "A {$type} Product" );
+		$html    = $this->render_for( $product );
 
-		// Permalink-based checkout URL surfaces with UTM attribution.
-		$this->assertStringContainsString(
-			"https://example.com/product/a-{$type}/?utm_source={agent_id}",
-			$html
-		);
+		// Byte-identical to the accessor's permalink-based URL — the product
+		// name is the anchor text, so this also pins that. Not a substring
+		// check, so a trailing/ordering drift on this path fails too.
+		$this->assertSame( 1, preg_match( '/<a href="([^"]+)">A ' . $type . ' Product<\/a>/', $html, $m ) );
+		$this->assertSame( WC_AI_Storefront_JsonLd::checkout_url_template( $product ), $m[1] );
 		$this->assertStringContainsString( 'utm_id=woo_jsonld', $html );
-		// Product name surfaces as the anchor text.
-		$this->assertStringContainsString( "A {$type} Product", $html );
 		// Must NOT fall through to the Shareable Checkout URL shape.
 		$this->assertStringNotContainsString( '/checkout-link/?products=', $html );
 	}
@@ -403,24 +404,31 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Cardinal invariant on the construct-kit `<code>` template: assert the
-	 * FULL UTM tail, not just the `products={variation_id}:1` head. The
-	 * construct-kit line is hand-built from a literal `utm_id=woo_jsonld`,
-	 * while the accessor derives `utm_id` from
-	 * `WC_AI_Storefront_Attribution::WOO_JSONLD_ID`. Asserting the whole
-	 * tail catches a drift between the hand-built literal and the
-	 * constant-derived shape.
+	 * Cardinal invariant on the construct-kit `<code>` template: it must be the
+	 * accessor's own output with the concrete id swapped for the
+	 * `{variation_id}` placeholder — NOT a self-referential literal. Deriving
+	 * the expectation from {@see WC_AI_Storefront_JsonLd::checkout_url_template()}
+	 * means a change to the accessor's UTM tail (utm_source/utm_medium/utm_id)
+	 * propagates here, so any drift between the template and the concrete
+	 * per-variant links (and therefore the `<script>` BuyAction) fails.
 	 */
-	public function test_construct_kit_emits_full_utm_tail(): void {
-		$vars = [ 911 => $this->variation( 911, 'X' ) ];
-		$html = $this->render_for( $this->variable_product( 910, 'kit-var', [ 911 ] ), $vars );
+	public function test_construct_kit_template_is_derived_from_accessor(): void {
+		$variation = $this->variation( 911, 'X' );
+		$vars      = [ 911 => $variation ];
+		$html      = $this->render_for( $this->variable_product( 910, 'kit-var', [ 911 ] ), $vars );
 
+		$expected_template = str_replace(
+			'products=911:1',
+			'products={variation_id}:1',
+			WC_AI_Storefront_JsonLd::checkout_url_template( $variation )
+		);
+
+		$this->assertStringContainsString( '<code>' . $expected_template . '</code>', $html );
+		// Sanity: the derived template still carries the full UTM tail.
 		$this->assertStringContainsString(
 			'products={variation_id}:1&utm_source={agent_id}&utm_medium=referral&utm_id=woo_jsonld',
 			$html
 		);
-		// The literal must match the constant the accessor uses.
-		$this->assertSame( 'woo_jsonld', WC_AI_Storefront_Attribution::WOO_JSONLD_ID );
 	}
 
 	/**
