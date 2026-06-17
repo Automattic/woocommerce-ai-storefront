@@ -697,6 +697,13 @@ class WC_AI_Storefront_Llms_Txt {
 		$ucp_checkout = $ucp_api_base . '/checkout-sessions';
 		$mcp_enabled  = 'yes' === ( $settings['mcp_enabled'] ?? 'no' );
 
+		// Real catalog refs for the lookup examples below — a real id/handle
+		// keeps allowlist-based fetch tools (which snap to the literal example
+		// query string) on a working endpoint instead of a not_found stub.
+		$example_refs   = $this->get_example_catalog_refs( $settings );
+		$example_ids    = ! empty( $example_refs['ids'] ) ? implode( ',', $example_refs['ids'] ) : 'prod_1,prod_2,…';
+		$example_handle = '' !== $example_refs['slug'] ? $example_refs['slug'] : '{handle}';
+
 		// ============================================================
 		// ## Typical agent flow
 		// ============================================================
@@ -741,7 +748,7 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[]       = "- **Agent doc**: `{$agents_md_url}` (canonical agent doc; the same document is served at `/llms.txt`)";
 		$lines[]       = "- **UCP manifest**: `{$ucp_manifest}` — capability discovery (what the store supports)";
 		$lines[]       = "- **UCP API base**: `{$ucp_api_base}` — REST root for search, lookup, checkout";
-		$lines[]       = "- **Batch lookup**: `GET {$ucp_api_base}/catalog/lookup?ids=prod_1,prod_2,…` — fetch up to " . WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP . ' products in one request (or `POST /catalog/lookup`). Prefer this over many single lookups.';
+		$lines[]       = "- **Batch lookup**: `GET {$ucp_api_base}/catalog/lookup?ids={$example_ids}` — fetch up to " . WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP . ' products in one request (or `POST /catalog/lookup`). Prefer this over many single lookups.';
 		$lines[]       = "- **Checkout API**: `POST {$ucp_checkout}` — server returns a `continue_url`; redirect the buyer there. Product-specific cart links are also available via JSON-LD `BuyAction.urlTemplate` on each product page (deterministic across product types).";
 		$lines[]       = '';
 
@@ -808,11 +815,56 @@ class WC_AI_Storefront_Llms_Txt {
 	}
 
 	/**
-	 * Get categories available for syndication.
+	 * Source a real syndicated product for the llms.txt lookup examples.
 	 *
-	 * @param array $settings AI syndication settings.
-	 * @return WP_Term[]
+	 * The catalog/lookup endpoint is the one a fetch tool is most likely to
+	 * call from llms.txt, and allowlist-based tools (e.g. claude.ai web_fetch)
+	 * snap to the literal example query string they have seen — so a
+	 * placeholder like `?ids=prod_1,prod_2` resolves to a `not_found` stub.
+	 * Emitting a REAL id / handle makes the documented example return real
+	 * product data instead. Queries up to 10 published, catalog-visible
+	 * products and returns the first two that pass the syndication gate.
+	 *
+	 * @param array $settings Plugin settings (for the syndication gate).
+	 * @return array{ids: string[], slug: string} UCP ids (`prod_<id>`) and the
+	 *               first product's slug; empty when no syndicated product exists.
 	 */
+	private function get_example_catalog_refs( array $settings ): array {
+		$result = [ 'ids' => [], 'slug' => '' ];
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return $result;
+		}
+
+		$products = wc_get_products(
+			[
+				'status'     => 'publish',
+				'visibility' => 'catalog',
+				'limit'      => 10,
+				'orderby'    => 'date',
+				'order'      => 'DESC',
+				'return'     => 'objects',
+			]
+		);
+
+		foreach ( $products as $product ) {
+			if ( ! $product instanceof WC_Product ) {
+				continue;
+			}
+			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
+				continue;
+			}
+			$result['ids'][] = WC_AI_Storefront_UCP_Product_Translator::PRODUCT_ID_PREFIX . $product->get_id();
+			if ( '' === $result['slug'] ) {
+				$result['slug'] = (string) $product->get_slug();
+			}
+			if ( count( $result['ids'] ) >= 2 ) {
+				break;
+			}
+		}
+
+		return $result;
+	}
+
 	/**
 	 * Discover sitemap URLs by probing known paths + WP core's helper.
 	 *

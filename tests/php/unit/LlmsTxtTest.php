@@ -545,6 +545,32 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'BuyAction', $output );
 	}
 
+	public function test_for_agents_batch_lookup_uses_real_ids_when_products_exist(): void {
+		// Two syndicated products are available → the batch-lookup example
+		// must use their real UCP ids (prod_<id>), never the prod_1,prod_2
+		// placeholder that traps allowlist-based fetch tools into not_found.
+		$p1 = \Mockery::mock( 'WC_Product' );
+		$p1->shouldReceive( 'get_id' )->andReturn( 30 );
+		$p1->shouldReceive( 'get_slug' )->andReturn( 'half-zip-hoodie' );
+		$p2 = \Mockery::mock( 'WC_Product' );
+		$p2->shouldReceive( 'get_id' )->andReturn( 22 );
+		$p2->shouldReceive( 'get_slug' )->andReturn( 'day-hoodie' );
+		Functions\when( 'wc_get_products' )->justReturn( [ $p1, $p2 ] );
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'catalog/lookup?ids=prod_30,prod_22', $output );
+		$this->assertStringNotContainsString( 'prod_1,prod_2', $output );
+	}
+
+	public function test_for_agents_batch_lookup_falls_back_to_placeholder_on_empty_catalog(): void {
+		// No products (default stub returns []) → keep a syntactic placeholder
+		// rather than emitting a broken/empty ?ids= example.
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'catalog/lookup?ids=prod_1,prod_2,…', $output );
+	}
+
 	// ------------------------------------------------------------------
 	// ## Shipping & Returns section (issue #398)
 	// ------------------------------------------------------------------
