@@ -61,6 +61,21 @@ A global `uuid: ^14.0.0` override was tried during Strategy A and rolled back be
 
 The honest read: all three need upstream maintenance, not local action.
 
+### Update 2026-06-17: Dependabot surfaces 6 open alerts (same WP-toolchain pinning shape)
+
+The three above, plus three more transitive build-tool deps — all surfaced by Dependabot. None are in the shipped plugin artifact, and none fail the production-scoped CI gate (`npm audit --omit=dev --audit-level=high`), which is why "Security audit (composer + npm)" stays green.
+
+| Package | Scope | Patched at | Pinned by / why it can't clear locally |
+|---------|-------|------------|----------------------------------------|
+| `shell-quote` (CRITICAL) | dev | 1.8.4 | `@wordpress/env`; the non-breaking fix needs `@wordpress/env@0.4.0` (breaking). Build tooling, never shipped. |
+| `webpack-dev-server` | dev | 5.2.4 | `@wordpress/scripts` (still pins 4.x). Local dev server only. |
+| `serialize-javascript` | dev | 7.0.5 | `copy-webpack-plugin` (via `@wordpress/scripts`); the fix needs `copy-webpack-plugin@14` (breaking). |
+| `markdown-it` | dev | 14.2.0 | Build tooling. Never shipped. |
+| `qs` | dev | 6.15.2 | Build tooling. Never shipped. |
+| `uuid` | runtime | 11.1.1 | `@wordpress/components` (still ships uuid@9); the fix is a uuid major. The advisory (v3/v5/v6 with `buf`) is not reachable through WP's v4-only usage. |
+
+Same conclusion as the original three: clear these in the next `@wordpress/scripts` / `@wordpress/env` / `copy-webpack-plugin` major-bump round, not via local `overrides` — Strategy A already proved the `uuid` and `serialize-javascript` overrides break the build (ESM-only / API-shape cascades). The CRITICAL `shell-quote` severity is alarming on the security tab but is a `@wordpress/env` dev dependency that never reaches plugin users.
+
 ## Lessons learned
 
 ### npm `overrides` cannot violate exact pins in deeply-nested `package.json`s
