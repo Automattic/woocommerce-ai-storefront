@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.21.0
+Stable tag: 0.22.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.22.0 - 2026-06-17 =
+**New**
+* AI assistants can now grab a working checkout link straight from your product pages. Assistants that only read the visible page text — and skip the hidden structured data where the buy link normally lives — now see a small "Agent checkout" link at the bottom of each product page: the same deterministic checkout link, so they can hand your buyer a ready-to-use link. Simple products show one link; variable products show a per-option link template, a link to the product's full variation list, and ready-made links for each option when there are four or fewer. On by default; respects your Discovery and Visibility settings.
 
 = 0.21.0 - 2026-06-17 =
 **New**

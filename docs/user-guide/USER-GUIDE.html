@@ -150,12 +150,13 @@
 <p><img src="screenshots/02-disabled-state.png" alt="AI Storefront disabled state: hero screen with enable button"></p>
 <p>Click <strong>Enable AI Storefront</strong>. The hero is replaced by the section nav (Overview, Visibility, Policies, Discovery) and the plugin goes live.</p>
 <p><img src="screenshots/02-enable-toggle.png" alt="Overview tab after enabling"></p>
-<p>Enabling does five things:</p>
+<p>Enabling does six things:</p>
 <ul>
 <li>Tells AI crawlers where they&#39;re allowed to look on your store.</li>
 <li>Publishes a text guide of your store at <code>/llms.txt</code> (visible to AI agents), and adds a small link to it in the footer of every page so AI tools that only read the visible page can find it.</li>
 <li>Publishes your store&#39;s business details at <code>/.well-known/ucp</code> (visible to AI agents).</li>
 <li>Adds product details (prices, return policies, etc.) in a format AI agents understand.</li>
+<li>Adds a small &quot;Agent checkout&quot; link at the bottom of each product page, so AI assistants that only read the visible page text can grab a ready-to-use checkout link to hand your buyer (the same link they&#39;d otherwise read from the hidden product data).</li>
 <li>Starts tracking which orders came from AI shopping assistants so you can see the results.</li>
 </ul>
 <p>To pause, click <strong>Disable AI Storefront</strong> at the bottom of the page. AI agents will no longer be able to see your catalog endpoints, but existing order tracking remains in place.</p>
@@ -688,7 +689,7 @@
 <li><strong>General WooCommerce support:</strong> <a href="https://woocommerce.com/support/">woocommerce.com/support</a> for questions about checkout, payments, taxes, shipping, or anything else WooCommerce-core-shaped.</li>
 </ul>
 <hr>
-<p><em>Covers AI Storefront 0.21.0. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
+<p><em>Covers AI Storefront 0.22.0. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
 
 </body>
 </html>
