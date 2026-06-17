@@ -121,7 +121,7 @@ Click **Enable AI Storefront**. The hero is replaced by the section nav (Overvie
 Enabling does five things:
 
 - Tells AI crawlers where they're allowed to look on your store.
-- Publishes a text guide of your store at `/llms.txt` (visible to AI agents).
+- Publishes a text guide of your store at `/llms.txt` (visible to AI agents), and adds a small link to it in the footer of every page so AI tools that only read the visible page can find it.
 - Publishes your store's business details at `/.well-known/ucp` (visible to AI agents).
 - Adds product details (prices, return policies, etc.) in a format AI agents understand.
 - Starts tracking which orders came from AI shopping assistants so you can see the results.
@@ -168,6 +168,8 @@ The Discovery tab shows the same URLs as clickable links with reachability dots.
 ![Discovery tab Discovery Endpoints card](screenshots/09-endpoints-info.png)
 
 If something returns 404 or shows your homepage, jump to [Troubleshooting](#10-troubleshooting).
+
+While the plugin is enabled you'll also see a small link to `/llms.txt` in the footer of every page on your store. This is intentional. Some AI tools only read the visible page and never look at the hidden tags in a page's source, so the footer link gives them a way in: once they open `/llms.txt` it points them to all of your other endpoints. It is a normal, low-profile link, not a sign anything is wrong.
 
 **Verify your setup in three layers, most reliable first.** AI engines are non-deterministic — a single chat query is not a reliable signal of whether your store is correctly published. Use layered verification to separate "is the plugin working" from "did the AI engine cooperate."
 
@@ -535,6 +537,20 @@ When a shopper finds your store through an AI assistant and makes a purchase, Wo
 
 - Which AI agent sent them (ChatGPT, Gemini, etc.).
 - A session ID to track the interaction (not personally identifying).
+
+### How the agent is identified
+
+The plugin tries to name the agent from the clearest signal first, falling back to weaker signals only when a stronger one is absent. When a request carries no explicit identity at all, the plugin reads the visitor's User-Agent header as a last step before recording the order as Unknown. Known answer agents are recognized this way and attributed by brand:
+
+- ChatGPT (ChatGPT-User, GPTBot, OAI-SearchBot)
+- Claude (Claude-User, ClaudeBot, Claude-SearchBot)
+- Perplexity (Perplexity-User, PerplexityBot)
+
+So an order that an earlier version would have shown as Unknown now shows the correct brand whenever one of these agents reaches your store. General-purpose search crawlers such as Bingbot, Googlebot, and Applebot are not treated as shopping agents and stay Unknown.
+
+When the plugin names an agent from its User-Agent, it attributes that order to the same brand bucket as a self-declared visit (for example, both land under ChatGPT), and it keeps the raw signal it matched on the order. So an order attributed by User-Agent looks the same in your stats as one attributed any other way, and you can still tell the two apart by inspecting the order if you want to.
+
+This affects attribution only. It does not change who can read your catalog, so a visitor that merely claims to be a known agent gains a brand label but no extra access.
 
 ### Reachability check
 

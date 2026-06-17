@@ -304,7 +304,9 @@ Canonical brand name (denormalized from `utm_source` for fast indexed queries). 
 
 ### `_wc_ai_storefront_agent_host_raw`
 
-Raw host from the request's `UCP-Agent` header (or the `ai_agent_host_raw` URL param), preserved for provenance auditing — useful when a stats anomaly needs to be debugged back to actual incoming traffic. Validated against the RFC 1035 hostname-shape regex and a 253-char length cap on capture.
+Raw provenance token from the request's `UCP-Agent` header (or the `ai_agent_host_raw` URL param), preserved for provenance auditing — useful when a stats anomaly needs to be debugged back to actual incoming traffic. Validated against the RFC 1035 hostname-shape regex and a 253-char length cap on capture.
+
+When attribution was **declared**, this holds the raw hostname the agent sent (e.g. `chatgpt.com`). When no explicit signal resolves the agent and attribution is **inferred** from the request's `User-Agent` header (the last step before `utm_source=ucp_unknown`, see `WC_AI_Storefront_UCP_Agent_Header::classify_user_agent()`), this instead holds the raw UA token that matched (e.g. `ChatGPT-User`). The UA token shape passes the same hostname-regex validation, so it stores in the same key without a schema change. This is how merchants distinguish declared (hostname) from inferred (UA token) provenance on a given order.
 
 - **Defined in:** `WC_AI_Storefront_Attribution::AGENT_HOST_RAW_META_KEY`
 - **Written alongside `_wc_ai_storefront_agent`**
