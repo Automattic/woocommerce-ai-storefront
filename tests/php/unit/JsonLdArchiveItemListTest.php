@@ -99,6 +99,24 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '"@type":"ItemList"', $this->capture() );
 	}
 
+	public function test_skips_on_static_front_page(): void {
+		// A static (non-shop) front page: is_front_page() === true, but the page
+		// is NOT the shop archive — every archive predicate (is_shop / category /
+		// tag / product-search) is false. The ItemList must NOT emit: the gate
+		// keys on the archive predicates alone, never on is_front_page(). This is
+		// the symmetric inverse of test_itemlist_emitted_on_front_page_shop and
+		// guards against anyone re-introducing an is_front_page()-based positive
+		// branch (the exact shape of the bug this fix removed). A product is made
+		// available so the assertion pins the GATE, not an empty product list.
+		Functions\when( 'is_front_page' )->justReturn( true );
+		// All archive predicates remain false (setUp default).
+
+		$product = $this->make_product( 1, 'Hoodie', '49.00', true );
+		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+
+		$this->assertSame( '', $this->capture() );
+	}
+
 	// -------------------------------------------------------------------------
 	// Empty product list: no tag emitted even when on a valid page.
 	// -------------------------------------------------------------------------
