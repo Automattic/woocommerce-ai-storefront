@@ -3495,7 +3495,7 @@ class WC_AI_Storefront_JsonLd {
 	 *
 	 * Hooked to `wp_head` at priority 6 (after `output_store_jsonld` at 5).
 	 * Fires on:
-	 *   - Shop front          is_shop() && ! is_front_page()
+	 *   - Shop front          is_shop() (incl. when the shop is the front page)
 	 *   - Category archives   is_product_category()
 	 *   - Tag archives        is_product_tag()
 	 *   - Search results      is_search() && function_exists( 'is_woocommerce' ) && is_woocommerce()
@@ -3516,9 +3516,8 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
-		// Determine page context. Homepage is excluded — it already gets
-		// OnlineBusiness + hasOfferCatalog from output_store_jsonld().
-		$on_shop     = function_exists( 'is_shop' ) && is_shop() && ! is_front_page();
+		// Shop archive (incl. when the shop IS the front page): emit the product ItemList alongside the front page's OnlineBusiness block, so agents fetching the root get products + prices, not just navigational data.
+		$on_shop     = function_exists( 'is_shop' ) && is_shop();
 		$on_category = function_exists( 'is_product_category' ) && is_product_category();
 		$on_tag      = function_exists( 'is_product_tag' ) && is_product_tag();
 		// A product search is `/?s=foo&post_type=product`. is_woocommerce() is
