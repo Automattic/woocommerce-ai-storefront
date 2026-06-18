@@ -918,7 +918,7 @@ class WC_AI_Storefront_Products_Feed {
 				'option2'           => $options[1],
 				'option3'           => $options[2],
 				'sku'               => (string) $variation->get_sku(),
-				'price'             => self::money( $variation->get_price() ),
+				'price'             => self::money( self::base_price( $variation ) ),
 				'compare_at_price'  => self::compare_at( $variation ),
 				'available'         => (bool) ( $variation->is_in_stock() && $variation->is_purchasable() ),
 				'requires_shipping' => method_exists( $variation, 'needs_shipping' ) ? (bool) $variation->needs_shipping() : true,

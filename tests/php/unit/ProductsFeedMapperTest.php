@@ -275,6 +275,60 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '45.99', $out['variants'][0]['price'] );
 	}
 
+	public function test_map_variation_emits_base_currency_not_presentment(): void {
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'sanitize_title' )->alias(
+			function ( $t ) {
+				return strtolower( str_replace( ' ', '-', (string) $t ) );
+			}
+		);
+		Functions\when( 'wc_attribute_label' )->alias(
+			function ( $name ) {
+				return ucfirst( str_replace( 'pa_', '', (string) $name ) );
+			}
+		);
+
+		$variation = \Mockery::mock( 'WC_Product' );
+		$variation->shouldReceive( 'get_id' )->andReturn( 3890 );
+		$variation->shouldReceive( 'get_variation_attributes' )->andReturn(
+			[ 'attribute_pa_size' => 'sm' ]
+		);
+		$variation->shouldReceive( 'get_sku' )->andReturn( 'BELT-SM' );
+		// Multi-currency presentment vs stored base, same shape as the simple test.
+		$variation->shouldReceive( 'get_price' )->with( 'edit' )->andReturn( '45.99' );
+		$variation->shouldReceive( 'get_price' )->with( 'view' )->andReturn( '64.99' );
+		$variation->shouldReceive( 'get_price' )->withNoArgs()->andReturn( '64.99' );
+		$variation->shouldReceive( 'is_on_sale' )->andReturn( false );
+		$variation->shouldReceive( 'get_regular_price' )->andReturn( '45.99' );
+		$variation->shouldReceive( 'is_in_stock' )->andReturn( true );
+		$variation->shouldReceive( 'is_purchasable' )->andReturn( true );
+		$variation->shouldReceive( 'needs_shipping' )->andReturn( true );
+
+		Functions\when( 'wc_get_product' )->justReturn( $variation );
+
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( 26 );
+		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
+		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
+		$p->shouldReceive( 'get_description' )->andReturn( '' );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( true );
+		$p->shouldReceive( 'get_variation_attributes' )->andReturn(
+			[ 'pa_size' => [ 'sm', 'lxl' ] ]
+		);
+		$p->shouldReceive( 'get_children' )->andReturn( [ 3890 ] );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p );
+
+		$this->assertSame( '45.99', $out['variants'][0]['price'] );
+	}
+
 	// ------------------------------------------------------------------
 	// resolve_product_type() — deepest-category + RankMath + stale meta
 	// ------------------------------------------------------------------
