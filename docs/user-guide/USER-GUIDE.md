@@ -102,7 +102,7 @@ No additional configuration is required. AI agents that send `context.currency: 
 
 ![Plugins screen with WooCommerce AI Storefront activated](screenshots/01-plugins-screen.png)
 
-A new menu item appears under **WooCommerce → AI Storefront** in the sidebar.
+A new menu item appears under **WooCommerce → AI Storefront** in the sidebar. The plugin's row on the Plugins screen also gets a **Settings** link that jumps straight there.
 
 ---
 

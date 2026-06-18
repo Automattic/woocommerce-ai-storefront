@@ -53,6 +53,22 @@ class WC_AI_Storefront {
 
 	const SETTINGS_OPTION = 'wc_ai_storefront_settings';
 
+	const ADMIN_PAGE_SLUG = 'wc-ai-storefront';
+
+	// Mirrors the real orchestrator method (a pure static transform), so the
+	// Plugins-screen "Settings" link is behaviorally testable here. The real
+	// registration + slug-sharing are guarded by source assertions in
+	// PluginSettingsLinkTest against includes/class-wc-ai-storefront.php.
+	public static function add_settings_action_link( array $links ): array {
+		$settings_link = sprintf(
+			'<a href="%s">%s</a>',
+			esc_url( admin_url( 'admin.php?page=' . self::ADMIN_PAGE_SLUG ) ),
+			esc_html__( 'Settings', 'woocommerce-ai-storefront' )
+		);
+		array_unshift( $links, $settings_link );
+		return $links;
+	}
+
 	public static function get_settings(): array {
 		return array_merge(
 			[

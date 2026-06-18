@@ -2,6 +2,14 @@
 
 ---
 
+## [0.23.2] – 2026-06-18
+
+### Added
+
+- **A "Settings" link on the plugin's row in the Plugins admin screen (#494).** Prepends a Settings link (alongside Deactivate) that opens WooCommerce → AI Storefront directly, instead of making merchants hunt for it under the WooCommerce menu. Standard `plugin_action_links` affordance; the admin page slug is now shared via a single `WC_AI_Storefront::ADMIN_PAGE_SLUG` constant so the link and the menu can't drift.
+
+---
+
 ## [0.23.1] – 2026-06-18
 
 ### Changed
