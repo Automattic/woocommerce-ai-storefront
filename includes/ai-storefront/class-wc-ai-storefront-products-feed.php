@@ -798,11 +798,28 @@ class WC_AI_Storefront_Products_Feed {
 			'option2'           => null,
 			'option3'           => null,
 			'sku'               => (string) $product->get_sku(),
-			'price'             => self::money( $product->get_price() ),
+			'price'             => self::money( self::base_price( $product ) ),
 			'compare_at_price'  => self::compare_at( $product ),
 			'available'         => (bool) ( $product->is_in_stock() && $product->is_purchasable() ),
 			'requires_shipping' => method_exists( $product, 'needs_shipping' ) ? (bool) $product->needs_shipping() : true,
 		];
+	}
+
+	/**
+	 * A product or variation's price in the store's BASE currency, independent
+	 * of any active multi-currency (e.g. WooPayments) presentment.
+	 *
+	 * The Shopify-compatible feed is a single-currency surface (base) and is
+	 * cached, so it must not vary by request geolocation. `get_price('edit')`
+	 * returns the raw stored value WITHOUT the `woocommerce_product_get_price`
+	 * 'view'-context filter that multi-currency plugins use to convert — and
+	 * WooCommerce stores prices in base currency, so 'edit' IS base.
+	 *
+	 * @param WC_Product $product Product or variation.
+	 * @return string Base-currency price (may be '' when unset).
+	 */
+	private static function base_price( $product ): string {
+		return (string) $product->get_price( 'edit' );
 	}
 
 	/**
@@ -816,6 +833,16 @@ class WC_AI_Storefront_Products_Feed {
 	}
 
 	/**
+	 * Increment the feed cache version, orphaning every cached page/endpoint
+	 * at once (each key embeds this version). The feed class owns VERSION_OPTION,
+	 * so it owns the bump; the cache invalidator and the upgrade path both call
+	 * this. Autoload disabled — the value is read only inside the feed serve path.
+	 */
+	public static function bump_cache_version(): void {
+		update_option( self::VERSION_OPTION, ( (int) get_option( self::VERSION_OPTION, 1 ) ) + 1, false );
+	}
+
+	/**
 	 * compare_at_price = regular price when on sale, else null.
 	 *
 	 * @param WC_Product $product The product (or variation).
@@ -823,7 +850,7 @@ class WC_AI_Storefront_Products_Feed {
 	 */
 	private static function compare_at( $product ): ?string {
 		if ( method_exists( $product, 'is_on_sale' ) && $product->is_on_sale() ) {
-			$regular = $product->get_regular_price();
+			$regular = $product->get_regular_price( 'edit' );
 			if ( is_numeric( $regular ) ) {
 				return self::money( $regular );
 			}
@@ -901,7 +928,7 @@ class WC_AI_Storefront_Products_Feed {
 				'option2'           => $options[1],
 				'option3'           => $options[2],
 				'sku'               => (string) $variation->get_sku(),
-				'price'             => self::money( $variation->get_price() ),
+				'price'             => self::money( self::base_price( $variation ) ),
 				'compare_at_price'  => self::compare_at( $variation ),
 				'available'         => (bool) ( $variation->is_in_stock() && $variation->is_purchasable() ),
 				'requires_shipping' => method_exists( $variation, 'needs_shipping' ) ? (bool) $variation->needs_shipping() : true,

@@ -397,7 +397,7 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return null;
 		}
 
-		public function get_price(): string {
+		public function get_price( string $context = 'view' ): string {
 			return '19.99';
 		}
 
@@ -418,7 +418,7 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return 'test-product';
 		}
 
-		public function get_regular_price(): string {
+		public function get_regular_price( string $context = 'view' ): string {
 			return '19.99';
 		}
 

@@ -344,6 +344,11 @@ class WC_AI_Storefront {
 			delete_transient( WC_AI_Storefront_Llms_Txt::host_cache_key() );
 			// Legacy key — retained here for clean uninstall of pre-1.0 installs.
 			delete_transient( 'wc_ai_storefront_ucp' );
+
+			// Orphan the Shopify-feed caches on a code update so a fix to the
+			// mapper (e.g. the base-currency price fix) doesn't keep serving
+			// stale/currency-poisoned entries for up to CACHE_TTL (1 hour).
+			WC_AI_Storefront_Products_Feed::bump_cache_version();
 		}
 	}
 

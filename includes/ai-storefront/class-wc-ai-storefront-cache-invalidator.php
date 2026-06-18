@@ -322,8 +322,7 @@ class WC_AI_Storefront_Cache_Invalidator {
 	 * read inside the feed serve path, never on a general page load).
 	 */
 	public function bump_products_feed_version(): void {
-		$current = (int) get_option( WC_AI_Storefront_Products_Feed::VERSION_OPTION, 1 );
-		update_option( WC_AI_Storefront_Products_Feed::VERSION_OPTION, $current + 1, false );
+		WC_AI_Storefront_Products_Feed::bump_cache_version();
 	}
 
 	/**
