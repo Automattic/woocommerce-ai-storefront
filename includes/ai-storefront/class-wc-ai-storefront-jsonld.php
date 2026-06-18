@@ -431,8 +431,8 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Print a visible per-product "agent checkout" block in the footer of
-	 * single-product pages.
+	 * Print a visible per-product "agent checkout" block near the top of
+	 * `<body>` (via wp_body_open) on single-product pages.
 	 *
 	 * Markdown-extraction fetch tools strip the `<script>` JSON-LD where the
 	 * BuyAction lives, so the deterministic checkout link is unreachable to

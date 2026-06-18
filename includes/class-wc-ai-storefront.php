@@ -182,7 +182,7 @@ class WC_AI_Storefront {
 		// Visible per-product checkout anchor (body counterpart to the
 		// <script> JSON-LD BuyAction) so markdown-extraction agents can read
 		// the deterministic checkout link. Reuses the same $jsonld instance
-		// that init() wired the JSON-LD footer output onto; it self-gates on
+		// that init() wired the JSON-LD structured-data output onto; it self-gates on
 		// is_product() + enabled + syndication.
 		add_action( 'wp_body_open', [ $jsonld, 'render_product_checkout_links' ] );
 
