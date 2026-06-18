@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.22.1
+Stable tag: 0.23.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,16 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.23.0 - 2026-06-18 =
+**New**
+* Your llms.txt file now tells AI assistants where to find product images (in your JSON product feeds), since assistants that only read the visible page can't see image URLs on the page itself.
+
+**Fixed**
+* Your store's homepage now shares products and prices with AI assistants when your homepage is your shop page. Before, assistants visiting your bare web address saw only general store information and had to find your shop page separately.
+* The "Agent checkout" link and the llms.txt discovery link now appear near the top of each page instead of the footer, so AI assistants that stop reading partway down a long page still find them. Checkout links now also appear as plain readable text.
+* The product feeds that AI assistants read in bulk now include one image per product, so large catalogs aren't cut off before assistants reach later products. The single-product feed still includes every image.
+* The Discovery tab's activity card is now labeled "AI shopping-API activity" and clarifies that it counts catalog searches and lookups through your shopping API, not every page or feed fetch.
 
 = 0.22.1 - 2026-06-18 =
 **Fixed**

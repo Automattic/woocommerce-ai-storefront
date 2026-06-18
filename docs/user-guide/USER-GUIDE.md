@@ -121,10 +121,10 @@ Click **Enable AI Storefront**. The hero is replaced by the section nav (Overvie
 Enabling does six things:
 
 - Tells AI crawlers where they're allowed to look on your store.
-- Publishes a text guide of your store at `/llms.txt` (visible to AI agents), and adds a small link to it in the footer of every page so AI tools that only read the visible page can find it.
+- Publishes a text guide of your store at `/llms.txt` (visible to AI agents), and adds a small link to it near the top of every page so AI tools that only read the visible page can find it.
 - Publishes your store's business details at `/.well-known/ucp` (visible to AI agents).
 - Adds product details (prices, return policies, etc.) in a format AI agents understand.
-- Adds a small "Agent checkout" link at the bottom of each product page, so AI assistants that only read the visible page text can grab a ready-to-use checkout link to hand your buyer (the same link they'd otherwise read from the hidden product data).
+- Adds a small "Agent checkout" link near the top of each product page, so AI assistants that only read the visible page text can grab a ready-to-use checkout link to hand your buyer (the same link they'd otherwise read from the hidden product data).
 - Starts tracking which orders came from AI shopping assistants so you can see the results.
 
 To pause, click **Disable AI Storefront** at the bottom of the page. AI agents will no longer be able to see your catalog endpoints, but existing order tracking remains in place.
@@ -170,7 +170,7 @@ The Discovery tab shows the same URLs as clickable links with reachability dots.
 
 If something returns 404 or shows your homepage, jump to [Troubleshooting](#10-troubleshooting).
 
-While the plugin is enabled you'll also see a small link to `/llms.txt` in the footer of every page on your store. This is intentional. Some AI tools only read the visible page and never look at the hidden tags in a page's source, so the footer link gives them a way in: once they open `/llms.txt` it points them to all of your other endpoints. It is a normal, low-profile link, not a sign anything is wrong.
+While the plugin is enabled you'll also see a small link to `/llms.txt` near the top of every page on your store. This is intentional. Some AI tools only read the visible page and never look at the hidden tags in a page's source, so this visible link gives them a way in: once they open `/llms.txt` it points them to all of your other endpoints. It is a normal, low-profile link, not a sign anything is wrong.
 
 **Verify your setup in three layers, most reliable first.** AI engines are non-deterministic — a single chat query is not a reliable signal of whether your store is correctly published. Use layered verification to separate "is the plugin working" from "did the AI engine cooperate."
 
@@ -207,6 +207,8 @@ These tools are not officially affiliated with Automattic. URLs and capabilities
 ### 4b. What the homepage publishes to AI agents
 
 Your homepage now publishes your store's brand details (name, logo, address, contact) in a format that AI agents understand. AI shopping assistants use this info to confirm they're recommending the right store.
+
+If your homepage *is* your shop page (the default WooCommerce layout where the storefront lists products on the root URL), the homepage also publishes the same product list (titles, prices, availability) that `/shop/` does, so an agent that fetches only your root URL still sees products and prices, not just brand info. If your homepage is a separate landing page, only the brand details above are published there.
 
 | Field | Source | Notes |
 |-------|--------|-------|
@@ -471,7 +473,7 @@ Rate limiting only affects AI crawlers. Your regular shoppers and store experien
 
 ### AI activity log
 
-The Discovery tab shows what AI crawlers are actually doing on your store. The plugin records every AI request to your catalog endpoints in a private log on your own server. Nothing leaves your site.
+The Discovery tab's **AI shopping-API activity** card shows what AI agents are actually doing on your store. It counts catalog searches and lookups through the UCP shopping API; page, feed, and `/llms.txt` fetches aren't counted (most are served from cache and never reach your server). The plugin records this activity in a private log on your own server. Nothing leaves your site.
 
 The period selector at the top (Day / Week / Month / Quarter) drives all three cards:
 

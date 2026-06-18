@@ -50,7 +50,7 @@ The UCP-Agent header is the protocol's intended attribution channel: a well-beha
 
 | Surface | Cohort 1 (no/unparseable header → `ucp_unknown`) | Cohort 2 (parseable, unknown host → `Other AI`) |
 |---|---|---|
-| Discovery tab → "AI agent activity" → "By AI Agent" breakdown | Not present — crawl logger skips fallback-sentinel rows. | Appears under the literal `Other AI` brand. |
+| Discovery tab → "AI shopping-API activity" → "By AI Agent" breakdown | Not present — crawl logger skips fallback-sentinel rows. | Appears under the literal `Other AI` brand. |
 | Discovery tab → Top searches | Search query is not recorded in the raw log (the same `FALLBACK_SOURCE` guard fires before the record call). | Search query is recorded; `By AI Agent` column shows `Other AI`. |
 | Recent AI Orders → Customer / Source columns | Order IS stamped as AI-attributed via the strict-gate path on `utm_id=woo_ucp` — appears as `_wc_ai_storefront_agent: Other AI` with no raw host. Distinguishable from an organic purchase, but indistinguishable from cohort 2. | Same as cohort 1 — order stamped `_wc_ai_storefront_agent: Other AI`. The two cohorts converge on this surface. |
 | Crawler-stats charts | Volume is invisible — the gap is silent under-counting on the *traffic* side. | Volume rolls into `Other AI` totals; merchant sees AI activity but can't slice by vendor. |

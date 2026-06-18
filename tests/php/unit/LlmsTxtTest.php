@@ -1859,7 +1859,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// render_discovery_link() — followable footer anchor (Task 3)
+	// render_discovery_link() — followable body anchor at wp_body_open (Task 3)
 	// ------------------------------------------------------------------
 
 	public function test_render_discovery_link_outputs_followable_anchor_when_enabled(): void {

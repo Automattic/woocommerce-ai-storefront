@@ -2,6 +2,24 @@
 
 ---
 
+## [0.23.0] – 2026-06-18
+
+Agent-reachable surfaces: a cluster of fixes so markdown-extraction AI shopping agents (ChatGPT, Perplexity, Claude) reliably reach products, prices, checkout links, and images on every page they fetch.
+
+### Features
+
+- **`/llms.txt` (and its byte-identical `/agents.md` mirror) now point agents to the `.json` feeds for product images (#480).** A line in the read-only-browsing section tells agents that image URLs live in the feeds' `images[].src` — page `<img>` tags and JSON-LD `image` are stripped by markdown-extraction tools, so an agent reading the page HTML never finds them. Gated on the `products.json` feed being enabled.
+
+### Fixes
+
+- **The homepage now carries the product `ItemList` JSON-LD when the front page is the shop archive (#479).** Previously the root of a shop-as-homepage store (e.g. saltwarp.shop) emitted only navigational `OnlineBusiness`/`WebSite` JSON-LD, so an agent fetching the bare domain got no products or prices and had to discover `/shop/` separately. The front-page shop now emits the same `ItemList` + `Product` blocks (with prices) as `/shop/`.
+- **The product checkout anchor and the `/llms.txt` discovery anchor now render near the top of `<body>` (via `wp_body_open`) instead of `wp_footer` (#477, #489).** On long pages — most visibly the front-page shop — footer output sits past the point where markdown-extraction fetch tools truncate, so the anchors were never reached. Checkout URLs also render as visible `<code>` text instead of `<a href>` (whose URL is dropped in extraction). A structural guard test keeps both anchors out of the footer; the WooCommerce structured-data `<script>` block deliberately stays on `wp_footer` (it needs footer-time data accumulation and is stripped regardless of position).
+- **The bulk and per-collection product feeds now emit a single image per product (#478).** `/products.json` and `/collections/{handle}/products.json` could be truncated by agents before reaching deeper products; emitting one image each (at least one whenever any image exists, falling back to the first gallery image) keeps the payload small. The single-product feed `/products/{handle}.json` still returns every image.
+- **The Discovery tab's activity card is now labeled "AI shopping-API activity" (#481).** The previous "AI agent activity" over-claimed coverage — the card counts only UCP catalog searches and lookups, not page/feed/llms.txt fetches (most of which are served from cache and never reach the server). Adds a scope clarifier and matching empty-state copy.
+- **Discovery settings copy no longer contains em-dashes**, matching the project's merchant-copy convention (em-dashes have rendering edge cases in CSV-split and ASCII-only tools).
+
+---
+
 ## [0.22.1] – 2026-06-18
 
 ### Fixes

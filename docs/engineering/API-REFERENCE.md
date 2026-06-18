@@ -518,7 +518,7 @@ Both URLs resolve to the **same all-products feed** (the second is an alias — 
 | `variants[].compare_at_price` | Regular price (2-decimal string) **when the product is on sale**, else `null`. |
 | `variants[].available` | `is_in_stock() && is_purchasable()`. |
 | `variants[].requires_shipping` | `needs_shipping()` (defaults `true` when the method is unavailable). |
-| `images[]` | Featured image + gallery, de-duplicated, each `{ id, src }` (`src` from `wp_get_attachment_image_url( $id, 'full' )`); entries with no resolvable URL are dropped. |
+| `images[]` | In the **list feeds** (`/products.json` and `/collections/{handle}/products.json`), only the **first valid image** per product (featured if set, else the first valid gallery image) — `[ { id, src } ]`, or `[]` when none resolves. The single-product feed `/products/{handle}.json` emits **all** images (featured + gallery, de-duplicated). Each `{ id, src }` (`src` from `wp_get_attachment_image_url( $id, 'full' )`); entries with no resolvable URL are dropped. |
 | `options[]` | Variation attributes only — `{ name, position, values }` with distinct decoded values. **Omitted entirely** for non-variable products (a simple product has no `options` key at all). |
 
 Per-product output can be overridden via the [`wc_ai_storefront_products_feed_product`](HOOKS.md#wc_ai_storefront_products_feed_product) filter (mirrors `wc_ai_storefront_ucp_product`).
@@ -538,7 +538,7 @@ curl 'https://your-store.com/collections/all/products.json?limit=2'   # same bod
 
 A single product by slug. Same gating, headers, and OPTIONS preflight as the bulk feed.
 
-**Response (200):** `application/json`. Note the **singular `product` key holding an OBJECT** — not the bulk feed's `{ "products": [array] }`. The object is the identical shape as one item in the bulk feed (same `map_product()` mapper, same field map and timestamp fields above):
+**Response (200):** `application/json`. Note the **singular `product` key holding an OBJECT** — not the bulk feed's `{ "products": [array] }`. The object uses the same `map_product()` mapper, field map, and timestamp fields above, with one deliberate difference: this single-product feed emits **all** of a product's images, where the list feeds emit only the first (see the `images[]` field-map row above):
 
 ```json
 {
@@ -835,7 +835,7 @@ Aggregated crawler-visibility stats for the Discovery tab. Reads from the summar
 
 `top_queries_window_days` is the effective lookback for `top_queries` (always `min(period_days, RAW_RETENTION_DAYS=30)`). Top searches read from the raw log (query strings aren't aggregated into the summary table), and the raw log retains only 30 days, so for `period=quarter` (90d) this value is `30` while every other field reflects the full 90-day period.
 
-`raw_event_count` is `COUNT(*)` over the raw log (`{prefix}wc_ai_storefront_crawl_log`) for the requested period. This field is **not cached** — it runs on every response, before the transient cache check, so brand-new traffic (product-page hits, Store API queries) becomes visible immediately even if the rollup hasn't fired yet. (The `/.well-known/ucp` and `/llms.txt` discovery surfaces are edge-cached and no longer logged per request, so they don't contribute raw events.) The Discovery tab's empty-state guard checks this in addition to `total_requests` and `top_queries`, so a fresh install that already has raw activity doesn't falsely render "no AI agent activity recorded".
+`raw_event_count` is `COUNT(*)` over the raw log (`{prefix}wc_ai_storefront_crawl_log`) for the requested period. This field is **not cached** — it runs on every response, before the transient cache check, so brand-new traffic (product-page hits, Store API queries) becomes visible immediately even if the rollup hasn't fired yet. (The `/.well-known/ucp` and `/llms.txt` discovery surfaces are edge-cached and no longer logged per request, so they don't contribute raw events.) The Discovery tab's empty-state guard checks this in addition to `total_requests` and `top_queries`, so a fresh install that already has raw activity doesn't falsely render "No AI shopping-API activity recorded".
 
 `rollup_interval` is the validated cron recurrence slug currently in use: one of `"hourly"` (default), `"twicedaily"`, or `"daily"`. This is the value returned by `WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval()` — the same logic used by `schedule_crons()`. Like `raw_event_count`, this field is **not cached** in the transient — it's injected live on every response (cache-hit and fresh paths alike) so a `wc_ai_storefront_rollup_interval` filter change is reflected on the very next request. Clients use this to render a specific subtitle ("Updated hourly.", "Updated every 12 hours.", "Updated daily.") rather than a generic fallback.
 

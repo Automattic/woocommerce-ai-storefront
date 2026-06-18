@@ -153,10 +153,10 @@
 <p>Enabling does six things:</p>
 <ul>
 <li>Tells AI crawlers where they&#39;re allowed to look on your store.</li>
-<li>Publishes a text guide of your store at <code>/llms.txt</code> (visible to AI agents), and adds a small link to it in the footer of every page so AI tools that only read the visible page can find it.</li>
+<li>Publishes a text guide of your store at <code>/llms.txt</code> (visible to AI agents), and adds a small link to it near the top of every page so AI tools that only read the visible page can find it.</li>
 <li>Publishes your store&#39;s business details at <code>/.well-known/ucp</code> (visible to AI agents).</li>
 <li>Adds product details (prices, return policies, etc.) in a format AI agents understand.</li>
-<li>Adds a small &quot;Agent checkout&quot; link at the bottom of each product page, so AI assistants that only read the visible page text can grab a ready-to-use checkout link to hand your buyer (the same link they&#39;d otherwise read from the hidden product data).</li>
+<li>Adds a small &quot;Agent checkout&quot; link near the top of each product page, so AI assistants that only read the visible page text can grab a ready-to-use checkout link to hand your buyer (the same link they&#39;d otherwise read from the hidden product data).</li>
 <li>Starts tracking which orders came from AI shopping assistants so you can see the results.</li>
 </ul>
 <p>To pause, click <strong>Disable AI Storefront</strong> at the bottom of the page. AI agents will no longer be able to see your catalog endpoints, but existing order tracking remains in place.</p>
@@ -217,7 +217,7 @@
 <p>The Discovery tab shows the same URLs as clickable links with reachability dots. URLs render in monospace font:</p>
 <p><img src="screenshots/09-endpoints-info.png" alt="Discovery tab Discovery Endpoints card"></p>
 <p>If something returns 404 or shows your homepage, jump to <a href="#10-troubleshooting">Troubleshooting</a>.</p>
-<p>While the plugin is enabled you&#39;ll also see a small link to <code>/llms.txt</code> in the footer of every page on your store. This is intentional. Some AI tools only read the visible page and never look at the hidden tags in a page&#39;s source, so the footer link gives them a way in: once they open <code>/llms.txt</code> it points them to all of your other endpoints. It is a normal, low-profile link, not a sign anything is wrong.</p>
+<p>While the plugin is enabled you&#39;ll also see a small link to <code>/llms.txt</code> near the top of every page on your store. This is intentional. Some AI tools only read the visible page and never look at the hidden tags in a page&#39;s source, so this visible link gives them a way in: once they open <code>/llms.txt</code> it points them to all of your other endpoints. It is a normal, low-profile link, not a sign anything is wrong.</p>
 <p><strong>Verify your setup in three layers, most reliable first.</strong> AI engines are non-deterministic — a single chat query is not a reliable signal of whether your store is correctly published. Use layered verification to separate &quot;is the plugin working&quot; from &quot;did the AI engine cooperate.&quot;</p>
 <p><strong>Layer 1 — Direct endpoint check (deterministic).</strong> Visit <code>/llms.txt</code> and <code>/.well-known/ucp</code> on your store in a browser. If they return your store identity and protocol manifest, the plugin is working server-side, regardless of how AI engines behave. This is the load-bearing check.</p>
 <p><strong>Layer 2 — Independent validation tools (recommended).</strong> Run your domain through <a href="https://ucpplayground.com/">UCPPlayground</a> or <a href="https://ucpchecker.com/">UCPChecker</a>. They fetch your endpoints directly and report what they see, with no AI-side caching or fetch-versus-fabricate variability. See <a href="#4a-independent-validation-tools">section 4a</a>.</p>
@@ -262,6 +262,7 @@
 <p>These tools are not officially affiliated with Automattic. URLs and capabilities may change over time. If any link is dead, the UCP spec page at <a href="https://ucp.dev/">https://ucp.dev/</a> will usually point at the current validator or playground.</p>
 <h3>4b. What the homepage publishes to AI agents</h3>
 <p>Your homepage now publishes your store&#39;s brand details (name, logo, address, contact) in a format that AI agents understand. AI shopping assistants use this info to confirm they&#39;re recommending the right store.</p>
+<p>If your homepage <em>is</em> your shop page (the default WooCommerce layout where the storefront lists products on the root URL), the homepage also publishes the same product list (titles, prices, availability) that <code>/shop/</code> does, so an agent that fetches only your root URL still sees products and prices, not just brand info. If your homepage is a separate landing page, only the brand details above are published there.</p>
 <table>
 <thead>
 <tr>
@@ -566,7 +567,7 @@
 <p>Rate limiting only affects AI crawlers. Your regular shoppers and store experience are unaffected.</p>
 <p><img src="screenshots/06b-rate-limits.png" alt="Discovery tab: AI agent list and rate limit cards"></p>
 <h3>AI activity log</h3>
-<p>The Discovery tab shows what AI crawlers are actually doing on your store. The plugin records every AI request to your catalog endpoints in a private log on your own server. Nothing leaves your site.</p>
+<p>The Discovery tab&#39;s <strong>AI shopping-API activity</strong> card shows what AI agents are actually doing on your store. It counts catalog searches and lookups through the UCP shopping API; page, feed, and <code>/llms.txt</code> fetches aren&#39;t counted (most are served from cache and never reach your server). The plugin records this activity in a private log on your own server. Nothing leaves your site.</p>
 <p>The period selector at the top (Day / Week / Month / Quarter) drives all three cards:</p>
 <ul>
 <li><strong>Top searches.</strong> The most common product searches AI agents have asked for. If you see &quot;running shoes&quot; but don&#39;t sell shoes, the AI may be sending you the wrong shoppers. If you see &quot;hoodies&quot; and sell them but don&#39;t see many impressions, check that your category name matches what customers search for.</li>
@@ -689,7 +690,7 @@
 <li><strong>General WooCommerce support:</strong> <a href="https://woocommerce.com/support/">woocommerce.com/support</a> for questions about checkout, payments, taxes, shipping, or anything else WooCommerce-core-shaped.</li>
 </ul>
 <hr>
-<p><em>Covers AI Storefront 0.22.1. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
+<p><em>Covers AI Storefront 0.23.0. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
 
 </body>
 </html>

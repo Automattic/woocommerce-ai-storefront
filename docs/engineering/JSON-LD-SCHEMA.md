@@ -15,7 +15,7 @@ Four distinct JSON-LD blocks:
 
 All blocks emit only when the plugin is enabled (`enabled === 'yes'` in `wc_ai_storefront_settings`). Disabling the plugin removes the markup entirely; the underlying WooCommerce core JSON-LD (basic Product, Offer, AggregateRating) continues to render unchanged.
 
-The three `wp_head` priorities are ordered so the global `WebSite` block (4) precedes the homepage `OnlineBusiness` block (5), which precedes the archive `ItemList` block (6). The homepage is excluded from the `ItemList` block (it already carries `OnlineBusiness` + `hasOfferCatalog`), so the two never collide on one page.
+The three `wp_head` priorities are ordered so the global `WebSite` block (4) precedes the homepage `OnlineBusiness` block (5), which precedes the archive `ItemList` block (6). When the shop archive **is** the site front page, both the `OnlineBusiness` block (5) and the archive `ItemList` block (6) emit on that one page — the homepage agent then gets navigational identity (`OnlineBusiness` + `hasOfferCatalog`) *and* the product ItemList (products + prices). The priority ordering keeps the two blocks deterministically sequenced; they coexist rather than collide.
 
 The plugin **does not replace** WC core's JSON-LD. It registers a `woocommerce_structured_data_product` filter that runs after WC has built its base markup and merges enhancement fields into the existing array.
 
@@ -730,7 +730,7 @@ Emitted on shop / category / tag / product-search archive pages (priority 6, aft
 
 | Context | Condition | `name` | `url` |
 |---------|-----------|--------|-------|
-| Shop front | `is_shop() && ! is_front_page()` | Site name | Shop page permalink |
+| Shop front | `is_shop()` (incl. when the shop is the front page) | Site name | Shop page permalink |
 | Category archive | `is_product_category()` | Term name | Term link |
 | Tag archive | `is_product_tag()` | Term name | Term link |
 | Product search | `is_search() && 'product' === get_query_var('post_type')` | Search query | `/?s=<query>&post_type=product` |

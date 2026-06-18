@@ -1872,7 +1872,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								</td>
 								<td>
 									{ __(
-										'Universal Commerce Protocol — declares capabilities',
+										'Universal Commerce Protocol: declares capabilities',
 										'woocommerce-ai-storefront'
 									) }
 								</td>
@@ -1924,7 +1924,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 								</td>
 								<td>
 									{ __(
-										'Structured commerce API for AI agents — catalog search, lookup, and checkout sessions',
+										'Structured commerce API for AI agents: catalog search, lookup, and checkout sessions',
 										'woocommerce-ai-storefront'
 									) }
 								</td>
@@ -2025,7 +2025,7 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 						} }
 					>
 						{ __(
-							'Agentic browsers like ChatGPT Atlas and Perplexity Comet browse as standard Chrome and cannot be managed here — they have no robots.txt user-agent token.',
+							'Agentic browsers like ChatGPT Atlas and Perplexity Comet browse as standard Chrome and cannot be managed here. They have no robots.txt user-agent token.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>
