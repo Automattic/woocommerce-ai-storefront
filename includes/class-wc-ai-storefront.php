@@ -273,10 +273,15 @@ class WC_AI_Storefront {
 		add_action( 'template_redirect', [ $products_feed, 'serve_collections' ] );
 		add_action( 'wp_head', [ $ucp, 'inject_head_link' ] );
 		// Visible body counterpart to the <head> UCP link: a followable
-		// /llms.txt anchor in the footer, so markdown-extraction fetch tools
-		// (which strip <head>/<script>) can reach llms.txt and bootstrap
-		// discovery. Self-gates on the enabled setting.
-		add_action( 'wp_footer', [ $llms_txt, 'render_discovery_link' ] );
+		// /llms.txt anchor near the top of <body> (via wp_body_open), so
+		// markdown-extraction fetch tools (which strip <head>/<script> and
+		// truncate long pages) reach llms.txt and bootstrap discovery before
+		// the truncation cut. wp_footer sat below the cut on long archive pages
+		// — most visibly the front-page shop (~100+ products), where an agent
+		// fetching the root would never reach a footer anchor. wp_body_open is
+		// the same hook the per-product checkout anchor uses, for the same
+		// reason. Self-gates on the enabled setting.
+		add_action( 'wp_body_open', [ $llms_txt, 'render_discovery_link' ] );
 
 		// Suppress WordPress's trailing-slash canonical redirect for
 		// the discovery endpoints. On sites with trailing-slash
