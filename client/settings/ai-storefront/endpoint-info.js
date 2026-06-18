@@ -77,6 +77,51 @@ export function shouldShowCrawlStatsEmptyState(
 	);
 }
 
+/**
+ * Title for the Discovery-tab activity card.
+ *
+ * Exported for unit testing. Scoped to the shopping API: the card counts only
+ * UCP catalog searches & lookups, so the title says "shopping-API" rather than
+ * the broader "AI agent activity" (page, feed, and llms.txt fetches are not
+ * counted — see getCrawlerActivityScopeNote).
+ *
+ * @return {string} Localised card title.
+ */
+export function getCrawlerActivityTitle() {
+	return __( 'AI shopping-API activity', 'woocommerce-ai-storefront' );
+}
+
+/**
+ * Scope clarifier shown under the activity-card title.
+ *
+ * Exported for unit testing. Explains exactly what the card counts (UCP
+ * shopping-API searches & lookups) and why the other agent surfaces don't
+ * show up — most are served from cache and never reach the server.
+ *
+ * @return {string} Localised scope note.
+ */
+export function getCrawlerActivityScopeNote() {
+	return __(
+		'Catalog searches & lookups through the UCP shopping API. Page, feed, and llms.txt fetches aren’t counted — most are served from cache and never reach your server.',
+		'woocommerce-ai-storefront'
+	);
+}
+
+/**
+ * Empty-state copy for the activity card when no shopping-API activity exists.
+ *
+ * Exported for unit testing. Mirrors the scoped title so the empty state and
+ * the header describe the same thing.
+ *
+ * @return {string} Localised empty-state message.
+ */
+export function getCrawlerActivityEmptyState() {
+	return __(
+		'No AI shopping-API activity recorded for this period. Stats appear here after the first AI agent uses your shopping API.',
+		'woocommerce-ai-storefront'
+	);
+}
+
 // localStorage key for persisted crawler-group collapse/expand state.
 // Stored value is JSON: `{ [groupKey]: boolean }`. Groups missing from
 // the stored object fall back to their `defaultOpen` flag, so adding a
@@ -956,11 +1001,17 @@ const CrawlerActivityCard = () => {
 				>
 					<div>
 						<h3 style={ { margin: '0 0 4px', fontSize: '14px' } }>
-							{ __(
-								'AI agent activity',
-								'woocommerce-ai-storefront'
-							) }
+							{ getCrawlerActivityTitle() }
 						</h3>
+						<p
+							style={ {
+								margin: '4px 0 0',
+								fontSize: '12px',
+								color: colors.textMuted,
+							} }
+						>
+							{ getCrawlerActivityScopeNote() }
+						</p>
 						{ ! crawlStatsError &&
 							! isLoading &&
 							crawlStats.total_requests > 0 && (
@@ -1561,10 +1612,7 @@ const CrawlerActivityCard = () => {
 							textAlign: 'center',
 						} }
 					>
-						{ __(
-							'No AI agent activity recorded for this period. Stats appear here after the first AI agent visits your store.',
-							'woocommerce-ai-storefront'
-						) }
+						{ getCrawlerActivityEmptyState() }
 					</p>
 				) }
 			</CardBody>
