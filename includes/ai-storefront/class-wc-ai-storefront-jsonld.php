@@ -3495,7 +3495,7 @@ class WC_AI_Storefront_JsonLd {
 	 *
 	 * Hooked to `wp_head` at priority 6 (after `output_store_jsonld` at 5).
 	 * Fires on:
-	 *   - Shop front          is_shop() && ! is_front_page()
+	 *   - Shop front          is_shop() (incl. when the shop is the front page)
 	 *   - Category archives   is_product_category()
 	 *   - Tag archives        is_product_tag()
 	 *   - Search results      is_search() && function_exists( 'is_woocommerce' ) && is_woocommerce()
