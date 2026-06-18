@@ -1017,7 +1017,7 @@ const CrawlerActivityCard = () => {
 							crawlStats.total_requests > 0 && (
 								<p
 									style={ {
-										margin: 0,
+										margin: '4px 0 0',
 										fontSize: '12px',
 										color: colors.textMuted,
 									} }
