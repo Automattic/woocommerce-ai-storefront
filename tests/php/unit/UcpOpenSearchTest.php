@@ -110,6 +110,32 @@ class UcpOpenSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'Test Store', $output );
 	}
 
+	public function test_head_link_advertises_llms_txt(): void {
+		// Machine-only /llms.txt advertisement for head-parsing crawlers (e.g.
+		// Googlebot, which feeds the search-index discovery path); HTML companion
+		// to the `Link:` HTTP header. Replaced the former visible body anchor.
+		ob_start();
+		$this->ucp->inject_head_link();
+		$output = (string) ob_get_clean();
+
+		$this->assertMatchesRegularExpression(
+			'/<link rel="alternate" type="text\/markdown" href="[^"]*\/llms\.txt"/',
+			$output
+		);
+	}
+
+	public function test_head_link_silent_when_disabled(): void {
+		// All three head links (ucp-agent, search, llms.txt) gate behind one
+		// enabled-check; pin that a disabled store advertises none of them.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+
+		ob_start();
+		$this->ucp->inject_head_link();
+		$output = (string) ob_get_clean();
+
+		$this->assertSame( '', $output );
+	}
+
 	// ------------------------------------------------------------------
 	// build_opensearch_xml() — XML content tests (no exit, no separate process)
 	// ------------------------------------------------------------------

@@ -1859,33 +1859,41 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// render_discovery_link() — followable body anchor at wp_body_open (Task 3)
+	// discovery_link_header() / send_discovery_link_header() — machine-only
+	// /llms.txt advertisement (HTTP Link header; replaced the visible anchor)
 	// ------------------------------------------------------------------
 
-	public function test_render_discovery_link_outputs_followable_anchor_when_enabled(): void {
-		// Markdown-extraction fetch tools strip <head> <link rel> and <script>
-		// JSON-LD, but keep visible <a> anchors. A body anchor to /llms.txt
-		// makes the whole discovery chain reachable on any page fetch.
+	public function test_discovery_link_header_value_when_enabled(): void {
+		// RFC 8288 Link header pointing at /llms.txt, mirroring the <head> link's
+		// rel/type. No body output — invisible to shoppers, readable by clients
+		// that inspect response headers.
 		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
 
-		ob_start();
-		$this->llms->render_discovery_link();
-		$html = ob_get_clean();
-
-		$this->assertStringContainsString( '<a ', $html );
-		$this->assertStringContainsString( 'href="https://example.com/llms.txt"', $html );
-		$this->assertStringContainsString( 'llms.txt', $html );
-		$this->assertStringContainsString( 'rel="alternate"', $html );
-		$this->assertStringContainsString( 'type="text/markdown"', $html );
+		$this->assertSame(
+			'<https://example.com/llms.txt>; rel="alternate"; type="text/markdown"',
+			$this->llms->discovery_link_header()
+		);
 	}
 
-	public function test_render_discovery_link_silent_when_disabled(): void {
+	public function test_discovery_link_header_null_when_disabled(): void {
 		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		$this->assertNull( $this->llms->discovery_link_header() );
+	}
 
-		ob_start();
-		$this->llms->render_discovery_link();
-		$html = ob_get_clean();
+	public function test_send_discovery_link_header_emits_link_header(): void {
+		// header() can't be captured in Brain Monkey unit tests (global builtin),
+		// so assert the sender's source emits the Link header from the builder —
+		// the same source-text idiom test_agents_md_serve_mirrors_llms_txt_exactly
+		// uses for the serve handlers' header() calls.
+		$source = file_get_contents( dirname( __DIR__, 3 ) . '/includes/ai-storefront/class-wc-ai-storefront-llms-txt.php' );
+		$start  = strpos( $source, 'function send_discovery_link_header(' );
+		$this->assertNotFalse( $start, 'send_discovery_link_header() must exist.' );
+		$body   = substr( $source, $start );
 
-		$this->assertSame( '', $html );
+		$this->assertStringContainsString( '$this->discovery_link_header()', $body );
+		$this->assertStringContainsString( "header( 'Link: '", $body );
+		// The gate is the whole point of "self-gates via discovery_link_header()":
+		// without it, a disabled store would emit a valueless `Link: ` header.
+		$this->assertStringContainsString( 'if ( null !== $value )', $body );
 	}
 }

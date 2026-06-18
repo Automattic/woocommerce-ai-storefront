@@ -2,15 +2,19 @@
 /**
  * Structural guards for the orchestrator's frontend hook wiring.
  *
- * The body-visible discovery surfaces — the per-product checkout anchor
- * (`render_product_checkout_links`) and the /llms.txt discovery anchor
- * (`render_discovery_link`) — MUST register on `wp_body_open`, never
- * `wp_footer`. Both emit visible text/anchors that markdown-extraction fetch
- * tools keep but truncate: on a long archive page (most visibly the
- * front-page shop, ~100+ products) a `wp_footer` registration sits past the
- * truncation cut and never reaches the agent. The render methods' behavior
- * tests invoke them directly, so a silent revert to `wp_footer` would pass
- * every other test — this structural guard is the only thing that catches it.
+ * The per-product checkout anchor (`render_product_checkout_links`) MUST
+ * register on `wp_body_open`, never `wp_footer`: it emits visible text that
+ * markdown-extraction fetch tools keep but truncate, so on a long single-
+ * product page a `wp_footer` registration would sit past the truncation cut.
+ * Its behavior tests invoke it directly, so a silent revert to `wp_footer`
+ * would pass every other test — this structural guard is the only thing that
+ * catches it.
+ *
+ * The /llms.txt discovery advertisement is machine-only — a `Link` HTTP header
+ * (`send_discovery_link_header` on `send_headers`), with no body output — so it
+ * has no placement concern; the guard just pins that it registers on
+ * `send_headers` (it replaced a visible body anchor that was intrusive to
+ * shoppers).
  *
  * Like ActivationTest, this reads the orchestrator source as text: the
  * bootstrap (`init_components()` / `register_rewrite_rules()`) news up a dozen
@@ -49,13 +53,13 @@ class FrontendHookWiringTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_discovery_link_registers_on_wp_body_open(): void {
-		// The /llms.txt discovery anchor bootstraps the whole discovery chain;
-		// on the front-page shop a wp_footer anchor sat past the truncation cut.
+	public function test_discovery_link_header_registers_on_send_headers(): void {
+		// The /llms.txt advertisement is now a machine-only `Link` HTTP header
+		// (no visible body anchor). Pin its registration so it can't be dropped.
 		$this->assertMatchesRegularExpression(
-			'/add_action\(\s*[\'"]wp_body_open[\'"]\s*,[^)]*[\'"]render_discovery_link[\'"]/',
+			'/add_action\(\s*[\'"]send_headers[\'"]\s*,[^)]*[\'"]send_discovery_link_header[\'"]/',
 			$this->orchestrator_file,
-			'render_discovery_link must register on wp_body_open.'
+			'send_discovery_link_header must register on send_headers.'
 		);
 	}
 
