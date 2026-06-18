@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Fixes
+
+- **The Shopify-compatible product feed now always reports prices in the store's base currency, not a visitor's geo-detected currency (#474).** With WooPayments multi-currency active, `/products.json`, `/products/{handle}.json`, and `/collections/{handle}/products.json` could cache and serve a converted presentment currency (e.g. CAD) to AI agents regardless of where the request originated — so an agent could quote the wrong price. The feed now reads base-currency prices (`get_price('edit')`, bypassing the multi-currency display filter) and bumps its cache version on upgrade to drop any previously cached converted prices. The currency-aware UCP catalog API and per-currency `context.currency` pricing are unchanged.
+
 ---
 
 ## [0.22.0] – 2026-06-17
