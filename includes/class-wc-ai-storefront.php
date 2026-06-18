@@ -272,16 +272,14 @@ class WC_AI_Storefront {
 		add_action( 'template_redirect', [ $products_feed, 'serve_collection_products' ] );
 		add_action( 'template_redirect', [ $products_feed, 'serve_collections' ] );
 		add_action( 'wp_head', [ $ucp, 'inject_head_link' ] );
-		// Visible body counterpart to the <head> UCP link: a followable
-		// /llms.txt anchor near the top of <body> (via wp_body_open), so
-		// markdown-extraction fetch tools (which strip <head>/<script> and
-		// truncate long pages) reach llms.txt and bootstrap discovery before
-		// the truncation cut. wp_footer sat below the cut on long archive pages
-		// — most visibly the front-page shop (~100+ products), where an agent
-		// fetching the root would never reach a footer anchor. wp_body_open is
-		// the same hook the per-product checkout anchor uses, for the same
-		// reason. Self-gates on the enabled setting.
-		add_action( 'wp_body_open', [ $llms_txt, 'render_discovery_link' ] );
+		// Machine-only /llms.txt advertisement: an RFC 8288 `Link` HTTP header
+		// on front-end responses (the head <link rel> from inject_head_link is
+		// the HTML-layer companion). Replaces the former visible body anchor —
+		// markdown-extraction fetch tools that strip the head don't need the
+		// llms.txt bootstrap now that the homepage emits the product ItemList,
+		// and a visible body line was intrusive to shoppers. Self-gates on the
+		// enabled setting.
+		add_action( 'send_headers', [ $llms_txt, 'send_discovery_link_header' ] );
 
 		// Suppress WordPress's trailing-slash canonical redirect for
 		// the discovery endpoints. On sites with trailing-slash

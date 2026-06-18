@@ -86,14 +86,19 @@ class WC_AI_Storefront_Ucp {
 	const OPENSEARCH_QUERY_VAR = 'wc_ai_storefront_opensearch';
 
 	/**
-	 * Inject two discovery <link> tags into <head>:
-	 *   - rel="ucp-agent"  → the UCP manifest (/.well-known/ucp)
-	 *   - rel="search"     → the OpenSearch descriptor (/opensearch.xml)
+	 * Inject discovery <link> tags into <head>:
+	 *   - rel="ucp-agent"                  → the UCP manifest (/.well-known/ucp)
+	 *   - rel="search"                     → the OpenSearch descriptor (/opensearch.xml)
+	 *   - rel="alternate" (text/markdown)  → /llms.txt
 	 *
-	 * Caught by head-scraping agents (Perplexity, Bing, etc.) that read
-	 * <head> before loading the full DOM and may never reach llms.txt.
-	 * Only emitted when the plugin is enabled — disabled stores should
-	 * not advertise discovery signals.
+	 * Caught by head-scraping agents (Perplexity, Bing, Googlebot, etc.) that
+	 * read <head> before loading the full DOM. The llms.txt link is the HTML
+	 * companion to the `Link:` HTTP header
+	 * (WC_AI_Storefront_Llms_Txt::send_discovery_link_header); together they
+	 * advertise /llms.txt to machines with no visible body anchor — Googlebot in
+	 * particular feeds the search-index discovery path (llms.txt stays
+	 * indexable). Only emitted when the plugin is enabled — disabled stores
+	 * should not advertise discovery signals.
 	 */
 	public function inject_head_link(): void {
 		$settings = WC_AI_Storefront::get_settings();
@@ -103,9 +108,11 @@ class WC_AI_Storefront_Ucp {
 
 		$manifest_url   = esc_url( home_url( '/.well-known/ucp' ) );
 		$opensearch_url = esc_url( home_url( '/opensearch.xml' ) );
+		$llms_url       = esc_url( home_url( '/llms.txt' ) );
 		$store_name     = esc_attr( get_bloginfo( 'name' ) );
 		echo "\n" . '<link rel="ucp-agent" type="application/json" href="' . $manifest_url . '" />' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- esc_url applied above.
 		echo '<link rel="search" type="application/opensearchdescription+xml" title="' . $store_name . '" href="' . $opensearch_url . '" />' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- esc_url and esc_attr applied above.
+		echo '<link rel="alternate" type="text/markdown" href="' . $llms_url . '" />' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- esc_url applied above.
 	}
 
 	/**

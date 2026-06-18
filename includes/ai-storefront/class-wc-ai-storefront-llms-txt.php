@@ -258,32 +258,46 @@ class WC_AI_Storefront_Llms_Txt {
 	}
 
 	/**
-	 * Print a single, visible /llms.txt link near the top of `<body>`.
+	 * Build the `Link:` HTTP header value advertising /llms.txt, or null when
+	 * syndication is disabled.
 	 *
-	 * Markdown-extraction fetch tools (e.g. claude.ai web_fetch) strip
-	 * `<head>` `<link rel>` tags and `<script>` JSON-LD, only fetch URLs
-	 * that have appeared as literal text in prior fetched content, AND
-	 * truncate long pages. A visible `<a>` anchor in the body survives
-	 * extraction and makes /llms.txt reachable on any page fetch — and
-	 * llms.txt enumerates every other endpoint, so one anchor bootstraps the
-	 * whole discovery chain. It renders on `wp_body_open` (top of `<body>`),
-	 * not `wp_footer`: on a long archive page — most visibly the front-page
-	 * shop — a footer anchor sits past the truncation cut and never reaches
-	 * the agent. The companion `<head>` link (UCP `inject_head_link`) stays
-	 * for crawlers that read head links; this is its body-visible counterpart
-	 * for the fetchers that don't. Gated on the master `enabled` setting,
-	 * mirroring the serve handlers.
+	 * Machine-only discovery (no shopper-facing pixels). This is the HTTP-layer
+	 * companion to the `<head>` `<link rel>` (UCP `inject_head_link`): an RFC
+	 * 8288 `Link` header reaches programmatic / header-inspecting clients that
+	 * never parse the HTML head, while the head link reaches HTML-parsing
+	 * crawlers (e.g. Googlebot). `rel="alternate"` + `type="text/markdown"`
+	 * mirrors the head link — there is no standardized llms.txt rel, and the
+	 * markdown type signals what the target is. Pure + value-returning so it is
+	 * unit-testable without touching `header()`.
+	 *
+	 * Replaces the former visible body anchor: markdown-extraction fetch tools
+	 * (which strip the head and these headers) no longer need the llms.txt
+	 * bootstrap now that the homepage emits the product ItemList, and a visible
+	 * body line was intrusive to shoppers.
+	 *
+	 * @return string|null `Link` header value, or null when disabled.
 	 */
-	public function render_discovery_link() {
+	public function discovery_link_header(): ?string {
 		$settings = WC_AI_Storefront::get_settings();
 		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
-			return;
+			return null;
 		}
 
-		printf( // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Static HTML; the only dynamic value is the esc_url'd href.
-			'<p class="wc-ai-storefront-agent-discovery" style="text-align:center;font-size:12px;opacity:0.55;margin:1em 0;">Machine-readable store data for AI agents: <a href="%s" rel="alternate" type="text/markdown">llms.txt</a></p>',
-			esc_url( home_url( '/llms.txt' ) )
-		);
+		return '<' . esc_url_raw( home_url( '/llms.txt' ) ) . '>; rel="alternate"; type="text/markdown"';
+	}
+
+	/**
+	 * Send the /llms.txt `Link` header on front-end responses.
+	 *
+	 * Hooked on `send_headers`. Self-gates via discovery_link_header(). Appends
+	 * (does not replace) so it never clobbers other `Link` headers (REST,
+	 * oEmbed, themes).
+	 */
+	public function send_discovery_link_header(): void {
+		$value = $this->discovery_link_header();
+		if ( null !== $value ) {
+			header( 'Link: ' . $value, false );
+		}
 	}
 
 	/**
