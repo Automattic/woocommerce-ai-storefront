@@ -2,6 +2,14 @@
 
 ---
 
+## [0.23.1] – 2026-06-18
+
+### Changed
+
+- **The `/llms.txt` discovery link is no longer shown to human shoppers — it's now advertised to agents machine-only (#491).** 0.23.0 moved a visible "Machine-readable store data for AI agents" line to the top of every page so markdown-extraction agents could reach it past the truncation cut; that was intrusive to shoppers, and the casual fetchers it targeted already read products straight from the visible page (they hand the buyer a link rather than calling the API the doc enumerates). The visible line is replaced by two zero-pixel signals: an HTTP `Link: <…/llms.txt>; rel="alternate"; type="text/markdown"` response header (for header-inspecting clients) and a `<head>` `<link rel="alternate" type="text/markdown">` (for HTML-parsing crawlers — notably Googlebot, feeding the search-index discovery path, since `/llms.txt` stays indexable). The per-product "Agent checkout" link is unaffected.
+
+---
+
 ## [0.23.0] – 2026-06-18
 
 Agent-reachable surfaces: a cluster of fixes so markdown-extraction AI shopping agents (ChatGPT, Perplexity, Claude) reliably reach products, prices, checkout links, and images on every page they fetch.
