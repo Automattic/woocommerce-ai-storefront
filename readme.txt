@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.23.0
+Stable tag: 0.23.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.23.1 - 2026-06-18 =
+**Changed**
+* AI assistants are still pointed to your machine-readable store guide (llms.txt), but the small on-page link that briefly appeared at the top of every page in 0.23.0 is gone. Assistants now find it through standard behind-the-scenes web signals (an HTTP header and a hidden link tag) that shoppers never see. Your "Agent checkout" links on product pages are unchanged.
 
 = 0.23.0 - 2026-06-18 =
 **New**

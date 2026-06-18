@@ -153,7 +153,7 @@
 <p>Enabling does six things:</p>
 <ul>
 <li>Tells AI crawlers where they&#39;re allowed to look on your store.</li>
-<li>Publishes a text guide of your store at <code>/llms.txt</code> (visible to AI agents), and adds a small link to it near the top of every page so AI tools that only read the visible page can find it.</li>
+<li>Publishes a text guide of your store at <code>/llms.txt</code> (visible to AI agents), and advertises it to AI tools two ways shoppers never see: an HTTP response header and a hidden link in each page&#39;s <code>&lt;head&gt;</code>.</li>
 <li>Publishes your store&#39;s business details at <code>/.well-known/ucp</code> (visible to AI agents).</li>
 <li>Adds product details (prices, return policies, etc.) in a format AI agents understand.</li>
 <li>Adds a small &quot;Agent checkout&quot; link near the top of each product page, so AI assistants that only read the visible page text can grab a ready-to-use checkout link to hand your buyer (the same link they&#39;d otherwise read from the hidden product data).</li>
@@ -217,7 +217,7 @@
 <p>The Discovery tab shows the same URLs as clickable links with reachability dots. URLs render in monospace font:</p>
 <p><img src="screenshots/09-endpoints-info.png" alt="Discovery tab Discovery Endpoints card"></p>
 <p>If something returns 404 or shows your homepage, jump to <a href="#10-troubleshooting">Troubleshooting</a>.</p>
-<p>While the plugin is enabled you&#39;ll also see a small link to <code>/llms.txt</code> near the top of every page on your store. This is intentional. Some AI tools only read the visible page and never look at the hidden tags in a page&#39;s source, so this visible link gives them a way in: once they open <code>/llms.txt</code> it points them to all of your other endpoints. It is a normal, low-profile link, not a sign anything is wrong.</p>
+<p>While the plugin is enabled, <code>/llms.txt</code> is advertised to AI tools in two ways shoppers never see: an HTTP response header on every page and a hidden <code>&lt;link rel=&quot;alternate&quot; type=&quot;text/markdown&quot;&gt;</code> in each page&#39;s <code>&lt;head&gt;</code>. These give header-inspecting clients and HTML crawlers a way in: once they open <code>/llms.txt</code> it points them to all of your other endpoints. Nothing visible is added to your pages, so don&#39;t expect to see a link on the page itself.</p>
 <p><strong>Verify your setup in three layers, most reliable first.</strong> AI engines are non-deterministic — a single chat query is not a reliable signal of whether your store is correctly published. Use layered verification to separate &quot;is the plugin working&quot; from &quot;did the AI engine cooperate.&quot;</p>
 <p><strong>Layer 1 — Direct endpoint check (deterministic).</strong> Visit <code>/llms.txt</code> and <code>/.well-known/ucp</code> on your store in a browser. If they return your store identity and protocol manifest, the plugin is working server-side, regardless of how AI engines behave. This is the load-bearing check.</p>
 <p><strong>Layer 2 — Independent validation tools (recommended).</strong> Run your domain through <a href="https://ucpplayground.com/">UCPPlayground</a> or <a href="https://ucpchecker.com/">UCPChecker</a>. They fetch your endpoints directly and report what they see, with no AI-side caching or fetch-versus-fabricate variability. See <a href="#4a-independent-validation-tools">section 4a</a>.</p>
@@ -690,7 +690,7 @@
 <li><strong>General WooCommerce support:</strong> <a href="https://woocommerce.com/support/">woocommerce.com/support</a> for questions about checkout, payments, taxes, shipping, or anything else WooCommerce-core-shaped.</li>
 </ul>
 <hr>
-<p><em>Covers AI Storefront 0.23.0. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
+<p><em>Covers AI Storefront 0.23.1. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
 
 </body>
 </html>
