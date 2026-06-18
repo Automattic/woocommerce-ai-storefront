@@ -798,11 +798,28 @@ class WC_AI_Storefront_Products_Feed {
 			'option2'           => null,
 			'option3'           => null,
 			'sku'               => (string) $product->get_sku(),
-			'price'             => self::money( $product->get_price() ),
+			'price'             => self::money( self::base_price( $product ) ),
 			'compare_at_price'  => self::compare_at( $product ),
 			'available'         => (bool) ( $product->is_in_stock() && $product->is_purchasable() ),
 			'requires_shipping' => method_exists( $product, 'needs_shipping' ) ? (bool) $product->needs_shipping() : true,
 		];
+	}
+
+	/**
+	 * A product or variation's price in the store's BASE currency, independent
+	 * of any active multi-currency (e.g. WooPayments) presentment.
+	 *
+	 * The Shopify-compatible feed is a single-currency surface (base) and is
+	 * cached, so it must not vary by request geolocation. `get_price('edit')`
+	 * returns the raw stored value WITHOUT the `woocommerce_product_get_price`
+	 * 'view'-context filter that multi-currency plugins use to convert — and
+	 * WooCommerce stores prices in base currency, so 'edit' IS base.
+	 *
+	 * @param WC_Product $product Product or variation.
+	 * @return string Base-currency price (may be '' when unset).
+	 */
+	private static function base_price( $product ): string {
+		return (string) $product->get_price( 'edit' );
 	}
 
 	/**

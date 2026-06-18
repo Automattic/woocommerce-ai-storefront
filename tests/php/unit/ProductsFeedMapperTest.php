@@ -242,6 +242,39 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Gizmonic', $out['vendor'] );
 	}
 
+	public function test_map_simple_product_emits_base_currency_not_presentment(): void {
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( 26 );
+		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
+		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
+		$p->shouldReceive( 'get_description' )->andReturn( '' );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
+		$p->shouldReceive( 'get_sku' )->andReturn( 'BELT' );
+		// Multi-currency presentment: 'view' (default) returns the converted
+		// CAD price; 'edit' returns the stored USD base. The feed must emit base.
+		$p->shouldReceive( 'get_price' )->with( 'edit' )->andReturn( '45.99' );
+		$p->shouldReceive( 'get_price' )->with( 'view' )->andReturn( '64.99' );
+		$p->shouldReceive( 'get_price' )->withNoArgs()->andReturn( '64.99' );
+		$p->shouldReceive( 'get_regular_price' )->andReturn( '45.99' );
+		$p->shouldReceive( 'is_on_sale' )->andReturn( false );
+		$p->shouldReceive( 'is_in_stock' )->andReturn( true );
+		$p->shouldReceive( 'is_purchasable' )->andReturn( true );
+		$p->shouldReceive( 'needs_shipping' )->andReturn( true );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p );
+
+		$this->assertSame( '45.99', $out['variants'][0]['price'] );
+	}
+
 	// ------------------------------------------------------------------
 	// resolve_product_type() — deepest-category + RankMath + stale meta
 	// ------------------------------------------------------------------
