@@ -3,12 +3,17 @@
  *
  * React component rendering is not tested here — the component requires a
  * full @wordpress/data store setup. Only exported pure functions that can be
- * exercised without DOM or store mocks are covered.
+ * exercised without DOM or store mocks are covered, including the
+ * CrawlerActivityCard copy helpers, so the Discovery-tab activity card's
+ * merchant-facing wording stays scoped to the shopping API.
  */
 
 import {
 	getRollupIntervalLabel,
 	shouldShowCrawlStatsEmptyState,
+	getCrawlerActivityTitle,
+	getCrawlerActivityScopeNote,
+	getCrawlerActivityEmptyState,
 } from '../endpoint-info';
 
 describe( 'shouldShowCrawlStatsEmptyState', () => {
@@ -106,6 +111,35 @@ describe( 'getRollupIntervalLabel', () => {
 		);
 		expect( getRollupIntervalLabel( undefined ) ).toBe(
 			'Updated periodically.'
+		);
+	} );
+} );
+
+describe( 'CrawlerActivityCard copy', () => {
+	it( 'titles the card "AI shopping-API activity"', () => {
+		// Scoped to the shopping API — the old broad "AI agent activity"
+		// over-claimed coverage of page/feed/llms.txt fetches that the card
+		// does not count.
+		expect( getCrawlerActivityTitle() ).toBe( 'AI shopping-API activity' );
+	} );
+
+	it( 'clarifies the scope is UCP shopping-API searches & lookups', () => {
+		expect( getCrawlerActivityScopeNote() ).toMatch(
+			/Catalog searches & lookups through the UCP shopping API/
+		);
+		// And it explains why the other fetches are not counted — joined with a
+		// sentence break, NOT an em-dash (AGENTS.md bars em-dashes in
+		// merchant-facing copy). Pinning the period guards against the dash
+		// creeping back in.
+		expect( getCrawlerActivityScopeNote() ).toMatch(
+			/Page, feed, and llms\.txt fetches aren’t counted\. Most are served from cache/
+		);
+		expect( getCrawlerActivityScopeNote() ).not.toContain( '—' );
+	} );
+
+	it( 'uses the scoped empty-state copy', () => {
+		expect( getCrawlerActivityEmptyState() ).toBe(
+			'No AI shopping-API activity recorded for this period. Stats appear here after the first AI agent uses your shopping API.'
 		);
 	} );
 } );

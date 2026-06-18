@@ -84,12 +84,36 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '', $this->capture() );
 	}
 
-	public function test_skips_on_front_page_even_if_is_shop_true(): void {
-		// The shop page doubles as the homepage for some themes.
-		// In that case is_shop() === true AND is_front_page() === true.
-		// output_store_jsonld() covers the front page; archive block must not fire.
-		Functions\when( 'is_shop' )->justReturn( true );
+	public function test_itemlist_emitted_on_front_page_shop(): void {
+		// When the shop archive IS the site's front page (is_shop() === true AND
+		// is_front_page() === true), the product ItemList must still emit — the
+		// front page then carries BOTH the OnlineBusiness block (from
+		// output_store_jsonld()) AND this ItemList, so agents fetching the root
+		// get products + prices, not just navigational data.
+		$this->enable_shop_page();
 		Functions\when( 'is_front_page' )->justReturn( true );
+
+		$product = $this->make_product( 1, 'Hoodie', '49.00', true );
+		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+
+		$this->assertStringContainsString( '"@type":"ItemList"', $this->capture() );
+	}
+
+	public function test_skips_on_static_front_page(): void {
+		// A static (non-shop) front page: is_front_page() === true, but the page
+		// is NOT the shop archive — every archive predicate (is_shop / category /
+		// tag / product-search) is false. The ItemList must NOT emit: the gate
+		// keys on the archive predicates alone, never on is_front_page(). This is
+		// the symmetric inverse of test_itemlist_emitted_on_front_page_shop and
+		// guards against anyone re-introducing an is_front_page()-based positive
+		// branch (the exact shape of the bug this fix removed). A product is made
+		// available so the assertion pins the GATE, not an empty product list.
+		Functions\when( 'is_front_page' )->justReturn( true );
+		// All archive predicates remain false (setUp default).
+
+		$product = $this->make_product( 1, 'Hoodie', '49.00', true );
+		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+
 		$this->assertSame( '', $this->capture() );
 	}
 
