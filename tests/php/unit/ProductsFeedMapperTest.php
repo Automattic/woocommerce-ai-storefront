@@ -329,6 +329,39 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '45.99', $out['variants'][0]['price'] );
 	}
 
+	public function test_compare_at_uses_base_regular_price_not_presentment(): void {
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( 26 );
+		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
+		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
+		$p->shouldReceive( 'get_description' )->andReturn( '' );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
+		$p->shouldReceive( 'get_sku' )->andReturn( 'BELT' );
+		$p->shouldReceive( 'get_price' )->with( 'edit' )->andReturn( '34.99' ); // base sale
+		$p->shouldReceive( 'get_price' )->withNoArgs()->andReturn( '49.99' );
+		$p->shouldReceive( 'is_on_sale' )->andReturn( true );
+		// Multi-currency presentment vs stored base for the REGULAR price.
+		$p->shouldReceive( 'get_regular_price' )->with( 'edit' )->andReturn( '45.99' );
+		$p->shouldReceive( 'get_regular_price' )->withNoArgs()->andReturn( '64.99' );
+		$p->shouldReceive( 'is_in_stock' )->andReturn( true );
+		$p->shouldReceive( 'is_purchasable' )->andReturn( true );
+		$p->shouldReceive( 'needs_shipping' )->andReturn( true );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p );
+
+		$this->assertSame( '34.99', $out['variants'][0]['price'] );            // base sale price
+		$this->assertSame( '45.99', $out['variants'][0]['compare_at_price'] ); // base regular, not 64.99
+	}
+
 	// ------------------------------------------------------------------
 	// resolve_product_type() — deepest-category + RankMath + stale meta
 	// ------------------------------------------------------------------

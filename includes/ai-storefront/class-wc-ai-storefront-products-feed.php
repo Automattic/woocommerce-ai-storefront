@@ -840,7 +840,7 @@ class WC_AI_Storefront_Products_Feed {
 	 */
 	private static function compare_at( $product ): ?string {
 		if ( method_exists( $product, 'is_on_sale' ) && $product->is_on_sale() ) {
-			$regular = $product->get_regular_price();
+			$regular = $product->get_regular_price( 'edit' );
 			if ( is_numeric( $regular ) ) {
 				return self::money( $regular );
 			}
