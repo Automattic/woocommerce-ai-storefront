@@ -410,6 +410,40 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 3, $out['images'] );
 	}
 
+	public function test_compact_emits_zero_images_when_none_resolvable(): void {
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_attachment_image_url' )->alias( fn( $id ) => "https://x/$id.jpg" );
+
+		$p = $this->mappable_product_with_images( 0, [] ); // no featured, no gallery
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p, true );
+
+		$this->assertCount( 0, $out['images'] ); // nothing to emit
+	}
+
+	public function test_compact_skips_unresolvable_featured_and_uses_first_valid_gallery(): void {
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		// Featured (11) is unresolvable (''); the first gallery id (12) resolves.
+		// Locks the "first VALID image only" contract — the break sits INSIDE the
+		// non-empty-src guard, so a broken featured image is skipped, not counted.
+		Functions\when( 'wp_get_attachment_image_url' )->alias(
+			fn( $id ) => 11 === $id ? '' : "https://x/$id.jpg"
+		);
+
+		$p = $this->mappable_product_with_images( 11, [ 12, 13 ] );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p, true );
+
+		$this->assertCount( 1, $out['images'] );          // the >=1 rule still holds
+		$this->assertSame( 12, $out['images'][0]['id'] ); // first VALID = gallery 12, not the broken featured
+	}
+
 	/**
 	 * Build a simple WC_Product mock fully wired for map_product() with the
 	 * given featured-image id (0 = none) and gallery image ids. Mirrors
