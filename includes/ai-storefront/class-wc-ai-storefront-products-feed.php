@@ -466,7 +466,7 @@ class WC_AI_Storefront_Products_Feed {
 			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 				continue;
 			}
-			$mapped[] = self::map_product( $product );
+			$mapped[] = self::map_product( $product, true );
 		}
 
 		return (string) wp_json_encode( [ 'products' => $mapped ] );
@@ -641,7 +641,7 @@ class WC_AI_Storefront_Products_Feed {
 			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 				continue;
 			}
-			$mapped[] = self::map_product( $product );
+			$mapped[] = self::map_product( $product, true );
 		}
 
 		return (string) wp_json_encode( [ 'products' => $mapped ] );
@@ -675,9 +675,12 @@ class WC_AI_Storefront_Products_Feed {
 	 * the fields a trained parser keys on; Shopify-internal fields omitted).
 	 *
 	 * @param WC_Product $product The product.
+	 * @param bool       $compact When true (list feeds), emit only the first
+	 *                            valid image per product; the single-product
+	 *                            feed keeps the default (all images).
 	 * @return array Shopify-shaped product.
 	 */
-	public static function map_product( $product ): array {
+	public static function map_product( $product, bool $compact = false ): array {
 		$is_variable = method_exists( $product, 'is_type' ) && $product->is_type( 'variable' );
 
 		// Shopify emits published_at/created_at/updated_at as RFC 3339 UTC
@@ -704,7 +707,7 @@ class WC_AI_Storefront_Products_Feed {
 			'variants'     => $is_variable
 				? self::build_variants( $product )
 				: [ self::build_simple_variant( $product ) ],
-			'images'       => self::build_images( $product ),
+			'images'       => self::build_images( $product, $compact ),
 		];
 
 		$options = $is_variable ? self::build_options( $product ) : [];
@@ -863,18 +866,31 @@ class WC_AI_Storefront_Products_Feed {
 	 * and variable products, so defined here with the simple-product path).
 	 *
 	 * @param WC_Product $product The product.
+	 * @param bool       $compact When true (list feeds), emit only the first
+	 *                            VALID image (featured if set, else first valid
+	 *                            gallery); the single-product feed keeps all.
 	 * @return array
 	 */
-	private static function build_images( $product ): array {
-		$ids    = array_filter( array_merge( [ (int) $product->get_image_id() ], array_map( 'intval', (array) $product->get_gallery_image_ids() ) ) );
+	private static function build_images( $product, bool $compact = false ): array {
+		$ids    = array_unique(
+			array_filter(
+				array_merge(
+					[ (int) $product->get_image_id() ],
+					array_map( 'intval', (array) $product->get_gallery_image_ids() )
+				)
+			)
+		);
 		$images = [];
-		foreach ( array_unique( $ids ) as $id ) {
+		foreach ( $ids as $id ) {
 			$src = wp_get_attachment_image_url( $id, 'full' );
 			if ( is_string( $src ) && '' !== $src ) {
 				$images[] = [
 					'id'  => $id,
 					'src' => $src,
 				];
+				if ( $compact ) {
+					break; // first VALID image only: featured if set, else first valid gallery.
+				}
 			}
 		}
 		return $images;
