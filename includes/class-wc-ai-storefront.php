@@ -26,6 +26,15 @@ class WC_AI_Storefront {
 	const SETTINGS_OPTION = 'wc_ai_storefront_settings';
 
 	/**
+	 * Admin settings page slug (WooCommerce submenu).
+	 *
+	 * The bare slug passed to add_submenu_page(); reused by the Plugins-screen
+	 * "Settings" action link so the two never drift. The derived hook suffix /
+	 * body class are `woocommerce_page_` . self::ADMIN_PAGE_SLUG.
+	 */
+	const ADMIN_PAGE_SLUG = 'wc-ai-storefront';
+
+	/**
 	 * Single source of truth for default values of every plugin setting.
 	 *
 	 * Used by get_settings() via wp_parse_args so any new key added here
@@ -133,6 +142,11 @@ class WC_AI_Storefront {
 		if ( is_admin() ) {
 			add_action( 'admin_menu', [ $this, 'add_admin_menu' ] );
 			add_action( 'admin_enqueue_scripts', [ $this, 'admin_scripts' ] );
+			// "Settings" link on the plugin's Plugins-screen row.
+			add_filter(
+				'plugin_action_links_' . plugin_basename( WC_AI_STOREFRONT_PLUGIN_FILE ),
+				[ self::class, 'add_settings_action_link' ]
+			);
 		}
 	}
 
@@ -395,9 +409,30 @@ class WC_AI_Storefront {
 			// menu width without truncation.
 			__( 'AI Storefront', 'woocommerce-ai-storefront' ),
 			'manage_woocommerce',
-			'wc-ai-storefront',
+			self::ADMIN_PAGE_SLUG,
 			[ $this, 'render_admin_page' ]
 		);
+	}
+
+	/**
+	 * Prepend a "Settings" link to the plugin's row on the Plugins screen.
+	 *
+	 * Hooked on `plugin_action_links_{basename}` (registered in the constructor
+	 * under `is_admin()`). Points at the WooCommerce submenu settings page
+	 * (`admin.php?page=` . self::ADMIN_PAGE_SLUG). Static + pure so it is
+	 * unit-testable without instantiating the singleton.
+	 *
+	 * @param array<int|string, string> $links Existing action links (HTML <a> strings).
+	 * @return array<int|string, string> Links with "Settings" prepended.
+	 */
+	public static function add_settings_action_link( array $links ): array {
+		$settings_link = sprintf(
+			'<a href="%s">%s</a>',
+			esc_url( admin_url( 'admin.php?page=' . self::ADMIN_PAGE_SLUG ) ),
+			esc_html__( 'Settings', 'woocommerce-ai-storefront' )
+		);
+		array_unshift( $links, $settings_link );
+		return $links;
 	}
 
 	/**
