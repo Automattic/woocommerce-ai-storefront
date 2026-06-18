@@ -100,7 +100,7 @@ Add one line to the `## Read-only browsing` section of the `/llms.txt` generator
 
 ## Testing
 
-- **#479** (`JsonLdTest.php` or the archive-ItemList test): with `is_shop()` true **and** `is_front_page()` true, `output_archive_itemlist_jsonld()` emits the `ItemList` (previously suppressed). Existing `/shop/` (is_shop, not front page) and category/tag/search cases stay green; a static non-shop front page emits no `ItemList`.
+- **#479** (`JsonLdArchiveItemListTest.php`): with `is_shop()` true **and** `is_front_page()` true, `output_archive_itemlist_jsonld()` emits the `ItemList` (previously suppressed). Existing `/shop/` (is_shop, not front page) and category/tag/search cases stay green; a static non-shop front page emits no `ItemList`.
 - **#477** (`JsonLdProductCheckoutLinksTest.php`): the rendered block contains the checkout URLs as **visible text** (`<code>…/checkout-link/?products=…</code>`) for simple, bundle/grouped, and concrete-variant cases — and *not* as `<a href>` with a bare "checkout"/"buy this item" label that drops the URL. Byte-identity against `checkout_url_template()` preserved. Hook-registration test updated to `wp_body_open`.
 - **#478** (`ProductsFeedMapperTest.php`): `map_product( $p, true )` emits exactly **one** image (the featured) when a featured image is set; **one** image (the first gallery) when no featured image but gallery images exist (the ≥1 rule); **zero** when the product has no resolvable image. `map_product( $p, false )` (and the default) emits all images unchanged.
 - **#480** (`LlmsTxtTest.php`): the generated `/llms.txt` contains the image-steering line in the read-only-browsing section when `products_json_enabled`, and omits it when the feed is off; `/agents.md` mirrors it.
