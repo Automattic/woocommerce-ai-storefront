@@ -833,6 +833,16 @@ class WC_AI_Storefront_Products_Feed {
 	}
 
 	/**
+	 * Increment the feed cache version, orphaning every cached page/endpoint
+	 * at once (each key embeds this version). The feed class owns VERSION_OPTION,
+	 * so it owns the bump; the cache invalidator and the upgrade path both call
+	 * this. Autoload disabled — the value is read only inside the feed serve path.
+	 */
+	public static function bump_cache_version(): void {
+		update_option( self::VERSION_OPTION, ( (int) get_option( self::VERSION_OPTION, 1 ) ) + 1, false );
+	}
+
+	/**
 	 * compare_at_price = regular price when on sale, else null.
 	 *
 	 * @param WC_Product $product The product (or variation).

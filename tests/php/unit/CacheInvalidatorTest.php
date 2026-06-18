@@ -557,4 +557,21 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'edited_product_cat', $hooked );
 		$this->assertContains( 'delete_product_cat', $hooked );
 	}
+
+	public function test_bump_cache_version_increments_feed_version_option(): void {
+		Functions\when( 'get_option' )->justReturn( 3 );
+		$captured = null;
+		Functions\when( 'update_option' )->alias(
+			function ( $name, $value, $autoload = null ) use ( &$captured ) {
+				if ( WC_AI_Storefront_Products_Feed::VERSION_OPTION === $name ) {
+					$captured = [ $value, $autoload ];
+				}
+				return true;
+			}
+		);
+
+		WC_AI_Storefront_Products_Feed::bump_cache_version();
+
+		$this->assertSame( [ 4, false ], $captured ); // incremented, autoload disabled
+	}
 }
