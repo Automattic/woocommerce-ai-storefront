@@ -519,11 +519,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 				return 'DATED';
 			}
 
-			public function get_price(): string {
+			public function get_price( string $context = 'view' ): string {
 				return '20';
 			}
 
-			public function get_regular_price(): string {
+			public function get_regular_price( string $context = 'view' ): string {
 				return '20';
 			}
 

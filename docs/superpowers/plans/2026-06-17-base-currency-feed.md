@@ -6,7 +6,7 @@
 
 **Architecture:** The feed's mapper reads prices via `$product->get_price()` (the `'view'` context), which fires the `woocommerce_product_get_price` filter that multi-currency uses to convert. WooCommerce stores prices in base currency and the `'edit'` context skips that display filter, so switching the mapper's price reads to `'edit'` yields base currency with no conversion logic and no global-state manipulation. A one-time feed-cache-version bump on upgrade abandons the existing currency-poisoned transients.
 
-**Tech Stack:** PHP 7.4+ / WordPress / WooCommerce; PHPUnit + Brain Monkey + Mockery.
+**Tech Stack:** PHP 8.1+ / WordPress / WooCommerce; PHPUnit + Brain Monkey + Mockery.
 
 ---
 
