@@ -24,16 +24,16 @@
 - `includes/ai-storefront/class-wc-ai-storefront-products-feed.php` — #478 (`build_images` + `map_product` `$compact`).
 - `includes/ai-storefront/class-wc-ai-storefront-llms-txt.php` — #480 (image-steering line).
 - `client/settings/ai-storefront/endpoint-info.js` — #481 (CrawlerActivityCard copy).
-- Tests: `JsonLdTest.php`, `JsonLdProductCheckoutLinksTest.php`, `ProductsFeedMapperTest.php`, `LlmsTxtTest.php`, `client/.../__tests__/endpoint-info.test.js`.
+- Tests: `JsonLdArchiveItemListTest.php`, `JsonLdProductCheckoutLinksTest.php`, `ProductsFeedMapperTest.php`, `LlmsTxtTest.php`, `client/.../__tests__/endpoint-info.test.js`.
 
 ---
 
 ## Task A — #479: front-page shop emits the product ItemList
 
 **Branch:** `fix/front-page-shop-itemlist` (off `main`). **Closes #479.**
-**Files:** Modify `includes/ai-storefront/class-wc-ai-storefront-jsonld.php`; Test `tests/php/unit/JsonLdTest.php`.
+**Files:** Modify `includes/ai-storefront/class-wc-ai-storefront-jsonld.php`; Test `tests/php/unit/JsonLdArchiveItemListTest.php`.
 
-- [ ] **Step 1 — failing test.** In `JsonLdTest.php`, mirror the existing `output_archive_itemlist_jsonld` test that covers `/shop` (find it: it stubs `is_shop`→true, products, and asserts an `ItemList` is printed). Add a case where the shop **is** the front page:
+- [ ] **Step 1 — failing test.** In `JsonLdArchiveItemListTest.php`, mirror the existing `output_archive_itemlist_jsonld` test that covers `/shop` (find it: it stubs `is_shop`→true, products, and asserts an `ItemList` is printed). Add a case where the shop **is** the front page:
 
 ```php
 public function test_itemlist_emitted_on_front_page_shop(): void {
@@ -54,7 +54,7 @@ public function test_itemlist_emitted_on_front_page_shop(): void {
 }
 ```
 
-- [ ] **Step 2 — run, expect FAIL.** `vendor/bin/phpunit tests/php/unit/JsonLdTest.php --filter 'front_page_shop'` → FAIL (no ItemList: the `! is_front_page()` clause suppresses it).
+- [ ] **Step 2 — run, expect FAIL.** `vendor/bin/phpunit tests/php/unit/JsonLdArchiveItemListTest.php --filter 'front_page_shop'` → FAIL (no ItemList: the `! is_front_page()` clause suppresses it).
 
 - [ ] **Step 3 — implement.** In `output_archive_itemlist_jsonld()` (line 3521) change:
 ```php
@@ -66,14 +66,14 @@ to:
 ```
 And update the comment at lines 3519-3520 (it currently says "Homepage is excluded…") to: `// Shop archive (incl. when the shop IS the front page): emit the product ItemList alongside the front page's OnlineBusiness block, so agents fetching the root get products + prices, not just navigational data.`
 
-- [ ] **Step 4 — run, expect PASS.** `vendor/bin/phpunit tests/php/unit/JsonLdTest.php` → all green (the new test + the existing `/shop`, category, tag, search, and non-shop-front-page cases — a static front page still has `is_shop()` false, so no ItemList).
+- [ ] **Step 4 — run, expect PASS.** `vendor/bin/phpunit tests/php/unit/JsonLdArchiveItemListTest.php` → all green (the new test + the existing `/shop`, category, tag, search, and non-shop-front-page cases — a static front page still has `is_shop()` false, so no ItemList).
 
 - [ ] **Step 5 — standards + pot + commit.**
 ```bash
-vendor/bin/phpcbf includes/ai-storefront/class-wc-ai-storefront-jsonld.php tests/php/unit/JsonLdTest.php
-vendor/bin/phpcs includes/ai-storefront/class-wc-ai-storefront-jsonld.php tests/php/unit/JsonLdTest.php
+vendor/bin/phpcbf includes/ai-storefront/class-wc-ai-storefront-jsonld.php tests/php/unit/JsonLdArchiveItemListTest.php
+vendor/bin/phpcs includes/ai-storefront/class-wc-ai-storefront-jsonld.php tests/php/unit/JsonLdArchiveItemListTest.php
 ./bin/make-pot.sh
-git add includes/ai-storefront/class-wc-ai-storefront-jsonld.php tests/php/unit/JsonLdTest.php languages/woocommerce-ai-storefront.pot
+git add includes/ai-storefront/class-wc-ai-storefront-jsonld.php tests/php/unit/JsonLdArchiveItemListTest.php languages/woocommerce-ai-storefront.pot
 git commit -m "fix(jsonld): emit product ItemList on the front-page shop (closes #479)"
 ```
 
@@ -218,7 +218,7 @@ public function test_full_mode_default_emits_all_images(): void {
 		return $images;
 	}
 ```
-Change `map_product()` signature to `public static function map_product( $product, bool $compact = false ): array` and its images line (807) to `'images' => self::build_images( $product, $compact ),`. Then, at the two **list** call-sites — the bulk loop (`$mapped[] = self::map_product( $product );` ~line 469) and the collection loop (~line 644) — pass `true`: `$mapped[] = self::map_product( $product, true );`. **Leave** the single-product serve (`map_product( $product )` in the `[ 'product' => … ]` wrapper, ~line 394) at the default.
+Change `map_product()` signature to `public static function map_product( $product, bool $compact = false ): array` and its images line (707) to `'images' => self::build_images( $product, $compact ),`. Then, at the two **list** call-sites — the bulk loop (`$mapped[] = self::map_product( $product );` ~line 469) and the collection loop (~line 644) — pass `true`: `$mapped[] = self::map_product( $product, true );`. **Leave** the single-product serve (`map_product( $product )` in the `[ 'product' => … ]` wrapper, ~line 394) at the default.
 
 - [ ] **Step 4 — run, expect PASS.** `vendor/bin/phpunit tests/php/unit/ProductsFeedMapperTest.php` → green (new tests + all existing, which call `map_product($p)` → default full).
 

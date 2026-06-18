@@ -16,6 +16,8 @@ Live shopping tests (Claude, ChatGPT, Perplexity) against saltwarp.shop surfaced
 
 These are four independent fixes across three files; they share the theme and ship as **separate PRs**, one per issue. #478 and #480 are the two halves of "agents get product images" — #478 ensures the feeds *carry* an image; #480 *points* agents at the feed for it.
 
+> **Related, specced separately:** two more reachability fixes ship in the same release bundle but are tracked outside this spec — #481 (relabel the Discovery admin card to "AI shopping-API activity"; PR #487) and #489 (move the `/llms.txt` discovery anchor from `wp_footer` to `wp_body_open` so it survives truncation on the front-page shop; folded into the #477 PR because it shares that PR's registration method). Both surfaced during review, after this design was approved.
+
 ## Goal
 
 Make the agent-facing surfaces reachable to markdown-extraction agents: products + prices on the root, the checkout link high-on-page and extractable, and the bulk catalog small enough to read.
@@ -23,7 +25,7 @@ Make the agent-facing surfaces reachable to markdown-extraction agents: products
 ## Non-goals
 
 - No change to the visible human experience beyond a small muted agent-facing block moving to the top of product pages.
-- No change to currency behavior (0.22.1 settled that), the UCP API, or `/llms.txt` content.
+- No change to currency behavior (0.22.1 settled that) or the UCP API. The only `/llms.txt` change is #480's single additive image-steering line in the existing read-only-browsing section — existing sections and content are untouched.
 - No new merchant settings.
 
 ## Decisions (locked with user)
@@ -116,7 +118,7 @@ Add one line to the `## Read-only browsing` section of the `/llms.txt` generator
 - `includes/class-wc-ai-storefront.php` — #477 (`wp_body_open` registration).
 - `includes/ai-storefront/class-wc-ai-storefront-products-feed.php` — #478 (`build_images` + `map_product` `$compact`; list serve call-sites).
 - `includes/ai-storefront/class-wc-ai-storefront-llms-txt.php` — #480 (image-steering line in the read-only-browsing section).
-- Tests: `JsonLdTest.php` (#479), `JsonLdProductCheckoutLinksTest.php` (#477), `ProductsFeedMapperTest.php` (#478), `LlmsTxtTest.php` (#480).
+- Tests: `JsonLdArchiveItemListTest.php` (#479), `JsonLdProductCheckoutLinksTest.php` (#477), `ProductsFeedMapperTest.php` (#478), `LlmsTxtTest.php` (#480).
 
 ## Sequencing
 
