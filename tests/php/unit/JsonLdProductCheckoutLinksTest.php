@@ -151,16 +151,42 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 		$html    = $this->render_for( $product );
 
 		$this->assertStringContainsString( 'wc-ai-storefront-agent-checkout', $html );
-		// Clickable link byte-identical to the accessor's no-identity-source
-		// output — the esc_url-safe `ucp_unknown`, NOT the `{agent_id}`
-		// placeholder esc_url would strip. assertSame so any drift fails.
-		$this->assertSame( 1, preg_match( '/<a href="([^"]+)">buy this item<\/a>/', $html, $m ) );
+		// URL renders as `<code>` text byte-identical to the accessor's
+		// no-identity-source output — the esc_url-safe `ucp_unknown`, NOT the
+		// `{agent_id}` placeholder. assertSame so any drift fails.
+		$this->assertSame( 1, preg_match( '/<code>([^<]+)<\/code>/', $html, $m ) );
 		$this->assertSame(
 			WC_AI_Storefront_JsonLd::checkout_url_template( $product, WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE ),
 			$m[1]
 		);
 		$this->assertStringContainsString( 'utm_source=ucp_unknown', $m[1] );
 		$this->assertStringNotContainsString( '{agent_id}', $m[1] );
+	}
+
+	/**
+	 * Simple product: the URL renders as visible `<code>` text, not an
+	 * `<a href>`. Markdown-extraction fetch tools drop href attributes (keeping
+	 * only the link text), so the `<a href>` form is unreachable while `<code>`
+	 * text survives.
+	 */
+	public function test_simple_product_renders_url_as_code_text(): void {
+		$product = $this->simple_product( 42, 'a-product' );
+		$html    = $this->render_for( $product );
+		$url     = WC_AI_Storefront_JsonLd::checkout_url_template( $product, WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE );
+		$this->assertStringContainsString( 'Agent checkout: <code>' . $url . '</code>', $html );
+		$this->assertStringNotContainsString( '>buy this item</a>', $html ); // no clickable-label form
+	}
+
+	/**
+	 * Concrete variant: the URL renders as "Label: <code>url</code>", not an
+	 * `<a href>` whose visible text is a bare "checkout" label.
+	 */
+	public function test_concrete_variant_renders_url_as_code_text(): void {
+		$variation = $this->variation( 901, 'Tall' );
+		$html      = $this->render_for( $this->variable_product( 900, 'one-var', [ 901 ] ), [ 901 => $variation ] );
+		$url       = WC_AI_Storefront_JsonLd::checkout_url_template( $variation, WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE );
+		$this->assertStringContainsString( 'Tall: <code>' . $url . '</code>', $html );
+		$this->assertStringNotContainsString( '>checkout</a>', $html );
 	}
 
 	public function test_variable_small_renders_concrete_variant_links(): void {
@@ -249,10 +275,10 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 		$product = $this->bundle_or_grouped_product( 500, $type, "a-{$type}", "A {$type} Product" );
 		$html    = $this->render_for( $product );
 
-		// Byte-identical to the accessor's no-identity-source permalink URL —
-		// the product name is the anchor text, so this pins that too. Not a
+		// URL renders as `<code>` text labelled with the product name, byte-
+		// identical to the accessor's no-identity-source permalink URL. Not a
 		// substring check, so a trailing/ordering drift on this path fails.
-		$this->assertSame( 1, preg_match( '/<a href="([^"]+)">A ' . $type . ' Product<\/a>/', $html, $m ) );
+		$this->assertSame( 1, preg_match( '/Agent checkout \(A ' . $type . ' Product\): <code>([^<]+)<\/code>/', $html, $m ) );
 		$this->assertSame(
 			WC_AI_Storefront_JsonLd::checkout_url_template( $product, WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE ),
 			$m[1]
@@ -428,11 +454,11 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Cardinal invariant: the rendered concrete-variant href is
-	 * byte-identical to {@see WC_AI_Storefront_JsonLd::checkout_url_template()}
-	 * (and therefore the `<script>` BuyAction). Extract the href from the
-	 * rendered anchor and assertSame against the accessor so any divergence
-	 * on the concrete path fails — substring checks alone can't catch a
+	 * Cardinal invariant: the rendered concrete-variant URL is byte-identical
+	 * to {@see WC_AI_Storefront_JsonLd::checkout_url_template()} (and therefore
+	 * the `<script>` BuyAction). Extract the URL from the rendered `<code>`
+	 * text and assertSame against the accessor so any divergence on the
+	 * concrete path fails — substring checks alone can't catch a
 	 * trailing/ordering drift.
 	 */
 	public function test_concrete_variant_href_is_byte_identical_to_accessor(): void {
@@ -440,15 +466,15 @@ class JsonLdProductCheckoutLinksTest extends \PHPUnit\Framework\TestCase {
 		$vars      = [ 901 => $variation ];
 		$html      = $this->render_for( $this->variable_product( 900, 'one-var', [ 901 ] ), $vars );
 
-		$this->assertSame( 1, preg_match( '/Tall: <a href="([^"]+)">checkout<\/a>/', $html, $m ) );
-		$rendered_href = $m[1];
-		$expected_href = WC_AI_Storefront_JsonLd::checkout_url_template( $variation, WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE );
+		$this->assertSame( 1, preg_match( '/Tall: <code>([^<]+)<\/code>/', $html, $m ) );
+		$rendered_url  = $m[1];
+		$expected_url  = WC_AI_Storefront_JsonLd::checkout_url_template( $variation, WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE );
 
-		$this->assertSame( $expected_href, $rendered_href );
-		// Clickable link uses the esc_url-safe no-identity source, never the
-		// `{agent_id}` placeholder (which esc_url strips from an href).
-		$this->assertStringContainsString( 'utm_source=ucp_unknown', $rendered_href );
-		$this->assertStringNotContainsString( '{agent_id}', $rendered_href );
+		$this->assertSame( $expected_url, $rendered_url );
+		// Concrete URL uses the no-identity source, never the `{agent_id}`
+		// placeholder (which the construct-kit template keeps instead).
+		$this->assertStringContainsString( 'utm_source=ucp_unknown', $rendered_url );
+		$this->assertStringNotContainsString( '{agent_id}', $rendered_url );
 	}
 
 	/**

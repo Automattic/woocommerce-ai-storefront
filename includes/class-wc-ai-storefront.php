@@ -184,7 +184,7 @@ class WC_AI_Storefront {
 		// the deterministic checkout link. Reuses the same $jsonld instance
 		// that init() wired the JSON-LD footer output onto; it self-gates on
 		// is_product() + enabled + syndication.
-		add_action( 'wp_footer', [ $jsonld, 'render_product_checkout_links' ] );
+		add_action( 'wp_body_open', [ $jsonld, 'render_product_checkout_links' ] );
 
 		$robots = new WC_AI_Storefront_Robots();
 		$robots->init();
