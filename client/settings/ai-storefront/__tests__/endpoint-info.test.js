@@ -127,10 +127,14 @@ describe( 'CrawlerActivityCard copy', () => {
 		expect( getCrawlerActivityScopeNote() ).toMatch(
 			/Catalog searches & lookups through the UCP shopping API/
 		);
-		// And it explains why the other fetches are not counted.
+		// And it explains why the other fetches are not counted — joined with a
+		// sentence break, NOT an em-dash (AGENTS.md bars em-dashes in
+		// merchant-facing copy). Pinning the period guards against the dash
+		// creeping back in.
 		expect( getCrawlerActivityScopeNote() ).toMatch(
-			/Page, feed, and llms\.txt fetches aren’t counted/
+			/Page, feed, and llms\.txt fetches aren’t counted\. Most are served from cache/
 		);
+		expect( getCrawlerActivityScopeNote() ).not.toContain( '—' );
 	} );
 
 	it( 'uses the scoped empty-state copy', () => {

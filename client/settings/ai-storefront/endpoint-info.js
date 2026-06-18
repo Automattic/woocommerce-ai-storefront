@@ -102,7 +102,7 @@ export function getCrawlerActivityTitle() {
  */
 export function getCrawlerActivityScopeNote() {
 	return __(
-		'Catalog searches & lookups through the UCP shopping API. Page, feed, and llms.txt fetches aren’t counted — most are served from cache and never reach your server.',
+		'Catalog searches & lookups through the UCP shopping API. Page, feed, and llms.txt fetches aren’t counted. Most are served from cache and never reach your server.',
 		'woocommerce-ai-storefront'
 	);
 }
