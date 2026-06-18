@@ -1800,6 +1800,37 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'collections/all/products.json', $output );
 	}
 
+	public function test_read_only_browsing_steers_to_feeds_for_images(): void {
+		// Markdown-extraction fetch tools strip page `<img>` tags and JSON-LD
+		// `image`, so the only reachable image URL is in the `*.json` feeds'
+		// `images[].src`. The Read-only browsing section must point agents
+		// there when the feed is on.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'products_json_enabled'  => 'yes',
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( 'images[].src', $output );
+		$this->assertStringContainsString( 'Read-only browsing', $output );
+	}
+
+	public function test_image_steering_absent_when_feed_off(): void {
+		// Feed OFF → the image-steering line is gated out alongside the
+		// other `*.json` bullets.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'products_json_enabled'  => 'no',
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( 'images[].src', $output );
+	}
+
 	public function test_read_only_browsing_scoped_json_gated_on_feed_toggle(): void {
 		// Feed OFF → no .json bullets, just the structured UCP reads.
 		// products_json_enabled defaults to 'yes', so set it off explicitly.

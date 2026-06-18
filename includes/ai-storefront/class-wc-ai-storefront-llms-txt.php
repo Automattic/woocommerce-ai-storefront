@@ -799,6 +799,7 @@ class WC_AI_Storefront_Llms_Txt {
 			$lines[] = "- **Product JSON** — `GET {$site_url}products/{handle}.json` (Shopify-compatible)";
 			$lines[] = "- **Collection JSON** — `GET {$site_url}collections/{handle}/products.json`";
 			$lines[] = "- **Collection list** — `GET {$site_url}collections.json`";
+			$lines[] = '- **Product images** — image URLs are in the `*.json` feeds above (`images[].src`). Page `<img>` tags and JSON-LD `image` are stripped by markdown-extraction fetch tools, so read product photos from the feeds, not the page HTML.';
 		}
 		$lines[] = '';
 		$lines[] = 'Prefer the UCP catalog endpoints for structured, currency-aware access; the `*.json` paths are a Shopify-compatible convenience.';
