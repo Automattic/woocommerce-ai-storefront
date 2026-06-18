@@ -261,7 +261,7 @@ class WC_AI_Storefront_Llms_Txt {
 	 * Build the `Link:` HTTP header value advertising /llms.txt, or null when
 	 * syndication is disabled.
 	 *
-	 * Machine-only discovery (no shopper-facing pixels). This is the HTTP-layer
+	 * Machine-only discovery (no shopper-facing output). This is the HTTP-layer
 	 * companion to the `<head>` `<link rel>` (UCP `inject_head_link`): an RFC
 	 * 8288 `Link` header reaches programmatic / header-inspecting clients that
 	 * never parse the HTML head, while the head link reaches HTML-parsing
@@ -270,10 +270,12 @@ class WC_AI_Storefront_Llms_Txt {
 	 * markdown type signals what the target is. Pure + value-returning so it is
 	 * unit-testable without touching `header()`.
 	 *
-	 * Replaces the former visible body anchor: markdown-extraction fetch tools
-	 * (which strip the head and these headers) no longer need the llms.txt
-	 * bootstrap now that the homepage emits the product ItemList, and a visible
-	 * body line was intrusive to shoppers.
+	 * Replaces the former visible body anchor, which was intrusive to shoppers.
+	 * A *visible* anchor only ever reached casual markdown-extraction fetchers
+	 * (every other class reads the head link or this header) — and those read
+	 * products straight from the visible page and hand the buyer a link rather
+	 * than calling the API this doc enumerates, so the body bootstrap added
+	 * little for them.
 	 *
 	 * @return string|null `Link` header value, or null when disabled.
 	 */

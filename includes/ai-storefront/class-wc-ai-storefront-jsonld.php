@@ -437,8 +437,10 @@ class WC_AI_Storefront_JsonLd {
 	 * Markdown-extraction fetch tools strip the `<script>` JSON-LD where the
 	 * BuyAction lives, so the deterministic checkout link is unreachable to
 	 * them. This renders the SAME URL (via {@see checkout_url_template()}) as
-	 * a visible body anchor they can extract and hand to the buyer. The
-	 * per-product counterpart to the `/llms.txt` footer anchor.
+	 * a visible body anchor they can extract and hand to the buyer. Unlike the
+	 * `/llms.txt` discovery surface — now a machine-only `Link` header — the
+	 * checkout URL must stay body-visible here, since the markdown-extraction
+	 * tools that strip that header still need a working link to hand the buyer.
 	 *
 	 * Variable products get a construct kit (the URL template, plus a link to
 	 * the uncapped `/products/{handle}.json` when the products.json feed is

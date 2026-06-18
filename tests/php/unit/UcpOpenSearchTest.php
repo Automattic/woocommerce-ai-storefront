@@ -124,6 +124,18 @@ class UcpOpenSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_head_link_silent_when_disabled(): void {
+		// All three head links (ucp-agent, search, llms.txt) gate behind one
+		// enabled-check; pin that a disabled store advertises none of them.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+
+		ob_start();
+		$this->ucp->inject_head_link();
+		$output = (string) ob_get_clean();
+
+		$this->assertSame( '', $output );
+	}
+
 	// ------------------------------------------------------------------
 	// build_opensearch_xml() — XML content tests (no exit, no separate process)
 	// ------------------------------------------------------------------

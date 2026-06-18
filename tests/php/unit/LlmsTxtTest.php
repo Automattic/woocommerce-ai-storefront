@@ -1892,5 +1892,8 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertStringContainsString( '$this->discovery_link_header()', $body );
 		$this->assertStringContainsString( "header( 'Link: '", $body );
+		// The gate is the whole point of "self-gates via discovery_link_header()":
+		// without it, a disabled store would emit a valueless `Link: ` header.
+		$this->assertStringContainsString( 'if ( null !== $value )', $body );
 	}
 }

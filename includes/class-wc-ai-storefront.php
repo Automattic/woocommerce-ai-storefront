@@ -274,11 +274,10 @@ class WC_AI_Storefront {
 		add_action( 'wp_head', [ $ucp, 'inject_head_link' ] );
 		// Machine-only /llms.txt advertisement: an RFC 8288 `Link` HTTP header
 		// on front-end responses (the head <link rel> from inject_head_link is
-		// the HTML-layer companion). Replaces the former visible body anchor —
-		// markdown-extraction fetch tools that strip the head don't need the
-		// llms.txt bootstrap now that the homepage emits the product ItemList,
-		// and a visible body line was intrusive to shoppers. Self-gates on the
-		// enabled setting.
+		// the HTML-layer companion). Replaces the former visible body anchor,
+		// which was intrusive to shoppers — the casual fetchers a visible anchor
+		// reached read products from the visible page and don't call the API the
+		// doc enumerates, so it added little. Self-gates on the enabled setting.
 		add_action( 'send_headers', [ $llms_txt, 'send_discovery_link_header' ] );
 
 		// Suppress WordPress's trailing-slash canonical redirect for
