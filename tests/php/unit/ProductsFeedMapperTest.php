@@ -363,6 +363,85 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// map_product() — compact list-feed images (>=1 image rule)
+	// ------------------------------------------------------------------
+
+	public function test_compact_emits_only_first_image_when_featured_set(): void {
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_attachment_image_url' )->alias( fn( $id ) => "https://x/$id.jpg" );
+
+		$p = $this->mappable_product_with_images( 11, [ 12, 13 ] );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p, true );
+
+		$this->assertCount( 1, $out['images'] );
+		$this->assertSame( 11, $out['images'][0]['id'] ); // the featured image
+	}
+
+	public function test_compact_falls_back_to_first_gallery_when_no_featured(): void {
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_attachment_image_url' )->alias( fn( $id ) => "https://x/$id.jpg" );
+
+		$p = $this->mappable_product_with_images( 0, [ 12, 13 ] );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p, true );
+
+		$this->assertCount( 1, $out['images'] );           // the >=1 rule
+		$this->assertSame( 12, $out['images'][0]['id'] );  // first gallery
+	}
+
+	public function test_full_mode_default_emits_all_images(): void {
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_attachment_image_url' )->alias( fn( $id ) => "https://x/$id.jpg" );
+
+		$p = $this->mappable_product_with_images( 11, [ 12, 13 ] );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p ); // default false
+
+		$this->assertCount( 3, $out['images'] );
+	}
+
+	/**
+	 * Build a simple WC_Product mock fully wired for map_product() with the
+	 * given featured-image id (0 = none) and gallery image ids. Mirrors
+	 * mappable_simple_product() but exposes the image getters.
+	 *
+	 * @param int   $featured_id Featured image attachment id (0 for none).
+	 * @param int[] $gallery_ids Gallery image attachment ids.
+	 * @return \Mockery\MockInterface
+	 */
+	private function mappable_product_with_images( int $featured_id, array $gallery_ids ) {
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( 500 );
+		$p->shouldReceive( 'get_name' )->andReturn( 'Gadget' );
+		$p->shouldReceive( 'get_slug' )->andReturn( 'gadget' );
+		$p->shouldReceive( 'get_description' )->andReturn( '' );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_image_id' )->andReturn( $featured_id );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( $gallery_ids );
+		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
+		$p->shouldReceive( 'get_sku' )->andReturn( 'GAD' );
+		$p->shouldReceive( 'get_price' )->andReturn( '20' );
+		$p->shouldReceive( 'get_regular_price' )->andReturn( '20' );
+		$p->shouldReceive( 'is_on_sale' )->andReturn( false );
+		$p->shouldReceive( 'is_in_stock' )->andReturn( true );
+		$p->shouldReceive( 'is_purchasable' )->andReturn( true );
+		$p->shouldReceive( 'needs_shipping' )->andReturn( true );
+
+		return $p;
+	}
+
+	// ------------------------------------------------------------------
 	// resolve_product_type() — deepest-category + RankMath + stale meta
 	// ------------------------------------------------------------------
 
