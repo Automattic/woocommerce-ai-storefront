@@ -114,6 +114,9 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// `is_purchasable()` before emitting `BuyAction` /
 		// `checkoutPageURLTemplate`.
 		$product->shouldReceive( 'is_purchasable' )->andReturn( true );
+		// Physical product: `add_shipping_details()` (#504) calls
+		// `needs_shipping()` to skip the shipping block for virtual products.
+		$product->shouldReceive( 'needs_shipping' )->andReturn( true );
 
 		// Argument-aware `is_type()` mock matching WC core: returns true
 		// only when the queried type matches 'simple' (the type return-

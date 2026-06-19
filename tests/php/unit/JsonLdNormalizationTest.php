@@ -102,6 +102,10 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		// Default to purchasable for the JSON-LD URL gate (#373).
 		$product->shouldReceive( 'is_purchasable' )
 			->andReturn( $overrides['is_purchasable'] ?? true );
+		// Physical by default: `add_shipping_details()` (#504) calls
+		// `needs_shipping()` to skip shipping for virtual products.
+		$product->shouldReceive( 'needs_shipping' )
+			->andReturn( $overrides['needs_shipping'] ?? true );
 
 		// Argument-aware `is_type()` mock matching WC core: returns true
 		// only when the queried type matches the configured product type

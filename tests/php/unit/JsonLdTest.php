@@ -278,6 +278,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'is_purchasable' )
 			->andReturn( $overrides['is_purchasable'] ?? true );
 
+		// Default to needing shipping (physical product) so existing
+		// shipping tests are unaffected; the shipping-gate tests (#504)
+		// override to `false` to exercise the virtual-product path.
+		$product->shouldReceive( 'needs_shipping' )
+			->andReturn( $overrides['needs_shipping'] ?? true );
+
 		// `is_type()` accepts a string or array per WC core. Default the
 		// product's type to 'simple' so existing tests keep working
 		// without an explicit override; bundle/grouped tests pass
@@ -2904,6 +2910,49 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayNotHasKey( 'shippingDetails', $result['offers'][0] );
 		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $result['offers'][0] );
+	}
+
+	public function test_shipping_details_omitted_for_virtual_product(): void {
+		// A virtual / downloadable product has no shipping, so it must not
+		// advertise shippingDetails (or the nested handlingTime) even though
+		// the store country IS set. Mirrors the products feed's
+		// `requires_shipping => needs_shipping()` gate (#504).
+		Functions\when( 'wc_get_base_location' )->justReturn( [ 'country' => 'GB' ] );
+
+		$product = $this->make_product( [ 'needs_shipping' => false ] );
+		$result  = $this->jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$product
+		);
+
+		$this->assertArrayNotHasKey( 'shippingDetails', $result['offers'][0] );
+	}
+
+	public function test_shipping_details_present_for_physical_product(): void {
+		// Counterpart guard: a physical product (needs_shipping() === true,
+		// the make_product default) keeps its shippingDetails.
+		Functions\when( 'wc_get_base_location' )->justReturn( [ 'country' => 'GB' ] );
+
+		$product = $this->make_product( [ 'needs_shipping' => true ] );
+		$result  = $this->jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			$product
+		);
+
+		$this->assertArrayHasKey( 'shippingDetails', $result['offers'][0] );
+	}
+
+	public function test_variant_shipping_details_omitted_for_virtual_variation(): void {
+		// The per-variant path gates on the VARIATION's needs_shipping(): a
+		// virtual variation gets no shippingDetails on its entry, even though
+		// invoke_build_variant_entry() passes a non-empty country ('US').
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		$variation = $this->make_variation( [ 'id' => 101, 'needs_shipping' => false ] );
+		$parent    = $this->make_product();
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertArrayNotHasKey( 'shippingDetails', $entry['offers'][0] );
 	}
 
 	// ------------------------------------------------------------------
