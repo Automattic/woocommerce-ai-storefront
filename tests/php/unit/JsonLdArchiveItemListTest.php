@@ -187,9 +187,11 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 			true
 		);
 
-		// Only the syndicated product appears, at position 1.
+		// Only the syndicated product appears, at position 1. The product name
+		// lives on the nested item (not the ListItem) per the all-in-one
+		// carousel shape.
 		$this->assertCount( 1, $data['itemListElement'] );
-		$this->assertSame( 'Kept Hoodie', $data['itemListElement'][0]['name'] );
+		$this->assertSame( 'Kept Hoodie', $data['itemListElement'][0]['item']['name'] );
 		$this->assertSame( 1, $data['itemListElement'][0]['position'] );
 		// The inflated total must NOT be published.
 		$this->assertArrayNotHasKey( 'numberOfItems', $data );
@@ -266,11 +268,19 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$item = $data['itemListElement'][0];
 		$this->assertSame( 'ListItem', $item['@type'] );
 		$this->assertSame( 1, $item['position'] );
-		$this->assertSame( 'Hoodie', $item['name'] );
+		// All-in-one carousel shape: the ListItem carries ONLY position + the
+		// nested item. A ListItem-level `name`/`url` would mix Google's summary
+		// and all-in-one carousel patterns and trigger the "Unnamed item"
+		// critical error in the Rich Results Test (#499).
+		$this->assertArrayNotHasKey( 'name', $item );
+		$this->assertArrayNotHasKey( 'url', $item );
 
 		$stub = $item['item'];
 		$this->assertSame( 'Product', $stub['@type'] );
 		$this->assertSame( 'Hoodie', $stub['name'] );
+		// The product URL moves to the nested item (item.url) — where Google
+		// reads it for the all-in-one carousel — not the ListItem level.
+		$this->assertSame( 'https://example.com/?p=1', $stub['url'] );
 		$this->assertSame( '49.00', $stub['offers']['price'] );
 		$this->assertSame( 'USD', $stub['offers']['priceCurrency'] );
 		$this->assertSame( 'https://schema.org/InStock', $stub['offers']['availability'] );
@@ -410,8 +420,6 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 				[
 					'@type'    => 'ListItem',
 					'position' => 1,
-					'name'     => 'Cached Hoodie',
-					'url'      => 'https://example.com/?p=5',
 					'item'     => [ '@type' => 'Product', 'name' => 'Cached Hoodie', 'url' => 'https://example.com/?p=5' ],
 				],
 			],
@@ -557,9 +565,9 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertCount( 2, $data['itemListElement'] );
-		$this->assertSame( 'First', $data['itemListElement'][0]['name'] );
+		$this->assertSame( 'First', $data['itemListElement'][0]['item']['name'] );
 		$this->assertSame( 1, $data['itemListElement'][0]['position'] );
-		$this->assertSame( 'Third', $data['itemListElement'][1]['name'] );
+		$this->assertSame( 'Third', $data['itemListElement'][1]['item']['name'] );
 		$this->assertSame( 2, $data['itemListElement'][1]['position'] );
 	}
 
