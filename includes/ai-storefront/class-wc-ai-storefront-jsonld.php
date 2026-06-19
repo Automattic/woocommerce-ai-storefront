@@ -1612,11 +1612,21 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Hoists priceCurrency from priceSpecification[0] to the outer Offer level.
+	 * Hoists the current price and priceCurrency from priceSpecification[0]
+	 * to the outer Offer level.
 	 *
-	 * WC core writes priceCurrency under priceSpecification[0]. Google and
-	 * Schema.org consumers prefer it at the outer Offer level. We copy it up
-	 * without overwriting an existing top-level value. Audit bug #5.
+	 * Recent WooCommerce core builds the product Offer with the price ONLY
+	 * inside `priceSpecification` (an array of `UnitPriceSpecification`) and
+	 * sets no flat `offers.price`; it likewise writes `priceCurrency` under
+	 * `priceSpecification[0]`. Google's merchant listing reads the flat
+	 * `offers.price` / `offers.priceCurrency`, so the missing fields surface
+	 * as a "Missing field price" Rich Results error (WooCommerce ref:
+	 * woocommerce/woocommerce#55043). We copy both up from
+	 * `priceSpecification[0]` — which WC core guarantees is the CURRENT price
+	 * (the sale price is `array_unshift()`ed to the front when on sale; the
+	 * regular `priceType: ListPrice` entry follows) — without overwriting an
+	 * existing top-level value. The `ListPrice` entry is left in place so the
+	 * sale still renders. Audit bug #5 (currency); #502 (price).
 	 *
 	 * @param array $markup Markup array, modified by reference.
 	 */
@@ -1624,17 +1634,23 @@ class WC_AI_Storefront_JsonLd {
 		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
 			return;
 		}
-		$nested_currency = null;
+		$spec = null;
 		if (
 			isset( $markup['offers'][0]['priceSpecification'] ) &&
 			is_array( $markup['offers'][0]['priceSpecification'] ) &&
 			isset( $markup['offers'][0]['priceSpecification'][0] ) &&
 			is_array( $markup['offers'][0]['priceSpecification'][0] )
 		) {
-			$nested_currency = $markup['offers'][0]['priceSpecification'][0]['priceCurrency'] ?? null;
+			$spec = $markup['offers'][0]['priceSpecification'][0];
 		}
-		if ( null !== $nested_currency && ! isset( $markup['offers'][0]['priceCurrency'] ) ) {
-			$markup['offers'][0]['priceCurrency'] = $nested_currency;
+		if ( null === $spec ) {
+			return;
+		}
+		if ( isset( $spec['priceCurrency'] ) && ! isset( $markup['offers'][0]['priceCurrency'] ) ) {
+			$markup['offers'][0]['priceCurrency'] = $spec['priceCurrency'];
+		}
+		if ( isset( $spec['price'] ) && ! isset( $markup['offers'][0]['price'] ) ) {
+			$markup['offers'][0]['price'] = $spec['price'];
 		}
 	}
 
