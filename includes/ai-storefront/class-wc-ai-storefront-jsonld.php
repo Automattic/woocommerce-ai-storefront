@@ -3517,11 +3517,19 @@ class WC_AI_Storefront_JsonLd {
 				);
 			}
 
+			// All-in-one carousel ListItem: `position` + nested `item` only.
+			// Google's carousel spec (developers.google.com/search/docs/
+			// appearance/structured-data/carousel) defines two MUTUALLY
+			// EXCLUSIVE shapes — summary-page (`position` + `url`, no nested
+			// item) or all-in-one (`position` + nested `item`, NO ListItem-
+			// level url). A ListItem-level `url` makes Google read this as a
+			// summary entry, ignore the inline `item`, fail to resolve a name,
+			// and report a "Unnamed item" critical error. The nested
+			// `$product_stub` already carries name/url/sku/image/offers, so the
+			// ListItem-level name/url were pure duplication anyway.
 			$items[] = array(
 				'@type'    => 'ListItem',
 				'position' => $position++,
-				'name'     => $product->get_name(),
-				'url'      => get_permalink( $product->get_id() ),
 				'item'     => $product_stub,
 			);
 		}
