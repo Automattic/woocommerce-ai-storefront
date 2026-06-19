@@ -164,11 +164,12 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	// Mode: returns_accepted
 	// ------------------------------------------------------------------
 
-	public function test_returns_accepted_full_emits_finite_window_with_all_fields(): void {
+	public function test_returns_accepted_no_page_emits_full_inline_detail(): void {
+		// No return-policy page configured -> inline detail (Option A), with NO
+		// merchantReturnLink (Google bars combining the two in one item).
 		$this->set_settings(
 			[
 				'mode'    => 'returns_accepted',
-				'page_id' => 99,
 				'days'    => 30,
 				'fees'    => 'FreeReturn',
 				'methods' => [ 'ReturnByMail' ],
@@ -184,9 +185,33 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 			$block['returnPolicyCategory']
 		);
 		$this->assertSame( 30, $block['merchantReturnDays'] );
-		$this->assertSame( 'https://example.com/?p=99', $block['merchantReturnLink'] );
 		$this->assertSame( 'https://schema.org/FreeReturn', $block['returnFees'] );
 		$this->assertSame( 'https://schema.org/ReturnByMail', $block['returnMethod'] );
+		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
+	}
+
+	public function test_returns_accepted_with_page_emits_link_only(): void {
+		// A configured return-policy page takes precedence (Option B): emit
+		// ONLY the link, dropping the inline detail (mutually exclusive per
+		// Google), even though days/fees/methods are also configured.
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 99,
+				'days'    => 30,
+				'fees'    => 'FreeReturn',
+				'methods' => [ 'ReturnByMail' ],
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
+		$this->assertSame( 'https://example.com/?p=99', $block['merchantReturnLink'] );
+		$this->assertArrayNotHasKey( 'returnPolicyCategory', $block );
+		$this->assertArrayNotHasKey( 'merchantReturnDays', $block );
+		$this->assertArrayNotHasKey( 'returnFees', $block );
+		$this->assertArrayNotHasKey( 'applicableCountry', $block );
 	}
 
 	public function test_returns_accepted_no_days_smart_degrades_to_unspecified(): void {
@@ -280,7 +305,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	// Mode: final_sale
 	// ------------------------------------------------------------------
 
-	public function test_final_sale_with_page_emits_not_permitted_and_link(): void {
+	public function test_final_sale_with_page_emits_link_only(): void {
+		// A configured policy page takes precedence (Option B): emit ONLY the
+		// link. The NotPermitted category is dropped (mutually exclusive with
+		// merchantReturnLink); the "no returns" page documents the policy.
 		$this->set_settings(
 			[
 				'mode'    => 'final_sale',
@@ -290,14 +318,9 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
 
-		$this->assertSame(
-			'https://schema.org/MerchantReturnNotPermitted',
-			$block['returnPolicyCategory']
-		);
+		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
 		$this->assertSame( 'https://example.com/?p=17', $block['merchantReturnLink'] );
-		// final_sale mode never emits returnFees / returnMethod —
-		// the policy precludes returns, so those fields would be
-		// nonsensical.
+		$this->assertArrayNotHasKey( 'returnPolicyCategory', $block );
 		$this->assertArrayNotHasKey( 'returnFees', $block );
 		$this->assertArrayNotHasKey( 'returnMethod', $block );
 	}
@@ -568,11 +591,11 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_per_product_final_sale_reuses_store_wide_policy_page(): void {
-		// Override block reuses `merchantReturnLink` from the
-		// store-wide policy when configured — a "no returns" page
-		// often documents what's covered (defective goods, statutory
-		// rights), so reusing the link beats omission.
+	public function test_per_product_final_sale_with_store_page_emits_link_only(): void {
+		// Flagged product + a store-wide policy page → the override emits ONLY
+		// the link (Option B), dropping the NotPermitted category (mutually
+		// exclusive with merchantReturnLink). The "no returns" page documents
+		// what's still covered (defective goods, statutory rights).
 		$this->flag_product_as_final_sale();
 		$this->set_settings(
 			[
@@ -585,14 +608,12 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
 
-		$this->assertSame(
-			'https://schema.org/MerchantReturnNotPermitted',
-			$block['returnPolicyCategory']
-		);
+		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
 		$this->assertSame(
 			'https://example.com/?p=99',
 			$block['merchantReturnLink']
 		);
+		$this->assertArrayNotHasKey( 'returnPolicyCategory', $block );
 	}
 
 	public function test_per_product_final_sale_omits_link_when_no_store_wide_page(): void {
