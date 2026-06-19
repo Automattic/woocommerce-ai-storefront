@@ -5140,6 +5140,168 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// Offer flat `price` hoist (#502)
+	//
+	// Recent WooCommerce core builds the product Offer with the price ONLY
+	// inside `priceSpecification` (an array of UnitPriceSpecification) and
+	// never sets a flat `offers.price`. Google's merchant listing reads
+	// `offers.price`, so the missing flat field surfaces as a "Missing
+	// field price" Rich Results error (WC ref: woocommerce/woocommerce#55043).
+	// `add_currency()` hoists the current price (priceSpecification[0]) up to
+	// the Offer level, mirroring the existing priceCurrency hoist.
+	// ------------------------------------------------------------------
+
+	public function test_offer_flat_price_hoisted_from_pricespecification(): void {
+		$product = $this->make_product();
+		// WC core's shape: price only in priceSpecification, no flat price.
+		$markup = array(
+			'@type'  => 'Product',
+			'offers' => array(
+				array(
+					'@type'              => 'Offer',
+					'priceSpecification' => array(
+						array(
+							'@type'         => 'UnitPriceSpecification',
+							'price'         => '15.00',
+							'priceCurrency' => 'USD',
+						),
+					),
+				),
+			),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( '15.00', $result['offers'][0]['price'] );
+		$this->assertSame( 'USD', $result['offers'][0]['priceCurrency'] );
+	}
+
+	public function test_offer_flat_price_hoists_current_sale_price_not_list_price(): void {
+		// On-sale Offer: WC core array_unshift()es the sale (current) price to
+		// priceSpecification[0] and the regular price (priceType: ListPrice)
+		// follows. The flat price must be the CURRENT price, never the higher
+		// ListPrice — and the ListPrice entry must survive so Google still
+		// renders the sale.
+		$product = $this->make_product();
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array(
+				array(
+					'@type'              => 'Offer',
+					'priceSpecification' => array(
+						array(
+							'@type'         => 'UnitPriceSpecification',
+							'price'         => '2.99',
+							'priceCurrency' => 'USD',
+						),
+						array(
+							'@type'         => 'UnitPriceSpecification',
+							'price'         => '4.99',
+							'priceCurrency' => 'USD',
+							'priceType'     => 'https://schema.org/ListPrice',
+						),
+					),
+				),
+			),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( '2.99', $result['offers'][0]['price'] );
+		$this->assertSame(
+			'https://schema.org/ListPrice',
+			$result['offers'][0]['priceSpecification'][1]['priceType']
+		);
+		$this->assertSame( '4.99', $result['offers'][0]['priceSpecification'][1]['price'] );
+	}
+
+	public function test_offer_flat_price_not_overwritten_when_already_present(): void {
+		// Guard: when an Offer already carries a flat price (older WC, or a
+		// third-party filter), the hoist must not clobber it.
+		$product = $this->make_product();
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array(
+				array(
+					'@type'              => 'Offer',
+					'price'              => '9.99',
+					'priceCurrency'      => 'USD',
+					'priceSpecification' => array(
+						array(
+							'@type'         => 'UnitPriceSpecification',
+							'price'         => '15.00',
+							'priceCurrency' => 'USD',
+						),
+					),
+				),
+			),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( '9.99', $result['offers'][0]['price'] );
+	}
+
+	public function test_offer_currency_hoisted_but_no_price_when_spec_lacks_price(): void {
+		// A priceSpecification[0] that carries priceCurrency but NO price
+		// (e.g. a $0 / "contact for price" product) must hoist the currency
+		// yet add no flat price — and must NEVER emit `price => null`, which
+		// would be worse for Google than the original missing field.
+		$product = $this->make_product();
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array(
+				array(
+					'@type'              => 'Offer',
+					'priceSpecification' => array(
+						array(
+							'@type'         => 'UnitPriceSpecification',
+							'priceCurrency' => 'USD',
+						),
+					),
+				),
+			),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( 'USD', $result['offers'][0]['priceCurrency'] );
+		$this->assertArrayNotHasKey( 'price', $result['offers'][0] );
+	}
+
+	public function test_aggregate_offer_does_not_receive_a_flat_price(): void {
+		// WC core emits an `AggregateOffer` (lowPrice/highPrice) for a variable
+		// product spanning a price range. The hoist must NOT stamp a scalar
+		// `price` onto it — that's redundant and Google-invalid for an
+		// AggregateOffer. The (type-agnostic) currency hoist still applies.
+		$product = $this->make_product();
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array(
+				array(
+					'@type'              => 'AggregateOffer',
+					'lowPrice'           => '10.00',
+					'highPrice'          => '20.00',
+					'priceSpecification' => array(
+						array(
+							'@type'         => 'UnitPriceSpecification',
+							'price'         => '10.00',
+							'priceCurrency' => 'USD',
+						),
+					),
+				),
+			),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayNotHasKey( 'price', $result['offers'][0] );
+		$this->assertSame( '10.00', $result['offers'][0]['lowPrice'] );
+		$this->assertSame( '20.00', $result['offers'][0]['highPrice'] );
+		$this->assertSame( 'USD', $result['offers'][0]['priceCurrency'] );
+	}
+
+	// ------------------------------------------------------------------
 	// `currenciesAccepted` — single vs multi-currency emission.
 	// ------------------------------------------------------------------
 	//
