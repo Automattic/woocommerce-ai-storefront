@@ -349,13 +349,15 @@ class WC_AI_Storefront_JsonLd {
 	 * @param string     $agent_source Value for `utm_source`. Defaults to the
 	 *                                 `{agent_id}` placeholder — the urlTemplate
 	 *                                 shape the `<script>` BuyAction advertises
-	 *                                 for agents to substitute. Callers that
-	 *                                 emit a *directly clickable* `<a href>`
-	 *                                 must pass a real, esc_url-safe source
-	 *                                 (e.g. `ucp_unknown`): `esc_url()` strips
-	 *                                 the `{}` from a placeholder, which would
-	 *                                 both desync from the BuyAction and stamp
-	 *                                 a broken literal into order attribution.
+	 *                                 for agents to substitute, and the only value
+	 *                                 used today (both live callers default it).
+	 *                                 The parameter remains for any future caller
+	 *                                 that emits a *directly clickable* link: such
+	 *                                 a caller must pass a real, esc_url-safe
+	 *                                 source (e.g. `ucp_unknown`), since `esc_url()`
+	 *                                 strips the `{}` from a placeholder — which
+	 *                                 would desync from the BuyAction and stamp a
+	 *                                 broken literal into order attribution.
 	 * @return string The full checkout URL. No session-id placeholder — see the
 	 *                inline comment in the function body.
 	 */
@@ -2998,14 +3000,17 @@ class WC_AI_Storefront_JsonLd {
 	 *                             `_wc_ai_storefront_final_sale`), the
 	 *                             store-wide policy is bypassed and a
 	 *                             `MerchantReturnNotPermitted` block is
-	 *                             emitted regardless of mode. `null`
-	 *                             skips the override lookup (used by
-	 *                             store-wide preview rendering or unit
-	 *                             tests that exercise the store-wide
-	 *                             logic in isolation).
+	 *                             emitted regardless of mode — unless a usable
+	 *                             policy page is configured, in which case the
+	 *                             link (Option B) wins here too (see the
+	 *                             precedence note above). `null` skips the
+	 *                             override lookup (used by store-wide preview
+	 *                             rendering or unit tests that exercise the
+	 *                             store-wide logic in isolation).
 	 * @return array<string, mixed>|null Structured-data block, or null when the
 	 *                                   policy is `unconfigured`, or when mode is
-	 *                                   `returns_accepted` and `$country` is empty
+	 *                                   `returns_accepted`, no usable policy page
+	 *                                   is configured, and `$country` is empty
 	 *                                   (caller skips emission in all null cases).
 	 */
 	protected function build_return_policy_block( array $policy, string $country, ?int $product_id = null ): ?array {

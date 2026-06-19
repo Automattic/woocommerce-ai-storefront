@@ -160,6 +160,18 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $result['offers'][0] );
 	}
 
+	public function test_unconfigured_mode_with_page_still_emits_no_policy_block(): void {
+		// The opt-out wins over link-precedence: an `unconfigured` mode emits
+		// nothing even when a return-policy page IS configured. Guards the gate
+		// ordering (the unconfigured null-gate sits ABOVE the link short-circuit)
+		// — a refactor hoisting link-precedence above it would leak Option B for
+		// merchants who explicitly opted out.
+		$this->set_settings( [ 'mode' => 'unconfigured', 'page_id' => 99 ] );
+		$result = $this->run_with_offer();
+
+		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $result['offers'][0] );
+	}
+
 	// ------------------------------------------------------------------
 	// Mode: returns_accepted
 	// ------------------------------------------------------------------
@@ -737,6 +749,32 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 			$result['offers'][0],
 			'returns_accepted mode must NOT emit a policy block when the store country is unset.'
 		);
+	}
+
+	public function test_returns_accepted_with_page_emits_link_even_when_country_unset(): void {
+		// Complement to the test above: with a configured policy page, the
+		// Option B link emits even when the store country is unset. Option B
+		// (a bare merchantReturnLink) carries no applicableCountry, so the
+		// link short-circuit MUST sit ABOVE the country null-gate. A refactor
+		// that reordered them would wrongly drop the link for headless/B2B
+		// stores with no base country — exactly the merchants most likely to
+		// lean on a hosted policy page.
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			[ 'country' => '' ]
+		);
+		$this->set_settings(
+			[
+				'mode'    => 'returns_accepted',
+				'page_id' => 99,
+				'days'    => 30,
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame( 'https://example.com/?p=99', $block['merchantReturnLink'] );
+		$this->assertArrayNotHasKey( 'applicableCountry', $block );
+		$this->assertArrayNotHasKey( 'merchantReturnDays', $block );
 	}
 
 	public function test_unflagged_product_uses_store_wide_setting(): void {
