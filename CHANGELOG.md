@@ -2,6 +2,15 @@
 
 ---
 
+## [0.23.3] – 2026-06-19
+
+### Fixes
+
+- **Product return-policy structured data no longer triggers Google's "two or more mutually exclusive properties" error (#496).** When a return-policy page is configured, the `MerchantReturnPolicy` block now emits only the page link (`merchantReturnLink`); otherwise it emits the inline detail (return window, fees, methods). Previously it could emit both, which Google Rich Results flags as an error on product listings/carousels. The recommended-only `refundType` field is no longer emitted, clearing a separate "missing field" warning.
+- **Removed the visible per-product "Agent checkout" anchor (#496).** It printed raw checkout URLs and unsubstituted `{variation_id}`/`{agent_id}` placeholders near the top of every product page, where shoppers could see them. Agents still get the deterministic checkout URL from the `BuyAction` structured data and the UCP checkout-session flow; markdown-extraction agents fall back to the product page URL and `/products/{handle}.json`.
+
+---
+
 ## [0.23.2] – 2026-06-18
 
 ### Added

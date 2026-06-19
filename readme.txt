@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.23.2
+Stable tag: 0.23.3
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,11 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.23.3 - 2026-06-19 =
+**Fixed**
+* AI assistants now read your return policy cleanly, without a Google structured-data error ("two or more mutually exclusive properties") that could affect how your products show in search results. When you link a return-policy page in the Policies tab, assistants are pointed to that page; otherwise they see your return window, fees, and methods directly.
+* The small "Agent checkout" link no longer appears on product pages. It sometimes showed raw checkout web addresses and placeholder text where shoppers could see them. AI assistants still receive the checkout link from your product's structured data, so this does not change what they can do.
 
 = 0.23.2 - 2026-06-18 =
 **Added**
