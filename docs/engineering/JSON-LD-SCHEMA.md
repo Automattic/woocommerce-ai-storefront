@@ -702,6 +702,8 @@ Emitted on **every** front-end page (priority 4, before the homepage block) by `
 
 Emitted on shop / category / tag / product-search archive pages (priority 6, after the homepage block) by `output_archive_itemlist_jsonld()`. Each `itemListElement` carries a `ListItem` wrapping an inline `Product` stub — enough for an agent to present results without following each product URL. Full `Product` enrichment (BuyAction, attributes, shipping, returns) stays on the single-product page.
 
+Each `ListItem` is `position` + the nested `item` **only** — no `ListItem`-level `name`/`url` (the product name and url live on the nested `Product`). Google's [carousel spec](https://developers.google.com/search/docs/appearance/structured-data/carousel) defines two mutually exclusive shapes — summary-page (`position` + `url`, no nested item) or all-in-one (`position` + nested `item`, no ListItem-level url) — and this is the all-in-one shape. Adding a `ListItem`-level `url` would make Google read each entry as a summary item, ignore the inline `item`, and report a "Unnamed item" Rich Results error (fixed in 0.23.4, #499).
+
 ```jsonc
 {
   "@context": "https://schema.org",
@@ -713,8 +715,6 @@ Emitted on shop / category / tag / product-search archive pages (priority 6, aft
     {
       "@type": "ListItem",
       "position": 1,
-      "name": "Classic Hoodie",
-      "url": "https://your-store.com/product/classic-hoodie/",
       "item": {
         "@type": "Product",
         "name": "Classic Hoodie",

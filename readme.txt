@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.23.3
+Stable tag: 0.23.4
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.23.4 - 2026-06-19 =
+**Fixed**
+* Fixed a Google Search structured-data error ("Unnamed item") on your shop and homepage product lists. The product carousel now uses the format Google expects, so AI assistants and Search read your product names, prices, and images correctly.
 
 = 0.23.3 - 2026-06-19 =
 **Fixed**
