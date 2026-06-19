@@ -118,13 +118,12 @@ Click **Enable AI Storefront**. The hero is replaced by the section nav (Overvie
 
 ![Overview tab after enabling](screenshots/02-enable-toggle.png)
 
-Enabling does six things:
+Enabling does five things:
 
 - Tells AI crawlers where they're allowed to look on your store.
 - Publishes a text guide of your store at `/llms.txt` (visible to AI agents), and advertises it to AI tools two ways shoppers never see: an HTTP response header and a hidden link in each page's `<head>`.
 - Publishes your store's business details at `/.well-known/ucp` (visible to AI agents).
 - Adds product details (prices, return policies, etc.) in a format AI agents understand.
-- Adds a small "Agent checkout" link near the top of each product page, so AI assistants that only read the visible page text can grab a ready-to-use checkout link to hand your buyer (the same link they'd otherwise read from the hidden product data).
 - Starts tracking which orders came from AI shopping assistants so you can see the results.
 
 To pause, click **Disable AI Storefront** at the bottom of the page. AI agents will no longer be able to see your catalog endpoints, but existing order tracking remains in place.
@@ -506,11 +505,11 @@ When AI agents recommend your products, they often tell customers about your ret
 
 Three modes:
 
-- **Not configured** *(default)*. AI agents won't mention a return policy. Use when your policy is complex and you'd rather AI agents link to your dedicated returns page.
+- **Not configured** *(default)*. AI agents won't mention a return policy at all. Use when you'd rather not publish return terms in structured form. To have agents point to your own returns page instead, pick one of the modes below and select that page from the dropdown.
 - **Returns accepted.** Tell AI agents how many days customers have to return items, who pays for shipping, and what methods you accept.
 - **Final sale.** Tell AI agents that items cannot be returned.
 
-You can also link to an existing returns/refunds page from the dropdown. This is useful when the policy already lives on a customer-facing page.
+You can also link to an existing returns/refunds page from the dropdown. This is useful when the policy already lives on a customer-facing page. When you select a page, AI agents are handed a link to it *instead of* the individual terms (days, fees, methods). Search engines accept one or the other, not both, so the page link takes precedence.
 
 #### Per-product overrides
 

@@ -150,13 +150,12 @@
 <p><img src="screenshots/02-disabled-state.png" alt="AI Storefront disabled state: hero screen with enable button"></p>
 <p>Click <strong>Enable AI Storefront</strong>. The hero is replaced by the section nav (Overview, Visibility, Policies, Discovery) and the plugin goes live.</p>
 <p><img src="screenshots/02-enable-toggle.png" alt="Overview tab after enabling"></p>
-<p>Enabling does six things:</p>
+<p>Enabling does five things:</p>
 <ul>
 <li>Tells AI crawlers where they&#39;re allowed to look on your store.</li>
 <li>Publishes a text guide of your store at <code>/llms.txt</code> (visible to AI agents), and advertises it to AI tools two ways shoppers never see: an HTTP response header and a hidden link in each page&#39;s <code>&lt;head&gt;</code>.</li>
 <li>Publishes your store&#39;s business details at <code>/.well-known/ucp</code> (visible to AI agents).</li>
 <li>Adds product details (prices, return policies, etc.) in a format AI agents understand.</li>
-<li>Adds a small &quot;Agent checkout&quot; link near the top of each product page, so AI assistants that only read the visible page text can grab a ready-to-use checkout link to hand your buyer (the same link they&#39;d otherwise read from the hidden product data).</li>
 <li>Starts tracking which orders came from AI shopping assistants so you can see the results.</li>
 </ul>
 <p>To pause, click <strong>Disable AI Storefront</strong> at the bottom of the page. AI agents will no longer be able to see your catalog endpoints, but existing order tracking remains in place.</p>
@@ -590,11 +589,11 @@
 <p><img src="screenshots/07-policies-tab.png" alt="Return &amp; refund policy section"></p>
 <p>Three modes:</p>
 <ul>
-<li><strong>Not configured</strong> <em>(default)</em>. AI agents won&#39;t mention a return policy. Use when your policy is complex and you&#39;d rather AI agents link to your dedicated returns page.</li>
+<li><strong>Not configured</strong> <em>(default)</em>. AI agents won&#39;t mention a return policy at all. Use when you&#39;d rather not publish return terms in structured form. To have agents point to your own returns page instead, pick one of the modes below and select that page from the dropdown.</li>
 <li><strong>Returns accepted.</strong> Tell AI agents how many days customers have to return items, who pays for shipping, and what methods you accept.</li>
 <li><strong>Final sale.</strong> Tell AI agents that items cannot be returned.</li>
 </ul>
-<p>You can also link to an existing returns/refunds page from the dropdown. This is useful when the policy already lives on a customer-facing page.</p>
+<p>You can also link to an existing returns/refunds page from the dropdown. This is useful when the policy already lives on a customer-facing page. When you select a page, AI agents are handed a link to it <em>instead of</em> the individual terms (days, fees, methods). Search engines accept one or the other, not both, so the page link takes precedence.</p>
 <h4>Per-product overrides</h4>
 <p>Some merchants have a generally returnable catalog with specific final-sale items (clearance, custom, perishable). The <strong>AI: Final sale</strong> checkbox in the product editor&#39;s Inventory tab overrides the store-wide policy for that single product.</p>
 <p><img src="screenshots/08-product-final-sale.png" alt="Product editor Inventory tab with AI Final sale checkbox"></p>

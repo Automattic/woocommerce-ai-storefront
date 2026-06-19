@@ -73,14 +73,6 @@ class WC_AI_Storefront_JsonLd {
 	private const MAX_RELATED_PRODUCT_REFS = 10;
 
 	/**
-	 * Max purchasable variations for which the product-page checkout anchor
-	 * emits concrete per-variant links. Above this, it emits just the URL
-	 * template (plus the `/products/{handle}.json` construct source when the
-	 * products.json feed is enabled) — no flood.
-	 */
-	private const CHECKOUT_ANCHOR_VARIANT_MAX = 4;
-
-	/**
 	 * Transient key for the site-wide WebSite + SearchAction JSON-LD block.
 	 *
 	 * Registered with WC_AI_Storefront_Cache_Invalidator so it is busted
@@ -357,13 +349,15 @@ class WC_AI_Storefront_JsonLd {
 	 * @param string     $agent_source Value for `utm_source`. Defaults to the
 	 *                                 `{agent_id}` placeholder — the urlTemplate
 	 *                                 shape the `<script>` BuyAction advertises
-	 *                                 for agents to substitute. Callers that
-	 *                                 emit a *directly clickable* `<a href>`
-	 *                                 must pass a real, esc_url-safe source
-	 *                                 (e.g. `ucp_unknown`): `esc_url()` strips
-	 *                                 the `{}` from a placeholder, which would
-	 *                                 both desync from the BuyAction and stamp
-	 *                                 a broken literal into order attribution.
+	 *                                 for agents to substitute, and the only value
+	 *                                 used today (both live callers default it).
+	 *                                 The parameter remains for any future caller
+	 *                                 that emits a *directly clickable* link: such
+	 *                                 a caller must pass a real, esc_url-safe
+	 *                                 source (e.g. `ucp_unknown`), since `esc_url()`
+	 *                                 strips the `{}` from a placeholder — which
+	 *                                 would desync from the BuyAction and stamp a
+	 *                                 broken literal into order attribution.
 	 * @return string The full checkout URL. No session-id placeholder — see the
 	 *                inline comment in the function body.
 	 */
@@ -408,173 +402,6 @@ class WC_AI_Storefront_JsonLd {
 			array_merge( array( 'products' => $product->get_id() . ':1' ), $utm_args ),
 			home_url( '/checkout-link/' )
 		);
-	}
-
-	/**
-	 * Public accessor for the deterministic per-product checkout URL.
-	 *
-	 * Thin wrapper over {@see build_checkout_url_template()} so callers
-	 * outside the JSON-LD assembly (e.g. the visible product-page checkout
-	 * anchor) emit the same URL shape as the `<script>` BuyAction without
-	 * duplicating the per-product-type branching. With the default
-	 * `{agent_id}` source the output is byte-identical to the BuyAction's
-	 * urlTemplate; clickable callers pass a real source (see `$agent_source`).
-	 *
-	 * @param WC_Product $product      A product or variation.
-	 * @param string     $agent_source `utm_source` value; defaults to the
-	 *                                 `{agent_id}` placeholder. See
-	 *                                 {@see build_checkout_url_template()}.
-	 * @return string The checkout URL.
-	 */
-	public static function checkout_url_template( $product, string $agent_source = '{agent_id}' ): string {
-		return self::build_checkout_url_template( $product, $agent_source );
-	}
-
-	/**
-	 * Print a visible per-product "agent checkout" block near the top of
-	 * `<body>` (via wp_body_open) on single-product pages.
-	 *
-	 * Markdown-extraction fetch tools strip the `<script>` JSON-LD where the
-	 * BuyAction lives, so the deterministic checkout link is unreachable to
-	 * them. This renders the SAME URL (via {@see checkout_url_template()}) as
-	 * a visible body anchor they can extract and hand to the buyer. Unlike the
-	 * `/llms.txt` discovery surface — now a machine-only `Link` header — the
-	 * checkout URL must stay body-visible here, since the markdown-extraction
-	 * tools that strip that header still need a working link to hand the buyer.
-	 *
-	 * Variable products get a construct kit (the URL template, plus a link to
-	 * the uncapped `/products/{handle}.json` when the products.json feed is
-	 * enabled), plus concrete labeled variant links when there are <=
-	 * CHECKOUT_ANCHOR_VARIANT_MAX purchasable variations. Gated on `enabled`
-	 * + `is_product_syndicated()`; skips non-purchasable variations (#373).
-	 */
-	public function render_product_checkout_links(): void {
-		if ( ! function_exists( 'is_product' ) || ! is_product() || ! function_exists( 'wc_get_product' ) ) {
-			return;
-		}
-		$product = wc_get_product( get_queried_object_id() );
-		if ( ! $product instanceof WC_Product ) {
-			return;
-		}
-
-		$settings = WC_AI_Storefront::get_settings();
-		if ( 'yes' !== ( $settings['enabled'] ?? 'no' ) ) {
-			return;
-		}
-		if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
-			return;
-		}
-
-		$lines = $this->build_checkout_anchor_lines( $product, $settings );
-		if ( empty( $lines ) ) {
-			return;
-		}
-
-		printf(
-			'<div class="wc-ai-storefront-agent-checkout" style="font-size:12px;opacity:0.55;margin:1.5em 0;">%s</div>',
-			implode( '<br>', $lines ) // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Each line is built from esc_url()/esc_html() in build_checkout_anchor_lines().
-		);
-	}
-
-	/**
-	 * Build the inner HTML lines for the product-page checkout anchor.
-	 *
-	 * @param WC_Product $product  The current product.
-	 * @param array      $settings Plugin settings.
-	 * @return string[] Escaped HTML lines (may be empty when nothing is purchasable).
-	 */
-	private function build_checkout_anchor_lines( $product, array $settings ): array {
-		$lines   = array();
-		$feed_on = 'yes' === ( $settings['products_json_enabled'] ?? 'no' );
-
-		// Checkout URLs render as visible `<code>` text (not `<a href>`): markdown-
-		// extraction fetch tools drop href attributes (keeping only the link text),
-		// so an `<a href>` URL is unreachable to agents, while `<code>` text survives.
-		// Ready-made URLs (simple, bundle/grouped, concrete variants) carry the
-		// no-identity `ucp_unknown` source — used as-is, no substitution. The
-		// construct-kit `{variation_id}` template below keeps `{agent_id}` for agents
-		// to substitute (the faithful `<script>` BuyAction urlTemplate mirror).
-		$click_source = WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE;
-
-		// Bundle / grouped: one permalink-based link.
-		if ( $product->is_type( 'bundle' ) || $product->is_type( 'grouped' ) ) {
-			$lines[] = 'Agent checkout (' . esc_html( $product->get_name() ) . '): <code>' . esc_html( self::checkout_url_template( $product, $click_source ) ) . '</code>';
-			return $lines;
-		}
-
-		// Variable: construct kit + concrete links when small.
-		//
-		// Capability gate, NOT `is_type( 'variable' )`: a bare type-string
-		// check misses `WC_Product_Variable` subclasses (variable-subscription,
-		// variable-bundle) whose `is_type()` returns their own slug. Those
-		// would fall through to the simple branch below and emit a single
-		// parent-ID `/checkout-link/?products=<parent_id>:1` link WC rejects
-		// at checkout (the parent of a variable product is not purchasable).
-		// `method_exists( …, 'get_variation_attributes' )` + non-empty
-		// `get_children()` is the same *capability entry-gate* the JSON-LD
-		// ProductGroup conversion uses (`maybe_convert_to_product_group()`).
-		// The anchor deliberately does NOT replicate that path's stricter
-		// `detect_varies_by()` fallback: a misconfigured variable product with
-		// no "used for variations" axis makes the `<script>` keep a parent
-		// BuyAction, whereas the anchor still emits per-variation-ID links —
-		// the safe shape, since the parent isn't purchasable. The two surfaces
-		// emit byte-identical URLs for every link they BOTH produce; they
-		// differ only on which surface that no-axis edge case falls back to.
-		if ( method_exists( $product, 'get_variation_attributes' ) && $product->get_children() ) {
-			$variations = array();
-			foreach ( (array) $product->get_children() as $child_id ) {
-				$variation = $this->resolve_variation( (int) $child_id );
-				if ( ! $variation instanceof WC_Product ) {
-					continue;
-				}
-				// #373: skip non-purchasable variations so the anchor never
-				// hands out a SKU WC would reject at checkout. The
-				// `instanceof WC_Product` guard above already proves
-				// `is_purchasable()` exists, so no `method_exists()` probe
-				// (which PHPStan would flag as always-true here).
-				if ( ! $variation->is_purchasable() ) {
-					continue;
-				}
-				$variations[] = $variation;
-			}
-			if ( empty( $variations ) ) {
-				return array();
-			}
-
-			// Construct-kit template: the per-variation checkout URL with a
-			// `{variation_id}` placeholder for the agent to fill in. Derived
-			// from the SAME accessor the concrete links use — take a real
-			// variation's URL and swap its concrete id back to the placeholder
-			// — so the template's UTM tail can never drift from the `<script>`
-			// BuyAction. A bare literal would silently desync on a constant rename.
-			$sample        = $variations[0];
-			$template_href = str_replace(
-				'products=' . $sample->get_id() . ':1',
-				'products={variation_id}:1',
-				self::checkout_url_template( $sample )
-			);
-			$lines[]       = 'Agent checkout (per variation): <code>' . esc_html( $template_href ) . '</code>';
-			if ( $feed_on ) {
-				$lines[] = 'All variations + ids: <a href="' . esc_url( home_url( '/products/' . $product->get_slug() . '.json' ) ) . '">' . esc_html( $product->get_slug() . '.json' ) . '</a>';
-			}
-			if ( count( $variations ) <= self::CHECKOUT_ANCHOR_VARIANT_MAX ) {
-				foreach ( $variations as $variation ) {
-					$lines[] = esc_html( $variation->get_name() ) . ': <code>' . esc_html( self::checkout_url_template( $variation, $click_source ) ) . '</code>';
-				}
-			}
-			return $lines;
-		}
-
-		// Simple (and any other purchasable single SKU): one direct link.
-		// `$product` is proven `instanceof WC_Product` at the top of
-		// render_product_checkout_links(), so `is_purchasable()` exists —
-		// no `method_exists()` probe (consistent with the variable branch,
-		// which PHPStan would flag such a probe as always-true).
-		if ( ! $product->is_purchasable() ) {
-			return array();
-		}
-		$lines[] = 'Agent checkout: <code>' . esc_html( self::checkout_url_template( $product, $click_source ) ) . '</code>';
-		return $lines;
 	}
 
 	/**
@@ -3135,32 +2962,32 @@ class WC_AI_Storefront_JsonLd {
 	 * Build the `hasMerchantReturnPolicy` structured-data block from
 	 * the merchant's saved return-policy settings.
 	 *
-	 * Three modes:
+	 * Policy-page precedence: Google's `MerchantReturnPolicy` is "Option A"
+	 * (inline detail) XOR "Option B" (a `merchantReturnLink` URL) — emitting
+	 * both is a Rich Results "two or more mutually exclusive properties"
+	 * error. So whenever the merchant has configured a usable (published)
+	 * return-policy page, EVERY mode below emits just that link
+	 * (`{ MerchantReturnPolicy, merchantReturnLink }`, Option B) and skips the
+	 * inline detail. The inline detail (Option A) is emitted only when no page
+	 * is configured.
 	 *
-	 *   - `unconfigured` → returns `null`. Caller omits the
-	 *     `hasMerchantReturnPolicy` field entirely. Removes today's
-	 *     structurally invalid emission on every existing install
-	 *     until the merchant explicitly opts into one of the modes
-	 *     below.
+	 * Three modes (inline / Option-A shapes, used when no page is set):
 	 *
-	 *   - `returns_accepted` → emits a `MerchantReturnPolicy` with
-	 *     `applicableCountry`, `returnPolicyCategory` (smart-degrade:
-	 *     `MerchantReturnFiniteReturnWindow` + `merchantReturnDays`
-	 *     when days > 0; `MerchantReturnUnspecified` otherwise — never
-	 *     emit `FiniteReturnWindow` without the days field, which
-	 *     Google validators reject), `returnFees`, `merchantReturnLink`
-	 *     (only when a published page is configured), and `returnMethod`
-	 *     (scalar string when one method is selected, array when
-	 *     multiple — Schema.org accepts both forms; cleaner JSON for
-	 *     the common single-method case). Returns `null` when `$country`
-	 *     is empty: a return-window declaration without a target region
-	 *     is not useful to validators or agents.
+	 *   - `unconfigured` → returns `null` (no page-link override applies).
+	 *     Caller omits the `hasMerchantReturnPolicy` field entirely until the
+	 *     merchant explicitly opts into one of the modes below.
 	 *
-	 *   - `final_sale` → emits `MerchantReturnPolicy` with
-	 *     `returnPolicyCategory: NotPermitted`. `merchantReturnLink`
-	 *     attached when a page is configured (so merchants can link
-	 *     to a "no returns" explainer). No `returnFees`/`returnMethod`
-	 *     because the policy precludes returns.
+	 *   - `returns_accepted` → `applicableCountry`, `returnPolicyCategory`
+	 *     (smart-degrade: `MerchantReturnFiniteReturnWindow` +
+	 *     `merchantReturnDays` when days > 0; `MerchantReturnUnspecified`
+	 *     otherwise — never `FiniteReturnWindow` without the days field, which
+	 *     Google rejects), `returnFees`, and `returnMethod` (scalar when one
+	 *     method, array when multiple). Returns `null` when `$country` is empty
+	 *     (a return window without a target region is not useful) — but a
+	 *     configured page still emits Option B regardless of country.
+	 *
+	 *   - `final_sale` → `returnPolicyCategory: NotPermitted` (no
+	 *     `returnFees`/`returnMethod`, since the policy precludes returns).
 	 *
 	 * @param array    $policy     Sanitized return-policy settings.
 	 * @param string   $country    ISO country code from the WC store base.
@@ -3173,17 +3000,38 @@ class WC_AI_Storefront_JsonLd {
 	 *                             `_wc_ai_storefront_final_sale`), the
 	 *                             store-wide policy is bypassed and a
 	 *                             `MerchantReturnNotPermitted` block is
-	 *                             emitted regardless of mode. `null`
-	 *                             skips the override lookup (used by
-	 *                             store-wide preview rendering or unit
-	 *                             tests that exercise the store-wide
-	 *                             logic in isolation).
+	 *                             emitted regardless of mode — unless a usable
+	 *                             policy page is configured, in which case the
+	 *                             link (Option B) wins here too (see the
+	 *                             precedence note above). `null` skips the
+	 *                             override lookup (used by store-wide preview
+	 *                             rendering or unit tests that exercise the
+	 *                             store-wide logic in isolation).
 	 * @return array<string, mixed>|null Structured-data block, or null when the
 	 *                                   policy is `unconfigured`, or when mode is
-	 *                                   `returns_accepted` and `$country` is empty
+	 *                                   `returns_accepted`, no usable policy page
+	 *                                   is configured, and `$country` is empty
 	 *                                   (caller skips emission in all null cases).
 	 */
 	protected function build_return_policy_block( array $policy, string $country, ?int $product_id = null ): ?array {
+		// The merchant's configured return-policy page link, when set, TAKES
+		// PRECEDENCE over the inline detail. Google's MerchantReturnPolicy is
+		// "Option A" (inline: returnPolicyCategory + days + fees + methods) XOR
+		// "Option B" (a `merchantReturnLink` URL) — combining them is a Rich
+		// Results "two or more mutually exclusive properties" error. So when a
+		// usable policy page is configured we emit ONLY the link (Option B);
+		// otherwise the inline detail (Option A). resolve_merchant_return_link()
+		// re-validates the page is still published, so `$link_block` is null
+		// when no usable page is set.
+		$page_id    = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
+		$link       = self::resolve_merchant_return_link( $page_id );
+		$link_block = '' !== $link
+			? array(
+				'@type'              => 'MerchantReturnPolicy',
+				'merchantReturnLink' => $link,
+			)
+			: null;
+
 		// Per-product final-sale override (highest-priority gate). A
 		// flagged product emits MerchantReturnNotPermitted regardless
 		// of the store-wide mode — including when the store-wide mode
@@ -3200,13 +3048,13 @@ class WC_AI_Storefront_JsonLd {
 		// product expecting "no returns" and got an emission that
 		// somehow includes a return-window number.
 		//
-		// `merchantReturnLink` is reused from the store-wide policy
-		// page when configured — a "no returns" page typically
-		// documents what's covered (defective goods, statutory
-		// rights), so reusing the link beats omission. If the
-		// merchant hasn't configured a policy page, the override
-		// emits the bare-bones block without a link.
+		// A configured policy page wins here too (Option B): a "no returns"
+		// page typically documents what's still covered (defective goods,
+		// statutory rights), so the link beats the bare NotPermitted block.
 		if ( null !== $product_id && WC_AI_Storefront_Product_Meta_Box::is_final_sale( $product_id ) ) {
+			if ( null !== $link_block ) {
+				return $link_block;
+			}
 			// applicableCountry is recommended, not required, for
 			// MerchantReturnNotPermitted — omit when the store's base
 			// country is unset so the block still emits. Merchants who
@@ -3220,11 +3068,6 @@ class WC_AI_Storefront_JsonLd {
 			if ( '' !== $country ) {
 				$block['applicableCountry'] = $country;
 			}
-			$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
-			$link    = self::resolve_merchant_return_link( $page_id );
-			if ( '' !== $link ) {
-				$block['merchantReturnLink'] = $link;
-			}
 			return $block;
 		}
 
@@ -3235,6 +3078,9 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		if ( 'final_sale' === $mode ) {
+			if ( null !== $link_block ) {
+				return $link_block;
+			}
 			// Same applicableCountry omission rationale as the
 			// per-product override above.
 			$block = array(
@@ -3243,11 +3089,6 @@ class WC_AI_Storefront_JsonLd {
 			);
 			if ( '' !== $country ) {
 				$block['applicableCountry'] = $country;
-			}
-			$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
-			$link    = self::resolve_merchant_return_link( $page_id );
-			if ( '' !== $link ) {
-				$block['merchantReturnLink'] = $link;
 			}
 			return $block;
 		}
@@ -3264,10 +3105,14 @@ class WC_AI_Storefront_JsonLd {
 			return null;
 		}
 
-		// Returns-accepted mode requires a country — a return window
-		// without a target region is not useful to validators or
-		// agents. Return null (same as before this refactor) so the
-		// block is omitted when the store address is unset.
+		// A configured policy page wins here too (Option B).
+		if ( null !== $link_block ) {
+			return $link_block;
+		}
+
+		// Inline detail (Option A) requires a country — a return window
+		// without a target region is not useful to validators or agents.
+		// Omit when the store address is unset.
 		if ( '' === $country ) {
 			return null;
 		}
@@ -3289,12 +3134,6 @@ class WC_AI_Storefront_JsonLd {
 				'applicableCountry'    => $country,
 				'returnPolicyCategory' => 'https://schema.org/MerchantReturnUnspecified',
 			);
-		}
-
-		$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
-		$link    = self::resolve_merchant_return_link( $page_id );
-		if ( '' !== $link ) {
-			$block['merchantReturnLink'] = $link;
 		}
 
 		// Always emit returnFees (sanitization defaults to FreeReturn
