@@ -2,6 +2,14 @@
 
 ---
 
+## [0.23.4] – 2026-06-19
+
+### Fixes
+
+- **The homepage/shop product carousel no longer triggers Google's "Unnamed item" Rich Results error (#499).** The archive `ItemList` put a top-level `url` *and* a nested `item` on each `ListItem`, mixing Google's two mutually exclusive carousel shapes (summary-page vs all-in-one). Google read the top-level `url` as a summary entry, ignored the inline product, and couldn't resolve a name. Each `ListItem` is now `position` + the nested `item` only — the nested `Product` already carries the name, url, price, and image — so it's a clean all-in-one carousel.
+
+---
+
 ## [0.23.3] – 2026-06-19
 
 ### Fixes
