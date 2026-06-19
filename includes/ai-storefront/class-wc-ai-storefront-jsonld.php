@@ -1622,11 +1622,18 @@ class WC_AI_Storefront_JsonLd {
 	 * `offers.price` / `offers.priceCurrency`, so the missing fields surface
 	 * as a "Missing field price" Rich Results error (WooCommerce ref:
 	 * woocommerce/woocommerce#55043). We copy both up from
-	 * `priceSpecification[0]` — which WC core guarantees is the CURRENT price
-	 * (the sale price is `array_unshift()`ed to the front when on sale; the
-	 * regular `priceType: ListPrice` entry follows) — without overwriting an
-	 * existing top-level value. The `ListPrice` entry is left in place so the
-	 * sale still renders. Audit bug #5 (currency); #502 (price).
+	 * `priceSpecification[0]`, which WC core guarantees is the CURRENT price
+	 * (on sale, the sale price is placed at index 0 — for simple/grouped
+	 * products WC `array_unshift()`es it ahead of the regular
+	 * `priceType: ListPrice` entry — so index 0 is never the higher list
+	 * price). Neither field overwrites an existing top-level value, and
+	 * `priceSpecification` is left untouched so the sale display survives.
+	 *
+	 * The price hoist is limited to a plain `Offer`: WC core emits an
+	 * `AggregateOffer` (with `lowPrice`/`highPrice`) for a variable product
+	 * spanning a price range, where a scalar `price` would be redundant and
+	 * Google-invalid. The currency hoist is safe for both. Audit bug #5
+	 * (currency); #502 (price).
 	 *
 	 * @param array $markup Markup array, modified by reference.
 	 */
@@ -1649,7 +1656,10 @@ class WC_AI_Storefront_JsonLd {
 		if ( isset( $spec['priceCurrency'] ) && ! isset( $markup['offers'][0]['priceCurrency'] ) ) {
 			$markup['offers'][0]['priceCurrency'] = $spec['priceCurrency'];
 		}
-		if ( isset( $spec['price'] ) && ! isset( $markup['offers'][0]['price'] ) ) {
+		// Flat price only for a plain Offer — an AggregateOffer expresses its
+		// price via lowPrice/highPrice and must not also carry a scalar price.
+		$offer_type = $markup['offers'][0]['@type'] ?? 'Offer';
+		if ( 'Offer' === $offer_type && isset( $spec['price'] ) && ! isset( $markup['offers'][0]['price'] ) ) {
 			$markup['offers'][0]['price'] = $spec['price'];
 		}
 	}

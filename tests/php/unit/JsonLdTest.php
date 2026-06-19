@@ -5242,6 +5242,65 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '9.99', $result['offers'][0]['price'] );
 	}
 
+	public function test_offer_currency_hoisted_but_no_price_when_spec_lacks_price(): void {
+		// A priceSpecification[0] that carries priceCurrency but NO price
+		// (e.g. a $0 / "contact for price" product) must hoist the currency
+		// yet add no flat price — and must NEVER emit `price => null`, which
+		// would be worse for Google than the original missing field.
+		$product = $this->make_product();
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array(
+				array(
+					'@type'              => 'Offer',
+					'priceSpecification' => array(
+						array(
+							'@type'         => 'UnitPriceSpecification',
+							'priceCurrency' => 'USD',
+						),
+					),
+				),
+			),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( 'USD', $result['offers'][0]['priceCurrency'] );
+		$this->assertArrayNotHasKey( 'price', $result['offers'][0] );
+	}
+
+	public function test_aggregate_offer_does_not_receive_a_flat_price(): void {
+		// WC core emits an `AggregateOffer` (lowPrice/highPrice) for a variable
+		// product spanning a price range. The hoist must NOT stamp a scalar
+		// `price` onto it — that's redundant and Google-invalid for an
+		// AggregateOffer. The (type-agnostic) currency hoist still applies.
+		$product = $this->make_product();
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array(
+				array(
+					'@type'              => 'AggregateOffer',
+					'lowPrice'           => '10.00',
+					'highPrice'          => '20.00',
+					'priceSpecification' => array(
+						array(
+							'@type'         => 'UnitPriceSpecification',
+							'price'         => '10.00',
+							'priceCurrency' => 'USD',
+						),
+					),
+				),
+			),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayNotHasKey( 'price', $result['offers'][0] );
+		$this->assertSame( '10.00', $result['offers'][0]['lowPrice'] );
+		$this->assertSame( '20.00', $result['offers'][0]['highPrice'] );
+		$this->assertSame( 'USD', $result['offers'][0]['priceCurrency'] );
+	}
+
 	// ------------------------------------------------------------------
 	// `currenciesAccepted` — single vs multi-currency emission.
 	// ------------------------------------------------------------------
