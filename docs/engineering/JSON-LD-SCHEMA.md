@@ -76,6 +76,9 @@ Below is a representative full output for a published product after the plugin's
     "shippingDetails": { "@type": "OfferShippingDetails", "shippingDestination": [{
       "@type": "DefinedRegion", "addressCountry": "US"
     }]},
+    // Inline (Option A) shape — shown when no return-policy page is configured.
+    // With a page configured the builder emits link-only instead:
+    //   { "@type": "MerchantReturnPolicy", "merchantReturnLink": "<page URL>" }
     "hasMerchantReturnPolicy": {
       "@type": "MerchantReturnPolicy",
       "applicableCountry": "US",
@@ -465,15 +468,19 @@ When WC Subscriptions is active and the product is a recurring-billing product, 
 
 ### `offers[0].hasMerchantReturnPolicy`
 
-Schema.org `MerchantReturnPolicy` describing return rules.
+Schema.org `MerchantReturnPolicy` describing return rules. The block takes one of **two mutually exclusive shapes** — Google Rich Results flags a block that mixes them as a "two or more mutually exclusive properties" error, so the builder emits exactly one:
 
-- **Emitted when** Policies tab → Returns mode is "Returns accepted" or "Final sale" AND the WC base country is set.
-- **Per-product override**: if the product has the "AI: Final sale" checkbox enabled in its Inventory tab, the merchant return policy block reflects final-sale terms regardless of the store-wide setting.
-- **Schema-validated values**:
+- **Option B — link only (takes precedence)**: when a usable return-policy **page** is configured (Policies tab → Returns), the block is just `{ "@type": "MerchantReturnPolicy", "merchantReturnLink": "<page URL>" }`. No inline fields. It emits **regardless of the WC base country** — a bare link carries no `applicableCountry`, so the country requirement below does not apply.
+- **Option A — inline detail**: when no usable policy page is configured, the block carries the inline fields below instead. `returns_accepted` mode additionally requires the WC base country (a return-window declaration without a target region is useless to validators); `final_sale` mode emits with or without `applicableCountry` ("no returns" is globally meaningful).
+
+- **Emitted when** Policies tab → Returns mode is "Returns accepted" or "Final sale". (`mode: unconfigured` emits nothing, even if a page is set — the opt-out wins over link-precedence.)
+- **Per-product override**: if the product has the "AI: Final sale" checkbox enabled in its Inventory tab, the block reflects final-sale terms regardless of the store-wide setting — but a configured policy page still wins (Option B link).
+- **Inline (Option A) values**, all Schema-validated:
   - `returnPolicyCategory`: `MerchantReturnFiniteReturnWindow` (returns accepted) or `MerchantReturnNotPermitted` (final sale).
   - `returnFees`: from a Schema.org allow-list (`FreeReturn`, `ReturnFeesCustomerResponsibility`, etc.). Invalid values are dropped at emit time.
   - `returnMethod`: same allow-list defense (`ReturnByMail`, `ReturnInStore`, `ReturnAtKiosk`).
-- **Source**: `add_return_policy()` (line ~356) and `build_return_policy_block()` (line ~559).
+  - `refundType` is **not** emitted: it is a Schema.org *recommended* (not required) field, and omitting it avoids Rich Results "missing field" noise without affecting validity. Do not add it back without revisiting that trade-off.
+- **Source**: `add_return_policy()` and `build_return_policy_block()` (the shared builder that resolves the page link and applies the precedence above).
 
 ## Store homepage: OnlineBusiness schema
 
@@ -599,8 +606,8 @@ Schema.org [`Organization.knowsAbout`](https://schema.org/knowsAbout) — a Text
 
 Same `MerchantReturnPolicy` block shape that the per-Offer emission produces, but at the Organization level — the canonical store-wide commitment.
 
-- **Emitted when**: a return policy is configured (`mode !== 'unconfigured'`). For `mode: returns_accepted` the WC base country is also required (a return-window declaration without a target region is useless to validators). For `mode: final_sale` the country is optional — "no returns" is globally meaningful, so the block emits with or without `applicableCountry`. Always additive in this PR — the per-Offer emission on product pages is unchanged.
-- **Shared builder**: both this call site and `add_return_policy()` (for per-Offer emission) call `build_return_policy_block($policy, $country, $product_id)`. Org-level emission passes `null` for `$product_id` (no per-product context). The shared builder guarantees the two emissions produce identical block shapes for the same configuration.
+- **Emitted when**: a return policy is configured (`mode !== 'unconfigured'`). When a return-policy page is configured the **Option B link** emits regardless of country (see the [`offers[0]` section](#offers0hasmerchantreturnpolicy) for the two-shape rule). For the inline **Option A** path, `mode: returns_accepted` additionally requires the WC base country (a return-window declaration without a target region is useless to validators), while `mode: final_sale` is country-optional — "no returns" is globally meaningful, so the block emits with or without `applicableCountry`.
+- **Shared builder**: both this call site and `add_return_policy()` (for per-Offer emission) call `build_return_policy_block($policy, $country, $product_id)`. Org-level emission passes `null` for `$product_id` (no per-product context). The shared builder guarantees the two emissions produce identical block shapes for the same configuration — including which of the two shapes (inline detail vs. `merchantReturnLink`) the link-precedence rule selects.
 - **Coexists with per-Offer emission**: today both Org-level and per-Offer emissions ship together. Per-Offer is already override-aware — it emits a `MerchantReturnNotPermitted` block when the product's final-sale flag is set, and otherwise emits the same store-wide policy as Org-level. The redundancy is intentional defensive emission: Schema.org consumers that don't implement the Org-level → Offer-level inheritance correctly still get the right answer on a product page. Skipping the per-Offer block when it duplicates Org-level (sometimes called "phase 2" in earlier discussions) was considered and ruled out — the markup-size win is marginal and the backward-compat risk for non-spec-compliant consumers is real.
 - **Source**: `output_store_jsonld()` for the Org-level call site; `build_return_policy_block()` (now `protected`) for the shared block builder.
 
