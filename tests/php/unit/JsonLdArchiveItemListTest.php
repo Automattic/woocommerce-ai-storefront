@@ -45,6 +45,9 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_bloginfo' )->justReturn( 'Test Store' );
 		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
 		Functions\when( 'home_url' )->alias( static fn( $path = '' ) => 'https://example.com' . $path );
+		// Default: products carry no brand term (#507). The brand test
+		// overrides this to return a WP_Term-shaped object.
+		Functions\when( 'get_the_terms' )->justReturn( false );
 
 		// Default: none of the archive conditionals fire.
 		Functions\when( 'is_shop' )->justReturn( false );
@@ -230,6 +233,22 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		return $product;
 	}
 
+	/**
+	 * A real WC_Product subclass exposing get_global_unique_id() (WC 9.2+),
+	 * so `method_exists()` resolves true — Mockery's `shouldReceive` does not
+	 * make `method_exists()` true. Mirrors StoreApiExtensionTest's approach.
+	 */
+	private function make_gtin_product( string $gtin ): \WC_Product {
+		$product            = new class() extends \WC_Product {
+			public string $test_gtin = '';
+			public function get_global_unique_id() {
+				return $this->test_gtin;
+			}
+		};
+		$product->test_gtin = $gtin;
+		return $product;
+	}
+
 	private function enable_shop_page(): void {
 		Functions\when( 'is_shop' )->justReturn( true );
 		Functions\when( 'get_permalink' )->alias( static fn( $id ) => "https://example.com/?p={$id}" );
@@ -284,6 +303,67 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '49.00', $stub['offers']['price'] );
 		$this->assertSame( 'USD', $stub['offers']['priceCurrency'] );
 		$this->assertSame( 'https://schema.org/InStock', $stub['offers']['availability'] );
+	}
+
+	// -------------------------------------------------------------------------
+	// brand + gtin enrichment (#507) — mirror the full product-page markup so
+	// the homepage list isn't flagged for missing recommended merchant-listing
+	// fields.
+	// -------------------------------------------------------------------------
+
+	private function first_stub( array $products ): array {
+		Functions\when( 'wc_get_products' )->justReturn( $products );
+		$output = $this->capture();
+		$data   = json_decode(
+			trim( substr( $output, strlen( '<script type="application/ld+json">' ), -strlen( '</script>' . "\n" ) ) ),
+			true
+		);
+		return $data['itemListElement'][0]['item'];
+	}
+
+	public function test_stub_includes_brand_when_product_has_brand_term(): void {
+		$this->enable_shop_page();
+		// First product_brand term, WP_Term-shaped (mirrors WC_Brands).
+		Functions\when( 'get_the_terms' )->justReturn( [ (object) [ 'term_id' => 5, 'name' => 'Saltwarp' ] ] );
+
+		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true ) ] );
+
+		$this->assertSame( 'Brand', $stub['brand']['@type'] );
+		$this->assertSame( 'Saltwarp', $stub['brand']['name'] );
+	}
+
+	public function test_stub_omits_brand_when_no_brand_term(): void {
+		$this->enable_shop_page();
+		// setUp default: get_the_terms returns false (no brand assigned).
+		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true ) ] );
+
+		$this->assertArrayNotHasKey( 'brand', $stub );
+	}
+
+	public function test_stub_includes_gtin_when_valid(): void {
+		$this->enable_shop_page();
+		// 12-digit value passes WC core's 8/12-14-digit validity check.
+		$stub = $this->first_stub( [ $this->make_gtin_product( '012345678905' ) ] );
+
+		$this->assertSame( '012345678905', $stub['gtin'] );
+	}
+
+	public function test_stub_omits_gtin_when_invalid(): void {
+		$this->enable_shop_page();
+		// '123' is neither 8 nor 12-14 digits → not a valid GTIN, so omitted.
+		$stub = $this->first_stub( [ $this->make_gtin_product( '123' ) ] );
+
+		$this->assertArrayNotHasKey( 'gtin', $stub );
+	}
+
+	public function test_stub_omits_gtin_on_older_wc_without_the_method(): void {
+		$this->enable_shop_page();
+		// Older WC (< 9.2) has no get_global_unique_id(); the method_exists
+		// guard must fail safe and emit no gtin rather than fatal. The Mockery
+		// mock of WC_Product (which lacks the method) exercises that path.
+		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true ) ] );
+
+		$this->assertArrayNotHasKey( 'gtin', $stub );
 	}
 
 	public function test_itemlist_emitted_on_category_page(): void {
