@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-20T22:57:40+00:00\n"
+"POT-Creation-Date: 2026-06-20T23:03:16+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -64,6 +64,36 @@ msgstr ""
 
 #: includes/admin/class-wc-ai-storefront-product-meta-box.php:141
 msgid "Mark this product as final sale (no returns). Overrides your store-wide return policy in the structured data sent to AI agents and search crawlers. The customer-facing product page is unchanged — add a notice in your theme or product description if you want shoppers to see it before purchase."
+msgstr ""
+
+#. translators: %s: comma-separated list of detected SEO plugin names.
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:69
+#, php-format
+msgid "WooCommerce AI Storefront now provides your product titles, descriptions, social cards, and structured data. %s is also emitting these, which can produce duplicate tags. You can deactivate it — review the checklist first."
+msgstr ""
+
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:73
+msgid "Before deactivating, check:"
+msgstr ""
+
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:75
+msgid "Breadcrumbs: if your theme calls the SEO plugin's breadcrumb function, switch it to woocommerce_breadcrumb()."
+msgstr ""
+
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:76
+msgid "Redirects: any redirects configured in the SEO plugin will stop working — keep a dedicated redirect plugin."
+msgstr ""
+
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:77
+msgid "Custom noindex rules: pages you manually noindexed will become indexable."
+msgstr ""
+
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:78
+msgid "Sitemap: WordPress core serves /wp-sitemap.xml — resubmit it in Google Search Console."
+msgstr ""
+
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:80
+msgid "Read the full coexistence guide"
 msgstr ""
 
 #: includes/ai-storefront/class-wc-ai-storefront-attribution.php:724
@@ -661,17 +691,17 @@ msgstr ""
 msgid "Line item could not be processed."
 msgstr ""
 
-#: includes/class-wc-ai-storefront.php:404
-#: includes/class-wc-ai-storefront.php:447
+#: includes/class-wc-ai-storefront.php:408
+#: includes/class-wc-ai-storefront.php:451
 msgid "Woo AI Storefront"
 msgstr ""
 
-#: includes/class-wc-ai-storefront.php:409
+#: includes/class-wc-ai-storefront.php:413
 #: client/settings/ai-storefront/settings-page.js:449
 msgid "AI Storefront"
 msgstr ""
 
-#: includes/class-wc-ai-storefront.php:431
+#: includes/class-wc-ai-storefront.php:435
 msgid "Settings"
 msgstr ""
 

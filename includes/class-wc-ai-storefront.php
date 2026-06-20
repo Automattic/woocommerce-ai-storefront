@@ -243,6 +243,10 @@ class WC_AI_Storefront {
 		if ( is_admin() ) {
 			$product_meta_box = new WC_AI_Storefront_Product_Meta_Box();
 			$product_meta_box->init();
+
+			// Migration nudge: warn when an overlapping SEO plugin is active.
+			$schema_notice = new WC_AI_Storefront_Schema_Conflict_Notice();
+			$schema_notice->init();
 		}
 	}
 

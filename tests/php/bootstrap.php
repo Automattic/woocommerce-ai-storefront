@@ -93,6 +93,7 @@ require_once $plugin_path . 'admin/class-wc-ai-storefront-admin-controller.php';
 // — exercised by JsonLdReturnPolicyTest's per-product override
 // branches plus the dedicated ProductMetaBoxTest.
 require_once $plugin_path . 'admin/class-wc-ai-storefront-product-meta-box.php';
+require_once dirname( __DIR__, 2 ) . '/includes/admin/class-wc-ai-storefront-schema-conflict-notice.php';
 
 // Self-updater wrapper around the PUC library (1.4.0+).
 require_once $plugin_path . 'class-wc-ai-storefront-updater.php';

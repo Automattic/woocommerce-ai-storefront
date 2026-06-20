@@ -23,6 +23,7 @@ spl_autoload_register(
 			'WC_AI_Storefront_Updater'                => '/class-wc-ai-storefront-updater.php',
 			'WC_AI_Storefront_Admin_Controller'       => '/admin/class-wc-ai-storefront-admin-controller.php',
 			'WC_AI_Storefront_Product_Meta_Box'       => '/admin/class-wc-ai-storefront-product-meta-box.php',
+			'WC_AI_Storefront_Schema_Conflict_Notice' => '/admin/class-wc-ai-storefront-schema-conflict-notice.php',
 			'WC_AI_Storefront_Attribution'            => '/ai-storefront/class-wc-ai-storefront-attribution.php',
 			'WC_AI_Storefront_Cache_Invalidator'      => '/ai-storefront/class-wc-ai-storefront-cache-invalidator.php',
 			'WC_AI_Storefront_Crawl_Logger'           => '/ai-storefront/class-wc-ai-storefront-crawl-logger.php',
