@@ -117,10 +117,10 @@ class WC_AI_Storefront_Schema_Conflict_Notice {
 	public function handle_dismiss(): void {
 		check_ajax_referer( self::AJAX_ACTION, 'nonce' );
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
-			// wp_send_json_error() calls wp_die() in production; the explicit
-			// return insulates the handler from non-terminating test stubs.
+			// Terminates the request — wp_send_json_error() calls wp_die() —
+			// so the state mutation below is never reached for an
+			// unauthorized user.
 			wp_send_json_error( '', 403 );
-			return;
 		}
 		update_user_meta( get_current_user_id(), self::DISMISS_META, 1 );
 		wp_send_json_success();

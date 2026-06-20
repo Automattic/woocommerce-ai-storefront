@@ -93,9 +93,16 @@ class SchemaConflictNoticeTest extends \PHPUnit\Framework\TestCase {
 	public function test_handle_dismiss_rejects_incapable_user(): void {
 		Functions\when( 'check_ajax_referer' )->justReturn( true );
 		Functions\when( 'current_user_can' )->justReturn( false );
-		Functions\when( 'wp_send_json_error' )->justReturn( null );
+		// Model production: wp_send_json_error() terminates the request via
+		// wp_die(). Throwing here proves the state mutation below is never
+		// reached for an unauthorized user.
+		Functions\when( 'wp_send_json_error' )->alias(
+			static function () {
+				throw new \RuntimeException( 'wp_die' );
+			}
+		);
 		Functions\expect( 'update_user_meta' )->never();
+		$this->expectException( \RuntimeException::class );
 		$this->notice->handle_dismiss();
-		$this->addToAssertionCount( 1 ); // Brain Monkey expectation counted at tearDown.
 	}
 }
