@@ -704,6 +704,8 @@ Emitted on shop / category / tag / product-search archive pages (priority 6, aft
 
 Each `ListItem` is `position` + the nested `item` **only** — no `ListItem`-level `name`/`url` (the product name and url live on the nested `Product`). Google's [carousel spec](https://developers.google.com/search/docs/appearance/structured-data/carousel) defines two mutually exclusive shapes — summary-page (`position` + `url`, no nested item) or all-in-one (`position` + nested `item`, no ListItem-level url) — and this is the all-in-one shape. Adding a `ListItem`-level `url` would make Google read each entry as a summary item, ignore the inline `item`, and report a "Unnamed item" Rich Results error (fixed in 0.23.4, #499).
 
+The stub also carries `brand` and `gtin` when the product has them (since 0.23.6, #507), mirroring the full product page so the list isn't flagged for the recommended merchant-listing fields. `brand` is the product's first `product_brand` term as `{ "@type": "Brand", "name": … }` (matching WooCommerce's `WC_Brands`); `gtin` is the product's global unique ID, stripped of non-digits and validated against the same `^(\d{8}|\d{12,14})$` check WooCommerce core uses (so a configured GTIN emits identically here and on the product page). Both are omitted when unset.
+
 ```jsonc
 {
   "@context": "https://schema.org",
@@ -720,6 +722,8 @@ Each `ListItem` is `position` + the nested `item` **only** — no `ListItem`-lev
         "name": "Classic Hoodie",
         "url": "https://your-store.com/product/classic-hoodie/",
         "sku": "HOOD-001",
+        "gtin": "012345678905",
+        "brand": { "@type": "Brand", "name": "Acme" },
         "image": "https://your-store.com/wp-content/uploads/classic-hoodie.jpg",
         "offers": {
           "@type": "Offer",
