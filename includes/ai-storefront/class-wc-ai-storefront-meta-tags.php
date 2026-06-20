@@ -187,4 +187,110 @@ class WC_AI_Storefront_Meta_Tags {
 		}
 		return '';
 	}
+
+	/**
+	 * Build the Open Graph tag map for a product page.
+	 *
+	 * @param WC_Product $product Product.
+	 * @return array<string,string> property => content.
+	 */
+	public function build_og_tags( $product ): array {
+		$og = array(
+			'og:type'        => 'product',
+			'og:title'       => $product->get_name(),
+			'og:description' => $this->build_description( $product ),
+			'og:url'         => get_permalink( $product->get_id() ),
+			'og:site_name'   => get_bloginfo( 'name' ),
+		);
+
+		$image = get_the_post_thumbnail_url( $product->get_id(), 'full' );
+		if ( is_string( $image ) && '' !== $image ) {
+			$og['og:image'] = $image;
+		}
+
+		if ( $product->is_purchasable() ) {
+			$price = (string) $product->get_price();
+			if ( '' !== $price ) {
+				$og['product:price:amount']   = $price;
+				$og['product:price:currency'] = get_woocommerce_currency();
+			}
+		}
+
+		/**
+		 * Filter the Open Graph tag map.
+		 *
+		 * @param array      $og      property => content.
+		 * @param WC_Product $product Source product.
+		 */
+		return (array) apply_filters( 'wc_ai_storefront_og_tags', $og, $product );
+	}
+
+	/**
+	 * Derive Twitter Card tags from an Open Graph map.
+	 *
+	 * @param array<string,string> $og Open Graph map.
+	 * @return array<string,string> property => content.
+	 */
+	public function build_twitter_tags( array $og ): array {
+		$tw = array(
+			'twitter:card'        => 'summary_large_image',
+			'twitter:title'       => $og['og:title'] ?? '',
+			'twitter:description' => $og['og:description'] ?? '',
+		);
+		if ( ! empty( $og['og:image'] ) ) {
+			$tw['twitter:image'] = $og['og:image'];
+		}
+		return $tw;
+	}
+
+	/**
+	 * Build the Open Graph tag map for a category or shop archive.
+	 *
+	 * @return array<string,string> property => content.
+	 */
+	public function build_archive_og_tags(): array {
+		$site = get_bloginfo( 'name' );
+		$og   = array(
+			'og:type'        => 'website',
+			'og:description' => $this->build_archive_description(),
+			'og:site_name'   => $site,
+			'og:title'       => $site,
+			'og:url'         => '',
+		);
+
+		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
+			$term = get_queried_object();
+			if ( is_object( $term ) ) {
+				if ( isset( $term->name ) ) {
+					$og['og:title'] = (string) $term->name;
+				}
+				$link = isset( $term->term_id ) ? get_term_link( $term ) : '';
+				if ( is_string( $link ) && '' !== $link ) {
+					$og['og:url'] = $link;
+				}
+				$thumb_id = isset( $term->term_id ) ? (int) get_term_meta( $term->term_id, 'thumbnail_id', true ) : 0;
+				if ( $thumb_id > 0 ) {
+					$img = wp_get_attachment_url( $thumb_id );
+					if ( is_string( $img ) && '' !== $img ) {
+						$og['og:image'] = $img;
+					}
+				}
+			}
+		} elseif ( function_exists( 'is_shop' ) && is_shop() ) {
+			$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
+			if ( $shop_id > 0 ) {
+				$og['og:title'] = get_the_title( $shop_id );
+				$og['og:url']   = get_permalink( $shop_id );
+			}
+		}
+
+		// Fallback only when no branch set a URL — kept lazy so unit tests
+		// exercising the category/shop branches need not stub home_url().
+		if ( '' === $og['og:url'] && function_exists( 'home_url' ) ) {
+			$og['og:url'] = home_url( '/' );
+		}
+
+		/** This filter is documented in build_og_tags(). */
+		return (array) apply_filters( 'wc_ai_storefront_og_tags', $og, null );
+	}
 }

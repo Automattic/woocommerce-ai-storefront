@@ -68,6 +68,17 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		return $product;
 	}
 
+	private function og_product( array $overrides = array() ): \Mockery\MockInterface {
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		$product->shouldReceive( 'get_name' )->andReturn( $overrides['name'] ?? 'Canvas Belt' );
+		$product->shouldReceive( 'get_short_description' )->andReturn( $overrides['short'] ?? 'A belt.' );
+		$product->shouldReceive( 'get_description' )->andReturn( '' );
+		$product->shouldReceive( 'is_purchasable' )->andReturn( $overrides['purchasable'] ?? true );
+		$product->shouldReceive( 'get_price' )->andReturn( $overrides['price'] ?? '48.00' );
+		return $product;
+	}
+
 	public function test_description_prefers_short_description(): void {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		$p = $this->make_product( array( 'short' => 'A tight short blurb.', 'long' => 'Long body.' ) );
@@ -162,5 +173,73 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_product' )->justReturn( false );
 		$parts = $this->meta->filter_title_parts( array( 'title' => 'Untouched' ) );
 		$this->assertSame( 'Untouched', $parts['title'] );
+	}
+
+	public function test_og_tags_core_fields_and_price(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/canvas-belt/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( 'https://shop.test/img/belt.jpg' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		$og = $this->meta->build_og_tags( $this->og_product() );
+		$this->assertSame( 'product', $og['og:type'] );
+		$this->assertSame( 'Canvas Belt', $og['og:title'] );
+		$this->assertSame( 'A belt.', $og['og:description'] );
+		$this->assertSame( 'https://shop.test/product/canvas-belt/', $og['og:url'] );
+		$this->assertSame( 'Saltwarp', $og['og:site_name'] );
+		$this->assertSame( 'https://shop.test/img/belt.jpg', $og['og:image'] );
+		$this->assertSame( '48.00', $og['product:price:amount'] );
+		$this->assertSame( 'USD', $og['product:price:currency'] );
+	}
+
+	public function test_og_tags_omit_image_when_absent_and_price_when_not_purchasable(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( false ); // no image
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		$og = $this->meta->build_og_tags( $this->og_product( array( 'purchasable' => false ) ) );
+		$this->assertArrayNotHasKey( 'og:image', $og );
+		$this->assertArrayNotHasKey( 'product:price:amount', $og );
+	}
+
+	public function test_twitter_tags_derive_from_og(): void {
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'og:title'       => 'Canvas Belt',
+				'og:description' => 'A belt.',
+				'og:image'       => 'https://shop.test/img/belt.jpg',
+			)
+		);
+		$this->assertSame( 'summary_large_image', $tw['twitter:card'] );
+		$this->assertSame( 'Canvas Belt', $tw['twitter:title'] );
+		$this->assertSame( 'A belt.', $tw['twitter:description'] );
+		$this->assertSame( 'https://shop.test/img/belt.jpg', $tw['twitter:image'] );
+	}
+
+	public function test_twitter_tags_omit_image_when_og_image_absent(): void {
+		$tw = $this->meta->build_twitter_tags(
+			array( 'og:title' => 'X', 'og:description' => 'Y' )
+		);
+		$this->assertArrayNotHasKey( 'twitter:image', $tw );
+	}
+
+	public function test_archive_og_tags_for_category(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'is_product_category' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array( 'term_id' => 9, 'name' => 'Belts', 'description' => 'Leather belts.' )
+		);
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
+		Functions\when( 'get_term_meta' )->justReturn( 0 ); // no thumbnail
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'website', $og['og:type'] );
+		$this->assertSame( 'Belts', $og['og:title'] );
+		$this->assertSame( 'Leather belts.', $og['og:description'] );
+		$this->assertSame( 'https://shop.test/product-category/belts/', $og['og:url'] );
+		$this->assertSame( 'Saltwarp', $og['og:site_name'] );
+		$this->assertArrayNotHasKey( 'og:image', $og );
+		$this->assertArrayNotHasKey( 'product:price:amount', $og );
 	}
 }
