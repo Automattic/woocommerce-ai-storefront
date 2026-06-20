@@ -2,6 +2,14 @@
 
 ---
 
+## [0.23.6] – 2026-06-20
+
+### Fixes
+
+- **The homepage/shop product list now includes each product's brand (and GTIN, when set) (#507).** Google's Rich Results flagged the root-domain product `ItemList` with a non-critical "missing brand / gtin" merchant-listing warning, because the lightweight list entries omitted both even though the full product pages already carry them. Each list entry now mirrors the product page: `brand` from the product's `product_brand` term (matching WooCommerce's `WC_Brands`), and `gtin` from the product's global unique ID — normalized and validated the same way WooCommerce core does, so a configured GTIN emits identically on the list and the product page. Products without a brand or GTIN are unaffected. (The GTIN half of the warning is a data gap: it persists, on the product pages too, until products actually have a GTIN set.)
+
+---
+
 ## [0.23.5] – 2026-06-20
 
 ### Fixes
