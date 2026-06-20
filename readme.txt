@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.23.4
+Stable tag: 0.23.5
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,11 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.23.5 - 2026-06-20 =
+**Fixed**
+* Your product prices now always appear in the structured data Google reads, fixing a critical "Missing field price" error in Google's Rich Results. Some recent WooCommerce versions placed the price where Google's merchant listings did not pick it up; prices now show correctly in Search and to AI assistants.
+* Virtual and downloadable products no longer advertise shipping details. Only products that actually ship now include shipping and handling-time information in their structured data, matching what AI assistants and Google expect.
 
 = 0.23.4 - 2026-06-19 =
 **Fixed**
