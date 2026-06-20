@@ -255,7 +255,8 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 	 * older WooCommerce releases), so `method_exists()` resolves true —
 	 * Mockery's `shouldReceive` does not make `method_exists()` true. Mirrors
 	 * StoreApiExtensionTest's approach. Rating getters return zero so the
-	 * stub loop's aggregateRating gate (#510) is satisfied without emitting.
+	 * stub loop's aggregateRating gate (#510) stays false and nothing is
+	 * emitted.
 	 */
 	private function make_gtin_product( string $gtin ): \WC_Product {
 		$product            = new class() extends \WC_Product {
@@ -445,6 +446,16 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		// WC core and emit nothing.
 		Functions\when( 'wc_review_ratings_enabled' )->justReturn( false );
 		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true, 12, '4.50', 8 ) ] );
+
+		$this->assertArrayNotHasKey( 'aggregateRating', $stub );
+	}
+
+	public function test_stub_omits_aggregate_rating_when_average_is_zero(): void {
+		$this->enable_shop_page();
+		// Defensive guard (stricter than WC core): a rating count with a zero
+		// average must NOT emit an invalid ratingValue:0. Can't happen with
+		// real 1-5 ratings, but protects against malformed data.
+		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true, 3, '0', 3 ) ] );
 
 		$this->assertArrayNotHasKey( 'aggregateRating', $stub );
 	}

@@ -3568,11 +3568,16 @@ class WC_AI_Storefront_JsonLd {
 
 			// aggregateRating mirrors the product page (WC_Structured_Data):
 			// only when the product has ratings AND reviews are enabled. We
+			// add one guard WC core lacks — a positive average — so a
+			// malformed count-without-average can never emit an invalid
+			// `ratingValue: 0` that Google would flag (real WC ratings are
+			// 1-5, so a real count always implies a positive average). We
 			// never fabricate a rating, so a review-less product (or a store
 			// with reviews disabled) emits nothing. Individual review objects
 			// are intentionally omitted from the summary list (#510).
 			if (
 				$product->get_rating_count() > 0
+				&& (float) $product->get_average_rating() > 0
 				&& function_exists( 'wc_review_ratings_enabled' )
 				&& wc_review_ratings_enabled()
 			) {
