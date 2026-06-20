@@ -2,6 +2,15 @@
 
 ---
 
+## [0.23.5] – 2026-06-20
+
+### Fixes
+
+- **Simple products no longer report Google's critical "Missing field price" Rich Results error (#502).** Recent WooCommerce core builds the product `Offer` with the price *only* inside `priceSpecification` and never sets a flat `offers.price` — the field Google's merchant listing reads. The plugin now hoists the current price from `priceSpecification[0]` up to `offers.price` (mirroring how it already hoists `priceCurrency`), without overwriting an existing flat value and without disturbing the `ListPrice` entry, so sale prices still render. Variable products were already unaffected because their offers are built with a flat price.
+- **`shippingDetails` is no longer emitted for virtual or downloadable products (#504).** The JSON-LD shipping block gated only on the store base country, so a no-ship product still advertised a full `shippingDetails` block (and its nested `handlingTime`) — contradicting the product itself and mismatching the Shopify-compatible feed, which already reports `requires_shipping`. Shipping schema is now gated on `needs_shipping()` per product and per variation; if the method is unavailable the code fails safe and still emits, never suppressing shipping for a real product.
+
+---
+
 ## [0.23.4] – 2026-06-19
 
 ### Fixes
