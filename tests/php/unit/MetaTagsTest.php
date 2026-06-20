@@ -121,4 +121,38 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_bloginfo' )->justReturn( 'Fine leather goods, made to last.' );
 		$this->assertSame( 'Fine leather goods, made to last.', $this->meta->build_archive_description() );
 	}
+
+	public function test_title_parts_appends_brand_on_product(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		Functions\when( 'get_the_terms' )->justReturn(
+			array( (object) array( 'name' => 'Leather Co' ) )
+		);
+		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Saltwarp' ) );
+		$this->assertSame( 'Canvas Belt | Leather Co', $parts['title'] );
+		$this->assertSame( 'Saltwarp', $parts['site'] );
+	}
+
+	public function test_title_parts_no_brand_when_absent(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		Functions\when( 'get_the_terms' )->justReturn( false ); // no brand terms
+		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old' ) );
+		$this->assertSame( 'Canvas Belt', $parts['title'] );
+	}
+
+	public function test_title_parts_untouched_on_non_product(): void {
+		// is_product() false (default). Category/shop titles stay core's.
+		Functions\when( 'is_product_category' )->justReturn( true );
+		$parts = $this->meta->filter_title_parts( array( 'title' => 'Accessories' ) );
+		$this->assertSame( 'Accessories', $parts['title'] );
+	}
 }

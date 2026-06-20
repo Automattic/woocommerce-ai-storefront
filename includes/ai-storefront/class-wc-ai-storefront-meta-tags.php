@@ -138,4 +138,52 @@ class WC_AI_Storefront_Meta_Tags {
 		/** This filter is documented in build_description(). */
 		return (string) apply_filters( 'wc_ai_storefront_meta_description', $description, $source );
 	}
+
+	/**
+	 * `document_title_parts` callback — enrich the product title with its brand.
+	 *
+	 * Hooked at a late priority so we win over an active SEO plugin (there is
+	 * only one <title>, so this never duplicates). Non-product commerce pages
+	 * keep core's title (it already supplies the term/shop name); we only add
+	 * the brand on single products.
+	 *
+	 * @param array $parts Title parts (keys: title, page, tagline, site).
+	 * @return array
+	 */
+	public function filter_title_parts( $parts ) {
+		if ( ! is_array( $parts ) || ! $this->should_emit() ) {
+			return $parts;
+		}
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			$product = function_exists( 'wc_get_product' ) ? wc_get_product( get_queried_object_id() ) : null;
+			if ( $product ) {
+				$title = $product->get_name();
+				$brand = $this->get_brand_name( $product );
+				if ( '' !== $brand ) {
+					$title .= ' | ' . $brand;
+				}
+				$parts['title'] = $title;
+			}
+		}
+
+		/**
+		 * Filter the title parts after our enrichment.
+		 *
+		 * @param array $parts Title parts.
+		 */
+		return (array) apply_filters( 'wc_ai_storefront_meta_title_parts', $parts );
+	}
+
+	/**
+	 * First brand name from the core `product_brand` taxonomy, or '' if none.
+	 *
+	 * @param WC_Product $product Product.
+	 */
+	private function get_brand_name( $product ): string {
+		$terms = get_the_terms( $product->get_id(), 'product_brand' );
+		if ( is_array( $terms ) && ! empty( $terms ) && isset( $terms[0]->name ) ) {
+			return (string) $terms[0]->name;
+		}
+		return '';
+	}
 }
