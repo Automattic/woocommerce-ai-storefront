@@ -706,6 +706,8 @@ Each `ListItem` is `position` + the nested `item` **only** — no `ListItem`-lev
 
 The stub also carries `brand` and `gtin` when the product has them (since 0.23.6, #507), mirroring the full product page so the list isn't flagged for the recommended merchant-listing fields. `brand` is the product's first `product_brand` term as `{ "@type": "Brand", "name": … }` (matching WooCommerce's `WC_Brands`); `gtin` is the product's global unique ID, stripped of non-digits and validated against the same `^(\d{8}|\d{12,14})$` check WooCommerce core uses (so a configured GTIN emits identically here and on the product page). Both are omitted when unset.
 
+`aggregateRating` is added the same way (since 0.23.7, #510), mirroring WC core's gate: emitted only when `get_rating_count() > 0` **and** `wc_review_ratings_enabled()` — plus a positive-average guard WC core lacks, so a malformed count-without-average never emits an invalid `ratingValue: 0`. Ratings are never fabricated; a review-less product (or a store with reviews disabled) emits nothing. Individual `review` objects are intentionally **not** listed — the summary stub carries the aggregate only (the full `review` array stays on the product page).
+
 ```jsonc
 {
   "@context": "https://schema.org",
@@ -730,6 +732,11 @@ The stub also carries `brand` and `gtin` when the product has them (since 0.23.6
           "price": "39.00",
           "priceCurrency": "USD",
           "availability": "https://schema.org/InStock"
+        },
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": "4.5",
+          "reviewCount": 27
         }
       }
     }
