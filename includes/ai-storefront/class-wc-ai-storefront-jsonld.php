@@ -248,7 +248,7 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_currency( $markup );
 		$this->add_subscription_signals( $markup, $product );
 		$this->decode_seller_name( $markup );
-		$this->add_shipping_details( $markup, $country );
+		$this->add_shipping_details( $markup, $country, $product );
 		$this->add_handling_time( $markup, $settings );
 		$this->add_return_policy( $markup, $product, $settings, $country );
 
@@ -1257,7 +1257,7 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_inventory_level( $entry, $variation );
 		$this->add_currency( $entry );
 		$this->add_subscription_signals( $entry, $variation );
-		$this->add_shipping_details( $entry, $country );
+		$this->add_shipping_details( $entry, $country, $variation );
 		$this->add_handling_time( $entry, $settings );
 		$this->add_return_policy( $entry, $parent_product, $settings, $country );
 
@@ -1707,7 +1707,15 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Adds shippingDetails to offers[0] when a store country is known.
+	 * Adds shippingDetails to offers[0] when the product ships and a store
+	 * country is known.
+	 *
+	 * Virtual / downloadable products have no shipping, so no block is emitted
+	 * for them — a shippingDetails on a no-ship product is contradictory and
+	 * mismatches the products feed, which already gates on `needs_shipping()`
+	 * (`requires_shipping`). The defensive `method_exists()` mirrors the feed:
+	 * when the method is unavailable we fail safe and still emit, never
+	 * suppressing shipping for a real product. (#504)
 	 *
 	 * A DefinedRegion without addressCountry is meaningless — no emission
 	 * when $country is empty.
@@ -1719,10 +1727,14 @@ class WC_AI_Storefront_JsonLd {
 	 * (requires: 'min_amount') is intentionally excluded — it is not
 	 * unconditionally free.
 	 *
-	 * @param array  $markup  Markup array, modified by reference.
-	 * @param string $country ISO country code from the WC store base location.
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param string     $country ISO country code from the WC store base location.
+	 * @param WC_Product $product The product (or variation) the offer describes.
 	 */
-	private function add_shipping_details( array &$markup, string $country ): void {
+	private function add_shipping_details( array &$markup, string $country, $product ): void {
+		if ( method_exists( $product, 'needs_shipping' ) && ! $product->needs_shipping() ) {
+			return;
+		}
 		if ( ! $country || ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
 			return;
 		}
