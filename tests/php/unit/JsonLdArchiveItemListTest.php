@@ -234,9 +234,10 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * A real WC_Product subclass exposing get_global_unique_id() (WC 9.2+),
-	 * so `method_exists()` resolves true — Mockery's `shouldReceive` does not
-	 * make `method_exists()` true. Mirrors StoreApiExtensionTest's approach.
+	 * A real WC_Product subclass exposing get_global_unique_id() (absent on
+	 * older WooCommerce releases), so `method_exists()` resolves true —
+	 * Mockery's `shouldReceive` does not make `method_exists()` true. Mirrors
+	 * StoreApiExtensionTest's approach.
 	 */
 	private function make_gtin_product( string $gtin ): \WC_Product {
 		$product            = new class() extends \WC_Product {
@@ -340,10 +341,31 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'brand', $stub );
 	}
 
+	public function test_stub_omits_brand_when_term_name_is_empty(): void {
+		$this->enable_shop_page();
+		// A brand term with an empty name must not emit an empty Brand block
+		// (which would be its own Rich Results warning).
+		Functions\when( 'get_the_terms' )->justReturn( [ (object) [ 'term_id' => 5, 'name' => '' ] ] );
+
+		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true ) ] );
+
+		$this->assertArrayNotHasKey( 'brand', $stub );
+	}
+
 	public function test_stub_includes_gtin_when_valid(): void {
 		$this->enable_shop_page();
 		// 12-digit value passes WC core's 8/12-14-digit validity check.
 		$stub = $this->first_stub( [ $this->make_gtin_product( '012345678905' ) ] );
+
+		$this->assertSame( '012345678905', $stub['gtin'] );
+	}
+
+	public function test_stub_normalizes_formatted_gtin_like_wc_core(): void {
+		$this->enable_shop_page();
+		// WC core's prepare_gtin() strips non-digits before validating; the
+		// stub must do the same so a formatted value emits the bare digits,
+		// matching the product page.
+		$stub = $this->first_stub( [ $this->make_gtin_product( '0-12345-67890-5' ) ] );
 
 		$this->assertSame( '012345678905', $stub['gtin'] );
 	}
@@ -358,9 +380,10 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_stub_omits_gtin_on_older_wc_without_the_method(): void {
 		$this->enable_shop_page();
-		// Older WC (< 9.2) has no get_global_unique_id(); the method_exists
-		// guard must fail safe and emit no gtin rather than fatal. The Mockery
-		// mock of WC_Product (which lacks the method) exercises that path.
+		// Older WooCommerce releases have no get_global_unique_id(); the
+		// method_exists guard must fail safe and emit no gtin rather than
+		// fatal. The Mockery mock of WC_Product (which lacks the method)
+		// exercises that path.
 		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true ) ] );
 
 		$this->assertArrayNotHasKey( 'gtin', $stub );

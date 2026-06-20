@@ -3542,13 +3542,16 @@ class WC_AI_Storefront_JsonLd {
 
 			// brand + gtin mirror the full product-page markup so the homepage
 			// list isn't flagged for missing recommended merchant-listing
-			// fields (#507). gtin from WC core's get_global_unique_id (same
-			// 8/12-14-digit validity as WC_Structured_Data); brand from the
+			// fields (#507). gtin from WC core's get_global_unique_id, stripped
+			// of non-digits (mirroring WC_Structured_Data::prepare_gtin) and
+			// validated against the same is_valid_gtin 8/12-14-digit regex, so
+			// the stub emits exactly what the product page does. brand from the
 			// first product_brand term, mirroring WC_Brands::add_structured_data.
 			// Both guarded — stores without GTINs / brands are unaffected.
-			$gtin = method_exists( $product, 'get_global_unique_id' )
-				? (string) $product->get_global_unique_id()
-				: '';
+			$gtin = '';
+			if ( method_exists( $product, 'get_global_unique_id' ) ) {
+				$gtin = (string) preg_replace( '/[^0-9]/', '', (string) $product->get_global_unique_id() );
+			}
 			if ( 1 === preg_match( '/^(\d{8}|\d{12,14})$/', $gtin ) ) {
 				$product_stub['gtin'] = $gtin;
 			}
