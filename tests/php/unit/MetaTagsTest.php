@@ -122,10 +122,3 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Fine leather goods, made to last.', $this->meta->build_archive_description() );
 	}
 }
-
-// Minimal wp_strip_all_tags stand-in for the strip test (the real one is
-// not loaded in unit tests). Strips tags and collapses runs of whitespace
-// — matching what wp_strip_all_tags does for our inputs.
-function wp_strip_all_tags_polyfill( string $s ): string {
-	return trim( preg_replace( "/\s+/", " ", strip_tags( $s ) ) );
-}
