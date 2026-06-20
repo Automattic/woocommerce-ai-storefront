@@ -49,4 +49,93 @@ class WC_AI_Storefront_Meta_Tags {
 			|| ( function_exists( 'is_product_category' ) && is_product_category() )
 			|| ( function_exists( 'is_shop' ) && is_shop() );
 	}
+
+	/**
+	 * Build the meta description for a product, auto-derived from core fields.
+	 *
+	 * @param WC_Product $product Product to derive from.
+	 * @return string Cleaned, truncated description; '' when no source text.
+	 */
+	public function build_description( $product ): string {
+		$candidates = array(
+			(string) $product->get_short_description(),
+			(string) $product->get_description(),
+		);
+
+		$description = '';
+		foreach ( $candidates as $raw ) {
+			$text = $this->clean_text( $raw );
+			if ( '' !== $text ) {
+				$description = $this->truncate( $text, self::DESCRIPTION_MAX );
+				break;
+			}
+		}
+
+		/**
+		 * Filter the auto-derived meta description.
+		 *
+		 * @param string     $description Derived description ('' when none).
+		 * @param WC_Product $product     Source product.
+		 */
+		return (string) apply_filters( 'wc_ai_storefront_meta_description', $description, $product );
+	}
+
+	/**
+	 * Strip shortcodes + HTML and collapse whitespace.
+	 */
+	private function clean_text( string $raw ): string {
+		$raw = strip_shortcodes( $raw );
+		$raw = wp_strip_all_tags( $raw );
+		return trim( (string) preg_replace( '/\s+/', ' ', $raw ) );
+	}
+
+	/**
+	 * Truncate to a soft max on a word boundary, appending an ellipsis.
+	 */
+	private function truncate( string $text, int $max ): string {
+		if ( mb_strlen( $text ) <= $max ) {
+			return $text;
+		}
+		$cut   = mb_substr( $text, 0, $max );
+		$space = mb_strrpos( $cut, ' ' );
+		if ( false !== $space && $space > 0 ) {
+			$cut = mb_substr( $cut, 0, $space );
+		}
+		return rtrim( $cut ) . '…';
+	}
+
+	/**
+	 * Build the meta description for the current archive (category or shop).
+	 *
+	 * Category → the term's description. Shop → the shop page content, falling
+	 * back to the store tagline. Cleaned/truncated like the product path.
+	 *
+	 * @return string Cleaned, truncated description; '' when no source text.
+	 */
+	public function build_archive_description(): string {
+		$raw    = '';
+		$source = null;
+
+		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
+			$term   = get_queried_object();
+			$source = $term;
+			if ( is_object( $term ) && isset( $term->description ) ) {
+				$raw = (string) $term->description;
+			}
+		} elseif ( function_exists( 'is_shop' ) && is_shop() ) {
+			$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
+			if ( $shop_id > 0 ) {
+				$raw = (string) get_post_field( 'post_content', $shop_id );
+			}
+			if ( '' === trim( $raw ) ) {
+				$raw = (string) get_bloginfo( 'description' ); // store tagline
+			}
+		}
+
+		$text        = $this->clean_text( $raw );
+		$description = '' !== $text ? $this->truncate( $text, self::DESCRIPTION_MAX ) : '';
+
+		/** This filter is documented in build_description(). */
+		return (string) apply_filters( 'wc_ai_storefront_meta_description', $description, $source );
+	}
 }

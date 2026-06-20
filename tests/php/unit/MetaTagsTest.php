@@ -60,4 +60,72 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertFalse( $this->meta->should_emit() );
 	}
+
+	private function make_product( array $overrides = array() ): \Mockery\MockInterface {
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_short_description' )->andReturn( $overrides['short'] ?? '' );
+		$product->shouldReceive( 'get_description' )->andReturn( $overrides['long'] ?? '' );
+		return $product;
+	}
+
+	public function test_description_prefers_short_description(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		$p = $this->make_product( array( 'short' => 'A tight short blurb.', 'long' => 'Long body.' ) );
+		$this->assertSame( 'A tight short blurb.', $this->meta->build_description( $p ) );
+	}
+
+	public function test_description_falls_back_to_long_when_short_blank(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		$p = $this->make_product( array( 'short' => '   ', 'long' => 'The long description.' ) );
+		$this->assertSame( 'The long description.', $this->meta->build_description( $p ) );
+	}
+
+	public function test_description_empty_when_all_blank(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		$p = $this->make_product( array( 'short' => '', 'long' => '' ) );
+		$this->assertSame( '', $this->meta->build_description( $p ) );
+	}
+
+	public function test_description_strips_html_and_shortcodes_and_collapses_whitespace(): void {
+		Functions\when( 'strip_shortcodes' )->alias(
+			static fn( $s ) => preg_replace( '/\[[^\]]*\]/', '', $s )
+		);
+		$p = $this->make_product( array( 'short' => "<p>Fine   leather</p>\n[sale] belt</p>" ) );
+		$this->assertSame( 'Fine leather belt', $this->meta->build_description( $p ) );
+	}
+
+	public function test_description_truncates_on_word_boundary_with_ellipsis(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		$long = str_repeat( 'word ', 60 ); // 300 chars of "word "
+		$p    = $this->make_product( array( 'short' => trim( $long ) ) );
+		$out  = $this->meta->build_description( $p );
+		$this->assertLessThanOrEqual( 156, mb_strlen( $out ) ); // 155 + ellipsis
+		$this->assertStringEndsWith( '…', $out );
+		$this->assertStringNotContainsString( 'wor…', $out ); // cut on a space, not mid-word
+	}
+
+	public function test_archive_description_from_category_term(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'is_product_category' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array( 'term_id' => 9, 'name' => 'Belts', 'description' => 'All our leather belts.' )
+		);
+		$this->assertSame( 'All our leather belts.', $this->meta->build_archive_description() );
+	}
+
+	public function test_archive_description_shop_uses_page_content_then_tagline(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' ); // empty shop page content
+		Functions\when( 'get_bloginfo' )->justReturn( 'Fine leather goods, made to last.' );
+		$this->assertSame( 'Fine leather goods, made to last.', $this->meta->build_archive_description() );
+	}
+}
+
+// Minimal wp_strip_all_tags stand-in for the strip test (the real one is
+// not loaded in unit tests). Strips tags and collapses runs of whitespace
+// — matching what wp_strip_all_tags does for our inputs.
+function wp_strip_all_tags_polyfill( string $s ): string {
+	return trim( preg_replace( "/\s+/", " ", strip_tags( $s ) ) );
 }
