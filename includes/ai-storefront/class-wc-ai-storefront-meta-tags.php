@@ -150,8 +150,8 @@ class WC_AI_Storefront_Meta_Tags {
 	 * @param array $parts Title parts (keys: title, page, tagline, site).
 	 * @return array
 	 */
-	public function filter_title_parts( $parts ) {
-		if ( ! is_array( $parts ) || ! $this->should_emit() ) {
+	public function filter_title_parts( array $parts ): array {
+		if ( ! $this->should_emit() ) {
 			return $parts;
 		}
 		if ( function_exists( 'is_product' ) && is_product() ) {
@@ -178,6 +178,7 @@ class WC_AI_Storefront_Meta_Tags {
 	 * First brand name from the core `product_brand` taxonomy, or '' if none.
 	 *
 	 * @param WC_Product $product Product.
+	 * @return string Brand name, or empty string if none.
 	 */
 	private function get_brand_name( $product ): string {
 		$terms = get_the_terms( $product->get_id(), 'product_brand' );

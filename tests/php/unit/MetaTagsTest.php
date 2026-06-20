@@ -155,4 +155,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$parts = $this->meta->filter_title_parts( array( 'title' => 'Accessories' ) );
 		$this->assertSame( 'Accessories', $parts['title'] );
 	}
+
+	public function test_title_parts_untouched_when_product_lookup_fails(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		Functions\when( 'wc_get_product' )->justReturn( false );
+		$parts = $this->meta->filter_title_parts( array( 'title' => 'Untouched' ) );
+		$this->assertSame( 'Untouched', $parts['title'] );
+	}
 }
